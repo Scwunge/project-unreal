@@ -147,7 +147,64 @@ comes from Prism Launcher's copy when the official launcher has none; the script
    FormaTerra's `realms-engine` (Rust) is a reference for the patterns: its threaded mesher, lighting and
    net thread.
 
-## 8. References
+## 8. Hosting (M8, host layer done ahead of the client)
+
+The host layer is `tools/mchost/` (Python, standard library only), with the command line `tools/mc_host.py`.
+It runs Mojang's unmodified `cache/server/server.jar`. It doesn't copy or change the jar, and it contains no
+server logic. Its job is everything around the jar: the instance folder, the java process, the console and the
+management API. The Unreal client will drive the same steps later, either by calling this tool or by porting it
+to a `McServer` module. The protocol is simple: a process plus a WebSocket.
+
+**Layout** (gitignored): `server/<name>/` is one server and world (`server.properties`, `eula.txt`, `world/`,
+`whitelist.json`, `ops.json`, `host.json`). `server/.libraries/` holds the jar's bundled libraries, unpacked
+once through `-DbundlerRepoDir` and shared by every instance.
+
+**What it does:**
+
+- `create`: writes `server.properties` for a local world: offline mode, `127.0.0.1`, seed, game mode,
+  difficulty, port and allowlist on or off. It also turns on the management server with a fresh 40-character
+  secret and no TLS (it only listens on localhost). It never writes `eula=true` unless told the user accepts
+  (`--accept-eula` or `eula NAME --accept`).
+- `start`: runs Java 25, never the `java` on PATH. Java 25 is found through `--java`, `MC_JAVA`,
+  `cache/manifest.json`, or `fetch_cache.find_java`. Before starting, it picks a free management port and checks
+  the game port. The server is ready when the console prints `Done (…s)!`. Then the host connects to the
+  management API.
+- Management API: JSON-RPC 2.0 over a WebSocket, with `Authorization: Bearer <secret>`. Parameters are
+  positional. Method names and keyword arguments are checked against
+  `cache/data/reports/json-rpc-api-schema.json` (API 3.1.0). Notifications (`players/joined`,
+  `server/saving`, …) go to listeners.
+- `stop`: calls `minecraft:server/stop`, falls back to typing `stop` in the console, and kills the process only
+  if it hasn't exited after the timeout.
+
+**Offline players, allowlist and ops (tested on 26.3):** the management API and the console both look names up
+with Mojang's profile service, even in offline mode. They store the *online* UUID, so an offline player with
+that name is still turned away. Ids the profile service doesn't know, such as offline UUIDs, are dropped with no
+error, and `allowlist/set` with them empties the list. So for offline servers, the host writes `whitelist.json`
+and `ops.json` with offline UUIDs. These are version 3 UUIDs of `OfflinePlayer:<name>`. A running server
+picks up the allowlist through `whitelist reload`. Ops can only be changed this way while the server is stopped,
+or with `op <name>` for a player who is connected.
+
+**Tests:** `python -m unittest discover -s tools/tests` runs 29 tests against fakes: properties, WebSocket
+frames, the RPC client against a fake management server, and the process manager against a fake console. With
+`MC_HOST_REAL=1` set, 6 more tests start the real 26.3 server in a temporary folder and check:
+
+- status (26.3, protocol 777)
+- settings and game rules
+- notifications
+- saving
+- offline logins that the allowlist accepts and rejects
+
+The login check uses a bare handshake and login packets.
+
+**Left for later:**
+
+- The world list and "New World" screens (M6/M8 UI).
+- Driving this from Unreal (a `McServer` module that runs the process and opens the WebSocket).
+- Online-mode servers, which wait for decision 2. For those, the API's own allowlist and op methods are the
+  right path.
+- TLS for a management API reachable from other machines.
+
+## 9. References
 
 - Unreal Engine 5.8: https://wnhub.io/news/engines/item-51157
 - RealtimeMeshComponent (Core is MIT): https://github.com/TriAxis-Games/RealtimeMeshComponent

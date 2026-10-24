@@ -8,6 +8,9 @@ logs/
 server/
 worlds/
 
+# Python
+__pycache__/
+
 # Unreal
 Binaries/
 Intermediate/

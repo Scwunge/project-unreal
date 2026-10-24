@@ -1,8 +1,8 @@
 # Minecraft in Unreal: a private client for Java Edition 26.3
 
 Status: **M0 in progress.** Written 2026-10-24. The repo has the module scaffold (`McClient.uproject`,
-`Source/`), not yet opened in Unreal, and `tools/fetch_cache.py`, which has filled `cache/assets/`,
-`cache/server/` and `cache/data/reports/` so far. Only the client jar step is left.
+`Source/`), not yet opened in Unreal, and `tools/fetch_cache.py`, which has filled all of `cache/`
+(assets, server, data reports and the client jar's assets). Only opening the project in Unreal is left.
 
 Private project, not for release. The repo holds only our own code. Everything of Mojang's (textures,
 models, sounds, data) is read from your own installed copy at runtime into a local cache that git ignores.
@@ -36,11 +36,11 @@ hardcoded: the packet tables are generated, so a version move means regenerating
 
 **Still needed for M0** (as of 2026-10-24):
 
-- Launch 26.3 once from the official launcher. This PC has the `26.3.json` profile and every asset index 34
-  object, sounds included, but not `26.3.jar`.
-- Install Unreal 5.8; none was found on this PC.
-- Then run `python tools/fetch_cache.py` again to extract the client jar. (`server.jar` and the reports are
-  done: protocol 777, 1,286 blocks with 35,723 states, 95 registries, 260 packets.)
+- Install Unreal 5.8 (none was found on this PC) and check that the editor opens `McClient.uproject`.
+
+The cache is done: protocol 777, 1,286 blocks with 35,723 states, 95 registries, 260 packets, 11,604 client
+jar files (1,288 blockstates, 4,192 models, 218 `.mcmeta` animations) and 5,147 asset objects. The client jar
+comes from Prism Launcher's copy when the official launcher has none; the script checks its sha1 either way.
 
 ## 3. Architecture
 

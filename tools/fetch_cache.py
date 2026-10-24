@@ -2,7 +2,7 @@
 
 Reads, for one version:
   - the launcher profile   .minecraft/versions/<v>/<v>.json
-  - the client jar         .minecraft/versions/<v>/<v>.jar      -> cache/client/assets/
+  - the client jar         .minecraft/versions/<v>/<v>.jar, or Prism's copy -> cache/client/assets/
   - the assets index       .minecraft/assets/indexes/<id>.json  -> cache/assets/
   - the vanilla server jar cache/server/server.jar             -> protocol number, cache/data/reports/
 
@@ -159,11 +159,24 @@ def step_reports(jar: Path, java: Path | None, cache: Path) -> bool:
     return True
 
 
-def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path) -> bool:
-    jar = mc_dir / "versions" / version / f"{version}.jar"
-    if not jar.is_file():
-        log(f"client jar: MISSING ({jar}). Launch {version} once from the official launcher.")
+def find_client_jar(mc_dir: Path, version: str, explicit: Path | None) -> Path | None:
+    candidates = [explicit] if explicit else []
+    candidates.append(mc_dir / "versions" / version / f"{version}.jar")
+    # Prism Launcher keeps vanilla client jars as libraries.
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        candidates.append(Path(appdata, "PrismLauncher", "libraries", "com", "mojang", "minecraft", version,
+                               f"minecraft-{version}-client.jar"))
+    return next((c for c in candidates if c.is_file()), None)
+
+
+def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path, explicit: Path | None) -> bool:
+    jar = find_client_jar(mc_dir, version, explicit)
+    if jar is None:
+        log(f"client jar: MISSING. Launch {version} once from the official launcher or Prism, "
+            "or pass --client-jar.")
         return False
+    log(f"client jar: {jar}")
     jar_sha1 = sha1_of(jar)
     expected = profile["downloads"]["client"]["sha1"]
     if jar_sha1 != expected:
@@ -245,7 +258,8 @@ def main() -> int:
     ap.add_argument("--mc-dir", type=Path, default=default_mc_dir())
     ap.add_argument("--cache", type=Path, default=REPO / "cache")
     ap.add_argument("--java", help="path to a Java 25 java.exe (default: search the launcher and JDKs)")
-    ap.add_argument("--download-server", action="store_true", help="fetch server.jar from Mojang if missing")
+    ap.add_argument("--client-jar", type=Path, help="path to the client jar (default: official launcher, then Prism)")
+    ap.add_argument("--download-server",action="store_true", help="fetch server.jar from Mojang if missing")
     args = ap.parse_args()
 
     mc_dir: Path = args.mc_dir
@@ -276,7 +290,7 @@ def main() -> int:
             done["reports"] = step_reports(jar, java, cache)
         else:
             done["reports"] = False
-        done["client_jar"] = step_client_jar(mc_dir, args.version, profile, cache)
+        done["client_jar"] = step_client_jar(mc_dir, args.version, profile, cache, args.client_jar)
         done["assets"] = step_assets(mc_dir, profile["assetIndex"]["id"], cache)
     except RuntimeError as e:
         log(f"ERROR: {e}")

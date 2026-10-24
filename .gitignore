@@ -1,0 +1,23 @@
+# Mojang's files, read from your own install at runtime. Never commit these.
+cache/
+*.jar
+generated/
+logs/
+
+# Local test servers and worlds
+server/
+worlds/
+
+# Unreal
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Build/
+.vs/
+*.sln
+*.VC.db
+*.opensdf
+*.sdf
+*.suo
+.vsconfig

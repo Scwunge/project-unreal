@@ -1,4 +1,4 @@
-// McRender: Section meshing, texture array, sky.
+// McRender: Section meshing, texture array, sky. Client only: not built into the dedicated server.
 
 #pragma once
 

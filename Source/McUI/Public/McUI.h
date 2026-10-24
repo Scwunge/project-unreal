@@ -1,4 +1,4 @@
-// McUI: HUD, inventory screens, chat and menus (UMG).
+// McUI: HUD, inventory screens, chat, menus, the world list (UMG). Client only: not built into the dedicated server.
 
 #pragma once
 

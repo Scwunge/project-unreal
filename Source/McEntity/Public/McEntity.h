@@ -1,4 +1,4 @@
-// McEntity: Entity and block-entity models, animation, interpolation.
+// McEntity: Entities, physics, mob AI, combat, spawning, block entities.
 
 #pragma once
 

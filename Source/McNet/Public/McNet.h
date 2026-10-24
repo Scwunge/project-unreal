@@ -1,4 +1,4 @@
-// McNet: TCP connection, VarInt framing, zlib, packet reading and writing.
+// McNet: Unreal replication: chunk streaming, block changes, entities, inventories.
 
 #pragma once
 

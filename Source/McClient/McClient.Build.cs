@@ -6,6 +6,11 @@ public class McClient : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "McNet", "McWorld", "McAssets", "McRender", "McPlayer", "McEntity", "McUI", "McAudio" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "McCore", "McWorld", "McGen", "McSim", "McEntity", "McServer", "McNet", "McPlayer" });
+
+		if (Target.Type != TargetType.Server)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "McAssets", "McRender", "McUI", "McAudio" });
+		}
 	}
 }

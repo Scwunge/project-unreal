@@ -2,10 +2,10 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "",
-	"Description": "Private Unreal client for Minecraft Java Edition 26.3. See PLAN.md.",
+	"Description": "Private Unreal game that plays like Minecraft Java Edition 26.3. See PLAN.md.",
 	"Modules": [
 		{
-			"Name": "McNet",
+			"Name": "McCore",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},
@@ -15,17 +15,12 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "McAssets",
+			"Name": "McGen",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "McRender",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "McPlayer",
+			"Name": "McSim",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},
@@ -35,14 +30,51 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "McUI",
+			"Name": "McServer",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "McAudio",
+			"Name": "McNet",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "McPlayer",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "McAssets",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": [
+				"Server"
+			]
+		},
+		{
+			"Name": "McRender",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": [
+				"Server"
+			]
+		},
+		{
+			"Name": "McUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": [
+				"Server"
+			]
+		},
+		{
+			"Name": "McAudio",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"TargetDenyList": [
+				"Server"
+			]
 		},
 		{
 			"Name": "McClient",

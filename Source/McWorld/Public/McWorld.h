@@ -1,4 +1,4 @@
-// McWorld: Chunk columns, paletted sections, heightmaps and light.
+// McWorld: Chunk columns, paletted sections, heightmaps, the light engine, saving.
 
 #pragma once
 

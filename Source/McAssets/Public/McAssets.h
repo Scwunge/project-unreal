@@ -1,4 +1,4 @@
-// McAssets: Reads the local cache/: block models, textures, animations, sounds.json.
+// McAssets: Reads the local cache/: block models, textures, animations, sounds.json. Client only: not built into the dedicated server.
 
 #pragma once
 

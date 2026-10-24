@@ -2,9 +2,11 @@
 
 Reads, for one version:
   - the launcher profile   .minecraft/versions/<v>/<v>.json
-  - the client jar         .minecraft/versions/<v>/<v>.jar, or Prism's copy -> cache/client/assets/
+  - the client jar         .minecraft/versions/<v>/<v>.jar, or Prism's copy -> cache/client/assets/ and data/
   - the assets index       .minecraft/assets/indexes/<id>.json  -> cache/assets/
-  - the vanilla server jar cache/server/server.jar             -> protocol number, cache/data/reports/
+  - the vanilla server jar cache/server/server.jar             -> cache/data/reports/ (blocks, registries)
+
+The server jar is only a reference tool: its data generator lists every block state. The game never runs it.
 
 The server jar is only downloaded when you pass --download-server. Nothing here is committed: cache/ is
 gitignored. Run again at any time; finished steps are skipped unless their input changed.
@@ -29,6 +31,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_VERSION = "26.3"
+# assets/ is models, textures, fonts and lang; data/ is recipes, loot tables, tags, structures and worldgen.
+CLIENT_JAR_FOLDERS = ("assets", "data")
 
 
 def log(msg: str) -> None:
@@ -183,16 +187,18 @@ def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path, expl
         raise RuntimeError(f"{jar.name} sha1 {jar_sha1} does not match the profile ({expected})")
     out = cache / "client"
     stamp_path = out / ".stamp.json"
-    if read_stamp(stamp_path).get("client_sha1") == jar_sha1:
+    stamp = read_stamp(stamp_path)
+    if stamp.get("client_sha1") == jar_sha1 and stamp.get("folders") == list(CLIENT_JAR_FOLDERS):
         log("client jar: up to date")
         return True
     if out.exists():
         shutil.rmtree(out)
     root = out.resolve()
-    count = 0
+    counts = dict.fromkeys(CLIENT_JAR_FOLDERS, 0)
     with zipfile.ZipFile(jar) as z:
         for entry in z.infolist():
-            if entry.is_dir() or not entry.filename.startswith("assets/"):
+            folder = entry.filename.split("/", 1)[0]
+            if entry.is_dir() or folder not in counts:
                 continue
             dest = (out / entry.filename).resolve()
             if root not in dest.parents:
@@ -200,9 +206,9 @@ def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path, expl
             dest.parent.mkdir(parents=True, exist_ok=True)
             with z.open(entry) as src, dest.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
-            count += 1
-    write_json(stamp_path, {"client_sha1": jar_sha1, "files": count})
-    log(f"client jar: extracted {count} files from assets/")
+            counts[folder] += 1
+    write_json(stamp_path, {"client_sha1": jar_sha1, "folders": list(CLIENT_JAR_FOLDERS), "files": counts})
+    log("client jar: extracted " + ", ".join(f"{n} files from {f}/" for f, n in counts.items()))
     return True
 
 

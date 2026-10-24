@@ -1,4 +1,4 @@
-// McPlayer: Movement prediction, input, camera, digging and placing.
+// McPlayer: Input, camera, movement prediction, digging and placing.
 
 #pragma once
 

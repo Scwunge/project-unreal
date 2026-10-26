@@ -48,6 +48,8 @@ private:
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);
+	void TickFire(const FIntVector& Pos, FMcStateId State);
+	static bool IsFireBlock(FMcStateId State);
 	void RandomTicks();
 
 	FMcBlockWorld& World;

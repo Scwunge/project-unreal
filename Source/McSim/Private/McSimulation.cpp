@@ -113,7 +113,11 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 	}
 	const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
 	const FMcBlockTags& Tags = FMcBlockTags::Get();
-	if (Tags.Has(TEXT("minecraft:leaves"), State))
+	if (IsFireBlock(State))
+	{
+		ScheduleTick(Pos, 30);
+	}
+	else if (Tags.Has(TEXT("minecraft:leaves"), State))
 	{
 		ScheduleTick(Pos, LeafDelay);
 	}
@@ -163,6 +167,10 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	else if (IsGravityBlock(State))
 	{
 		TickGravity(Pos, State);
+	}
+	else if (IsFireBlock(State))
+	{
+		TickFire(Pos, State);
 	}
 	else if (FMcBlockTags::Get().Has(TEXT("minecraft:leaves"), State))
 	{

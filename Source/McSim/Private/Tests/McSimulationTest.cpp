@@ -187,6 +187,27 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		Run(Sim, 3);
 		TestTrue(TEXT("and goes without it"), Registry.IsAir(World.GetBlock(FIntVector(-5, 2, 0))));
 	}
+	{
+		// Fire on a wooden floor burns it and spreads; fire on stone with nothing to burn goes out.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:fire")));
+		Run(Sim, 700);
+		TestTrue(TEXT("fire with no fuel goes out"), Registry.IsAir(World.GetBlock(FIntVector(0, 1, 0))));
+		for (int32 X = 5; X <= 9; ++X)
+		{
+			World.SetBlock(FIntVector(X, 1, 0), State(TEXT("minecraft:oak_planks")));
+		}
+		World.SetBlock(FIntVector(5, 2, 0), State(TEXT("minecraft:fire")));
+		Run(Sim, 3000);
+		int32 Burnt = 0;
+		for (int32 X = 5; X <= 9; ++X)
+		{
+			Burnt += Registry.GetBlockOf(World.GetBlock(FIntVector(X, 1, 0))).Name == TEXT("minecraft:oak_planks") ? 0 : 1;
+		}
+		TestTrue(TEXT("fire eats planks beside it"), Burnt >= 2);
+	}
 	return true;
 }
 

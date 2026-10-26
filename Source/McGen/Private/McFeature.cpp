@@ -359,6 +359,7 @@ FMcFeatureLibrary::FMcFeatureLibrary(int32 InSeaLevel, int32 InMinY, int32 InHei
 	{
 		bRegistered = true;
 		McRegisterBasicFeatures();
+		McRegisterTreeFeatures();
 	}
 	FMcRandom Random(2345);
 	FMcNoiseParams Params;

@@ -9,3 +9,5 @@ void McRegisterBasicFeatures();
 
 // vegetation_patch, bamboo, mushrooms, ice, dripstone, geode, monster_room and more (McFeatureExtra.cpp).
 void McRegisterExtraFeatures();
+// tree (McTreeFeature.cpp).
+void McRegisterTreeFeatures();

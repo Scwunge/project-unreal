@@ -6,3 +6,6 @@
 // simple_block, ore, scattered_ore, the selectors, block_column, disk, spring_feature, lake, freeze_top_layer,
 // block_pile, vines, block_blob (McFeatureTypes.cpp).
 void McRegisterBasicFeatures();
+
+// vegetation_patch, bamboo, mushrooms, ice, dripstone, geode, monster_room and more (McFeatureExtra.cpp).
+void McRegisterExtraFeatures();

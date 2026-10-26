@@ -889,4 +889,5 @@ void McRegisterBasicFeatures()
 		Result->State = State.GetValue();
 		return Result;
 	});
+	McRegisterExtraFeatures();
 }

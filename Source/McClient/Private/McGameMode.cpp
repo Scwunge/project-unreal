@@ -39,6 +39,14 @@ void AMcGameMode::StartPlay()
 	if (!WorldActor || !WorldActor->GetBlockWorld())
 	{
 		UE_LOG(LogMcClient, Error, TEXT("No world to play in; see the McServer and McCore errors above."));
+#if !UE_BUILD_SHIPPING
+		// A development run (a -McShot screenshot, a test) that can't start has nothing to wait for.
+		FString ShotPath;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McShot="), ShotPath))
+		{
+			FPlatformMisc::RequestExit(true, TEXT("McNoWorld"));
+		}
+#endif
 		return;
 	}
 

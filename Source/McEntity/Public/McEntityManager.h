@@ -1,0 +1,78 @@
+// The server's entities, ticked at 20 a second alongside the block simulation. They are plain C++ objects, not
+// actors: the world they live in is the block world, and what players see of them is sent by McNet and drawn by
+// McRender. Game thread only. Numbers are from minecraft.wiki ("Item (entity)", "Entity").
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "McBlockEntity.h"
+#include "McPhysics.h"
+
+class FMcBlockWorld;
+class FMcEntityManager;
+
+class MCENTITY_API FMcEntity
+{
+public:
+	virtual ~FMcEntity() = default;
+
+	// The registry name of the kind of entity, e.g. "minecraft:item".
+	virtual FName GetType() const = 0;
+	virtual void Tick(FMcEntityManager& Manager) {}
+
+	int32 Id = 0;
+	FMcBody Body;
+	float Yaw = 0.0f;
+	float Pitch = 0.0f;
+	int32 Age = 0;
+	// Set to have the manager drop it at the end of the tick.
+	bool bRemoved = false;
+};
+
+// A stack lying on the ground.
+class MCENTITY_API FMcItemEntity final : public FMcEntity
+{
+public:
+	FMcItemEntity();
+	virtual FName GetType() const override { return TEXT("minecraft:item"); }
+	virtual void Tick(FMcEntityManager& Manager) override;
+
+	FMcItemStack Stack;
+	// Ticks before a player can pick it up: 10 for a dropped item, 40 for a thrown one.
+	int32 PickupDelay = 10;
+
+	static constexpr int32 LifeTicks = 6000;
+	static constexpr int32 DefaultStackSize = 64;
+};
+
+class MCENTITY_API FMcEntityManager
+{
+public:
+	explicit FMcEntityManager(FMcBlockWorld& InWorld) : World(InWorld) {}
+	UE_NONCOPYABLE(FMcEntityManager);
+
+	// Takes ownership and gives the entity its id.
+	FMcEntity& Add(TUniquePtr<FMcEntity> Entity);
+	// Drops a stack at Pos (block coordinates) with the small random push a broken block gives it.
+	FMcItemEntity& DropItem(const FVector& Pos, const FMcItemStack& Stack, int32 PickupDelay = 10);
+
+	void Tick();
+	FMcEntity* Find(int32 Id);
+	// The entities whose boxes touch Box.
+	void FindInBox(const FBox& Box, TArray<FMcEntity*>& Out);
+	// A player whose hitbox is PlayerBox takes the items within a block of it (half a block up and down),
+	// returning what it picked up. Items still in their pickup delay stay.
+	TArray<FMcItemStack> CollectItems(const FBox& PlayerBox);
+
+	const TArray<TUniquePtr<FMcEntity>>& GetEntities() const { return Entities; }
+	FMcBlockWorld& GetWorld() { return World; }
+
+	// How many of an item fit in one stack; set by whatever knows the item registry (default 64).
+	TFunction<int32(FName)> StackSizeOf;
+
+private:
+	FMcBlockWorld& World;
+	TArray<TUniquePtr<FMcEntity>> Entities;
+	int32 NextId = 1;
+	FRandomStream Random{ 7 };
+};

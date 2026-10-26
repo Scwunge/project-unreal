@@ -22,6 +22,8 @@ struct FMcMoveInput
 	bool bFlying = false;
 	// Minecraft yaw in degrees: 0 faces south (+z), 90 faces west.
 	float Yaw = 0.0f;
+	// The movement speed attribute: 0.1 for a player walking, other values for mobs.
+	float Speed = 0.1f;
 };
 
 struct MCENTITY_API FMcBody

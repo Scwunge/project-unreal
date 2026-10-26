@@ -9,7 +9,6 @@ namespace
 	constexpr double VerticalDrag = 0.98;
 	constexpr double AirDrag = 0.91;
 	// Walking speed attribute, and how much of it reaches the ground: 0.6 slipperiness gives 0.546 per tick.
-	constexpr double MovementSpeed = 0.1;
 	constexpr double GroundFactor = 0.16277136;  // 0.546 cubed
 	constexpr double AirAcceleration = 0.02;
 	constexpr double SprintAirAcceleration = 0.026;
@@ -444,7 +443,7 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 	double Acceleration;
 	if (Body.bOnGround)
 	{
-		Acceleration = MovementSpeed * (bSprinting ? SprintMultiplier : 1.0) * GroundFactor / (Friction * Friction * Friction);
+		Acceleration = Input.Speed * (bSprinting ? SprintMultiplier : 1.0) * GroundFactor / (Friction * Friction * Friction);
 	}
 	else
 	{

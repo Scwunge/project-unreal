@@ -37,6 +37,7 @@ struct FMcBakedQuad
 	int8 TintIndex = -1;                        // -1 for untinted
 	bool bShade = true;                         // false: no directional shading at all
 	bool bAmbientOcclusion = true;
+	bool bForceTranslucent = false;             // the model marks the texture force_translucent: draw in the translucent pass
 };
 
 enum class EMcModelStatus : uint8

@@ -170,11 +170,18 @@ namespace
 		FElementFace Faces[NumFaces];
 	};
 
+	// A "textures" value: a string, or in 26.3 also {"sprite": ..., "force_translucent": ...}.
+	struct FTextureValue
+	{
+		FString Value;
+		bool bForceTranslucent = false;
+	};
+
 	// A model with its parent chain folded in.
 	struct FResolvedModel
 	{
 		TArray<FElement> Elements;
-		TMap<FName, FString> Textures;
+		TMap<FName, FTextureValue> Textures;
 		bool bAmbientOcclusion = true;
 		bool bBuiltin = false;
 		bool bFailed = false;
@@ -285,7 +292,7 @@ namespace
 		TSharedRef<const FResolvedModel> LoadModel(const FString& RawId, int32 Depth);
 		void ParseElements(const TArray<TSharedPtr<FJsonValue>>& Elements, FResolvedModel& Model, const FString& ModelId);
 		void BakeElement(const FResolvedModel& Model, const FElement& Element, const FApply& Apply, TArray<FMcBakedQuad>& Out);
-		FName ResolveTexture(const FResolvedModel& Model, const FString& Reference, bool& bResolved) const;
+		FName ResolveTexture(const FResolvedModel& Model, const FString& Reference, bool& bResolved, bool& bForceTranslucent) const;
 		void ParseApplies(const TSharedPtr<FJsonValue>& Value, TArray<FApply>& Out) const;
 		FCondition ParseCondition(const TSharedPtr<FJsonObject>& Object) const;
 
@@ -428,7 +435,18 @@ namespace
 				{
 					for (const TPair<FString, TSharedPtr<FJsonValue>>& Texture : (*TexturesObject)->Values)
 					{
-						Model->Textures.Add(FName(*Texture.Key), ValueToString(Texture.Value));
+						FTextureValue Value;
+						const TSharedPtr<FJsonObject>* Object;
+						if (Texture.Value->TryGetObject(Object))
+						{
+							(*Object)->TryGetStringField(TEXT("sprite"), Value.Value);
+							(*Object)->TryGetBoolField(TEXT("force_translucent"), Value.bForceTranslucent);
+						}
+						else
+						{
+							Value.Value = ValueToString(Texture.Value);
+						}
+						Model->Textures.Add(FName(*Texture.Key), MoveTemp(Value));
 					}
 				}
 				const TArray<TSharedPtr<FJsonValue>>* Elements;
@@ -448,9 +466,10 @@ namespace
 		return Model;
 	}
 
-	FName FBaker::ResolveTexture(const FResolvedModel& Model, const FString& Reference, bool& bResolved) const
+	FName FBaker::ResolveTexture(const FResolvedModel& Model, const FString& Reference, bool& bResolved, bool& bForceTranslucent) const
 	{
 		FString Current = Reference;
+		bForceTranslucent = false;
 		for (int32 Hop = 0; Hop < 16; ++Hop)
 		{
 			if (!Current.StartsWith(TEXT("#")))
@@ -458,12 +477,13 @@ namespace
 				bResolved = !Current.IsEmpty();
 				return bResolved ? FName(*McCache::Namespaced(Current)) : FName(MissingTexture);
 			}
-			const FString* Next = Model.Textures.Find(FName(*Current.Mid(1)));
+			const FTextureValue* Next = Model.Textures.Find(FName(*Current.Mid(1)));
 			if (!Next)
 			{
 				break;
 			}
-			Current = *Next;
+			bForceTranslucent |= Next->bForceTranslucent;
+			Current = Next->Value;
 		}
 		bResolved = false;
 		return FName(MissingTexture);
@@ -485,7 +505,7 @@ namespace
 			FMcBakedQuad& Quad = Out.AddDefaulted_GetRef();
 
 			bool bResolved;
-			Quad.Texture = ResolveTexture(Model, Face.Texture, bResolved);
+			Quad.Texture = ResolveTexture(Model, Face.Texture, bResolved, Quad.bForceTranslucent);
 			if (!bResolved)
 			{
 				++Stats.UnresolvedTextures;

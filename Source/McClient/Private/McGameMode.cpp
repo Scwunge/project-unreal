@@ -20,6 +20,8 @@
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/PostProcessVolume.h"
 #include "Engine/SkyLight.h"
 #include "McWorldRenderComponent.h"
 #endif
@@ -196,6 +198,27 @@ void AMcGameMode::SpawnEnvironment()
 #if MC_WITH_RENDER
 	// A plain daylight sky to see the greybox by. M8 replaces it with Minecraft's sky, sun, moon and fog.
 	UWorld* World = GetWorld();
+
+	// Blocks carry Minecraft's final colours; the filmic tonemapper would brighten and desaturate them.
+	if (UGameViewportClient* Viewport = World->GetGameViewport())
+	{
+		Viewport->EngineShowFlags.SetTonemapper(false);
+	}
+
+	// Fixed exposure, so an emissive 1.0 shows as the texture's own colour. -McExposureBias= is for tuning.
+	if (APostProcessVolume* Post = World->SpawnActor<APostProcessVolume>())
+	{
+		Post->bUnbound = true;
+		FPostProcessSettings& Settings = Post->Settings;
+		Settings.bOverride_AutoExposureMethod = true;
+		Settings.AutoExposureMethod = AEM_Manual;
+		Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+		Settings.AutoExposureApplyPhysicalCameraExposure = false;
+		Settings.bOverride_AutoExposureBias = true;
+		Settings.AutoExposureBias = 0.0f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McExposureBias="), Settings.AutoExposureBias);
+	}
+
 	const FTransform SunTransform(FRotator(-50.0f, 30.0f, 0.0f));
 
 	if (ADirectionalLight* Sun = World->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), SunTransform))

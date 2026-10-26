@@ -1,12 +1,16 @@
 #include "McWorldRenderComponent.h"
+#include "McBlockModels.h"
 #include "McBlockRegistry.h"
+#include "McBlockTextures.h"
 #include "McBlockWorld.h"
 #include "McRender.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Engine/Texture2DArray.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
 #include "Tasks/Task.h"
 #include "UObject/ConstructorHelpers.h"
@@ -26,21 +30,34 @@ UMcWorldRenderComponent::UMcWorldRenderComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	Results = MakeShared<TQueue<TUniquePtr<FChunkResult>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> VertexColorMaterial(
-		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
-	if (VertexColorMaterial.Succeeded())
-	{
-		Material = VertexColorMaterial.Object;
-	}
+	// Made by tools/make_materials.py.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Opaque(TEXT("/Game/Mc/Materials/M_McBlockOpaque.M_McBlockOpaque"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Cutout(TEXT("/Game/Mc/Materials/M_McBlockCutout.M_McBlockCutout"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Translucent(TEXT("/Game/Mc/Materials/M_McBlockTranslucent.M_McBlockTranslucent"));
+	OpaqueMaterial = Opaque.Object;
+	CutoutMaterial = Cutout.Object;
+	TranslucentMaterial = Translucent.Object;
 }
 
 void UMcWorldRenderComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!Material)
+
+	UTexture2DArray* Blocks = FMcBlockTextures::Get().EnsureLoaded() ? FMcBlockTextures::Get().GetTextureArray() : nullptr;
+	PassMaterials.Reset();
+	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get() })
 	{
-		UE_LOG(LogMcRender, Warning, TEXT("No vertex colour material; blocks will draw with the default material"));
-		Material = UMaterial::GetDefaultMaterial(MD_Surface);
+		if (!Base)
+		{
+			UE_LOG(LogMcRender, Error, TEXT("A block material is missing; run tools/make_materials.py"));
+			Base = UMaterial::GetDefaultMaterial(MD_Surface);
+		}
+		UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Base, this);
+		if (Blocks)
+		{
+			Instance->SetTextureParameterValue(TEXT("Blocks"), Blocks);
+		}
+		PassMaterials.Add(Instance);
 	}
 }
 
@@ -74,7 +91,7 @@ void UMcWorldRenderComponent::SetWorld(FMcBlockWorld* InWorld)
 		return;
 	}
 
-	Palette = FMcGreyboxPalette::Build(FMcBlockRegistry::Get(), CVarMcFlipWinding.GetValueOnGameThread());
+	RebuildPalette();
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcWorldRenderComponent::HandleChunkAdded);
 	RemovedHandle = World->OnChunkRemoved.AddUObject(this, &UMcWorldRenderComponent::HandleChunkRemoved);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcWorldRenderComponent::HandleChunkChanged);
@@ -82,6 +99,17 @@ void UMcWorldRenderComponent::SetWorld(FMcBlockWorld* InWorld)
 	{
 		MarkDirty(Chunk.Key);
 	}
+}
+
+void UMcWorldRenderComponent::RebuildPalette()
+{
+	FMcBlockModels& Models = FMcBlockModels::Get();
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	if (!Models.EnsureBaked() || !Textures.EnsureLoaded())
+	{
+		UE_LOG(LogMcRender, Error, TEXT("Block models or textures failed to load; see the McAssets errors above"));
+	}
+	Palette = FMcRenderPalette::Build(FMcBlockRegistry::Get(), Models, Textures, CVarMcFlipWinding.GetValueOnGameThread());
 }
 
 void UMcWorldRenderComponent::HandleChunkAdded(FIntPoint Pos)
@@ -137,9 +165,12 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		return;
 	}
 
+	// Texture animations run on game time, 20 ticks a second.
+	FMcBlockTextures::Get().Tick(GetWorld()->GetTimeSeconds() * 20.0);
+
 	if (Palette->bFlipWinding != CVarMcFlipWinding.GetValueOnGameThread())
 	{
-		Palette = FMcGreyboxPalette::Build(FMcBlockRegistry::Get(), CVarMcFlipWinding.GetValueOnGameThread());
+		RebuildPalette();
 		for (TPair<FIntPoint, FChunkState>& Chunk : Chunks)
 		{
 			Chunk.Value.bDirty = true;
@@ -211,7 +242,7 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 				Result->Ticket = Ticket;
 				for (const FMcSectionSnapshot& Snapshot : Snapshots)
 				{
-					FMcSectionMesh Mesh = McGreyboxMesher::Build(Snapshot, *Palette);
+					FMcSectionMesh Mesh = McBlockMesher::Build(Snapshot, *Palette);
 					if (!Mesh.IsEmpty())
 					{
 						Result->Sections.Add(MoveTemp(Mesh));
@@ -267,12 +298,22 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 		Meshes.Add(Result.ChunkPos, Mesh);
 	}
 
+	// Mesh section SectionIndex * passes + pass holds that pass of that chunk section.
 	Mesh->ClearAllMeshSections();
 	const TArray<FVector2D> NoUVs;
 	const TArray<FProcMeshTangent> NoTangents;
 	for (const FMcSectionMesh& Section : Result.Sections)
 	{
-		Mesh->CreateMeshSection(Section.SectionIndex, Section.Positions, Section.Triangles, Section.Normals, NoUVs, Section.Colors, NoTangents, false);
-		Mesh->SetMaterial(Section.SectionIndex, Material);
+		for (int32 Pass = 0; Pass < McNumRenderPasses; ++Pass)
+		{
+			const FMcMeshBuffers& Buffers = Section.Passes[Pass];
+			if (Buffers.IsEmpty())
+			{
+				continue;
+			}
+			const int32 MeshSection = Section.SectionIndex * McNumRenderPasses + Pass;
+			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, NoUVs, NoUVs, Buffers.Colors, NoTangents, false);
+			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+		}
 	}
 }

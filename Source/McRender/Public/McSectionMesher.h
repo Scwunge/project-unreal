@@ -1,13 +1,14 @@
-// Section meshing. M1 draws every non-air block as a flat-coloured cube; M2 replaces the colours with the
-// baked block models and textures from McAssets.
+// Section meshing: every block state's baked model quads (McAssets), culled against their neighbours, with the
+// texture array layer, tint and face shading of each quad.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/BitArray.h"
 #include "McCore.h"
 
+class FMcBlockModels;
 class FMcBlockRegistry;
+class FMcBlockTextures;
 class FMcBlockWorld;
 
 // A copy of one section plus a one-block border from its neighbours, so a worker thread can mesh it while
@@ -29,29 +30,72 @@ struct MCRENDER_API FMcSectionSnapshot
 	static FMcSectionSnapshot Capture(const FMcBlockWorld& World, FIntPoint ChunkPos, int32 SectionIndex);
 };
 
-struct MCRENDER_API FMcSectionMesh
+// How a quad is drawn; one material each (M_McBlockOpaque, M_McBlockCutout, M_McBlockTranslucent).
+enum class EMcRenderPass : uint8
 {
-	int32 SectionIndex = 0;
+	Opaque,
+	Cutout,       // texels are either fully opaque or dropped
+	Translucent,  // blended
+	Num,
+};
+
+constexpr int32 McNumRenderPasses = static_cast<int32>(EMcRenderPass::Num);
+
+struct MCRENDER_API FMcMeshBuffers
+{
 	TArray<FVector> Positions;  // Unreal units, relative to the chunk column's origin at height 0
 	TArray<FVector> Normals;
-	TArray<FColor> Colors;
+	TArray<FVector2D> UV0;      // the position inside the 16x16 texture, 0..1, V down
+	TArray<FVector2D> UV1;      // X is the texture array layer
+	TArray<FColor> Colors;      // tint times shading, stored linear so the material can multiply directly
 	TArray<int32> Triangles;
 
 	bool IsEmpty() const { return Triangles.Num() == 0; }
 };
 
-// What the greybox mesher knows about each state, built once on the game thread and shared read-only.
-struct MCRENDER_API FMcGreyboxPalette
+struct MCRENDER_API FMcSectionMesh
 {
-	TArray<FColor> StateColors;  // indexed by state id
-	TBitArray<> Solid;           // indexed by state id; M1 treats every non-air block as a full opaque cube
-	bool bFlipWinding = false;
+	int32 SectionIndex = 0;
+	FMcMeshBuffers Passes[McNumRenderPasses];
 
-	static TSharedRef<const FMcGreyboxPalette> Build(const FMcBlockRegistry& Registry, bool bFlipWinding);
+	bool IsEmpty() const;
 };
 
-namespace McGreyboxMesher
+// What the mesher needs to know about every state and quad, built once on the game thread and shared
+// read-only with the mesh tasks.
+struct MCRENDER_API FMcRenderPalette
 {
-	// Any thread. One quad per block face that touches a non-solid neighbour.
-	MCRENDER_API FMcSectionMesh Build(const FMcSectionSnapshot& Snapshot, const FMcGreyboxPalette& Palette);
+	struct FQuadInfo
+	{
+		uint16 Layer = 0;
+		EMcRenderPass Pass = EMcRenderPass::Opaque;
+	};
+
+	struct FStateInfo
+	{
+		int32 FirstQuad = 0;          // into Quads, one entry per quad of the state's baked model, in order
+		int32 Block = INDEX_NONE;     // registry index of the state's block
+		uint8 OpaqueFaces = 0;        // bit per EMcDirection: opaque quads cover that whole side of the block
+		bool bHidesOwnBlock = false;  // glass and the like: faces against the same block are not drawn
+		FColor Tint = FColor::White;  // for quads with a tint index, in sRGB
+	};
+
+	const FMcBlockModels* Models = nullptr;
+	TArray<FStateInfo> States;  // indexed by state id
+	TArray<FQuadInfo> Quads;
+	bool bFlipWinding = false;
+
+	// Needs the registry loaded, the models baked and the textures loaded.
+	static TSharedRef<const FMcRenderPalette> Build(const FMcBlockRegistry& Registry, const FMcBlockModels& Models, const FMcBlockTextures& Textures, bool bFlipWinding);
+};
+
+namespace McBlockMesher
+{
+	// Any thread. Draws every quad of every block, leaving out the quads whose cull face is hidden by the
+	// neighbouring block.
+	MCRENDER_API FMcSectionMesh Build(const FMcSectionSnapshot& Snapshot, const FMcRenderPalette& Palette);
+
+	// The tint Minecraft gives a block's tinted quads (tint index 0) in a plains biome, in sRGB. Exposed for
+	// tests. M5 replaces the fixed grass, foliage and water colours with the biome's.
+	MCRENDER_API FColor GetBlockTint(const FMcBlockRegistry& Registry, FMcStateId State);
 }

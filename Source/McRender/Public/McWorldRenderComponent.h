@@ -23,9 +23,16 @@ public:
 	// Starts drawing this world (or stops, with null). The world must outlive the component or be unset first.
 	void SetWorld(FMcBlockWorld* InWorld);
 
-	// Defaults to the engine's vertex colour debug material.
+	// One material per EMcRenderPass. Each samples the block texture array through a "Blocks" parameter,
+	// which the component points at FMcBlockTextures' array.
 	UPROPERTY(EditAnywhere, Category = "Mc")
-	TObjectPtr<UMaterialInterface> Material;
+	TObjectPtr<UMaterialInterface> OpaqueMaterial;
+
+	UPROPERTY(EditAnywhere, Category = "Mc")
+	TObjectPtr<UMaterialInterface> CutoutMaterial;
+
+	UPROPERTY(EditAnywhere, Category = "Mc")
+	TObjectPtr<UMaterialInterface> TranslucentMaterial;
 
 	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 1))
 	int32 MaxMeshLaunchesPerTick = 32;
@@ -70,7 +77,9 @@ private:
 	FDelegateHandle RemovedHandle;
 	FDelegateHandle ChangedHandle;
 
-	TSharedPtr<const FMcGreyboxPalette> Palette;
+	void RebuildPalette();
+
+	TSharedPtr<const FMcRenderPalette> Palette;
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;
@@ -80,4 +89,8 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> Meshes;
+
+	// The pass materials with the texture array set, indexed by EMcRenderPass.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInterface>> PassMaterials;
 };

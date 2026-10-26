@@ -101,6 +101,23 @@ bool FMcModelBakerTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// Glass: its textures are {"sprite", "force_translucent"} objects in 26.3.
+	{
+		const FMcBakedModel& Glass = Models.GetModel(Registry.FindDefaultState(TEXT("minecraft:glass")).GetValue());
+		if (TestTrue(TEXT("glass has quads"), Glass.Quads.Num() > 0))
+		{
+			for (const FMcBakedQuad& Quad : Glass.Quads)
+			{
+				TestEqual(TEXT("glass texture"), Quad.Texture, FName(TEXT("minecraft:block/glass")));
+				TestTrue(TEXT("glass is forced translucent"), Quad.bForceTranslucent);
+			}
+		}
+		for (const FMcBakedQuad& Quad : Stone.Quads)
+		{
+			TestFalse(TEXT("stone isn't forced translucent"), Quad.bForceTranslucent);
+		}
+	}
+
 	// Grass block: the top and the sides are tinted differently, and the overlay is tinted.
 	{
 		const FMcBakedModel& Grass = Models.GetModel(Registry.FindDefaultState(TEXT("minecraft:grass_block")).GetValue());

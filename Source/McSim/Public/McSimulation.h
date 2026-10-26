@@ -18,8 +18,15 @@ public:
 	~FMcSimulation();
 	UE_NONCOPYABLE(FMcSimulation);
 
-	// Runs one game tick: every scheduled block tick that has come due.
+	// Runs one game tick: every scheduled block tick that has come due, then the random ticks.
 	void Tick();
+
+	// The chunks that get random ticks (near players); each loaded one ticks RandomTickSpeed blocks per 16 high
+	// section a tick, as the game's randomTickSpeed rule does (default 3).
+	void SetTickingChunks(TArray<FIntPoint> Chunks) { TickingChunks = MoveTemp(Chunks); }
+	void SetRandomTickSpeed(int32 Speed) { RandomTickSpeed = Speed; }
+	// Runs the random tick rules for one block now (grass spreading, crops growing, leaves decaying). For tests.
+	void RandomTickBlock(const FIntVector& Pos);
 
 	int64 GetGameTime() const { return GameTime; }
 	// Asks for a block tick Delay ticks from now at Pos (nothing if one is already waiting there).
@@ -30,6 +37,7 @@ public:
 	static constexpr int32 WaterDelay = 5;
 	static constexpr int32 LavaDelay = 30;
 	static constexpr int32 GravityDelay = 2;
+	static constexpr int32 LeafDelay = 1;
 
 private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
@@ -38,6 +46,9 @@ private:
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
+	void TickLeaves(const FIntVector& Pos, FMcStateId State);
+	void TickSupport(const FIntVector& Pos, FMcStateId State);
+	void RandomTicks();
 
 	FMcBlockWorld& World;
 	FDelegateHandle ChangedHandle;
@@ -45,4 +56,7 @@ private:
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;
 	TSet<FIntVector> Pending;
+	TArray<FIntPoint> TickingChunks;
+	int32 RandomTickSpeed = 3;
+	FRandomStream Random{ 1 };
 };

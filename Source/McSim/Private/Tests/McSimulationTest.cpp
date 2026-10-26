@@ -130,6 +130,63 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("sand lands on the floor"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
 		TestTrue(TEXT("and leaves its place"), Registry.IsAir(World.GetBlock(FIntVector(0, 6, 0))));
 	}
+	{
+		// Random tick rules, run on single blocks.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		const auto Name = [&](const FIntVector& Pos) { return Registry.GetBlockOf(World.GetBlock(Pos)).Name.ToString(); };
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:grass_block")));
+		World.SetBlock(FIntVector(0, 2, 0), Stone);
+		Sim.RandomTickBlock(FIntVector(0, 1, 0));
+		TestEqual(TEXT("grass under stone turns to dirt"), Name(FIntVector(0, 1, 0)), FString(TEXT("minecraft:dirt")));
+
+		World.SetBlock(FIntVector(5, 1, 0), State(TEXT("minecraft:oak_leaves[distance=7,persistent=false]")));
+		Sim.RandomTickBlock(FIntVector(5, 1, 0));
+		TestTrue(TEXT("leaves far from a log decay"), Registry.IsAir(World.GetBlock(FIntVector(5, 1, 0))));
+		World.SetBlock(FIntVector(5, 1, 0), State(TEXT("minecraft:oak_leaves[distance=7,persistent=true]")));
+		Sim.RandomTickBlock(FIntVector(5, 1, 0));
+		TestEqual(TEXT("player-placed leaves stay"), Name(FIntVector(5, 1, 0)), FString(TEXT("minecraft:oak_leaves")));
+
+		// A leaf beside a log gets distance 1 after its tick, and one more block out gets 2.
+		World.SetBlock(FIntVector(8, 1, 0), State(TEXT("minecraft:oak_log")));
+		World.SetBlock(FIntVector(9, 1, 0), State(TEXT("minecraft:oak_leaves[distance=7]")));
+		World.SetBlock(FIntVector(10, 1, 0), State(TEXT("minecraft:oak_leaves[distance=7]")));
+		Run(Sim, 10);
+		TestEqual(TEXT("leaf beside a log"), Registry.GetPropertyValue(World.GetBlock(FIntVector(9, 1, 0)), TEXT("distance")).ToString(), FString(TEXT("1")));
+		TestEqual(TEXT("leaf beside that leaf"), Registry.GetPropertyValue(World.GetBlock(FIntVector(10, 1, 0)), TEXT("distance")).ToString(), FString(TEXT("2")));
+		World.SetBlock(FIntVector(8, 1, 0), Air);
+		Run(Sim, 20);
+		TestEqual(TEXT("with the log gone the distances climb"), Registry.GetPropertyValue(World.GetBlock(FIntVector(9, 1, 0)), TEXT("distance")).ToString(), FString(TEXT("7")));
+
+		// Wheat grows with random ticks, and stops at its last stage.
+		World.SetBlock(FIntVector(0, 1, 5), State(TEXT("minecraft:farmland[moisture=7]")));
+		World.SetBlock(FIntVector(0, 2, 5), State(TEXT("minecraft:wheat[age=0]")));
+		for (int32 Index = 0; Index < 2000; ++Index)
+		{
+			Sim.RandomTickBlock(FIntVector(0, 2, 5));
+		}
+		TestEqual(TEXT("wheat reaches full growth"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 2, 5)), TEXT("age")).ToString(), FString(TEXT("7")));
+
+		// Farmland with water beside it is wet; without any it dries and reverts.
+		World.SetBlock(FIntVector(0, 2, 5), Air);
+		World.SetBlock(FIntVector(0, 1, 5), State(TEXT("minecraft:farmland[moisture=0]")));
+		Sim.RandomTickBlock(FIntVector(0, 1, 5));
+		TestEqual(TEXT("dry farmland turns to dirt"), Name(FIntVector(0, 1, 5)), FString(TEXT("minecraft:dirt")));
+		World.SetBlock(FIntVector(0, 1, 5), State(TEXT("minecraft:farmland[moisture=0]")));
+		World.SetBlock(FIntVector(2, 1, 5), Source);
+		Sim.RandomTickBlock(FIntVector(0, 1, 5));
+		TestEqual(TEXT("farmland beside water is moist"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 1, 5)), TEXT("moisture")).ToString(), FString(TEXT("7")));
+
+		// A flower breaks when the block under it goes.
+		World.SetBlock(FIntVector(-5, 1, 0), State(TEXT("minecraft:dirt")));
+		World.SetBlock(FIntVector(-5, 2, 0), State(TEXT("minecraft:dandelion")));
+		Run(Sim, 3);
+		TestEqual(TEXT("a flower stays on dirt"), Name(FIntVector(-5, 2, 0)), FString(TEXT("minecraft:dandelion")));
+		World.SetBlock(FIntVector(-5, 1, 0), Air);
+		Run(Sim, 3);
+		TestTrue(TEXT("and goes without it"), Registry.IsAir(World.GetBlock(FIntVector(-5, 2, 0))));
+	}
 	return true;
 }
 

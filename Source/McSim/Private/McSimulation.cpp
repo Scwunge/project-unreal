@@ -1,4 +1,5 @@
 #include "McSimulation.h"
+#include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
@@ -60,6 +61,7 @@ namespace
 FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
 	: World(InWorld)
 {
+	FMcBlockLight::Get().EnsureLoaded();
 	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
 }
 
@@ -107,6 +109,19 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 	if (IsGravityBlock(State))
 	{
 		ScheduleTick(Pos, GravityDelay);
+		return;
+	}
+	const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
+	const FMcBlockTags& Tags = FMcBlockTags::Get();
+	if (Tags.Has(TEXT("minecraft:leaves"), State))
+	{
+		ScheduleTick(Pos, LeafDelay);
+	}
+	else if (Tags.Has(TEXT("minecraft:flowers"), State) || Tags.Has(TEXT("minecraft:saplings"), State) || Tags.Has(TEXT("minecraft:crops"), State)
+		|| Name == TEXT("minecraft:short_grass") || Name == TEXT("minecraft:fern") || Name == TEXT("minecraft:tall_grass") || Name == TEXT("minecraft:large_fern")
+		|| Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:dead_bush"))
+	{
+		ScheduleTick(Pos, 1);
 	}
 }
 
@@ -131,6 +146,7 @@ void FMcSimulation::Tick()
 	{
 		RunTick(Pos);
 	}
+	RandomTicks();
 }
 
 void FMcSimulation::RunTick(const FIntVector& Pos)
@@ -147,6 +163,14 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	else if (IsGravityBlock(State))
 	{
 		TickGravity(Pos, State);
+	}
+	else if (FMcBlockTags::Get().Has(TEXT("minecraft:leaves"), State))
+	{
+		TickLeaves(Pos, State);
+	}
+	else
+	{
+		TickSupport(Pos, State);
 	}
 }
 

@@ -189,6 +189,23 @@ void AMcWorldActor::StreamChunks()
 		}
 	}
 
+	// Blocks within 6 chunks of a player get random ticks.
+	if (Simulation)
+	{
+		TArray<FIntPoint> Ticking;
+		for (const FIntPoint& Centre : Centres)
+		{
+			for (int32 DZ = -6; DZ <= 6; ++DZ)
+			{
+				for (int32 DX = -6; DX <= 6; ++DX)
+				{
+					Ticking.AddUnique(Centre + FIntPoint(DX, DZ));
+				}
+			}
+		}
+		Simulation->SetTickingChunks(MoveTemp(Ticking));
+	}
+
 	// Load one ring past the view distance: the renderer only meshes chunks whose neighbours are all loaded.
 	// Decorating needs two more rings generated around that.
 	const int32 LoadRadius = ViewDistance + 1 + (Features ? 2 : 0);

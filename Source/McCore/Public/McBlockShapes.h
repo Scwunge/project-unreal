@@ -7,6 +7,13 @@
 #include "CoreMinimal.h"
 #include "McCore.h"
 
+enum class EMcFluid : uint8
+{
+	None,
+	Water,
+	Lava,
+};
+
 class MCCORE_API FMcBlockShapes
 {
 public:
@@ -28,7 +35,29 @@ public:
 	// Multiplies jump strength: 0.5 on honey.
 	float GetJumpFactor(FMcStateId State) const { return States[State].JumpFactor; }
 
+	// Ladders, vines and scaffolding: the #minecraft:climbable tag from cache/ (a built-in list if it's missing).
+	bool IsClimbable(FMcStateId State) const { return States[State].bClimbable; }
+	// Cobwebs tangle whatever is inside them.
+	bool SlowsLikeCobweb(FMcStateId State) const { return States[State].Stuck == EStuck::Cobweb; }
+	// What an entity inside the block multiplies its motion by each tick (x, y, z; Minecraft axes): cobwebs
+	// (0.25, 0.05, 0.25), sweet berry bushes (0.8, 0.75, 0.8), powder snow (0.9, 1.5, 0.9), else all 1.
+	FVector3f GetStuckMultiplier(FMcStateId State) const;
+
+	// The fluid a state holds: water and lava blocks, the blocks that always hold water (kelp, seagrass, bubble
+	// columns) and anything waterlogged. The level is the block's own "level" (0 is a source, 1..7 flowing,
+	// 8 and up falling); 0 for the water inside other blocks.
+	EMcFluid GetFluid(FMcStateId State) const { return States[State].Fluid; }
+	uint8 GetFluidLevel(FMcStateId State) const { return States[State].FluidLevel; }
+
 private:
+	enum class EStuck : uint8
+	{
+		None,
+		Cobweb,
+		SweetBerryBush,
+		PowderSnow,
+	};
+
 	struct FState
 	{
 		int32 FirstBox = 0;
@@ -36,6 +65,10 @@ private:
 		float Slipperiness = 0.6f;
 		float SpeedFactor = 1.0f;
 		float JumpFactor = 1.0f;
+		EStuck Stuck = EStuck::None;
+		bool bClimbable = false;
+		EMcFluid Fluid = EMcFluid::None;
+		uint8 FluidLevel = 0;
 	};
 
 	TArray<FState> States;  // indexed by state id

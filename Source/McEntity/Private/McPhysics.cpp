@@ -23,6 +23,20 @@ namespace
 	constexpr double FlyingVerticalDrag = 0.6;
 	// Keeps boxes that touch from counting as overlapping.
 	constexpr double Epsilon = 1e-7;
+	// Swimming: drag per tick, input acceleration, sinking (a quarter of gravity), and the upward kick of Jump.
+	constexpr double WaterDrag = 0.8;
+	constexpr double LavaDrag = 0.5;
+	constexpr double FluidAcceleration = 0.02;
+	constexpr double FluidSinking = Gravity / 4.0;
+	constexpr double SwimUp = 0.04;
+	// Flowing fluid nudges bodies by this much per tick.
+	constexpr double WaterPush = 0.014;
+	constexpr double LavaPush = 0.007;
+	// Pushing against a ledge from the water lifts you out of it.
+	constexpr double LedgeHop = 0.3;
+	// Ladders and vines.
+	constexpr double ClimbSpeed = 0.15;
+	constexpr double ClimbUp = 0.2;
 
 	// How far a moving box can go along one axis before it meets Other.
 	double ClipAxis(const FBox& Box, const FBox& Other, int32 Axis, double Distance)
@@ -101,6 +115,105 @@ namespace
 			return Inside;
 		}
 		return Shapes.GetSpeedFactor(World.GetBlock(Feet - FIntVector(0, 1, 0)));
+	}
+
+	// How deep in a fluid a body is and which way the fluid pushes it.
+	struct FFluidContact
+	{
+		bool bIn = false;
+		double Depth = 0.0;  // how far the surface is above the body's feet
+		FVector2D Flow = FVector2D::ZeroVector;
+	};
+
+	// The height of a fluid block's surface: a source is 8/9, flowing fluid 1/9 less per level, and a block with
+	// the same fluid above it is full.
+	double SurfaceHeight(const FMcBlockWorld& World, const FIntVector& Cell, EMcFluid Kind)
+	{
+		const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+		if (Shapes.GetFluid(World.GetBlock(Cell + FIntVector(0, 1, 0))) == Kind)
+		{
+			return 1.0;
+		}
+		const int32 Level = Shapes.GetFluidLevel(World.GetBlock(Cell));
+		return Level >= 8 ? 8.0 / 9.0 : (8 - Level) / 9.0;
+	}
+
+	// Which way a fluid block pushes, from its neighbours' surfaces: downhill, and off an edge into a drop.
+	FVector2D FlowAt(const FMcBlockWorld& World, const FIntVector& Cell, EMcFluid Kind)
+	{
+		const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+		static const FIntVector Sides[4] = { FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
+		const double Own = SurfaceHeight(World, Cell, Kind);
+		FVector2D Flow = FVector2D::ZeroVector;
+		for (const FIntVector& Side : Sides)
+		{
+			const FIntVector Next = Cell + Side;
+			const FMcStateId Neighbour = World.GetBlock(Next);
+			double Other;
+			if (Shapes.GetFluid(Neighbour) == Kind)
+			{
+				Other = SurfaceHeight(World, Next, Kind);
+			}
+			else if (Shapes.HasCollision(Neighbour) || Shapes.GetFluid(World.GetBlock(Next - FIntVector(0, 1, 0))) != Kind)
+			{
+				continue;
+			}
+			else
+			{
+				Other = 0.0;
+			}
+			Flow += FVector2D(Side.X, Side.Z) * (Own - Other);
+		}
+		return Flow;
+	}
+
+	FFluidContact SampleFluid(const FMcBlockWorld& World, const FBox& Box, EMcFluid Kind)
+	{
+		const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+		const FBox Inner = Box.ExpandBy(-0.001);
+		FFluidContact Contact;
+		for (int32 Y = FMath::FloorToInt32(Inner.Min.Y); Y <= FMath::FloorToInt32(Inner.Max.Y); ++Y)
+		{
+			for (int32 Z = FMath::FloorToInt32(Inner.Min.Z); Z <= FMath::FloorToInt32(Inner.Max.Z); ++Z)
+			{
+				for (int32 X = FMath::FloorToInt32(Inner.Min.X); X <= FMath::FloorToInt32(Inner.Max.X); ++X)
+				{
+					const FIntVector Cell(X, Y, Z);
+					if (Shapes.GetFluid(World.GetBlock(Cell)) != Kind)
+					{
+						continue;
+					}
+					const double Surface = Y + SurfaceHeight(World, Cell, Kind);
+					if (Surface > Inner.Min.Y)
+					{
+						Contact.bIn = true;
+						Contact.Depth = FMath::Max(Contact.Depth, Surface - Box.Min.Y);
+						Contact.Flow += FlowAt(World, Cell, Kind);
+					}
+				}
+			}
+		}
+		return Contact;
+	}
+
+	// The strongest tangling of the blocks the box is in (all 1 when it is in none).
+	FVector StuckIn(const FMcBlockWorld& World, const FBox& Box)
+	{
+		const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+		const FBox Inner = Box.ExpandBy(-0.001);
+		FVector Multiplier(1.0, 1.0, 1.0);
+		for (int32 Y = FMath::FloorToInt32(Inner.Min.Y); Y <= FMath::FloorToInt32(Inner.Max.Y); ++Y)
+		{
+			for (int32 Z = FMath::FloorToInt32(Inner.Min.Z); Z <= FMath::FloorToInt32(Inner.Max.Z); ++Z)
+			{
+				for (int32 X = FMath::FloorToInt32(Inner.Min.X); X <= FMath::FloorToInt32(Inner.Max.X); ++X)
+				{
+					const FVector Here(Shapes.GetStuckMultiplier(World.GetBlock(FIntVector(X, Y, Z))));
+					Multiplier = FVector(FMath::Min(Multiplier.X, Here.X), FMath::Min(Multiplier.Y, Here.Y), FMath::Min(Multiplier.Z, Here.Z));
+				}
+			}
+		}
+		return Multiplier;
 	}
 
 	// Adds input to velocity: forward and strafe turned by yaw, scaled to Acceleration, never faster on a diagonal.
@@ -265,16 +378,65 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 		return;
 	}
 
-	if (Input.bJump && Body.bOnGround)
+	// What the body is in.
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	const FBox Box = Body.GetBox();
+	const FFluidContact Water = SampleFluid(World, Box, EMcFluid::Water);
+	const FFluidContact Lava = Water.bIn ? FFluidContact() : SampleFluid(World, Box, EMcFluid::Lava);
+	const FFluidContact& Fluid = Water.bIn ? Water : Lava;
+	Body.bInWater = Water.bIn;
+	Body.bInLava = Lava.bIn;
+	const FVector Stuck = StuckIn(World, Box);
+	Body.bStuck = !Stuck.Equals(FVector(1.0, 1.0, 1.0), 1e-9);
+	Body.bClimbing = !Fluid.bIn && Shapes.IsClimbable(World.GetBlock(FIntVector(
+		FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z))));
+
+	if (Fluid.bIn && !Fluid.Flow.IsNearlyZero(1e-9))
+	{
+		const FVector2D Push = Fluid.Flow.GetSafeNormal() * (Water.bIn ? WaterPush : LavaPush);
+		Body.Velocity.X += Push.X;
+		Body.Velocity.Z += Push.Y;
+	}
+
+	if (Input.bJump && Fluid.bIn && (!Body.bOnGround || Fluid.Depth > 0.4))
+	{
+		Body.Velocity.Y += SwimUp;
+	}
+	else if (Input.bJump && Body.bOnGround)
 	{
 		const FIntVector Feet(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.5000001), FMath::FloorToInt32(Body.Position.Z));
-		Body.Velocity.Y = JumpVelocity * FMcBlockShapes::Get().GetJumpFactor(World.GetBlock(Feet));
+		Body.Velocity.Y = JumpVelocity * Shapes.GetJumpFactor(World.GetBlock(Feet));
 		if (bSprinting)
 		{
 			const double Radians = FMath::DegreesToRadians(static_cast<double>(Input.Yaw));
 			Body.Velocity.X -= FMath::Sin(Radians) * SprintJumpBoost;
 			Body.Velocity.Z += FMath::Cos(Radians) * SprintJumpBoost;
 		}
+	}
+
+	if (Fluid.bIn)
+	{
+		if (Input.bSneak && !Input.bJump)
+		{
+			Body.Velocity.Y -= SwimUp;
+		}
+		Accelerate(Body, Strafe, Forward, FluidAcceleration, Input.Yaw);
+		const FVector Before = Body.Velocity;
+		Move(World, Body, Body.Velocity, false);
+
+		// Against a ledge with room above it, hop out.
+		const EMcFluid Kind = Water.bIn ? EMcFluid::Water : EMcFluid::Lava;
+		const FBox Raised = Body.GetBox().ShiftBy(FVector(Before.X, Before.Y + 0.6, Before.Z));
+		if (Body.bHorizontalCollision && !Collides(World, Raised) && !SampleFluid(World, Raised, Kind).bIn)
+		{
+			Body.Velocity.Y = LedgeHop;
+		}
+
+		const double Drag = Water.bIn ? WaterDrag : LavaDrag;
+		Body.Velocity.X *= Drag;
+		Body.Velocity.Z *= Drag;
+		Body.Velocity.Y = Body.Velocity.Y * Drag - FluidSinking;
+		return;
 	}
 
 	const float Slipperiness = Body.bOnGround ? SlipperinessBelow(World, Body) : 1.0f;
@@ -290,8 +452,34 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 	}
 	Accelerate(Body, Strafe, Forward, Acceleration, Input.Yaw);
 
+	if (Body.bClimbing)
+	{
+		// Slow on the way down and sideways; sneaking holds you where you are.
+		Body.Velocity.X = FMath::Clamp(Body.Velocity.X, -ClimbSpeed, ClimbSpeed);
+		Body.Velocity.Z = FMath::Clamp(Body.Velocity.Z, -ClimbSpeed, ClimbSpeed);
+		Body.Velocity.Y = FMath::Max(Body.Velocity.Y, -ClimbSpeed);
+		if (Input.bSneak && Body.Velocity.Y < 0.0)
+		{
+			Body.Velocity.Y = 0.0;
+		}
+	}
+
 	const float SpeedFactor = SpeedFactorAt(World, Body);
-	Move(World, Body, Body.Velocity * FVector(SpeedFactor, 1.0, SpeedFactor), Input.bSneak);
+	FVector Motion = Body.Velocity * FVector(SpeedFactor, 1.0, SpeedFactor);
+	if (Body.bStuck)
+	{
+		Motion *= Stuck;
+	}
+	Move(World, Body, Motion, Input.bSneak);
+	if (Body.bStuck)
+	{
+		// Whatever speed you had is gone once the web has held you.
+		Body.Velocity = FVector::ZeroVector;
+	}
+	if (Body.bClimbing && (Body.bHorizontalCollision || Input.bJump))
+	{
+		Body.Velocity.Y = ClimbUp;
+	}
 
 	Body.Velocity.Y = (Body.Velocity.Y - Gravity) * VerticalDrag;
 	Body.Velocity.X *= Friction;

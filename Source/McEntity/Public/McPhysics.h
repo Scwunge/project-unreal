@@ -34,6 +34,11 @@ struct MCENTITY_API FMcBody
 	float StepHeight = 0.6f;
 	bool bOnGround = false;
 	bool bHorizontalCollision = false;
+	// Set by TickPlayer from the blocks the body is in, for sounds, effects and the UI.
+	bool bInWater = false;
+	bool bInLava = false;
+	bool bClimbing = false;  // in a ladder, vine or scaffolding
+	bool bStuck = false;     // in a cobweb, sweet berry bush or powder snow
 
 	FBox GetBox() const;
 };
@@ -50,7 +55,10 @@ namespace McPhysics
 	// Moves the body by Motion, updating its ground and wall flags and zeroing velocity into what it hit.
 	MCENTITY_API void Move(const FMcBlockWorld& World, FMcBody& Body, FVector Motion, bool bSneakAtEdges);
 
-	// One tick of a player's movement on foot or flying: input, collision, then gravity and friction.
+	// One tick of a player's movement on foot, swimming, climbing or flying: input, collision, then gravity
+	// and friction. In water and lava the drag is 0.8 and 0.5, Jump swims up and Sneak sinks, and flowing water
+	// pushes; ladders and vines cap the fall and sideways speed at 0.15 and climb at 0.2 when you press against
+	// the wall or jump; cobwebs scale the motion down.
 	MCENTITY_API void TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcMoveInput& Input);
 
 	// Whether the box overlaps any block's collision.

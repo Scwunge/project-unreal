@@ -171,6 +171,23 @@ bool FMcModelBakerTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("fence connected north has more quads than the bare post"), North.IsSet() && Models.GetModel(North.GetValue()).Quads.Num() > Post.Quads.Num());
 	}
 
+	// Blockstate "x": an extended piston facing up keeps its 12-pixel body at the bottom, facing down at the top.
+	{
+		auto HeightRange = [&](const TCHAR* Text)
+		{
+			FBox Box(ForceInit);
+			for (const FMcBakedQuad& Quad : Models.GetModel(Registry.ParseState(Text).Get(0)).Quads)
+			{
+				Box += QuadBounds(Quad);
+			}
+			return FVector2D(Box.Min.Y, Box.Max.Y);
+		};
+		const FVector2D Up = HeightRange(TEXT("minecraft:piston[extended=true,facing=up]"));
+		const FVector2D Down = HeightRange(TEXT("minecraft:piston[extended=true,facing=down]"));
+		TestTrue(TEXT("piston body facing up is the bottom 12 pixels"), FMath::IsNearlyEqual(Up.X, 0.0) && FMath::IsNearlyEqual(Up.Y, 0.75));
+		TestTrue(TEXT("piston body facing down is the top 12 pixels"), FMath::IsNearlyEqual(Down.X, 0.25) && FMath::IsNearlyEqual(Down.Y, 1.0));
+	}
+
 	return true;
 }
 

@@ -1,0 +1,21 @@
+{
+  "description": "Blockstate x/y rotation check on classic_flat (surface y=-61): observers, pistons, end rods and logs in different facings. Up-facing blocks show their front on top, down-facing ones their back.",
+  "camera": [-7.5, -55.0, -8.5, -40.0, 25.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [0, -60, 0], "state": "minecraft:observer[facing=up,powered=false]" },
+    { "from": [2, -60, 0], "to": [2, -60, 0], "state": "minecraft:observer[facing=down,powered=false]" },
+    { "from": [4, -60, 0], "to": [4, -60, 0], "state": "minecraft:observer[facing=north,powered=false]" },
+    { "from": [6, -60, 0], "to": [6, -60, 0], "state": "minecraft:observer[facing=west,powered=false]" },
+
+    { "from": [0, -60, 3], "to": [0, -60, 3], "state": "minecraft:piston[extended=false,facing=up]" },
+    { "from": [2, -60, 3], "to": [2, -60, 3], "state": "minecraft:piston[extended=false,facing=down]" },
+    { "from": [4, -60, 3], "to": [4, -60, 3], "state": "minecraft:sticky_piston[extended=false,facing=north]" },
+    { "from": [6, -60, 3], "to": [6, -60, 3], "state": "minecraft:piston[extended=true,facing=up]" },
+    { "from": [6, -59, 3], "to": [6, -59, 3], "state": "minecraft:piston_head[facing=up,short=false,type=normal]" },
+
+    { "from": [0, -60, 6], "to": [0, -60, 6], "state": "minecraft:end_rod[facing=up]" },
+    { "from": [2, -60, 6], "to": [2, -60, 6], "state": "minecraft:end_rod[facing=north]" },
+    { "from": [4, -60, 6], "to": [4, -60, 6], "state": "minecraft:oak_log[axis=z]" },
+    { "from": [6, -60, 6], "to": [6, -60, 6], "state": "minecraft:oak_log[axis=x]" }
+  ]
+}

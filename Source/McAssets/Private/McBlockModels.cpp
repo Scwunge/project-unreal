@@ -74,8 +74,10 @@ namespace
 		FMath::SinCos(&Sin, &Cos, FMath::DegreesToRadians(Degrees));
 	}
 
-	// Right-handed rotation about an axis (0 = X, 1 = Y, 2 = Z). Checked against the vanilla torch and piston
-	// data: element angles use it as is, and the blockstate's "y" is the negative of it (clockwise from above).
+	// Right-handed rotation about an axis (0 = X, 1 = Y, 2 = Z). Checked against the vanilla torch data: element
+	// angles use it as is. The blockstate's "x" and "y" are both the negative of it: "y" turns clockwise from
+	// above, and "x": 90 takes a model's north side down (observers and pistons facing down, end rods facing north
+	// have their tip at the model's top turned to the north).
 	FVector3f RotateAxis(const FVector3f& V, int32 Axis, float Degrees)
 	{
 		float S, C;
@@ -91,7 +93,7 @@ namespace
 	// The blockstate's x and y rotation about the block centre (given relative to it): x first, then y.
 	FVector3f RotateVariant(const FVector3f& V, int32 RotX, int32 RotY)
 	{
-		return RotateAxis(RotateAxis(V, 0, static_cast<float>(RotX)), 1, -static_cast<float>(RotY));
+		return RotateAxis(RotateAxis(V, 0, -static_cast<float>(RotX)), 1, -static_cast<float>(RotY));
 	}
 
 	// The corners of a face, top-left, bottom-left, bottom-right, top-right as seen from outside, so that

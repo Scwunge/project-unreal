@@ -5,7 +5,7 @@ public class McPlayer : ModuleRules
 	public McPlayer(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "McCore", "McWorld", "McNet", "McEntity" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "McCore", "McWorld", "McNet", "McEntity", "McItem" });
 		PrivateDependencyModuleNames.AddRange(new string[] { "InputCore" });
 
 		// Other players' bodies are drawn by McRender, which the dedicated server doesn't have.

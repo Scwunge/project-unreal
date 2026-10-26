@@ -75,6 +75,14 @@ void AMcPlayerController::ConnectToWorld()
 		if (HasAuthority())
 		{
 			ChunkStream->OnSetBlockRequest.BindUObject(this, &AMcPlayerController::HandleSetBlockRequest);
+			ChunkStream->OnAttackRequest = [this](const FVector& Look)
+			{
+				const APawn* MyPawn = GetPawn();
+				if (WorldActor && MyPawn)
+				{
+					WorldActor->AttackMobs(McCoords::UnrealToBlock(MyPawn->GetActorLocation()) + FVector(0.0, 1.62, 0.0), Look, 3.0, 1.0f);
+				}
+			};
 		}
 		bStreamConnected = true;
 	}
@@ -93,6 +101,13 @@ void AMcPlayerController::ConnectToWorld()
 	if (MyPawn && !MyPawn->HasBlockWorld())
 	{
 		MyPawn->SetBlockWorld(BlockWorld);
+		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
+		{
+			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+			{
+				Stream->RequestAttack(Look);
+			}
+		};
 		MyPawn->SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
 		{
 			if (UMcChunkStreamComponent* Stream = WeakStream.Get())

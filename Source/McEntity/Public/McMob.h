@@ -7,7 +7,7 @@
 #include "CoreMinimal.h"
 #include "McEntityManager.h"
 
-struct FMcMobType
+struct MCENTITY_API FMcMobType
 {
 	FName Name;
 	float Width = 0.6f;
@@ -34,6 +34,7 @@ public:
 	explicit FMcMob(const FMcMobType& InType);
 	virtual FName GetType() const override { return Type.Name; }
 	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool IsLiving() const override { return true; }
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);

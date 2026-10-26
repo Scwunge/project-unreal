@@ -52,6 +52,11 @@ public:
 	// Server: what to do when the client asks for a block change (checks, then applies it).
 	FMcOnSetBlockRequest OnSetBlockRequest;
 
+	// Server: what to do when the client hits at something (the direction it looked, Minecraft axes).
+	TFunction<void(const FVector& Look)> OnAttackRequest;
+	// Either side: the player swings at whatever is in front of them.
+	void RequestAttack(const FVector& Look);
+
 	// Either side: changes a block for this player. On the server (and for host players) it goes straight
 	// to OnSetBlockRequest; on a client it is sent to the server.
 	void RequestSetBlock(const FIntVector& Pos, FMcStateId State);
@@ -81,6 +86,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetBlock(FIntVector Pos, uint16 State);
+
+	UFUNCTION(Server, Reliable)
+	void ServerAttack(FVector_NetQuantizeNormal Look);
 
 private:
 	bool IsServerForRemotePlayer() const;

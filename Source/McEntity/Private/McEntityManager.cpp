@@ -117,6 +117,24 @@ void FMcEntityManager::Tick()
 	Entities.RemoveAll([](const TUniquePtr<FMcEntity>& Entity) { return Entity->bRemoved; });
 }
 
+bool FMcEntityManager::IsSkyExposed(const FIntVector& Pos) const
+{
+	const int32 Top = World.GetDimension().MinY + World.GetDimension().Height;
+	for (int32 Y = Pos.Y + 1; Y < Top; ++Y)
+	{
+		if (!World.HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+		{
+			return false;
+		}
+		const FMcStateId State = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
+		if (FMcBlockShapes::Get().HasCollision(State) || FMcBlockShapes::Get().GetFluid(State) != EMcFluid::None)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 FMcEntity* FMcEntityManager::Find(int32 Id)
 {
 	for (const TUniquePtr<FMcEntity>& Entity : Entities)

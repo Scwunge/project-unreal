@@ -8,6 +8,7 @@
 #include "McBlockWorld.h"
 #include "Containers/Queue.h"
 #include "McChunkGenerator.h"
+#include "McEntityHost.h"
 #include "McSimulation.h"
 #include "McWorldActor.generated.h"
 
@@ -66,6 +67,12 @@ public:
 	bool IsTimeFrozen() const { return bTimeFrozen; }
 	void SetTimeFrozen(bool bFrozen) { bTimeFrozen = bFrozen; }
 
+	// The actor class shown for each server-side entity (set by the game mode; it implements IMcEntityProxy).
+	void SetEntityProxyClass(TSubclassOf<AActor> Class);
+	FMcEntityHost* GetEntityHost() const { return Entities.Get(); }
+	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
+	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage);
+
 	// Changes a block, loaded or not. Until saving exists (M9) every change is also kept in memory and
 	// put back whenever its chunk is generated again, so edits survive unloading.
 	void SetBlock(const FIntVector& Pos, FMcStateId State);
@@ -89,6 +96,9 @@ private:
 	TUniquePtr<FMcBlockWorld> BlockWorld;
 	// The 20 ticks a second: fluids flow and sand falls. Server only; made when the world starts.
 	TUniquePtr<FMcSimulation> Simulation;
+	TSubclassOf<AActor> EntityProxyClass;
+	// Mobs and dropped items. Server only.
+	TUniquePtr<FMcEntityHost> Entities;
 	double TickRemainder = 0.0;
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;

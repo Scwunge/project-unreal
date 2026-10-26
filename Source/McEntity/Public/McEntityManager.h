@@ -19,6 +19,8 @@ public:
 	// The registry name of the kind of entity, e.g. "minecraft:item".
 	virtual FName GetType() const = 0;
 	virtual void Tick(FMcEntityManager& Manager) {}
+	// True for mobs and the like, which have health and can be hit.
+	virtual bool IsLiving() const { return false; }
 
 	int32 Id = 0;
 	FMcBody Body;
@@ -66,6 +68,12 @@ public:
 
 	const TArray<TUniquePtr<FMcEntity>>& GetEntities() const { return Entities; }
 	FMcBlockWorld& GetWorld() { return World; }
+	const FMcBlockWorld& GetWorld() const { return World; }
+
+	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
+	bool bDaylight = false;
+	// Whether nothing solid is over the block, so rain and sun reach it.
+	bool IsSkyExposed(const FIntVector& Pos) const;
 
 	// How many of an item fit in one stack; set by whatever knows the item registry (default 64).
 	TFunction<int32(FName)> StackSizeOf;

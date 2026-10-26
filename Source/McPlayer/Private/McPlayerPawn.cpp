@@ -2,7 +2,9 @@
 #include "McBlockPlacement.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
+#include "EngineUtils.h"
 #include "McBlockWorld.h"
+#include "McEntityActor.h"
 #include "McChunk.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
@@ -311,6 +313,31 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollUp))
 	{
 		SelectedSlot = (SelectedSlot + HotbarSize - 1) % HotbarSize;
+	}
+
+	// A click on a mob in front of the block being looked at hits the mob instead.
+	if (AttackHandler && Player.WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+		constexpr double AttackReach = 3.0;
+		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : AttackReach;
+		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
+		{
+			const FVector Feet = McCoords::UnrealToBlock(It->GetActorLocation());
+			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
+			FVector HitPoint, HitNormal;
+			float Time = 0.0f;
+			if (It->Kind != TEXT("minecraft:item") && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * AttackReach, FVector::ZeroVector, HitPoint, HitNormal, Time)
+				&& Time * AttackReach < BlockDistance)
+			{
+				AttackHandler(Look);
+				BreakCooldown = BreakRepeatSeconds;
+				return;
+			}
+		}
 	}
 
 	if (!Target.IsSet() || !SetBlockHandler || Hotbar.Num() != HotbarSize)

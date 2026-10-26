@@ -93,6 +93,30 @@ void UMcChunkStreamComponent::RequestSetBlock(const FIntVector& Pos, FMcStateId 
 	}
 }
 
+void UMcChunkStreamComponent::RequestAttack(const FVector& Look)
+{
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->HasAuthority())
+	{
+		if (OnAttackRequest)
+		{
+			OnAttackRequest(Look);
+		}
+	}
+	else
+	{
+		ServerAttack(Look);
+	}
+}
+
+void UMcChunkStreamComponent::ServerAttack_Implementation(FVector_NetQuantizeNormal Look)
+{
+	if (OnAttackRequest)
+	{
+		OnAttackRequest(FVector(Look));
+	}
+}
+
 void UMcChunkStreamComponent::ServerSetBlock_Implementation(FIntVector Pos, uint16 State)
 {
 	OnSetBlockRequest.ExecuteIfBound(Pos, State);

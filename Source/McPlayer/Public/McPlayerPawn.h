@@ -45,6 +45,8 @@ public:
 	// Changes blocks for the player. Until the server takes requests (M3's networking), the game mode points
 	// this straight at the world actor.
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> SetBlockHandler;
+	// Swings at a mob in front of the player: the look direction. Set by the controller.
+	TFunction<void(const FVector& Look)> AttackHandler;
 
 	static constexpr int32 HotbarSize = 9;
 	// Block states in the hotbar; 0 (air) is an empty slot. Creative-style until items and inventories (M7).

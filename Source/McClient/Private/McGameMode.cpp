@@ -1,5 +1,6 @@
 #include "McGameMode.h"
 #include "McChunk.h"
+#include "McEntityActor.h"
 #include "McClient.h"
 #include "McBlockShapes.h"
 #include "McPlayerController.h"
@@ -36,6 +37,10 @@ void AMcGameMode::StartPlay()
 
 	// Spawned after Super::StartPlay so the world has begun play and BeginPlay runs straight away.
 	WorldActor = GetWorld()->SpawnActor<AMcWorldActor>();
+	if (WorldActor)
+	{
+		WorldActor->SetEntityProxyClass(AMcEntityActor::StaticClass());
+	}
 	if (!WorldActor || !WorldActor->GetBlockWorld())
 	{
 		UE_LOG(LogMcClient, Error, TEXT("No world to play in; see the McServer and McCore errors above."));

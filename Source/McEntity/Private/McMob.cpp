@@ -104,6 +104,18 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		return;
 	}
 
+	// Undead burn in daylight when the sky is open over them: a point of damage a second.
+	if (Type.bBurnsInSun && Manager.bDaylight && Age % 20 == 0
+		&& Manager.IsSkyExposed(FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y + Type.Height), FMath::FloorToInt32(Body.Position.Z))))
+	{
+		HurtTime = 0;
+		Damage(1.0f, nullptr);
+		if (bRemoved)
+		{
+			return;
+		}
+	}
+
 	// Goals, in priority order: flee, chase and bite, wander.
 	FVector Target = FVector::ZeroVector;
 	bool bHasTarget = false;

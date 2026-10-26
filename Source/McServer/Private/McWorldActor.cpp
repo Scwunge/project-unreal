@@ -136,10 +136,27 @@ void AMcWorldActor::BeginPlay()
 
 	BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
 	Simulation = MakeUnique<FMcSimulation>(*BlockWorld);
+	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
+	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { Entities->OnChunkAdded(Pos); });
 	Finished = MakeShared<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
 	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d"),
 		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
+}
+
+void AMcWorldActor::SetEntityProxyClass(TSubclassOf<AActor> Class)
+{
+	EntityProxyClass = Class;
+	if (Entities)
+	{
+		Entities->SetProxyClass(GetWorld(), Class);
+	}
+}
+
+bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage)
+{
+	return Entities && Entities->Attack(Eye, Look, Reach, Damage);
 }
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
@@ -178,6 +195,15 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			TArray<FVector> Players;
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (const APawn* Pawn = It->IsValid() ? It->Get()->GetPawn() : nullptr)
+				{
+					Players.Add(McCoords::UnrealToBlock(Pawn->GetActorLocation()));
+				}
+			}
+			Entities->Tick(Players, DayTicks);
 		}
 	}
 }

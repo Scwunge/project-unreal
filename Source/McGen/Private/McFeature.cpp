@@ -705,6 +705,14 @@ void FMcFeatureLibrary::SetHeightSource(TFunction<int32(int32, int32)> Source)
 	}
 }
 
+void FMcFeatureLibrary::SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)> Source)
+{
+	if (Structures.IsValid())
+	{
+		Structures->SetBiomeSource(MoveTemp(Source));
+	}
+}
+
 void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 {
 	const FIntPoint Chunk = Region.GetCentre();

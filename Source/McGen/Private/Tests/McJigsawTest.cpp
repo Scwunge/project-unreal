@@ -134,7 +134,8 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				}
 				for (int32 J = I + 1; J < A->Pieces.Num(); ++J)
 				{
-					Overlaps += BoxesTouch(Piece, A->Pieces[J]) ? 1 : 0;
+					// A piece may sit over the margin of the piece it grows from.
+					Overlaps += (A->Pieces[J].Parent != I && Piece.Parent != J && BoxesTouch(Piece, A->Pieces[J])) ? 1 : 0;
 				}
 			}
 			TestEqual(FString::Printf(TEXT("%s pieces within the distance"), Case.Pool), Outside, 0);
@@ -151,6 +152,23 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 			// The jar itself names a template it lacks (ancient_city intact_horizontal_wall_stairs_5); the game skips such pieces.
 			AddInfo(FString::Printf(TEXT("pool names template %s, which isn't in the jar"), *Id));
 		}
+	}
+
+	// ---- Zombie villages come from the start pool's own zombie pieces ----
+	{
+		int32 Zombie = 0;
+		for (int32 Trial = 0; Trial < 400; ++Trial)
+		{
+			FMcJigsawLibrary::FStart Start;
+			Start.Pool = TEXT("minecraft:village/plains/town_centers");
+			Start.MaxDepth = 1;
+			Start.Y = 64;
+			FMcRandom Random(5000 + Trial);
+			const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
+			Zombie += (Layout.IsValid() && !Layout->Pieces.IsEmpty() && Layout->Pieces[0].Element->Location.Contains(TEXT("/zombie/"))) ? 1 : 0;
+		}
+		AddInfo(FString::Printf(TEXT("%d of 400 plains villages start as zombie villages"), Zombie));
+		TestTrue(TEXT("some plains villages are zombie villages"), Zombie > 0 && Zombie < 100);
 	}
 
 	// ---- The sets and structures ----
@@ -199,6 +217,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		}
 		const FIntPoint Start = *Found;
 		Structures.SetHeightSource([&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
+		Structures.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
 		constexpr int32 Radius = 7;
 		constexpr int32 Size = Radius * 2 + 1;
 		const FIntPoint Corner = Start - FIntPoint(Radius, Radius);
@@ -208,6 +227,43 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 			Chunks.Add(MakeUnique<FMcChunk>(Corner + FIntPoint(Index % Size, Index / Size), Settings.MinY, Settings.Height / 16));
 			Generator.Generate(*Chunks.Last());
 		}
+		{
+			// The height source has to agree with the chunks the generator makes.
+			FMcChunk* Middle[9];
+			for (int32 Slot = 0; Slot < 9; ++Slot)
+			{
+				Middle[Slot] = Chunks[(Radius - 1 + Slot / 3) * Size + Radius - 1 + Slot % 3].Get();
+			}
+			FMcGenRegion Probe(Start, Middle);
+			int32 Differ = 0;
+			int32 Worst = 0;
+			for (int32 Z = Start.Y * 16 - 16; Z < Start.Y * 16 + 32; ++Z)
+			{
+				for (int32 X = Start.X * 16 - 16; X < Start.X * 16 + 32; ++X)
+				{
+					const int32 Difference = FMath::Abs(Probe.GetHeight(EMcHeightmap::WorldSurfaceWG, X, Z) - (Generator.FindSurfaceY(X, Z) + 1));
+					Differ += Difference > 0 ? 1 : 0;
+					Worst = FMath::Max(Worst, Difference);
+				}
+			}
+			AddInfo(FString::Printf(TEXT("height source vs generated chunks: %d of 2304 columns differ, worst %d"), Differ, Worst));
+		}
+		{
+			FMcJigsawLibrary Debug;
+			Debug.LoadPool(TEXT("minecraft:village/desert/town_centers"), nullptr);
+			FMcJigsawLibrary::FStart Params;
+			Params.Pool = TEXT("minecraft:village/desert/town_centers");
+			Params.CentreX = Start.X * 16 + 8;
+			Params.CentreZ = Start.Y * 16 + 8;
+			Params.Y = Generator.FindSurfaceY(Params.CentreX, Params.CentreZ) + 1;
+			FMcRandom DebugRandom(5);
+			const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Debug.Assemble(Params, DebugRandom, [&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
+			for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+			{
+				const int32 Ground = Generator.FindSurfaceY((Piece.Min.X + Piece.Max.X) / 2, (Piece.Min.Z + Piece.Max.Z) / 2) + 1;
+				AddInfo(FString::Printf(TEXT("piece depth %d size %d,%d,%d match %d y %d..%d ground %d"), Piece.Depth, Piece.Element->Size.X, Piece.Element->Size.Y, Piece.Element->Size.Z, Piece.Element->bTerrainMatching ? 1 : 0, Piece.Min.Y, Piece.Max.Y, Ground));
+			}
+		}
 		TArray<TArray<FMcStateId>> Before;
 		for (const TUniquePtr<FMcChunk>& Chunk : Chunks)
 		{
@@ -215,6 +271,9 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		}
 		int32 Touched = 0;
 		TSet<FString> Names;
+		int32 LowestY = MAX_int32;
+		int32 HighestY = MIN_int32;
+		int32 Above = 0;
 		int32 Blocks = 0;
 		TArray<FMcStateId> CentreAfter;
 		for (int32 CZ = 1; CZ < Size - 1; ++CZ)
@@ -242,6 +301,10 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				if (After[B] != Before[Index][B])
 				{
 					++Changed;
+					const int32 BlockY = Chunks[Index]->GetMinY() + B / 256;
+					LowestY = FMath::Min(LowestY, BlockY);
+					HighestY = FMath::Max(HighestY, BlockY);
+					Above += (BlockY > Generator.FindSurfaceY(Chunks[Index]->GetPos().X * 16 + (B % 16), Chunks[Index]->GetPos().Y * 16 + (B / 16) % 16) + 1 && !FMcBlockRegistry::Get().IsAir(After[B])) ? 1 : 0;
 					Names.Add(FMcBlockRegistry::Get().Describe(After[B]));
 				}
 			}
@@ -249,13 +312,23 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 			Blocks += Changed;
 		}
 		AddInfo(FString::Printf(TEXT("seed %d: %s starts in chunk (%d, %d), %d blocks changed in %d chunks"), Seed, *FoundId.ToString(), Start.X, Start.Y, Blocks, Touched));
+		if (const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Structures.FindLayout(FoundId, Seed, Start))
+		{
+			for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+			{
+				AddInfo(FString::Printf(TEXT("layout piece %s depth %d match %d box %d,%d,%d..%d,%d,%d ground %d"), *Piece.Element->Location, Piece.Depth, Piece.Element->bTerrainMatching ? 1 : 0,
+					Piece.Min.X, Piece.Min.Y, Piece.Min.Z, Piece.Max.X, Piece.Max.Y, Piece.Max.Z, Generator.FindSurfaceY((Piece.Min.X + Piece.Max.X) / 2, (Piece.Min.Z + Piece.Max.Z) / 2) + 1));
+			}
+		}
+		AddInfo(FString::Printf(TEXT("changed y %d..%d, %d solid blocks above the ground"), LowestY, HighestY, Above));
 		AddInfo(FString::Printf(TEXT("blocks written: %s"), *FString::Join(Names, TEXT(", "))));
-		TestTrue(TEXT("a village reaches over several chunks"), Touched > 4);
+		TestTrue(TEXT("a village reaches over many chunks"), Touched > 20);
 
 		// A second library puts the same blocks in one chunk.
 		FMcStructureLibrary Again(Settings.SeaLevel, Settings.MinY);
 		Again.Load();
 		Again.SetHeightSource([&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
+		Again.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
 		const int32 CentreIndex = Radius * Size + Radius;
 		TArray<TUniquePtr<FMcChunk>> Fresh;
 		for (int32 Index = 0; Index < Size * Size; ++Index)

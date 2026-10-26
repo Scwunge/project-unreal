@@ -39,6 +39,12 @@ public:
 	// is as high as at the start. Set before decorating.
 	void SetHeightSource(TFunction<int32(int32, int32)> Source) { HeightSource = MoveTemp(Source); }
 
+	// The biome at a block, with the terrain's own biome source: what decides whether a structure that reaches
+	// far from its start chunk (a village) is there at all, since the chunks round it aren't in the region. e.g.
+	// [Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); }. Set after the height source
+	// and before decorating; without it only starts within a chunk of the region are seen.
+	void SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)> Source) { BiomeSource = MoveTemp(Source); }
+
 	// Puts down the parts of structures that lie in the region's centre chunk. The 3x3 chunks must be generated.
 	void Place(FMcGenRegion& Region, uint64 Seed) const;
 
@@ -54,6 +60,9 @@ public:
 	// Whether the structure's biome tag lists the biome.
 	bool BiomeAllows(FName Structure, FMcBiomeId Biome) const;
 
+	// The jigsaw layout last made for a structure starting here (null if none was), for tests and tools.
+	TSharedPtr<FMcJigsawLibrary::FLayout> FindLayout(FName Structure, uint64 Seed, FIntPoint Start) const;
+
 	int32 NumSets() const { return Sets.Num(); }
 	int32 NumStructures() const { return Structures.Num(); }
 	// Structure types read but not built, with how many structures use each.
@@ -65,7 +74,8 @@ private:
 
 	bool IsStartChunk(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	const FStructure* Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
-	bool BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk) const;
+	bool BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk, bool bInRegion) const;
+	bool IsFlatEnough(FIntPoint Start) const;
 	void Build(FMcGenRegion& Region, const FStructure& Structure, uint64 Seed, FIntPoint Start, int32 Salt) const;
 	bool IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	bool ResolveTag(const FString& Tag, TBitArray<>& Out, int32 Depth) const;
@@ -78,6 +88,7 @@ private:
 	TSharedPtr<FMcJigsawLibrary> Jigsaws;
 	FMcFeatureLibrary* FeatureLibrary = nullptr;
 	TFunction<int32(int32, int32)> HeightSource;
+	TFunction<FMcBiomeId(int32, int32, int32)> BiomeSource;
 	// Jigsaw layouts by seed, start chunk and structure, newest last.
 	mutable FCriticalSection LayoutLock;
 	mutable TMap<FString, TSharedPtr<FMcJigsawLibrary::FLayout>> Layouts;

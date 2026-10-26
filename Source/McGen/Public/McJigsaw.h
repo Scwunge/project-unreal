@@ -40,6 +40,7 @@ public:
 		enum class EKind : uint8 { Single, Feature, List, Empty };
 		EKind Kind = EKind::Empty;
 		TSharedPtr<const FMcStructureTemplate> Template;
+		FString Location;  // the template's id
 		TSharedPtr<const FMcProcessorList> Processors;  // with gravity added for terrain matching
 		bool bTerrainMatching = false;
 		TArray<TSharedPtr<const FElement>> Parts;       // a list element's elements, put down together
@@ -62,6 +63,7 @@ public:
 		FIntVector Min = FIntVector::ZeroValue;     // the box it covers, inclusive
 		FIntVector Max = FIntVector::ZeroValue;
 		int32 Depth = 0;
+		int32 Parent = -1;  // the piece it grows from, an index into the layout
 	};
 
 	struct FLayout

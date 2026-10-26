@@ -165,6 +165,7 @@ TSharedPtr<const FMcJigsawLibrary::FElement> FMcJigsawLibrary::ParseElement(cons
 	{
 		const FString Location = Json.GetStringField(TEXT("location"));
 		Result->Template = FMcStructureTemplate::Find(Location);
+		Result->Location = Location;
 		if (!Result->Template.IsValid())
 		{
 			Missing.Add(Location);
@@ -415,6 +416,9 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 				SourcePos.Y = Height(SourcePos.X, SourcePos.Z) - 1 + Source.Source->Pos.Y;
 			}
 			const FIntVector Wanted = SourcePos + Direction(Source.Front);
+			// A jigsaw that looks into its own piece's box (a street's side jigsaw, over the margin the street
+			// reserves) puts its piece inside that box; anything else goes in the space still free.
+			const bool bInside = Wanted.X >= Parent.Min.X && Wanted.X <= Parent.Max.X && Wanted.Z >= Parent.Min.Z && Wanted.Z <= Parent.Max.Z;
 
 			bool bAttached = false;
 			for (const TSharedPtr<const FElement>& Candidate : Candidates)
@@ -450,9 +454,18 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 						{
 							continue;
 						}
-						bool bFree = true;
-						for (const FPiece& Other : Layout->Pieces)
+						if (bInside && (Min.X < Parent.Min.X || Max.X > Parent.Max.X || Min.Z < Parent.Min.Z || Max.Z > Parent.Max.Z))
 						{
+							continue;
+						}
+						bool bFree = true;
+						for (int32 OtherIndex = 0; OtherIndex < Layout->Pieces.Num(); ++OtherIndex)
+						{
+							const FPiece& Other = Layout->Pieces[OtherIndex];
+							if (bInside && OtherIndex == Current.Piece)
+							{
+								continue;
+							}
 							if (Overlaps(Min, Max, Other.Min, Other.Max))
 							{
 								bFree = false;
@@ -470,6 +483,7 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 						Child.Min = Min;
 						Child.Max = Max;
 						Child.Depth = Parent.Depth + 1;
+						Child.Parent = Current.Piece;
 						Layout->Pieces.Add(Child);
 						Queue.Add({ Layout->Pieces.Num() - 1, Source.Source->Placement, Sequence++ });
 						bAttached = true;

@@ -65,6 +65,8 @@ struct FMcStructureLibrary::FSet
 	int32 TotalWeight = 0;
 	FName ExclusionSet;
 	int32 ExclusionChunks = 0;
+	// How many chunks from its start chunk a structure of this set can reach.
+	int32 Reach = 1;
 };
 
 namespace
@@ -874,6 +876,14 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 				}
 			}
 		}
+		for (const TPair<int32, int32>& Entry : Set->Entries)
+		{
+			const FStructure& Member = *Structures[Entry.Key];
+			if (Member.Type == TEXT("jigsaw"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, (Member.MaxDistance + 8 + 15) / 16);
+			}
+		}
 		if (Set->Entries.IsEmpty())
 		{
 			continue;
@@ -1007,13 +1017,49 @@ void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FNa
 	}
 }
 
-bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk) const
+bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk, bool bInRegion) const
 {
-	const FGround Ground{ Region, SeaLevel, MinY };
 	const int32 X = Chunk.X * 16 + 8;
 	const int32 Z = Chunk.Y * 16 + 8;
-	const FMcBiomeId Biome = Region.GetBiome(FIntVector(X, Ground.Floor(X, Z), Z));
+	FMcBiomeId Biome = 0;
+	if (BiomeSource && HeightSource)
+	{
+		// The same answer from every chunk that looks.
+		Biome = BiomeSource(X, HeightSource(X, Z) - 1, Z);
+	}
+	else if (bInRegion)
+	{
+		const FGround Ground{ Region, SeaLevel, MinY };
+		Biome = Region.GetBiome(FIntVector(X, Ground.Floor(X, Z), Z));
+	}
+	else
+	{
+		return false;
+	}
 	return Structure.Biomes.IsValidIndex(Biome) && Structure.Biomes[Biome];
+}
+
+// A village wants dry ground without much of a slope round its centre.
+bool FMcStructureLibrary::IsFlatEnough(FIntPoint Start) const
+{
+	if (!HeightSource)
+	{
+		return true;
+	}
+	const int32 CentreX = Start.X * 16 + 8;
+	const int32 CentreZ = Start.Y * 16 + 8;
+	int32 Low = MAX_int32;
+	int32 High = MIN_int32;
+	for (int32 DZ = -24; DZ <= 24; DZ += 12)
+	{
+		for (int32 DX = -24; DX <= 24; DX += 12)
+		{
+			const int32 Height = HeightSource(CentreX + DX, CentreZ + DZ);
+			Low = FMath::Min(Low, Height);
+			High = FMath::Max(High, Height);
+		}
+	}
+	return HeightSource(CentreX, CentreZ) > SeaLevel && Low > SeaLevel && High - Low <= 10;
 }
 
 void FMcStructureLibrary::GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const
@@ -1023,7 +1069,7 @@ void FMcStructureLibrary::GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
 			const FStructure* Structure = Choose(*Set, Seed, Chunk);
-			if (BiomeFits(Region, *Structure, Chunk))
+			if (BiomeFits(Region, *Structure, Chunk, true))
 			{
 				Out.Add(Structure->Id);
 			}
@@ -1036,15 +1082,17 @@ void FMcStructureLibrary::Place(FMcGenRegion& Region, uint64 Seed) const
 	const FIntPoint Centre = Region.GetCentre();
 	for (const TSharedPtr<FSet>& Set : Sets)
 	{
-		for (int32 DZ = -1; DZ <= 1; ++DZ)
+		// A set's structures reach as far as its widest one; the biome source finds starts beyond the region.
+		const int32 Reach = BiomeSource ? Set->Reach : 1;
+		for (int32 DZ = -Reach; DZ <= Reach; ++DZ)
 		{
-			for (int32 DX = -1; DX <= 1; ++DX)
+			for (int32 DX = -Reach; DX <= Reach; ++DX)
 			{
 				const FIntPoint Start(Centre.X + DX, Centre.Y + DZ);
 				if (IsStartChunk(*Set, Seed, Start))
 				{
 					const FStructure* Structure = Choose(*Set, Seed, Start);
-					if (BiomeFits(Region, *Structure, Start))
+					if (BiomeFits(Region, *Structure, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1))
 					{
 						Build(Region, *Structure, Seed, Start, Set->Salt);
 					}
@@ -1103,6 +1151,7 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		}
 		if (!Layout.IsValid())
 		{
+			const bool bRejected = Structure.Id.ToString().StartsWith(TEXT("minecraft:village_")) && !IsFlatEnough(Start);
 			const int32 StartGround = HeightSource ? HeightSource(CentreX, CentreZ) : Context.Ground.Floor(CentreX, CentreZ);
 			FMcJigsawLibrary::FStart Params;
 			Params.Pool = Structure.StartPool;
@@ -1115,7 +1164,7 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 			Params.MinY = Region.GetMinY();
 			Params.MaxY = Region.GetMaxY();
 			auto Height = [&](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : StartGround; };
-			Layout = Jigsaws->Assemble(Params, Random, Height);
+			Layout = bRejected ? nullptr : Jigsaws->Assemble(Params, Random, Height);
 			if (!Layout.IsValid())
 			{
 				Layout = MakeShared<FMcJigsawLibrary::FLayout>();
@@ -1148,6 +1197,13 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 			}
 		}
 	}
+}
+
+TSharedPtr<FMcJigsawLibrary::FLayout> FMcStructureLibrary::FindLayout(FName Structure, uint64 Seed, FIntPoint Start) const
+{
+	FScopeLock Guard(&LayoutLock);
+	const TSharedPtr<FMcJigsawLibrary::FLayout>* Found = Layouts.Find(FString::Printf(TEXT("%llu/%d/%d/%s"), Seed, Start.X, Start.Y, *Structure.ToString()));
+	return Found ? *Found : nullptr;
 }
 
 bool FMcStructureLibrary::PlaceStructure(FMcGenRegion& Region, FName Id, uint64 Seed, FIntPoint Start) const

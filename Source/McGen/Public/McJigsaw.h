@@ -83,6 +83,8 @@ public:
 		int32 Y = 0;
 		int32 MinY = -64;
 		int32 MaxY = 320;
+		// Pools that stand in for others, picked when the structure starts (trial chambers' spawner pools).
+		TMap<FName, FName> Aliases;
 	};
 
 	// Reads the pool and, one by one, every pool its jigsaws point at (game thread). Features may be null.

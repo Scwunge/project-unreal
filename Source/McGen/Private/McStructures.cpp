@@ -6,6 +6,8 @@
 #include "McChunk.h"
 #include "McGen.h"
 #include "McGenRegion.h"
+#include "McPoolAliases.h"
+#include "McProceduralStructures.h"
 #include "McRandom.h"
 #include "McStructureTemplate.h"
 #include "Dom/JsonObject.h"
@@ -32,6 +34,7 @@ struct FMcStructureLibrary::FStructure
 
 	FName Id;
 	FString Type;
+	FString Variant;  // a mineshaft's "normal" or "mesa"
 	TBitArray<> Biomes;
 	bool bBeached = false;
 	bool bWarm = false;
@@ -49,6 +52,7 @@ struct FMcStructureLibrary::FStructure
 	int32 StartHeightMax = 0;
 	bool bProject = false;
 	bool bBeard = false;
+	TArray<TSharedPtr<FJsonValue>> PoolAliases;
 	bool bSupported = false;
 };
 
@@ -67,6 +71,11 @@ struct FMcStructureLibrary::FSet
 	int32 ExclusionChunks = 0;
 	// How many chunks from its start chunk a structure of this set can reach.
 	int32 Reach = 1;
+	// Concentric rings (strongholds): how many starts, how far apart the rings are, how many in the first.
+	bool bRings = false;
+	int32 RingCount = 0;
+	int32 RingDistance = 32;
+	int32 RingSpread = 3;
 };
 
 namespace
@@ -87,10 +96,31 @@ namespace
 		return FMath::FloorToInt(static_cast<double>(A) / B);
 	}
 
+	// The chunks strongholds start in, by seed.
+	const TArray<FIntPoint>& RingChunks(uint64 Seed, int32 Count, int32 Distance, int32 Spread)
+	{
+		static FCriticalSection Lock;
+		static TMap<FString, TArray<FIntPoint>> Cache;
+		FScopeLock Guard(&Lock);
+		const FString Key = FString::Printf(TEXT("%llu/%d/%d/%d"), Seed, Count, Distance, Spread);
+		if (!Cache.Contains(Key))
+		{
+			TArray<FIntPoint> Chunks;
+			McProcedural::StrongholdChunks(Seed, Count, Distance, Spread, Chunks);
+			if (Cache.Num() > 8)
+			{
+				Cache.Reset();
+			}
+			Cache.Add(Key, MoveTemp(Chunks));
+		}
+		return Cache[Key];
+	}
+
 	bool IsSupported(const FString& Type)
 	{
 		static const TCHAR* const Types[] = { TEXT("igloo"), TEXT("desert_pyramid"), TEXT("jungle_temple"), TEXT("swamp_hut"), TEXT("shipwreck"),
-			TEXT("ocean_ruin"), TEXT("ruined_portal"), TEXT("buried_treasure") };
+			TEXT("ocean_ruin"), TEXT("ruined_portal"), TEXT("buried_treasure"), TEXT("mineshaft"), TEXT("stronghold"), TEXT("ocean_monument"),
+			TEXT("fortress"), TEXT("woodland_mansion"), TEXT("end_city"), TEXT("nether_fossil") };
 		for (const TCHAR* Supported : Types)
 		{
 			if (Type == Supported)
@@ -790,6 +820,7 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 				Structure->SetupWeight += Setup.Weight;
 			}
 		}
+		Json->TryGetStringField(TEXT("mineshaft_type"), Structure->Variant);
 		Structure->bSupported = IsSupported(Structure->Type);
 		if (Structure->Type == TEXT("jigsaw"))
 		{
@@ -832,8 +863,18 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 			Structure->bProject = Json->HasField(TEXT("project_start_to_heightmap"));
 			FString Adaptation;
 			Structure->bBeard = Json->TryGetStringField(TEXT("terrain_adaptation"), Adaptation) && Adaptation == TEXT("beard_thin");
-			// Trial chambers pick their spawner pools through aliases, which aren't read yet.
-			Structure->bSupported = !Json->HasField(TEXT("pool_aliases")) && !Structure->StartPool.IsNone();
+			const TArray<TSharedPtr<FJsonValue>>* Aliases = nullptr;
+			if (Json->TryGetArrayField(TEXT("pool_aliases"), Aliases))
+			{
+				Structure->PoolAliases = *Aliases;
+				TArray<FName> Targets;
+				McPoolAliases::CollectTargets(*Aliases, Targets);
+				for (const FName Target : Targets)
+				{
+					Jigsaws->LoadPool(Target, Features);
+				}
+			}
+			Structure->bSupported = !Structure->StartPool.IsNone();
 			if (Structure->bSupported)
 			{
 				Structure->bSupported = Jigsaws->LoadPool(Structure->StartPool, Features) && Jigsaws->GetPool(Structure->StartPool) && !Jigsaws->GetPool(Structure->StartPool)->Elements.IsEmpty();
@@ -883,9 +924,43 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 			{
 				Set->Reach = FMath::Max(Set->Reach, (Member.MaxDistance + 8 + 15) / 16);
 			}
+			else if (Member.Type == TEXT("mineshaft"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::MineshaftReach);
+			}
+			else if (Member.Type == TEXT("stronghold"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::StrongholdReach);
+			}
+			else if (Member.Type == TEXT("ocean_monument"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::MonumentReach);
+			}
+			else if (Member.Type == TEXT("fortress"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::FortressReach);
+			}
+			else if (Member.Type == TEXT("woodland_mansion"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::MansionReach);
+			}
+			else if (Member.Type == TEXT("end_city"))
+			{
+				Set->Reach = FMath::Max(Set->Reach, McProcedural::EndCityReach);
+			}
 		}
 		if (Set->Entries.IsEmpty())
 		{
+			continue;
+		}
+		if (PlacementType == TEXT("concentric_rings"))
+		{
+			Set->bRings = true;
+			Set->RingCount = static_cast<int32>((*Placement)->GetNumberField(TEXT("count")));
+			Set->RingDistance = static_cast<int32>((*Placement)->GetNumberField(TEXT("distance")));
+			Set->RingSpread = static_cast<int32>((*Placement)->GetNumberField(TEXT("spread")));
+			Set->Salt = static_cast<int32>((*Placement)->GetNumberField(TEXT("salt")));
+			Sets.Add(Set);
 			continue;
 		}
 		if (PlacementType != TEXT("random_spread"))
@@ -939,6 +1014,10 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 
 bool FMcStructureLibrary::IsStartChunk(const FSet& Set, uint64 Seed, FIntPoint Chunk) const
 {
+	if (Set.bRings)
+	{
+		return RingChunks(Seed, Set.RingCount, Set.RingDistance, Set.RingSpread).Contains(Chunk);
+	}
 	const int32 CellX = FloorDiv(Chunk.X, Set.Spacing);
 	const int32 CellZ = FloorDiv(Chunk.Y, Set.Spacing);
 	FMcRandom Random = FMcRandom(Seed).Fork(CellX, Set.Salt, CellZ);
@@ -1158,6 +1237,7 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 			Params.MaxDepth = Structure.Size;
 			Params.MaxDistance = Structure.MaxDistance;
 			Params.StartJigsaw = Structure.StartJigsaw;
+			McPoolAliases::Resolve(Structure.PoolAliases, Random, Params.Aliases);
 			Params.CentreX = CentreX;
 			Params.CentreZ = CentreZ;
 			Params.Y = Structure.StartHeightMin + (Structure.StartHeightMax > Structure.StartHeightMin ? Random.NextInt(Structure.StartHeightMax - Structure.StartHeightMin + 1) : 0) + (Structure.bProject ? StartGround : 0);
@@ -1180,6 +1260,40 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		}
 		const FMcRandom PlaceBase = FMcRandom(Seed).Fork(Start.X, Salt + 3, Start.Y);
 		Jigsaws->Place(Region, *Layout, Context.ClipMin, Context.ClipMax, PlaceBase, Structure.bBeard, FeatureLibrary, SeaLevel);
+	}
+	else if (Type == TEXT("mineshaft") || Type == TEXT("stronghold") || Type == TEXT("ocean_monument") || Type == TEXT("fortress") || Type == TEXT("woodland_mansion")
+		|| Type == TEXT("end_city") || Type == TEXT("nether_fossil"))
+	{
+		McProcedural::FEnv Env{ Region, Start, Context.ClipMin, Context.ClipMax, MinY, Region.GetMaxY(), SeaLevel,
+			[this, &Context](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : Context.Ground.Floor(X, Z); } };
+		if (Type == TEXT("mineshaft"))
+		{
+			McProcedural::BuildMineshaft(Env, Random, Structure.Variant == TEXT("mesa"));
+		}
+		else if (Type == TEXT("stronghold"))
+		{
+			McProcedural::BuildStronghold(Env, Random);
+		}
+		else if (Type == TEXT("ocean_monument"))
+		{
+			McProcedural::BuildMonument(Env, Random);
+		}
+		else if (Type == TEXT("fortress"))
+		{
+			McProcedural::BuildFortress(Env, Random);
+		}
+		else if (Type == TEXT("woodland_mansion"))
+		{
+			McProcedural::BuildMansion(Env, Random);
+		}
+		else if (Type == TEXT("end_city"))
+		{
+			McProcedural::BuildEndCity(Env, Random);
+		}
+		else
+		{
+			McProcedural::BuildNetherFossil(Env, Random);
+		}
 	}
 	else if (Type == TEXT("ruined_portal"))
 	{

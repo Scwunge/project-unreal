@@ -13,3 +13,4 @@ void McRegisterExtraFeatures();
 void McRegisterTreeFeatures();
 // template, fossil (McTemplateFeature.cpp).
 void McRegisterTemplateFeatures();
+void McRegisterWorldFeatures();

@@ -393,7 +393,8 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 
 		for (const FWorldJigsaw& Source : Sources)
 		{
-			const FPool* Target = GetPool(Source.Source->Pool);
+			const FName* Alias = Start.Aliases.Find(Source.Source->Pool);
+			const FPool* Target = GetPool(Alias ? *Alias : Source.Source->Pool);
 			if (!Target)
 			{
 				continue;

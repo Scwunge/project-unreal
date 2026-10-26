@@ -1,8 +1,10 @@
 #include "McWorldRenderComponent.h"
 #include "McBlockModels.h"
+#include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McLightEngine.h"
 #include "McRender.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/World.h"
@@ -22,7 +24,11 @@ static TAutoConsoleVariable<bool> CVarMcFlipWinding(
 
 namespace
 {
-	const FIntPoint NeighbourOffsets[4] = { FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1) };
+	// All eight: light reaches 15 blocks, so a chunk's light depends on its diagonal neighbours too.
+	const FIntPoint NeighbourOffsets[8] = {
+		FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1),
+		FIntPoint(1, 1), FIntPoint(-1, 1), FIntPoint(1, -1), FIntPoint(-1, -1),
+	};
 }
 
 UMcWorldRenderComponent::UMcWorldRenderComponent()
@@ -110,6 +116,11 @@ void UMcWorldRenderComponent::RebuildPalette()
 		UE_LOG(LogMcRender, Error, TEXT("Block models or textures failed to load; see the McAssets errors above"));
 	}
 	Palette = FMcRenderPalette::Build(FMcBlockRegistry::Get(), Models, Textures, CVarMcFlipWinding.GetValueOnGameThread());
+	if (!FMcBlockLight::Get().EnsureLoaded())
+	{
+		UE_LOG(LogMcRender, Error, TEXT("Block light tables failed to load; see the McCore errors above"));
+	}
+	LightPalette = FMcLightPalette::Build();
 }
 
 void UMcWorldRenderComponent::HandleChunkAdded(FIntPoint Pos)
@@ -220,14 +231,15 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 		const FMcChunk* Chunk = World->FindChunk(Pos);
 		check(Chunk);
 
-		TArray<FMcSectionSnapshot> Snapshots;
+		TArray<int32> Sections;
 		for (int32 SectionIndex = 0; SectionIndex < Chunk->NumSections(); ++SectionIndex)
 		{
 			if (!Chunk->GetSection(SectionIndex).IsEmpty())
 			{
-				Snapshots.Add(FMcSectionSnapshot::Capture(*World, Pos, SectionIndex));
+				Sections.Add(SectionIndex);
 			}
 		}
+		FMcLightRegion Region = FMcLightRegion::Capture(*World, Pos);
 
 		FChunkState& State = Chunks[Pos];
 		State.bDirty = false;
@@ -235,14 +247,16 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 		++InFlight;
 
 		UE::Tasks::Launch(UE_SOURCE_LOCATION,
-			[Results = Results, Palette = Palette.ToSharedRef(), Snapshots = MoveTemp(Snapshots), Pos, Ticket = State.Ticket]()
+			[Results = Results, Palette = Palette.ToSharedRef(), LightPalette = LightPalette.ToSharedRef(), Region = MoveTemp(Region), Sections = MoveTemp(Sections), Pos, Ticket = State.Ticket]() mutable
 			{
+				Region.Compute(*LightPalette);
+
 				TUniquePtr<FChunkResult> Result = MakeUnique<FChunkResult>();
 				Result->ChunkPos = Pos;
 				Result->Ticket = Ticket;
-				for (const FMcSectionSnapshot& Snapshot : Snapshots)
+				for (const int32 SectionIndex : Sections)
 				{
-					FMcSectionMesh Mesh = McBlockMesher::Build(Snapshot, *Palette);
+					FMcSectionMesh Mesh = McBlockMesher::Build(FMcSectionSnapshot::FromRegion(Region, SectionIndex), *Palette);
 					if (!Mesh.IsEmpty())
 					{
 						Result->Sections.Add(MoveTemp(Mesh));
@@ -312,7 +326,7 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 				continue;
 			}
 			const int32 MeshSection = Section.SectionIndex * McNumRenderPasses + Pass;
-			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, NoUVs, NoUVs, Buffers.Colors, NoTangents, false);
+			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
 			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
 		}
 	}

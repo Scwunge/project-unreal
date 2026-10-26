@@ -12,6 +12,7 @@ namespace
 	{
 		FMcSectionSnapshot Snapshot;
 		Snapshot.Blocks.SetNumZeroed(FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded);
+		Snapshot.Light.Init(0xF0, FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded);
 		return Snapshot;
 	}
 
@@ -105,14 +106,14 @@ bool FMcBlockMesherTest::RunTest(const FString& Parameters)
 		Place(Snapshot, 4, 4, 4, GrassBlock);
 		const FMcSectionMesh Mesh = McBlockMesher::Build(Snapshot, *Palette);
 		const FMcMeshBuffers& Opaque = Mesh.Passes[static_cast<int32>(EMcRenderPass::Opaque)];
-		const FColor PlainsLinear = FLinearColor(FColor(0x91, 0xBD, 0x59)).ToFColor(false);
-		const FColor HalfLinear = FLinearColor(FColor(128, 128, 128)).ToFColor(false);
+		const FColor PlainsGreen(0x91, 0xBD, 0x59);
+		const FColor HalfGrey(128, 128, 128);
 		bool bFoundTop = false;
 		bool bFoundBottom = false;
 		for (int32 Vertex = 0; Vertex < Opaque.Positions.Num(); ++Vertex)
 		{
-			bFoundTop |= Opaque.Normals[Vertex].Z > 0.9 && Opaque.Colors[Vertex] == PlainsLinear;
-			bFoundBottom |= Opaque.Normals[Vertex].Z < -0.9 && Opaque.Colors[Vertex] == HalfLinear;
+			bFoundTop |= Opaque.Normals[Vertex].Z > 0.9 && Opaque.Colors[Vertex] == PlainsGreen;
+			bFoundBottom |= Opaque.Normals[Vertex].Z < -0.9 && Opaque.Colors[Vertex] == HalfGrey;
 		}
 		TestTrue(TEXT("grass top is plains green, facing up"), bFoundTop);
 		TestTrue(TEXT("grass bottom is half shade, facing down"), bFoundBottom);

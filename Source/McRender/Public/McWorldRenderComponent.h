@@ -80,6 +80,7 @@ private:
 	void RebuildPalette();
 
 	TSharedPtr<const FMcRenderPalette> Palette;
+	TSharedPtr<const struct FMcLightPalette> LightPalette;
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;

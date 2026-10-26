@@ -20,6 +20,23 @@ import unreal
 FOLDER = "/Game/Mc/Materials"
 PLACEHOLDER_PNG = os.path.join(unreal.Paths.project_saved_dir(), "McPlaceholder.png")
 
+# Minecraft's light curve, in display (sRGB) space like the game, then back to linear for Unreal.
+# Light.x is sky light and Light.y block light, each 0..1 (level / 15). A level's brightness is
+# l / (4 - 3l): each level down is noticeably darker. Sky light scales with the time of day (SkyFactor);
+# block light is a warm white. The Brightness option (Gamma, 0 Moody .. 1 Bright) lifts the curve, and
+# a small floor keeps unlit places from going fully black. Shade is the vertex colour: tint, face shade
+# and ambient occlusion, also in display space.
+LIGHTMAP_HLSL = """
+float2 l = saturate(Light.xy);
+float2 b = l / (4.0 - 3.0 * l);
+float3 c = saturate(b.x * SkyFactor + b.y * float3(1.0, 0.92, 0.8));
+float3 bright = 1.0 - pow(1.0 - c, 4.0);
+c = lerp(c, bright, Gamma);
+c = c * 0.96 + 0.04;
+float3 display = saturate(Shade.rgb * c);
+return Tex * pow(display, 2.2);
+"""
+
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 mel = unreal.MaterialEditingLibrary
 eal = unreal.EditorAssetLibrary
@@ -81,8 +98,10 @@ def make_placeholder_array():
 
 
 def make_block_material(name: str, blend_mode, default_array):
-    material = load_or_create(name, unreal.Material, unreal.MaterialFactoryNew())
-    mel.delete_all_material_expressions(material)
+    # Nothing refers to the materials as assets (the game loads them by path), so they can be made afresh.
+    if eal.does_asset_exist(f"{FOLDER}/{name}"):
+        eal.delete_asset(f"{FOLDER}/{name}")
+    material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
     material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     material.set_editor_property("blend_mode", blend_mode)
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
@@ -111,9 +130,30 @@ def make_block_material(name: str, blend_mode, default_array):
     mel.connect_material_expressions(uvw, "", texture, "UVs")
 
     vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -350, 250)
-    colour = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -100, 0)
-    mel.connect_material_expressions(texture, "RGB", colour, "A")
-    mel.connect_material_expressions(vertex_color, "", colour, "B")
+    uv2 = mel.create_material_expression(material, unreal.MaterialExpressionTextureCoordinate, -350, 400)
+    uv2.set_editor_property("coordinate_index", 2)
+    sky_factor = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -350, 500)
+    sky_factor.set_editor_property("parameter_name", "SkyFactor")
+    sky_factor.set_editor_property("default_value", 1.0)
+    gamma = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -350, 600)
+    gamma.set_editor_property("parameter_name", "Gamma")
+    gamma.set_editor_property("default_value", 0.5)
+
+    colour = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -100, 0)
+    colour.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    colour.set_editor_property("description", "McLightmap")
+    inputs = []
+    for input_name in ["Tex", "Shade", "Light", "SkyFactor", "Gamma"]:
+        custom_input = unreal.CustomInput()
+        custom_input.set_editor_property("input_name", input_name)
+        inputs.append(custom_input)
+    colour.set_editor_property("inputs", inputs)
+    colour.set_editor_property("code", LIGHTMAP_HLSL)
+    mel.connect_material_expressions(texture, "RGB", colour, "Tex")
+    mel.connect_material_expressions(vertex_color, "", colour, "Shade")
+    mel.connect_material_expressions(uv2, "", colour, "Light")
+    mel.connect_material_expressions(sky_factor, "", colour, "SkyFactor")
+    mel.connect_material_expressions(gamma, "", colour, "Gamma")
     mel.connect_material_property(colour, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     if blend_mode == unreal.BlendMode.BLEND_MASKED:

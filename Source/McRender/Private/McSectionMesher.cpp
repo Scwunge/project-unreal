@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McLightEngine.h"
 
 FMcSectionSnapshot FMcSectionSnapshot::Capture(const FMcBlockWorld& World, FIntPoint ChunkPos, int32 SectionIndex)
 {
@@ -11,6 +12,7 @@ FMcSectionSnapshot FMcSectionSnapshot::Capture(const FMcBlockWorld& World, FIntP
 	Snapshot.SectionIndex = SectionIndex;
 	Snapshot.MinY = World.GetDimension().MinY + SectionIndex * McCoords::SectionSize;
 	Snapshot.Blocks.SetNumZeroed(Padded * Padded * Padded);
+	Snapshot.Light.Init(0xF0, Padded * Padded * Padded);
 
 	// The 3x3 chunk columns the border can reach into.
 	const FMcChunk* Columns[3][3];
@@ -35,6 +37,33 @@ FMcSectionSnapshot FMcSectionSnapshot::Capture(const FMcBlockWorld& World, FIntP
 				{
 					Snapshot.Blocks[Index(X, Y, Z)] = Chunk->GetBlock(McCoords::BlockToLocal(X), WorldY, McCoords::BlockToLocal(Z));
 				}
+			}
+		}
+	}
+	return Snapshot;
+}
+
+FMcSectionSnapshot FMcSectionSnapshot::FromRegion(const FMcLightRegion& Region, int32 SectionIndex)
+{
+	FMcSectionSnapshot Snapshot;
+	Snapshot.ChunkPos = Region.CenterChunk;
+	Snapshot.SectionIndex = SectionIndex;
+	Snapshot.MinY = Region.MinY + SectionIndex * McCoords::SectionSize;
+	Snapshot.Blocks.SetNumUninitialized(Padded * Padded * Padded);
+	Snapshot.Light.SetNumUninitialized(Padded * Padded * Padded);
+
+	for (int32 Y = -1; Y <= McCoords::SectionSize; ++Y)
+	{
+		const int32 WorldY = Snapshot.MinY + Y;
+		for (int32 Z = -1; Z <= McCoords::SectionSize; ++Z)
+		{
+			for (int32 X = -1; X <= McCoords::SectionSize; ++X)
+			{
+				const int32 RegionX = FMcLightRegion::Border + X;
+				const int32 RegionZ = FMcLightRegion::Border + Z;
+				const int32 Cell = Index(X, Y, Z);
+				Snapshot.Blocks[Cell] = Region.GetBlock(RegionX, WorldY, RegionZ);
+				Snapshot.Light[Cell] = static_cast<uint8>((Region.GetSkyLight(RegionX, WorldY, RegionZ) << 4) | Region.GetBlockLight(RegionX, WorldY, RegionZ));
 			}
 		}
 	}
@@ -86,6 +115,27 @@ namespace
 			return Normal.Z < 0.0f ? EMcDirection::North : EMcDirection::South;
 		}
 		return Normal.X < 0.0f ? EMcDirection::West : EMcDirection::East;
+	}
+
+	FORCEINLINE int32 DirectionAxis(EMcDirection Direction)
+	{
+		// Model axes: x is 0, y is 1, z is 2.
+		return (Direction == EMcDirection::Down || Direction == EMcDirection::Up) ? 1 : (Direction == EMcDirection::North || Direction == EMcDirection::South) ? 2 : 0;
+	}
+
+	// Whether every corner of the quad lies on that side of the block.
+	bool IsOnSide(const FMcBakedQuad& Quad, EMcDirection Side)
+	{
+		const int32 Axis = DirectionAxis(Side);
+		const float Plane = (DirectionIndex(Side) & 1) ? 1.0f : 0.0f;
+		for (const FVector3f& Position : Quad.Positions)
+		{
+			if (!FMath::IsNearlyEqual(Position[Axis], Plane, 1e-4f))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	// How much of a block side (0..1) a quad lying flat on it covers; 0 if it isn't on that side.
@@ -229,6 +279,7 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 		// Glass, stained glass, ice and the like hide the faces between two of the same block. Leaves don't:
 		// with fancy graphics you see the leaves behind.
 		const FString Name = Registry.GetBlockOf(static_cast<FMcStateId>(Id)).Name.ToString();
+		Info.bOccludes = Info.OpaqueFaces == (1 << NumDirections) - 1;
 		Info.bHidesOwnBlock = bFullCube && Info.OpaqueFaces != (1 << NumDirections) - 1 && !Name.EndsWith(TEXT("leaves"));
 
 		if (bAnyTinted)
@@ -299,8 +350,60 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						: NearestDirection(ModelNormal);
 					const float Shade = Quad.bShade ? DirectionShades[DirectionIndex(ShadeFrom)] : 1.0f;
 					const FColor Tint = Quad.TintIndex >= 0 ? Info.Tint : FColor::White;
-					// The material multiplies in linear space; Minecraft multiplies the sRGB values.
-					const FColor Color = FLinearColor(ScaleColor(Tint, Shade)).ToFColor(false);
+
+					// Light comes from the block the face looks into: the neighbour for faces on the block's
+					// side, the block's own cell for faces inside it (a slab's top, a torch).
+					const EMcDirection LightFrom = Quad.Face != EMcDirection::None ? Quad.Face : NearestDirection(ModelNormal);
+					FIntVector Front(X, Y, Z);
+					if (IsOnSide(Quad, LightFrom))
+					{
+						Front += DirectionOffsets[DirectionIndex(LightFrom)];
+					}
+					const uint8 FrontLight = Snapshot.Light[FMcSectionSnapshot::Index(Front.X, Front.Y, Front.Z)];
+
+					FVector2D CornerLight[4];
+					float CornerOcclusion[4];
+					const bool bSmooth = Palette.bSmoothLighting && Quad.bAmbientOcclusion;
+					const int32 Axis = DirectionAxis(LightFrom);
+					const int32 AxisU = Axis == 0 ? 1 : 0;
+					const int32 AxisV = Axis == 2 ? 1 : 2;
+					for (int32 Corner = 0; Corner < 4; ++Corner)
+					{
+						if (!bSmooth)
+						{
+							CornerLight[Corner] = FVector2D(FrontLight >> 4, FrontLight & 15) / 15.0;
+							CornerOcclusion[Corner] = 1.0f;
+							continue;
+						}
+
+						// The front block and the three beside it that touch this corner. A block that occludes
+						// darkens the corner and lends it the front's light in place of its own (none).
+						FIntVector StepU(0, 0, 0);
+						FIntVector StepV(0, 0, 0);
+						StepU[AxisU] = Quad.Positions[Corner][AxisU] < 0.5f ? -1 : 1;
+						StepV[AxisV] = Quad.Positions[Corner][AxisV] < 0.5f ? -1 : 1;
+						const FIntVector Cells[4] = { Front, Front + StepU, Front + StepV, Front + StepU + StepV };
+
+						bool bOccluded[4];
+						for (int32 Index = 0; Index < 4; ++Index)
+						{
+							const FMcStateId Beside = Snapshot.Get(Cells[Index].X, Cells[Index].Y, Cells[Index].Z);
+							bOccluded[Index] = Palette.States.IsValidIndex(Beside) && Palette.States[Beside].bOccludes;
+						}
+						// With both sides blocked, the diagonal block can't be seen from the corner.
+						bOccluded[3] |= bOccluded[1] && bOccluded[2];
+
+						FVector2D Sum = FVector2D::ZeroVector;
+						float Occlusion = 0.0f;
+						for (int32 Index = 0; Index < 4; ++Index)
+						{
+							const uint8 Packed = bOccluded[Index] ? FrontLight : Snapshot.Light[FMcSectionSnapshot::Index(Cells[Index].X, Cells[Index].Y, Cells[Index].Z)];
+							Sum += FVector2D(Packed >> 4, Packed & 15);
+							Occlusion += bOccluded[Index] ? 0.2f : 1.0f;
+						}
+						CornerLight[Corner] = Sum / 60.0;
+						CornerOcclusion[Corner] = Occlusion / 4.0f;
+					}
 
 					// Model axes (x east, y up, z south) to Unreal's (X east, Y south, Z up).
 					const FVector Normal(ModelNormal.X, ModelNormal.Z, ModelNormal.Y);
@@ -312,19 +415,30 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						Buffers.Normals.Add(Normal);
 						Buffers.UV0.Add(FVector2D(Quad.UVs[Corner]));
 						Buffers.UV1.Add(FVector2D(QuadInfo.Layer, 0.0));
-						Buffers.Colors.Add(Color);
+						Buffers.UV2.Add(CornerLight[Corner]);
+						// sRGB: Minecraft multiplies these in display space, and so does the material.
+						Buffers.Colors.Add(ScaleColor(Tint, Shade * CornerOcclusion[Corner]));
 					}
+
+					// Split the quad along the diagonal whose ends are more alike, so one dark corner doesn't
+					// smear across the whole face.
+					auto Brightness = [&](int32 Corner) { return CornerOcclusion[Corner] * FMath::Max(CornerLight[Corner].X, CornerLight[Corner].Y); };
+					const int32 Start = First + (Brightness(0) + Brightness(2) > Brightness(1) + Brightness(3) ? 1 : 0);
+					const int32 A = Start;
+					const int32 B = First + (Start - First + 1) % 4;
+					const int32 C = First + (Start - First + 2) % 4;
+					const int32 D = First + (Start - First + 3) % 4;
 
 					// The corners go anticlockwise seen from outside in the model's right-handed axes. Swapping
 					// y and z for Unreal mirrors them to clockwise, which is the order Unreal draws as front
 					// faces. mc.Render.FlipWinding reverses it, for checking.
 					if (Palette.bFlipWinding)
 					{
-						Buffers.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+						Buffers.Triangles.Append({ A, C, B, A, D, C });
 					}
 					else
 					{
-						Buffers.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+						Buffers.Triangles.Append({ A, B, C, A, C, D });
 					}
 				}
 			}

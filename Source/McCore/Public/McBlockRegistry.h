@@ -62,6 +62,9 @@ public:
 	// The state with these property values; properties left out keep their default value.
 	TOptional<FMcStateId> FindState(FName BlockName, const TMap<FName, FName>& Properties) const;
 
+	// Parses the block state syntax commands use: "stone", "minecraft:oak_stairs[facing=east,half=top]".
+	TOptional<FMcStateId> ParseState(const FString& Text) const;
+
 	// The value of one property of a state, or NAME_None if the block doesn't have that property.
 	FName GetPropertyValue(FMcStateId Id, FName PropertyName) const;
 

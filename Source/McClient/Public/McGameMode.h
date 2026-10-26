@@ -27,6 +27,12 @@ private:
 	FTransform GetSpawnTransform() const;
 	void SpawnEnvironment();
 
+	// Development: -McCam=x,y,z,yaw,pitch puts the camera at a Minecraft position and angle; -McShot=<png>
+	// saves a screenshot after -McShotDelay seconds (default 5) and quits. Used for side-by-side checks.
+	void StartDevCapture();
+	// Development: -McScene=<name> places tools/scenes/<name>.json and returns its camera.
+	void LoadDevScene(const FString& Name, FString& OutCamera);
+
 	UPROPERTY(Transient)
 	TObjectPtr<AMcWorldActor> WorldActor;
 };

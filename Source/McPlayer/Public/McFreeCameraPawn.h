@@ -31,6 +31,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Mc")
 	TObjectPtr<UCameraComponent> Camera;
 
+	// Puts the camera at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch:
+	// yaw 0 faces south (+z) and turns towards west, pitch 90 looks straight down, as on the F3 screen.
+	void SetView(const FVector& BlockPos, float McYaw, float McPitch);
+
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void Tick(float DeltaSeconds) override;

@@ -209,6 +209,37 @@ TOptional<FMcStateId> FMcBlockRegistry::FindState(FName BlockName, const TMap<FN
 	return {};
 }
 
+TOptional<FMcStateId> FMcBlockRegistry::ParseState(const FString& Text) const
+{
+	FString Name = Text.TrimStartAndEnd();
+	TMap<FName, FName> Properties;
+
+	int32 Open;
+	if (Name.FindChar(TEXT('['), Open))
+	{
+		if (!Name.EndsWith(TEXT("]")))
+		{
+			return {};
+		}
+		const FString Inside = Name.Mid(Open + 1, Name.Len() - Open - 2);
+		Name.LeftInline(Open);
+
+		TArray<FString> Pairs;
+		Inside.ParseIntoArray(Pairs, TEXT(","));
+		for (const FString& Pair : Pairs)
+		{
+			FString Key, Value;
+			if (!Pair.Split(TEXT("="), &Key, &Value))
+			{
+				return {};
+			}
+			Properties.Add(FName(*Key.TrimStartAndEnd()), FName(*Value.TrimStartAndEnd()));
+		}
+	}
+
+	return FindState(FName(*McCache::Namespaced(Name)), Properties);
+}
+
 FName FMcBlockRegistry::GetPropertyValue(FMcStateId Id, FName PropertyName) const
 {
 	const FMcBlock& Block = GetBlockOf(Id);

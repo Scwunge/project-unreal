@@ -38,6 +38,10 @@ public:
 	// World height of the top block, for spawning players above it.
 	int32 GetSurfaceY() const { return SurfaceY; }
 
+	// Changes a block, loaded or not. Until saving exists (M9) every change is also kept in memory and
+	// put back whenever its chunk is generated again, so edits survive unloading.
+	void SetBlock(const FIntVector& Pos, FMcStateId State);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -50,4 +54,7 @@ private:
 	TUniquePtr<FMcBlockWorld> BlockWorld;
 	TUniquePtr<FMcFlatGenerator> Generator;
 	int32 SurfaceY = 0;
+
+	// Block changes by chunk, keyed by world position.
+	TMap<FIntPoint, TMap<FIntVector, FMcStateId>> Edits;
 };

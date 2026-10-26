@@ -34,6 +34,14 @@ void AMcWorldActor::BeginPlay()
 		*Dimension, *FlatPreset, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
 }
 
+void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
+{
+	check(BlockWorld);
+	const FIntPoint ChunkPos(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z));
+	Edits.FindOrAdd(ChunkPos).Add(Pos, State);
+	BlockWorld->SetBlock(Pos, State);
+}
+
 void AMcWorldActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -95,6 +103,13 @@ void AMcWorldActor::StreamChunks()
 		}
 		TUniquePtr<FMcChunk> Chunk = BlockWorld->MakeChunk(Entry.Value);
 		Generator->Generate(*Chunk);
+		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Entry.Value))
+		{
+			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
+			{
+				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
+			}
+		}
 		BlockWorld->AddChunk(MoveTemp(Chunk));
 		++Generated;
 	}

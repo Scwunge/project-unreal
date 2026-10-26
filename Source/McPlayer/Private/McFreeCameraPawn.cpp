@@ -32,6 +32,20 @@ void AMcFreeCameraPawn::PossessedBy(AController* NewController)
 	}
 }
 
+void AMcFreeCameraPawn::SetView(const FVector& BlockPos, float McYaw, float McPitch)
+{
+	// Minecraft's yaw 0 looks along +z (Unreal +Y, yaw 90) and grows clockwise seen from above, towards -x
+	// (Unreal -X, yaw 180). Unreal's yaw also grows that way, so it is a fixed offset. Pitch is flipped.
+	Yaw = FMath::Fmod(McYaw + 90.0f, 360.0f);
+	Pitch = FMath::Clamp(-McPitch, -89.9f, 89.9f);
+	Velocity = FVector::ZeroVector;
+	SetActorLocation(McCoords::BlockToUnreal(BlockPos));
+	if (AController* PawnController = GetController())
+	{
+		PawnController->SetControlRotation(FRotator(Pitch, Yaw, 0.0f));
+	}
+}
+
 void AMcFreeCameraPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);

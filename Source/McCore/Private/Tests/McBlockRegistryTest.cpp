@@ -34,6 +34,11 @@ bool FMcBlockRegistryTest::RunTest(const FString& Parameters)
 		FString(TEXT("minecraft:oak_stairs[facing=north,half=top,shape=straight,waterlogged=true]")));
 	TestEqual(TEXT("oak_stairs half"), Registry.GetPropertyValue(Stairs.Get(0), TEXT("half")), FName(TEXT("top")));
 
+	TestEqual(TEXT("parse full state"), Registry.ParseState(TEXT("minecraft:oak_stairs[facing=north, half=top,shape=straight,waterlogged=true]")).Get(0), Stairs.Get(1));
+	TestEqual(TEXT("parse short name"), Registry.ParseState(TEXT("grass_block")).Get(0), static_cast<FMcStateId>(9));
+	TestFalse(TEXT("parse unknown block"), Registry.ParseState(TEXT("minecraft:nope")).IsSet());
+	TestFalse(TEXT("parse broken brackets"), Registry.ParseState(TEXT("minecraft:oak_stairs[facing=north")).IsSet());
+
 	TestFalse(TEXT("unknown property value"), Registry.FindState(TEXT("minecraft:grass_block"), { { TEXT("snowy"), TEXT("maybe") } }).IsSet());
 	TestFalse(TEXT("unknown block"), Registry.FindDefaultState(TEXT("minecraft:not_a_block")).IsSet());
 

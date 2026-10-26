@@ -6,6 +6,14 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/PlatformMisc.h"
+#include "McBlockRegistry.h"
+#include "McCache.h"
+#include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "TimerManager.h"
+#include "UnrealClient.h"
 
 #if MC_WITH_RENDER
 #include "Components/DirectionalLightComponent.h"
@@ -53,6 +61,117 @@ void AMcGameMode::StartPlay()
 			Pawn->SetActorLocation(Spawn.GetLocation());
 		}
 	}
+
+	StartDevCapture();
+}
+
+void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
+{
+	// Scenes are boxes of block states, shared with tools/scene_to_mcfunction.py so the same scene can be
+	// built in real 26.3 for side-by-side screenshots.
+	const FString Path = FPaths::ProjectDir() / TEXT("tools/scenes") / Name + TEXT(".json");
+	const TSharedPtr<FJsonObject> Scene = McCache::LoadJsonObject(Path);
+	if (!Scene.IsValid())
+	{
+		return;
+	}
+
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	int32 Placed = 0;
+	for (const TSharedPtr<FJsonValue>& BoxValue : Scene->GetArrayField(TEXT("blocks")))
+	{
+		const TSharedPtr<FJsonObject>& Box = BoxValue->AsObject();
+		const FString StateText = Box->GetStringField(TEXT("state"));
+		const TOptional<FMcStateId> State = Registry.ParseState(StateText);
+		const TArray<TSharedPtr<FJsonValue>>& From = Box->GetArrayField(TEXT("from"));
+		const TArray<TSharedPtr<FJsonValue>>& To = Box->GetArrayField(TEXT("to"));
+		if (!State.IsSet() || From.Num() != 3 || To.Num() != 3)
+		{
+			UE_LOG(LogMcClient, Error, TEXT("%s: can't place %s"), *Path, *StateText);
+			continue;
+		}
+
+		auto ToBlock = [](const TArray<TSharedPtr<FJsonValue>>& Values)
+		{
+			return FIntVector(FMath::RoundToInt32(Values[0]->AsNumber()), FMath::RoundToInt32(Values[1]->AsNumber()), FMath::RoundToInt32(Values[2]->AsNumber()));
+		};
+		const FIntVector A = ToBlock(From);
+		const FIntVector B = ToBlock(To);
+		for (int32 Y = FMath::Min(A.Y, B.Y); Y <= FMath::Max(A.Y, B.Y); ++Y)
+		{
+			for (int32 Z = FMath::Min(A.Z, B.Z); Z <= FMath::Max(A.Z, B.Z); ++Z)
+			{
+				for (int32 X = FMath::Min(A.X, B.X); X <= FMath::Max(A.X, B.X); ++X)
+				{
+					WorldActor->SetBlock(FIntVector(X, Y, Z), State.GetValue());
+					++Placed;
+				}
+			}
+		}
+	}
+
+	TArray<FString> CameraParts;
+	for (const TSharedPtr<FJsonValue>& Value : Scene->GetArrayField(TEXT("camera")))
+	{
+		CameraParts.Add(FString::SanitizeFloat(Value->AsNumber()));
+	}
+	OutCamera = FString::Join(CameraParts, TEXT(","));
+	UE_LOG(LogMcClient, Display, TEXT("Scene %s: placed %d blocks"), *Name, Placed);
+}
+
+void AMcGameMode::StartDevCapture()
+{
+#if !UE_BUILD_SHIPPING && MC_WITH_RENDER
+	const TCHAR* CommandLine = FCommandLine::Get();
+
+	FString Camera;
+	FString SceneName;
+	if (FParse::Value(CommandLine, TEXT("-McScene="), SceneName))
+	{
+		LoadDevScene(SceneName, Camera);
+	}
+	FParse::Value(CommandLine, TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false);
+	if (!Camera.IsEmpty())
+	{
+		TArray<FString> Parts;
+		Camera.ParseIntoArray(Parts, TEXT(","));
+		if (Parts.Num() == 5)
+		{
+			const FVector Block(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (AMcFreeCameraPawn* Pawn = It->Get() ? Cast<AMcFreeCameraPawn>(It->Get()->GetPawn()) : nullptr)
+				{
+					Pawn->SetView(Block, FCString::Atof(*Parts[3]), FCString::Atof(*Parts[4]));
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogMcClient, Error, TEXT("-McCam wants x,y,z,yaw,pitch; got %s"), *Camera);
+		}
+	}
+
+	FString ShotPath;
+	if (!FParse::Value(CommandLine, TEXT("-McShot="), ShotPath))
+	{
+		return;
+	}
+	float Delay = 5.0f;
+	FParse::Value(CommandLine, TEXT("-McShotDelay="), Delay);
+
+	FTimerHandle ShotTimer;
+	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, ShotPath]()
+	{
+		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
+		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
+		FTimerHandle ExitTimer;
+		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()
+		{
+			FPlatformMisc::RequestExit(false, TEXT("McShot"));
+		}), 1.0f, false);
+	}), Delay, false);
+#endif
 }
 
 void AMcGameMode::RestartPlayer(AController* NewPlayer)

@@ -2,13 +2,11 @@
 #include "McCache.h"
 #include "McChunk.h"
 #include "McRender.h"
+#include "McRenderTextures.h"
+#include "McSkyComponent.h"
 #include "Engine/Texture2DArray.h"
 #include "GameFramework/Actor.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "Misc/FileHelper.h"
-#include "Modules/ModuleManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace McPlayerModel
@@ -293,42 +291,13 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 	bFailed = true;
 
 	const FString Path = McCache::Asset(TEXT("textures/entity/player/wide/steve.png"));
-	TArray<uint8> File;
-	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-	const TSharedPtr<IImageWrapper> Wrapper = ImageModule.CreateImageWrapper(EImageFormat::PNG);
-	TArray64<uint8> Raw;
-	if (!FFileHelper::LoadFileToArray(File, *Path) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
-		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() != McPlayerModel::SkinSize || Wrapper->GetHeight() != McPlayerModel::SkinSize)
+	int32 Width = 0, Height = 0;
+	UTexture2DArray* Array = McRenderTextures::LoadPngAsArray(this, Path, Width, Height);
+	if (!Array || Width != McPlayerModel::SkinSize || Height != McPlayerModel::SkinSize)
 	{
-		UE_LOG(LogMcRender, Error, TEXT("Can't load the player skin %s (a 64x64 png); other players stay invisible"), *Path);
+		UE_LOG(LogMcRender, Error, TEXT("Can't use the player skin %s (a 64x64 png); other players stay invisible"), *Path);
 		return false;
 	}
-
-	// A texture array of one layer, so the block materials can draw it.
-	UTexture2DArray* Array = NewObject<UTexture2DArray>(this, NAME_None, RF_Transient);
-	Array->SetPlatformData(new FTexturePlatformData());
-	FTexturePlatformData* PlatformData = Array->GetPlatformData();
-	PlatformData->SizeX = McPlayerModel::SkinSize;
-	PlatformData->SizeY = McPlayerModel::SkinSize;
-	PlatformData->SetNumSlices(1);
-	PlatformData->PixelFormat = PF_B8G8R8A8;
-	Array->bNotOfflineProcessed = true;
-	FTexture2DMipMap* MipMap = new FTexture2DMipMap(McPlayerModel::SkinSize, McPlayerModel::SkinSize, 1);
-	PlatformData->Mips.Add(MipMap);
-	MipMap->BulkData.Lock(LOCK_READ_WRITE);
-	void* Destination = MipMap->BulkData.Realloc(Raw.Num());
-	FMemory::Memcpy(Destination, Raw.GetData(), Raw.Num());
-	MipMap->BulkData.Unlock();
-	Array->SRGB = true;
-	Array->Filter = TF_Nearest;
-	Array->AddressX = TA_Clamp;
-	Array->AddressY = TA_Clamp;
-	Array->NeverStream = true;
-	Array->LODGroup = TEXTUREGROUP_Pixels2D;
-#if WITH_EDITORONLY_DATA
-	Array->MipGenSettings = TMGS_LeaveExistingMips;
-#endif
-	Array->UpdateResource();
 	Skin = Array;
 
 	UMaterialInterface* Base = BaseMaterial ? BaseMaterial.Get() : nullptr;
@@ -368,6 +337,9 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			State.Tick(Feet, Yaw, Pitch, bSneaking);
 		}
 	}
+
+	// Lit by the sky like the blocks around them.
+	Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 
 	McPlayerModel::FMeshData Data;
 	McPlayerModel::BuildMesh(McPlayerModel::ComputePose(State.Blend(TickAccumulator / 0.05f)), Data);

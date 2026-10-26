@@ -55,6 +55,16 @@ public:
 	// World height of the top block, for spawning players above it.
 	int32 GetSurfaceY() const { return SurfaceY; }
 
+	// The time of day in game ticks (20 a second, 24000 a day; 0 is sunrise, 6000 noon, 12000 sunset, 18000 midnight),
+	// not wrapped: the day count, and with it the moon's phase, is DayTime / 24000. The server counts it and tells
+	// clients once a second, as the game's time packet does; clients run their own clock in between. Fractional,
+	// so the sky moves smoothly between ticks.
+	double GetDayTime() const { return DayTicks; }
+	// -McTime=<ticks> sets where a new world starts (default 1000, the start of the day); -McTimeFreeze stops time.
+	void SetDayTime(double Ticks);
+	bool IsTimeFrozen() const { return bTimeFrozen; }
+	void SetTimeFrozen(bool bFrozen) { bTimeFrozen = bFrozen; }
+
 	// Changes a block, loaded or not. Until saving exists (M9) every change is also kept in memory and
 	// put back whenever its chunk is generated again, so edits survive unloading.
 	void SetBlock(const FIntVector& Pos, FMcStateId State);
@@ -62,6 +72,10 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION()
+	void OnRep_SyncedDayTime();
 
 private:
 	void StreamChunks();
@@ -75,6 +89,14 @@ private:
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;
+
+	// The clock this machine runs: the server's own count, a client's estimate from the last sync.
+	double DayTicks = 1000.0;
+	double TicksSinceSync = 0.0;
+	UPROPERTY(ReplicatedUsing = OnRep_SyncedDayTime)
+	int64 SyncedDayTime = 1000;
+	UPROPERTY(Replicated)
+	bool bTimeFrozen = false;
 
 	// Chunks out on worker threads, and the finished ones coming back.
 	TSet<FIntPoint> InFlight;

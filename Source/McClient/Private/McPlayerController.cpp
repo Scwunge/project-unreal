@@ -17,13 +17,9 @@
 #include "Misc/Parse.h"
 
 #if MC_WITH_RENDER
-#include "Components/DirectionalLightComponent.h"
-#include "Components/SkyAtmosphereComponent.h"
-#include "Components/SkyLightComponent.h"
-#include "Engine/DirectionalLight.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/PostProcessVolume.h"
-#include "Engine/SkyLight.h"
+#include "McSkyComponent.h"
 #include "McWorldRenderComponent.h"
 #endif
 
@@ -216,7 +212,6 @@ void AMcPlayerController::StartDevScreenshot()
 void AMcPlayerController::SpawnEnvironment()
 {
 #if MC_WITH_RENDER
-	// A plain daylight sky to see by. M8 replaces it with Minecraft's sky, sun, moon and fog.
 	UWorld* World = GetWorld();
 
 	// Blocks carry Minecraft's final colours; the filmic tonemapper would brighten and desaturate them.
@@ -239,27 +234,13 @@ void AMcPlayerController::SpawnEnvironment()
 		FParse::Value(FCommandLine::Get(), TEXT("-McExposureBias="), Settings.AutoExposureBias);
 	}
 
-	const FTransform SunTransform(FRotator(-50.0f, 30.0f, 0.0f));
-	if (ADirectionalLight* Sun = World->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), SunTransform))
+	// The sky, sun, moon, stars and fog follow the world's time of day, which the server sets and replicates.
+	UMcSkyComponent* Sky = NewObject<UMcSkyComponent>(WorldActor, TEXT("Sky"));
+	Sky->SetupAttachment(WorldActor->GetRootComponent());
+	Sky->GetTime = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
 	{
-		if (UDirectionalLightComponent* SunLight = Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
-		{
-			SunLight->SetMobility(EComponentMobility::Movable);
-			SunLight->SetAtmosphereSunLight(true);
-		}
-		Sun->FinishSpawning(SunTransform);
-	}
-
-	World->SpawnActor<ASkyAtmosphere>();
-
-	if (ASkyLight* Sky = World->SpawnActorDeferred<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity))
-	{
-		if (USkyLightComponent* SkyLight = Sky->GetLightComponent())
-		{
-			SkyLight->SetMobility(EComponentMobility::Movable);
-			SkyLight->bRealTimeCapture = true;
-		}
-		Sky->FinishSpawning(FTransform::Identity);
-	}
+		return Actor.IsValid() ? Actor->GetDayTime() : 1000.0;
+	};
+	Sky->RegisterComponent();
 #endif
 }

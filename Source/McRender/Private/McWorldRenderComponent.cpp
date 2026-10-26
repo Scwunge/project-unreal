@@ -7,6 +7,7 @@
 #include "McFluidMesher.h"
 #include "McLightEngine.h"
 #include "McRender.h"
+#include "McSkyComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -180,6 +181,15 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// Texture animations run on game time, 20 ticks a second.
 	FMcBlockTextures::Get().Tick(GetWorld()->GetTimeSeconds() * 20.0);
+
+	// The sky's light reaching the blocks follows the time of day; the chunks' stored light does not change.
+	for (UMaterialInterface* Material : PassMaterials)
+	{
+		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))
+		{
+			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		}
+	}
 
 	if (Palette->bFlipWinding != CVarMcFlipWinding.GetValueOnGameThread())
 	{

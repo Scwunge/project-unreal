@@ -9,6 +9,7 @@
 #include "McNoiseGenerator.h"
 #include "McServer.h"
 #include "Misc/CommandLine.h"
+#include "Net/UnrealNetwork.h"
 #include "Tasks/Task.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -24,6 +25,31 @@ AMcWorldActor::AMcWorldActor()
 }
 
 AMcWorldActor::~AMcWorldActor() = default;
+
+void AMcWorldActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AMcWorldActor, SyncedDayTime);
+	DOREPLIFETIME(AMcWorldActor, bTimeFrozen);
+}
+
+void AMcWorldActor::SetDayTime(double Ticks)
+{
+	DayTicks = Ticks;
+	SyncedDayTime = static_cast<int64>(FMath::FloorToDouble(Ticks));
+	TicksSinceSync = 0.0;
+}
+
+void AMcWorldActor::OnRep_SyncedDayTime()
+{
+	// The server's count a moment ago. Small differences are the clocks drifting apart; leave those be so the sky
+	// doesn't twitch, and take the server's word for anything bigger (/time set, a long hitch).
+	const double ServerTicks = static_cast<double>(SyncedDayTime);
+	if (FMath::Abs(DayTicks - ServerTicks) > 4.0)
+	{
+		DayTicks = ServerTicks;
+	}
+}
 
 void AMcWorldActor::BeginPlay()
 {
@@ -53,6 +79,12 @@ void AMcWorldActor::BeginPlay()
 	FString Scene;
 	bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
 	FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
+	double StartTime = DayTicks;
+	if (FParse::Value(CommandLine, TEXT("-McTime="), StartTime))
+	{
+		SetDayTime(StartTime);
+	}
+	bTimeFrozen |= FParse::Param(CommandLine, TEXT("McTimeFreeze"));
 	if (Seed == 0)
 	{
 		Seed = static_cast<int64>(FPlatformTime::Cycles64() ^ (static_cast<uint64>(FDateTime::Now().GetTicks()) << 7));
@@ -110,6 +142,20 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
 void AMcWorldActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// Both sides count: the server for everyone, a client between syncs. The server publishes whole ticks once a
+	// second.
+	if (!bTimeFrozen)
+	{
+		const double Ticks = DeltaSeconds * 20.0;
+		DayTicks += Ticks;
+		TicksSinceSync += Ticks;
+		if (HasAuthority() && TicksSinceSync >= 20.0)
+		{
+			TicksSinceSync = 0.0;
+			SyncedDayTime = static_cast<int64>(FMath::FloorToDouble(DayTicks));
+		}
+	}
 	if (BlockWorld && Generator)
 	{
 		StreamChunks();

@@ -37,6 +37,13 @@ float3 display = saturate(Shade.rgb * c);
 return Tex * pow(display, 2.2);
 """
 
+# The sky's materials. The dome and the stars' squares take their colour from the vertex colour (display space, raised
+# to 2.2 like the blocks'). The additive one draws the sun, the moon and the stars on top of the dome: Solid swaps the
+# texture for white (the stars), Tint scales the result (the stars fading in).
+SKY_ADDITIVE_HLSL = """
+return lerp(Tex, float3(1.0, 1.0, 1.0), Solid) * pow(saturate(Shade.rgb), 2.2) * Tint;
+"""
+
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 mel = unreal.MaterialEditingLibrary
 eal = unreal.EditorAssetLibrary
@@ -166,11 +173,85 @@ def make_block_material(name: str, blend_mode, default_array):
     unreal.log(f"McMaterials: made {name}")
 
 
+def make_sky_materials(default_array):
+    for name in ["M_McSkyDome", "M_McSkyAdditive"]:
+        if eal.does_asset_exist(f"{FOLDER}/{name}"):
+            eal.delete_asset(f"{FOLDER}/{name}")
+
+    # The dome: opaque, drawn from inside.
+    dome = asset_tools.create_asset("M_McSkyDome", FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    dome.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    dome.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    dome.set_editor_property("two_sided", True)
+    vertex_color = mel.create_material_expression(dome, unreal.MaterialExpressionVertexColor, -500, 0)
+    power = mel.create_material_expression(dome, unreal.MaterialExpressionPower, -250, 0)
+    power.set_editor_property("const_exponent", 2.2)
+    mel.connect_material_expressions(vertex_color, "", power, "Base")
+    mel.connect_material_property(power, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.recompile_material(dome)
+    eal.save_loaded_asset(dome)
+    unreal.log("McMaterials: made M_McSkyDome")
+
+    # The sun, moon and stars: added to what is behind them.
+    add = asset_tools.create_asset("M_McSkyAdditive", FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    add.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    add.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+    add.set_editor_property("two_sided", True)
+    uv0 = mel.create_material_expression(add, unreal.MaterialExpressionTextureCoordinate, -900, 0)
+    uv0.set_editor_property("coordinate_index", 0)
+    uv1 = mel.create_material_expression(add, unreal.MaterialExpressionTextureCoordinate, -900, 150)
+    uv1.set_editor_property("coordinate_index", 1)
+    layer = mel.create_material_expression(add, unreal.MaterialExpressionComponentMask, -700, 150)
+    layer.set_editor_property("r", True)
+    layer.set_editor_property("g", False)
+    layer.set_editor_property("b", False)
+    layer.set_editor_property("a", False)
+    mel.connect_material_expressions(uv1, "", layer, "")
+    uvw = mel.create_material_expression(add, unreal.MaterialExpressionAppendVector, -550, 50)
+    mel.connect_material_expressions(uv0, "", uvw, "A")
+    mel.connect_material_expressions(layer, "", uvw, "B")
+    texture = mel.create_material_expression(add, unreal.MaterialExpressionTextureSampleParameter2DArray, -350, 0)
+    texture.set_editor_property("parameter_name", "Blocks")
+    texture.set_editor_property("texture", default_array)
+    texture.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    mel.connect_material_expressions(uvw, "", texture, "UVs")
+    vertex_color = mel.create_material_expression(add, unreal.MaterialExpressionVertexColor, -350, 250)
+    solid = mel.create_material_expression(add, unreal.MaterialExpressionScalarParameter, -350, 450)
+    solid.set_editor_property("parameter_name", "Solid")
+    solid.set_editor_property("default_value", 0.0)
+    tint = mel.create_material_expression(add, unreal.MaterialExpressionVectorParameter, -350, 550)
+    tint.set_editor_property("parameter_name", "Tint")
+    tint.set_editor_property("default_value", unreal.LinearColor(1.0, 1.0, 1.0, 1.0))
+    colour = mel.create_material_expression(add, unreal.MaterialExpressionCustom, -100, 0)
+    colour.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    colour.set_editor_property("description", "McSkyAdditive")
+    inputs = []
+    for input_name in ["Tex", "Shade", "Solid", "Tint"]:
+        custom_input = unreal.CustomInput()
+        custom_input.set_editor_property("input_name", input_name)
+        inputs.append(custom_input)
+    colour.set_editor_property("inputs", inputs)
+    colour.set_editor_property("code", SKY_ADDITIVE_HLSL)
+    mel.connect_material_expressions(texture, "RGB", colour, "Tex")
+    mel.connect_material_expressions(vertex_color, "", colour, "Shade")
+    mel.connect_material_expressions(solid, "", colour, "Solid")
+    mel.connect_material_expressions(tint, "", colour, "Tint")
+    mel.connect_material_property(colour, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.recompile_material(add)
+    eal.save_loaded_asset(add)
+    unreal.log("McMaterials: made M_McSkyAdditive")
+
+
 def main() -> None:
+    if os.environ.get("MC_ONLY_SKY"):
+        # Leaves the block materials (and the placeholder they hold) as they are.
+        make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
+        return
     array = make_placeholder_array()
     make_block_material("M_McBlockOpaque", unreal.BlendMode.BLEND_OPAQUE, array)
     make_block_material("M_McBlockCutout", unreal.BlendMode.BLEND_MASKED, array)
     make_block_material("M_McBlockTranslucent", unreal.BlendMode.BLEND_TRANSLUCENT, array)
+    make_sky_materials(array)
 
 
 main()

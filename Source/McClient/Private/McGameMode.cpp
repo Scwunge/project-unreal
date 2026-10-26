@@ -1,7 +1,8 @@
 #include "McGameMode.h"
 #include "McChunk.h"
 #include "McClient.h"
-#include "McFreeCameraPawn.h"
+#include "McBlockShapes.h"
+#include "McPlayerPawn.h"
 #include "McWorldActor.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -28,7 +29,7 @@
 
 AMcGameMode::AMcGameMode()
 {
-	DefaultPawnClass = AMcFreeCameraPawn::StaticClass();
+	DefaultPawnClass = AMcPlayerPawn::StaticClass();
 }
 
 void AMcGameMode::StartPlay()
@@ -54,6 +55,8 @@ void AMcGameMode::StartPlay()
 	}
 #endif
 
+	FMcBlockShapes::Get().EnsureLoaded();
+
 	// Players that joined before the world existed started at a guessed height; move them above the surface.
 	const FTransform Spawn = GetSpawnTransform();
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -61,6 +64,10 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			Pawn->SetActorLocation(Spawn.GetLocation());
+			if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(Pawn))
+			{
+				Player->SetBlockWorld(WorldActor->GetBlockWorld());
+			}
 		}
 	}
 
@@ -142,7 +149,7 @@ void AMcGameMode::StartDevCapture()
 			const FVector Block(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{
-				if (AMcFreeCameraPawn* Pawn = It->Get() ? Cast<AMcFreeCameraPawn>(It->Get()->GetPawn()) : nullptr)
+				if (AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr)
 				{
 					Pawn->SetView(Block, FCString::Atof(*Parts[3]), FCString::Atof(*Parts[4]));
 				}
@@ -182,6 +189,10 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 	if (NewPlayer && !NewPlayer->IsPendingKillPending())
 	{
 		RestartPlayerAtTransform(NewPlayer, GetSpawnTransform());
+		if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
+		{
+			Player->SetBlockWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+		}
 	}
 }
 

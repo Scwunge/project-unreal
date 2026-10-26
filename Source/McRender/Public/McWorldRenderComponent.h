@@ -8,6 +8,8 @@
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.generated.h"
 
+namespace McFluidMesher { struct FFluidPalette; }
+
 class FMcBlockWorld;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -81,6 +83,7 @@ private:
 
 	TSharedPtr<const FMcRenderPalette> Palette;
 	TSharedPtr<const struct FMcLightPalette> LightPalette;
+	TSharedPtr<const McFluidMesher::FFluidPalette> FluidPalette;
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;

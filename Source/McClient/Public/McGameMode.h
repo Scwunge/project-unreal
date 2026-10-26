@@ -1,4 +1,4 @@
-// M1's game mode: one flat overworld, a free camera, and (outside the dedicated server) the greybox renderer.
+// The game mode: one flat overworld, a walking player, and (outside the dedicated server) the greybox renderer.
 
 #pragma once
 

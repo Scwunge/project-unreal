@@ -4,6 +4,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McFluidMesher.h"
 #include "McLightEngine.h"
 #include "McRender.h"
 #include "Camera/PlayerCameraManager.h"
@@ -116,6 +117,7 @@ void UMcWorldRenderComponent::RebuildPalette()
 		UE_LOG(LogMcRender, Error, TEXT("Block models or textures failed to load; see the McAssets errors above"));
 	}
 	Palette = FMcRenderPalette::Build(FMcBlockRegistry::Get(), Models, Textures, CVarMcFlipWinding.GetValueOnGameThread());
+	FluidPalette = McFluidMesher::BuildPalette(FMcBlockRegistry::Get(), Textures);
 	if (!FMcBlockLight::Get().EnsureLoaded())
 	{
 		UE_LOG(LogMcRender, Error, TEXT("Block light tables failed to load; see the McCore errors above"));
@@ -247,7 +249,7 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 		++InFlight;
 
 		UE::Tasks::Launch(UE_SOURCE_LOCATION,
-			[Results = Results, Palette = Palette.ToSharedRef(), LightPalette = LightPalette.ToSharedRef(), Region = MoveTemp(Region), Sections = MoveTemp(Sections), Pos, Ticket = State.Ticket]() mutable
+			[Results = Results, Palette = Palette.ToSharedRef(), LightPalette = LightPalette.ToSharedRef(), FluidPalette = FluidPalette.ToSharedRef(), Region = MoveTemp(Region), Sections = MoveTemp(Sections), Pos, Ticket = State.Ticket]() mutable
 			{
 				Region.Compute(*LightPalette);
 
@@ -256,7 +258,9 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 				Result->Ticket = Ticket;
 				for (const int32 SectionIndex : Sections)
 				{
-					FMcSectionMesh Mesh = McBlockMesher::Build(FMcSectionSnapshot::FromRegion(Region, SectionIndex), *Palette);
+					const FMcSectionSnapshot Snapshot = FMcSectionSnapshot::FromRegion(Region, SectionIndex);
+					FMcSectionMesh Mesh = McBlockMesher::Build(Snapshot, *Palette);
+					McFluidMesher::Build(Snapshot, *FluidPalette, *Palette, Mesh);
 					if (!Mesh.IsEmpty())
 					{
 						Result->Sections.Add(MoveTemp(Mesh));

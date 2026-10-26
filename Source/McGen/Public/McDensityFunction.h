@@ -70,6 +70,7 @@ public:
 	int32 NumNodes() const { return Nodes.Num(); }
 	int32 NumSlots() const { return SlotCount; }
 	bool HasErrors() const { return bErrors; }
+	uint64 GetSeed() const { return Seed; }
 
 	// Whether a node's value changes with y; columns can share values that don't.
 	bool DependsOnY(int32 Node) const { return (Nodes[Node].Depends & 2) != 0; }

@@ -6,7 +6,9 @@
 //
 // Aquifers fill open space underground with water, lava or air (and barrier stone between them).
 //
-// Still to come (see PLAN.md, M4): carvers, features and structures.
+// Carvers then cut the old tunnel caves and canyons, as the biomes list them.
+//
+// Still to come (see PLAN.md, M4): features and structures.
 
 #pragma once
 
@@ -15,6 +17,7 @@
 #include "McCore.h"
 #include "McAquifer.h"
 #include "McBiomeSource.h"
+#include "McCarver.h"
 #include "McDensityFunction.h"
 #include "McSurfaceRules.h"
 
@@ -64,6 +67,8 @@ public:
 private:
 	FMcClimate SampleClimate(FMcDensityContext& Context) const;
 	void FillBiomes(FMcChunk& Chunk, FMcDensityContext& Context) const;
+	void ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const;
+	void LoadCarvers();
 	void ApplySurface(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, const TArray<int32>& PreliminarySurface, FMcDensityContext& Context) const;
 
 	FMcNoiseSettings Settings;
@@ -72,6 +77,13 @@ private:
 	FMcDensityGraph Graph;
 	FMcSurfaceRules SurfaceRules;
 	FMcAquifer Aquifer;
+	TArray<FMcCarver> Carvers;
+	// Which carvers each biome has, as bits into Carvers, by biome id.
+	TArray<uint32> BiomeCarvers;
+	FMcStateId Bedrock = 0;
+	FMcStateId GrassBlock = 0;
+	FMcStateId Mycelium = 0;
+	FMcStateId Dirt = 0;
 	bool bAquifers = false;
 	bool bSurfaceRules = false;
 	TMap<FString, int32> Router;

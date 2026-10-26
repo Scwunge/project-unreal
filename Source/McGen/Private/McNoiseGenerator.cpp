@@ -102,6 +102,11 @@ FMcNoiseGenerator::FMcNoiseGenerator(const FMcNoiseSettings& InSettings, uint64 
 	Water = Registry.FindDefaultState(TEXT("minecraft:water")).Get(0);
 	Lava = Registry.FindDefaultState(TEXT("minecraft:lava")).Get(0);
 	Air = Registry.FindDefaultState(TEXT("minecraft:air")).Get(0);
+	Bedrock = Registry.FindDefaultState(TEXT("minecraft:bedrock")).Get(0);
+	GrassBlock = Registry.FindDefaultState(TEXT("minecraft:grass_block")).Get(0);
+	Mycelium = Registry.FindDefaultState(TEXT("minecraft:mycelium")).Get(0);
+	Dirt = Registry.FindDefaultState(TEXT("minecraft:dirt")).Get(0);
+	LoadCarvers();
 	const bool bBiomes = Biomes.Load(BiomePreset);
 	bValid = FinalDensity != INDEX_NONE && !Graph.HasErrors() && bBiomes && bRulesLoaded;
 	if (!bValid)
@@ -188,6 +193,7 @@ void FMcNoiseGenerator::Generate(FMcChunk& Chunk) const
 	{
 		ApplySurface(Chunk, Sections, PreliminarySurface, Context);
 	}
+	ApplyCarvers(Chunk, Sections, AquiferContext, AquiferCache);
 	Context.EndChunk();
 
 	for (int32 Index = 0; Index < NumSections; ++Index)
@@ -218,6 +224,111 @@ FMcBiomeId FMcNoiseGenerator::GetBiome(int32 X, int32 Y, int32 Z) const
 	// Biomes are per 4x4x4 cell, sampled at the cell's corner.
 	int32 Hint = INDEX_NONE;
 	return Biomes.Find(SampleClimate(X & ~3, Y & ~3, Z & ~3), Hint);
+}
+
+void FMcNoiseGenerator::LoadCarvers()
+{
+	const FMcBiomeRegistry& Registry = FMcBiomeRegistry::Get();
+	BiomeCarvers.Init(0, Registry.NumBiomes());
+	for (int32 Biome = 0; Biome < Registry.NumBiomes(); ++Biome)
+	{
+		const FString Name = Registry.GetName(static_cast<FMcBiomeId>(Biome)).ToString();
+		const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(McCache::Data(TEXT("worldgen/biome/") + McCache::PathOf(Name) + TEXT(".json")));
+		const TSharedPtr<FJsonValue> List = Json.IsValid() ? Json->TryGetField(TEXT("carvers")) : nullptr;
+		TArray<FString> Ids;
+		if (List.IsValid() && List->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : List->AsArray())
+			{
+				Ids.Add(Entry->AsString());
+			}
+		}
+		else if (List.IsValid() && List->Type == EJson::String)
+		{
+			Ids.Add(List->AsString());
+		}
+		for (const FString& Id : Ids)
+		{
+			const FString Key = McCache::Namespaced(Id);
+			int32 Index = Carvers.IndexOfByPredicate([&Key](const FMcCarver& Carver) { return Carver.GetId() == Key; });
+			if (Index == INDEX_NONE && Carvers.Num() < 32)
+			{
+				FMcCarver Carver;
+				if (Carver.Load(Key, Settings.MinY, Settings.Height))
+				{
+					Index = Carvers.Add(MoveTemp(Carver));
+				}
+			}
+			if (Index != INDEX_NONE)
+			{
+				BiomeCarvers[Biome] |= 1u << Index;
+			}
+		}
+	}
+}
+
+void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const
+{
+	if (Carvers.IsEmpty())
+	{
+		return;
+	}
+	const int32 ChunkX = Chunk.GetPos().X;
+	const int32 ChunkZ = Chunk.GetPos().Y;
+	const int32 ChunkMinY = Chunk.GetMinY();
+	const int32 ChunkMaxY = Chunk.GetMaxY();
+	auto At = [&Sections, ChunkMinY](int32 X, int32 Y, int32 Z) -> FMcStateId&
+	{
+		const int32 LocalY = Y - ChunkMinY;
+		return Sections[LocalY >> 4][((LocalY & 15) << 8) | (Z << 4) | X];
+	};
+	// Start chunks' biomes, looked up once each.
+	TMap<FIntPoint, uint32> SourceCarvers;
+	for (int32 Index = 0; Index < Carvers.Num(); ++Index)
+	{
+		const uint32 Bit = 1u << Index;
+		const auto Allowed = [&](int32 SourceX, int32 SourceZ)
+		{
+			const FIntPoint Key(SourceX, SourceZ);
+			const uint32* Found = SourceCarvers.Find(Key);
+			if (!Found)
+			{
+				const FMcBiomeId Biome = GetBiome(SourceX * 16 + 8, Settings.SeaLevel, SourceZ * 16 + 8);
+				Found = &SourceCarvers.Add(Key, BiomeCarvers.IsValidIndex(Biome) ? BiomeCarvers[Biome] : 0);
+			}
+			return (*Found & Bit) != 0;
+		};
+		const auto CarveBlock = [&](int32 X, int32 Y, int32 Z)
+		{
+			if (Y < ChunkMinY || Y > ChunkMaxY)
+			{
+				return;
+			}
+			FMcStateId& State = At(X, Y, Z);
+			if (State == Air || State == Water || State == Lava || State == Bedrock)
+			{
+				return;
+			}
+			FMcStateId Fill = Y < LavaLevel ? Lava : Air;
+			if (bAquifers)
+			{
+				Fill = Aquifer.Compute(ChunkX * 16 + X, Y, ChunkZ * 16 + Z, 0.0, AquiferContext, AquiferCache);
+				if (Fill == Settings.DefaultBlock)
+				{
+					// An aquifer barrier keeps its stone.
+					return;
+				}
+			}
+			const FMcStateId Old = State;
+			State = Fill;
+			// Carving away the top block brings it down onto the dirt below.
+			if ((Old == GrassBlock || Old == Mycelium) && Y - 1 >= ChunkMinY && At(X, Y - 1, Z) == Dirt)
+			{
+				At(X, Y - 1, Z) = Old;
+			}
+		};
+		Carvers[Index].Carve(ChunkX, ChunkZ, Graph.GetSeed(), Allowed, CarveBlock);
+	}
 }
 
 double FMcNoiseGenerator::GetPreliminarySurface(int32 X, int32 Z) const

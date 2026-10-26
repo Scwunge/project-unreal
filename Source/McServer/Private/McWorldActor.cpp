@@ -2,6 +2,10 @@
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McFlatGenerator.h"
+#include "McBlockShapes.h"
+#include "McBlockTags.h"
+#include "McFeature.h"
+#include "McGenRegion.h"
 #include "McNoiseGenerator.h"
 #include "McServer.h"
 #include "Misc/CommandLine.h"
@@ -80,6 +84,11 @@ void AMcWorldActor::BeginPlay()
 			return;
 		}
 		Generator = Noise;
+		Features = MakeShared<FMcFeatureLibrary>(Settings.SeaLevel, Settings.MinY, Settings.Height);
+		if (!FMcBlockShapes::Get().EnsureLoaded() || !FMcBlockTags::Get().EnsureLoaded() || !Features->LoadBiomes())
+		{
+			UE_LOG(LogMcServer, Warning, TEXT("Some biome features didn't load; those are left out."));
+		}
 		Kind = FString::Printf(TEXT("%s terrain, seed %lld"), *NoiseSettings, Seed);
 	}
 
@@ -124,7 +133,8 @@ void AMcWorldActor::StreamChunks()
 	}
 
 	// Load one ring past the view distance: the renderer only meshes chunks whose neighbours are all loaded.
-	const int32 LoadRadius = ViewDistance + 1;
+	// Decorating needs two more rings generated around that.
+	const int32 LoadRadius = ViewDistance + 1 + (Features ? 2 : 0);
 	// Keep a margin before unloading so flying back and forth over a border doesn't churn.
 	const int32 KeepRadius = ViewDistance + 3;
 
@@ -136,7 +146,7 @@ void AMcWorldActor::StreamChunks()
 			for (int32 DX = -LoadRadius; DX <= LoadRadius; ++DX)
 			{
 				const FIntPoint Pos = Centre + FIntPoint(DX, DZ);
-				if (!BlockWorld->HasChunk(Pos))
+				if (!BlockWorld->HasChunk(Pos) && !Pending.Contains(Pos))
 				{
 					Missing.Add({ DX * DX + DZ * DZ, Pos });
 				}
@@ -146,6 +156,7 @@ void AMcWorldActor::StreamChunks()
 	Missing.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
 
 	AddGeneratedChunks();
+	DecorateChunks();
 
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
@@ -154,7 +165,7 @@ void AMcWorldActor::StreamChunks()
 			break;
 		}
 		// Two players can want the same chunk.
-		if (InFlight.Contains(Entry.Value) || BlockWorld->HasChunk(Entry.Value))
+		if (InFlight.Contains(Entry.Value) || BlockWorld->HasChunk(Entry.Value) || Pending.Contains(Entry.Value))
 		{
 			continue;
 		}
@@ -182,6 +193,19 @@ void AMcWorldActor::StreamChunks()
 	{
 		BlockWorld->RemoveChunk(Pos);
 	}
+	for (auto It = Pending.CreateIterator(); It; ++It)
+	{
+		const FIntPoint Pos = It.Key();
+		const bool bNearAnyone = Centres.ContainsByPredicate([&Pos, KeepRadius](const FIntPoint& Centre)
+		{
+			return FMath::Abs(Pos.X - Centre.X) <= KeepRadius + 2 && FMath::Abs(Pos.Y - Centre.Y) <= KeepRadius + 2;
+		});
+		if (!bNearAnyone)
+		{
+			Decorated.Remove(Pos);
+			It.RemoveCurrent();
+		}
+	}
 }
 
 void AMcWorldActor::AddGeneratedChunks()
@@ -191,10 +215,96 @@ void AMcWorldActor::AddGeneratedChunks()
 	{
 		const FIntPoint Pos = Chunk->GetPos();
 		InFlight.Remove(Pos);
-		if (BlockWorld->HasChunk(Pos))
+		if (BlockWorld->HasChunk(Pos) || Pending.Contains(Pos))
 		{
 			continue;
 		}
+		if (Features)
+		{
+			Pending.Add(Pos, MoveTemp(Chunk));
+			continue;
+		}
+		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos))
+		{
+			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
+			{
+				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
+			}
+		}
+		BlockWorld->AddChunk(MoveTemp(Chunk));
+	}
+}
+
+void AMcWorldActor::DecorateChunks()
+{
+	if (!Features || Pending.IsEmpty())
+	{
+		return;
+	}
+	// The chunks around Pos, row by row from the north-west, and which of them players already have.
+	const auto Gather = [this](FIntPoint Pos, FMcChunk** Out, bool* bLive)
+	{
+		bool bAll = true;
+		for (int32 Index = 0; Index < 9; ++Index)
+		{
+			const FIntPoint At = Pos + FIntPoint(Index % 3 - 1, Index / 3 - 1);
+			const TUniquePtr<FMcChunk>* Waiting = Pending.Find(At);
+			Out[Index] = Waiting ? Waiting->Get() : BlockWorld->FindChunk(At);
+			bLive[Index] = !Waiting && Out[Index];
+			bAll &= Out[Index] != nullptr;
+		}
+		return bAll;
+	};
+
+	const double Deadline = FPlatformTime::Seconds() + 0.006;
+	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
+	{
+		if (FPlatformTime::Seconds() > Deadline)
+		{
+			break;
+		}
+		if (Decorated.Contains(Entry.Key))
+		{
+			continue;
+		}
+		FMcChunk* Around[9];
+		bool bLive[9];
+		if (!Gather(Entry.Key, Around, bLive))
+		{
+			continue;
+		}
+		FMcGenRegion Region(Entry.Key, Around);
+		for (int32 Index = 0; Index < 9; ++Index)
+		{
+			if (bLive[Index])
+			{
+				Region.SetReadOnly(Index);
+			}
+		}
+		Features->Decorate(Region, static_cast<uint64>(Seed));
+		Decorated.Add(Entry.Key);
+	}
+
+	// Decorated chunks whose neighbours are all decorated (or already in the world) are finished.
+	TArray<FIntPoint> Ready;
+	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
+	{
+		bool bDone = Decorated.Contains(Entry.Key);
+		for (int32 Index = 0; Index < 9 && bDone; ++Index)
+		{
+			const FIntPoint At = Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1);
+			bDone = Decorated.Contains(At) || BlockWorld->HasChunk(At);
+		}
+		if (bDone)
+		{
+			Ready.Add(Entry.Key);
+		}
+	}
+	for (const FIntPoint& Pos : Ready)
+	{
+		TUniquePtr<FMcChunk> Chunk = MoveTemp(Pending.FindChecked(Pos));
+		Pending.Remove(Pos);
+		Decorated.Remove(Pos);
 		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos))
 		{
 			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)

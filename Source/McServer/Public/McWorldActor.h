@@ -10,6 +10,8 @@
 #include "McChunkGenerator.h"
 #include "McWorldActor.generated.h"
 
+class FMcFeatureLibrary;
+
 UCLASS()
 class MCSERVER_API AMcWorldActor : public AActor
 {
@@ -64,6 +66,8 @@ protected:
 private:
 	void StreamChunks();
 	void AddGeneratedChunks();
+	// Places features in pending chunks and moves the finished ones into the world, within a time budget.
+	void DecorateChunks();
 
 	// Lives as long as the actor, not just until EndPlay: components (the renderer) end play after the
 	// actor does and still unbind from it then.
@@ -75,6 +79,15 @@ private:
 	// Chunks out on worker threads, and the finished ones coming back.
 	TSet<FIntPoint> InFlight;
 	TSharedPtr<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe> Finished;
+
+	// Noise worlds decorate chunks before players get them. A generated chunk waits here until its 8 neighbours
+	// are generated too, gets its features, and joins the world once its neighbours have theirs (features reach
+	// up to a chunk out, so it's done changing then). Null library for flat worlds, which have no features.
+	// A chunk generated again next to ones already in the world can't add to them, so features crossing that
+	// border are cut until saving (M9) keeps decorated chunks.
+	TSharedPtr<FMcFeatureLibrary> Features;
+	TMap<FIntPoint, TUniquePtr<FMcChunk>> Pending;
+	TSet<FIntPoint> Decorated;
 
 	// Block changes by chunk, keyed by world position.
 	TMap<FIntPoint, TMap<FIntVector, FMcStateId>> Edits;

@@ -87,13 +87,18 @@ bool FMcNoiseParams::Load(const FString& Id, FMcNoiseParams& Out)
 		UE_LOG(LogMcGen, Error, TEXT("Noise %s not found"), *Id);
 		return false;
 	}
+	return Parse(*Json, Out);
+}
+
+bool FMcNoiseParams::Parse(const FJsonObject& Json, FMcNoiseParams& Out)
+{
 	FMcNoiseParams Result;
-	Result.BaseOctave = static_cast<int32>(Json->GetNumberField(TEXT("base_octave")));
-	Result.BaseAmplitude = Json->GetNumberField(TEXT("base_amplitude"));
+	Result.BaseOctave = static_cast<int32>(Json.GetNumberField(TEXT("base_octave")));
+	Result.BaseAmplitude = Json.GetNumberField(TEXT("base_amplitude"));
 	int32 Count = 1;
-	Json->TryGetNumberField(TEXT("octave_count"), Count);
+	Json.TryGetNumberField(TEXT("octave_count"), Count);
 	const TArray<TSharedPtr<FJsonValue>>* Modifiers;
-	if (Json->TryGetArrayField(TEXT("amplitude_modifiers"), Modifiers))
+	if (Json.TryGetArrayField(TEXT("amplitude_modifiers"), Modifiers))
 	{
 		for (const TSharedPtr<FJsonValue>& Value : *Modifiers)
 		{

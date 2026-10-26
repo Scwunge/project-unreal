@@ -3,7 +3,7 @@
 //
 // - Float providers: a number, constant, uniform [min, max), clamped_normal, trapezoid.
 // - Int providers: a number, constant, uniform [min, max], biased_to_bottom, very_biased_to_bottom, clamped,
-//   clamped_normal, weighted_list.
+//   clamped_normal, weighted_list, trapezoid.
 // - Height providers: constant, uniform, biased_to_bottom, very_biased_to_bottom, trapezoid, with vertical
 //   anchors (absolute, above_bottom, below_top).
 //
@@ -32,12 +32,13 @@ struct MCGEN_API FMcFloatProvider
 
 struct MCGEN_API FMcIntProvider
 {
-	enum class EType : uint8 { Constant, Uniform, BiasedToBottom, VeryBiasedToBottom, Clamped, ClampedNormal, WeightedList };
+	enum class EType : uint8 { Constant, Uniform, BiasedToBottom, VeryBiasedToBottom, Clamped, ClampedNormal, WeightedList, Trapezoid };
 	EType Type = EType::Constant;
 	int32 Min = 0;
 	int32 Max = 0;
 	double Mean = 0.0;
 	double Deviation = 0.0;
+	int32 Plateau = 0;
 	TArray<FMcIntProvider> Sources;  // clamped: the one source; weighted_list: the entries
 	TArray<int32> Weights;
 

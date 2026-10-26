@@ -13,6 +13,7 @@
 
 #include "CoreMinimal.h"
 
+class FJsonObject;
 class FMcRandom;
 
 class MCGEN_API FMcImprovedNoise
@@ -43,6 +44,8 @@ struct MCGEN_API FMcNoiseParams
 
 	// Reads worldgen/noise/<name>.json. Id is like "minecraft:ridge".
 	static bool Load(const FString& Id, FMcNoiseParams& Out);
+	// The same fields given inline, e.g. in a block state provider.
+	static bool Parse(const FJsonObject& Json, FMcNoiseParams& Out);
 };
 
 class MCGEN_API FMcNoise

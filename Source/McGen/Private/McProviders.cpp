@@ -154,6 +154,13 @@ bool FMcIntProvider::Parse(const TSharedPtr<FJsonValue>& Json)
 			Weights.Add(Entry->AsObject()->GetIntegerField(TEXT("weight")));
 		}
 	}
+	else if (Kind == TEXT("minecraft:trapezoid"))
+	{
+		Type = EType::Trapezoid;
+		Min = Object->GetIntegerField(TEXT("min"));
+		Max = Object->GetIntegerField(TEXT("max"));
+		Object->TryGetNumberField(TEXT("plateau"), Plateau);
+	}
 	else
 	{
 		UE_LOG(LogMcGen, Error, TEXT("Unknown int provider %s"), *Kind);
@@ -178,6 +185,17 @@ int32 FMcIntProvider::Sample(FMcRandom& Random) const
 		return FMath::Clamp(Sources[0].Sample(Random), Min, Max);
 	case EType::ClampedNormal:
 		return FMath::Clamp(FMath::RoundToInt32(Mean + Random.NextGaussian() * Deviation), Min, Max);
+	case EType::Trapezoid:
+	{
+		// Two uniform draws added: flat across the plateau, sloping down to min and max.
+		const int32 Span = Max - Min;
+		if (Plateau >= Span)
+		{
+			return Between(Random, Min, Max);
+		}
+		const int32 Slope = (Span - Plateau) / 2;
+		return Min + Between(Random, 0, Span - Slope) + Between(Random, 0, Slope);
+	}
 	case EType::WeightedList:
 	{
 		int32 Total = 0;

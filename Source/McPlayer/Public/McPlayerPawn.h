@@ -57,13 +57,20 @@ public:
 	bool IsFlying() const { return bFlying; }
 	const FMcBody& GetBody() const { return Body; }
 
+	// Where the player looks (Minecraft yaw and pitch, degrees) and whether they crouch, for drawing their body on
+	// other machines.
+	float GetLookYaw() const { return McLookYaw; }
+	float GetLookPitch() const { return McLookPitch; }
+	bool IsSneakPosed() const { return bSneakPose; }
+
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	// Where the owning client's player is now, once a tick, in Minecraft block coordinates (feet).
+	// Where the owning client's player is now, once a tick, in Minecraft block coordinates (feet), and where they look.
 	UFUNCTION(Server, Unreliable)
-	void ServerMove(FVector FeetPos, float NewYaw);
+	void ServerMove(FVector FeetPos, float NewYaw, float NewPitch, bool bNewSneaking);
 
 private:
 	void GameTick(const FMcMoveInput& Input);
@@ -89,6 +96,18 @@ private:
 	float TickAccumulator = 0.0f;
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
+
+	// Minecraft's yaw (0 faces south) and pitch (down is positive) as the owner has them; everyone else's copy of
+	// the player is drawn from these.
+	UPROPERTY(Replicated)
+	float McLookYaw = 0.0f;
+	UPROPERTY(Replicated)
+	float McLookPitch = 0.0f;
+	UPROPERTY(Replicated)
+	bool bSneakPose = false;
+
+	// The body drawn for players this machine isn't playing; null on a dedicated server.
+	TWeakObjectPtr<class UMcPlayerModelComponent> Model;
 
 	TOptional<FMcBlockHit> Target;
 	// Seconds until holding a button breaks or places again.

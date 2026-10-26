@@ -9,6 +9,11 @@
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "Net/UnrealNetwork.h"
+
+#if MC_WITH_RENDER
+#include "McPlayerModel.h"
+#endif
 
 namespace
 {
@@ -43,6 +48,20 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// The owning machine moves the player and tells the server; everyone else sees the server's copy.
 	bReplicates = true;
 	SetReplicatingMovement(true);
+
+#if MC_WITH_RENDER
+	// The body other players see. It stays hidden on the machine that plays this pawn.
+	Model = CreateDefaultSubobject<UMcPlayerModelComponent>(TEXT("Body"));
+	Model->SetupAttachment(RootComponent);
+#endif
+}
+
+void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookYaw, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
 }
 
 void AMcPlayerPawn::PossessedBy(AController* NewController)
@@ -146,20 +165,32 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	// survival (M7).
 	if (!HasAuthority())
 	{
-		ServerMove(Body.Position, Yaw);
+		ServerMove(Body.Position, Yaw, Pitch, bSneaking);
 	}
 }
 
-void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw)
+void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, float NewPitch, bool bNewSneaking)
 {
 	Body.Position = FeetPos;
 	LastLocation = McCoords::BlockToUnreal(FeetPos);
 	SetActorLocationAndRotation(LastLocation, FRotator(0.0f, NewYaw, 0.0f));
+	McLookYaw = NewYaw - 90.0f;
+	McLookPitch = -NewPitch;
+	bSneakPose = bNewSneaking;
 }
 
 void AMcPlayerPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+#if MC_WITH_RENDER
+	if (UMcPlayerModelComponent* Figure = Model.Get())
+	{
+		Figure->SetShown(!IsLocallyControlled());
+		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
+	}
+#endif
+
 	if (!IsLocallyControlled())
 	{
 		return;
@@ -192,6 +223,9 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Input.bSprint = Player->IsInputKeyDown(EKeys::LeftControl);
 	}
 	Input.Yaw = Yaw - 90.0f;
+	McLookYaw = Yaw - 90.0f;
+	McLookPitch = -Pitch;
+	bSneakPose = bSneaking;
 
 	TickAccumulator += DeltaSeconds;
 	int32 Ticks = 0;

@@ -13,7 +13,7 @@ struct FMcBlockProperty
 	TArray<FName> Values;  // e.g. "north", "south", "west", "east", in the report's order
 };
 
-struct FMcBlock
+struct MCCORE_API FMcBlock
 {
 	FName Name;                             // e.g. "minecraft:oak_stairs"
 	int32 Index = INDEX_NONE;               // position in the registry, in the report's order

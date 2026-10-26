@@ -1,4 +1,7 @@
 #include "McPlayerPawn.h"
+#include "McBlockPlacement.h"
+#include "McBlockRegistry.h"
+#include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "Camera/CameraComponent.h"
@@ -18,6 +21,9 @@ namespace
 	constexpr int32 DoubleTapTicks = 7;
 	// Never run more than this many ticks in one frame, so a long hitch doesn't freeze the game catching up.
 	constexpr int32 MaxTicksPerFrame = 10;
+	// Holding a button repeats: breaking every 5 ticks (creative), placing every 4.
+	constexpr float BreakRepeatSeconds = 0.25f;
+	constexpr float PlaceRepeatSeconds = 0.2f;
 }
 
 AMcPlayerPawn::AMcPlayerPawn()
@@ -184,7 +190,137 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	const float EyeHeight = FMath::Lerp(PreviousEyeHeight, GetEyeHeight(), Alpha);
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
 
+	UpdateTarget();
+	BreakCooldown -= DeltaSeconds;
+	PlaceCooldown -= DeltaSeconds;
+	if (Player && Player->IsLocalController())
+	{
+		UseBlocks(*Player);
+	}
+
 	ShowPosition();
+}
+
+void AMcPlayerPawn::FillDefaultHotbar()
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	static const TCHAR* const Blocks[HotbarSize] = {
+		TEXT("minecraft:grass_block"), TEXT("minecraft:dirt"), TEXT("minecraft:stone"), TEXT("minecraft:cobblestone"),
+		TEXT("minecraft:oak_planks"), TEXT("minecraft:oak_log"), TEXT("minecraft:glass"), TEXT("minecraft:torch"),
+		TEXT("minecraft:oak_stairs"),
+	};
+	Hotbar.SetNumZeroed(HotbarSize);
+	for (int32 Slot = 0; Slot < HotbarSize; ++Slot)
+	{
+		Hotbar[Slot] = Registry.FindDefaultState(Blocks[Slot]).Get(0);
+	}
+}
+
+void AMcPlayerPawn::UpdateTarget()
+{
+	Target.Reset();
+	if (!BlockWorld)
+	{
+		return;
+	}
+	// Minecraft's look vector: yaw 0 is +z, 90 is -x; positive pitch looks down.
+	const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+	const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+	Target = McRaycast::Trace(*BlockWorld, Eye, Look, bMayFly ? McRaycast::CreativeReach : McRaycast::SurvivalReach);
+}
+
+void AMcPlayerPawn::UseBlocks(APlayerController& Player)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (Hotbar.Num() != HotbarSize && Registry.IsLoaded())
+	{
+		FillDefaultHotbar();
+	}
+
+	// Choose a slot: number keys, or the wheel (down moves right, as in Minecraft).
+	static const FKey NumberKeys[HotbarSize] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+	for (int32 Slot = 0; Slot < HotbarSize; ++Slot)
+	{
+		if (Player.WasInputKeyJustPressed(NumberKeys[Slot]))
+		{
+			SelectedSlot = Slot;
+		}
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollDown))
+	{
+		SelectedSlot = (SelectedSlot + 1) % HotbarSize;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollUp))
+	{
+		SelectedSlot = (SelectedSlot + HotbarSize - 1) % HotbarSize;
+	}
+
+	if (!Target.IsSet() || !SetBlockHandler || Hotbar.Num() != HotbarSize)
+	{
+		return;
+	}
+	const FMcBlockHit Hit = Target.GetValue();
+
+	// Pick block: the targeted block into the hotbar, or select it if it's already there.
+	if (Player.WasInputKeyJustPressed(EKeys::MiddleMouseButton))
+	{
+		FString Name = Registry.GetBlockOf(Hit.State).Name.ToString();
+		Name.ReplaceInline(TEXT("wall_torch"), TEXT("torch"));
+		const FMcStateId Picked = Registry.FindDefaultState(FName(*Name)).Get(Hit.State);
+		const int32 Existing = Hotbar.IndexOfByPredicate([&](FMcStateId State) { return Registry.GetBlockOf(State).Name == Registry.GetBlockOf(Picked).Name && State != 0; });
+		if (Existing != INDEX_NONE)
+		{
+			SelectedSlot = Existing;
+		}
+		else
+		{
+			Hotbar[SelectedSlot] = Picked;
+		}
+	}
+
+	// Break: at once on a click, then again every few ticks while held.
+	const bool bBreakClick = Player.WasInputKeyJustPressed(EKeys::LeftMouseButton);
+	if (bBreakClick || (Player.IsInputKeyDown(EKeys::LeftMouseButton) && BreakCooldown <= 0.0f))
+	{
+		const FMcStateId Air = Registry.FindDefaultState(TEXT("minecraft:air")).Get(0);
+		// Doors and beds go as a whole: the other half with them.
+		const FName Half = Registry.GetPropertyValue(Hit.State, TEXT("half"));
+		const FIntVector Other = Half == TEXT("upper") ? Hit.Block - FIntVector(0, 1, 0) : Half == TEXT("lower") ? Hit.Block + FIntVector(0, 1, 0) : Hit.Block;
+		if (Other != Hit.Block && Registry.GetBlockOf(BlockWorld->GetBlock(Other)).Name == Registry.GetBlockOf(Hit.State).Name)
+		{
+			SetBlockHandler(Other, Air);
+		}
+		SetBlockHandler(Hit.Block, Air);
+		BreakCooldown = BreakRepeatSeconds;
+		return;
+	}
+
+	// Place: the same, every 4 ticks while held.
+	const bool bPlaceClick = Player.WasInputKeyJustPressed(EKeys::RightMouseButton);
+	if ((bPlaceClick || (Player.IsInputKeyDown(EKeys::RightMouseButton) && PlaceCooldown <= 0.0f)) && Hotbar[SelectedSlot] != 0)
+	{
+		PlaceCooldown = PlaceRepeatSeconds;
+		const TArray<FMcPlacedBlock> Placed = McBlockPlacement::GetPlacement(*BlockWorld, Hotbar[SelectedSlot], Hit, Yaw - 90.0f, -Pitch);
+		// Nothing goes where it would trap the player.
+		const FBox Self = Body.GetBox().ExpandBy(-1e-4);
+		for (const FMcPlacedBlock& Block : Placed)
+		{
+			for (const FBox3f& Local : FMcBlockShapes::Get().GetCollision(Block.State))
+			{
+				const FBox Box(FVector(Block.Pos) + FVector(Local.Min), FVector(Block.Pos) + FVector(Local.Max));
+				if (Box.Intersect(Self))
+				{
+					return;
+				}
+			}
+		}
+		for (const FMcPlacedBlock& Block : Placed)
+		{
+			SetBlockHandler(Block.Pos, Block.State);
+		}
+	}
 }
 
 void AMcPlayerPawn::ShowPosition() const

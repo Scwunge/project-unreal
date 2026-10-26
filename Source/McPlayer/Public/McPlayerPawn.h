@@ -1,12 +1,14 @@
 // The player: walks, sprints, sneaks and jumps with Minecraft's movement, and flies like creative mode after a
 // double tap of Space. Movement runs at 20 ticks a second; the camera is drawn between the last two ticks.
-// WASD moves, Space jumps, Shift sneaks, Ctrl sprints.
+// WASD moves, Space jumps, Shift sneaks, Ctrl sprints. The left button breaks blocks, the right places the
+// hotbar's selected block, the middle picks the targeted block; 1-9 and the wheel choose a hotbar slot.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "McPhysics.h"
+#include "McRaycast.h"
 #include "McPlayerPawn.generated.h"
 
 class FMcBlockWorld;
@@ -39,6 +41,18 @@ public:
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
 	void SetView(const FVector& EyePos, float McYaw, float McPitch);
 
+	// Changes blocks for the player. Until the server takes requests (M3's networking), the game mode points
+	// this straight at the world actor.
+	TFunction<void(const FIntVector& Pos, FMcStateId State)> SetBlockHandler;
+
+	static constexpr int32 HotbarSize = 9;
+	// Block states in the hotbar; 0 (air) is an empty slot. Creative-style until items and inventories (M7).
+	TArray<FMcStateId> Hotbar;
+	int32 SelectedSlot = 0;
+
+	// The block under the crosshair, as of the last frame.
+	const TOptional<FMcBlockHit>& GetTarget() const { return Target; }
+
 	bool IsFlying() const { return bFlying; }
 	const FMcBody& GetBody() const { return Body; }
 
@@ -48,6 +62,9 @@ protected:
 
 private:
 	void GameTick(const FMcMoveInput& Input);
+	void UpdateTarget();
+	void UseBlocks(APlayerController& Player);
+	void FillDefaultHotbar();
 	float GetEyeHeight() const;
 	void ShowPosition() const;
 
@@ -67,4 +84,9 @@ private:
 	float TickAccumulator = 0.0f;
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
+
+	TOptional<FMcBlockHit> Target;
+	// Seconds until holding a button breaks or places again.
+	float BreakCooldown = 0.0f;
+	float PlaceCooldown = 0.0f;
 };

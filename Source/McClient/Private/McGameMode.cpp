@@ -24,12 +24,16 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/PostProcessVolume.h"
 #include "Engine/SkyLight.h"
+#include "McHUD.h"
 #include "McWorldRenderComponent.h"
 #endif
 
 AMcGameMode::AMcGameMode()
 {
 	DefaultPawnClass = AMcPlayerPawn::StaticClass();
+#if MC_WITH_RENDER
+	HUDClass = AMcHUD::StaticClass();
+#endif
 }
 
 void AMcGameMode::StartPlay()
@@ -66,7 +70,7 @@ void AMcGameMode::StartPlay()
 			Pawn->SetActorLocation(Spawn.GetLocation());
 			if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(Pawn))
 			{
-				Player->SetBlockWorld(WorldActor->GetBlockWorld());
+				ConnectPlayer(*Player);
 			}
 		}
 	}
@@ -191,9 +195,25 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 		RestartPlayerAtTransform(NewPlayer, GetSpawnTransform());
 		if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
-			Player->SetBlockWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+			ConnectPlayer(*Player);
 		}
 	}
+}
+
+void AMcGameMode::ConnectPlayer(AMcPlayerPawn& Player)
+{
+	if (!WorldActor || !WorldActor->GetBlockWorld())
+	{
+		return;
+	}
+	Player.SetBlockWorld(WorldActor->GetBlockWorld());
+	Player.SetBlockHandler = [WeakWorld = TWeakObjectPtr<AMcWorldActor>(WorldActor)](const FIntVector& Pos, FMcStateId State)
+	{
+		if (AMcWorldActor* World = WeakWorld.Get())
+		{
+			World->SetBlock(Pos, State);
+		}
+	};
 }
 
 FTransform AMcGameMode::GetSpawnTransform() const

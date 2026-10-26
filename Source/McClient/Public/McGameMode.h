@@ -6,6 +6,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "McGameMode.generated.h"
 
+class AMcPlayerPawn;
 class AMcWorldActor;
 
 UCLASS()
@@ -25,6 +26,8 @@ public:
 
 private:
 	FTransform GetSpawnTransform() const;
+	// Gives a player's pawn the world to move through and edit.
+	void ConnectPlayer(AMcPlayerPawn& Player);
 	void SpawnEnvironment();
 
 	// Development: -McCam=x,y,z,yaw,pitch puts the camera at a Minecraft position and angle; -McShot=<png>

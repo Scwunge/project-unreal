@@ -14,6 +14,8 @@ class MCWORLD_API FMcBlockWorld
 {
 public:
 	explicit FMcBlockWorld(const FMcDimensionType& InDimension);
+	// Owns its chunks; also stops MSVC generating a copy for the DLL export, which TUniquePtr can't do.
+	UE_NONCOPYABLE(FMcBlockWorld);
 
 	const FMcDimensionType& GetDimension() const { return Dimension; }
 

@@ -26,6 +26,35 @@ double FMcBiomeSource::FBox::Distance(const double Point[NumAxes]) const
 	return Sum;
 }
 
+bool FMcBiomeSource::LoadEnd()
+{
+	const TCHAR* const Names[5] = { TEXT("minecraft:the_end"), TEXT("minecraft:end_highlands"), TEXT("minecraft:end_midlands"),
+		TEXT("minecraft:small_end_islands"), TEXT("minecraft:end_barrens") };
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		const TOptional<FMcBiomeId> Id = FMcBiomeRegistry::Get().Find(FName(Names[Index]));
+		if (!Id.IsSet())
+		{
+			UE_LOG(LogMcGen, Error, TEXT("The End's biome %s isn't in the registry"), Names[Index]);
+			return false;
+		}
+		EndBiomes[Index] = Id.GetValue();
+	}
+	bEnd = true;
+	return true;
+}
+
+FMcBiomeId FMcBiomeSource::FindEnd(double IslandHeight, int32 BlockX, int32 BlockZ) const
+{
+	const int64 ChunkX = BlockX >> 4;
+	const int64 ChunkZ = BlockZ >> 4;
+	if (ChunkX * ChunkX + ChunkZ * ChunkZ <= 4096)
+	{
+		return EndBiomes[0];
+	}
+	return IslandHeight > 0.25 ? EndBiomes[1] : IslandHeight >= -0.0625 ? EndBiomes[2] : IslandHeight >= -0.21875 ? EndBiomes[3] : EndBiomes[4];
+}
+
 bool FMcBiomeSource::Load(const FString& Preset)
 {
 	const FString Id = McCache::Namespaced(Preset);

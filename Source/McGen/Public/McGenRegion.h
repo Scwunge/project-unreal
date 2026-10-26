@@ -16,6 +16,7 @@
 #include "McCore.h"
 
 class FMcChunk;
+struct FMcBlockEntity;
 
 enum class EMcHeightmap : uint8
 {
@@ -50,6 +51,12 @@ public:
 	FMcStateId GetBlock(const FIntVector& Pos) const;
 	// False (and nothing changes) outside the region, the world's height or a read-only chunk.
 	bool SetBlock(const FIntVector& Pos, FMcStateId State);
+
+	// A block entity (a chest's contents, a spawner's mob) for the block at Pos; replaces any there. False
+	// outside the region, the world's height or a read-only chunk. Set the block first: changing a block to a
+	// different one drops its block entity.
+	bool SetBlockEntity(const FIntVector& Pos, const FMcBlockEntity& Entity);
+	const FMcBlockEntity* GetBlockEntity(const FIntVector& Pos) const;
 
 	// One above the top block that counts; the world's bottom for an empty column or one outside the region.
 	int32 GetHeight(EMcHeightmap Heightmap, int32 X, int32 Z);

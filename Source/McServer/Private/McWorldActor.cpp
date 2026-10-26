@@ -56,6 +56,13 @@ void AMcWorldActor::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Development: -McDimension=minecraft:the_nether or minecraft:the_end.
+	FString DimensionArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McDimension="), DimensionArg))
+	{
+		Dimension = DimensionArg;
+		NoiseSettings = DimensionArg == TEXT("minecraft:the_end") ? TEXT("minecraft:end") : DimensionArg == TEXT("minecraft:the_nether") ? TEXT("minecraft:nether") : TEXT("minecraft:overworld");
+	}
 	FMcDimensionType DimensionType;
 	if (!HasAuthority())
 	{

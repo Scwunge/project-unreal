@@ -117,6 +117,23 @@ bool FMcGenRegion::SetBlock(const FIntVector& Pos, FMcStateId State)
 	return true;
 }
 
+bool FMcGenRegion::SetBlockEntity(const FIntVector& Pos, const FMcBlockEntity& Entity)
+{
+	FMcChunk* Chunk = ChunkAt(Pos.X, Pos.Z);
+	if (!Chunk || Pos.Y < MinY || Pos.Y > MaxY || ReadOnly[((Pos.Z >> 4) - Centre.Y + 1) * 3 + (Pos.X >> 4) - Centre.X + 1])
+	{
+		return false;
+	}
+	Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, Entity);
+	return true;
+}
+
+const FMcBlockEntity* FMcGenRegion::GetBlockEntity(const FIntVector& Pos) const
+{
+	const FMcChunk* Chunk = ChunkAt(Pos.X, Pos.Z);
+	return Chunk && Pos.Y >= MinY && Pos.Y <= MaxY ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+}
+
 int32 FMcGenRegion::GetHeight(EMcHeightmap Heightmap, int32 X, int32 Z)
 {
 	const FMcChunk* Chunk = ChunkAt(X, Z);

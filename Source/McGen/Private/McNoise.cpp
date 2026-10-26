@@ -44,6 +44,55 @@ FMcImprovedNoise::FMcImprovedNoise(FMcRandom& Random)
 	FMemory::Memcpy(Permutation + 256, Permutation, 256);
 }
 
+FMcSimplexNoise::FMcSimplexNoise(FMcRandom& Random)
+{
+	for (int32 Index = 0; Index < 256; ++Index)
+	{
+		Permutation[Index] = static_cast<uint8>(Index);
+	}
+	for (int32 Index = 255; Index > 0; --Index)
+	{
+		Swap(Permutation[Index], Permutation[Random.NextInt(Index + 1)]);
+	}
+	FMemory::Memcpy(Permutation + 256, Permutation, 256);
+}
+
+double FMcSimplexNoise::Sample(double X, double Y) const
+{
+	constexpr double Skew = 0.36602540378443865;     // (sqrt(3) - 1) / 2
+	constexpr double Unskew = 0.21132486540518713;   // (3 - sqrt(3)) / 6
+	constexpr int8 Corners[12][2] = {
+		{ 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 }, { 1, 0 }, { -1, 0 },
+		{ 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { 0, 1 }, { 0, -1 },
+	};
+	const double S = (X + Y) * Skew;
+	const int32 I = FMath::FloorToInt32(X + S);
+	const int32 J = FMath::FloorToInt32(Y + S);
+	const double T = (I + J) * Unskew;
+	const double X0 = X - (I - T);
+	const double Y0 = Y - (J - T);
+	const int32 I1 = X0 > Y0 ? 1 : 0;
+	const int32 J1 = 1 - I1;
+	const double X1 = X0 - I1 + Unskew;
+	const double Y1 = Y0 - J1 + Unskew;
+	const double X2 = X0 - 1.0 + 2.0 * Unskew;
+	const double Y2 = Y0 - 1.0 + 2.0 * Unskew;
+	const int32 II = I & 255;
+	const int32 JJ = J & 255;
+	auto Contribution = [this, &Corners](int32 GI, int32 GJ, double DX, double DY)
+	{
+		double Falloff = 0.5 - DX * DX - DY * DY;
+		if (Falloff < 0.0)
+		{
+			return 0.0;
+		}
+		const int8* G = Corners[Permutation[GI + Permutation[GJ]] % 12];
+		Falloff *= Falloff;
+		return Falloff * Falloff * (G[0] * DX + G[1] * DY);
+	};
+	return 70.0 * (Contribution(II, JJ, X0, Y0) + Contribution(II + I1, JJ + J1, X1, Y1) + Contribution(II + 1, JJ + 1, X2, Y2));
+}
+
 double FMcImprovedNoise::Sample(double X, double Y, double Z) const
 {
 	X += OriginX;

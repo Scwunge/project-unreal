@@ -28,6 +28,8 @@ namespace McProcedural
 		int32 SeaLevel;
 		// One above the top block of the ground at a column (trees don't count), the same from every chunk.
 		TFunction<int32(int32, int32)> Floor;
+		// Seeds the loot tables of this structure's chests (from the start chunk and the world seed).
+		uint64 LootSeed = 0;
 
 		int32 CentreX() const { return Start.X * 16 + 8; }
 		int32 CentreZ() const { return Start.Y * 16 + 8; }

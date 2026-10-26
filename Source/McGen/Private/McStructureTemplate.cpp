@@ -5,6 +5,7 @@
 #include "McCache.h"
 #include "McGen.h"
 #include "McGenRegion.h"
+#include "McLoot.h"
 #include "McRandom.h"
 #include "McStateProvider.h"
 #include "Dom/JsonObject.h"
@@ -796,7 +797,19 @@ int32 FMcStructureTemplate::Place(FMcGenRegion& Region, const FIntVector& Positi
 				continue;
 			}
 		}
-		Placed += Region.SetBlock(Pos, State) ? 1 : 0;
+		if (Region.SetBlock(Pos, State))
+		{
+			++Placed;
+			if (Block.Nbt.IsValid() && !Block.bJigsaw)
+			{
+				// A chest, barrel or spawner: its contents, rolled from this block's own stream.
+				FMcRandom BlockRandom = Random.Fork(Pos.X, Pos.Y, Pos.Z);
+				if (const TOptional<FMcBlockEntity> Entity = McBlockEntities::FromTemplate(*Block.Nbt, FMcBlockRegistry::Get().GetBlockOf(State).Name, BlockRandom))
+				{
+					Region.SetBlockEntity(Pos, *Entity);
+				}
+			}
+		}
 	}
 	return Placed;
 }

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "McBiomeRegistry.h"
+#include "McBlockEntity.h"
 #include "McCore.h"
 #include "McPalettedContainer.h"
 
@@ -73,6 +74,19 @@ public:
 	TConstArrayView<FMcBiomeId> GetBiomes() const { return Biomes; }
 	void LoadBiomes(TConstArrayView<FMcBiomeId> InBiomes);
 
+	// Block entities by position: X and Z local (0 to 15), Y the world height. Changing a block to a different
+	// block (not just another state of it) drops its block entity.
+	const FMcBlockEntity* FindBlockEntity(int32 X, int32 Y, int32 Z) const;
+	FMcBlockEntity* FindBlockEntity(int32 X, int32 Y, int32 Z);
+	// Replaces any there. Ignored outside the chunk's height.
+	void SetBlockEntity(int32 X, int32 Y, int32 Z, FMcBlockEntity Entity);
+	bool RemoveBlockEntity(int32 X, int32 Y, int32 Z);
+	const TMap<FIntVector, FMcBlockEntity>& GetBlockEntities() const { return BlockEntities; }
+	// All of them as bytes (zero entities is 4 bytes), for saving or sending with the chunk; Decode replaces
+	// what the chunk has, and returns false (leaving it empty) if the bytes are damaged.
+	TArray<uint8> EncodeBlockEntities() const;
+	bool DecodeBlockEntities(TConstArrayView<uint8> Bytes);
+
 	// Goes up by one on every change; the renderer compares it to know when to mesh again.
 	uint32 GetRevision() const { return Revision; }
 
@@ -81,5 +95,6 @@ private:
 	int32 MinY;
 	TArray<FMcChunkSection> Sections;
 	TArray<FMcBiomeId> Biomes;
+	TMap<FIntVector, FMcBlockEntity> BlockEntities;
 	uint32 Revision = 0;
 };

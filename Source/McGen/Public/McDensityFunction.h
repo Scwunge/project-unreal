@@ -105,6 +105,7 @@ private:
 	TArray<FMcNoise> Noises;
 	TMap<FString, int32> NoiseIds;
 	TArray<FMcBlendedNoise> BlendedNoises;
+	TArray<FMcSimplexNoise> IslandNoises;
 	TArray<FSpline> Splines;
 	TMap<FString, int32> Named;
 	TSet<FString> Loading;

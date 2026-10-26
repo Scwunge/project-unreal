@@ -107,7 +107,7 @@ FMcNoiseGenerator::FMcNoiseGenerator(const FMcNoiseSettings& InSettings, uint64 
 	Mycelium = Registry.FindDefaultState(TEXT("minecraft:mycelium")).Get(0);
 	Dirt = Registry.FindDefaultState(TEXT("minecraft:dirt")).Get(0);
 	LoadCarvers();
-	const bool bBiomes = Biomes.Load(BiomePreset);
+	const bool bBiomes = (BiomePreset == TEXT("minecraft:the_end") || Settings.Id == TEXT("minecraft:end")) ? Biomes.LoadEnd() : Biomes.Load(BiomePreset);
 	bValid = FinalDensity != INDEX_NONE && !Graph.HasErrors() && bBiomes && bRulesLoaded;
 	if (!bValid)
 	{
@@ -223,7 +223,19 @@ FMcBiomeId FMcNoiseGenerator::GetBiome(int32 X, int32 Y, int32 Z) const
 {
 	// Biomes are per 4x4x4 cell, sampled at the cell's corner.
 	int32 Hint = INDEX_NONE;
+	if (Biomes.IsEnd())
+	{
+		FMcDensityContext Context(Graph);
+		return EndBiomeAt(Context, X, Z);
+	}
 	return Biomes.Find(SampleClimate(X & ~3, Y & ~3, Z & ~3), Hint);
+}
+
+FMcBiomeId FMcNoiseGenerator::EndBiomeAt(FMcDensityContext& Context, int32 X, int32 Z) const
+{
+	// One biome per chunk, from the island function at the chunk's centre.
+	Context.SetPos((X & ~15) + 8, 0, (Z & ~15) + 8);
+	return Biomes.FindEnd(Climate[3] != INDEX_NONE ? Graph.Evaluate(Climate[3], Context) : 0.0, X, Z);
 }
 
 void FMcNoiseGenerator::LoadCarvers()
@@ -348,6 +360,21 @@ void FMcNoiseGenerator::FillBiomes(FMcChunk& Chunk, FMcDensityContext& Context) 
 	const int32 BlockZ = Chunk.GetPos().Y * 16;
 	const int32 Layers = Chunk.NumSections() * 4;
 	int32 Hint = INDEX_NONE;
+	if (Biomes.IsEnd())
+	{
+		const FMcBiomeId Biome = EndBiomeAt(Context, BlockX, BlockZ);
+		for (int32 CellZ = 0; CellZ < 4; ++CellZ)
+		{
+			for (int32 CellX = 0; CellX < 4; ++CellX)
+			{
+				for (int32 Layer = 0; Layer < Layers; ++Layer)
+				{
+					Chunk.SetBiomeCell(CellX, Layer, CellZ, Biome);
+				}
+			}
+		}
+		return;
+	}
 	for (int32 CellZ = 0; CellZ < 4; ++CellZ)
 	{
 		for (int32 CellX = 0; CellX < 4; ++CellX)

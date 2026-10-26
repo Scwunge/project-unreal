@@ -61,6 +61,43 @@ namespace
 		return static_cast<uint8>(1 << Axis);
 	}
 
+	// The outer islands of the End as a density, in the units of 8 blocks (minecraft.wiki, "The End"): beyond
+	// 1024 blocks from the origin, wherever a simplex noise sampled once per 16x16 blocks dips under -0.9
+	// there's an island, round and with a size from the cell's position (a bigger size is a smaller island).
+	// Each island contributes 100 minus its distance times its size, clamped to -100..80, and the density is
+	// the highest of them, less 8, over 128.
+	double EndIslandDensity(const FMcSimplexNoise& Noise, int32 BlockX, int32 BlockZ)
+	{
+		const int32 X = FMath::FloorToInt32(BlockX / 8.0);
+		const int32 Z = FMath::FloorToInt32(BlockZ / 8.0);
+		const int32 CellX = X >> 1;
+		const int32 CellZ = Z >> 1;
+		const int32 LimitX = FMath::Abs(CellX) + 12;
+		const int32 LimitZ = FMath::Abs(CellZ) + 12;
+		double Height = -100.0;
+		// The centre of the map holds no islands within reach.
+		if (LimitX * LimitX + LimitZ * LimitZ > 4096)
+		{
+			for (int32 J = -12; J <= 12; ++J)
+			{
+				for (int32 I = -12; I <= 12; ++I)
+				{
+					const int32 IslandX = CellX + I;
+					const int32 IslandZ = CellZ + J;
+					if (IslandX * IslandX + IslandZ * IslandZ <= 4096 || Noise.Sample(IslandX, IslandZ) >= -0.9)
+					{
+						continue;
+					}
+					const int32 Size = (FMath::Abs(IslandX) * 3439 + FMath::Abs(IslandZ) * 147) % 13 + 9;
+					const double DX = (X & 1) - I * 2;
+					const double DZ = (Z & 1) - J * 2;
+					Height = FMath::Max(Height, FMath::Clamp(100.0 - FMath::Sqrt(DX * DX + DZ * DZ) * Size, -100.0, 80.0));
+				}
+			}
+		}
+		return (Height - 8.0) / 128.0;
+	}
+
 	int32 FloorDiv(int32 Value, int32 Divisor)
 	{
 		return FMath::FloorToInt32(static_cast<double>(Value) / Divisor);
@@ -390,9 +427,12 @@ int32 FMcDensityGraph::ParseObject(const FJsonObject& Json)
 	}
 
 	case EMcDensityOp::EndIslands:
-		Node.P[0] = -0.84375;
-		Node.Op = EMcDensityOp::Constant;
+	{
+		FMcRandom Random = FMcRandom(Seed).Fork(TEXT("minecraft:end_islands"));
+		Node.Resource = IslandNoises.Emplace(Random);
+		Node.Depends = DependsX | DependsZ;
 		break;
+	}
 
 	default:
 		break;
@@ -632,6 +672,8 @@ double FMcDensityGraph::EvaluateUncached(const FMcDensityNode& Node, FMcDensityC
 		return Node.Resource == INDEX_NONE ? 0.0 : Noises[Node.Resource].Sample(Context.X * 0.25, Context.Y * 0.25, Context.Z * 0.25) * 4.0;
 	case EMcDensityOp::BlendedNoise:
 		return BlendedNoises[Node.Resource].Sample(Context.X, Context.Y, Context.Z);
+	case EMcDensityOp::EndIslands:
+		return EndIslandDensity(IslandNoises[Node.Resource], Context.X, Context.Z);
 	case EMcDensityOp::Spline:
 		return EvaluateSpline(Node.Resource, Context);
 	case EMcDensityOp::Cache:

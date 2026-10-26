@@ -24,6 +24,14 @@ public:
 	// registry loaded.
 	bool Load(const FString& Preset);
 
+	// The End's biomes come from code rather than a parameter list (there is none in the jar): the central
+	// island out to 64 chunks, beyond it highlands, midlands, small islands or barrens by the island
+	// function's height there (the router's erosion). Switches this source to that.
+	bool LoadEnd();
+	bool IsEnd() const { return bEnd; }
+	// The biome of the chunk holding the block, given the island density sampled at the chunk's centre.
+	FMcBiomeId FindEnd(double IslandHeight, int32 BlockX, int32 BlockZ) const;
+
 	int32 NumEntries() const { return Entries.Num(); }
 
 	// The nearest biome. Hint is the entry found last time (start with INDEX_NONE); neighbouring cells
@@ -60,4 +68,7 @@ private:
 	TArray<FEntry> Entries;
 	TArray<FNode> Nodes;
 	int32 Root = INDEX_NONE;
+	bool bEnd = false;
+	// The End's biomes: the_end, end_highlands, end_midlands, small_end_islands, end_barrens.
+	FMcBiomeId EndBiomes[5] = {};
 };

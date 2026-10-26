@@ -329,17 +329,19 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 		EScene Scene;
 		int32 MinChanged;
 		const TCHAR* Marker;
+		// What it must hold: a spawner's mob or a chest's loot table (empty for neither).
+		const TCHAR* Entity;
 	};
 	const FCase Cases[] = {
-		{ TEXT("minecraft:mineshaft"), EScene::Land, 800, TEXT("minecraft:oak_planks") },
-		{ TEXT("minecraft:mineshaft_mesa"), EScene::Land, 800, TEXT("minecraft:dark_oak_planks") },
-		{ TEXT("minecraft:stronghold"), EScene::Land, 800, TEXT("minecraft:stone_bricks") },
-		{ TEXT("minecraft:monument"), EScene::Sea, 5000, TEXT("minecraft:prismarine_bricks") },
-		{ TEXT("minecraft:fortress"), EScene::Land, 800, TEXT("minecraft:nether_bricks") },
-		{ TEXT("minecraft:mansion"), EScene::Land, 3000, TEXT("minecraft:dark_oak_planks") },
-		{ TEXT("minecraft:end_city"), EScene::Land, 1000, TEXT("minecraft:purpur_block") },
-		{ TEXT("minecraft:nether_fossil"), EScene::Land, 10, TEXT("minecraft:bone_block") },
-		{ TEXT("minecraft:trial_chambers"), EScene::Land, 3000, nullptr },
+		{ TEXT("minecraft:mineshaft"), EScene::Land, 800, TEXT("minecraft:oak_planks"), TEXT("") },
+		{ TEXT("minecraft:mineshaft_mesa"), EScene::Land, 800, TEXT("minecraft:dark_oak_planks"), TEXT("") },
+		{ TEXT("minecraft:stronghold"), EScene::Land, 800, TEXT("minecraft:stone_bricks"), TEXT("minecraft:silverfish") },
+		{ TEXT("minecraft:monument"), EScene::Sea, 5000, TEXT("minecraft:prismarine_bricks"), TEXT("") },
+		{ TEXT("minecraft:fortress"), EScene::Land, 800, TEXT("minecraft:nether_bricks"), TEXT("") },
+		{ TEXT("minecraft:mansion"), EScene::Land, 3000, TEXT("minecraft:dark_oak_planks"), TEXT("minecraft:chests/woodland_mansion") },
+		{ TEXT("minecraft:end_city"), EScene::Land, 1000, TEXT("minecraft:purpur_block"), TEXT("") },
+		{ TEXT("minecraft:nether_fossil"), EScene::Land, 10, TEXT("minecraft:bone_block"), TEXT("") },
+		{ TEXT("minecraft:trial_chambers"), EScene::Land, 3000, nullptr, TEXT("") },
 	};
 	const FIntPoint Start(7, 7);
 	constexpr int32 Size = 15;
@@ -350,6 +352,7 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 		int32 BestChanged = 0;
 		bool bMarker = Case.Marker == nullptr;
 		TSet<FString> AllNames;
+		TSet<FString> Entities;
 		for (const int32 Seed : { 1, 2, 3 })
 		{
 			FScene Forward(Settings, Case.Scene, Size, FIntPoint(0, 0));
@@ -401,12 +404,43 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 				}
 			}
 			TestTrue(FString::Printf(TEXT("%s: the chunks agree block for block (seed %d)"), Case.Id, Seed), bSame);
+			// The block entities too: the same ones in the same places, whichever chunk drew them.
+			int32 NumEntities = 0;
+			bool bSameEntities = true;
+			for (int32 Index = 0; Index < Forward.Chunks.Num(); ++Index)
+			{
+				const TMap<FIntVector, FMcBlockEntity>& Mine = Forward.Chunks[Index]->GetBlockEntities();
+				const TMap<FIntVector, FMcBlockEntity>& Theirs = Backward.Chunks[Index]->GetBlockEntities();
+				bSameEntities &= Mine.Num() == Theirs.Num();
+				for (const TPair<FIntVector, FMcBlockEntity>& Entry : Mine)
+				{
+					++NumEntities;
+					const FMcBlockEntity* Other = Theirs.Find(Entry.Key);
+					bSameEntities &= Other && *Other == Entry.Value;
+					Entities.Add(Entry.Value.Kind == EMcBlockEntityKind::Spawner ? Entry.Value.EntityId.ToString() : Entry.Value.LootTable.ToString());
+					if (Entry.Value.Kind == EMcBlockEntityKind::Container && !Entry.Value.LootTable.IsNone())
+					{
+						bool bAny = false;
+						for (const FMcItemStack& Slot : Entry.Value.Slots)
+						{
+							bAny |= !Slot.IsEmpty();
+						}
+						TestTrue(FString::Printf(TEXT("%s: the chest rolled from %s holds something"), Case.Id, *Entry.Value.LootTable.ToString()), bAny);
+					}
+				}
+			}
+			TestTrue(FString::Printf(TEXT("%s: the block entities agree too (seed %d, %d of them)"), Case.Id, Seed, NumEntities), bSameEntities);
 			BestChanged = FMath::Max(BestChanged, Changed);
 			AllNames.Append(Names);
 			bMarker = bMarker || Names.Contains(Case.Marker);
 		}
 		TestTrue(FString::Printf(TEXT("%s changes enough blocks (best %d)"), Case.Id, BestChanged), BestChanged >= Case.MinChanged);
 		TestTrue(FString::Printf(TEXT("%s puts down its marker block"), Case.Id), bMarker);
+		if (*Case.Entity)
+		{
+			TestTrue(FString::Printf(TEXT("%s holds %s"), Case.Id, Case.Entity), Entities.Contains(Case.Entity));
+		}
+		AddInfo(FString::Printf(TEXT("%s: block entities: %s"), Case.Id, *FString::Join(Entities.Array(), TEXT(" "))));
 		TArray<FString> Sorted = AllNames.Array();
 		Sorted.Sort();
 		AddInfo(FString::Printf(TEXT("%s: best %d blocks changed; blocks: %s"), Case.Id, BestChanged, *FString::Join(Sorted, TEXT(" ")).Left(400)));

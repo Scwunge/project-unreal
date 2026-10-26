@@ -1266,6 +1266,7 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 	{
 		McProcedural::FEnv Env{ Region, Start, Context.ClipMin, Context.ClipMax, MinY, Region.GetMaxY(), SeaLevel,
 			[this, &Context](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : Context.Ground.Floor(X, Z); } };
+		Env.LootSeed = Random.Fork(TEXT("loot")).NextLong();
 		if (Type == TEXT("mineshaft"))
 		{
 			McProcedural::BuildMineshaft(Env, Random, Structure.Variant == TEXT("mesa"));

@@ -1,7 +1,9 @@
 #include "McProceduralStructures.h"
+#include "McBlockEntity.h"
 #include "McBlockRegistry.h"
 #include "McGen.h"
 #include "McGenRegion.h"
+#include "McLoot.h"
 #include "McRandom.h"
 #include "McStructureTemplate.h"
 
@@ -148,6 +150,30 @@ namespace
 		{
 			FillWith(F, U0, Y0, V0, U1, Y1, V1, [State](int32, int32, int32) { return State; }, Mode);
 		}
+
+		// A mob spawner and the mob it spawns.
+		void Spawner(const FFrame& F, int32 U, int32 Y, int32 V, const TCHAR* Mob)
+		{
+			Put(F, U, Y, V, S(TEXT("minecraft:spawner")));
+			const FIntVector P = F.W(U, Y, V);
+			if (P.X >= Env.ClipMin.X && P.X <= Env.ClipMax.X && P.Z >= Env.ClipMin.Y && P.Z <= Env.ClipMax.Y)
+			{
+				Env.Region.SetBlockEntity(P, FMcBlockEntity::MakeSpawner(FName(Mob)));
+			}
+		}
+
+		// A chest facing Facing (as the piece is drawn, north up the screen), filled from a loot table. Its seed
+		// comes from the structure's and the chest's position, so every chunk sees the same contents.
+		void Chest(const FFrame& F, int32 U, int32 Y, int32 V, const TCHAR* Facing, const TCHAR* Table)
+		{
+			Put(F, U, Y, V, S(*FString::Printf(TEXT("minecraft:chest[facing=%s]"), Facing)));
+			const FIntVector P = F.W(U, Y, V);
+			if (P.X >= Env.ClipMin.X && P.X <= Env.ClipMax.X && P.Z >= Env.ClipMin.Y && P.Z <= Env.ClipMax.Y)
+			{
+				FMcRandom Random = FMcRandom(Env.LootSeed).Fork(P.X, P.Y, P.Z);
+				Env.Region.SetBlockEntity(P, McBlockEntities::MakeLootContainer(FName("minecraft:chest"), Table, Random));
+			}
+		}
 	};
 
 	FFrame North(int32 X, int32 Y, int32 Z) { return FFrame{ FIntVector(X, Y, Z), 0 }; }
@@ -245,7 +271,7 @@ namespace
 			if (bSpawner)
 			{
 				D.Fill(F, -1, 0, Length / 2 - 1, 1, 2, Length / 2 + 1, Web, EMode::IfOpen);
-				D.Put(F, 0, 0, Length / 2, Spawner);
+				D.Spawner(F, 0, 0, Length / 2, TEXT("minecraft:cave_spider"));
 			}
 			const FFrame End = F.Child(0, Length, 0);
 			if (Next < 45)
@@ -424,6 +450,10 @@ namespace
 			Hull(F, -1, 0, 1, 4, 2);
 			Door(F);
 			D.Put(F, -1, 2, 2, Torch);
+			if (Hash(F.Origin.X, F.Origin.Y, F.Origin.Z, 21) % 7 == 0)
+			{
+				D.Chest(F, 1, 0, 3, TEXT("west"), TEXT("minecraft:chests/stronghold_corridor"));
+			}
 			const FFrame End = F.Child(0, 6, 0);
 			if (Next < 45)
 			{
@@ -471,6 +501,10 @@ namespace
 			++Count;
 			Hull(F, -5, 0, 5, 10, 5);
 			Door(F);
+			if (Variant == 5)
+			{
+				D.Chest(F, -4, 0, 9, TEXT("south"), TEXT("minecraft:chests/stronghold_crossing"));
+			}
 			if (Variant < 4)
 			{
 				// A fountain: a basin of bricks with water in it.
@@ -536,6 +570,7 @@ namespace
 			D.Fill(F, 4, 5, 1, 4, 5, 12, Fence);
 			D.Fill(F, 0, 6, 6, 0, 8, 6, Fence);
 			D.Put(F, 0, 5, 6, D.S(TEXT("minecraft:torch")));
+			D.Chest(F, 5, 5, 2, TEXT("west"), TEXT("minecraft:chests/stronghold_library"));
 		}
 
 		// A spiral staircase of full steps in the middle of a small chamber.
@@ -588,7 +623,7 @@ namespace
 				const bool bEye = Hash(Centre.X, Spot.U, Spot.V, 11) % 10 == 0;
 				D.Put(F, Spot.U, 0, Spot.V, D.S(*FString::Printf(TEXT("minecraft:end_portal_frame[eye=%s,facing=%s]"), bEye ? TEXT("true") : TEXT("false"), Spot.Facing)));
 			}
-			D.Put(F, 0, -1, 10, D.S(TEXT("minecraft:spawner")));
+			D.Spawner(F, 0, -1, 10, TEXT("minecraft:silverfish"));
 			for (const int32 V : { 3, 13 })
 			{
 				D.Put(F, -5, 4, V, D.S(TEXT("minecraft:wall_torch[facing=east]")));
@@ -859,6 +894,10 @@ namespace
 			D.Fill(F, -1, 0, Length - 1, 1, 2, Length - 1, Air, EMode::Carve);
 			Support(F, -2, Length / 2);
 			Support(F, 2, Length / 2);
+			if (Hash(F.Origin.X, F.Origin.Y, F.Origin.Z, 33) % 4 == 0)
+			{
+				D.Chest(F, 2, 0, 1, TEXT("west"), TEXT("minecraft:chests/nether_bridge"));
+			}
 			const FFrame End = F.Child(0, Length, 0);
 			if (Pick < 45)
 			{
@@ -897,7 +936,7 @@ namespace
 				D.Fill(F, -2, 0, 5, 2, 0, 9, D.S(TEXT("minecraft:nether_bricks")));
 				D.Fill(F, -2, 1, 5, 2, 1, 9, Fence);
 				D.Fill(F, -1, 1, 6, 1, 1, 8, Air, EMode::Carve);
-				D.Put(F, 0, 1, 7, D.S(TEXT("minecraft:spawner")));
+				D.Spawner(F, 0, 1, 7, TEXT("minecraft:blaze"));
 			}
 			else
 			{
@@ -1076,6 +1115,7 @@ namespace
 		// A ladder up from the first room.
 		D.Fill(Base, 2, Storey, -(Depth - 2), 2, Storey, -(Depth - 2), Air, EMode::Carve);
 		D.Fill(Base, 2, 1, -(Depth - 2), 2, Storey + 3, -(Depth - 2), D.S(TEXT("minecraft:ladder[facing=north]")));
+		D.Chest(Base, 4, 1, -(Depth - 2), TEXT("north"), TEXT("minecraft:chests/woodland_mansion"));
 		// The roof: stepped dark oak, a slab on the ridge.
 		const int32 HalfX = (Width - 1) / 2;
 		for (int32 Layer = 0; Layer <= HalfX; ++Layer)

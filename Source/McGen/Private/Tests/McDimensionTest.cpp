@@ -23,9 +23,6 @@ bool FMcDimensionTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:nether"), TEXT("minecraft:nether") },
 		{ TEXT("minecraft:end"), TEXT("minecraft:the_end") },
 	};
-	// The end's missing biome list and stub density functions log these while it loads (see the warning below).
-	AddExpectedError(TEXT("the_end.json"), EAutomationExpectedErrorFlags::Contains, 0);
-	AddExpectedError(TEXT("density functions didn't all load"), EAutomationExpectedErrorFlags::Contains, 0);
 	for (const auto& Dimension : Dimensions)
 	{
 		FMcNoiseSettings Settings;
@@ -37,7 +34,7 @@ bool FMcDimensionTest::RunTest(const FString& Parameters)
 		const FMcNoiseGenerator Generator(Settings, 7, Dimension.Preset);
 		if (!Generator.IsValid())
 		{
-			AddWarning(FString::Printf(TEXT("%s: the noise generator isn't valid (the end has no multi noise biome list in the jar, and its island density function is a stub)"), Dimension.Settings));
+			AddError(FString::Printf(TEXT("%s: the noise generator isn't valid"), Dimension.Settings));
 			continue;
 		}
 		TArray<TUniquePtr<FMcChunk>> Chunks;
@@ -76,7 +73,7 @@ bool FMcDimensionTest::RunTest(const FString& Parameters)
 			}
 		}
 		AddInfo(FString::Printf(TEXT("%s: top blocks in 25 chunks:%s"), Dimension.Settings, *Top));
-		TestTrue(FString::Printf(TEXT("%s makes terrain"), Dimension.Settings), Counts.Num() > 1);
+		TestTrue(FString::Printf(TEXT("%s makes terrain"), Dimension.Settings), Counts.Num() > (FString(Dimension.Preset) == TEXT("minecraft:the_end") ? 0 : 1));
 
 		// Decoration.
 		FMcFeatureLibrary Features(Settings.SeaLevel, Settings.MinY, Settings.Height);
@@ -89,6 +86,31 @@ bool FMcDimensionTest::RunTest(const FString& Parameters)
 		FMcGenRegion Region(FIntPoint(0, 0), Around);
 		Features.Decorate(Region, 7);
 		AddInfo(FString::Printf(TEXT("%s: decorated"), Dimension.Settings));
+
+		if (FString(Dimension.Preset) == TEXT("minecraft:the_end"))
+		{
+			// The central island is end stone around the origin and the biome there is the_end.
+			TestEqual(TEXT("the origin is in the_end"), FMcBiomeRegistry::Get().GetName(Generator.GetBiome(0, 64, 0)), FName(TEXT("minecraft:the_end")));
+			TestTrue(TEXT("the central island has a surface"), Generator.FindSurfaceY(0, 0) > 40);
+			// Outer islands: scan the island function out to 3000 blocks for ground and for each outer biome.
+			const int32 Erosion = Generator.GetRouterFunction(TEXT("erosion"));
+			FMcDensityContext Context(Generator.GetGraph());
+			double Highest = -1.0;
+			TSet<FName> Biomes;
+			for (int32 Z = -3000; Z <= 3000; Z += 16)
+			{
+				for (int32 X = 1100; X <= 3000; X += 16)
+				{
+					Context.SetPos(X, 0, Z);
+					Highest = FMath::Max(Highest, Generator.GetGraph().Evaluate(Erosion, Context));
+					Biomes.Add(FMcBiomeRegistry::Get().GetName(Generator.GetBiome(X, 64, Z)));
+				}
+			}
+			TestTrue(TEXT("outer islands exist"), Highest > 0.0);
+			TestTrue(TEXT("outer biomes include end_highlands"), Biomes.Contains(FName(TEXT("minecraft:end_highlands"))));
+			TestTrue(TEXT("outer biomes include end_barrens"), Biomes.Contains(FName(TEXT("minecraft:end_barrens"))));
+			AddInfo(FString::Printf(TEXT("the end: highest island density %.3f, %d biomes out there"), Highest, Biomes.Num()));
+		}
 	}
 	return true;
 }

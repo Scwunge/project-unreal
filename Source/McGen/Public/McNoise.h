@@ -35,6 +35,20 @@ private:
 	double OriginZ = 0.0;
 };
 
+// Simplex noise in two dimensions (the public algorithm by Perlin and Gustavson): a shuffled permutation
+// table and twelve gradients on a skewed grid. Roughly -1..1. The End's outer islands sit where it dips
+// below -0.9.
+class MCGEN_API FMcSimplexNoise
+{
+public:
+	explicit FMcSimplexNoise(FMcRandom& Random);
+
+	double Sample(double X, double Y) const;
+
+private:
+	uint8 Permutation[512];
+};
+
 struct MCGEN_API FMcNoiseParams
 {
 	int32 BaseOctave = 0;

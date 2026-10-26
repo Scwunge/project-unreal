@@ -66,6 +66,7 @@ public:
 
 private:
 	FMcClimate SampleClimate(FMcDensityContext& Context) const;
+	FMcBiomeId EndBiomeAt(FMcDensityContext& Context, int32 X, int32 Z) const;
 	void FillBiomes(FMcChunk& Chunk, FMcDensityContext& Context) const;
 	void ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const;
 	void LoadCarvers();

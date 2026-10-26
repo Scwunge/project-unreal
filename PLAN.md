@@ -1,8 +1,23 @@
 # Minecraft in Unreal: its own game, playing like Java Edition 26.3
 
-Status: **M0 in progress.** Rewritten 2026-10-24, when the project changed from "an Unreal client for the
+Status: **M0 waiting on Unreal 5.8; M1 code written, never compiled** (2026-10-26, branch
+`m1/blocks-and-chunks`). Rewritten 2026-10-24, when the project changed from "an Unreal client for the
 vanilla server" to "its own game". The repo has the module scaffold (`McClient.uproject`, `Source/`), not yet
 opened in Unreal, and `tools/fetch_cache.py`, which has filled `cache/`.
+
+**M1 as written** (see section 4): `FMcBlockRegistry` (McCore) reads `blocks.json` and the `#minecraft:air`
+tag; `FMcPalettedContainer`, `FMcChunk` and `FMcBlockWorld` (McWorld) store chunks sized from
+`dimension_type`; `FMcFlatGenerator` (McGen) fills them from a `flat_level_generator_preset`;
+`AMcWorldActor` (McServer) loads chunks around players and unloads the rest; `UMcWorldRenderComponent`
+(McRender) meshes chunks on UE Tasks into flat-coloured cubes with Minecraft's per-face shading;
+`AMcFreeCameraPawn` (McPlayer) flies like spectator mode; `AMcGameMode` (McClient) wires them up. Automation
+tests: `McClient.McCore.BlockRegistry`, `McClient.McWorld.PalettedContainer`. On first build, check:
+
+- Faces draw from outside. If the world looks inside out, `mc.Render.FlipWinding 1` and fix the default.
+- The greybox uses `/Engine/EngineDebugMaterials/VertexColorMaterial`; packaged builds need it cooked or
+  a project material in its place.
+- M1 uses Unreal's ProceduralMeshComponent instead of RealtimeMeshComponent, to avoid adding a plugin before
+  the first build. Switch when M2 needs separate passes.
 
 Private project, not for release. The repo holds only our own code. Everything of Mojang's (textures,
 models, sounds, data) is read from your own installed copy into a local cache that git ignores.

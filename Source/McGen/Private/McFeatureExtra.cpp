@@ -966,4 +966,5 @@ void McRegisterExtraFeatures()
 		Result->Trunk = FMcStateProvider::Parse(Json.TryGetField(TEXT("trunk_provider")));
 		return Result->Trunk.IsValid() && Result->Length.Parse(Json.TryGetField(TEXT("log_length"))) ? Result : TSharedPtr<FFallenTree>();
 	});
+	McRegisterTemplateFeatures();
 }

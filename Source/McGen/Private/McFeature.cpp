@@ -1,4 +1,5 @@
 #include "McFeature.h"
+#include "McStructures.h"
 #include "Dom/JsonObject.h"
 #include "McBlockPredicate.h"
 #include "McBlockRegistry.h"
@@ -676,6 +677,11 @@ bool FMcFeatureLibrary::LoadBiomes()
 			}
 		}
 	}
+	Structures = MakeShared<FMcStructureLibrary>(SeaLevel, MinY);
+	if (!Structures->Load())
+	{
+		UE_LOG(LogMcGen, Warning, TEXT("No structures loaded"));
+	}
 	return bOk;
 }
 
@@ -709,6 +715,12 @@ void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 				}
 			}
 		}
+	}
+
+	// Structures first, like the game's structure stage before the feature steps.
+	if (Structures.IsValid())
+	{
+		Structures->Place(Region, Seed);
 	}
 
 	const FMcRandom Base = FMcRandom(Seed).Fork(TEXT("decoration"));

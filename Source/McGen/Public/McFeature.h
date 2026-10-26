@@ -21,6 +21,7 @@ class FMcGenRegion;
 class FMcPlacedFeature;
 class FMcNoise;
 class FMcRandom;
+class FMcStructureLibrary;
 
 // Everything a feature may use while placing.
 struct FMcFeatureContext
@@ -117,6 +118,8 @@ private:
 	TMap<const FMcPlacedFeature*, TBitArray<>> Biomes;
 	TArray<float> Temperatures;
 	TSharedPtr<FMcNoise> InfoNoise;
+	// The structures placed before the features of a chunk (loaded with the biomes).
+	TSharedPtr<FMcStructureLibrary> Structures;
 };
 
 // Helpers features share.

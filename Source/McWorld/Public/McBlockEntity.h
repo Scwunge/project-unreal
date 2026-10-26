@@ -7,18 +7,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McItemStack.h"
 
 class FArchive;
-
-// An item id and how many of it. An empty slot has no item or a count of 0.
-struct MCWORLD_API FMcItemStack
-{
-	FName Item;
-	int32 Count = 0;
-
-	bool IsEmpty() const { return Item.IsNone() || Count <= 0; }
-	bool operator==(const FMcItemStack& Other) const { return Item == Other.Item && Count == Other.Count; }
-};
 
 enum class EMcBlockEntityKind : uint8
 {

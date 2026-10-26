@@ -57,8 +57,10 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	}
 	for (FMcItemStack& Slot : Slots)
 	{
-		SerializeName(Ar, Slot.Item);
-		Ar << Slot.Count;
+		if (!Slot.Serialize(Ar))
+		{
+			return false;
+		}
 	}
 	SerializeName(Ar, LootTable);
 	Ar << LootSeed;

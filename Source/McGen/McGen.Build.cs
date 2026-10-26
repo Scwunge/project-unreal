@@ -7,7 +7,7 @@ public class McGen : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		// Each file keeps its helpers in an anonymous namespace; bundled together they collide (TypeOf, LavaLevel).
 		bUseUnity = false;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "McCore", "McWorld" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "McCore", "McWorld", "McItem" });
 		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
 	}
 }

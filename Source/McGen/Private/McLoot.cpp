@@ -3,6 +3,7 @@
 #include "Dom/JsonValue.h"
 #include "McCache.h"
 #include "McGen.h"
+#include "McItemRegistry.h"
 #include "McNbt.h"
 #include "McRandom.h"
 #include "Misc/ScopeLock.h"
@@ -10,7 +11,6 @@
 namespace
 {
 	constexpr int32 MaxDepth = 8;
-	constexpr int32 MaxStack = 64;
 
 	FCriticalSection TablesLock;
 	TMap<FString, TSharedPtr<FJsonObject>> Tables;
@@ -159,10 +159,242 @@ namespace
 		return Check(Object.TryGetField(TEXT("condition")), Random) != 0 && Check(Object.TryGetField(TEXT("conditions")), Random) != 0;
 	}
 
-	// The effects of a modifier (or list of them) on a stack that matter here: set_count.
+	// ---- Item functions (minecraft.wiki, "Item modifier") ----
+
+	TSharedPtr<FJsonValue> Number(double Value)
+	{
+		return MakeShared<FJsonValueNumber>(Value);
+	}
+
+	// The enchantments an "options" field names: an enchantment, a "#tag" or a list of them; all if it is missing.
+	void EnchantmentOptions(const TSharedPtr<FJsonValue>& Options, TArray<FName>& Out)
+	{
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		TArray<FString> References;
+		FString Text;
+		if (Options.IsValid() && Options->TryGetString(Text))
+		{
+			References.Add(Text);
+		}
+		else if (Options.IsValid() && Options->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Each : Options->AsArray())
+			{
+				if (Each->TryGetString(Text))
+				{
+					References.Add(Text);
+				}
+			}
+		}
+		else
+		{
+			for (const FMcEnchantmentDef& Def : Items.GetEnchantments())
+			{
+				Out.Add(Def.Name);
+			}
+			return;
+		}
+		for (const FString& Reference : References)
+		{
+			FName Name;
+			if (McSplitReference(Reference, Name))
+			{
+				if (const TSet<FName>* Members = Items.GetEnchantmentTag(Name))
+				{
+					Out.Append(Members->Array());
+				}
+			}
+			else
+			{
+				Out.Add(Name);
+			}
+		}
+		// A set has no order; a seeded pick must not depend on it.
+		Out.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+	}
+
+	// Books take any enchantment and become enchanted books holding them.
+	bool IsBook(const FMcItemStack& Stack)
+	{
+		return Stack.Item == TEXT("minecraft:book") || Stack.Item == TEXT("minecraft:enchanted_book");
+	}
+
+	void AddEnchantment(FMcItemStack& Stack, FName Enchantment, int32 Level)
+	{
+		if (IsBook(Stack))
+		{
+			Stack.Item = TEXT("minecraft:enchanted_book");
+			TMap<FName, int32> Stored;
+			const TSharedPtr<FJsonValue> Existing = Stack.Get(TEXT("minecraft:stored_enchantments"));
+			if (Existing.IsValid() && Existing->Type == EJson::Object)
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Existing->AsObject()->Values)
+				{
+					Stored.Add(FName(*McCache::Namespaced(Entry.Key)), static_cast<int32>(Entry.Value->AsNumber()));
+				}
+			}
+			Stored.Add(Enchantment, Level);
+			const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+			for (const TPair<FName, int32>& Entry : Stored)
+			{
+				Object->SetNumberField(Entry.Key.ToString(), Entry.Value);
+			}
+			Stack.Set(TEXT("minecraft:stored_enchantments"), MakeShared<FJsonValueObject>(Object));
+			return;
+		}
+		TMap<FName, int32> Enchantments = Stack.GetEnchantments();
+		Enchantments.Add(Enchantment, Level);
+		Stack.SetEnchantments(Enchantments);
+	}
+
+	TMap<FName, int32> CurrentEnchantments(const FMcItemStack& Stack)
+	{
+		if (!IsBook(Stack))
+		{
+			return Stack.GetEnchantments();
+		}
+		TMap<FName, int32> Result;
+		const TSharedPtr<FJsonValue> Stored = Stack.Get(TEXT("minecraft:stored_enchantments"));
+		if (Stored.IsValid() && Stored->Type == EJson::Object)
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Stored->AsObject()->Values)
+			{
+				Result.Add(FName(*McCache::Namespaced(Entry.Key)), static_cast<int32>(Entry.Value->AsNumber()));
+			}
+		}
+		return Result;
+	}
+
+	bool FitsWithExisting(const FMcItemStack& Stack, FName Enchantment)
+	{
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		for (const TPair<FName, int32>& Entry : CurrentEnchantments(Stack))
+		{
+			if (!Items.AreCompatible(Entry.Key, Enchantment) && Entry.Key != Enchantment)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// enchant_randomly: one enchantment the item can take, at a level from 1 up to its highest.
+	void EnchantRandomly(const FJsonObject& Object, FMcRandom& Random, FMcItemStack& Stack)
+	{
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		TArray<FName> Options;
+		EnchantmentOptions(Object.TryGetField(TEXT("options")), Options);
+		bool bOnlyCompatible = true;
+		Object.TryGetBoolField(TEXT("only_compatible"), bOnlyCompatible);
+		TArray<FName> Candidates;
+		for (const FName Name : Options)
+		{
+			if ((IsBook(Stack) || Items.CanEnchant(Stack.Item, Name)) && (!bOnlyCompatible || FitsWithExisting(Stack, Name)))
+			{
+				Candidates.Add(Name);
+			}
+		}
+		if (Candidates.IsEmpty())
+		{
+			return;
+		}
+		const FName Pick = Candidates[Random.NextInt(Candidates.Num())];
+		const FMcEnchantmentDef* Def = Items.FindEnchantment(Pick);
+		AddEnchantment(Stack, Pick, 1 + Random.NextInt(Def ? Def->MaxLevel : 1));
+	}
+
+	// enchant_with_levels: what an enchanting table gives at that many levels.
+	void EnchantWithLevels(const FJsonObject& Object, FMcRandom& Random, FMcItemStack& Stack)
+	{
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		const int32 Enchantability = Items.GetEnchantability(Stack.Item);
+		if (Enchantability <= 0 && !IsBook(Stack))
+		{
+			return;
+		}
+		const int32 Levels = Count(Object.TryGetField(TEXT("levels")), Random);
+		const int32 Bonus = Enchantability / 4 + 1;
+		double Modified = Levels + 1 + Random.NextInt(Bonus) + Random.NextInt(Bonus);
+		const double Spread = (Random.NextDouble() + Random.NextDouble() - 1.0) * 0.15;
+		const int32 Power = FMath::Max(1, FMath::RoundToInt32(Modified + Modified * Spread));
+
+		TArray<FName> Options;
+		EnchantmentOptions(Object.TryGetField(TEXT("options")), Options);
+		struct FOffer
+		{
+			FName Name;
+			int32 Level;
+			int32 Weight;
+		};
+		TArray<FOffer> Available;
+		for (const FName Name : Options)
+		{
+			const FMcEnchantmentDef* Def = Items.FindEnchantment(Name);
+			if (!Def || !(IsBook(Stack) || Items.CanEnchant(Stack.Item, Name)))
+			{
+				continue;
+			}
+			for (int32 Level = Def->MaxLevel; Level >= 1; --Level)
+			{
+				if (Power >= Def->MinCost(Level) && Power <= Def->MaxCost(Level))
+				{
+					Available.Add({ Name, Level, Def->Weight });
+					break;
+				}
+			}
+		}
+		const auto PickWeighted = [&Random](TArray<FOffer>& From) -> FOffer
+		{
+			int32 Total = 0;
+			for (const FOffer& Offer : From)
+			{
+				Total += Offer.Weight;
+			}
+			int32 Roll = Random.NextInt(FMath::Max(1, Total));
+			for (int32 Index = 0; Index < From.Num(); ++Index)
+			{
+				Roll -= From[Index].Weight;
+				if (Roll < 0)
+				{
+					const FOffer Result = From[Index];
+					From.RemoveAt(Index);
+					return Result;
+				}
+			}
+			const FOffer Last = From.Pop();
+			return Last;
+		};
+		if (Available.IsEmpty())
+		{
+			return;
+		}
+		FOffer Chosen = PickWeighted(Available);
+		AddEnchantment(Stack, Chosen.Name, Chosen.Level);
+		// Each further enchantment is likelier the more power there is, and halves it.
+		int32 Remaining = Power;
+		while (Random.NextInt(50) <= Remaining)
+		{
+			Available.RemoveAll([&](const FOffer& Offer) { return !Items.AreCompatible(Chosen.Name, Offer.Name); });
+			if (Available.IsEmpty())
+			{
+				break;
+			}
+			Chosen = PickWeighted(Available);
+			AddEnchantment(Stack, Chosen.Name, Chosen.Level);
+			Remaining /= 2;
+		}
+	}
+
+	// A text component as the item stores it: kept as JSON.
+	TSharedPtr<FJsonValue> CopyValue(const TSharedPtr<FJsonValue>& Value)
+	{
+		return Value;
+	}
+
+	// The effects of a modifier (or list of them) on a stack.
 	void Modify(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack)
 	{
-		if (!Modifier.IsValid())
+		if (!Modifier.IsValid() || Stack.Count <= 0)
 		{
 			return;
 		}
@@ -179,14 +411,188 @@ namespace
 			return;
 		}
 		const TSharedPtr<FJsonObject> Object = Modifier->AsObject();
-		if (McCache::PathOf(Object->GetStringField(TEXT("type"))) != TEXT("set_count") || !Passes(*Object, Random))
+		const FString Type = McCache::PathOf(Object->GetStringField(TEXT("type")).IsEmpty() ? Object->GetStringField(TEXT("function")) : Object->GetStringField(TEXT("type")));
+		if (!Passes(*Object, Random))
 		{
 			return;
 		}
-		const int32 Amount = Count(Object->TryGetField(TEXT("count")), Random);
-		bool bAdd = false;
-		Object->TryGetBoolField(TEXT("add"), bAdd);
-		Stack.Count = bAdd ? Stack.Count + Amount : Amount;
+		if (Type == TEXT("set_count"))
+		{
+			const int32 Amount = Count(Object->TryGetField(TEXT("count")), Random);
+			bool bAdd = false;
+			Object->TryGetBoolField(TEXT("add"), bAdd);
+			Stack.Count = bAdd ? Stack.Count + Amount : Amount;
+		}
+		else if (Type == TEXT("limit_count"))
+		{
+			// A number is the most; { min, max } bounds it both ways.
+			const TSharedPtr<FJsonValue> Limit = Object->TryGetField(TEXT("limit"));
+			if (Limit.IsValid() && Limit->Type == EJson::Number)
+			{
+				Stack.Count = FMath::Min(Stack.Count, static_cast<int32>(Limit->AsNumber()));
+			}
+			else if (Limit.IsValid() && Limit->Type == EJson::Object)
+			{
+				const TSharedPtr<FJsonObject> Bounds = Limit->AsObject();
+				if (Bounds->HasField(TEXT("max")))
+				{
+					Stack.Count = FMath::Min(Stack.Count, Count(Bounds->TryGetField(TEXT("max")), Random));
+				}
+				if (Bounds->HasField(TEXT("min")))
+				{
+					Stack.Count = FMath::Max(Stack.Count, Count(Bounds->TryGetField(TEXT("min")), Random));
+				}
+			}
+		}
+		else if (Type == TEXT("set_damage"))
+		{
+			// The damage is the fraction of the durability left: 1 is new.
+			const int32 Max = Stack.GetMaxDamage();
+			if (Max > 0)
+			{
+				const double Left = FMath::Clamp(Real(Object->TryGetField(TEXT("damage")), Random), 0.0, 1.0);
+				bool bAdd = false;
+				Object->TryGetBoolField(TEXT("add"), bAdd);
+				const double Fraction = bAdd ? 1.0 - (static_cast<double>(Stack.GetDamage()) / Max) + Left : Left;
+				Stack.SetDamage(FMath::FloorToInt32((1.0 - FMath::Clamp(Fraction, 0.0, 1.0)) * Max));
+			}
+		}
+		else if (Type == TEXT("enchant_randomly"))
+		{
+			EnchantRandomly(*Object, Random, Stack);
+		}
+		else if (Type == TEXT("enchant_with_levels"))
+		{
+			EnchantWithLevels(*Object, Random, Stack);
+		}
+		else if (Type == TEXT("set_enchantments"))
+		{
+			const TSharedPtr<FJsonObject>* Enchantments;
+			if (Object->TryGetObjectField(TEXT("enchantments"), Enchantments))
+			{
+				bool bAdd = false;
+				Object->TryGetBoolField(TEXT("add"), bAdd);
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Enchantments)->Values)
+				{
+					const FName Name(*McCache::Namespaced(Entry.Key));
+					const int32 Level = Count(Entry.Value, Random) + (bAdd ? CurrentEnchantments(Stack).FindRef(Name) : 0);
+					if (Level > 0)
+					{
+						AddEnchantment(Stack, Name, Level);
+					}
+				}
+			}
+		}
+		else if (Type == TEXT("set_potion"))
+		{
+			FString Id;
+			if (Object->TryGetStringField(TEXT("id"), Id))
+			{
+				const TSharedRef<FJsonObject> Contents = MakeShared<FJsonObject>();
+				Contents->SetStringField(TEXT("potion"), McCache::Namespaced(Id));
+				Stack.Set(TEXT("minecraft:potion_contents"), MakeShared<FJsonValueObject>(Contents));
+			}
+		}
+		else if (Type == TEXT("set_name"))
+		{
+			// Written as text; the item_name target is the item's own name, custom_name the one a player gave it.
+			FString Target = TEXT("custom_name");
+			Object->TryGetStringField(TEXT("target"), Target);
+			if (const TSharedPtr<FJsonValue> Name = Object->TryGetField(TEXT("name")))
+			{
+				Stack.Set(FName(*(TEXT("minecraft:") + McCache::PathOf(Target))), CopyValue(Name));
+			}
+		}
+		else if (Type == TEXT("set_components"))
+		{
+			const TSharedPtr<FJsonObject>* Components;
+			if (Object->TryGetObjectField(TEXT("components"), Components))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Components)->Values)
+				{
+					// A name with a '!' in front removes the component.
+					if (Entry.Key.StartsWith(TEXT("!")))
+					{
+						Stack.Remove(FName(*McCache::Namespaced(Entry.Key.Mid(1))));
+					}
+					else
+					{
+						Stack.Set(FName(*McCache::Namespaced(Entry.Key)), Entry.Value);
+					}
+				}
+				Stack.Normalize();
+			}
+		}
+		else if (Type == TEXT("set_stew_effect"))
+		{
+			// One of the effects listed, for a duration given in seconds (the item keeps ticks).
+			const TArray<TSharedPtr<FJsonValue>>* Effects;
+			if (Object->TryGetArrayField(TEXT("effects"), Effects) && Effects->Num() > 0)
+			{
+				const TSharedPtr<FJsonObject> Effect = (*Effects)[Random.NextInt(Effects->Num())]->AsObject();
+				if (Effect.IsValid())
+				{
+					const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+					Entry->SetStringField(TEXT("id"), McCache::Namespaced(Effect->GetStringField(TEXT("type"))));
+					Entry->SetNumberField(TEXT("duration"), Count(Effect->TryGetField(TEXT("duration")), Random) * 20);
+					Stack.Set(TEXT("minecraft:suspicious_stew_effects"), MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{ MakeShared<FJsonValueObject>(Entry) }));
+				}
+			}
+		}
+		else if (Type == TEXT("set_ominous_bottle_amplifier"))
+		{
+			Stack.Set(TEXT("minecraft:ominous_bottle_amplifier"), Number(Count(Object->TryGetField(TEXT("amplifier")), Random)));
+		}
+		else if (Type == TEXT("set_instrument"))
+		{
+			FString Options;
+			if (Object->TryGetStringField(TEXT("options"), Options) && Options.StartsWith(TEXT("#")))
+			{
+				TArray<FString> Instruments;
+				if (const TSharedPtr<FJsonObject> Tag = McCache::LoadJsonObject(McCache::Data(TEXT("tags/instrument/") + McCache::PathOf(Options.Mid(1)) + TEXT(".json"))))
+				{
+					const TArray<TSharedPtr<FJsonValue>>* Values;
+					if (Tag->TryGetArrayField(TEXT("values"), Values))
+					{
+						for (const TSharedPtr<FJsonValue>& Value : *Values)
+						{
+							FString Id;
+							if (Value->TryGetString(Id))
+							{
+								Instruments.Add(Id);
+							}
+						}
+					}
+				}
+				if (!Instruments.IsEmpty())
+				{
+					Stack.Set(TEXT("minecraft:instrument"), MakeShared<FJsonValueString>(McCache::Namespaced(Instruments[Random.NextInt(Instruments.Num())])));
+				}
+			}
+		}
+		else if (Type == TEXT("filtered"))
+		{
+			// Only the filter on a map id is understood: a map that doesn't exist yet fails it.
+			const TSharedPtr<FJsonObject>* Filter;
+			bool bPasses = true;
+			if (Object->TryGetObjectField(TEXT("item_filter"), Filter))
+			{
+				const TSharedPtr<FJsonObject>* Predicates;
+				if ((*Filter)->TryGetObjectField(TEXT("predicates"), Predicates))
+				{
+					for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicates)->Values)
+					{
+						bPasses &= Stack.Has(FName(*McCache::Namespaced(Entry.Key)));
+					}
+				}
+			}
+			Modify(bPasses ? Object->TryGetField(TEXT("on_pass")) : Object->TryGetField(TEXT("on_fail")), Random, Stack);
+		}
+		else if (Type == TEXT("discard"))
+		{
+			Stack.Clear();
+		}
+		// Anything else (maps that point at structures, loot that needs a player) leaves the item as it is.
 	}
 
 	void RollTable(const FJsonObject& Table, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Depth);
@@ -321,7 +727,17 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 	{
 		return false;
 	}
+	FMcItemRegistry::Get().EnsureLoaded();
+	const int32 Before = Out.Num();
 	RollTable(*Json, Random, Out, 0);
+	// Stacks a function emptied or discarded are not loot.
+	for (int32 Index = Out.Num() - 1; Index >= Before; --Index)
+	{
+		if (Out[Index].IsEmpty())
+		{
+			Out.RemoveAt(Index);
+		}
+	}
 	return true;
 }
 
@@ -337,9 +753,11 @@ bool McLoot::Fill(const FString& Table, uint64 Seed, FMcBlockEntity& Container)
 	TArray<FMcItemStack> Stacks;
 	for (const FMcItemStack& Stack : Rolled)
 	{
-		for (int32 Left = Stack.Count; Left > 0; Left -= MaxStack)
+		for (int32 Left = Stack.Count; Left > 0; Left -= Stack.GetMaxStackSize())
 		{
-			Stacks.Add({ Stack.Item, FMath::Min(Left, MaxStack) });
+			FMcItemStack Part = Stack;
+			Part.Count = FMath::Min(Left, Stack.GetMaxStackSize());
+			Stacks.Add(Part);
 		}
 	}
 	TArray<int32> Free;

@@ -34,7 +34,7 @@ namespace McFluidMesher
 		uint16 WaterFlow = 0;
 		uint16 LavaStill = 0;
 		uint16 LavaFlow = 0;
-		FColor WaterTint = FColor::White;  // plains, until M5 brings the biome's
+		FColor WaterTint = FColor::White;  // plains'; meshes take the biome's from the snapshot
 	};
 
 	// Needs the registry and textures loaded.

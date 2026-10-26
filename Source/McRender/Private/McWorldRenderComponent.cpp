@@ -258,7 +258,7 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 				Result->Ticket = Ticket;
 				for (const int32 SectionIndex : Sections)
 				{
-					const FMcSectionSnapshot Snapshot = FMcSectionSnapshot::FromRegion(Region, SectionIndex);
+					const FMcSectionSnapshot Snapshot = FMcSectionSnapshot::FromRegion(Region, SectionIndex, *Palette);
 					FMcSectionMesh Mesh = McBlockMesher::Build(Snapshot, *Palette);
 					McFluidMesher::Build(Snapshot, *FluidPalette, *Palette, Mesh);
 					if (!Mesh.IsEmpty())

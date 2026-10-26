@@ -6,6 +6,36 @@ FMcChunk::FMcChunk(FIntPoint InPos, int32 InMinY, int32 InNumSections)
 	, MinY(InMinY)
 {
 	Sections.SetNum(InNumSections);
+	Biomes.SetNumZeroed(InNumSections * 64);
+}
+
+FMcBiomeId FMcChunk::GetBiome(int32 X, int32 Y, int32 Z) const
+{
+	const int32 CellY = FMath::Clamp((Y - MinY) >> 2, 0, Sections.Num() * 4 - 1);
+	return Biomes[(CellY * 4 + (Z >> 2)) * 4 + (X >> 2)];
+}
+
+void FMcChunk::SetBiomeCell(int32 CellX, int32 CellY, int32 CellZ, FMcBiomeId Biome)
+{
+	Biomes[(CellY * 4 + CellZ) * 4 + CellX] = Biome;
+}
+
+void FMcChunk::FillBiome(FMcBiomeId Biome)
+{
+	for (FMcBiomeId& Cell : Biomes)
+	{
+		Cell = Biome;
+	}
+	++Revision;
+}
+
+void FMcChunk::LoadBiomes(TConstArrayView<FMcBiomeId> InBiomes)
+{
+	if (InBiomes.Num() == Biomes.Num())
+	{
+		FMemory::Memcpy(Biomes.GetData(), InBiomes.GetData(), Biomes.Num());
+		++Revision;
+	}
 }
 
 FMcStateId FMcChunk::GetBlock(int32 X, int32 Y, int32 Z) const

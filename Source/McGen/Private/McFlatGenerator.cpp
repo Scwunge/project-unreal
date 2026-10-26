@@ -1,4 +1,5 @@
 #include "McFlatGenerator.h"
+#include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
 #include "McChunk.h"
@@ -48,6 +49,8 @@ FMcFlatGenerator::FMcFlatGenerator(const FMcFlatSettings& InSettings, int32 InMi
 
 void FMcFlatGenerator::Generate(FMcChunk& Chunk) const
 {
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	Chunk.FillBiome(Biomes.Find(Settings.Biome).Get(Biomes.GetPlains()));
 	int32 Y = Chunk.GetMinY();
 	for (const FMcFlatLayer& Layer : Settings.Layers)
 	{

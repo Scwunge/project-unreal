@@ -189,7 +189,7 @@ namespace
 		}
 		const bool bWater = Kind == EFluid::Water;
 		const EMcRenderPass Pass = bWater ? EMcRenderPass::Translucent : EMcRenderPass::Opaque;
-		const FColor Tint = bWater ? Fluids.WaterTint : FColor::White;
+		const FColor Tint = bWater ? Snapshot.GetTint(EMcTintSource::Water, X, Z) : FColor::White;
 		const uint16 StillLayer = bWater ? Fluids.WaterStill : Fluids.LavaStill;
 		const uint16 FlowLayer = bWater ? Fluids.WaterFlow : Fluids.LavaFlow;
 		const uint8 OwnFaces = OpaqueFacesAt(X, Y, Z);

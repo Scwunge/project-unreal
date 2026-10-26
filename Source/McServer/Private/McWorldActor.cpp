@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McFlatGenerator.h"
 #include "McNoiseGenerator.h"
@@ -28,7 +29,7 @@ void AMcWorldActor::BeginPlay()
 	if (!HasAuthority())
 	{
 		// A client: an empty world that McNet fills with what the server sends.
-		if (FMcBlockRegistry::Get().EnsureLoaded() && FMcDimensionType::Load(Dimension, DimensionType))
+		if (FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded() && FMcDimensionType::Load(Dimension, DimensionType))
 		{
 			BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
 		}
@@ -38,7 +39,7 @@ void AMcWorldActor::BeginPlay()
 		}
 		return;
 	}
-	if (!FMcBlockRegistry::Get().EnsureLoaded() || !FMcDimensionType::Load(Dimension, DimensionType))
+	if (!FMcBlockRegistry::Get().EnsureLoaded() || !FMcBiomeRegistry::Get().EnsureLoaded() || !FMcDimensionType::Load(Dimension, DimensionType))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't start the world: cache/ is missing or incomplete. Run tools/fetch_cache.py."));
 		return;
@@ -71,7 +72,7 @@ void AMcWorldActor::BeginPlay()
 		TSharedPtr<FMcNoiseGenerator, ESPMode::ThreadSafe> Noise;
 		if (FMcNoiseSettings::Load(NoiseSettings, Settings))
 		{
-			Noise = MakeShared<FMcNoiseGenerator, ESPMode::ThreadSafe>(Settings, static_cast<uint64>(Seed));
+			Noise = MakeShared<FMcNoiseGenerator, ESPMode::ThreadSafe>(Settings, static_cast<uint64>(Seed), NoiseSettings);
 		}
 		if (!Noise || !Noise->IsValid())
 		{

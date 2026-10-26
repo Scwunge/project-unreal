@@ -6,7 +6,7 @@
 
 namespace
 {
-	constexpr uint8 Version = 1;
+	constexpr uint8 Version = 2;
 	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 
 	enum class ESection : uint8
@@ -39,6 +39,9 @@ TArray<uint8> McChunkCodec::Encode(const FMcChunk& Chunk)
 		Blocks.CopyTo(States);
 		Writer.Serialize(States.GetData(), States.Num() * sizeof(FMcStateId));
 	}
+	// Then the biome cells, 64 per section.
+	TArray<FMcBiomeId> Biomes(Chunk.GetBiomes());
+	Writer.Serialize(Biomes.GetData(), Biomes.Num());
 
 	// Zlib keeps runs of the same state small; the header says how big the bytes were.
 	const int32 RawSize = Raw.Num();
@@ -64,7 +67,7 @@ bool McChunkCodec::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk)
 	int32 RawSize = 0;
 	FMemory::Memcpy(&RawSize, &Bytes[1], sizeof(int32));
 	// A chunk can't be bigger than every section in full.
-	if (RawSize <= 0 || RawSize > 1 + Chunk.NumSections() * (1 + SectionVolume * static_cast<int32>(sizeof(FMcStateId))))
+	if (RawSize <= 0 || RawSize > 1 + Chunk.NumSections() * (1 + SectionVolume * static_cast<int32>(sizeof(FMcStateId)) + 64))
 	{
 		return false;
 	}
@@ -111,5 +114,13 @@ bool McChunkCodec::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk)
 		}
 		Chunk.LoadSection(Index, States);
 	}
-	return !Reader.IsError();
+	TArray<FMcBiomeId> Biomes;
+	Biomes.SetNumUninitialized(Chunk.NumSections() * 64);
+	Reader.Serialize(Biomes.GetData(), Biomes.Num());
+	if (Reader.IsError())
+	{
+		return false;
+	}
+	Chunk.LoadBiomes(Biomes);
+	return true;
 }

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McBiomeRegistry.h"
 #include "McCore.h"
 #include "McPalettedContainer.h"
 
@@ -63,6 +64,15 @@ public:
 	// Sets a whole horizontal layer, e.g. for flat worlds.
 	void FillLayer(int32 Y, FMcStateId State);
 
+	// Biomes are stored per 4x4x4 cell, like the game. X and Z are local (0 to 15), Y the world height.
+	FMcBiomeId GetBiome(int32 X, int32 Y, int32 Z) const;
+	// Cell coordinates: X and Z 0 to 3, Y from 0 at the bottom of the world (4 per section).
+	void SetBiomeCell(int32 CellX, int32 CellY, int32 CellZ, FMcBiomeId Biome);
+	void FillBiome(FMcBiomeId Biome);
+	// All cells, 64 per section from the bottom up, each section in y, z, x order.
+	TConstArrayView<FMcBiomeId> GetBiomes() const { return Biomes; }
+	void LoadBiomes(TConstArrayView<FMcBiomeId> InBiomes);
+
 	// Goes up by one on every change; the renderer compares it to know when to mesh again.
 	uint32 GetRevision() const { return Revision; }
 
@@ -70,5 +80,6 @@ private:
 	FIntPoint Pos;
 	int32 MinY;
 	TArray<FMcChunkSection> Sections;
+	TArray<FMcBiomeId> Biomes;
 	uint32 Revision = 0;
 };

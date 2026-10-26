@@ -1,16 +1,21 @@
 // Terrain from a worldgen/noise_settings file: the density graph's final_density decides solid or not, cell
-// by cell, and the sea fills what's open below sea level.
+// by cell, and the sea fills what's open below sea level. Biomes come from the router's climate functions
+// through a multi-noise biome source.
 //
-// Still to come (see PLAN.md, M4): aquifers and ore veins, biomes, surface rules, carvers, features and
-// structures. Until aquifers, open space below sea level is water above the column's preliminary surface
-// and air below it, with lava under y -54 like the game's deep lava level.
+// Surface rules then turn the stone into grass, sand, deepslate, bedrock and ore veins.
+//
+// Still to come (see PLAN.md, M4): aquifers, carvers, features and structures. Until aquifers, open space
+// below sea level is water above the column's preliminary surface and air below it, with lava under y -54
+// like the game's deep lava level.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "McChunkGenerator.h"
 #include "McCore.h"
+#include "McBiomeSource.h"
 #include "McDensityFunction.h"
+#include "McSurfaceRules.h"
 
 struct MCGEN_API FMcNoiseSettings
 {
@@ -23,6 +28,8 @@ struct MCGEN_API FMcNoiseSettings
 	// The router's functions, as JSON (a name or an inline function).
 	TMap<FString, TSharedPtr<FJsonValue>> Router;
 	TSharedPtr<FJsonValue> SurfaceLevel;
+	// The material_rule to apply, e.g. "minecraft:overworld"; empty for none.
+	FString SurfaceRule;
 
 	// Reads worldgen/noise_settings/<name>.json, e.g. "minecraft:overworld". Needs the block registry.
 	static bool Load(const FString& Id, FMcNoiseSettings& Out);
@@ -31,7 +38,9 @@ struct MCGEN_API FMcNoiseSettings
 class MCGEN_API FMcNoiseGenerator : public FMcChunkGenerator
 {
 public:
-	FMcNoiseGenerator(const FMcNoiseSettings& InSettings, uint64 Seed);
+	// BiomePreset names the multi-noise parameter list, e.g. "minecraft:overworld". Needs the block and biome
+	// registries loaded.
+	FMcNoiseGenerator(const FMcNoiseSettings& InSettings, uint64 Seed, const FString& BiomePreset);
 
 	// False if any part of the graph failed to load.
 	bool IsValid() const { return bValid; }
@@ -43,9 +52,21 @@ public:
 	// A router function by name (e.g. "continents", "final_density"), or INDEX_NONE.
 	int32 GetRouterFunction(const FString& Name) const;
 
+	// The climate and biome at a block, outside chunk generation (slower).
+	FMcClimate SampleClimate(int32 X, int32 Y, int32 Z) const;
+	FMcBiomeId GetBiome(int32 X, int32 Y, int32 Z) const;
+
 private:
+	FMcClimate SampleClimate(FMcDensityContext& Context) const;
+	void FillBiomes(FMcChunk& Chunk, FMcDensityContext& Context) const;
+	void ApplySurface(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, const TArray<int32>& PreliminarySurface, FMcDensityContext& Context) const;
+
 	FMcNoiseSettings Settings;
+	FMcBiomeSource Biomes;
+	int32 Climate[6] = { INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE, INDEX_NONE };
 	FMcDensityGraph Graph;
+	FMcSurfaceRules SurfaceRules;
+	bool bSurfaceRules = false;
 	TMap<FString, int32> Router;
 	int32 FinalDensity = INDEX_NONE;
 	int32 SurfaceLevel = INDEX_NONE;

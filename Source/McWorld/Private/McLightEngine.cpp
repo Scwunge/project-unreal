@@ -54,6 +54,32 @@ FMcLightRegion FMcLightRegion::Capture(const FMcBlockWorld& World, FIntPoint Cen
 	const int32 NumCells = Size * Size * Region.Height;
 	Region.Blocks.SetNumZeroed(NumCells);
 
+	constexpr int32 BiomeSize = Size / 4;
+	Region.BiomeLayers = NumSections * 4;
+	Region.Biomes.Init(NoBiome, BiomeSize * BiomeSize * Region.BiomeLayers);
+	for (int32 DZ = 0; DZ < 3; ++DZ)
+	{
+		for (int32 DX = 0; DX < 3; ++DX)
+		{
+			const FMcChunk* Chunk = Columns[DZ][DX];
+			if (!Chunk || Chunk->GetBiomes().Num() != 16 * Region.BiomeLayers)
+			{
+				continue;
+			}
+			const TConstArrayView<FMcBiomeId> ChunkBiomes = Chunk->GetBiomes();
+			for (int32 Layer = 0; Layer < Region.BiomeLayers; ++Layer)
+			{
+				for (int32 CellZ = 0; CellZ < 4; ++CellZ)
+				{
+					for (int32 CellX = 0; CellX < 4; ++CellX)
+					{
+						Region.Biomes[(Layer * BiomeSize + DZ * 4 + CellZ) * BiomeSize + DX * 4 + CellX] = ChunkBiomes[(Layer * 4 + CellZ) * 4 + CellX];
+					}
+				}
+			}
+		}
+	}
+
 	for (int32 DZ = 0; DZ < 3; ++DZ)
 	{
 		for (int32 DX = 0; DX < 3; ++DX)
@@ -207,4 +233,15 @@ void FMcLightRegion::Compute(const FMcLightPalette& Palette)
 		}
 	}
 	Spread(BlockLight, Queue, Palette);
+}
+
+FMcBiomeId FMcLightRegion::GetBiome(int32 X, int32 Y, int32 Z) const
+{
+	constexpr int32 BiomeSize = Size / 4;
+	if (X < 0 || Z < 0 || X >= Size || Z >= Size || BiomeLayers == 0)
+	{
+		return NoBiome;
+	}
+	const int32 Layer = FMath::Clamp((Y - MinY) >> 2, 0, BiomeLayers - 1);
+	return Biomes[(Layer * BiomeSize + (Z >> 2)) * BiomeSize + (X >> 2)];
 }

@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/BitArray.h"
+#include "McBiomeRegistry.h"
 #include "McCore.h"
 
 class FMcBlockWorld;
@@ -33,6 +34,10 @@ struct MCWORLD_API FMcLightRegion
 	TArray<FMcStateId> Blocks;  // Size * Size * Height, see Index()
 	TArray<uint8> Sky;          // filled by Compute
 	TArray<uint8> BlockLight;   // filled by Compute
+	// Biome cells (4x4x4 blocks) over the whole world height, for tints. Missing columns hold NoBiome.
+	TArray<FMcBiomeId> Biomes;
+	int32 BiomeLayers = 0;
+	static constexpr FMcBiomeId NoBiome = 255;
 
 	// X and Z are region coordinates (0..47), Y is the layer above MinY.
 	FORCEINLINE int32 Index(int32 X, int32 Y, int32 Z) const { return (Y * Size + Z) * Size + X; }
@@ -48,6 +53,8 @@ struct MCWORLD_API FMcLightRegion
 	FMcStateId GetBlock(int32 X, int32 Y, int32 Z) const;
 	uint8 GetSkyLight(int32 X, int32 Y, int32 Z) const;
 	uint8 GetBlockLight(int32 X, int32 Y, int32 Z) const;
+	// X and Z in region coordinates, Y a world height (clamped to the world). NoBiome where nothing loaded.
+	FMcBiomeId GetBiome(int32 X, int32 Y, int32 Z) const;
 
 private:
 	void Spread(TArray<uint8>& Light, TArray<int32>& Queue, const FMcLightPalette& Palette) const;

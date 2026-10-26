@@ -1,4 +1,6 @@
 #include "McSectionMesher.h"
+#include "McBiomeColors.h"
+#include "McBiomeRegistry.h"
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
@@ -43,7 +45,32 @@ FMcSectionSnapshot FMcSectionSnapshot::Capture(const FMcBlockWorld& World, FIntP
 	return Snapshot;
 }
 
-FMcSectionSnapshot FMcSectionSnapshot::FromRegion(const FMcLightRegion& Region, int32 SectionIndex)
+namespace
+{
+	// Plains (minecraft.wiki, "Color"): grass #91BD59, foliage #77AB2F, water #3F76E4.
+	const FColor PlainsGrass(0x91, 0xBD, 0x59);
+	const FColor PlainsFoliage(0x77, 0xAB, 0x2F);
+	const FColor PlainsWater(0x3F, 0x76, 0xE4);
+
+	// The game's default Biome Blend setting, 5x5: two columns each way.
+	constexpr int32 BlendRadius = 2;
+}
+
+FColor FMcSectionSnapshot::GetTint(EMcTintSource Source, int32 X, int32 Z) const
+{
+	if (Source == EMcTintSource::Fixed)
+	{
+		return FColor::White;
+	}
+	const int32 Kind = static_cast<int32>(Source) - static_cast<int32>(EMcTintSource::Grass);
+	if (Tints.Num() != 3 * Padded * Padded)
+	{
+		return Kind == 0 ? PlainsGrass : Kind == 1 ? PlainsFoliage : PlainsWater;
+	}
+	return Tints[Kind * Padded * Padded + ColumnIndex(X, Z)];
+}
+
+FMcSectionSnapshot FMcSectionSnapshot::FromRegion(const FMcLightRegion& Region, int32 SectionIndex, const FMcRenderPalette& Palette)
 {
 	FMcSectionSnapshot Snapshot;
 	Snapshot.ChunkPos = Region.CenterChunk;
@@ -64,6 +91,45 @@ FMcSectionSnapshot FMcSectionSnapshot::FromRegion(const FMcLightRegion& Region, 
 				const int32 Cell = Index(X, Y, Z);
 				Snapshot.Blocks[Cell] = Region.GetBlock(RegionX, WorldY, RegionZ);
 				Snapshot.Light[Cell] = static_cast<uint8>((Region.GetSkyLight(RegionX, WorldY, RegionZ) << 4) | Region.GetBlockLight(RegionX, WorldY, RegionZ));
+			}
+		}
+	}
+
+	// Biome colours, averaged over the columns around each one, at the middle of the section.
+	const int32 SampleY = Snapshot.MinY + McCoords::SectionSize / 2;
+	constexpr int32 Columns = Padded * Padded;
+	Snapshot.Tints.SetNumUninitialized(3 * Columns);
+	for (int32 Z = -1; Z <= McCoords::SectionSize; ++Z)
+	{
+		for (int32 X = -1; X <= McCoords::SectionSize; ++X)
+		{
+			int32 Sum[3][3] = {};
+			int32 Count = 0;
+			for (int32 DZ = -BlendRadius; DZ <= BlendRadius; ++DZ)
+			{
+				for (int32 DX = -BlendRadius; DX <= BlendRadius; ++DX)
+				{
+					const FMcBiomeId Biome = Region.GetBiome(FMcLightRegion::Border + X + DX, SampleY, FMcLightRegion::Border + Z + DZ);
+					if (!Palette.BiomeTints.IsValidIndex(Biome))
+					{
+						continue;
+					}
+					const FMcRenderPalette::FBiomeTint& Tint = Palette.BiomeTints[Biome];
+					const FColor Colors[3] = { Tint.Grass, Tint.Foliage, Tint.Water };
+					for (int32 Kind = 0; Kind < 3; ++Kind)
+					{
+						Sum[Kind][0] += Colors[Kind].R;
+						Sum[Kind][1] += Colors[Kind].G;
+						Sum[Kind][2] += Colors[Kind].B;
+					}
+					++Count;
+				}
+			}
+			const FColor Plains[3] = { PlainsGrass, PlainsFoliage, PlainsWater };
+			for (int32 Kind = 0; Kind < 3; ++Kind)
+			{
+				Snapshot.Tints[Kind * Columns + ColumnIndex(X, Z)] = Count == 0 ? Plains[Kind]
+					: FColor(static_cast<uint8>(Sum[Kind][0] / Count), static_cast<uint8>(Sum[Kind][1] / Count), static_cast<uint8>(Sum[Kind][2] / Count), 255);
 			}
 		}
 	}
@@ -180,11 +246,10 @@ namespace
 
 FColor McBlockMesher::GetBlockTint(const FMcBlockRegistry& Registry, FMcStateId State)
 {
-	// Plains colours (minecraft.wiki, "Color"): grass #91BD59, foliage #77AB2F, water #3F76E4. Some blocks
-	// ignore the biome and always use their own.
-	static const FColor Grass(0x91, 0xBD, 0x59);
-	static const FColor Foliage(0x77, 0xAB, 0x2F);
-	static const FColor Water(0x3F, 0x76, 0xE4);
+	// Some blocks ignore the biome and always use their own colour.
+	const FColor& Grass = PlainsGrass;
+	const FColor& Foliage = PlainsFoliage;
+	const FColor& Water = PlainsWater;
 
 	const FString Name = Registry.GetBlockOf(State).Name.ToString();
 	if (Name == TEXT("minecraft:birch_leaves"))
@@ -225,6 +290,25 @@ FColor McBlockMesher::GetBlockTint(const FMcBlockRegistry& Registry, FMcStateId 
 		return Foliage;
 	}
 	return Grass;
+}
+
+EMcTintSource McBlockMesher::GetTintSource(const FMcBlockRegistry& Registry, FMcStateId State)
+{
+	const FString Name = Registry.GetBlockOf(State).Name.ToString();
+	if (Name == TEXT("minecraft:birch_leaves") || Name == TEXT("minecraft:spruce_leaves") || Name == TEXT("minecraft:lily_pad")
+		|| Name == TEXT("minecraft:redstone_wire") || Name.EndsWith(TEXT("_stem")))
+	{
+		return EMcTintSource::Fixed;
+	}
+	if (Name.Contains(TEXT("water")) || Name == TEXT("minecraft:bubble_column"))
+	{
+		return EMcTintSource::Water;
+	}
+	if (Name.EndsWith(TEXT("leaves")) || Name == TEXT("minecraft:vine"))
+	{
+		return EMcTintSource::Foliage;
+	}
+	return EMcTintSource::Grass;
 }
 
 TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistry& Registry, const FMcBlockModels& Models, const FMcBlockTextures& Textures, bool bFlipWinding)
@@ -285,6 +369,18 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 		if (bAnyTinted)
 		{
 			Info.Tint = McBlockMesher::GetBlockTint(Registry, static_cast<FMcStateId>(Id));
+			Info.TintSource = McBlockMesher::GetTintSource(Registry, static_cast<FMcStateId>(Id));
+		}
+	}
+
+	FMcBiomeRegistry& BiomeIds = FMcBiomeRegistry::Get();
+	FMcBiomeColorTable& BiomeColors = FMcBiomeColorTable::Get();
+	if (BiomeIds.EnsureLoaded() && BiomeColors.EnsureLoaded())
+	{
+		for (int32 Biome = 0; Biome < BiomeIds.NumBiomes(); ++Biome)
+		{
+			const FMcBiomeColors Colors = BiomeColors.Get(BiomeIds.GetName(static_cast<FMcBiomeId>(Biome)));
+			Palette->BiomeTints.Add({ Colors.Grass, Colors.Foliage, Colors.Water });
 		}
 	}
 	return Palette;
@@ -349,7 +445,9 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						: Quad.Face != EMcDirection::None ? Quad.Face
 						: NearestDirection(ModelNormal);
 					const float Shade = Quad.bShade ? DirectionShades[DirectionIndex(ShadeFrom)] : 1.0f;
-					const FColor Tint = Quad.TintIndex >= 0 ? Info.Tint : FColor::White;
+					const FColor Tint = Quad.TintIndex < 0 ? FColor::White
+						: Info.TintSource == EMcTintSource::Fixed ? Info.Tint
+						: Snapshot.GetTint(Info.TintSource, X, Z);
 
 					// Light comes from the block the face looks into: the neighbour for faces on the block's
 					// side, the block's own cell for faces inside it (a slab's top, a torch).

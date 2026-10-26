@@ -7,6 +7,7 @@
 #include "McDimensionType.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FMcOnChunkEvent, FIntPoint /*ChunkPos*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMcOnBlockChanged, const FIntVector& /*Pos*/, FMcStateId /*State*/);
 
 // Game thread only. Work on other threads (meshing) takes copies of the blocks it needs, so chunks can
 // change or unload while that work runs.
@@ -40,6 +41,8 @@ public:
 	FMcOnChunkEvent OnChunkRemoved;
 	// Broadcast for the chunk a block changed in.
 	FMcOnChunkEvent OnChunkChanged;
+	// Broadcast by SetBlock for each block that changed, before OnChunkChanged.
+	FMcOnBlockChanged OnBlockChanged;
 
 private:
 	FMcDimensionType Dimension;

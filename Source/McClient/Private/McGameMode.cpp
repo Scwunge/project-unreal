@@ -2,6 +2,7 @@
 #include "McChunk.h"
 #include "McClient.h"
 #include "McBlockShapes.h"
+#include "McPlayerController.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
 #include "Engine/World.h"
@@ -17,20 +18,13 @@
 #include "UnrealClient.h"
 
 #if MC_WITH_RENDER
-#include "Components/DirectionalLightComponent.h"
-#include "Components/SkyAtmosphereComponent.h"
-#include "Components/SkyLightComponent.h"
-#include "Engine/DirectionalLight.h"
-#include "Engine/GameViewportClient.h"
-#include "Engine/PostProcessVolume.h"
-#include "Engine/SkyLight.h"
 #include "McHUD.h"
-#include "McWorldRenderComponent.h"
 #endif
 
 AMcGameMode::AMcGameMode()
 {
 	DefaultPawnClass = AMcPlayerPawn::StaticClass();
+	PlayerControllerClass = AMcPlayerController::StaticClass();
 #if MC_WITH_RENDER
 	HUDClass = AMcHUD::StaticClass();
 #endif
@@ -48,17 +42,6 @@ void AMcGameMode::StartPlay()
 		return;
 	}
 
-#if MC_WITH_RENDER
-	if (GetNetMode() != NM_DedicatedServer)
-	{
-		UMcWorldRenderComponent* Renderer = NewObject<UMcWorldRenderComponent>(WorldActor, TEXT("Renderer"));
-		Renderer->SetupAttachment(WorldActor->GetRootComponent());
-		Renderer->RegisterComponent();
-		Renderer->SetWorld(WorldActor->GetBlockWorld());
-		SpawnEnvironment();
-	}
-#endif
-
 	FMcBlockShapes::Get().EnsureLoaded();
 
 	// Players that joined before the world existed started at a guessed height; move them above the surface.
@@ -68,10 +51,6 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			Pawn->SetActorLocation(Spawn.GetLocation());
-			if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(Pawn))
-			{
-				ConnectPlayer(*Player);
-			}
 		}
 	}
 
@@ -143,6 +122,22 @@ void AMcGameMode::StartDevCapture()
 	{
 		LoadDevScene(SceneName, Camera);
 	}
+	// -McPillarAfter=<seconds>: builds a gold pillar at 3, 0 (in front of a new player) then, to check block changes reach clients.
+	float PillarDelay = 0.0f;
+	if (FParse::Value(CommandLine, TEXT("-McPillarAfter="), PillarDelay))
+	{
+		FTimerHandle PillarTimer;
+		GetWorldTimerManager().SetTimer(PillarTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			const FMcStateId Gold = FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:gold_block")).Get(0);
+			for (int32 Y = -60; Y <= -54; ++Y)
+			{
+				WorldActor->SetBlock(FIntVector(3, Y, 0), Gold);
+			}
+			UE_LOG(LogMcClient, Display, TEXT("Built the gold pillar"));
+		}), PillarDelay, false);
+	}
+
 	FParse::Value(CommandLine, TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false);
 	if (!Camera.IsEmpty())
 	{
@@ -165,25 +160,6 @@ void AMcGameMode::StartDevCapture()
 		}
 	}
 
-	FString ShotPath;
-	if (!FParse::Value(CommandLine, TEXT("-McShot="), ShotPath))
-	{
-		return;
-	}
-	float Delay = 5.0f;
-	FParse::Value(CommandLine, TEXT("-McShotDelay="), Delay);
-
-	FTimerHandle ShotTimer;
-	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, ShotPath]()
-	{
-		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
-		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
-		FTimerHandle ExitTimer;
-		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()
-		{
-			FPlatformMisc::RequestExit(false, TEXT("McShot"));
-		}), 1.0f, false);
-	}), Delay, false);
 #endif
 }
 
@@ -193,27 +169,7 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 	if (NewPlayer && !NewPlayer->IsPendingKillPending())
 	{
 		RestartPlayerAtTransform(NewPlayer, GetSpawnTransform());
-		if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
-		{
-			ConnectPlayer(*Player);
-		}
 	}
-}
-
-void AMcGameMode::ConnectPlayer(AMcPlayerPawn& Player)
-{
-	if (!WorldActor || !WorldActor->GetBlockWorld())
-	{
-		return;
-	}
-	Player.SetBlockWorld(WorldActor->GetBlockWorld());
-	Player.SetBlockHandler = [WeakWorld = TWeakObjectPtr<AMcWorldActor>(WorldActor)](const FIntVector& Pos, FMcStateId State)
-	{
-		if (AMcWorldActor* World = WeakWorld.Get())
-		{
-			World->SetBlock(Pos, State);
-		}
-	};
 }
 
 FTransform AMcGameMode::GetSpawnTransform() const
@@ -224,54 +180,3 @@ FTransform AMcGameMode::GetSpawnTransform() const
 	return FTransform(FRotator::ZeroRotator, McCoords::BlockToUnreal(Block));
 }
 
-void AMcGameMode::SpawnEnvironment()
-{
-#if MC_WITH_RENDER
-	// A plain daylight sky to see the greybox by. M8 replaces it with Minecraft's sky, sun, moon and fog.
-	UWorld* World = GetWorld();
-
-	// Blocks carry Minecraft's final colours; the filmic tonemapper would brighten and desaturate them.
-	if (UGameViewportClient* Viewport = World->GetGameViewport())
-	{
-		Viewport->EngineShowFlags.SetTonemapper(false);
-	}
-
-	// Fixed exposure, so an emissive 1.0 shows as the texture's own colour. -McExposureBias= is for tuning.
-	if (APostProcessVolume* Post = World->SpawnActor<APostProcessVolume>())
-	{
-		Post->bUnbound = true;
-		FPostProcessSettings& Settings = Post->Settings;
-		Settings.bOverride_AutoExposureMethod = true;
-		Settings.AutoExposureMethod = AEM_Manual;
-		Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
-		Settings.AutoExposureApplyPhysicalCameraExposure = false;
-		Settings.bOverride_AutoExposureBias = true;
-		Settings.AutoExposureBias = 0.0f;
-		FParse::Value(FCommandLine::Get(), TEXT("-McExposureBias="), Settings.AutoExposureBias);
-	}
-
-	const FTransform SunTransform(FRotator(-50.0f, 30.0f, 0.0f));
-
-	if (ADirectionalLight* Sun = World->SpawnActorDeferred<ADirectionalLight>(ADirectionalLight::StaticClass(), SunTransform))
-	{
-		if (UDirectionalLightComponent* SunLight = Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
-		{
-			SunLight->SetMobility(EComponentMobility::Movable);
-			SunLight->SetAtmosphereSunLight(true);
-		}
-		Sun->FinishSpawning(SunTransform);
-	}
-
-	World->SpawnActor<ASkyAtmosphere>();
-
-	if (ASkyLight* Sky = World->SpawnActorDeferred<ASkyLight>(ASkyLight::StaticClass(), FTransform::Identity))
-	{
-		if (USkyLightComponent* SkyLight = Sky->GetLightComponent())
-		{
-			SkyLight->SetMobility(EComponentMobility::Movable);
-			SkyLight->bRealTimeCapture = true;
-		}
-		Sky->FinishSpawning(FTransform::Identity);
-	}
-#endif
-}

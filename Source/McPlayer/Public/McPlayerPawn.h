@@ -36,6 +36,7 @@ public:
 	// The blocks to move through. Until it is set, or while the chunk underfoot isn't loaded, the player
 	// stays where it is.
 	void SetBlockWorld(const FMcBlockWorld* InWorld) { BlockWorld = InWorld; }
+	bool HasBlockWorld() const { return BlockWorld != nullptr; }
 
 	// Puts the eyes at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
@@ -59,6 +60,10 @@ public:
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void Tick(float DeltaSeconds) override;
+
+	// Where the owning client's player is now, once a tick, in Minecraft block coordinates (feet).
+	UFUNCTION(Server, Unreliable)
+	void ServerMove(FVector FeetPos, float NewYaw);
 
 private:
 	void GameTick(const FMcMoveInput& Input);

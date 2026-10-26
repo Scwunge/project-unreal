@@ -9,6 +9,9 @@ AMcWorldActor::AMcWorldActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	// Clients get one too, holding the chunks streamed to them.
+	bReplicates = true;
+	bAlwaysRelevant = true;
 }
 
 AMcWorldActor::~AMcWorldActor() = default;
@@ -19,6 +22,19 @@ void AMcWorldActor::BeginPlay()
 
 	FMcDimensionType DimensionType;
 	FMcFlatSettings Settings;
+	if (!HasAuthority())
+	{
+		// A client: an empty world that McNet fills with what the server sends.
+		if (FMcBlockRegistry::Get().EnsureLoaded() && FMcDimensionType::Load(Dimension, DimensionType))
+		{
+			BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
+		}
+		else
+		{
+			UE_LOG(LogMcServer, Error, TEXT("Can't join: cache/ is missing or incomplete. Run tools/fetch_cache.py."));
+		}
+		return;
+	}
 	if (!FMcBlockRegistry::Get().EnsureLoaded()
 		|| !FMcDimensionType::Load(Dimension, DimensionType)
 		|| !FMcFlatSettings::LoadPreset(FlatPreset, Settings))
@@ -45,7 +61,7 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
 void AMcWorldActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (BlockWorld)
+	if (BlockWorld && Generator)
 	{
 		StreamChunks();
 	}

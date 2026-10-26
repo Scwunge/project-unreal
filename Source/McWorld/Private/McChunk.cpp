@@ -39,6 +39,24 @@ FMcStateId FMcChunk::SetBlock(int32 X, int32 Y, int32 Z, FMcStateId State)
 	return Previous;
 }
 
+void FMcChunk::LoadSection(int32 Index, TConstArrayView<FMcStateId> States)
+{
+	check(States.Num() == McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize);
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcChunkSection& Section = Sections[Index];
+	Section.Blocks.Fill(States[0]);
+	Section.NonAirCount = 0;
+	for (int32 I = 0; I < States.Num(); ++I)
+	{
+		if (States[I] != States[0])
+		{
+			Section.Blocks.Set(I, States[I]);
+		}
+		Section.NonAirCount += Registry.IsAir(States[I]) ? 0 : 1;
+	}
+	++Revision;
+}
+
 void FMcChunk::FillLayer(int32 Y, FMcStateId State)
 {
 	for (int32 Z = 0; Z < McCoords::SectionSize; ++Z)

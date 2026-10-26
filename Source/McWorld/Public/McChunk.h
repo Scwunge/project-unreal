@@ -57,6 +57,9 @@ public:
 	// Returns the previous state. Heights outside the range are ignored.
 	FMcStateId SetBlock(int32 X, int32 Y, int32 Z, FMcStateId State);
 
+	// Replaces a whole section with States, 4096 of them in SectionIndex order. For chunks arriving whole
+	// (from the network or a save), so it counts as one change.
+	void LoadSection(int32 Index, TConstArrayView<FMcStateId> States);
 	// Sets a whole horizontal layer, e.g. for flat worlds.
 	void FillLayer(int32 Y, FMcStateId State);
 

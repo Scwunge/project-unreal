@@ -1,4 +1,5 @@
-// Hosts one dimension: owns its blocks, generates chunks around the players and unloads the rest.
+// Hosts one dimension: owns its blocks, generates chunks around the players and unloads the rest. Replicated
+// so clients have one too: theirs starts empty and is filled by McNet's chunk streaming.
 
 #pragma once
 

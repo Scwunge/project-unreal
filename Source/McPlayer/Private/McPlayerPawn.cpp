@@ -39,6 +39,10 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// the local player to keep the vertical angle fixed so this matches.
 	Camera->SetFieldOfView(70.0f);
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, StandingEyeHeight * McCoords::UnitsPerBlock));
+
+	// The owning machine moves the player and tells the server; everyone else sees the server's copy.
+	bReplicates = true;
+	SetReplicatingMovement(true);
 }
 
 void AMcPlayerPawn::PossessedBy(AController* NewController)
@@ -137,11 +141,29 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	{
 		bFlying = false;
 	}
+
+	// Like Minecraft, the client moves its own player and the server takes its word for now; checks come with
+	// survival (M7).
+	if (!HasAuthority())
+	{
+		ServerMove(Body.Position, Yaw);
+	}
+}
+
+void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw)
+{
+	Body.Position = FeetPos;
+	LastLocation = McCoords::BlockToUnreal(FeetPos);
+	SetActorLocationAndRotation(LastLocation, FRotator(0.0f, NewYaw, 0.0f));
 }
 
 void AMcPlayerPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
 
 	// Moved by someone else (spawning, a teleport, the dev camera): start from there.
 	if (!GetActorLocation().Equals(LastLocation, 0.01))

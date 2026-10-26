@@ -123,14 +123,17 @@ void AMcGameMode::StartDevCapture()
 		LoadDevScene(SceneName, Camera);
 	}
 	// -McPillarAfter=<seconds>: builds a gold pillar at 3, 0 (in front of a new player) then, to check block changes reach clients.
+	// -McEditY=<y> is the pillar's lowest block (default -60, the flat world's first block above the grass).
 	float PillarDelay = 0.0f;
+	int32 EditY = -60;
+	FParse::Value(CommandLine, TEXT("-McEditY="), EditY);
 	if (FParse::Value(CommandLine, TEXT("-McPillarAfter="), PillarDelay))
 	{
 		FTimerHandle PillarTimer;
-		GetWorldTimerManager().SetTimer(PillarTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		GetWorldTimerManager().SetTimer(PillarTimer, FTimerDelegate::CreateWeakLambda(this, [this, EditY]()
 		{
 			const FMcStateId Gold = FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:gold_block")).Get(0);
-			for (int32 Y = -60; Y <= -54; ++Y)
+			for (int32 Y = EditY; Y <= EditY + 6; ++Y)
 			{
 				WorldActor->SetBlock(FIntVector(3, Y, 0), Gold);
 			}

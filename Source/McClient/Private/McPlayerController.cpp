@@ -147,15 +147,48 @@ void AMcPlayerController::StartDevScreenshot()
 	// side-by-side checks, on the host or on a client.
 	// -McBreakAfter=<seconds>: this player breaks the block at 3, -59, 0 (eye level in -McPillarAfter's
 	// pillar), to check that edits reach the server and the other players.
+	// -McEditY=<y> is the pillar's lowest block, as for the host; -McPlaceAfter=<seconds> puts a diamond block under
+	// the pillar; -McCam=x,y,z,yaw,pitch moves a client's own view, as it does on the host.
 	float BreakDelay = 0.0f;
+	float PlaceDelay = 0.0f;
+	int32 EditY = -60;
+	FParse::Value(FCommandLine::Get(), TEXT("-McEditY="), EditY);
 	if (FParse::Value(FCommandLine::Get(), TEXT("-McBreakAfter="), BreakDelay))
 	{
 		FTimerHandle BreakTimer;
-		GetWorldTimerManager().SetTimer(BreakTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		GetWorldTimerManager().SetTimer(BreakTimer, FTimerDelegate::CreateWeakLambda(this, [this, EditY]()
 		{
-			ChunkStream->RequestSetBlock(FIntVector(3, -59, 0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:air")).Get(0));
+			ChunkStream->RequestSetBlock(FIntVector(3, EditY + 1, 0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:air")).Get(0));
 			UE_LOG(LogMcClient, Display, TEXT("Broke the pillar's eye-level block"));
 		}), BreakDelay, false);
+	}
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McPlaceAfter="), PlaceDelay))
+	{
+		FTimerHandle PlaceTimer;
+		GetWorldTimerManager().SetTimer(PlaceTimer, FTimerDelegate::CreateWeakLambda(this, [this, EditY]()
+		{
+			ChunkStream->RequestSetBlock(FIntVector(3, EditY - 1, 0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:diamond_block")).Get(0));
+			UE_LOG(LogMcClient, Display, TEXT("Placed a diamond block under the pillar"));
+		}), PlaceDelay, false);
+	}
+	FString Camera;
+	TArray<FString> CameraParts;
+	if (!HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false))
+	{
+		Camera.ParseIntoArray(CameraParts, TEXT(","));
+	}
+	if (CameraParts.Num() == 5)
+	{
+		// The pawn arrives a moment after the controller.
+		const TSharedRef<FTimerHandle> CameraTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*CameraTimer, FTimerDelegate::CreateWeakLambda(this, [this, CameraParts, CameraTimer]()
+		{
+			if (AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				MyPawn->SetView(FVector(FCString::Atod(*CameraParts[0]), FCString::Atod(*CameraParts[1]), FCString::Atod(*CameraParts[2])), FCString::Atof(*CameraParts[3]), FCString::Atof(*CameraParts[4]));
+				GetWorldTimerManager().ClearTimer(*CameraTimer);
+			}
+		}), 0.5f, true);
 	}
 
 	FString ShotPath;

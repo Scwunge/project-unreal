@@ -8,6 +8,7 @@
 #include "McBlockWorld.h"
 #include "Containers/Queue.h"
 #include "McChunkGenerator.h"
+#include "McSimulation.h"
 #include "McWorldActor.generated.h"
 
 class FMcFeatureLibrary;
@@ -86,6 +87,9 @@ private:
 	// Lives as long as the actor, not just until EndPlay: components (the renderer) end play after the
 	// actor does and still unbind from it then.
 	TUniquePtr<FMcBlockWorld> BlockWorld;
+	// The 20 ticks a second: fluids flow and sand falls. Server only; made when the world starts.
+	TUniquePtr<FMcSimulation> Simulation;
+	double TickRemainder = 0.0;
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;

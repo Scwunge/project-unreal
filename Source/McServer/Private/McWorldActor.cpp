@@ -7,6 +7,7 @@
 #include "McFeature.h"
 #include "McGenRegion.h"
 #include "McNoiseGenerator.h"
+#include "McSimulation.h"
 #include "McServer.h"
 #include "Misc/CommandLine.h"
 #include "Net/UnrealNetwork.h"
@@ -125,6 +126,7 @@ void AMcWorldActor::BeginPlay()
 	}
 
 	BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
+	Simulation = MakeUnique<FMcSimulation>(*BlockWorld);
 	Finished = MakeShared<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
 	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d"),
@@ -159,6 +161,15 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	if (BlockWorld && Generator)
 	{
 		StreamChunks();
+	}
+	if (Simulation)
+	{
+		// Fixed 20 ticks a second however the frames fall; after a long hitch, catch up at most a few ticks.
+		TickRemainder = FMath::Min(TickRemainder + DeltaSeconds, 0.25);
+		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
+		{
+			Simulation->Tick();
+		}
 	}
 }
 

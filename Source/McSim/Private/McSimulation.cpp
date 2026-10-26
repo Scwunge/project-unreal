@@ -1,0 +1,369 @@
+#include "McSimulation.h"
+#include "McBlockRegistry.h"
+#include "McBlockShapes.h"
+#include "McBlockTags.h"
+#include "McBlockWorld.h"
+#include "McSim.h"
+
+namespace
+{
+	const FIntVector Up(0, 1, 0);
+	const FIntVector Down(0, -1, 0);
+	const FIntVector Sides[4] = { FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
+	const FIntVector Around[6] = { FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0), FIntVector(0, 1, 0), FIntVector(0, -1, 0) };
+
+	FMcStateId StateOf(const TCHAR* Block)
+	{
+		return FMcBlockRegistry::Get().FindDefaultState(Block).Get(0);
+	}
+
+	// Whether the state is a water or lava block itself (not one that only holds water, like a waterlogged slab).
+	bool IsFluidBlock(FMcStateId State)
+	{
+		const FName Name = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+		return Name == TEXT("minecraft:water") || Name == TEXT("minecraft:lava");
+	}
+
+	EMcFluid FluidOf(FMcStateId State)
+	{
+		return FMcBlockShapes::Get().GetFluid(State);
+	}
+
+	int32 LevelOf(FMcStateId State)
+	{
+		return FMcBlockShapes::Get().GetFluidLevel(State);
+	}
+
+	bool IsGravityBlock(FMcStateId State)
+	{
+		const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
+		return FMcBlockTags::Get().Has(TEXT("minecraft:sand"), State) || Name == TEXT("minecraft:gravel") || Name == TEXT("minecraft:dragon_egg")
+			|| Name.EndsWith(TEXT("concrete_powder")) || Name.EndsWith(TEXT("anvil"));
+	}
+
+	FMcStateId FluidState(FName Block, int32 Level)
+	{
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("level"), FName(*FString::FromInt(Level)));
+		return FMcBlockRegistry::Get().FindState(Block, Properties).Get(0);
+	}
+
+	// A block a fluid pushes aside: nothing to collide with (air, plants, torches).
+	bool IsDisplaceable(FMcStateId State)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		return Registry.IsAir(State) || (FluidOf(State) == EMcFluid::None && !FMcBlockShapes::Get().HasCollision(State) && !FMcBlockTags::Get().Has(TEXT("minecraft:climbable"), State)
+			&& !FMcBlockTags::Get().Has(TEXT("minecraft:portals"), State));
+	}
+}
+
+FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
+	: World(InWorld)
+{
+	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
+}
+
+FMcSimulation::~FMcSimulation()
+{
+	World.OnBlockChanged.Remove(ChangedHandle);
+}
+
+void FMcSimulation::ScheduleTick(const FIntVector& Pos, int32 Delay)
+{
+	if (Pending.Contains(Pos))
+	{
+		return;
+	}
+	Pending.Add(Pos);
+	Due.FindOrAdd(GameTime + FMath::Max(Delay, 1)).Add(Pos);
+}
+
+void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId)
+{
+	Notify(Pos);
+	for (const FIntVector& Offset : Around)
+	{
+		Notify(Pos + Offset);
+	}
+}
+
+void FMcSimulation::Notify(const FIntVector& Pos)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	switch (FluidOf(State))
+	{
+	case EMcFluid::Water:
+		if (IsFluidBlock(State))
+		{
+			ScheduleTick(Pos, WaterDelay);
+		}
+		return;
+	case EMcFluid::Lava:
+		ScheduleTick(Pos, LavaDelay);
+		return;
+	default:
+		break;
+	}
+	if (IsGravityBlock(State))
+	{
+		ScheduleTick(Pos, GravityDelay);
+	}
+}
+
+void FMcSimulation::Tick()
+{
+	++GameTime;
+	// Ticks that run now may schedule more for later; those never come due in this same tick (delay 1 or more).
+	TArray<FIntVector> Now;
+	for (auto It = Due.CreateIterator(); It; ++It)
+	{
+		if (It.Key() <= GameTime)
+		{
+			Now.Append(It.Value());
+			It.RemoveCurrent();
+		}
+	}
+	for (const FIntVector& Pos : Now)
+	{
+		Pending.Remove(Pos);
+	}
+	for (const FIntVector& Pos : Now)
+	{
+		RunTick(Pos);
+	}
+}
+
+void FMcSimulation::RunTick(const FIntVector& Pos)
+{
+	if (!World.HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+	{
+		return;
+	}
+	const FMcStateId State = World.GetBlock(Pos);
+	if (FluidOf(State) != EMcFluid::None)
+	{
+		TickFluid(Pos, State);
+	}
+	else if (IsGravityBlock(State))
+	{
+		TickGravity(Pos, State);
+	}
+}
+
+void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 MinY = World.GetDimension().MinY;
+	const auto CanFallInto = [&](int32 Y)
+	{
+		const FMcStateId Below = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
+		return Y >= MinY && (IsDisplaceable(Below) || FluidOf(Below) != EMcFluid::None);
+	};
+	int32 Y = Pos.Y;
+	while (CanFallInto(Y - 1))
+	{
+		--Y;
+	}
+	if (Y != Pos.Y)
+	{
+		World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
+		World.SetBlock(FIntVector(Pos.X, Y, Pos.Z), State);
+	}
+}
+
+void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
+{
+	if (!IsFluidBlock(State))
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const EMcFluid Kind = FluidOf(State);
+	const bool bWater = Kind == EMcFluid::Water;
+	const FMcStateId Air = StateOf(TEXT("minecraft:air"));
+	const int32 Drop = bWater ? 1 : 2;
+	const int32 SlopeReach = bWater ? 4 : 2;
+	const int32 Level = LevelOf(State);
+	const FName Block = Registry.GetBlockOf(State).Name;
+
+	// Lava beside water hardens: a source into obsidian, flowing lava into cobblestone (water above or beside it).
+	if (!bWater)
+	{
+		for (const FIntVector& Offset : { Sides[0], Sides[1], Sides[2], Sides[3], Up })
+		{
+			if (FluidOf(World.GetBlock(Pos + Offset)) == EMcFluid::Water)
+			{
+				World.SetBlock(Pos, StateOf(Level == 0 ? TEXT("minecraft:obsidian") : TEXT("minecraft:cobblestone")));
+				return;
+			}
+		}
+	}
+
+	const auto SetFluid = [&](const FIntVector& At, int32 NewLevel)
+	{
+		World.SetBlock(At, FluidState(Block, NewLevel));
+	};
+
+	// A flowing block settles on what its neighbours give it, or dries up.
+	if (Level != 0)
+	{
+		int32 Best = MAX_int32;
+		int32 Sources = 0;
+		for (const FIntVector& Offset : Sides)
+		{
+			const FMcStateId Neighbour = World.GetBlock(Pos + Offset);
+			if (FluidOf(Neighbour) != Kind)
+			{
+				continue;
+			}
+			const int32 NeighbourLevel = LevelOf(Neighbour);
+			Sources += NeighbourLevel == 0 ? 1 : 0;
+			Best = FMath::Min(Best, (NeighbourLevel >= 8 ? 0 : NeighbourLevel) + Drop);
+		}
+		int32 NewLevel = Best;
+		const bool bFalls = FluidOf(World.GetBlock(Pos + Up)) == Kind;
+		if (bFalls)
+		{
+			NewLevel = 8;
+		}
+		else if (bWater && Sources >= 2)
+		{
+			const FMcStateId Below = World.GetBlock(Pos + Down);
+			if (FluidOf(Below) == Kind && LevelOf(Below) == 0)
+			{
+				NewLevel = 0;
+			}
+			else if (!IsDisplaceable(Below) && FluidOf(Below) == EMcFluid::None)
+			{
+				NewLevel = 0;
+			}
+		}
+		if (NewLevel > 7 && !bFalls)
+		{
+			World.SetBlock(Pos, Air);
+			return;
+		}
+		if (NewLevel != Level)
+		{
+			SetFluid(Pos, NewLevel);
+			return;
+		}
+	}
+
+	// Down first.
+	const FIntVector BelowPos = Pos + Down;
+	if (BelowPos.Y >= World.GetDimension().MinY)
+	{
+		const FMcStateId Below = World.GetBlock(BelowPos);
+		const bool bOpen = IsDisplaceable(Below) || (FluidOf(Below) == Kind && IsFluidBlock(Below) && LevelOf(Below) != 8 && LevelOf(Below) != 0);
+		if (FluidOf(Below) != EMcFluid::None && FluidOf(Below) != Kind && IsFluidBlock(Below))
+		{
+			// Water falling on lava, or lava falling on water.
+			if (bWater)
+			{
+				World.SetBlock(BelowPos, StateOf(LevelOf(Below) == 0 ? TEXT("minecraft:obsidian") : TEXT("minecraft:cobblestone")));
+			}
+			else
+			{
+				World.SetBlock(BelowPos, StateOf(TEXT("minecraft:stone")));
+			}
+			return;
+		}
+		if (bOpen)
+		{
+			SetFluid(BelowPos, 8);
+			if (Level != 0)
+			{
+				return;
+			}
+		}
+	}
+
+	// Then sideways, towards the nearest drop when there is one.
+	const int32 Effective = Level >= 8 ? 0 : Level;
+	const int32 NewLevel = Effective + Drop;
+	if (NewLevel > 7)
+	{
+		return;
+	}
+	const auto CanEnter = [&](const FIntVector& At)
+	{
+		const FMcStateId Here = World.GetBlock(At);
+		if (IsDisplaceable(Here))
+		{
+			return true;
+		}
+		if (FluidOf(Here) == Kind && IsFluidBlock(Here))
+		{
+			return LevelOf(Here) != 0 && LevelOf(Here) < 8 && LevelOf(Here) > NewLevel;
+		}
+		return FluidOf(Here) != EMcFluid::None && FluidOf(Here) != Kind && IsFluidBlock(Here);
+	};
+	const auto HasDropBelow = [&](const FIntVector& At)
+	{
+		const FMcStateId Under = World.GetBlock(At + Down);
+		return IsDisplaceable(Under) || (FluidOf(Under) == Kind && IsFluidBlock(Under) && LevelOf(Under) != 0);
+	};
+	// Steps to the nearest drop going on from At, by flowing paths no longer than Reach blocks; MAX_int32 if none.
+	TFunction<int32(const FIntVector&, int32, int32)> Slope = [&](const FIntVector& At, int32 Steps, int32 From) -> int32
+	{
+		int32 Best = MAX_int32;
+		for (int32 Side = 0; Side < 4; ++Side)
+		{
+			if (From >= 0 && (Side ^ 1) == From)
+			{
+				continue;
+			}
+			const FIntVector Next = At + Sides[Side];
+			if (!CanEnter(Next) && !(FluidOf(World.GetBlock(Next)) == Kind && IsFluidBlock(World.GetBlock(Next))))
+			{
+				continue;
+			}
+			if (HasDropBelow(Next))
+			{
+				return Steps;
+			}
+			if (Steps < SlopeReach)
+			{
+				Best = FMath::Min(Best, Slope(Next, Steps + 1, Side));
+			}
+		}
+		return Best;
+	};
+	const bool bBelowOpen = BelowPos.Y >= World.GetDimension().MinY && HasDropBelow(Pos);
+	if (Level != 0 && bBelowOpen)
+	{
+		return;
+	}
+	int32 Distances[4];
+	int32 Shortest = MAX_int32;
+	for (int32 Side = 0; Side < 4; ++Side)
+	{
+		const FIntVector Next = Pos + Sides[Side];
+		if (!CanEnter(Next))
+		{
+			Distances[Side] = MAX_int32;
+			continue;
+		}
+		Distances[Side] = HasDropBelow(Next) ? 0 : (SlopeReach > 1 ? Slope(Next, 1, Side) : MAX_int32);
+		Shortest = FMath::Min(Shortest, Distances[Side]);
+	}
+	for (int32 Side = 0; Side < 4; ++Side)
+	{
+		const FIntVector Next = Pos + Sides[Side];
+		if (!CanEnter(Next) || (Shortest != MAX_int32 && Distances[Side] != Shortest))
+		{
+			continue;
+		}
+		const FMcStateId Here = World.GetBlock(Next);
+		if (FluidOf(Here) != EMcFluid::None && FluidOf(Here) != Kind && IsFluidBlock(Here))
+		{
+			// Water into lava (or lava into water) turns the block that was in the way to stone.
+			if (bWater)
+			{
+				World.SetBlock(Next, StateOf(LevelOf(Here) == 0 ? TEXT("minecraft:obsidian") : TEXT("minecraft:cobblestone")));
+			}
+			continue;
+		}
+		SetFluid(Next, NewLevel);
+	}
+}

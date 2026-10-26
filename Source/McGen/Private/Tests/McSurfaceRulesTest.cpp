@@ -1,6 +1,7 @@
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McChunk.h"
+#include "McDensityFunction.h"
 #include "McNoiseGenerator.h"
 #include "Misc/AutomationTest.h"
 
@@ -38,6 +39,7 @@ bool FMcSurfaceRulesTest::RunTest(const FString& Parameters)
 	// A patch of chunks: count what tops dry land and the sea floor, and what's at the bottom and deep down.
 	TMap<FMcStateId, int32> LandTops;
 	TMap<FMcStateId, int32> SeaFloors;
+	TMap<int32, int32> FloorGaps;  // preliminary surface minus the sea floor, in steps of 8
 	int32 BedrockFloor = 0;
 	int32 Columns = 0;
 	int32 DeepStone = 0;
@@ -87,6 +89,8 @@ bool FMcSurfaceRulesTest::RunTest(const FString& Parameters)
 						{
 							if (Chunk.GetBlock(X, Below, Z) != Water)
 							{
+								const int32 Gap = FMath::RoundToInt32(Generator.GetPreliminarySurface(Chunk.GetPos().X * 16 + X, Chunk.GetPos().Y * 16 + Z)) - Below;
+								FloorGaps.FindOrAdd(FMath::Clamp(Gap / 8, -4, 8))++;
 								SeaFloors.FindOrAdd(Chunk.GetBlock(X, Below, Z))++;
 								break;
 							}
@@ -114,7 +118,42 @@ bool FMcSurfaceRulesTest::RunTest(const FString& Parameters)
 	};
 	AddInfo(TEXT("Land tops: ") + Describe(LandTops));
 	AddInfo(TEXT("Sea floors: ") + Describe(SeaFloors));
+	FloorGaps.KeySort(TLess<int32>());
+	FString Gaps;
+	for (const TPair<int32, int32>& Entry : FloorGaps)
+	{
+		Gaps += FString::Printf(TEXT("%d..%d: %d, "), Entry.Key * 8, Entry.Key * 8 + 7, Entry.Value);
+	}
+	AddInfo(TEXT("Sea floor below the preliminary surface: ") + Gaps);
 	AddInfo(FString::Printf(TEXT("16 chunks in %.0f ms; %d ore vein blocks"), Milliseconds, VeinBlocks));
+
+	// How well the preliminary surface tracks the terrain under the sea: solid just below it, open just above.
+	{
+		const FMcDensityGraph& Graph = Generator.GetGraph();
+		const int32 Final = Generator.GetRouterFunction(TEXT("final_density"));
+		FMcDensityContext Context(Graph);
+		int32 Sea = 0;
+		int32 SolidBelow[4] = {};
+		for (int32 Index = 0; Index < 1600; ++Index)
+		{
+			const int32 X = (Index % 40) * 97 - 2000;
+			const int32 Z = (Index / 40) * 97 - 2000;
+			const int32 Surface = FMath::FloorToInt32(Generator.GetPreliminarySurface(X, Z));
+			if (Surface >= Settings.SeaLevel - 5)
+			{
+				continue;
+			}
+			++Sea;
+			const int32 Depths[4] = { 2, 8, 16, 32 };
+			for (int32 D = 0; D < 4; ++D)
+			{
+				Context.SetPos(X, Surface - Depths[D], Z);
+				SolidBelow[D] += Graph.Evaluate(Final, Context) > 0.0 ? 1 : 0;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("Under the sea (%d columns), solid at 2/8/16/32 below the preliminary surface: %d %d %d %d"),
+			Sea, SolidBelow[0], SolidBelow[1], SolidBelow[2], SolidBelow[3]));
+	}
 
 	TestEqual(TEXT("bedrock covers the bottom layer"), BedrockFloor, Columns);
 	TestTrue(FString::Printf(TEXT("deepslate below y 0 (%d deepslate, %d stone)"), DeepSlate, DeepStone), DeepSlate > DeepStone * 20);

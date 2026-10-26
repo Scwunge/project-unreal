@@ -66,6 +66,7 @@ bool FMcNoiseSettings::Load(const FString& Id, FMcNoiseSettings& Out)
 	if (Json->TryGetObjectField(TEXT("aquifers"), Aquifers))
 	{
 		Result.SurfaceLevel = (*Aquifers)->TryGetField(TEXT("surface_level"));
+		Result.Aquifers = MakeShared<FJsonValueObject>(*Aquifers);
 	}
 	Json->TryGetStringField(TEXT("material_rule"), Result.SurfaceRule);
 	Out = MoveTemp(Result);
@@ -87,6 +88,9 @@ FMcNoiseGenerator::FMcNoiseGenerator(const FMcNoiseSettings& InSettings, uint64 
 		Climate[Index] = GetRouterFunction(ClimateNames[Index]);
 	}
 	SurfaceLevel = Settings.SurfaceLevel.IsValid() ? Graph.Parse(Settings.SurfaceLevel) : INDEX_NONE;
+	bAquifers = Aquifer.Load(Settings.Aquifers, SurfaceLevel, Graph, Seed, Settings.SeaLevel, Settings.DefaultFluid,
+		FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:lava")).Get(0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:air")).Get(0),
+		Settings.DefaultBlock);
 	bool bRulesLoaded = true;
 	if (!Settings.SurfaceRule.IsEmpty())
 	{
@@ -125,6 +129,8 @@ void FMcNoiseGenerator::Generate(FMcChunk& Chunk) const
 
 	FMcDensityContext Context(Graph);
 	Context.BeginChunk(BlockX, BlockZ, Settings.MinY, Settings.Height);
+	FMcDensityContext AquiferContext(Graph);
+	FMcAquifer::FCache AquiferCache;
 
 	const int32 NumSections = (Chunk.GetMaxY() - Chunk.GetMinY() + 1) / 16;
 	TArray<TArray<FMcStateId>> Sections;
@@ -151,9 +157,15 @@ void FMcNoiseGenerator::Generate(FMcChunk& Chunk) const
 			{
 				Context.SetPos(BlockX + X, Y, BlockZ + Z);
 				FMcStateId State = Air;
-				if (Graph.Evaluate(FinalDensity, Context) > 0.0)
+				const double Density = Graph.Evaluate(FinalDensity, Context);
+				if (Density > 0.0)
 				{
 					State = Settings.DefaultBlock;
+				}
+				else if (bAquifers)
+				{
+					// Well above the ground only the sea can reach.
+					State = Y > Surface + 32 ? Aquifer.GlobalAt(Y) : Aquifer.Compute(BlockX + X, Y, BlockZ + Z, Density, AquiferContext, AquiferCache);
 				}
 				else if (Y < LavaLevel)
 				{
@@ -206,6 +218,17 @@ FMcBiomeId FMcNoiseGenerator::GetBiome(int32 X, int32 Y, int32 Z) const
 	// Biomes are per 4x4x4 cell, sampled at the cell's corner.
 	int32 Hint = INDEX_NONE;
 	return Biomes.Find(SampleClimate(X & ~3, Y & ~3, Z & ~3), Hint);
+}
+
+double FMcNoiseGenerator::GetPreliminarySurface(int32 X, int32 Z) const
+{
+	if (SurfaceLevel == INDEX_NONE)
+	{
+		return Settings.SeaLevel;
+	}
+	FMcDensityContext Context(Graph);
+	Context.SetPos(X, 0, Z);
+	return Graph.Evaluate(SurfaceLevel, Context);
 }
 
 void FMcNoiseGenerator::FillBiomes(FMcChunk& Chunk, FMcDensityContext& Context) const

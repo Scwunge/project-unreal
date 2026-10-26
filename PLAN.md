@@ -1,23 +1,44 @@
 # Minecraft in Unreal: its own game, playing like Java Edition 26.3
 
-Status: **M0 waiting on Unreal 5.8; M1 code written, never compiled** (2026-10-26, branch
-`m1/blocks-and-chunks`). Rewritten 2026-10-24, when the project changed from "an Unreal client for the
-vanilla server" to "its own game". The repo has the module scaffold (`McClient.uproject`, `Source/`), not yet
-opened in Unreal, and `tools/fetch_cache.py`, which has filled `cache/`.
+Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/blocks-and-chunks`).
 
-**M1 as written** (see section 4): `FMcBlockRegistry` (McCore) reads `blocks.json` and the `#minecraft:air`
-tag; `FMcPalettedContainer`, `FMcChunk` and `FMcBlockWorld` (McWorld) store chunks sized from
-`dimension_type`; `FMcFlatGenerator` (McGen) fills them from a `flat_level_generator_preset`;
-`AMcWorldActor` (McServer) loads chunks around players and unloads the rest; `UMcWorldRenderComponent`
-(McRender) meshes chunks on UE Tasks into flat-coloured cubes with Minecraft's per-face shading;
-`AMcFreeCameraPawn` (McPlayer) flies like spectator mode; `AMcGameMode` (McClient) wires them up. Automation
-tests: `McClient.McCore.BlockRegistry`, `McClient.McWorld.PalettedContainer`. On first build, check:
+- **M2** draws the real block models and textures, with sky and block light, smooth lighting, AO, water and
+  lava.
+- **M3** has Minecraft movement and collision (exact shapes, swimming, climbing, cobwebs), breaking and
+  placing with the hotbar and crosshair, and a listen server that streams chunks and edits to clients.
+- **M3 leftovers:**
+  - Item drops (need item entities, M6/M7).
+  - Other players' bodies (in progress).
+  - Mining time (M7).
+  - Server-side movement checks.
 
-- Faces draw from outside. If the world looks inside out, `mc.Render.FlipWinding 1` and fix the default.
-- The greybox uses `/Engine/EngineDebugMaterials/VertexColorMaterial`; packaged builds need it cooked or
-  a project material in its place.
-- M1 uses Unreal's ProceduralMeshComponent instead of RealtimeMeshComponent, to avoid adding a plugin before
-  the first build. Switch when M2 needs separate passes.
+### M4 build order
+
+The 26.3 worldgen data (`cache/client/data/minecraft/worldgen`) is the source of truth. The overworld biome
+table comes from `cache/data/reports/biome_parameters`.
+
+26.3 changed the formats:
+- Noises have `base_octave`, `octave_count`, `base_amplitude` and `normalize`, and are evaluated in
+  single precision.
+- `gradient`, `lerp`, `find_top_surface`, `interval_select` and `distance_to_point` replace older types.
+- Surface rules live in `material_rule` and `material_condition`.
+
+The wiki doesn't document the noise maths exactly, so noises are built to the documented semantics
+(normalized fBm whose expected amplitude is `base_amplitude`) and calibrated against world statistics. They
+are not seed-matched.
+
+1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
+   the noise JSON, and simplex noise for the End.
+2. **Density functions:** parse every type the data uses into a graph and evaluate it, with caches and cell
+   interpolation. Test that every density function file loads.
+3. **Noise chunk generator:** `final_density` to stone, water and air by cells, aquifers and ore veins. This
+   replaces the flat generator for new worlds.
+4. **Biomes:** a multi-noise lookup over the report's parameter points, stored per 4x4x4 cell in chunks and
+   used for tints.
+5. **Surface rules:** grass, dirt, sand, snow, badlands bands and deepslate from `material_rule`.
+6. **Carvers:** caves and canyons.
+7. **Features:** placed features by biome and step (ores, trees, plants, lakes, and so on); the long tail.
+8. **Structures:** jigsaw template pools (villages and others) and fixed ones.
 
 Private project, not for release. The repo holds only our own code. Everything of Mojang's (textures,
 models, sounds, data) is read from your own installed copy into a local cache that git ignores.

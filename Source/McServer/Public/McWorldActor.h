@@ -6,7 +6,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "McBlockWorld.h"
-#include "McFlatGenerator.h"
+#include "Containers/Queue.h"
+#include "McChunkGenerator.h"
 #include "McWorldActor.generated.h"
 
 UCLASS()
@@ -22,16 +23,29 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	FString Dimension = TEXT("minecraft:overworld");
 
-	// M1 only makes flat worlds: a preset id from the jar's worldgen/flat_level_generator_preset/.
+	// Terrain from the jar's worldgen/noise_settings/, unless the world is flat.
+	UPROPERTY(EditAnywhere, Category = "Mc")
+	FString NoiseSettings = TEXT("minecraft:overworld");
+
+	// Flat worlds use a preset from the jar's worldgen/flat_level_generator_preset/. The command line can
+	// ask for one with -McFlat (dev scenes with -McScene always are).
+	UPROPERTY(EditAnywhere, Category = "Mc")
+	bool bFlat = false;
+
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	FString FlatPreset = TEXT("minecraft:classic_flat");
+
+	// The world seed; 0 picks one at random. -McSeed=<number> sets it.
+	UPROPERTY(EditAnywhere, Category = "Mc")
+	int64 Seed = 0;
 
 	// Chunks drawn around each player, like the View Distance video setting.
 	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 2, ClampMax = 32))
 	int32 ViewDistance = 12;
 
+	// Chunks being generated on worker threads at once.
 	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 1))
-	int32 MaxChunksGeneratedPerTick = 16;
+	int32 MaxChunksInFlight = 16;
 
 	// Null until BeginPlay has loaded the registry, the dimension and the preset from cache/.
 	FMcBlockWorld* GetBlockWorld() const { return BlockWorld.Get(); }
@@ -49,12 +63,18 @@ protected:
 
 private:
 	void StreamChunks();
+	void AddGeneratedChunks();
 
 	// Lives as long as the actor, not just until EndPlay: components (the renderer) end play after the
 	// actor does and still unbind from it then.
 	TUniquePtr<FMcBlockWorld> BlockWorld;
-	TUniquePtr<FMcFlatGenerator> Generator;
+	// Shared with the worker tasks, which may outlive the actor by a moment.
+	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;
+
+	// Chunks out on worker threads, and the finished ones coming back.
+	TSet<FIntPoint> InFlight;
+	TSharedPtr<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe> Finished;
 
 	// Block changes by chunk, keyed by world position.
 	TMap<FIntPoint, TMap<FIntVector, FMcStateId>> Edits;

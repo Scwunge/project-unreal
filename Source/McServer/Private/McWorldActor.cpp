@@ -1,6 +1,10 @@
 #include "McWorldActor.h"
 #include "McBlockRegistry.h"
+#include "McFlatGenerator.h"
+#include "McNoiseGenerator.h"
 #include "McServer.h"
+#include "Misc/CommandLine.h"
+#include "Tasks/Task.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -21,7 +25,6 @@ void AMcWorldActor::BeginPlay()
 	Super::BeginPlay();
 
 	FMcDimensionType DimensionType;
-	FMcFlatSettings Settings;
 	if (!HasAuthority())
 	{
 		// A client: an empty world that McNet fills with what the server sends.
@@ -35,19 +38,55 @@ void AMcWorldActor::BeginPlay()
 		}
 		return;
 	}
-	if (!FMcBlockRegistry::Get().EnsureLoaded()
-		|| !FMcDimensionType::Load(Dimension, DimensionType)
-		|| !FMcFlatSettings::LoadPreset(FlatPreset, Settings))
+	if (!FMcBlockRegistry::Get().EnsureLoaded() || !FMcDimensionType::Load(Dimension, DimensionType))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't start the world: cache/ is missing or incomplete. Run tools/fetch_cache.py."));
 		return;
 	}
 
+	const TCHAR* CommandLine = FCommandLine::Get();
+	FString Scene;
+	bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
+	FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
+	if (Seed == 0)
+	{
+		Seed = static_cast<int64>(FPlatformTime::Cycles64() ^ (static_cast<uint64>(FDateTime::Now().GetTicks()) << 7));
+	}
+
+	FString Kind;
+	if (bFlat)
+	{
+		FMcFlatSettings Settings;
+		if (!FMcFlatSettings::LoadPreset(FlatPreset, Settings))
+		{
+			UE_LOG(LogMcServer, Error, TEXT("Can't start the world: flat preset %s didn't load."), *FlatPreset);
+			return;
+		}
+		Generator = MakeShared<FMcFlatGenerator, ESPMode::ThreadSafe>(Settings, DimensionType.MinY);
+		Kind = TEXT("flat preset ") + FlatPreset;
+	}
+	else
+	{
+		FMcNoiseSettings Settings;
+		TSharedPtr<FMcNoiseGenerator, ESPMode::ThreadSafe> Noise;
+		if (FMcNoiseSettings::Load(NoiseSettings, Settings))
+		{
+			Noise = MakeShared<FMcNoiseGenerator, ESPMode::ThreadSafe>(Settings, static_cast<uint64>(Seed));
+		}
+		if (!Noise || !Noise->IsValid())
+		{
+			UE_LOG(LogMcServer, Error, TEXT("Can't start the world: noise settings %s didn't load."), *NoiseSettings);
+			return;
+		}
+		Generator = Noise;
+		Kind = FString::Printf(TEXT("%s terrain, seed %lld"), *NoiseSettings, Seed);
+	}
+
 	BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
-	Generator = MakeUnique<FMcFlatGenerator>(Settings);
-	SurfaceY = Generator->GetSurfaceY(DimensionType.MinY);
-	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, flat preset %s, %d sections from y=%d, surface at y=%d"),
-		*Dimension, *FlatPreset, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
+	Finished = MakeShared<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
+	SurfaceY = Generator->FindSurfaceY(0, 0);
+	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d"),
+		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
 }
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
@@ -105,29 +144,25 @@ void AMcWorldActor::StreamChunks()
 	}
 	Missing.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
 
-	int32 Generated = 0;
+	AddGeneratedChunks();
+
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
-		if (Generated >= MaxChunksGeneratedPerTick)
+		if (InFlight.Num() >= MaxChunksInFlight)
 		{
 			break;
 		}
 		// Two players can want the same chunk.
-		if (BlockWorld->HasChunk(Entry.Value))
+		if (InFlight.Contains(Entry.Value) || BlockWorld->HasChunk(Entry.Value))
 		{
 			continue;
 		}
-		TUniquePtr<FMcChunk> Chunk = BlockWorld->MakeChunk(Entry.Value);
-		Generator->Generate(*Chunk);
-		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Entry.Value))
+		InFlight.Add(Entry.Value);
+		UE::Tasks::Launch(UE_SOURCE_LOCATION, [Generator = Generator, Finished = Finished, Chunk = BlockWorld->MakeChunk(Entry.Value)]() mutable
 		{
-			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
-			{
-				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
-			}
-		}
-		BlockWorld->AddChunk(MoveTemp(Chunk));
-		++Generated;
+			Generator->Generate(*Chunk);
+			Finished->Enqueue(MoveTemp(Chunk));
+		});
 	}
 
 	TArray<FIntPoint> Far;
@@ -145,5 +180,27 @@ void AMcWorldActor::StreamChunks()
 	for (const FIntPoint& Pos : Far)
 	{
 		BlockWorld->RemoveChunk(Pos);
+	}
+}
+
+void AMcWorldActor::AddGeneratedChunks()
+{
+	TUniquePtr<FMcChunk> Chunk;
+	while (Finished->Dequeue(Chunk))
+	{
+		const FIntPoint Pos = Chunk->GetPos();
+		InFlight.Remove(Pos);
+		if (BlockWorld->HasChunk(Pos))
+		{
+			continue;
+		}
+		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos))
+		{
+			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
+			{
+				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
+			}
+		}
+		BlockWorld->AddChunk(MoveTemp(Chunk));
 	}
 }

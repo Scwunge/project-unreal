@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McChunkGenerator.h"
 #include "McCore.h"
 
 class FMcChunk;
@@ -23,16 +24,15 @@ struct MCGEN_API FMcFlatSettings
 };
 
 // Stateless once built, so chunks can be generated on any thread.
-class MCGEN_API FMcFlatGenerator
+class MCGEN_API FMcFlatGenerator : public FMcChunkGenerator
 {
 public:
-	explicit FMcFlatGenerator(const FMcFlatSettings& InSettings);
+	FMcFlatGenerator(const FMcFlatSettings& InSettings, int32 InMinY);
 
-	void Generate(FMcChunk& Chunk) const;
-
-	// The height of the top block of the layers, given the dimension's lowest block.
-	int32 GetSurfaceY(int32 MinY) const;
+	virtual void Generate(FMcChunk& Chunk) const override;
+	virtual int32 FindSurfaceY(int32 X, int32 Z) const override;
 
 private:
 	FMcFlatSettings Settings;
+	int32 MinY = 0;
 };

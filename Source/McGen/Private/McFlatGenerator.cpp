@@ -40,8 +40,9 @@ bool FMcFlatSettings::LoadPreset(const FString& Id, FMcFlatSettings& Out)
 	return true;
 }
 
-FMcFlatGenerator::FMcFlatGenerator(const FMcFlatSettings& InSettings)
+FMcFlatGenerator::FMcFlatGenerator(const FMcFlatSettings& InSettings, int32 InMinY)
 	: Settings(InSettings)
+	, MinY(InMinY)
 {
 }
 
@@ -57,7 +58,7 @@ void FMcFlatGenerator::Generate(FMcChunk& Chunk) const
 	}
 }
 
-int32 FMcFlatGenerator::GetSurfaceY(int32 MinY) const
+int32 FMcFlatGenerator::FindSurfaceY(int32 X, int32 Z) const
 {
 	int32 Total = 0;
 	for (const FMcFlatLayer& Layer : Settings.Layers)

@@ -354,6 +354,27 @@ namespace
 		}
 	};
 
+	// The height of a column as it was before features: trees and leaves aren't counted, so every chunk that looks
+	// at a column agrees on it.
+	int32 GroundHeight(FMcGenRegion& Region, int32 X, int32 Z, EMcHeightmap Heightmap)
+	{
+		const FMcBlockTags& Tags = FMcBlockTags::Get();
+		static const int32 Logs = Tags.Find(TEXT("minecraft:logs"));
+		static const int32 Leaves = Tags.Find(TEXT("minecraft:leaves"));
+		const bool bFloor = Heightmap == EMcHeightmap::OceanFloor || Heightmap == EMcHeightmap::OceanFloorWG;
+		int32 Height = Region.GetHeight(bFloor ? Heightmap : EMcHeightmap::OceanFloor, X, Z);
+		while (Height > Region.GetMinY() + 1)
+		{
+			const FMcStateId Below = Region.GetBlock(FIntVector(X, Height - 1, Z));
+			if (!Tags.Has(Logs, Below) && !Tags.Has(Leaves, Below))
+			{
+				break;
+			}
+			--Height;
+		}
+		return Height;
+	}
+
 	// Sets blocks on the ground: each column is moved to a heightmap plus an offset.
 	struct FGravityProcessor : FProcessor
 	{
@@ -362,7 +383,7 @@ namespace
 
 		virtual FMcStateId Process(FMcGenRegion& Region, FIntVector& Pos, int32 LocalY, FMcStateId State, FMcStateId, FMcRandom&) const override
 		{
-			Pos.Y = Region.GetHeight(Heightmap, Pos.X, Pos.Z) + Offset + LocalY;
+			Pos.Y = GroundHeight(Region, Pos.X, Pos.Z, Heightmap) + Offset + LocalY;
 			return State;
 		}
 	};
@@ -642,7 +663,9 @@ bool FMcStructureTemplate::Load(const FString& Id, FMcStructureTemplate& Out)
 			if (const FMcNbt* Final = Nbt->Find(TEXT("final_state")))
 			{
 				Block.bJigsaw = true;
-				if (const TOptional<FMcStateId> State = Registry.ParseState(Final->String))
+				// A structure void final state leaves the block as it was.
+				const TOptional<FMcStateId> State = Final->String.StartsWith(TEXT("minecraft:structure_void")) ? TOptional<FMcStateId>() : Registry.ParseState(Final->String);
+				if (State)
 				{
 					Block.Final = *State;
 				}
@@ -776,4 +799,12 @@ int32 FMcStructureTemplate::Place(FMcGenRegion& Region, const FIntVector& Positi
 		Placed += Region.SetBlock(Pos, State) ? 1 : 0;
 	}
 	return Placed;
+}
+
+void FMcProcessorList::AddGravity(EMcHeightmap Heightmap, int32 Offset)
+{
+	TSharedRef<FGravityProcessor> Gravity = MakeShared<FGravityProcessor>();
+	Gravity->Heightmap = Heightmap;
+	Gravity->Offset = Offset;
+	Processors.Add(Gravity);
 }

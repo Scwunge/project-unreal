@@ -16,6 +16,7 @@ class FJsonValue;
 class FMcGenRegion;
 class FMcRandom;
 class FMcRuleTest;
+enum class EMcHeightmap : uint8;
 
 enum class EMcRotation : uint8
 {
@@ -69,6 +70,10 @@ public:
 	};
 
 	void Add(TSharedPtr<const FProcessor> Processor) { Processors.Add(MoveTemp(Processor)); }
+	void Append(const FMcProcessorList& Other) { Processors.Append(Other.Processors); }
+	// Moves every block to a heightmap's ground plus Offset (terrain matching pieces use WorldSurfaceWG and -1).
+	void AddGravity(EMcHeightmap Heightmap, int32 Offset);
+	bool IsEmpty() const { return Processors.IsEmpty(); }
 
 private:
 	TArray<TSharedPtr<const FProcessor>> Processors;

@@ -173,7 +173,10 @@ bool FMcStructureTest::RunTest(const FString& Parameters)
 		for (const FMcStructureTemplate::FBlock& Block : Template->Blocks)
 		{
 			Jigsaws += Block.bJigsaw ? 1 : 0;
-			JigsawsWithoutState += (Block.bJigsaw && Block.Final == McTemplate::SkipState) ? 1 : 0;
+			// A structure void final state leaves the block alone, so it reads as no state.
+			const FMcNbt* FinalState = (Block.bJigsaw && Block.Nbt.IsValid()) ? Block.Nbt->Find(TEXT("final_state")) : nullptr;
+			const bool bVoid = FinalState && FinalState->String.StartsWith(TEXT("minecraft:structure_void"));
+			JigsawsWithoutState += (Block.bJigsaw && Block.Final == McTemplate::SkipState && !bVoid) ? 1 : 0;
 			if (!Template->Palettes[0].IsValidIndex(Block.Palette) || Block.Pos.X >= Template->Size.X || Block.Pos.Y >= Template->Size.Y || Block.Pos.Z >= Template->Size.Z)
 			{
 				AddError(FString::Printf(TEXT("template %s has a block out of its size"), *Id));

@@ -17,8 +17,10 @@
 #include "Containers/BitArray.h"
 #include "McBiomeRegistry.h"
 #include "McCore.h"
+#include "McJigsaw.h"
 
 class FJsonObject;
+class FMcFeatureLibrary;
 class FMcGenRegion;
 
 class MCGEN_API FMcStructureLibrary
@@ -26,8 +28,16 @@ class MCGEN_API FMcStructureLibrary
 public:
 	FMcStructureLibrary(int32 InSeaLevel, int32 InMinY);
 
-	// Reads the structure sets, structures and biome tags. Game thread; read only after that.
-	bool Load();
+	// Reads the structure sets, structures and biome tags, and the template pools the jigsaw structures grow
+	// from. Game thread; read only after that. Features gives the pools' feature pieces (flowers, trees) their
+	// placed features; it may be null.
+	bool Load(FMcFeatureLibrary* Features = nullptr);
+
+	// How jigsaw structures find the ground over columns far from the chunk being decorated: the height (one above
+	// the top block) the terrain has there, before features, e.g.
+	// [Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; }. Without it they assume the ground
+	// is as high as at the start. Set before decorating.
+	void SetHeightSource(TFunction<int32(int32, int32)> Source) { HeightSource = MoveTemp(Source); }
 
 	// Puts down the parts of structures that lie in the region's centre chunk. The 3x3 chunks must be generated.
 	void Place(FMcGenRegion& Region, uint64 Seed) const;
@@ -57,6 +67,7 @@ private:
 	const FStructure* Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	bool BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk) const;
 	void Build(FMcGenRegion& Region, const FStructure& Structure, uint64 Seed, FIntPoint Start, int32 Salt) const;
+	bool IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	bool ResolveTag(const FString& Tag, TBitArray<>& Out, int32 Depth) const;
 
 	int32 SeaLevel;
@@ -64,6 +75,13 @@ private:
 	TArray<TSharedPtr<FStructure>> Structures;
 	TArray<TSharedPtr<FSet>> Sets;
 	TMap<FString, int32> Unsupported;
+	TSharedPtr<FMcJigsawLibrary> Jigsaws;
+	FMcFeatureLibrary* FeatureLibrary = nullptr;
+	TFunction<int32(int32, int32)> HeightSource;
+	// Jigsaw layouts by seed, start chunk and structure, newest last.
+	mutable FCriticalSection LayoutLock;
+	mutable TMap<FString, TSharedPtr<FMcJigsawLibrary::FLayout>> Layouts;
+	mutable TArray<FString> LayoutOrder;
 	// Template ids by use.
 	TArray<FString> WarmRuins;
 	TArray<FString> WarmBigRuins;

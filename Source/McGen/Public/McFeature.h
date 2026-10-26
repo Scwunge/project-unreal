@@ -83,6 +83,9 @@ public:
 
 	// Reads every biome's feature lists (one per decoration step) and temperature, and parses those features.
 	bool LoadBiomes();
+	// How villages and other far-reaching structures find the ground away from the chunk being decorated: the
+	// height (one above the top block) before features, e.g. FindSurfaceY(X, Z) + 1. Call after LoadBiomes.
+	void SetHeightSource(TFunction<int32(int32, int32)> Source);
 	// Places the features of the biomes in and around the region's centre chunk, step by step, like the
 	// game's decoration stage. The region's 3x3 chunks must all be generated.
 	void Decorate(FMcGenRegion& Region, uint64 Seed) const;

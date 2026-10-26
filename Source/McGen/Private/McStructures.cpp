@@ -39,6 +39,17 @@ struct FMcStructureLibrary::FStructure
 	float Large = 0.3f;
 	TArray<FSetup> Setups;
 	int32 SetupWeight = 0;
+
+	// Jigsaw structures.
+	FName StartPool;
+	FName StartJigsaw;
+	int32 Size = 6;
+	int32 MaxDistance = 80;
+	int32 StartHeightMin = 0;
+	int32 StartHeightMax = 0;
+	bool bProject = false;
+	bool bBeard = false;
+	bool bSupported = false;
 };
 
 struct FMcStructureLibrary::FSet
@@ -52,6 +63,8 @@ struct FMcStructureLibrary::FSet
 	// Structure index and weight.
 	TArray<TPair<int32, int32>> Entries;
 	int32 TotalWeight = 0;
+	FName ExclusionSet;
+	int32 ExclusionChunks = 0;
 };
 
 namespace
@@ -707,8 +720,12 @@ bool FMcStructureLibrary::ResolveTag(const FString& Tag, TBitArray<>& Out, int32
 	return true;
 }
 
-bool FMcStructureLibrary::Load()
+bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 {
+	FeatureLibrary = Features;
+	Jigsaws = MakeShared<FMcJigsawLibrary>();
+	Layouts.Reset();
+	LayoutOrder.Reset();
 	Structures.Reset();
 	Sets.Reset();
 	Unsupported.Reset();
@@ -771,7 +788,56 @@ bool FMcStructureLibrary::Load()
 				Structure->SetupWeight += Setup.Weight;
 			}
 		}
-		if (!IsSupported(Structure->Type))
+		Structure->bSupported = IsSupported(Structure->Type);
+		if (Structure->Type == TEXT("jigsaw"))
+		{
+			Structure->StartPool = FName(*Json->GetStringField(TEXT("start_pool")));
+			Structure->Size = static_cast<int32>(Json->GetNumberField(TEXT("size")));
+			double Distance = 80.0;
+			const TSharedPtr<FJsonObject>* DistanceObject = nullptr;
+			if (Json->TryGetNumberField(TEXT("max_distance_from_center"), Distance))
+			{
+				Structure->MaxDistance = static_cast<int32>(Distance);
+			}
+			else if (Json->TryGetObjectField(TEXT("max_distance_from_center"), DistanceObject))
+			{
+				Structure->MaxDistance = static_cast<int32>((*DistanceObject)->GetNumberField(TEXT("horizontal")));
+			}
+			FString Anchor;
+			if (Json->TryGetStringField(TEXT("start_jigsaw_name"), Anchor))
+			{
+				Structure->StartJigsaw = FName(*Anchor);
+			}
+			const TSharedPtr<FJsonObject>* Height = nullptr;
+			if (Json->TryGetObjectField(TEXT("start_height"), Height))
+			{
+				double Absolute = 0.0;
+				if ((*Height)->TryGetNumberField(TEXT("absolute"), Absolute))
+				{
+					Structure->StartHeightMin = Structure->StartHeightMax = static_cast<int32>(Absolute);
+				}
+				else
+				{
+					const TSharedPtr<FJsonObject>* Low = nullptr;
+					const TSharedPtr<FJsonObject>* High = nullptr;
+					if ((*Height)->TryGetObjectField(TEXT("min_inclusive"), Low) && (*Height)->TryGetObjectField(TEXT("max_inclusive"), High))
+					{
+						Structure->StartHeightMin = static_cast<int32>((*Low)->GetNumberField(TEXT("absolute")));
+						Structure->StartHeightMax = static_cast<int32>((*High)->GetNumberField(TEXT("absolute")));
+					}
+				}
+			}
+			Structure->bProject = Json->HasField(TEXT("project_start_to_heightmap"));
+			FString Adaptation;
+			Structure->bBeard = Json->TryGetStringField(TEXT("terrain_adaptation"), Adaptation) && Adaptation == TEXT("beard_thin");
+			// Trial chambers pick their spawner pools through aliases, which aren't read yet.
+			Structure->bSupported = !Json->HasField(TEXT("pool_aliases")) && !Structure->StartPool.IsNone();
+			if (Structure->bSupported)
+			{
+				Structure->bSupported = Jigsaws->LoadPool(Structure->StartPool, Features) && Jigsaws->GetPool(Structure->StartPool) && !Jigsaws->GetPool(Structure->StartPool)->Elements.IsEmpty();
+			}
+		}
+		if (!Structure->bSupported)
 		{
 			++Unsupported.FindOrAdd(Structure->Type);
 		}
@@ -800,7 +866,7 @@ bool FMcStructureLibrary::Load()
 			{
 				const TSharedPtr<FJsonObject> Object = Entry->AsObject();
 				const int32* Index = ByName.Find(FName(*Object->GetStringField(TEXT("structure"))));
-				if (Index && IsSupported(Structures[*Index]->Type))
+				if (Index && Structures[*Index]->bSupported)
 				{
 					const int32 Weight = static_cast<int32>(Object->GetNumberField(TEXT("weight")));
 					Set->Entries.Emplace(*Index, Weight);
@@ -823,6 +889,12 @@ bool FMcStructureLibrary::Load()
 		FString Spread;
 		Set->bTriangular = (*Placement)->TryGetStringField(TEXT("spread_type"), Spread) && Spread.EndsWith(TEXT("triangular"));
 		(*Placement)->TryGetNumberField(TEXT("frequency"), Set->Frequency);
+		const TSharedPtr<FJsonObject>* Exclusion = nullptr;
+		if ((*Placement)->TryGetObjectField(TEXT("exclusion_zone"), Exclusion))
+		{
+			Set->ExclusionSet = FName(*(*Exclusion)->GetStringField(TEXT("other_set")));
+			Set->ExclusionChunks = static_cast<int32>((*Exclusion)->GetNumberField(TEXT("chunk_count")));
+		}
 		Sets.Add(Set);
 	}
 
@@ -875,11 +947,38 @@ bool FMcStructureLibrary::IsStartChunk(const FSet& Set, uint64 Seed, FIntPoint C
 	{
 		return false;
 	}
-	if (Set.Frequency < 1.0f)
+	if (Set.Frequency < 1.0f && FMcRandom(Seed).Fork(Chunk.X, Set.Salt ^ 0x5bd1e9, Chunk.Y).NextFloat() >= Set.Frequency)
 	{
-		return FMcRandom(Seed).Fork(Chunk.X, Set.Salt ^ 0x5bd1e9, Chunk.Y).NextFloat() < Set.Frequency;
+		return false;
 	}
-	return true;
+	return !IsExcluded(Set, Seed, Chunk);
+}
+
+// Whether another set has a start within some chunks, which keeps this one away (outposts keep out of villages).
+bool FMcStructureLibrary::IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chunk) const
+{
+	if (Set.ExclusionSet.IsNone())
+	{
+		return false;
+	}
+	for (const TSharedPtr<FSet>& Other : Sets)
+	{
+		if (Other->Id != Set.ExclusionSet)
+		{
+			continue;
+		}
+		for (int32 DZ = -Set.ExclusionChunks; DZ <= Set.ExclusionChunks; ++DZ)
+		{
+			for (int32 DX = -Set.ExclusionChunks; DX <= Set.ExclusionChunks; ++DX)
+			{
+				if (IsStartChunk(*Other, Seed, FIntPoint(Chunk.X + DX, Chunk.Y + DZ)))
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const
@@ -989,6 +1088,50 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 	{
 		BuildOceanRuin(Context, Structure.Cluster, Structure.Large, Structure.bWarm ? WarmRuins : ColdRuins, Structure.bWarm ? WarmBigRuins : ColdBigRuins);
 	}
+	else if (Type == TEXT("jigsaw"))
+	{
+		const int32 CentreX = Start.X * 16 + 8;
+		const int32 CentreZ = Start.Y * 16 + 8;
+		const FString Key = FString::Printf(TEXT("%llu/%d/%d/%s"), Seed, Start.X, Start.Y, *Structure.Id.ToString());
+		TSharedPtr<FMcJigsawLibrary::FLayout> Layout;
+		{
+			FScopeLock Guard(&LayoutLock);
+			if (const TSharedPtr<FMcJigsawLibrary::FLayout>* Found = Layouts.Find(Key))
+			{
+				Layout = *Found;
+			}
+		}
+		if (!Layout.IsValid())
+		{
+			const int32 StartGround = HeightSource ? HeightSource(CentreX, CentreZ) : Context.Ground.Floor(CentreX, CentreZ);
+			FMcJigsawLibrary::FStart Params;
+			Params.Pool = Structure.StartPool;
+			Params.MaxDepth = Structure.Size;
+			Params.MaxDistance = Structure.MaxDistance;
+			Params.StartJigsaw = Structure.StartJigsaw;
+			Params.CentreX = CentreX;
+			Params.CentreZ = CentreZ;
+			Params.Y = Structure.StartHeightMin + (Structure.StartHeightMax > Structure.StartHeightMin ? Random.NextInt(Structure.StartHeightMax - Structure.StartHeightMin + 1) : 0) + (Structure.bProject ? StartGround : 0);
+			Params.MinY = Region.GetMinY();
+			Params.MaxY = Region.GetMaxY();
+			auto Height = [&](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : StartGround; };
+			Layout = Jigsaws->Assemble(Params, Random, Height);
+			if (!Layout.IsValid())
+			{
+				Layout = MakeShared<FMcJigsawLibrary::FLayout>();
+			}
+			FScopeLock Guard(&LayoutLock);
+			Layouts.Add(Key, Layout);
+			LayoutOrder.Add(Key);
+			while (LayoutOrder.Num() > 256)
+			{
+				Layouts.Remove(LayoutOrder[0]);
+				LayoutOrder.RemoveAt(0);
+			}
+		}
+		const FMcRandom PlaceBase = FMcRandom(Seed).Fork(Start.X, Salt + 3, Start.Y);
+		Jigsaws->Place(Region, *Layout, Context.ClipMin, Context.ClipMax, PlaceBase, Structure.bBeard, FeatureLibrary, SeaLevel);
+	}
 	else if (Type == TEXT("ruined_portal"))
 	{
 		if (Structure.SetupWeight > 0)
@@ -1011,7 +1154,7 @@ bool FMcStructureLibrary::PlaceStructure(FMcGenRegion& Region, FName Id, uint64 
 {
 	for (const TSharedPtr<FStructure>& Structure : Structures)
 	{
-		if (Structure->Id == Id && IsSupported(Structure->Type))
+		if (Structure->Id == Id && Structure->bSupported)
 		{
 			Build(Region, *Structure, Seed, Start, 0);
 			return true;

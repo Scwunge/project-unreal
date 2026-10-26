@@ -678,7 +678,7 @@ bool FMcFeatureLibrary::LoadBiomes()
 		}
 	}
 	Structures = MakeShared<FMcStructureLibrary>(SeaLevel, MinY);
-	if (!Structures->Load())
+	if (!Structures->Load(this))
 	{
 		UE_LOG(LogMcGen, Warning, TEXT("No structures loaded"));
 	}
@@ -695,6 +695,14 @@ float FMcFeatureLibrary::GetTemperature(FMcBiomeId Biome, int32 Y) const
 {
 	const float Base = Temperatures.IsValidIndex(Biome) ? Temperatures[Biome] : 0.8f;
 	return Y > 80 ? Base - (Y - 80) * 0.00125f : Base;
+}
+
+void FMcFeatureLibrary::SetHeightSource(TFunction<int32(int32, int32)> Source)
+{
+	if (Structures.IsValid())
+	{
+		Structures->SetHeightSource(MoveTemp(Source));
+	}
 }
 
 void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const

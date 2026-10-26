@@ -122,6 +122,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			UE_LOG(LogMcServer, Warning, TEXT("Some biome features didn't load; those are left out."));
 		}
+		Features->SetHeightSource([Noise](int32 X, int32 Z) { return Noise->FindSurfaceY(X, Z) + 1; });
 		Kind = FString::Printf(TEXT("%s terrain, seed %lld"), *NoiseSettings, Seed);
 	}
 

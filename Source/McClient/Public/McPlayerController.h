@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "McMusic.h"
 #include "McPlayerController.generated.h"
 
 class AMcWorldActor;
@@ -67,4 +68,9 @@ private:
 	TWeakObjectPtr<UActorComponent> Weather;
 	TWeakObjectPtr<UActorComponent> Clouds;
 	float NetLogTimer = 0.0f;
+	// The background music for where the player's camera is, each game tick.
+	void TickMusic(float DeltaSeconds);
+	FMcMusicPicker Music;
+	float MusicTickTime = 0.0f;
+	FRandomStream MusicRandom{ 17 };
 };

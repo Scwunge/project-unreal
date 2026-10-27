@@ -27,12 +27,14 @@ struct MCCORE_API FMcDimensionType
 	FLinearColor CloudColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.8f);
 
 	// Background music (attribute audio/background_music): by kind ("default", "creative", "underwater"), the sound
-	// event and the ticks to wait after a track before the next.
+	// event and the ticks to wait after a track before the next; with bReplaceCurrent (the End's) another track playing
+	// is stopped for it.
 	struct FMusic
 	{
 		FName Sound;
 		int32 MinDelay = 12000;
 		int32 MaxDelay = 24000;
+		bool bReplaceCurrent = false;
 	};
 	TMap<FName, FMusic> Music;
 	// Reads the music lists out of an object with the background_music attribute's shape (a dimension's or a biome's).

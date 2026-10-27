@@ -5,6 +5,7 @@
 #include "McGameMode.h"
 #include "McPlayerData.h"
 #include "McPortal.h"
+#include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "Camera/PlayerCameraManager.h"
@@ -27,6 +28,8 @@
 #if MC_WITH_RENDER
 #include "Engine/GameViewportClient.h"
 #include "Engine/PostProcessVolume.h"
+#include "Engine/GameInstance.h"
+#include "McAudioSubsystem.h"
 #include "McSkyComponent.h"
 #include "McWeatherComponent.h"
 #include "McCloudComponent.h"
@@ -53,6 +56,7 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 			ViewSyncTimer = 0.2f;
 			SyncDimensionView();
 		}
+		TickMusic(DeltaSeconds);
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -68,6 +72,48 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 			HasAuthority() ? TEXT("host") : TEXT("client"), GetPawn() ? *GetPawn()->GetName() : TEXT("none"), Feet.X, Feet.Y, Feet.Z,
 			BlockWorld ? BlockWorld->NumChunks() : -1,
 			PlayerCameraManager ? *McCoords::UnrealToBlock(PlayerCameraManager->GetCameraLocation()).ToString() : TEXT("none"));
+	}
+#endif
+}
+
+void AMcPlayerController::TickMusic(float DeltaSeconds)
+{
+#if MC_WITH_RENDER
+	UMcAudioSubsystem* Audio = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMcAudioSubsystem>() : nullptr;
+	const FMcBlockWorld* BlockWorld = WorldActor->GetBlockWorld();
+	if (!Audio || !BlockWorld || !PlayerCameraManager)
+	{
+		return;
+	}
+	// The picker counts game ticks.
+	MusicTickTime += DeltaSeconds;
+	if (MusicTickTime < 0.05f)
+	{
+		return;
+	}
+	MusicTickTime = FMath::Min(MusicTickTime - 0.05f, 0.05f);
+
+	// The biome's own music where the camera is, else the dimension's.
+	const AMcPlayerPawn* Listener = Cast<AMcPlayerPawn>(GetPawn());
+	const bool bCreative = Listener && Listener->Data && Listener->Data->bCreative;
+	const TMap<FName, FMcDimensionType::FMusic>* Lists = &BlockWorld->GetDimension().Music;
+	const FVector Eye = McCoords::UnrealToBlock(PlayerCameraManager->GetCameraLocation());
+	const FIntVector Block(FMath::FloorToInt32(Eye.X), FMath::FloorToInt32(Eye.Y), FMath::FloorToInt32(Eye.Z));
+	if (const FMcChunk* Chunk = BlockWorld->FindChunk(FIntPoint(Block.X >> 4, Block.Z >> 4)))
+	{
+		const FMcBiomeId Biome = Chunk->GetBiome(Block.X & 15, FMath::Clamp(Block.Y, Chunk->GetMinY(), Chunk->GetMaxY()), Block.Z & 15);
+		const TMap<FName, FMcDimensionType::FMusic>& BiomeLists = FMcBiomeRegistry::Get().GetMusicLists(Biome);
+		if (!BiomeLists.IsEmpty())
+		{
+			Lists = &BiomeLists;
+		}
+	}
+	const FMcDimensionType::FMusic* Wanted = FMcMusicPicker::Choose(*Lists, bCreative);
+	switch (Music.Tick(Wanted, Audio->GetMusic(), MusicRandom.FRand()))
+	{
+	case FMcMusicPicker::EAction::Start: Audio->PlayMusic(Wanted->Sound); break;
+	case FMcMusicPicker::EAction::Stop: Audio->StopMusic(); break;
+	default: break;
 	}
 #endif
 }

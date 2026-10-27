@@ -80,6 +80,7 @@ TMap<FName, FMcDimensionType::FMusic> FMcDimensionType::ParseMusic(const FJsonOb
 		Music.Sound = FName(*McCache::PathOf(Sound));
 		(*Entry)->TryGetNumberField(TEXT("min_delay"), Music.MinDelay);
 		(*Entry)->TryGetNumberField(TEXT("max_delay"), Music.MaxDelay);
+		(*Entry)->TryGetBoolField(TEXT("replace_current_music"), Music.bReplaceCurrent);
 		Result.Add(FName(*Pair.Key), Music);
 	}
 	return Result;

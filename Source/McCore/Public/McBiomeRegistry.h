@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McDimensionType.h"
 
 class FJsonObject;
 
@@ -46,6 +47,12 @@ public:
 	float GetTemperature(FMcBiomeId Id, int32 Y) const;
 	EPrecipitation GetPrecipitation(FMcBiomeId Id, int32 Y) const;
 
+	// The biome's own background music of a kind ("default", "creative"), which takes the place of the dimension's;
+	// null where it has none.
+	const FMcDimensionType::FMusic* GetMusic(FMcBiomeId Id, FName Kind) const;
+	// All of them (empty for a biome with none).
+	const TMap<FName, FMcDimensionType::FMusic>& GetMusicLists(FMcBiomeId Id) const;
+
 	// Reads the spawn lists out of a biome file's object (for tests; EnsureLoaded does this for every biome).
 	static TMap<FName, TArray<FMcSpawnEntry>> ParseSpawns(const FJsonObject& Biome);
 
@@ -54,6 +61,7 @@ private:
 	TArray<TMap<FName, TArray<FMcSpawnEntry>>> Spawns;
 	TArray<float> Temperatures;
 	TArray<bool> Precipitation;
+	TArray<TMap<FName, FMcDimensionType::FMusic>> Music;
 	TMap<FName, FMcBiomeId> Ids;
 	FMcBiomeId Plains = 0;
 };

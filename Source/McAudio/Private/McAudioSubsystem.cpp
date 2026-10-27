@@ -11,6 +11,7 @@
 #include "Misc/Paths.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundWaveProcedural.h"
+#include "Async/Async.h"
 
 bool UMcAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -27,6 +28,7 @@ void UMcAudioSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UMcAudioSubsystem::Deinitialize()
 {
 	FMcSoundBus::Get().OnSound.Remove(BusHandle);
+	StopMusic();
 	Live.Reset();
 	Super::Deinitialize();
 }
@@ -34,6 +36,82 @@ void UMcAudioSubsystem::Deinitialize()
 void UMcAudioSubsystem::OnSound(const FMcSoundEvent& Event)
 {
 	Play(Event);
+}
+
+void UMcAudioSubsystem::PlayMusic(FName Event)
+{
+	StopMusic();
+	FMcSoundVariant Variant;
+	if (!GEngine || !GEngine->UseSound() || !FMcSoundRegistry::Get().EnsureLoaded() || !FMcSoundRegistry::Get().Pick(Event, Random.FRand(), Variant))
+	{
+		return;
+	}
+	MusicEvent = Event;
+	bMusicDecoding = true;
+	const int32 Request = ++MusicRequest;
+	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Variant.Name + TEXT(".ogg"));
+	const McAudio::FMcSoundPlay Settings = McAudio::Resolve(FMcSoundEvent{ Event, FVector::ZeroVector, 1.0f, 1.0f }, Variant);
+	UE_LOG(LogMcAudio, Log, TEXT("Music: %s (%s)"), *Event.ToString(), *Variant.Name);
+	// A track is minutes long: decoded off the game thread, and not kept afterwards.
+	Async(EAsyncExecution::ThreadPool, [WeakThis = TWeakObjectPtr<UMcAudioSubsystem>(this), Path, Request, Settings]()
+	{
+		TSharedPtr<McAudio::FDecodedSound> Sound = MakeShared<McAudio::FDecodedSound>();
+		TArray<uint8> File;
+		if (!FFileHelper::LoadFileToArray(File, *Path) || !McAudio::DecodeOgg(File, *Sound))
+		{
+			UE_LOG(LogMcAudio, Warning, TEXT("Can't play music file %s."), *Path);
+			Sound.Reset();
+		}
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Sound, Request, Settings]()
+		{
+			UMcAudioSubsystem* Self = WeakThis.Get();
+			if (!Self || Self->MusicRequest != Request || !Self->bMusicDecoding)
+			{
+				return;
+			}
+			Self->bMusicDecoding = false;
+			UWorld* World = Self->GetWorld();
+			if (!Sound || !World)
+			{
+				Self->MusicEvent = NAME_None;
+				return;
+			}
+			USoundWaveProcedural* Wave = NewObject<USoundWaveProcedural>(Self);
+			Wave->SetSampleRate(static_cast<uint32>(Sound->SampleRate));
+			Wave->NumChannels = Sound->NumChannels;
+			Wave->Duration = Sound->Duration;
+			Wave->SoundGroup = SOUNDGROUP_Music;
+			Wave->bLooping = false;
+			Wave->QueueAudio(Sound->Pcm.GetData(), Sound->Pcm.Num());
+			Self->Music = UGameplayStatics::SpawnSound2D(World, Wave, Settings.Volume, Settings.Pitch, 0.0f, nullptr, true);
+			if (!Self->Music)
+			{
+				Self->MusicEvent = NAME_None;
+			}
+		});
+	});
+}
+
+void UMcAudioSubsystem::StopMusic()
+{
+	if (Music)
+	{
+		Music->Stop();
+		Music = nullptr;
+	}
+	MusicEvent = NAME_None;
+	bMusicDecoding = false;
+	++MusicRequest;
+}
+
+FName UMcAudioSubsystem::GetMusic()
+{
+	if (!bMusicDecoding && (!Music || !Music->IsPlaying()))
+	{
+		Music = nullptr;
+		MusicEvent = NAME_None;
+	}
+	return MusicEvent;
 }
 
 int32 UMcAudioSubsystem::GetNumPlaying()

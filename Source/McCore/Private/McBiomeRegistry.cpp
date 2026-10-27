@@ -42,9 +42,27 @@ bool FMcBiomeRegistry::EnsureLoaded()
 		}
 		Temperatures.Add(static_cast<float>(Temperature));
 		Precipitation.Add(bPrecipitation);
+		TMap<FName, FMcDimensionType::FMusic>& BiomeMusic = Music.AddDefaulted_GetRef();
+		const TSharedPtr<FJsonObject>* Attributes = nullptr;
+		const TSharedPtr<FJsonObject>* Background = nullptr;
+		if (Biome.IsValid() && Biome->TryGetObjectField(TEXT("attributes"), Attributes) && (*Attributes)->TryGetObjectField(TEXT("minecraft:audio/background_music"), Background))
+		{
+			BiomeMusic = FMcDimensionType::ParseMusic(**Background);
+		}
 	}
 	Plains = Find(TEXT("minecraft:plains")).Get(0);
 	return true;
+}
+
+const FMcDimensionType::FMusic* FMcBiomeRegistry::GetMusic(FMcBiomeId Id, FName Kind) const
+{
+	return Music.IsValidIndex(Id) ? Music[Id].Find(Kind) : nullptr;
+}
+
+const TMap<FName, FMcDimensionType::FMusic>& FMcBiomeRegistry::GetMusicLists(FMcBiomeId Id) const
+{
+	static const TMap<FName, FMcDimensionType::FMusic> None;
+	return Music.IsValidIndex(Id) ? Music[Id] : None;
 }
 
 float FMcBiomeRegistry::GetTemperature(FMcBiomeId Id, int32 Y) const

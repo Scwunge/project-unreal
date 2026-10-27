@@ -29,6 +29,14 @@ public:
 	int32 GetNumPlaying();
 	static constexpr int32 MaxPlaying = 64;
 
+	// Background music: one track of a music event (e.g. "music.game"), everywhere at once rather than somewhere. Its
+	// file is decoded off the game thread, so it starts a moment later; it counts as playing from the call. Starting
+	// another stops the first.
+	void PlayMusic(FName Event);
+	void StopMusic();
+	// The event of the track playing (or being decoded), or none.
+	FName GetMusic();
+
 private:
 	void OnSound(const FMcSoundEvent& Event);
 	const McAudio::FDecodedSound* GetDecoded(const FString& Name);
@@ -36,5 +44,11 @@ private:
 	FDelegateHandle BusHandle;
 	TMap<FString, TOptional<McAudio::FDecodedSound>> Decoded;
 	TArray<TWeakObjectPtr<UAudioComponent>> Live;
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> Music;
+	FName MusicEvent;
+	// Counts up with each track asked for, so a decode that finishes after a newer one was asked for is dropped.
+	int32 MusicRequest = 0;
+	bool bMusicDecoding = false;
 	FRandomStream Random{ 11 };
 };

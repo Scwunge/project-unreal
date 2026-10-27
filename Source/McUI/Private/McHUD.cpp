@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McGuiLayout.h"
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
@@ -12,6 +13,7 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 
 namespace
@@ -83,12 +85,7 @@ namespace
 
 int32 AMcHUD::GetGuiScale(int32 Width, int32 Height)
 {
-	int32 Result = 1;
-	while (Width / (Result + 1) >= 320 && Height / (Result + 1) >= 240)
-	{
-		++Result;
-	}
-	return Result;
+	return McGui::GetGuiScale(Width, Height);
 }
 
 UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
@@ -121,10 +118,61 @@ const AMcHUD::FIcon& AMcHUD::GetIcon(FMcStateId State)
 		return *Found;
 	}
 	FIcon& Icon = Icons.Add(State);
+	const FString Name = McCache::PathOf(FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString());
+	if (!BuildFlatIcon(Name, Icon))
+	{
+		BuildBlockIcon(State, Icon);
+	}
+	return Icon;
+}
 
-	// The item definition says whether the item is drawn flat (a "layer0" sprite) or as its block model.
-	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	const FString Name = McCache::PathOf(Registry.GetBlockOf(State).Name.ToString());
+const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
+{
+	if (const FIcon* Found = ItemIcons.Find(Item))
+	{
+		return *Found;
+	}
+	FIcon& Icon = ItemIcons.Add(Item);
+	const FString Name = McCache::PathOf(Item.ToString());
+	if (!BuildFlatIcon(Name, Icon))
+	{
+		// A block's item is drawn as the block; anything else we can't read the model of falls back on the sprite
+		// of the same name, if the jar has one.
+		const TOptional<FMcStateId> State = FMcBlockRegistry::Get().FindDefaultState(Item);
+		if (State.IsSet())
+		{
+			BuildBlockIcon(State.GetValue(), Icon);
+		}
+		if (Icon.Triangles.Num() == 0 && FPaths::FileExists(McCache::Asset(TEXT("textures/item/") + Name + TEXT(".png"))))
+		{
+			BuildFlatQuad(TEXT("minecraft:item/") + Name, Icon);
+		}
+	}
+	return Icon;
+}
+
+void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon)
+{
+	UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
+	const FVector2D Corners[4] = { FVector2D(0, 0), FVector2D(16, 0), FVector2D(16, 16), FVector2D(0, 16) };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+	for (const int32 First : { 0, 2 })
+	{
+		FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+		const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+		for (int32 I = 0; I < 3; ++I)
+		{
+			Triangle.Positions[I] = Corners[Indices[I]];
+			Triangle.UVs[I] = UVs[Indices[I]];
+		}
+		Triangle.Color = FLinearColor::White;
+		Triangle.Texture = Texture;
+	}
+}
+
+// The item definition says whether the item is drawn flat (a "layer0" sprite) or as its block model.
+bool AMcHUD::BuildFlatIcon(const FString& Name, FIcon& Icon)
+{
 	FString FlatTexture;
 	if (const TSharedPtr<FJsonObject> Item = McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + Name + TEXT(".json"))))
 	{
@@ -142,29 +190,12 @@ const AMcHUD::FIcon& AMcHUD::GetIcon(FMcStateId State)
 			}
 		}
 	}
-
-	if (!FlatTexture.IsEmpty())
+	if (FlatTexture.IsEmpty())
 	{
-		UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(FlatTexture)));
-		const FVector2D Corners[4] = { FVector2D(0, 0), FVector2D(16, 0), FVector2D(16, 16), FVector2D(0, 16) };
-		const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
-		for (const int32 First : { 0, 2 })
-		{
-			FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
-			const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
-			for (int32 I = 0; I < 3; ++I)
-			{
-				Triangle.Positions[I] = Corners[Indices[I]];
-				Triangle.UVs[I] = UVs[Indices[I]];
-			}
-			Triangle.Color = FLinearColor::White;
-			Triangle.Texture = Texture;
-		}
-		return Icon;
+		return false;
 	}
-
-	BuildBlockIcon(State, Icon);
-	return Icon;
+	BuildFlatQuad(FlatTexture, Icon);
+	return true;
 }
 
 void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
@@ -259,34 +290,3 @@ void AMcHUD::DrawIcon(const FIcon& Icon, float X, float Y)
 	}
 }
 
-void AMcHUD::DrawHUD()
-{
-	Super::DrawHUD();
-	if (!Canvas)
-	{
-		return;
-	}
-	Scale = GetGuiScale(Canvas->SizeX, Canvas->SizeY);
-	const float Width = static_cast<float>(Canvas->SizeX) / Scale;
-	const float Height = static_cast<float>(Canvas->SizeY) / Scale;
-
-	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
-	DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/crosshair.png")), FMath::FloorToFloat((Width - CrosshairSize) / 2), FMath::FloorToFloat((Height - CrosshairSize) / 2), CrosshairSize, CrosshairSize);
-
-	const AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(GetOwningPawn());
-	if (!Player)
-	{
-		return;
-	}
-	const float HotbarX = FMath::FloorToFloat((Width - HotbarWidth) / 2);
-	const float HotbarY = Height - HotbarHeight;
-	DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar.png")), HotbarX, HotbarY, HotbarWidth, HotbarHeight);
-	DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar_selection.png")), HotbarX - 1 + Player->SelectedSlot * SlotSpacing, HotbarY - 1, 24, 23);
-	for (int32 Slot = 0; Slot < Player->Hotbar.Num(); ++Slot)
-	{
-		if (Player->Hotbar[Slot] != 0)
-		{
-			DrawIcon(GetIcon(Player->Hotbar[Slot]), HotbarX + 3 + Slot * SlotSpacing, HotbarY + 3);
-		}
-	}
-}

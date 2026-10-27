@@ -21,6 +21,22 @@ struct MCCORE_API FMcDimensionType
 	FString Skybox = TEXT("overworld");
 	// The least light the dimension has anywhere, 0 to 1.
 	double AmbientLight = 0.0;
+	// The clouds' height (attribute visual/cloud_height; 192.33 in the Overworld) and colour (visual/cloud_color, with
+	// its alpha), unset where there are none.
+	TOptional<float> CloudHeight;
+	FLinearColor CloudColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.8f);
+
+	// Background music (attribute audio/background_music): by kind ("default", "creative", "underwater"), the sound
+	// event and the ticks to wait after a track before the next.
+	struct FMusic
+	{
+		FName Sound;
+		int32 MinDelay = 12000;
+		int32 MaxDelay = 24000;
+	};
+	TMap<FName, FMusic> Music;
+	// Reads the music lists out of an object with the background_music attribute's shape (a dimension's or a biome's).
+	static TMap<FName, FMusic> ParseMusic(const class FJsonObject& BackgroundMusic);
 
 	int32 MaxY() const { return MinY + Height - 1; }
 	int32 NumSections() const { return Height / 16; }

@@ -14,4 +14,8 @@ namespace McRenderTextures
 	// With bWhite every pixel's colour is made white and only its transparency is kept: the picture's silhouette, for a
 	// mob flashing white.
 	MCRENDER_API UTexture2DArray* LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite = false);
+	// A png's pixels, row by row from the top. False (and an error in the log) if it can't be read.
+	MCRENDER_API bool LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight);
+	// A one-layer texture array of these pixels (Width x Height, rows from the top), as LoadPngAsArray makes.
+	MCRENDER_API UTexture2DArray* MakeArray(UObject* Outer, const TArray<FColor>& Pixels, int32 Width, int32 Height);
 }

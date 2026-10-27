@@ -1,6 +1,8 @@
 #include "McDimensionType.h"
 #include "McCache.h"
 #include "McCore.h"
+#include "Dom/JsonObject.h"
+#include "Misc/Parse.h"
 
 bool FMcDimensionType::Load(const FString& Id, FMcDimensionType& Out)
 {
@@ -26,6 +28,27 @@ bool FMcDimensionType::Load(const FString& Id, FMcDimensionType& Out)
 	Json->TryGetNumberField(TEXT("logical_height"), Result.LogicalHeight);
 	Json->TryGetStringField(TEXT("skybox"), Result.Skybox);
 	Json->TryGetNumberField(TEXT("ambient_light"), Result.AmbientLight);
+	const TSharedPtr<FJsonObject>* Attributes = nullptr;
+	if (Json->TryGetObjectField(TEXT("attributes"), Attributes))
+	{
+		double CloudHeight = 0.0;
+		if ((*Attributes)->TryGetNumberField(TEXT("minecraft:visual/cloud_height"), CloudHeight))
+		{
+			Result.CloudHeight = static_cast<float>(CloudHeight);
+		}
+		// "#aarrggbb".
+		FString CloudColor;
+		if ((*Attributes)->TryGetStringField(TEXT("minecraft:visual/cloud_color"), CloudColor) && CloudColor.StartsWith(TEXT("#")) && CloudColor.Len() == 9)
+		{
+			const uint32 Argb = FParse::HexNumber(*CloudColor.Mid(1));
+			Result.CloudColor = FLinearColor(((Argb >> 16) & 255) / 255.0f, ((Argb >> 8) & 255) / 255.0f, (Argb & 255) / 255.0f, ((Argb >> 24) & 255) / 255.0f);
+		}
+		const TSharedPtr<FJsonObject>* Music = nullptr;
+		if ((*Attributes)->TryGetObjectField(TEXT("minecraft:audio/background_music"), Music))
+		{
+			Result.Music = ParseMusic(**Music);
+		}
+	}
 
 	if (Result.MinY % 16 != 0 || Result.Height % 16 != 0 || Result.Height <= 0)
 	{
@@ -35,4 +58,29 @@ bool FMcDimensionType::Load(const FString& Id, FMcDimensionType& Out)
 
 	Out = Result;
 	return true;
+}
+
+TMap<FName, FMcDimensionType::FMusic> FMcDimensionType::ParseMusic(const FJsonObject& BackgroundMusic)
+{
+	TMap<FName, FMusic> Result;
+	for (const auto& Pair : BackgroundMusic.Values)
+	{
+		const TSharedPtr<FJsonObject>* Entry = nullptr;
+		if (!Pair.Value.IsValid() || !Pair.Value->TryGetObject(Entry))
+		{
+			continue;
+		}
+		FMusic Music;
+		FString Sound;
+		if (!(*Entry)->TryGetStringField(TEXT("sound"), Sound))
+		{
+			continue;
+		}
+		// "minecraft:music.game" is the event music.game.
+		Music.Sound = FName(*McCache::PathOf(Sound));
+		(*Entry)->TryGetNumberField(TEXT("min_delay"), Music.MinDelay);
+		(*Entry)->TryGetNumberField(TEXT("max_delay"), Music.MaxDelay);
+		Result.Add(FName(*Pair.Key), Music);
+	}
+	return Result;
 }

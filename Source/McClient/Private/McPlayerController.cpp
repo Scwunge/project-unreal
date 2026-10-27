@@ -29,6 +29,7 @@
 #include "Engine/PostProcessVolume.h"
 #include "McSkyComponent.h"
 #include "McWeatherComponent.h"
+#include "McCloudComponent.h"
 #include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
 #endif
@@ -321,9 +322,14 @@ void AMcPlayerController::DetachView()
 	{
 		Precipitation->DestroyComponent();
 	}
+	if (UActorComponent* Cover = Clouds.Get())
+	{
+		Cover->DestroyComponent();
+	}
 	Renderer.Reset();
 	Sky.Reset();
 	Weather.Reset();
+	Clouds.Reset();
 }
 
 void AMcPlayerController::SwitchLocalView(AMcWorldActor* Old)
@@ -625,6 +631,18 @@ void AMcPlayerController::SpawnEnvironment()
 	};
 	Precipitation->RegisterComponent();
 	Weather = Precipitation;
+
+	// The clouds, drifting with the world's time.
+	UMcCloudComponent* Cover = NewObject<UMcCloudComponent>(WorldActor);
+	Cover->SetupAttachment(WorldActor->GetRootComponent());
+	Cover->GetTime = Heavens->GetTime;
+	Cover->GetWeather = Heavens->GetWeather;
+	if (const FMcBlockWorld* Blocks = WorldActor->GetBlockWorld())
+	{
+		Cover->SetDimension(Blocks->GetDimension());
+	}
+	Cover->RegisterComponent();
+	Clouds = Cover;
 
 	// A bolt: drawn where it struck, and the sky flashes.
 	WorldActor->OnLightning = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor), WeakSky = TWeakObjectPtr<UMcSkyComponent>(Heavens)](const FVector& Position, int32 Seed)

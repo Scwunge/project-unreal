@@ -1,6 +1,8 @@
 #include "McWeatherComponent.h"
 #include "McLightningComponent.h"
+#include "McCloudComponent.h"
 #include "McBiomeRegistry.h"
+#include "McDimensionType.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -48,6 +50,29 @@ bool FMcWeatherRenderTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("from 128 blocks up"), Bolt[McLightning::SegmentsPerStrand - 1].Top.Y, 128.0);
 		TestEqual(TEXT("the same seed, the same bolt"), McLightning::BuildBolt(5).Num(), Bolt.Num());
 		TestTrue(TEXT("and the same shape"), McLightning::BuildBolt(5)[3].Top.Equals(Bolt[3].Top));
+	}
+
+	// The clouds drift west 0.03 blocks a tick, repeating with the picture; cells wrap round it either way.
+	TestEqual(TEXT("no drift at the start"), McClouds::GetDrift(0.0, 256), 0.0);
+	TestEqual(TEXT("a day's drift"), McClouds::GetDrift(24000.0, 256), 720.0, 1e-6);
+	TestEqual(TEXT("back round after the picture"), McClouds::GetDrift(3072.0 / 0.03, 256), 0.0, 1e-6);
+	TestEqual(TEXT("a cell past the edge"), McClouds::WrapCell(FIntPoint(256, 3), 256, 256), FIntPoint(0, 3));
+	TestEqual(TEXT("a cell before the corner"), McClouds::WrapCell(FIntPoint(-1, -257), 256, 256), FIntPoint(255, 255));
+
+	// The Overworld's clouds and music from its dimension type; the Nether has neither clouds.
+	FMcDimensionType Overworld, Nether;
+	if (FMcDimensionType::Load(TEXT("minecraft:overworld"), Overworld) && FMcDimensionType::Load(TEXT("minecraft:the_nether"), Nether))
+	{
+		TestTrue(TEXT("Overworld clouds at 192.33"), Overworld.CloudHeight.IsSet() && FMath::IsNearlyEqual(*Overworld.CloudHeight, 192.33f, 0.01f));
+		TestTrue(TEXT("white, a fifth see-through"), Overworld.CloudColor.Equals(FLinearColor(1.0f, 1.0f, 1.0f, 0.8f), 0.01f));
+		TestFalse(TEXT("no clouds in the Nether"), Nether.CloudHeight.IsSet());
+		const FMcDimensionType::FMusic* Game = Overworld.Music.Find(TEXT("default"));
+		TestTrue(TEXT("Overworld music"), Game && Game->Sound == FName(TEXT("music.game")) && Game->MinDelay == 12000 && Game->MaxDelay == 24000);
+		TestTrue(TEXT("creative music"), Overworld.Music.Contains(TEXT("creative")));
+	}
+	else
+	{
+		AddInfo(TEXT("No dimension types in cache/: the cloud data checks were skipped."));
 	}
 
 	// The biomes' climates, from the cache when it's there.

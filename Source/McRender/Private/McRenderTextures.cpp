@@ -6,7 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
 
-UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite)
+bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight)
 {
 	TArray<uint8> File;
 	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
@@ -16,34 +16,31 @@ UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString&
 		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw))
 	{
 		UE_LOG(LogMcRender, Error, TEXT("Can't load the picture %s"), *Path);
-		return nullptr;
+		return false;
 	}
 	OutWidth = Wrapper->GetWidth();
 	OutHeight = Wrapper->GetHeight();
-	if (bWhite)
-	{
-		// BGRA: the colour channels go to white, the alpha stays.
-		for (int64 Index = 0; Index + 3 < Raw.Num(); Index += 4)
-		{
-			Raw[Index] = 255;
-			Raw[Index + 1] = 255;
-			Raw[Index + 2] = 255;
-		}
-	}
+	// FColor is BGRA in memory, as the raw data is.
+	OutPixels.SetNumUninitialized(OutWidth * OutHeight);
+	FMemory::Memcpy(OutPixels.GetData(), Raw.GetData(), FMath::Min<int64>(Raw.Num(), OutPixels.Num() * sizeof(FColor)));
+	return true;
+}
 
+UTexture2DArray* McRenderTextures::MakeArray(UObject* Outer, const TArray<FColor>& Pixels, int32 Width, int32 Height)
+{
 	UTexture2DArray* Array = NewObject<UTexture2DArray>(Outer, NAME_None, RF_Transient);
 	Array->SetPlatformData(new FTexturePlatformData());
 	FTexturePlatformData* PlatformData = Array->GetPlatformData();
-	PlatformData->SizeX = OutWidth;
-	PlatformData->SizeY = OutHeight;
+	PlatformData->SizeX = Width;
+	PlatformData->SizeY = Height;
 	PlatformData->SetNumSlices(1);
 	PlatformData->PixelFormat = PF_B8G8R8A8;
 	Array->bNotOfflineProcessed = true;
-	FTexture2DMipMap* MipMap = new FTexture2DMipMap(OutWidth, OutHeight, 1);
+	FTexture2DMipMap* MipMap = new FTexture2DMipMap(Width, Height, 1);
 	PlatformData->Mips.Add(MipMap);
 	MipMap->BulkData.Lock(LOCK_READ_WRITE);
-	void* Destination = MipMap->BulkData.Realloc(Raw.Num());
-	FMemory::Memcpy(Destination, Raw.GetData(), Raw.Num());
+	void* Destination = MipMap->BulkData.Realloc(Pixels.Num() * sizeof(FColor));
+	FMemory::Memcpy(Destination, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	MipMap->BulkData.Unlock();
 	Array->SRGB = true;
 	Array->Filter = TF_Nearest;
@@ -56,4 +53,22 @@ UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString&
 #endif
 	Array->UpdateResource();
 	return Array;
+}
+
+UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite)
+{
+	TArray<FColor> Pixels;
+	if (!LoadPngPixels(Path, Pixels, OutWidth, OutHeight))
+	{
+		return nullptr;
+	}
+	if (bWhite)
+	{
+		// The colour channels go to white, the alpha stays.
+		for (FColor& Pixel : Pixels)
+		{
+			Pixel = FColor(255, 255, 255, Pixel.A);
+		}
+	}
+	return MakeArray(Outer, Pixels, OutWidth, OutHeight);
 }

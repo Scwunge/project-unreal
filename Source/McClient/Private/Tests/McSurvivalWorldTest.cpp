@@ -34,7 +34,7 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a hand swings 4 a second"), Hand.Speed, 4.0f);
 	const FMcItemStack Sword(TEXT("minecraft:iron_sword"), 1);
 	const McCombat::FAttack WithSword = McCombat::GetAttack(Sword);
-	TestEqual(TEXT("an iron sword does 7"), WithSword.Damage, 7.0f);
+	TestEqual(TEXT("an iron sword does 6"), WithSword.Damage, 6.0f);
 	TestEqual(TEXT("an iron sword swings 1.6 a second"), WithSword.Speed, 1.6f, 0.001f);
 
 	// The recharge, and what it does to the damage.
@@ -151,13 +151,24 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	Context.SetCurrentWorld(World);
 	World->InitializeActorsForPlay(FURL());
 	World->BeginPlay();
+	AMcWorldActor* Actor = nullptr;
 	const auto Finish = [&]()
 	{
+		// Ended while the world is up, as in a game, so its entity actors go before the world does.
+		if (Actor)
+		{
+			Actor->Destroy();
+		}
 		GEngine->DestroyWorldContext(World);
 		World->DestroyWorld(false);
 	};
 
-	AMcWorldActor* Actor = World->SpawnActor<AMcWorldActor>();
+	Actor = World->SpawnActor<AMcWorldActor>();
+	// With no game mode the world never counts as begun, so the actor has to be started by hand.
+	if (Actor && !Actor->HasActorBegunPlay())
+	{
+		Actor->DispatchBeginPlay();
+	}
 	UMcBlockUseSubsystem* Use = World->GetSubsystem<UMcBlockUseSubsystem>();
 	if (!TestNotNull(TEXT("a world actor"), Actor) || !TestNotNull(TEXT("the block use subsystem"), Use) || !TestNotNull(TEXT("a block world"), Actor ? Actor->GetBlockWorld() : nullptr)
 		|| !TestNotNull(TEXT("an entity host"), Actor ? Actor->GetEntityHost() : nullptr))

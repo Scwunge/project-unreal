@@ -8,7 +8,11 @@
     3. Reads "Test Completed. Result={..} Name={..} Path={..}" lines from that log and lists the failing tests with
        the "Error: Expected ..." lines reported while they ran.
 
-    Exits 0 only if the build succeeded, the editor exited cleanly, at least one test ran and none failed.
+    4. Checks every test the editor queued (the tab-indented list after "Found N automation tests") completed; a test
+       that started but never finished (the editor died or quit early) counts as a failure, not a pass.
+
+    Exits 0 only if the build succeeded, the editor exited cleanly, at least one test ran, every queued test
+    completed and none failed.
 
 .PARAMETER Filter
     Automation test filter (default McClient, which matches the McClient.* tests).
@@ -100,12 +104,29 @@ function Get-TestResults([string]$Path) {
     return $results
 }
 
-function Write-Summary($Results) {
+function Get-QueuedTests([string]$Path) {
+    # The editor lists what it is about to run as "LogAutomationCommandLine: Display: <tab><test path>".
+    $queued = New-Object System.Collections.Generic.List[string]
+    foreach ($line in [System.IO.File]::ReadLines($Path)) {
+        if ($line -match 'LogAutomationCommandLine: Display: \t(?<path>\S+)\s*$' -and -not $queued.Contains($Matches['path'])) {
+            $queued.Add($Matches['path'])
+        }
+    }
+    return $queued
+}
+
+function Write-Summary($Results, $Queued) {
     $passed = @($Results | Where-Object { $_.Result -eq 'Success' })
     $failed = @($Results | Where-Object { $_.Result -ne 'Success' })
+    $completed = @($Results | ForEach-Object { $_.Path })
+    $unfinished = @($Queued | Where-Object { $completed -notcontains $_ })
     Write-Host ''
     Write-Host '== Test summary'
-    Write-Host ("Passed: {0}   Failed: {1}   Total: {2}" -f $passed.Count, $failed.Count, @($Results).Count)
+    Write-Host ("Passed: {0}   Failed: {1}   Did not finish: {2}   Total: {3}" -f $passed.Count, $failed.Count, $unfinished.Count, [Math]::Max(@($Results).Count, @($Queued).Count))
+    foreach ($path in $unfinished) {
+        Write-Host ''
+        Write-Host ("DID NOT FINISH  {0}  (queued, but the log has no result for it)" -f $path)
+    }
     foreach ($test in $failed) {
         Write-Host ''
         Write-Host ("FAIL  {0}  ({1})" -f $test.Path, $test.Result)
@@ -116,12 +137,12 @@ function Write-Summary($Results) {
             Write-Host "      $errorLine"
         }
     }
-    return $failed.Count
+    return $failed.Count + $unfinished.Count
 }
 
 if ($FromLog) {
     $results = Get-TestResults $FromLog
-    $failedCount = Write-Summary $results
+    $failedCount = Write-Summary $results (Get-QueuedTests $FromLog)
     if (@($results).Count -eq 0) { exit 2 }
     exit ([int]($failedCount -gt 0))
 }
@@ -152,7 +173,9 @@ if (Test-Path -LiteralPath $LogPath) {
 }
 
 Write-Host "== Run automation tests: $Filter"
-& $EditorCmd $Project "-ExecCmds=Automation RunTests $Filter" '-TestExit=Automation Test Queue Empty' `
+# SoftQuit ends the editor through a normal engine exit once the queue is done. (-TestExit forces the process down
+# straight away, which can cut the last lines, the results of the last tests, off the log.)
+& $EditorCmd $Project "-ExecCmds=Automation RunTests $Filter;SoftQuit" `
     -unattended -nopause -nosplash -NullRHI "-abslog=$LogPath"
 $editorCode = $LASTEXITCODE
 
@@ -162,7 +185,7 @@ if (-not (Test-Path -LiteralPath $LogPath)) {
 }
 
 $results = Get-TestResults $LogPath
-$failedCount = Write-Summary $results
+$failedCount = Write-Summary $results (Get-QueuedTests $LogPath)
 Write-Host ''
 Write-Host "Log: $LogPath"
 

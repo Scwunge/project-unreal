@@ -19,6 +19,8 @@
 #include "McClient.h"
 #include "TimerManager.h"
 #include "UnrealClient.h"
+#include "Containers/Ticker.h"
+#include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -452,6 +454,90 @@ void AMcPlayerController::StartDevScreenshot()
 				GetWorldTimerManager().ClearTimer(*CameraTimer);
 			}
 		}), 0.5f, true);
+	}
+
+	// -McRecord=<dir> -McPath=x,y,z,yaw,pitch/x,y,z,yaw,pitch/... -McRecordSeconds=<n> (-McRecordDelay=<s> of warm-up):
+	// flies the camera along the keyframes (a smooth curve through them) and saves one frame per tick as
+	// <dir>/f00000.png..., then quits. Run with -benchmark -fps=30 for an even 30 frames a second.
+	FString RecordDir;
+	FString PathText;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McRecord="), RecordDir) && FParse::Value(FCommandLine::Get(), TEXT("-McPath="), PathText, /*bShouldStopOnSeparator=*/ false))
+	{
+		struct FKey
+		{
+			FVector Pos;
+			float Yaw;
+			float Pitch;
+		};
+		TArray<FKey> Keys;
+		TArray<FString> KeyTexts;
+		PathText.ParseIntoArray(KeyTexts, TEXT("/"));
+		for (const FString& Text : KeyTexts)
+		{
+			TArray<FString> P;
+			Text.ParseIntoArray(P, TEXT(","));
+			if (P.Num() == 5)
+			{
+				float Yaw = FCString::Atof(*P[3]);
+				if (Keys.Num() > 0)
+				{
+					// The short way round.
+					Yaw = Keys.Last().Yaw + FMath::UnwindDegrees(Yaw - Keys.Last().Yaw);
+				}
+				Keys.Add({FVector(FCString::Atod(*P[0]), FCString::Atod(*P[1]), FCString::Atod(*P[2])), Yaw, FCString::Atof(*P[4])});
+			}
+		}
+		float Seconds = 20.0f;
+		float Warmup = 10.0f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McRecordSeconds="), Seconds);
+		FParse::Value(FCommandLine::Get(), TEXT("-McRecordDelay="), Warmup);
+		if (Keys.Num() >= 2)
+		{
+			IFileManager::Get().MakeDirectory(*RecordDir, true);
+			const int32 Total = FMath::RoundToInt(Seconds * 30.0f);
+			const double Start = FPlatformTime::Seconds();
+			const TSharedRef<int32> Frame = MakeShared<int32>(0);
+			TWeakObjectPtr<AMcPlayerController> Weak(this);
+			FTSTicker::GetCoreTicker().AddTicker(TEXT("McRecord"), 0.0f, [Weak, Keys, RecordDir, Total, Start, Warmup, Frame](float)
+			{
+				AMcPlayerController* Self = Weak.Get();
+				if (!Self)
+				{
+					return false;
+				}
+				AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(Self->GetPawn());
+				if (!MyPawn || FPlatformTime::Seconds() - Start < Warmup)
+				{
+					return true;
+				}
+				if (*Frame >= Total)
+				{
+					FPlatformMisc::RequestExit(false, TEXT("McRecord"));
+					return false;
+				}
+				// Catmull-Rom through the keyframes, evenly spaced in time.
+				const float U = (float)*Frame / (float)(Total - 1) * (Keys.Num() - 1);
+				const int32 I = FMath::Min((int32)U, Keys.Num() - 2);
+				const float T = FMath::SmoothStep(0.0f, 1.0f, U - I) * 0.5f + (U - I) * 0.5f;
+				const FKey& K0 = Keys[FMath::Max(I - 1, 0)];
+				const FKey& K1 = Keys[I];
+				const FKey& K2 = Keys[I + 1];
+				const FKey& K3 = Keys[FMath::Min(I + 2, Keys.Num() - 1)];
+				auto CR = [T](double A, double B, double C, double D)
+				{
+					return 0.5 * ((2.0 * B) + (-A + C) * T + (2.0 * A - 5.0 * B + 4.0 * C - D) * T * T + (-A + 3.0 * B - 3.0 * C + D) * T * T * T);
+				};
+				const FVector Pos(CR(K0.Pos.X, K1.Pos.X, K2.Pos.X, K3.Pos.X), CR(K0.Pos.Y, K1.Pos.Y, K2.Pos.Y, K3.Pos.Y), CR(K0.Pos.Z, K1.Pos.Z, K2.Pos.Z, K3.Pos.Z));
+				MyPawn->SetView(Pos, FMath::Lerp(K1.Yaw, K2.Yaw, T), FMath::Lerp(K1.Pitch, K2.Pitch, T));
+				FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("%s/f%05d.png"), *RecordDir, *Frame), false, false);
+				++*Frame;
+				return true;
+			});
+		}
+		else
+		{
+			UE_LOG(LogMcClient, Error, TEXT("-McPath wants at least two x,y,z,yaw,pitch keyframes separated by /"));
+		}
 	}
 
 	FString ShotPath;

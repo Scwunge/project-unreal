@@ -384,6 +384,29 @@ namespace McEntityModel
 		return FMath::FloorToInt32(FMath::Clamp(Swelling, 0.0f, 1.0f) * 10.0f) % 2 == 1;
 	}
 
+	void FSquish::Tick(float Rise)
+	{
+		if (Rise > 0.05f && LastRise <= 0.01f)
+		{
+			Target = 1.0f;
+		}
+		else if (Rise > -0.01f && LastRise < -0.05f)
+		{
+			Target = -0.5f;
+		}
+		LastRise = Rise;
+		Previous = Value;
+		Value += (Target - Value) * 0.5f;
+		Target *= 0.6f;
+	}
+
+	FVector2D FSquish::GetScale(float Alpha, float Size) const
+	{
+		const float Amount = FMath::Lerp(Previous, Value, FMath::Clamp(Alpha, 0.0f, 1.0f)) / (Size * 0.5f + 1.0f);
+		const float Across = 1.0f / (Amount + 1.0f);
+		return FVector2D(Across, 1.0f / Across);
+	}
+
 	void BuildArrowMesh(float BodyYaw, float Pitch, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -705,7 +728,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		// The distance was over every tick since last time: spread it.
 		LastPosition = Position;
-		Walking += (FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
+		Squish.Tick(bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f);
+		LastY = Feet.Y;
+		bHasY = true;
+		Walking +=(FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
 		Anim.WalkAmount = Walking;
 		Anim.WalkPos += Walking;
 	}
@@ -717,15 +743,20 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.HeadYaw += FMath::UnwindDegrees(TargetHeadYaw - Anim.HeadYaw) * Turn;
 	Anim.HeadPitch += (TargetHeadPitch - Anim.HeadPitch) * Turn;
 
-	// A creeper's fuse swells it about its feet; a slime grows with its hitbox.
+	// A creeper's fuse swells it about its feet; a slime grows with its hitbox and squishes as it hops.
 	Swelling += (TargetSwelling - Swelling) * FMath::Min(1.0f, DeltaTime * 20.0f);
 	if (TargetSwelling == 0.0f && Swelling < 0.01f)
 	{
 		Swelling = 0.0f;
 	}
 	{
-		const FVector2D Swell = McEntityModel::GetSwellScale(Swelling);
-		const float Grow = Model && Model->BaseWidth > 0.0f && HitboxWidth > 0.0f ? HitboxWidth / Model->BaseWidth : 1.0f;
+		FVector2D Swell = McEntityModel::GetSwellScale(Swelling);
+		const bool bGrows = Model && Model->BaseWidth > 0.0f && HitboxWidth > 0.0f;
+		const float Grow = bGrows ? HitboxWidth / Model->BaseWidth : 1.0f;
+		if (bGrows)
+		{
+			Swell *= Squish.GetScale(TickAccumulator / 0.05f, Grow);
+		}
 		SetRelativeScale3D(FVector(Swell.X * Grow, Swell.X * Grow, Swell.Y * Grow));
 	}
 

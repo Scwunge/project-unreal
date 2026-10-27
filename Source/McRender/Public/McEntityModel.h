@@ -119,6 +119,21 @@ namespace McEntityModel
 	MCRENDER_API FVector2D GetSwellScale(float Swelling);
 	// Whether a swelling creeper is flashing white now: every other tenth of the fuse.
 	MCRENDER_API bool IsSwellFlash(float Swelling);
+
+	// A slime's squish (minecraft.wiki: "Slime"): it stretches up as it jumps and flattens as it lands, easing back
+	// between. Fed how far the slime rose (blocks) each tick, since that is all a client sees of its hops.
+	struct FSquish
+	{
+		float Target = 0.0f;
+		float Value = 0.0f;
+		float Previous = 0.0f;
+		float LastRise = 0.0f;
+
+		MCRENDER_API void Tick(float Rise);
+		// The scale for a slime Size times the smallest (1, 2 or 4), Alpha of the way into the next tick: X across,
+		// Y up. Bigger slimes squish less.
+		MCRENDER_API FVector2D GetScale(float Alpha, float Size) const;
+	};
 }
 
 // Draws one mob or dropped item. Put it on the entity's actor (feet at its origin).
@@ -171,6 +186,10 @@ private:
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;
 	bool bFlashing = false;
+	// A slime's hop, from its height each tick.
+	McEntityModel::FSquish Squish;
+	double LastY = 0.0;
+	bool bHasY = false;
 
 	McEntityModel::FAnim Anim;
 	float TargetBodyYaw = 0.0f;

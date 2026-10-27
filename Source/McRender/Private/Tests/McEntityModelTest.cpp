@@ -139,6 +139,28 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("none in the third"), IsSwellFlash(0.25f));
 	TestTrue(TEXT("flash near the end"), IsSwellFlash(0.95f));
 
+	// A slime's squish: at rest it is its own shape; a hop stretches it up, landing flattens it, and both ease off.
+	{
+		FSquish Squish;
+		TestTrue(TEXT("a resting slime is unsquished"), Squish.GetScale(0.0f, 1.0f).Equals(FVector2D(1.0, 1.0), 0.0001));
+		Squish.Tick(0.4f);
+		const FVector2D Up = Squish.GetScale(1.0f, 1.0f);
+		TestTrue(TEXT("a jump stretches it up"), Up.Y > 1.0 && Up.X < 1.0);
+		TestTrue(TEXT("its volume is kept across and up"), FMath::IsNearlyEqual(Up.X * Up.Y, 1.0, 0.0001));
+		FSquish Big = FSquish();
+		Big.Tick(0.4f);
+		TestTrue(TEXT("a big slime squishes less"), Big.GetScale(1.0f, 4.0f).Y < Up.Y);
+		Squish.Tick(-0.3f);
+		Squish.Tick(0.0f);
+		Squish.Tick(0.0f);
+		TestTrue(TEXT("landing flattens it"), Squish.GetScale(1.0f, 1.0f).Y < 1.0);
+		for (int32 Index = 0; Index < 40; ++Index)
+		{
+			Squish.Tick(0.0f);
+		}
+		TestTrue(TEXT("and it settles back"), Squish.GetScale(1.0f, 1.0f).Equals(FVector2D(1.0, 1.0), 0.01));
+	}
+
 	// The arrow: two crossed planes and a fletching, both sides, 0.9 of a block long, pointing the way it flies.
 	{
 		McPlayerModel::FMeshData Data;

@@ -17,4 +17,8 @@ public:
 
 	// The y of the highest solid or liquid block in a column, for placing players.
 	virtual int32 FindSurfaceY(int32 X, int32 Z) const = 0;
+
+	// For a dimension with a roof (the Nether): the y of the highest solid block below BelowY with two blocks of air,
+	// not fluid, above it, so somewhere to stand under the ceiling. Below the column's bottom (MinY - 1) if there is none.
+	virtual int32 FindFloorY(int32 X, int32 Z, int32 BelowY) const { return FindSurfaceY(X, Z); }
 };

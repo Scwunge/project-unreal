@@ -31,7 +31,7 @@ namespace
 	constexpr float MoonHalfSize = 0.12f;
 
 	// The Nether's fog is the nether wastes' fog colour (data/minecraft/worldgen/biome/nether_wastes.json, 3344392), which
-	// is also all its sky; the End's is the colour the end sky is drawn over. Display colours.
+	// is also all its sky; the End's is its fog's, near the end sky's own average. Display colours.
 	const FLinearColor NetherFogColor(0x33 / 255.0f, 0x08 / 255.0f, 0x08 / 255.0f, 1.0f);
 	const FLinearColor EndFogColor(0x18 / 255.0f, 0x13 / 255.0f, 0x18 / 255.0f, 1.0f);
 	// The Nether's fog starts 10 blocks out and is thick at 96; the End's is the view distance's.
@@ -39,8 +39,11 @@ namespace
 	constexpr float NetherFogEndBlocks = 96.0f;
 	// The End has no day, so its blocks get a fixed share of their sky light, as at night; the Nether has none.
 	constexpr float EndSkyLightFactor = 0.24f;
-	// The end sky texture is drawn dark: 0x282828.
-	constexpr float EndSkyBrightness = 40.0f / 255.0f;
+	// The game draws the end sky picture dark, at 0x282828 (40/255) of its colour on screen. Tint scales linear colour,
+	// hence the 2.2.
+	const float EndSkyBrightness = FMath::Pow(40.0f / 255.0f, 2.2f);
+	// And repeats it 16 times across each face of the box.
+	constexpr float EndSkyRepeats = 16.0f;
 
 	// Minecraft axes (x east, y up, z south) to Unreal's.
 	FVector ToUnreal(const FVector& Dir)
@@ -308,6 +311,8 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	{
 		EndSky->SetVisibility(Mode == EMode::End);
 	}
+	// The end sky is the whole sky, drawn on black rather than added to the dome's colour.
+	Dome->SetVisibility(Mode != EMode::End);
 
 	UpdateDome(Ticks);
 	if (bOverworld)
@@ -324,7 +329,15 @@ void UMcSkyComponent::BuildEndSky()
 	EndSky = MakeMesh(TEXT("EndSky"));
 	int32 Width = 0, Height = 0;
 	EndSkyTexture = McRenderTextures::LoadPngAsArray(this, McCache::Asset(TEXT("textures/environment/end_sky.png")), Width, Height);
-	const float Half = CelestialRadius * 0.9f;
+	if (EndSkyTexture)
+	{
+		// Repeated across each face, so it wraps rather than clamping like the other pictures.
+		EndSkyTexture->AddressX = TA_Wrap;
+		EndSkyTexture->AddressY = TA_Wrap;
+		EndSkyTexture->UpdateResource();
+	}
+	// Inside the dome even at its corners (the dome would hide what is outside it).
+	const float Half = DomeRadius * 0.55f;
 	// Per face: the corners in Unreal's axes, seen from inside.
 	const FVector Corners[6][4] = {
 		{ FVector(-Half, -Half, -Half), FVector(Half, -Half, -Half), FVector(Half, Half, -Half), FVector(-Half, Half, -Half) },
@@ -346,7 +359,7 @@ void UMcSkyComponent::BuildEndSky()
 			Positions.Add(Corners[Face][Corner]);
 			Normals.Add(-Corners[Face][Corner].GetSafeNormal());
 		}
-		UV0.Append({ FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) });
+		UV0.Append({ FVector2D(0, 0), FVector2D(EndSkyRepeats, 0), FVector2D(EndSkyRepeats, EndSkyRepeats), FVector2D(0, EndSkyRepeats) });
 		Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
 	}
 	TArray<FVector2D> Zero;

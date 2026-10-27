@@ -1,5 +1,7 @@
 #include "McArrow.h"
+#include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
+#include "McChunk.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
@@ -104,6 +106,43 @@ bool FMcMobHostTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a creeper is hostile"), FMcMobType::Find(TEXT("minecraft:creeper"))->IsHostile());
 	TestTrue(TEXT("a slime is hostile"), FMcMobType::Find(TEXT("minecraft:slime"))->IsHostile());
 	TestFalse(TEXT("a pig isn't"), FMcMobType::Find(TEXT("minecraft:pig"))->IsHostile());
+
+	// What spawns in the dark comes from the biome there: only endermen in the End, Nether mobs in the Nether.
+	FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	if (!TestTrue(TEXT("biomes load"), Biomes.EnsureLoaded()))
+	{
+		return false;
+	}
+	const auto MonsterKinds = [&](const TCHAR* Biome)
+	{
+		TSet<FName> Kinds;
+		World.FindChunk(FIntPoint(0, 0))->FillBiome(Biomes.Find(Biome).Get(0));
+		for (const FMcSpawnEntry& Entry : Host.GetMonsterSpawns(FIntVector(8, 1, 8)))
+		{
+			Kinds.Add(Entry.Kind);
+		}
+		return Kinds;
+	};
+	const TSet<FName> End = MonsterKinds(TEXT("minecraft:the_end"));
+	TestTrue(TEXT("the End spawns endermen and nothing else"), End.Num() == 1 && End.Contains(FName(TEXT("minecraft:enderman"))));
+	const TSet<FName> Nether = MonsterKinds(TEXT("minecraft:nether_wastes"));
+	TestTrue(TEXT("the nether wastes spawn zombified piglins"), Nether.Contains(FName(TEXT("minecraft:zombified_piglin"))));
+	TestFalse(TEXT("and no zombies"), Nether.Contains(FName(TEXT("minecraft:zombie"))));
+	const TSet<FName> Plains = MonsterKinds(TEXT("minecraft:plains"));
+	TestTrue(TEXT("plains spawn zombies and creepers"), Plains.Contains(FName(TEXT("minecraft:zombie"))) && Plains.Contains(FName(TEXT("minecraft:creeper"))));
+	TestEqual(TEXT("the mushroom fields spawn no monsters"), MonsterKinds(TEXT("minecraft:mushroom_fields")).Num(), 0);
+
+	// A roll lands on the line its weight covers.
+	const FMcSpawnEntry Lines[] = { { TEXT("minecraft:spider"), 100, 4, 4 }, { TEXT("minecraft:enderman"), 10, 1, 4 } };
+	TestEqual(TEXT("roll 0 is the first"), FMcEntityHost::PickSpawn(Lines, 0), FName(TEXT("minecraft:spider")));
+	TestEqual(TEXT("roll 99 is still the first"), FMcEntityHost::PickSpawn(Lines, 99), FName(TEXT("minecraft:spider")));
+	TestEqual(TEXT("roll 100 is the second"), FMcEntityHost::PickSpawn(Lines, 100), FName(TEXT("minecraft:enderman")));
+	TestEqual(TEXT("past the total is none"), FMcEntityHost::PickSpawn(Lines, 110), FName(NAME_None));
+
+	// A group size given as a range is read as one.
+	const TConstArrayView<FMcSpawnEntry> Deltas = Biomes.GetSpawns(Biomes.Find(TEXT("minecraft:basalt_deltas")).Get(0), TEXT("monster"));
+	const FMcSpawnEntry* Cubes = Deltas.FindByPredicate([](const FMcSpawnEntry& Entry) { return Entry.Kind == TEXT("minecraft:magma_cube"); });
+	TestTrue(TEXT("magma cubes come 2 to 5 in the basalt deltas"), Cubes && Cubes->MinCount == 2 && Cubes->MaxCount == 5);
 	return true;
 }
 

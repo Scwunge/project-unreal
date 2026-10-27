@@ -53,6 +53,7 @@ public:
 
 	virtual void Generate(FMcChunk& Chunk) const override;
 	virtual int32 FindSurfaceY(int32 X, int32 Z) const override;
+	virtual int32 FindFloorY(int32 X, int32 Z, int32 BelowY) const override;
 
 	const FMcDensityGraph& GetGraph() const { return Graph; }
 	// A router function by name (e.g. "continents", "final_density"), or INDEX_NONE.

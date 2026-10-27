@@ -87,6 +87,26 @@ bool FMcDimensionTest::RunTest(const FString& Parameters)
 		Features.Decorate(Region, 7);
 		AddInfo(FString::Printf(TEXT("%s: decorated"), Dimension.Settings));
 
+		if (FString(Dimension.Preset) == TEXT("minecraft:nether"))
+		{
+			// The top block is the roof; somewhere near the origin there is a floor under it, above the lava.
+			TestTrue(TEXT("the nether's top block is the roof"), Generator.FindSurfaceY(0, 0) >= 120);
+			int32 Floors = 0;
+			for (int32 Z = -32; Z <= 32; Z += 8)
+			{
+				for (int32 X = -32; X <= 32; X += 8)
+				{
+					const int32 Floor = Generator.FindFloorY(X, Z, 124);
+					if (Floor >= Settings.MinY)
+					{
+						++Floors;
+						TestTrue(TEXT("a floor is under the roof and not in the lava"), Floor < 124 && Floor >= Settings.SeaLevel - 1);
+					}
+				}
+			}
+			TestTrue(TEXT("there is a floor to stand on near the origin"), Floors > 0);
+			AddInfo(FString::Printf(TEXT("the nether: %d of 81 columns have a floor"), Floors));
+		}
 		if (FString(Dimension.Preset) == TEXT("minecraft:the_end"))
 		{
 			// The central island is end stone around the origin and the biome there is the_end.

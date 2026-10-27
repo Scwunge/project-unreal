@@ -5,6 +5,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McBiomeRegistry.h"
 #include "McEntityManager.h"
 
 class AActor;
@@ -57,6 +58,12 @@ public:
 	// Player attacks: the mob (if any) the ray from the eyes hits within Reach, hurt by Damage and pushed away.
 	// True if something was hit.
 	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage);
+
+	// The kind a weighted spawn list gives for a roll in [0, total weight); none for an empty list.
+	static FName PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll);
+	// The monsters that spawn in the dark at a block: the list of the biome there (its natural_mob_spawns), or the
+	// Overworld's usual ones where the chunk or the biome registry isn't there.
+	TConstArrayView<FMcSpawnEntry> GetMonsterSpawns(const FIntVector& Cell) const;
 
 private:
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);

@@ -494,8 +494,10 @@ void AMcGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 FTransform AMcGameMode::GetSpawnTransform() const
 {
 	// Before the world exists, guess the classic flat surface (y = -61).
-	const int32 SurfaceY = WorldActor && WorldActor->GetBlockWorld() ? WorldActor->GetSurfaceY() : -61;
-	const FVector Block(0.5, SurfaceY + 1 + SpawnHeightAboveSurface, 0.5);
+	const bool bWorld = WorldActor && WorldActor->GetBlockWorld();
+	const int32 SurfaceY = bWorld ? WorldActor->GetSurfaceY() : -61;
+	const FIntPoint Column = bWorld ? WorldActor->GetSpawnColumn() : FIntPoint::ZeroValue;
+	const FVector Block(Column.X + 0.5, SurfaceY + 1 + SpawnHeightAboveSurface, Column.Y + 0.5);
 	return FTransform(FRotator::ZeroRotator, McCoords::BlockToUnreal(Block));
 }
 

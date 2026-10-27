@@ -19,16 +19,11 @@
 namespace
 {
 	const TCHAR* Animals[] = { TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken") };
-	// Which hostile mob turns up in the dark, by weight: endermen are rare (10 to the others' 100, as on the wiki's
-	// spawn tables for the Overworld).
-	struct FSpawnKind
-	{
-		const TCHAR* Name;
-		int32 Weight;
-	};
-	const FSpawnKind Hostiles[] = {
-		{ TEXT("minecraft:zombie"), 100 }, { TEXT("minecraft:skeleton"), 100 }, { TEXT("minecraft:spider"), 100 },
-		{ TEXT("minecraft:creeper"), 100 }, { TEXT("minecraft:enderman"), 10 },
+	// Where a chunk has no biome to ask (or the registry isn't loaded): the hostile mobs most Overworld biomes list,
+	// by weight (plains in 26.3's data, less the ones we have no mob for).
+	const FMcSpawnEntry FallbackMonsters[] = {
+		{ TEXT("minecraft:spider"), 100, 4, 4 }, { TEXT("minecraft:zombie"), 95, 4, 4 }, { TEXT("minecraft:skeleton"), 100, 4, 4 },
+		{ TEXT("minecraft:creeper"), 100, 4, 4 }, { TEXT("minecraft:slime"), 100, 4, 4 }, { TEXT("minecraft:enderman"), 10, 1, 4 },
 	};
 	// Slimes spawn below this height in the slime chunks.
 	constexpr int32 SlimeMaxY = 40;
@@ -452,10 +447,27 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	}
 	const FVector Pos(X + 0.5, Y.GetValue(), Z + 0.5);
 
-	// Low down in a slime chunk, a slime, of a size that fits the room there.
-	if (Y.GetValue() < SlimeMaxY && Random.FRand() < 0.3f && IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+	// What the biome there spawns. A kind we have no mob for yet (a ghast, a piglin) uses up the roll and nothing
+	// comes, so the others keep the share they have in the game.
+	const TConstArrayView<FMcSpawnEntry> Monsters = GetMonsterSpawns(Cell);
+	int32 TotalWeight = 0;
+	for (const FMcSpawnEntry& Entry : Monsters)
 	{
-		if (FMcMob* Slime = SpawnMob(TEXT("minecraft:slime"), Pos))
+		TotalWeight += Entry.Weight;
+	}
+	if (TotalWeight <= 0)
+	{
+		return;
+	}
+	const FName Kind = PickSpawn(Monsters, Random.RandHelper(TotalWeight));
+	if (Kind == TEXT("minecraft:slime"))
+	{
+		// Only low down in a slime chunk, and of a size that fits the room there.
+		if (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+		{
+			return;
+		}
+		if (FMcMob* Slime = SpawnMob(Kind, Pos))
 		{
 			static const int32 Sizes[] = { 1, 2, 4 };
 			for (int32 Size = Sizes[Random.RandHelper(UE_ARRAY_COUNT(Sizes))]; Size >= 1; Size /= 2)
@@ -470,22 +482,31 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		}
 		return;
 	}
+	SpawnMob(Kind, Pos);
+}
 
-	int32 TotalWeight = 0;
-	for (const FSpawnKind& Kind : Hostiles)
+FName FMcEntityHost::PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll)
+{
+	for (const FMcSpawnEntry& Entry : Entries)
 	{
-		TotalWeight += Kind.Weight;
-	}
-	int32 Roll = Random.RandHelper(TotalWeight);
-	for (const FSpawnKind& Kind : Hostiles)
-	{
-		if (Roll < Kind.Weight)
+		if (Roll < Entry.Weight)
 		{
-			SpawnMob(Kind.Name, Pos);
-			return;
+			return Entry.Kind;
 		}
-		Roll -= Kind.Weight;
+		Roll -= Entry.Weight;
 	}
+	return NAME_None;
+}
+
+TConstArrayView<FMcSpawnEntry> FMcEntityHost::GetMonsterSpawns(const FIntVector& Cell) const
+{
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	const FMcChunk* Chunk = World.FindChunk(FIntPoint(McCoords::BlockToChunk(Cell.X), McCoords::BlockToChunk(Cell.Z)));
+	if (!Biomes.IsLoaded() || !Chunk)
+	{
+		return FallbackMonsters;
+	}
+	return Biomes.GetSpawns(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15), TEXT("monster"));
 }
 
 void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)

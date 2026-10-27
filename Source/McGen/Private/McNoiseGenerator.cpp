@@ -514,3 +514,31 @@ int32 FMcNoiseGenerator::FindSurfaceY(int32 X, int32 Z) const
 	}
 	return Settings.MinY;
 }
+
+int32 FMcNoiseGenerator::FindFloorY(int32 X, int32 Z, int32 BelowY) const
+{
+	if (!bValid)
+	{
+		return Settings.SeaLevel;
+	}
+	FMcDensityContext Context(Graph);
+	// Below the sea level the open cells are the sea's fluid (the Nether's lava), not room to stand.
+	int32 Open = 0;
+	for (int32 Y = FMath::Min(BelowY, Settings.MinY + Settings.Height - 1); Y >= FMath::Max(Settings.MinY, Settings.SeaLevel - 1); --Y)
+	{
+		Context.SetPos(X, Y, Z);
+		if (Graph.Evaluate(FinalDensity, Context) > 0.0)
+		{
+			if (Open >= 2)
+			{
+				return Y;
+			}
+			Open = 0;
+		}
+		else
+		{
+			++Open;
+		}
+	}
+	return Settings.MinY - 1;
+}

@@ -271,13 +271,40 @@ void AMcWorldActor::BeginPlay()
 	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
 	Finished = MakeShared<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
+	if (DimensionType.bHasCeiling)
+	{
+		// The top block is the roof: look outwards from 0, 0 for a floor under it, above the lava.
+		const int32 BelowRoof = DimensionType.MinY + DimensionType.LogicalHeight - 4;
+		bool bFound = false;
+		for (int32 Ring = 0; Ring <= 8 && !bFound; ++Ring)
+		{
+			for (int32 DZ = -Ring; DZ <= Ring && !bFound; ++DZ)
+			{
+				for (int32 DX = -Ring; DX <= Ring && !bFound; ++DX)
+				{
+					if (FMath::Max(FMath::Abs(DX), FMath::Abs(DZ)) != Ring)
+					{
+						continue;
+					}
+					const FIntPoint Column(DX * 8, DZ * 8);
+					const int32 Floor = Generator->FindFloorY(Column.X, Column.Y, BelowRoof);
+					if (Floor >= DimensionType.MinY)
+					{
+						SpawnColumn = Column;
+						SurfaceY = Floor;
+						bFound = true;
+					}
+				}
+			}
+		}
+	}
 	if (!WorldName.IsEmpty())
 	{
 		if (!bHaveLevel && !bSecondary)
 		{
 			Level = FMcLevelData();
 			Level.Seed = Seed;
-			Level.Spawn = FIntVector(0, SurfaceY + 1, 0);
+			Level.Spawn = FIntVector(SpawnColumn.X, SurfaceY + 1, SpawnColumn.Y);
 			Level.Dimension = Dimension;
 			Level.NoiseSettings = NoiseSettings;
 			Level.bFlat = bFlat;

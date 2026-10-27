@@ -78,8 +78,10 @@ public:
 	// Null until BeginPlay has loaded the registry, the dimension and the preset from cache/.
 	FMcBlockWorld* GetBlockWorld() const { return BlockWorld.Get(); }
 
-	// World height of the top block, for spawning players above it.
+	// World height of the top block at the spawn column, for spawning players above it. Under a ceiling (the Nether)
+	// it is a floor with room to stand, and the column may be off 0, 0.
 	int32 GetSurfaceY() const { return SurfaceY; }
+	FIntPoint GetSpawnColumn() const { return SpawnColumn; }
 
 	// The time of day in game ticks (20 a second, 24000 a day; 0 is sunrise, 6000 noon, 12000 sunset, 18000 midnight),
 	// not wrapped: the day count, and with it the moon's phase, is DayTime / 24000. The server counts it and tells
@@ -182,6 +184,7 @@ private:
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;
+	FIntPoint SpawnColumn = FIntPoint::ZeroValue;
 
 	// The clock this machine runs: the server's own count, a client's estimate from the last sync.
 	double DayTicks = 1000.0;

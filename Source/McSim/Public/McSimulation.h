@@ -10,7 +10,15 @@
 #include "McCore.h"
 
 class FMcBlockWorld;
+class FMcNature;
 class FMcRedstone;
+
+enum class EMcWeather : uint8
+{
+	Clear,
+	Rain,
+	Thunder,
+};
 
 class MCSIM_API FMcSimulation
 {
@@ -40,6 +48,28 @@ public:
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
+	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.
+	void ClearSunLight();
+
+	// The day (minecraft.wiki, "Daylight cycle"): 24000 ticks, 0 at sunrise, 6000 noon, 12000 sunset, 18000 midnight.
+	// It runs with the game time; SetDayTime moves it (e.g. /time set) without disturbing the scheduled ticks.
+	int64 GetDayTime() const { return (GameTime + DayOffset) % 24000; }
+	void SetDayTime(int64 DayTime);
+	// The sun's light level now, 15 at noon down to 4 at night (less in rain and thunder).
+	int32 GetSunLevel() const;
+
+	// Weather (minecraft.wiki, "Weather"): clear, rain and thunder come and go on their own timers. SetWeather
+	// forces one for Duration ticks (0: a random while). Rain fills cauldrons and wets farmland and puts out fire in
+	// the open; in cold biomes it is snow, which lays one layer on the ground (SetSnowAccumulation for more), and
+	// cold freezes water at the edge of a pool. Ice and snow beside a light melt.
+	EMcWeather GetWeather() const;
+	void SetWeather(EMcWeather Weather, int32 Duration = 0);
+	void SetSnowAccumulation(int32 Layers);
+	bool IsRainingAt(const FIntVector& Pos) const;
+
+	// Bone meal on the block at Pos: grows a sapling (45% of the time), a crop or stem, spreads grass over grass
+	// blocks, doubles short grass. True if the item is used up.
+	bool Bonemeal(const FIntVector& Pos);
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;
@@ -70,4 +100,7 @@ private:
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };
 	TUniquePtr<FMcRedstone> Redstone;
+	TUniquePtr<FMcNature> Nature;
+	int64 DayOffset = 0;
+	bool bSunFixed = false;
 };

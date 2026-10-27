@@ -5,6 +5,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McNature.h"
 #include "McSimulation.h"
 
 namespace
@@ -66,6 +67,20 @@ void FMcSimulation::TickFire(const FIntVector& Pos, FMcStateId State)
 	}
 	const FName AgeValue = Registry.GetPropertyValue(State, TEXT("age"));
 	const int32 Age = AgeValue.IsNone() ? 0 : FCString::Atoi(*AgeValue.ToString());
+	// Rain on it or beside it puts it out, unless it burns on something that never burns out.
+	if (!bEternal)
+	{
+		bool bRain = Nature->IsRainingAt(Pos);
+		for (int32 Side = 0; Side < 4 && !bRain; ++Side)
+		{
+			bRain = Nature->IsRainingAt(Pos + Around[Side]);
+		}
+		if (bRain && Random.FRand() < 0.2f + Age * 0.03f)
+		{
+			World.SetBlock(Pos, Air);
+			return;
+		}
+	}
 	if (!bEternal && (!bFuel && Age > 3 || (Age == 15 && Random.RandHelper(4) == 0)))
 	{
 		World.SetBlock(Pos, Air);

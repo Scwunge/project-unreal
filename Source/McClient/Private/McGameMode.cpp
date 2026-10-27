@@ -6,9 +6,11 @@
 #include "McPlayerController.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
+#include "McWorldSave.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
@@ -57,13 +59,23 @@ void AMcGameMode::StartPlay()
 
 	FMcBlockShapes::Get().EnsureLoaded();
 
-	// Players that joined before the world existed started at a guessed height; move them above the surface.
-	const FTransform Spawn = GetSpawnTransform();
+	if (WorldActor->HasStorage())
+	{
+		SavingHandle = WorldActor->OnSaving.AddUObject(this, &AMcGameMode::SavePlayers);
+	}
+
+	// Players that joined before the world existed started at a guessed height; move them above the surface (or to
+	// where the saved world left them).
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
-			Pawn->SetActorLocation(Spawn.GetLocation());
+			bool bFlying = false;
+			Pawn->SetActorLocation(GetStartTransform(It->Get(), bFlying).GetLocation());
+			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
+			{
+				McPawn->SetFlying(bFlying);
+			}
 		}
 	}
 
@@ -184,8 +196,92 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 	// There are no PlayerStart actors: players start above the middle of block 0, 0.
 	if (NewPlayer && !NewPlayer->IsPendingKillPending())
 	{
-		RestartPlayerAtTransform(NewPlayer, GetSpawnTransform());
+		bool bFlying = false;
+		RestartPlayerAtTransform(NewPlayer, GetStartTransform(NewPlayer, bFlying));
+		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
+		{
+			McPawn->SetFlying(bFlying);
+		}
 	}
+}
+
+FTransform AMcGameMode::GetStartTransform(const AController* Controller, bool& bOutFlying) const
+{
+	bOutFlying = false;
+	FMcPlayerData Saved;
+	const FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+	if (Blocks && WorldActor->HasStorage() && McWorldSave::LoadPlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Saved))
+	{
+		const FMcDimensionType& Dimension = Blocks->GetDimension();
+		// A player saved in another dimension, or at a height this one doesn't have (the file was edited, or the world
+		// changed), starts at the spawn rather than outside the world.
+		if (Saved.Dimension == WorldActor->Dimension && Saved.Position.Y >= Dimension.MinY && Saved.Position.Y <= Dimension.MinY + Dimension.Height + 64)
+		{
+			bOutFlying = Saved.bFlying;
+			// The pawn takes its look from the transform; see AMcPlayerPawn::SetView for the offsets.
+			return FTransform(FRotator(-Saved.Pitch, Saved.Yaw + 90.0f, 0.0f), McCoords::BlockToUnreal(Saved.Position));
+		}
+	}
+	return GetSpawnTransform();
+}
+
+FString AMcGameMode::GetSaveId(const AController* Controller) const
+{
+	if (const APlayerState* State = Controller ? Controller->PlayerState.Get() : nullptr)
+	{
+		// By name for now; a platform account id replaces it when sign-in exists.
+		if (!State->GetPlayerName().IsEmpty())
+		{
+			return State->GetPlayerName();
+		}
+	}
+	return TEXT("player");
+}
+
+void AMcGameMode::SavePlayer(const AController* Controller) const
+{
+	const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+	if (!Pawn || !WorldActor || !WorldActor->HasStorage())
+	{
+		return;
+	}
+	FMcPlayerData Data;
+	Data.Position = McCoords::UnrealToBlock(Pawn->GetActorLocation());
+	Data.Dimension = WorldActor->Dimension;
+	if (const AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
+	{
+		Data.Yaw = McPawn->GetLookYaw();
+		Data.Pitch = McPawn->GetLookPitch();
+		Data.bFlying = McPawn->IsFlying();
+	}
+	McWorldSave::SavePlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Data);
+}
+
+void AMcGameMode::SavePlayers() const
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		SavePlayer(It->Get());
+	}
+}
+
+void AMcGameMode::Logout(AController* Exiting)
+{
+	SavePlayer(Exiting);
+	Super::Logout(Exiting);
+}
+
+void AMcGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// The world actor saves the players too when it ends, but which of the two ends first isn't defined, and by the time
+	// the second does the pawns may be gone.
+	if (IsValid(WorldActor))
+	{
+		SavePlayers();
+		WorldActor->OnSaving.Remove(SavingHandle);
+	}
+	SavingHandle.Reset();
+	Super::EndPlay(EndPlayReason);
 }
 
 FTransform AMcGameMode::GetSpawnTransform() const

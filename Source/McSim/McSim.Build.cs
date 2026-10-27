@@ -6,5 +6,6 @@ public class McSim : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "McCore", "McWorld", "McItem" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "McGen", "Json" });
 	}
 }

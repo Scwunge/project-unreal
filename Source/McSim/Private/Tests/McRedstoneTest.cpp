@@ -351,6 +351,42 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and the piston stays in"), Registry.GetPropertyValue(Wall.GetBlock(FIntVector(0, 1, 0)), TEXT("extended")).ToString(), FString(TEXT("false")));
 	}
 	{
+		// A pulse under 3 ticks leaves the block pushed where it is; a longer one pulls it back.
+		for (int32 Long = 0; Long < 2; ++Long)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeWorld(World);
+			FMcSimulation Sim(World);
+			World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:sticky_piston[extended=false,facing=east]")));
+			World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:cobblestone")));
+			World.SetBlock(FIntVector(0, 1, -1), State(TEXT("minecraft:redstone_block")));
+			Run(Sim, Long ? 4 : 1);
+			World.SetBlock(FIntVector(0, 1, -1), Air);
+			Run(Sim, 8);
+			const auto Name = [&](int32 X) { return Registry.GetBlockOf(World.GetBlock(FIntVector(X, 1, 0))).Name.ToString(); };
+			TestEqual(TEXT("the piston is back in"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 1, 0)), TEXT("extended")).ToString(), FString(TEXT("false")));
+			TestEqual(TEXT("a short pulse leaves the block out, a long one pulls it"), Name(Long ? 1 : 2), FString(TEXT("minecraft:cobblestone")));
+			TestEqual(TEXT("and nothing is where it was"), Name(Long ? 2 : 1), FString(TEXT("minecraft:air")));
+		}
+	}
+	{
+		// Retracting, a slime block takes what is stuck to it along: behind it and beside it.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		World.SetBlock(FIntVector(2, 5, 0), State(TEXT("minecraft:slime_block")));
+		World.SetBlock(FIntVector(3, 5, 0), State(TEXT("minecraft:cobblestone")));
+		World.SetBlock(FIntVector(2, 5, 1), State(TEXT("minecraft:cobblestone")));
+		World.SetBlock(FIntVector(1, 5, 0), State(TEXT("minecraft:piston_head[facing=east,short=false,type=sticky]")));
+		World.SetBlock(FIntVector(0, 5, 0), State(TEXT("minecraft:sticky_piston[extended=true,facing=east]")));
+		Run(Sim, 6);
+		const auto Name = [&](const FIntVector& Pos) { return Registry.GetBlockOf(World.GetBlock(Pos)).Name.ToString(); };
+		TestEqual(TEXT("the slime is pulled in"), Name(FIntVector(1, 5, 0)), FString(TEXT("minecraft:slime_block")));
+		TestEqual(TEXT("the block behind it comes too"), Name(FIntVector(2, 5, 0)), FString(TEXT("minecraft:cobblestone")));
+		TestEqual(TEXT("so does the one beside it"), Name(FIntVector(1, 5, 1)), FString(TEXT("minecraft:cobblestone")));
+		TestEqual(TEXT("and nothing is left at the far end"), Name(FIntVector(3, 5, 0)), FString(TEXT("minecraft:air")));
+	}
+	{
 		// A flower in the way is broken; slime takes the blocks beside it along.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);

@@ -8,11 +8,14 @@
 #include "McBlockWorld.h"
 #include "Containers/Queue.h"
 #include "McChunkGenerator.h"
+#include "McChunkSave.h"
 #include "McEntityHost.h"
 #include "McSimulation.h"
+#include "McWorldSave.h"
 #include "McWorldActor.generated.h"
 
 class FMcFeatureLibrary;
+class FMcWorldStorage;
 
 UCLASS()
 class MCSERVER_API AMcWorldActor : public AActor
@@ -73,9 +76,34 @@ public:
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
 	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage);
 
-	// Changes a block, loaded or not. Until saving exists (M9) every change is also kept in memory and
-	// put back whenever its chunk is generated again, so edits survive unloading.
+	// Changes a block, loaded or not. A change to a chunk that isn't loaded is kept and put on it when it arrives. In
+	// a world without a save (no -McWorld) changes to loaded chunks are kept too, so they survive unloading; in a
+	// saved world the chunk's save keeps them.
 	void SetBlock(const FIntVector& Pos, FMcStateId State);
+
+	// ---- Saving (M9) ----
+	// -McWorld=<name> picks a world in Saved/Worlds, made if it isn't there yet: its level file gives the seed, time
+	// and terrain (the command line's -McSeed, -McFlat and so on only apply to a world being made), its chunks are
+	// loaded from the region files before any are generated, and the world is saved as it's played:
+	//   - a chunk is written when it unloads (if it changed or was never saved), and all that changed every 6000 ticks
+	//     (five minutes), a few a frame;
+	//   - everything is written at EndPlay, and waited for.
+	// Without the flag nothing is read or written.
+	bool HasStorage() const { return Storage.IsValid(); }
+	const FString& GetWorldName() const { return WorldName; }
+	const FString& GetWorldDir() const { return WorldDir; }
+	const FMcLevelData& GetLevel() const { return Level; }
+	FMcWorldStorage* GetStorage() const { return Storage.Get(); }
+	// Saves the level and every loaded chunk that changed, and waits until it's on disk. The game thread stalls for the
+	// file writes only; EndPlay does this, and so can a command.
+	void SaveWorld();
+	// Marks a loaded chunk as changed when something altered it behind the block world's back (a chest's contents).
+	void MarkChunkDirty(FIntPoint Chunk);
+	// Called at every save, with the world about to be written: where the other things that belong to the world (the
+	// players, see AMcGameMode) save themselves.
+	FSimpleMulticastDelegate OnSaving;
+	// Game ticks between automatic saves.
+	static constexpr int32 AutosaveIntervalTicks = 6000;
 
 protected:
 	virtual void BeginPlay() override;
@@ -93,6 +121,22 @@ private:
 	// Places features in pending chunks and moves the finished ones into the world, within a time budget. True if
 	// it decorated or finished a chunk.
 	bool DecorateChunks();
+
+	// What a worker brings back: a chunk read from the save, or one just generated.
+	struct FFinishedChunk
+	{
+		TUniquePtr<FMcChunk> Chunk;
+		bool bFromDisk = false;
+		FMcChunkSaveExtras Extras;
+	};
+	// Puts a finished chunk into the world: its edits, its mobs, and what's needed to know later whether it changed.
+	void AddToWorld(FFinishedChunk Finished);
+	// Applies the edits made while the chunk wasn't loaded (and, in a world with no save, all of them).
+	void ApplyEdits(FMcChunk& Chunk);
+	// Queues a loaded chunk to be written, if it changed or was never saved. True if it was queued.
+	bool SaveChunk(FIntPoint Pos);
+	void BeginAutosave();
+	void StartStorage(const FString& Name);
 
 	// Lives as long as the actor, not just until EndPlay: components (the renderer) end play after the
 	// actor does and still unbind from it then.
@@ -122,17 +166,39 @@ private:
 
 	// Chunks out on worker threads, and the finished ones coming back.
 	TSet<FIntPoint> InFlight;
-	TSharedPtr<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe> Finished;
+	TSharedPtr<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe> Finished;
 
 	// Noise worlds decorate chunks before players get them. A generated chunk waits here until its 8 neighbours
 	// are generated too, gets its features, and joins the world once its neighbours have theirs (features reach
 	// up to a chunk out, so it's done changing then). Null library for flat worlds, which have no features.
-	// A chunk generated again next to ones already in the world can't add to them, so features crossing that
-	// border are cut until saving (M9) keeps decorated chunks.
+	// A chunk generated next to ones already in the world (loaded from the save, or generated earlier) can't add to
+	// them, so features crossing that border are cut; saved chunks keep theirs.
 	TSharedPtr<FMcFeatureLibrary> Features;
 	TMap<FIntPoint, TUniquePtr<FMcChunk>> Pending;
 	TSet<FIntPoint> Decorated;
 
 	// Block changes by chunk, keyed by world position.
 	TMap<FIntPoint, TMap<FIntVector, FMcStateId>> Edits;
+
+	// ---- Saving ----
+	FString WorldName;
+	FString WorldDir;
+	FMcLevelData Level;
+	// Shared with the worker tasks that read chunks from it, like the generator.
+	TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage;
+	// What a loaded chunk's save looks like, to tell whether it needs writing again.
+	struct FChunkState
+	{
+		// The chunk's revision when it was loaded or last written.
+		uint32 SavedRevision = 0;
+		// Whether the chunk has been written (or came from the save) at all.
+		bool bOnDisk = false;
+		// Whether what it was saved with included mobs or items, so a chunk that has lost them is written again.
+		bool bHadEntities = false;
+		bool bDirty = false;
+	};
+	TMap<FIntPoint, FChunkState> ChunkStates;
+	// Chunks still to be looked at by the autosave in progress.
+	TArray<FIntPoint> AutosaveQueue;
+	int32 TicksSinceAutosave = 0;
 };

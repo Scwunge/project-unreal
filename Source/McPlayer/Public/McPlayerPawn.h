@@ -57,6 +57,8 @@ public:
 	const TOptional<FMcBlockHit>& GetTarget() const { return Target; }
 
 	bool IsFlying() const { return bFlying; }
+	// For putting a player back as they were left (a saved world).
+	void SetFlying(bool bInFlying) { bFlying = bInFlying; }
 	const FMcBody& GetBody() const { return Body; }
 
 	// Where the player looks (Minecraft yaw and pitch, degrees) and whether they crouch, for drawing their body on

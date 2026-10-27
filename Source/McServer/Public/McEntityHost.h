@@ -34,6 +34,19 @@ public:
 	// frozen, each with an actor), and it can be given animals again if it comes back.
 	void OnChunkRemoved(FIntPoint Chunk);
 
+	// The mobs and items standing in a chunk, as bytes for its save (M9); empty if there are none. Take it before
+	// the chunk leaves the world, since that removes its mobs.
+	TArray<uint8> CaptureChunk(FIntPoint Chunk);
+	// Puts back what CaptureChunk wrote, with new ids; returns how many came back. Entities of kinds this version
+	// doesn't know, or whose bytes are damaged, are dropped.
+	int32 RestoreChunk(TConstArrayView<uint8> Bytes);
+	// A chunk that came from a save has had its turn at animals: don't give it a herd when it joins the world.
+	// Call before adding the chunk.
+	void MarkSeeded(FIntPoint Chunk) { Seeded.Add(Chunk); }
+	// Removes the entities that stand in no loaded chunk (items that rolled off the edge, mobs that walked out):
+	// nothing would save them, and they would only pile up. Returns how many.
+	int32 RemoveStrays();
+
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;

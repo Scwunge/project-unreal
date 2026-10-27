@@ -9,6 +9,8 @@
 #include "McNoiseGenerator.h"
 #include "McSimulation.h"
 #include "McServer.h"
+#include "McWorldStorage.h"
+#include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Net/UnrealNetwork.h"
 #include "Tasks/Task.h"
@@ -58,7 +60,8 @@ void AMcWorldActor::BeginPlay()
 
 	// Development: -McDimension=minecraft:the_nether or minecraft:the_end.
 	FString DimensionArg;
-	if (FParse::Value(FCommandLine::Get(), TEXT("-McDimension="), DimensionArg))
+	const bool bDimensionArg = FParse::Value(FCommandLine::Get(), TEXT("-McDimension="), DimensionArg);
+	if (bDimensionArg)
 	{
 		Dimension = DimensionArg;
 		NoiseSettings = DimensionArg == TEXT("minecraft:the_end") ? TEXT("minecraft:end") : DimensionArg == TEXT("minecraft:the_nether") ? TEXT("minecraft:nether") : TEXT("minecraft:overworld");
@@ -77,18 +80,73 @@ void AMcWorldActor::BeginPlay()
 		}
 		return;
 	}
+	const TCHAR* CommandLine = FCommandLine::Get();
+
+	// A named world (-McWorld=<name>) is read from Saved/Worlds/<name>, or made there.
+	FString WorldArg;
+	bool bHaveLevel = false;
+	if (FParse::Value(CommandLine, TEXT("-McWorld="), WorldArg))
+	{
+		WorldName = McWorldSave::SanitizeName(WorldArg);
+		if (WorldName.IsEmpty())
+		{
+			UE_LOG(LogMcServer, Error, TEXT("-McWorld=%s isn't a usable world name; running without a save."), *WorldArg);
+		}
+		else
+		{
+			WorldDir = McWorldSave::GetWorldDir(WorldName);
+			bHaveLevel = McWorldSave::LoadLevel(WorldDir, Level);
+			if (!bHaveLevel && IFileManager::Get().FileExists(*(WorldDir / TEXT("level.json"))))
+			{
+				// Starting a new world over this one's chunks would mix two seeds; leave it as it is.
+				UE_LOG(LogMcServer, Error, TEXT("World %s has a level.json that can't be read; running without a save so it isn't overwritten."), *WorldName);
+				WorldName.Reset();
+				WorldDir.Reset();
+			}
+		}
+	}
+	if (bHaveLevel)
+	{
+		// The world carries on in the dimension it was in, unless the command line says otherwise.
+		if (!bDimensionArg)
+		{
+			Dimension = Level.Dimension;
+		}
+		if (Dimension == Level.Dimension)
+		{
+			NoiseSettings = Level.NoiseSettings;
+		}
+	}
+
 	if (!FMcBlockRegistry::Get().EnsureLoaded() || !FMcBiomeRegistry::Get().EnsureLoaded() || !FMcDimensionType::Load(Dimension, DimensionType))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't start the world: cache/ is missing or incomplete. Run tools/fetch_cache.py."));
 		return;
 	}
 
-	const TCHAR* CommandLine = FCommandLine::Get();
 	FString Scene;
 	bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
-	FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
+	const bool bSeedArg = FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
 	double StartTime = DayTicks;
-	if (FParse::Value(CommandLine, TEXT("-McTime="), StartTime))
+	const bool bTimeArg = FParse::Value(CommandLine, TEXT("-McTime="), StartTime);
+	if (bHaveLevel)
+	{
+		// What the world was made with wins over the command line, which only shapes a world being made.
+		if (bSeedArg && Seed != Level.Seed)
+		{
+			UE_LOG(LogMcServer, Warning, TEXT("World %s was made with seed %lld; ignoring -McSeed=%lld."), *WorldName, Level.Seed, Seed);
+		}
+		Seed = Level.Seed;
+		bFlat = Level.bFlat;
+		if (!Level.FlatPreset.IsEmpty())
+		{
+			FlatPreset = Level.FlatPreset;
+		}
+		SetDayTime(Level.DayTime);
+		const FString* DaylightRule = Level.GameRules.Find(TEXT("doDaylightCycle"));
+		bTimeFrozen = DaylightRule && DaylightRule->Equals(TEXT("false"), ESearchCase::IgnoreCase);
+	}
+	if (bTimeArg)
 	{
 		SetDayTime(StartTime);
 	}
@@ -140,14 +198,46 @@ void AMcWorldActor::BeginPlay()
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
 	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkAdded(Pos); } });
 	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
-	Finished = MakeShared<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
+	Finished = MakeShared<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
-	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d"),
-		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
+	if (!WorldName.IsEmpty())
+	{
+		if (!bHaveLevel)
+		{
+			Level = FMcLevelData();
+			Level.Seed = Seed;
+			Level.Spawn = FIntVector(0, SurfaceY + 1, 0);
+			Level.Dimension = Dimension;
+			Level.NoiseSettings = NoiseSettings;
+			Level.bFlat = bFlat;
+			Level.FlatPreset = bFlat ? FlatPreset : FString();
+		}
+		StartStorage(WorldName);
+	}
+	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d%s"),
+		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY,
+		Storage ? *FString::Printf(TEXT(", saved as %s (%s)"), *WorldName, bHaveLevel ? TEXT("loaded") : TEXT("new")) : TEXT(""));
+}
+
+void AMcWorldActor::StartStorage(const FString& Name)
+{
+	Storage = MakeShared<FMcWorldStorage, ESPMode::ThreadSafe>(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
+	// A new world is on disk from the start, so a crash before the first autosave still leaves one to open.
+	Level.DayTime = DayTicks;
+	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+	if (!McWorldSave::SaveLevel(WorldDir, Level))
+	{
+		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
+	}
 }
 
 void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Chunks, mobs and players are all still here; this is the last chance to write them.
+	if (Storage && BlockWorld)
+	{
+		SaveWorld();
+	}
 	// The entity actors have to go while the game world is still up; the destructor runs during garbage collection.
 	if (Entities)
 	{
@@ -184,8 +274,140 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
 		return;
 	}
 	const FIntPoint ChunkPos(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z));
-	Edits.FindOrAdd(ChunkPos).Add(Pos, State);
+	// A saved world's loaded chunks keep their own changes (they're written when they change); only a chunk that
+	// isn't there yet needs the change remembered.
+	if (!Storage || !BlockWorld->HasChunk(ChunkPos))
+	{
+		Edits.FindOrAdd(ChunkPos).Add(Pos, State);
+	}
 	BlockWorld->SetBlock(Pos, State);
+}
+
+void AMcWorldActor::ApplyEdits(FMcChunk& Chunk)
+{
+	const FIntPoint Pos = Chunk.GetPos();
+	const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos);
+	if (!ChunkEdits)
+	{
+		return;
+	}
+	for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
+	{
+		Chunk.SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
+	}
+	// Without a save, the edits are what survives the chunk unloading, so they stay.
+	if (Storage)
+	{
+		Edits.Remove(Pos);
+	}
+}
+
+void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
+{
+	const FIntPoint Pos = Arrived.Chunk->GetPos();
+	// Before the edits, so a chunk that only changes by them counts as changed.
+	const uint32 LoadedRevision = Arrived.Chunk->GetRevision();
+	ApplyEdits(*Arrived.Chunk);
+	if (Entities && Arrived.bFromDisk)
+	{
+		// Its animals were placed when it was first made; what's left of them is in the save.
+		Entities->MarkSeeded(Pos);
+	}
+	BlockWorld->AddChunk(MoveTemp(Arrived.Chunk));
+	if (Storage)
+	{
+		FChunkState& State = ChunkStates.FindOrAdd(Pos);
+		State = FChunkState();
+		State.SavedRevision = LoadedRevision;
+		State.bOnDisk = Arrived.bFromDisk;
+		State.bHadEntities = !Arrived.Extras.Entities.IsEmpty();
+	}
+	if (Entities && !Arrived.Extras.Entities.IsEmpty())
+	{
+		Entities->RestoreChunk(Arrived.Extras.Entities);
+	}
+}
+
+void AMcWorldActor::MarkChunkDirty(FIntPoint Chunk)
+{
+	if (FChunkState* State = ChunkStates.Find(Chunk))
+	{
+		State->bDirty = true;
+	}
+}
+
+bool AMcWorldActor::SaveChunk(FIntPoint Pos)
+{
+	const FMcChunk* Chunk = Storage && BlockWorld ? BlockWorld->FindChunk(Pos) : nullptr;
+	if (!Chunk)
+	{
+		return false;
+	}
+	FChunkState& State = ChunkStates.FindOrAdd(Pos);
+	// Taken before the chunk leaves the world, which removes its mobs.
+	FMcChunkSaveExtras Extras;
+	Extras.bPopulated = true;
+	if (Entities)
+	{
+		Extras.Entities = Entities->CaptureChunk(Pos);
+	}
+	// Block entities can be changed in place without the chunk's revision moving, so a chunk with any is always rewritten.
+	const bool bNeeded = !State.bOnDisk || State.bDirty || Chunk->GetRevision() != State.SavedRevision
+		|| !Chunk->GetBlockEntities().IsEmpty() || !Extras.Entities.IsEmpty() || State.bHadEntities;
+	if (!bNeeded)
+	{
+		return false;
+	}
+	const bool bHasEntities = !Extras.Entities.IsEmpty();
+	TArray<uint8> Bytes = McChunkSave::Encode(*Chunk, Extras);
+	if (Bytes.IsEmpty())
+	{
+		UE_LOG(LogMcServer, Error, TEXT("Can't save chunk %d,%d: encoding it failed."), Pos.X, Pos.Y);
+		return false;
+	}
+	Storage->QueueSave(Pos, MoveTemp(Bytes));
+	State.SavedRevision = Chunk->GetRevision();
+	State.bOnDisk = true;
+	State.bDirty = false;
+	State.bHadEntities = bHasEntities;
+	return true;
+}
+
+void AMcWorldActor::SaveWorld()
+{
+	if (!Storage || !BlockWorld)
+	{
+		return;
+	}
+	OnSaving.Broadcast();
+	Level.DayTime = DayTicks;
+	Level.Dimension = Dimension;
+	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+	McWorldSave::SaveLevel(WorldDir, Level);
+	// Whatever an autosave had left to look at is covered by this.
+	AutosaveQueue.Reset();
+	int32 Queued = 0;
+	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
+	{
+		Queued += SaveChunk(Entry.Key) ? 1 : 0;
+	}
+	Storage->Flush();
+	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s"), *WorldName, Queued, BlockWorld->GetChunks().Num(),
+		Storage->NumFailedWrites() > 0 ? *FString::Printf(TEXT(" (%d writes failed)"), Storage->NumFailedWrites()) : TEXT(""));
+}
+
+void AMcWorldActor::BeginAutosave()
+{
+	OnSaving.Broadcast();
+	Level.DayTime = DayTicks;
+	Level.Dimension = Dimension;
+	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+	McWorldSave::SaveLevel(WorldDir, Level);
+	if (Entities)
+	{
+		Entities->RemoveStrays();
+	}
+	BlockWorld->GetChunks().GetKeys(AutosaveQueue);
 }
 
 void AMcWorldActor::Tick(float DeltaSeconds)
@@ -225,7 +447,18 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 				}
 			}
 			Entities->Tick(Players, DayTicks);
+			if (Storage && ++TicksSinceAutosave >= AutosaveIntervalTicks)
+			{
+				TicksSinceAutosave = 0;
+				BeginAutosave();
+			}
 		}
+	}
+	// An autosave looks at a few chunks a frame: each changed one is encoded here (the file writes are on a worker),
+	// and doing a whole world's in one frame would be a hitch.
+	for (int32 Budget = 8; Budget > 0 && !AutosaveQueue.IsEmpty(); --Budget)
+	{
+		SaveChunk(AutosaveQueue.Pop(EAllowShrinking::No));
 	}
 }
 
@@ -310,10 +543,23 @@ void AMcWorldActor::StreamChunks()
 			continue;
 		}
 		InFlight.Add(Entry.Value);
-		UE::Tasks::Launch(UE_SOURCE_LOCATION, [Generator = Generator, Finished = Finished, Chunk = BlockWorld->MakeChunk(Entry.Value)]() mutable
+		// A chunk in the save is read back instead of generated (on the worker, along with the decoding).
+		UE::Tasks::Launch(UE_SOURCE_LOCATION, [Generator = Generator, Finished = Finished, Storage = Storage, Chunk = BlockWorld->MakeChunk(Entry.Value)]() mutable
 		{
-			Generator->Generate(*Chunk);
-			Finished->Enqueue(MoveTemp(Chunk));
+			FFinishedChunk Result;
+			Result.Chunk = MoveTemp(Chunk);
+			TArray<uint8> Bytes;
+			if (Storage && Storage->Load(Result.Chunk->GetPos(), Bytes) && McChunkSave::Decode(Bytes, *Result.Chunk, Result.Extras))
+			{
+				Result.bFromDisk = true;
+			}
+			else
+			{
+				// Never saved, or damaged (Decode leaves the chunk as it was): make it as a new one.
+				Result.Extras = FMcChunkSaveExtras();
+				Generator->Generate(*Result.Chunk);
+			}
+			Finished->Enqueue(MoveTemp(Result));
 		});
 	}
 
@@ -334,6 +580,9 @@ void AMcWorldActor::StreamChunks()
 		}
 		for (const FIntPoint& Pos : Far)
 		{
+			// Saved while it's still whole, with its mobs; the writing happens on a worker.
+			SaveChunk(Pos);
+			ChunkStates.Remove(Pos);
 			BlockWorld->RemoveChunk(Pos);
 		}
 		bUnloaded = !Far.IsEmpty();
@@ -362,29 +611,23 @@ void AMcWorldActor::StreamChunks()
 bool AMcWorldActor::AddGeneratedChunks()
 {
 	bool bAny = false;
-	TUniquePtr<FMcChunk> Chunk;
-	while (Finished->Dequeue(Chunk))
+	FFinishedChunk Result;
+	while (Finished->Dequeue(Result))
 	{
 		bAny = true;
-		const FIntPoint Pos = Chunk->GetPos();
+		const FIntPoint Pos = Result.Chunk->GetPos();
 		InFlight.Remove(Pos);
 		if (BlockWorld->HasChunk(Pos) || Pending.Contains(Pos))
 		{
 			continue;
 		}
-		if (Features)
+		// A chunk from the save has had its features already; one just made waits for them.
+		if (Features && !(Result.bFromDisk && Result.Extras.bPopulated))
 		{
-			Pending.Add(Pos, MoveTemp(Chunk));
+			Pending.Add(Pos, MoveTemp(Result.Chunk));
 			continue;
 		}
-		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos))
-		{
-			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
-			{
-				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
-			}
-		}
-		BlockWorld->AddChunk(MoveTemp(Chunk));
+		AddToWorld(MoveTemp(Result));
 	}
 	return bAny;
 }
@@ -458,17 +701,11 @@ bool AMcWorldActor::DecorateChunks()
 	}
 	for (const FIntPoint& Pos : Ready)
 	{
-		TUniquePtr<FMcChunk> Chunk = MoveTemp(Pending.FindChecked(Pos));
+		FFinishedChunk Done;
+		Done.Chunk = MoveTemp(Pending.FindChecked(Pos));
 		Pending.Remove(Pos);
 		Decorated.Remove(Pos);
-		if (const TMap<FIntVector, FMcStateId>* ChunkEdits = Edits.Find(Pos))
-		{
-			for (const TPair<FIntVector, FMcStateId>& Edit : *ChunkEdits)
-			{
-				Chunk->SetBlock(McCoords::BlockToLocal(Edit.Key.X), Edit.Key.Y, McCoords::BlockToLocal(Edit.Key.Z), Edit.Value);
-			}
-		}
-		BlockWorld->AddChunk(MoveTemp(Chunk));
+		AddToWorld(MoveTemp(Done));
 		bChanged = true;
 	}
 	return bChanged;

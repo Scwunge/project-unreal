@@ -46,6 +46,17 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.StepHeight = 0.6f;
 }
 
+bool FMcMob::Serialize(FArchive& Ar)
+{
+	if (!FMcEntity::Serialize(Ar))
+	{
+		return false;
+	}
+	// The rest (the flash after a hit, the goal being walked to) is a few ticks' worth and starts afresh.
+	Ar << Health;
+	return !Ar.IsError() && !FMath::IsNaN(Health);
+}
+
 bool FMcMob::Damage(float Amount, const FVector* Source)
 {
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.

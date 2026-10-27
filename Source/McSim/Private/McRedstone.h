@@ -108,4 +108,6 @@ private:
 	TMap<FIntVector, int32> Plates;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;
+	// When each extended piston started to extend, for the rule that a short pulse leaves what it pushed behind.
+	TMap<FIntVector, int64> ExtendedAt;
 };

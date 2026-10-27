@@ -1,0 +1,68 @@
+// The small files of a saved world (M9), next to the region files of McWorldStorage:
+//
+//   Saved/Worlds/<name>/level.json            seed, spawn, time, game rules, dimension
+//   Saved/Worlds/<name>/playerdata/<id>.json  where a player was
+//   Saved/Worlds/<name>/<dimension>/r.X.Z.mcr the chunks
+//
+// JSON, so a save can be read and fixed by hand. Written to a temporary file and moved over the old one, so a crash
+// mid-write leaves the previous file whole.
+
+#pragma once
+
+#include "CoreMinimal.h"
+
+// What the world as a whole remembers (the game's level.dat).
+struct MCSERVER_API FMcLevelData
+{
+	// Bumped when the file's layout changes.
+	int32 Version = 1;
+	int64 Seed = 0;
+	// The block players first appear above.
+	FIntVector Spawn = FIntVector::ZeroValue;
+	// Game ticks, not wrapped (see AMcWorldActor::GetDayTime).
+	double DayTime = 1000.0;
+	// The dimension the world was last in, e.g. "minecraft:overworld".
+	FString Dimension = TEXT("minecraft:overworld");
+	// How its terrain is made, so it carries on the same way: the noise settings, or a flat preset.
+	FString NoiseSettings = TEXT("minecraft:overworld");
+	bool bFlat = false;
+	FString FlatPreset;
+	// Game rules by name, as text ("true", "3"). Only doDaylightCycle is read so far; the rest are kept for later.
+	TMap<FString, FString> GameRules;
+
+	bool operator==(const FMcLevelData& Other) const;
+};
+
+// A player's place in the world, in Minecraft's terms (block coordinates, degrees).
+struct MCSERVER_API FMcPlayerData
+{
+	FVector Position = FVector::ZeroVector;
+	// Minecraft yaw (0 faces south, 90 west) and pitch (positive looks down).
+	float Yaw = 0.0f;
+	float Pitch = 0.0f;
+	FString Dimension = TEXT("minecraft:overworld");
+	bool bFlying = false;
+
+	bool operator==(const FMcPlayerData& Other) const;
+};
+
+namespace McWorldSave
+{
+	// The folder every world is under, Saved/Worlds.
+	MCSERVER_API FString GetWorldsRoot();
+	// A world name that is safe as a folder name: letters, digits, '_', '-' and '.' kept, anything else (path
+	// separators, ':' and the like) replaced with '_'. Empty if nothing usable is left (empty, or only dots).
+	MCSERVER_API FString SanitizeName(const FString& Name);
+	MCSERVER_API FString GetWorldDir(const FString& Name);
+	// "minecraft:the_nether" -> "the_nether"; another namespace is kept ("mod:thing" -> "mod_thing").
+	MCSERVER_API FString GetDimensionFolder(const FString& Dimension);
+
+	MCSERVER_API bool SaveLevel(const FString& WorldDir, const FMcLevelData& Level);
+	// False if there is no level file or it can't be read.
+	MCSERVER_API bool LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel);
+
+	// Players are keyed by an id the caller picks (a name, or the platform user id); like world names it is
+	// sanitised for the file name.
+	MCSERVER_API bool SavePlayer(const FString& WorldDir, const FString& PlayerId, const FMcPlayerData& Player);
+	MCSERVER_API bool LoadPlayer(const FString& WorldDir, const FString& PlayerId, FMcPlayerData& OutPlayer);
+}

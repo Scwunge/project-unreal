@@ -1,0 +1,58 @@
+// Where one dimension's saved chunks live: a folder of region files (McRegionFile). Chunks are saved on a
+// worker thread, one at a time in the order they were queued, so the game thread only pays for encoding; a queued
+// chunk can be loaded again before it's written (it's served from memory). Thread safe: Load may be called from
+// generation tasks while the game thread queues saves.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "HAL/CriticalSection.h"
+#include "McRegionFile.h"
+#include "Tasks/Pipe.h"
+
+class MCSERVER_API FMcWorldStorage
+{
+public:
+	// The dimension's folder (see McWorldSave::GetDimensionFolder); made when the first chunk is written.
+	explicit FMcWorldStorage(FString InFolder);
+	// Waits for the queued writes.
+	~FMcWorldStorage();
+	UE_NONCOPYABLE(FMcWorldStorage);
+
+	// The saved bytes of a chunk (McChunkSave's), newest first: still waiting to be written, else in the file. False
+	// if the chunk was never saved or is damaged.
+	bool Load(FIntPoint Chunk, TArray<uint8>& OutBytes);
+	// Hands the bytes over to be written in the background. A newer save of the same chunk replaces an older one that
+	// hasn't been written yet.
+	void QueueSave(FIntPoint Chunk, TArray<uint8>&& Bytes);
+	// Waits until everything queued has been written. Call before the process or the test ends.
+	void Flush();
+
+	bool Contains(FIntPoint Chunk);
+	// Chunks queued and not yet written.
+	int32 NumQueued() const;
+	// Writes that failed, so a caller can tell the disk is full or the folder is read-only.
+	int32 NumFailedWrites() const { return FailedWrites; }
+
+	const FString& GetFolder() const { return Folder; }
+
+private:
+	struct FQueued
+	{
+		TArray<uint8> Bytes;
+		// Which QueueSave this is, so a write task can tell whether a newer one has replaced it.
+		uint32 Ticket = 0;
+	};
+
+	FMcRegionFile& FindRegion(FIntPoint Region);
+	void WriteQueued(FIntPoint Chunk, uint32 Ticket);
+
+	FString Folder;
+	mutable FCriticalSection QueueLock;
+	TMap<FIntPoint, FQueued> Queued;
+	uint32 NextTicket = 1;
+	FCriticalSection RegionsLock;
+	TMap<FIntPoint, TUniquePtr<FMcRegionFile>> Regions;
+	TAtomic<int32> FailedWrites{ 0 };
+	UE::Tasks::FPipe Pipe{ UE_SOURCE_LOCATION };
+};

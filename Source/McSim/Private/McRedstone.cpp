@@ -1215,18 +1215,24 @@ bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, 
 	Properties.Add(TEXT("short"), TEXT("false"));
 	World.SetBlock(Pos + Vec[Facing], Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0));
 	Set(Pos, { FChange(TEXT("extended"), TEXT("true")) });
+	ExtendedAt.Add(Pos, Sim.GetGameTime());
 	return true;
 }
 
 void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky)
 {
+	// A sticky piston let go within 3 ticks of starting to extend (a pulse of under 3 ticks) lets go of what it pushed:
+	// it retracts empty-handed and the block stays.
+	const int64* Started = ExtendedAt.Find(Pos);
+	const bool bShortPulse = Started && Sim.GetGameTime() - *Started < 3;
+	ExtendedAt.Remove(Pos);
 	Set(Pos, { FChange(TEXT("extended"), TEXT("false")) });
 	const FIntVector HeadPos = Pos + Vec[Facing];
 	if (IsKind(HeadPos, PistonHead))
 	{
 		World.SetBlock(HeadPos, Air());
 	}
-	if (bSticky)
+	if (bSticky && !bShortPulse)
 	{
 		TArray<FIntVector> Move, Destroy;
 		const FIntVector Start = Pos + Vec[Facing] * 2;

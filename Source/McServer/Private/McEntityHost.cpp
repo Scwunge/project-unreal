@@ -7,7 +7,10 @@
 #include "McLoot.h"
 #include "McMob.h"
 #include "McRandom.h"
+#include "McServer.h"
 #include "Engine/World.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "GameFramework/Actor.h"
@@ -179,6 +182,99 @@ void FMcEntityHost::OnChunkRemoved(FIntPoint Chunk)
 			Entity->bRemoved = true;
 		}
 	}
+}
+
+TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
+{
+	TArray<uint8> Bytes;
+	int32 Count = 0;
+	TArray<uint8> Body;
+	FMemoryWriter Writer(Body);
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (Entity->bRemoved
+			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.X)) != Chunk.X
+			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.Z)) != Chunk.Y)
+		{
+			continue;
+		}
+		// Length-prefixed, so a kind that a later version drops can be skipped without reading it.
+		FString Type = Entity->GetType().ToString();
+		TArray<uint8> Data;
+		FMemoryWriter DataWriter(Data);
+		Entity->Serialize(DataWriter);
+		Writer << Type << Data;
+		++Count;
+	}
+	if (Count == 0)
+	{
+		return Bytes;
+	}
+	FMemoryWriter Out(Bytes);
+	Out << Count;
+	Bytes.Append(Body);
+	return Bytes;
+}
+
+int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
+{
+	FMemoryReaderView Reader(Bytes);
+	int32 Count = 0;
+	Reader << Count;
+	int32 Restored = 0;
+	for (int32 Index = 0; Index < Count && !Reader.IsError(); ++Index)
+	{
+		FString Type;
+		TArray<uint8> Data;
+		Reader << Type << Data;
+		if (Reader.IsError())
+		{
+			break;
+		}
+		FMemoryReader DataReader(Data);
+		const FName Kind(*Type);
+		if (Kind == FMcItemEntity::StaticType())
+		{
+			TUniquePtr<FMcItemEntity> Item = MakeUnique<FMcItemEntity>();
+			if (Item->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Item));
+				++Restored;
+			}
+		}
+		else if (FMcMob* Mob = SpawnMob(Kind, FVector::ZeroVector))
+		{
+			if (Mob->Serialize(DataReader))
+			{
+				++Restored;
+			}
+			else
+			{
+				Mob->bRemoved = true;
+			}
+		}
+		else
+		{
+			UE_LOG(LogMcServer, Warning, TEXT("A saved %s isn't a kind of entity this version has; it's dropped."), *Type);
+		}
+	}
+	return Restored;
+}
+
+int32 FMcEntityHost::RemoveStrays()
+{
+	int32 Removed = 0;
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->bRemoved
+			&& !World.HasChunk(FIntPoint(McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.X)),
+				McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.Z)))))
+		{
+			Entity->bRemoved = true;
+			++Removed;
+		}
+	}
+	return Removed;
 }
 
 void FMcEntityHost::SeedChunk(FIntPoint Chunk)

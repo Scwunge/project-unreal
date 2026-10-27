@@ -6,6 +6,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McNature.h"
 #include "McSimulation.h"
 
 namespace
@@ -95,6 +96,7 @@ void FMcSimulation::RandomTicks()
 				}
 			}
 		}
+		Nature->TickChunk(Chunk);
 	}
 }
 
@@ -105,6 +107,10 @@ void FMcSimulation::RandomTickBlock(const FIntVector& Pos)
 	const FString Name = NameOf(State);
 	const FMcBlockTags& Tags = FMcBlockTags::Get();
 
+	if (Nature->RandomTick(Pos, State))
+	{
+		return;
+	}
 	if (Name == TEXT("minecraft:grass_block") || Name == TEXT("minecraft:mycelium"))
 	{
 		// Covered grass dies; grass in the open spreads to dirt near it that has room above.
@@ -139,6 +145,7 @@ void FMcSimulation::RandomTickBlock(const FIntVector& Pos)
 				bWet = IsWaterAt(World, Pos + FIntVector(DX, 0, DZ)) || IsWaterAt(World, Pos + FIntVector(DX, 1, DZ));
 			}
 		}
+		bWet |= Nature->IsRainingAt(Pos + Up);
 		const int32 Moisture = NumberProperty(State, TEXT("moisture"));
 		if (bWet)
 		{

@@ -8,6 +8,7 @@
 #include "McBlockEntity.h"
 #include "McPhysics.h"
 
+class FArchive;
 class FMcBlockWorld;
 class FMcEntityManager;
 
@@ -21,6 +22,11 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) {}
 	// True for mobs and the like, which have health and can be hit.
 	virtual bool IsLiving() const { return false; }
+
+	// Reads or writes what a save keeps of the entity, by whether the archive is loading: where it is and how it
+	// moves, its age, and what its kind adds (a stack, a health). Not the id (a loaded entity gets a new one) or the
+	// kind, which the saver writes first so it knows what to make. False if a loading archive is malformed.
+	virtual bool Serialize(FArchive& Ar);
 
 	int32 Id = 0;
 	FMcBody Body;
@@ -40,6 +46,7 @@ public:
 	static const FName& StaticType();
 	virtual FName GetType() const override { return StaticType(); }
 	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
 
 	FMcItemStack Stack;
 	// Ticks before a player can pick it up: 10 for a dropped item, 40 for a thrown one.

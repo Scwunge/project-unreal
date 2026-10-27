@@ -4,6 +4,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McNature.h"
 #include "McRedstone.h"
 #include "McSim.h"
 
@@ -64,6 +65,7 @@ FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
 {
 	FMcBlockLight::Get().EnsureLoaded();
 	Redstone = MakeUnique<FMcRedstone>(World, *this);
+	Nature = MakeUnique<FMcNature>(World, *this);
 	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
 }
 
@@ -89,7 +91,48 @@ void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 
 void FMcSimulation::SetSunLight(int32 Level)
 {
+	bSunFixed = true;
 	Redstone->SetSunLight(Level);
+}
+
+void FMcSimulation::ClearSunLight()
+{
+	bSunFixed = false;
+}
+
+void FMcSimulation::SetDayTime(int64 DayTime)
+{
+	DayOffset = DayTime - GameTime;
+}
+
+int32 FMcSimulation::GetSunLevel() const
+{
+	return Nature->GetSunLight();
+}
+
+EMcWeather FMcSimulation::GetWeather() const
+{
+	return Nature->GetWeather();
+}
+
+void FMcSimulation::SetWeather(EMcWeather Weather, int32 Duration)
+{
+	Nature->SetWeather(Weather, Duration);
+}
+
+void FMcSimulation::SetSnowAccumulation(int32 Layers)
+{
+	Nature->SetSnowAccumulation(Layers);
+}
+
+bool FMcSimulation::IsRainingAt(const FIntVector& Pos) const
+{
+	return Nature->IsRainingAt(Pos);
+}
+
+bool FMcSimulation::Bonemeal(const FIntVector& Pos)
+{
+	return Nature->Bonemeal(Pos);
 }
 
 int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
@@ -150,6 +193,11 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 void FMcSimulation::Tick()
 {
 	++GameTime;
+	Nature->Tick();
+	if (!bSunFixed)
+	{
+		Redstone->SetSunLight(Nature->GetDetectorLevel());
+	}
 	// Ticks that run now may schedule more for later; those never come due in this same tick (delay 1 or more).
 	TArray<FIntVector> Now;
 	for (auto It = Due.CreateIterator(); It; ++It)

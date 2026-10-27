@@ -24,9 +24,22 @@ public:
 
 	virtual void StartPlay() override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
+	// A leaving player is saved first (in a saved world, see AMcWorldActor).
+	virtual void Logout(AController* Exiting) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
 	FTransform GetSpawnTransform() const;
+	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
+	// flying when saved.
+	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
+	// What a player is filed under in the world's playerdata folder.
+	FString GetSaveId(const AController* Controller) const;
+	void SavePlayer(const AController* Controller) const;
+	// Every player with a pawn; called whenever the world saves.
+	void SavePlayers() const;
+
+	FDelegateHandle SavingHandle;
 
 	// Development: -McCam=x,y,z,yaw,pitch puts the camera at a Minecraft position and angle (the screenshot
 	// itself, -McShot, is taken by the player controller).

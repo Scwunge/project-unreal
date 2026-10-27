@@ -1,6 +1,33 @@
 #include "McEntityManager.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "Serialization/Archive.h"
+
+bool FMcEntity::Serialize(FArchive& Ar)
+{
+	// Doubles and floats as they are, so a save restores exactly what was there.
+	Ar << Body.Position.X << Body.Position.Y << Body.Position.Z;
+	Ar << Body.Velocity.X << Body.Velocity.Y << Body.Velocity.Z;
+	Ar << Yaw << Pitch << Age;
+	uint8 bGround = Body.bOnGround ? 1 : 0;
+	Ar << bGround;
+	Body.bOnGround = bGround != 0;
+	if (Ar.IsLoading())
+	{
+		return !Ar.IsError() && !Body.Position.ContainsNaN() && !Body.Velocity.ContainsNaN();
+	}
+	return !Ar.IsError();
+}
+
+bool FMcItemEntity::Serialize(FArchive& Ar)
+{
+	if (!FMcEntity::Serialize(Ar))
+	{
+		return false;
+	}
+	Ar << PickupDelay;
+	return Stack.Serialize(Ar) && !Ar.IsError() && (Ar.IsSaving() || !Stack.IsEmpty());
+}
 
 const FName& FMcItemEntity::StaticType()
 {

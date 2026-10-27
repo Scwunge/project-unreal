@@ -35,6 +35,7 @@ public:
 	virtual FName GetType() const override { return Type.Name; }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool IsLiving() const override { return true; }
+	virtual bool Serialize(FArchive& Ar) override;
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);

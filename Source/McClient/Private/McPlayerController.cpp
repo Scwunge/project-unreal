@@ -494,7 +494,8 @@ void AMcPlayerController::StartDevScreenshot()
 		if (Keys.Num() >= 2)
 		{
 			IFileManager::Get().MakeDirectory(*RecordDir, true);
-			const int32 Total = FMath::RoundToInt(Seconds * 30.0f);
+			// At least two frames, the path's two ends (the curve divides by Total - 1).
+			const int32 Total = FMath::Max(2, FMath::RoundToInt(Seconds * 30.0f));
 			const double Start = FPlatformTime::Seconds();
 			const TSharedRef<int32> Frame = MakeShared<int32>(0);
 			TWeakObjectPtr<AMcPlayerController> Weak(this);

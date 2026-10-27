@@ -5,6 +5,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McFeature.h"
+#include "McMob.h"
 #include "McGenRegion.h"
 #include "McNoiseGenerator.h"
 #include "McPortal.h"
@@ -284,6 +285,10 @@ void AMcWorldActor::BeginPlay()
 		RainLevel = Forced != EMcWeather::Clear ? 1.0f : 0.0f;
 		ThunderLevel = Forced == EMcWeather::Thunder ? 1.0f : 0.0f;
 	}
+	if (!bSecondary)
+	{
+		FParse::Value(CommandLine, TEXT("-McStrike="), DevStrike, /*bShouldStopOnSeparator=*/ false);
+	}
 	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkAdded(Pos); } });
 	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
 	Finished = MakeShared<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
@@ -425,6 +430,92 @@ void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantiz
 		return;
 	}
 	FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ Name, FVector(Position), Volume, Pitch });
+}
+
+void AMcWorldActor::MulticastLightning_Implementation(FVector_NetQuantize10 Position, int32 BoltSeed)
+{
+	if (bViewed && OnLightning)
+	{
+		OnLightning(FVector(Position), BoltSeed);
+	}
+}
+
+void AMcWorldActor::TickLightning()
+{
+	if (Weather != static_cast<uint8>(EMcWeather::Thunder) || !HasWeather() || !BlockWorld)
+	{
+		return;
+	}
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	TArray<FIntVector> Strikes;
+	for (const auto& Pair : BlockWorld->GetChunks())
+	{
+		if (LightningRandom.RandHelper(100000) != 0)
+		{
+			continue;
+		}
+		const FMcChunk& Chunk = *Pair.Value;
+		const int32 LocalX = LightningRandom.RandHelper(16);
+		const int32 LocalZ = LightningRandom.RandHelper(16);
+		// The block above the top one that stops movement or holds a fluid.
+		int32 Y = Chunk.GetMaxY();
+		for (; Y >= Chunk.GetMinY(); --Y)
+		{
+			const FMcStateId State = Chunk.GetBlock(LocalX, Y, LocalZ);
+			if (Shapes.GetCollision(State).Num() > 0 || Shapes.GetFluid(State) != EMcFluid::None)
+			{
+				break;
+			}
+		}
+		const int32 Above = FMath::Min(Y + 1, Chunk.GetMaxY());
+		if (Biomes.GetPrecipitation(Chunk.GetBiome(LocalX, Above, LocalZ), Above) != FMcBiomeRegistry::EPrecipitation::Rain)
+		{
+			continue;
+		}
+		Strikes.Add(FIntVector(Pair.Key.X * 16 + LocalX, Y + 1, Pair.Key.Y * 16 + LocalZ));
+	}
+	for (const FIntVector& Pos : Strikes)
+	{
+		Strike(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5));
+	}
+}
+
+void AMcWorldActor::Strike(const FVector& Position)
+{
+	UE_LOG(LogMcServer, Log, TEXT("Lightning struck %s at %s"), *Dimension, *Position.ToString());
+	MulticastLightning(FVector_NetQuantize10(Position), LightningRandom.RandHelper(MAX_int32));
+	// The thunder carries everywhere (its volume makes its range huge); the crack is near.
+	MulticastSound(FName("entity.lightning_bolt.thunder"), FVector_NetQuantize10(Position), 10000.0f, 0.8f + LightningRandom.FRand() * 0.2f);
+	MulticastSound(FName("entity.lightning_bolt.impact"), FVector_NetQuantize10(Position), 2.0f, 0.5f + LightningRandom.FRand() * 0.2f);
+
+	// What stands within reach is hurt: mobs within three blocks, and the nearest player.
+	if (Entities)
+	{
+		FMcEntityManager& Manager = Entities->GetManager();
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			if (Entity->IsLiving() && !Entity->bRemoved && FVector::Dist(Entity->Body.Position, Position) <= 3.0)
+			{
+				static_cast<FMcMob&>(*Entity).Damage(5.0f, nullptr);
+			}
+		}
+		Manager.HurtPlayer(Position, 5.0f);
+	}
+
+	// Fire where it struck and on a few blocks round it (Normal difficulty), wherever there is air over something solid.
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId Fire = Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0);
+	const FIntVector Centre(FMath::FloorToInt32(Position.X), FMath::FloorToInt32(Position.Y), FMath::FloorToInt32(Position.Z));
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	for (int32 Try = 0; Try < 5 && Fire != 0; ++Try)
+	{
+		const FIntVector Pos = Try == 0 ? Centre : Centre + FIntVector(LightningRandom.RandRange(-1, 1), LightningRandom.RandRange(-1, 1), LightningRandom.RandRange(-1, 1));
+		if (Registry.IsAir(BlockWorld->GetBlock(Pos)) && Shapes.GetCollision(BlockWorld->GetBlock(Pos - FIntVector(0, 1, 0))).Num() > 0)
+		{
+			SetBlock(Pos, Fire);
+		}
+	}
 }
 
 void AMcWorldActor::ApplyEdits(FMcChunk& Chunk)
@@ -605,6 +696,23 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			TickLightning();
+			// Development: -McStrike=x,z strikes the top of that column every three seconds.
+			if (!DevStrike.IsEmpty() && ++DevStrikeTicks % 60 == 0)
+			{
+				FString XText, ZText;
+				if (DevStrike.Split(TEXT(","), &XText, &ZText))
+				{
+					const int32 X = FCString::Atoi(*XText);
+					const int32 Z = FCString::Atoi(*ZText);
+					int32 Y = BlockWorld->GetDimension().MaxY();
+					while (Y > BlockWorld->GetDimension().MinY && FMcBlockRegistry::Get().IsAir(BlockWorld->GetBlock(FIntVector(X, Y, Z))))
+					{
+						--Y;
+					}
+					Strike(FVector(X + 0.5, Y + 1, Z + 0.5));
+				}
+			}
 			TArray<FVector> Players;
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{

@@ -1,4 +1,5 @@
 #include "McWeatherComponent.h"
+#include "McLightningComponent.h"
 #include "McBiomeRegistry.h"
 #include "Misc/AutomationTest.h"
 
@@ -24,6 +25,30 @@ bool FMcWeatherRenderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("full at the camera"), McWeather::GetFade(0.0f), 1.0f);
 	TestEqual(TEXT("a half at the edge"), McWeather::GetFade(100.0f), 0.5f);
 	TestEqual(TEXT("none beyond"), McWeather::GetFade(101.0f), 0.0f);
+
+	// A bolt: three strands, the main one of eight segments reaching the strike from 128 blocks up, the forks hanging
+	// off it in the air; the same seed, the same bolt.
+	{
+		const TArray<McLightning::FSegment> Bolt = McLightning::BuildBolt(5);
+		int32 Main = 0;
+		TSet<int32> Strands;
+		for (const McLightning::FSegment& Segment : Bolt)
+		{
+			Strands.Add(Segment.Strand);
+			Main += Segment.Strand == 0 ? 1 : 0;
+			TestTrue(TEXT("each segment goes up"), Segment.Top.Y > Segment.Bottom.Y);
+			if (Segment.Strand != 0)
+			{
+				TestTrue(TEXT("forks end above the ground"), Segment.Bottom.Y > 0.0);
+			}
+		}
+		TestEqual(TEXT("three strands"), Strands.Num(), 3);
+		TestEqual(TEXT("eight in the main"), Main, McLightning::SegmentsPerStrand);
+		TestTrue(TEXT("it reaches the strike"), Bolt[0].Bottom.Equals(FVector::ZeroVector));
+		TestEqual(TEXT("from 128 blocks up"), Bolt[McLightning::SegmentsPerStrand - 1].Top.Y, 128.0);
+		TestEqual(TEXT("the same seed, the same bolt"), McLightning::BuildBolt(5).Num(), Bolt.Num());
+		TestTrue(TEXT("and the same shape"), McLightning::BuildBolt(5)[3].Top.Equals(Bolt[3].Top));
+	}
 
 	// The biomes' climates, from the cache when it's there.
 	FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();

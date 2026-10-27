@@ -121,6 +121,17 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastSound(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch);
 
+	// ---- Lightning (M8) ----
+	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on
+	// a random column of it, on the block above the top one, where the sky is open and rain (not snow) falls. A strike
+	// thunders for everyone, cracks nearby, hurts what stands within reach (5) and lights fire round it.
+	void Strike(const FVector& Position);
+	// Every machine showing this dimension: a bolt came down at Position (block coordinates), its shape from BoltSeed.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastLightning(FVector_NetQuantize10 Position, int32 BoltSeed);
+	// Where a machine's view hears of a bolt, to draw it and flash the sky.
+	TFunction<void(const FVector& Position, int32 BoltSeed)> OnLightning;
+
 	// ---- Saving (M9) ----
 	// -McWorld=<name> picks a world in Saved/Worlds, made if it isn't there yet: its level file gives the seed, time
 	// and terrain (the command line's -McSeed, -McFlat and so on only apply to a world being made), its chunks are
@@ -206,6 +217,12 @@ private:
 	float ThunderLevel = 0.0f;
 	double WeatherRemainder = 0.0;
 	bool HasWeather() const;
+	// One tick of the storm's chances of a strike on each loaded chunk.
+	void TickLightning();
+	FRandomStream LightningRandom{ 31 };
+	// -McStrike=x,z (development): the column struck every three seconds.
+	FString DevStrike;
+	int32 DevStrikeTicks = 0;
 
 	// Where the players were (and the view distance) when a frame last found nothing to load, unload or finish; while
 	// they stay put there is nothing for StreamChunks to do. Empty when something is outstanding.

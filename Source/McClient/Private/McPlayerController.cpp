@@ -29,6 +29,7 @@
 #include "Engine/PostProcessVolume.h"
 #include "McSkyComponent.h"
 #include "McWeatherComponent.h"
+#include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
 #endif
 
@@ -624,5 +625,22 @@ void AMcPlayerController::SpawnEnvironment()
 	};
 	Precipitation->RegisterComponent();
 	Weather = Precipitation;
+
+	// A bolt: drawn where it struck, and the sky flashes.
+	WorldActor->OnLightning = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor), WeakSky = TWeakObjectPtr<UMcSkyComponent>(Heavens)](const FVector& Position, int32 Seed)
+	{
+		if (!Actor.IsValid())
+		{
+			return;
+		}
+		UMcLightningComponent* Bolt = NewObject<UMcLightningComponent>(Actor.Get());
+		Bolt->SetupAttachment(Actor->GetRootComponent());
+		Bolt->SetBolt(Position, Seed);
+		Bolt->RegisterComponent();
+		if (UMcSkyComponent* Lit = WeakSky.Get())
+		{
+			Lit->Flash();
+		}
+	};
 #endif
 }

@@ -55,6 +55,7 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	}
 	Health -= Amount;
 	HurtTime = 10;
+	++HurtEvents;
 	if (Type.bPanics)
 	{
 		PanicTicks = 60;
@@ -85,6 +86,12 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 void FMcMob::Tick(FMcEntityManager& Manager)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
+	if (Age == 0)
+	{
+		// Every mob would otherwise run the same stream (a default one is seeded 0) and the herd would wander in step.
+		// Ids count up one at a time, so spread them over the seed space.
+		Random.Initialize(static_cast<int32>(static_cast<uint32>(Id) * 2654435761u));
+	}
 	++Age;
 	if (HurtTime > 0)
 	{
@@ -134,7 +141,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	else if (Type.FollowRange > 0.0f)
 	{
 		double Best = Type.FollowRange * Type.FollowRange;
-		for (const FVector& Player : PlayerPositions)
+		for (const FVector& Player : Manager.PlayerPositions)
 		{
 			const double Distance = FVector::DistSquared(Player, Body.Position);
 			if (Distance < Best)

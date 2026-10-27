@@ -77,10 +77,15 @@ void AMcPlayerController::ConnectToWorld()
 			ChunkStream->OnSetBlockRequest.BindUObject(this, &AMcPlayerController::HandleSetBlockRequest);
 			ChunkStream->OnAttackRequest = [this](const FVector& Look)
 			{
+				// The direction comes from the client: ignore one that isn't a direction.
+				if (Look.ContainsNaN() || Look.IsNearlyZero())
+				{
+					return;
+				}
 				const APawn* MyPawn = GetPawn();
 				if (WorldActor && MyPawn)
 				{
-					WorldActor->AttackMobs(McCoords::UnrealToBlock(MyPawn->GetActorLocation()) + FVector(0.0, 1.62, 0.0), Look, 3.0, 1.0f);
+					WorldActor->AttackMobs(McCoords::UnrealToBlock(MyPawn->GetActorLocation()) + FVector(0.0, 1.62, 0.0), Look.GetSafeNormal(), 3.0, 1.0f);
 				}
 			};
 		}

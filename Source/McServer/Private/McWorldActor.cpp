@@ -138,11 +138,22 @@ void AMcWorldActor::BeginPlay()
 	Simulation = MakeUnique<FMcSimulation>(*BlockWorld);
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
-	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { Entities->OnChunkAdded(Pos); });
+	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkAdded(Pos); } });
+	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
 	Finished = MakeShared<TQueue<TUniquePtr<FMcChunk>, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
 	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d"),
 		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY);
+}
+
+void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// The entity actors have to go while the game world is still up; the destructor runs during garbage collection.
+	if (Entities)
+	{
+		Entities->DestroyProxies();
+	}
+	Super::EndPlay(EndPlayReason);
 }
 
 void AMcWorldActor::SetEntityProxyClass(TSubclassOf<AActor> Class)
@@ -161,7 +172,17 @@ bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Re
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
 {
-	check(BlockWorld);
+	if (!BlockWorld)
+	{
+		UE_LOG(LogMcServer, Warning, TEXT("Can't change the block at %s: the world isn't running."), *Pos.ToString());
+		return;
+	}
+	// Above or below the dimension there is nothing to change, so nothing to remember.
+	const FMcDimensionType& DimensionType = BlockWorld->GetDimension();
+	if (Pos.Y < DimensionType.MinY || Pos.Y >= DimensionType.MinY + DimensionType.Height)
+	{
+		return;
+	}
 	const FIntPoint ChunkPos(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z));
 	Edits.FindOrAdd(ChunkPos).Add(Pos, State);
 	BlockWorld->SetBlock(Pos, State);
@@ -224,21 +245,31 @@ void AMcWorldActor::StreamChunks()
 		}
 	}
 
+	// With nobody to measure from, leave the world as it is: unloading now would drop every chunk (and, with them,
+	// the mobs), only to generate it all again when the first pawn appears (a listen server's start, a death).
+	const bool bAnyone = !Centres.IsEmpty();
+
+	// Nothing has moved and nothing was left outstanding: the world is already what these players need.
+	if (bAnyone && Centres == SettledCentres && ViewDistance == SettledViewDistance)
+	{
+		return;
+	}
+
 	// Blocks within 6 chunks of a player get random ticks.
 	if (Simulation)
 	{
-		TArray<FIntPoint> Ticking;
+		TSet<FIntPoint> Ticking;
 		for (const FIntPoint& Centre : Centres)
 		{
 			for (int32 DZ = -6; DZ <= 6; ++DZ)
 			{
 				for (int32 DX = -6; DX <= 6; ++DX)
 				{
-					Ticking.AddUnique(Centre + FIntPoint(DX, DZ));
+					Ticking.Add(Centre + FIntPoint(DX, DZ));
 				}
 			}
 		}
-		Simulation->SetTickingChunks(MoveTemp(Ticking));
+		Simulation->SetTickingChunks(Ticking.Array());
 	}
 
 	// Load one ring past the view distance: the renderer only meshes chunks whose neighbours are all loaded.
@@ -264,8 +295,8 @@ void AMcWorldActor::StreamChunks()
 	}
 	Missing.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
 
-	AddGeneratedChunks();
-	DecorateChunks();
+	bool bProgress = AddGeneratedChunks();
+	bProgress |= DecorateChunks();
 
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
@@ -286,42 +317,55 @@ void AMcWorldActor::StreamChunks()
 		});
 	}
 
-	TArray<FIntPoint> Far;
-	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
+	bool bUnloaded = false;
+	if (bAnyone)
 	{
-		const bool bNearAnyone = Centres.ContainsByPredicate([&Chunk, KeepRadius](const FIntPoint& Centre)
+		TArray<FIntPoint> Far;
+		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
 		{
-			return FMath::Abs(Chunk.Key.X - Centre.X) <= KeepRadius && FMath::Abs(Chunk.Key.Y - Centre.Y) <= KeepRadius;
-		});
-		if (!bNearAnyone)
+			const bool bNearAnyone = Centres.ContainsByPredicate([&Chunk, KeepRadius](const FIntPoint& Centre)
+			{
+				return FMath::Abs(Chunk.Key.X - Centre.X) <= KeepRadius && FMath::Abs(Chunk.Key.Y - Centre.Y) <= KeepRadius;
+			});
+			if (!bNearAnyone)
+			{
+				Far.Add(Chunk.Key);
+			}
+		}
+		for (const FIntPoint& Pos : Far)
 		{
-			Far.Add(Chunk.Key);
+			BlockWorld->RemoveChunk(Pos);
+		}
+		bUnloaded = !Far.IsEmpty();
+		for (auto It = Pending.CreateIterator(); It; ++It)
+		{
+			const FIntPoint Pos = It.Key();
+			const bool bNearAnyone = Centres.ContainsByPredicate([&Pos, KeepRadius](const FIntPoint& Centre)
+			{
+				return FMath::Abs(Pos.X - Centre.X) <= KeepRadius + 2 && FMath::Abs(Pos.Y - Centre.Y) <= KeepRadius + 2;
+			});
+			if (!bNearAnyone)
+			{
+				Decorated.Remove(Pos);
+				It.RemoveCurrent();
+				bUnloaded = true;
+			}
 		}
 	}
-	for (const FIntPoint& Pos : Far)
-	{
-		BlockWorld->RemoveChunk(Pos);
-	}
-	for (auto It = Pending.CreateIterator(); It; ++It)
-	{
-		const FIntPoint Pos = It.Key();
-		const bool bNearAnyone = Centres.ContainsByPredicate([&Pos, KeepRadius](const FIntPoint& Centre)
-		{
-			return FMath::Abs(Pos.X - Centre.X) <= KeepRadius + 2 && FMath::Abs(Pos.Y - Centre.Y) <= KeepRadius + 2;
-		});
-		if (!bNearAnyone)
-		{
-			Decorated.Remove(Pos);
-			It.RemoveCurrent();
-		}
-	}
+
+	// Nothing left to load, generate, decorate or unload for these players: skip the work until they move.
+	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty();
+	SettledCentres = bSettled ? Centres : TArray<FIntPoint>();
+	SettledViewDistance = ViewDistance;
 }
 
-void AMcWorldActor::AddGeneratedChunks()
+bool AMcWorldActor::AddGeneratedChunks()
 {
+	bool bAny = false;
 	TUniquePtr<FMcChunk> Chunk;
 	while (Finished->Dequeue(Chunk))
 	{
+		bAny = true;
 		const FIntPoint Pos = Chunk->GetPos();
 		InFlight.Remove(Pos);
 		if (BlockWorld->HasChunk(Pos) || Pending.Contains(Pos))
@@ -342,14 +386,16 @@ void AMcWorldActor::AddGeneratedChunks()
 		}
 		BlockWorld->AddChunk(MoveTemp(Chunk));
 	}
+	return bAny;
 }
 
-void AMcWorldActor::DecorateChunks()
+bool AMcWorldActor::DecorateChunks()
 {
 	if (!Features || Pending.IsEmpty())
 	{
-		return;
+		return false;
 	}
+	bool bChanged = false;
 	// The chunks around Pos, row by row from the north-west, and which of them players already have.
 	const auto Gather = [this](FIntPoint Pos, FMcChunk** Out, bool* bLive)
 	{
@@ -392,6 +438,7 @@ void AMcWorldActor::DecorateChunks()
 		}
 		Features->Decorate(Region, static_cast<uint64>(Seed));
 		Decorated.Add(Entry.Key);
+		bChanged = true;
 	}
 
 	// Decorated chunks whose neighbours are all decorated (or already in the world) are finished.
@@ -422,5 +469,7 @@ void AMcWorldActor::DecorateChunks()
 			}
 		}
 		BlockWorld->AddChunk(MoveTemp(Chunk));
+		bChanged = true;
 	}
+	return bChanged;
 }

@@ -43,13 +43,14 @@ public:
 	float Health;
 	// Ticks left of the red flash and of the invulnerability after a hit (10 each, for the damage that gets through).
 	int32 HurtTime = 0;
+	// Counts up with every hit that gets through, so a watcher can tell a new hit from the last without having to
+	// catch HurtTime at its peak (it has already counted down once by the time the tick is over).
+	int32 HurtEvents = 0;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 
 	// Where the mob is walking, if anywhere.
 	TOptional<FVector> Goal;
-	// Players to chase and bite, set by the server before each tick.
-	TArray<FVector> PlayerPositions;
 	// Called with the damage when the mob bites a player at that position.
 	TFunction<void(const FVector&, float)> OnAttackPlayer;
 	// Called when the mob dies, to drop its loot.

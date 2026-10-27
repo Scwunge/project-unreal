@@ -79,6 +79,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -87,9 +88,11 @@ protected:
 
 private:
 	void StreamChunks();
-	void AddGeneratedChunks();
-	// Places features in pending chunks and moves the finished ones into the world, within a time budget.
-	void DecorateChunks();
+	// True if a chunk came back from a worker.
+	bool AddGeneratedChunks();
+	// Places features in pending chunks and moves the finished ones into the world, within a time budget. True if
+	// it decorated or finished a chunk.
+	bool DecorateChunks();
 
 	// Lives as long as the actor, not just until EndPlay: components (the renderer) end play after the
 	// actor does and still unbind from it then.
@@ -111,6 +114,11 @@ private:
 	int64 SyncedDayTime = 1000;
 	UPROPERTY(Replicated)
 	bool bTimeFrozen = false;
+
+	// Where the players were (and the view distance) when a frame last found nothing to load, unload or finish; while
+	// they stay put there is nothing for StreamChunks to do. Empty when something is outstanding.
+	TArray<FIntPoint> SettledCentres;
+	int32 SettledViewDistance = 0;
 
 	// Chunks out on worker threads, and the finished ones coming back.
 	TSet<FIntPoint> InFlight;

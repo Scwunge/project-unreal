@@ -9,6 +9,7 @@
 #include "McEntityActor.generated.h"
 
 class UStaticMeshComponent;
+class UMcEntityModelComponent;
 
 UCLASS()
 class MCPLAYER_API AMcEntityActor : public AActor, public IMcEntityProxy
@@ -19,6 +20,7 @@ public:
 	AMcEntityActor();
 
 	virtual void SyncFromEntity(const FMcEntity& Entity) override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// The registry name of the entity, e.g. "minecraft:pig".
@@ -39,7 +41,7 @@ public:
 	FName ItemId;
 	UPROPERTY(Replicated)
 	int32 ItemCount = 0;
-	// Counts up each time the entity is hurt, so clients can flash it red.
+	// The mob's count of hits (FMcMob::HurtEvents), so clients can flash it red whenever it changes.
 	UPROPERTY(Replicated)
 	int32 HurtCount = 0;
 
@@ -51,5 +53,7 @@ protected:
 private:
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Stand;
-	int32 LastHealthSeen = -1;
+	// The mob or item as it looks; null on a server that draws nothing.
+	UPROPERTY()
+	TObjectPtr<UMcEntityModelComponent> Model;
 };

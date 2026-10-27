@@ -67,9 +67,12 @@ bool FMcEntityManagerTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Two stacks of one item that land close together become one, and it despawns after five minutes.
-		Manager.DropItem(FVector(5.5, 1.0, 5.5), Diamond);
-		Manager.DropItem(FVector(5.6, 1.0, 5.5), Diamond);
-		for (int32 Tick = 0; Tick < 30; ++Tick)
+		// Set down at rest: with the usual random push they scatter before landing, and only stacks lying on the
+		// ground look for a partner.
+		Manager.DropItem(FVector(5.5, 1.0, 5.5), Diamond).Body.Velocity = FVector::ZeroVector;
+		Manager.DropItem(FVector(5.6, 1.0, 5.5), Diamond).Body.Velocity = FVector::ZeroVector;
+		// Resting stacks look for a partner every ten ticks.
+		for (int32 Tick = 0; Tick < 60; ++Tick)
 		{
 			Manager.Tick();
 		}
@@ -123,20 +126,69 @@ bool FMcEntityManagerTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("a hit does not kill a pig"), Pig->Damage(4.0f, &Hitter));
 		TestTrue(TEXT("it is pushed away"), Pig->Body.Velocity.X > 0.1);
 		TestTrue(TEXT("and runs"), Pig->PanicTicks > 0);
+		TestEqual(TEXT("the hit is counted"), Pig->HurtEvents, 1);
 		TestFalse(TEXT("a second hit in the same instant is ignored"), Pig->Damage(100.0f, &Hitter) || bDied);
+		TestEqual(TEXT("and not counted"), Pig->HurtEvents, 1);
 		for (int32 Tick = 0; Tick < 10; ++Tick)
 		{
 			Manager.Tick();
 		}
 		TestTrue(TEXT("the next one kills it"), Pig->Damage(8.0f, &Hitter));
 		TestTrue(TEXT("and its death is reported"), bDied);
+		TestEqual(TEXT("and counted"), Pig->HurtEvents, 2);
+		Manager.Tick();
+
+		// Each mob runs its own random stream: pigs set down together don't all pick the same walk.
+		TArray<FMcMob*> Herd;
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			FMcMob* Member = new FMcMob(*FMcMobType::Find(TEXT("minecraft:pig")));
+			Member->Body.Position = FVector(0.5, 1.0, 0.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Member));
+			Herd.Add(Member);
+		}
+		TArray<TOptional<FVector>> FirstGoals;
+		FirstGoals.SetNum(Herd.Num());
+		for (int32 Tick = 0; Tick < 3000; ++Tick)
+		{
+			Manager.Tick();
+			bool bAll = true;
+			for (int32 Index = 0; Index < Herd.Num(); ++Index)
+			{
+				if (!FirstGoals[Index].IsSet() && Herd[Index]->Goal.IsSet())
+				{
+					FirstGoals[Index] = Herd[Index]->Goal.GetValue();
+				}
+				bAll &= FirstGoals[Index].IsSet();
+			}
+			if (bAll)
+			{
+				break;
+			}
+		}
+		bool bAllChose = true;
+		bool bAnyAlike = false;
+		for (int32 A = 0; A < Herd.Num(); ++A)
+		{
+			bAllChose &= FirstGoals[A].IsSet();
+			for (int32 B = A + 1; B < Herd.Num() && FirstGoals[A].IsSet(); ++B)
+			{
+				bAnyAlike |= FirstGoals[B].IsSet() && FVector::DistSquared(FirstGoals[A].GetValue(), FirstGoals[B].GetValue()) < 1e-6;
+			}
+		}
+		TestTrue(TEXT("every pig chose somewhere to walk"), bAllChose);
+		TestFalse(TEXT("and no two chose the same place"), bAnyAlike);
+		for (FMcMob* Member : Herd)
+		{
+			Member->bRemoved = true;
+		}
 		Manager.Tick();
 
 		FMcMob* Zombie = new FMcMob(*FMcMobType::Find(TEXT("minecraft:zombie")));
 		Zombie->Body.Position = FVector(20.5, 1.0, 20.5);
 		float Bitten = 0.0f;
 		const FVector Player(16.5, 1.0, 20.5);
-		Zombie->PlayerPositions = { Player };
+		Manager.PlayerPositions = { Player };
 		Zombie->OnAttackPlayer = [&Bitten](const FVector&, float Damage) { Bitten += Damage; };
 		Manager.Add(TUniquePtr<FMcEntity>(Zombie));
 		for (int32 Tick = 0; Tick < 200; ++Tick)

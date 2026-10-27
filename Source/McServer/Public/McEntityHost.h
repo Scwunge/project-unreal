@@ -21,12 +21,22 @@ public:
 
 	// The actor class made for each entity; it must implement IMcEntityProxy. With none, entities run unseen.
 	void SetProxyClass(UWorld* InGameWorld, TSubclassOf<AActor> Class);
+	// Destroys the actors made for the entities and stops making more. Call it while the game world is still up
+	// (the owner's EndPlay): the destructor runs during garbage collection, too late to destroy actors.
+	void DestroyProxies();
 
 	// One game tick. Players are given as the block position of their feet; DayTicks is the time of day.
 	void Tick(const TArray<FVector>& Players, double DayTicks);
 
 	// A chunk has joined the world: a few of them get a herd of animals.
 	void OnChunkAdded(FIntPoint Chunk);
+	// A chunk has left the world: the mobs standing in it go with it (their ground is gone and they'd only pile up,
+	// frozen, each with an actor), and it can be given animals again if it comes back.
+	void OnChunkRemoved(FIntPoint Chunk);
+
+	// Called with the position of the player and the damage when a mob bites. Until players have health this is
+	// left unset and the bite is only logged.
+	TFunction<void(const FVector&, float)> OnPlayerHit;
 
 	FMcEntityManager& GetManager() { return Manager; }
 	int32 NumHostile() const;
@@ -42,13 +52,19 @@ private:
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.
 	TOptional<int32> FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
 	void DropLoot(FMcMob& Mob);
+	// Puts the herd (if the chunk gets one) on the ground. Done a few chunks a tick, not all inside OnChunkAdded:
+	// each herd searches columns for ground, and a player joining brings hundreds of chunks at once.
+	void SeedChunk(FIntPoint Chunk);
 
 	FMcBlockWorld& World;
 	FMcEntityManager Manager;
 	int64 Seed;
 	int64 Ticks = 0;
 	FRandomStream Random;
+	// The chunks that have had their turn at animals, or are queued for it; forgotten when the chunk unloads.
 	TSet<FIntPoint> Seeded;
+	TArray<FIntPoint> SeedQueue;
+	bool bDevSpawnDone = false;
 
 	TWeakObjectPtr<UWorld> GameWorld;
 	TSubclassOf<AActor> ProxyClass;

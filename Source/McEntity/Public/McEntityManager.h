@@ -36,7 +36,9 @@ class MCENTITY_API FMcItemEntity final : public FMcEntity
 {
 public:
 	FMcItemEntity();
-	virtual FName GetType() const override { return TEXT("minecraft:item"); }
+	// The type name, made once: comparing against a string literal looks the name up each time.
+	static const FName& StaticType();
+	virtual FName GetType() const override { return StaticType(); }
 	virtual void Tick(FMcEntityManager& Manager) override;
 
 	FMcItemStack Stack;
@@ -45,6 +47,8 @@ public:
 
 	static constexpr int32 LifeTicks = 6000;
 	static constexpr int32 DefaultStackSize = 64;
+	// A resting stack looks for one to merge with this often (staggered by id), as the search scans every entity.
+	static constexpr int32 MergeIntervalTicks = 10;
 };
 
 class MCENTITY_API FMcEntityManager
@@ -72,6 +76,8 @@ public:
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
 	bool bDaylight = false;
+	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
+	TArray<FVector> PlayerPositions;
 	// Whether nothing solid is over the block, so rain and sun reach it.
 	bool IsSkyExposed(const FIntVector& Pos) const;
 

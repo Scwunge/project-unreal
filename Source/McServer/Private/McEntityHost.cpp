@@ -22,6 +22,8 @@ namespace
 	constexpr double DespawnDistance = 100.0;
 	constexpr double MinSpawnDistance = 24.0;
 	constexpr double MaxSpawnDistance = 48.0;
+	// Chunks given their animals per tick.
+	constexpr int32 MaxChunkSeedsPerTick = 2;
 }
 
 FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
@@ -34,13 +36,26 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 
 FMcEntityHost::~FMcEntityHost()
 {
+	// Runs when the owning actor is destroyed by garbage collection, when other actors can't be destroyed safely;
+	// DestroyProxies has done that by now, at EndPlay. Only the bookkeeping is left.
+	Proxies.Empty();
+}
+
+void FMcEntityHost::DestroyProxies()
+{
 	for (const TPair<int32, TWeakObjectPtr<AActor>>& Entry : Proxies)
 	{
+		// A world being torn down is already destroying its actors.
 		if (AActor* Actor = Entry.Value.Get())
 		{
-			Actor->Destroy();
+			if (!Actor->IsActorBeingDestroyed())
+			{
+				Actor->Destroy();
+			}
 		}
 	}
+	Proxies.Empty();
+	ProxyClass = nullptr;
 }
 
 void FMcEntityHost::SetProxyClass(UWorld* InGameWorld, TSubclassOf<AActor> Class)
@@ -105,6 +120,20 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
 	Mob->OnDeath = [this](FMcMob& Dead) { DropLoot(Dead); };
+	if (Type->AttackDamage > 0.0f)
+	{
+		Mob->OnAttackPlayer = [this, Kind](const FVector& PlayerPos, float Damage)
+		{
+			if (OnPlayerHit)
+			{
+				OnPlayerHit(PlayerPos, Damage);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Log, TEXT("%s bit a player at %s for %.1f"), *Kind.ToString(), *PlayerPos.ToString(), Damage);
+			}
+		};
+	}
 	Manager.Add(TUniquePtr<FMcEntity>(Mob));
 	return Mob;
 }
@@ -134,8 +163,32 @@ void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 		return;
 	}
 	Seeded.Add(Chunk);
-	// The same chunk gets the same animals for a seed, whenever it arrives.
-	FRandomStream Local(static_cast<int32>(Seed * 31 + Chunk.X * 341873128712ll + Chunk.Y * 132897987541ll));
+	SeedQueue.Add(Chunk);
+}
+
+void FMcEntityHost::OnChunkRemoved(FIntPoint Chunk)
+{
+	Seeded.Remove(Chunk);
+	SeedQueue.Remove(Chunk);
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (Entity->IsLiving() && !Entity->bRemoved
+			&& McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.X)) == Chunk.X
+			&& McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.Z)) == Chunk.Y)
+		{
+			Entity->bRemoved = true;
+		}
+	}
+}
+
+void FMcEntityHost::SeedChunk(FIntPoint Chunk)
+{
+	// The same chunk gets the same animals for a seed, whenever it arrives. Unsigned, so the mixing wraps rather than
+	// overflowing.
+	const uint64 Mixed = static_cast<uint64>(Seed) * 31ull
+		+ static_cast<uint64>(static_cast<int64>(Chunk.X)) * 341873128712ull
+		+ static_cast<uint64>(static_cast<int64>(Chunk.Y)) * 132897987541ull;
+	FRandomStream Local(static_cast<int32>(static_cast<uint32>(Mixed)));
 	if (Local.FRand() > 0.10f)
 	{
 		return;
@@ -147,11 +200,19 @@ void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 	int32 Placed = 0;
 	int32 CentreX = Chunk.X * 16 + Local.RandRange(2, 13);
 	int32 CentreZ = Chunk.Y * 16 + Local.RandRange(2, 13);
+	// The first column is searched over the whole height; the ground a few blocks on is near the last one found.
+	int32 NearY = 90;
+	int32 Range = 200;
 	for (int32 Attempt = 0; Attempt < 24 && Placed < Herd; ++Attempt)
 	{
 		const int32 X = CentreX + Local.RandRange(-4, 4);
 		const int32 Z = CentreZ + Local.RandRange(-4, 4);
-		const TOptional<int32> Y = FindStandingY(X, Z, 90, 200);
+		const TOptional<int32> Y = FindStandingY(X, Z, NearY, Range);
+		if (Y)
+		{
+			NearY = Y.GetValue();
+			Range = 24;
+		}
 		if (Y && World.GetBlock(FIntVector(X, Y.GetValue() - 1, Z)) == Grass)
 		{
 			SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5));
@@ -192,17 +253,34 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 
-	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	Manager.PlayerPositions = Players;
+
+	// A few chunks a tick get their animals.
+	for (int32 Budget = MaxChunkSeedsPerTick; Budget > 0 && !SeedQueue.IsEmpty(); --Budget)
 	{
-		if (!Entity->IsLiving())
+		const FIntPoint Chunk = SeedQueue[0];
+		SeedQueue.RemoveAt(0);
+		if (World.HasChunk(Chunk))
 		{
-			continue;
+			SeedChunk(Chunk);
 		}
-		FMcMob& Mob = static_cast<FMcMob&>(*Entity);
-		Mob.PlayerPositions = Players;
-		// Hostile mobs far from everyone are removed.
-		if (Mob.Type.AttackDamage > 0.0f && Ticks % 40 == 0)
+	}
+
+	// Hostile mobs far from everyone are removed. With nobody in the world (a listen server before its player has a
+	// pawn, the moments after a death) there is nobody to be far from, so they stay.
+	if (!Players.IsEmpty() && Ticks % 40 == 0)
+	{
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 		{
+			if (!Entity->IsLiving())
+			{
+				continue;
+			}
+			FMcMob& Mob = static_cast<FMcMob&>(*Entity);
+			if (Mob.Type.AttackDamage <= 0.0f)
+			{
+				continue;
+			}
 			bool bNear = false;
 			for (const FVector& Player : Players)
 			{
@@ -219,9 +297,11 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 		SpawnHostiles(Players);
 	}
 #if !UE_BUILD_SHIPPING
-	// Development: -McSpawnMobs=<kind>,<n> puts n of a kind in a ring 5 blocks from the first player, 5 seconds in.
-	if (Ticks == 100 && !Players.IsEmpty())
+	// Development: -McSpawnMobs=<kind>,<n> puts n of a kind in a ring 5 blocks from the first player, 5 seconds in
+	// (or when the first player turns up, if later).
+	if (!bDevSpawnDone && Ticks >= 100 && !Players.IsEmpty())
 	{
+		bDevSpawnDone = true;
 		FString Spec;
 		if (FParse::Value(FCommandLine::Get(), TEXT("-McSpawnMobs="), Spec, false))
 		{
@@ -292,6 +372,11 @@ void FMcEntityHost::SyncProxies()
 bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage)
 {
 	// The nearest living entity whose box the ray enters within Reach.
+	// The direction comes from a client: a NaN or empty one hits nothing.
+	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
+	{
+		return false;
+	}
 	FMcMob* Best = nullptr;
 	double BestDistance = Reach;
 	const FVector Dir = Direction.GetSafeNormal();

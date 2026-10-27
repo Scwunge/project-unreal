@@ -2,6 +2,12 @@
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 
+const FName& FMcItemEntity::StaticType()
+{
+	static const FName Name(TEXT("minecraft:item"));
+	return Name;
+}
+
 FMcItemEntity::FMcItemEntity()
 {
 	Body.Width = 0.25f;
@@ -62,15 +68,16 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y *= -0.5;
 	}
 
-	// Merge with a like stack close by (every other tick, as the game does, to save work).
-	if (Age % 2 == 0 && !bRemoved)
+	// Merge with a like stack close by. Only a stack at rest looks, and only every few ticks (staggered by id so they
+	// don't all search on the same one): the search scans every entity.
+	if (Body.bOnGround && (Age + Id) % MergeIntervalTicks == 0 && !bRemoved)
 	{
 		const int32 MaxStack = Manager.StackSizeOf ? Manager.StackSizeOf(Stack.Item) : DefaultStackSize;
 		TArray<FMcEntity*> Near;
 		Manager.FindInBox(Body.GetBox().ExpandBy(FVector(0.5, 0.0, 0.5)), Near);
 		for (FMcEntity* Other : Near)
 		{
-			FMcItemEntity* Item = Other == this || Other->bRemoved || Other->GetType() != GetType() ? nullptr : static_cast<FMcItemEntity*>(Other);
+			FMcItemEntity* Item = Other == this || Other->bRemoved || Other->GetType() != StaticType() ? nullptr : static_cast<FMcItemEntity*>(Other);
 			if (!Item || Item->Stack.Item != Stack.Item || Item->Stack.Count + Stack.Count > MaxStack || Item->Age < Age)
 			{
 				continue;
@@ -120,12 +127,13 @@ void FMcEntityManager::Tick()
 bool FMcEntityManager::IsSkyExposed(const FIntVector& Pos) const
 {
 	const int32 Top = World.GetDimension().MinY + World.GetDimension().Height;
+	// The column is in one chunk: look once, not at every block.
+	if (!World.HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+	{
+		return false;
+	}
 	for (int32 Y = Pos.Y + 1; Y < Top; ++Y)
 	{
-		if (!World.HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
-		{
-			return false;
-		}
 		const FMcStateId State = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
 		if (FMcBlockShapes::Get().HasCollision(State) || FMcBlockShapes::Get().GetFluid(State) != EMcFluid::None)
 		{
@@ -165,7 +173,7 @@ TArray<FMcItemStack> FMcEntityManager::CollectItems(const FBox& PlayerBox)
 	FindInBox(PlayerBox.ExpandBy(FVector(1.0, 0.5, 1.0)), Near);
 	for (FMcEntity* Entity : Near)
 	{
-		if (Entity->GetType() != TEXT("minecraft:item"))
+		if (Entity->GetType() != FMcItemEntity::StaticType())
 		{
 			continue;
 		}

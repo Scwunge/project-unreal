@@ -3,8 +3,9 @@
 // drawn at the inventory angle, or the item's flat sprite for things like torches.
 //
 // The bars and the hotbar's items come from a UMcPlayerDataComponent on the player's pawn when there is one.
-// Screens are opened with the Open functions (E opens the player's own); they take the mouse and keys while open,
-// polled from the player controller, and hand what a click throws out to DropHandler.
+// The screens show the player's window (E opens their own, the server opens the others); they take the mouse and keys
+// while open, and clicks go to the window's menu and on to the server. What a click throws out is handed to the data
+// component, which makes item entities of it on the server.
 
 #pragma once
 
@@ -42,17 +43,10 @@ public:
 	// ---- Screens ----
 	// The player's own: 2 x 2 crafting, armour, offhand.
 	void OpenInventory();
-	// A crafting table's 3 x 3 grid.
-	void OpenCraftingTable();
-	// A chest, barrel or any plain container of 9 to 54 slots.
-	void OpenChest(const TSharedPtr<FMcContainer>& Container, const FString& Title);
-	void OpenFurnace(const TSharedPtr<FMcFurnace>& Furnace, const FString& Title);
+	// The screen follows the player's window (UMcPlayerDataComponent::GetWindow), so the server opens a crafting table,
+	// chest or furnace by opening the window.
 	void CloseScreen();
 	bool IsScreenOpen() const { return Screen.IsValid(); }
-
-	// Told of every stack the screen throws out (Q, a click outside the window, closing with the grid full), to
-	// make into item entities at the player.
-	TFunction<void(const FMcItemStack&)> DropHandler;
 
 private:
 	struct FIconTriangle
@@ -90,8 +84,12 @@ private:
 	void DrawStack(const FMcItemStack& Stack, float X, float Y);
 	void DrawScreen(int32 Width, int32 Height);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
-	void OpenMenu(TSharedRef<FScreenState> State);
+	void SyncScreen(UMcPlayerDataComponent* Data);
+	void ShowScreen(TSharedRef<FScreenState> State);
+	void HideScreen();
 	void FlushDrops();
+	// The death screen: shown while the player is dead, with a button that asks the server to bring them back.
+	void ShowDeathScreen(int32 Width, int32 Height, class AMcPlayerPawn& Player);
 
 	int32 Scale = 1;
 	int32 ShakeCounter = 0;
@@ -109,4 +107,5 @@ private:
 	// Where the mouse was, in GUI pixels, and the slot it is over.
 	FVector2D GuiMouse = FVector2D::ZeroVector;
 	int32 HoverSlot = INDEX_NONE;
+	bool bDeathShown = false;
 };

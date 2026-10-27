@@ -7,7 +7,7 @@ void FMcMenuInput::MouseDown(int32 Slot, int32 Button, bool bShift, double Time)
 	{
 		if (bOnSlot)
 		{
-			Menu->Click(Slot, 0, EMcClickType::Clone, Dropped, bCreative);
+			DoClick(Slot, 0, EMcClickType::Clone);
 		}
 		return;
 	}
@@ -17,7 +17,7 @@ void FMcMenuInput::MouseDown(int32 Slot, int32 Button, bool bShift, double Time)
 	}
 	if (bOnSlot && bShift)
 	{
-		Menu->Click(Slot, Button, EMcClickType::QuickMove, Dropped, bCreative);
+		DoClick(Slot, Button, EMcClickType::QuickMove);
 		LastClickSlot = INDEX_NONE;
 		return;
 	}
@@ -27,7 +27,7 @@ void FMcMenuInput::MouseDown(int32 Slot, int32 Button, bool bShift, double Time)
 	LastClickTime = Time;
 	if (bDouble)
 	{
-		Menu->Click(Slot, 0, EMcClickType::PickupAll, Dropped, bCreative);
+		DoClick(Slot, 0, EMcClickType::PickupAll);
 		LastClickSlot = INDEX_NONE;
 		return;
 	}
@@ -39,7 +39,7 @@ void FMcMenuInput::MouseDown(int32 Slot, int32 Button, bool bShift, double Time)
 		bDragActive = false;
 		return;
 	}
-	Menu->Click(bOnSlot ? Slot : Outside, Button, EMcClickType::Pickup, Dropped, bCreative);
+	DoClick(bOnSlot ? Slot : Outside, Button, EMcClickType::Pickup);
 }
 
 void FMcMenuInput::MouseMove(int32 Slot)
@@ -55,9 +55,12 @@ void FMcMenuInput::MouseMove(int32 Slot)
 			return;
 		}
 		bDragActive = true;
+		DragSlots.Reset();
+		DragSlots.Add(PressSlot);
 		Menu->BeginQuickCraft(PressButton == 0 ? 0 : 1);
 		Menu->AddQuickCraftSlot(PressSlot);
 	}
+	DragSlots.AddUnique(Slot);
 	Menu->AddQuickCraftSlot(Slot);
 }
 
@@ -65,6 +68,16 @@ void FMcMenuInput::FinishDrag()
 {
 	PressSlot = INDEX_NONE;
 	bDragActive = false;
+	DragSlots.Reset();
+}
+
+void FMcMenuInput::DoClick(int32 Slot, int32 Button, EMcClickType Type)
+{
+	Menu->Click(Slot, Button, Type, Dropped, bCreative);
+	if (OnClick)
+	{
+		OnClick(Slot, Button, Type);
+	}
 }
 
 void FMcMenuInput::MouseUp(int32 Slot, int32 Button)
@@ -76,10 +89,14 @@ void FMcMenuInput::MouseUp(int32 Slot, int32 Button)
 	if (bDragActive)
 	{
 		Menu->EndQuickCraft(bCreative);
+		if (OnDrag)
+		{
+			OnDrag(PressButton == 0 ? 0 : 1, DragSlots);
+		}
 	}
 	else
 	{
-		Menu->Click(PressSlot, PressButton, EMcClickType::Pickup, Dropped, bCreative);
+		DoClick(PressSlot, PressButton, EMcClickType::Pickup);
 	}
 	FinishDrag();
 }
@@ -88,7 +105,7 @@ void FMcMenuInput::NumberKey(int32 Slot, int32 Number)
 {
 	if (Slot >= 0 && Slot < Menu->NumSlots() && Number >= 0 && Number < 9)
 	{
-		Menu->Click(Slot, Number, EMcClickType::Swap, Dropped, bCreative);
+		DoClick(Slot, Number, EMcClickType::Swap);
 	}
 }
 
@@ -96,7 +113,7 @@ void FMcMenuInput::DropKey(int32 Slot, bool bCtrl)
 {
 	if (Slot >= 0 && Slot < Menu->NumSlots())
 	{
-		Menu->Click(Slot, bCtrl ? 1 : 0, EMcClickType::Throw, Dropped, bCreative);
+		DoClick(Slot, bCtrl ? 1 : 0, EMcClickType::Throw);
 	}
 }
 

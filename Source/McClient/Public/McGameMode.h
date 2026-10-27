@@ -7,6 +7,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "McGameMode.generated.h"
 
+struct FMcPlayerData;
 class AMcPlayerPawn;
 class AMcWorldActor;
 
@@ -28,14 +29,36 @@ public:
 	virtual void Logout(AController* Exiting) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-private:
+	// A player who died (their things are already on the ground) starts again at the spawn, with a new body; done on the
+	// next tick, as the old pawn is still ticking when it calls this.
+	void RespawnPlayer(AController* Controller);
+
+	// ---- Dimensions ----
+	// The first world: the Overworld unless the world was saved in (or started with -McDimension in) another.
+	AMcWorldActor* GetPrimaryWorld() const { return WorldActor; }
+	// The world for a dimension id (e.g. "minecraft:the_nether"), null if it hasn't been made.
+	AMcWorldActor* FindWorld(const FString& Dimension) const;
+	// The world for a dimension, made on the spot if it hasn't been (with the first world's seed and save).
+	AMcWorldActor* GetOrCreateWorld(const FString& Dimension);
+	// Where new and returning players start, in the first world.
 	FTransform GetSpawnTransform() const;
+	// What a player left behind in a world with a save: the dimension, place and look they were last in. False if the world
+	// has nothing for them.
+	bool LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const;
+
+private:
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
 	// flying when saved.
 	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
 	// What a player is filed under in the world's playerdata folder.
 	FString GetSaveId(const AController* Controller) const;
 	void SavePlayer(const AController* Controller) const;
+	// Puts a saved inventory and stats (if the world has them for this player) on a pawn that has just arrived.
+	void RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const;
+	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
+	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
+	void SetUpWorld(AMcWorldActor& World);
 	// Every player with a pawn; called whenever the world saves.
 	void SavePlayers() const;
 
@@ -49,4 +72,7 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<AMcWorldActor> WorldActor;
+	// Every world, the first included, once there is more than one.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AMcWorldActor>> Worlds;
 };

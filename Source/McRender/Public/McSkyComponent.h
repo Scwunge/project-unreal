@@ -9,6 +9,7 @@
 #include "Components/SceneComponent.h"
 #include "McSkyComponent.generated.h"
 
+struct FMcDimensionType;
 class UExponentialHeightFogComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -37,6 +38,10 @@ public:
 	// The distance at which the fog is thick (the view distance), in blocks.
 	float FogEndBlocks = 192.0f;
 
+	// Which sky to draw (the dimension type's skybox): the day cycle in the Overworld; in the Nether a fog-coloured nothing
+	// with no sun, moon or stars; in the End the end sky on a cube, in the dark. Call before or after it is in the world.
+	void SetDimension(const FMcDimensionType& Type);
+
 	// The colours as of the last tick, in display values: what the horizon looks like and what the fog is.
 	FLinearColor GetCurrentSkyColor() const { return SkyColor; }
 	FLinearColor GetCurrentFogColor() const { return FogColor; }
@@ -52,7 +57,21 @@ private:
 	void UpdateStars(double Ticks);
 	void UpdateCelestial(double Ticks);
 	void UpdateFog();
+	void BuildEndSky();
 	UProceduralMeshComponent* MakeMesh(const TCHAR* Name);
+
+	enum class EMode : uint8
+	{
+		Overworld,
+		Nether,
+		End,
+	};
+	EMode Mode = EMode::Overworld;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> EndSky;
+	UPROPERTY(Transient)
+	TObjectPtr<UTexture2DArray> EndSkyTexture;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Dome;

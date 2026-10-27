@@ -6,7 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
 
-UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight)
+UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite)
 {
 	TArray<uint8> File;
 	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
@@ -20,6 +20,16 @@ UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString&
 	}
 	OutWidth = Wrapper->GetWidth();
 	OutHeight = Wrapper->GetHeight();
+	if (bWhite)
+	{
+		// BGRA: the colour channels go to white, the alpha stays.
+		for (int64 Index = 0; Index + 3 < Raw.Num(); Index += 4)
+		{
+			Raw[Index] = 255;
+			Raw[Index + 1] = 255;
+			Raw[Index + 2] = 255;
+		}
+	}
 
 	UTexture2DArray* Array = NewObject<UTexture2DArray>(Outer, NAME_None, RF_Transient);
 	Array->SetPlatformData(new FTexturePlatformData());

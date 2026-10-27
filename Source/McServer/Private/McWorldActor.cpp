@@ -7,6 +7,7 @@
 #include "McFeature.h"
 #include "McGenRegion.h"
 #include "McNoiseGenerator.h"
+#include "McPortal.h"
 #include "McSimulation.h"
 #include "McServer.h"
 #include "McWorldStorage.h"
@@ -34,6 +35,55 @@ void AMcWorldActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AMcWorldActor, SyncedDayTime);
 	DOREPLIFETIME(AMcWorldActor, bTimeFrozen);
+	DOREPLIFETIME_CONDITION(AMcWorldActor, Dimension, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AMcWorldActor, bSecondary, COND_InitialOnly);
+}
+
+void AMcWorldActor::InheritFrom(const AMcWorldActor& Primary)
+{
+	bSecondary = true;
+	Seed = Primary.Seed;
+	WorldName = Primary.WorldName;
+	WorldDir = Primary.WorldDir;
+	Level = Primary.Level;
+	Level.Seed = Primary.Seed;
+	Level.bFlat = false;
+	bFlat = false;
+	ViewDistance = Primary.ViewDistance;
+	EntityProxyClass = Primary.EntityProxyClass;
+}
+
+int32 AMcWorldActor::AddAnchor(FIntPoint Chunk, int32 Radius)
+{
+	const int32 Id = NextAnchorId++;
+	Anchors.Add(Id, FAnchor{ Chunk, Radius });
+	SettledCentres.Reset();
+	return Id;
+}
+
+void AMcWorldActor::RemoveAnchor(int32 Id)
+{
+	Anchors.Remove(Id);
+	SettledCentres.Reset();
+}
+
+bool AMcWorldActor::AreChunksLoaded(FIntPoint Chunk, int32 Radius) const
+{
+	if (!BlockWorld)
+	{
+		return false;
+	}
+	for (int32 DZ = -Radius; DZ <= Radius; ++DZ)
+	{
+		for (int32 DX = -Radius; DX <= Radius; ++DX)
+		{
+			if (!BlockWorld->HasChunk(Chunk + FIntPoint(DX, DZ)))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 void AMcWorldActor::SetDayTime(double Ticks)
@@ -60,7 +110,7 @@ void AMcWorldActor::BeginPlay()
 
 	// Development: -McDimension=minecraft:the_nether or minecraft:the_end.
 	FString DimensionArg;
-	const bool bDimensionArg = FParse::Value(FCommandLine::Get(), TEXT("-McDimension="), DimensionArg);
+	const bool bDimensionArg = !bSecondary && HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McDimension="), DimensionArg);
 	if (bDimensionArg)
 	{
 		Dimension = DimensionArg;
@@ -85,7 +135,12 @@ void AMcWorldActor::BeginPlay()
 	// A named world (-McWorld=<name>) is read from Saved/Worlds/<name>, or made there.
 	FString WorldArg;
 	bool bHaveLevel = false;
-	if (FParse::Value(CommandLine, TEXT("-McWorld="), WorldArg))
+	if (bSecondary)
+	{
+		// Another dimension of the first world: its save folder and seed come from there.
+		bHaveLevel = !WorldName.IsEmpty();
+	}
+	else if (FParse::Value(CommandLine, TEXT("-McWorld="), WorldArg))
 	{
 		WorldName = McWorldSave::SanitizeName(WorldArg);
 		if (WorldName.IsEmpty())
@@ -108,11 +163,11 @@ void AMcWorldActor::BeginPlay()
 	if (bHaveLevel)
 	{
 		// The world carries on in the dimension it was in, unless the command line says otherwise.
-		if (!bDimensionArg)
+		if (!bDimensionArg && !bSecondary)
 		{
 			Dimension = Level.Dimension;
 		}
-		if (Dimension == Level.Dimension)
+		if (Dimension == Level.Dimension && !bSecondary)
 		{
 			NoiseSettings = Level.NoiseSettings;
 		}
@@ -125,10 +180,13 @@ void AMcWorldActor::BeginPlay()
 	}
 
 	FString Scene;
-	bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
-	const bool bSeedArg = FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
+	if (!bSecondary)
+	{
+		bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
+	}
+	const bool bSeedArg = !bSecondary && FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
 	double StartTime = DayTicks;
-	const bool bTimeArg = FParse::Value(CommandLine, TEXT("-McTime="), StartTime);
+	const bool bTimeArg = !bSecondary && FParse::Value(CommandLine, TEXT("-McTime="), StartTime);
 	if (bHaveLevel)
 	{
 		// What the world was made with wins over the command line, which only shapes a world being made.
@@ -138,11 +196,14 @@ void AMcWorldActor::BeginPlay()
 		}
 		Seed = Level.Seed;
 		bFlat = Level.bFlat;
-		if (!Level.FlatPreset.IsEmpty())
+		if (!Level.FlatPreset.IsEmpty() && !bSecondary)
 		{
 			FlatPreset = Level.FlatPreset;
 		}
-		SetDayTime(Level.DayTime);
+		if (!bSecondary)
+		{
+			SetDayTime(Level.DayTime);
+		}
 		const FString* DaylightRule = Level.GameRules.Find(TEXT("doDaylightCycle"));
 		bTimeFrozen = DaylightRule && DaylightRule->Equals(TEXT("false"), ESearchCase::IgnoreCase);
 	}
@@ -151,6 +212,11 @@ void AMcWorldActor::BeginPlay()
 		SetDayTime(StartTime);
 	}
 	bTimeFrozen |= FParse::Param(CommandLine, TEXT("McTimeFreeze"));
+	if (DimensionType.bHasFixedTime)
+	{
+		// The Nether and the End have one time of day, so their clock doesn't run.
+		bTimeFrozen = true;
+	}
 	if (Seed == 0)
 	{
 		Seed = static_cast<int64>(FPlatformTime::Cycles64() ^ (static_cast<uint64>(FDateTime::Now().GetTicks()) << 7));
@@ -196,13 +262,18 @@ void AMcWorldActor::BeginPlay()
 	Simulation = MakeUnique<FMcSimulation>(*BlockWorld);
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	// Every sound the entities make goes to the players.
+	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
+	{
+		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
+	};
 	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkAdded(Pos); } });
 	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
 	Finished = MakeShared<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	SurfaceY = Generator->FindSurfaceY(0, 0);
 	if (!WorldName.IsEmpty())
 	{
-		if (!bHaveLevel)
+		if (!bHaveLevel && !bSecondary)
 		{
 			Level = FMcLevelData();
 			Level.Seed = Seed;
@@ -225,7 +296,7 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	// A new world is on disk from the start, so a crash before the first autosave still leaves one to open.
 	Level.DayTime = DayTicks;
 	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
-	if (!McWorldSave::SaveLevel(WorldDir, Level))
+	if (!bSecondary && !McWorldSave::SaveLevel(WorldDir, Level))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
 	}
@@ -260,7 +331,7 @@ bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Re
 	return Entities && Entities->Attack(Eye, Look, Reach, Damage);
 }
 
-void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
+void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
 {
 	if (!BlockWorld)
 	{
@@ -280,7 +351,36 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State)
 	{
 		Edits.FindOrAdd(ChunkPos).Add(Pos, State);
 	}
+	const FMcStateId Old = BlockWorld->HasChunk(ChunkPos) ? BlockWorld->GetBlock(Pos) : FMcStateId(0);
 	BlockWorld->SetBlock(Pos, State);
+	if (HasAuthority() && Old != State && BlockWorld->HasChunk(ChunkPos))
+	{
+		// A block taken away is heard as it breaking, one put down as placing (a player's own block sounds are made
+		// here rather than in the player code).
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId Heard = State == 0 ? Old : State;
+		const FMcSoundEvent Event = McSound::GetBlockSound(Registry.GetBlockOf(Heard).Name, State == 0 ? McSound::EBlockSound::Break : McSound::EBlockSound::Place, FVector(Pos.X + 0.5, Pos.Y + 0.5, Pos.Z + 0.5));
+		if (!Event.Name.IsNone())
+		{
+			MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
+		}
+	}
+	// A portal that has lost a piece of its frame goes out.
+	if (HasAuthority() && bCheckPortals && !bFixingPortals && Old != State && BlockWorld->HasChunk(ChunkPos) && !McPortal::IsPortalBlock(State))
+	{
+		bFixingPortals = true;
+		McPortal::RemoveBroken(*BlockWorld, Pos, [this](const FIntVector& At, FMcStateId Block) { SetBlock(At, Block, false); });
+		bFixingPortals = false;
+	}
+}
+
+void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch)
+{
+	if (!bViewed)
+	{
+		return;
+	}
+	FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ Name, FVector(Position), Volume, Pitch });
 }
 
 void AMcWorldActor::ApplyEdits(FMcChunk& Chunk)
@@ -314,6 +414,7 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 		Entities->MarkSeeded(Pos);
 	}
 	BlockWorld->AddChunk(MoveTemp(Arrived.Chunk));
+	++(Arrived.bFromDisk ? NumChunksFromDisk : NumChunksGenerated);
 	if (Storage)
 	{
 		FChunkState& State = ChunkStates.FindOrAdd(Pos);
@@ -380,10 +481,13 @@ void AMcWorldActor::SaveWorld()
 		return;
 	}
 	OnSaving.Broadcast();
-	Level.DayTime = DayTicks;
-	Level.Dimension = Dimension;
-	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
-	McWorldSave::SaveLevel(WorldDir, Level);
+	if (!bSecondary)
+	{
+		Level.DayTime = DayTicks;
+		Level.Dimension = Dimension;
+		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+		McWorldSave::SaveLevel(WorldDir, Level);
+	}
 	// Whatever an autosave had left to look at is covered by this.
 	AutosaveQueue.Reset();
 	int32 Queued = 0;
@@ -392,17 +496,22 @@ void AMcWorldActor::SaveWorld()
 		Queued += SaveChunk(Entry.Key) ? 1 : 0;
 	}
 	Storage->Flush();
-	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s"), *WorldName, Queued, BlockWorld->GetChunks().Num(),
-		Storage->NumFailedWrites() > 0 ? *FString::Printf(TEXT(" (%d writes failed)"), Storage->NumFailedWrites()) : TEXT(""));
+	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s; this session %d chunks came from the save and %d were generated"),
+		*WorldName, Queued, BlockWorld->GetChunks().Num(),
+		Storage->NumFailedWrites() > 0 ? *FString::Printf(TEXT(" (%d writes failed)"), Storage->NumFailedWrites()) : TEXT(""),
+		NumChunksFromDisk, NumChunksGenerated);
 }
 
 void AMcWorldActor::BeginAutosave()
 {
 	OnSaving.Broadcast();
-	Level.DayTime = DayTicks;
-	Level.Dimension = Dimension;
-	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
-	McWorldSave::SaveLevel(WorldDir, Level);
+	if (!bSecondary)
+	{
+		Level.DayTime = DayTicks;
+		Level.Dimension = Dimension;
+		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+		McWorldSave::SaveLevel(WorldDir, Level);
+	}
 	if (Entities)
 	{
 		Entities->RemoveStrays();
@@ -441,12 +550,22 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 			TArray<FVector> Players;
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{
-				if (const APawn* Pawn = It->IsValid() ? It->Get()->GetPawn() : nullptr)
+				if (const APawn* Pawn = It->IsValid() && IsPlayerHere(*It->Get()) ? It->Get()->GetPawn() : nullptr)
 				{
 					Players.Add(McCoords::UnrealToBlock(Pawn->GetActorLocation()));
 				}
 			}
-			Entities->Tick(Players, DayTicks);
+			// The actors made for this world's mobs and items are its own (clients hide the ones of the dimension they are not in).
+			const FDelegateHandle Claim = GetWorld()->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateWeakLambda(this, [this](AActor* Spawned)
+			{
+				if (Spawned && !Spawned->GetOwner())
+				{
+					Spawned->SetOwner(this);
+				}
+			}));
+			// Where the time never changes it is always night to the mobs (none burn).
+			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
+			GetWorld()->RemoveOnActorSpawnedHandler(Claim);
 			if (Storage && ++TicksSinceAutosave >= AutosaveIntervalTicks)
 			{
 				TicksSinceAutosave = 0;
@@ -466,16 +585,31 @@ void AMcWorldActor::StreamChunks()
 {
 	const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
 
+	// Load one ring past the view distance: the renderer only meshes chunks whose neighbours are all loaded.
+	// Decorating needs two more rings generated around that.
+	const int32 LoadRadius = ViewDistance + 1 + (Features ? 2 : 0);
+	// Keep a margin before unloading so flying back and forth over a border doesn't churn.
+	const int32 KeepRadius = ViewDistance + 3;
+
+	// The chunks the players are in, then the anchors, each with how far around it chunks are wanted.
 	TArray<FIntPoint> Centres;
+	TArray<int32> Radii;
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		const APlayerController* Controller = It->Get();
-		const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+		const APawn* Pawn = Controller && IsPlayerHere(*Controller) ? Controller->GetPawn() : nullptr;
 		if (Pawn)
 		{
 			const FVector Location = Pawn->GetActorLocation();
 			Centres.Add(FIntPoint(FMath::FloorToInt32(Location.X / ChunkUnits), FMath::FloorToInt32(Location.Y / ChunkUnits)));
+			Radii.Add(LoadRadius);
 		}
+	}
+	const int32 NumPlayers = Centres.Num();
+	for (const TPair<int32, FAnchor>& Anchor : Anchors)
+	{
+		Centres.Add(Anchor.Value.Chunk);
+		Radii.Add(Anchor.Value.Radius + 1 + (Features ? 2 : 0));
 	}
 
 	// With nobody to measure from, leave the world as it is: unloading now would drop every chunk (and, with them,
@@ -483,7 +617,7 @@ void AMcWorldActor::StreamChunks()
 	const bool bAnyone = !Centres.IsEmpty();
 
 	// Nothing has moved and nothing was left outstanding: the world is already what these players need.
-	if (bAnyone && Centres == SettledCentres && ViewDistance == SettledViewDistance)
+	if (bAnyone && Centres == SettledCentres && Radii == SettledRadii && ViewDistance == SettledViewDistance)
 	{
 		return;
 	}
@@ -492,8 +626,9 @@ void AMcWorldActor::StreamChunks()
 	if (Simulation)
 	{
 		TSet<FIntPoint> Ticking;
-		for (const FIntPoint& Centre : Centres)
+		for (int32 Index = 0; Index < NumPlayers; ++Index)
 		{
+			const FIntPoint& Centre = Centres[Index];
 			for (int32 DZ = -6; DZ <= 6; ++DZ)
 			{
 				for (int32 DX = -6; DX <= 6; ++DX)
@@ -505,18 +640,14 @@ void AMcWorldActor::StreamChunks()
 		Simulation->SetTickingChunks(Ticking.Array());
 	}
 
-	// Load one ring past the view distance: the renderer only meshes chunks whose neighbours are all loaded.
-	// Decorating needs two more rings generated around that.
-	const int32 LoadRadius = ViewDistance + 1 + (Features ? 2 : 0);
-	// Keep a margin before unloading so flying back and forth over a border doesn't churn.
-	const int32 KeepRadius = ViewDistance + 3;
-
 	TArray<TPair<int32, FIntPoint>> Missing;
-	for (const FIntPoint& Centre : Centres)
+	for (int32 Index = 0; Index < Centres.Num(); ++Index)
 	{
-		for (int32 DZ = -LoadRadius; DZ <= LoadRadius; ++DZ)
+		const FIntPoint& Centre = Centres[Index];
+		const int32 Around = Radii[Index];
+		for (int32 DZ = -Around; DZ <= Around; ++DZ)
 		{
-			for (int32 DX = -LoadRadius; DX <= LoadRadius; ++DX)
+			for (int32 DX = -Around; DX <= Around; ++DX)
 			{
 				const FIntPoint Pos = Centre + FIntPoint(DX, DZ);
 				if (!BlockWorld->HasChunk(Pos) && !Pending.Contains(Pos))
@@ -569,10 +700,12 @@ void AMcWorldActor::StreamChunks()
 		TArray<FIntPoint> Far;
 		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
 		{
-			const bool bNearAnyone = Centres.ContainsByPredicate([&Chunk, KeepRadius](const FIntPoint& Centre)
+			bool bNearAnyone = false;
+			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
-				return FMath::Abs(Chunk.Key.X - Centre.X) <= KeepRadius && FMath::Abs(Chunk.Key.Y - Centre.Y) <= KeepRadius;
-			});
+				const int32 Keep = FMath::Max(KeepRadius, Radii[Index]);
+				bNearAnyone = FMath::Abs(Chunk.Key.X - Centres[Index].X) <= Keep && FMath::Abs(Chunk.Key.Y - Centres[Index].Y) <= Keep;
+			}
 			if (!bNearAnyone)
 			{
 				Far.Add(Chunk.Key);
@@ -589,10 +722,12 @@ void AMcWorldActor::StreamChunks()
 		for (auto It = Pending.CreateIterator(); It; ++It)
 		{
 			const FIntPoint Pos = It.Key();
-			const bool bNearAnyone = Centres.ContainsByPredicate([&Pos, KeepRadius](const FIntPoint& Centre)
+			bool bNearAnyone = false;
+			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
-				return FMath::Abs(Pos.X - Centre.X) <= KeepRadius + 2 && FMath::Abs(Pos.Y - Centre.Y) <= KeepRadius + 2;
-			});
+				const int32 Keep = FMath::Max(KeepRadius, Radii[Index]) + 2;
+				bNearAnyone = FMath::Abs(Pos.X - Centres[Index].X) <= Keep && FMath::Abs(Pos.Y - Centres[Index].Y) <= Keep;
+			}
 			if (!bNearAnyone)
 			{
 				Decorated.Remove(Pos);
@@ -605,6 +740,7 @@ void AMcWorldActor::StreamChunks()
 	// Nothing left to load, generate, decorate or unload for these players: skip the work until they move.
 	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty();
 	SettledCentres = bSettled ? Centres : TArray<FIntPoint>();
+	SettledRadii = bSettled ? Radii : TArray<int32>();
 	SettledViewDistance = ViewDistance;
 }
 

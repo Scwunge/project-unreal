@@ -11,6 +11,7 @@
 
 #include "CoreMinimal.h"
 #include "McBlockEntity.h"
+#include "McCore.h"
 
 class FMcNbt;
 class FMcRandom;
@@ -19,6 +20,20 @@ namespace McLoot
 {
 	// Rolls a table (e.g. "minecraft:chests/simple_dungeon") into stacks, in roll order. False if there is no such table.
 	MCGEN_API bool Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>& Out);
+
+	// What a block's loot table can ask about its being broken: the block state (match_block), and the power of the
+	// blast that broke it, if one did (survives_explosion and explosion_decay each keep an item with a chance of 1
+	// over the power). Nobody holds a tool: the silk touch and shears conditions fail, and fortune counts as level 0.
+	struct FBlockContext
+	{
+		FMcStateId State = 0;
+		// 0 when the block was not blown up.
+		float ExplosionRadius = 0.0f;
+	};
+
+	// Rolls the loot table of the block with that state ("blocks/<name>") into stacks. False if the block has none
+	// (it drops nothing then, as in the game).
+	MCGEN_API bool RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out);
 
 	// Rolls a table into the container's slots, the stacks in random free slots (more than fit are dropped), and
 	// remembers the table and seed on it. False if there is no such table; the container is left alone then.

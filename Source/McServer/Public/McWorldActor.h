@@ -12,6 +12,7 @@
 #include "McEntityHost.h"
 #include "McSimulation.h"
 #include "McWorldSave.h"
+#include "GameFramework/Controller.h"
 #include "McWorldActor.generated.h"
 
 class FMcFeatureLibrary;
@@ -26,9 +27,29 @@ public:
 	AMcWorldActor();
 	virtual ~AMcWorldActor() override;
 
-	// Dimension type id, from the jar's dimension_type/.
-	UPROPERTY(EditAnywhere, Category = "Mc")
+	// Dimension type id, from the jar's dimension_type/. Sent to clients when the actor is made, so the one they build
+	// is the same dimension.
+	UPROPERTY(EditAnywhere, Replicated, Category = "Mc")
 	FString Dimension = TEXT("minecraft:overworld");
+
+	// A world made for a dimension besides the first (the Nether, the End), after the first one: it takes the seed, the
+	// save and the terrain settings of the first (see InheritFrom) and never reads the command line's world options or
+	// writes the level file. Set before BeginPlay, and sent to clients with the actor.
+	UPROPERTY(Replicated)
+	bool bSecondary = false;
+	// Copies the seed, save folder and flat settings of the first world. Flat worlds have normal Nether and End terrain.
+	void InheritFrom(const AMcWorldActor& Primary);
+
+	// Which players this world looks after (loads chunks around, tells mobs about): all of them when empty. The game
+	// mode sets it when it has more than one world, to the ones in this dimension.
+	TFunction<bool(const AController&)> PlayerFilter;
+
+	// Keeps the chunks within Radius of a chunk loaded (and generating) while nobody is there, as when a portal
+	// trip waits for its destination. Returns an id for RemoveAnchor.
+	int32 AddAnchor(FIntPoint Chunk, int32 Radius);
+	void RemoveAnchor(int32 Id);
+	// Whether every chunk within Radius of Chunk is in the world.
+	bool AreChunksLoaded(FIntPoint Chunk, int32 Radius) const;
 
 	// Terrain from the jar's worldgen/noise_settings/, unless the world is flat.
 	UPROPERTY(EditAnywhere, Category = "Mc")
@@ -78,8 +99,19 @@ public:
 
 	// Changes a block, loaded or not. A change to a chunk that isn't loaded is kept and put on it when it arrives. In
 	// a world without a save (no -McWorld) changes to loaded chunks are kept too, so they survive unloading; in a
-	// saved world the chunk's save keeps them.
-	void SetBlock(const FIntVector& Pos, FMcStateId State);
+	// saved world the chunk's save keeps them. A portal beside Pos that this leaves without its frame goes out
+	// unless bCheckPortals is false (which the code that builds portals uses, as it is part way through).
+	void SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals = true);
+
+	// Whether this machine is showing this dimension to its player; sounds made in a dimension are only played where it is.
+	void SetViewed(bool bInViewed) { bViewed = bInViewed; }
+
+	// ---- Sound (M8) ----
+	// Plays a sound at every player: the server calls this, and each machine (the server too, if it has a player)
+	// hands it to the FMcSoundBus, where McAudio listens. Unreliable: a lost footstep is no loss. Position is in block
+	// coordinates.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastSound(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch);
 
 	// ---- Saving (M9) ----
 	// -McWorld=<name> picks a world in Saved/Worlds, made if it isn't there yet: its level file gives the seed, time
@@ -162,7 +194,18 @@ private:
 	// Where the players were (and the view distance) when a frame last found nothing to load, unload or finish; while
 	// they stay put there is nothing for StreamChunks to do. Empty when something is outstanding.
 	TArray<FIntPoint> SettledCentres;
+	TArray<int32> SettledRadii;
 	int32 SettledViewDistance = 0;
+	struct FAnchor
+	{
+		FIntPoint Chunk = FIntPoint::ZeroValue;
+		int32 Radius = 0;
+	};
+	TMap<int32, FAnchor> Anchors;
+	bool bViewed = true;
+	bool bFixingPortals = false;
+	int32 NextAnchorId = 1;
+	bool IsPlayerHere(const AController& Controller) const { return !PlayerFilter || PlayerFilter(Controller); }
 
 	// Chunks out on worker threads, and the finished ones coming back.
 	TSet<FIntPoint> InFlight;
@@ -201,4 +244,11 @@ private:
 	// Chunks still to be looked at by the autosave in progress.
 	TArray<FIntPoint> AutosaveQueue;
 	int32 TicksSinceAutosave = 0;
+	// Chunks that joined the world this session, by where they came from; logged with each save.
+	int32 NumChunksFromDisk = 0;
+	int32 NumChunksGenerated = 0;
+
+public:
+	int32 GetNumChunksFromDisk() const { return NumChunksFromDisk; }
+	int32 GetNumChunksGenerated() const { return NumChunksGenerated; }
 };

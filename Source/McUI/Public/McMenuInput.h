@@ -35,12 +35,17 @@ public:
 	// The screen closes: the cursor stack and the grid's items go back to the player, or drop.
 	void Close();
 
+	// Told of every click and every finished drag as it is applied to the menu, so the owner can send it to the server.
+	TFunction<void(int32 Slot, int32 Button, EMcClickType Type)> OnClick;
+	TFunction<void(int32 Button, const TArray<int32>& Slots)> OnDrag;
+
 	bool IsDragging() const { return bDragActive; }
 	TArray<FMcItemStack> TakeDropped() { return MoveTemp(Dropped); }
 	const TArray<FMcItemStack>& GetDropped() const { return Dropped; }
 
 private:
 	void FinishDrag();
+	void DoClick(int32 Slot, int32 Button, EMcClickType Type);
 
 	TSharedPtr<FMcMenu> Menu;
 	bool bCreative = false;
@@ -49,6 +54,7 @@ private:
 	int32 PressSlot = INDEX_NONE;
 	int32 PressButton = 0;
 	bool bDragActive = false;
+	TArray<int32> DragSlots;
 	int32 LastClickSlot = INDEX_NONE;
 	double LastClickTime = -1000.0;
 };

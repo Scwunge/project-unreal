@@ -6,7 +6,7 @@ public class McClient : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "McCore", "McWorld", "McGen", "McSim", "McEntity", "McServer", "McNet", "McPlayer" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "McCore", "McWorld", "McGen", "McSim", "McEntity", "McServer", "McNet", "McPlayer", "McItem" });
 
 		if (Target.Type != TargetType.Server)
 		{

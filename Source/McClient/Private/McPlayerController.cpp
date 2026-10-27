@@ -1,4 +1,10 @@
 #include "McPlayerController.h"
+#include "McBlockUse.h"
+#include "McEntityActor.h"
+#include "McEntityHost.h"
+#include "McGameMode.h"
+#include "McPlayerData.h"
+#include "McPortal.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "Camera/PlayerCameraManager.h"
@@ -33,6 +39,16 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	ConnectToWorld();
+	ResolveWantedDimension();
+	if (IsLocalController() && WorldActor)
+	{
+		ViewSyncTimer -= DeltaSeconds;
+		if (ViewSyncTimer <= 0.0f)
+		{
+			ViewSyncTimer = 0.2f;
+			SyncDimensionView();
+		}
+	}
 
 #if !UE_BUILD_SHIPPING
 	// Development: -McNetLog logs where this player is and how many chunks it has, every two seconds.
@@ -57,10 +73,14 @@ void AMcPlayerController::ConnectToWorld()
 	// a little after this controller.
 	if (!WorldActor)
 	{
+		// The first dimension's; the others come and go as players travel.
 		for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
 		{
-			WorldActor = *It;
-			break;
+			if (!It->bSecondary)
+			{
+				WorldActor = *It;
+				break;
+			}
 		}
 	}
 	FMcBlockWorld* BlockWorld = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
@@ -72,6 +92,10 @@ void AMcPlayerController::ConnectToWorld()
 	if (!bStreamConnected && (HasAuthority() || IsLocalController()))
 	{
 		ChunkStream->SetBlockWorld(BlockWorld);
+		ChunkStream->OnWorldSwitched = [this](const FString& Dimension)
+		{
+			WantedDimension = Dimension;
+		};
 		if (HasAuthority())
 		{
 			ChunkStream->OnSetBlockRequest.BindUObject(this, &AMcPlayerController::HandleSetBlockRequest);
@@ -82,14 +106,22 @@ void AMcPlayerController::ConnectToWorld()
 				{
 					return;
 				}
-				const APawn* MyPawn = GetPawn();
-				if (WorldActor && MyPawn)
+				if (AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn()))
 				{
-					WorldActor->AttackMobs(McCoords::UnrealToBlock(MyPawn->GetActorLocation()) + FVector(0.0, 1.62, 0.0), Look.GetSafeNormal(), 3.0, 1.0f);
+					MyPawn->ServerSwing(Look.GetSafeNormal());
 				}
 			};
 		}
 		bStreamConnected = true;
+	}
+
+	if (HasAuthority())
+	{
+		AMcPlayerPawn* ServerPawn = Cast<AMcPlayerPawn>(GetPawn());
+		if (ServerPawn && !ServerPawn->bServerHooked)
+		{
+			HookServerPawn(*ServerPawn);
+		}
 	}
 
 	if (!IsLocalController())
@@ -123,8 +155,117 @@ void AMcPlayerController::ConnectToWorld()
 	}
 }
 
+void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
+{
+	if (!WorldActor || !WorldActor->GetBlockWorld())
+	{
+		return;
+	}
+	Hooked.bServerHooked = true;
+	if (!Hooked.HasBlockWorld())
+	{
+		Hooked.SetBlockWorld(WorldActor->GetBlockWorld());
+	}
+	const TWeakObjectPtr<AMcWorldActor> World = WorldActor;
+	Hooked.ServerSetBlock = [World](const FIntVector& Pos, FMcStateId State)
+	{
+		if (World.IsValid())
+		{
+			World->SetBlock(Pos, State);
+		}
+	};
+	Hooked.GetEntities = [World]() -> FMcEntityManager*
+	{
+		FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
+		return Host ? &Host->GetManager() : nullptr;
+	};
+	Hooked.OnUseBlock = [World](AMcPlayerPawn& User, const FIntVector& Pos)
+	{
+		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		return Use && World.IsValid() && Use->Use(User, *World, Pos);
+	};
+	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage)
+	{
+		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage);
+	};
+	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
+	{
+		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		if (Use)
+		{
+			Use->ReleaseBlock(*World, Pos);
+		}
+	};
+	Hooked.OnUseItemOn = [World](AMcPlayerPawn& User, const FIntVector& Pos, const FIntVector& Beside)
+	{
+		FMcBlockWorld* Blocks = World.IsValid() ? World->GetBlockWorld() : nullptr;
+		if (!Blocks || !User.Data)
+		{
+			return false;
+		}
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FName Held = User.Data->Inventory->Get(User.Data->SelectedSlot).Item;
+		// The builders of portals change blocks in pieces, so the world is not to look for broken frames in between.
+		const McPortal::FSetBlock Place = [World](const FIntVector& At, FMcStateId State) { World->SetBlock(At, State, false); };
+		if (Held == TEXT("minecraft:flint_and_steel"))
+		{
+			if (!Registry.IsAir(Blocks->GetBlock(Beside)))
+			{
+				return false;
+			}
+			World->SetBlock(Beside, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			McPortal::TryLight(*Blocks, Beside, Place);
+			return true;
+		}
+		const FMcStateId Clicked = Blocks->GetBlock(Pos);
+		if (Held == TEXT("minecraft:ender_eye") && McPortal::IsEndPortalFrame(Clicked) && !McPortal::HasEye(Clicked))
+		{
+			World->SetBlock(Pos, McPortal::WithEye(Clicked));
+			McPortal::TryOpenEndPortal(*Blocks, Pos, Place);
+			return true;
+		}
+		return false;
+	};
+	// Dying shows the death screen; the player comes back when they press Respawn.
+	Hooked.OnRespawnRequest = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](AMcPlayerPawn&)
+	{
+		if (AMcPlayerController* Dead = WeakController.Get())
+		{
+			if (AMcGameMode* Mode = Dead->GetWorld()->GetAuthGameMode<AMcGameMode>())
+			{
+				Mode->RespawnPlayer(Dead);
+			}
+		}
+	};
+	if (UMcPlayerDataComponent* Data = Hooked.Data)
+	{
+		const TWeakObjectPtr<AMcPlayerPawn> WeakPawn = &Hooked;
+		Data->ServerDrop = [World, WeakPawn](const FMcItemStack& Stack)
+		{
+			FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
+			if (Host && WeakPawn.IsValid() && !Stack.IsEmpty())
+			{
+				// Thrown from the eyes, with a pause before it can be taken straight back.
+				Host->GetManager().DropItem(WeakPawn->GetFeetPosition() + FVector(0.0, 1.3, 0.0), Stack, 40);
+			}
+		};
+		Data->ServerWindowValid = [World, WeakPawn](const FMcWindow& Window)
+		{
+			return World.IsValid() && WeakPawn.IsValid() && UMcBlockUseSubsystem::IsWindowValid(*WeakPawn, *World, Window);
+		};
+	}
+}
+
 void AMcPlayerController::HandleSetBlockRequest(const FIntVector& Pos, uint16 State)
 {
+	// Survival players change blocks only by digging and placing (see AMcPlayerPawn::ServerDig); this is creative's.
+	if (const AMcPlayerPawn* Current = Cast<AMcPlayerPawn>(GetPawn()))
+	{
+		if (!Current->Data || !Current->Data->bCreative)
+		{
+			return;
+		}
+	}
 	// Only valid states, and only within reach of the player's eyes.
 	if (!WorldActor || !FMcBlockRegistry::Get().IsValidState(State))
 	{
@@ -146,14 +287,120 @@ void AMcPlayerController::HandleSetBlockRequest(const FIntVector& Pos, uint16 St
 
 void AMcPlayerController::SetUpLocalView()
 {
+	AttachView();
+	StartDevScreenshot();
+}
+
+void AMcPlayerController::AttachView()
+{
 #if MC_WITH_RENDER
-	UMcWorldRenderComponent* Renderer = NewObject<UMcWorldRenderComponent>(WorldActor, TEXT("Renderer"));
-	Renderer->SetupAttachment(WorldActor->GetRootComponent());
-	Renderer->RegisterComponent();
-	Renderer->SetWorld(WorldActor->GetBlockWorld());
+	UMcWorldRenderComponent* Drawer = NewObject<UMcWorldRenderComponent>(WorldActor);
+	Drawer->SetupAttachment(WorldActor->GetRootComponent());
+	Drawer->RegisterComponent();
+	Drawer->SetWorld(WorldActor->GetBlockWorld());
+	Renderer = Drawer;
 	SpawnEnvironment();
 #endif
-	StartDevScreenshot();
+}
+
+void AMcPlayerController::DetachView()
+{
+	if (UActorComponent* Drawer = Renderer.Get())
+	{
+		Drawer->DestroyComponent();
+	}
+	if (UActorComponent* Heavens = Sky.Get())
+	{
+		Heavens->DestroyComponent();
+	}
+	Renderer.Reset();
+	Sky.Reset();
+}
+
+void AMcPlayerController::SwitchLocalView(AMcWorldActor* Old)
+{
+	DetachView();
+	if (Old && Old != WorldActor)
+	{
+		Old->SetViewed(false);
+		// A client forgets the dimension it left: the server sends it again if the player comes back.
+		if (!HasAuthority() && Old->GetBlockWorld())
+		{
+			TArray<FIntPoint> Loaded;
+			Old->GetBlockWorld()->GetChunks().GetKeys(Loaded);
+			for (const FIntPoint& Pos : Loaded)
+			{
+				Old->GetBlockWorld()->RemoveChunk(Pos);
+			}
+		}
+	}
+	if (WorldActor)
+	{
+		WorldActor->SetViewed(true);
+		AttachView();
+	}
+}
+
+void AMcPlayerController::EnterWorld(AMcWorldActor& NewWorld)
+{
+	if (!HasAuthority() || !NewWorld.GetBlockWorld())
+	{
+		return;
+	}
+	AMcWorldActor* Old = WorldActor;
+	WorldActor = &NewWorld;
+	ChunkStream->SwitchWorld(NewWorld.GetBlockWorld(), NewWorld.Dimension);
+	if (AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn()))
+	{
+		MyPawn->SetBlockWorld(NewWorld.GetBlockWorld());
+		HookServerPawn(*MyPawn);
+	}
+	if (IsLocalController() && Old != WorldActor)
+	{
+		SwitchLocalView(Old);
+	}
+}
+
+void AMcPlayerController::ResolveWantedDimension()
+{
+	if (WantedDimension.IsEmpty() || HasAuthority())
+	{
+		return;
+	}
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		if (It->Dimension == WantedDimension && It->GetBlockWorld())
+		{
+			AMcWorldActor* Old = WorldActor;
+			WorldActor = *It;
+			WantedDimension.Reset();
+			ChunkStream->SetBlockWorld(WorldActor->GetBlockWorld());
+			if (AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				MyPawn->SetBlockWorld(WorldActor->GetBlockWorld());
+			}
+			SwitchLocalView(Old);
+			return;
+		}
+	}
+}
+
+void AMcPlayerController::SyncDimensionView()
+{
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		It->SetViewed(*It == WorldActor);
+	}
+	// What the server made for another dimension is not drawn here (it has that dimension's world actor as its owner).
+	for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
+	{
+		const AMcWorldActor* Home = Cast<AMcWorldActor>(It->GetOwner());
+		const bool bHide = Home && Home != WorldActor;
+		if (It->IsHidden() != bHide)
+		{
+			It->SetActorHiddenInGame(bHide);
+		}
+	}
 }
 
 void AMcPlayerController::StartDevScreenshot()
@@ -241,7 +488,9 @@ void AMcPlayerController::SpawnEnvironment()
 	}
 
 	// Fixed exposure, so an emissive 1.0 shows as the texture's own colour. -McExposureBias= is for tuning.
-	if (APostProcessVolume* Post = World->SpawnActor<APostProcessVolume>())
+	APostProcessVolume* Post = bEnvironmentSpawned ? nullptr : World->SpawnActor<APostProcessVolume>();
+	bEnvironmentSpawned = true;
+	if (Post)
 	{
 		Post->bUnbound = true;
 		FPostProcessSettings& Settings = Post->Settings;
@@ -255,12 +504,17 @@ void AMcPlayerController::SpawnEnvironment()
 	}
 
 	// The sky, sun, moon, stars and fog follow the world's time of day, which the server sets and replicates.
-	UMcSkyComponent* Sky = NewObject<UMcSkyComponent>(WorldActor, TEXT("Sky"));
-	Sky->SetupAttachment(WorldActor->GetRootComponent());
-	Sky->GetTime = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	UMcSkyComponent* Heavens = NewObject<UMcSkyComponent>(WorldActor);
+	Heavens->SetupAttachment(WorldActor->GetRootComponent());
+	Heavens->GetTime = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
 	{
 		return Actor.IsValid() ? Actor->GetDayTime() : 1000.0;
 	};
-	Sky->RegisterComponent();
+	if (const FMcBlockWorld* Blocks = WorldActor->GetBlockWorld())
+	{
+		Heavens->SetDimension(Blocks->GetDimension());
+	}
+	Heavens->RegisterComponent();
+	Sky = Heavens;
 #endif
 }

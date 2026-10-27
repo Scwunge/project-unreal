@@ -20,6 +20,12 @@ bool FMcDimensionType::Load(const FString& Id, FMcDimensionType& Out)
 	}
 	Json->TryGetBoolField(TEXT("has_skylight"), Result.bHasSkylight);
 	Json->TryGetBoolField(TEXT("has_ceiling"), Result.bHasCeiling);
+	Json->TryGetBoolField(TEXT("has_fixed_time"), Result.bHasFixedTime);
+	Json->TryGetNumberField(TEXT("coordinate_scale"), Result.CoordinateScale);
+	Result.LogicalHeight = Result.Height;
+	Json->TryGetNumberField(TEXT("logical_height"), Result.LogicalHeight);
+	Json->TryGetStringField(TEXT("skybox"), Result.Skybox);
+	Json->TryGetNumberField(TEXT("ambient_light"), Result.AmbientLight);
 
 	if (Result.MinY % 16 != 0 || Result.Height % 16 != 0 || Result.Height <= 0)
 	{

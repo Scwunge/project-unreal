@@ -3,7 +3,11 @@
 #include "McEntityActor.h"
 #include "McClient.h"
 #include "McBlockShapes.h"
+#include "McEntityHost.h"
 #include "McPlayerController.h"
+#include "McPlayerData.h"
+#include "McPlayerSave.h"
+#include "McTravel.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
 #include "McWorldSave.h"
@@ -59,6 +63,7 @@ void AMcGameMode::StartPlay()
 
 	FMcBlockShapes::Get().EnsureLoaded();
 
+	SetUpWorld(*WorldActor);
 	if (WorldActor->HasStorage())
 	{
 		SavingHandle = WorldActor->OnSaving.AddUObject(this, &AMcGameMode::SavePlayers);
@@ -75,11 +80,88 @@ void AMcGameMode::StartPlay()
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
 				McPawn->SetFlying(bFlying);
+				RestoreSurvival(It->Get(), *McPawn);
 			}
 		}
 	}
 
 	StartDevCapture();
+}
+
+void AMcGameMode::SetUpWorld(AMcWorldActor& World)
+{
+	Worlds.AddUnique(&World);
+	World.SetEntityProxyClass(AMcEntityActor::StaticClass());
+	if (FMcEntityHost* Host = World.GetEntityHost())
+	{
+		Host->OnPlayerHit = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HurtPlayerNear(*Here, Position, Damage);
+			}
+		};
+	}
+	// With more than one world each looks after the players who are in it.
+	if (Worlds.Num() > 1)
+	{
+		for (AMcWorldActor* Each : Worlds)
+		{
+			Each->PlayerFilter = [Weak = TWeakObjectPtr<AMcWorldActor>(Each)](const AController& Controller)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(&Controller);
+				const AMcWorldActor* Home = Player ? Player->GetWorldActor() : nullptr;
+				const AMcWorldActor* Self = Weak.Get();
+				return !Player || !Self || Home == Self || (!Home && !Self->bSecondary);
+			};
+		}
+	}
+}
+
+AMcWorldActor* AMcGameMode::FindWorld(const FString& Dimension) const
+{
+	for (AMcWorldActor* Each : Worlds)
+	{
+		if (Each && Each->Dimension == Dimension)
+		{
+			return Each;
+		}
+	}
+	return nullptr;
+}
+
+AMcWorldActor* AMcGameMode::GetOrCreateWorld(const FString& Dimension)
+{
+	if (AMcWorldActor* Existing = FindWorld(Dimension))
+	{
+		return Existing;
+	}
+	if (!WorldActor || !WorldActor->GetBlockWorld())
+	{
+		return nullptr;
+	}
+	AMcWorldActor* Made = GetWorld()->SpawnActorDeferred<AMcWorldActor>(AMcWorldActor::StaticClass(), FTransform::Identity);
+	if (!Made)
+	{
+		return nullptr;
+	}
+	Made->Dimension = Dimension;
+	Made->NoiseSettings = Dimension == TEXT("minecraft:the_end") ? TEXT("minecraft:end") : Dimension == TEXT("minecraft:the_nether") ? TEXT("minecraft:nether") : TEXT("minecraft:overworld");
+	Made->InheritFrom(*WorldActor);
+	Made->FinishSpawning(FTransform::Identity);
+	if (!Made->GetBlockWorld())
+	{
+		UE_LOG(LogMcClient, Error, TEXT("Can't make the world for %s; see the McServer errors above."), *Dimension);
+		Made->Destroy();
+		return nullptr;
+	}
+	SetUpWorld(*Made);
+	if (Made->HasStorage())
+	{
+		Made->OnSaving.AddWeakLambda(this, [this]() { SavePlayers(); });
+	}
+	UE_LOG(LogMcClient, Display, TEXT("Made the world for %s"), *Dimension);
+	return Made;
 }
 
 void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
@@ -166,6 +248,45 @@ void AMcGameMode::StartDevCapture()
 		}), PillarDelay, false);
 	}
 
+	// -McEdit=x,y,z,<state> (or x1,y1,z1,x2,y2,z2,<state> for a box) places blocks two seconds in, to check that edits
+	// survive saving a world (-McWorld): place them on a first run, and look for them on the second.
+	FString EditSpec;
+	if (FParse::Value(CommandLine, TEXT("-McEdit="), EditSpec, /*bShouldStopOnSeparator=*/ false))
+	{
+		FTimerHandle EditTimer;
+		GetWorldTimerManager().SetTimer(EditTimer, FTimerDelegate::CreateWeakLambda(this, [this, EditSpec]()
+		{
+			TArray<FString> Parts;
+			EditSpec.ParseIntoArray(Parts, TEXT(","));
+			if (Parts.Num() != 4 && Parts.Num() != 7)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("-McEdit wants x,y,z,state or x1,y1,z1,x2,y2,z2,state; got %s"), *EditSpec);
+				return;
+			}
+			const TOptional<FMcStateId> State = FMcBlockRegistry::Get().ParseState(Parts.Last());
+			if (!State)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("-McEdit: unknown block %s"), *Parts.Last());
+				return;
+			}
+			const FIntVector A(FCString::Atoi(*Parts[0]), FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2]));
+			const FIntVector B = Parts.Num() == 7 ? FIntVector(FCString::Atoi(*Parts[3]), FCString::Atoi(*Parts[4]), FCString::Atoi(*Parts[5])) : A;
+			int32 Placed = 0;
+			for (int32 Y = FMath::Min(A.Y, B.Y); Y <= FMath::Max(A.Y, B.Y); ++Y)
+			{
+				for (int32 Z = FMath::Min(A.Z, B.Z); Z <= FMath::Max(A.Z, B.Z); ++Z)
+				{
+					for (int32 X = FMath::Min(A.X, B.X); X <= FMath::Max(A.X, B.X); ++X)
+					{
+						WorldActor->SetBlock(FIntVector(X, Y, Z), State.GetValue());
+						++Placed;
+					}
+				}
+			}
+			UE_LOG(LogMcClient, Display, TEXT("McEdit: placed %d blocks of %s"), Placed, *Parts.Last());
+		}), 2.0f, false);
+	}
+
 	FParse::Value(CommandLine, TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false);
 	if (!Camera.IsEmpty())
 	{
@@ -201,7 +322,83 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
 			McPawn->SetFlying(bFlying);
+			RestoreSurvival(NewPlayer, *McPawn);
 		}
+		// A player last saved in another dimension goes back there, once it is ready.
+		FMcPlayerData Saved;
+		AMcPlayerController* Player = Cast<AMcPlayerController>(NewPlayer);
+		if (Player && WorldActor && LoadSavedPlayer(NewPlayer, Saved) && !Saved.Dimension.IsEmpty() && Saved.Dimension != WorldActor->Dimension)
+		{
+			if (UMcTravelSubsystem* Travel = GetWorld()->GetSubsystem<UMcTravelSubsystem>())
+			{
+				Travel->StartExactTrip(*Player, Saved.Dimension, Saved.Position, Saved.Yaw);
+			}
+		}
+	}
+}
+
+void AMcGameMode::RespawnPlayer(AController* Controller)
+{
+	if (!Controller)
+	{
+		return;
+	}
+	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Weak = TWeakObjectPtr<AController>(Controller)]()
+	{
+		AController* Who = Weak.Get();
+		if (!Who)
+		{
+			return;
+		}
+		if (APawn* Old = Who->GetPawn())
+		{
+			Who->UnPossess();
+			Old->Destroy();
+		}
+		// The spawn is in the first world: a player who died in the Nether comes back there.
+		AMcPlayerController* Player = Cast<AMcPlayerController>(Who);
+		if (Player && WorldActor && Player->GetWorldActor() != WorldActor)
+		{
+			Player->EnterWorld(*WorldActor);
+		}
+		RestartPlayerAtTransform(Who, GetSpawnTransform());
+	}));
+}
+
+void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage)
+{
+	AMcPlayerPawn* Nearest = nullptr;
+	double NearestDistance = 2.5;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		// Only the players in the dimension the mob is in.
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		const double Distance = McPawn ? FVector::Dist(McPawn->GetFeetPosition(), Position) : NearestDistance;
+		if (McPawn && Distance < NearestDistance)
+		{
+			Nearest = McPawn;
+			NearestDistance = Distance;
+		}
+	}
+	if (Nearest)
+	{
+		// The mob that bit is at Position: the player is knocked away from it.
+		Nearest->ServerHurt(Damage, McSurvival::EDamage::Mob, &Position);
+	}
+}
+
+void AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const
+{
+	FMcPlayerData Saved;
+	if (Pawn.Data && WorldActor && WorldActor->HasStorage() && McWorldSave::LoadPlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Saved)
+		&& McPlayerSave::Apply(Saved, *Pawn.Data))
+	{
+		Pawn.SelectedSlot = Pawn.Data->SelectedSlot;
 	}
 }
 
@@ -223,6 +420,11 @@ FTransform AMcGameMode::GetStartTransform(const AController* Controller, bool& b
 		}
 	}
 	return GetSpawnTransform();
+}
+
+bool AMcGameMode::LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const
+{
+	return WorldActor && WorldActor->HasStorage() && McWorldSave::LoadPlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), OutSaved);
 }
 
 FString AMcGameMode::GetSaveId(const AController* Controller) const
@@ -247,12 +449,17 @@ void AMcGameMode::SavePlayer(const AController* Controller) const
 	}
 	FMcPlayerData Data;
 	Data.Position = McCoords::UnrealToBlock(Pawn->GetActorLocation());
-	Data.Dimension = WorldActor->Dimension;
+	const AMcPlayerController* McController = Cast<AMcPlayerController>(Controller);
+	Data.Dimension = McController && McController->GetWorldActor() ? McController->GetWorldActor()->Dimension : WorldActor->Dimension;
 	if (const AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 	{
 		Data.Yaw = McPawn->GetLookYaw();
 		Data.Pitch = McPawn->GetLookPitch();
 		Data.bFlying = McPawn->IsFlying();
+		if (McPawn->Data)
+		{
+			McPlayerSave::Capture(*McPawn->Data, Data);
+		}
 	}
 	McWorldSave::SavePlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Data);
 }

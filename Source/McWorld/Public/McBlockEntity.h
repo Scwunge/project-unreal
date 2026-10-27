@@ -17,6 +17,8 @@ enum class EMcBlockEntityKind : uint8
 	Container,
 	// A mob spawner: EntityId.
 	Spawner,
+	// A furnace, blast furnace or smoker: Data is FMcFurnace::Serialize's bytes (the module that knows them is McItem).
+	Furnace,
 };
 
 struct MCWORLD_API FMcBlockEntity
@@ -29,6 +31,8 @@ struct MCWORLD_API FMcBlockEntity
 	int64 LootSeed = 0;
 	// The entity a spawner spawns, e.g. "minecraft:zombie".
 	FName EntityId;
+	// A furnace's saved state.
+	TArray<uint8> Data;
 
 	static FMcBlockEntity MakeContainer(int32 NumSlots);
 	static FMcBlockEntity MakeSpawner(FName InEntityId);

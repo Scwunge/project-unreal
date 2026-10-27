@@ -2,6 +2,7 @@
 #include "McCache.h"
 #include "McChunk.h"
 #include "McDayCycle.h"
+#include "McDimensionType.h"
 #include "McRender.h"
 #include "McRenderTextures.h"
 #include "Camera/PlayerCameraManager.h"
@@ -28,6 +29,18 @@ namespace
 	// Half the width of the sun's and the moon's squares, as a fraction of their distance.
 	constexpr float SunHalfSize = 0.2f;
 	constexpr float MoonHalfSize = 0.12f;
+
+	// The Nether's fog is the nether wastes' fog colour (data/minecraft/worldgen/biome/nether_wastes.json, 3344392), which
+	// is also all its sky; the End's is the colour the end sky is drawn over. Display colours.
+	const FLinearColor NetherFogColor(0x33 / 255.0f, 0x08 / 255.0f, 0x08 / 255.0f, 1.0f);
+	const FLinearColor EndFogColor(0x18 / 255.0f, 0x13 / 255.0f, 0x18 / 255.0f, 1.0f);
+	// The Nether's fog starts 10 blocks out and is thick at 96; the End's is the view distance's.
+	constexpr float NetherFogStartBlocks = 10.0f;
+	constexpr float NetherFogEndBlocks = 96.0f;
+	// The End has no day, so its blocks get a fixed share of their sky light, as at night; the Nether has none.
+	constexpr float EndSkyLightFactor = 0.24f;
+	// The end sky texture is drawn dark: 0x282828.
+	constexpr float EndSkyBrightness = 40.0f / 255.0f;
 
 	// Minecraft axes (x east, y up, z south) to Unreal's.
 	FVector ToUnreal(const FVector& Dir)
@@ -92,6 +105,11 @@ UMcSkyComponent::UMcSkyComponent(const FObjectInitializer& ObjectInitializer)
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> AdditiveFinder(TEXT("/Game/Mc/Materials/M_McSkyAdditive.M_McSkyAdditive"));
 	DomeMaterial = DomeFinder.Object;
 	AdditiveMaterial = AdditiveFinder.Object;
+}
+
+void UMcSkyComponent::SetDimension(const FMcDimensionType& Type)
+{
+	Mode = Type.Skybox == TEXT("end") ? EMode::End : Type.Skybox == TEXT("overworld") ? EMode::Overworld : EMode::Nether;
 }
 
 UProceduralMeshComponent* UMcSkyComponent::MakeMesh(const TCHAR* Name)
@@ -271,10 +289,76 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	FogColor = Cycle.GetFogColor(Ticks);
 	StarBrightness = Cycle.GetStarBrightness(Ticks);
 
+	if (Mode != EMode::Overworld)
+	{
+		// No day and night: one colour for the sky and the fog, nothing in the sky but (in the End) its own picture.
+		SkyColor = FogColor = Mode == EMode::Nether ? NetherFogColor : EndFogColor;
+		StarBrightness = 0.0f;
+		McSky::SetSkyLightFactor(Mode == EMode::Nether ? 0.0f : EndSkyLightFactor);
+		if (Mode == EMode::End && !EndSky)
+		{
+			BuildEndSky();
+		}
+	}
+	const bool bOverworld = Mode == EMode::Overworld;
+	Sun->SetVisibility(bOverworld);
+	Moon->SetVisibility(bOverworld);
+	Stars->SetVisibility(bOverworld && StarBrightness > 0.001f);
+	if (EndSky)
+	{
+		EndSky->SetVisibility(Mode == EMode::End);
+	}
+
 	UpdateDome(Ticks);
-	UpdateStars(Ticks);
-	UpdateCelestial(Ticks);
+	if (bOverworld)
+	{
+		UpdateStars(Ticks);
+		UpdateCelestial(Ticks);
+	}
 	UpdateFog();
+}
+
+void UMcSkyComponent::BuildEndSky()
+{
+	// The picture on each of the six faces of a box round the camera, as in the game.
+	EndSky = MakeMesh(TEXT("EndSky"));
+	int32 Width = 0, Height = 0;
+	EndSkyTexture = McRenderTextures::LoadPngAsArray(this, McCache::Asset(TEXT("textures/environment/end_sky.png")), Width, Height);
+	const float Half = CelestialRadius * 0.9f;
+	// Per face: the corners in Unreal's axes, seen from inside.
+	const FVector Corners[6][4] = {
+		{ FVector(-Half, -Half, -Half), FVector(Half, -Half, -Half), FVector(Half, Half, -Half), FVector(-Half, Half, -Half) },
+		{ FVector(-Half, Half, Half), FVector(Half, Half, Half), FVector(Half, -Half, Half), FVector(-Half, -Half, Half) },
+		{ FVector(-Half, -Half, -Half), FVector(-Half, Half, -Half), FVector(-Half, Half, Half), FVector(-Half, -Half, Half) },
+		{ FVector(Half, Half, -Half), FVector(Half, -Half, -Half), FVector(Half, -Half, Half), FVector(Half, Half, Half) },
+		{ FVector(Half, -Half, -Half), FVector(-Half, -Half, -Half), FVector(-Half, -Half, Half), FVector(Half, -Half, Half) },
+		{ FVector(-Half, Half, -Half), FVector(Half, Half, -Half), FVector(Half, Half, Half), FVector(-Half, Half, Half) },
+	};
+	TArray<FVector> Positions;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UV0;
+	TArray<int32> Triangles;
+	for (int32 Face = 0; Face < 6; ++Face)
+	{
+		const int32 First = Positions.Num();
+		for (int32 Corner = 0; Corner < 4; ++Corner)
+		{
+			Positions.Add(Corners[Face][Corner]);
+			Normals.Add(-Corners[Face][Corner].GetSafeNormal());
+		}
+		UV0.Append({ FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) });
+		Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+	}
+	TArray<FVector2D> Zero;
+	Zero.Init(FVector2D::ZeroVector, Positions.Num());
+	TArray<FColor> Colours;
+	Colours.Init(FColor::White, Positions.Num());
+	const TArray<FProcMeshTangent> NoTangents;
+	EndSky->CreateMeshSection(0, Positions, Triangles, Normals, UV0, Zero, Zero, Zero, Colours, NoTangents, false);
+	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(AdditiveMaterial, this);
+	Material->SetTextureParameterValue(TEXT("Blocks"), EndSkyTexture);
+	Material->SetVectorParameterValue(TEXT("Tint"), FLinearColor(EndSkyBrightness, EndSkyBrightness, EndSkyBrightness, 1.0f));
+	EndSky->SetMaterial(0, Material);
 }
 
 void UMcSkyComponent::UpdateDome(double Ticks)
@@ -354,8 +438,9 @@ void UMcSkyComponent::UpdateCelestial(double Ticks)
 void UMcSkyComponent::UpdateFog()
 {
 	// Thick at the view distance, starting at three fifths of it. 3.3 optical depths take the fog to about 90%.
-	const float End = FogEndBlocks * McCoords::UnitsPerBlock;
-	const float Start = End * 0.6f;
+	const bool bNether = Mode == EMode::Nether;
+	const float End = (bNether ? FMath::Min(FogEndBlocks, NetherFogEndBlocks) : FogEndBlocks) * McCoords::UnitsPerBlock;
+	const float Start = bNether ? NetherFogStartBlocks * McCoords::UnitsPerBlock : End * 0.6f;
 	Fog->SetStartDistance(Start);
 	Fog->SetFogCutoffDistance(DomeRadius * 0.8f);
 	Fog->SetFogDensity(3.3f / FMath::Max(End - Start, 1.0f) * 1000.0f);

@@ -1,12 +1,44 @@
 #include "McMob.h"
+#include "McArrow.h"
+#include "McBlockRegistry.h"
+#include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McPathfinding.h"
+#include "Serialization/Archive.h"
+
+namespace
+{
+	// Whether no block with collision stands between the two points.
+	bool HasLineOfSight(const FMcBlockWorld& World, const FVector& From, const FVector& To)
+	{
+		const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+		const FVector Way = To - From;
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Way.Size() / 0.25));
+		for (int32 Step = 1; Step < Steps; ++Step)
+		{
+			const FVector At = From + Way * (static_cast<double>(Step) / Steps);
+			const FIntVector Cell(FMath::FloorToInt32(At.X), FMath::FloorToInt32(At.Y), FMath::FloorToInt32(At.Z));
+			if (!World.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)) || Shapes.HasCollision(World.GetBlock(Cell)))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	FIntVector FeetCell(const FVector& Position)
+	{
+		// A little up, so a body that settled at 0.9999 of a block stands in the block above that.
+		return FIntVector(FMath::FloorToInt32(Position.X), FMath::FloorToInt32(Position.Y + 0.05), FMath::FloorToInt32(Position.Z));
+	}
+}
 
 const TArray<FMcMobType>& FMcMobType::GetAll()
 {
 	static TArray<FMcMobType> Types;
 	if (Types.IsEmpty())
 	{
-		const auto Add = [](const TCHAR* Name, float Width, float Height, float Health, float Speed, float Attack, float Follow, bool bPanics, bool bBurns)
+		const auto Add = [](const TCHAR* Name, float Width, float Height, float Health, float Speed, float Attack, float Follow, bool bPanics, bool bBurns) -> FMcMobType&
 		{
 			FMcMobType Type;
 			Type.Name = Name;
@@ -18,7 +50,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 			Type.FollowRange = Follow;
 			Type.bPanics = bPanics;
 			Type.bBurnsInSun = bBurns;
-			Types.Add(Type);
+			return Types.Add_GetRef(Type);
 		};
 		//  name                width height hp   speed  atk follow panics burns
 		Add(TEXT("minecraft:pig"), 0.9f, 0.9f, 10.f, 0.25f, 0.f, 0.f, true, false);
@@ -26,8 +58,19 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:sheep"), 0.9f, 1.3f, 8.f, 0.23f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:chicken"), 0.4f, 0.7f, 4.f, 0.25f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
-		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true);
-		Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
+		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
+		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
+		Spider.bClimbsWalls = true;
+		Spider.bNeutralInLight = true;
+		// The creeper has no bite: it goes off. Follows within 16 blocks.
+		Add(TEXT("minecraft:creeper"), 0.6f, 1.7f, 20.f, 0.25f, 0.f, 16.f, false, false).bSwells = true;
+		// 7 damage on Normal; hostile only once hurt. It sees a player from 64 blocks away.
+		FMcMobType& Enderman = Add(TEXT("minecraft:enderman"), 0.6f, 2.9f, 40.f, 0.3f, 7.f, 64.f, false, false);
+		Enderman.bNeutral = true;
+		Enderman.bTeleports = true;
+		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
+		Add(TEXT("minecraft:slime"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
 	}
 	return Types;
 }
@@ -46,6 +89,26 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.StepHeight = 0.6f;
 }
 
+void FMcMob::SetSize(int32 InSize, bool bHeal)
+{
+	Size = InSize;
+	Body.Width = Type.Width * Size;
+	Body.Height = Type.Height * Size;
+	if (bHeal)
+	{
+		Health = Type.MaxHealth * Size * Size;
+	}
+}
+
+float FMcMob::GetAttackDamage() const
+{
+	if (Type.bHops)
+	{
+		return Size > 1 ? static_cast<float>(Size) : 0.0f;
+	}
+	return Type.AttackDamage;
+}
+
 bool FMcMob::Serialize(FArchive& Ar)
 {
 	if (!FMcEntity::Serialize(Ar))
@@ -54,6 +117,19 @@ bool FMcMob::Serialize(FArchive& Ar)
 	}
 	// The rest (the flash after a hit, the goal being walked to) is a few ticks' worth and starts afresh.
 	Ar << Health;
+	if (Type.bHops)
+	{
+		int32 Saved = Size;
+		Ar << Saved;
+		if (Ar.IsLoading())
+		{
+			if (Saved != 1 && Saved != 2 && Saved != 4)
+			{
+				return false;
+			}
+			SetSize(Saved, false);
+		}
+	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
 }
 
@@ -67,9 +143,14 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	Health -= Amount;
 	HurtTime = 10;
 	++HurtEvents;
+	AngerTicks = 1200;
 	if (Type.bPanics)
 	{
 		PanicTicks = 60;
+	}
+	if (Type.bTeleports)
+	{
+		bTeleportPending = true;
 	}
 	if (Source)
 	{
@@ -82,6 +163,7 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		Body.Velocity.Y = FMath::Min(Body.Velocity.Y * 0.5 + 0.4, 0.4);
 		Body.bOnGround = false;
 	}
+	PlayVoice(Health <= 0.0f ? McSound::EMobSound::Death : McSound::EMobSound::Hurt);
 	if (Health <= 0.0f)
 	{
 		bRemoved = true;
@@ -94,6 +176,155 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	return false;
 }
 
+void FMcMob::PlayVoice(McSound::EMobSound Kind)
+{
+	if (!Owner)
+	{
+		return;
+	}
+	const FName Name = McSound::GetMobSoundName(Type.Name, Kind, Size);
+	if (Name.IsNone())
+	{
+		return;
+	}
+	if (Type.bHops)
+	{
+		PlaySlimeSound(Name);
+		return;
+	}
+	Owner->PlaySound(Name, Body.Position, 1.0f, McSound::GetVoicePitch(VoiceRandom.FRand(), VoiceRandom.FRand()));
+}
+
+void FMcMob::PlaySlimeSound(FName Event)
+{
+	if (Owner)
+	{
+		const float VoicePitch = McSound::GetVoicePitch(VoiceRandom.FRand(), VoiceRandom.FRand()) * (Size <= 1 ? 1.4f : 0.8f);
+		Owner->PlaySound(Event, Body.Position, 0.4f * Size, VoicePitch);
+	}
+}
+
+void FMcMob::UpdateSteps(FMcEntityManager& Manager)
+{
+	// What was walked since last tick, counted at 0.6 a block on the ground; a step sounds each time it passes a mark a
+	// block further than the last. A jump of more than a few blocks (a teleport) isn't walking.
+	const double Moved = FMath::Sqrt(FMath::Square(Body.Position.X - StepLast.X) + FMath::Square(Body.Position.Z - StepLast.Z));
+	StepLast = Body.Position;
+	if (Type.bHops || !Body.bOnGround || Moved > 3.0)
+	{
+		return;
+	}
+	StepDistance += Moved * 0.6;
+	if (StepDistance <= NextStep)
+	{
+		return;
+	}
+	NextStep = StepDistance + 1.0;
+	const FMcBlockWorld& World = Manager.GetWorld();
+	const FIntVector Below(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.2), FMath::FloorToInt32(Body.Position.Z));
+	const FMcStateId State = World.GetBlock(Below);
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (Registry.IsValidState(State))
+	{
+		Manager.PlaySound(McSound::GetMobStep(Type.Name, Registry.GetBlockOf(State).Name, Body.Position));
+	}
+}
+
+bool FMcMob::TryTeleport(FMcEntityManager& Manager)
+{
+	FMcBlockWorld& World = Manager.GetWorld();
+	const FVector Origin = Body.Position;
+	const int32 Clearance = FMath::CeilToInt32(Body.Height);
+	for (int32 Attempt = 0; Attempt < 16; ++Attempt)
+	{
+		const int32 X = FMath::FloorToInt32(Body.Position.X) + Random.RandRange(-32, 32);
+		const int32 Z = FMath::FloorToInt32(Body.Position.Z) + Random.RandRange(-32, 32);
+		const int32 Base = FMath::FloorToInt32(Body.Position.Y) + Random.RandRange(-16, 16);
+		for (int32 Y = Base + 8; Y >= Base - 8; --Y)
+		{
+			if (McPath::IsStandable(World, FIntVector(X, Y, Z), Clearance))
+			{
+				Body.Position = FVector(X + 0.5, Y, Z + 0.5);
+				Body.Velocity = FVector::ZeroVector;
+				Path.Reset();
+				Goal.Reset();
+				// Heard where it went from and where it came to.
+				Manager.PlaySound(FName("entity.enderman.teleport"), Origin);
+				Manager.PlaySound(FName("entity.enderman.teleport"), Body.Position);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
+{
+	const FVector Eye = Body.Position + FVector(0.0, Type.Height * 0.85, 0.0);
+	// At a third of the way up the target, a bit high for the arrow's drop (a fifth of the way across), as the game
+	// aims: from the eyes down to the legs, then up by the allowance.
+	FVector Aim = TargetFeet + FVector(0.0, 0.6, 0.0) - Eye;
+	Aim.Y += FMath::Sqrt(FMath::Square(Aim.X) + FMath::Square(Aim.Z)) * 0.2;
+	const auto Gauss = [this]()
+	{
+		const double U = FMath::Max(static_cast<double>(Random.FRand()), 1e-6);
+		return FMath::Sqrt(-2.0 * FMath::Loge(U)) * FMath::Cos(2.0 * PI * Random.FRand());
+	};
+	const FVector Direction = Aim.GetSafeNormal();
+	const double Spread = 0.0075 * ArrowInaccuracy;
+	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+	Arrow->Body.Position = Eye + Direction * 0.5;
+	Arrow->Body.Velocity = (Direction + FVector(Gauss(), Gauss(), Gauss()) * Spread) * ArrowSpeed;
+	// 3 to 5 on Normal.
+	Arrow->Damage = static_cast<float>(Random.RandRange(3, 5));
+	Manager.Add(MoveTemp(Arrow));
+	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
+}
+
+FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
+{
+	const FVector Flat(Dest.X - Body.Position.X, 0.0, Dest.Z - Body.Position.Z);
+	// Spiders go straight at the wall; near the goal there is nothing to find.
+	if (Type.bClimbsWalls || (Flat.SizeSquared() < 1.5 * 1.5 && FMath::Abs(Dest.Y - Body.Position.Y) < 1.5))
+	{
+		Path.Reset();
+		return Dest;
+	}
+
+	const FIntVector DestCell = FeetCell(Dest);
+	const bool bGoalMoved = Path.IsEmpty() ? true : FMath::Max3(FMath::Abs(DestCell.X - PathGoal.X), FMath::Abs(DestCell.Y - PathGoal.Y), FMath::Abs(DestCell.Z - PathGoal.Z)) >= 2;
+	const bool bFinished = PathIndex >= Path.Num();
+	// Stuck for a second, and again every second after that.
+	const bool bStuck = StuckTicks > 20 && StuckTicks % 20 == 1;
+	if (RepathCooldown <= 0 && (bGoalMoved || bFinished || bStuck))
+	{
+		RepathCooldown = 10 + Random.RandHelper(10);
+		FMcPathOptions Options;
+		Options.Clearance = FMath::Max(1, FMath::CeilToInt32(Body.Height));
+		Options.MaxNodes = 500;
+		McPath::Find(Manager.GetWorld(), FeetCell(Body.Position), DestCell, Options, Path);
+		PathIndex = 0;
+		PathGoal = DestCell;
+	}
+
+	// Past the blocks already reached.
+	while (PathIndex < Path.Num())
+	{
+		const FIntVector& Block = Path[PathIndex];
+		const double DX = Block.X + 0.5 - Body.Position.X;
+		const double DZ = Block.Z + 0.5 - Body.Position.Z;
+		if (DX * DX + DZ * DZ < 0.4 * 0.4 && FMath::Abs(Block.Y - Body.Position.Y) < 1.2)
+		{
+			++PathIndex;
+		}
+		else
+		{
+			return FVector(Block.X + 0.5, Block.Y, Block.Z + 0.5);
+		}
+	}
+	return Dest;
+}
+
 void FMcMob::Tick(FMcEntityManager& Manager)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
@@ -102,6 +333,9 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		// Every mob would otherwise run the same stream (a default one is seeded 0) and the herd would wander in step.
 		// Ids count up one at a time, so spread them over the seed space.
 		Random.Initialize(static_cast<int32>(static_cast<uint32>(Id) * 2654435761u));
+		VoiceRandom.Initialize(static_cast<int32>(static_cast<uint32>(Id) * 40503u + 12345u));
+		LastPosition = Body.Position;
+		StepLast = Body.Position;
 	}
 	++Age;
 	if (HurtTime > 0)
@@ -112,6 +346,18 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		--AttackCooldown;
 	}
+	if (AngerTicks > 0)
+	{
+		--AngerTicks;
+	}
+	if (ShootCooldown > 0)
+	{
+		--ShootCooldown;
+	}
+	if (RepathCooldown > 0)
+	{
+		--RepathCooldown;
+	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{
 		return;
@@ -121,6 +367,11 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		bRemoved = true;
 		return;
 	}
+	if (McSound::TickAmbient(AmbientTime, VoiceRandom.RandHelper(1000)))
+	{
+		PlayVoice(McSound::EMobSound::Ambient);
+	}
+	UpdateSteps(Manager);
 
 	// Undead burn in daylight when the sky is open over them: a point of damage a second.
 	if (Type.bBurnsInSun && Manager.bDaylight && Age % 20 == 0
@@ -134,10 +385,22 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		}
 	}
 
-	// Goals, in priority order: flee, chase and bite, wander.
+	if (bTeleportPending)
+	{
+		bTeleportPending = false;
+		TryTeleport(Manager);
+	}
+	// Spiders go by the light round them, looked at once a second.
+	if (Type.bNeutralInLight && (Age % 20 == 1))
+	{
+		bBrightHere = Manager.EstimateLightLevel(FeetCell(Body.Position)) > 11;
+	}
+
+	// Goals, in priority order: flee, chase and bite (or shoot, or swell), wander.
 	FVector Target = FVector::ZeroVector;
 	bool bHasTarget = false;
-	bool bBiting = false;
+	bool bChasing = false;
+	double PreyDistSq = 0.0;
 	if (PanicTicks > 0)
 	{
 		--PanicTicks;
@@ -149,7 +412,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		Target = Goal.GetValue();
 		bHasTarget = true;
 	}
-	else if (Type.FollowRange > 0.0f)
+	else if (Type.FollowRange > 0.0f && (!Type.bNeutral || AngerTicks > 0) && (!Type.bNeutralInLight || AngerTicks > 0 || !bBrightHere))
 	{
 		double Best = Type.FollowRange * Type.FollowRange;
 		for (const FVector& Player : Manager.PlayerPositions)
@@ -159,8 +422,9 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			{
 				Best = Distance;
 				Target = Player;
+				PreyDistSq = Distance;
 				bHasTarget = true;
-				bBiting = Distance < 2.0 * 2.0;
+				bChasing = true;
 			}
 		}
 	}
@@ -176,35 +440,145 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			bHasTarget = true;
 		}
 	}
-	if (bBiting && AttackCooldown == 0 && Type.AttackDamage > 0.0f)
+
+	if (Type.bSwells)
+	{
+		// Starts burning within 3 blocks, goes out past 7 (or when there is nobody to chase); stands still while it burns.
+		const bool bWasSwelling = bSwelling;
+		if (bSwelling)
+		{
+			bSwelling = bChasing && PreyDistSq <= 7.0 * 7.0;
+		}
+		else
+		{
+			bSwelling = bChasing && PreyDistSq < 3.0 * 3.0;
+		}
+		SwellTicks = bSwelling ? SwellTicks + 1 : FMath::Max(0, SwellTicks - 1);
+		if (bSwelling && !bWasSwelling)
+		{
+			// The hiss when the fuse is lit.
+			Manager.PlaySound(FName("entity.creeper.primed"), Body.Position, 1.0f, 0.5f);
+		}
+		if (SwellTicks >= FuseTicks)
+		{
+			// A creeper that goes off drops nothing.
+			bRemoved = true;
+			// A hair above the floor: from exactly the floor's level every ray goes into it at its first step and the
+			// crater would be one block; from just above, the shallow ones skim the ground and spread it.
+			Manager.Explode(Body.Position + FVector(0.0, 0.0625, 0.0), ExplosionPower);
+			return;
+		}
+		if (bSwelling)
+		{
+			bHasTarget = false;
+		}
+	}
+	if (Type.bShoots && bChasing)
+	{
+		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.
+		const double Distance = FMath::Sqrt(PreyDistSq);
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Target.X - Body.Position.X), Target.Z - Body.Position.Z));
+		if (Distance <= ShootRange && ShootCooldown == 0
+			&& HasLineOfSight(World, Body.Position + FVector(0.0, Type.Height * 0.85, 0.0), Target + FVector(0.0, 1.2, 0.0)))
+		{
+			ShootCooldown = ShootIntervalTicks;
+			Shoot(Manager, Target);
+		}
+		if (Distance < ShootStopRange)
+		{
+			bHasTarget = false;
+		}
+	}
+	const float BiteDamage = GetAttackDamage();
+	if (bChasing && !Type.bSwells && !Type.bShoots && AttackCooldown == 0 && BiteDamage > 0.0f
+		&& PreyDistSq < FMath::Square(FMath::Max(2.0, 1.0 + Body.Width)))
 	{
 		AttackCooldown = 20;
 		if (OnAttackPlayer)
 		{
-			OnAttackPlayer(Target, Type.AttackDamage);
+			OnAttackPlayer(Target, BiteDamage);
 		}
 	}
 
 	FMcMoveInput Input;
-	Input.Speed = Type.Speed;
+	Input.Speed = static_cast<float>(GetInputSpeed(Type));
+	bool bWalking = false;
 	if (bHasTarget)
 	{
-		FVector Toward = Target - Body.Position;
-		Toward.Y = 0.0;
-		if (Toward.SizeSquared() < 0.25 * 0.25)
+		FVector ToTarget = Target - Body.Position;
+		ToTarget.Y = 0.0;
+		if (ToTarget.SizeSquared() < 0.25 * 0.25)
 		{
 			Goal.Reset();
+			Path.Reset();
 		}
 		else
 		{
-			// Minecraft yaw: 0 faces +z, 90 faces -x.
-			Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Toward.X, Toward.Z));
-			Input.Forward = 1.0f;
-			Input.Yaw = Yaw;
-			Input.bJump = Body.bOnGround && Body.bHorizontalCollision;
+			const FVector Way = NextWaypoint(Manager, Target);
+			FVector Toward = Way - Body.Position;
+			Toward.Y = 0.0;
+			if (Toward.SizeSquared() > 1e-6)
+			{
+				// Minecraft yaw: 0 faces +z, 90 faces -x.
+				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Toward.X, Toward.Z));
+				bWalking = true;
+				if (Type.bHops)
+				{
+					// A slime sits, then hops: up one block and a couple along.
+					if (Body.bOnGround)
+					{
+						if (HopDelay > 0)
+						{
+							--HopDelay;
+						}
+						else
+						{
+							HopDelay = bChasing ? Random.RandRange(3, 10) : Random.RandRange(10, 30);
+							PlaySlimeSound(Size <= 1 ? FName("entity.slime.jump_small") : FName("entity.slime.jump"));
+							const FVector Heading = Toward.GetSafeNormal();
+							Body.Velocity.X = Heading.X * 0.2;
+							Body.Velocity.Z = Heading.Z * 0.2;
+							Body.Velocity.Y = 0.42;
+							Body.bOnGround = false;
+						}
+					}
+				}
+				else
+				{
+					Input.Forward = 1.0f;
+					Input.Yaw = Yaw;
+					// Up a ledge: when it's in the way, or the next block of the path is above and close.
+					Input.bJump = Body.bOnGround && (Body.bHorizontalCollision || (Way.Y > Body.Position.Y + 0.5 && Toward.SizeSquared() < 1.3 * 1.3));
+				}
+			}
 		}
+	}
+	else if (Type.bHops && Body.bOnGround && HopDelay > 0)
+	{
+		--HopDelay;
 	}
 	// Wading mobs paddle upwards rather than sink.
 	Input.bJump |= Body.bInWater || Body.bInLava;
 	McPhysics::TickPlayer(World, Body, Input);
+	if (Type.bClimbsWalls && bWalking && Body.bHorizontalCollision)
+	{
+		// Walking into a wall, a spider goes up it.
+		Body.Velocity.Y = FMath::Max(Body.Velocity.Y, 0.2);
+	}
+
+	// A mob that was trying to walk and hasn't moved for a second finds a new path; after four it gives up the goal.
+	if (bWalking && !Type.bHops && FMath::Square(Body.Position.X - LastPosition.X) + FMath::Square(Body.Position.Z - LastPosition.Z) < 0.02 * 0.02)
+	{
+		if (++StuckTicks > 80)
+		{
+			StuckTicks = 0;
+			Goal.Reset();
+			Path.Reset();
+		}
+	}
+	else
+	{
+		StuckTicks = 0;
+	}
+	LastPosition = Body.Position;
 }

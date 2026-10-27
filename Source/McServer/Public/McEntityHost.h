@@ -65,6 +65,8 @@ private:
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.
 	TOptional<int32> FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
 	void DropLoot(FMcMob& Mob);
+	// A slime that died splits into smaller ones.
+	void SplitSlime(FMcMob& Dead);
 	// Puts the herd (if the chunk gets one) on the ground. Done a few chunks a tick, not all inside OnChunkAdded:
 	// each herd searches columns for ground, and a player joining brings hundreds of chunks at once.
 	void SeedChunk(FIntPoint Chunk);

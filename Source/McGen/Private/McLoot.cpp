@@ -1,6 +1,7 @@
 #include "McLoot.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "McBlockRegistry.h"
 #include "McCache.h"
 #include "McGen.h"
 #include "McItemRegistry.h"
@@ -14,6 +15,9 @@ namespace
 
 	FCriticalSection TablesLock;
 	TMap<FString, TSharedPtr<FJsonObject>> Tables;
+
+	// The block being rolled for, if a block's table is (set for the length of RollBlock on its thread).
+	thread_local const McLoot::FBlockContext* GBlock = nullptr;
 
 	TSharedPtr<FJsonObject> FindTable(const FString& Id)
 	{
@@ -112,6 +116,11 @@ namespace
 			}
 			return 1;
 		}
+		if (Condition->Type == EJson::String)
+		{
+			// A named predicate. Breaking a block without a tool fails every one of the tool ones (silk touch, shears).
+			return GBlock && McCache::PathOf(Condition->AsString()).StartsWith(TEXT("tool/")) ? 0 : -1;
+		}
 		if (Condition->Type != EJson::Object)
 		{
 			return -1;
@@ -124,6 +133,70 @@ namespace
 		}
 		if (Type == TEXT("survives_explosion"))
 		{
+			// An item of a block that was blown up survives with a chance of 1 over the blast's power.
+			return GBlock && GBlock->ExplosionRadius > 0.0f && Random.NextFloat() > 1.0f / GBlock->ExplosionRadius ? 0 : 1;
+		}
+		if (GBlock && Type == TEXT("match_tool"))
+		{
+			return 0;
+		}
+		if (GBlock && Type == TEXT("table_bonus"))
+		{
+			// Fortune at level 0: the first chance.
+			const TArray<TSharedPtr<FJsonValue>>* Chances;
+			return Object->TryGetArrayField(TEXT("chances"), Chances) && Chances->Num() > 0 && Random.NextDouble() < (*Chances)[0]->AsNumber() ? 1 : 0;
+		}
+		if (GBlock && Type == TEXT("match_block"))
+		{
+			const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+			if (!Registry.IsValidState(GBlock->State))
+			{
+				return -1;
+			}
+			// One block, or a list of them (a "#tag" is not understood).
+			TArray<FString> Names;
+			FString Single;
+			const TArray<TSharedPtr<FJsonValue>>* List;
+			if (Object->TryGetStringField(TEXT("blocks"), Single))
+			{
+				Names.Add(Single);
+			}
+			else if (Object->TryGetArrayField(TEXT("blocks"), List))
+			{
+				for (const TSharedPtr<FJsonValue>& Each : *List)
+				{
+					Names.Add(Each->AsString());
+				}
+			}
+			if (!Names.IsEmpty())
+			{
+				bool bAnyTag = false;
+				bool bFound = false;
+				for (const FString& Name : Names)
+				{
+					bAnyTag |= Name.StartsWith(TEXT("#"));
+					bFound |= FName(*McCache::Namespaced(Name)) == Registry.GetBlockOf(GBlock->State).Name;
+				}
+				if (!bFound)
+				{
+					return bAnyTag ? -1 : 0;
+				}
+			}
+			const TSharedPtr<FJsonObject>* Properties;
+			if (Object->TryGetObjectField(TEXT("state"), Properties))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Properties)->Values)
+				{
+					if (Entry.Value->Type == EJson::Object)
+					{
+						return -1;
+					}
+					if (Registry.GetPropertyValue(GBlock->State, FName(*Entry.Key)) != FName(*Entry.Value->AsString()))
+					{
+						return 0;
+					}
+				}
+			}
 			return 1;
 		}
 		if (Type == TEXT("inverted"))
@@ -422,6 +495,31 @@ namespace
 			bool bAdd = false;
 			Object->TryGetBoolField(TEXT("add"), bAdd);
 			Stack.Count = bAdd ? Stack.Count + Amount : Amount;
+		}
+		else if (Type == TEXT("explosion_decay") && GBlock && GBlock->ExplosionRadius > 0.0f)
+		{
+			// Each item of the stack survives a blast with a chance of 1 over its power.
+			int32 Kept = 0;
+			for (int32 Item = 0; Item < Stack.Count; ++Item)
+			{
+				Kept += Random.NextFloat() <= 1.0f / GBlock->ExplosionRadius ? 1 : 0;
+			}
+			Stack.Count = Kept;
+		}
+		else if (Type == TEXT("apply_bonus") && GBlock)
+		{
+			// Fortune at level 0: ore drops and uniform bonuses add nothing; a binomial one still has its extra rounds.
+			const FString Formula = McCache::PathOf(Object->GetStringField(TEXT("formula")));
+			const TSharedPtr<FJsonObject>* Parameters;
+			if (Formula == TEXT("binomial_with_bonus_count") && Object->TryGetObjectField(TEXT("parameters"), Parameters))
+			{
+				const int32 Extra = static_cast<int32>((*Parameters)->GetNumberField(TEXT("extra")));
+				const double Probability = (*Parameters)->GetNumberField(TEXT("probability"));
+				for (int32 Trial = 0; Trial < Extra; ++Trial)
+				{
+					Stack.Count += Random.NextFloat() < Probability ? 1 : 0;
+				}
+			}
 		}
 		else if (Type == TEXT("limit_count"))
 		{
@@ -739,6 +837,26 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 		}
 	}
 	return true;
+}
+
+bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!Registry.IsValidState(Context.State))
+	{
+		return false;
+	}
+	const FString Table = TEXT("blocks/") + McCache::PathOf(Registry.GetBlockOf(Context.State).Name.ToString());
+	if (!IFileManager::Get().FileExists(*McCache::Data(TEXT("loot_table/") + Table + TEXT(".json"))))
+	{
+		// Air, bedrock and the like drop nothing; no warning for that.
+		return false;
+	}
+	const FBlockContext* const Previous = GBlock;
+	GBlock = &Context;
+	const bool bRolled = Roll(Table, Random, Out);
+	GBlock = Previous;
+	return bRolled;
 }
 
 bool McLoot::Fill(const FString& Table, uint64 Seed, FMcBlockEntity& Container)

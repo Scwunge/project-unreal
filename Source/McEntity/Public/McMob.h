@@ -1,6 +1,7 @@
 // Mobs: living entities that wander, flee, chase and bite (minecraft.wiki, the page of each mob). The numbers per
 // kind are in a table; the behaviour is a handful of goals shared between kinds, run in priority order each tick
 // the way the game's goal selector does: the first goal that wants to run and doesn't clash with a running one.
+// Walking goes along a path found by A* over the blocks (McPathfinding), not in a straight line.
 
 #pragma once
 
@@ -24,6 +25,24 @@ struct MCENTITY_API FMcMobType
 	// Burns in daylight.
 	bool bBurnsInSun = false;
 
+	// Creepers walk up to a player, swell for 1.5 seconds and explode.
+	bool bSwells = false;
+	// Spiders climb whatever wall they walk into.
+	bool bClimbsWalls = false;
+	// Only fights after being hurt (endermen; the game's other trigger, a player's look, isn't there yet).
+	bool bNeutral = false;
+	// Spiders: only fights after being hurt unless the light around it is 11 or less.
+	bool bNeutralInLight = false;
+	// Skeletons shoot arrows from up to 15 blocks and don't come closer than 10.
+	bool bShoots = false;
+	// Endermen teleport away when hurt.
+	bool bTeleports = false;
+	// Slimes get about by hopping, come in sizes 1, 2 and 4, and split into smaller ones when they die.
+	bool bHops = false;
+
+	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
+	bool IsHostile() const { return AttackDamage > 0.0f || bSwells; }
+
 	static const FMcMobType* Find(FName Name);
 	static const TArray<FMcMobType>& GetAll();
 };
@@ -40,8 +59,14 @@ public:
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
 
+	// Slimes only: 1, 2 or 4. Sets the size of the body and (with bHeal) the health, size squared.
+	void SetSize(int32 InSize, bool bHeal = true);
+	// What a bite does: the type's, except for slimes, where the smallest does none and the others their size.
+	float GetAttackDamage() const;
+
 	const FMcMobType& Type;
 	float Health;
+	int32 Size = 1;
 	// Ticks left of the red flash and of the invulnerability after a hit (10 each, for the damage that gets through).
 	int32 HurtTime = 0;
 	// Counts up with every hit that gets through, so a watcher can tell a new hit from the last without having to
@@ -49,6 +74,36 @@ public:
 	int32 HurtEvents = 0;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
+	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
+	int32 AngerTicks = 0;
+
+	// Creepers: ticks the fuse has burned (it explodes at FuseTicks), and whether it is burning now.
+	int32 SwellTicks = 0;
+	bool bSwelling = false;
+	// Skeletons: ticks to the next shot.
+	int32 ShootCooldown = 0;
+	// Slimes: ticks on the ground to the next hop.
+	int32 HopDelay = 0;
+
+	// Walking speed in blocks per second per point of the speed attribute: the wiki gives a zombie (0.23) about 2.3
+	// and a wandering pig (0.25) about 2.4, where the player's physics turn the player's 0.1 into 4.3. The mob's
+	// movement input is scaled down to match; the physics are the player's.
+	static constexpr double BlocksPerSecondPerSpeed = 10.0;
+	static constexpr double PlayerBlocksPerSecondPerSpeed = 43.17;
+	static double GetInputSpeed(const FMcMobType& InType)
+	{
+		return InType.Speed * BlocksPerSecondPerSpeed / PlayerBlocksPerSecondPerSpeed;
+	}
+
+	static constexpr int32 FuseTicks = 30;
+	static constexpr float ExplosionPower = 3.0f;
+	static constexpr double ShootRange = 15.0;
+	// A skeleton stops coming closer inside this.
+	static constexpr double ShootStopRange = 10.0;
+	static constexpr int32 ShootIntervalTicks = 60;
+	static constexpr double ArrowSpeed = 1.6;
+	// The error of a Normal difficulty skeleton's aim.
+	static constexpr double ArrowInaccuracy = 6.0;
 
 	// Where the mob is walking, if anywhere.
 	TOptional<FVector> Goal;
@@ -57,6 +112,37 @@ public:
 	// Called when the mob dies, to drop its loot.
 	TFunction<void(FMcMob&)> OnDeath;
 
+	// The path being followed (the blocks to walk through, from the next one on) and where it was found to lead.
+	const TArray<FIntVector>& GetPath() const { return Path; }
+	int32 GetPathIndex() const { return PathIndex; }
+
 private:
+	// The point to head for on the way to Dest: the next block of the path, found afresh when there is none, the goal
+	// has moved or the mob is stuck; Dest itself when it is near or there is no path.
+	FVector NextWaypoint(FMcEntityManager& Manager, const FVector& Dest);
+	void Shoot(FMcEntityManager& Manager, const FVector& TargetFeet);
+	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
+	void PlayVoice(McSound::EMobSound Kind);
+	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.
+	void PlaySlimeSound(FName Event);
+	// A step every 1.67 blocks walked on the ground.
+	void UpdateSteps(FMcEntityManager& Manager);
+	// Moves to a random spot with ground up to 32 blocks away, if one turns up in 16 tries.
+	bool TryTeleport(FMcEntityManager& Manager);
+
 	FRandomStream Random;
+	// Pitch and timing of the sounds, apart from the stream that drives the mob so sounds don't change where it goes.
+	FRandomStream VoiceRandom;
+	int32 AmbientTime = 0;
+	FVector StepLast = FVector::ZeroVector;
+	double StepDistance = 0.0;
+	double NextStep = 1.0;
+	TArray<FIntVector> Path;
+	int32 PathIndex = 0;
+	FIntVector PathGoal = FIntVector::ZeroValue;
+	int32 RepathCooldown = 0;
+	int32 StuckTicks = 0;
+	FVector LastPosition = FVector::ZeroVector;
+	bool bBrightHere = false;
+	bool bTeleportPending = false;
 };

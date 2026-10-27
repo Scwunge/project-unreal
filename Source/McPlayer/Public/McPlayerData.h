@@ -1,7 +1,12 @@
-// What the HUD and the inventory screens read about a player: the numbers on the bars and the item containers
-// (minecraft.wiki, "Health", "Hunger", "Experience", "Armor", "Inventory"). Nothing here enforces the rules yet:
-// damage, starvation, drowning and experience are the server's job later, and this is the shape it will fill in.
+// What a player is: the numbers on the bars and the item containers (minecraft.wiki, "Health", "Hunger",
+// "Experience", "Armor", "Inventory"), and the window (inventory, crafting table, chest, furnace) they have open.
 // A component on the player's pawn holds it, so the HUD finds it with FindComponentByClass.
+//
+// The server is the authority. It runs the survival rules (see McSurvival.h) on its copy and sends the owning
+// client the stats and the containers when they change; the client's copy is for drawing. Windows work the same
+// way: the client applies its clicks to its own menu at once (so the screen feels immediate) and sends them to
+// the server, which checks and applies them to its menu and sends back what the window holds, correcting any
+// guess that was wrong. On a machine that is both (the host), there is one copy, and clicks need no sending.
 
 #pragma once
 
@@ -9,6 +14,10 @@
 #include "Components/ActorComponent.h"
 #include "McContainer.h"
 #include "McPlayerData.generated.h"
+
+class FArchive;
+class FMcCraftingMenu;
+class FMcFurnace;
 
 struct MCPLAYER_API FMcPlayerStats
 {
@@ -19,7 +28,7 @@ struct MCPLAYER_API FMcPlayerStats
 	// Food in half drumsticks, 0 to 20. Saturation is hidden; it is spent before food is.
 	int32 Food = 20;
 	float Saturation = 5.0f;
-	// Breath in ticks: 300 is full, 0 drowns.
+	// Breath in ticks: 300 is full; it goes on down to -20 under water, and each time it gets there the player is hurt.
 	int32 Air = 300;
 	int32 MaxAir = 300;
 	// Level, and how far to the next as a fraction.
@@ -27,9 +36,54 @@ struct MCPLAYER_API FMcPlayerStats
 	float XpProgress = 0.0f;
 	// Armour points, 0 to 20 (a bar of ten icons, two points each).
 	int32 Armor = 0;
-	// Ticks left of the hurt flash on the hearts; the server sets 10 when damage lands.
+	// Ticks left of the hurt flash on the hearts; set to 10 when damage lands.
 	int32 HurtTime = 0;
 	bool bHardcore = false;
+
+	// ---- What the rules keep between ticks ----
+	// Ticks of immunity left after a hit (20 at the hit; within the first 10 only a bigger hit gets through, by the
+	// difference), and the damage of the hit that started it.
+	int32 InvulnTicks = 0;
+	float LastDamage = 0.0f;
+	// Ticks left burning.
+	int32 OnFireTicks = 0;
+	// Hunger's hidden bar: it fills as the player works, and a full 4 costs saturation, then food.
+	float Exhaustion = 0.0f;
+	// Ticks since food last healed or starved the player.
+	int32 FoodTimer = 0;
+
+	// Reads or writes, by whether the archive is loading. False if a loading archive is malformed.
+	bool Serialize(FArchive& Ar);
+};
+
+enum class EMcWindowKind : uint8
+{
+	None,
+	// The player's own: 2 x 2 crafting, armour, offhand.
+	Inventory,
+	CraftingTable,
+	Chest,
+	Furnace,
+};
+
+// A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
+struct MCPLAYER_API FMcWindow
+{
+	EMcWindowKind Kind = EMcWindowKind::None;
+	// Counts up for each window opened, so a click meant for a window that has gone is told from one for the current.
+	int32 Id = -1;
+	FString Title;
+	TSharedPtr<FMcMenu> Menu;
+	TSharedPtr<FMcContainer> Container;
+	TSharedPtr<FMcFurnace> Furnace;
+	// The crafting menus' extra, to look at the grid again after the slots were set from outside.
+	FMcCraftingMenu* Crafting = nullptr;
+	// Where the block is, for a window on one.
+	FIntVector Pos = FIntVector::ZeroValue;
+	// Server: told after clicks, to write a chest's items back to the world.
+	TFunction<void()> OnChanged;
+
+	bool IsOpen() const { return Menu.IsValid(); }
 };
 
 UCLASS(ClassGroup = (Mc))
@@ -50,8 +104,103 @@ public:
 	TSharedPtr<FMcContainer> Armor;
 	TSharedPtr<FMcContainer> Offhand;
 	int32 SelectedSlot = 0;
+	// Creative: unlimited blocks, instant breaking, flying, no damage. The server decides; the client is told.
+	bool bCreative = false;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
 	static int32 Scroll(int32 Selected, int32 Steps);
+
+	// The player's own start: nothing in the containers and full bars. In creative, the usual blocks in the hotbar.
+	void Reset();
+	void FillCreativeHotbar();
+	// Armour points and toughness of what is worn, put in Stats.Armor.
+	void UpdateArmor();
+
+	// ---- Windows ----
+	const FMcWindow& GetWindow() const { return Window; }
+	bool HasWindow() const { return Window.IsOpen(); }
+	// Opens the player's own window (the E key). A client asks the server to as well.
+	void OpenInventoryWindow();
+	// Server: opens a window on a block for this player. Chest takes the block's container (its items are what the
+	// player moves; OnChanged writes them back), Furnace the furnace.
+	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcFurnace>& Furnace, TFunction<void()> OnChanged = nullptr);
+	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
+	void CloseWindow();
+	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where
+	// this is the server).
+	void NotifyClick(int32 Slot, int32 Button, EMcClickType Type);
+	void NotifyDrag(int32 Button, const TArray<int32>& Slots);
+	// Stacks that a click or the closing of a window threw out, made into items on the ground; only the server does.
+	void DropFromWindow(const FMcItemStack& Stack);
+
+	// ---- Server side ----
+	// Makes a stack into an item entity at the player.
+	TFunction<void(const FMcItemStack&)> ServerDrop;
+	// Whether the player may still have the window open (the block is still there, they are close); asked each tick.
+	TFunction<bool(const FMcWindow&)> ServerWindowValid;
+	// Sends the owner what changed. Called each game tick by the pawn.
+	void ServerTick();
+	// The stats and containers as bytes, for the owner and for the save.
+	TArray<uint8> WriteState() const;
+	bool ReadState(TConstArrayView<uint8> Bytes);
+	TArray<uint8> WriteInventory() const;
+	bool ReadInventory(TConstArrayView<uint8> Bytes);
+	bool IsServer() const;
+
+	// Tells the server the owner chose a hotbar slot.
+	void SelectSlot(int32 Slot);
+
+	// Times the server refused a click or a drag, for logging and tests.
+	int32 NumRefused = 0;
+
+protected:
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(Client, Reliable)
+	void ClientSetStats(const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Reliable)
+	void ClientSetInventory(const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Reliable)
+	void ClientOpenWindow(int32 Id, uint8 Kind, const FString& Title, const FIntVector& Pos, int32 Aux, const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Reliable)
+	void ClientSyncWindow(int32 Id, int32 Sequence, const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Reliable)
+	void ClientCloseWindow(int32 Id);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSelectSlot(int32 Slot);
+	UFUNCTION(Server, Reliable)
+	void ServerOpenInventory();
+	UFUNCTION(Server, Reliable)
+	void ServerClick(int32 WindowId, int32 Sequence, int32 Slot, int32 Button, int32 Type);
+	UFUNCTION(Server, Reliable)
+	void ServerDrag(int32 WindowId, int32 Sequence, int32 Button, const TArray<int32>& Slots);
+	UFUNCTION(Server, Reliable)
+	void ServerCloseWindow(int32 WindowId);
+
+private:
+	// Builds the menu for a kind of window over this player's containers.
+	FMcWindow MakeWindow(EMcWindowKind Kind, int32 Id, int32 Aux) const;
+	// What the window holds, as bytes (the furnace's state, then every slot and the cursor stack), and back.
+	TArray<uint8> WriteWindow() const;
+	bool ReadWindow(TConstArrayView<uint8> Bytes);
+	void OpenServerWindow(FMcWindow NewWindow, int32 Aux);
+	void CloseServerWindow(bool bTellOwner);
+	void SendWindowTo(int32 Sequence);
+	void FlushDropped();
+	bool IsOwnerRemote() const;
+
+	FMcWindow Window;
+	int32 NextWindowId = 0;
+	// Client: clicks sent so far; a correction only counts once it answers the latest.
+	int32 ClickSequence = 0;
+	// Server: the latest click's sequence, echoed in corrections.
+	int32 LastSequence = 0;
+	TArray<FMcItemStack> Thrown;
+	// Server: what the owner was last sent.
+	TArray<uint8> SentStats;
+	TArray<uint8> SentInventory;
+	TArray<uint8> SentWindow;
+	int32 TicksSinceWindowSync = 0;
 };

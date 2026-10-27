@@ -38,6 +38,31 @@ void UMcChunkStreamComponent::SetBlockWorld(FMcBlockWorld* InWorld)
 	}
 }
 
+void UMcChunkStreamComponent::SwitchWorld(FMcBlockWorld* NewWorld, const FString& DimensionId)
+{
+	SetBlockWorld(NewWorld);
+	Sent.Reset();
+	PendingChanges.Reset();
+	PiecesInFlight = 0;
+	if (IsServerForRemotePlayer())
+	{
+		// Nothing goes out until the client has a world for it.
+		bClientReady = false;
+		ClientSwitchWorld(DimensionId);
+	}
+}
+
+void UMcChunkStreamComponent::ClientSwitchWorld_Implementation(const FString& DimensionId)
+{
+	Arriving.Reset();
+	Unbind();
+	BlockWorld = nullptr;
+	if (OnWorldSwitched)
+	{
+		OnWorldSwitched(DimensionId);
+	}
+}
+
 void UMcChunkStreamComponent::ServerReady_Implementation()
 {
 	bClientReady = true;

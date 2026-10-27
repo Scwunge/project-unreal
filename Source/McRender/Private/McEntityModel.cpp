@@ -144,8 +144,11 @@ namespace McEntityModel
 			{
 				FModel Spider;
 				Spider.Kind = TEXT("minecraft:spider");
-				Spider.Textures = { TEXT("spider/spider.png") };
+				// The second picture is the eyes, which glow in the dark.
+				Spider.Textures = { TEXT("spider/spider.png"), TEXT("spider/spider_eyes.png") };
+				Spider.GlowLayers = 2;
 				Spider.Parts.Add(Part(ERole::Head, FVector(0, 9, 7), { Box(32, 4, -4, -4, -4, 8, 8, 8) }));
+				Spider.Parts.Add(Part(ERole::Head, FVector(0, 9, 7), { Box(32, 4, -4, -4, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, 0), { Box(0, 0, -3, -3, -3, 6, 6, 6) }));
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, -9), { Box(0, 12, -5, -4, -6, 10, 8, 12) }));
 				// Four legs a side, fanned out and sloping down.
@@ -157,6 +160,49 @@ namespace McEntityModel
 					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(4, 9, Spread[Row]), { Box(18, 0, 0, -1, -1, 16, 2, 2, 0.0f, true) }, 0, -Fan[Row], -0.58f, Row * 2 + 1));
 				}
 				Models.Add(Spider.Kind, Spider);
+			}
+			{
+				// A creeper: a head, a body and four stubs of legs (minecraft.wiki, "Creeper": 0.6 by 1.7).
+				FModel Creeper;
+				Creeper.Kind = TEXT("minecraft:creeper");
+				Creeper.Textures = { TEXT("creeper/creeper.png") };
+				Creeper.Parts.Add(Part(ERole::Head, FVector(0, 18, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
+				Creeper.Parts.Add(Part(ERole::Static, FVector(0, 18, 0), { Box(16, 16, -4, -12, -2, 8, 12, 4) }));
+				const FBox Leg = Box(0, 16, -2, -6, -2, 4, 6, 4);
+				Creeper.Parts.Add(Part(ERole::LegBackRight, FVector(-2, 6, -4), { Leg }));
+				Creeper.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 6, -4), { Leg }));
+				Creeper.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 6, 4), { Leg }));
+				Creeper.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 6, 4), { Leg }));
+				Models.Add(Creeper.Kind, Creeper);
+			}
+			{
+				// An enderman: a person with a thin body and arms and legs 30 pixels long (0.6 by 2.9). The second picture
+				// is the eyes.
+				FModel Enderman;
+				Enderman.Kind = TEXT("minecraft:enderman");
+				Enderman.Textures = { TEXT("enderman/enderman.png"), TEXT("enderman/enderman_eyes.png") };
+				Enderman.GlowLayers = 2;
+				Enderman.MaxLimbSwing = 0.4f;
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
+				Enderman.Parts.Add(Part(ERole::Static, FVector(0, 38, 0), { Box(32, 16, -4, -12, -2, 8, 12, 4) }));
+				Enderman.Parts.Add(Part(ERole::ArmRight, FVector(-5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2) }));
+				Enderman.Parts.Add(Part(ERole::ArmLeft, FVector(5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2, 0.0f, true) }));
+				Enderman.Parts.Add(Part(ERole::LegRight, FVector(-2, 29, 0), { Box(56, 0, -1, -30, -1, 2, 30, 2) }));
+				Enderman.Parts.Add(Part(ERole::LegLeft, FVector(2, 29, 0), { Box(56, 0, -1, -30, -1, 2, 30, 2, 0.0f, true) }));
+				Models.Add(Enderman.Kind, Enderman);
+			}
+			{
+				// A slime of size 1 (0.52 across): a solid core with eyes and a mouth, in a see-through shell. Bigger sizes
+				// are the same model grown with the hitbox.
+				FModel Slime;
+				Slime.Kind = TEXT("minecraft:slime");
+				Slime.Textures = { TEXT("slime/slime.png"), TEXT("slime/slime.png") };
+				Slime.TranslucentLayers = 2;
+				Slime.BaseWidth = 0.52f;
+				Slime.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 16, -3, 1, -3, 6, 6, 6), Box(32, 0, -3.25f, 4, 1.5f, 2, 2, 2), Box(32, 4, 1.25f, 4, 1.5f, 2, 2, 2), Box(32, 8, 0, 2, 2.5f, 1, 1, 1) }));
+				Slime.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -4, 0, -4, 8, 8, 8) }, 0, 0, 0, 0, 1));
+				Models.Add(Slime.Kind, Slime);
 			}
 			return Models;
 		}
@@ -172,7 +218,7 @@ namespace McEntityModel
 			return FColor(Byte(Value), Byte(Value * Rest), Byte(Value * Rest), 255);
 		}
 
-		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, McPlayerModel::FMeshData& Out)
+		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, McPlayerModel::FMeshData& Out)
 		{
 			const FVector Min = Box.Min - FVector(Box.Inflate);
 			const FVector Max = Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate);
@@ -208,7 +254,7 @@ namespace McEntityModel
 				};
 				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Face.Normal));
 				const FVector UnrealNormal(Normal.X, Normal.Z, Normal.Y);
-				const FColor Color = Shade(Normal, Hurt);
+				const FColor Color = bGlow ? FColor::White : Shade(Normal, Hurt);
 				const int32 First = Out.Positions.Num();
 				for (int32 Corner = 0; Corner < 4; ++Corner)
 				{
@@ -250,6 +296,8 @@ namespace McEntityModel
 			float Pitch = Part.RestPitch;
 			float Yaw = Part.RestYaw;
 			float Roll = Part.RestRoll;
+			const float RestPitch = Pitch;
+			const bool bGlow = Part.bGlow || ((Model.GlowLayers >> Layer) & 1u) != 0 || Anim.bFlash;
 			const float Pos = Anim.WalkPos;
 			const float Amount = Anim.WalkAmount;
 			switch (Part.Role)
@@ -304,11 +352,15 @@ namespace McEntityModel
 			default:
 				break;
 			}
+			if (Model.MaxLimbSwing > 0.0f && (Part.Role == ERole::LegRight || Part.Role == ERole::LegLeft || Part.Role == ERole::ArmRight || Part.Role == ERole::ArmLeft))
+			{
+				Pitch = RestPitch + FMath::Clamp(Pitch - RestPitch, -Model.MaxLimbSwing, Model.MaxLimbSwing);
+			}
 			// Turn, tip and lean, in the order the player's parts are turned.
 			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
 			for (const FBox& Box : Part.Boxes)
 			{
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, Out);
+				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, Out);
 			}
 		}
 	}
@@ -316,6 +368,74 @@ namespace McEntityModel
 	int32 GetItemCopies(int32 Count)
 	{
 		return Count > 48 ? 5 : Count > 32 ? 4 : Count > 16 ? 3 : Count > 1 ? 2 : 1;
+	}
+
+	FVector2D GetSwellScale(float Swelling)
+	{
+		const float S = FMath::Clamp(Swelling, 0.0f, 1.0f);
+		// A little shake that grows with the fuse, and the swelling itself, slow at first and quick at the end.
+		const float Shake = 1.0f + FMath::Sin(S * 100.0f) * S * 0.01f;
+		const float Grow = S * S * S * S;
+		return FVector2D((1.0f + Grow * 0.4f) * Shake, (1.0f + Grow * 0.1f) / Shake);
+	}
+
+	bool IsSwellFlash(float Swelling)
+	{
+		return FMath::FloorToInt32(FMath::Clamp(Swelling, 0.0f, 1.0f) * 10.0f) % 2 == 1;
+	}
+
+	void BuildArrowMesh(float BodyYaw, float Pitch, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		// The arrow lies along z (its tip at +z), turned an eighth so the two shafts make an X from the front. Pixels: the
+		// game draws it 16 units long at 0.05625 of a block a unit, 0.9 of a pixel. The picture is 32 square: the
+		// fletching at the top left (5 square) and the shaft below it (16 by 5).
+		constexpr float Unit = 0.9f;
+		constexpr float Length = 8.0f * Unit;
+		constexpr float Half = 2.0f * Unit;
+		const FQuat Pose = FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw)) * FQuat(FVector::XAxisVector, FMath::DegreesToRadians(Pitch))
+			* FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(45.0f));
+		// Half a hitbox up from the feet.
+		const FVector Centre(0.0, 4.0, 0.0);
+		const auto AddQuad = [&](const FVector (&Corners)[4], const FVector2D (&Pixels)[4], const FVector& Normal)
+		{
+			for (const bool bBack : { false, true })
+			{
+				const FVector FaceNormal = Pose.RotateVector(bBack ? -Normal : Normal);
+				const int32 First = Out.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Model = Centre + Pose.RotateVector(Corners[Corner]);
+					Out.Positions.Add(FVector(Model.X, Model.Z, Model.Y) * (McCoords::UnitsPerBlock / 16.0));
+					Out.Normals.Add(FVector(FaceNormal.X, FaceNormal.Z, FaceNormal.Y));
+					Out.UV0.Add(Pixels[Corner] / 32.0);
+					Out.Colors.Add(FColor::White);
+				}
+				if (bBack)
+				{
+					Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+				}
+				else
+				{
+					Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+				}
+			}
+		};
+		// The shaft: one plane up and down, one across.
+		const FVector2D ShaftPixels[4] = { FVector2D(0, 10), FVector2D(16, 10), FVector2D(16, 5), FVector2D(0, 5) };
+		const FVector Up[4] = { FVector(0, -Half, -Length), FVector(0, -Half, Length), FVector(0, Half, Length), FVector(0, Half, -Length) };
+		AddQuad(Up, ShaftPixels, FVector(1, 0, 0));
+		const FVector Across[4] = { FVector(-Half, 0, -Length), FVector(-Half, 0, Length), FVector(Half, 0, Length), FVector(Half, 0, -Length) };
+		AddQuad(Across, ShaftPixels, FVector(0, 1, 0));
+		// The fletching at the tail.
+		const FVector2D FletchPixels[4] = { FVector2D(0, 5), FVector2D(5, 5), FVector2D(5, 0), FVector2D(0, 0) };
+		const float Tail = -7.0f * Unit;
+		const FVector Fletch[4] = { FVector(-Half, -Half, Tail), FVector(Half, -Half, Tail), FVector(Half, Half, Tail), FVector(-Half, Half, Tail) };
+		AddQuad(Fletch, FletchPixels, FVector(0, 0, -1));
 	}
 
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
@@ -391,17 +511,18 @@ namespace
 	}
 
 	// Loads (once) the picture at Path; null if it isn't there.
-	UTexture2DArray* LoadCached(UObject* Outer, const FString& Path, FIntPoint& OutSize)
+	UTexture2DArray* LoadCached(UObject* Outer, const FString& Path, FIntPoint& OutSize, bool bWhite = false)
 	{
-		if (const TStrongObjectPtr<UTexture2DArray>* Found = TextureCache().Find(Path))
+		const FString Key = bWhite ? Path + TEXT("#white") : Path;
+		if (const TStrongObjectPtr<UTexture2DArray>* Found = TextureCache().Find(Key))
 		{
-			OutSize = SizeCache().FindRef(Path);
+			OutSize = SizeCache().FindRef(Key);
 			return Found->Get();
 		}
 		int32 Width = 0, Height = 0;
-		UTexture2DArray* Texture = McRenderTextures::LoadPngAsArray(Outer, Path, Width, Height);
-		TextureCache().Add(Path, TStrongObjectPtr<UTexture2DArray>(Texture));
-		SizeCache().Add(Path, FIntPoint(Width, Height));
+		UTexture2DArray* Texture = McRenderTextures::LoadPngAsArray(Outer, Path, Width, Height, bWhite);
+		TextureCache().Add(Key, TStrongObjectPtr<UTexture2DArray>(Texture));
+		SizeCache().Add(Key, FIntPoint(Width, Height));
 		OutSize = FIntPoint(Width, Height);
 		return Texture;
 	}
@@ -431,6 +552,8 @@ UMcEntityModelComponent::UMcEntityModelComponent(const FObjectInitializer& Objec
 	bUseAsyncCooking = false;
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Cutout(TEXT("/Game/Mc/Materials/M_McBlockCutout.M_McBlockCutout"));
 	BaseMaterial = Cutout.Object;
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Translucent(TEXT("/Game/Mc/Materials/M_McBlockTranslucent.M_McBlockTranslucent"));
+	TranslucentMaterial = Translucent.Object;
 }
 
 void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
@@ -444,17 +567,29 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Item = InItem;
 	Count = InCount;
 	bIsItem = Kind == TEXT("minecraft:item");
-	Model = bIsItem ? nullptr : McEntityModel::Find(Kind);
+	bIsArrow = Kind == TEXT("minecraft:arrow");
+	Model = bIsItem || bIsArrow ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
 	bItemFailed = false;
+	bFlashing = false;
 	bDirty = true;
 }
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || Model != nullptr;
+	return bIsItem || bIsArrow || Model != nullptr;
+}
+
+void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
+{
+	HitboxWidth = InWidth;
+}
+
+void UMcEntityModelComponent::SetSwelling(float InSwelling)
+{
+	TargetSwelling = FMath::Clamp(InSwelling, 0.0f, 1.0f);
 }
 
 void UMcEntityModelComponent::SetLook(float InBodyYaw, float InHeadYaw, float InHeadPitch)
@@ -481,25 +616,36 @@ void UMcEntityModelComponent::SetHurtCount(int32 InHurtCount)
 	HurtCount = InHurtCount;
 }
 
+FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
+{
+	if (bIsItem)
+	{
+		return FindItemTexture(Item);
+	}
+	if (bIsArrow)
+	{
+		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (Model && Model->Textures.IsValidIndex(Layer))
+	{
+		return McCache::Asset(TEXT("textures/entity/") + Model->Textures[Layer]);
+	}
+	return FString();
+}
+
 UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 {
 	if (Materials.IsValidIndex(Layer) && Materials[Layer])
 	{
 		return Materials[Layer];
 	}
-	if (!BaseMaterial)
+	const bool bTranslucent = Model && ((Model->TranslucentLayers >> Layer) & 1u) != 0;
+	UMaterialInterface* Parent = bTranslucent && TranslucentMaterial ? TranslucentMaterial.Get() : BaseMaterial.Get();
+	if (!Parent)
 	{
 		return nullptr;
 	}
-	FString Path;
-	if (bIsItem)
-	{
-		Path = FindItemTexture(Item);
-	}
-	else if (Model && Model->Textures.IsValidIndex(Layer))
-	{
-		Path = McCache::Asset(TEXT("textures/entity/") + Model->Textures[Layer]);
-	}
+	const FString Path = GetTexturePath(Layer);
 	if (Path.IsEmpty())
 	{
 		return nullptr;
@@ -515,7 +661,7 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		// An animated item is a column of frames; the first one is the square on top.
 		ItemVMax = Size.Y > Size.X && Size.X > 0 ? static_cast<float>(Size.X) / Size.Y : 1.0f;
 	}
-	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Parent, this);
 	Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
 	if (Materials.Num() <= Layer)
 	{
@@ -529,7 +675,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
-	if (!Owner || !HasModel() || (bIsItem && bItemFailed))
+	if (!Owner || !HasModel() || ((bIsItem || bIsArrow) && bItemFailed))
 	{
 		return;
 	}
@@ -571,22 +717,41 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.HeadYaw += FMath::UnwindDegrees(TargetHeadYaw - Anim.HeadYaw) * Turn;
 	Anim.HeadPitch += (TargetHeadPitch - Anim.HeadPitch) * Turn;
 
+	// A creeper's fuse swells it about its feet; a slime grows with its hitbox.
+	Swelling += (TargetSwelling - Swelling) * FMath::Min(1.0f, DeltaTime * 20.0f);
+	if (TargetSwelling == 0.0f && Swelling < 0.01f)
+	{
+		Swelling = 0.0f;
+	}
+	{
+		const FVector2D Swell = McEntityModel::GetSwellScale(Swelling);
+		const float Grow = Model && Model->BaseWidth > 0.0f && HitboxWidth > 0.0f ? HitboxWidth / Model->BaseWidth : 1.0f;
+		SetRelativeScale3D(FVector(Swell.X * Grow, Swell.X * Grow, Swell.Y * Grow));
+	}
+
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 	}
 	else
 	{
-		if (bIsItem)
+		if (bIsItem || bIsArrow)
 		{
 			bItemFailed = true;
 		}
 		return;
 	}
-	if (bIsItem)
+	if (bIsItem || bIsArrow)
 	{
 		McPlayerModel::FMeshData Data;
-		McEntityModel::BuildItemMesh(Anim.Age, Count, 0.45f, ItemVMax, Data);
+		if (bIsArrow)
+		{
+			McEntityModel::BuildArrowMesh(TargetBodyYaw, TargetHeadPitch, Data);
+		}
+		else
+		{
+			McEntityModel::BuildItemMesh(Anim.Age, Count, 0.45f, ItemVMax, Data);
+		}
 		TArray<FVector2D> UV1, UV2;
 		UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
 		UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
@@ -603,6 +768,9 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		return;
 	}
 	const int32 NumLayers = Model->Textures.Num();
+	// Every other tenth of the fuse the creeper goes white.
+	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
+	Anim.bFlash = bFlash;
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);
@@ -610,7 +778,18 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			continue;
 		}
-		Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		const bool bGlow = ((Model->GlowLayers >> Layer) & 1u) != 0;
+		Material->SetScalarParameterValue(TEXT("SkyFactor"), bGlow ? 1.0f : McSky::GetSkyLightFactor());
+		if (Layer == 0 && bFlash != bFlashing)
+		{
+			// The picture swapped for its white silhouette, and back.
+			FIntPoint Size;
+			if (UTexture2DArray* Texture = LoadCached(this, GetTexturePath(0), Size, bFlash))
+			{
+				Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
+				bFlashing = bFlash;
+			}
+		}
 		McPlayerModel::FMeshData Data;
 		McEntityModel::BuildMesh(*Model, Anim, Layer, Data);
 		TArray<FVector2D> UV1, UV2;

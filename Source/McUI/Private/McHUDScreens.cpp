@@ -23,6 +23,7 @@
 
 struct AMcHUD::FScreenState
 {
+	int32 WindowId = -1;
 	TSharedPtr<FMcMenuInput> Input;
 	McGui::FScreenLayout Layout;
 	TSharedPtr<FMcFurnace> Furnace;
@@ -244,12 +245,8 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 
 // ---- Screens ----
 
-void AMcHUD::OpenMenu(TSharedRef<FScreenState> State)
+void AMcHUD::ShowScreen(TSharedRef<FScreenState> State)
 {
-	if (Screen.IsValid())
-	{
-		CloseScreen();
-	}
 	Screen = State;
 	if (APlayerController* Player = GetOwningPlayerController())
 	{
@@ -260,64 +257,82 @@ void AMcHUD::OpenMenu(TSharedRef<FScreenState> State)
 	}
 }
 
+void AMcHUD::HideScreen()
+{
+	if (!Screen.IsValid())
+	{
+		return;
+	}
+	Screen.Reset();
+	HoverSlot = INDEX_NONE;
+	if (APlayerController* Player = GetOwningPlayerController())
+	{
+		Player->bShowMouseCursor = false;
+		Player->SetInputMode(FInputModeGameOnly());
+		Player->SetIgnoreLookInput(false);
+		Player->SetIgnoreMoveInput(false);
+	}
+}
+
+void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
+{
+	// The window is the data component's: the player opens their own (E) or the server opens one on a block, and it goes
+	// when either side closes it. The screen is only how it looks and where the mouse goes.
+	const FMcWindow& Window = Data ? Data->GetWindow() : FMcWindow();
+	if (!Window.IsOpen())
+	{
+		HideScreen();
+		return;
+	}
+	if (Screen.IsValid() && Screen->WindowId == Window.Id)
+	{
+		return;
+	}
+	HideScreen();
+	TSharedRef<FScreenState> State = MakeShared<FScreenState>();
+	State->WindowId = Window.Id;
+	State->Input = MakeShared<FMcMenuInput>(Window.Menu, Data->bCreative);
+	State->Input->OnClick = [WeakData = TWeakObjectPtr<UMcPlayerDataComponent>(Data)](int32 Slot, int32 Button, EMcClickType Type)
+	{
+		if (UMcPlayerDataComponent* Owner = WeakData.Get())
+		{
+			Owner->NotifyClick(Slot, Button, Type);
+		}
+	};
+	State->Input->OnDrag = [WeakData = TWeakObjectPtr<UMcPlayerDataComponent>(Data)](int32 Button, const TArray<int32>& Slots)
+	{
+		if (UMcPlayerDataComponent* Owner = WeakData.Get())
+		{
+			Owner->NotifyDrag(Button, Slots);
+		}
+	};
+	State->Title = Window.Title;
+	State->Furnace = Window.Furnace;
+	switch (Window.Kind)
+	{
+	case EMcWindowKind::CraftingTable:
+		State->Layout = McGui::MakeCraftingTableLayout();
+		break;
+	case EMcWindowKind::Chest:
+		State->Layout = McGui::MakeChestLayout(FMath::Clamp(Window.Container.IsValid() ? Window.Container->Num() / 9 : 3, 1, 6));
+		break;
+	case EMcWindowKind::Furnace:
+		State->Layout = McGui::MakeFurnaceLayout();
+		break;
+	default:
+		State->Layout = McGui::MakeInventoryLayout();
+		break;
+	}
+	ShowScreen(State);
+}
+
 void AMcHUD::OpenInventory()
 {
 	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
-	UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
-	if (!Data)
+	if (UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr)
 	{
-		return;
+		Data->OpenInventoryWindow();
 	}
-	TSharedRef<FScreenState> State = MakeShared<FScreenState>();
-	State->Input = MakeShared<FMcMenuInput>(MakeShared<FMcPlayerMenu>(Data->Inventory, Data->Armor, Data->Offhand));
-	State->Layout = McGui::MakeInventoryLayout();
-	OpenMenu(State);
-}
-
-void AMcHUD::OpenCraftingTable()
-{
-	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
-	UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
-	if (!Data)
-	{
-		return;
-	}
-	TSharedRef<FScreenState> State = MakeShared<FScreenState>();
-	State->Input = MakeShared<FMcMenuInput>(MakeShared<FMcCraftingMenu>(3, Data->Inventory));
-	State->Layout = McGui::MakeCraftingTableLayout();
-	State->Title = TEXT("Crafting");
-	OpenMenu(State);
-}
-
-void AMcHUD::OpenChest(const TSharedPtr<FMcContainer>& Container, const FString& Title)
-{
-	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
-	UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
-	if (!Data || !Container.IsValid() || Container->Num() % 9 != 0 || Container->Num() == 0 || Container->Num() > 54)
-	{
-		return;
-	}
-	TSharedRef<FScreenState> State = MakeShared<FScreenState>();
-	State->Input = MakeShared<FMcMenuInput>(MakeShared<FMcContainerMenu>(Container, Data->Inventory));
-	State->Layout = McGui::MakeChestLayout(Container->Num() / 9);
-	State->Title = Title;
-	OpenMenu(State);
-}
-
-void AMcHUD::OpenFurnace(const TSharedPtr<FMcFurnace>& Furnace, const FString& Title)
-{
-	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
-	UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
-	if (!Data || !Furnace.IsValid())
-	{
-		return;
-	}
-	TSharedRef<FScreenState> State = MakeShared<FScreenState>();
-	State->Input = MakeShared<FMcMenuInput>(MakeShared<FMcFurnaceMenu>(Furnace, Data->Inventory));
-	State->Layout = McGui::MakeFurnaceLayout();
-	State->Furnace = Furnace;
-	State->Title = Title;
-	OpenMenu(State);
 }
 
 void AMcHUD::FlushDrops()
@@ -326,11 +341,14 @@ void AMcHUD::FlushDrops()
 	{
 		return;
 	}
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+	UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
 	for (const FMcItemStack& Stack : Screen->Input->TakeDropped())
 	{
-		if (DropHandler && !Stack.IsEmpty())
+		// Only the server makes items; on a client the server's copy of the same click throws the same stack.
+		if (Data && !Stack.IsEmpty())
 		{
-			DropHandler(Stack);
+			Data->DropFromWindow(Stack);
 		}
 	}
 }
@@ -341,17 +359,13 @@ void AMcHUD::CloseScreen()
 	{
 		return;
 	}
-	Screen->Input->Close();
 	FlushDrops();
-	Screen.Reset();
-	HoverSlot = INDEX_NONE;
-	if (APlayerController* Player = GetOwningPlayerController())
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+	if (UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr)
 	{
-		Player->bShowMouseCursor = false;
-		Player->SetInputMode(FInputModeGameOnly());
-		Player->SetIgnoreLookInput(false);
-		Player->SetIgnoreMoveInput(false);
+		Data->CloseWindow();
 	}
+	HideScreen();
 }
 
 void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
@@ -369,7 +383,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		}
 		else
 		{
-			OpenInventory();
+			Data->OpenInventoryWindow();
 		}
 		return;
 	}
@@ -501,6 +515,48 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 }
 
+void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
+{
+	APlayerController* Player = GetOwningPlayerController();
+	if (!bDeathShown)
+	{
+		bDeathShown = true;
+		if (Screen.IsValid())
+		{
+			HideScreen();
+		}
+		if (Player)
+		{
+			Player->bShowMouseCursor = true;
+			Player->SetInputMode(FInputModeGameAndUI().SetHideCursorDuringCapture(false));
+			Player->SetIgnoreLookInput(true);
+			Player->SetIgnoreMoveInput(true);
+		}
+	}
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.5f, 0.0f, 0.0f, 0.5f));
+	const FString Title = TEXT("You died!");
+	DrawGuiText(Title, Width / 2.0f - TextWidth(Title) * 1.5f, Height / 4.0f, 0xFFFFFF, true);
+
+	// A 200 by 20 button under the title.
+	const float ButtonX = Width / 2.0f - 100.0f;
+	const float ButtonY = Height / 4.0f + 72.0f;
+	float MouseX = 0.0f, MouseY = 0.0f;
+	if (Player)
+	{
+		Player->GetMousePosition(MouseX, MouseY);
+	}
+	GuiMouse = FVector2D(MouseX, MouseY) / Scale;
+	const bool bOver = GuiMouse.X >= ButtonX && GuiMouse.X < ButtonX + 200.0f && GuiMouse.Y >= ButtonY && GuiMouse.Y < ButtonY + 20.0f;
+	DrawFill(ButtonX - 1, ButtonY - 1, 202, 22, FLinearColor::Black);
+	DrawFill(ButtonX, ButtonY, 200, 20, bOver ? FLinearColor(0.44f, 0.5f, 0.75f, 1.0f) : FLinearColor(0.44f, 0.44f, 0.44f, 1.0f));
+	const FString Label = TEXT("Respawn");
+	DrawGuiText(Label, ButtonX + 100.0f - TextWidth(Label) / 2.0f, ButtonY + 6.0f, bOver ? 0xFFFFA0 : 0xFFFFFF, true);
+	if (bOver && Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		Dead.RequestRespawn();
+	}
+}
+
 // ---- The HUD ----
 
 void AMcHUD::DrawHUD()
@@ -515,14 +571,28 @@ void AMcHUD::DrawHUD()
 	const int32 Width = Canvas->SizeX / Scale;
 	const int32 Height = Canvas->SizeY / Scale;
 
-	const AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(GetOwningPawn());
+	AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(GetOwningPawn());
 	UMcPlayerDataComponent* Data = Player ? Player->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
-	if (Data && !Screen.IsValid())
+	const bool bDead = Player && Player->IsDead();
+	if (!bDead && bDeathShown)
 	{
-		// The pawn reads the hotbar keys and the wheel itself; the data follows it.
-		Data->SelectedSlot = FMath::Clamp(Player->SelectedSlot, 0, 8);
+		// Back from the dead: give the player the world again.
+		bDeathShown = false;
+		if (APlayerController* Controller = GetOwningPlayerController())
+		{
+			Controller->bShowMouseCursor = false;
+			Controller->SetInputMode(FInputModeGameOnly());
+			Controller->SetIgnoreLookInput(false);
+			Controller->SetIgnoreMoveInput(false);
+		}
 	}
-	PollInput(Width, Height, Data);
+	SyncScreen(Data);
+	if (!bDead)
+	{
+		PollInput(Width, Height, Data);
+	}
+	// A click may have closed the window (or the server did).
+	SyncScreen(Data);
 
 	const McGui::FHudLayout Layout = McGui::ComputeHud(Width, Height, Data ? Data->Stats : FMcPlayerStats());
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
@@ -550,18 +620,12 @@ void AMcHUD::DrawHUD()
 		}
 		DrawBars(Width, Height, Data);
 	}
-	else
-	{
-		for (int32 Slot = 0; Slot < Player->Hotbar.Num(); ++Slot)
-		{
-			if (Player->Hotbar[Slot] != 0)
-			{
-				DrawIcon(GetIcon(Player->Hotbar[Slot]), static_cast<float>(Layout.HotbarSlots[Slot].X), static_cast<float>(Layout.HotbarSlots[Slot].Y));
-			}
-		}
-	}
-	if (Screen.IsValid())
+	if (Screen.IsValid() && !bDead)
 	{
 		DrawScreen(Width, Height);
+	}
+	if (bDead)
+	{
+		ShowDeathScreen(Width, Height, *Player);
 	}
 }

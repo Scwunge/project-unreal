@@ -2,6 +2,10 @@
 // double tap of Space. Movement runs at 20 ticks a second; the camera is drawn between the last two ticks.
 // WASD moves, Space jumps, Shift sneaks, Ctrl sprints. The left button breaks blocks, the right places the
 // hotbar's selected block, the middle picks the targeted block; 1-9 and the wheel choose a hotbar slot.
+//
+// What the player has and how they are (items, health, hunger) is in their UMcPlayerDataComponent. The owning machine
+// moves the player and says what it wants (dig this block, place these, use that one, eat); the server decides, runs the
+// survival rules every game tick (see McSurvival.h) and tells the owner the result.
 
 #pragma once
 
@@ -9,10 +13,14 @@
 #include "GameFramework/Pawn.h"
 #include "McPhysics.h"
 #include "McRaycast.h"
+#include "McChunkStreamComponent.h"
+#include "McSurvival.h"
 #include "McPlayerPawn.generated.h"
 
 class FMcBlockWorld;
+class FMcEntityManager;
 class UCameraComponent;
+class UMcPlayerDataComponent;
 
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
@@ -48,9 +56,49 @@ public:
 	// Swings at a mob in front of the player: the look direction. Set by the controller.
 	TFunction<void(const FVector& Look)> AttackHandler;
 
+	UPROPERTY(VisibleAnywhere, Category = "Mc")
+	TObjectPtr<UMcPlayerDataComponent> Data;
+
+	// ---- The server's hooks into the world, set by the player controller on the server ----
+	// Changes a block (the world actor's SetBlock).
+	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
+	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
+	TFunction<FMcEntityManager*()> GetEntities;
+	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
+	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
+	// The player died and their things are on the ground: put them back at the spawn.
+	TFunction<void(AMcPlayerPawn& Player)> OnDied;
+	// The dead player asked to start again (the death screen's button): the game mode makes a new body.
+	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
+	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
+	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage)> MobAttack;
+	// An item is used on a block (flint and steel makes fire, an eye of ender goes into a frame): Pos is the block clicked, Beside
+	// the empty block next to the face clicked. Returns true if something happened.
+	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos, const FIntVector& Beside)> OnUseItemOn;
+	bool bServerHooked = false;
+
+	// Server: hurts the player (a mob's bite, a blast). Does nothing in creative. Returns the health lost.
+	// From is where the blow came from (for the knockback), if it came from somewhere.
+	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr);
+	// Server: the owner's swing along Look (Minecraft axes): damage by the held item and how charged the attack is.
+	void ServerSwing(const FVector& Look);
+	// Pushes the player: the velocity is added to the body's (blocks a tick).
+	void ApplyKnockback(const FVector& Velocity);
+	// Server: the points of experience as orbs at the player (a death drops them).
+	void ServerDropXp(int32 Points);
+	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
+	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
+	void ServerTeleport(const FVector& Feet, float McYaw);
+	// Server: where the player's feet are, in block coordinates.
+	FVector GetFeetPosition() const { return Body.Position; }
+	bool IsServerDead() const { return bServerDead; }
+	// How far the server lets a player reach for blocks, eyes to the block's middle.
+	static constexpr double ServerReach = 6.5;
+
 	static constexpr int32 HotbarSize = 9;
-	// Block states in the hotbar; 0 (air) is an empty slot. Creative-style until items and inventories (M7).
-	TArray<FMcStateId> Hotbar;
+	// The hotbar slot chosen, as the owner's keys have it (the data component's SelectedSlot follows it).
 	int32 SelectedSlot = 0;
 
 	// The block under the crosshair, as of the last frame.
@@ -72,15 +120,58 @@ protected:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	virtual void BeginPlay() override;
+
 	// Where the owning client's player is now, once a tick, in Minecraft block coordinates (feet), and where they look.
+	// Flags: 1 sneaking, 2 on the ground, 4 sprinting, 8 flying.
 	UFUNCTION(Server, Unreliable)
-	void ServerMove(FVector FeetPos, float NewYaw, float NewPitch, bool bNewSneaking);
+	void ServerMove(FVector FeetPos, float NewYaw, float NewPitch, uint8 Flags);
+
+	// The owner holds the dig button on a block (bStart), or lets go (the position is then ignored).
+	UFUNCTION(Server, Reliable)
+	void ServerDig(FIntVector Pos, bool bStart);
+	// The owner places blocks (a door is two): the server checks them against the selected item and the world.
+	UFUNCTION(Server, Reliable)
+	void ServerPlace(const TArray<FMcNetBlockChange>& Placed);
+	UFUNCTION(Server, Reliable)
+	void ServerUseBlock(FIntVector Pos);
+	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
+	UFUNCTION(Server, Reliable)
+	void ServerUseItemOn(FIntVector Pos, int32 Face);
+	// The server moved the owner: they move too, and say so, since until then the server ignores where they say they are.
+	UFUNCTION(Client, Reliable)
+	void ClientTeleport(FVector Feet, float McYaw);
+	UFUNCTION(Server, Reliable)
+	void ServerTeleported();
+	// The owner holds the use button on a food (eating takes a while).
+	UFUNCTION(Server, Reliable)
+	void ServerSetUsing(bool bUsing);
+	// Creative: choose a block's item for the selected slot.
+	UFUNCTION(Server, Reliable)
+	void ServerPickItem(FName Item);
+	// The dead owner presses Respawn.
+	UFUNCTION(Server, Reliable)
+	void ServerRespawn();
+	// The server hit the owner: a push for their own body, which they simulate.
+	UFUNCTION(Client, Reliable)
+	void ClientKnockback(FVector Velocity);
+
+public:
+	// Asks the server for a new body; the death screen's button.
+	void RequestRespawn() { ServerRespawn(); }
+
+protected:
 
 private:
 	void GameTick(const FMcMoveInput& Input);
 	void UpdateTarget();
 	void UseBlocks(APlayerController& Player);
-	void FillDefaultHotbar();
+	void ServerGameTick();
+	void ApplyTeleport(const FVector& Feet, float McYaw);
+	bool bServerAwaitingTeleport = false;
+	void ServerBreakBlock(const FIntVector& Pos);
+	void ServerDie();
+	void StopDigging();
 	float GetEyeHeight() const;
 	void ShowPosition() const;
 
@@ -117,4 +208,30 @@ private:
 	// Seconds until holding a button breaks or places again.
 	float BreakCooldown = 0.0f;
 	float PlaceCooldown = 0.0f;
+
+	// ---- Owner side ----
+	// The block the dig button is held on, so the server is told when it changes.
+	TOptional<FIntVector> DigSent;
+	bool bUsingSent = false;
+	int32 LastSelectedSent = -1;
+
+	// ---- Server side ----
+	float ServerAccumulator = 0.0f;
+	// Whether a position has come (or the owner has moved themselves) yet; before it Body is at the origin.
+	bool bServerPositionKnown = false;
+	bool bServerInitialised = false;
+	bool bServerDead = false;
+	bool bServerSprint = false;
+	bool bServerFlying = false;
+	bool bServerWasOnGround = true;
+	FVector ServerPreviousPosition = FVector::ZeroVector;
+	McSurvival::FFallTracker ServerFall;
+	McSurvival::EDifficulty Difficulty = McSurvival::EDifficulty::Normal;
+	TOptional<FIntVector> DigPos;
+	float DigProgress = 0.0f;
+	int32 EatTicks = 0;
+	// Ticks since the last swing, for how charged the next is.
+	int32 ServerAttackTicks = 100;
+	bool bServerUsing = false;
+	FRandomStream DropRandom{ 11 };
 };

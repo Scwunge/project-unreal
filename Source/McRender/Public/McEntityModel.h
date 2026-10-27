@@ -55,6 +55,8 @@ namespace McEntityModel
 		int32 Index = 0;
 		// Which texture it is cut from: 0 the mob, 1 its second layer (a sheep's wool).
 		int32 Layer = 0;
+		// Drawn at full brightness whatever the light (a spider's or an enderman's eyes).
+		bool bGlow = false;
 		FVector Pivot = FVector::ZeroVector;
 		// The rest pose, radians: tip forward, turn, lean sideways.
 		float RestPitch = 0.0f;
@@ -72,6 +74,14 @@ namespace McEntityModel
 		TArray<FPart> Parts;
 		// Zombies hold their arms out in front.
 		bool bArmsForward = false;
+		// Layers (bit per layer) drawn see-through, so a slime's outer shell shows what is inside.
+		uint32 TranslucentLayers = 0;
+		// Layers drawn at full brightness (the eyes).
+		uint32 GlowLayers = 0;
+		// Most a leg or arm swings either way, radians; 0 for no limit (an enderman strides stiffly).
+		float MaxLimbSwing = 0.0f;
+		// The hitbox width the model is drawn for, blocks; the model grows with a hitbox that is wider (slimes). 0 for fixed.
+		float BaseWidth = 0.0f;
 	};
 
 	// The model for a registry name like "minecraft:pig", null if the kind has none.
@@ -86,6 +96,8 @@ namespace McEntityModel
 		float WalkAmount = 0.0f;
 		float Age = 0.0f;       // seconds, for what idles
 		float Hurt = 0.0f;      // 1 just hurt, down to 0
+		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
+		bool bFlash = false;
 	};
 
 	// The mesh of one layer of the model in the pose.
@@ -97,6 +109,16 @@ namespace McEntityModel
 
 	// How many pictures an item entity shows for a count: 1, 2 above one, 3 above 16, 4 above 32, 5 above 48.
 	MCRENDER_API int32 GetItemCopies(int32 Count);
+
+	// An arrow in flight, two crossed shafts and a fletching, pointing the way it flies (Minecraft yaw, and pitch with
+	// positive down). Its picture is the 32 square projectiles/arrow.png. Centred half a hitbox above the feet.
+	MCRENDER_API void BuildArrowMesh(float BodyYaw, float Pitch, McPlayerModel::FMeshData& Out);
+
+	// How big a creeper looks as its fuse burns: swelling runs 0 to 1 over the fuse. Wider and a little taller, and
+	// shaking as it gets near (minecraft.wiki: "Creeper"). X is across, Y up.
+	MCRENDER_API FVector2D GetSwellScale(float Swelling);
+	// Whether a swelling creeper is flashing white now: every other tenth of the fuse.
+	MCRENDER_API bool IsSwellFlash(float Swelling);
 }
 
 // Draws one mob or dropped item. Put it on the entity's actor (feet at its origin).
@@ -115,17 +137,25 @@ public:
 	// Where the mob looks (Minecraft degrees, body and head) and the count that goes up when it is hurt.
 	void SetLook(float InBodyYaw, float InHeadYaw, float InHeadPitch);
 	void SetHurtCount(int32 InHurtCount);
+	// The hitbox the entity has, for a model that grows with it (a slime's size).
+	void SetHitboxWidth(float InWidth);
+	// A creeper's fuse, 0 (not lit) to 1 (about to go): it swells, shakes and flashes.
+	void SetSwelling(float InSwelling);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
 	UMaterialInstanceDynamic* GetMaterial(int32 Layer);
 	void Rebuild();
+	// The picture a layer is cut from.
+	FString GetTexturePath(int32 Layer) const;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BaseMaterial;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> TranslucentMaterial;
 
 	FName Kind;
 	FName Item;
@@ -135,6 +165,12 @@ private:
 	float ItemVMax = 1.0f;
 	bool bItemFailed = false;
 	bool bIsItem = false;
+	bool bIsArrow = false;
+	float HitboxWidth = 0.0f;
+	// The fuse as told, and as shown (it eases towards it).
+	float TargetSwelling = 0.0f;
+	float Swelling = 0.0f;
+	bool bFlashing = false;
 
 	McEntityModel::FAnim Anim;
 	float TargetBodyYaw = 0.0f;

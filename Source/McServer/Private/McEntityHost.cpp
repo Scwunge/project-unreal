@@ -4,6 +4,7 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityProxy.h"
+#include "McItemRegistry.h"
 #include "McLoot.h"
 #include "McMob.h"
 #include "McRandom.h"
@@ -18,7 +19,48 @@
 namespace
 {
 	const TCHAR* Animals[] = { TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken") };
-	const TCHAR* Hostiles[] = { TEXT("minecraft:zombie"), TEXT("minecraft:skeleton"), TEXT("minecraft:spider") };
+	// Which hostile mob turns up in the dark, by weight: endermen are rare (10 to the others' 100, as on the wiki's
+	// spawn tables for the Overworld).
+	struct FSpawnKind
+	{
+		const TCHAR* Name;
+		int32 Weight;
+	};
+	const FSpawnKind Hostiles[] = {
+		{ TEXT("minecraft:zombie"), 100 }, { TEXT("minecraft:skeleton"), 100 }, { TEXT("minecraft:spider"), 100 },
+		{ TEXT("minecraft:creeper"), 100 }, { TEXT("minecraft:enderman"), 10 },
+	};
+	// Slimes spawn below this height in the slime chunks.
+	constexpr int32 SlimeMaxY = 40;
+
+	// Whether the chunk is a slime chunk: one in ten, by the game's own formula, a Java Random seeded from the world
+	// seed and the chunk (minecraft.wiki, "Slime"). Slimes spawn in them below y 40.
+	bool IsSlimeChunk(int64 WorldSeed, int32 ChunkX, int32 ChunkZ)
+	{
+		const uint32 X = static_cast<uint32>(ChunkX);
+		const uint32 Z = static_cast<uint32>(ChunkZ);
+		// Java's int arithmetic wraps; the terms are added as longs.
+		const int64 Mixed = WorldSeed
+			+ static_cast<int32>(X * X * 4987142u)
+			+ static_cast<int32>(X * 5947611u)
+			+ static_cast<int64>(static_cast<int32>(Z * Z)) * 4392871LL
+			+ static_cast<int32>(Z * 389711u);
+		constexpr uint64 Mask = (1ull << 48) - 1;
+		uint64 State = (static_cast<uint64>(Mixed ^ 987234911LL) ^ 0x5DEECE66Dull) & Mask;
+		const auto Next31 = [&State]()
+		{
+			State = (State * 0x5DEECE66Dull + 0xBull) & Mask;
+			return static_cast<int32>(State >> 17);
+		};
+		int32 Bits = Next31();
+		int32 Value = Bits % 10;
+		while (static_cast<int32>(static_cast<uint32>(Bits) - static_cast<uint32>(Value) + 9u) < 0)
+		{
+			Bits = Next31();
+			Value = Bits % 10;
+		}
+		return Value == 0;
+	}
 
 	// Hostile mobs stay under this many in the world per player, and are removed past this distance from every player.
 	constexpr int32 HostileCapPerPlayer = 20;
@@ -35,6 +77,48 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	// Bites, arrows and blasts all reach the player through here.
+	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
+	{
+		if (OnPlayerHit)
+		{
+			OnPlayerHit(PlayerPos, Damage);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
+		}
+	};
+	// What an explosion leaves behind: each block it destroyed rolls its own loot table (blocks/<name>), as when
+	// broken with no tool and blown up with this power: survives_explosion and explosion_decay keep each item with a
+	// chance of one in the power, so stone gives cobblestone and a leaf block its saplings, never itself.
+	Manager.OnBlocksDestroyed = [this](const TArray<FMcDestroyedBlock>& Blocks, float Power)
+	{
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		if (!Items.IsLoaded())
+		{
+			return;
+		}
+		FMcRandom LootRandom((static_cast<uint64>(Random.GetUnsignedInt()) << 32) | Random.GetUnsignedInt());
+		for (const FMcDestroyedBlock& Block : Blocks)
+		{
+			McLoot::FBlockContext Context;
+			Context.State = Block.State;
+			Context.ExplosionRadius = Power;
+			TArray<FMcItemStack> Drops;
+			if (!McLoot::RollBlock(Context, LootRandom, Drops))
+			{
+				continue;
+			}
+			for (const FMcItemStack& Drop : Drops)
+			{
+				if (Items.Find(Drop.Item))
+				{
+					Manager.DropItem(FVector(Block.Pos.X + 0.5, Block.Pos.Y + 0.5, Block.Pos.Z + 0.5), Drop);
+				}
+			}
+		}
+	};
 }
 
 FMcEntityHost::~FMcEntityHost()
@@ -72,7 +156,7 @@ int32 FMcEntityHost::NumHostile() const
 	int32 Count = 0;
 	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 	{
-		if (Entity->IsLiving() && static_cast<const FMcMob&>(*Entity).Type.AttackDamage > 0.0f)
+		if (Entity->IsLiving() && static_cast<const FMcMob&>(*Entity).Type.IsHostile())
 		{
 			++Count;
 		}
@@ -122,7 +206,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	FMcMob* Mob = new FMcMob(*Type);
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
-	Mob->OnDeath = [this](FMcMob& Dead) { DropLoot(Dead); };
+	Mob->OnDeath = [this](FMcMob& Dead)
+	{
+		if (Dead.Type.bHops && Dead.Size > 1)
+		{
+			SplitSlime(Dead);
+		}
+		else
+		{
+			DropLoot(Dead);
+		}
+	};
 	if (Type->AttackDamage > 0.0f)
 	{
 		Mob->OnAttackPlayer = [this, Kind](const FVector& PlayerPos, float Damage)
@@ -139,6 +233,23 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Manager.Add(TUniquePtr<FMcEntity>(Mob));
 	return Mob;
+}
+
+void FMcEntityHost::SplitSlime(FMcMob& Dead)
+{
+	// Two to four of half the size, spread round where it died. Only the smallest drop loot.
+	const int32 Count = 2 + Random.RandHelper(3);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const double X = (Index % 2 - 0.5) * Dead.Size / 4.0;
+		const double Z = (Index / 2 - 0.5) * Dead.Size / 4.0;
+		if (FMcMob* Child = SpawnMob(Dead.GetType(), Dead.Body.Position + FVector(X, 0.0, Z)))
+		{
+			Child->SetSize(Dead.Size / 2);
+			Child->Yaw = Random.FRandRange(0.0f, 360.0f);
+			Child->Body.Velocity = FVector(X * 0.2, 0.2, Z * 0.2);
+		}
+	}
 }
 
 void FMcEntityHost::DropLoot(FMcMob& Mob)
@@ -192,7 +303,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	FMemoryWriter Writer(Body);
 	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 	{
-		if (Entity->bRemoved
+		if (Entity->bRemoved || !Entity->IsPersistent()
 			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.X)) != Chunk.X
 			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.Z)) != Chunk.Y)
 		{
@@ -333,13 +444,48 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	{
 		return;
 	}
-	// Dark enough: night in the open, or anywhere the sky can't reach (a cave, a roofed room).
-	const bool bExposed = Manager.IsSkyExposed(FIntVector(X, Y.GetValue(), Z));
-	if (bExposed && Manager.bDaylight)
+	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach).
+	const FIntVector Cell(X, Y.GetValue(), Z);
+	if (!Manager.IsDarkEnoughToSpawn(Cell))
 	{
 		return;
 	}
-	SpawnMob(Hostiles[Random.RandHelper(UE_ARRAY_COUNT(Hostiles))], FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+	const FVector Pos(X + 0.5, Y.GetValue(), Z + 0.5);
+
+	// Low down in a slime chunk, a slime, of a size that fits the room there.
+	if (Y.GetValue() < SlimeMaxY && Random.FRand() < 0.3f && IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+	{
+		if (FMcMob* Slime = SpawnMob(TEXT("minecraft:slime"), Pos))
+		{
+			static const int32 Sizes[] = { 1, 2, 4 };
+			for (int32 Size = Sizes[Random.RandHelper(UE_ARRAY_COUNT(Sizes))]; Size >= 1; Size /= 2)
+			{
+				Slime->SetSize(Size);
+				if (!McPhysics::Collides(World, Slime->Body.GetBox()))
+				{
+					return;
+				}
+			}
+			Slime->bRemoved = true;
+		}
+		return;
+	}
+
+	int32 TotalWeight = 0;
+	for (const FSpawnKind& Kind : Hostiles)
+	{
+		TotalWeight += Kind.Weight;
+	}
+	int32 Roll = Random.RandHelper(TotalWeight);
+	for (const FSpawnKind& Kind : Hostiles)
+	{
+		if (Roll < Kind.Weight)
+		{
+			SpawnMob(Kind.Name, Pos);
+			return;
+		}
+		Roll -= Kind.Weight;
+	}
 }
 
 void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
@@ -373,7 +519,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				continue;
 			}
 			FMcMob& Mob = static_cast<FMcMob&>(*Entity);
-			if (Mob.Type.AttackDamage <= 0.0f)
+			if (!Mob.Type.IsHostile())
 			{
 				continue;
 			}

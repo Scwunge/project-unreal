@@ -44,6 +44,9 @@ public:
 	// The mob's count of hits (FMcMob::HurtEvents), so clients can flash it red whenever it changes.
 	UPROPERTY(Replicated)
 	int32 HurtCount = 0;
+	// A creeper's fuse, 0 (not lit) to 1 (about to go): clients swell it and flash it white.
+	UPROPERTY(Replicated)
+	float Swelling = 0.0f;
 
 protected:
 	UFUNCTION()

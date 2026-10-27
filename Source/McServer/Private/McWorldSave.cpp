@@ -18,7 +18,8 @@ bool FMcLevelData::operator==(const FMcLevelData& Other) const
 bool FMcPlayerData::operator==(const FMcPlayerData& Other) const
 {
 	return Position == Other.Position && Yaw == Other.Yaw && Pitch == Other.Pitch && Dimension == Other.Dimension
-		&& bFlying == Other.bFlying;
+		&& bFlying == Other.bFlying && bHasSurvival == Other.bHasSurvival && bCreative == Other.bCreative
+		&& SelectedSlot == Other.SelectedSlot && Stats.OrderIndependentCompareEqual(Other.Stats) && Slots == Other.Slots;
 }
 
 namespace
@@ -184,6 +185,40 @@ bool McWorldSave::SavePlayer(const FString& WorldDir, const FString& PlayerId, c
 	Object->SetNumberField(TEXT("pitch"), Player.Pitch);
 	Object->SetStringField(TEXT("dimension"), Player.Dimension);
 	Object->SetBoolField(TEXT("flying"), Player.bFlying);
+	if (Player.bHasSurvival)
+	{
+		Object->SetBoolField(TEXT("creative"), Player.bCreative);
+		Object->SetNumberField(TEXT("selected_slot"), Player.SelectedSlot);
+		const TSharedRef<FJsonObject> Stats = MakeShared<FJsonObject>();
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			Stats->SetNumberField(Pair.Key, Pair.Value);
+		}
+		Object->SetObjectField(TEXT("stats"), Stats);
+		TArray<TSharedPtr<FJsonValue>> Items;
+		for (const FMcSavedSlot& Saved : Player.Slots)
+		{
+			if (Saved.Stack.IsEmpty())
+			{
+				continue;
+			}
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetNumberField(TEXT("slot"), Saved.Slot);
+			Entry->SetStringField(TEXT("id"), Saved.Stack.Item.ToString());
+			Entry->SetNumberField(TEXT("count"), Saved.Stack.Count);
+			if (!Saved.Stack.Components.IsEmpty())
+			{
+				const TSharedRef<FJsonObject> Components = MakeShared<FJsonObject>();
+				for (const TPair<FName, TSharedPtr<FJsonValue>>& Component : Saved.Stack.Components)
+				{
+					Components->SetField(Component.Key.ToString(), Component.Value.IsValid() ? Component.Value : MakeShared<FJsonValueNull>());
+				}
+				Entry->SetObjectField(TEXT("components"), Components);
+			}
+			Items.Add(MakeShared<FJsonValueObject>(Entry));
+		}
+		Object->SetArrayField(TEXT("inventory"), Items);
+	}
 	return WriteJson(WorldDir / TEXT("playerdata") / Id + TEXT(".json"), Object);
 }
 
@@ -218,6 +253,50 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	}
 	Object->TryGetStringField(TEXT("dimension"), Player.Dimension);
 	Object->TryGetBoolField(TEXT("flying"), Player.bFlying);
+	const TSharedPtr<FJsonObject>* Stats = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
+	if (Object->TryGetObjectField(TEXT("stats"), Stats) && Object->TryGetArrayField(TEXT("inventory"), Items))
+	{
+		Player.bHasSurvival = true;
+		Object->TryGetBoolField(TEXT("creative"), Player.bCreative);
+		if (Object->TryGetNumberField(TEXT("selected_slot"), Value))
+		{
+			Player.SelectedSlot = FMath::Clamp(FMath::RoundToInt32(Value), 0, 8);
+		}
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Stats)->Values)
+		{
+			double Number = 0.0;
+			// A number that isn't one (NaN from a hand-edited file) would poison the health bar.
+			if (Pair.Value.IsValid() && Pair.Value->TryGetNumber(Number) && FMath::IsFinite(Number))
+			{
+				Player.Stats.Add(Pair.Key, Number);
+			}
+		}
+		for (const TSharedPtr<FJsonValue>& ItemValue : *Items)
+		{
+			const TSharedPtr<FJsonObject>* Entry = nullptr;
+			FString ItemId;
+			double SlotNumber = 0.0;
+			double CountNumber = 0.0;
+			if (!ItemValue.IsValid() || !ItemValue->TryGetObject(Entry) || !(*Entry)->TryGetStringField(TEXT("id"), ItemId) || ItemId.IsEmpty()
+				|| !(*Entry)->TryGetNumberField(TEXT("slot"), SlotNumber) || !(*Entry)->TryGetNumberField(TEXT("count"), CountNumber) || CountNumber < 1.0)
+			{
+				continue;
+			}
+			FMcSavedSlot Saved;
+			Saved.Slot = FMath::RoundToInt32(SlotNumber);
+			Saved.Stack = FMcItemStack(FName(*ItemId), FMath::Min(FMath::RoundToInt32(CountNumber), 99));
+			const TSharedPtr<FJsonObject>* Components = nullptr;
+			if ((*Entry)->TryGetObjectField(TEXT("components"), Components))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Component : (*Components)->Values)
+				{
+					Saved.Stack.Set(FName(*Component.Key), Component.Value);
+				}
+			}
+			Player.Slots.Add(MoveTemp(Saved));
+		}
+	}
 	OutPlayer = Player;
 	return true;
 }

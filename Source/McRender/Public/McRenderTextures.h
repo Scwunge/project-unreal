@@ -11,5 +11,7 @@ namespace McRenderTextures
 {
 	// Loads a png into a one-layer texture array with nearest filtering and no mips, which is what the block materials
 	// sample. Null (and an error in the log) if the file is missing or unreadable.
-	MCRENDER_API UTexture2DArray* LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight);
+	// With bWhite every pixel's colour is made white and only its transparency is kept: the picture's silhouette, for a
+	// mob flashing white.
+	MCRENDER_API UTexture2DArray* LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite = false);
 }

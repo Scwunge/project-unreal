@@ -10,6 +10,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McItemStack.h"
 
 // What the world as a whole remembers (the game's level.dat).
 struct MCSERVER_API FMcLevelData
@@ -33,6 +34,16 @@ struct MCSERVER_API FMcLevelData
 	bool operator==(const FMcLevelData& Other) const;
 };
 
+// One occupied slot of a saved inventory. The numbers are the game's: 0 to 35 the inventory (0 to 8 the hotbar), 100 to
+// 103 the armour (feet first), 150 the off hand.
+struct MCSERVER_API FMcSavedSlot
+{
+	int32 Slot = 0;
+	FMcItemStack Stack;
+
+	bool operator==(const FMcSavedSlot& Other) const { return Slot == Other.Slot && Stack == Other.Stack; }
+};
+
 // A player's place in the world, in Minecraft's terms (block coordinates, degrees).
 struct MCSERVER_API FMcPlayerData
 {
@@ -42,6 +53,14 @@ struct MCSERVER_API FMcPlayerData
 	float Pitch = 0.0f;
 	FString Dimension = TEXT("minecraft:overworld");
 	bool bFlying = false;
+
+	// ---- Survival state (only if bHasSurvival: a file from before has none, and the player starts as new) ----
+	bool bHasSurvival = false;
+	bool bCreative = false;
+	int32 SelectedSlot = 0;
+	// By name: health, food, saturation, exhaustion, air, absorption, xp_level, xp_progress, fire_ticks, food_timer.
+	TMap<FString, double> Stats;
+	TArray<FMcSavedSlot> Slots;
 
 	bool operator==(const FMcPlayerData& Other) const;
 };

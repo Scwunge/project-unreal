@@ -47,6 +47,7 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, ItemId);
 	DOREPLIFETIME(AMcEntityActor, ItemCount);
 	DOREPLIFETIME(AMcEntityActor, HurtCount);
+	DOREPLIFETIME(AMcEntityActor, Swelling);
 }
 
 void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
@@ -66,7 +67,10 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	else if (Entity.IsLiving())
 	{
 		// The mob counts its hits; clients flash it whenever this changes.
-		HurtCount = static_cast<const FMcMob&>(Entity).HurtEvents;
+		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
+		HurtCount = Mob.HurtEvents;
+		// The game's swell runs over the fuse less 2 ticks.
+		Swelling = Mob.Type.bSwells ? FMath::Clamp(static_cast<float>(Mob.SwellTicks) / (FMcMob::FuseTicks - 2), 0.0f, 1.0f) : 0.0f;
 	}
 	ApplyLook();
 }
@@ -80,6 +84,8 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetKind(Kind, ItemId, ItemCount);
 		Model->SetLook(BodyYaw, HeadYaw, HeadPitch);
 		Model->SetHurtCount(HurtCount);
+		Model->SetHitboxWidth(Size.X);
+		Model->SetSwelling(Swelling);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

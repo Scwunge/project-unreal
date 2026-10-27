@@ -49,6 +49,13 @@ public:
 	// Server: the world to send from. Client: the world to build into.
 	void SetBlockWorld(FMcBlockWorld* InWorld);
 
+	// Server: the stream now serves another dimension's blocks (the player went through a portal). What was sent is forgotten, and
+	// a remote client is told, which runs OnWorldSwitched there; it builds into a world of its own and says it is ready.
+	void SwitchWorld(FMcBlockWorld* NewWorld, const FString& DimensionId);
+	// Client: runs when the server switched the stream, with the dimension the player is in now. The blocks sent before
+	// were the old dimension's; the ones after are the new one's.
+	TFunction<void(const FString& DimensionId)> OnWorldSwitched;
+
 	// Server: what to do when the client asks for a block change (checks, then applies it).
 	FMcOnSetBlockRequest OnSetBlockRequest;
 
@@ -73,6 +80,9 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientUnloadChunk(FIntPoint Pos);
+
+	UFUNCTION(Client, Reliable)
+	void ClientSwitchWorld(const FString& DimensionId);
 
 	UFUNCTION(Client, Reliable)
 	void ClientBlockChanges(const TArray<FMcNetBlockChange>& Changes);

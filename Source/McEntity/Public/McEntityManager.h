@@ -6,7 +6,9 @@
 
 #include "CoreMinimal.h"
 #include "McBlockEntity.h"
+#include "McExplosion.h"
 #include "McPhysics.h"
+#include "McSound.h"
 
 class FArchive;
 class FMcBlockWorld;
@@ -22,6 +24,8 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) {}
 	// True for mobs and the like, which have health and can be hit.
 	virtual bool IsLiving() const { return false; }
+	// False for what isn't worth keeping in a chunk's save (an arrow in flight).
+	virtual bool IsPersistent() const { return true; }
 
 	// Reads or writes what a save keeps of the entity, by whether the archive is loading: where it is and how it
 	// moves, its age, and what its kind adds (a stack, a health). Not the id (a loaded entity gets a new one) or the
@@ -29,6 +33,8 @@ public:
 	virtual bool Serialize(FArchive& Ar);
 
 	int32 Id = 0;
+	// The manager it was added to (null before), for what an entity does outside its own tick: being hurt makes a sound.
+	FMcEntityManager* Owner = nullptr;
 	FMcBody Body;
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
@@ -52,6 +58,8 @@ public:
 	// Ticks before a player can pick it up: 10 for a dropped item, 40 for a thrown one.
 	int32 PickupDelay = 10;
 
+	// What a blast has to do to destroy it.
+	static constexpr float Health = 5.0f;
 	static constexpr int32 LifeTicks = 6000;
 	static constexpr int32 DefaultStackSize = 64;
 	// A resting stack looks for one to merge with this often (staggered by id), as the search scans every entity.
@@ -90,6 +98,56 @@ public:
 
 	// How many of an item fit in one stack; set by whatever knows the item registry (default 64).
 	TFunction<int32(FName)> StackSizeOf;
+
+	// ---- Light, for deciding where hostile mobs may spawn and when a spider stays peaceful ----
+	// There is no light stored on the server, so these are estimates: sky light is full where the sky is open (less
+	// the night's 11) and falls by one a block from the nearest opening in the four directions; block light is the
+	// brightest light source within 14 blocks minus its distance, ignoring walls (so a torch behind a wall still
+	// counts: it can only make a spot look brighter than it is).
+	int32 EstimateSkyLight(const FIntVector& Cell) const;
+	int32 EstimateBlockLight(const FIntVector& Cell) const;
+	// The larger of the two: the light level a spider looks at.
+	int32 EstimateLightLevel(const FIntVector& Cell) const;
+	// The rule for hostile mobs: block light 0 and sky light 7 or less.
+	bool IsDarkEnoughToSpawn(const FIntVector& Cell) const;
+
+	// ---- Explosions ----
+	// Blows up at Center (block coordinates): hurts the mobs and players near by how close and how open to the blast
+	// they are, pushes the mobs and lying items (destroying the items it hurts by 5 or more), then destroys the blocks
+	// the rays reach (calling OnBlocksDestroyed with them, after the items were dealt with, so the drops they leave
+	// are safe).
+	void Explode(const FVector& Center, float Power);
+	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
+	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
+	TFunction<void(const FVector&, float)> OnPlayerHurt;
+	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
+	// drop what they leave.
+	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;
+	void HurtPlayer(const FVector& Position, float Damage) const
+	{
+		if (OnPlayerHurt)
+		{
+			OnPlayerHurt(Position, Damage);
+		}
+	}
+
+	// ---- Sounds ----
+	// Called with every sound the entities make (a mob's voice and steps, a blast, an arrow in a wall), for whoever sends
+	// them to the players. Left unset, they are dropped.
+	TFunction<void(const FMcSoundEvent&)> OnSound;
+	void PlaySound(const FMcSoundEvent& Event) const
+	{
+		if (OnSound && !Event.Name.IsNone())
+		{
+			OnSound(Event);
+		}
+	}
+	void PlaySound(FName Name, const FVector& Position, float Volume = 1.0f, float Pitch = 1.0f) const
+	{
+		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
+	}
+
+	FRandomStream& GetRandom() { return Random; }
 
 private:
 	FMcBlockWorld& World;

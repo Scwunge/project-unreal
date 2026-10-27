@@ -39,7 +39,7 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << KindByte;
 	if (Ar.IsLoading())
 	{
-		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Spawner))
+		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Furnace))
 		{
 			return false;
 		}
@@ -65,10 +65,28 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	SerializeName(Ar, LootTable);
 	Ar << LootSeed;
 	SerializeName(Ar, EntityId);
+	// Only furnaces carry data, and it comes last, so saves from before it read the same.
+	if (Kind == EMcBlockEntityKind::Furnace)
+	{
+		int32 NumBytes = Data.Num();
+		Ar << NumBytes;
+		if (Ar.IsLoading())
+		{
+			if (NumBytes < 0 || NumBytes > 65536)
+			{
+				return false;
+			}
+			Data.SetNumUninitialized(NumBytes);
+		}
+		if (NumBytes > 0)
+		{
+			Ar.Serialize(Data.GetData(), NumBytes);
+		}
+	}
 	return !Ar.IsError();
 }
 
 bool FMcBlockEntity::operator==(const FMcBlockEntity& Other) const
 {
-	return Kind == Other.Kind && Slots == Other.Slots && LootTable == Other.LootTable && LootSeed == Other.LootSeed && EntityId == Other.EntityId;
+	return Kind == Other.Kind && Slots == Other.Slots && LootTable == Other.LootTable && LootSeed == Other.LootSeed && EntityId == Other.EntityId && Data == Other.Data;
 }

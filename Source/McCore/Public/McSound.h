@@ -78,6 +78,32 @@ namespace McSound
 	// under it.
 	MCCORE_API FMcSoundEvent GetMobStep(FName Mob, FName BlockBelow, const FVector& Position);
 
+	// Counts walking for footsteps: 0.6 for each block walked on the ground, and a step each time the count passes a
+	// mark one further on than the last step's.
+	struct FStepCounter
+	{
+		double Walked = 0.0;
+		double NextStep = 0.0;
+
+		// Adds a tick's walking (horizontal blocks); true when it makes a step.
+		bool Walk(double Blocks)
+		{
+			Walked += Blocks * 0.6;
+			if (Walked <= NextStep)
+			{
+				return false;
+			}
+			NextStep = Walked + 1.0;
+			return true;
+		}
+	};
+
+	// What a player says on landing hard: "entity.player.big_fall" for more than 4 damage, else "small_fall".
+	inline FName GetPlayerFallSound(int32 Damage)
+	{
+		return Damage > 4 ? FName(TEXT("entity.player.big_fall")) : FName(TEXT("entity.player.small_fall"));
+	}
+
 	// How far a sound of this volume can be heard: the sound's attenuation distance (16 blocks unless sounds.json says
 	// otherwise), times the volume when that is over 1.
 	MCCORE_API float GetAudibleRange(float Volume, float AttenuationDistance = 16.0f);

@@ -14,6 +14,7 @@
 #include "McPhysics.h"
 #include "McRaycast.h"
 #include "McChunkStreamComponent.h"
+#include "McSound.h"
 #include "McSurvival.h"
 #include "McPlayerPawn.generated.h"
 
@@ -171,6 +172,8 @@ private:
 	bool bServerAwaitingTeleport = false;
 	void ServerBreakBlock(const FIntVector& Pos);
 	void ServerDie();
+	// Plays the hurt (or death) sound if health has dropped since the last call.
+	void ServerHurtSound();
 	void StopDigging();
 	float GetEyeHeight() const;
 	void ShowPosition() const;
@@ -229,7 +232,12 @@ private:
 	McSurvival::EDifficulty Difficulty = McSurvival::EDifficulty::Normal;
 	TOptional<FIntVector> DigPos;
 	float DigProgress = 0.0f;
+	// Ticks spent on the block being dug; it is hit (with its sound) every 4.
+	int32 DigTicks = 0;
 	int32 EatTicks = 0;
+	McSound::FStepCounter ServerSteps;
+	// The health at the end of the last tick, for the hurt sound whatever did the damage; below 0 until the first.
+	float ServerLastHealth = -1.0f;
 	// Ticks since the last swing, for how charged the next is.
 	int32 ServerAttackTicks = 100;
 	bool bServerUsing = false;

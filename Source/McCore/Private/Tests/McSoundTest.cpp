@@ -121,6 +121,21 @@ bool FMcSoundTest::RunTest(const FString& Parameters)
 	// After the 80 ticks of quiet it speaks within about 40 more (the chance is c / 1000 on tick c): some 120 ticks, 6
 	// seconds, between sounds; 200000 ticks is about 1650 of them.
 	TestTrue(*FString::Printf(TEXT("a mob speaks every 6 seconds or so (%d times in 10000 s)"), Spoke), Spoke > 1400 && Spoke < 1900);
+
+	// Footsteps: the first bit of walking steps, then one each 1/0.6 blocks; standing still makes none.
+	FStepCounter Steps;
+	TestTrue(TEXT("the first move steps"), Steps.Walk(0.2));
+	TestFalse(TEXT("standing still doesn't"), Steps.Walk(0.0));
+	int32 NumSteps = 1;
+	for (int32 Tick = 0; Tick < 49; ++Tick)
+	{
+		NumSteps += Steps.Walk(0.2) ? 1 : 0;
+	}
+	TestEqual(TEXT("10 blocks walked is 6 steps"), NumSteps, 6);
+
+	// Landing: more than 4 damage is a big fall.
+	TestEqual(TEXT("4 damage is a small fall"), GetPlayerFallSound(4), FName(TEXT("entity.player.small_fall")));
+	TestEqual(TEXT("5 is a big one"), GetPlayerFallSound(5), FName(TEXT("entity.player.big_fall")));
 	return true;
 }
 

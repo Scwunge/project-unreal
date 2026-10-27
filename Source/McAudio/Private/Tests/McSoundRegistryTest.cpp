@@ -118,6 +118,8 @@ bool FMcSoundCacheTest::RunTest(const FString& Parameters)
 		TEXT("entity.pig.ambient"), TEXT("entity.creeper.hurt"), TEXT("entity.creeper.primed"), TEXT("entity.generic.explode"),
 		TEXT("entity.skeleton.shoot"), TEXT("entity.arrow.hit"), TEXT("entity.enderman.teleport"), TEXT("entity.slime.jump"),
 		TEXT("entity.spider.step"), TEXT("entity.slime.hurt_small"),
+		TEXT("block.stone.hit"), TEXT("block.grass.fall"), TEXT("entity.player.hurt"), TEXT("entity.player.death"),
+		TEXT("entity.player.small_fall"), TEXT("entity.player.big_fall"),
 	};
 	for (const TCHAR* Name : Events)
 	{

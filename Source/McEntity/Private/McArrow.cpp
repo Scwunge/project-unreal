@@ -65,6 +65,8 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			const FBox PlayerBox(Player + FVector(-0.4, -0.1, -0.4), Player + FVector(0.4, 1.9, 0.4));
 			if (PlayerBox.IsInside(Next))
 			{
+				// The arrow's hit sounds on a body as on a block; the player's own hurt sound comes with the damage.
+				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, 1.2f / (Manager.GetRandom().FRand() * 0.2f + 0.9f));
 				Manager.HurtPlayer(Player, Damage);
 				bRemoved = true;
 				return;

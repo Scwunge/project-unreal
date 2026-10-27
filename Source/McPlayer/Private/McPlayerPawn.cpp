@@ -30,6 +30,14 @@
 namespace
 {
 	constexpr float SecondsPerTick = 0.05f;
+
+	// The block a body standing at Feet is on (a little below the feet, so a slab or a path counts), by name.
+	FName GetBlockNameBelow(const FMcBlockWorld& World, const FVector& Feet)
+	{
+		const FMcStateId State = World.GetBlock(FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y - 0.2), FMath::FloorToInt32(Feet.Z)));
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		return Registry.IsValidState(State) ? Registry.GetBlockOf(State).Name : NAME_None;
+	}
 	constexpr float StandingEyeHeight = 1.62f;
 	constexpr float SneakingEyeHeight = 1.27f;
 	constexpr float StandingHeight = 1.8f;
@@ -730,6 +738,7 @@ void AMcPlayerPawn::ServerGameTick()
 	{
 		return;
 	}
+	ServerHurtSound();
 	if (Stats.Health <= 0.0f)
 	{
 		ServerDie();
@@ -762,6 +771,12 @@ void AMcPlayerPawn::ServerGameTick()
 				if (FallDamage > 0)
 				{
 					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get());
+					// The landing: the player's own thud, and the block's fall sound.
+					if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
+					{
+						Sounds->PlaySound(McSound::GetPlayerFallSound(FallDamage), Feet);
+						Sounds->PlaySound(McSound::GetBlockSound(GetBlockNameBelow(*BlockWorld, Feet), McSound::EBlockSound::Fall, Feet));
+					}
 				}
 				// What moving costs in hunger: sprinting on the ground, swimming and jumping.
 				const float Moved = static_cast<float>(FVector2D(Step.X, Step.Z).Size());
@@ -784,10 +799,17 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			McSurvival::Tick(Stats, Environment, Difficulty, Data->Armor.Get());
 		}
+		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+
+		// Footsteps, on the ground and not sneaking (sneaking is quiet), at the step sound of the block underfoot.
+		const bool bSneakNow = bLocal ? bSneaking : bSneakPose;
+		if (!bTeleported && Body.bOnGround && !bFlyingNow && !bSneakNow && ServerSteps.Walk(FVector2D(Step.X, Step.Z).Size()) && Entities)
+		{
+			Entities->PlaySound(McSound::GetBlockSound(GetBlockNameBelow(*BlockWorld, Feet), McSound::EBlockSound::Step, Feet));
+		}
 		ServerPreviousPosition = Feet;
 		bServerWasOnGround = Body.bOnGround;
 
-		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 		if (Entities && Stats.Health > 0.0f)
 		{
 			McSurvival::CollectItems(*Entities, Body.GetBox(), *Data->Inventory);
@@ -853,6 +875,11 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			else
 			{
+				// Every 4 ticks of digging the block is hit, and sounds it.
+				if (DigTicks++ % 4 == 0 && Entities)
+				{
+					Entities->PlaySound(McSound::GetBlockSound(FMcBlockRegistry::Get().GetBlockOf(State).Name, McSound::EBlockSound::Hit, FVector(DigPos.GetValue()) + FVector(0.5)));
+				}
 				DigProgress += McBlockBreak::GetProgressPerTick(Data->GetSelected(), State, Body.bOnGround, Environment.bHeadInWater);
 				if (DigProgress >= 1.0f)
 				{
@@ -865,12 +892,28 @@ void AMcPlayerPawn::ServerGameTick()
 		}
 	}
 
+	ServerHurtSound();
 	if (Stats.Health <= 0.0f)
 	{
 		ServerDie();
 		return;
 	}
 	Data->ServerTick();
+}
+
+void AMcPlayerPawn::ServerHurtSound()
+{
+	// Hurt by anything since the last look (a fall, a bite, an arrow, hunger): the player's hurt or death sound.
+	const float Health = Data->Stats.Health;
+	if (ServerLastHealth >= 0.0f && Health < ServerLastHealth)
+	{
+		if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
+		{
+			const float VoicePitch = McSound::GetVoicePitch(DropRandom.FRand(), DropRandom.FRand());
+			Sounds->PlaySound(Health <= 0.0f ? FName(TEXT("entity.player.death")) : FName(TEXT("entity.player.hurt")), Body.Position, 1.0f, VoicePitch);
+		}
+	}
+	ServerLastHealth = Health;
 }
 
 void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
@@ -992,6 +1035,7 @@ void AMcPlayerPawn::ServerDig_Implementation(FIntVector Pos, bool bStart)
 	{
 		DigPos = Pos;
 		DigProgress = 0.0f;
+		DigTicks = 0;
 	}
 }
 

@@ -1,0 +1,1284 @@
+#include "McRedstone.h"
+#include "McBlockLight.h"
+#include "McBlockRegistry.h"
+#include "McBlockShapes.h"
+#include "McBlockWorld.h"
+#include "McChunk.h"
+#include "McSimulation.h"
+
+namespace
+{
+	enum EKind : uint8
+	{
+		None,
+		Dust,
+		Repeater,
+		Comparator,
+		Torch,
+		WallTorch,
+		Lamp,
+		Observer,
+		Piston,
+		StickyPiston,
+		PistonHead,
+		MovingPiston,
+		Lever,
+		Button,
+		Plate,
+		PlateLight,
+		PlateHeavy,
+		Daylight,
+		RedstoneBlock,
+		Door,
+		Trapdoor,
+		Gate,
+	};
+
+	enum EDir : int32
+	{
+		North,
+		East,
+		South,
+		West,
+		Up,
+		Down,
+	};
+
+	// North, east, south, west (each the next clockwise), up, down.
+	const FIntVector Vec[6] = { FIntVector(0, 0, -1), FIntVector(1, 0, 0), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(0, 1, 0), FIntVector(0, -1, 0) };
+	const TCHAR* const DirName[6] = { TEXT("north"), TEXT("east"), TEXT("south"), TEXT("west"), TEXT("up"), TEXT("down") };
+
+	int32 Opposite(int32 Dir)
+	{
+		static const int32 Table[6] = { South, West, North, East, Down, Up };
+		return Table[Dir];
+	}
+
+	const FMcBlockRegistry& Reg()
+	{
+		return FMcBlockRegistry::Get();
+	}
+
+	const TCHAR* Bool(bool bValue)
+	{
+		return bValue ? TEXT("true") : TEXT("false");
+	}
+
+	uint8 KindOf(FMcStateId State)
+	{
+		static TArray<uint8> Kinds;
+		if (Kinds.IsEmpty())
+		{
+			const FMcBlockRegistry& Registry = Reg();
+			Kinds.SetNumZeroed(Registry.NumStates());
+			for (int32 Index = 0; Index < Registry.NumBlocks(); ++Index)
+			{
+				const FMcBlock& Block = Registry.GetBlock(Index);
+				const FString Name = Block.Name.ToString();
+				uint8 Kind = None;
+				if (Name == TEXT("minecraft:redstone_wire")) Kind = Dust;
+				else if (Name == TEXT("minecraft:repeater")) Kind = Repeater;
+				else if (Name == TEXT("minecraft:comparator")) Kind = Comparator;
+				else if (Name == TEXT("minecraft:redstone_torch")) Kind = Torch;
+				else if (Name == TEXT("minecraft:redstone_wall_torch")) Kind = WallTorch;
+				else if (Name == TEXT("minecraft:redstone_lamp")) Kind = Lamp;
+				else if (Name == TEXT("minecraft:observer")) Kind = Observer;
+				else if (Name == TEXT("minecraft:piston")) Kind = Piston;
+				else if (Name == TEXT("minecraft:sticky_piston")) Kind = StickyPiston;
+				else if (Name == TEXT("minecraft:piston_head")) Kind = PistonHead;
+				else if (Name == TEXT("minecraft:moving_piston")) Kind = MovingPiston;
+				else if (Name == TEXT("minecraft:lever")) Kind = Lever;
+				else if (Name.EndsWith(TEXT("_button"))) Kind = Button;
+				else if (Name == TEXT("minecraft:light_weighted_pressure_plate")) Kind = PlateLight;
+				else if (Name == TEXT("minecraft:heavy_weighted_pressure_plate")) Kind = PlateHeavy;
+				else if (Name.EndsWith(TEXT("_pressure_plate"))) Kind = Plate;
+				else if (Name == TEXT("minecraft:daylight_detector")) Kind = Daylight;
+				else if (Name == TEXT("minecraft:redstone_block")) Kind = RedstoneBlock;
+				else if (Name.EndsWith(TEXT("_door"))) Kind = Door;
+				else if (Name.EndsWith(TEXT("_trapdoor"))) Kind = Trapdoor;
+				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
+				for (const FMcStateId State : Block.States)
+				{
+					Kinds[State] = Kind;
+				}
+			}
+		}
+		return Kinds[State];
+	}
+
+	bool IsDiode(FMcStateId State)
+	{
+		const uint8 Kind = KindOf(State);
+		return Kind == Repeater || Kind == Comparator;
+	}
+
+	// Blocks that never move: the wiki's list of immovable blocks, plus the ones that keep contents.
+	bool IsImmovableName(FName Name)
+	{
+		static const TSet<FName> Names = []
+		{
+			TSet<FName> Set;
+			for (const TCHAR* Block : { TEXT("obsidian"), TEXT("crying_obsidian"), TEXT("bedrock"), TEXT("respawn_anchor"), TEXT("reinforced_deepslate"),
+				TEXT("command_block"), TEXT("chain_command_block"), TEXT("repeating_command_block"), TEXT("structure_block"), TEXT("jigsaw"),
+				TEXT("barrier"), TEXT("end_portal_frame"), TEXT("end_portal"), TEXT("end_gateway"), TEXT("nether_portal"), TEXT("spawner"),
+				TEXT("trial_spawner"), TEXT("vault"), TEXT("enchanting_table"), TEXT("ender_chest"), TEXT("beacon"), TEXT("jukebox"), TEXT("chest"),
+				TEXT("trapped_chest"), TEXT("furnace"), TEXT("blast_furnace"), TEXT("smoker"), TEXT("hopper"), TEXT("dropper"), TEXT("dispenser"),
+				TEXT("barrel"), TEXT("brewing_stand"), TEXT("lectern"), TEXT("decorated_pot"), TEXT("crafter") })
+			{
+				Set.Add(FName(*(FString(TEXT("minecraft:")) + Block)));
+			}
+			return Set;
+		}();
+		return Names.Contains(Name);
+	}
+
+	FMcStateId Air()
+	{
+		return Reg().FindDefaultState(TEXT("minecraft:air")).Get(0);
+	}
+}
+
+FMcRedstone::FMcRedstone(FMcBlockWorld& InWorld, FMcSimulation& InSim)
+	: World(InWorld)
+	, Sim(InSim)
+{
+	FMcBlockLight::Get().EnsureLoaded();
+}
+
+FMcStateId FMcRedstone::With(FMcStateId State, std::initializer_list<FChange> Changes) const
+{
+	const FMcBlockRegistry& Registry = Reg();
+	const FMcBlock& Block = Registry.GetBlockOf(State);
+	const FMcBlockState& Data = Registry.GetState(State);
+	TMap<FName, FName> Properties;
+	for (int32 Index = 0; Index < Block.Properties.Num(); ++Index)
+	{
+		Properties.Add(Block.Properties[Index].Name, Block.Properties[Index].Values[Data.Values[Index]]);
+	}
+	for (const FChange& Change : Changes)
+	{
+		Properties.Add(Change.Name, Change.Value);
+	}
+	return Registry.FindState(Block.Name, Properties).Get(State);
+}
+
+void FMcRedstone::Set(const FIntVector& Pos, std::initializer_list<FChange> Changes)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const FMcStateId Next = With(State, Changes);
+	if (Next != State)
+	{
+		World.SetBlock(Pos, Next);
+	}
+}
+
+int32 FMcRedstone::Number(FMcStateId State, const TCHAR* Property) const
+{
+	const FName Value = Reg().GetPropertyValue(State, Property);
+	return Value.IsNone() ? 0 : FCString::Atoi(*Value.ToString());
+}
+
+bool FMcRedstone::Flag(FMcStateId State, const TCHAR* Property) const
+{
+	return Reg().GetPropertyValue(State, Property) == TEXT("true");
+}
+
+int32 FMcRedstone::FacingOf(FMcStateId State) const
+{
+	const FName Value = Reg().GetPropertyValue(State, TEXT("facing"));
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		if (Value == DirName[Dir])
+		{
+			return Dir;
+		}
+	}
+	return -1;
+}
+
+bool FMcRedstone::IsKind(const FIntVector& Pos, int32 Kind) const
+{
+	return KindOf(World.GetBlock(Pos)) == Kind;
+}
+
+bool FMcRedstone::IsConductor(FMcStateId State) const
+{
+	// A full, opaque block takes power and gives it on; a redstone block gives power but doesn't take it.
+	return FMcBlockLight::Get().GetDampening(State) >= 15 && FMcBlockShapes::Get().HasCollision(State) && KindOf(State) != RedstoneBlock;
+}
+
+int32 FMcRedstone::GetDustPower(const FIntVector& Pos) const
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	return KindOf(State) == Dust ? Number(State, TEXT("power")) : 0;
+}
+
+// ---- Power ----
+
+int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward) const
+{
+	switch (KindOf(State))
+	{
+	case RedstoneBlock:
+		return 15;
+	case Lever:
+	case Button:
+	case Plate:
+		return Flag(State, TEXT("powered")) ? 15 : 0;
+	case PlateLight:
+	case PlateHeavy:
+	case Daylight:
+		return Number(State, TEXT("power"));
+	case Torch:
+		return Flag(State, TEXT("lit")) && Toward != Up ? 15 : 0;
+	case WallTorch:
+		return Flag(State, TEXT("lit")) && Toward != FacingOf(State) ? 15 : 0;
+	case Repeater:
+	case Observer:
+		return Flag(State, TEXT("powered")) && FacingOf(State) == Toward ? 15 : 0;
+	case Comparator:
+	{
+		if (!Flag(State, TEXT("powered")) || FacingOf(State) != Toward)
+		{
+			return 0;
+		}
+		const int32* Output = ComparatorOutputs.Find(Pos);
+		return Output ? *Output : 15;
+	}
+	case Dust:
+	{
+		if (bIgnoreDust || Toward == Down)
+		{
+			return 0;
+		}
+		const int32 Power = Number(State, TEXT("power"));
+		if (Power == 0 || Toward == Up)
+		{
+			return Power;
+		}
+		return Reg().GetPropertyValue(State, DirName[Opposite(Toward)]) != TEXT("none") ? Power : 0;
+	}
+	default:
+		return 0;
+	}
+}
+
+int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 Toward) const
+{
+	switch (KindOf(State))
+	{
+	case Lever:
+	case Button:
+	{
+		if (!Flag(State, TEXT("powered")))
+		{
+			return 0;
+		}
+		const FName Face = Reg().GetPropertyValue(State, TEXT("face"));
+		const int32 Attached = Face == TEXT("floor") ? Up : Face == TEXT("ceiling") ? Down : FacingOf(State);
+		return Attached == Toward ? 15 : 0;
+	}
+	case Plate:
+	case PlateLight:
+	case PlateHeavy:
+		return Toward == Up ? Signal(State, Pos, Toward) : 0;
+	case Torch:
+	case WallTorch:
+		return Toward == Down ? Signal(State, Pos, Toward) : 0;
+	case Repeater:
+	case Comparator:
+	case Observer:
+	case Dust:
+		return Signal(State, Pos, Toward);
+	default:
+		return 0;
+	}
+}
+
+int32 FMcRedstone::DirectSignalTo(const FIntVector& Pos) const
+{
+	int32 Best = 0;
+	for (int32 Dir = 0; Dir < 6 && Best < 15; ++Dir)
+	{
+		const FIntVector Source = Pos + Vec[Dir];
+		Best = FMath::Max(Best, DirectSignal(World.GetBlock(Source), Source, Dir));
+	}
+	return Best;
+}
+
+int32 FMcRedstone::SignalAt(const FIntVector& Pos, int32 Toward) const
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const int32 Own = Signal(State, Pos, Toward);
+	return IsConductor(State) ? FMath::Max(Own, DirectSignalTo(Pos)) : Own;
+}
+
+int32 FMcRedstone::BestSignal(const FIntVector& Pos) const
+{
+	int32 Best = 0;
+	for (int32 Dir = 0; Dir < 6 && Best < 15; ++Dir)
+	{
+		Best = FMath::Max(Best, SignalAt(Pos + Vec[Dir], Dir));
+	}
+	return Best;
+}
+
+bool FMcRedstone::HasPower(const FIntVector& Pos) const
+{
+	return BestSignal(Pos) > 0;
+}
+
+int32 FMcRedstone::ControlInput(const FIntVector& Pos, int32 Toward, bool bOnlyDiodes) const
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	if (bOnlyDiodes && !IsDiode(State))
+	{
+		return 0;
+	}
+	if (KindOf(State) == RedstoneBlock)
+	{
+		return 15;
+	}
+	if (KindOf(State) == Dust)
+	{
+		return Number(State, TEXT("power"));
+	}
+	return DirectSignal(State, Pos, Toward);
+}
+
+int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
+{
+	const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.IsEmpty())
+	{
+		return -1;
+	}
+	float Fill = 0.0f;
+	int32 NonEmpty = 0;
+	for (const FMcItemStack& Stack : Entity->Slots)
+	{
+		if (!Stack.IsEmpty())
+		{
+			Fill += static_cast<float>(Stack.Count) / FMath::Max(Stack.GetMaxStackSize(), 1);
+			++NonEmpty;
+		}
+	}
+	Fill /= Entity->Slots.Num();
+	return FMath::FloorToInt(Fill * 14.0f) + (NonEmpty > 0 ? 1 : 0);
+}
+
+// ---- Block changes ----
+
+void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
+{
+	Notify(Pos);
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		Notify(Pos + Vec[Dir]);
+	}
+	// One step further: through a conductor (a block a signal passes through), and from anything redstone does
+	// itself, so a piston still hears dust that reaches the block above it.
+	const bool bFull = KindOf(State) != None || Reg().IsAir(State);
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		const FIntVector Next = Pos + Vec[Dir];
+		if (bFull || IsConductor(World.GetBlock(Next)))
+		{
+			for (int32 Other = 0; Other < 6; ++Other)
+			{
+				if (Other != Opposite(Dir))
+				{
+					Notify(Next + Vec[Other]);
+				}
+			}
+		}
+	}
+	// An observer sees the block it faces change.
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		const FIntVector Next = Pos + Vec[Dir];
+		const FMcStateId Beside = World.GetBlock(Next);
+		if (KindOf(Beside) == Observer && FacingOf(Beside) == Opposite(Dir) && !Flag(Beside, TEXT("powered")))
+		{
+			Sim.ScheduleTick(Next, 2);
+		}
+	}
+	if (!bFlushing && !DirtyDust.IsEmpty())
+	{
+		bFlushing = true;
+		FlushDust();
+		bFlushing = false;
+	}
+}
+
+bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
+{
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	switch (KindOf(State))
+	{
+	case Dust:
+	case Repeater:
+	case Comparator:
+	case Plate:
+	case PlateLight:
+	case PlateHeavy:
+	case Torch:
+		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Down]));
+	case WallTorch:
+		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
+	case Lever:
+	case Button:
+	{
+		const FName Face = Reg().GetPropertyValue(State, TEXT("face"));
+		const int32 Attached = Face == TEXT("floor") ? Down : Face == TEXT("ceiling") ? Up : Opposite(FacingOf(State));
+		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Attached]));
+	}
+	default:
+		return true;
+	}
+}
+
+void FMcRedstone::Notify(const FIntVector& Pos)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const uint8 Kind = KindOf(State);
+	if (Kind == None)
+	{
+		return;
+	}
+	if (!IsSupported(Pos, State))
+	{
+		if (Kind == Dust)
+		{
+			DirtyDust.Add(Pos);
+		}
+		else
+		{
+			Sim.ScheduleTick(Pos, 1);
+		}
+		return;
+	}
+	switch (Kind)
+	{
+	case Dust:
+		DirtyDust.Add(Pos);
+		break;
+	case Repeater:
+	{
+		const bool bLocked = IsRepeaterLocked(Pos, State);
+		if (bLocked != Flag(State, TEXT("locked")))
+		{
+			Set(Pos, { FChange(TEXT("locked"), Bool(bLocked)) });
+			break;
+		}
+		if (!bLocked && Flag(State, TEXT("powered")) != (RepeaterInput(Pos, State) > 0))
+		{
+			Sim.ScheduleTick(Pos, Number(State, TEXT("delay")) * 2);
+		}
+		break;
+	}
+	case Comparator:
+		if (ComparatorOutput(Pos, State) != ComparatorOutputs.FindRef(Pos) || (ComparatorOutput(Pos, State) > 0) != Flag(State, TEXT("powered")))
+		{
+			Sim.ScheduleTick(Pos, 2);
+		}
+		break;
+	case Torch:
+	case WallTorch:
+		if (Flag(State, TEXT("lit")) == IsTorchPowered(Pos, State))
+		{
+			Sim.ScheduleTick(Pos, 2);
+		}
+		break;
+	case Lamp:
+		if (Flag(State, TEXT("lit")) && !HasPower(Pos))
+		{
+			Sim.ScheduleTick(Pos, 4);
+		}
+		else if (!Flag(State, TEXT("lit")) && HasPower(Pos))
+		{
+			Sim.ScheduleTick(Pos, 1);
+		}
+		break;
+	case Piston:
+	case StickyPiston:
+	case PistonHead:
+	case Door:
+	case Trapdoor:
+	case Gate:
+	case Daylight:
+		Sim.ScheduleTick(Pos, 1);
+		break;
+	case Button:
+		if (Flag(State, TEXT("powered")))
+		{
+			Sim.ScheduleTick(Pos, Reg().GetBlockOf(State).Name.ToString().Contains(TEXT("stone")) ? 20 : 30);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
+{
+	const uint8 Kind = KindOf(State);
+	if (Kind == None)
+	{
+		return false;
+	}
+	if (!IsSupported(Pos, State))
+	{
+		World.SetBlock(Pos, Air());
+		return true;
+	}
+	switch (Kind)
+	{
+	case Repeater:
+		TickRepeater(Pos, State);
+		break;
+	case Comparator:
+		TickComparator(Pos, State);
+		break;
+	case Torch:
+	case WallTorch:
+		TickTorch(Pos, State);
+		break;
+	case Lamp:
+		TickLamp(Pos, State);
+		break;
+	case Observer:
+		TickObserver(Pos, State);
+		break;
+	case Piston:
+	case StickyPiston:
+		TickPiston(Pos, State);
+		break;
+	case PistonHead:
+		TickPistonHead(Pos, State);
+		break;
+	case MovingPiston:
+		TickMovingPiston(Pos, State);
+		break;
+	case Door:
+	case Trapdoor:
+	case Gate:
+		TickOpening(Pos, State);
+		break;
+	case Button:
+		TickButton(Pos, State);
+		break;
+	case Plate:
+	case PlateLight:
+	case PlateHeavy:
+		TickPlate(Pos, State);
+		break;
+	case Daylight:
+		TickDaylight(Pos, State);
+		break;
+	default:
+		break;
+	}
+	return true;
+}
+
+// ---- Dust ----
+
+bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
+{
+	switch (KindOf(State))
+	{
+	case Dust:
+	case RedstoneBlock:
+	case Lever:
+	case Button:
+	case Plate:
+	case PlateLight:
+	case PlateHeavy:
+	case Torch:
+	case WallTorch:
+	case Comparator:
+	case Daylight:
+		return true;
+	case Repeater:
+		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
+	case Observer:
+		return FacingOf(State) == Toward;
+	default:
+		return false;
+	}
+}
+
+void FMcRedstone::DustReads(const FIntVector& Pos, TArray<FIntVector, TInlineAllocator<8>>& Out) const
+{
+	const bool bUpConductor = IsConductor(World.GetBlock(Pos + Vec[Up]));
+	for (int32 Dir = 0; Dir < 4; ++Dir)
+	{
+		const FIntVector Next = Pos + Vec[Dir];
+		const FMcStateId State = World.GetBlock(Next);
+		if (KindOf(State) == Dust)
+		{
+			Out.Add(Next);
+		}
+		if (IsConductor(State) && !bUpConductor)
+		{
+			if (IsKind(Next + Vec[Up], Dust))
+			{
+				Out.Add(Next + Vec[Up]);
+			}
+		}
+		else if (!IsConductor(State) && IsKind(Next + Vec[Down], Dust))
+		{
+			Out.Add(Next + Vec[Down]);
+		}
+	}
+}
+
+// The dust at Pos with this power and the connections its surroundings give it.
+FMcStateId FMcRedstone::DustShape(const FIntVector& Pos, FMcStateId State, int32 Power) const
+{
+	enum { NoLink, Side, Climb };
+	const bool bWasDot = Reg().GetPropertyValue(State, TEXT("north")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("east")) == TEXT("none")
+		&& Reg().GetPropertyValue(State, TEXT("south")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("west")) == TEXT("none");
+	const bool bUpConductor = IsConductor(World.GetBlock(Pos + Vec[Up]));
+	int32 Link[4] = { NoLink, NoLink, NoLink, NoLink };
+	for (int32 Dir = 0; Dir < 4; ++Dir)
+	{
+		const FIntVector Next = Pos + Vec[Dir];
+		const FMcStateId Beside = World.GetBlock(Next);
+		if (!bUpConductor && IsConductor(Beside) && IsKind(Next + Vec[Up], Dust))
+		{
+			Link[Dir] = Climb;
+		}
+		else if (ConnectsTo(Beside, Dir) || (!IsConductor(Beside) && IsKind(Next + Vec[Down], Dust)))
+		{
+			Link[Dir] = Side;
+		}
+	}
+	const bool bIsDot = !Link[0] && !Link[1] && !Link[2] && !Link[3];
+	if (!(bWasDot && bIsDot))
+	{
+		// A line of dust is drawn straight through: with nothing north or south both east and west are linked, and so on.
+		const bool bNoNorthSouth = !Link[North] && !Link[South];
+		const bool bNoEastWest = !Link[East] && !Link[West];
+		if (bNoNorthSouth)
+		{
+			Link[West] = Link[West] ? Link[West] : Side;
+			Link[East] = Link[East] ? Link[East] : Side;
+		}
+		if (bNoEastWest)
+		{
+			Link[North] = Link[North] ? Link[North] : Side;
+			Link[South] = Link[South] ? Link[South] : Side;
+		}
+	}
+	static const TCHAR* const Names[3] = { TEXT("none"), TEXT("side"), TEXT("up") };
+	return With(State, { FChange(TEXT("power"), Power), FChange(TEXT("north"), Names[Link[North]]), FChange(TEXT("east"), Names[Link[East]]),
+		FChange(TEXT("south"), Names[Link[South]]), FChange(TEXT("west"), Names[Link[West]]) });
+}
+
+void FMcRedstone::FlushDust()
+{
+	while (!DirtyDust.IsEmpty())
+	{
+		const FIntVector Seed = *DirtyDust.CreateIterator();
+		DirtyDust.Remove(Seed);
+		if (!IsKind(Seed, Dust))
+		{
+			continue;
+		}
+		if (!IsSupported(Seed, World.GetBlock(Seed)))
+		{
+			World.SetBlock(Seed, Air());
+			continue;
+		}
+		// Every dust that reads from or is read by this one, and so on: the whole connected network.
+		TArray<FIntVector> Net;
+		TSet<FIntVector> InNet;
+		TMap<FIntVector, TArray<FIntVector, TInlineAllocator<8>>> Reads;
+		TArray<FIntVector> Stack;
+		Stack.Add(Seed);
+		InNet.Add(Seed);
+		while (!Stack.IsEmpty())
+		{
+			const FIntVector At = Stack.Pop();
+			Net.Add(At);
+			TArray<FIntVector, TInlineAllocator<8>>& ReadsHere = Reads.Add(At);
+			DustReads(At, ReadsHere);
+			for (const FIntVector& Other : ReadsHere)
+			{
+				if (!InNet.Contains(Other))
+				{
+					InNet.Add(Other);
+					Stack.Add(Other);
+				}
+			}
+			for (int32 Dir = 0; Dir < 4; ++Dir)
+			{
+				for (int32 DY = -1; DY <= 1; ++DY)
+				{
+					const FIntVector Other = At + Vec[Dir] + FIntVector(0, DY, 0);
+					if (!InNet.Contains(Other) && IsKind(Other, Dust))
+					{
+						TArray<FIntVector, TInlineAllocator<8>> OtherReads;
+						DustReads(Other, OtherReads);
+						if (OtherReads.Contains(At))
+						{
+							InNet.Add(Other);
+							Stack.Add(Other);
+						}
+					}
+				}
+			}
+		}
+		// Power: what the other blocks give each dust, then spread along the network losing 1 a block.
+		TMap<FIntVector, int32> Power;
+		bIgnoreDust = true;
+		for (const FIntVector& At : Net)
+		{
+			Power.Add(At, BestSignal(At));
+		}
+		bIgnoreDust = false;
+		TMap<FIntVector, TArray<FIntVector, TInlineAllocator<8>>> Readers;
+		for (const FIntVector& At : Net)
+		{
+			for (const FIntVector& Source : Reads[At])
+			{
+				Readers.FindOrAdd(Source).Add(At);
+			}
+		}
+		for (int32 Level = 15; Level > 1; --Level)
+		{
+			for (const FIntVector& At : Net)
+			{
+				if (Power[At] == Level)
+				{
+					if (const auto* Following = Readers.Find(At))
+					{
+						for (const FIntVector& Next : *Following)
+						{
+							int32& NextPower = Power[Next];
+							NextPower = FMath::Max(NextPower, Level - 1);
+						}
+					}
+				}
+			}
+		}
+		for (const FIntVector& At : Net)
+		{
+			const FMcStateId State = World.GetBlock(At);
+			const FMcStateId Next = DustShape(At, State, Power[At]);
+			if (Next != State)
+			{
+				World.SetBlock(At, Next);
+			}
+		}
+		// What the writes disturbed was this network, which is now settled.
+		for (const FIntVector& At : Net)
+		{
+			DirtyDust.Remove(At);
+		}
+	}
+}
+
+// ---- Components ----
+
+int32 FMcRedstone::RepeaterInput(const FIntVector& Pos, FMcStateId State) const
+{
+	const int32 Facing = FacingOf(State);
+	const FIntVector Source = Pos + Vec[Facing];
+	const int32 Level = SignalAt(Source, Facing);
+	if (Level >= 15)
+	{
+		return Level;
+	}
+	const FMcStateId Beside = World.GetBlock(Source);
+	return KindOf(Beside) == Dust ? FMath::Max(Level, Number(Beside, TEXT("power"))) : Level;
+}
+
+bool FMcRedstone::IsRepeaterLocked(const FIntVector& Pos, FMcStateId State) const
+{
+	const int32 Facing = FacingOf(State);
+	for (const int32 Side : { (Facing + 1) % 4, (Facing + 3) % 4 })
+	{
+		if (ControlInput(Pos + Vec[Side], Side, true) > 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void FMcRedstone::TickRepeater(const FIntVector& Pos, FMcStateId State)
+{
+	const bool bLocked = IsRepeaterLocked(Pos, State);
+	if (bLocked != Flag(State, TEXT("locked")))
+	{
+		Set(Pos, { FChange(TEXT("locked"), Bool(bLocked)) });
+		State = World.GetBlock(Pos);
+	}
+	if (bLocked)
+	{
+		return;
+	}
+	const bool bPowered = Flag(State, TEXT("powered"));
+	const bool bShould = RepeaterInput(Pos, State) > 0;
+	if (bPowered && !bShould)
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+	}
+	else if (!bPowered)
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+		if (!bShould)
+		{
+			Sim.ScheduleTick(Pos, Number(State, TEXT("delay")) * 2);
+		}
+	}
+}
+
+int32 FMcRedstone::ComparatorOutput(const FIntVector& Pos, FMcStateId State) const
+{
+	const int32 Facing = FacingOf(State);
+	const FIntVector Source = Pos + Vec[Facing];
+	int32 Rear = SignalAt(Source, Facing);
+	const FMcStateId Behind = World.GetBlock(Source);
+	const int32 Container = ContainerLevel(Source);
+	if (Container >= 0)
+	{
+		Rear = Container;
+	}
+	else if (Rear < 15 && IsConductor(Behind))
+	{
+		const int32 Further = ContainerLevel(Source + Vec[Facing]);
+		if (Further >= 0)
+		{
+			Rear = Further;
+		}
+	}
+	int32 Side = 0;
+	for (const int32 Dir : { (Facing + 1) % 4, (Facing + 3) % 4 })
+	{
+		Side = FMath::Max(Side, ControlInput(Pos + Vec[Dir], Dir, false));
+	}
+	if (Reg().GetPropertyValue(State, TEXT("mode")) == TEXT("subtract"))
+	{
+		return FMath::Max(Rear - Side, 0);
+	}
+	return Rear >= Side ? Rear : 0;
+}
+
+void FMcRedstone::TickComparator(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Output = ComparatorOutput(Pos, State);
+	const int32 Before = ComparatorOutputs.FindRef(Pos);
+	if (Output > 0)
+	{
+		ComparatorOutputs.Add(Pos, Output);
+	}
+	else
+	{
+		ComparatorOutputs.Remove(Pos);
+	}
+	if ((Output > 0) != Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), Bool(Output > 0)) });
+	}
+	else if (Output != Before)
+	{
+		// The strength changed without the block changing: tell what it feeds.
+		const FIntVector Front = Pos + Vec[Opposite(FacingOf(State))];
+		OnBlockChanged(Front, World.GetBlock(Front));
+	}
+}
+
+bool FMcRedstone::IsTorchPowered(const FIntVector& Pos, FMcStateId State) const
+{
+	const int32 Toward = KindOf(State) == Torch ? static_cast<int32>(Down) : Opposite(FacingOf(State));
+	return SignalAt(Pos + Vec[Toward], Toward) > 0;
+}
+
+bool FMcRedstone::IsToggledTooOften(const FIntVector& Pos, bool bAdd)
+{
+	TArray<int64>& Toggles = TorchToggles.FindOrAdd(Pos);
+	if (bAdd)
+	{
+		Toggles.Add(Sim.GetGameTime());
+	}
+	return Toggles.Num() >= 8;
+}
+
+void FMcRedstone::TickTorch(const FIntVector& Pos, FMcStateId State)
+{
+	const bool bPowered = IsTorchPowered(Pos, State);
+	if (TArray<int64>* Toggles = TorchToggles.Find(Pos))
+	{
+		Toggles->RemoveAll([&](int64 Time) { return Sim.GetGameTime() - Time > 60; });
+	}
+	if (Flag(State, TEXT("lit")))
+	{
+		if (bPowered)
+		{
+			Set(Pos, { FChange(TEXT("lit"), TEXT("false")) });
+			if (IsToggledTooOften(Pos, true))
+			{
+				// Burned out: it stays dark for a while.
+				Sim.ScheduleTick(Pos, 160);
+			}
+		}
+	}
+	else if (!bPowered && !IsToggledTooOften(Pos, false))
+	{
+		Set(Pos, { FChange(TEXT("lit"), TEXT("true")) });
+	}
+}
+
+void FMcRedstone::TickLamp(const FIntVector& Pos, FMcStateId State)
+{
+	const bool bPowered = HasPower(Pos);
+	if (Flag(State, TEXT("lit")) && !bPowered)
+	{
+		Set(Pos, { FChange(TEXT("lit"), TEXT("false")) });
+	}
+	else if (!Flag(State, TEXT("lit")) && bPowered)
+	{
+		Set(Pos, { FChange(TEXT("lit"), TEXT("true")) });
+	}
+}
+
+void FMcRedstone::TickObserver(const FIntVector& Pos, FMcStateId State)
+{
+	if (Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+	}
+	else
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+		Sim.ScheduleTick(Pos, 2);
+	}
+}
+
+void FMcRedstone::TickOpening(const FIntVector& Pos, FMcStateId State)
+{
+	if (KindOf(State) == Door)
+	{
+		const bool bLower = Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower");
+		const FIntVector Other = Pos + Vec[bLower ? Up : Down];
+		const bool bPowered = HasPower(Pos) || HasPower(Other);
+		if (bPowered != Flag(State, TEXT("open")) || bPowered != Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("open"), Bool(bPowered)), FChange(TEXT("powered"), Bool(bPowered)) });
+			if (IsKind(Other, Door))
+			{
+				Set(Other, { FChange(TEXT("open"), Bool(bPowered)), FChange(TEXT("powered"), Bool(bPowered)) });
+			}
+		}
+		return;
+	}
+	// Trapdoors and gates follow the power only when it changes, so a player's hand still opens them.
+	const bool bPowered = HasPower(Pos);
+	if (bPowered != Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("open"), Bool(bPowered)), FChange(TEXT("powered"), Bool(bPowered)) });
+	}
+}
+
+void FMcRedstone::TickButton(const FIntVector& Pos, FMcStateId State)
+{
+	if (Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+	}
+}
+
+void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const uint8 Kind = KindOf(State);
+	if (Kind != Plate && Kind != PlateLight && Kind != PlateHeavy)
+	{
+		return;
+	}
+	Plates.Add(Pos, NumEntities);
+	// Pressing is at once; letting go takes a moment (wooden and stone plates 20 ticks, weighted ones 10).
+	Sim.ScheduleTick(Pos, NumEntities > 0 ? 1 : (Kind == Plate ? 20 : 10));
+}
+
+void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Count = Plates.FindRef(Pos);
+	const uint8 Kind = KindOf(State);
+	if (Kind == Plate)
+	{
+		if ((Count > 0) != Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), Bool(Count > 0)) });
+		}
+	}
+	else
+	{
+		const int32 Power = Kind == PlateLight ? FMath::Min(Count, 15) : FMath::Min((Count + 9) / 10, 15);
+		if (Power != Number(State, TEXT("power")))
+		{
+			Set(Pos, { FChange(TEXT("power"), Power) });
+		}
+	}
+}
+
+void FMcRedstone::TickDaylight(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - SunLight : SunLight;
+	if (Power != Number(State, TEXT("power")))
+	{
+		Set(Pos, { FChange(TEXT("power"), Power) });
+	}
+	Sim.ScheduleTick(Pos, 20);
+}
+
+// ---- Pistons ----
+
+bool FMcRedstone::ShouldExtend(const FIntVector& Pos, int32 Facing) const
+{
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		if (Dir != Facing && SignalAt(Pos + Vec[Dir], Dir) > 0)
+		{
+			return true;
+		}
+	}
+	// Quasi-connectivity: a piston is also powered by whatever would power the block above it.
+	const FIntVector Above = Pos + Vec[Up];
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		if (Dir != Down && SignalAt(Above + Vec[Dir], Dir) > 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool FMcRedstone::IsBreakable(FMcStateId State) const
+{
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	if (Reg().IsAir(State))
+	{
+		return false;
+	}
+	const FString Name = Reg().GetBlockOf(State).Name.ToString();
+	if (Shapes.GetFluid(State) != EMcFluid::None && (Name == TEXT("minecraft:water") || Name == TEXT("minecraft:lava")))
+	{
+		return true;
+	}
+	if (Name.EndsWith(TEXT("_door")) || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:pumpkin") || Name == TEXT("minecraft:melon")
+		|| Name == TEXT("minecraft:carved_pumpkin") || Name == TEXT("minecraft:jack_o_lantern") || Name.EndsWith(TEXT("cake")))
+	{
+		return true;
+	}
+	// Plants, torches, dust, levers: anything with no body to push, except rails.
+	return !Shapes.HasCollision(State) && !Name.Contains(TEXT("rail")) && KindOf(State) != PistonHead && KindOf(State) != MovingPiston;
+}
+
+bool FMcRedstone::IsPushable(const FIntVector& Pos, FMcStateId State) const
+{
+	const uint8 Kind = KindOf(State);
+	if (Kind == PistonHead || Kind == MovingPiston || IsImmovableName(Reg().GetBlockOf(State).Name))
+	{
+		return false;
+	}
+	if ((Kind == Piston || Kind == StickyPiston) && Flag(State, TEXT("extended")))
+	{
+		return false;
+	}
+	const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	return !(Chunk && Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15));
+}
+
+// The blocks a push from Start toward Toward moves (at most 12) and the ones it breaks. False if it can't happen.
+bool FMcRedstone::ResolvePush(const FIntVector& PistonPos, const FIntVector& Start, int32 Toward, TArray<FIntVector>& Move, TArray<FIntVector>& Destroy) const
+{
+	Move.Reset();
+	Destroy.Reset();
+	TSet<FIntVector> InSet;
+	const FIntVector Step = Vec[Toward];
+	const FMcBlockRegistry& Registry = Reg();
+	const auto IsSlime = [&](FMcStateId State) { return Registry.GetBlockOf(State).Name == TEXT("minecraft:slime_block"); };
+	const auto IsHoney = [&](FMcStateId State) { return Registry.GetBlockOf(State).Name == TEXT("minecraft:honey_block"); };
+
+	// Follows a line of blocks from From in the push direction. A main line fails on a block that can't move; a
+	// branch (a block a slime or honey block holds on to) just isn't taken along.
+	TFunction<bool(const FIntVector&, bool)> Line = [&](const FIntVector& From, bool bMain) -> bool
+	{
+		FIntVector At = From;
+		for (;;)
+		{
+			if (InSet.Contains(At))
+			{
+				return true;
+			}
+			const FMcStateId State = World.GetBlock(At);
+			if (Registry.IsAir(State))
+			{
+				return true;
+			}
+			if (IsBreakable(State))
+			{
+				if (bMain || At != From)
+				{
+					Destroy.AddUnique(At);
+				}
+				return true;
+			}
+			if (!IsPushable(At, State))
+			{
+				return !bMain && At == From;
+			}
+			const FIntVector Dest = At + Step;
+			if (!World.HasChunk(FIntPoint(Dest.X >> 4, Dest.Z >> 4)) || Dest.Y < World.GetDimension().MinY || Dest.Y > World.GetDimension().MaxY())
+			{
+				return false;
+			}
+			Move.Add(At);
+			InSet.Add(At);
+			if (Move.Num() > 12)
+			{
+				return false;
+			}
+			if (IsSlime(State) || IsHoney(State))
+			{
+				for (int32 Dir = 0; Dir < 6; ++Dir)
+				{
+					const FIntVector Beside = At + Vec[Dir];
+					if (Beside == PistonPos || InSet.Contains(Beside))
+					{
+						continue;
+					}
+					const FMcStateId Other = World.GetBlock(Beside);
+					if ((IsSlime(State) && IsHoney(Other)) || (IsHoney(State) && IsSlime(Other)))
+					{
+						continue;
+					}
+					if (!Line(Beside, false))
+					{
+						return false;
+					}
+				}
+			}
+			At = Dest;
+		}
+	};
+	return Line(Start, true);
+}
+
+void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, bool bSticky)
+{
+	const FMcBlockRegistry& Registry = Reg();
+	for (const FIntVector& At : Destroy)
+	{
+		World.SetBlock(At, Air());
+	}
+	TArray<FMcStateId> Carried;
+	for (const FIntVector& At : Move)
+	{
+		Carried.Add(World.GetBlock(At));
+	}
+	for (const FIntVector& At : Move)
+	{
+		World.SetBlock(At, Air());
+	}
+	TMap<FName, FName> Properties;
+	Properties.Add(TEXT("facing"), DirName[Toward]);
+	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+	const FMcStateId Moving = Registry.FindState(TEXT("minecraft:moving_piston"), Properties).Get(0);
+	for (int32 Index = 0; Index < Move.Num(); ++Index)
+	{
+		const FIntVector Dest = Move[Index] + Vec[Toward];
+		MovingBlocks.Add(Dest, TPair<FMcStateId, int64>(Carried[Index], Sim.GetGameTime() + 2));
+		World.SetBlock(Dest, Moving);
+		Sim.ScheduleTick(Dest, 2);
+	}
+}
+
+bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky)
+{
+	TArray<FIntVector> Move, Destroy;
+	if (!ResolvePush(Pos, Pos + Vec[Facing], Facing, Move, Destroy))
+	{
+		return false;
+	}
+	MoveBlocks(Move, Destroy, Facing, bSticky);
+	TMap<FName, FName> Properties;
+	Properties.Add(TEXT("facing"), DirName[Facing]);
+	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+	Properties.Add(TEXT("short"), TEXT("false"));
+	World.SetBlock(Pos + Vec[Facing], Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0));
+	Set(Pos, { FChange(TEXT("extended"), TEXT("true")) });
+	return true;
+}
+
+void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky)
+{
+	Set(Pos, { FChange(TEXT("extended"), TEXT("false")) });
+	const FIntVector HeadPos = Pos + Vec[Facing];
+	if (IsKind(HeadPos, PistonHead))
+	{
+		World.SetBlock(HeadPos, Air());
+	}
+	if (bSticky)
+	{
+		TArray<FIntVector> Move, Destroy;
+		const FIntVector Start = Pos + Vec[Facing] * 2;
+		if (ResolvePush(Pos, Start, Opposite(Facing), Move, Destroy))
+		{
+			// What can't be moved or broken stays where it is.
+			Destroy.Reset();
+			MoveBlocks(Move, Destroy, Opposite(Facing), true);
+		}
+	}
+}
+
+void FMcRedstone::TickPiston(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Facing = FacingOf(State);
+	const bool bSticky = KindOf(State) == StickyPiston;
+	const bool bExtended = Flag(State, TEXT("extended"));
+	const bool bShould = ShouldExtend(Pos, Facing);
+	if (bShould && !bExtended)
+	{
+		Extend(Pos, State, Facing, bSticky);
+	}
+	else if (!bShould && bExtended)
+	{
+		Retract(Pos, State, Facing, bSticky);
+	}
+}
+
+void FMcRedstone::TickPistonHead(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Facing = FacingOf(State);
+	const FMcStateId Base = World.GetBlock(Pos + Vec[Opposite(Facing)]);
+	const uint8 Kind = KindOf(Base);
+	if (!((Kind == Piston || Kind == StickyPiston) && FacingOf(Base) == Facing && Flag(Base, TEXT("extended"))))
+	{
+		World.SetBlock(Pos, Air());
+	}
+}
+
+void FMcRedstone::TickMovingPiston(const FIntVector& Pos, FMcStateId State)
+{
+	FMcStateId Landed = Air();
+	if (const TPair<FMcStateId, int64>* Carried = MovingBlocks.Find(Pos))
+	{
+		// Another tick may be waiting here from before; the block lands when its 2 ticks are up.
+		if (Carried->Value > Sim.GetGameTime())
+		{
+			Sim.ScheduleTick(Pos, static_cast<int32>(Carried->Value - Sim.GetGameTime()));
+			return;
+		}
+		Landed = Carried->Key;
+		MovingBlocks.Remove(Pos);
+	}
+	World.SetBlock(Pos, Landed);
+}

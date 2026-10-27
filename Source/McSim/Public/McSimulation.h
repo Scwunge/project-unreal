@@ -10,6 +10,7 @@
 #include "McCore.h"
 
 class FMcBlockWorld;
+class FMcRedstone;
 
 class MCSIM_API FMcSimulation
 {
@@ -32,6 +33,13 @@ public:
 	// Asks for a block tick Delay ticks from now at Pos (nothing if one is already waiting there).
 	void ScheduleTick(const FIntVector& Pos, int32 Delay);
 	int32 NumScheduled() const { return Pending.Num(); }
+
+	// Redstone (minecraft.wiki, "Redstone circuits", "Piston"): dust, repeaters, comparators, torches, observers,
+	// lamps, doors and pistons run off block changes and scheduled ticks like the rest. What stands on a pressure
+	// plate is told to the simulation, and daylight detectors read the sun level (0 to 15) it is given.
+	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
+	void SetSunLight(int32 Level);
+	int32 GetDustPower(const FIntVector& Pos) const;
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;
@@ -61,4 +69,5 @@ private:
 	TArray<FIntPoint> TickingChunks;
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };
+	TUniquePtr<FMcRedstone> Redstone;
 };

@@ -4,6 +4,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McRedstone.h"
 #include "McSim.h"
 
 namespace
@@ -62,6 +63,7 @@ FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
 	: World(InWorld)
 {
 	FMcBlockLight::Get().EnsureLoaded();
+	Redstone = MakeUnique<FMcRedstone>(World, *this);
 	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
 }
 
@@ -80,8 +82,24 @@ void FMcSimulation::ScheduleTick(const FIntVector& Pos, int32 Delay)
 	Due.FindOrAdd(GameTime + FMath::Max(Delay, 1)).Add(Pos);
 }
 
-void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId)
+void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 {
+	Redstone->SetPlate(Pos, NumEntities);
+}
+
+void FMcSimulation::SetSunLight(int32 Level)
+{
+	Redstone->SetSunLight(Level);
+}
+
+int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
+{
+	return Redstone->GetDustPower(Pos);
+}
+
+void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
+{
+	Redstone->OnBlockChanged(Pos, State);
 	Notify(Pos);
 	for (const FIntVector& Offset : Around)
 	{
@@ -160,6 +178,10 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 		return;
 	}
 	const FMcStateId State = World.GetBlock(Pos);
+	if (Redstone->RunTick(Pos, State))
+	{
+		return;
+	}
 	if (FluidOf(State) != EMcFluid::None)
 	{
 		TickFluid(Pos, State);

@@ -33,9 +33,33 @@ bool FMcBiomeRegistry::EnsureLoaded()
 		Names.Add(Name);
 		const TSharedPtr<FJsonObject> Biome = McCache::LoadJsonObject(McCache::Data(TEXT("worldgen/biome/") + File));
 		Spawns.Add(Biome.IsValid() ? ParseSpawns(*Biome) : TMap<FName, TArray<FMcSpawnEntry>>());
+		double Temperature = 0.8;
+		bool bPrecipitation = true;
+		if (Biome.IsValid())
+		{
+			Biome->TryGetNumberField(TEXT("temperature"), Temperature);
+			Biome->TryGetBoolField(TEXT("has_precipitation"), bPrecipitation);
+		}
+		Temperatures.Add(static_cast<float>(Temperature));
+		Precipitation.Add(bPrecipitation);
 	}
 	Plains = Find(TEXT("minecraft:plains")).Get(0);
 	return true;
+}
+
+float FMcBiomeRegistry::GetTemperature(FMcBiomeId Id, int32 Y) const
+{
+	const float Base = Temperatures.IsValidIndex(Id) ? Temperatures[Id] : 0.8f;
+	return Base - (Y > 80 ? (Y - 80) * 0.00125f : 0.0f);
+}
+
+FMcBiomeRegistry::EPrecipitation FMcBiomeRegistry::GetPrecipitation(FMcBiomeId Id, int32 Y) const
+{
+	if (Precipitation.IsValidIndex(Id) && !Precipitation[Id])
+	{
+		return EPrecipitation::None;
+	}
+	return GetTemperature(Id, Y) < 0.15f ? EPrecipitation::Snow : EPrecipitation::Rain;
 }
 
 TConstArrayView<FMcSpawnEntry> FMcBiomeRegistry::GetSpawns(FMcBiomeId Id, FName Category) const

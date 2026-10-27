@@ -39,12 +39,21 @@ public:
 	// category the biome has none of.
 	TConstArrayView<FMcSpawnEntry> GetSpawns(FMcBiomeId Id, FName Category) const;
 
+	// The biome's climate (minecraft.wiki: "Biome", "Rain"): its temperature, which falls by 0.00125 a block above y 80,
+	// and what falls from its sky at a height: nothing where the biome has no precipitation (deserts, savannas), snow
+	// below a temperature of 0.15, rain otherwise.
+	enum class EPrecipitation : uint8 { None, Rain, Snow };
+	float GetTemperature(FMcBiomeId Id, int32 Y) const;
+	EPrecipitation GetPrecipitation(FMcBiomeId Id, int32 Y) const;
+
 	// Reads the spawn lists out of a biome file's object (for tests; EnsureLoaded does this for every biome).
 	static TMap<FName, TArray<FMcSpawnEntry>> ParseSpawns(const FJsonObject& Biome);
 
 private:
 	TArray<FName> Names;
 	TArray<TMap<FName, TArray<FMcSpawnEntry>>> Spawns;
+	TArray<float> Temperatures;
+	TArray<bool> Precipitation;
 	TMap<FName, FMcBiomeId> Ids;
 	FMcBiomeId Plains = 0;
 };

@@ -22,6 +22,13 @@ namespace McSky
 	// night. The chunks' light never changes with the time; this is applied when drawing.
 	MCRENDER_API float GetSkyLightFactor();
 	MCRENDER_API void SetSkyLightFactor(float Factor);
+
+	// A sky or fog colour (display values) under rain and thunder (0 to 1 each; thunder as heavy as the rain is):
+	// greyed and darkened towards its own brightness, as the sky goes grey in a storm (minecraft.wiki: "Rain").
+	MCRENDER_API FLinearColor ApplyWeather(const FLinearColor& Colour, float Rain, float Thunder);
+	// The sky light factor dimmed by the weather: rain takes 5/16 of the daylight above the night's, thunder as much
+	// again of what is left (the wiki's full day light of 15 down to 12 in rain).
+	MCRENDER_API float ApplyWeatherToLight(float Factor, float Rain, float Thunder);
 }
 
 UCLASS(ClassGroup = (Mc))
@@ -34,6 +41,12 @@ public:
 
 	// Where the time of day comes from, in ticks (see AMcWorldActor::GetDayTime).
 	TFunction<double()> GetTime;
+
+	// How hard it rains and thunders now, 0 to 1 each (see AMcWorldActor::GetRainLevel). Unset is clear.
+	TFunction<FVector2D()> GetWeather;
+
+	// A lightning flash: the sky and the blocks under it light up for a moment.
+	void Flash();
 
 	// The distance at which the fog is thick (the view distance), in blocks.
 	float FogEndBlocks = 192.0f;
@@ -105,6 +118,10 @@ private:
 	FLinearColor SkyColor = FLinearColor::Black;
 	FLinearColor FogColor = FLinearColor::Black;
 	float StarBrightness = 0.0f;
+	float Rain = 0.0f;
+	float Thunder = 0.0f;
+	// Seconds of lightning flash left.
+	float FlashTime = 0.0f;
 	int32 ShownMoonPhase = INDEX_NONE;
 	bool bReady = false;
 };

@@ -64,5 +64,6 @@ private:
 	float ViewSyncTimer = 0.0f;
 	TWeakObjectPtr<UActorComponent> Renderer;
 	TWeakObjectPtr<UActorComponent> Sky;
+	TWeakObjectPtr<UActorComponent> Weather;
 	float NetLogTimer = 0.0f;
 };

@@ -1,4 +1,5 @@
 #include "McDayCycle.h"
+#include "McSkyComponent.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -147,6 +148,29 @@ bool FMcDayCycleLightTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no stars at noon"), Cycle.GetStarBrightness(6000.0) < 0.001f);
 	TestTrue(TEXT("stars at midnight"), Near(Cycle.GetStarBrightness(18000.0), 0.5, 1e-3));
 	TestTrue(TEXT("stars brighten through dusk"), Cycle.GetStarBrightness(12000.0) < Cycle.GetStarBrightness(12800.0));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcSkyWeatherTest, "McClient.McRender.SkyWeather",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcSkyWeatherTest::RunTest(const FString& Parameters)
+{
+	// The plains' day sky, #78a7ff.
+	const FLinearColor Sky(0x78 / 255.0f, 0xa7 / 255.0f, 1.0f, 1.0f);
+	TestTrue(TEXT("clear leaves it be"), McSky::ApplyWeather(Sky, 0.0f, 0.0f).Equals(Sky, 1e-5f));
+	const FLinearColor Rainy = McSky::ApplyWeather(Sky, 1.0f, 0.0f);
+	TestTrue(TEXT("rain darkens"), Rainy.B < Sky.B && Rainy.G < Sky.G);
+	TestTrue(TEXT("rain greys: the blue is mostly gone"), Rainy.B - Rainy.R < (Sky.B - Sky.R) * 0.3f);
+	const FLinearColor Stormy = McSky::ApplyWeather(Sky, 1.0f, 1.0f);
+	TestTrue(TEXT("thunder darker still"), Stormy.G < Rainy.G * 0.6f);
+
+	// Daylight 1 is level 15; rain makes it 12 or so, the night's 0.24 stays.
+	TestEqual(TEXT("clear daylight"), McSky::ApplyWeatherToLight(1.0f, 0.0f, 0.0f), 1.0f);
+	const float RainLight = McSky::ApplyWeatherToLight(1.0f, 1.0f, 0.0f);
+	TestTrue(TEXT("rain dims the day"), RainLight < 0.8f && RainLight > 0.7f);
+	TestTrue(TEXT("thunder dims it more"), McSky::ApplyWeatherToLight(1.0f, 1.0f, 1.0f) < RainLight);
+	TestEqual(TEXT("night is unchanged"), McSky::ApplyWeatherToLight(0.24f, 1.0f, 1.0f), 0.24f);
 	return true;
 }
 

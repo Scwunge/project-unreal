@@ -35,6 +35,7 @@ void AMcWorldActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AMcWorldActor, SyncedDayTime);
 	DOREPLIFETIME(AMcWorldActor, bTimeFrozen);
+	DOREPLIFETIME(AMcWorldActor, Weather);
 	DOREPLIFETIME_CONDITION(AMcWorldActor, Dimension, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AMcWorldActor, bSecondary, COND_InitialOnly);
 }
@@ -91,6 +92,12 @@ void AMcWorldActor::SetDayTime(double Ticks)
 	DayTicks = Ticks;
 	SyncedDayTime = static_cast<int64>(FMath::FloorToDouble(Ticks));
 	TicksSinceSync = 0.0;
+}
+
+bool AMcWorldActor::HasWeather() const
+{
+	// The Nether (a ceiling) and the End (no sky light) never rain.
+	return BlockWorld && BlockWorld->GetDimension().bHasSkylight && !BlockWorld->GetDimension().bHasCeiling;
 }
 
 void AMcWorldActor::OnRep_SyncedDayTime()
@@ -267,6 +274,16 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	// Development: -McWeather=clear|rain|thunder, at full strength from the start (for screenshots).
+	FString WeatherArg;
+	if (!bSecondary && FParse::Value(CommandLine, TEXT("-McWeather="), WeatherArg))
+	{
+		const EMcWeather Forced = WeatherArg == TEXT("thunder") ? EMcWeather::Thunder : WeatherArg == TEXT("rain") ? EMcWeather::Rain : EMcWeather::Clear;
+		Simulation->SetWeather(Forced, 0);
+		Weather = static_cast<uint8>(Forced);
+		RainLevel = Forced != EMcWeather::Clear ? 1.0f : 0.0f;
+		ThunderLevel = Forced == EMcWeather::Thunder ? 1.0f : 0.0f;
+	}
 	BlockWorld->OnChunkAdded.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkAdded(Pos); } });
 	BlockWorld->OnChunkRemoved.AddLambda([this](FIntPoint Pos) { if (Entities) { Entities->OnChunkRemoved(Pos); } });
 	Finished = MakeShared<TQueue<FFinishedChunk, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
@@ -562,6 +579,20 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 			TicksSinceSync = 0.0;
 			SyncedDayTime = static_cast<int64>(FMath::FloorToDouble(DayTicks));
 		}
+	}
+	// The weather: the server says what it is, and every machine eases towards it a hundredth a tick.
+	if (HasAuthority() && Simulation)
+	{
+		Weather = static_cast<uint8>(Simulation->GetWeather());
+	}
+	WeatherRemainder = FMath::Min(WeatherRemainder + DeltaSeconds, 0.25);
+	for (; WeatherRemainder >= 0.05; WeatherRemainder -= 0.05)
+	{
+		const bool bWeather = HasWeather();
+		const float RainTarget = bWeather && Weather != static_cast<uint8>(EMcWeather::Clear) ? 1.0f : 0.0f;
+		const float ThunderTarget = bWeather && Weather == static_cast<uint8>(EMcWeather::Thunder) ? 1.0f : 0.0f;
+		RainLevel = FMath::FInterpConstantTo(RainLevel, RainTarget, 1.0f, 0.01f);
+		ThunderLevel = FMath::FInterpConstantTo(ThunderLevel, ThunderTarget, 1.0f, 0.01f);
 	}
 	if (BlockWorld && Generator)
 	{

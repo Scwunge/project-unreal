@@ -28,6 +28,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/PostProcessVolume.h"
 #include "McSkyComponent.h"
+#include "McWeatherComponent.h"
 #include "McWorldRenderComponent.h"
 #endif
 
@@ -315,8 +316,13 @@ void AMcPlayerController::DetachView()
 	{
 		Heavens->DestroyComponent();
 	}
+	if (UActorComponent* Precipitation = Weather.Get())
+	{
+		Precipitation->DestroyComponent();
+	}
 	Renderer.Reset();
 	Sky.Reset();
+	Weather.Reset();
 }
 
 void AMcPlayerController::SwitchLocalView(AMcWorldActor* Old)
@@ -597,11 +603,26 @@ void AMcPlayerController::SpawnEnvironment()
 	{
 		return Actor.IsValid() ? Actor->GetDayTime() : 1000.0;
 	};
+	Heavens->GetWeather = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	{
+		return Actor.IsValid() ? FVector2D(Actor->GetRainLevel(), Actor->GetThunderLevel()) : FVector2D::ZeroVector;
+	};
 	if (const FMcBlockWorld* Blocks = WorldActor->GetBlockWorld())
 	{
 		Heavens->SetDimension(Blocks->GetDimension());
 	}
 	Heavens->RegisterComponent();
 	Sky = Heavens;
+
+	// Rain and snow round the camera, and the rain's sound.
+	UMcWeatherComponent* Precipitation = NewObject<UMcWeatherComponent>(WorldActor);
+	Precipitation->SetupAttachment(WorldActor->GetRootComponent());
+	Precipitation->SetBlockWorld(WorldActor->GetBlockWorld());
+	Precipitation->GetRain = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	{
+		return Actor.IsValid() ? Actor->GetRainLevel() : 0.0f;
+	};
+	Precipitation->RegisterComponent();
+	Weather = Precipitation;
 #endif
 }

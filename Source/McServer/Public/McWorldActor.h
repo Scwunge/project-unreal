@@ -93,6 +93,12 @@ public:
 	bool IsTimeFrozen() const { return bTimeFrozen; }
 	void SetTimeFrozen(bool bFrozen) { bTimeFrozen = bFrozen; }
 
+	// How hard it is raining and thundering, 0 to 1, on every machine: they ease a hundredth a tick towards the server's
+	// weather, so a storm comes on over five seconds. Thunder counts only while it rains. Always 0 where there is no
+	// weather (no sky light, or a ceiling). -McWeather=clear|rain|thunder starts a new world's weather at full.
+	float GetRainLevel() const { return RainLevel; }
+	float GetThunderLevel() const { return ThunderLevel * RainLevel; }
+
 	// The actor class shown for each server-side entity (set by the game mode; it implements IMcEntityProxy).
 	void SetEntityProxyClass(TSubclassOf<AActor> Class);
 	FMcEntityHost* GetEntityHost() const { return Entities.Get(); }
@@ -193,6 +199,13 @@ private:
 	int64 SyncedDayTime = 1000;
 	UPROPERTY(Replicated)
 	bool bTimeFrozen = false;
+	// The server's weather (EMcWeather), and the levels easing towards it.
+	UPROPERTY(Replicated)
+	uint8 Weather = 0;
+	float RainLevel = 0.0f;
+	float ThunderLevel = 0.0f;
+	double WeatherRemainder = 0.0;
+	bool HasWeather() const;
 
 	// Where the players were (and the view distance) when a frame last found nothing to load, unload or finish; while
 	// they stay put there is nothing for StreamChunks to do. Empty when something is outstanding.

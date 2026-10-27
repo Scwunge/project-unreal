@@ -93,6 +93,38 @@ void McSky::SetSkyLightFactor(float Factor)
 	GSkyLightFactor = Factor;
 }
 
+FLinearColor McSky::ApplyWeather(const FLinearColor& Colour, float Rain, float Thunder)
+{
+	const float Brightness = Colour.R * 0.3f + Colour.G * 0.59f + Colour.B * 0.11f;
+	FLinearColor Out = Colour;
+	if (Rain > 0.0f)
+	{
+		const float Amount = FMath::Clamp(Rain, 0.0f, 1.0f) * 0.75f;
+		const float Grey = Brightness * 0.6f;
+		Out = FLinearColor(FMath::Lerp(Out.R, Grey, Amount), FMath::Lerp(Out.G, Grey, Amount), FMath::Lerp(Out.B, Grey, Amount), Colour.A);
+	}
+	if (Thunder > 0.0f)
+	{
+		const float Amount = FMath::Clamp(Thunder, 0.0f, 1.0f) * 0.75f;
+		const float Grey = Brightness * 0.2f;
+		Out = FLinearColor(FMath::Lerp(Out.R, Grey, Amount), FMath::Lerp(Out.G, Grey, Amount), FMath::Lerp(Out.B, Grey, Amount), Colour.A);
+	}
+	return Out;
+}
+
+float McSky::ApplyWeatherToLight(float Factor, float Rain, float Thunder)
+{
+	constexpr float Night = 0.24f;
+	const float Above = FMath::Max(0.0f, Factor - Night);
+	return Night + Above * (1.0f - FMath::Clamp(Rain, 0.0f, 1.0f) * 5.0f / 16.0f) * (1.0f - FMath::Clamp(Thunder, 0.0f, 1.0f) * 5.0f / 16.0f)
+		+ FMath::Min(Factor, Night) - Night;
+}
+
+void UMcSkyComponent::Flash()
+{
+	FlashTime = 0.2f;
+}
+
 UMcSkyComponent::UMcSkyComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -292,6 +324,31 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	FogColor = Cycle.GetFogColor(Ticks);
 	StarBrightness = Cycle.GetStarBrightness(Ticks);
 
+	// Rain greys the sky and the fog, dims the daylight and hides the sun, moon and stars.
+	const FVector2D WeatherNow = GetWeather ? GetWeather() : FVector2D::ZeroVector;
+	Rain = static_cast<float>(WeatherNow.X);
+	Thunder = static_cast<float>(WeatherNow.Y);
+	if (Rain > 0.0f)
+	{
+		SkyColor = McSky::ApplyWeather(SkyColor, Rain, Thunder);
+		FogColor = McSky::ApplyWeather(FogColor, Rain, Thunder);
+		StarBrightness *= 1.0f - Rain;
+		McSky::SetSkyLightFactor(McSky::ApplyWeatherToLight(McSky::GetSkyLightFactor(), Rain, Thunder));
+	}
+	const float CelestialAlpha = 1.0f - Rain;
+	SunMaterial->SetVectorParameterValue(TEXT("Tint"), FLinearColor(CelestialAlpha, CelestialAlpha, CelestialAlpha, 1.0f));
+	MoonMaterial->SetVectorParameterValue(TEXT("Tint"), FLinearColor(CelestialAlpha, CelestialAlpha, CelestialAlpha, 1.0f));
+
+	// A lightning flash: the sky light at full, a little over, and the sky lit a pale blue.
+	if (FlashTime > 0.0f)
+	{
+		FlashTime -= DeltaTime;
+		McSky::SetSkyLightFactor(1.1f);
+		const FLinearColor Lit(0.8f, 0.8f, 1.0f, 1.0f);
+		SkyColor = FMath::Lerp(SkyColor, Lit, 0.45f);
+		FogColor = FMath::Lerp(FogColor, Lit, 0.45f);
+	}
+
 	if (Mode != EMode::Overworld)
 	{
 		// No day and night: one colour for the sky and the fog, nothing in the sky but (in the End) its own picture.
@@ -304,8 +361,8 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		}
 	}
 	const bool bOverworld = Mode == EMode::Overworld;
-	Sun->SetVisibility(bOverworld);
-	Moon->SetVisibility(bOverworld);
+	Sun->SetVisibility(bOverworld && CelestialAlpha > 0.001f);
+	Moon->SetVisibility(bOverworld && CelestialAlpha > 0.001f);
 	Stars->SetVisibility(bOverworld && StarBrightness > 0.001f);
 	if (EndSky)
 	{
@@ -452,7 +509,8 @@ void UMcSkyComponent::UpdateFog()
 {
 	// Thick at the view distance, starting at three fifths of it. 3.3 optical depths take the fog to about 90%.
 	const bool bNether = Mode == EMode::Nether;
-	const float End = (bNether ? FMath::Min(FogEndBlocks, NetherFogEndBlocks) : FogEndBlocks) * McCoords::UnitsPerBlock;
+	// Rain brings the fog 30% closer.
+	const float End = (bNether ? FMath::Min(FogEndBlocks, NetherFogEndBlocks) : FogEndBlocks * (1.0f - 0.3f * Rain)) * McCoords::UnitsPerBlock;
 	const float Start = bNether ? NetherFogStartBlocks * McCoords::UnitsPerBlock : End * 0.6f;
 	Fog->SetStartDistance(Start);
 	Fog->SetFogCutoffDistance(DomeRadius * 0.8f);

@@ -104,13 +104,17 @@ def make_placeholder_array():
     return array
 
 
-def make_block_material(name: str, blend_mode, default_array):
+def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool = False):
     # Nothing refers to the materials as assets (the game loads them by path), so they can be made afresh.
+    # vertex_alpha: the vertex colour's alpha scales the opacity too (rain fading with distance, clouds), and both
+    # sides are drawn.
     if eal.does_asset_exist(f"{FOLDER}/{name}"):
         eal.delete_asset(f"{FOLDER}/{name}")
     material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
     material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     material.set_editor_property("blend_mode", blend_mode)
+    if vertex_alpha:
+        material.set_editor_property("two_sided", True)
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
         # Minecraft's cutout layer drops texels below 10% alpha.
         material.set_editor_property("opacity_mask_clip_value", 0.1)
@@ -165,6 +169,11 @@ def make_block_material(name: str, blend_mode, default_array):
 
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
         mel.connect_material_property(texture, "A", unreal.MaterialProperty.MP_OPACITY_MASK)
+    elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and vertex_alpha:
+        opacity = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -100, 300)
+        mel.connect_material_expressions(texture, "A", opacity, "A")
+        mel.connect_material_expressions(vertex_color, "A", opacity, "B")
+        mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
         mel.connect_material_property(texture, "A", unreal.MaterialProperty.MP_OPACITY)
 
@@ -247,10 +256,15 @@ def main() -> None:
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
         return
+    if os.environ.get("MC_ONLY_WEATHER"):
+        make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"), True)
+        return
     array = make_placeholder_array()
     make_block_material("M_McBlockOpaque", unreal.BlendMode.BLEND_OPAQUE, array)
     make_block_material("M_McBlockCutout", unreal.BlendMode.BLEND_MASKED, array)
     make_block_material("M_McBlockTranslucent", unreal.BlendMode.BLEND_TRANSLUCENT, array)
+    # Rain, snow and clouds.
+    make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)
     make_sky_materials(array)
 
 

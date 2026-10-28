@@ -12,6 +12,27 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Mining time (M7).
   - Server-side movement checks.
 
+- **M9** (2026-10-28):
+  - **Starting the game.** With no `-Mc` switches the game opens on the title screen: Singleplayer (the
+    world list, New World with name, game mode, world type and seed, Delete) and Multiplayer (name and
+    address).
+  - **The pause menu.** Esc in a world opens it, with Save and Quit to Title (or Disconnect on a client).
+  - **Worlds.** They live in `Saved/Worlds/<folder>`, and `level.json` now holds the world's name and game
+    mode.
+  - **The dedicated server.** Run it with `tools/run_server.ps1`. Its settings are in `Saved/Server`:
+    `server.properties` (gamemode, level-name, level-seed, level-type, max-players, motd, server-port,
+    white-list), `allowlist.json` and `ops.json`, matched by player name since there are no accounts.
+    Ops get past the allowlist, and past the player limit with `bypassesPlayerLimit`. The default port
+    is 25565, the same port the join screen uses when an address doesn't give one.
+  - **Not done:** a packaged `McClientServer` build needs a source-built engine, because the launcher's
+    can't build Server targets, so the script runs the editor binary with `-server`. Server commands such
+    as `/op` and `/whitelist` don't exist yet; edit the files instead.
+  - **Dev switches:**
+    - `-McTitle` shows the title screen even with other switches.
+    - `-McMenu=worlds|newworld|join|pause` opens that screen.
+    - `-McMenuPress=Singleplayer,Create_New_World` presses buttons in turn.
+    - `-McName=` sets the player name.
+
 ### M4 build order
 
 The 26.3 worldgen data (`cache/client/data/minecraft/worldgen`) is the source of truth. The overworld biome

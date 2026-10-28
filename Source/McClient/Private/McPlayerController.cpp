@@ -1,4 +1,5 @@
 #include "McPlayerController.h"
+#include "McLaunch.h"
 #include "McBlockUse.h"
 #include "McEntityActor.h"
 #include "McEntityHost.h"
@@ -48,6 +49,12 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	ConnectToWorld();
 	ResolveWantedDimension();
+	if (!bMenuShotStarted && IsLocalController() && McLaunch::IsMenu(GetWorld()))
+	{
+		// The title screen has no world to set the view up in; a -McShot of it starts here instead.
+		bMenuShotStarted = true;
+		StartDevScreenshot();
+	}
 	if (IsLocalController() && WorldActor)
 	{
 		ViewSyncTimer -= DeltaSeconds;
@@ -74,6 +81,18 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 			PlayerCameraManager ? *McCoords::UnrealToBlock(PlayerCameraManager->GetCameraLocation()).ToString() : TEXT("none"));
 	}
 #endif
+}
+
+void AMcPlayerController::PawnLeavingGame()
+{
+	if (HasAuthority())
+	{
+		if (const AMcGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AMcGameMode>() : nullptr)
+		{
+			GameMode->SavePlayer(this);
+		}
+	}
+	Super::PawnLeavingGame();
 }
 
 void AMcPlayerController::TickMusic(float DeltaSeconds)

@@ -23,6 +23,8 @@ public:
 	AMcPlayerController();
 
 	virtual void Tick(float DeltaSeconds) override;
+	// Saves the player (on the server) before the pawn goes, as they disconnect or the map changes.
+	virtual void PawnLeavingGame() override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Mc")
 	TObjectPtr<UMcChunkStreamComponent> ChunkStream;
@@ -60,6 +62,7 @@ private:
 
 	bool bStreamConnected = false;
 	bool bViewSetUp = false;
+	bool bMenuShotStarted = false;
 	bool bEnvironmentSpawned = false;
 	FString WantedDimension;
 	float ViewSyncTimer = 0.0f;

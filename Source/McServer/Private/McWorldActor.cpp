@@ -12,6 +12,7 @@
 #include "McSimulation.h"
 #include "McServer.h"
 #include "McWorldStorage.h"
+#include "McLaunch.h"
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Net/UnrealNetwork.h"
@@ -140,7 +141,8 @@ void AMcWorldActor::BeginPlay()
 	}
 	const TCHAR* CommandLine = FCommandLine::Get();
 
-	// A named world (-McWorld=<name>) is read from Saved/Worlds/<name>, or made there.
+	// A named world (-McWorld=<name>, ?McWorld=<name> from the title screen, level-name on a dedicated server) is read
+	// from Saved/Worlds/<name>, or made there.
 	FString WorldArg;
 	bool bHaveLevel = false;
 	if (bSecondary)
@@ -148,7 +150,7 @@ void AMcWorldActor::BeginPlay()
 		// Another dimension of the first world: its save folder and seed come from there.
 		bHaveLevel = !WorldName.IsEmpty();
 	}
-	else if (FParse::Value(CommandLine, TEXT("-McWorld="), WorldArg))
+	else if (McLaunch::GetValue(GetWorld(), TEXT("McWorld"), WorldArg))
 	{
 		WorldName = McWorldSave::SanitizeName(WorldArg);
 		if (WorldName.IsEmpty())
@@ -190,9 +192,14 @@ void AMcWorldActor::BeginPlay()
 	FString Scene;
 	if (!bSecondary)
 	{
-		bFlat |= FParse::Param(CommandLine, TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
+		bFlat |= McLaunch::HasFlag(GetWorld(), TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
 	}
-	const bool bSeedArg = !bSecondary && FParse::Value(CommandLine, TEXT("-McSeed="), Seed);
+	FString SeedArg;
+	const bool bSeedArg = !bSecondary && McLaunch::GetValue(GetWorld(), TEXT("McSeed"), SeedArg);
+	if (bSeedArg)
+	{
+		Seed = McLaunch::ParseSeed(SeedArg);
+	}
 	double StartTime = DayTicks;
 	const bool bTimeArg = !bSecondary && FParse::Value(CommandLine, TEXT("-McTime="), StartTime);
 	if (bHaveLevel)
@@ -336,6 +343,12 @@ void AMcWorldActor::BeginPlay()
 			Level.NoiseSettings = NoiseSettings;
 			Level.bFlat = bFlat;
 			Level.FlatPreset = bFlat ? FlatPreset : FString();
+			FString Mode, Name;
+			if (McLaunch::GetValue(GetWorld(), TEXT("McGameMode"), Mode))
+			{
+				Level.GameMode = McLaunch::IsCreativeMode(Mode) ? TEXT("creative") : TEXT("survival");
+			}
+			Level.Name = McLaunch::GetValue(GetWorld(), TEXT("McName"), Name) ? Name : WorldName;
 		}
 		StartStorage(WorldName);
 	}

@@ -2,6 +2,9 @@
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
 #include "McHUD.h"
+#include "McLaunch.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
 #include "Engine/Texture2D.h"
@@ -389,6 +392,21 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 	if (!Screen.IsValid())
 	{
+		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape);
+#if !UE_BUILD_SHIPPING
+		// Development: -McMenu=pause opens the pause menu once the world is up.
+		static bool bDevPauseDone = false;
+		FString DevMenu;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && DevMenu == TEXT("pause"))
+		{
+			bDevPauseDone = true;
+			bPause = true;
+		}
+#endif
+		if (bPause)
+		{
+			OpenMenu(EMenu::Pause);
+		}
 		return;
 	}
 	if (Player->WasInputKeyJustPressed(EKeys::Escape))
@@ -570,6 +588,11 @@ void AMcHUD::DrawHUD()
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);
 	const int32 Width = Canvas->SizeX / Scale;
 	const int32 Height = Canvas->SizeY / Scale;
+	if (McLaunch::IsMenu(GetWorld()))
+	{
+		DrawMenus(Width, Height, true);
+		return;
+	}
 
 	AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(GetOwningPawn());
 	UMcPlayerDataComponent* Data = Player ? Player->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
@@ -586,8 +609,14 @@ void AMcHUD::DrawHUD()
 			Controller->SetIgnoreMoveInput(false);
 		}
 	}
+	if (bDead && ActiveMenu == EMenu::Pause)
+	{
+		// The death screen takes over (and the input with it).
+		ActiveMenu = EMenu::None;
+		bMenuInput = false;
+	}
 	SyncScreen(Data);
-	if (!bDead)
+	if (!bDead && ActiveMenu == EMenu::None)
 	{
 		PollInput(Width, Height, Data);
 	}
@@ -596,7 +625,7 @@ void AMcHUD::DrawHUD()
 
 	const McGui::FHudLayout Layout = McGui::ComputeHud(Width, Height, Data ? Data->Stats : FMcPlayerStats());
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
-	if (!Screen.IsValid())
+	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{
 		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/crosshair.png")), Layout.Crosshair.X, Layout.Crosshair.Y, 15, 15);
 	}
@@ -627,5 +656,9 @@ void AMcHUD::DrawHUD()
 	if (bDead)
 	{
 		ShowDeathScreen(Width, Height, *Player);
+	}
+	else if (ActiveMenu == EMenu::Pause)
+	{
+		DrawMenus(Width, Height, false);
 	}
 }

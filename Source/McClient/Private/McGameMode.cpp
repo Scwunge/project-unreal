@@ -11,6 +11,9 @@
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
 #include "McWorldSave.h"
+#include "McLaunch.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/GameSession.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -22,6 +25,8 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "TimerManager.h"
+#include "UObject/UObjectGlobals.h"
+#include "Engine/Engine.h"
 #include "UnrealClient.h"
 
 #if MC_WITH_RENDER
@@ -40,6 +45,24 @@ AMcGameMode::AMcGameMode()
 void AMcGameMode::StartPlay()
 {
 	Super::StartPlay();
+	if (McLaunch::IsMenu(GetWorld()))
+	{
+		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
+		return;
+	}
+	if (GetNetMode() == NM_DedicatedServer)
+	{
+		const FMcServerProperties& Properties = FMcServerProperties::Get();
+		if (GameSession)
+		{
+			// The player limit is max-players, checked in PreLogin so operators can be let past it.
+			GameSession->MaxPlayers = 10000;
+		}
+		// Makes the allowlist and ops files if they aren't there yet, so there is something to edit.
+		FMcServerAccess::Load();
+		UE_LOG(LogMcClient, Log, TEXT("Dedicated server \"%s\" on port %d: up to %d players, allowlist %s."), *Properties.GetString(TEXT("motd")),
+			GetWorld()->URL.Port, Properties.GetInt(TEXT("max-players"), 20), Properties.GetBool(TEXT("white-list")) ? TEXT("on") : TEXT("off"));
+	}
 
 	// Spawned after Super::StartPlay so the world has begun play and BeginPlay runs straight away.
 	WorldActor = GetWorld()->SpawnActor<AMcWorldActor>();
@@ -67,6 +90,15 @@ void AMcGameMode::StartPlay()
 	if (WorldActor->HasStorage())
 	{
 		SavingHandle = WorldActor->OnSaving.AddUObject(this, &AMcGameMode::SavePlayers);
+		// Leaving for another map (Save and Quit to Title) takes the pawns away before anything here ends play, so the
+		// players are saved as the engine starts loading it.
+		PreLoadMapHandle = FCoreUObjectDelegates::PreLoadMapWithContext.AddWeakLambda(this, [this](const FWorldContext& Context, const FString&)
+		{
+			if (Context.World() == GetWorld())
+			{
+				SavePlayers();
+			}
+		});
 	}
 
 	// Players that joined before the world existed started at a guessed height; move them above the surface (or to
@@ -80,7 +112,10 @@ void AMcGameMode::StartPlay()
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
 				McPawn->SetFlying(bFlying);
-				RestoreSurvival(It->Get(), *McPawn);
+				if (!RestoreSurvival(It->Get(), *McPawn))
+				{
+					ApplyDefaultGameMode(*McPawn);
+				}
 			}
 		}
 	}
@@ -314,6 +349,11 @@ void AMcGameMode::StartDevCapture()
 
 void AMcGameMode::RestartPlayer(AController* NewPlayer)
 {
+	// The title screen has no world to be in.
+	if (McLaunch::IsMenu(GetWorld()))
+	{
+		return;
+	}
 	// There are no PlayerStart actors: players start above the middle of block 0, 0.
 	if (NewPlayer && !NewPlayer->IsPendingKillPending())
 	{
@@ -322,7 +362,10 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
 			McPawn->SetFlying(bFlying);
-			RestoreSurvival(NewPlayer, *McPawn);
+			if (!RestoreSurvival(NewPlayer, *McPawn))
+			{
+				ApplyDefaultGameMode(*McPawn);
+			}
 		}
 		// A player last saved in another dimension goes back there, once it is ready.
 		FMcPlayerData Saved;
@@ -362,6 +405,10 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 			Player->EnterWorld(*WorldActor);
 		}
 		RestartPlayerAtTransform(Who, GetSpawnTransform());
+		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
+		{
+			ApplyDefaultGameMode(*McPawn);
+		}
 	}));
 }
 
@@ -392,13 +439,48 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	}
 }
 
-void AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const
+bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const
 {
 	FMcPlayerData Saved;
 	if (Pawn.Data && WorldActor && WorldActor->HasStorage() && McWorldSave::LoadPlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Saved)
 		&& McPlayerSave::Apply(Saved, *Pawn.Data))
 	{
 		Pawn.SelectedSlot = Pawn.Data->SelectedSlot;
+		return true;
+	}
+	return false;
+}
+
+void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
+{
+	if (!Pawn.Data || Pawn.Data->bCreative)
+	{
+		// Already creative (-McCreative).
+		return;
+	}
+	// A dedicated server's gamemode setting is for everyone new, whatever the world was made with.
+	const FString Mode = GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
+		: WorldActor ? WorldActor->GetLevel().GameMode : FString();
+	if (McLaunch::IsCreativeMode(Mode))
+	{
+		Pawn.Data->bCreative = true;
+		Pawn.Data->FillCreativeHotbar();
+	}
+}
+
+void AMcGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	if (!ErrorMessage.IsEmpty() || GetNetMode() != NM_DedicatedServer)
+	{
+		return;
+	}
+	// Read afresh, so an edited allowlist or ops file applies to the next player to join.
+	const FString Name = UGameplayStatics::ParseOption(Options, TEXT("Name"));
+	ErrorMessage = FMcServerAccess::CheckJoin(FMcServerProperties::Get(), FMcServerAccess::Load(), Name, GetNumPlayers());
+	if (!ErrorMessage.IsEmpty())
+	{
+		UE_LOG(LogMcClient, Log, TEXT("%s (%s) can't join: %s"), *Name, *Address, *ErrorMessage);
 	}
 }
 
@@ -488,6 +570,8 @@ void AMcGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		WorldActor->OnSaving.Remove(SavingHandle);
 	}
 	SavingHandle.Reset();
+	FCoreUObjectDelegates::PreLoadMapWithContext.Remove(PreLoadMapHandle);
+	PreLoadMapHandle.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 

@@ -30,6 +30,10 @@ struct MCSERVER_API FMcLevelData
 	FString FlatPreset;
 	// Game rules by name, as text ("true", "3"). Only doDaylightCycle is read so far; the rest are kept for later.
 	TMap<FString, FString> GameRules;
+	// What the world list shows (the folder name is a safe version of it) and the mode new players start in,
+	// "survival" or "creative".
+	FString Name;
+	FString GameMode = TEXT("survival");
 
 	bool operator==(const FMcLevelData& Other) const;
 };
@@ -79,6 +83,20 @@ namespace McWorldSave
 	MCSERVER_API bool SaveLevel(const FString& WorldDir, const FMcLevelData& Level);
 	// False if there is no level file or it can't be read.
 	MCSERVER_API bool LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel);
+
+	// A saved world as the world list shows it, newest played first.
+	struct FWorldSummary
+	{
+		FString Folder;
+		FMcLevelData Level;
+		FDateTime LastPlayed;
+	};
+	MCSERVER_API TArray<FWorldSummary> ListWorlds();
+	// A folder name for a new world called Name that no world uses yet: the safe name, with " (2)" and up added (as
+	// "_2_") when it is taken. "World" if Name has nothing usable.
+	MCSERVER_API FString MakeNewFolder(const FString& Name);
+	// Deletes a world's folder, chunks and all. False if it isn't a world (no level.json) or can't be deleted.
+	MCSERVER_API bool DeleteWorld(const FString& Folder);
 
 	// Players are keyed by an id the caller picks (a name, or the platform user id); like world names it is
 	// sanitised for the file name.

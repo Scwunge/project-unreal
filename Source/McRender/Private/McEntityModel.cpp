@@ -534,7 +534,7 @@ namespace
 	}
 
 	// Loads (once) the picture at Path; null if it isn't there.
-	UTexture2DArray* LoadCached(UObject* Outer, const FString& Path, FIntPoint& OutSize, bool bWhite = false)
+	UTexture2DArray* LoadCached(const FString& Path, FIntPoint& OutSize, bool bWhite = false)
 	{
 		const FString Key = bWhite ? Path + TEXT("#white") : Path;
 		if (const TStrongObjectPtr<UTexture2DArray>* Found = TextureCache().Find(Key))
@@ -543,7 +543,8 @@ namespace
 			return Found->Get();
 		}
 		int32 Width = 0, Height = 0;
-		UTexture2DArray* Texture = McRenderTextures::LoadPngAsArray(Outer, Path, Width, Height, bWhite);
+		// Kept for every world that comes after, so not inside this one.
+		UTexture2DArray* Texture = McRenderTextures::LoadPngAsArray(GetTransientPackage(), Path, Width, Height, bWhite);
 		TextureCache().Add(Key, TStrongObjectPtr<UTexture2DArray>(Texture));
 		SizeCache().Add(Key, FIntPoint(Width, Height));
 		OutSize = FIntPoint(Width, Height);
@@ -674,7 +675,7 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		return nullptr;
 	}
 	FIntPoint Size;
-	UTexture2DArray* Texture = LoadCached(this, Path, Size);
+	UTexture2DArray* Texture = LoadCached(Path, Size);
 	if (!Texture)
 	{
 		return nullptr;
@@ -815,7 +816,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			// The picture swapped for its white silhouette, and back.
 			FIntPoint Size;
-			if (UTexture2DArray* Texture = LoadCached(this, GetTexturePath(0), Size, bFlash))
+			if (UTexture2DArray* Texture = LoadCached(GetTexturePath(0), Size, bFlash))
 			{
 				Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
 				bFlashing = bFlash;

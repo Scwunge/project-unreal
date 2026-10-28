@@ -94,7 +94,11 @@ UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
 	{
 		return *Found;
 	}
-	UTexture2D* Texture = LoadPng(McCache::Asset(RelativeAssetPath), false);
+	// "resources:" pictures come with the sounds, from the launcher's asset index, rather than in the jar (the title
+	// panorama: the jar's is a 1 by 1 stand-in).
+	const FString Path = RelativeAssetPath.StartsWith(TEXT("resources:"))
+		? FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), RelativeAssetPath.Mid(10)) : McCache::Asset(RelativeAssetPath);
+	UTexture2D* Texture = LoadPng(Path, false);
 	Sprites.Add(RelativeAssetPath, Texture);
 	return Texture;
 }

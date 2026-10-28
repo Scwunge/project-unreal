@@ -25,8 +25,14 @@ public:
 
 	virtual void StartPlay() override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
+	// On a dedicated server: turns away players the allowlist doesn't have (when it is on) or who would be one too many,
+	// unless they are operators (see FMcServerAccess).
+	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
 	// A leaving player is saved first (in a saved world, see AMcWorldActor).
 	virtual void Logout(AController* Exiting) override;
+	// Saves where a player is and what they have, if the world has a save. Called as they leave, while their pawn is
+	// still there (AMcPlayerController::PawnLeavingGame): by Logout the engine has taken it away.
+	void SavePlayer(const AController* Controller) const;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// A player who died (their things are already on the ground) starts again at the spawn, with a new body; done on the
@@ -52,9 +58,11 @@ private:
 	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
 	// What a player is filed under in the world's playerdata folder.
 	FString GetSaveId(const AController* Controller) const;
-	void SavePlayer(const AController* Controller) const;
-	// Puts a saved inventory and stats (if the world has them for this player) on a pawn that has just arrived.
-	void RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const;
+	// Puts a saved inventory and stats (if the world has them for this player) on a pawn that has just arrived; false
+	// if there were none.
+	bool RestoreSurvival(const AController* Controller, AMcPlayerPawn& Pawn) const;
+	// A new player (or one back from the dead) starts in the world's game mode, or the dedicated server's.
+	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
 	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
 	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
@@ -63,6 +71,7 @@ private:
 	void SavePlayers() const;
 
 	FDelegateHandle SavingHandle;
+	FDelegateHandle PreLoadMapHandle;
 
 	// Development: -McCam=x,y,z,yaw,pitch puts the camera at a Minecraft position and angle (the screenshot
 	// itself, -McShot, is taken by the player controller).

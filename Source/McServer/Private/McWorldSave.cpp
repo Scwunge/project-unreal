@@ -12,7 +12,7 @@ bool FMcLevelData::operator==(const FMcLevelData& Other) const
 {
 	return Version == Other.Version && Seed == Other.Seed && Spawn == Other.Spawn && DayTime == Other.DayTime
 		&& Dimension == Other.Dimension && NoiseSettings == Other.NoiseSettings && bFlat == Other.bFlat
-		&& FlatPreset == Other.FlatPreset && GameRules.OrderIndependentCompareEqual(Other.GameRules);
+		&& FlatPreset == Other.FlatPreset && Name == Other.Name && GameMode == Other.GameMode && GameRules.OrderIndependentCompareEqual(Other.GameRules);
 }
 
 bool FMcPlayerData::operator==(const FMcPlayerData& Other) const
@@ -122,6 +122,8 @@ bool McWorldSave::SaveLevel(const FString& WorldDir, const FMcLevelData& Level)
 	Object->SetStringField(TEXT("noiseSettings"), Level.NoiseSettings);
 	Object->SetBoolField(TEXT("flat"), Level.bFlat);
 	Object->SetStringField(TEXT("flatPreset"), Level.FlatPreset);
+	Object->SetStringField(TEXT("name"), Level.Name);
+	Object->SetStringField(TEXT("gameMode"), Level.GameMode);
 	const TSharedRef<FJsonObject> Rules = MakeShared<FJsonObject>();
 	for (const TPair<FString, FString>& Rule : Level.GameRules)
 	{
@@ -159,6 +161,8 @@ bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 	Object->TryGetStringField(TEXT("noiseSettings"), Level.NoiseSettings);
 	Object->TryGetBoolField(TEXT("flat"), Level.bFlat);
 	Object->TryGetStringField(TEXT("flatPreset"), Level.FlatPreset);
+	Object->TryGetStringField(TEXT("name"), Level.Name);
+	Object->TryGetStringField(TEXT("gameMode"), Level.GameMode);
 	const TSharedPtr<FJsonObject>* Rules = nullptr;
 	if (Object->TryGetObjectField(TEXT("gameRules"), Rules))
 	{
@@ -299,4 +303,62 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	}
 	OutPlayer = Player;
 	return true;
+}
+
+TArray<McWorldSave::FWorldSummary> McWorldSave::ListWorlds()
+{
+	TArray<FWorldSummary> Worlds;
+	IFileManager& Files = IFileManager::Get();
+	TArray<FString> Folders;
+	Files.FindFiles(Folders, *(GetWorldsRoot() / TEXT("*")), /*Files=*/false, /*Directories=*/true);
+	for (const FString& Folder : Folders)
+	{
+		FWorldSummary Summary;
+		const FString Dir = GetWorldsRoot() / Folder;
+		if (!LoadLevel(Dir, Summary.Level))
+		{
+			continue;
+		}
+		Summary.Folder = Folder;
+		// The level file is written on every save, so its time is when the world was last played.
+		Summary.LastPlayed = Files.GetTimeStamp(*(Dir / TEXT("level.json")));
+		if (Summary.Level.Name.IsEmpty())
+		{
+			Summary.Level.Name = Folder;
+		}
+		Worlds.Add(MoveTemp(Summary));
+	}
+	Worlds.Sort([](const FWorldSummary& A, const FWorldSummary& B) { return A.LastPlayed > B.LastPlayed; });
+	return Worlds;
+}
+
+FString McWorldSave::MakeNewFolder(const FString& Name)
+{
+	FString Base = SanitizeName(Name);
+	if (Base.IsEmpty())
+	{
+		Base = TEXT("World");
+	}
+	IFileManager& Files = IFileManager::Get();
+	FString Folder = Base;
+	for (int32 Number = 2; Files.DirectoryExists(*(GetWorldsRoot() / Folder)); ++Number)
+	{
+		Folder = FString::Printf(TEXT("%s_%d_"), *Base, Number);
+	}
+	return Folder;
+}
+
+bool McWorldSave::DeleteWorld(const FString& Folder)
+{
+	const FString Safe = SanitizeName(Folder);
+	if (Safe.IsEmpty() || Safe != Folder)
+	{
+		return false;
+	}
+	const FString Dir = GetWorldsRoot() / Safe;
+	if (!IFileManager::Get().FileExists(*(Dir / TEXT("level.json"))))
+	{
+		return false;
+	}
+	return IFileManager::Get().DeleteDirectory(*Dir, /*RequireExists=*/true, /*Tree=*/true);
 }

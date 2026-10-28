@@ -48,6 +48,16 @@ public:
 	void CloseScreen();
 	bool IsScreenOpen() const { return Screen.IsValid(); }
 
+	// ---- Menus (McHUDMenus.cpp) ----
+	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
+	// world, drawn with the game's button and text field sprites.
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause };
+	EMenu GetMenu() const { return ActiveMenu; }
+	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
+	void OpenMenu(EMenu NewMenu);
+	// Why the last attempt to join a server failed, shown on the title screen the failure lands on. Kept across maps.
+	static void SetConnectError(const FString& Error);
+
 private:
 	struct FIconTriangle
 	{
@@ -90,6 +100,61 @@ private:
 	void FlushDrops();
 	// The death screen: shown while the player is dead, with a button that asks the server to bring them back.
 	void ShowDeathScreen(int32 Width, int32 Height, class AMcPlayerPawn& Player);
+
+	// The menus: the frame's input, then the screen. True if a menu took the frame (the world's HUD is not drawn).
+	bool DrawMenus(int32 Width, int32 Height, bool bTitle);
+	void DrawMenuBackground(int32 Width, int32 Height, bool bDim);
+	void DrawTitle(int32 Width, int32 Height);
+	void DrawWorlds(int32 Width, int32 Height);
+	void DrawConfirmDelete(int32 Width, int32 Height);
+	void DrawNewWorld(int32 Width, int32 Height);
+	void DrawJoin(int32 Width, int32 Height);
+	void DrawMessage(int32 Width, int32 Height);
+	void DrawPause(int32 Width, int32 Height);
+	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
+	// focused; a click focuses it, Tab moves on).
+	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);
+	void MenuTextField(FString& Text, int32 Id, float X, float Y, float W, float H, int32 MaxLength);
+	void DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Border);
+	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
+	void SetMenuInput(bool bMenu);
+	void CreateWorld();
+	void PlayWorld(const FString& Folder, const FString& ExtraOptions);
+	void JoinServer();
+	void LoadClientOptions();
+	void SaveClientOptions() const;
+
+	struct FWorldRow
+	{
+		FString Folder;
+		FString Name;
+		FString GameMode;
+		FDateTime LastPlayed;
+	};
+
+	EMenu ActiveMenu = EMenu::None;
+	bool bMenuInput = false;
+	// This frame's input for the menus.
+	bool bMenuClick = false;
+	FString MenuTyped;
+	bool bMenuBackspace = false;
+	bool bMenuEnter = false;
+	bool bMenuTab = false;
+	int32 FocusedField = 0;
+	int32 FieldCount = 0;
+	TArray<FWorldRow> WorldRows;
+	int32 SelectedWorld = INDEX_NONE;
+	int32 WorldScroll = 0;
+	double LastRowClick = 0.0;
+	FString NewWorldName;
+	FString NewWorldSeed;
+	bool bNewWorldCreative = false;
+	bool bNewWorldFlat = false;
+	FString PlayerName;
+	FString ServerAddress;
+	FString MessageTitle;
+	FString MessageText;
+	static FString ConnectError;
 
 	int32 Scale = 1;
 	int32 ShakeCounter = 0;

@@ -660,7 +660,11 @@ void AMcHUD::DrawHUD()
 			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar_offhand_left.png")), Layout.Hotbar.X - 29, Layout.Hotbar.Y - 1, 29, 24);
 			DrawStack(Data->Offhand->Get(0), static_cast<float>(Layout.Hotbar.X - 26), static_cast<float>(Layout.Hotbar.Y + 3));
 		}
-		DrawBars(Width, Height, Data);
+		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
+		if (!Data->bCreative)
+		{
+			DrawBars(Width, Height, Data);
+		}
 	}
 	if (Screen.IsValid() && !bDead)
 	{

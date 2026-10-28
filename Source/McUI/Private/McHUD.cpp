@@ -121,13 +121,19 @@ const AMcHUD::FIcon& AMcHUD::GetIcon(FMcStateId State)
 	{
 		return *Found;
 	}
-	FIcon& Icon = Icons.Add(State);
+	FIcon Icon;
 	const FString Name = McCache::PathOf(FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString());
 	if (!BuildFlatIcon(Name, Icon))
 	{
+		if (!FMcBlockModels::Get().IsBaked())
+		{
+			// The HUD draws before the world's models are baked: try again next frame rather than keep nothing.
+			static const FIcon NotYet;
+			return NotYet;
+		}
 		BuildBlockIcon(State, Icon);
 	}
-	return Icon;
+	return Icons.Add(State, MoveTemp(Icon));
 }
 
 const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
@@ -136,13 +142,19 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 	{
 		return *Found;
 	}
-	FIcon& Icon = ItemIcons.Add(Item);
+	FIcon Icon;
 	const FString Name = McCache::PathOf(Item.ToString());
 	if (!BuildFlatIcon(Name, Icon))
 	{
 		// A block's item is drawn as the block; anything else we can't read the model of falls back on the sprite
 		// of the same name, if the jar has one.
 		const TOptional<FMcStateId> State = FMcBlockRegistry::Get().FindDefaultState(Item);
+		if (State.IsSet() && !FMcBlockModels::Get().IsBaked())
+		{
+			// Not yet: see GetIcon.
+			static const FIcon NotYet;
+			return NotYet;
+		}
 		if (State.IsSet())
 		{
 			BuildBlockIcon(State.GetValue(), Icon);
@@ -152,7 +164,7 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 			BuildFlatQuad(TEXT("minecraft:item/") + Name, Icon);
 		}
 	}
-	return Icon;
+	return ItemIcons.Add(Item, MoveTemp(Icon));
 }
 
 void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon)

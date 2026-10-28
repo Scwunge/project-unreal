@@ -1,6 +1,7 @@
 #include "McEntityHost.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
+#include "McBiomeRegistry.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityProxy.h"
@@ -55,6 +56,23 @@ namespace
 			Value = Bits % 10;
 		}
 		return Value == 0;
+	}
+
+	// What a kind spawns on. The first four graze on grass; a turtle comes ashore on sand; the others live in cold,
+	// stony and wet places too.
+	bool IsSpawnGround(FName Kind, FName Block)
+	{
+		static const TSet<FName> Wide = { TEXT("minecraft:grass_block"), TEXT("minecraft:snow_block"), TEXT("minecraft:podzol"),
+			TEXT("minecraft:mud"), TEXT("minecraft:sand"), TEXT("minecraft:stone"), TEXT("minecraft:gravel"), TEXT("minecraft:coarse_dirt") };
+		if (Kind == TEXT("minecraft:turtle"))
+		{
+			return Block == TEXT("minecraft:sand");
+		}
+		if (Kind == TEXT("minecraft:pig") || Kind == TEXT("minecraft:cow") || Kind == TEXT("minecraft:sheep") || Kind == TEXT("minecraft:chicken"))
+		{
+			return Block == TEXT("minecraft:grass_block");
+		}
+		return Wide.Contains(Block);
 	}
 
 	// Hostile mobs stay under this many in the world per player, and are removed past this distance from every player.
@@ -395,10 +413,36 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 	{
 		return;
 	}
-	const FName Kind = Animals[Local.RandHelper(UE_ARRAY_COUNT(Animals))];
-	const int32 Herd = Local.RandRange(2, 4);
+	FName Kind = Animals[Local.RandHelper(UE_ARRAY_COUNT(Animals))];
+	int32 Herd = Local.RandRange(2, 4);
+	// Where the chunk's biome lists creatures we have mobs for, one of those by weight, in the group size it lists.
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	if (const FMcChunk* BiomeChunk = Biomes.IsLoaded() ? World.FindChunk(Chunk) : nullptr)
+	{
+		TArray<FMcSpawnEntry> Known;
+		int32 TotalWeight = 0;
+		for (const FMcSpawnEntry& Entry : Biomes.GetSpawns(BiomeChunk->GetBiome(8, 64, 8), TEXT("creature")))
+		{
+			if (FMcMobType::Find(Entry.Kind))
+			{
+				Known.Add(Entry);
+				TotalWeight += Entry.Weight;
+			}
+		}
+		if (TotalWeight > 0)
+		{
+			const int32 Roll = Local.RandHelper(TotalWeight);
+			Kind = PickSpawn(Known, Roll);
+			for (const FMcSpawnEntry& Entry : Known)
+			{
+				if (Entry.Kind == Kind)
+				{
+					Herd = Local.RandRange(FMath::Max(1, Entry.MinCount), FMath::Max(Entry.MinCount, Entry.MaxCount));
+				}
+			}
+		}
+	}
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	const FMcStateId Grass = Registry.FindDefaultState(TEXT("minecraft:grass_block")).Get(0);
 	int32 Placed = 0;
 	int32 CentreX = Chunk.X * 16 + Local.RandRange(2, 13);
 	int32 CentreZ = Chunk.Y * 16 + Local.RandRange(2, 13);
@@ -415,7 +459,7 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 			NearY = Y.GetValue();
 			Range = 24;
 		}
-		if (Y && World.GetBlock(FIntVector(X, Y.GetValue() - 1, Z)) == Grass)
+		if (Y && IsSpawnGround(Kind, Registry.GetBlockOf(World.GetBlock(FIntVector(X, Y.GetValue() - 1, Z))).Name))
 		{
 			SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5));
 			++Placed;

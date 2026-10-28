@@ -94,7 +94,7 @@ namespace
 	}
 	const TSet<FString>& KnownLootEntries()
 	{
-		static const TSet<FString> Names = { TEXT("item"), TEXT("alternatives"), TEXT("group"), TEXT("sequence"), TEXT("loot_table"), TEXT("empty") };
+		static const TSet<FString> Names = { TEXT("item"), TEXT("alternatives"), TEXT("group"), TEXT("sequence"), TEXT("loot_table"), TEXT("empty"), TEXT("tag"), TEXT("dynamic") };
 		return Names;
 	}
 

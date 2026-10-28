@@ -746,7 +746,33 @@ namespace
 				RollTable(*Value->AsObject(), Random, Out, Depth + 1);
 			}
 		}
-		// Tag and dynamic entries give nothing here.
+		else if (Type == TEXT("tag"))
+		{
+			// The items of an item tag: one at random with "expand", otherwise every one of them.
+			FString Reference;
+			Entry.TryGetStringField(TEXT("items"), Reference);
+			const TSet<FName>* Members = FMcItemRegistry::Get().GetTag(FName(*Reference.Replace(TEXT("#"), TEXT(""))));
+			if (Members && !Members->IsEmpty())
+			{
+				TArray<FName> Sorted = Members->Array();
+				Sorted.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+				bool bExpand = false;
+				Entry.TryGetBoolField(TEXT("expand"), bExpand);
+				if (bExpand)
+				{
+					Sorted = { Sorted[Random.NextInt(Sorted.Num())] };
+				}
+				for (const FName& Item : Sorted)
+				{
+					FMcItemStack Stack;
+					Stack.Item = Item;
+					Stack.Count = 1;
+					Out.Add(Stack);
+				}
+			}
+		}
+		// A dynamic entry (a shulker box or decorated pot giving back what it holds) is read here and gives nothing:
+		// stacks don't carry block entity contents yet, so there is nothing to hand back when such a block is broken.
 		for (int32 Index = Before; Index < Out.Num(); ++Index)
 		{
 			Modify(Entry.TryGetField(TEXT("modifier")), Random, Out[Index]);

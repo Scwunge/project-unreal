@@ -65,8 +65,10 @@ public:
 	// Overworld's usual ones where the chunk or the biome registry isn't there.
 	TConstArrayView<FMcSpawnEntry> GetMonsterSpawns(const FIntVector& Cell) const;
 
-private:
+	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
+
+private:
 	void SpawnHostiles(const TArray<FVector>& Players);
 	void SyncProxies();
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.

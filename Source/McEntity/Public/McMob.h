@@ -39,6 +39,8 @@ struct MCENTITY_API FMcMobType
 	bool bTeleports = false;
 	// Slimes get about by hopping, come in sizes 1, 2 and 4, and split into smaller ones when they die.
 	bool bHops = false;
+	// Bees fly: no gravity, and they wander at different heights.
+	bool bFlies = false;
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
 	bool IsHostile() const { return AttackDamage > 0.0f || bSwells; }

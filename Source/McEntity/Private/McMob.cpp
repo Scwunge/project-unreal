@@ -71,6 +71,23 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Enderman.bTeleports = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
 		Add(TEXT("minecraft:slime"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
+
+		// The overworld animals (minecraft.wiki, the page of each). Horses and llamas have a random health of 15 to 30
+		// and a random speed; the middle is used.
+		// Wolves are neutral: a wild one bites (4 on Normal) whoever hurt it, for a minute.
+		Add(TEXT("minecraft:wolf"), 0.6f, 0.85f, 8.f, 0.3f, 4.f, 16.f, false, false).bNeutral = true;
+		Add(TEXT("minecraft:rabbit"), 0.4f, 0.5f, 3.f, 0.3f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:fox"), 0.6f, 0.7f, 10.f, 0.3f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:horse"), 1.3965f, 1.6f, 22.5f, 0.225f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:goat"), 0.9f, 1.3f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
+		// A turtle is slow on land.
+		Add(TEXT("minecraft:turtle"), 1.2f, 0.4f, 30.f, 0.1f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:frog"), 0.5f, 0.5f, 10.f, 0.15f, 0.f, 0.f, true, false);
+		// A bee stings (2 on Normal) whoever hurt it, and flies.
+		FMcMobType& Bee = Add(TEXT("minecraft:bee"), 0.7f, 0.6f, 10.f, 0.3f, 2.f, 16.f, false, false);
+		Bee.bNeutral = true;
+		Bee.bFlies = true;
 	}
 	return Types;
 }
@@ -432,7 +449,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		if (!Goal.IsSet() && Random.RandHelper(120) == 0)
 		{
-			Goal = Body.Position + FVector(Random.FRandRange(-10.0, 10.0), 0.0, Random.FRandRange(-10.0, 10.0));
+			Goal = Body.Position + FVector(Random.FRandRange(-10.0, 10.0), Type.bFlies ? Random.FRandRange(-2.0, 3.0) : 0.0, Random.FRandRange(-10.0, 10.0));
 		}
 		if (Goal.IsSet())
 		{
@@ -498,6 +515,33 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		{
 			OnAttackPlayer(Target, BiteDamage);
 		}
+	}
+
+	if (Type.bFlies)
+	{
+		// No gravity and no paths: straight at the target, at the speed attribute, until it is reached.
+		FVector Velocity = FVector::ZeroVector;
+		if (bHasTarget)
+		{
+			const FVector To = Target - Body.Position;
+			if (To.SizeSquared() < 0.4 * 0.4)
+			{
+				Goal.Reset();
+			}
+			else
+			{
+				Velocity = To.GetSafeNormal() * (Type.Speed * BlocksPerSecondPerSpeed / 20.0);
+				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+			}
+		}
+		Body.Velocity = Velocity;
+		McPhysics::Move(World, Body, Velocity, false);
+		if (bHasTarget && Body.bHorizontalCollision)
+		{
+			Goal.Reset();
+		}
+		LastPosition = Body.Position;
+		return;
 	}
 
 	FMcMoveInput Input;

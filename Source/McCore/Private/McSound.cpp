@@ -176,6 +176,13 @@ namespace
 		// A creeper has no ambient sound, and these two take the block's step.
 		{ TEXT("creeper"), false, true, true, false }, { TEXT("enderman"), true, true, true, false },
 		{ TEXT("slime"), false, true, true, false },
+		// The animals added later. A rabbit, fox and bee have no step of their own, a turtle's ambient sound is
+		// named for the land and a bee hums on a loop, so those are left off.
+		{ TEXT("wolf"), true, true, true, true }, { TEXT("rabbit"), true, true, true, false },
+		{ TEXT("fox"), true, true, true, false }, { TEXT("horse"), true, true, true, true },
+		{ TEXT("goat"), true, true, true, true }, { TEXT("llama"), true, true, true, true },
+		{ TEXT("turtle"), false, true, true, false }, { TEXT("frog"), true, true, true, true },
+		{ TEXT("bee"), false, true, true, false },
 	};
 }
 

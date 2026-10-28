@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/Texture2DArray.h"
+#include "McRenderMode.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "ProceduralMeshComponent.h"
@@ -51,6 +52,11 @@ void UMcWorldRenderComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	MakePassMaterials();
+}
+
+void UMcWorldRenderComponent::MakePassMaterials()
+{
 	UTexture2DArray* Blocks = FMcBlockTextures::Get().EnsureLoaded() ? FMcBlockTextures::Get().GetTextureArray() : nullptr;
 	PassMaterials.Reset();
 	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get() })
@@ -60,12 +66,26 @@ void UMcWorldRenderComponent::BeginPlay()
 			UE_LOG(LogMcRender, Error, TEXT("A block material is missing; run tools/make_materials.py"));
 			Base = UMaterial::GetDefaultMaterial(MD_Surface);
 		}
-		UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Base, this);
+		UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Base), this);
 		if (Blocks)
 		{
 			Instance->SetTextureParameterValue(TEXT("Blocks"), Blocks);
 		}
 		PassMaterials.Add(Instance);
+	}
+	MaterialGeneration = McRenderMode::GetGeneration();
+
+	// Meshes already drawn take the new ones: mesh section SectionIndex * passes + pass is that pass.
+	for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : Meshes)
+	{
+		if (UProceduralMeshComponent* Mesh = Pair.Value)
+		{
+			for (int32 MeshSection = 0; MeshSection < Mesh->GetNumSections(); ++MeshSection)
+			{
+				const int32 Pass = MeshSection % McNumRenderPasses;
+				Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+			}
+		}
 	}
 }
 
@@ -181,6 +201,11 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// Texture animations run on game time, 20 ticks a second.
 	FMcBlockTextures::Get().Tick(GetWorld()->GetTimeSeconds() * 20.0);
+
+	if (MaterialGeneration != McRenderMode::GetGeneration())
+	{
+		MakePassMaterials();
+	}
 
 	// The sky's light reaching the blocks follows the time of day; the chunks' stored light does not change.
 	for (UMaterialInterface* Material : PassMaterials)

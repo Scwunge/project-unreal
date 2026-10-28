@@ -33,6 +33,25 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     - `-McMenuPress=Singleplayer,Create_New_World` presses buttons in turn.
     - `-McName=` sets the player name.
 
+- **M10** (2026-10-28):
+  - **Two looks, switched in game.** F7, or the pause menu's Graphics button, switches between vanilla and
+    enhanced at any time; the choice is kept in `Saved/options.json`.
+  - **Vanilla** is unchanged: unlit blocks with the game's own light curve, no tonemapper.
+  - **Enhanced** swaps the block, entity and player materials for lit twins (`M_McBlock*Lit`, made by
+    `tools/make_materials.py`). It adds:
+    - a sun light that follows the day cycle and becomes the moon at night, with virtual shadow maps;
+    - Lumen global illumination and reflections;
+    - volumetric fog, bloom, SSAO and the filmic tonemapper.
+  - **What the chunks still supply.** Sky ambient comes only where the chunk's sky light reaches, so caves
+    stay dark. Block light (torches, lava) is added as warm emissive.
+  - **Not done:**
+    - The Nether and the End have no sun, so enhanced mode lights them only by block light.
+    - Lumen traces the screen only, because the procedural meshes have no distance fields.
+    - Clouds, rain and the sky stay unlit.
+  - **Dev switches:**
+    - `-McEnhanced` starts in enhanced mode.
+    - `-McSunLux=` and `-McEnhancedExposure=` are for tuning.
+
 ### M4 build order
 
 The 26.3 worldgen data (`cache/client/data/minecraft/worldgen`) is the source of truth. The overworld biome

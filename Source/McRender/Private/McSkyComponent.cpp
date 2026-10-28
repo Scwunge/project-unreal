@@ -4,9 +4,13 @@
 #include "McDayCycle.h"
 #include "McDimensionType.h"
 #include "McRender.h"
+#include "McRenderMode.h"
 #include "McRenderTextures.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/PostProcessComponent.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/Texture2DArray.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -37,6 +41,13 @@ namespace
 	// The Nether's fog starts 10 blocks out and is thick at 96; the End's is the view distance's.
 	constexpr float NetherFogStartBlocks = 10.0f;
 	constexpr float NetherFogEndBlocks = 96.0f;
+	// The enhanced look's sun and moon, in lux. Lit surfaces show their colour times the light over pi, before the
+	// tonemapper; the moon is a tenth of a lux or so, enough to see by.
+	constexpr float SunLux = 7.0f;
+	constexpr float MoonLux = 0.6f;
+	// How much of the fog's thickness the volumetric fog takes: a haze with light shafts, not a wall.
+	constexpr float VolumetricFogShare = 0.04f;
+
 	// The End has no day, so its blocks get a fixed share of their sky light, as at night; the Nether has none.
 	constexpr float EndSkyLightFactor = 0.24f;
 	// The game draws the end sky picture dark, at 0x282828 (40/255) of its colour on screen. Tint scales linear colour,
@@ -204,6 +215,7 @@ void UMcSkyComponent::BeginPlay()
 	Fog->DirectionalInscatteringLuminance = FLinearColor::Black;
 	Fog->RegisterComponent();
 
+	BuildEnhanced();
 	bReady = true;
 }
 
@@ -378,6 +390,124 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		UpdateCelestial(Ticks);
 	}
 	UpdateFog();
+	if (LookGeneration != McRenderMode::GetGeneration())
+	{
+		ApplyLook();
+	}
+	if (McRenderMode::IsEnhanced())
+	{
+		UpdateSunLight(Ticks);
+	}
+}
+
+void UMcSkyComponent::BuildEnhanced()
+{
+	// One light for the sun by day and the moon by night, casting the world's shadows.
+	SunLight = NewObject<UDirectionalLightComponent>(GetOwner(), TEXT("SunLight"));
+	SunLight->SetupAttachment(this);
+	SunLight->SetUsingAbsoluteRotation(true);
+	SunLight->SetMobility(EComponentMobility::Movable);
+	SunLight->SetCastShadows(true);
+	SunLight->SetDynamicShadowDistanceMovableLight(FogEndBlocks * McCoords::UnitsPerBlock);
+	SunLight->SetDynamicShadowCascades(4);
+	SunLight->SetVolumetricScatteringIntensity(1.0f);
+	SunLight->SetVisibility(false);
+	SunLight->RegisterComponent();
+
+	// Over the controller's fixed-exposure volume (which stays for the vanilla look) while enhanced.
+	EnhancedPost = NewObject<UPostProcessComponent>(GetOwner(), TEXT("EnhancedPost"));
+	EnhancedPost->SetupAttachment(this);
+	EnhancedPost->bUnbound = true;
+	EnhancedPost->Priority = 10.0f;
+	EnhancedPost->bEnabled = false;
+	FPostProcessSettings& Settings = EnhancedPost->Settings;
+	Settings.bOverride_DynamicGlobalIlluminationMethod = true;
+	Settings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
+	Settings.bOverride_ReflectionMethod = true;
+	Settings.ReflectionMethod = EReflectionMethod::Lumen;
+	Settings.bOverride_AutoExposureMethod = true;
+	Settings.AutoExposureMethod = AEM_Manual;
+	Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	Settings.AutoExposureApplyPhysicalCameraExposure = false;
+	Settings.bOverride_AutoExposureBias = true;
+	Settings.AutoExposureBias = 0.0f;
+	Settings.bOverride_BloomIntensity = true;
+	Settings.BloomIntensity = 0.35f;
+	Settings.bOverride_AmbientOcclusionIntensity = true;
+	Settings.AmbientOcclusionIntensity = 0.5f;
+	Settings.bOverride_AmbientOcclusionRadius = true;
+	Settings.AmbientOcclusionRadius = 120.0f;
+#if !UE_BUILD_SHIPPING
+	// For tuning: -McEnhancedExposure= (stops), -McSunLux=.
+	FParse::Value(FCommandLine::Get(), TEXT("-McEnhancedExposure="), Settings.AutoExposureBias);
+#endif
+	EnhancedPost->RegisterComponent();
+}
+
+void UMcSkyComponent::ApplyLook()
+{
+	LookGeneration = McRenderMode::GetGeneration();
+	const bool bEnhanced = McRenderMode::IsEnhanced();
+	if (SunLight)
+	{
+		SunLight->SetVisibility(bEnhanced);
+	}
+	if (EnhancedPost)
+	{
+		EnhancedPost->bEnabled = bEnhanced;
+	}
+	if (Fog)
+	{
+		Fog->SetVolumetricFog(bEnhanced);
+		Fog->SetVolumetricFogExtinctionScale(VolumetricFogShare);
+		Fog->SetVolumetricFogDistance(FogEndBlocks * McCoords::UnitsPerBlock * 0.5f);
+	}
+	// Blocks carry Minecraft's final colours in the vanilla look; the filmic tonemapper would brighten and desaturate
+	// them. Lit by Unreal, they need it.
+	if (UGameViewportClient* Viewport = GetWorld()->GetGameViewport())
+	{
+		Viewport->EngineShowFlags.SetTonemapper(bEnhanced);
+	}
+}
+
+void UMcSkyComponent::UpdateSunLight(double Ticks)
+{
+	if (!SunLight)
+	{
+		return;
+	}
+	if (Mode != EMode::Overworld)
+	{
+		// No sun in the Nether or the End: only the blocks' own light.
+		SunLight->SetIntensity(0.0f);
+		return;
+	}
+	float SunIntensity = SunLux;
+	const float MoonIntensity = MoonLux;
+#if !UE_BUILD_SHIPPING
+	FParse::Value(FCommandLine::Get(), TEXT("-McSunLux="), SunIntensity);
+#endif
+	FMcDayCycle& Cycle = FMcDayCycle::Get();
+	const FVector ToSun = ToUnreal(FMcDayCycle::AngleToDirection(Cycle.GetSunAngle(Ticks)));
+	const FVector ToMoon = ToUnreal(FMcDayCycle::AngleToDirection(Cycle.GetMoonAngle(Ticks)));
+	// The sun fades out just after it sets and the moon takes over; rain hides most of both.
+	const float Day = FMath::SmoothStep(-0.04f, 0.12f, static_cast<float>(ToSun.Z));
+	const float Clear = 1.0f - 0.8f * Rain;
+	const bool bSun = Day > 0.0f;
+	const FVector Towards = bSun ? ToSun : ToMoon;
+	SunLight->SetWorldRotation((-Towards).Rotation());
+	if (bSun)
+	{
+		// Low, the sun is orange; high, nearly white.
+		const float High = FMath::Clamp(static_cast<float>(ToSun.Z) * 3.0f, 0.0f, 1.0f);
+		SunLight->SetLightColor(FMath::Lerp(FLinearColor(1.0f, 0.55f, 0.3f), FLinearColor(1.0f, 0.96f, 0.9f), High));
+		SunLight->SetIntensity(SunIntensity * Day * Clear);
+	}
+	else
+	{
+		SunLight->SetLightColor(FLinearColor(0.6f, 0.7f, 1.0f));
+		SunLight->SetIntensity(MoonIntensity * FMath::SmoothStep(0.0f, 0.15f, static_cast<float>(ToMoon.Z)) * Clear);
+	}
 }
 
 void UMcSkyComponent::BuildEndSky()

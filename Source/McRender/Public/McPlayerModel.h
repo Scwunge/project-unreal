@@ -142,6 +142,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> Material;
+	// The look (McRenderMode) the material was made for.
+	uint32 MaterialGeneration = 0;
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2DArray> Skin;
 	UPROPERTY()

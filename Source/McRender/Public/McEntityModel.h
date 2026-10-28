@@ -167,6 +167,8 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
+	// The look (McRenderMode) the materials were made for.
+	uint32 MaterialGeneration = 0;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BaseMaterial;
 	UPROPERTY()

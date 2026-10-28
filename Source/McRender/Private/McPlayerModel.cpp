@@ -1,4 +1,5 @@
 #include "McPlayerModel.h"
+#include "McRenderMode.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McRender.h"
@@ -306,8 +307,9 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 		UE_LOG(LogMcRender, Error, TEXT("M_McBlockCutout is missing; run tools/make_materials.py"));
 		return false;
 	}
-	Material = UMaterialInstanceDynamic::Create(Base, this);
+	Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Base), this);
 	Material->SetTextureParameterValue(TEXT("Blocks"), Skin);
+	MaterialGeneration = McRenderMode::GetGeneration();
 	bFailed = false;
 	return true;
 }
@@ -335,6 +337,18 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		if (++Ticks <= 5)
 		{
 			State.Tick(Feet, Yaw, Pitch, bSneaking);
+		}
+	}
+
+	if (MaterialGeneration != McRenderMode::GetGeneration())
+	{
+		// The look changed: the same skin on the other mode's material.
+		Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial.Get()), this);
+		Material->SetTextureParameterValue(TEXT("Blocks"), Skin);
+		MaterialGeneration = McRenderMode::GetGeneration();
+		if (bHasSection)
+		{
+			SetMaterial(0, Material);
 		}
 	}
 

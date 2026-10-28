@@ -123,6 +123,8 @@ private:
 	void JoinServer();
 	void LoadClientOptions();
 	void SaveClientOptions() const;
+	// Vanilla to enhanced or back, remembered in options.json.
+	void ToggleGraphics();
 
 	struct FWorldRow
 	{

@@ -22,6 +22,8 @@ struct MCUI_API FMcClientOptions
 {
 	FString PlayerName;
 	FString LastServer;
+	// The look: Unreal's lighting (true) or the game's own.
+	bool bEnhancedGraphics = false;
 
 	static FMcClientOptions Load();
 	void Save() const;

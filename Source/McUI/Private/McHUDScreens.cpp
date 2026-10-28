@@ -2,6 +2,8 @@
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
 #include "McHUD.h"
+#include "McRenderMode.h"
+#include "McLocalPlayer.h"
 #include "McLaunch.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -392,6 +394,10 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 	if (!Screen.IsValid())
 	{
+		if (Player->WasInputKeyJustPressed(EKeys::F7))
+		{
+			ToggleGraphics();
+		}
 		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape);
 #if !UE_BUILD_SHIPPING
 		// Development: -McMenu=pause opens the pause menu once the world is up.
@@ -583,6 +589,13 @@ void AMcHUD::DrawHUD()
 	if (!Canvas)
 	{
 		return;
+	}
+	// The look chosen last time (options.json), once a run; -McEnhanced picks the enhanced one for development.
+	static bool bLookLoaded = false;
+	if (!bLookLoaded)
+	{
+		bLookLoaded = true;
+		McRenderMode::SetEnhanced(FMcClientOptions::Load().bEnhancedGraphics || FParse::Param(FCommandLine::Get(), TEXT("McEnhanced")));
 	}
 	++ShakeCounter;
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);

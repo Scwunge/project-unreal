@@ -6,6 +6,7 @@
 #include "McGameViewportClient.h"
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
+#include "McRenderMode.h"
 #include "McUI.h"
 #include "McWorldSave.h"
 #include "Engine/Canvas.h"
@@ -556,6 +557,10 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	{
 		OpenMenu(EMenu::None);
 	}
+	else if (MenuButton(McRenderMode::IsEnhanced() ? TEXT("Graphics: Enhanced") : TEXT("Graphics: Vanilla"), CentreX - 102.0f, Height / 4.0f + 80.0f, 204.0f, 20.0f))
+	{
+		ToggleGraphics();
+	}
 	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Height / 4.0f + 104.0f, 204.0f, 20.0f))
 	{
 		// Leaving the map saves the world and the player (AMcWorldActor and AMcGameMode end play).
@@ -628,5 +633,14 @@ void AMcHUD::SaveClientOptions() const
 	FMcClientOptions Options;
 	Options.PlayerName = PlayerName;
 	Options.LastServer = ServerAddress.TrimStartAndEnd();
+	Options.bEnhancedGraphics = McRenderMode::IsEnhanced();
+	Options.Save();
+}
+
+void AMcHUD::ToggleGraphics()
+{
+	McRenderMode::SetEnhanced(!McRenderMode::IsEnhanced());
+	FMcClientOptions Options = FMcClientOptions::Load();
+	Options.bEnhancedGraphics = McRenderMode::IsEnhanced();
 	Options.Save();
 }

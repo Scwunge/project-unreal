@@ -39,6 +39,8 @@ FMcClientOptions FMcClientOptions::Load()
 	{
 		Object->TryGetStringField(TEXT("name"), Options.PlayerName);
 		Object->TryGetStringField(TEXT("lastServer"), Options.LastServer);
+		FString Graphics;
+		Options.bEnhancedGraphics = Object->TryGetStringField(TEXT("graphics"), Graphics) && Graphics == TEXT("enhanced");
 	}
 	return Options;
 }
@@ -48,6 +50,7 @@ void FMcClientOptions::Save() const
 	const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
 	Object->SetStringField(TEXT("name"), PlayerName);
 	Object->SetStringField(TEXT("lastServer"), LastServer);
+	Object->SetStringField(TEXT("graphics"), bEnhancedGraphics ? TEXT("enhanced") : TEXT("vanilla"));
 	FString Text;
 	FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Text));
 	FFileHelper::SaveStringToFile(Text, *GetOptionsPath(), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);

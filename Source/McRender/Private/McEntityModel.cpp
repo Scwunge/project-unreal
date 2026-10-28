@@ -1,4 +1,5 @@
 #include "McEntityModel.h"
+#include "McRenderMode.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McRender.h"
@@ -685,7 +686,8 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		// An animated item is a column of frames; the first one is the square on top.
 		ItemVMax = Size.Y > Size.X && Size.X > 0 ? static_cast<float>(Size.X) / Size.Y : 1.0f;
 	}
-	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Parent, this);
+	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Parent), this);
+	MaterialGeneration = McRenderMode::GetGeneration();
 	Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
 	if (Materials.Num() <= Layer)
 	{
@@ -704,6 +706,14 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		return;
 	}
 	Anim.Age += DeltaTime;
+	if (Materials.Num() > 0 && MaterialGeneration != McRenderMode::GetGeneration())
+	{
+		// The look changed: the materials are made again, and the mesh with them.
+		Materials.Reset();
+		ClearAllMeshSections();
+		NumSections = 0;
+		bFlashing = false;
+	}
 
 	// Walking, from how far the entity moved: the same 20 ticks a second as the game.
 	const FVector Feet = McCoords::UnrealToBlock(Owner->GetActorLocation());

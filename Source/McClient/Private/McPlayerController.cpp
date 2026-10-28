@@ -669,12 +669,7 @@ void AMcPlayerController::SpawnEnvironment()
 #if MC_WITH_RENDER
 	UWorld* World = GetWorld();
 
-	// Blocks carry Minecraft's final colours; the filmic tonemapper would brighten and desaturate them.
-	if (UGameViewportClient* Viewport = World->GetGameViewport())
-	{
-		Viewport->EngineShowFlags.SetTonemapper(false);
-	}
-
+	// The tonemapper is the sky's to switch with the look (UMcSkyComponent, McRenderMode).
 	// Fixed exposure, so an emissive 1.0 shows as the texture's own colour. -McExposureBias= is for tuning.
 	APostProcessVolume* Post = bEnvironmentSpawned ? nullptr : World->SpawnActor<APostProcessVolume>();
 	bEnvironmentSpawned = true;

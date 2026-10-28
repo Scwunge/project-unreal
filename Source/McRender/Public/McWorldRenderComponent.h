@@ -70,6 +70,10 @@ private:
 	void MarkDirty(FIntPoint Pos);
 	bool HasAllNeighbours(FIntPoint Pos) const;
 
+	// The pass materials for the current look (McRenderMode), set on every mesh drawn so far.
+	void MakePassMaterials();
+	uint32 MaterialGeneration = 0;
+
 	void LaunchMeshTasks();
 	void UploadResults();
 	void Upload(FChunkResult& Result);

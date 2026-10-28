@@ -6,9 +6,13 @@
 Material assets can only be made inside the editor, so this script is how they are made and remade: the
 .uasset files are build output of this script, committed so the game runs without running it.
 
-Every block material is unlit. Minecraft's look comes from its own lighting (sky and block light, AO and
-per-face shading), which the mesher bakes into the vertex colour. The texture comes from one texture
+The vanilla-look block materials are unlit. Minecraft's look comes from its own lighting (sky and block light,
+AO and per-face shading), which the mesher bakes into the vertex colour. The texture comes from one texture
 array: UV0 is the position inside the 16x16 texture and UV1.x is the layer.
+
+The enhanced mode (M10) swaps them for lit twins (the same name with "Lit" on the end): Unreal's sun, shadows and
+global illumination light them, and only what Unreal can't know comes from the chunk's light: the sky's ambient,
+which the sky light level lets in (so caves stay dark), and the glow of torches and other block light.
 """
 
 import os
@@ -35,6 +39,20 @@ c = lerp(c, bright, Gamma);
 c = c * 0.96 + 0.04;
 float3 display = saturate(Shade.rgb * c);
 return Tex * pow(display, 2.2);
+"""
+
+# The lit twins' colour and glow. BaseColor is the texture times the vertex colour (tint, face shade and AO). The
+# emissive adds what Unreal's lights don't: the sky's ambient where the sky light reaches, dimmed at night like the
+# vanilla look (SkyFactor), and block light, warm and a little stronger so torches light their surroundings.
+LIT_BASE_HLSL = """
+return Tex * pow(saturate(Shade.rgb), 2.2);
+"""
+LIT_EMISSIVE_HLSL = """
+float2 l = saturate(Light.xy);
+float2 b = l / (4.0 - 3.0 * l);
+float3 sky = pow(b.x * SkyFactor, 2.2) * float3(0.55, 0.65, 0.85) * Ambient;
+float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow;
+return Albedo * (sky + glow);
 """
 
 # The sky's materials. The dome and the stars' squares take their colour from the vertex colour (display space, raised
@@ -104,7 +122,32 @@ def make_placeholder_array():
     return array
 
 
-def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool = False, two_sided: bool = False):
+def add_custom(material, x: int, y: int, description: str, code: str, sources: dict):
+    # A Custom node with one input per entry of sources (input name: (expression, output name)).
+    node = mel.create_material_expression(material, unreal.MaterialExpressionCustom, x, y)
+    node.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    node.set_editor_property("description", description)
+    inputs = []
+    for input_name in sources:
+        custom_input = unreal.CustomInput()
+        custom_input.set_editor_property("input_name", input_name)
+        inputs.append(custom_input)
+    node.set_editor_property("inputs", inputs)
+    node.set_editor_property("code", code)
+    for input_name, (expression, output) in sources.items():
+        mel.connect_material_expressions(expression, output, node, input_name)
+    return node
+
+
+def add_scalar(material, x: int, y: int, name: str, value: float):
+    node = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, x, y)
+    node.set_editor_property("parameter_name", name)
+    node.set_editor_property("default_value", value)
+    return node
+
+
+def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool = False, two_sided: bool = False,
+                        lit: bool = False):
     # Nothing refers to the materials as assets (the game loads them by path), so they can be made afresh.
     # vertex_alpha: the vertex colour's alpha scales the opacity too (rain fading with distance, clouds).
     # two_sided: both sides are drawn (rain's sheets); see-through boxes like the clouds need only the near ones, or
@@ -112,8 +155,13 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
     if eal.does_asset_exist(f"{FOLDER}/{name}"):
         eal.delete_asset(f"{FOLDER}/{name}")
     material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
-    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    material.set_editor_property("shading_model",
+                                  unreal.MaterialShadingModel.MSM_DEFAULT_LIT if lit else unreal.MaterialShadingModel.MSM_UNLIT)
     material.set_editor_property("blend_mode", blend_mode)
+    if lit and blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
+        # Water and glass lit per pixel like the rest, not by the coarse lighting volume.
+        material.set_editor_property("translucency_lighting_mode",
+                                      unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
     if two_sided:
         material.set_editor_property("two_sided", True)
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
@@ -151,22 +199,24 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
     gamma.set_editor_property("parameter_name", "Gamma")
     gamma.set_editor_property("default_value", 0.5)
 
-    colour = mel.create_material_expression(material, unreal.MaterialExpressionCustom, -100, 0)
-    colour.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
-    colour.set_editor_property("description", "McLightmap")
-    inputs = []
-    for input_name in ["Tex", "Shade", "Light", "SkyFactor", "Gamma"]:
-        custom_input = unreal.CustomInput()
-        custom_input.set_editor_property("input_name", input_name)
-        inputs.append(custom_input)
-    colour.set_editor_property("inputs", inputs)
-    colour.set_editor_property("code", LIGHTMAP_HLSL)
-    mel.connect_material_expressions(texture, "RGB", colour, "Tex")
-    mel.connect_material_expressions(vertex_color, "", colour, "Shade")
-    mel.connect_material_expressions(uv2, "", colour, "Light")
-    mel.connect_material_expressions(sky_factor, "", colour, "SkyFactor")
-    mel.connect_material_expressions(gamma, "", colour, "Gamma")
-    mel.connect_material_property(colour, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    if lit:
+        albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_HLSL,
+                            {"Tex": (texture, "RGB"), "Shade": (vertex_color, "")})
+        mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
+        glow = add_custom(material, -100, 0, "McLitEmissive", LIT_EMISSIVE_HLSL,
+                          {"Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
+                           "Ambient": (add_scalar(material, -350, 700, "Ambient", 1.0), ""),
+                           "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), "")})
+        mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+        roughness = add_scalar(material, -100, 450, "Roughness", 0.85)
+        mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
+        specular = add_scalar(material, -100, 550, "Specular", 0.3)
+        mel.connect_material_property(specular, "", unreal.MaterialProperty.MP_SPECULAR)
+    else:
+        colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,
+                            {"Tex": (texture, "RGB"), "Shade": (vertex_color, ""), "Light": (uv2, ""),
+                             "SkyFactor": (sky_factor, ""), "Gamma": (gamma, "")})
+        mel.connect_material_property(colour, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
         mel.connect_material_property(texture, "A", unreal.MaterialProperty.MP_OPACITY_MASK)
@@ -252,10 +302,19 @@ def make_sky_materials(default_array):
     unreal.log("McMaterials: made M_McSkyAdditive")
 
 
+def make_lit_materials(default_array):
+    make_block_material("M_McBlockOpaqueLit", unreal.BlendMode.BLEND_OPAQUE, default_array, lit=True)
+    make_block_material("M_McBlockCutoutLit", unreal.BlendMode.BLEND_MASKED, default_array, lit=True)
+    make_block_material("M_McBlockTranslucentLit", unreal.BlendMode.BLEND_TRANSLUCENT, default_array, lit=True)
+
+
 def main() -> None:
     if os.environ.get("MC_ONLY_SKY"):
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
+        return
+    if os.environ.get("MC_ONLY_LIT"):
+        make_lit_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
         return
     if os.environ.get("MC_ONLY_WEATHER"):
         placeholder = unreal.load_asset(f"{FOLDER}/TA_McPlaceholder")
@@ -266,6 +325,7 @@ def main() -> None:
     make_block_material("M_McBlockOpaque", unreal.BlendMode.BLEND_OPAQUE, array)
     make_block_material("M_McBlockCutout", unreal.BlendMode.BLEND_MASKED, array)
     make_block_material("M_McBlockTranslucent", unreal.BlendMode.BLEND_TRANSLUCENT, array)
+    make_lit_materials(array)
     # Rain and snow, and the clouds.
     make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, array, True, True)
     make_block_material("M_McClouds", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)

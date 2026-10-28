@@ -10,7 +10,9 @@
 #include "McSkyComponent.generated.h"
 
 struct FMcDimensionType;
+class UDirectionalLightComponent;
 class UExponentialHeightFogComponent;
+class UPostProcessComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -71,6 +73,11 @@ private:
 	void UpdateCelestial(double Ticks);
 	void UpdateFog();
 	void BuildEndSky();
+	// The enhanced look (McRenderMode): the light, post-process and fog switched over, and the sun or moon's light
+	// following them across the sky.
+	void BuildEnhanced();
+	void ApplyLook();
+	void UpdateSunLight(double Ticks);
 	UProceduralMeshComponent* MakeMesh(const TCHAR* Name);
 
 	enum class EMode : uint8
@@ -96,6 +103,11 @@ private:
 	TObjectPtr<UProceduralMeshComponent> Moon;
 	UPROPERTY(Transient)
 	TObjectPtr<UExponentialHeightFogComponent> Fog;
+	UPROPERTY(Transient)
+	TObjectPtr<UDirectionalLightComponent> SunLight;
+	UPROPERTY(Transient)
+	TObjectPtr<UPostProcessComponent> EnhancedPost;
+	uint32 LookGeneration = 0;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> DomeMaterial;

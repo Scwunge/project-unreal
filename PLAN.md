@@ -50,6 +50,19 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Dev switches:**
     - `-McEnhanced` starts in enhanced mode.
     - `-McSunLux=` and `-McEnhancedExposure=` are for tuning.
+  - **Unreal Mode** is the enhanced look under its player-facing name: the Options screen (from the title and
+    pause menus) has an "Unreal Mode: ON/OFF" button, and F7 still switches it. On top of the above it has:
+    - **Surfaces.** The mesher marks each vertex's kind in UV1.y (`McSurface`), and the lit materials act on it:
+      water waves, glosses and turns to a mirror at a slant; lava glows; leaves and plants sway; light-giving
+      blocks glow; every other face is bump-mapped from its own texture and goes wet in rain.
+    - **Particles** (`UMcParticleComponent`): block-break debris, dig chips, torch, campfire and furnace flames
+      and smoke, lava drops and sparks, falling leaves. There are more of them in Unreal Mode; the vanilla look
+      draws a few of the same. Bits of a block's texture use a flat normal, because the bump path left them black.
+    - **Block lights** (`UMcBlockLightComponent`): point lights at the nearest light-giving blocks.
+    - **Post grade**: bloom, saturation, contrast, vignette, fringe, Lumen quality, sun shafts, contact shadows
+      and fog inscattering.
+  - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
+    (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 
 - **Chat and commands** (2026-10-28):
   - **Chat.** T opens the chat box and / opens it with a command started. Enter sends, and Up and Down go

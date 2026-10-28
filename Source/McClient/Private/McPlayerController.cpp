@@ -37,6 +37,9 @@
 #include "McCloudComponent.h"
 #include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
+#include "McBlockLightComponent.h"
+#include "McParticleComponent.h"
+#include "McPhysics.h"
 #endif
 
 AMcPlayerController::AMcPlayerController()
@@ -381,7 +384,35 @@ void AMcPlayerController::AttachView()
 	Drawer->SetupAttachment(WorldActor->GetRootComponent());
 	Drawer->RegisterComponent();
 	Drawer->SetWorld(WorldActor->GetBlockWorld());
+	Drawer->GetRain = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	{
+		return Actor.IsValid() ? Actor->GetRainLevel() : 0.0f;
+	};
 	Renderer = Drawer;
+
+	UMcParticleComponent* Bits = NewObject<UMcParticleComponent>(WorldActor);
+	Bits->SetupAttachment(WorldActor->GetRootComponent());
+	Bits->RegisterComponent();
+	Bits->SetWorld(WorldActor->GetBlockWorld(), Drawer);
+	Bits->Collide = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)](const FBox& Box, const FVector& Motion)
+	{
+		const FMcBlockWorld* Blocks = Actor.IsValid() ? Actor->GetBlockWorld() : nullptr;
+		return Blocks ? McPhysics::Collide(*Blocks, Box, Motion, 0.0f, false) : Motion;
+	};
+	Particles = Bits;
+
+	UMcBlockLightComponent* Lamps = NewObject<UMcBlockLightComponent>(WorldActor);
+	Lamps->SetupAttachment(WorldActor->GetRootComponent());
+	Lamps->RegisterComponent();
+	Lamps->SetWorld(WorldActor->GetBlockWorld());
+	BlockLights = Lamps;
+	WorldActor->OnBlockBroken = [WeakBits = TWeakObjectPtr<UMcParticleComponent>(Bits)](const FIntVector& Pos, FMcStateId State)
+	{
+		if (UMcParticleComponent* Live = WeakBits.Get())
+		{
+			Live->BlockBroken(Pos, State);
+		}
+	};
 	SpawnEnvironment();
 #endif
 }
@@ -395,6 +426,14 @@ void AMcPlayerController::DetachView()
 	if (UActorComponent* Heavens = Sky.Get())
 	{
 		Heavens->DestroyComponent();
+	}
+	if (UActorComponent* Bits = Particles.Get())
+	{
+		Bits->DestroyComponent();
+	}
+	if (UActorComponent* Lamps = BlockLights.Get())
+	{
+		Lamps->DestroyComponent();
 	}
 	if (UActorComponent* Precipitation = Weather.Get())
 	{

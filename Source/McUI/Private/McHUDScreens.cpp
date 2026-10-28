@@ -560,15 +560,23 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
 		FString DevMenu;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && DevMenu == TEXT("pause"))
+		bool bDevOptions = false;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
+			bDevOptions = DevMenu == TEXT("options");
 		}
 #endif
 		if (bPause)
 		{
 			OpenMenu(EMenu::Pause);
+#if !UE_BUILD_SHIPPING
+			if (bDevOptions)
+			{
+				OpenOptions(EMenu::Pause);
+			}
+#endif
 		}
 		return;
 	}
@@ -1204,7 +1212,7 @@ void AMcHUD::DrawHUD()
 			Controller->SetIgnoreMoveInput(false);
 		}
 	}
-	if (bDead && (ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat))
+	if (bDead && IsWorldMenu())
 	{
 		// The death screen takes over (and the input with it).
 		ActiveMenu = EMenu::None;
@@ -1248,7 +1256,7 @@ void AMcHUD::DrawHUD()
 			DrawBars(Width, Height, Data);
 		}
 	}
-	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause)
+	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}
@@ -1260,7 +1268,7 @@ void AMcHUD::DrawHUD()
 	{
 		ShowDeathScreen(Width, Height, *Player);
 	}
-	else if (ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat)
+	else if (IsWorldMenu())
 	{
 		DrawMenus(Width, Height, false);
 	}

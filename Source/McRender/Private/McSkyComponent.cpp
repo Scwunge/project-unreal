@@ -411,6 +411,13 @@ void UMcSkyComponent::BuildEnhanced()
 	SunLight->SetDynamicShadowDistanceMovableLight(FogEndBlocks * McCoords::UnitsPerBlock);
 	SunLight->SetDynamicShadowCascades(4);
 	SunLight->SetVolumetricScatteringIntensity(1.0f);
+	// Soft-edged shadows, fine contact shadows in the gaps between blocks, and shafts of light round what stands in front
+	// of a low sun.
+	SunLight->SetLightSourceAngle(0.9f);
+	SunLight->ContactShadowLength = 0.04f;
+	SunLight->SetEnableLightShaftBloom(true);
+	SunLight->SetBloomScale(0.12f);
+	SunLight->SetBloomThreshold(4.0f);
 	SunLight->SetVisibility(false);
 	SunLight->RegisterComponent();
 
@@ -437,6 +444,32 @@ void UMcSkyComponent::BuildEnhanced()
 	Settings.AmbientOcclusionIntensity = 0.5f;
 	Settings.bOverride_AmbientOcclusionRadius = true;
 	Settings.AmbientOcclusionRadius = 120.0f;
+	// Unreal Mode's grade: a little richer and punchier than Unreal's default, glowing things bloom, a soft vignette
+	// and a touch of lens fringe and flare; Lumen at higher quality, reflecting in water and glass too.
+	Settings.bOverride_BloomIntensity = true;
+	Settings.BloomIntensity = 0.6f;
+	Settings.bOverride_BloomThreshold = true;
+	Settings.BloomThreshold = 1.0f;
+	Settings.bOverride_ColorSaturation = true;
+	Settings.ColorSaturation = FVector4(1.08, 1.08, 1.08, 1.0);
+	Settings.bOverride_ColorContrast = true;
+	Settings.ColorContrast = FVector4(1.05, 1.05, 1.05, 1.0);
+	Settings.bOverride_VignetteIntensity = true;
+	Settings.VignetteIntensity = 0.35f;
+	Settings.bOverride_SceneFringeIntensity = true;
+	Settings.SceneFringeIntensity = 0.2f;
+	Settings.bOverride_LensFlareIntensity = true;
+	Settings.LensFlareIntensity = 0.15f;
+	Settings.bOverride_MotionBlurAmount = true;
+	Settings.MotionBlurAmount = 0.0f;
+	Settings.bOverride_LumenSceneLightingQuality = true;
+	Settings.LumenSceneLightingQuality = 1.5f;
+	Settings.bOverride_LumenFinalGatherQuality = true;
+	Settings.LumenFinalGatherQuality = 1.5f;
+	Settings.bOverride_LumenReflectionQuality = true;
+	Settings.LumenReflectionQuality = 1.5f;
+	Settings.bOverride_LumenFrontLayerTranslucencyReflections = true;
+	Settings.LumenFrontLayerTranslucencyReflections = true;
 #if !UE_BUILD_SHIPPING
 	// For tuning: -McEnhancedExposure= (stops), -McSunLux=.
 	FParse::Value(FCommandLine::Get(), TEXT("-McEnhancedExposure="), Settings.AutoExposureBias);
@@ -461,6 +494,10 @@ void UMcSkyComponent::ApplyLook()
 		Fog->SetVolumetricFog(bEnhanced);
 		Fog->SetVolumetricFogExtinctionScale(VolumetricFogShare);
 		Fog->SetVolumetricFogDistance(FogEndBlocks * McCoords::UnitsPerBlock * 0.5f);
+		if (!bEnhanced)
+		{
+			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
+		}
 	}
 	// Blocks carry Minecraft's final colours in the vanilla look; the filmic tonemapper would brighten and desaturate
 	// them. Lit by Unreal, they need it.
@@ -502,11 +539,22 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		const float High = FMath::Clamp(static_cast<float>(ToSun.Z) * 3.0f, 0.0f, 1.0f);
 		SunLight->SetLightColor(FMath::Lerp(FLinearColor(1.0f, 0.55f, 0.3f), FLinearColor(1.0f, 0.96f, 0.9f), High));
 		SunLight->SetIntensity(SunIntensity * Day * Clear);
+		// Looking towards the sun the haze glows its colour, most of all as it sets.
+		if (Fog)
+		{
+			Fog->SetDirectionalInscatteringExponent(6.0f);
+			Fog->SetDirectionalInscatteringStartDistance(1000.0f);
+			Fog->SetDirectionalInscatteringColor(SunLight->GetLightColor() * (0.25f + 0.5f * (1.0f - High)) * Day * Clear);
+		}
 	}
 	else
 	{
 		SunLight->SetLightColor(FLinearColor(0.6f, 0.7f, 1.0f));
 		SunLight->SetIntensity(MoonIntensity * FMath::SmoothStep(0.0f, 0.15f, static_cast<float>(ToMoon.Z)) * Clear);
+		if (Fog)
+		{
+			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
+		}
 	}
 }
 

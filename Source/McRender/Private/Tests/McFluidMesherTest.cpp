@@ -9,7 +9,7 @@
 
 namespace
 {
-	FMcSectionSnapshot EmptySnapshot()
+	FMcSectionSnapshot EmptyFluidSnapshot()
 	{
 		FMcSectionSnapshot Snapshot;
 		Snapshot.Blocks.SetNumZeroed(FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded * FMcSectionSnapshot::Padded);
@@ -73,7 +73,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 
 	{
 		// Six faces and the top again from underneath.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
 		TestEqual(TEXT("lone water: 7 translucent quads"), NumQuads(Mesh, EMcRenderPass::Translucent), 7);
@@ -105,7 +105,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// A lone source sags toward its open edges; four together are 8/9 high where they meet.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		for (int32 X = 4; X <= 5; ++X)
 		{
 			for (int32 Z = 4; Z <= 5; ++Z)
@@ -129,14 +129,14 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("found the shared top corner"), bFoundCentre);
 	}
 	{
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		Place(Snapshot, 5, 4, 4, Water);
 		TestEqual(TEXT("two adjacent sources: shared faces go"), NumQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 12);
 	}
 	{
 		// Water above hides the top; the corner heights go to a full block.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		Place(Snapshot, 4, 5, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
@@ -154,7 +154,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Stone under water hides the bottom; stone beside it hides that side.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		Place(Snapshot, 4, 3, 4, Stone);
 		Place(Snapshot, 5, 4, 4, Stone);
@@ -162,7 +162,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// A flowing block next to a source slopes away from it and shows the flowing texture on top.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		Place(Snapshot, 5, 4, 4, Flowing);
 		Place(Snapshot, 5, 4, 3, Stone);
@@ -184,7 +184,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Lava: opaque, untinted, six faces and no backface.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
 		TestEqual(TEXT("lone lava: 6 opaque quads"), NumQuads(Mesh, EMcRenderPass::Opaque), 6);
@@ -203,7 +203,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Water and lava side by side don't hide each other's faces.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, Water);
 		Place(Snapshot, 5, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
@@ -212,7 +212,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Water inside a stair: drawn where the stair's shape leaves it open.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, 4, 4, 4, State(TEXT("minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=true]")));
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
 		TestTrue(TEXT("waterlogged stairs make water quads"), NumQuads(Mesh, EMcRenderPass::Translucent) > 0);
@@ -220,7 +220,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		// Fluid in the border cells belongs to the next section: nothing is drawn for it here.
-		FMcSectionSnapshot Snapshot = EmptySnapshot();
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		Place(Snapshot, -1, 4, 4, Water);
 		TestTrue(TEXT("border water draws nothing"), BuildFluids(Snapshot, *Fluids, *Blocks).IsEmpty());
 	}

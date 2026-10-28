@@ -131,6 +131,11 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastSound(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch);
 
+	// Every machine showing this dimension: the block State at Pos was broken (its bits fly; the view's OnBlockBroken).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBlockBroken(FIntVector Pos, int32 State);
+	TFunction<void(const FIntVector& Pos, FMcStateId State)> OnBlockBroken;
+
 	// ---- Lightning (M8) ----
 	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on
 	// a random column of it, on the block above the top one, where the sky is open and rain (not snow) falls. A strike

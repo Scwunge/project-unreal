@@ -42,6 +42,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 1))
 	int32 MaxMeshUploadsPerTick = 16;
 
+	// How hard it rains where the player is, 0 to 1 (see AMcWorldActor::GetRainLevel): wets what it falls on in Unreal Mode.
+	TFunction<float()> GetRain;
+
+	// The pass materials for the current look, indexed by EMcRenderPass, with the texture array set (particles draw
+	// with the cutout one).
+	UMaterialInterface* GetPassMaterial(EMcRenderPass Pass) const { return PassMaterials.IsValidIndex(static_cast<int32>(Pass)) ? PassMaterials[static_cast<int32>(Pass)].Get() : nullptr; }
+	uint32 GetMaterialGeneration() const { return MaterialGeneration; }
+	const FMcRenderPalette* GetPalette() const { return Palette.Get(); }
+
 	int32 NumMeshedChunks() const { return Meshes.Num(); }
 	int32 NumPendingChunks() const { return InFlight; }
 
@@ -73,6 +82,7 @@ private:
 	// The pass materials for the current look (McRenderMode), set on every mesh drawn so far.
 	void MakePassMaterials();
 	uint32 MaterialGeneration = 0;
+	float Wetness = 0.0f;
 
 	void LaunchMeshTasks();
 	void UploadResults();

@@ -64,6 +64,28 @@ enum class EMcRenderPass : uint8
 
 constexpr int32 McNumRenderPasses = static_cast<int32>(EMcRenderPass::Num);
 
+// What kind of surface a vertex is on, in UV1.y, for Unreal Mode's materials (tools/make_materials.py): water waves,
+// lava burns, leaves and plants sway, blocks that give light glow. The vanilla look reads only the particle kinds,
+// which are drawn in one colour (the vertex colour) instead of from the texture.
+namespace McSurface
+{
+	enum : uint8
+	{
+		Plain = 0,
+		Water = 1,
+		Lava = 2,
+		Leaves = 3,         // the whole block sways
+		Plant = 4,          // sways by how high up its texture the vertex is, so the roots stay put
+		Glow = 5,
+		Particle = 9,       // one colour
+		GlowParticle = 10,  // one colour, glowing
+		TexturedParticle = 11,  // a bit of a block's texture (debris, leaves), with no bump
+	};
+
+	// The kind for a block's own quads (never the fluids', which the fluid mesher marks).
+	MCRENDER_API uint8 ForBlock(FName Block, uint8 Emission);
+}
+
 struct MCRENDER_API FMcMeshBuffers
 {
 	TArray<FVector> Positions;  // Unreal units, relative to the chunk column's origin at height 0
@@ -104,6 +126,7 @@ struct MCRENDER_API FMcRenderPalette
 		bool bHidesOwnBlock = false;  // glass and the like: faces against the same block are not drawn
 		FColor Tint = FColor::White;  // for quads with a tint index when TintSource is Fixed, in sRGB
 		EMcTintSource TintSource = EMcTintSource::Fixed;
+		uint8 Surface = McSurface::Plain;  // McSurface
 	};
 
 	// Each biome's colours, by FMcBiomeRegistry id, in sRGB.

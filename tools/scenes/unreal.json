@@ -1,0 +1,23 @@
+{
+  "description": "Unreal Mode look test on classic_flat (surface y=-61): a water pool, a lava pool, torch-lit stone, glowstone, a campfire and an oak tree.",
+  "camera": [-4.5, -57.5, -6.5, -30.0, 18.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [5, -60, 5], "state": "minecraft:stone" },
+    { "from": [1, -60, 1], "to": [4, -60, 4], "state": "minecraft:water[level=0]" },
+    { "from": [7, -60, 0], "to": [12, -60, 5], "state": "minecraft:stone" },
+    { "from": [8, -60, 1], "to": [11, -60, 4], "state": "minecraft:lava[level=0]" },
+
+    { "from": [0, -61, 8], "to": [12, -58, 8], "state": "minecraft:stone_bricks" },
+    { "from": [1, -60, 7], "to": [1, -60, 7], "state": "minecraft:torch" },
+    { "from": [4, -60, 7], "to": [4, -60, 7], "state": "minecraft:torch" },
+    { "from": [7, -60, 7], "to": [7, -60, 7], "state": "minecraft:campfire[facing=north,lit=true,signal_fire=false,waterlogged=false]" },
+    { "from": [10, -60, 7], "to": [10, -60, 7], "state": "minecraft:glowstone" },
+    { "from": [12, -60, 7], "to": [12, -60, 7], "state": "minecraft:lantern[hanging=false,waterlogged=false]" },
+
+    { "from": [16, -60, 3], "to": [16, -55, 3], "state": "minecraft:oak_log[axis=y]" },
+    { "from": [14, -56, 1], "to": [18, -54, 5], "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]" },
+    { "from": [15, -53, 2], "to": [17, -53, 4], "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]" },
+    { "from": [13, -60, 7], "to": [13, -60, 7], "state": "minecraft:short_grass" },
+    { "from": [14, -60, 7], "to": [14, -60, 7], "state": "minecraft:poppy" }
+  ]
+}

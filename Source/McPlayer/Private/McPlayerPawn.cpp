@@ -24,6 +24,7 @@
 #include "Net/UnrealNetwork.h"
 
 #if MC_WITH_RENDER
+#include "McParticleComponent.h"
 #include "McPlayerModel.h"
 #endif
 
@@ -315,6 +316,20 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
 
 	UpdateTarget();
+#if MC_WITH_RENDER
+	// The block being dug chips, every tick (survival; creative breaks at once).
+	if (Ticks > 0 && DigSent.IsSet() && Target.IsSet() && Target->Block == DigSent.GetValue())
+	{
+		if (UMcParticleComponent* Particles = UMcParticleComponent::FindFor(BlockWorld))
+		{
+			static const FIntVector Faces[6] = { FIntVector(0, -1, 0), FIntVector(0, 1, 0), FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
+			for (int32 Tick = 0; Tick < FMath::Min(Ticks, MaxTicksPerFrame); ++Tick)
+			{
+				Particles->BlockHit(Target->Block, Faces[FMath::Clamp(Target->Face, 0, 5)]);
+			}
+		}
+	}
+#endif
 	BreakCooldown -= DeltaSeconds;
 	PlaceCooldown -= DeltaSeconds;
 	if (Player && Player->IsLocalController())

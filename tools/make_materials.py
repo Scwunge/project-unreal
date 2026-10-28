@@ -10,9 +10,15 @@ The vanilla-look block materials are unlit. Minecraft's look comes from its own 
 AO and per-face shading), which the mesher bakes into the vertex colour. The texture comes from one texture
 array: UV0 is the position inside the 16x16 texture and UV1.x is the layer.
 
-The enhanced mode (M10) swaps them for lit twins (the same name with "Lit" on the end): Unreal's sun, shadows and
-global illumination light them, and only what Unreal can't know comes from the chunk's light: the sky's ambient,
-which the sky light level lets in (so caves stay dark), and the glow of torches and other block light.
+The enhanced mode (M10, "Unreal Mode") swaps them for lit twins (the same name with "Lit" on the end): Unreal's sun,
+shadows and global illumination light them, and only what Unreal can't know comes from the chunk's light: the sky's
+ambient, which the sky light level lets in (so caves stay dark), and the glow of torches and other block light.
+
+UV1.y says what kind of surface a vertex is on (McSurface in McSectionMesher.h), which only the lit twins act on:
+water waves (moving the surface, bending its normal, glossy, see-through face on and mirror-like at a slant), lava
+glows, leaves and plants sway in the wind, blocks that give light glow, and particles. Every other surface is
+bump-mapped from its own texture (each texel's brightness against its neighbours') and goes wet and glossy where rain
+falls on it. Kinds 9 and 10 are particles of one colour (the vertex colour), and 11 is a bit of a block's texture, flat-shaded, which the vanilla look draws too.
 """
 
 import os
@@ -31,6 +37,7 @@ PLACEHOLDER_PNG = os.path.join(unreal.Paths.project_saved_dir(), "McPlaceholder.
 # a small floor keeps unlit places from going fully black. Shade is the vertex colour: tint, face shade
 # and ambient occlusion, also in display space.
 LIGHTMAP_HLSL = """
+if (round(Kind) >= 9.0 && round(Kind) < 10.5) Tex = 1.0;
 float2 l = saturate(Light.xy);
 float2 b = l / (4.0 - 3.0 * l);
 float3 c = saturate(b.x * SkyFactor + b.y * float3(1.0, 0.92, 0.8));
@@ -41,18 +48,131 @@ float3 display = saturate(Shade.rgb * c);
 return Tex * pow(display, 2.2);
 """
 
-# The lit twins' colour and glow. BaseColor is the texture times the vertex colour (tint, face shade and AO). The
-# emissive adds what Unreal's lights don't: the sky's ambient where the sky light reaches, dimmed at night like the
-# vanilla look (SkyFactor), and block light, warm and a little stronger so torches light their surroundings.
-LIT_BASE_HLSL = """
-return Tex * pow(saturate(Shade.rgb), 2.2);
+# The surface kinds (UV1.y); see McSurface in McSectionMesher.h.
+KIND_HLSL = "float k = round(Kind);\n"
+
+# Moves the surface: leaves and plants in the wind (plants by how high up their texture the vertex is, so their roots
+# stay put), water in slow swells that keep below the block's top. In Unreal units, in world space.
+LIT_WPO_HLSL = KIND_HLSL + """
+float3 o = 0;
+float2 p = Pos.xy * 0.01;
+if (k == 3.0 || k == 4.0)
+{
+    float w = (k == 4.0) ? saturate(1.0 - UV.y) : 1.0;
+    float gust = 0.55 + 0.45 * sin(Time * 0.35 + p.x * 0.05 + p.y * 0.04);
+    float s = sin(Time * 1.9 + p.x * 0.7 + p.y * 0.45 + Pos.z * 0.013);
+    float c = cos(Time * 1.4 + p.x * 0.38 - p.y * 0.62);
+    float a = (k == 3.0 ? 2.0 : 5.5) * gust * w;
+    o = float3(s * a, c * a * 0.7, k == 3.0 ? s * c * 0.8 : 0.0);
+}
+else if (k == 1.0)
+{
+    float h = sin(Time * 1.3 + p.x * 0.9 + p.y * 0.6) * 0.5 + sin(Time * 1.9 - p.x * 0.5 + p.y * 1.1) * 0.5;
+    o = float3(0.0, 0.0, -3.0 + 2.0 * h);
+}
+return o;
 """
-LIT_EMISSIVE_HLSL = """
+
+# The normal, in world space. Water: the slope of a few sines travelling different ways. Blocks: bumps from the texture,
+# the brightness difference to the next texel across and down, put on the face with a frame made from the screen-space
+# derivatives of position and UV (so it needs no tangents).
+LIT_NORMAL_HLSL = KIND_HLSL + """
+float3 N = normalize(VNormal);
+if (k == 1.0)
+{
+    float2 p = Pos.xy * 0.01;
+    float2 g = 0;
+    g += float2(0.9, 0.6) * cos(Time * 1.3 + p.x * 0.9 + p.y * 0.6) * 0.5;
+    g += float2(-0.5, 1.1) * cos(Time * 1.9 - p.x * 0.5 + p.y * 1.1) * 0.5;
+    g += float2(2.3, -1.7) * cos(Time * 2.7 + p.x * 2.3 - p.y * 1.7) * 0.18;
+    g += float2(-3.1, -2.9) * cos(Time * 3.3 - p.x * 3.1 - p.y * 2.9) * 0.12;
+    g += float2(5.3, 4.1) * cos(Time * 4.1 + p.x * 5.3 + p.y * 4.1) * 0.06;
+    g += float2(-7.7, 6.1) * cos(Time * 5.3 - p.x * 7.7 + p.y * 6.1) * 0.03;
+    return normalize(N + saturate(N.z) * float3(-g * 0.11, 0.0));
+}
+if (k >= 9.0)
+{
+    return N;
+}
+float3 luma = float3(0.3, 0.59, 0.11);
+float2 dh = float2(dot(TexX, luma) - dot(Tex, luma), dot(TexY, luma) - dot(Tex, luma));
+float3 dpdx = ddx(Cam);
+float3 dpdy = ddy(Cam);
+float2 duvdx = ddx(UV);
+float2 duvdy = ddy(UV);
+float3 dp2perp = cross(dpdy, N);
+float3 dp1perp = cross(N, dpdx);
+float3 T = dp2perp * duvdx.x + dp1perp * duvdy.x;
+float3 B = dp2perp * duvdx.y + dp1perp * duvdy.y;
+float m = max(dot(T, T), dot(B, B));
+if (m < 1e-12)
+{
+    return N;
+}
+float inv = rsqrt(m);
+float s = Strength * (k == 2.0 ? 0.5 : 1.0);
+return normalize(N - s * (dh.x * T + dh.y * B) * inv);
+"""
+
+# How wet the surface is: open to the sky (sky light near full) and facing up, as rain falls.
+WET_HLSL = "float wet = Wet * saturate((Light.x - 0.9) * 10.0) * saturate(VNormal.z);\n"
+
+LIT_BASE_KINDS_HLSL = KIND_HLSL + WET_HLSL + """
+float3 a = (k >= 9.0 && k < 10.5 ? 1.0 : Tex) * pow(saturate(Shade.rgb), 2.2);
+if (k == 1.0)
+{
+    a *= 0.5;
+}
+return a * lerp(1.0, 0.62, wet);
+"""
+
+LIT_ROUGHNESS_HLSL = KIND_HLSL + WET_HLSL + """
+float r = Base - 0.2 * dot(Tex, float3(0.3, 0.59, 0.11));
+if (k == 1.0) r = 0.02;
+else if (k == 2.0) r = 0.5;
+else if (Glass > 0.5 && k == 0.0) r = 0.06;
+else if (k >= 9.0) r = 0.9;
+return lerp(r, 0.1, wet);
+"""
+
+LIT_SPECULAR_HLSL = KIND_HLSL + WET_HLSL + """
+float s = 0.3;
+if (k == 1.0 || (Glass > 0.5 && k == 0.0)) s = 0.5;
+return lerp(s, 0.6, wet);
+"""
+
+# What the lit twins add that Unreal's lights don't. Lava burns, flickering slowly; blocks that give light and glowing
+# particles glow, so they bloom.
+LIT_EMISSIVE_KINDS_HLSL = KIND_HLSL + """
 float2 l = saturate(Light.xy);
 float2 b = l / (4.0 - 3.0 * l);
 float3 sky = pow(b.x * SkyFactor, 2.2) * float3(0.55, 0.65, 0.85) * Ambient;
 float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow;
-return Albedo * (sky + glow);
+float3 e = Albedo * (sky + glow);
+if (k == 2.0)
+{
+    float2 p = Pos.xy * 0.01;
+    e += Albedo * Lava * (0.85 + 0.15 * sin(Time * 1.7 + p.x * 1.3 + p.y * 0.9));
+}
+else if (k == 5.0)
+{
+    e += Albedo * Glow;
+}
+else if (k == 10.0)
+{
+    e += Albedo * Glow * 3.0;
+}
+return e;
+"""
+
+# Water is see-through looking down into it and turns to a mirror at a slant (Fresnel).
+LIT_OPACITY_HLSL = KIND_HLSL + """
+if (k == 1.0)
+{
+    float f = pow(1.0 - saturate(abs(dot(normalize(VNormal), normalize(View)))), 5.0);
+    return saturate(lerp(0.55, 1.0, f) * max(A, 0.6));
+}
+return A;
 """
 
 # The sky's materials. The dome and the stars' squares take their colour from the vertex colour (display space, raised
@@ -122,10 +242,12 @@ def make_placeholder_array():
     return array
 
 
-def add_custom(material, x: int, y: int, description: str, code: str, sources: dict):
-    # A Custom node with one input per entry of sources (input name: (expression, output name)).
+def add_custom(material, x: int, y: int, description: str, code: str, sources: dict, scalar: bool = False):
+    # A Custom node with one input per entry of sources (input name: (expression, output name)); float3 out, or one
+    # float with scalar.
     node = mel.create_material_expression(material, unreal.MaterialExpressionCustom, x, y)
-    node.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    node.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1 if scalar
+                             else unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     node.set_editor_property("description", description)
     inputs = []
     for input_name in sources:
@@ -146,6 +268,34 @@ def add_scalar(material, x: int, y: int, name: str, value: float):
     return node
 
 
+def add_mask(material, x: int, y: int, source, channel: str):
+    # One channel ("r", "g", "b" or "a") of source.
+    node = mel.create_material_expression(material, unreal.MaterialExpressionComponentMask, x, y)
+    for name in "rgba":
+        node.set_editor_property(name, name == channel)
+    mel.connect_material_expressions(source, "", node, "")
+    return node
+
+
+def add_array_sample(material, x: int, y: int, uvw, default_array):
+    node = mel.create_material_expression(material, unreal.MaterialExpressionTextureSampleParameter2DArray, x, y)
+    node.set_editor_property("parameter_name", "Blocks")
+    node.set_editor_property("texture", default_array)
+    node.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    mel.connect_material_expressions(uvw, "", node, "UVs")
+    return node
+
+
+def add_offset(material, x: int, y: int, source, offset):
+    # source + a constant (u, v, layer) offset.
+    constant = mel.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, x - 150, y)
+    constant.set_editor_property("constant", unreal.LinearColor(offset[0], offset[1], offset[2], 0.0))
+    node = mel.create_material_expression(material, unreal.MaterialExpressionAdd, x, y)
+    mel.connect_material_expressions(source, "", node, "A")
+    mel.connect_material_expressions(constant, "", node, "B")
+    return node
+
+
 def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool = False, two_sided: bool = False,
                         lit: bool = False):
     # Nothing refers to the materials as assets (the game loads them by path), so they can be made afresh.
@@ -159,9 +309,12 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                                   unreal.MaterialShadingModel.MSM_DEFAULT_LIT if lit else unreal.MaterialShadingModel.MSM_UNLIT)
     material.set_editor_property("blend_mode", blend_mode)
     if lit and blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
-        # Water and glass lit per pixel like the rest, not by the coarse lighting volume.
+        # Water and glass lit per pixel like the rest (forward shaded, which Lumen's front-layer reflections need).
         material.set_editor_property("translucency_lighting_mode",
                                       unreal.TranslucencyLightingMode.TLM_SURFACE_PER_PIXEL_LIGHTING)
+    if lit:
+        # The normal the shaders make is in world space.
+        material.set_editor_property("tangent_space_normal", False)
     if two_sided:
         material.set_editor_property("two_sided", True)
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
@@ -190,6 +343,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
     mel.connect_material_expressions(uvw, "", texture, "UVs")
 
     vertex_color = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -350, 250)
+    kind = add_mask(material, -700, 300, uv1, "g")
     uv2 = mel.create_material_expression(material, unreal.MaterialExpressionTextureCoordinate, -350, 400)
     uv2.set_editor_property("coordinate_index", 2)
     sky_factor = mel.create_material_expression(material, unreal.MaterialExpressionScalarParameter, -350, 500)
@@ -199,34 +353,73 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
     gamma.set_editor_property("parameter_name", "Gamma")
     gamma.set_editor_property("default_value", 0.5)
 
+    opacity_source = (texture, "A")
     if lit:
-        albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_HLSL,
-                            {"Tex": (texture, "RGB"), "Shade": (vertex_color, "")})
+        time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -700, 900)
+        absolute = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -700, 1000)
+        absolute.set_editor_property("world_position_shader_offset",
+                                     unreal.WorldPositionIncludedOffsets.WPT_EXCLUDE_ALL_SHADER_OFFSETS)
+        relative = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -700, 1100)
+        relative.set_editor_property("world_position_shader_offset", unreal.WorldPositionIncludedOffsets.WPT_CAMERA_RELATIVE)
+        vertex_normal = mel.create_material_expression(material, unreal.MaterialExpressionVertexNormalWS, -700, 1200)
+        camera = mel.create_material_expression(material, unreal.MaterialExpressionCameraVectorWS, -700, 1300)
+        wetness = add_scalar(material, -700, 1400, "Wetness", 0.0)
+        glass = add_scalar(material, -700, 1500, "Glass", 1.0 if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT else 0.0)
+        across = add_array_sample(material, -350, -300, add_offset(material, -500, -300, uvw, (1.0 / 16.0, 0.0, 0.0)), default_array)
+        down = add_array_sample(material, -350, -450, add_offset(material, -500, -450, uvw, (0.0, 1.0 / 16.0, 0.0)), default_array)
+        common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, "")}
+
+        albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_KINDS_HLSL,
+                            dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, "")))
         mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
-        glow = add_custom(material, -100, 0, "McLitEmissive", LIT_EMISSIVE_HLSL,
-                          {"Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
+        glow = add_custom(material, -100, 0, "McLitEmissive", LIT_EMISSIVE_KINDS_HLSL,
+                          {"Kind": (kind, ""), "Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
                            "Ambient": (add_scalar(material, -350, 700, "Ambient", 1.0), ""),
-                           "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), "")})
+                           "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
+                           "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 5.0), ""),
+                           "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
+                           "Time": (time, ""), "Pos": (absolute, "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-        roughness = add_scalar(material, -100, 450, "Roughness", 0.85)
+        normal = add_custom(material, -100, 150, "McLitNormal", LIT_NORMAL_HLSL,
+                            {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "Tex": (texture, "RGB"),
+                             "TexX": (across, "RGB"), "TexY": (down, "RGB"), "Cam": (relative, ""), "UV": (uv0, ""),
+                             "Pos": (absolute, ""), "Time": (time, ""),
+                             "Strength": (add_scalar(material, -350, 1800, "Bump", 1.6), "")})
+        mel.connect_material_property(normal, "", unreal.MaterialProperty.MP_NORMAL)
+        roughness = add_custom(material, -100, 450, "McLitRoughness", LIT_ROUGHNESS_HLSL,
+                               dict(common, Tex=(texture, "RGB"), Glass=(glass, ""),
+                                    Base=(add_scalar(material, -350, 1900, "Roughness", 0.85), "")), scalar=True)
         mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
-        specular = add_scalar(material, -100, 550, "Specular", 0.3)
+        specular = add_custom(material, -100, 550, "McLitSpecular", LIT_SPECULAR_HLSL,
+                              dict(common, Glass=(glass, "")), scalar=True)
         mel.connect_material_property(specular, "", unreal.MaterialProperty.MP_SPECULAR)
+        if blend_mode != unreal.BlendMode.BLEND_OPAQUE:
+            offset = add_custom(material, -100, 700, "McLitOffset", LIT_WPO_HLSL,
+                                {"Kind": (kind, ""), "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, "")})
+            mel.connect_material_property(offset, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+        if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
+            fresnel = add_custom(material, -100, 300, "McLitOpacity", LIT_OPACITY_HLSL,
+                                 {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, "")},
+                                 scalar=True)
+            opacity_source = (fresnel, "")
     else:
         colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,
                             {"Tex": (texture, "RGB"), "Shade": (vertex_color, ""), "Light": (uv2, ""),
-                             "SkyFactor": (sky_factor, ""), "Gamma": (gamma, "")})
+                             "SkyFactor": (sky_factor, ""), "Gamma": (gamma, ""), "Kind": (kind, "")})
         mel.connect_material_property(colour, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     if blend_mode == unreal.BlendMode.BLEND_MASKED:
-        mel.connect_material_property(texture, "A", unreal.MaterialProperty.MP_OPACITY_MASK)
+        # Particles of one colour are solid whatever the texture under them.
+        mask = add_custom(material, -100, 250, "McMask", "return (round(Kind) >= 9.0 && round(Kind) < 10.5) ? 1.0 : A;",
+                          {"Kind": (kind, ""), "A": (texture, "A")}, scalar=True)
+        mel.connect_material_property(mask, "", unreal.MaterialProperty.MP_OPACITY_MASK)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and vertex_alpha:
         opacity = mel.create_material_expression(material, unreal.MaterialExpressionMultiply, -100, 300)
         mel.connect_material_expressions(texture, "A", opacity, "A")
         mel.connect_material_expressions(vertex_color, "A", opacity, "B")
         mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
-        mel.connect_material_property(texture, "A", unreal.MaterialProperty.MP_OPACITY)
+        mel.connect_material_property(opacity_source[0], opacity_source[1], unreal.MaterialProperty.MP_OPACITY)
 
     mel.recompile_material(material)
     eal.save_loaded_asset(material)
@@ -315,6 +508,14 @@ def main() -> None:
         return
     if os.environ.get("MC_ONLY_LIT"):
         make_lit_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
+        return
+    if os.environ.get("MC_ONLY_BLOCKS"):
+        # The six block materials, keeping the placeholder texture they hold.
+        placeholder = unreal.load_asset(f"{FOLDER}/TA_McPlaceholder")
+        make_block_material("M_McBlockOpaque", unreal.BlendMode.BLEND_OPAQUE, placeholder)
+        make_block_material("M_McBlockCutout", unreal.BlendMode.BLEND_MASKED, placeholder)
+        make_block_material("M_McBlockTranslucent", unreal.BlendMode.BLEND_TRANSLUCENT, placeholder)
+        make_lit_materials(placeholder)
         return
     if os.environ.get("MC_ONLY_WEATHER"):
         placeholder = unreal.load_asset(f"{FOLDER}/TA_McPlaceholder")

@@ -51,7 +51,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -119,6 +119,11 @@ private:
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
 	void DrawPause(int32 Width, int32 Height);
+	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
+	void DrawOptions(int32 Width, int32 Height);
+	// The menus drawn over a world being played (the rest replace the screen).
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || (ActiveMenu == EMenu::Options && OptionsBack == EMenu::Pause); }
+	void OpenOptions(EMenu Back);
 	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
@@ -149,6 +154,8 @@ private:
 	};
 
 	EMenu ActiveMenu = EMenu::None;
+	// Where the options screen's Done goes back to.
+	EMenu OptionsBack = EMenu::Title;
 	bool bMenuInput = false;
 	// This frame's input for the menus.
 	bool bMenuClick = false;

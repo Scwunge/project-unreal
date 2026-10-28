@@ -137,12 +137,13 @@ void UMcWorldRenderComponent::RebuildPalette()
 	{
 		UE_LOG(LogMcRender, Error, TEXT("Block models or textures failed to load; see the McAssets errors above"));
 	}
-	Palette = FMcRenderPalette::Build(FMcBlockRegistry::Get(), Models, Textures, CVarMcFlipWinding.GetValueOnGameThread());
-	FluidPalette = McFluidMesher::BuildPalette(FMcBlockRegistry::Get(), Textures);
+	// The palette reads which blocks give light (for Unreal Mode's glow).
 	if (!FMcBlockLight::Get().EnsureLoaded())
 	{
 		UE_LOG(LogMcRender, Error, TEXT("Block light tables failed to load; see the McCore errors above"));
 	}
+	Palette = FMcRenderPalette::Build(FMcBlockRegistry::Get(), Models, Textures, CVarMcFlipWinding.GetValueOnGameThread());
+	FluidPalette = McFluidMesher::BuildPalette(FMcBlockRegistry::Get(), Textures);
 	LightPalette = FMcLightPalette::Build();
 }
 
@@ -207,12 +208,16 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		MakePassMaterials();
 	}
 
-	// The sky's light reaching the blocks follows the time of day; the chunks' stored light does not change.
+	// The sky's light reaching the blocks follows the time of day; the chunks' stored light does not change. In Unreal
+	// Mode what the rain falls on goes wet in about five seconds, and dries in about thirty once it stops.
+	const float Rain = GetRain ? FMath::Clamp(GetRain(), 0.0f, 1.0f) : 0.0f;
+	Wetness = Rain > Wetness ? FMath::Min(Rain, Wetness + DeltaTime / 5.0f) : FMath::Max(Rain, Wetness - DeltaTime / 30.0f);
 	for (UMaterialInterface* Material : PassMaterials)
 	{
 		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))
 		{
 			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+			Instance->SetScalarParameterValue(TEXT("Wetness"), Wetness);
 		}
 	}
 

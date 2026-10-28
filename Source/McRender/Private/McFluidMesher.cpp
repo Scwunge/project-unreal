@@ -165,7 +165,7 @@ namespace
 			Buffers.Positions.Add(FVector(Block.X, Block.Z, Block.Y) * McCoords::UnitsPerBlock);
 			Buffers.Normals.Add(Normal);
 			Buffers.UV0.Add(UVs[Corner]);
-			Buffers.UV1.Add(FVector2D(Layer, 0.0));
+			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Translucent ? McSurface::Water : McSurface::Lava));
 			Buffers.UV2.Add(Light);
 			Buffers.Colors.Add(Color);
 		}

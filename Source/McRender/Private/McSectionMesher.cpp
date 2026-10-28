@@ -1,8 +1,10 @@
 #include "McSectionMesher.h"
 #include "McBiomeColors.h"
 #include "McBiomeRegistry.h"
+#include "McBlockLight.h"
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
 #include "McLightEngine.h"
@@ -311,6 +313,45 @@ EMcTintSource McBlockMesher::GetTintSource(const FMcBlockRegistry& Registry, FMc
 	return EMcTintSource::Grass;
 }
 
+uint8 McSurface::ForBlock(FName Block, uint8 Emission)
+{
+	FMcBlockTags& Tags = FMcBlockTags::Get();
+	Tags.EnsureLoaded();
+	static const int32 Leaves = Tags.Find(TEXT("leaves"));
+	static const int32 Plants = Tags.Find(TEXT("replaceable_by_trees"));
+	static const int32 Flowers = Tags.Find(TEXT("flowers"));
+	static const int32 Saplings = Tags.Find(TEXT("saplings"));
+	static const int32 Crops = Tags.Find(TEXT("crops"));
+	// Lying flat or hanging, these would ripple rather than sway.
+	static const TSet<FName> Flat = { TEXT("minecraft:pale_moss_carpet"), TEXT("minecraft:leaf_litter"), TEXT("minecraft:glow_lichen"),
+		TEXT("minecraft:pink_petals"), TEXT("minecraft:wildflowers"), TEXT("minecraft:shelf_mushroom"), TEXT("minecraft:chorus_flower"),
+		TEXT("minecraft:cactus_flower"), TEXT("minecraft:spore_blossom"), TEXT("minecraft:hanging_roots"), TEXT("minecraft:water") };
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcBlock* Found = Registry.FindBlock(Block);
+	if (!Found)
+	{
+		return Plain;
+	}
+	const int32 Index = Found->Index;
+	if (Tags.HasBlock(Leaves, Index) || Block == TEXT("minecraft:vine"))
+	{
+		return McSurface::Leaves;
+	}
+	if (!Flat.Contains(Block) && (Tags.HasBlock(Plants, Index) || Tags.HasBlock(Flowers, Index) || Tags.HasBlock(Saplings, Index)
+		|| Tags.HasBlock(Crops, Index) || Block == TEXT("minecraft:sugar_cane") || Block == TEXT("minecraft:sweet_berry_bush")
+		|| Block == TEXT("minecraft:kelp_plant") || Block == TEXT("minecraft:kelp")))
+	{
+		return Plant;
+	}
+	// A lit furnace gives light from its front only; glowing all over would look wrong.
+	const FString Name = Block.ToString();
+	if (Emission >= 3 && !Name.Contains(TEXT("furnace")) && !Name.Contains(TEXT("smoker")))
+	{
+		return Glow;
+	}
+	return Plain;
+}
+
 TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistry& Registry, const FMcBlockModels& Models, const FMcBlockTextures& Textures, bool bFlipWinding)
 {
 	TSharedRef<FMcRenderPalette> Palette = MakeShared<FMcRenderPalette>();
@@ -371,6 +412,9 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 			Info.Tint = McBlockMesher::GetBlockTint(Registry, static_cast<FMcStateId>(Id));
 			Info.TintSource = McBlockMesher::GetTintSource(Registry, static_cast<FMcStateId>(Id));
 		}
+		const FMcBlockLight& BlockLight = FMcBlockLight::Get();
+		Info.Surface = McSurface::ForBlock(Registry.GetBlockOf(static_cast<FMcStateId>(Id)).Name,
+			BlockLight.IsLoaded() ? BlockLight.GetEmission(static_cast<FMcStateId>(Id)) : 0);
 	}
 
 	FMcBiomeRegistry& BiomeIds = FMcBiomeRegistry::Get();
@@ -512,7 +556,7 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						Buffers.Positions.Add(FVector(Position.X, Position.Z, Position.Y) * McCoords::UnitsPerBlock);
 						Buffers.Normals.Add(Normal);
 						Buffers.UV0.Add(FVector2D(Quad.UVs[Corner]));
-						Buffers.UV1.Add(FVector2D(QuadInfo.Layer, 0.0));
+						Buffers.UV1.Add(FVector2D(QuadInfo.Layer, Info.Surface));
 						Buffers.UV2.Add(CornerLight[Corner]);
 						// sRGB: Minecraft multiplies these in display space, and so does the material.
 						Buffers.Colors.Add(ScaleColor(Tint, Shade * CornerOcclusion[Corner]));

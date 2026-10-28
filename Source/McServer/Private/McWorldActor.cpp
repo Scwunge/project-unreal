@@ -461,6 +461,13 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bChec
 		{
 			MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 		}
+		// Fluids draining away and fire going out aren't broken; blocks are.
+		const FName OldName = Registry.GetBlockOf(Old).Name;
+		if (State == 0 && Old != 0 && OldName != TEXT("minecraft:water") && OldName != TEXT("minecraft:lava") && OldName != TEXT("minecraft:fire")
+			&& OldName != TEXT("minecraft:soul_fire") && OldName != TEXT("minecraft:moving_piston"))
+		{
+			MulticastBlockBroken(Pos, Old);
+		}
 	}
 	// A portal that has lost a piece of its frame goes out.
 	if (HasAuthority() && bCheckPortals && !bFixingPortals && Old != State && BlockWorld->HasChunk(ChunkPos) && !McPortal::IsPortalBlock(State))
@@ -468,6 +475,14 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bChec
 		bFixingPortals = true;
 		McPortal::RemoveBroken(*BlockWorld, Pos, [this](const FIntVector& At, FMcStateId Block) { SetBlock(At, Block, false); });
 		bFixingPortals = false;
+	}
+}
+
+void AMcWorldActor::MulticastBlockBroken_Implementation(FIntVector Pos, int32 State)
+{
+	if (bViewed && OnBlockBroken)
+	{
+		OnBlockBroken(Pos, static_cast<FMcStateId>(State));
 	}
 }
 

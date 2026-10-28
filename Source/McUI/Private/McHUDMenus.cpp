@@ -130,7 +130,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		MessageTitle = TEXT("Failed to connect to the server");
 		MessageText = ConnectError;
 	}
-	if (bTitle && (ActiveMenu == EMenu::None || ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat))
+	if (bTitle && (ActiveMenu == EMenu::None || IsWorldMenu()))
 	{
 		OpenMenu(EMenu::Title);
 #if !UE_BUILD_SHIPPING
@@ -141,6 +141,10 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		{
 			bDevMenuDone = true;
 			OpenMenu(DevMenu == TEXT("worlds") ? EMenu::Worlds : DevMenu == TEXT("newworld") ? EMenu::NewWorld : DevMenu == TEXT("join") ? EMenu::Join : EMenu::Title);
+			if (DevMenu == TEXT("options"))
+			{
+				OpenOptions(EMenu::Title);
+			}
 		}
 #endif
 	}
@@ -177,6 +181,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		case EMenu::Pause: case EMenu::Chat: OpenMenu(EMenu::None); return false;
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
+		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
 		default: break;
 		}
 	}
@@ -191,9 +196,10 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Message: DrawMessage(Width, Height); break;
 	case EMenu::Pause: DrawPause(Width, Height); break;
 	case EMenu::Chat: DrawChatInput(Width, Height); break;
+	case EMenu::Options: DrawOptions(Width, Height); break;
 	default: break;
 	}
-	return ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Chat && ActiveMenu != EMenu::None;
+	return !IsWorldMenu() && ActiveMenu != EMenu::None;
 }
 
 // ---- Widgets ----
@@ -354,7 +360,11 @@ void AMcHUD::DrawTitle(int32 Width, int32 Height)
 	}
 	// Not there yet: drawn so the screen has the game's shape, but greyed out.
 	MenuButton(TEXT("Minecraft Realms"), CentreX - 100.0f, Top + 48.0f, 200.0f, 20.0f, false);
-	MenuButton(TEXT("Options..."), CentreX - 100.0f, Top + 84.0f, 98.0f, 20.0f, false);
+	if (MenuButton(TEXT("Options..."), CentreX - 100.0f, Top + 84.0f, 98.0f, 20.0f))
+	{
+		OpenOptions(EMenu::Title);
+		return;
+	}
 	if (MenuButton(TEXT("Quit Game"), CentreX + 2.0f, Top + 84.0f, 98.0f, 20.0f))
 	{
 		if (APlayerController* Player = GetOwningPlayerController())
@@ -563,15 +573,52 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	{
 		OpenMenu(EMenu::None);
 	}
-	else if (MenuButton(McRenderMode::IsEnhanced() ? TEXT("Graphics: Enhanced") : TEXT("Graphics: Vanilla"), CentreX - 102.0f, Height / 4.0f + 80.0f, 204.0f, 20.0f))
+	else if (MenuButton(TEXT("Options..."), CentreX - 102.0f, Height / 4.0f + 80.0f, 204.0f, 20.0f))
 	{
-		ToggleGraphics();
+		OpenOptions(EMenu::Pause);
 	}
 	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Height / 4.0f + 104.0f, 204.0f, 20.0f))
 	{
 		// Leaving the map saves the world and the player (AMcWorldActor and AMcGameMode end play).
 		OpenMenu(EMenu::None);
 		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));
+	}
+}
+
+void AMcHUD::OpenOptions(EMenu Back)
+{
+	OptionsBack = Back;
+	OpenMenu(EMenu::Options);
+}
+
+void AMcHUD::DrawOptions(int32 Width, int32 Height)
+{
+	if (OptionsBack == EMenu::Pause)
+	{
+		// Over the world, like the pause menu it came from.
+		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+	}
+	else
+	{
+		DrawMenuBackground(Width, Height, true);
+	}
+	const float CentreX = Width / 2.0f;
+	const float Top = Height / 6.0f;
+	DrawCentredText(TEXT("Options"), CentreX, 15.0f, White);
+
+	// Unreal Mode: the game lit by Unreal (Lumen, real shadows, fog, bloom) instead of Minecraft's own light.
+	const bool bUnreal = McRenderMode::IsEnhanced();
+	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), CentreX - 155.0f, Top + 24.0f, 310.0f, 20.0f))
+	{
+		ToggleGraphics();
+	}
+	DrawCentredText(bUnreal ? TEXT("Lumen lighting, real shadows, volumetric fog and bloom")
+		: TEXT("Minecraft's own look"), CentreX, Top + 50.0f, Grey);
+	DrawCentredText(TEXT("F7 switches it while playing"), CentreX, Top + 62.0f, DarkGrey);
+
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Height / 6.0f + 168.0f, 200.0f, 20.0f))
+	{
+		OpenMenu(OptionsBack);
 	}
 }
 

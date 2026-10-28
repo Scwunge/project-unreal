@@ -581,7 +581,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 	{
 		return 0.0f;
 	}
-	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get());
+	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
 	if (Taken > 0.0f && From && Data->Stats.Health > 0.0f)
 	{
 		const FVector Push = McCombat::GetKnockback(Body.Position, *From, FVector::ZeroVector);
@@ -775,7 +775,7 @@ void AMcPlayerPawn::ServerGameTick()
 				const int32 FallDamage = ServerFall.Update(ServerPreviousPosition.Y, Feet.Y, Body.bOnGround, bBreaksFall);
 				if (FallDamage > 0)
 				{
-					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get());
+					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get(), &GameRules);
 					// The landing: the player's own thud, and the block's fall sound.
 					if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
 					{
@@ -802,7 +802,7 @@ void AMcPlayerPawn::ServerGameTick()
 			{
 				McSurvival::Hurt(Stats, 4.0f, McSurvival::EDamage::Void, Data->Armor.Get());
 			}
-			McSurvival::Tick(Stats, Environment, Difficulty, Data->Armor.Get());
+			McSurvival::Tick(Stats, Environment, Difficulty, Data->Armor.Get(), &GameRules);
 		}
 		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 
@@ -964,7 +964,10 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	{
 		for (const FMcItemStack& Drop : Drops)
 		{
-			Entities->DropItem(FVector(Pos) + FVector(0.5), Drop);
+			if (GameRules.bDoTileDrops)
+			{
+				Entities->DropItem(FVector(Pos) + FVector(0.5), Drop);
+			}
 		}
 		// Ores pay out experience, unless silk touch took the whole block.
 		bool bSilk = false;
@@ -995,7 +998,8 @@ void AMcPlayerPawn::ServerDie()
 	bServerDead = true;
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();
-	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
+	// With keepInventory the inventory, armour and experience stay with the player.
+	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr; Entities && !GameRules.bKeepInventory)
 	{
 		const FVector At = Body.Position + FVector(0.0, 0.5, 0.0);
 		const TSharedPtr<FMcContainer> Containers[3] = { Data->Inventory, Data->Armor, Data->Offhand };
@@ -1012,9 +1016,12 @@ void AMcPlayerPawn::ServerDie()
 		}
 	}
 	// The experience is lost in the death, but 7 a level (at most 100) drops as orbs.
-	ServerDropXp(McSurvival::GetDeathXp(Data->Stats));
-	Data->Stats.XpLevel = 0;
-	Data->Stats.XpProgress = 0.0f;
+	if (!GameRules.bKeepInventory)
+	{
+		ServerDropXp(McSurvival::GetDeathXp(Data->Stats));
+		Data->Stats.XpLevel = 0;
+		Data->Stats.XpProgress = 0.0f;
+	}
 	if (OnDied)
 	{
 		OnDied(*this);

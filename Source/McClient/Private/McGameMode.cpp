@@ -115,6 +115,7 @@ void AMcGameMode::StartPlay()
 			Pawn->SetActorLocation(GetStartTransform(It->Get(), bFlying).GetLocation());
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
+				McPawn->SetGameRules(GetGameRules());
 				McPawn->SetFlying(bFlying);
 				if (!RestoreSurvival(It->Get(), *McPawn))
 				{
@@ -130,6 +131,7 @@ void AMcGameMode::StartPlay()
 void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 {
 	Worlds.AddUnique(&World);
+	ApplyGameRules();
 	World.SetEntityProxyClass(AMcEntityActor::StaticClass());
 	if (FMcEntityHost* Host = World.GetEntityHost())
 	{
@@ -366,10 +368,7 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
 			McPawn->SetFlying(bFlying);
-			if (const AMcWorldActor* Primary = GetPrimaryWorld())
-			{
-				McPawn->SetDifficulty(static_cast<McSurvival::EDifficulty>(Primary->GetLevel().Difficulty));
-			}
+			McPawn->SetGameRules(GetGameRules());
 			if (!RestoreSurvival(NewPlayer, *McPawn))
 			{
 				ApplyDefaultGameMode(*McPawn);
@@ -401,6 +400,30 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			return;
 		}
+		// With keepInventory what they carried, and their experience, goes with them to the new body.
+		TArray<FMcItemStack> Kept[3];
+		int32 KeptLevel = 0;
+		float KeptProgress = 0.0f;
+		int32 KeptSlot = 0;
+		bool bKeep = false;
+		if (const AMcPlayerPawn* Dead = Cast<AMcPlayerPawn>(Who->GetPawn()))
+		{
+			bKeep = Dead->Data && Dead->GetGameRules().bKeepInventory;
+			if (bKeep)
+			{
+				const TSharedPtr<FMcContainer> Containers[3] = { Dead->Data->Inventory, Dead->Data->Armor, Dead->Data->Offhand };
+				for (int32 Index = 0; Index < 3; ++Index)
+				{
+					for (int32 Slot = 0; Slot < Containers[Index]->Num(); ++Slot)
+					{
+						Kept[Index].Add(Containers[Index]->Get(Slot));
+					}
+				}
+				KeptLevel = Dead->Data->Stats.XpLevel;
+				KeptProgress = Dead->Data->Stats.XpProgress;
+				KeptSlot = Dead->Data->SelectedSlot;
+			}
+		}
 		if (APawn* Old = Who->GetPawn())
 		{
 			Who->UnPossess();
@@ -415,9 +438,56 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		RestartPlayerAtTransform(Who, GetSpawnTransform());
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
+			McPawn->SetGameRules(GetGameRules());
 			ApplyDefaultGameMode(*McPawn);
+			if (bKeep && McPawn->Data)
+			{
+				const TSharedPtr<FMcContainer> Containers[3] = { McPawn->Data->Inventory, McPawn->Data->Armor, McPawn->Data->Offhand };
+				for (int32 Index = 0; Index < 3; ++Index)
+				{
+					for (int32 Slot = 0; Slot < Containers[Index]->Num() && Slot < Kept[Index].Num(); ++Slot)
+					{
+						Containers[Index]->Set(Slot, Kept[Index][Slot]);
+					}
+				}
+				McPawn->Data->Stats.XpLevel = KeptLevel;
+				McPawn->Data->Stats.XpProgress = KeptProgress;
+				McPawn->Data->SelectedSlot = KeptSlot;
+				McPawn->SelectedSlot = KeptSlot;
+			}
 		}
 	}));
+}
+
+FMcGameRules AMcGameMode::GetGameRules() const
+{
+	if (const AMcWorldActor* Primary = GetPrimaryWorld())
+	{
+		return Primary->GetGameRules();
+	}
+	return FMcGameRules();
+}
+
+void AMcGameMode::ApplyGameRules()
+{
+	const FMcGameRules Rules = GetGameRules();
+	for (const TObjectPtr<AMcWorldActor>& World : Worlds)
+	{
+		if (World)
+		{
+			World->ApplyGameRules(Rules);
+		}
+	}
+	if (UWorld* Game = GetWorld())
+	{
+		for (FConstPlayerControllerIterator It = Game->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr)
+			{
+				Pawn->SetGameRules(Rules);
+			}
+		}
+	}
 }
 
 void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage)
@@ -738,13 +808,7 @@ namespace
 			{
 				World->SetDifficulty(Difficulty);
 			}
-			for (FConstPlayerControllerIterator It = Mode.GetWorld()->GetPlayerControllerIterator(); It; ++It)
-			{
-				if (AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr)
-				{
-					Pawn->SetDifficulty(static_cast<McSurvival::EDifficulty>(FMath::Clamp(Difficulty, 0, 3)));
-				}
-			}
+			Mode.ApplyGameRules();
 		}
 		virtual FString GetGameRule(const FString& Rule) const override
 		{
@@ -757,6 +821,7 @@ namespace
 			{
 				World->SetGameRule(Rule, Value);
 			}
+			Mode.ApplyGameRules();
 		}
 
 		virtual bool GetBlock(const FIntVector& Pos, FMcStateId& OutState) const override

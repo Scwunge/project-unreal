@@ -352,6 +352,7 @@ void AMcWorldActor::BeginPlay()
 		}
 		StartStorage(WorldName);
 	}
+	ApplyGameRules(GetGameRules());
 	UE_LOG(LogMcServer, Log, TEXT("World ready: %s, %s, %d sections from y=%d, surface at spawn y=%d%s"),
 		*Dimension, *Kind, DimensionType.NumSections(), DimensionType.MinY, SurfaceY,
 		Storage ? *FString::Printf(TEXT(", saved as %s (%s)"), *WorldName, bHaveLevel ? TEXT("loaded") : TEXT("new")) : TEXT(""));
@@ -363,6 +364,26 @@ void AMcWorldActor::SetGameRule(const FString& Rule, const FString& Value)
 	if (Rule == TEXT("doDaylightCycle"))
 	{
 		bTimeFrozen = Value.Equals(TEXT("false"), ESearchCase::IgnoreCase);
+	}
+	ApplyGameRules(GetGameRules());
+}
+
+void AMcWorldActor::SetDifficulty(int32 Difficulty)
+{
+	Level.Difficulty = FMath::Clamp(Difficulty, 0, 3);
+	ApplyGameRules(GetGameRules());
+}
+
+void AMcWorldActor::ApplyGameRules(const FMcGameRules& Rules)
+{
+	if (Entities)
+	{
+		Entities->SetRules(Rules);
+	}
+	if (Simulation)
+	{
+		Simulation->SetRandomTickSpeed(Rules.RandomTickSpeed);
+		Simulation->SetWeatherCycle(Rules.bDoWeatherCycle);
 	}
 }
 

@@ -14,6 +14,7 @@
 #include "McPhysics.h"
 #include "McRaycast.h"
 #include "McChunkStreamComponent.h"
+#include "McGameRules.h"
 #include "McSound.h"
 #include "McSurvival.h"
 #include "McPlayerPawn.generated.h"
@@ -118,6 +119,14 @@ public:
 
 	// Server: how hard the world is (hunger's harm, and how much it hurts).
 	void SetDifficulty(McSurvival::EDifficulty InDifficulty) { Difficulty = InDifficulty; }
+	// Server: the game rules this player lives by (fall, fire and drowning damage, natural regeneration, block drops
+	// and keepInventory). Also sets the difficulty they carry.
+	void SetGameRules(const FMcGameRules& InRules)
+	{
+		GameRules = InRules;
+		Difficulty = static_cast<McSurvival::EDifficulty>(FMath::Clamp(InRules.Difficulty, 0, 3));
+	}
+	const FMcGameRules& GetGameRules() const { return GameRules; }
 
 protected:
 	virtual void PossessedBy(AController* NewController) override;
@@ -235,6 +244,7 @@ private:
 	FVector ServerPreviousPosition = FVector::ZeroVector;
 	McSurvival::FFallTracker ServerFall;
 	McSurvival::EDifficulty Difficulty = McSurvival::EDifficulty::Normal;
+	FMcGameRules GameRules;
 	TOptional<FIntVector> DigPos;
 	float DigProgress = 0.0f;
 	// Ticks spent on the block being dug; it is hit (with its sound) every 4.

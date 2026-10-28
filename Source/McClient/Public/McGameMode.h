@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "McGameRules.h"
 #include "McGameMode.generated.h"
 
 struct FMcPlayerData;
@@ -61,6 +62,12 @@ public:
 	// What a player left behind in a world with a save: the dimension, place and look they were last in. False if the world
 	// has nothing for them.
 	bool LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const;
+
+	// The first world's saved rules and difficulty, or the defaults before there is a world.
+	FMcGameRules GetGameRules() const;
+	// Gives every world and every player the first world's rules; called when they change, a world is set up or a
+	// player joins or respawns.
+	void ApplyGameRules();
 
 private:
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were

@@ -60,8 +60,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     /kill, /list, /me, /msg (/tell, /w), /op, /deop, /say, /seed, /setblock, /summon, /teleport (/tp),
     /time, /weather, /whitelist and /xp (/experience).
   - **Difficulty and game rules** are saved in `level.json`. Difficulty sets hunger's harm and stops
-    /summon making monsters on peaceful. Of the game rules only doDaylightCycle changes the game so far,
-    though every rule is kept; natural monster spawning ignores peaceful for now.
+    /summon making monsters on peaceful. Peaceful also removes the monsters and stops them spawning. These
+    rules change the game: doDaylightCycle, doWeatherCycle, doMobSpawning, doMobLoot, doTileDrops,
+    keepInventory (inventory and experience kept on death), naturalRegeneration, fallDamage, fireDamage,
+    drowningDamage and randomTickSpeed (`McGameRules` reads them; the others are kept but do nothing yet).
   - **Permission levels.** The host of a world has every level. On a dedicated server a player has the
     level `ops.json` gives them.
   - **Selectors.** @s, @p, @a, @e, @r and player names work. Selector arguments such as `[type=...]` don't.

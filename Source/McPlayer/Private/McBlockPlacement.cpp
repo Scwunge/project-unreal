@@ -107,6 +107,11 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 			}
 		}
 	}
+	else if (Name == TEXT("minecraft:hopper"))
+	{
+		// The spout points into the block clicked on, or down when placed on a top or bottom.
+		Properties.Add(TEXT("facing"), Face < 2 ? FaceNames[0] : FaceNames[OppositeFace(Face)]);
+	}
 	else if (Name == TEXT("minecraft:ladder"))
 	{
 		if (Face < 2)

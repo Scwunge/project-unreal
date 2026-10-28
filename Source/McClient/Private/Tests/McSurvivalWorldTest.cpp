@@ -231,6 +231,47 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		Use->ReleaseBlock(*Actor, FurnacePos);
 		TestEqual(TEXT("a broken furnace drops its two stacks"), Actor->GetEntityHost()->GetManager().GetEntities().Num() - BeforeFurnace, 2);
 	}
+
+	// A hopper under a chest and over another moves the items down, one every 8 ticks; one under open sky takes an
+	// item lying on it.
+	Use->Tick(0.0f);
+	const FIntVector Top(10, 65, 10);
+	const FIntVector HopperPos(10, 64, 10);
+	const FIntVector Bottom(10, 63, 10);
+	Blocks.SetBlock(Top, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+	Blocks.SetBlock(Bottom, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+	FMcBlockEntity Full = FMcBlockEntity::MakeContainer(27);
+	Full.Slots[4] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+	Chunk->SetBlockEntity(Top.X, Top.Y, Top.Z, Full);
+	Blocks.SetBlock(HopperPos, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));
+	TestEqual(TEXT("the hopper is at work"), Use->NumHoppers(), 1);
+	for (int32 Step = 0; Step < 60; ++Step)
+	{
+		Use->Tick(0.05f + 1e-4f);
+	}
+	TArray<FMcItemStack> Moved;
+	UMcBlockUseSubsystem::GetContents(*Actor, Bottom, Moved);
+	int32 Cobble = 0;
+	for (const FMcItemStack& Stack : Moved)
+	{
+		Cobble += Stack.Item == TEXT("minecraft:cobblestone") ? Stack.Count : 0;
+	}
+	TestEqual(TEXT("all three reach the lower chest"), Cobble, 3);
+	TArray<FMcItemStack> Left;
+	UMcBlockUseSubsystem::GetContents(*Actor, Top, Left);
+	TestTrue(TEXT("the upper one is empty"), !Left.ContainsByPredicate([](const FMcItemStack& Stack) { return !Stack.IsEmpty(); }));
+
+	const FIntVector Open(12, 64, 12);
+	Blocks.SetBlock(Open, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));
+	FMcItemEntity& Lying = Actor->GetEntityHost()->GetManager().DropItem(FVector(Open) + FVector(0.5, 1.1, 0.5), FMcItemStack(TEXT("minecraft:apple"), 4));
+	Lying.Body.Position = FVector(Open) + FVector(0.5, 1.0, 0.5);
+	for (int32 Step = 0; Step < 3; ++Step)
+	{
+		Use->Tick(0.05f + 1e-4f);
+	}
+	TArray<FMcItemStack> Caught;
+	UMcBlockUseSubsystem::GetContents(*Actor, Open, Caught);
+	TestTrue(TEXT("the apples are in the hopper"), Caught.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:apple") && Stack.Count == 4; }));
 	Finish();
 	return true;
 }

@@ -116,8 +116,28 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - A cost of 40 or more is "Too Expensive!", except in creative. A rename alone is capped at 39.
   - Typing goes to the name field (`ServerMenuText`). The menu is told the player's levels before each click
     (`PrepareMenuClick`). The levels the result costs are taken from the player (`TakeLevelsSpent`).
-  - **Not done:** the anvil being damaged by use (12% chance a step towards chipped, damaged, gone). The
-    name field starts empty rather than at the item's own name.
+  - Each result taken has a 12% chance to wear the anvil a step: chipped, damaged, then gone.
+  - **Not done:** the name field starts empty rather than at the item's own name.
+- **Brewing stand** (2026-10-28), in `McBrewingStand`, following minecraft.wiki's "Brewing Stand":
+  - Three bottle slots, the ingredient and the blaze powder fuel. A powder gives 20 brews and is taken when
+    the stand runs out.
+  - A brew takes 400 ticks. It starts when the ingredient makes something of at least one bottle (the recipe
+    book's brewing recipes) and stops if the ingredient is taken or changed. When it ends, every bottle it
+    fits is brewed and one ingredient is used.
+  - It is a machine like the furnace (`FMcMachine`). `UMcBlockUseSubsystem` keeps furnaces and brewing stands
+    alike, working with nobody looking and saved as block entities.
+  - The screen shows the fuel bar, the arrow filling as it brews and the rising bubbles.
+  - **Not done:** the stand block showing its bottles, and the sound when a brew finishes.
+- **Hopper** (2026-10-28), in `McHopper` and `UMcBlockUseSubsystem`, following minecraft.wiki's "Hopper":
+  - Five slots, opened like a chest. Placed, its spout points into the block clicked on (down from a top or
+    bottom face).
+  - Every 8 ticks after a move it puts one item into the block it faces and takes one from the block above, or
+    picks up an item lying on it. A powered hopper (`enabled=false`) holds still.
+  - Chests, barrels and hoppers give every slot. Furnaces take into the input from above and fuel from the
+    side, and give their output below. Brewing stands take the ingredient from above and bottles and fuel from
+    the side, and give the bottles below.
+  - **Not done:** hopper minecarts, the comparator reading, double chests as one container, and dispensers and
+    droppers.
 
 ### M4 build order
 

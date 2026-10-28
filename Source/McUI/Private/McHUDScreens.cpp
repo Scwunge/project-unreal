@@ -24,6 +24,7 @@
 #include "McWorkstationMenus.h"
 #include "McAnvilMenu.h"
 #include "McFurnace.h"
+#include "McBrewingStand.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
@@ -38,6 +39,7 @@ struct AMcHUD::FScreenState
 	TSharedPtr<FMcMenuInput> Input;
 	McGui::FScreenLayout Layout;
 	TSharedPtr<FMcFurnace> Furnace;
+	TSharedPtr<FMcBrewingStand> Brewing;
 	// The enchanting table's menu (Input holds it).
 	FMcEnchantMenu* Enchanting = nullptr;
 	// The stonecutter's menu and how far down its recipes are scrolled.
@@ -374,6 +376,7 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	};
 	State->Title = Window.Title;
 	State->Furnace = Window.Furnace;
+	State->Brewing = Window.Brewing;
 	State->Enchanting = Window.Enchanting;
 	switch (Window.Kind)
 	{
@@ -399,6 +402,12 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		break;
 	case EMcWindowKind::Chest:
 		State->Layout = McGui::MakeChestLayout(FMath::Clamp(Window.Container.IsValid() ? Window.Container->Num() / 9 : 3, 1, 6));
+		break;
+	case EMcWindowKind::BrewingStand:
+		State->Layout = McGui::MakeBrewingStandLayout();
+		break;
+	case EMcWindowKind::Hopper:
+		State->Layout = McGui::MakeHopperLayout();
 		break;
 	case EMcWindowKind::Furnace:
 		State->Layout = McGui::MakeFurnaceLayout();
@@ -942,6 +951,33 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		}
 	}
 
+	if (Layout.Kind == McGui::EScreen::BrewingStand && Screen->Brewing.IsValid())
+	{
+		const FMcBrewingStand& Stand = *Screen->Brewing;
+		const FString Parts = FString(SpriteRoot) + TEXT("container/brewing_stand/");
+		// The fuel bar shows the brews left of the powder in it.
+		const float Fuel = FMath::Clamp(FMath::CeilToFloat(18.0f * Stand.GetFuel() / FMcBrewingStand::FuelPerPowder), 0.0f, 18.0f);
+		if (Fuel > 0.0f)
+		{
+			DrawRegion(LoadSprite(Parts + TEXT("fuel_length.png")), Origin.X + 60, Origin.Y + 44, Fuel, 4, 0, 0, Fuel, 4);
+		}
+		if (Stand.IsBrewing())
+		{
+			// The arrow fills down as the brew goes; the bubbles rise over and over.
+			const float Progress = FMath::CeilToFloat(28.0f * (1.0f - static_cast<float>(Stand.GetBrewTimeLeft()) / FMcBrewingStand::BrewTime));
+			if (Progress > 0.0f)
+			{
+				DrawRegion(LoadSprite(Parts + TEXT("brew_progress.png")), Origin.X + 97, Origin.Y + 16, 9, Progress, 0, 0, 9, Progress);
+			}
+			static constexpr int32 BubbleHeights[] = { 29, 24, 20, 16, 11, 6, 0 };
+			const int32 Bubbles = BubbleHeights[(Stand.GetBrewTimeLeft() / 2) % 7];
+			if (Bubbles > 0)
+			{
+				DrawRegion(LoadSprite(Parts + TEXT("bubbles.png")), Origin.X + 63, Origin.Y + 14 + 29 - Bubbles, 12, Bubbles, 0, 29 - Bubbles, 12, Bubbles);
+			}
+		}
+	}
+
 	// Labels in the dark grey the game uses, without shadow.
 	switch (Layout.Kind)
 	{
@@ -968,6 +1004,14 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		{
 			DrawAnvil(Origin);
 		}
+		break;
+	case McGui::EScreen::Hopper:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 39.0f, 0x404040, false);
+		break;
+	case McGui::EScreen::BrewingStand:
+		DrawGuiText(Screen->Title, Origin.X + 176 / 2.0f - TextWidth(Screen->Title) / 2.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Grindstone:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);

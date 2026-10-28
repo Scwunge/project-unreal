@@ -70,6 +70,8 @@ enum class EMcWindowKind : uint8
 	SmithingTable,
 	Grindstone,
 	Anvil,
+	BrewingStand,
+	Hopper,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -82,6 +84,7 @@ struct MCPLAYER_API FMcWindow
 	TSharedPtr<FMcMenu> Menu;
 	TSharedPtr<FMcContainer> Container;
 	TSharedPtr<FMcFurnace> Furnace;
+	TSharedPtr<class FMcBrewingStand> Brewing;
 	// The crafting menus' extra, to look at the grid again after the slots were set from outside.
 	FMcCraftingMenu* Crafting = nullptr;
 	// The enchanting table's, for its offers and the enchanting itself.
@@ -131,8 +134,8 @@ public:
 	// Opens the player's own window (the E key). A client asks the server to as well.
 	void OpenInventoryWindow();
 	// Server: opens a window on a block for this player. Chest takes the block's container (its items are what the
-	// player moves; OnChanged writes them back), Furnace the furnace.
-	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcFurnace>& Furnace, TFunction<void()> OnChanged = nullptr);
+	// player moves; OnChanged writes them back), Machine the furnace or brewing stand.
+	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr);
 	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
 	void CloseWindow();
 	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where

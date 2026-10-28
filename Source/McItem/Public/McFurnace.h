@@ -17,7 +17,20 @@ enum class EMcFurnaceKind : uint8
 	Smoker,
 };
 
-class MCITEM_API FMcFurnace
+// A block that works on its own, tick by tick, on the items it holds: a furnace or a brewing stand. Its block entity
+// is what Serialize writes.
+class MCITEM_API FMcMachine
+{
+public:
+	virtual ~FMcMachine() = default;
+	virtual const TSharedPtr<FMcContainer>& GetItems() const = 0;
+	// One game tick. True if a slot changed.
+	virtual bool Tick() = 0;
+	// Reads or writes, by whether the archive is loading.
+	virtual bool Serialize(FArchive& Ar) = 0;
+};
+
+class MCITEM_API FMcFurnace : public FMcMachine
 {
 public:
 	static constexpr int32 InputSlot = 0;
@@ -28,7 +41,7 @@ public:
 
 	EMcFurnaceKind GetKind() const { return Kind; }
 	EMcRecipeType GetRecipeType() const;
-	const TSharedPtr<FMcContainer>& GetItems() const { return Items; }
+	virtual const TSharedPtr<FMcContainer>& GetItems() const override { return Items; }
 
 	bool IsLit() const { return LitTimeRemaining > 0; }
 	int32 GetLitTimeRemaining() const { return LitTimeRemaining; }
@@ -43,14 +56,14 @@ public:
 	bool CanSmelt(const FMcItemStack& Stack) const;
 
 	// One game tick. True if a slot changed.
-	bool Tick();
+	virtual bool Tick() override;
 
 	// The experience the output has earned since it was last emptied, whole points, with the leftover fraction
 	// rounded up when Roll (a number in [0, 1)) is under it. Clears it.
 	int32 TakeExperience(float Roll);
 
 	// Reads or writes, by whether the archive is loading.
-	bool Serialize(FArchive& Ar);
+	virtual bool Serialize(FArchive& Ar) override;
 
 private:
 	bool CanBurn(const FMcRecipe* Recipe) const;

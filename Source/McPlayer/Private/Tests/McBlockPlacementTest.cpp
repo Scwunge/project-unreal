@@ -62,6 +62,8 @@ bool FMcBlockPlacementTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("torches on a side hang on the wall"), Place(TEXT("minecraft:torch"), NorthHigh, 0).StartsWith(TEXT("minecraft:wall_torch[facing=north")));
 	TestTrue(TEXT("torches on top stand"), Place(TEXT("minecraft:torch"), Top, 0).StartsWith(TEXT("minecraft:torch")));
+	TestTrue(TEXT("hoppers on top point down"), Place(TEXT("minecraft:hopper"), Top, 0).Contains(TEXT("facing=down")));
+	TestTrue(TEXT("hoppers on a north face point back into it"), Place(TEXT("minecraft:hopper"), NorthHigh, 0).Contains(TEXT("facing=south")));
 
 	const TArray<FMcPlacedBlock> Door = McBlockPlacement::GetPlacement(World, State(TEXT("minecraft:oak_door")), Top, 0, 0);
 	TestEqual(TEXT("doors are two blocks"), Door.Num(), 2);

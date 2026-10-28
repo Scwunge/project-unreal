@@ -282,6 +282,7 @@ void FMcAnvilMenu::OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>&
 		Spent += Cost;
 		PlayerLevels -= Cost;
 	}
+	++Uses;
 	Table->Set(LeftSlot, FMcItemStack());
 	if (MaterialUsed > 0)
 	{
@@ -295,6 +296,13 @@ void FMcAnvilMenu::OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>&
 	}
 	ItemName.Reset();
 	Refresh();
+}
+
+int32 FMcAnvilMenu::TakeUses()
+{
+	const int32 Out = Uses;
+	Uses = 0;
+	return Out;
 }
 
 int32 FMcAnvilMenu::TakeLevelsSpent()

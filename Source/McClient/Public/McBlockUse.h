@@ -1,13 +1,15 @@
 // What using a block does for a survival player on the server: a crafting table, a chest or a furnace opens its
 // window. Chests share one container between everyone who has it open (kept in step with the chunk's block entity,
 // which is what is saved), and furnaces are kept here, burning with nobody looking, and saved with their chunk as
-// block entities. Breaking either drops what is inside. Each dimension has its own world actor; blocks are keyed by
+// block entities. Breaking either drops what is inside. Hoppers are kept here too, moving items between them. Each dimension has its own world actor; blocks are keyed by
 // the dimension they are in.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "McBlockEntity.h"
+#include "McHopper.h"
 #include "McBlockUse.generated.h"
 
 class AMcPlayerPawn;
@@ -38,13 +40,17 @@ public:
 	// nothing for any other block.
 	void ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
-	// How many furnaces are being kept (for tests and logs).
-	int32 NumFurnaces() const { return Furnaces.Num(); }
+	// How many furnaces and brewing stands are being kept (for tests and logs).
+	int32 NumFurnaces() const { return Machines.Num(); }
+	// How many hoppers are at work.
+	int32 NumHoppers() const { return Hoppers.Num(); }
 
 	// The furnace at Pos, loaded from its chunk's block entity if it is not being kept yet; null if there is none and
 	// bCreate is false. Also what a test uses to look at one.
 	TSharedPtr<FMcFurnace> GetFurnace(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate);
-	// Writes every kept furnace of the world into its chunk (done at each save; a test does it by hand).
+	// The same for a brewing stand.
+	TSharedPtr<class FMcBrewingStand> GetBrewingStand(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate);
+	// Writes every kept furnace and brewing stand of the world into its chunk (done at each save; a test does it by hand).
 	void SaveFurnaces(AMcWorldActor& WorldActor);
 	// Forgets the kept furnaces and chests, as when the server restarts (a test uses it).
 	void ForgetAll();
@@ -60,10 +66,12 @@ private:
 		bool operator==(const FKey& Other) const { return Dimension == Other.Dimension && Pos == Other.Pos; }
 		friend uint32 GetTypeHash(const FKey& Key) { return HashCombine(GetTypeHash(Key.Dimension), GetTypeHash(Key.Pos)); }
 	};
-	struct FFurnaceEntry
+	// A furnace or brewing stand being kept: it works whether or not anyone has it open.
+	struct FMachineEntry
 	{
 		TWeakObjectPtr<AMcWorldActor> World;
-		TSharedPtr<FMcFurnace> Furnace;
+		TSharedPtr<class FMcMachine> Machine;
+		EMcBlockEntityKind Kind = EMcBlockEntityKind::Furnace;
 		TArray<uint8> Saved;
 	};
 	struct FChestEntry
@@ -71,16 +79,33 @@ private:
 		TWeakObjectPtr<AMcWorldActor> World;
 		TSharedPtr<FMcContainer> Container;
 	};
+	// A hopper at work; its items are a chest entry like any other container's.
+	struct FHopperEntry
+	{
+		TWeakObjectPtr<AMcWorldActor> World;
+		int32 Cooldown = 0;
+	};
 
 	static FKey MakeKey(const AMcWorldActor& WorldActor, const FIntVector& Pos);
 	TSharedPtr<FMcContainer> GetChest(AMcWorldActor& WorldActor, const FIntVector& Pos, int32 NumSlots);
 	void WriteChest(AMcWorldActor& WorldActor, const FIntVector& Pos);
-	void WriteFurnace(const FKey& Key, FFurnaceEntry& Entry);
+	// The machine at Pos (loaded from its block entity, or made if bCreate), if the block there is one.
+	FMachineEntry* GetMachine(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate);
+	void WriteMachine(const FKey& Key, FMachineEntry& Entry);
 	void Sweep();
 	void WatchWorld(AMcWorldActor& WorldActor);
+	// One game tick of every hopper.
+	void TickHoppers();
+	// Moves an item into the block the hopper faces, then one in from above; true if either moved.
+	bool TickHopper(AMcWorldActor& WorldActor, const FIntVector& Pos, FMcStateId State);
+	// What a hopper at the given face of the block at Pos may reach of its slots (none if it isn't a container).
+	FMcSlotAccess GetAccess(AMcWorldActor& WorldActor, const FIntVector& Pos, McHopper::EFace Face);
+	// After items moved in or out of the block at Pos: a chest or hopper is written back to its block entity.
+	void ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	TMap<FKey, FChestEntry> Chests;
-	TMap<FKey, FFurnaceEntry> Furnaces;
+	TMap<FKey, FMachineEntry> Machines;
+	TMap<FKey, FHopperEntry> Hoppers;
 	TSet<TWeakObjectPtr<AMcWorldActor>> Watched;
 	float Accumulator = 0.0f;
 	int32 CleanTimer = 0;

@@ -19,6 +19,8 @@ enum class EMcBlockEntityKind : uint8
 	Spawner,
 	// A furnace, blast furnace or smoker: Data is FMcFurnace::Serialize's bytes (the module that knows them is McItem).
 	Furnace,
+	// A brewing stand: Data is FMcBrewingStand::Serialize's bytes.
+	BrewingStand,
 };
 
 struct MCWORLD_API FMcBlockEntity

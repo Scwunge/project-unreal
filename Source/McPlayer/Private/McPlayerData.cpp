@@ -1,6 +1,7 @@
 #include "McPlayerData.h"
 #include "McCraftingMenu.h"
 #include "McFurnace.h"
+#include "McBrewingStand.h"
 #include "McEnchantMenu.h"
 #include "McWorkstationMenus.h"
 #include "McAnvilMenu.h"
@@ -204,6 +205,10 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 			Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
 		}
 		break;
+	case EMcWindowKind::Hopper:
+		Made.Container = MakeShared<FMcContainer>(5);
+		Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
+		break;
 	case EMcWindowKind::Stonecutter:
 		Made.Menu = MakeShared<FMcStonecutterMenu>(Inventory);
 		break;
@@ -230,6 +235,10 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 			Made.Menu = MakeShared<FMcFurnaceMenu>(Made.Furnace, Inventory);
 		}
 		break;
+	case EMcWindowKind::BrewingStand:
+		Made.Brewing = MakeShared<FMcBrewingStand>();
+		Made.Menu = MakeShared<FMcBrewingMenu>(Made.Brewing, Inventory);
+		break;
 	default:
 		break;
 	}
@@ -247,6 +256,10 @@ TArray<uint8> UMcPlayerDataComponent::WriteWindow() const
 	if (Window.Furnace.IsValid())
 	{
 		Window.Furnace->Serialize(Ar);
+	}
+	if (Window.Brewing.IsValid())
+	{
+		Window.Brewing->Serialize(Ar);
 	}
 	if (Window.Enchanting)
 	{
@@ -270,6 +283,10 @@ bool UMcPlayerDataComponent::ReadWindow(TConstArrayView<uint8> Bytes)
 	}
 	FMemoryReaderView Ar(Bytes);
 	if (Window.Furnace.IsValid() && !Window.Furnace->Serialize(Ar))
+	{
+		return false;
+	}
+	if (Window.Brewing.IsValid() && !Window.Brewing->Serialize(Ar))
 	{
 		return false;
 	}
@@ -383,7 +400,7 @@ void UMcPlayerDataComponent::OpenInventoryWindow()
 	}
 }
 
-void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcFurnace>& Furnace, TFunction<void()> OnChanged)
+void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcMachine>& Machine, TFunction<void()> OnChanged)
 {
 	if (!IsServer() || Stats.Health <= 0.0f)
 	{
@@ -400,7 +417,8 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	case EMcWindowKind::Anvil:
 		break;
 	case EMcWindowKind::Chest:
-		if (!Container.IsValid())
+	case EMcWindowKind::Hopper:
+		if (!Container.IsValid() || (Kind == EMcWindowKind::Hopper && Container->Num() != 5))
 		{
 			return;
 		}
@@ -409,13 +427,21 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 		Made.Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
 		break;
 	case EMcWindowKind::Furnace:
-		if (!Furnace.IsValid())
+		if (!Machine.IsValid())
 		{
 			return;
 		}
-		Aux = static_cast<int32>(Furnace->GetKind());
-		Made.Furnace = Furnace;
-		Made.Menu = MakeShared<FMcFurnaceMenu>(Furnace, Inventory);
+		Made.Furnace = StaticCastSharedPtr<FMcFurnace>(Machine);
+		Aux = static_cast<int32>(Made.Furnace->GetKind());
+		Made.Menu = MakeShared<FMcFurnaceMenu>(Made.Furnace, Inventory);
+		break;
+	case EMcWindowKind::BrewingStand:
+		if (!Machine.IsValid())
+		{
+			return;
+		}
+		Made.Brewing = StaticCastSharedPtr<FMcBrewingStand>(Machine);
+		Made.Menu = MakeShared<FMcBrewingMenu>(Made.Brewing, Inventory);
 		break;
 	default:
 		return;

@@ -39,6 +39,8 @@ public:
 	virtual bool SetText(const FString& Text) override;
 	virtual void SetPlayerLevels(int32 Levels, bool bCreative) override;
 	virtual int32 TakeLevelsSpent() override;
+	// How many results were taken since last asked (each may wear the anvil).
+	int32 TakeUses();
 	virtual void SerializeState(FArchive& Ar) override;
 
 protected:
@@ -64,4 +66,5 @@ private:
 	int32 PlayerLevels = 0;
 	bool bPlayerCreative = false;
 	int32 Spent = 0;
+	int32 Uses = 0;
 };

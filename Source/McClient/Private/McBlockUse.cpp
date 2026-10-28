@@ -8,6 +8,8 @@
 #include "McEnchanting.h"
 #include "McEntityHost.h"
 #include "McFurnace.h"
+#include "McBrewingStand.h"
+#include "McAnvilMenu.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
@@ -35,6 +37,23 @@ namespace
 		return Name == TEXT("minecraft:chest") || Name == TEXT("minecraft:trapped_chest") || Name == TEXT("minecraft:barrel");
 	}
 
+	// How many slots the block keeps as a plain container (chests, barrels, hoppers); 0 for any other.
+	int32 GetContainerSlots(FName Name)
+	{
+		return IsChestName(Name) ? ChestSlots : Name == TEXT("minecraft:hopper") ? McHopper::NumSlots : 0;
+	}
+
+	// The step to the next block in a direction named by a facing property.
+	FIntVector FacingStep(FName Facing)
+	{
+		if (Facing == TEXT("north")) return FIntVector(0, 0, -1);
+		if (Facing == TEXT("south")) return FIntVector(0, 0, 1);
+		if (Facing == TEXT("west")) return FIntVector(-1, 0, 0);
+		if (Facing == TEXT("east")) return FIntVector(1, 0, 0);
+		if (Facing == TEXT("up")) return FIntVector(0, 1, 0);
+		return FIntVector(0, -1, 0);
+	}
+
 	bool GetFurnaceKind(FName Name, EMcFurnaceKind& OutKind)
 	{
 		if (Name == TEXT("minecraft:furnace"))
@@ -54,6 +73,27 @@ namespace
 			return false;
 		}
 		return true;
+	}
+
+	// The kind of machine the block is, if it is one; a furnace's kind too.
+	bool GetMachineKind(FName Name, EMcBlockEntityKind& OutKind, EMcFurnaceKind& OutFurnace)
+	{
+		if (Name == TEXT("minecraft:brewing_stand"))
+		{
+			OutKind = EMcBlockEntityKind::BrewingStand;
+			return true;
+		}
+		OutKind = EMcBlockEntityKind::Furnace;
+		return GetFurnaceKind(Name, OutFurnace);
+	}
+
+	TSharedPtr<FMcMachine> MakeMachine(EMcBlockEntityKind Kind, EMcFurnaceKind FurnaceKind)
+	{
+		if (Kind == EMcBlockEntityKind::BrewingStand)
+		{
+			return MakeShared<FMcBrewingStand>();
+		}
+		return MakeShared<FMcFurnace>(FurnaceKind);
 	}
 
 	FMcChunk* FindChunkOf(AMcWorldActor& WorldActor, const FIntVector& Pos)
@@ -87,14 +127,26 @@ UMcBlockUseSubsystem::FKey UMcBlockUseSubsystem::MakeKey(const AMcWorldActor& Wo
 void UMcBlockUseSubsystem::ForgetAll()
 {
 	Chests.Reset();
-	Furnaces.Reset();
+	Machines.Reset();
+	Hoppers.Reset();
 }
 
 void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 {
-	if (!Watched.Contains(&WorldActor))
+	FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (Blocks && !Watched.Contains(&WorldActor))
 	{
 		Watched.Add(&WorldActor);
+		// A hopper set down starts work.
+		Blocks->OnBlockChanged.AddWeakLambda(this, [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](const FIntVector& Pos, FMcStateId State)
+		{
+			AMcWorldActor* Actor = Weak.Get();
+			const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+			if (Actor && Actor->HasAuthority() && Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == TEXT("minecraft:hopper"))
+			{
+				Hoppers.FindOrAdd(MakeKey(*Actor, Pos)).World = Actor;
+			}
+		});
 		// Furnaces go into their chunks whenever the world saves.
 		WorldActor.OnSaving.AddWeakLambda(this, [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)]()
 		{
@@ -111,13 +163,21 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	// Twenty times a second, however fast frames come (but never a long catch-up after a stall).
 	Accumulator = FMath::Min(Accumulator + DeltaSeconds, 0.25f);
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		if (It->HasAuthority())
+		{
+			WatchWorld(**It);
+		}
+	}
 	while (Accumulator >= 0.05f)
 	{
 		Accumulator -= 0.05f;
-		for (TPair<FKey, FFurnaceEntry>& Pair : Furnaces)
+		for (TPair<FKey, FMachineEntry>& Pair : Machines)
 		{
-			Pair.Value.Furnace->Tick();
+			Pair.Value.Machine->Tick();
 		}
+		TickHoppers();
 		if (++CleanTimer >= 100)
 		{
 			CleanTimer = 0;
@@ -128,9 +188,10 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 
 void UMcBlockUseSubsystem::Sweep()
 {
-	// Furnaces and chests whose block has gone (broken by an explosion, or in creative) drop what they held; furnaces
-	// that were saved in a chunk but have not been opened yet since it loaded start work; the rest are written back.
-	for (auto It = Furnaces.CreateIterator(); It; ++It)
+	// Furnaces, brewing stands and chests whose block has gone (broken by an explosion, or in creative) drop what
+	// they held; machines that were saved in a chunk but have not been opened yet since it loaded start work; the
+	// rest are written back.
+	for (auto It = Machines.CreateIterator(); It; ++It)
 	{
 		AMcWorldActor* World = It.Value().World.Get();
 		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
@@ -145,14 +206,15 @@ void UMcBlockUseSubsystem::Sweep()
 			It.RemoveCurrent();
 			continue;
 		}
-		EMcFurnaceKind Kind;
-		if (!GetFurnaceKind(GetBlockName(*Blocks, Pos), Kind))
+		EMcBlockEntityKind Kind;
+		EMcFurnaceKind FurnaceKind;
+		if (!GetMachineKind(GetBlockName(*Blocks, Pos), Kind, FurnaceKind) || Kind != It.Value().Kind)
 		{
-			DropAll(*World, Pos, It.Value().Furnace->GetItems()->GetAll());
+			DropAll(*World, Pos, It.Value().Machine->GetItems()->GetAll());
 			It.RemoveCurrent();
 			continue;
 		}
-		WriteFurnace(It.Key(), It.Value());
+		WriteMachine(It.Key(), It.Value());
 	}
 	for (auto It = Chests.CreateIterator(); It; ++It)
 	{
@@ -163,7 +225,7 @@ void UMcBlockUseSubsystem::Sweep()
 		{
 			It.RemoveCurrent();
 		}
-		else if (!IsChestName(GetBlockName(*Blocks, Pos)))
+		else if (GetContainerSlots(GetBlockName(*Blocks, Pos)) == 0)
 		{
 			DropAll(*World, Pos, It.Value().Container->GetAll());
 			It.RemoveCurrent();
@@ -182,10 +244,15 @@ void UMcBlockUseSubsystem::Sweep()
 		{
 			for (const TPair<FIntVector, FMcBlockEntity>& Entity : ChunkPair.Value->GetBlockEntities())
 			{
-				if (Entity.Value.Kind == EMcBlockEntityKind::Furnace)
+				const FIntVector Pos(ChunkPair.Key.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPair.Key.Y * 16 + Entity.Key.Z);
+				if (Entity.Value.Kind == EMcBlockEntityKind::Container && !Hoppers.Contains(MakeKey(*World, Pos))
+					&& GetBlockName(*Blocks, Pos) == TEXT("minecraft:hopper"))
 				{
-					const FIntVector Pos(ChunkPair.Key.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPair.Key.Y * 16 + Entity.Key.Z);
-					if (!Furnaces.Contains(MakeKey(*World, Pos)))
+					Hoppers.Add(MakeKey(*World, Pos), FHopperEntry{ World, 0 });
+				}
+				if (Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
+				{
+					if (!Machines.Contains(MakeKey(*World, Pos)))
 					{
 						ToLoad.Add(Pos);
 					}
@@ -194,8 +261,139 @@ void UMcBlockUseSubsystem::Sweep()
 		}
 		for (const FIntVector& Pos : ToLoad)
 		{
-			GetFurnace(*World, Pos, false);
+			GetMachine(*World, Pos, false);
 		}
+	}
+}
+
+void UMcBlockUseSubsystem::TickHoppers()
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	for (auto It = Hoppers.CreateIterator(); It; ++It)
+	{
+		AMcWorldActor* World = It.Value().World.Get();
+		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+		const FIntVector Pos = It.Key().Pos;
+		if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		const FMcStateId State = Blocks->GetBlock(Pos);
+		if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:hopper"))
+		{
+			// Breaking it drops its items (ReleaseBlock, or the chest sweep).
+			It.RemoveCurrent();
+			continue;
+		}
+		if (--It.Value().Cooldown > 0)
+		{
+			continue;
+		}
+		It.Value().Cooldown = 0;
+		// A powered hopper (enabled=false) holds still.
+		if (Registry.GetPropertyValue(State, TEXT("enabled")) != TEXT("false") && TickHopper(*World, Pos, State))
+		{
+			It.Value().Cooldown = McHopper::Cooldown;
+		}
+	}
+}
+
+bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVector& Pos, FMcStateId State)
+{
+	using McHopper::EFace;
+	const TSharedPtr<FMcContainer> Items = GetChest(WorldActor, Pos, McHopper::NumSlots);
+	if (!Items.IsValid())
+	{
+		return false;
+	}
+	const FMcSlotAccess Self = McHopper::ForContainer(Items);
+	bool bMoved = false;
+
+	// Out through the spout: into the top of the block below, or the side of the one beside.
+	const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing"));
+	const FIntVector Target = Pos + FacingStep(Facing);
+	if (!Items->IsEmpty())
+	{
+		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
+		if (McHopper::MoveOne(Self, Into))
+		{
+			ContentsChanged(WorldActor, Target);
+			bMoved = true;
+		}
+	}
+
+	// In from above: out of the bottom of a container, or an item lying on the hopper.
+	const FIntVector Above = Pos + FIntVector(0, 1, 0);
+	const FMcSlotAccess From = GetAccess(WorldActor, Above, EFace::Bottom);
+	if (From.IsValid())
+	{
+		if (McHopper::MoveOne(From, Self))
+		{
+			ContentsChanged(WorldActor, Above);
+			bMoved = true;
+		}
+	}
+	else if (FMcEntityHost* Host = WorldActor.GetEntityHost())
+	{
+		// The bowl and the block over it.
+		TArray<FMcEntity*> Near;
+		Host->GetManager().FindInBox(FBox(FVector(Pos) + FVector(0.0, 0.6875, 0.0), FVector(Pos) + FVector(1.0, 2.0, 1.0)), Near);
+		for (FMcEntity* Entity : Near)
+		{
+			if (Entity->bRemoved || Entity->GetType() != FMcItemEntity::StaticType())
+			{
+				continue;
+			}
+			FMcItemEntity& Item = static_cast<FMcItemEntity&>(*Entity);
+			if (McHopper::Insert(Self, Item.Stack))
+			{
+				Item.bRemoved = Item.Stack.IsEmpty();
+				bMoved = true;
+				break;
+			}
+		}
+	}
+	if (bMoved)
+	{
+		ContentsChanged(WorldActor, Pos);
+	}
+	return bMoved;
+}
+
+FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const FIntVector& Pos, McHopper::EFace Face)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+	{
+		return FMcSlotAccess();
+	}
+	const FName Name = GetBlockName(*Blocks, Pos);
+	if (const int32 Slots = GetContainerSlots(Name))
+	{
+		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
+		return Container.IsValid() ? McHopper::ForContainer(Container) : FMcSlotAccess();
+	}
+	if (Name == TEXT("minecraft:brewing_stand"))
+	{
+		const TSharedPtr<FMcBrewingStand> Stand = GetBrewingStand(WorldActor, Pos, true);
+		return Stand.IsValid() ? McHopper::ForBrewingStand(Stand, Face) : FMcSlotAccess();
+	}
+	EMcFurnaceKind FurnaceKind;
+	if (GetFurnaceKind(Name, FurnaceKind))
+	{
+		const TSharedPtr<FMcFurnace> Furnace = GetFurnace(WorldActor, Pos, true);
+		return Furnace.IsValid() ? McHopper::ForFurnace(Furnace, Face) : FMcSlotAccess();
+	}
+	return FMcSlotAccess();
+}
+
+void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	// Furnaces and brewing stands are written back at each sweep and save.
+	if (Chests.Contains(MakeKey(WorldActor, Pos)))
+	{
+		WriteChest(WorldActor, Pos);
 	}
 }
 
@@ -244,33 +442,35 @@ void UMcBlockUseSubsystem::WriteChest(AMcWorldActor& WorldActor, const FIntVecto
 	WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
 }
 
-TSharedPtr<FMcFurnace> UMcBlockUseSubsystem::GetFurnace(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate)
+UMcBlockUseSubsystem::FMachineEntry* UMcBlockUseSubsystem::GetMachine(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate)
 {
 	const FKey Key = MakeKey(WorldActor, Pos);
-	if (const FFurnaceEntry* Found = Furnaces.Find(Key))
+	if (FMachineEntry* Found = Machines.Find(Key))
 	{
-		return Found->Furnace;
+		return Found;
 	}
 	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
-	EMcFurnaceKind Kind = EMcFurnaceKind::Furnace;
-	if (!Blocks || !GetFurnaceKind(GetBlockName(*Blocks, Pos), Kind))
+	EMcBlockEntityKind Kind;
+	EMcFurnaceKind FurnaceKind = EMcFurnaceKind::Furnace;
+	if (!Blocks || !GetMachineKind(GetBlockName(*Blocks, Pos), Kind, FurnaceKind))
 	{
 		return nullptr;
 	}
-	FFurnaceEntry Entry;
+	FMachineEntry Entry;
 	Entry.World = &WorldActor;
-	Entry.Furnace = MakeShared<FMcFurnace>(Kind);
+	Entry.Kind = Kind;
+	Entry.Machine = MakeMachine(Kind, FurnaceKind);
 	bool bSaved = false;
 	if (const FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
 	{
 		const FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
-		if (Entity && Entity->Kind == EMcBlockEntityKind::Furnace && !Entity->Data.IsEmpty())
+		if (Entity && Entity->Kind == Kind && !Entity->Data.IsEmpty())
 		{
 			FMemoryReaderView Reader(Entity->Data);
-			bSaved = Entry.Furnace->Serialize(Reader);
+			bSaved = Entry.Machine->Serialize(Reader);
 			if (!bSaved)
 			{
-				Entry.Furnace = MakeShared<FMcFurnace>(Kind);
+				Entry.Machine = MakeMachine(Kind, FurnaceKind);
 			}
 			Entry.Saved = Entity->Data;
 		}
@@ -280,11 +480,22 @@ TSharedPtr<FMcFurnace> UMcBlockUseSubsystem::GetFurnace(AMcWorldActor& WorldActo
 		return nullptr;
 	}
 	WatchWorld(WorldActor);
-	Furnaces.Add(Key, Entry);
-	return Entry.Furnace;
+	return &Machines.Add(Key, MoveTemp(Entry));
 }
 
-void UMcBlockUseSubsystem::WriteFurnace(const FKey& Key, FFurnaceEntry& Entry)
+TSharedPtr<FMcFurnace> UMcBlockUseSubsystem::GetFurnace(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate)
+{
+	const FMachineEntry* Entry = GetMachine(WorldActor, Pos, bCreate);
+	return Entry && Entry->Kind == EMcBlockEntityKind::Furnace ? StaticCastSharedPtr<FMcFurnace>(Entry->Machine) : nullptr;
+}
+
+TSharedPtr<FMcBrewingStand> UMcBlockUseSubsystem::GetBrewingStand(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate)
+{
+	const FMachineEntry* Entry = GetMachine(WorldActor, Pos, bCreate);
+	return Entry && Entry->Kind == EMcBlockEntityKind::BrewingStand ? StaticCastSharedPtr<FMcBrewingStand>(Entry->Machine) : nullptr;
+}
+
+void UMcBlockUseSubsystem::WriteMachine(const FKey& Key, FMachineEntry& Entry)
 {
 	AMcWorldActor* World = Entry.World.Get();
 	FMcChunk* Chunk = World ? FindChunkOf(*World, Key.Pos) : nullptr;
@@ -294,13 +505,13 @@ void UMcBlockUseSubsystem::WriteFurnace(const FKey& Key, FFurnaceEntry& Entry)
 	}
 	TArray<uint8> Bytes;
 	FMemoryWriter Writer(Bytes);
-	Entry.Furnace->Serialize(Writer);
+	Entry.Machine->Serialize(Writer);
 	if (Bytes == Entry.Saved && Chunk->FindBlockEntity(Key.Pos.X & 15, Key.Pos.Y, Key.Pos.Z & 15))
 	{
 		return;
 	}
 	FMcBlockEntity Entity;
-	Entity.Kind = EMcBlockEntityKind::Furnace;
+	Entity.Kind = Entry.Kind;
 	Entity.Data = Bytes;
 	Chunk->SetBlockEntity(Key.Pos.X & 15, Key.Pos.Y, Key.Pos.Z & 15, MoveTemp(Entity));
 	World->MarkChunkDirty(FIntPoint(Key.Pos.X >> 4, Key.Pos.Z >> 4));
@@ -309,11 +520,11 @@ void UMcBlockUseSubsystem::WriteFurnace(const FKey& Key, FFurnaceEntry& Entry)
 
 void UMcBlockUseSubsystem::SaveFurnaces(AMcWorldActor& WorldActor)
 {
-	for (TPair<FKey, FFurnaceEntry>& Pair : Furnaces)
+	for (TPair<FKey, FMachineEntry>& Pair : Machines)
 	{
 		if (Pair.Value.World.Get() == &WorldActor)
 		{
-			WriteFurnace(Pair.Key, Pair.Value);
+			WriteMachine(Pair.Key, Pair.Value);
 		}
 	}
 }
@@ -331,13 +542,13 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 	{
 		Out.Append(Entity->Slots);
 	}
-	else if (Entity->Kind == EMcBlockEntityKind::Furnace && !Entity->Data.IsEmpty())
+	else if ((Entity->Kind == EMcBlockEntityKind::Furnace || Entity->Kind == EMcBlockEntityKind::BrewingStand) && !Entity->Data.IsEmpty())
 	{
-		FMcFurnace Furnace;
+		const TSharedPtr<FMcMachine> Machine = MakeMachine(Entity->Kind, EMcFurnaceKind::Furnace);
 		FMemoryReaderView Reader(Entity->Data);
-		if (Furnace.Serialize(Reader))
+		if (Machine->Serialize(Reader))
 		{
-			Out.Append(Furnace.GetItems()->GetAll());
+			Out.Append(Machine->GetItems()->GetAll());
 		}
 	}
 }
@@ -351,15 +562,15 @@ void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVec
 		Contents = Chest->Container->GetAll();
 		Chests.Remove(Key);
 	}
-	else if (const FFurnaceEntry* Furnace = Furnaces.Find(Key))
+	else if (const FMachineEntry* Machine = Machines.Find(Key))
 	{
-		Contents = Furnace->Furnace->GetItems()->GetAll();
+		Contents = Machine->Machine->GetItems()->GetAll();
 	}
 	else
 	{
 		GetContents(WorldActor, Pos, Contents);
 	}
-	Furnaces.Remove(Key);
+	Machines.Remove(Key);
 	DropAll(WorldActor, Pos, Contents);
 	// With the contents out, the block entity goes too, so that nothing drops twice.
 	if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
@@ -398,7 +609,44 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	}
 	if (IsAnvilName(Name))
 	{
-		Data->OpenBlockWindow(EMcWindowKind::Anvil, Pos, TEXT("Repair & Name"), nullptr, nullptr);
+		// Each use has a 12% chance to wear it a step: chipped, damaged, then gone (minecraft.wiki, "Anvil").
+		Data->OpenBlockWindow(EMcWindowKind::Anvil, Pos, TEXT("Repair & Name"), nullptr, nullptr,
+			[WeakData = TWeakObjectPtr<UMcPlayerDataComponent>(Data), WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos]()
+			{
+				UMcPlayerDataComponent* Owner = WeakData.Get();
+				AMcWorldActor* Actor = WeakWorld.Get();
+				const FMcBlockWorld* World = Actor ? Actor->GetBlockWorld() : nullptr;
+				if (!Owner || !World || Owner->GetWindow().Kind != EMcWindowKind::Anvil)
+				{
+					return;
+				}
+				const int32 Uses = static_cast<FMcAnvilMenu*>(Owner->GetWindow().Menu.Get())->TakeUses();
+				for (int32 Use = 0; Use < Uses; ++Use)
+				{
+					const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+					const FMcStateId State = World->GetBlock(Pos);
+					const FName Current = GetBlockName(*World, Pos);
+					if (!IsAnvilName(Current))
+					{
+						return;
+					}
+					if (FMath::FRand() >= 0.12f)
+					{
+						Actor->MulticastSound(FName("block.anvil.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 1.0f, 0.9f + FMath::FRand() * 0.1f);
+						continue;
+					}
+					if (Current == TEXT("minecraft:damaged_anvil"))
+					{
+						Actor->SetBlock(Pos, Registry.ParseState(TEXT("minecraft:air")).Get(0));
+						Actor->MulticastSound(FName("block.anvil.destroy"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 1.0f, 0.9f + FMath::FRand() * 0.1f);
+						return;
+					}
+					const FString Next = FString::Printf(TEXT("%s[facing=%s]"), Current == TEXT("minecraft:anvil") ? TEXT("minecraft:chipped_anvil") : TEXT("minecraft:damaged_anvil"),
+						*Registry.GetPropertyValue(State, TEXT("facing")).ToString());
+					Actor->SetBlock(Pos, Registry.ParseState(Next).Get(0));
+					Actor->MulticastSound(FName("block.anvil.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 1.0f, 0.9f + FMath::FRand() * 0.1f);
+				}
+			});
 		return true;
 	}
 	if (Name == TEXT("minecraft:grindstone"))
@@ -423,20 +671,38 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenEnchantingTable(Pos, Bookshelves);
 		return true;
 	}
-	if (IsChestName(Name))
+	if (const int32 Slots = GetContainerSlots(Name))
 	{
-		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, ChestSlots);
+		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
 		if (!Container.IsValid())
 		{
 			return false;
 		}
-		const FString Title = Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
-		Data->OpenBlockWindow(EMcWindowKind::Chest, Pos, Title, Container, nullptr,
+		const bool bHopper = Slots == McHopper::NumSlots;
+		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
+		Data->OpenBlockWindow(bHopper ? EMcWindowKind::Hopper : EMcWindowKind::Chest, Pos, Title, Container, nullptr,
 			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos]()
 			{
 				if (AMcWorldActor* Actor = WeakWorld.Get())
 				{
 					WriteChest(*Actor, Pos);
+				}
+			});
+		return true;
+	}
+	if (Name == TEXT("minecraft:brewing_stand"))
+	{
+		const TSharedPtr<FMcBrewingStand> Stand = GetBrewingStand(WorldActor, Pos, true);
+		if (!Stand.IsValid())
+		{
+			return false;
+		}
+		Data->OpenBlockWindow(EMcWindowKind::BrewingStand, Pos, TEXT("Brewing Stand"), nullptr, Stand,
+			[this, Key = MakeKey(WorldActor, Pos)]()
+			{
+				if (FMachineEntry* Entry = Machines.Find(Key))
+				{
+					WriteMachine(Key, *Entry);
 				}
 			});
 		return true;
@@ -452,9 +718,9 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenBlockWindow(EMcWindowKind::Furnace, Pos, Title, nullptr, Furnace,
 			[this, Key = MakeKey(WorldActor, Pos)]()
 			{
-				if (FFurnaceEntry* Entry = Furnaces.Find(Key))
+				if (FMachineEntry* Entry = Machines.Find(Key))
 				{
-					WriteFurnace(Key, *Entry);
+					WriteMachine(Key, *Entry);
 				}
 			});
 		return true;
@@ -498,6 +764,10 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:grindstone");
 	case EMcWindowKind::Anvil:
 		return IsAnvilName(Name);
+	case EMcWindowKind::BrewingStand:
+		return Name == TEXT("minecraft:brewing_stand");
+	case EMcWindowKind::Hopper:
+		return Name == TEXT("minecraft:hopper");
 	default:
 		return false;
 	}

@@ -138,6 +138,34 @@ McGui::FScreenLayout McGui::MakeAnvilLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeBrewingStandLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::BrewingStand;
+	Layout.Texture = TEXT("brewing_stand.png");
+	Layout.Slots.Add(FIntPoint(56, 51));
+	Layout.Slots.Add(FIntPoint(79, 58));
+	Layout.Slots.Add(FIntPoint(102, 51));
+	Layout.Slots.Add(FIntPoint(79, 17));
+	Layout.Slots.Add(FIntPoint(17, 17));
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
+McGui::FScreenLayout McGui::MakeHopperLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Hopper;
+	Layout.Texture = TEXT("hopper.png");
+	Layout.Size = FIntPoint(176, 133);
+	for (int32 Slot = 0; Slot < 5; ++Slot)
+	{
+		Layout.Slots.Add(FIntPoint(44 + 18 * Slot, 20));
+	}
+	AddPlayerSlots(Layout, 51, 109);
+	return Layout;
+}
+
 McGui::FScreenLayout McGui::MakeGrindstoneLayout()
 {
 	FScreenLayout Layout;

@@ -36,6 +36,8 @@ bool FMcAnvilTest::RunTest(const FString& Parameters)
 	Menu.Click(FMcAnvilMenu::ResultSlot, 0, EMcClickType::Pickup, Dropped);
 	TestEqual(TEXT("taken"), Menu.GetCarried().GetCustomName(), FString(TEXT("Edge")));
 	TestEqual(TEXT("a level spent"), Menu.TakeLevelsSpent(), 1);
+	TestEqual(TEXT("one use, to wear the anvil"), Menu.TakeUses(), 1);
+	TestEqual(TEXT("told once"), Menu.TakeUses(), 0);
 	TestTrue(TEXT("the left is used"), Menu.GetStack(FMcAnvilMenu::LeftSlot).IsEmpty());
 	Menu.SetCarried(FMcItemStack());
 

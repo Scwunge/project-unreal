@@ -505,10 +505,15 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	{
 		return;
 	}
-	// A crafting table, chest or furnace opens rather than takes a block, unless the player sneaks with something in hand.
+	// A crafting table, chest or furnace opens, and a lever, button, door, trapdoor or gate moves, rather than takes a
+	// block, unless the player sneaks with something in hand. Iron doors and trapdoors don't move for a hand.
 	static const TSet<FName> Usable = { TEXT("minecraft:crafting_table"), TEXT("minecraft:chest"), TEXT("minecraft:trapped_chest"), TEXT("minecraft:barrel"),
-		TEXT("minecraft:furnace"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:smoker") };
-	if (bPlaceClick && Usable.Contains(Registry.GetBlockOf(Hit.State).Name) && !(bSneaking && !Held.IsEmpty()))
+		TEXT("minecraft:furnace"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:smoker"), TEXT("minecraft:lever") };
+	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
+	const FString ClickedName = Clicked.ToString();
+	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate"))
+		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
+	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);
 		return;

@@ -8,6 +8,7 @@
 
 #include "CoreMinimal.h"
 #include "McCore.h"
+#include "McSound.h"
 
 class FMcBlockWorld;
 class FMcNature;
@@ -70,6 +71,22 @@ public:
 	// Bone meal on the block at Pos: grows a sapling (45% of the time), a crop or stem, spreads grass over grass
 	// blocks, doubles short grass. True if the item is used up.
 	bool Bonemeal(const FIntVector& Pos);
+
+	// A player's hand on a block (minecraft.wiki: "Lever", "Button", "Door", "Trapdoor", "Fence Gate"): flips a lever,
+	// presses a button (stone ones for 20 ticks, wooden ones 30), opens or shuts a door, trapdoor or fence gate. Iron
+	// doors and trapdoors answer only to redstone. A fence gate opened from its far side turns to open away from the
+	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
+	bool UseBlock(const FIntVector& Pos, float Yaw);
+
+	// Where the simulation's sounds go: the server sends them on to the players.
+	TFunction<void(const FMcSoundEvent&)> OnSound;
+	void PlaySound(const FMcSoundEvent& Event) const
+	{
+		if (OnSound && !Event.Name.IsNone())
+		{
+			OnSound(Event);
+		}
+	}
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;

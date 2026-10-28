@@ -372,6 +372,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	{
 		return false;
 	}
+	// Levers, buttons, doors, trapdoors and gates move rather than open a window.
+	if (WorldActor.UseBlock(Pos, Player.GetLookYaw()))
+	{
+		return true;
+	}
 	const FName Name = GetBlockName(*Blocks, Pos);
 	EMcFurnaceKind FurnaceKind;
 	if (Name == TEXT("minecraft:crafting_table"))

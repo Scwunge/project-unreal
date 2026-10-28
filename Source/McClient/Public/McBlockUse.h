@@ -27,7 +27,8 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override { return WorldType == EWorldType::Game || WorldType == EWorldType::PIE; }
 
-	// Opens the window for what is at Pos, if it is one of those; true if it was. Server only.
+	// Opens the window for what is at Pos, if it is one of those, or works a lever, button, door, trapdoor or gate;
+	// true if it did. Server only.
 	bool Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	// Whether the window the player has open may stay open: the block is still what it was, and they are close.

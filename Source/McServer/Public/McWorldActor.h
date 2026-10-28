@@ -111,6 +111,10 @@ public:
 	// unless bCheckPortals is false (which the code that builds portals uses, as it is part way through).
 	void SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals = true);
 
+	// Server: a player's hand on the block at Pos flips a lever, presses a button, or opens or shuts a door, trapdoor
+	// or fence gate (see FMcSimulation::UseBlock). Yaw is where they look. True if the block took the click.
+	bool UseBlock(const FIntVector& Pos, float Yaw);
+
 	// Whether this machine is showing this dimension to its player; sounds made in a dimension are only played where it is.
 	void SetViewed(bool bInViewed) { bViewed = bInViewed; }
 

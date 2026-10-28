@@ -268,6 +268,11 @@ void AMcWorldActor::BeginPlay()
 
 	BlockWorld = MakeUnique<FMcBlockWorld>(DimensionType);
 	Simulation = MakeUnique<FMcSimulation>(*BlockWorld);
+	// Levers, buttons and doors are heard by the players.
+	Simulation->OnSound = [this](const FMcSoundEvent& Event)
+	{
+		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
+	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
 	// Every sound the entities make goes to the players.
@@ -479,6 +484,11 @@ void AMcWorldActor::TickLightning()
 	{
 		Strike(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5));
 	}
+}
+
+bool AMcWorldActor::UseBlock(const FIntVector& Pos, float Yaw)
+{
+	return HasAuthority() && Simulation && Simulation->UseBlock(Pos, Yaw);
 }
 
 void AMcWorldActor::Strike(const FVector& Position)

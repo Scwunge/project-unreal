@@ -160,6 +160,8 @@ protected:
 public:
 	// Asks the server for a new body; the death screen's button.
 	void RequestRespawn() { ServerRespawn(); }
+	// Right-clicks the block at Pos as the hand does (the -McUse development flag).
+	void RequestUseBlock(const FIntVector& Pos) { ServerUseBlock(Pos); }
 
 protected:
 

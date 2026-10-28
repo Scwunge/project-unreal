@@ -26,6 +26,9 @@ public:
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
 	void SetPlate(const FIntVector& Pos, int32 NumEntities);
+	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
+	bool Use(const FIntVector& Pos, float Yaw);
+
 	// Daylight detectors read this, 0 (night) to 15 (noon).
 	void SetSunLight(int32 Level) { SunLight = Level; }
 

@@ -495,6 +495,29 @@ void AMcPlayerController::StartDevScreenshot()
 			UE_LOG(LogMcClient, Display, TEXT("Placed a diamond block under the pillar"));
 		}), PlaceDelay, false);
 	}
+	// -McUse=x,y,z: this player right-clicks that block after -McUseAfter seconds (default 4), as a hand would, to check
+	// levers, buttons, doors and gates end to end.
+	FString UseSpec;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McUse="), UseSpec, /*bShouldStopOnSeparator=*/ false))
+	{
+		TArray<FString> UseParts;
+		UseSpec.ParseIntoArray(UseParts, TEXT(","));
+		float UseDelay = 4.0f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McUseAfter="), UseDelay);
+		if (UseParts.Num() == 3)
+		{
+			const FIntVector UsePos(FCString::Atoi(*UseParts[0]), FCString::Atoi(*UseParts[1]), FCString::Atoi(*UseParts[2]));
+			FTimerHandle UseTimer;
+			GetWorldTimerManager().SetTimer(UseTimer, FTimerDelegate::CreateWeakLambda(this, [this, UsePos]()
+			{
+				if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetPawn()))
+				{
+					User->RequestUseBlock(UsePos);
+					UE_LOG(LogMcClient, Display, TEXT("Used the block at %s"), *UsePos.ToString());
+				}
+			}), UseDelay, false);
+		}
+	}
 	FString Camera;
 	TArray<FString> CameraParts;
 	if (!HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false))

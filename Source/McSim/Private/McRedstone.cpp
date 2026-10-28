@@ -136,6 +136,110 @@ namespace
 	{
 		return Reg().FindDefaultState(TEXT("minecraft:air")).Get(0);
 	}
+
+	// Stone and polished blackstone buttons stay pressed 20 ticks; wooden ones 30.
+	bool IsStoneButton(FName Block)
+	{
+		return Block == TEXT("minecraft:stone_button") || Block == TEXT("minecraft:polished_blackstone_button");
+	}
+
+	// The sound a lever, button, door, trapdoor or gate makes as it goes on or opens (bOn) or off or shut. Bamboo, cherry
+	// and the Nether's woods have their own sounds; iron and copper doors theirs.
+	FName GetUseSound(uint8 Kind, FName Block, bool bOn)
+	{
+		const FString Name = Block.ToString();
+		FString Wood;
+		if (Name.Contains(TEXT("bamboo"))) Wood = TEXT("bamboo_wood");
+		else if (Name.Contains(TEXT("cherry"))) Wood = TEXT("cherry_wood");
+		else if (Name.Contains(TEXT("crimson")) || Name.Contains(TEXT("warped"))) Wood = TEXT("nether_wood");
+		const TCHAR* const OpenClose = bOn ? TEXT(".open") : TEXT(".close");
+		switch (Kind)
+		{
+		case Lever:
+			return TEXT("block.lever.click");
+		case Button:
+			return FName(TEXT("block.") + (IsStoneButton(Block) ? FString(TEXT("stone")) : Wood.IsEmpty() ? FString(TEXT("wooden")) : Wood)
+				+ (bOn ? TEXT("_button.click_on") : TEXT("_button.click_off")));
+		case Door:
+		case Trapdoor:
+		{
+			const FString Material = Name.Contains(TEXT("iron")) ? TEXT("iron") : Name.Contains(TEXT("copper")) ? TEXT("copper") : Wood.IsEmpty() ? TEXT("wooden") : Wood;
+			return FName(TEXT("block.") + Material + (Kind == Door ? TEXT("_door") : TEXT("_trapdoor")) + OpenClose);
+		}
+		case Gate:
+			return FName(TEXT("block.") + (Wood.IsEmpty() ? FString() : Wood + TEXT("_")) + TEXT("fence_gate") + OpenClose);
+		default:
+			return NAME_None;
+		}
+	}
+
+	// Doors, trapdoors and gates sound at a slightly random pitch, 0.9 to 1.
+	FMcSoundEvent OpeningSound(uint8 Kind, FName Block, const FIntVector& Pos, bool bOpen)
+	{
+		return FMcSoundEvent{ GetUseSound(Kind, Block, bOpen), FVector(Pos) + FVector(0.5), 1.0f, FMath::FRandRange(0.9f, 1.0f) };
+	}
+}
+
+bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const uint8 Kind = KindOf(State);
+	const FName Block = Reg().GetBlockOf(State).Name;
+	const FVector Centre = FVector(Pos) + FVector(0.5);
+	switch (Kind)
+	{
+	case Lever:
+	{
+		const bool bOn = !Flag(State, TEXT("powered"));
+		Set(Pos, { FChange(TEXT("powered"), Bool(bOn)) });
+		Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, bOn), Centre, 0.3f, bOn ? 0.6f : 0.5f });
+		return true;
+	}
+	case Button:
+		// A pressed button takes the click and stays as it is.
+		if (!Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+			Sim.ScheduleTick(Pos, IsStoneButton(Block) ? 20 : 30);
+			Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, true), Centre });
+		}
+		return true;
+	case Door:
+	case Trapdoor:
+	case Gate:
+	{
+		if (Block.ToString().Contains(TEXT("iron")))
+		{
+			return false;
+		}
+		const bool bOpen = !Flag(State, TEXT("open"));
+		if (Kind == Door)
+		{
+			const bool bLower = Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower");
+			const FIntVector Other = Pos + Vec[bLower ? Up : Down];
+			Set(Pos, { FChange(TEXT("open"), Bool(bOpen)) });
+			if (IsKind(Other, Door))
+			{
+				Set(Other, { FChange(TEXT("open"), Bool(bOpen)) });
+			}
+		}
+		else if (Kind == Gate && bOpen)
+		{
+			// Minecraft's yaw: 0 looks south, 90 west, 180 north, 270 east.
+			const int32 Quarter = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw, 360.0f) + 360.0f, 360.0f) / 90.0f) & 3;
+			const int32 Looking = (Quarter + 2) & 3;
+			Set(Pos, { FChange(TEXT("open"), TEXT("true")), FChange(TEXT("facing"), DirName[FacingOf(State) == Opposite(Looking) ? Looking : FacingOf(State)]) });
+		}
+		else
+		{
+			Set(Pos, { FChange(TEXT("open"), Bool(bOpen)) });
+		}
+		Sim.PlaySound(OpeningSound(Kind, Block, Pos, bOpen));
+		return true;
+	}
+	default:
+		return false;
+	}
 }
 
 FMcRedstone::FMcRedstone(FMcBlockWorld& InWorld, FMcSimulation& InSim)
@@ -969,6 +1073,10 @@ void FMcRedstone::TickOpening(const FIntVector& Pos, FMcStateId State)
 		const bool bPowered = HasPower(Pos) || HasPower(Other);
 		if (bPowered != Flag(State, TEXT("open")) || bPowered != Flag(State, TEXT("powered")))
 		{
+			if (bPowered != Flag(State, TEXT("open")))
+			{
+				Sim.PlaySound(OpeningSound(Door, Reg().GetBlockOf(State).Name, Pos, bPowered));
+			}
 			Set(Pos, { FChange(TEXT("open"), Bool(bPowered)), FChange(TEXT("powered"), Bool(bPowered)) });
 			if (IsKind(Other, Door))
 			{
@@ -981,6 +1089,10 @@ void FMcRedstone::TickOpening(const FIntVector& Pos, FMcStateId State)
 	const bool bPowered = HasPower(Pos);
 	if (bPowered != Flag(State, TEXT("powered")))
 	{
+		if (bPowered != Flag(State, TEXT("open")))
+		{
+			Sim.PlaySound(OpeningSound(KindOf(State), Reg().GetBlockOf(State).Name, Pos, bPowered));
+		}
 		Set(Pos, { FChange(TEXT("open"), Bool(bPowered)), FChange(TEXT("powered"), Bool(bPowered)) });
 	}
 }
@@ -990,6 +1102,7 @@ void FMcRedstone::TickButton(const FIntVector& Pos, FMcStateId State)
 	if (Flag(State, TEXT("powered")))
 	{
 		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+		Sim.PlaySound(FMcSoundEvent{ GetUseSound(Button, Reg().GetBlockOf(State).Name, false), FVector(Pos) + FVector(0.5) });
 	}
 }
 

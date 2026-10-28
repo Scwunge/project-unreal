@@ -135,6 +135,11 @@ bool FMcSimulation::Bonemeal(const FIntVector& Pos)
 	return Nature->Bonemeal(Pos);
 }
 
+bool FMcSimulation::UseBlock(const FIntVector& Pos, float Yaw)
+{
+	return Redstone->Use(Pos, Yaw);
+}
+
 int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
 {
 	return Redstone->GetDustPower(Pos);

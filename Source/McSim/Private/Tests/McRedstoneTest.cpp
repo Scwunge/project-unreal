@@ -468,6 +468,76 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		Run(Sim, 3);
 		TestEqual(TEXT("a detector gives the sun level"), Registry.GetPropertyValue(World.GetBlock(FIntVector(12, 1, 0)), TEXT("power")).ToString(), FString(TEXT("11")));
 	}
+	{
+		// A player's hand: levers flip, buttons press and let go, doors, trapdoors and gates open and shut; iron ones
+		// don't move for a hand. Each makes its sound.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		TArray<FName> Sounds;
+		Sim.OnSound = [&Sounds](const FMcSoundEvent& Event) { Sounds.Add(Event.Name); };
+		const auto Value = [&](const FIntVector& Pos, const TCHAR* Property) { return Registry.GetPropertyValue(World.GetBlock(Pos), Property).ToString(); };
+
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:redstone_wire")));
+		Lever(World, FIntVector(0, 1, 0), false);
+		TestTrue(TEXT("a lever takes the click"), Sim.UseBlock(FIntVector(0, 1, 0), 0.0f));
+		TestEqual(TEXT("and turns on"), Value(FIntVector(0, 1, 0), TEXT("powered")), FString(TEXT("true")));
+		TestEqual(TEXT("powering the dust"), Sim.GetDustPower(FIntVector(1, 1, 0)), 15);
+		Sim.UseBlock(FIntVector(0, 1, 0), 0.0f);
+		TestEqual(TEXT("a second click turns it off"), Sim.GetDustPower(FIntVector(1, 1, 0)), 0);
+		TestTrue(TEXT("it clicks"), Sounds.Num() == 2 && Sounds[0] == FName(TEXT("block.lever.click")));
+
+		Sounds.Reset();
+		World.SetBlock(FIntVector(4, 1, 0), State(TEXT("minecraft:oak_button[face=floor,facing=north,powered=false]")));
+		Sim.UseBlock(FIntVector(4, 1, 0), 0.0f);
+		TestEqual(TEXT("a pressed button is on"), Value(FIntVector(4, 1, 0), TEXT("powered")), FString(TEXT("true")));
+		Run(Sim, 29);
+		TestEqual(TEXT("for 30 ticks (wood)"), Value(FIntVector(4, 1, 0), TEXT("powered")), FString(TEXT("true")));
+		Run(Sim, 1);
+		TestEqual(TEXT("then lets go"), Value(FIntVector(4, 1, 0), TEXT("powered")), FString(TEXT("false")));
+		TestTrue(TEXT("clicking on and off"), Sounds.Num() == 2 && Sounds[0] == FName(TEXT("block.wooden_button.click_on")) && Sounds[1] == FName(TEXT("block.wooden_button.click_off")));
+		World.SetBlock(FIntVector(4, 1, 2), State(TEXT("minecraft:stone_button[face=floor,facing=north,powered=false]")));
+		Sim.UseBlock(FIntVector(4, 1, 2), 0.0f);
+		Run(Sim, 20);
+		TestEqual(TEXT("a stone one for 20"), Value(FIntVector(4, 1, 2), TEXT("powered")), FString(TEXT("false")));
+
+		Sounds.Reset();
+		World.SetBlock(FIntVector(8, 1, 0), State(TEXT("minecraft:spruce_door[facing=north,half=lower,hinge=left,open=false,powered=false]")));
+		World.SetBlock(FIntVector(8, 2, 0), State(TEXT("minecraft:spruce_door[facing=north,half=upper,hinge=left,open=false,powered=false]")));
+		TestTrue(TEXT("a door takes the click on its top half"), Sim.UseBlock(FIntVector(8, 2, 0), 0.0f));
+		TestEqual(TEXT("its bottom opens with it"), Value(FIntVector(8, 1, 0), TEXT("open")), FString(TEXT("true")));
+		TestEqual(TEXT("and its top"), Value(FIntVector(8, 2, 0), TEXT("open")), FString(TEXT("true")));
+		Sim.UseBlock(FIntVector(8, 1, 0), 0.0f);
+		TestEqual(TEXT("and shuts again"), Value(FIntVector(8, 2, 0), TEXT("open")), FString(TEXT("false")));
+		TestTrue(TEXT("a wooden door's sounds"), Sounds.Num() == 2 && Sounds[0] == FName(TEXT("block.wooden_door.open")) && Sounds[1] == FName(TEXT("block.wooden_door.close")));
+
+		World.SetBlock(FIntVector(10, 1, 0), State(TEXT("minecraft:iron_door[facing=north,half=lower,hinge=left,open=false,powered=false]")));
+		World.SetBlock(FIntVector(10, 2, 0), State(TEXT("minecraft:iron_door[facing=north,half=upper,hinge=left,open=false,powered=false]")));
+		TestFalse(TEXT("an iron door doesn't take the click"), Sim.UseBlock(FIntVector(10, 1, 0), 0.0f));
+		TestEqual(TEXT("and stays shut"), Value(FIntVector(10, 1, 0), TEXT("open")), FString(TEXT("false")));
+
+		Sounds.Reset();
+		World.SetBlock(FIntVector(12, 1, 0), State(TEXT("minecraft:cherry_trapdoor[facing=north,half=bottom,open=false,powered=false,waterlogged=false]")));
+		Sim.UseBlock(FIntVector(12, 1, 0), 0.0f);
+		TestEqual(TEXT("a trapdoor opens"), Value(FIntVector(12, 1, 0), TEXT("open")), FString(TEXT("true")));
+		TestTrue(TEXT("with cherry's sound"), Sounds.Num() == 1 && Sounds[0] == FName(TEXT("block.cherry_wood_trapdoor.open")));
+		World.SetBlock(FIntVector(12, 1, 2), State(TEXT("minecraft:iron_trapdoor[facing=north,half=bottom,open=false,powered=false,waterlogged=false]")));
+		TestFalse(TEXT("an iron trapdoor doesn't"), Sim.UseBlock(FIntVector(12, 1, 2), 0.0f));
+
+		// A gate facing north, opened by a player looking south (yaw 0) from its north side, swings to face south.
+		World.SetBlock(FIntVector(14, 1, 0), State(TEXT("minecraft:oak_fence_gate[facing=north,in_wall=false,open=false,powered=false]")));
+		Sim.UseBlock(FIntVector(14, 1, 0), 0.0f);
+		TestEqual(TEXT("a gate opens"), Value(FIntVector(14, 1, 0), TEXT("open")), FString(TEXT("true")));
+		TestEqual(TEXT("away from the player"), Value(FIntVector(14, 1, 0), TEXT("facing")), FString(TEXT("south")));
+		Sim.UseBlock(FIntVector(14, 1, 0), 180.0f);
+		TestEqual(TEXT("and shuts as it is"), Value(FIntVector(14, 1, 0), TEXT("facing")), FString(TEXT("south")));
+		// Looking north (yaw 180) at a gate facing north: it opens the way it faces.
+		World.SetBlock(FIntVector(16, 1, 0), State(TEXT("minecraft:oak_fence_gate[facing=north,in_wall=false,open=false,powered=false]")));
+		Sim.UseBlock(FIntVector(16, 1, 0), 180.0f);
+		TestEqual(TEXT("a gate opened from behind keeps its facing"), Value(FIntVector(16, 1, 0), TEXT("facing")), FString(TEXT("north")));
+
+		TestFalse(TEXT("stone takes no click"), Sim.UseBlock(FIntVector(0, 0, 0), 0.0f));
+	}
 	return true;
 }
 

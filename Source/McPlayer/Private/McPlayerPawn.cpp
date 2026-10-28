@@ -430,6 +430,21 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// An empty bucket takes the water or lava source it is aimed at, even past the blocks the crosshair would stop on.
+	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && Data->Inventory->Get(SelectedSlot).Item == TEXT("minecraft:bucket"))
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const TOptional<FMcBlockHit> Fluid = McRaycast::Trace(*BlockWorld, McCoords::UnrealToBlock(Camera->GetComponentLocation()), Look,
+			bMayFly ? McRaycast::CreativeReach : McRaycast::SurvivalReach, true);
+		if (Fluid.IsSet() && McRaycast::IsFluidSource(Fluid->State))
+		{
+			ServerUseItemOn(Fluid->Block, Fluid->Face);
+			return;
+		}
+	}
+
 	if (!Target.IsSet())
 	{
 		StopDigging();
@@ -508,7 +523,9 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	// A crafting table, chest or furnace opens, and a lever, button, door, trapdoor or gate moves, rather than takes a
 	// block, unless the player sneaks with something in hand. Iron doors and trapdoors don't move for a hand.
 	static const TSet<FName> Usable = { TEXT("minecraft:crafting_table"), TEXT("minecraft:chest"), TEXT("minecraft:trapped_chest"), TEXT("minecraft:barrel"),
-		TEXT("minecraft:furnace"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:smoker"), TEXT("minecraft:lever") };
+		TEXT("minecraft:furnace"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:smoker"), TEXT("minecraft:lever"), TEXT("minecraft:enchanting_table"),
+		TEXT("minecraft:stonecutter"), TEXT("minecraft:smithing_table"), TEXT("minecraft:grindstone"), TEXT("minecraft:anvil"), TEXT("minecraft:chipped_anvil"),
+		TEXT("minecraft:damaged_anvil"), TEXT("minecraft:brewing_stand"), TEXT("minecraft:hopper"), TEXT("minecraft:dispenser"), TEXT("minecraft:dropper") };
 	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
 	const FString ClickedName = Clicked.ToString();
 	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate"))
@@ -516,6 +533,12 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);
+		return;
+	}
+	// A bucket of water or lava pours into the block clicked (if it can be replaced) or the one beside it.
+	if (bPlaceClick && (Held.Item == TEXT("minecraft:water_bucket") || Held.Item == TEXT("minecraft:lava_bucket")))
+	{
+		ServerUseItemOn(Hit.Block, Hit.Face);
 		return;
 	}
 	// Flint and steel lights the block clicked; an eye of ender goes in an end portal frame.

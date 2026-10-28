@@ -45,6 +45,11 @@ public:
 	// How many hoppers are at work.
 	int32 NumHoppers() const { return Hoppers.Num(); }
 
+	// A powered dispenser or dropper at Pos fires one item from a random slot (minecraft.wiki, "Dispenser",
+	// "Dropper"). A dropper puts it into a container in front, or throws it out. A dispenser shoots an arrow, uses
+	// bone meal on the block in front, or throws the item out. Called by the redstone; a test calls it directly.
+	void Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos);
+
 	// The furnace at Pos, loaded from its chunk's block entity if it is not being kept yet; null if there is none and
 	// bCreate is false. Also what a test uses to look at one.
 	TSharedPtr<FMcFurnace> GetFurnace(AMcWorldActor& WorldActor, const FIntVector& Pos, bool bCreate);

@@ -409,6 +409,9 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Hopper:
 		State->Layout = McGui::MakeHopperLayout();
 		break;
+	case EMcWindowKind::Dispenser:
+		State->Layout = McGui::MakeDispenserLayout();
+		break;
 	case EMcWindowKind::Furnace:
 		State->Layout = McGui::MakeFurnaceLayout();
 		break;
@@ -1009,6 +1012,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 39.0f, 0x404040, false);
 		break;
+	case McGui::EScreen::Dispenser:
 	case McGui::EScreen::BrewingStand:
 		DrawGuiText(Screen->Title, Origin.X + 176 / 2.0f - TextWidth(Screen->Title) / 2.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);

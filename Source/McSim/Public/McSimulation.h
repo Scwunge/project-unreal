@@ -80,6 +80,9 @@ public:
 	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
+	TFunction<void(const FIntVector&)> OnDispense;
+
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
 	void PlaySound(const FMcSoundEvent& Event) const

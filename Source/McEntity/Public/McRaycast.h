@@ -32,7 +32,11 @@ namespace McRaycast
 	MCENTITY_API void GetOutline(FMcStateId State, TArray<FBox3f, TInlineAllocator<8>>& Out);
 
 	// The first block outline along the ray from Origin in Direction (need not be normalised), within MaxDistance.
-	MCENTITY_API TOptional<FMcBlockHit> Trace(const FMcBlockWorld& World, const FVector& Origin, const FVector& Direction, double MaxDistance);
+	// With bFluidSources, a water or lava source is hit on its whole cell too (what an empty bucket aims at).
+	MCENTITY_API TOptional<FMcBlockHit> Trace(const FMcBlockWorld& World, const FVector& Origin, const FVector& Direction, double MaxDistance, bool bFluidSources = false);
+
+	// Whether the state is a water or lava source (level 0), the only fluid a bucket takes.
+	MCENTITY_API bool IsFluidSource(FMcStateId State);
 
 	// Whether a block of this state may be replaced by placing another one into it: air, fluids, grass, snow
 	// one layer deep and the like.

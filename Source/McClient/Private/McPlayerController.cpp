@@ -1,6 +1,7 @@
 #include "McPlayerController.h"
 #include "McLaunch.h"
 #include "McBlockUse.h"
+#include "McBuckets.h"
 #include "McEntityActor.h"
 #include "McEntityHost.h"
 #include "McGameMode.h"
@@ -288,6 +289,10 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			return true;
 		}
 		const FMcStateId Clicked = Blocks->GetBlock(Pos);
+		if (McBuckets::Use(*World, User, Pos, Beside))
+		{
+			return true;
+		}
 		if (Held == TEXT("minecraft:ender_eye") && McPortal::IsEndPortalFrame(Clicked) && !McPortal::HasEye(Clicked))
 		{
 			World->SetBlock(Pos, McPortal::WithEye(Clicked));

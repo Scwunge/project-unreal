@@ -21,6 +21,8 @@ struct MCCORE_API FMcDimensionType
 	FString Skybox = TEXT("overworld");
 	// The least light the dimension has anywhere, 0 to 1.
 	double AmbientLight = 0.0;
+	// Water poured here boils away (attribute gameplay/water_evaporates; the Nether).
+	bool bWaterEvaporates = false;
 	// The clouds' height (attribute visual/cloud_height; 192.33 in the Overworld) and colour (visual/cloud_color, with
 	// its alpha), unset where there are none.
 	TOptional<float> CloudHeight;

@@ -43,6 +43,7 @@ bool FMcDimensionType::Load(const FString& Id, FMcDimensionType& Out)
 			const uint32 Argb = FParse::HexNumber(*CloudColor.Mid(1));
 			Result.CloudColor = FLinearColor(((Argb >> 16) & 255) / 255.0f, ((Argb >> 8) & 255) / 255.0f, (Argb & 255) / 255.0f, ((Argb >> 24) & 255) / 255.0f);
 		}
+		(*Attributes)->TryGetBoolField(TEXT("minecraft:gameplay/water_evaporates"), Result.bWaterEvaporates);
 		const TSharedPtr<FJsonObject>* Music = nullptr;
 		if ((*Attributes)->TryGetObjectField(TEXT("minecraft:audio/background_music"), Music))
 		{

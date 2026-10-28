@@ -166,6 +166,19 @@ McGui::FScreenLayout McGui::MakeHopperLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeDispenserLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Dispenser;
+	Layout.Texture = TEXT("dispenser.png");
+	for (int32 Slot = 0; Slot < 9; ++Slot)
+	{
+		Layout.Slots.Add(FIntPoint(62 + 18 * (Slot % 3), 17 + 18 * (Slot / 3)));
+	}
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
 McGui::FScreenLayout McGui::MakeGrindstoneLayout()
 {
 	FScreenLayout Layout;

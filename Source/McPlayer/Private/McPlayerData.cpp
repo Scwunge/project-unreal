@@ -206,7 +206,8 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		}
 		break;
 	case EMcWindowKind::Hopper:
-		Made.Container = MakeShared<FMcContainer>(5);
+	case EMcWindowKind::Dispenser:
+		Made.Container = MakeShared<FMcContainer>(Kind == EMcWindowKind::Hopper ? 5 : 9);
 		Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
 		break;
 	case EMcWindowKind::Stonecutter:
@@ -418,7 +419,8 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 		break;
 	case EMcWindowKind::Chest:
 	case EMcWindowKind::Hopper:
-		if (!Container.IsValid() || (Kind == EMcWindowKind::Hopper && Container->Num() != 5))
+	case EMcWindowKind::Dispenser:
+		if (!Container.IsValid() || (Kind == EMcWindowKind::Hopper && Container->Num() != 5) || (Kind == EMcWindowKind::Dispenser && Container->Num() != 9))
 		{
 			return;
 		}

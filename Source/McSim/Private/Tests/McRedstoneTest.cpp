@@ -538,6 +538,39 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 
 		TestFalse(TEXT("stone takes no click"), Sim.UseBlock(FIntVector(0, 0, 0), 0.0f));
 	}
+	{
+		// A dispenser fires 4 ticks after it is powered, once a pulse; a powered hopper is locked.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		TArray<FIntVector> Fired;
+		Sim.OnDispense = [&](const FIntVector& Pos) { Fired.Add(Pos); };
+		const FIntVector Dispenser(0, 1, 0);
+		World.SetBlock(Dispenser, State(TEXT("minecraft:dispenser[facing=east,triggered=false]")));
+		World.SetBlock(FIntVector(0, 1, -1), State(TEXT("minecraft:redstone_block")));
+		const auto Value = [&](const FIntVector& Pos, const TCHAR* Property) { return Registry.GetPropertyValue(World.GetBlock(Pos), Property).ToString(); };
+		TestEqual(TEXT("powered, it is triggered"), Value(Dispenser, TEXT("triggered")), FString(TEXT("true")));
+		Run(Sim, 3);
+		TestEqual(TEXT("not yet fired"), Fired.Num(), 0);
+		Run(Sim, 2);
+		TestEqual(TEXT("fired after 4 ticks"), Fired.Num(), 1);
+		Run(Sim, 10);
+		TestEqual(TEXT("once while held"), Fired.Num(), 1);
+		World.SetBlock(FIntVector(0, 1, -1), Air);
+		Run(Sim, 1);
+		TestEqual(TEXT("unpowered, it resets"), Value(Dispenser, TEXT("triggered")), FString(TEXT("false")));
+		// Quasi-connectivity: power beside the block above counts.
+		World.SetBlock(FIntVector(0, 2, -1), State(TEXT("minecraft:redstone_block")));
+		Run(Sim, 5);
+		TestEqual(TEXT("powered through the block above"), Fired.Num(), 2);
+
+		const FIntVector Hopper(4, 1, 0);
+		World.SetBlock(Hopper, State(TEXT("minecraft:hopper[enabled=true,facing=down]")));
+		World.SetBlock(FIntVector(4, 1, -1), State(TEXT("minecraft:redstone_block")));
+		TestEqual(TEXT("a powered hopper is locked"), Value(Hopper, TEXT("enabled")), FString(TEXT("false")));
+		World.SetBlock(FIntVector(4, 1, -1), Air);
+		TestEqual(TEXT("and free again"), Value(Hopper, TEXT("enabled")), FString(TEXT("true")));
+	}
 	return true;
 }
 

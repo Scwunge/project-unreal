@@ -106,6 +106,8 @@ public:
 	// The actor class shown for each server-side entity (set by the game mode; it implements IMcEntityProxy).
 	void SetEntityProxyClass(TSubclassOf<AActor> Class);
 	FMcEntityHost* GetEntityHost() const { return Entities.Get(); }
+	// The block simulation (fluids, redstone). Server only; null until the world starts.
+	FMcSimulation* GetSimulation() const { return Simulation.Get(); }
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
 	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage);
 

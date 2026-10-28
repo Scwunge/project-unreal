@@ -138,8 +138,24 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Chests, barrels and hoppers give every slot. Furnaces take into the input from above and fuel from the
     side, and give their output below. Brewing stands take the ingredient from above and bottles and fuel from
     the side, and give the bottles below.
-  - **Not done:** hopper minecarts, the comparator reading, double chests as one container, and dispensers and
-    droppers.
+  - A powered hopper is locked (redstone sets `enabled`).
+  - **Not done:** hopper minecarts, the comparator reading, and double chests as one container.
+- **Dispenser and dropper** (2026-10-28), following minecraft.wiki's "Dispenser" and "Dropper":
+  - Nine slots. Powered (quasi-connectivity included, as for pistons), it is `triggered` and fires 4 ticks
+    later, once a pulse, taking one item from a random slot.
+  - A dropper puts the item into a container in front through the face it meets (nothing if it is full), or
+    throws it out.
+  - A dispenser shoots arrows, pours or fills buckets, uses bone meal on the block in front, and throws
+    anything else out.
+  - **Not done:** dispensing fire, TNT, armour, minecarts and boats, shulker boxes and the rest of the item
+    behaviours.
+- **Buckets** (2026-10-28), in `McBuckets`: an empty bucket aimed at a water or lava source takes it (the aim
+  passes through fluids, so it looks for the source). A full one pours into the block clicked if that can be
+  replaced, else beside it. Water boils away where the dimension's `gameplay/water_evaporates` says so (the
+  Nether). Creative keeps the bucket as it was.
+  - Right-clicking a workstation, brewing stand, hopper, dispenser or dropper now opens it in play; only the
+    crafting table, chests and furnaces did before.
+  - **Not done:** buckets of fish, axolotls and powder snow, milk, and waterlogging blocks.
 
 ### M4 build order
 

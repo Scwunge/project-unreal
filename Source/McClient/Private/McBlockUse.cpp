@@ -10,6 +10,9 @@
 #include "McFurnace.h"
 #include "McBrewingStand.h"
 #include "McAnvilMenu.h"
+#include "McArrow.h"
+#include "McBuckets.h"
+#include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
@@ -40,6 +43,10 @@ namespace
 	// How many slots the block keeps as a plain container (chests, barrels, hoppers); 0 for any other.
 	int32 GetContainerSlots(FName Name)
 	{
+		if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper"))
+		{
+			return 9;
+		}
 		return IsChestName(Name) ? ChestSlots : Name == TEXT("minecraft:hopper") ? McHopper::NumSlots : 0;
 	}
 
@@ -147,6 +154,16 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 				Hoppers.FindOrAdd(MakeKey(*Actor, Pos)).World = Actor;
 			}
 		});
+		if (FMcSimulation* Sim = WorldActor.GetSimulation())
+		{
+			Sim->OnDispense = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](const FIntVector& Pos)
+			{
+				if (AMcWorldActor* Actor = Weak.Get())
+				{
+					Dispense(*Actor, Pos);
+				}
+			};
+		}
 		// Furnaces go into their chunks whenever the world saves.
 		WorldActor.OnSaving.AddWeakLambda(this, [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)]()
 		{
@@ -386,6 +403,143 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		return Furnace.IsValid() ? McHopper::ForFurnace(Furnace, Face) : FMcSlotAccess();
 	}
 	return FMcSlotAccess();
+}
+
+void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	using McHopper::EFace;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcEntityHost* Host = WorldActor.GetEntityHost();
+	if (!Blocks || !Host)
+	{
+		return;
+	}
+	const FName Name = GetBlockName(*Blocks, Pos);
+	const bool bDropper = Name == TEXT("minecraft:dropper");
+	if (!bDropper && Name != TEXT("minecraft:dispenser"))
+	{
+		return;
+	}
+	const TSharedPtr<FMcContainer> Items = GetChest(WorldActor, Pos, 9);
+	if (!Items.IsValid())
+	{
+		return;
+	}
+	FMcEntityManager& Manager = Host->GetManager();
+	const FVector Center = FVector(Pos) + FVector(0.5);
+	// A slot picked at random among those with something in.
+	int32 Slot = INDEX_NONE;
+	int32 Seen = 0;
+	for (int32 Index = 0; Index < Items->Num(); ++Index)
+	{
+		if (!Items->Get(Index).IsEmpty() && FMath::RandRange(0, Seen++) == 0)
+		{
+			Slot = Index;
+		}
+	}
+	if (Slot == INDEX_NONE)
+	{
+		Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+		return;
+	}
+	const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("facing"));
+	const FIntVector Step = FacingStep(Facing);
+	const FVector Dir(Step);
+	FMcItemStack One = Items->Get(Slot);
+	One.Count = 1;
+	const auto TakeOne = [&]()
+	{
+		FMcItemStack Rest = Items->Get(Slot);
+		--Rest.Count;
+		Items->Set(Slot, Rest.Count > 0 ? Rest : FMcItemStack());
+		ContentsChanged(WorldActor, Pos);
+	};
+
+	if (bDropper)
+	{
+		// Into a container in front, through the face it meets; a full one takes nothing and nothing falls out.
+		const FMcSlotAccess Into = GetAccess(WorldActor, Pos + Step, Facing == TEXT("down") ? EFace::Top : Facing == TEXT("up") ? EFace::Bottom : EFace::Side);
+		if (Into.IsValid())
+		{
+			if (McHopper::Insert(Into, One))
+			{
+				TakeOne();
+				ContentsChanged(WorldActor, Pos + Step);
+			}
+			return;
+		}
+	}
+	else if (One.Item == TEXT("minecraft:arrow"))
+	{
+		// Shot at 1.1 blocks a tick, a little upward, spread by an inaccuracy of 6.
+		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+		Arrow->Body.Position = Center + Dir * 0.7 - FVector(0.0, Step.Y == 0 ? 0.15 : 0.0, 0.0);
+		const FVector Aim = (Dir + FVector(0.0, 0.1, 0.0)).GetSafeNormal();
+		const auto Gauss = []() { return FMath::Sqrt(-2.0 * FMath::Loge(FMath::Max(static_cast<double>(FMath::FRand()), 1e-6))) * FMath::Cos(2.0 * PI * FMath::FRand()); };
+		Arrow->Body.Velocity = (Aim + FVector(Gauss(), Gauss(), Gauss()) * 0.0075 * 6.0) * 1.1;
+		Arrow->Damage = 3.0f;
+		Manager.Add(MoveTemp(Arrow));
+		TakeOne();
+		Manager.PlaySound(FName("block.dispenser.launch"), Center, 1.0f, 1.2f);
+		return;
+	}
+	else if ((One.Item == TEXT("minecraft:water_bucket") || One.Item == TEXT("minecraft:lava_bucket")) && McBuckets::Pour(WorldActor, One.Item, Pos + Step))
+	{
+		// Poured in front; the empty bucket stays in the slot.
+		Items->Set(Slot, FMcItemStack(TEXT("minecraft:bucket")));
+		ContentsChanged(WorldActor, Pos);
+		return;
+	}
+	else if (One.Item == TEXT("minecraft:bucket"))
+	{
+		const FName Filled = McBuckets::Fill(WorldActor, Pos + Step);
+		if (!Filled.IsNone())
+		{
+			// The full bucket takes the empty one's place, or another slot, or falls out.
+			if (Items->Get(Slot).Count <= 1)
+			{
+				Items->Set(Slot, FMcItemStack(Filled));
+				ContentsChanged(WorldActor, Pos);
+				return;
+			}
+			TakeOne();
+			FMcItemStack Full(Filled);
+			McHopper::Insert(McHopper::ForContainer(Items), Full);
+			if (!Full.IsEmpty())
+			{
+				Manager.DropItem(Center + Dir * 0.7, Full);
+			}
+			ContentsChanged(WorldActor, Pos);
+			return;
+		}
+	}
+	else if (One.Item == TEXT("minecraft:bone_meal"))
+	{
+		FMcSimulation* Sim = WorldActor.GetSimulation();
+		if (Sim && Sim->Bonemeal(Pos + Step))
+		{
+			TakeOne();
+			Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
+		}
+		else
+		{
+			Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+		}
+		return;
+	}
+
+	// Thrown out of the front.
+	FMcItemEntity& Thrown = Manager.DropItem(Center, One);
+	Thrown.Body.Position = Center + Dir * 0.7 - FVector(0.0, Step.Y == 0 ? 0.15625 : 0.125, 0.0);
+	const double Speed = FMath::FRand() * 0.1 + 0.2;
+	const auto Jitter = []() { return FMath::FRandRange(-1.0f, 1.0f) * 0.0172275 * 6.0; };
+	Thrown.Body.Velocity = FVector(Dir.X * Speed + Jitter(), 0.2 + Jitter(), Dir.Z * Speed + Jitter());
+	if (Step.Y != 0)
+	{
+		Thrown.Body.Velocity.Y = Dir.Y * Speed + Jitter();
+	}
+	TakeOne();
+	Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
 }
 
 void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
@@ -679,8 +833,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 			return false;
 		}
 		const bool bHopper = Slots == McHopper::NumSlots;
-		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
-		Data->OpenBlockWindow(bHopper ? EMcWindowKind::Hopper : EMcWindowKind::Chest, Pos, Title, Container, nullptr,
+		const bool bDispenser = Slots == 9;
+		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:dispenser") ? TEXT("Dispenser") : Name == TEXT("minecraft:dropper") ? TEXT("Dropper")
+			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
+		const EMcWindowKind Kind = bHopper ? EMcWindowKind::Hopper : bDispenser ? EMcWindowKind::Dispenser : EMcWindowKind::Chest;
+		Data->OpenBlockWindow(Kind, Pos, Title, Container, nullptr,
 			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos]()
 			{
 				if (AMcWorldActor* Actor = WeakWorld.Get())
@@ -768,6 +925,8 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:brewing_stand");
 	case EMcWindowKind::Hopper:
 		return Name == TEXT("minecraft:hopper");
+	case EMcWindowKind::Dispenser:
+		return Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper");
 	default:
 		return false;
 	}

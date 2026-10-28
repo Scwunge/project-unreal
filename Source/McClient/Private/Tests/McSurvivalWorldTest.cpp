@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockUse.h"
+#include "McBuckets.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McCombat.h"
@@ -272,6 +273,53 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TArray<FMcItemStack> Caught;
 	UMcBlockUseSubsystem::GetContents(*Actor, Open, Caught);
 	TestTrue(TEXT("the apples are in the hopper"), Caught.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:apple") && Stack.Count == 4; }));
+
+	// A dropper puts an item into the chest it faces; a dispenser throws one out, or uses bone meal.
+	const FIntVector DropperPos(14, 64, 14);
+	const FIntVector Into(15, 64, 14);
+	Blocks.SetBlock(Into, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+	Blocks.SetBlock(DropperPos, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+	FMcBlockEntity Loaded = FMcBlockEntity::MakeContainer(9);
+	Loaded.Slots[2] = FMcItemStack(TEXT("minecraft:flint"), 2);
+	Chunk->SetBlockEntity(DropperPos.X, DropperPos.Y, DropperPos.Z, Loaded);
+	Use->Dispense(*Actor, DropperPos);
+	TArray<FMcItemStack> Received;
+	UMcBlockUseSubsystem::GetContents(*Actor, Into, Received);
+	TestTrue(TEXT("a flint went into the chest"), Received.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:flint") && Stack.Count == 1; }));
+
+	const FIntVector DispenserPos(14, 64, 4);
+	Blocks.SetBlock(DispenserPos, Registry.ParseState(TEXT("minecraft:dispenser[facing=east]")).Get(0));
+	FMcBlockEntity Armed = FMcBlockEntity::MakeContainer(9);
+	Armed.Slots[0] = FMcItemStack(TEXT("minecraft:flint"), 1);
+	Chunk->SetBlockEntity(DispenserPos.X, DispenserPos.Y, DispenserPos.Z, Armed);
+	const int32 BeforeThrow = Actor->GetEntityHost()->GetManager().GetEntities().Num();
+	Use->Dispense(*Actor, DispenserPos);
+	TestEqual(TEXT("the flint is thrown out"), Actor->GetEntityHost()->GetManager().GetEntities().Num() - BeforeThrow, 1);
+	TArray<FMcItemStack> Emptied;
+	UMcBlockUseSubsystem::GetContents(*Actor, DispenserPos, Emptied);
+	TestTrue(TEXT("and the dispenser is empty"), !Emptied.ContainsByPredicate([](const FMcItemStack& Stack) { return !Stack.IsEmpty(); }));
+	Use->Dispense(*Actor, DispenserPos);
+	TestEqual(TEXT("an empty one throws nothing"), Actor->GetEntityHost()->GetManager().GetEntities().Num() - BeforeThrow, 1);
+
+	// Buckets: a water bucket in a dispenser pours a source in front and leaves an empty bucket; dispensed again, the
+	// empty bucket takes the source back.
+	const FIntVector Pourer(14, 64, 8);
+	const FIntVector Front(15, 64, 8);
+	Blocks.SetBlock(Pourer, Registry.ParseState(TEXT("minecraft:dispenser[facing=east]")).Get(0));
+	FMcBlockEntity Bucketed = FMcBlockEntity::MakeContainer(9);
+	Bucketed.Slots[0] = FMcItemStack(TEXT("minecraft:water_bucket"));
+	Chunk->SetBlockEntity(Pourer.X, Pourer.Y, Pourer.Z, Bucketed);
+	Use->Dispense(*Actor, Pourer);
+	TestEqual(TEXT("water is poured"), Registry.GetBlockOf(Blocks.GetBlock(Front)).Name.ToString(), FString(TEXT("minecraft:water")));
+	TArray<FMcItemStack> AfterPour;
+	UMcBlockUseSubsystem::GetContents(*Actor, Pourer, AfterPour);
+	TestEqual(TEXT("an empty bucket is left"), AfterPour[0].Item, FName(TEXT("minecraft:bucket")));
+	Use->Dispense(*Actor, Pourer);
+	TestEqual(TEXT("the source is taken back"), Registry.GetBlockOf(Blocks.GetBlock(Front)).Name.ToString(), FString(TEXT("minecraft:air")));
+	TArray<FMcItemStack> AfterFill;
+	UMcBlockUseSubsystem::GetContents(*Actor, Pourer, AfterFill);
+	TestEqual(TEXT("and the bucket is full again"), AfterFill[0].Item, FName(TEXT("minecraft:water_bucket")));
+	TestFalse(TEXT("a full bucket won't go into a furnace"), McBuckets::Pour(*Actor, TEXT("minecraft:lava_bucket"), FurnacePos));
 	Finish();
 	return true;
 }

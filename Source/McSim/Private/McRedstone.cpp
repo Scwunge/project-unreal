@@ -32,6 +32,8 @@ namespace
 		Door,
 		Trapdoor,
 		Gate,
+		Dispenser,
+		Hopper,
 	};
 
 	enum EDir : int32
@@ -97,6 +99,8 @@ namespace
 				else if (Name.EndsWith(TEXT("_door"))) Kind = Door;
 				else if (Name.EndsWith(TEXT("_trapdoor"))) Kind = Trapdoor;
 				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
+				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
+				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -614,6 +618,32 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	case Daylight:
 		Sim.ScheduleTick(Pos, 1);
 		break;
+	case Dispenser:
+	{
+		// Powered (quasi-connectivity too, as for pistons), it fires 4 ticks later; it fires again only after the
+		// power has gone and come back.
+		const bool bPowered = ShouldExtend(Pos, -1);
+		if (bPowered && !Flag(State, TEXT("triggered")))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("true")) }));
+			Sim.ScheduleTick(Pos, 4);
+		}
+		else if (!bPowered && Flag(State, TEXT("triggered")))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("false")) }));
+		}
+		break;
+	}
+	case Hopper:
+	{
+		// A powered hopper is locked.
+		const bool bEnabled = !HasPower(Pos);
+		if (Flag(State, TEXT("enabled")) != bEnabled)
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("enabled"), bEnabled ? TEXT("true") : TEXT("false")) }));
+		}
+		break;
+	}
 	case Button:
 		if (Flag(State, TEXT("powered")))
 		{
@@ -664,6 +694,12 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case MovingPiston:
 		TickMovingPiston(Pos, State);
+		break;
+	case Dispenser:
+		if (Sim.OnDispense)
+		{
+			Sim.OnDispense(Pos);
+		}
 		break;
 	case Door:
 	case Trapdoor:

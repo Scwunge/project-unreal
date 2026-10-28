@@ -115,7 +115,18 @@ bool McRaycast::IsReplaceable(FMcStateId State)
 	return Replaceable.Contains(Name);
 }
 
-TOptional<FMcBlockHit> McRaycast::Trace(const FMcBlockWorld& World, const FVector& Origin, const FVector& Direction, double MaxDistance)
+bool McRaycast::IsFluidSource(FMcStateId State)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!Registry.IsValidState(State))
+	{
+		return false;
+	}
+	const FName Name = Registry.GetBlockOf(State).Name;
+	return (Name == TEXT("minecraft:water") || Name == TEXT("minecraft:lava")) && Registry.GetPropertyValue(State, TEXT("level")) == TEXT("0");
+}
+
+TOptional<FMcBlockHit> McRaycast::Trace(const FMcBlockWorld& World, const FVector& Origin, const FVector& Direction, double MaxDistance, bool bFluidSources)
 {
 	const FVector Dir = Direction.GetSafeNormal();
 	if (Dir.IsZero())
@@ -156,6 +167,11 @@ TOptional<FMcBlockHit> McRaycast::Trace(const FMcBlockWorld& World, const FVecto
 	{
 		const FMcStateId State = World.GetBlock(Cell);
 		GetOutline(State, Outline);
+		if (bFluidSources && IsFluidSource(State))
+		{
+			Outline.Reset();
+			Outline.Add(FBox3f(FVector3f::ZeroVector, FVector3f::OneVector));
+		}
 		double BestT = TNumericLimits<double>::Max();
 		int32 BestFace = -1;
 		const FVector Corner(Cell);

@@ -72,6 +72,8 @@ enum class EMcWindowKind : uint8
 	Anvil,
 	BrewingStand,
 	Hopper,
+	// A dispenser or dropper: nine slots in a square.
+	Dispenser,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.

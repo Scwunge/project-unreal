@@ -61,6 +61,19 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     - **Block lights** (`UMcBlockLightComponent`): point lights at the nearest light-giving blocks.
     - **Post grade**: bloom, saturation, contrast, vignette, fringe, Lumen quality, sun shafts, contact shadows
       and fog inscattering.
+    - **Immersive audio** (`UMcAudioSubsystem` and `McAcoustics`, vanilla sounds only; vanilla mode sounds as before):
+      a reverb that follows the space (12 rays a few times a second: closet = short and dry, cavern = long echo,
+      open sky = almost none, Nether = always big and dark); sounds behind solid blocks are quieter and low-passed
+      (block ray, refreshed every few frames); under water everything is low-passed and the vanilla
+      `ambient.underwater.*` enter, loop, bubbles and exit play; far sounds lose highs (air absorption) and use
+      HRTF only if a spatializer plugin is already enabled; rain is muffled by the sky above; drips from pointed
+      dripstone and water or lava in ceilings; far mobs in caves echo; steps scale with speed, a harder landing
+      thud, and music and ambience duck for explosions and thunder. The rules are pure and tested in
+      `McClient.McAudio.Acoustics`. There is no wind sound in vanilla, so altitude wind is not done.
+    - **Cave mood** (`ambient.cave`, both looks): a meter fills in the dark (block light 7 or less, no open sky) and
+      the sound plays 8 blocks or less away at a dark spot after 6000 ticks in vanilla; in Unreal Mode it is quicker
+      (2400 ticks), 8 to 18 blocks out in the dark and sent through the big reverb. Sky light is approximated
+      (open sky counts as light), so night on the surface does not trigger it.
   - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
     (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 

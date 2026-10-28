@@ -17,12 +17,12 @@ namespace
 		return Snapshot;
 	}
 
-	void Place(FMcSectionSnapshot& Snapshot, int32 X, int32 Y, int32 Z, FMcStateId State)
+	void PlaceFluid(FMcSectionSnapshot& Snapshot, int32 X, int32 Y, int32 Z, FMcStateId State)
 	{
 		Snapshot.Blocks[FMcSectionSnapshot::Index(X, Y, Z)] = State;
 	}
 
-	int32 NumQuads(const FMcSectionMesh& Mesh, EMcRenderPass Pass)
+	int32 NumFluidQuads(const FMcSectionMesh& Mesh, EMcRenderPass Pass)
 	{
 		return Mesh.Passes[static_cast<int32>(Pass)].Positions.Num() / 4;
 	}
@@ -74,10 +74,10 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	{
 		// Six faces and the top again from underneath.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("lone water: 7 translucent quads"), NumQuads(Mesh, EMcRenderPass::Translucent), 7);
-		TestEqual(TEXT("lone water: nothing opaque"), NumQuads(Mesh, EMcRenderPass::Opaque), 0);
+		TestEqual(TEXT("lone water: 7 translucent quads"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 7);
+		TestEqual(TEXT("lone water: nothing opaque"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 0);
 		TestEqual(TEXT("lone water: 14 triangles"), Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)].Triangles.Num(), 42);
 
 		// The top is plains water blue, the bottom half of it; the sides are flowing water.
@@ -110,11 +110,11 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		{
 			for (int32 Z = 4; Z <= 5; ++Z)
 			{
-				Place(Snapshot, X, 4, Z, Water);
+				PlaceFluid(Snapshot, X, 4, Z, Water);
 			}
 		}
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("2x2 water: each source has 2 outer sides, a bottom and a two-sided top"), NumQuads(Mesh, EMcRenderPass::Translucent), 20);
+		TestEqual(TEXT("2x2 water: each source has 2 outer sides, a bottom and a two-sided top"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 20);
 		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
 		bool bFoundCentre = false;
 		for (int32 Vertex = 0; Vertex < Buffers.Positions.Num(); ++Vertex)
@@ -130,17 +130,17 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	}
 	{
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
-		Place(Snapshot, 5, 4, 4, Water);
-		TestEqual(TEXT("two adjacent sources: shared faces go"), NumQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 12);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 5, 4, 4, Water);
+		TestEqual(TEXT("two adjacent sources: shared faces go"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 12);
 	}
 	{
 		// Water above hides the top; the corner heights go to a full block.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
-		Place(Snapshot, 4, 5, 4, Water);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 4, 5, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("stacked water"), NumQuads(Mesh, EMcRenderPass::Translucent), 5 + 6);
+		TestEqual(TEXT("stacked water"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 5 + 6);
 		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
 		double MaxLowerHeight = 0.0;
 		for (const FVector& P : Buffers.Positions)
@@ -155,19 +155,19 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	{
 		// Stone under water hides the bottom; stone beside it hides that side.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
-		Place(Snapshot, 4, 3, 4, Stone);
-		Place(Snapshot, 5, 4, 4, Stone);
-		TestEqual(TEXT("water on stone beside stone"), NumQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 7 - 2);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 4, 3, 4, Stone);
+		PlaceFluid(Snapshot, 5, 4, 4, Stone);
+		TestEqual(TEXT("water on stone beside stone"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 7 - 2);
 	}
 	{
 		// A flowing block next to a source slopes away from it and shows the flowing texture on top.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
-		Place(Snapshot, 5, 4, 4, Flowing);
-		Place(Snapshot, 5, 4, 3, Stone);
-		Place(Snapshot, 5, 4, 5, Stone);
-		Place(Snapshot, 6, 4, 4, Stone);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 5, 4, 4, Flowing);
+		PlaceFluid(Snapshot, 5, 4, 3, Stone);
+		PlaceFluid(Snapshot, 5, 4, 5, Stone);
+		PlaceFluid(Snapshot, 6, 4, 4, Stone);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
 		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
 		bool bFlowTop = false;
@@ -185,10 +185,10 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	{
 		// Lava: opaque, untinted, six faces and no backface.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Lava);
+		PlaceFluid(Snapshot, 4, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("lone lava: 6 opaque quads"), NumQuads(Mesh, EMcRenderPass::Opaque), 6);
-		TestEqual(TEXT("lone lava: nothing translucent"), NumQuads(Mesh, EMcRenderPass::Translucent), 0);
+		TestEqual(TEXT("lone lava: 6 opaque quads"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 6);
+		TestEqual(TEXT("lone lava: nothing translucent"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 0);
 		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Opaque)];
 		bool bWhiteTop = false;
 		bool bLavaLayers = true;
@@ -204,24 +204,24 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 	{
 		// Water and lava side by side don't hide each other's faces.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, Water);
-		Place(Snapshot, 5, 4, 4, Lava);
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		PlaceFluid(Snapshot, 5, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("water beside lava: water keeps all 7"), NumQuads(Mesh, EMcRenderPass::Translucent), 7);
-		TestEqual(TEXT("water beside lava: lava keeps all 6"), NumQuads(Mesh, EMcRenderPass::Opaque), 6);
+		TestEqual(TEXT("water beside lava: water keeps all 7"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 7);
+		TestEqual(TEXT("water beside lava: lava keeps all 6"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 6);
 	}
 	{
 		// Water inside a stair: drawn where the stair's shape leaves it open.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, 4, 4, 4, State(TEXT("minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=true]")));
+		PlaceFluid(Snapshot, 4, 4, 4, State(TEXT("minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=true]")));
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestTrue(TEXT("waterlogged stairs make water quads"), NumQuads(Mesh, EMcRenderPass::Translucent) > 0);
-		TestEqual(TEXT("waterlogged stairs make no lava"), NumQuads(Mesh, EMcRenderPass::Opaque), 0);
+		TestTrue(TEXT("waterlogged stairs make water quads"), NumFluidQuads(Mesh, EMcRenderPass::Translucent) > 0);
+		TestEqual(TEXT("waterlogged stairs make no lava"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 0);
 	}
 	{
 		// Fluid in the border cells belongs to the next section: nothing is drawn for it here.
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
-		Place(Snapshot, -1, 4, 4, Water);
+		PlaceFluid(Snapshot, -1, 4, 4, Water);
 		TestTrue(TEXT("border water draws nothing"), BuildFluids(Snapshot, *Fluids, *Blocks).IsEmpty());
 	}
 	return true;

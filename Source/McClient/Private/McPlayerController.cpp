@@ -414,11 +414,21 @@ void AMcPlayerController::AttachView()
 		}
 	};
 	SpawnEnvironment();
+	if (UMcAudioSubsystem* Audio = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMcAudioSubsystem>() : nullptr)
+	{
+		Audio->SetListenerWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+	}
 #endif
 }
 
 void AMcPlayerController::DetachView()
 {
+#if MC_WITH_RENDER
+	if (UMcAudioSubsystem* Audio = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMcAudioSubsystem>() : nullptr)
+	{
+		Audio->SetListenerWorld(nullptr);
+	}
+#endif
 	if (UActorComponent* Drawer = Renderer.Get())
 	{
 		Drawer->DestroyComponent();

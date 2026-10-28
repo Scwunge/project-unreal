@@ -51,7 +51,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -88,12 +88,20 @@ private:
 	// Text in the game's own bitmap font (textures/font/ascii.png).
 	void LoadFont();
 	float TextWidth(const FString& Text) const;
-	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow);
+	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f);
 
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	void DrawStack(const FMcItemStack& Stack, float X, float Y);
 	void DrawScreen(int32 Width, int32 Height);
+	// The creative screen's search, item list and scroll bar.
+	void DrawCreative(FIntPoint Origin);
+	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
+	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
+	void DrawAnvil(FIntPoint Origin);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
+	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it
+	// took this frame's click.
+	bool PollCreative(APlayerController& Player, FIntPoint Local, UMcPlayerDataComponent& Data);
 	void SyncScreen(UMcPlayerDataComponent* Data);
 	void ShowScreen(TSharedRef<FScreenState> State);
 	void HideScreen();
@@ -111,6 +119,12 @@ private:
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
 	void DrawPause(int32 Width, int32 Height);
+	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
+	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
+	// back through what was sent).
+	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	void DrawChatInput(int32 Width, int32 Height);
+	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
 	// focused; a click focuses it, Tab moves on).
 	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);
@@ -156,6 +170,9 @@ private:
 	FString ServerAddress;
 	FString MessageTitle;
 	FString MessageText;
+	FString ChatDraft;
+	TArray<FString> SentChat;
+	int32 SentChatIndex = 0;
 	static FString ConnectError;
 
 	int32 Scale = 1;

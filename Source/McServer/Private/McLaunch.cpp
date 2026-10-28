@@ -244,6 +244,17 @@ const FMcServerProperties& FMcServerProperties::Get()
 	return Properties;
 }
 
+void FMcServerProperties::SetAndSave(const FString& Key, const FString& Value)
+{
+	FMcServerProperties& Properties = const_cast<FMcServerProperties&>(Get());
+	Properties.Set(Key, Value);
+	const FString Path = GetDir() / TEXT("server.properties");
+	if (!FFileHelper::SaveStringToFile(Properties.ToString(), *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(LogMcServer, Warning, TEXT("Can't write %s"), *Path);
+	}
+}
+
 // ---- Allowlist and operators ----
 
 bool FMcServerAccess::IsAllowlisted(const FString& Name) const
@@ -311,6 +322,44 @@ FMcServerAccess FMcServerAccess::Load()
 		UE_LOG(LogMcServer, Error, TEXT("%s/ops.json isn't a JSON list; nobody is an operator."), *Dir);
 	}
 	return Access;
+}
+
+FString FMcServerAccess::AllowlistToJson() const
+{
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const FString& Name : Allowlist)
+	{
+		const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+		Object->SetStringField(TEXT("name"), Name);
+		Values.Add(MakeShared<FJsonValueObject>(Object));
+	}
+	FString Text;
+	FJsonSerializer::Serialize(Values, TJsonWriterFactory<>::Create(&Text));
+	return Text;
+}
+
+FString FMcServerAccess::OpsToJson() const
+{
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const FOp& Op : Ops)
+	{
+		const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+		Object->SetStringField(TEXT("name"), Op.Name);
+		Object->SetNumberField(TEXT("level"), Op.Level);
+		Object->SetBoolField(TEXT("bypassesPlayerLimit"), Op.bBypassesPlayerLimit);
+		Values.Add(MakeShared<FJsonValueObject>(Object));
+	}
+	FString Text;
+	FJsonSerializer::Serialize(Values, TJsonWriterFactory<>::Create(&Text));
+	return Text;
+}
+
+bool FMcServerAccess::Save() const
+{
+	const FString Dir = FMcServerProperties::GetDir();
+	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+	return FFileHelper::SaveStringToFile(AllowlistToJson(), *(Dir / TEXT("allowlist.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& FFileHelper::SaveStringToFile(OpsToJson(), *(Dir / TEXT("ops.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
 FString FMcServerAccess::CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players)

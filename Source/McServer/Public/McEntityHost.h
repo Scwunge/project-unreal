@@ -7,6 +7,7 @@
 #include "CoreMinimal.h"
 #include "McBiomeRegistry.h"
 #include "McEntityManager.h"
+#include "McGameRules.h"
 
 class AActor;
 class UWorld;
@@ -52,6 +53,14 @@ public:
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
 
+	// The game rules and difficulty the host obeys: peaceful removes the hostile mobs and stops them spawning,
+	// doMobSpawning off stops every natural spawn, doMobLoot off makes mobs drop nothing and doTileDrops off makes
+	// blocks destroyed by explosions drop nothing.
+	void SetRules(const FMcGameRules& InRules);
+	const FMcGameRules& GetRules() const { return Rules; }
+	// Takes the hostile mobs out of the world (peaceful). Returns how many.
+	int32 RemoveHostiles();
+
 	FMcEntityManager& GetManager() { return Manager; }
 	int32 NumHostile() const;
 
@@ -89,6 +98,7 @@ private:
 	TSet<FIntPoint> Seeded;
 	TArray<FIntPoint> SeedQueue;
 	bool bDevSpawnDone = false;
+	FMcGameRules Rules;
 
 	TWeakObjectPtr<UWorld> GameWorld;
 	TSubclassOf<AActor> ProxyClass;

@@ -2,8 +2,10 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
+#include "McEnchanting.h"
 #include "McEntityHost.h"
 #include "McFurnace.h"
 #include "McPlayerData.h"
@@ -21,6 +23,11 @@ namespace
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 		const FMcStateId State = Blocks.GetBlock(Pos);
 		return Registry.IsValidState(State) ? Registry.GetBlockOf(State).Name : NAME_None;
+	}
+
+	bool IsAnvilName(FName Name)
+	{
+		return Name == TEXT("minecraft:anvil") || Name == TEXT("minecraft:chipped_anvil") || Name == TEXT("minecraft:damaged_anvil");
 	}
 
 	bool IsChestName(FName Name)
@@ -384,6 +391,38 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenBlockWindow(EMcWindowKind::CraftingTable, Pos, TEXT("Crafting"), nullptr, nullptr);
 		return true;
 	}
+	if (Name == TEXT("minecraft:stonecutter"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::Stonecutter, Pos, TEXT("Stonecutter"), nullptr, nullptr);
+		return true;
+	}
+	if (IsAnvilName(Name))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::Anvil, Pos, TEXT("Repair & Name"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:grindstone"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::Grindstone, Pos, TEXT("Repair & Disenchant"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:smithing_table"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::SmithingTable, Pos, TEXT("Upgrade Gear"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:enchanting_table"))
+	{
+		FMcBlockTags& Tags = FMcBlockTags::Get();
+		Tags.EnsureLoaded();
+		const int32 Provider = Tags.Find(TEXT("minecraft:enchantment_power_provider"));
+		const int32 Transmitter = Tags.Find(TEXT("minecraft:enchantment_power_transmitter"));
+		const int32 Bookshelves = McEnchanting::CountBookshelves(
+			[&](const FIntVector& Offset) { return Tags.Has(Provider, Blocks->GetBlock(Pos + Offset)); },
+			[&](const FIntVector& Offset) { return Tags.Has(Transmitter, Blocks->GetBlock(Pos + Offset)); });
+		Data->OpenEnchantingTable(Pos, Bookshelves);
+		return true;
+	}
 	if (IsChestName(Name))
 	{
 		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, ChestSlots);
@@ -449,6 +488,16 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return IsChestName(Name);
 	case EMcWindowKind::Furnace:
 		return GetFurnaceKind(Name, Kind);
+	case EMcWindowKind::EnchantingTable:
+		return Name == TEXT("minecraft:enchanting_table");
+	case EMcWindowKind::Stonecutter:
+		return Name == TEXT("minecraft:stonecutter");
+	case EMcWindowKind::SmithingTable:
+		return Name == TEXT("minecraft:smithing_table");
+	case EMcWindowKind::Grindstone:
+		return Name == TEXT("minecraft:grindstone");
+	case EMcWindowKind::Anvil:
+		return IsAnvilName(Name);
 	default:
 		return false;
 	}

@@ -30,6 +30,7 @@ public:
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
 	// A leaving player is saved first (in a saved world, see AMcWorldActor).
 	virtual void Logout(AController* Exiting) override;
+	virtual void PostLogin(APlayerController* NewPlayer) override;
 	// Saves where a player is and what they have, if the world has a save. Called as they leave, while their pawn is
 	// still there (AMcPlayerController::PawnLeavingGame): by Logout the engine has taken it away.
 	void SavePlayer(const AController* Controller) const;
@@ -38,6 +39,15 @@ public:
 	// A player who died (their things are already on the ground) starts again at the spawn, with a new body; done on the
 	// next tick, as the old pawn is still ticking when it calls this.
 	void RespawnPlayer(AController* Controller);
+
+	// ---- Chat ----
+	// A line a player typed: said to everyone, or run as a command (McCommands) with their permission level.
+	void HandleChat(APlayerController* From, const FString& Text);
+	// A line for every player (and the server log). Rgb is the colour, white by default.
+	void BroadcastChat(const FString& Text, uint32 Rgb = 0xFFFFFF);
+	// The player of that name (as they joined, ignoring case), or null.
+	APlayerController* FindPlayer(const FString& Name) const;
+	static FString GetPlayerName(const AController* Controller);
 
 	// ---- Dimensions ----
 	// The first world: the Overworld unless the world was saved in (or started with -McDimension in) another.

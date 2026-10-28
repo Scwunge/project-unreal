@@ -116,6 +116,9 @@ public:
 	float GetLookPitch() const { return McLookPitch; }
 	bool IsSneakPosed() const { return bSneakPose; }
 
+	// Server: how hard the world is (hunger's harm, and how much it hurts).
+	void SetDifficulty(McSurvival::EDifficulty InDifficulty) { Difficulty = InDifficulty; }
+
 protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void Tick(float DeltaSeconds) override;

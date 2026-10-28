@@ -64,6 +64,12 @@ enum class EMcWindowKind : uint8
 	CraftingTable,
 	Chest,
 	Furnace,
+	// Aux is the number of bookshelves around it.
+	EnchantingTable,
+	Stonecutter,
+	SmithingTable,
+	Grindstone,
+	Anvil,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -78,6 +84,8 @@ struct MCPLAYER_API FMcWindow
 	TSharedPtr<FMcFurnace> Furnace;
 	// The crafting menus' extra, to look at the grid again after the slots were set from outside.
 	FMcCraftingMenu* Crafting = nullptr;
+	// The enchanting table's, for its offers and the enchanting itself.
+	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
 	// Server: told after clicks, to write a chest's items back to the world.
@@ -133,6 +141,23 @@ public:
 	void NotifyDrag(int32 Button, const TArray<int32>& Slots);
 	// Stacks that a click or the closing of a window threw out, made into items on the ground; only the server does.
 	void DropFromWindow(const FMcItemStack& Stack);
+	// Creative only, with a window open: Count of Item onto the cursor (no item or a count of 0 empties it, which is how
+	// the item list destroys what is dropped on it), or with bToInventory into the inventory instead. The server
+	// checks the player is in creative and that the item exists, and keeps the count to a stack.
+	void CreativeTake(FName Item, int32 Count, bool bToInventory);
+	// Server: opens an enchanting table at Pos with Bookshelves around it.
+	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
+	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.
+	void ClickMenuButton(int32 Id);
+	// The owner typed in the open menu's text field (an anvil's name).
+	void SetMenuText(const FString& Text);
+	// Tells the open menu the player's levels and game mode, before a click (an anvil's result needs them).
+	void PrepareMenuClick();
+	// The owner chose option Slot (0 to 2) of the enchanting table open; the server enchants if they can pay.
+	void Enchant(int32 Slot);
+	// What the table offers depends on this, which changes each time the player enchants (minecraft.wiki: Enchanting
+	// mechanics). The server's is the one used; it reaches the owner with the window.
+	int32 EnchantSeed = 0;
 
 	// ---- Server side ----
 	// Makes a stack into an item entity at the player.
@@ -147,6 +172,24 @@ public:
 	TArray<uint8> WriteInventory() const;
 	bool ReadInventory(TConstArrayView<uint8> Bytes);
 	bool IsServer() const;
+
+	// ---- Chat ----
+	struct FChatLine
+	{
+		FString Text;
+		uint32 Rgb = 0xFFFFFF;
+		double Time = 0.0;  // FPlatformTime::Seconds when it arrived
+	};
+	// What this machine's player has been told, oldest first, at most 100 lines. Kept for the whole run (across
+	// respawns and worlds), as the game's chat is.
+	static TArray<FChatLine>& GetChatLog();
+	static void AddChatLine(const FString& Text, uint32 Rgb);
+	// The owner typed a line (text or a command); it goes to the server.
+	void SendChat(const FString& Text);
+	// Server: shows a line to this player.
+	void TellOwner(const FString& Text, uint32 Rgb = 0xFFFFFF);
+	// Server: what to do with a line the owner typed (the game mode sets it).
+	TFunction<void(const FString&)> ServerOnChat;
 
 	// Tells the server the owner chose a hotbar slot.
 	void SelectSlot(int32 Slot);
@@ -168,6 +211,11 @@ protected:
 	UFUNCTION(Client, Reliable)
 	void ClientCloseWindow(int32 Id);
 
+	UFUNCTION(Client, Reliable)
+	void ClientChat(const FString& Text, int32 Rgb);
+	UFUNCTION(Server, Reliable)
+	void ServerChat(const FString& Text);
+
 	UFUNCTION(Server, Reliable)
 	void ServerSelectSlot(int32 Slot);
 	UFUNCTION(Server, Reliable)
@@ -178,6 +226,14 @@ protected:
 	void ServerDrag(int32 WindowId, int32 Sequence, int32 Button, const TArray<int32>& Slots);
 	UFUNCTION(Server, Reliable)
 	void ServerCloseWindow(int32 WindowId);
+	UFUNCTION(Server, Reliable)
+	void ServerMenuButton(int32 WindowId, int32 Sequence, int32 Id);
+	UFUNCTION(Server, Reliable)
+	void ServerMenuText(int32 WindowId, int32 Sequence, const FString& Text);
+	UFUNCTION(Server, Reliable)
+	void ServerEnchant(int32 WindowId, int32 Sequence, int32 Slot);
+	UFUNCTION(Server, Reliable)
+	void ServerCreativeTake(int32 WindowId, int32 Sequence, FName Item, int32 Count, bool bToInventory);
 
 private:
 	// Builds the menu for a kind of window over this player's containers.
@@ -188,6 +244,8 @@ private:
 	void OpenServerWindow(FMcWindow NewWindow, int32 Aux);
 	void CloseServerWindow(bool bTellOwner);
 	void SendWindowTo(int32 Sequence);
+	void ApplyCreativeTake(FName Item, int32 Count, bool bToInventory);
+	bool ApplyEnchant(int32 Slot);
 	void FlushDropped();
 	bool IsOwnerRemote() const;
 

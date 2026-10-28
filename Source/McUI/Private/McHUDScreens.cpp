@@ -15,8 +15,14 @@
 #include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
 #include "McCache.h"
+#include "McGameViewportClient.h"
+#include "McItemRegistry.h"
+#include "McLang.h"
 #include "McContainer.h"
 #include "McCraftingMenu.h"
+#include "McEnchantMenu.h"
+#include "McWorkstationMenus.h"
+#include "McAnvilMenu.h"
 #include "McFurnace.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
@@ -32,7 +38,26 @@ struct AMcHUD::FScreenState
 	TSharedPtr<FMcMenuInput> Input;
 	McGui::FScreenLayout Layout;
 	TSharedPtr<FMcFurnace> Furnace;
+	// The enchanting table's menu (Input holds it).
+	FMcEnchantMenu* Enchanting = nullptr;
+	// The stonecutter's menu and how far down its recipes are scrolled.
+	FMcStonecutterMenu* Stonecutter = nullptr;
+	int32 RecipeScroll = 0;
+	// The anvil's menu, the name typed, and the item the name was set for.
+	FMcAnvilMenu* Anvil = nullptr;
+	FString AnvilName;
+	FMcItemStack AnvilFor;
+	// Whether keys go to a text field (the creative search, the anvil's name) rather than the slots.
+	bool IsTyping() const { return bCreative || Anvil != nullptr; }
 	FString Title;
+	// The creative screen: what the search finds, how far down the list is scrolled, the item under the mouse (an
+	// index into CreativeItems) and whether the scroll bar is being dragged.
+	bool bCreative = false;
+	FString Search;
+	TArray<FName> CreativeItems;
+	int32 CreativeScroll = 0;
+	int32 CreativeHover = -1;
+	bool bScrollDrag = false;
 };
 
 namespace
@@ -52,10 +77,44 @@ namespace
 		return Out;
 	}
 
+	// The name the jar gives an item (as an item, else as a block), else made from its id.
+	FString DisplayName(FName Item)
+	{
+		const FString Path = McCache::PathOf(Item.ToString());
+		for (const TCHAR* Prefix : { TEXT("item.minecraft."), TEXT("block.minecraft.") })
+		{
+			const FString Key = Prefix + Path;
+			FString Name = McLang::Get(Key);
+			if (Name != Key)
+			{
+				return Name;
+			}
+		}
+		return TitleCase(Path);
+	}
+
 	FString GetItemName(const FMcItemStack& Stack)
 	{
 		const FString Custom = Stack.GetCustomName();
-		return Custom.IsEmpty() ? TitleCase(McCache::PathOf(Stack.Item.ToString())) : Custom;
+		return Custom.IsEmpty() ? DisplayName(Stack.Item) : Custom;
+	}
+
+	// The creative list for a search.
+	TArray<FName> CreativeList(const FString& Search)
+	{
+		static TArray<FName> All;
+		FMcItemRegistry& Items = FMcItemRegistry::Get();
+		if (All.Num() == 0 && Items.EnsureLoaded())
+		{
+			for (const FMcItemDef& Item : Items.GetAll())
+			{
+				if (McGui::Creative::IsListed(Item.Name))
+				{
+					All.Add(Item.Name);
+				}
+			}
+		}
+		return McGui::Creative::Filter(All, Search, [](FName Item) { return DisplayName(Item); });
 	}
 
 	FLinearColor FromRgb(uint32 Rgb, float Alpha = 1.0f)
@@ -137,7 +196,7 @@ float AMcHUD::TextWidth(const FString& Text) const
 	return Width;
 }
 
-void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow)
+void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha)
 {
 	LoadFont();
 	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii.png"));
@@ -154,9 +213,9 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 	if (bShadow)
 	{
 		// The shadow is the colour at a quarter of its brightness, one pixel down and right.
-		Draw(1, 1, FromRgb(Rgb) * 0.25f);
+		Draw(1, 1, FromRgb(Rgb) * 0.25f * Alpha);
 	}
-	Draw(0, 0, FromRgb(Rgb));
+	Draw(0, 0, FromRgb(Rgb, Alpha));
 }
 
 // ---- Items ----
@@ -253,6 +312,8 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 void AMcHUD::ShowScreen(TSharedRef<FScreenState> State)
 {
 	Screen = State;
+	// Nothing typed before it opened (the E that opened it) goes into its search.
+	UMcGameViewportClient::TakeTyped();
 	if (APlayerController* Player = GetOwningPlayerController())
 	{
 		Player->bShowMouseCursor = true;
@@ -313,8 +374,26 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	};
 	State->Title = Window.Title;
 	State->Furnace = Window.Furnace;
+	State->Enchanting = Window.Enchanting;
 	switch (Window.Kind)
 	{
+	case EMcWindowKind::EnchantingTable:
+		State->Layout = McGui::MakeEnchantingLayout();
+		break;
+	case EMcWindowKind::Stonecutter:
+		State->Layout = McGui::MakeStonecutterLayout();
+		State->Stonecutter = static_cast<FMcStonecutterMenu*>(Window.Menu.Get());
+		break;
+	case EMcWindowKind::SmithingTable:
+		State->Layout = McGui::MakeSmithingLayout();
+		break;
+	case EMcWindowKind::Grindstone:
+		State->Layout = McGui::MakeGrindstoneLayout();
+		break;
+	case EMcWindowKind::Anvil:
+		State->Layout = McGui::MakeAnvilLayout();
+		State->Anvil = static_cast<FMcAnvilMenu*>(Window.Menu.Get());
+		break;
 	case EMcWindowKind::CraftingTable:
 		State->Layout = McGui::MakeCraftingTableLayout();
 		break;
@@ -325,7 +404,21 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		State->Layout = McGui::MakeFurnaceLayout();
 		break;
 	default:
-		State->Layout = McGui::MakeInventoryLayout();
+		if (Data->bCreative)
+		{
+			// Creative players get the item list in place of their inventory.
+			State->Layout = McGui::MakeCreativeLayout();
+			State->bCreative = true;
+			State->CreativeItems = CreativeList(FString());
+#if !UE_BUILD_SHIPPING
+			FParse::Value(FCommandLine::Get(), TEXT("-McInventory="), State->Search);
+			State->CreativeItems = CreativeList(State->Search);
+#endif
+		}
+		else
+		{
+			State->Layout = McGui::MakeInventoryLayout();
+		}
 		break;
 	}
 	ShowScreen(State);
@@ -380,7 +473,8 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	{
 		return;
 	}
-	if (Player->WasInputKeyJustPressed(EKeys::E))
+	// E closes the screen, except in creative where it is typed into the search.
+	if (Player->WasInputKeyJustPressed(EKeys::E) && !(Screen.IsValid() && Screen->IsTyping()))
 	{
 		if (Screen.IsValid())
 		{
@@ -398,6 +492,57 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		{
 			ToggleGraphics();
 		}
+		const bool bSlash = Player->WasInputKeyJustPressed(EKeys::Slash) || Player->WasInputKeyJustPressed(EKeys::Divide);
+		if (bSlash || Player->WasInputKeyJustPressed(EKeys::T))
+		{
+			// The key's own character is dropped (OpenMenu takes what was typed); / starts a command.
+			OpenMenu(EMenu::Chat);
+			if (bSlash)
+			{
+				ChatDraft = TEXT("/");
+			}
+			return;
+		}
+#if !UE_BUILD_SHIPPING
+		// Development: -McChat="/time set night" sends that line three seconds in, once the player is set up (lines split by |).
+		static bool bDevChatDone = false;
+		FString DevChat;
+		if (!bDevChatDone && GetWorld()->GetTimeSeconds() > 3.0 && FParse::Value(FCommandLine::Get(), TEXT("-McChat="), DevChat, false))
+		{
+			bDevChatDone = true;
+			TArray<FString> Lines;
+			DevChat.TrimQuotes().ParseIntoArray(Lines, TEXT("|"));
+			for (const FString& Line : Lines)
+			{
+				Data->SendChat(Line);
+			}
+		}
+		// -McUse=X,Y,Z uses that block (opens its window) five seconds in, after -McChat has built it.
+		static bool bDevUseDone = false;
+		FString DevUse;
+		if (!bDevUseDone && GetWorld()->GetTimeSeconds() > 5.0 && FParse::Value(FCommandLine::Get(), TEXT("-McUse="), DevUse, false))
+		{
+			bDevUseDone = true;
+			TArray<FString> Parts;
+			DevUse.ParseIntoArray(Parts, TEXT(","));
+			if (Parts.Num() == 3)
+			{
+				if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+				{
+					User->RequestUseBlock(FIntVector(FCString::Atoi(*Parts[0]), FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2])));
+				}
+			}
+		}
+		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
+		static bool bDevInventoryDone = false;
+		FString DevSearch;
+		if (!bDevInventoryDone && (FParse::Param(FCommandLine::Get(), TEXT("McInventory")) || FParse::Value(FCommandLine::Get(), TEXT("-McInventory="), DevSearch)))
+		{
+			bDevInventoryDone = true;
+			Data->OpenInventoryWindow();
+			return;
+		}
+#endif
 		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape);
 #if !UE_BUILD_SHIPPING
 		// Development: -McMenu=pause opens the pause menu once the world is up.
@@ -428,16 +573,92 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	const bool bInside = Local.X >= 0 && Local.Y >= 0 && Local.X < Screen->Layout.Size.X && Local.Y < Screen->Layout.Size.Y;
 	HoverSlot = bInside ? Screen->Layout.FindSlot(Local) : FMcMenuInput::Outside;
 	FMcMenuInput& Input = *Screen->Input;
+#if !UE_BUILD_SHIPPING
+	// Development: -McShiftClick=29,30 shift-clicks those slots of the first window -McUse opens.
+	static bool bDevClickDone = false;
+	FString DevClicks;
+	if (!bDevClickDone && !Screen->bCreative && FParse::Value(FCommandLine::Get(), TEXT("-McShiftClick="), DevClicks, false))
+	{
+		bDevClickDone = true;
+		TArray<FString> Clicks;
+		DevClicks.ParseIntoArray(Clicks, TEXT(","));
+		for (const FString& Click : Clicks)
+		{
+			Input.MouseDown(FCString::Atoi(*Click), 0, true, -10.0);
+			Input.MouseUp(FCString::Atoi(*Click), 0);
+		}
+	}
+#endif
 	// Over the picture but no slot (a label, the gap between slots): clicks do nothing, rather than count as outside.
 	const int32 Slot = HoverSlot;
 	const bool bShift = Player->IsInputKeyDown(EKeys::LeftShift) || Player->IsInputKeyDown(EKeys::RightShift);
 	const double Time = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 
+	bool bTaken = Screen->bCreative && PollCreative(*Player, Local, *Data);
+	Data->PrepareMenuClick();
+	if (Screen->Anvil)
+	{
+		FScreenState& State = *Screen;
+		// A new item on the left starts the field at its custom name (empty for none: it keeps its own name).
+		const FMcItemStack& Left = State.Anvil->GetStack(FMcAnvilMenu::LeftSlot);
+		if (Left.Item != State.AnvilFor.Item || Left.GetCustomName() != State.AnvilFor.GetCustomName())
+		{
+			State.AnvilFor = Left;
+			State.AnvilName = Left.IsEmpty() ? FString() : Left.GetCustomName();
+			Data->SetMenuText(State.AnvilName);
+		}
+		const FString Before = State.AnvilName;
+		const FString Typed = UMcGameViewportClient::TakeTyped();
+		if (!Left.IsEmpty())
+		{
+			State.AnvilName.Append(Typed.Left(FMath::Max(0, FMcAnvilMenu::MaxNameLength - State.AnvilName.Len())));
+			if (Player->WasInputKeyJustPressed(EKeys::BackSpace) && !State.AnvilName.IsEmpty())
+			{
+				State.AnvilName.LeftChopInline(1);
+			}
+		}
+		if (State.AnvilName != Before)
+		{
+			Data->SetMenuText(State.AnvilName);
+		}
+	}
+	if (Screen->Stonecutter && bInside)
+	{
+		namespace Cutter = McGui::Stonecutter;
+		const int32 Count = Screen->Stonecutter->GetRecipes().Num();
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollDown))
+		{
+			Screen->RecipeScroll = FMath::Min(Screen->RecipeScroll + 1, Cutter::MaxScroll(Count));
+		}
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp))
+		{
+			Screen->RecipeScroll = FMath::Max(Screen->RecipeScroll - 1, 0);
+		}
+		Screen->RecipeScroll = FMath::Clamp(Screen->RecipeScroll, 0, Cutter::MaxScroll(Count));
+		const int32 Recipe = Cutter::FindRecipe(Local, Screen->RecipeScroll, Count);
+		if (Recipe >= 0 && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			Data->ClickMenuButton(Recipe);
+			bTaken = true;
+		}
+	}
+	if (Screen->Enchanting && bInside && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		const int32 Option = McGui::Enchanting::FindButton(Local);
+		if (Option >= 0)
+		{
+			if (Screen->Enchanting->CanEnchant(Option, Data->Stats.XpLevel, Data->bCreative))
+			{
+				Data->Enchant(Option);
+			}
+			bTaken = true;
+		}
+	}
 	Input.MouseMove(Slot);
 	const FKey Buttons[3] = { EKeys::LeftMouseButton, EKeys::RightMouseButton, EKeys::MiddleMouseButton };
 	for (int32 Button = 0; Button < 3; ++Button)
 	{
-		if (Player->WasInputKeyJustPressed(Buttons[Button]) && !(bInside && Slot < 0))
+		if (Player->WasInputKeyJustPressed(Buttons[Button]) && !(bInside && Slot < 0) && !bTaken)
 		{
 			Input.MouseDown(Slot, Button, bShift, Time);
 		}
@@ -445,6 +666,12 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		{
 			Input.MouseUp(Slot, Button);
 		}
+	}
+	if (Screen->IsTyping())
+	{
+		// The keys are the text field's.
+		FlushDrops();
+		return;
 	}
 	const FKey Numbers[9] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
 	for (int32 Number = 0; Number < 9; ++Number)
@@ -459,6 +686,225 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		Input.DropKey(Slot, Player->IsInputKeyDown(EKeys::LeftControl));
 	}
 	FlushDrops();
+}
+
+bool AMcHUD::PollCreative(APlayerController& Player, FIntPoint Local, UMcPlayerDataComponent& Data)
+{
+	namespace Creative = McGui::Creative;
+	FScreenState& State = *Screen;
+	const FString Before = State.Search;
+	State.Search.Append(UMcGameViewportClient::TakeTyped().Left(FMath::Max(0, Creative::MaxSearch - State.Search.Len())));
+	if (Player.WasInputKeyJustPressed(EKeys::BackSpace) && !State.Search.IsEmpty())
+	{
+		State.Search.LeftChopInline(1);
+	}
+	if (State.Search != Before)
+	{
+		State.CreativeItems = CreativeList(State.Search);
+		State.CreativeScroll = 0;
+	}
+
+	// The wheel scrolls a row at a time; the thumb can be dragged (a click on the track jumps it there).
+	const int32 MaxScroll = Creative::MaxScroll(State.CreativeItems.Num());
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollDown))
+	{
+		State.CreativeScroll = FMath::Min(MaxScroll, State.CreativeScroll + 1);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollUp))
+	{
+		State.CreativeScroll = FMath::Max(0, State.CreativeScroll - 1);
+	}
+	const bool bPressed = Player.WasInputKeyJustPressed(EKeys::LeftMouseButton);
+	const bool bOnTrack = Local.X >= Creative::ScrollX && Local.X < Creative::ScrollX + 14 && Local.Y >= Creative::ScrollY && Local.Y < Creative::ScrollY + Creative::ScrollHeight;
+	if (bPressed && bOnTrack && MaxScroll > 0)
+	{
+		State.bScrollDrag = true;
+	}
+	if (!Player.IsInputKeyDown(EKeys::LeftMouseButton))
+	{
+		State.bScrollDrag = false;
+	}
+	if (State.bScrollDrag)
+	{
+		const float Fraction = (Local.Y - Creative::ScrollY - 7.5f) / (Creative::ScrollHeight - 15.0f);
+		State.CreativeScroll = FMath::Clamp(FMath::RoundToInt(Fraction * MaxScroll), 0, MaxScroll);
+	}
+	State.CreativeScroll = FMath::Clamp(State.CreativeScroll, 0, MaxScroll);
+
+	const int32 Cell = Creative::FindCell(Local);
+	const int32 Index = Cell >= 0 ? State.CreativeScroll * Creative::Columns + Cell : -1;
+	State.CreativeHover = State.CreativeItems.IsValidIndex(Index) ? Index : -1;
+	if (Cell < 0)
+	{
+		return bPressed && bOnTrack;
+	}
+	int32 Button = -1;
+	const FKey Buttons[3] = { EKeys::LeftMouseButton, EKeys::RightMouseButton, EKeys::MiddleMouseButton };
+	for (int32 Each = 0; Each < 3 && Button < 0; ++Each)
+	{
+		Button = Player.WasInputKeyJustPressed(Buttons[Each]) ? Each : -1;
+	}
+	if (Button < 0)
+	{
+		return false;
+	}
+	if (!Screen->Input->GetMenu().GetCarried().IsEmpty())
+	{
+		// What is put back on the list is gone.
+		Data.CreativeTake(NAME_None, 0, false);
+	}
+	else if (State.CreativeHover >= 0)
+	{
+		// One onto the cursor; the middle button takes a full stack, and shift-click puts a full stack in the inventory.
+		const FName Item = State.CreativeItems[State.CreativeHover];
+		const int32 Full = FMcItemStack(Item, 1).GetMaxStackSize();
+		const bool bShift = Player.IsInputKeyDown(EKeys::LeftShift) || Player.IsInputKeyDown(EKeys::RightShift);
+		if (bShift && Button == 0)
+		{
+			Data.CreativeTake(Item, Full, true);
+		}
+		else
+		{
+			Data.CreativeTake(Item, Button == 2 ? Full : 1, false);
+		}
+	}
+	return true;
+}
+
+void AMcHUD::DrawCreative(FIntPoint Origin)
+{
+	namespace Creative = McGui::Creative;
+	const FScreenState& State = *Screen;
+	const bool bCaret = FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3;
+	FString Shown = State.Search;
+	while (!Shown.IsEmpty() && TextWidth(Shown) > Creative::SearchWidth - 6)
+	{
+		Shown.RightChopInline(1);
+	}
+	DrawGuiText(bCaret ? Shown + TEXT("_") : Shown, Origin.X + Creative::SearchX, Origin.Y + Creative::SearchY, 0xFFFFFF, true);
+	for (int32 Cell = 0; Cell < Creative::Columns * Creative::Rows; ++Cell)
+	{
+		const int32 Index = State.CreativeScroll * Creative::Columns + Cell;
+		if (!State.CreativeItems.IsValidIndex(Index))
+		{
+			break;
+		}
+		const float X = Origin.X + Creative::ListX + Creative::Pitch * (Cell % Creative::Columns);
+		const float Y = Origin.Y + Creative::ListY + Creative::Pitch * (Cell / Creative::Columns);
+		DrawStack(FMcItemStack(State.CreativeItems[Index], 1), X, Y);
+		if (Index == State.CreativeHover)
+		{
+			DrawFill(X, Y, 16, 16, FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
+		}
+	}
+	const int32 MaxScroll = Creative::MaxScroll(State.CreativeItems.Num());
+	const float Thumb = MaxScroll > 0 ? (Creative::ScrollHeight - 15.0f) * State.CreativeScroll / MaxScroll : 0.0f;
+	DrawSprite(LoadSprite(FString(SpriteRoot) + (MaxScroll > 0 ? TEXT("container/creative_inventory/scroller.png") : TEXT("container/creative_inventory/scroller_disabled.png"))),
+		Origin.X + Creative::ScrollX, Origin.Y + Creative::ScrollY + Thumb, 12, 15);
+}
+
+void AMcHUD::DrawEnchanting(FIntPoint Origin, FIntPoint Local)
+{
+	namespace Enchanting = McGui::Enchanting;
+	const FMcEnchantMenu& Menu = *Screen->Enchanting;
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+	const UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
+	const int32 Levels = Data ? Data->Stats.XpLevel : 0;
+	const bool bCreative = Data && Data->bCreative;
+	const FString Table = FString(SpriteRoot) + TEXT("container/enchanting_table/");
+	const int32 Hovered = Enchanting::FindButton(Local);
+	for (int32 Option = 0; Option < 3; ++Option)
+	{
+		const float X = Origin.X + Enchanting::ButtonX;
+		const float Y = Origin.Y + Enchanting::ButtonY + Option * Enchanting::ButtonHeight;
+		const int32 Cost = Menu.GetOffers().Costs[Option];
+		if (Cost <= 0)
+		{
+			DrawSprite(LoadSprite(Table + TEXT("enchantment_slot_disabled.png")), X, Y, Enchanting::ButtonWidth, Enchanting::ButtonHeight);
+			continue;
+		}
+		// Affordable (the levels, ignoring the lapis, as the game shows it) is lit; else greyed.
+		const bool bAffordable = bCreative || Levels >= Cost;
+		const bool bUsable = Menu.CanEnchant(Option, Levels, bCreative);
+		const TCHAR* Slot = !bUsable ? TEXT("enchantment_slot_disabled.png") : Option == Hovered ? TEXT("enchantment_slot_highlighted.png") : TEXT("enchantment_slot.png");
+		DrawSprite(LoadSprite(Table + Slot), X, Y, Enchanting::ButtonWidth, Enchanting::ButtonHeight);
+		DrawSprite(LoadSprite(Table + FString::Printf(TEXT("level_%d%s.png"), Option + 1, bUsable ? TEXT("") : TEXT("_disabled"))), X + 1, Y + 1, 16, 16);
+		const FString Text = FString::FromInt(Cost);
+		DrawGuiText(Text, X + Enchanting::ButtonWidth - 2 - TextWidth(Text), Y + 9, bAffordable ? 0x80FF20 : 0x407F10, true);
+	}
+}
+
+void AMcHUD::DrawAnvil(FIntPoint Origin)
+{
+	const FMcAnvilMenu& Menu = *Screen->Anvil;
+	const FString Anvil = FString(SpriteRoot) + TEXT("container/anvil/");
+	const bool bHasItem = !Menu.GetStack(FMcAnvilMenu::LeftSlot).IsEmpty();
+	DrawSprite(LoadSprite(Anvil + (bHasItem ? TEXT("text_field.png") : TEXT("text_field_disabled.png"))), Origin.X + 59, Origin.Y + 20, 110, 16);
+	if (bHasItem)
+	{
+		// The name, with a caret blinking after it.
+		const bool bCaret = FMath::Fmod(GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0, 0.6) < 0.3;
+		DrawGuiText(Screen->AnvilName + (bCaret ? TEXT("_") : TEXT("")), Origin.X + 62.0f, Origin.Y + 24.0f, 0xFFFFFF, true);
+	}
+	const bool bResult = !Menu.GetStack(FMcAnvilMenu::ResultSlot).IsEmpty();
+	if (bHasItem && !Menu.GetStack(FMcAnvilMenu::RightSlot).IsEmpty() && !bResult)
+	{
+		DrawSprite(LoadSprite(Anvil + TEXT("error.png")), Origin.X + 99, Origin.Y + 45, 28, 21);
+	}
+	if (Menu.GetCost() <= 0)
+	{
+		return;
+	}
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+	const UMcPlayerDataComponent* Data = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
+	const bool bAfford = Data && (Data->bCreative || Data->Stats.XpLevel >= Menu.GetCost());
+	FString Text;
+	uint32 Color = 0x80FF20;
+	if (Menu.IsTooExpensive())
+	{
+		Text = McLang::Get(TEXT("container.repair.expensive"));
+		Color = 0xFF6060;
+	}
+	else if (bResult)
+	{
+		Text = McLang::Format(TEXT("container.repair.cost"), { FString::FromInt(Menu.GetCost()) });
+		Color = bAfford ? 0x80FF20 : 0xFF6060;
+	}
+	if (Text.IsEmpty())
+	{
+		return;
+	}
+	const float X = Origin.X + 176 - 8 - TextWidth(Text) - 2;
+	DrawFill(X - 2, Origin.Y + 67.0f, Origin.X + 168.0f - (X - 2), 12.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.31f));
+	DrawGuiText(Text, X, Origin.Y + 69.0f, Color, true);
+}
+
+void AMcHUD::DrawStonecutter(FIntPoint Origin, FIntPoint Local)
+{
+	namespace Layout = McGui::Stonecutter;
+	const FMcStonecutterMenu& Menu = *Screen->Stonecutter;
+	const TArray<const FMcRecipe*>& Recipes = Menu.GetRecipes();
+	const FString Cutter = FString(SpriteRoot) + TEXT("container/stonecutter/");
+	const int32 MaxScroll = Layout::MaxScroll(Recipes.Num());
+	const float Thumb = MaxScroll > 0 ? FMath::FloorToFloat((Layout::ScrollHeight - 15) * Screen->RecipeScroll / static_cast<float>(MaxScroll)) : 0.0f;
+	DrawSprite(LoadSprite(Cutter + (MaxScroll > 0 ? TEXT("scroller.png") : TEXT("scroller_disabled.png"))), Origin.X + Layout::ScrollX, Origin.Y + Layout::ScrollY + Thumb, 12, 15);
+	const int32 Hovered = Layout::FindRecipe(Local, Screen->RecipeScroll, Recipes.Num());
+	for (int32 Cell = 0; Cell < Layout::Columns * Layout::Rows; ++Cell)
+	{
+		const int32 Index = Screen->RecipeScroll * Layout::Columns + Cell;
+		if (Index >= Recipes.Num())
+		{
+			break;
+		}
+		const float X = Origin.X + Layout::RecipesX + (Cell % Layout::Columns) * Layout::CellWidth;
+		const float Y = Origin.Y + Layout::RecipesY + (Cell / Layout::Columns) * Layout::CellHeight + 2;
+		const TCHAR* Button = Index == Menu.GetSelected() ? TEXT("recipe_selected.png") : Index == Hovered ? TEXT("recipe_highlighted.png") : TEXT("recipe.png");
+		DrawSprite(LoadSprite(Cutter + Button), X, Y - 1, 16, 18);
+		// The item alone, without its count.
+		FMcItemStack Icon = Recipes[Index]->Result;
+		Icon.Count = 1;
+		DrawStack(Icon, X, Y);
+	}
 }
 
 void AMcHUD::DrawScreen(int32 Width, int32 Height)
@@ -478,7 +924,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 	else
 	{
-		DrawRegion(Background, Origin.X, Origin.Y, 176, 166, 0, 0, 176, 166);
+		DrawRegion(Background, Origin.X, Origin.Y, Layout.Size.X, Layout.Size.Y, 0, 0, Layout.Size.X, Layout.Size.Y);
 	}
 	if (Layout.Kind == McGui::EScreen::Furnace && Screen->Furnace.IsValid())
 	{
@@ -507,14 +953,50 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		DrawGuiText(Screen->Title, Origin.X + (Layout.Kind == McGui::EScreen::Furnace ? 60.0f : 28.0f), Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
+	case McGui::EScreen::Stonecutter:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 4.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		if (Screen->Stonecutter)
+		{
+			DrawStonecutter(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
+		}
+		break;
+	case McGui::EScreen::Anvil:
+		DrawGuiText(Screen->Title, Origin.X + 60.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		if (Screen->Anvil)
+		{
+			DrawAnvil(Origin);
+		}
+		break;
+	case McGui::EScreen::Grindstone:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		break;
+	case McGui::EScreen::Smithing:
+		DrawGuiText(Screen->Title, Origin.X + 44.0f, Origin.Y + 15.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		break;
+	case McGui::EScreen::Enchanting:
+		DrawGuiText(Screen->Title, Origin.X + 12.0f, Origin.Y + 5.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		DrawEnchanting(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
+		break;
 	case McGui::EScreen::Chest:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + Layout.Rows * 18.0f + 20.0f, 0x404040, false);
+		break;
+	case McGui::EScreen::Creative:
+		DrawCreative(Origin);
 		break;
 	}
 
 	for (int32 Slot = 0; Slot < Menu.NumSlots() && Slot < Layout.Slots.Num(); ++Slot)
 	{
+		if (!Layout.IsShown(Slot))
+		{
+			continue;
+		}
 		const FIntPoint At = Origin + Layout.Slots[Slot];
 		DrawStack(Menu.GetStack(Slot), static_cast<float>(At.X), static_cast<float>(At.Y));
 		if (Slot == HoverSlot)
@@ -523,14 +1005,66 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		}
 	}
 
-	// The stack on the cursor, centred on it; else the name of what is under it.
-	if (!Menu.GetCarried().IsEmpty())
+	// The stack on the cursor, centred on it; else the name of what is under it, or what an enchanting option gives.
+	const int32 Option = Screen->Enchanting ? McGui::Enchanting::FindButton(FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin) : -1;
+	if (Menu.GetCarried().IsEmpty() && Option >= 0 && Screen->Enchanting->GetOffers().Costs[Option] > 0)
+	{
+		const McEnchanting::FOffers& Offers = Screen->Enchanting->GetOffers();
+		const McEnchanting::FEnchant& Clue = Offers.Clues[Option];
+		const FString Name = McLang::Get(TEXT("enchantment.") + Clue.Name.ToString().Replace(TEXT(":"), TEXT("."))) + TEXT(" ") + McLang::Get(FString::Printf(TEXT("enchantment.level.%d"), Clue.Level));
+		TArray<TPair<FString, uint32>> Lines;
+		Lines.Add({ McLang::Format(TEXT("container.enchant.clue"), { Name }), 0xFFFFFF });
+		const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+		const UMcPlayerDataComponent* Viewer = Pawn ? Pawn->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
+		if (Viewer && !Viewer->bCreative)
+		{
+			const int32 Need = Option + 1;
+			const FMcItemStack& Fuel = Menu.GetStack(FMcEnchantMenu::LapisSlot);
+			const bool bLevel = Viewer->Stats.XpLevel >= Offers.Costs[Option];
+			if (!bLevel)
+			{
+				Lines.Add({ FString(), 0xFFFFFF });
+				Lines.Add({ McLang::Format(TEXT("container.enchant.level.requirement"), { FString::FromInt(Offers.Costs[Option]) }), 0xFF5555 });
+			}
+			else
+			{
+				Lines.Add({ FString(), 0xFFFFFF });
+				Lines.Add({ Need == 1 ? McLang::Get(TEXT("container.enchant.lapis.one")) : McLang::Format(TEXT("container.enchant.lapis.many"), { FString::FromInt(Need) }), Fuel.Count >= Need ? 0xAAAAAAu : 0xFF5555u });
+				Lines.Add({ Need == 1 ? McLang::Get(TEXT("container.enchant.level.one")) : McLang::Format(TEXT("container.enchant.level.many"), { FString::FromInt(Need) }), 0xAAAAAA });
+			}
+		}
+		float Wide = 0.0f;
+		for (const TPair<FString, uint32>& Line : Lines)
+		{
+			Wide = FMath::Max(Wide, TextWidth(Line.Key));
+		}
+		const float X = static_cast<float>(GuiMouse.X) + 12.0f;
+		const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
+		DrawFill(X - 3, Y - 3, Wide + 5, Lines.Num() * 10.0f + 4, FLinearColor(0.06f, 0.0f, 0.06f, 0.9f));
+		for (int32 Index = 0; Index < Lines.Num(); ++Index)
+		{
+			DrawGuiText(Lines[Index].Key, X, Y + Index * 10.0f, Lines[Index].Value, true);
+		}
+	}
+	else if (Menu.GetCarried().IsEmpty() && Screen->Stonecutter && HoverSlot < 0)
+	{
+		const int32 Recipe = McGui::Stonecutter::FindRecipe(FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin, Screen->RecipeScroll, Screen->Stonecutter->GetRecipes().Num());
+		if (Recipe >= 0)
+		{
+			const FString Name = GetItemName(Screen->Stonecutter->GetRecipes()[Recipe]->Result);
+			const float X = static_cast<float>(GuiMouse.X) + 12.0f;
+			const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
+			DrawFill(X - 3, Y - 3, TextWidth(Name) + 5, 14, FLinearColor(0.06f, 0.0f, 0.06f, 0.9f));
+			DrawGuiText(Name, X, Y, 0xFFFFFF, true);
+		}
+	}
+	else if (!Menu.GetCarried().IsEmpty())
 	{
 		DrawStack(Menu.GetCarried(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
 	}
-	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && !Menu.GetStack(HoverSlot).IsEmpty())
+	else if ((HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && !Menu.GetStack(HoverSlot).IsEmpty()) || (Screen->bCreative && Screen->CreativeHover >= 0))
 	{
-		const FString Name = GetItemName(Menu.GetStack(HoverSlot));
+		const FString Name = HoverSlot >= 0 ? GetItemName(Menu.GetStack(HoverSlot)) : DisplayName(Screen->CreativeItems[Screen->CreativeHover]);
 		const float Wide = TextWidth(Name);
 		const float X = static_cast<float>(GuiMouse.X) + 12.0f;
 		const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
@@ -622,7 +1156,7 @@ void AMcHUD::DrawHUD()
 			Controller->SetIgnoreMoveInput(false);
 		}
 	}
-	if (bDead && ActiveMenu == EMenu::Pause)
+	if (bDead && (ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat))
 	{
 		// The death screen takes over (and the input with it).
 		ActiveMenu = EMenu::None;
@@ -666,6 +1200,10 @@ void AMcHUD::DrawHUD()
 			DrawBars(Width, Height, Data);
 		}
 	}
+	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause)
+	{
+		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
+	}
 	if (Screen.IsValid() && !bDead)
 	{
 		DrawScreen(Width, Height);
@@ -674,8 +1212,129 @@ void AMcHUD::DrawHUD()
 	{
 		ShowDeathScreen(Width, Height, *Player);
 	}
-	else if (ActiveMenu == EMenu::Pause)
+	else if (ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat)
 	{
 		DrawMenus(Width, Height, false);
 	}
+}
+
+// ---- Chat ----
+
+TArray<FString> AMcHUD::WrapText(const FString& Text, float MaxWidth) const
+{
+	TArray<FString> Lines;
+	FString Line;
+	int32 LastSpace = INDEX_NONE;
+	for (const TCHAR Char : Text)
+	{
+		if (Char == TEXT(' '))
+		{
+			LastSpace = Line.Len();
+		}
+		Line.AppendChar(Char);
+		if (TextWidth(Line) > MaxWidth && Line.Len() > 1)
+		{
+			// Break at the last space if there is one, else mid-word.
+			if (LastSpace > 0)
+			{
+				Lines.Add(Line.Left(LastSpace));
+				Line = Line.Mid(LastSpace + 1);
+			}
+			else
+			{
+				Lines.Add(Line.LeftChop(1));
+				Line = Line.Right(1);
+			}
+			LastSpace = INDEX_NONE;
+		}
+	}
+	Lines.Add(Line);
+	return Lines;
+}
+
+void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
+{
+	LoadFont();
+	const TArray<UMcPlayerDataComponent::FChatLine>& Log = UMcPlayerDataComponent::GetChatLog();
+	// As the game draws it: 320 wide, 9 a line, the newest at the bottom, just above the hotbar.
+	const float ChatWidth = FMath::Min(320.0f, Width - 8.0f);
+	const double Now = FPlatformTime::Seconds();
+	const int32 MaxLines = bOpen ? 20 : 10;
+	float Y = Height - 48.0f;
+	int32 Shown = 0;
+	for (int32 Index = Log.Num() - 1; Index >= 0 && Shown < MaxLines; --Index)
+	{
+		const UMcPlayerDataComponent::FChatLine& Entry = Log[Index];
+		float Alpha = 1.0f;
+		if (!bOpen)
+		{
+			// Ten seconds on screen, the last of them fading.
+			const double Age = Now - Entry.Time;
+			if (Age >= 10.0)
+			{
+				break;
+			}
+			Alpha = static_cast<float>(FMath::Clamp(10.0 - Age, 0.0, 1.0));
+		}
+		const TArray<FString> Wrapped = WrapText(Entry.Text, ChatWidth - 4.0f);
+		for (int32 Part = Wrapped.Num() - 1; Part >= 0 && Shown < MaxLines; --Part, ++Shown)
+		{
+			Y -= 9.0f;
+			DrawFill(2.0f, Y, ChatWidth, 9.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.5f * Alpha));
+			DrawGuiText(Wrapped[Part], 4.0f, Y + 1.0f, Entry.Rgb, true, Alpha);
+		}
+	}
+}
+
+void AMcHUD::DrawChatInput(int32 Width, int32 Height)
+{
+	LoadFont();
+	APlayerController* Player = GetOwningPlayerController();
+	UMcPlayerDataComponent* Data = GetOwningPawn() ? GetOwningPawn()->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
+	if (!Data)
+	{
+		OpenMenu(EMenu::None);
+		return;
+	}
+	ChatDraft.Append(MenuTyped.Left(FMath::Max(0, 256 - ChatDraft.Len())));
+	if (bMenuBackspace && !ChatDraft.IsEmpty())
+	{
+		ChatDraft.LeftChopInline(1);
+	}
+	if (Player && SentChat.Num() > 0)
+	{
+		if (Player->WasInputKeyJustPressed(EKeys::Up))
+		{
+			SentChatIndex = FMath::Max(0, SentChatIndex - 1);
+			ChatDraft = SentChat[SentChatIndex];
+		}
+		else if (Player->WasInputKeyJustPressed(EKeys::Down))
+		{
+			SentChatIndex = FMath::Min(SentChat.Num(), SentChatIndex + 1);
+			ChatDraft = SentChat.IsValidIndex(SentChatIndex) ? SentChat[SentChatIndex] : FString();
+		}
+	}
+	if (bMenuEnter)
+	{
+		const FString Line = ChatDraft.TrimStartAndEnd();
+		if (!Line.IsEmpty())
+		{
+			if (SentChat.Num() == 0 || SentChat.Last() != Line)
+			{
+				SentChat.Add(Line);
+			}
+			Data->SendChat(Line);
+		}
+		OpenMenu(EMenu::None);
+		return;
+	}
+	// The box along the bottom, showing the end of a long line, with a blinking caret.
+	DrawFill(2.0f, Height - 14.0f, Width - 4.0f, 12.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.5f));
+	FString Shown = ChatDraft;
+	while (!Shown.IsEmpty() && TextWidth(Shown) > Width - 14.0f)
+	{
+		Shown.RightChopInline(1);
+	}
+	const bool bCaret = FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3;
+	DrawGuiText(bCaret ? Shown + TEXT("_") : Shown, 4.0f, Height - 12.0f, 0xFFFFFF, true);
 }

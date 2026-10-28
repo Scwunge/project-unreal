@@ -420,4 +420,35 @@ bool FMcSlotClickTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcCreativeScreenTest, "McClient.McUI.CreativeScreen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcCreativeScreenTest::RunTest(const FString& Parameters)
+{
+	using namespace McGui;
+	const FScreenLayout Layout = MakeCreativeLayout();
+	TestEqual(TEXT("size"), Layout.Size, FIntPoint(195, 136));
+	TestEqual(TEXT("every menu slot is there"), Layout.Slots.Num(), FMcPlayerMenuSlots::Total);
+	TestEqual(TEXT("the hotbar shows"), Layout.Slots[FMcPlayerMenuSlots::HotbarFirst], FIntPoint(9, 112));
+	TestFalse(TEXT("the rest is hidden"), Layout.IsShown(FMcPlayerMenuSlots::MainFirst) || Layout.IsShown(FMcPlayerMenuSlots::ArmorFirst));
+	TestEqual(TEXT("a hotbar click"), Layout.FindSlot(FIntPoint(10 + 18 * 8, 113)), FMcPlayerMenuSlots::HotbarFirst + 8);
+
+	TestEqual(TEXT("first cell"), Creative::FindCell(FIntPoint(9, 18)), 0);
+	TestEqual(TEXT("last cell"), Creative::FindCell(FIntPoint(9 + 18 * 8 + 15, 18 + 18 * 4 + 15)), 44);
+	TestEqual(TEXT("left of the list"), Creative::FindCell(FIntPoint(7, 30)), -1);
+	TestEqual(TEXT("below the list"), Creative::FindCell(FIntPoint(30, 18 + 18 * 5)), -1);
+	TestEqual(TEXT("one screenful doesn't scroll"), Creative::MaxScroll(45), 0);
+	TestEqual(TEXT("a row more scrolls one"), Creative::MaxScroll(46), 1);
+
+	TestFalse(TEXT("no air"), Creative::IsListed(TEXT("minecraft:air")));
+	TestFalse(TEXT("no command blocks"), Creative::IsListed(TEXT("minecraft:command_block")));
+	TestTrue(TEXT("stone"), Creative::IsListed(TEXT("minecraft:stone")));
+	const TArray<FName> Items = { TEXT("minecraft:oak_log"), TEXT("minecraft:oak_planks"), TEXT("minecraft:birch_log") };
+	const auto Name = [](FName Item) { return Item.ToString().Replace(TEXT("minecraft:"), TEXT("")).Replace(TEXT("_"), TEXT(" ")); };
+	TestEqual(TEXT("no search, everything"), Creative::Filter(Items, TEXT("  "), Name).Num(), 3);
+	TestEqual(TEXT("one word"), Creative::Filter(Items, TEXT("LOG"), Name).Num(), 2);
+	TestEqual(TEXT("every word"), Creative::Filter(Items, TEXT("log oak"), Name), TArray<FName>{ TEXT("minecraft:oak_log") });
+	return true;
+}
+
 #endif

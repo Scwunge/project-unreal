@@ -357,6 +357,15 @@ void AMcWorldActor::BeginPlay()
 		Storage ? *FString::Printf(TEXT(", saved as %s (%s)"), *WorldName, bHaveLevel ? TEXT("loaded") : TEXT("new")) : TEXT(""));
 }
 
+void AMcWorldActor::SetGameRule(const FString& Rule, const FString& Value)
+{
+	Level.GameRules.Add(Rule, Value);
+	if (Rule == TEXT("doDaylightCycle"))
+	{
+		bTimeFrozen = Value.Equals(TEXT("false"), ESearchCase::IgnoreCase);
+	}
+}
+
 void AMcWorldActor::StartStorage(const FString& Name)
 {
 	Storage = MakeShared<FMcWorldStorage, ESPMode::ThreadSafe>(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
@@ -502,6 +511,15 @@ void AMcWorldActor::TickLightning()
 bool AMcWorldActor::UseBlock(const FIntVector& Pos, float Yaw)
 {
 	return HasAuthority() && Simulation && Simulation->UseBlock(Pos, Yaw);
+}
+
+void AMcWorldActor::SetWeather(EMcWeather NewWeather, int32 Duration)
+{
+	if (HasAuthority() && Simulation)
+	{
+		Simulation->SetWeather(NewWeather, Duration);
+		Weather = static_cast<uint8>(NewWeather);
+	}
 }
 
 void AMcWorldActor::Strike(const FVector& Position)

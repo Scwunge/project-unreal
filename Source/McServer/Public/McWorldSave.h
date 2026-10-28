@@ -30,6 +30,8 @@ struct MCSERVER_API FMcLevelData
 	FString FlatPreset;
 	// Game rules by name, as text ("true", "3"). Only doDaylightCycle is read so far; the rest are kept for later.
 	TMap<FString, FString> GameRules;
+	// 0 peaceful, 1 easy, 2 normal, 3 hard.
+	int32 Difficulty = 2;
 	// What the world list shows (the folder name is a safe version of it) and the mode new players start in,
 	// "survival" or "creative".
 	FString Name;

@@ -25,8 +25,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Ops get past the allowlist, and past the player limit with `bypassesPlayerLimit`. The default port
     is 25565, the same port the join screen uses when an address doesn't give one.
   - **Not done:** a packaged `McClientServer` build needs a source-built engine, because the launcher's
-    can't build Server targets, so the script runs the editor binary with `-server`. Server commands such
-    as `/op` and `/whitelist` don't exist yet; edit the files instead.
+    can't build Server targets, so the script runs the editor binary with `-server`.
   - **Dev switches:**
     - `-McTitle` shows the title screen even with other switches.
     - `-McMenu=worlds|newworld|join|pause` opens that screen.
@@ -51,6 +50,74 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Dev switches:**
     - `-McEnhanced` starts in enhanced mode.
     - `-McSunLux=` and `-McEnhancedExposure=` are for tuning.
+
+- **Chat and commands** (2026-10-28):
+  - **Chat.** T opens the chat box and / opens it with a command started. Enter sends, and Up and Down go
+    back through what was sent. Lines show above the hotbar and fade after ten seconds. Joining and leaving
+    are announced in multiplayer.
+  - **Commands** (`McCommands`, run on the server) use the jar's own reply text (`McLang`, from
+    `en_us.json`). The commands are /clear, /difficulty, /fill, /gamemode, /gamerule, /give, /help, /kick,
+    /kill, /list, /me, /msg (/tell, /w), /op, /deop, /say, /seed, /setblock, /summon, /teleport (/tp),
+    /time, /weather, /whitelist and /xp (/experience).
+  - **Difficulty and game rules** are saved in `level.json`. Difficulty sets hunger's harm and stops
+    /summon making monsters on peaceful. Of the game rules only doDaylightCycle changes the game so far,
+    though every rule is kept; natural monster spawning ignores peaceful for now.
+  - **Permission levels.** The host of a world has every level. On a dedicated server a player has the
+    level `ops.json` gives them.
+  - **Selectors.** @s, @p, @a, @e, @r and player names work. Selector arguments such as `[type=...]` don't.
+  - **Not done:** /effect, /enchant, /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
+    completion.
+  - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.
+- **Creative inventory** (2026-10-28):
+  - E in creative opens the search tab: every item in registry order, 9 by 5, searched by the jar's names
+    (typing goes to the search), scrolled with the wheel or the bar, over the hotbar.
+  - Click takes one, middle-click a stack, and shift-click puts a stack in the inventory. Anything put back
+    on the list is destroyed. The server checks each take (`ServerCreativeTake`): the player must be in
+    creative and the item must exist.
+  - **Not done:** the other tabs (building blocks, colored blocks and so on, whose contents are in the game's
+    code rather than its data), the survival-inventory tab with armour, and the destroy-item slot. Operator
+    items are left out by a fixed list.
+  - **Dev switch:** `-McInventory` opens the inventory once the world is up, and `-McInventory=log` also
+    searches.
+- **Enchanting table** (2026-10-28):
+  - Using a table opens it: an item and lapis lazuli go in, and three options are offered. Their costs come
+    from the bookshelves around the table (`McEnchanting::CountBookshelves`: the ring two blocks out, on the
+    table's level and one up, with the block between clear, at most 15) and from the player's enchantment seed.
+  - The seed changes only when the player enchants, so offers stay put until then. Client and server work
+    out the same offers from the shelf count and the seed, which travel with the window.
+  - What an option gives (`McEnchanting::Select`): the enchantments in `in_enchanting_table` that suit the
+    item, picked by weight at the power the cost and the item's enchantability give. Each further pick
+    halves the power. A book becomes an enchanted book and gets one fewer.
+  - Option N takes N lapis and N levels, and needs its cost in levels. Creative players pay nothing. The
+    server checks and does the enchanting (`ServerEnchant`).
+  - Hovering an option shows its clue, plus the lapis and levels it takes or the level it needs.
+  - **Not done:** the enchanting-table text in the standard galactic alphabet, the book model above the
+    table, and its particles.
+  - **Dev switches:** `-McUse=X,Y,Z` uses that block five seconds in. `-McShiftClick=29,30` then
+    shift-clicks those slots of the window it opens.
+- **Stonecutter, grindstone and smithing table** (2026-10-28), in `McWorkstationMenus`:
+  - **Stonecutter.** Its recipes for the input are shown 4 by 3, scrolled with the wheel, sorted by what
+    they make. Clicking one chooses it; it stays chosen while the same item is in. A menu button goes to
+    the server as `ServerMenuButton`, and the choice comes back with the window (`FMcMenu::SerializeState`).
+  - **Grindstone.** One item loses every enchantment but its curses. Two of the same damageable item join,
+    adding their durability plus 5%. Taking the result gives between half and all of the enchantments'
+    minimum costs as experience (`FMcMenu::TakeExperience`).
+  - **Smithing table.** Template, base and addition make the transform or trim result from the recipe book.
+    Shift-click puts each item in the slot whose part of some recipe takes it.
+  - **Not done:** the smithing table's empty-slot pictures and armour-stand preview, and the grindstone's
+    ghost icons.
+- **Anvil** (2026-10-28), in `McAnvilMenu`, following minecraft.wiki's "Anvil mechanics":
+  - Repair with the item's material: each one mends a quarter, for a level each.
+  - Joining two of the same item: their durability added plus 12%, for 2 levels.
+  - Enchantments merge: equal levels go up one. Each costs its anvil cost (halved from a book) times its
+    final level. One that clashes is left off for a level.
+  - A rename costs a level. The item's prior-work penalty is added, and the result's penalty becomes
+    twice the higher input's plus 1.
+  - A cost of 40 or more is "Too Expensive!", except in creative. A rename alone is capped at 39.
+  - Typing goes to the name field (`ServerMenuText`). The menu is told the player's levels before each click
+    (`PrepareMenuClick`). The levels the result costs are taken from the player (`TakeLevelsSpent`).
+  - **Not done:** the anvil being damaged by use (12% chance a step towards chipped, damaged, gone). The
+    name field starts empty rather than at the item's own name.
 
 ### M4 build order
 

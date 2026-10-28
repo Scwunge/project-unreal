@@ -1,6 +1,7 @@
 #include "McSurvival.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
+#include "McGameRules.h"
 #include "McEntityManager.h"
 #include "McXpOrb.h"
 #include "McItemRegistry.h"
@@ -115,9 +116,22 @@ namespace McSurvival
 		}
 	}
 
-	float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn)
+	bool IsDamageEnabled(EDamage Kind, const FMcGameRules& Rules)
 	{
-		if (Amount <= 0.0f || Stats.Health <= 0.0f)
+		switch (Kind)
+		{
+		case EDamage::Fall: return Rules.bFallDamage;
+		case EDamage::Drown: return Rules.bDrowningDamage;
+		case EDamage::InFire:
+		case EDamage::OnFire:
+		case EDamage::Lava: return Rules.bFireDamage;
+		default: return true;
+		}
+	}
+
+	float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn, const FMcGameRules* Rules)
+	{
+		if (Amount <= 0.0f || Stats.Health <= 0.0f || (Rules && !IsDamageEnabled(Kind, *Rules)))
 		{
 			return 0.0f;
 		}
@@ -202,7 +216,7 @@ namespace McSurvival
 		return 0;
 	}
 
-	bool Tick(FMcPlayerStats& Stats, const FEnvironment& Environment, EDifficulty Difficulty, FMcContainer* Worn)
+	bool Tick(FMcPlayerStats& Stats, const FEnvironment& Environment, EDifficulty Difficulty, FMcContainer* Worn, const FMcGameRules* Rules)
 	{
 		if (Stats.Health <= 0.0f)
 		{
@@ -217,7 +231,7 @@ namespace McSurvival
 			if (--Stats.Air <= -20)
 			{
 				Stats.Air = 0;
-				Hurt(Stats, 2.0f, EDamage::Drown, Worn);
+				Hurt(Stats, 2.0f, EDamage::Drown, Worn, Rules);
 			}
 		}
 		else
@@ -233,22 +247,22 @@ namespace McSurvival
 		if (Environment.bInLava)
 		{
 			Stats.OnFireTicks = FMath::Max(Stats.OnFireTicks, 300);
-			Hurt(Stats, 4.0f, EDamage::Lava, Worn);
+			Hurt(Stats, 4.0f, EDamage::Lava, Worn, Rules);
 		}
 		if (Environment.bInFire && !Environment.bFeetInWater)
 		{
 			Stats.OnFireTicks = FMath::Max(Stats.OnFireTicks, 160);
-			Hurt(Stats, 1.0f, EDamage::InFire, Worn);
+			Hurt(Stats, 1.0f, EDamage::InFire, Worn, Rules);
 		}
 		if (Stats.OnFireTicks > 0)
 		{
 			if (--Stats.OnFireTicks % 20 == 0)
 			{
-				Hurt(Stats, 1.0f, EDamage::OnFire, Worn);
+				Hurt(Stats, 1.0f, EDamage::OnFire, Worn, Rules);
 			}
 		}
 
-		TickNeeds(Stats, Difficulty, Worn);
+		TickNeeds(Stats, Difficulty, Worn, Rules);
 		return Stats.Health <= 0.0f;
 	}
 
@@ -257,13 +271,14 @@ namespace McSurvival
 		Stats.Exhaustion = FMath::Min(40.0f, Stats.Exhaustion + Amount);
 	}
 
-	void TickNeeds(FMcPlayerStats& Stats, EDifficulty Difficulty, FMcContainer* Worn)
+	void TickNeeds(FMcPlayerStats& Stats, EDifficulty Difficulty, FMcContainer* Worn, const FMcGameRules* Rules)
 	{
+		const bool bMayHeal = !Rules || Rules->bNaturalRegeneration;
 		if (Difficulty == EDifficulty::Peaceful)
 		{
 			// Nothing is spent, and health comes back by itself, a point a second.
 			Stats.Exhaustion = 0.0f;
-			if (Stats.Health < Stats.MaxHealth && ++Stats.FoodTimer >= 20)
+			if (bMayHeal && Stats.Health < Stats.MaxHealth && ++Stats.FoodTimer >= 20)
 			{
 				Heal(Stats, 1.0f);
 				Stats.FoodTimer = 0;
@@ -283,7 +298,7 @@ namespace McSurvival
 			}
 		}
 
-		const bool bHurt = Stats.Health < Stats.MaxHealth;
+		const bool bHurt = bMayHeal && Stats.Health < Stats.MaxHealth;
 		if (Stats.Food >= 20 && Stats.Saturation > 0.0f && bHurt)
 		{
 			if (++Stats.FoodTimer >= 10)

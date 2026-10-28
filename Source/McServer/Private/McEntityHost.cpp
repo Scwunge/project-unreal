@@ -5,6 +5,7 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityProxy.h"
+#include "McGameRules.h"
 #include "McItemRegistry.h"
 #include "McLoot.h"
 #include "McMob.h"
@@ -75,6 +76,12 @@ namespace
 		return Wide.Contains(Block);
 	}
 
+	// The mobs peaceful removes: the ones that go after players, not the wolf and bee that only fight back.
+	bool IsMonster(const FMcMobType& Type)
+	{
+		return Type.IsHostile() && Type.Name != TEXT("minecraft:wolf") && Type.Name != TEXT("minecraft:bee");
+	}
+
 	// Hostile mobs stay under this many in the world per player, and are removed past this distance from every player.
 	constexpr int32 HostileCapPerPlayer = 20;
 	constexpr double DespawnDistance = 100.0;
@@ -108,7 +115,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	Manager.OnBlocksDestroyed = [this](const TArray<FMcDestroyedBlock>& Blocks, float Power)
 	{
 		const FMcItemRegistry& Items = FMcItemRegistry::Get();
-		if (!Items.IsLoaded())
+		if (!Items.IsLoaded() || !Rules.bDoTileDrops)
 		{
 			return;
 		}
@@ -164,12 +171,35 @@ void FMcEntityHost::SetProxyClass(UWorld* InGameWorld, TSubclassOf<AActor> Class
 	ProxyClass = Class;
 }
 
+void FMcEntityHost::SetRules(const FMcGameRules& InRules)
+{
+	Rules = InRules;
+	if (Rules.IsPeaceful())
+	{
+		RemoveHostiles();
+	}
+}
+
+int32 FMcEntityHost::RemoveHostiles()
+{
+	int32 Removed = 0;
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (Entity->IsLiving() && !Entity->bRemoved && IsMonster(static_cast<const FMcMob&>(*Entity).Type))
+		{
+			Entity->bRemoved = true;
+			++Removed;
+		}
+	}
+	return Removed;
+}
+
 int32 FMcEntityHost::NumHostile() const
 {
 	int32 Count = 0;
 	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 	{
-		if (Entity->IsLiving() && static_cast<const FMcMob&>(*Entity).Type.IsHostile())
+		if (Entity->IsLiving() && !Entity->bRemoved && static_cast<const FMcMob&>(*Entity).Type.IsHostile())
 		{
 			++Count;
 		}
@@ -267,6 +297,10 @@ void FMcEntityHost::SplitSlime(FMcMob& Dead)
 
 void FMcEntityHost::DropLoot(FMcMob& Mob)
 {
+	if (!Rules.bDoMobLoot)
+	{
+		return;
+	}
 	FMcRandom Rng(static_cast<uint64>(Seed) ^ (static_cast<uint64>(Mob.Id) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64>(Ticks));
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
@@ -403,6 +437,10 @@ int32 FMcEntityHost::RemoveStrays()
 
 void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 {
+	if (!Rules.bDoMobSpawning)
+	{
+		return;
+	}
 	// The same chunk gets the same animals for a seed, whenever it arrives. Unsigned, so the mixing wraps rather than
 	// overflowing.
 	const uint64 Mixed = static_cast<uint64>(Seed) * 31ull
@@ -469,7 +507,7 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 
 void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 {
-	if (Players.IsEmpty() || NumHostile() >= HostileCapPerPlayer * Players.Num())
+	if (Rules.IsPeaceful() || !Rules.bDoMobSpawning || Players.IsEmpty() || NumHostile() >= HostileCapPerPlayer * Players.Num())
 	{
 		return;
 	}
@@ -601,6 +639,11 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	}
 	if (Ticks % 20 == 0)
 	{
+		// Mobs that came in some other way (a save, a summon) are cleared too.
+		if (Rules.IsPeaceful())
+		{
+			RemoveHostiles();
+		}
 		SpawnHostiles(Players);
 	}
 #if !UE_BUILD_SHIPPING

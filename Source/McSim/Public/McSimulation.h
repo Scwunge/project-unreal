@@ -65,6 +65,8 @@ public:
 	// cold freezes water at the edge of a pool. Ice and snow beside a light melt.
 	EMcWeather GetWeather() const;
 	void SetWeather(EMcWeather Weather, int32 Duration = 0);
+	// The doWeatherCycle rule: with it off the weather never changes by itself.
+	void SetWeatherCycle(bool bCycle);
 	void SetSnowAccumulation(int32 Layers);
 	bool IsRainingAt(const FIntVector& Pos) const;
 

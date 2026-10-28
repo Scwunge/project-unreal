@@ -80,6 +80,11 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 	{
 		LoadClientOptions();
 	}
+	else if (NewMenu == EMenu::Chat)
+	{
+		ChatDraft.Reset();
+		SentChatIndex = SentChat.Num();
+	}
 	if (NewMenu == EMenu::None)
 	{
 		SetMenuInput(false);
@@ -125,7 +130,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		MessageTitle = TEXT("Failed to connect to the server");
 		MessageText = ConnectError;
 	}
-	if (bTitle && (ActiveMenu == EMenu::None || ActiveMenu == EMenu::Pause))
+	if (bTitle && (ActiveMenu == EMenu::None || ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat))
 	{
 		OpenMenu(EMenu::Title);
 #if !UE_BUILD_SHIPPING
@@ -169,7 +174,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		// Esc is the screen's Cancel or Back.
 		switch (ActiveMenu)
 		{
-		case EMenu::Pause: OpenMenu(EMenu::None); return false;
+		case EMenu::Pause: case EMenu::Chat: OpenMenu(EMenu::None); return false;
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
 		default: break;
@@ -185,9 +190,10 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Join: DrawJoin(Width, Height); break;
 	case EMenu::Message: DrawMessage(Width, Height); break;
 	case EMenu::Pause: DrawPause(Width, Height); break;
+	case EMenu::Chat: DrawChatInput(Width, Height); break;
 	default: break;
 	}
-	return ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::None;
+	return ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Chat && ActiveMenu != EMenu::None;
 }
 
 // ---- Widgets ----

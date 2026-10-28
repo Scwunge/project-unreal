@@ -310,7 +310,15 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	if (UMcPlayerDataComponent* Data = Hooked.Data)
 	{
 		const TWeakObjectPtr<AMcPlayerPawn> WeakPawn = &Hooked;
-		Data->ServerDrop = [World, WeakPawn](const FMcItemStack& Stack)
+		Data->ServerOnChat = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](const FString& Text)
+		{
+			AMcPlayerController* Speaker = WeakController.Get();
+			if (AMcGameMode* Mode = Speaker ? Speaker->GetWorld()->GetAuthGameMode<AMcGameMode>() : nullptr)
+			{
+				Mode->HandleChat(Speaker, Text);
+			}
+		};
+		Data->ServerDrop =[World, WeakPawn](const FMcItemStack& Stack)
 		{
 			FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
 			if (Host && WeakPawn.IsValid() && !Stack.IsEmpty())

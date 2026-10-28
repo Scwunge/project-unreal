@@ -50,6 +50,7 @@ public:
 	bool RandomTick(const FIntVector& Pos, FMcStateId State);
 	// Once per chunk and tick, a one-in-sixteen chance of a random column being frozen or snowed on.
 	void TickChunk(FIntPoint Chunk);
+	void SetWeatherCycle(bool bCycle) { bWeatherCycle = bCycle; }
 
 	// Bone meal on the block at Pos (a sapling, a crop, grass). True if it did anything, so the item is used up.
 	bool Bonemeal(const FIntVector& Pos);
@@ -71,6 +72,8 @@ private:
 	FMcBlockWorld& World;
 	FMcSimulation& Sim;
 	FRandomStream Random{ 7 };
+	// The doWeatherCycle rule: off, the weather stays as it is (a command can still change it).
+	bool bWeatherCycle = true;
 	bool bRaining = false;
 	bool bThundering = false;
 	int32 RainTime = 0;

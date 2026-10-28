@@ -12,7 +12,7 @@ bool FMcLevelData::operator==(const FMcLevelData& Other) const
 {
 	return Version == Other.Version && Seed == Other.Seed && Spawn == Other.Spawn && DayTime == Other.DayTime
 		&& Dimension == Other.Dimension && NoiseSettings == Other.NoiseSettings && bFlat == Other.bFlat
-		&& FlatPreset == Other.FlatPreset && Name == Other.Name && GameMode == Other.GameMode && GameRules.OrderIndependentCompareEqual(Other.GameRules);
+		&& FlatPreset == Other.FlatPreset && Name == Other.Name && GameMode == Other.GameMode && Difficulty == Other.Difficulty && GameRules.OrderIndependentCompareEqual(Other.GameRules);
 }
 
 bool FMcPlayerData::operator==(const FMcPlayerData& Other) const
@@ -124,6 +124,7 @@ bool McWorldSave::SaveLevel(const FString& WorldDir, const FMcLevelData& Level)
 	Object->SetStringField(TEXT("flatPreset"), Level.FlatPreset);
 	Object->SetStringField(TEXT("name"), Level.Name);
 	Object->SetStringField(TEXT("gameMode"), Level.GameMode);
+	Object->SetNumberField(TEXT("difficulty"), Level.Difficulty);
 	const TSharedRef<FJsonObject> Rules = MakeShared<FJsonObject>();
 	for (const TPair<FString, FString>& Rule : Level.GameRules)
 	{
@@ -163,6 +164,8 @@ bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 	Object->TryGetStringField(TEXT("flatPreset"), Level.FlatPreset);
 	Object->TryGetStringField(TEXT("name"), Level.Name);
 	Object->TryGetStringField(TEXT("gameMode"), Level.GameMode);
+	Object->TryGetNumberField(TEXT("difficulty"), Level.Difficulty);
+	Level.Difficulty = FMath::Clamp(Level.Difficulty, 0, 3);
 	const TSharedPtr<FJsonObject>* Rules = nullptr;
 	if (Object->TryGetObjectField(TEXT("gameRules"), Rules))
 	{

@@ -43,6 +43,8 @@ public:
 	// Saved/Server/server.properties, read once and written back with any missing defaults.
 	static const FMcServerProperties& Get();
 	static FString GetDir();
+	// Changes a setting of the one Get() returns and writes the file (as /whitelist on does).
+	static void SetAndSave(const FString& Key, const FString& Value);
 
 private:
 	struct FLine
@@ -75,6 +77,10 @@ struct MCSERVER_API FMcServerAccess
 	bool ParseOps(const FString& Json);
 	// Both files from Saved/Server, made empty ("[]") if missing.
 	static FMcServerAccess Load();
+	// The two files' text, as the game writes them, and both written back to Saved/Server.
+	FString AllowlistToJson() const;
+	FString OpsToJson() const;
+	bool Save() const;
 	// Why a player may not join, or empty if they may. Players is how many are on already.
 	static FString CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players);
 };

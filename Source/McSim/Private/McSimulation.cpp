@@ -115,6 +115,11 @@ EMcWeather FMcSimulation::GetWeather() const
 	return Nature->GetWeather();
 }
 
+void FMcSimulation::SetWeatherCycle(bool bCycle)
+{
+	Nature->SetWeatherCycle(bCycle);
+}
+
 void FMcSimulation::SetWeather(EMcWeather Weather, int32 Duration)
 {
 	Nature->SetWeather(Weather, Duration);

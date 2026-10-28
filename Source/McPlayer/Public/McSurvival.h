@@ -7,6 +7,7 @@
 #include "CoreMinimal.h"
 #include "McPlayerData.h"
 
+struct FMcGameRules;
 class FMcBlockWorld;
 class FMcEntityManager;
 class FMcXpOrb;
@@ -63,7 +64,10 @@ namespace McSurvival
 	// ---- Damage ----
 	// Hurts the player: the immunity after a hit, armour (which wears: each piece loses max(1, Damage / 4) durability),
 	// then absorption, then health. Worn may be null. Returns the health lost.
-	MCPLAYER_API float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn = nullptr);
+	// Rules may be null; with them, a kind of damage the game rules turn off (fallDamage, fireDamage, drowningDamage) does nothing.
+	MCPLAYER_API float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn = nullptr, const FMcGameRules* Rules = nullptr);
+	// Whether the game rules let this kind of damage through: fall, drowning, and fire (fire, burning and lava).
+	MCPLAYER_API bool IsDamageEnabled(EDamage Kind, const FMcGameRules& Rules);
 	MCPLAYER_API void Heal(FMcPlayerStats& Stats, float Amount);
 	inline bool IsDead(const FMcPlayerStats& Stats) { return Stats.Health <= 0.0f; }
 
@@ -82,7 +86,7 @@ namespace McSurvival
 	// ---- The tick ----
 	// One game tick of everything the world does to a player: the hurt flash and immunity counting down, breath,
 	// burning, lava, fire and hunger. Returns true if they died.
-	MCPLAYER_API bool Tick(FMcPlayerStats& Stats, const FEnvironment& Environment, EDifficulty Difficulty, FMcContainer* Worn = nullptr);
+	MCPLAYER_API bool Tick(FMcPlayerStats& Stats, const FEnvironment& Environment, EDifficulty Difficulty, FMcContainer* Worn = nullptr, const FMcGameRules* Rules = nullptr);
 
 	// ---- Hunger ----
 	// What the player's work costs: it builds up in Exhaustion, and every 4 takes saturation, then food.
@@ -90,7 +94,8 @@ namespace McSurvival
 	// Spending exhaustion, healing when well fed (food 18 or more: 1 health every 80 ticks; food 20 with saturation:
 	// every 10 ticks, up to 1 health, and it costs hunger) and starving (every 80 ticks, 1 damage, down to 10 health
 	// on Easy and 1 on Normal; Hard kills). One game tick.
-	MCPLAYER_API void TickNeeds(FMcPlayerStats& Stats, EDifficulty Difficulty, FMcContainer* Worn = nullptr);
+	// With the naturalRegeneration rule off (in Rules) nothing heals by itself, but hunger still runs.
+	MCPLAYER_API void TickNeeds(FMcPlayerStats& Stats, EDifficulty Difficulty, FMcContainer* Worn = nullptr, const FMcGameRules* Rules = nullptr);
 	// Food can be eaten when not full, or if the food says it can always be eaten.
 	MCPLAYER_API bool CanEat(const FMcPlayerStats& Stats, const FMcFoodData& Food);
 	// Eating a food: its nutrition to food and its saturation to saturation, which never goes past food.

@@ -112,6 +112,10 @@ void FMcNature::NextThunder()
 
 void FMcNature::Tick()
 {
+	if (!bWeatherCycle)
+	{
+		return;
+	}
 	if (--RainTime <= 0)
 	{
 		bRaining = !bRaining;

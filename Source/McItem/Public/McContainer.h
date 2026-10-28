@@ -87,6 +87,23 @@ public:
 	// Gives the cursor stack back to the player, e.g. when the menu closes: into the player's slots, else dropped.
 	void Close(TArray<FMcItemStack>& Dropped);
 
+	// A button of the menu's own besides its slots (a stonecutter's recipe): the player pressed Id. False if it
+	// does nothing now.
+	virtual bool ClickButton(int32 Id) { return false; }
+	// What the menu keeps besides its slots that the player's screen needs (the recipe chosen), read or written by
+	// whether the archive is loading. Called after the slots when a window is synced.
+	virtual void SerializeState(FArchive& Ar) {}
+	// Experience points the player earned from the menu since last asked (a grindstone's), which the caller
+	// gives them.
+	virtual int32 TakeExperience() { return 0; }
+	// Levels the player spent in the menu since last asked (an anvil's), which the caller takes from them.
+	virtual int32 TakeLevelsSpent() { return 0; }
+	// The player's levels and game mode, for menus whose slots depend on them (an anvil's result). Set before
+	// each click.
+	virtual void SetPlayerLevels(int32 Levels, bool bCreative) {}
+	// A text field of the menu's own changed (an anvil's name). False if the text isn't allowed.
+	virtual bool SetText(const FString& Text) { return false; }
+
 protected:
 	// ---- What subclasses decide ----
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const { return true; }

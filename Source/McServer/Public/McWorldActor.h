@@ -97,6 +97,10 @@ public:
 	// weather, so a storm comes on over five seconds. Thunder counts only while it rains. Always 0 where there is no
 	// weather (no sky light, or a ceiling). -McWeather=clear|rain|thunder starts a new world's weather at full.
 	float GetRainLevel() const { return RainLevel; }
+	// Server: sets the weather (/weather) for Duration ticks, or as long as the weather picks when 0. It eases in as usual.
+	void SetWeather(EMcWeather NewWeather, int32 Duration);
+	// Server: ticks this world has run (/time query gametime).
+	int64 GetGameTime() const { return Simulation ? Simulation->GetGameTime() : 0; }
 	float GetThunderLevel() const { return ThunderLevel * RainLevel; }
 
 	// The actor class shown for each server-side entity (set by the game mode; it implements IMcEntityProxy).
@@ -148,6 +152,9 @@ public:
 	const FString& GetWorldName() const { return WorldName; }
 	const FString& GetWorldDir() const { return WorldDir; }
 	const FMcLevelData& GetLevel() const { return Level; }
+	// Server: /gamerule and /difficulty, kept in level.json. Setting doDaylightCycle stops or starts the day.
+	void SetGameRule(const FString& Rule, const FString& Value);
+	void SetDifficulty(int32 Difficulty) { Level.Difficulty = FMath::Clamp(Difficulty, 0, 3); }
 	FMcWorldStorage* GetStorage() const { return Storage.Get(); }
 	// Saves the level and every loaded chunk that changed, and waits until it's on disk. The game thread stalls for the
 	// file writes only; EndPlay does this, and so can a command.

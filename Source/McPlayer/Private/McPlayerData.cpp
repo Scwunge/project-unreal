@@ -1,6 +1,10 @@
 #include "McPlayerData.h"
 #include "McCraftingMenu.h"
 #include "McFurnace.h"
+#include "McEnchantMenu.h"
+#include "McWorkstationMenus.h"
+#include "McAnvilMenu.h"
+#include "McItemRegistry.h"
 #include "McPlayerMenu.h"
 #include "McSurvival.h"
 #include "GameFramework/Pawn.h"
@@ -200,6 +204,25 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 			Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
 		}
 		break;
+	case EMcWindowKind::Stonecutter:
+		Made.Menu = MakeShared<FMcStonecutterMenu>(Inventory);
+		break;
+	case EMcWindowKind::SmithingTable:
+		Made.Menu = MakeShared<FMcSmithingMenu>(Inventory);
+		break;
+	case EMcWindowKind::Grindstone:
+		Made.Menu = MakeShared<FMcGrindstoneMenu>(Inventory);
+		break;
+	case EMcWindowKind::Anvil:
+		Made.Menu = MakeShared<FMcAnvilMenu>(Inventory);
+		break;
+	case EMcWindowKind::EnchantingTable:
+	{
+		const TSharedRef<FMcEnchantMenu> Menu = MakeShared<FMcEnchantMenu>(Inventory, Aux, EnchantSeed);
+		Made.Menu = Menu;
+		Made.Enchanting = &Menu.Get();
+		break;
+	}
 	case EMcWindowKind::Furnace:
 		if (Aux >= 0 && Aux <= static_cast<int32>(EMcFurnaceKind::Smoker))
 		{
@@ -225,11 +248,17 @@ TArray<uint8> UMcPlayerDataComponent::WriteWindow() const
 	{
 		Window.Furnace->Serialize(Ar);
 	}
+	if (Window.Enchanting)
+	{
+		int32 Seed = Window.Enchanting->GetSeed();
+		Ar << Seed;
+	}
 	for (int32 Slot = 0; Slot < Window.Menu->NumSlots(); ++Slot)
 	{
 		WriteStack(Ar, Window.Menu->GetStack(Slot));
 	}
 	WriteStack(Ar, Window.Menu->GetCarried());
+	Window.Menu->SerializeState(Ar);
 	return Bytes;
 }
 
@@ -243,6 +272,11 @@ bool UMcPlayerDataComponent::ReadWindow(TConstArrayView<uint8> Bytes)
 	if (Window.Furnace.IsValid() && !Window.Furnace->Serialize(Ar))
 	{
 		return false;
+	}
+	int32 Seed = 0;
+	if (Window.Enchanting)
+	{
+		Ar << Seed;
 	}
 	const int32 Num = Window.Menu->NumSlots();
 	TArray<FMcItemStack> Read;
@@ -268,7 +302,13 @@ bool UMcPlayerDataComponent::ReadWindow(TConstArrayView<uint8> Bytes)
 	{
 		Window.Crafting->Refresh();
 	}
-	return true;
+	if (Window.Enchanting)
+	{
+		Window.Enchanting->SetSeed(Seed);
+	}
+	PrepareMenuClick();
+	Window.Menu->SerializeState(Ar);
+	return !Ar.IsError();
 }
 
 void UMcPlayerDataComponent::OpenServerWindow(FMcWindow NewWindow, int32 Aux)
@@ -354,6 +394,10 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	switch (Kind)
 	{
 	case EMcWindowKind::CraftingTable:
+	case EMcWindowKind::Stonecutter:
+	case EMcWindowKind::SmithingTable:
+	case EMcWindowKind::Grindstone:
+	case EMcWindowKind::Anvil:
 		break;
 	case EMcWindowKind::Chest:
 		if (!Container.IsValid())
@@ -409,6 +453,8 @@ void UMcPlayerDataComponent::NotifyClick(int32 Slot, int32 Button, EMcClickType 
 	if (IsServer())
 	{
 		// The menu the screen clicked is the server's own: only the follow-ups remain.
+		McSurvival::AddXp(Stats, Window.Menu->TakeExperience());
+		Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Window.Menu->TakeLevelsSpent());
 		if (Window.OnChanged)
 		{
 			Window.OnChanged();
@@ -440,6 +486,154 @@ void UMcPlayerDataComponent::DropFromWindow(const FMcItemStack& Stack)
 	if (IsServer() && ServerDrop && !Stack.IsEmpty())
 	{
 		ServerDrop(Stack);
+	}
+}
+
+void UMcPlayerDataComponent::CreativeTake(FName Item, int32 Count, bool bToInventory)
+{
+	if (!HasWindow() || !bCreative)
+	{
+		return;
+	}
+	ApplyCreativeTake(Item, Count, bToInventory);
+	if (!IsServer())
+	{
+		ServerCreativeTake(Window.Id, ++ClickSequence, Item, Count, bToInventory);
+	}
+	else if (Window.OnChanged)
+	{
+		Window.OnChanged();
+	}
+}
+
+void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	if (EnchantSeed == 0)
+	{
+		EnchantSeed = FMath::Rand() | 1;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::EnchantingTable, ++NextWindowId, Bookshelves);
+	Made.Title = TEXT("Enchant");
+	Made.Pos = Pos;
+	OpenServerWindow(MoveTemp(Made), Bookshelves);
+}
+
+void UMcPlayerDataComponent::ClickMenuButton(int32 Id)
+{
+	if (!HasWindow())
+	{
+		return;
+	}
+	if (IsServer())
+	{
+		Window.Menu->ClickButton(Id);
+		return;
+	}
+	// Shown at once; the server's answer follows with the window.
+	Window.Menu->ClickButton(Id);
+	ServerMenuButton(Window.Id, ++ClickSequence, Id);
+}
+
+void UMcPlayerDataComponent::PrepareMenuClick()
+{
+	if (Window.IsOpen())
+	{
+		Window.Menu->SetPlayerLevels(Stats.XpLevel, bCreative);
+	}
+}
+
+void UMcPlayerDataComponent::SetMenuText(const FString& Text)
+{
+	if (!HasWindow())
+	{
+		return;
+	}
+	PrepareMenuClick();
+	Window.Menu->SetText(Text);
+	if (!IsServer())
+	{
+		ServerMenuText(Window.Id, ++ClickSequence, Text);
+	}
+}
+
+void UMcPlayerDataComponent::ServerMenuText_Implementation(int32 WindowId, int32 Sequence, const FString& Text)
+{
+	PrepareMenuClick();
+	if (!Window.IsOpen() || WindowId != Window.Id || !Window.Menu->SetText(Text))
+	{
+		++NumRefused;
+	}
+	LastSequence = Sequence;
+	SendWindowTo(Sequence);
+}
+
+void UMcPlayerDataComponent::ServerMenuButton_Implementation(int32 WindowId, int32 Sequence, int32 Id)
+{
+	if (!Window.IsOpen() || WindowId != Window.Id || Stats.Health <= 0.0f || !Window.Menu->ClickButton(Id))
+	{
+		++NumRefused;
+	}
+	LastSequence = Sequence;
+	SendWindowTo(Sequence);
+}
+
+void UMcPlayerDataComponent::Enchant(int32 Slot)
+{
+	if (!HasWindow() || !Window.Enchanting)
+	{
+		return;
+	}
+	if (IsServer())
+	{
+		ApplyEnchant(Slot);
+	}
+	else
+	{
+		ServerEnchant(Window.Id, ++ClickSequence, Slot);
+	}
+}
+
+bool UMcPlayerDataComponent::ApplyEnchant(int32 Slot)
+{
+	int32 Spent = 0;
+	if (!Window.Enchanting || Stats.Health <= 0.0f || !Window.Enchanting->Enchant(Slot, Stats.XpLevel, bCreative, Spent))
+	{
+		return false;
+	}
+	Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Spent);
+	// A new seed: the next item gets new offers.
+	EnchantSeed = FMath::Rand() | 1;
+	Window.Enchanting->SetSeed(EnchantSeed);
+	return true;
+}
+
+void UMcPlayerDataComponent::ServerEnchant_Implementation(int32 WindowId, int32 Sequence, int32 Slot)
+{
+	if (!Window.IsOpen() || WindowId != Window.Id || !ApplyEnchant(Slot))
+	{
+		++NumRefused;
+	}
+	LastSequence = Sequence;
+	SendWindowTo(Sequence);
+}
+
+void UMcPlayerDataComponent::ApplyCreativeTake(FName Item, int32 Count, bool bToInventory)
+{
+	FMcItemRegistry& Items = FMcItemRegistry::Get();
+	const bool bReal = !Item.IsNone() && Count > 0 && Items.EnsureLoaded() && Items.Exists(Item);
+	const FMcItemStack Stack = bReal ? FMcItemStack(Item, FMath::Min(Count, FMath::Max(1, Items.GetMaxStackSize(Item)))) : FMcItemStack();
+	if (!bToInventory)
+	{
+		Window.Menu->SetCarried(Stack);
+	}
+	else if (!Stack.IsEmpty())
+	{
+		// What doesn't fit is let go, as creative has an endless supply.
+		Inventory->AddItem(Stack);
 	}
 }
 
@@ -507,6 +701,66 @@ void UMcPlayerDataComponent::ServerTick()
 }
 
 // ---- Messages ----
+
+TArray<UMcPlayerDataComponent::FChatLine>& UMcPlayerDataComponent::GetChatLog()
+{
+	static TArray<FChatLine> Log;
+	return Log;
+}
+
+void UMcPlayerDataComponent::AddChatLine(const FString& Text, uint32 Rgb)
+{
+	TArray<FChatLine>& Log = GetChatLog();
+	FChatLine& Line = Log.AddDefaulted_GetRef();
+	Line.Text = Text;
+	Line.Rgb = Rgb;
+	Line.Time = FPlatformTime::Seconds();
+	if (Log.Num() > 100)
+	{
+		Log.RemoveAt(0, Log.Num() - 100);
+	}
+}
+
+void UMcPlayerDataComponent::SendChat(const FString& Text)
+{
+	if (IsServer())
+	{
+		if (ServerOnChat)
+		{
+			ServerOnChat(Text);
+		}
+	}
+	else
+	{
+		ServerChat(Text.Left(256));
+	}
+}
+
+void UMcPlayerDataComponent::TellOwner(const FString& Text, uint32 Rgb)
+{
+	if (IsOwnerRemote())
+	{
+		ClientChat(Text, static_cast<int32>(Rgb));
+	}
+	else if (IsServer())
+	{
+		AddChatLine(Text, Rgb);
+	}
+}
+
+void UMcPlayerDataComponent::ClientChat_Implementation(const FString& Text, int32 Rgb)
+{
+	AddChatLine(Text, static_cast<uint32>(Rgb));
+}
+
+void UMcPlayerDataComponent::ServerChat_Implementation(const FString& Text)
+{
+	// The game takes at most 256 characters a line.
+	if (ServerOnChat && Text.Len() <= 256)
+	{
+		ServerOnChat(Text);
+	}
+}
 
 void UMcPlayerDataComponent::ClientSetStats_Implementation(const TArray<uint8>& Bytes)
 {
@@ -592,6 +846,7 @@ void UMcPlayerDataComponent::ServerClick_Implementation(int32 WindowId, int32 Se
 		SendWindowTo(Sequence);
 		return;
 	}
+	PrepareMenuClick();
 	const int32 OutputBefore = Window.Furnace.IsValid() ? Window.Menu->GetStack(FMcFurnace::OutputSlot).Count : 0;
 	TArray<FMcItemStack> Dropped;
 	Window.Menu->Click(Slot, Button, static_cast<EMcClickType>(Type), Dropped, bCreative);
@@ -604,6 +859,26 @@ void UMcPlayerDataComponent::ServerClick_Implementation(int32 WindowId, int32 Se
 		// Taking what was smelted pays out the experience it earned.
 		McSurvival::AddXp(Stats, Window.Furnace->TakeExperience(FMath::FRand()));
 	}
+	McSurvival::AddXp(Stats, Window.Menu->TakeExperience());
+	Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Window.Menu->TakeLevelsSpent());
+	LastSequence = Sequence;
+	if (Window.OnChanged)
+	{
+		Window.OnChanged();
+	}
+	SendWindowTo(Sequence);
+}
+
+void UMcPlayerDataComponent::ServerCreativeTake_Implementation(int32 WindowId, int32 Sequence, FName Item, int32 Count, bool bToInventory)
+{
+	if (!Window.IsOpen() || WindowId != Window.Id || !bCreative || Stats.Health <= 0.0f)
+	{
+		++NumRefused;
+		UE_LOG(LogMcPlayerData, Warning, TEXT("Refused a creative take of %s"), *Item.ToString());
+		SendWindowTo(Sequence);
+		return;
+	}
+	ApplyCreativeTake(Item, Count, bToInventory);
 	LastSequence = Sequence;
 	if (Window.OnChanged)
 	{

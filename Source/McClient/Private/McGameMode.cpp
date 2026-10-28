@@ -12,6 +12,10 @@
 #include "McWorldActor.h"
 #include "McWorldSave.h"
 #include "McLaunch.h"
+#include "McCommands.h"
+#include "McItemRegistry.h"
+#include "McLang.h"
+#include "McSurvival.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -362,6 +366,10 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
 			McPawn->SetFlying(bFlying);
+			if (const AMcWorldActor* Primary = GetPrimaryWorld())
+			{
+				McPawn->SetDifficulty(static_cast<McSurvival::EDifficulty>(Primary->GetLevel().Difficulty));
+			}
 			if (!RestoreSurvival(NewPlayer, *McPawn))
 			{
 				ApplyDefaultGameMode(*McPawn);
@@ -557,7 +565,368 @@ void AMcGameMode::SavePlayers() const
 void AMcGameMode::Logout(AController* Exiting)
 {
 	SavePlayer(Exiting);
+	const FString Name = GetPlayerName(Exiting);
 	Super::Logout(Exiting);
+	if (!Name.IsEmpty() && GetNetMode() != NM_Standalone)
+	{
+		BroadcastChat(McLang::Format(TEXT("multiplayer.player.left"), { Name }), 0xFFFF55);
+	}
+}
+
+void AMcGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+	// A world played alone says nothing; anywhere others can join, everyone is told (in yellow, as in the game).
+	if (GetNetMode() != NM_Standalone)
+	{
+		BroadcastChat(McLang::Format(TEXT("multiplayer.player.joined"), { GetPlayerName(NewPlayer) }), 0xFFFF55);
+	}
+}
+
+// ---- Chat ----
+
+namespace
+{
+	// What commands do, done to this game's players and worlds.
+	class FGameCommandTarget : public IMcCommandTarget
+	{
+	public:
+		explicit FGameCommandTarget(AMcGameMode& InMode) : Mode(InMode) {}
+
+		AMcPlayerPawn* FindPawn(const FString& Player) const
+		{
+			const APlayerController* Controller = Mode.FindPlayer(Player);
+			return Controller ? Cast<AMcPlayerPawn>(Controller->GetPawn()) : nullptr;
+		}
+
+		virtual TArray<FString> GetPlayerNames() const override
+		{
+			TArray<FString> Names;
+			for (FConstPlayerControllerIterator It = Mode.GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const FString Name = AMcGameMode::GetPlayerName(It->Get());
+				if (!Name.IsEmpty())
+				{
+					Names.Add(Name);
+				}
+			}
+			return Names;
+		}
+		virtual int32 GetMaxPlayers() const override
+		{
+			return Mode.GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetInt(TEXT("max-players"), 20) : 8;
+		}
+		virtual bool IsDedicated() const override { return Mode.GetNetMode() == NM_DedicatedServer; }
+		virtual void SendTo(const FString& Player, const FMcCommandReply& Line) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				Pawn->Data->TellOwner(Line.Text, Line.bError ? 0xFF5555 : 0xFFFFFF);
+			}
+			else if (Player.IsEmpty())
+			{
+				UE_LOG(LogMcClient, Log, TEXT("%s"), *Line.Text);
+			}
+		}
+		virtual void Broadcast(const FString& Line) override { Mode.BroadcastChat(Line); }
+
+		virtual bool IsCreative(const FString& Player) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			return Pawn && Pawn->Data && Pawn->Data->bCreative;
+		}
+		virtual void SetCreative(const FString& Player, bool bCreative) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				Pawn->Data->bCreative = bCreative;
+			}
+		}
+		virtual bool GetPosition(const FString& Player, FVector& OutFeet) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn)
+			{
+				return false;
+			}
+			OutFeet = Pawn->GetFeetPosition();
+			return true;
+		}
+		virtual void Teleport(const FString& Player, const FVector& Feet) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerTeleport(Feet, Pawn->GetLookYaw());
+			}
+		}
+		virtual void Kill(const FString& Player) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data || Pawn->IsServerDead())
+			{
+				return;
+			}
+			// /kill reaches creative players too, which nothing else hurts.
+			const bool bCreative = Pawn->Data->bCreative;
+			Pawn->Data->bCreative = false;
+			Pawn->ServerHurt(1.0e9f, McSurvival::EDamage::Void);
+			Pawn->Data->bCreative = bCreative;
+		}
+		virtual void Kick(const FString& Player, const FString& Reason) override
+		{
+			APlayerController* Controller = Mode.FindPlayer(Player);
+			if (Controller && Mode.GameSession)
+			{
+				Mode.GameSession->KickPlayer(Controller, FText::FromString(Reason));
+			}
+		}
+		virtual int32 GetMaxStackSize(FName Item) const override
+		{
+			FMcItemRegistry& Items = FMcItemRegistry::Get();
+			return Items.EnsureLoaded() && Items.Exists(Item) ? Items.GetMaxStackSize(Item) : 0;
+		}
+		virtual FString GetItemName(FName Item) const override
+		{
+			const FString Path = McCache::PathOf(Item.ToString());
+			const FString AsItem = McLang::Get(TEXT("item.minecraft.") + Path);
+			return AsItem.StartsWith(TEXT("item.")) ? McLang::Get(TEXT("block.minecraft.") + Path) : AsItem;
+		}
+		virtual void Give(const FString& Player, FName Item, int32 Count) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data)
+			{
+				return;
+			}
+			const int32 MaxStack = FMath::Max(1, GetMaxStackSize(Item));
+			while (Count > 0)
+			{
+				const int32 Now = FMath::Min(Count, MaxStack);
+				Count -= Now;
+				// What doesn't fit falls at the player's feet.
+				const FMcItemStack Left = Pawn->Data->Inventory->AddItem(FMcItemStack(Item, Now));
+				if (!Left.IsEmpty() && Pawn->Data->ServerDrop)
+				{
+					Pawn->Data->ServerDrop(Left);
+				}
+			}
+		}
+
+		virtual double GetDayTime() const override { return Mode.GetPrimaryWorld() ? Mode.GetPrimaryWorld()->GetDayTime() : 0.0; }
+		virtual void SetDayTime(double Ticks) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetDayTime(Ticks);
+			}
+		}
+		virtual double GetGameTime() const override { return Mode.GetPrimaryWorld() ? static_cast<double>(Mode.GetPrimaryWorld()->GetGameTime()) : 0.0; }
+		virtual void SetWeather(EMcWeather Weather, int32 DurationTicks) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetWeather(Weather, DurationTicks);
+			}
+		}
+		virtual int64 GetSeed() const override { return Mode.GetPrimaryWorld() ? Mode.GetPrimaryWorld()->GetLevel().Seed : 0; }
+		virtual int32 GetDifficulty() const override { return Mode.GetPrimaryWorld() ? Mode.GetPrimaryWorld()->GetLevel().Difficulty : 2; }
+		virtual void SetDifficulty(int32 Difficulty) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetDifficulty(Difficulty);
+			}
+			for (FConstPlayerControllerIterator It = Mode.GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr)
+				{
+					Pawn->SetDifficulty(static_cast<McSurvival::EDifficulty>(FMath::Clamp(Difficulty, 0, 3)));
+				}
+			}
+		}
+		virtual FString GetGameRule(const FString& Rule) const override
+		{
+			const FString* Value = Mode.GetPrimaryWorld() ? Mode.GetPrimaryWorld()->GetLevel().GameRules.Find(Rule) : nullptr;
+			return Value ? *Value : FString();
+		}
+		virtual void SetGameRule(const FString& Rule, const FString& Value) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetGameRule(Rule, Value);
+			}
+		}
+
+		virtual bool GetBlock(const FIntVector& Pos, FMcStateId& OutState) const override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+			if (!Blocks || !Blocks->HasChunk(FIntPoint(FMath::FloorToInt(Pos.X / 16.0), FMath::FloorToInt(Pos.Z / 16.0)))
+				|| Pos.Y < Blocks->GetDimension().MinY || Pos.Y >= Blocks->GetDimension().MinY + Blocks->GetDimension().Height)
+			{
+				return false;
+			}
+			OutState = Blocks->GetBlock(Pos);
+			return true;
+		}
+		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetBlock(Pos, State);
+			}
+		}
+		virtual bool Summon(FName Kind, const FVector& Feet) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
+		}
+
+		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				const FMcPlayerStats& Stats = Pawn->Data->Stats;
+				OutLevel = Stats.XpLevel;
+				OutPoints = McSurvival::GetTotalXp(Stats) - McSurvival::GetTotalXpForLevel(Stats.XpLevel);
+			}
+		}
+		virtual void AddXp(const FString& Player, int32 Amount, bool bLevels) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data)
+			{
+				return;
+			}
+			FMcPlayerStats& Stats = Pawn->Data->Stats;
+			if (bLevels)
+			{
+				Stats.XpLevel = FMath::Max(0, Stats.XpLevel + Amount);
+			}
+			else
+			{
+				McSurvival::AddXp(Stats, Amount);
+			}
+		}
+		virtual bool SetXp(const FString& Player, int32 Amount, bool bLevels) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data)
+			{
+				return false;
+			}
+			FMcPlayerStats& Stats = Pawn->Data->Stats;
+			if (bLevels)
+			{
+				Stats.XpLevel = FMath::Max(0, Amount);
+				return true;
+			}
+			const int32 InLevel = McSurvival::GetXpToNextLevel(Stats.XpLevel);
+			if (Amount > InLevel)
+			{
+				return false;
+			}
+			Stats.XpProgress = static_cast<float>(Amount) / InLevel;
+			return true;
+		}
+		virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data)
+			{
+				return 0;
+			}
+			int32 Found = 0;
+			const auto Take = [&](FMcItemStack& Stack)
+			{
+				if (Stack.IsEmpty() || (!Item.IsNone() && Stack.Item != Item))
+				{
+					return;
+				}
+				const int32 Count = MaxCount < 0 ? Stack.Count : FMath::Min(Stack.Count, MaxCount - Found);
+				if (bTest || MaxCount == 0)
+				{
+					Found += Stack.Count;
+					return;
+				}
+				Found += Count;
+				Stack.Count -= Count;
+				if (Stack.Count <= 0)
+				{
+					Stack = FMcItemStack();
+				}
+			};
+			for (const TSharedPtr<FMcContainer>& Container : { Pawn->Data->Inventory, Pawn->Data->Armor, Pawn->Data->Offhand })
+			{
+				for (FMcItemStack& Stack : Container->GetAll())
+				{
+					Take(Stack);
+				}
+			}
+			return Found;
+		}
+
+		virtual FMcServerAccess LoadAccess() const override { return FMcServerAccess::Load(); }
+		virtual void SaveAccess(const FMcServerAccess& Access) override { Access.Save(); }
+		virtual bool IsAllowlistOn() const override { return FMcServerProperties::Get().GetBool(TEXT("white-list")); }
+		virtual void SetAllowlistOn(bool bOn) override { FMcServerProperties::SetAndSave(TEXT("white-list"), bOn ? TEXT("true") : TEXT("false")); }
+
+	private:
+		AMcGameMode& Mode;
+	};
+}
+
+FString AMcGameMode::GetPlayerName(const AController* Controller)
+{
+	return Controller && Controller->PlayerState ? Controller->PlayerState->GetPlayerName() : FString();
+}
+
+APlayerController* AMcGameMode::FindPlayer(const FString& Name) const
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		if (GetPlayerName(It->Get()).Equals(Name, ESearchCase::IgnoreCase))
+		{
+			return It->Get();
+		}
+	}
+	return nullptr;
+}
+
+void AMcGameMode::BroadcastChat(const FString& Text, uint32 Rgb)
+{
+	UE_LOG(LogMcClient, Log, TEXT("[Chat] %s"), *Text);
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (Pawn && Pawn->Data)
+		{
+			Pawn->Data->TellOwner(Text, Rgb);
+		}
+	}
+}
+
+void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)
+{
+	FMcCommandSender Sender;
+	Sender.Name = GetPlayerName(From);
+	// The player playing a world of their own (or hosting it) can use every command, as with cheats on; on a dedicated
+	// server it is what ops.json says.
+	const bool bHost = GetNetMode() != NM_DedicatedServer && From && From->IsLocalController();
+	Sender.PermissionLevel = McCommands::GetPermissionLevel(Sender.Name, bHost, bHost ? FMcServerAccess() : FMcServerAccess::Load());
+	if (Text.StartsWith(TEXT("/")))
+	{
+		UE_LOG(LogMcClient, Log, TEXT("%s issued server command: %s"), *Sender.Name, *Text);
+	}
+	FGameCommandTarget Target(*this);
+	for (const FMcCommandReply& Reply : McCommands::HandleChat(Text, Sender, Target))
+	{
+		Target.SendTo(Sender.Name, Reply);
+	}
 }
 
 void AMcGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)

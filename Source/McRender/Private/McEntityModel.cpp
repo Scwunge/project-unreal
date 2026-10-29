@@ -71,6 +71,27 @@ namespace McEntityModel
 				{ bOwnLeftLimbs ? Box(16, 48, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize) : Box(0, 16, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize, 0.0f, true) }));
 		}
 
+		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a robe, arms folded across the chest and
+		// two legs. Layers 1 to 3 are the same head hat and robe cut from the biome type, profession and level pictures.
+		void AddVillager(FModel& Model, int32 NumLayers)
+		{
+			Model.TextureSize = FIntPoint(64, 64);
+			Model.BaseWidth = 0.6f;
+			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2) }));
+			Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 20, -4, -12, -3, 8, 12, 6), Box(0, 38, -4, -18, -3, 8, 18, 6, 0.5f) }));
+			Model.Parts.Add(Part(ERole::Static, FVector(0, 21, 1), { Box(44, 22, -8, -6, -2, 4, 8, 4), Box(44, 22, 4, -6, -2, 4, 8, 4, 0.0f, true), Box(40, 38, -4, -6, -2, 8, 4, 4) }, -0.75f));
+			Model.Parts.Add(Part(ERole::LegRight, FVector(-2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4) }));
+			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
+			for (int32 Layer = 1; Layer < NumLayers; ++Layer)
+			{
+				Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }, 0, 0, 0, 0, Layer));
+				if (Layer >= 2)
+				{
+					Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(0, 38, -4, -18, -3, 8, 18, 6, 0.51f) }, 0, 0, 0, 0, Layer));
+				}
+			}
+		}
+
 		TMap<FName, FModel> BuildModels()
 		{
 			TMap<FName, FModel> Models;
@@ -205,6 +226,14 @@ namespace McEntityModel
 				Slime.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -4, 0, -4, 8, 8, 8) }, 0, 0, 0, 0, 1));
 				Models.Add(Slime.Kind, Slime);
 			}
+			{
+				// The pictures are chosen per villager (GetVillagerTextures); these are the plains novice farmer's.
+				FModel Villager;
+				Villager.Kind = TEXT("minecraft:villager");
+				Villager.Textures = { TEXT("villager/villager.png"), TEXT("villager/type/plains.png"), TEXT("villager/profession/farmer.png"), TEXT("villager/profession_level/stone.png") };
+				AddVillager(Villager, 4);
+				Models.Add(Villager.Kind, Villager);
+			}
 			return Models;
 		}
 
@@ -279,6 +308,22 @@ namespace McEntityModel
 	{
 		static const TMap<FName, FModel> Models = BuildModels();
 		return Models.Find(Kind);
+	}
+
+	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
+	{
+		const FString Folder = bZombie ? TEXT("zombie_villager/") : TEXT("villager/");
+		const FString Type = Variant.IsNone() ? FString(TEXT("plains")) : Variant.ToString();
+		const FString Job = Profession.IsNone() ? FString() : McCache::PathOf(Profession.ToString());
+		// A jobless villager has no clothes picture, and a nitwit has clothes but no badge.
+		const bool bClothes = !Job.IsEmpty() && Job != TEXT("none");
+		static const TCHAR* Badges[] = { TEXT("stone"), TEXT("iron"), TEXT("gold"), TEXT("emerald"), TEXT("diamond") };
+		TArray<FString> Textures;
+		Textures.Add(Folder + (bZombie ? TEXT("zombie_villager.png") : TEXT("villager.png")));
+		Textures.Add(Folder + TEXT("type/") + Type + TEXT(".png"));
+		Textures.Add(bClothes ? Folder + TEXT("profession/") + Job + TEXT(".png") : FString());
+		Textures.Add(bClothes && Job != TEXT("nitwit") ? Folder + TEXT("profession_level/") + Badges[FMath::Clamp(Level, 1, 5) - 1] + TEXT(".png") : FString());
+		return Textures;
 	}
 
 	void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out)
@@ -591,6 +636,8 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Kind = InKind;
 	Item = InItem;
 	Count = InCount;
+	TextureOverrides.Reset();
+	LookKey = NAME_None;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	Model = bIsItem || bIsArrow ? nullptr : McEntityModel::Find(Kind);
@@ -600,6 +647,28 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bItemFailed = false;
 	bFlashing = false;
 	bDirty = true;
+}
+
+void UMcEntityModelComponent::SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby)
+{
+	const bool bVillager = Kind == TEXT("minecraft:villager");
+	const bool bZombie = Kind == TEXT("minecraft:zombie_villager");
+	if (!bVillager && !bZombie)
+	{
+		return;
+	}
+	const FName Key(*FString::Printf(TEXT("%s|%s|%d"), *InVariant.ToString(), *InProfession.ToString(), InLevel));
+	if (Key == LookKey)
+	{
+		return;
+	}
+	LookKey = Key;
+	TextureOverrides = McEntityModel::GetVillagerTextures(bZombie, InVariant, InProfession, InLevel);
+	// The layers are made again from the new pictures.
+	Materials.Reset();
+	ClearAllMeshSections();
+	NumSections = 0;
+	bFlashing = false;
 }
 
 bool UMcEntityModelComponent::HasModel() const
@@ -650,6 +719,10 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (TextureOverrides.IsValidIndex(Layer))
+	{
+		return TextureOverrides[Layer].IsEmpty() ? FString() : McCache::Asset(TEXT("textures/entity/") + TextureOverrides[Layer]);
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

@@ -2,6 +2,7 @@
 #include "McChunk.h"
 #include "McEntityManager.h"
 #include "McMob.h"
+#include "McVillager.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
 #include "McEntityModel.h"
@@ -48,6 +49,10 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, ItemCount);
 	DOREPLIFETIME(AMcEntityActor, HurtCount);
 	DOREPLIFETIME(AMcEntityActor, Swelling);
+	DOREPLIFETIME(AMcEntityActor, Variant);
+	DOREPLIFETIME(AMcEntityActor, Profession);
+	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
+	DOREPLIFETIME(AMcEntityActor, bBaby);
 }
 
 void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
@@ -70,6 +75,14 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
 		// The game's swell runs over the fuse less 2 ticks.
+		if (Kind == FMcVillager::StaticType())
+		{
+			const FMcVillager& Villager = static_cast<const FMcVillager&>(Entity);
+			Variant = Villager.GetVariant();
+			Profession = Villager.GetProfession();
+			VillagerLevel = Villager.GetLevel();
+			bBaby = Villager.IsBaby();
+		}
 		Swelling = Mob.Type.bSwells ? FMath::Clamp(static_cast<float>(Mob.SwellTicks) / (FMcMob::FuseTicks - 2), 0.0f, 1.0f) : 0.0f;
 	}
 	ApplyLook();

@@ -100,6 +100,10 @@ namespace McEntityModel
 		bool bFlash = false;
 	};
 
+	// The pictures a villager (or zombie villager) is drawn from, by layer: the base, the biome type's hat, the
+	// profession's clothes and the level's badge (the last only for a profession that has one). Under textures/entity/.
+	MCRENDER_API TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level);
+
 	// The mesh of one layer of the model in the pose.
 	MCRENDER_API void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out);
 
@@ -156,6 +160,9 @@ public:
 	void SetHitboxWidth(float InWidth);
 	// A creeper's fuse, 0 (not lit) to 1 (about to go): it swells, shakes and flashes.
 	void SetSwelling(float InSwelling);
+	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
+	// other kinds.
+	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -177,6 +184,9 @@ private:
 	FName Kind;
 	FName Item;
 	int32 Count = 0;
+	// The pictures that stand in for the model's own, for the layers they name (a villager's look).
+	TArray<FString> TextureOverrides;
+	FName LookKey;
 	const McEntityModel::FModel* Model = nullptr;
 	// For an item: its picture's V extent, once it is loaded.
 	float ItemVMax = 1.0f;

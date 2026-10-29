@@ -88,6 +88,9 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Bee = Add(TEXT("minecraft:bee"), 0.7f, 0.6f, 10.f, 0.3f, 2.f, 16.f, false, false);
 		Bee.bNeutral = true;
 		Bee.bFlies = true;
+
+		// Villagers walk about at 0.5 of a 0.5 speed attribute and run from what hurts them.
+		Add(TEXT("minecraft:villager"), 0.6f, 1.95f, 20.f, 0.25f, 0.f, 0.f, true, false);
 	}
 	return Types;
 }

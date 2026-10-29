@@ -47,6 +47,15 @@ public:
 	// A creeper's fuse, 0 (not lit) to 1 (about to go): clients swell it and flash it white.
 	UPROPERTY(Replicated)
 	float Swelling = 0.0f;
+	// A villager's look: the biome type ("plains"), the profession ("minecraft:farmer"), the level and whether it is a baby.
+	UPROPERTY(Replicated)
+	FName Variant;
+	UPROPERTY(Replicated)
+	FName Profession;
+	UPROPERTY(Replicated)
+	int32 VillagerLevel = 1;
+	UPROPERTY(Replicated)
+	bool bBaby = false;
 
 protected:
 	UFUNCTION()

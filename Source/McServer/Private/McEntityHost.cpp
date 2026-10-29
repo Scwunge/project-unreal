@@ -10,6 +10,7 @@
 #include "McLoot.h"
 #include "McMob.h"
 #include "McRandom.h"
+#include "McVillager.h"
 #include "McServer.h"
 #include "Engine/World.h"
 #include "Serialization/MemoryReader.h"
@@ -246,7 +247,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	{
 		return nullptr;
 	}
-	FMcMob* Mob = new FMcMob(*Type);
+	FMcMob* Mob = nullptr;
+	if (Kind == FMcVillager::StaticType())
+	{
+		FMcVillager* Villager = new FMcVillager(*Type);
+		Villager->SetVariant(GetVillagerVariant(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))));
+		Mob = Villager;
+	}
+	else
+	{
+		Mob = new FMcMob(*Type);
+	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
 	Mob->OnDeath = [this](FMcMob& Dead)
@@ -276,6 +287,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Manager.Add(TUniquePtr<FMcEntity>(Mob));
 	return Mob;
+}
+
+FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const
+{
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	const FMcChunk* Chunk = World.FindChunk(FIntPoint(McCoords::BlockToChunk(Cell.X), McCoords::BlockToChunk(Cell.Z)));
+	if (!Biomes.IsLoaded() || !Chunk)
+	{
+		return TEXT("plains");
+	}
+	return McVillager::GetVariantOfBiome(Biomes.GetName(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15)));
 }
 
 void FMcEntityHost::SplitSlime(FMcMob& Dead)
@@ -666,7 +688,14 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					const int32 Z = FMath::FloorToInt32(Players[0].Z + FMath::Sin(Angle) * 5.0);
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
-						SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						if (Spawned && Spawned->GetType() == FMcVillager::StaticType())
+						{
+							// A ring of villagers shows every biome type, and every fifth one is a baby.
+							FMcVillager& Villager = static_cast<FMcVillager&>(*Spawned);
+							Villager.SetVariant(McVillager::GetVariants()[Index % McVillager::GetVariants().Num()]);
+							Villager.SetBaby(Index % 5 == 4);
+						}
 					}
 				}
 			}

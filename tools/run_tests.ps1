@@ -31,7 +31,7 @@ param(
 )
 
 $EngineRoot = 'E:\Epic Games\UE_5.8\Engine'
-$Project = 'H:\Documents\mc-unreal\McClient.uproject'
+$Project = Join-Path (Split-Path $PSScriptRoot) 'McClient.uproject'
 $BuildBat = Join-Path $EngineRoot 'Build\BatchFiles\Build.bat'
 $EditorCmd = Join-Path $EngineRoot 'Binaries\Win64\UnrealEditor-Cmd.exe'
 $LogPath = Join-Path (Split-Path $Project) 'Saved\Logs\run_tests.log'

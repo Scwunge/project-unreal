@@ -37,8 +37,8 @@ something is missing, it tells you what to do (nearly always: press Play on
 Playing alone
 -------------
 Singleplayer -> Create New World -> Create. Move with WASD, Space to jump,
-E for the inventory, Esc for the menu. Worlds are saved in this folder under
-Windows\McClient\Saved\Worlds.
+E for the inventory, Esc for the menu. Worlds are saved in
+%LOCALAPPDATA%\McClient\Saved\Worlds (not in this folder).
 
 
 Hosting a world for a friend

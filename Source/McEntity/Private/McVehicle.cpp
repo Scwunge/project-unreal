@@ -111,9 +111,9 @@ bool FMcVehicle::Serialize(FArchive& Ar)
 
 TUniquePtr<FMcVehicle> FMcVehicle::Create(FName Type)
 {
-	if (Type == FMcMinecartEntity::StaticType())
+	if (const TOptional<FMcMinecartEntity::EVariant> Variant = FMcMinecartEntity::ParseType(Type))
 	{
-		return MakeUnique<FMcMinecartEntity>();
+		return MakeUnique<FMcMinecartEntity>(Variant.GetValue());
 	}
 	if (Type == FMcBoatEntity::StaticType() || Type == FMcBoatEntity::StaticChestType())
 	{
@@ -125,9 +125,9 @@ TUniquePtr<FMcVehicle> FMcVehicle::Create(FName Type)
 
 TUniquePtr<FMcVehicle> FMcVehicle::CreateFromItem(FName Item)
 {
-	if (Item == TEXT("minecraft:minecart"))
+	if (const TOptional<FMcMinecartEntity::EVariant> Variant = FMcMinecartEntity::ParseType(Item))
 	{
-		return MakeUnique<FMcMinecartEntity>();
+		return MakeUnique<FMcMinecartEntity>(Variant.GetValue());
 	}
 	FString Name = Item.ToString();
 	if (!Name.RemoveFromStart(TEXT("minecraft:")))
@@ -173,11 +173,61 @@ const FName& FMcMinecartEntity::StaticType()
 	return Name;
 }
 
-FMcMinecartEntity::FMcMinecartEntity()
+namespace
+{
+	const TCHAR* const CartNames[] = { TEXT("minecraft:minecart"), TEXT("minecraft:chest_minecart"), TEXT("minecraft:furnace_minecart"),
+		TEXT("minecraft:hopper_minecart"), TEXT("minecraft:tnt_minecart") };
+}
+
+FName FMcMinecartEntity::GetTypeName(EVariant Variant)
+{
+	return FName(CartNames[static_cast<int32>(Variant)]);
+}
+
+TOptional<FMcMinecartEntity::EVariant> FMcMinecartEntity::ParseType(FName Name)
+{
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(CartNames); ++Index)
+	{
+		if (Name == CartNames[Index])
+		{
+			return static_cast<EVariant>(Index);
+		}
+	}
+	return {};
+}
+
+FMcMinecartEntity::FMcMinecartEntity(EVariant InVariant)
+	: Variant(InVariant)
 {
 	Body.Width = 0.98f;
 	Body.Height = 0.7f;
 	Body.StepHeight = 0.0f;
+}
+
+bool FMcMinecartEntity::Serialize(FArchive& Ar)
+{
+	return FMcVehicle::Serialize(Ar) && (Ar << Fuel << PushDirection.X << PushDirection.Y << Fuse, !Ar.IsError());
+}
+
+FMcVehicle::EUse FMcMinecartEntity::UseItem(FName Item, const FVector& From)
+{
+	if (Variant == EVariant::Furnace && (Item == TEXT("minecraft:coal") || Item == TEXT("minecraft:charcoal")))
+	{
+		// Fed, it pushes away from whoever fed it.
+		Fuel = FMath::Min(Fuel + FuelPerItem, 32000);
+		const FVector2D Away(Body.Position.X - From.X, Body.Position.Z - From.Z);
+		if (Away.SizeSquared() > 1e-6)
+		{
+			PushDirection = Away.GetSafeNormal();
+		}
+		return EUse::Consumed;
+	}
+	if (Variant == EVariant::Tnt && Item == TEXT("minecraft:flint_and_steel") && Fuse < 0)
+	{
+		Fuse = FuseTicks;
+		return EUse::Kept;
+	}
+	return EUse::None;
 }
 
 bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World)
@@ -266,15 +316,30 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	}
 	if (Block == TEXT("minecraft:activator_rail") && bPowered)
 	{
+		// A powered activator rail throws the rider off, lights a TNT cart and stops a hopper cart picking things up.
 		bEject = HasRider();
+		bHopperLocked = true;
+		if (Variant == EVariant::Tnt && Fuse < 0)
+		{
+			Fuse = FuseTicks;
+		}
+	}
+
+	// A furnace cart with fuel drives itself the way it was pushed.
+	const bool bDriving = Variant == EVariant::Furnace && Fuel > 0;
+	if (bDriving)
+	{
+		const double Heading = Velocity.SizeSquared() > 1e-4 ? FVector2D::DotProduct(Velocity, Along) : FVector2D::DotProduct(PushDirection, Along);
+		Velocity += Along * (Heading >= 0.0 ? 0.04 : -0.04);
 	}
 
 	// Friction, and the speed limit.
 	Velocity *= HasRider() ? 0.997 : 0.96;
 	const double Fast = Velocity.Size();
-	if (Fast > MaxSpeed)
+	const double Cap = bDriving ? FurnaceSpeed : MaxSpeed;
+	if (Fast > Cap)
 	{
-		Velocity *= MaxSpeed / Fast;
+		Velocity *= Cap / Fast;
 	}
 
 	// Along the line to where it gets to, and if something is in the way, stop.
@@ -318,6 +383,7 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 	const TOptional<FIntVector> PreviousDetector = LastDetector;
 	LastDetector.Reset();
 	OnRail.Reset();
+	bHopperLocked = false;
 	if (!TickOnRail(Manager, World))
 	{
 		// Off the rails: it falls, and drags along the ground.
@@ -331,6 +397,53 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 	if (PreviousDetector.IsSet() && (!LastDetector.IsSet() || LastDetector.GetValue() != PreviousDetector.GetValue()))
 	{
 		Manager.SetDetector(PreviousDetector.GetValue(), false);
+	}
+	TickVariant(Manager);
+}
+
+void FMcMinecartEntity::TickVariant(FMcEntityManager& Manager)
+{
+	switch (Variant)
+	{
+	case EVariant::Furnace:
+		Fuel = FMath::Max(0, Fuel - 1);
+		break;
+	case EVariant::Tnt:
+		if (Fuse >= 0 && --Fuse < 0)
+		{
+			// It goes off: stronger the faster it was going (4 to 5.5).
+			const double Speed = FVector2D(Body.Velocity.X, Body.Velocity.Z).Size();
+			Manager.Explode(Body.Position + FVector(0.0, 0.5, 0.0), 4.0f + static_cast<float>(FMath::Min(Speed / MaxSpeed, 1.0)) * 1.5f);
+			bRemoved = true;
+		}
+		break;
+	case EVariant::Hopper:
+		if (!bHopperLocked && Age % 4 == 0)
+		{
+			// It takes in the items lying in it or just over it.
+			TArray<FMcEntity*> Near;
+			Manager.FindInBox(FBox(Body.Position + FVector(-0.49, 0.0, -0.49), Body.Position + FVector(0.49, 1.2, 0.49)), Near);
+			for (FMcEntity* Other : Near)
+			{
+				if (Other->bRemoved || Other->GetType() != FMcItemEntity::StaticType())
+				{
+					continue;
+				}
+				FMcItemEntity& Item = static_cast<FMcItemEntity&>(*Other);
+				const FMcItemStack Left = GetInventory()->AddItem(Item.Stack);
+				if (Left.IsEmpty())
+				{
+					Item.bRemoved = true;
+				}
+				else
+				{
+					Item.Stack = Left;
+				}
+			}
+		}
+		break;
+	default:
+		break;
 	}
 }
 
@@ -346,6 +459,23 @@ const FName& FMcBoatEntity::StaticChestType()
 {
 	static const FName Name(TEXT("minecraft:chest_boat"));
 	return Name;
+}
+
+const FName& FMcBoatEntity::StaticRaftType()
+{
+	static const FName Name(TEXT("minecraft:bamboo_raft"));
+	return Name;
+}
+
+const FName& FMcBoatEntity::StaticChestRaftType()
+{
+	static const FName Name(TEXT("minecraft:bamboo_chest_raft"));
+	return Name;
+}
+
+bool FMcBoatEntity::IsBoatType(FName Type)
+{
+	return Type == StaticType() || Type == StaticChestType() || Type == StaticRaftType() || Type == StaticChestRaftType();
 }
 
 const TArray<FName>& FMcBoatEntity::GetWoods()

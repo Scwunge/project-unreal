@@ -38,6 +38,12 @@ public:
 	// What it carries: a chest cart or boat has 27 slots, a hopper cart 5; the rest none. Made when first asked for.
 	virtual int32 GetInventorySlots() const { return 0; }
 	const TSharedPtr<FMcContainer>& GetInventory();
+	// Whether a player can sit in it (not in a chest, furnace, hopper or TNT cart).
+	virtual bool CanRide() const { return true; }
+	// A player clicks it holding Item, standing at From: what that does (fuel for a furnace cart, flame for a TNT cart).
+	// Returns how it was used: nothing, or the item used up, or used and kept.
+	enum class EUse : uint8 { None, Consumed, Kept };
+	virtual EUse UseItem(FName Item, const FVector& From) { return EUse::None; }
 	// A click opens the inventory rather than getting in: always for a cart with storage, for a chest boat when sneaking.
 	virtual bool OpensOnUse(bool bSneaking) const { return GetInventorySlots() > 0; }
 	// Throws what it carries out around it (when it breaks).
@@ -87,12 +93,36 @@ protected:
 class MCENTITY_API FMcMinecartEntity final : public FMcVehicle
 {
 public:
-	FMcMinecartEntity();
+	// What it carries: nothing, a chest, a furnace that pushes it, a hopper that picks up what lies in it, or TNT.
+	enum class EVariant : uint8 { Plain, Chest, Furnace, Hopper, Tnt };
+	explicit FMcMinecartEntity(EVariant InVariant = EVariant::Plain);
+	// The plain minecart's type; the others have GetTypeName.
 	static const FName& StaticType();
-	virtual FName GetType() const override { return StaticType(); }
+	// "minecraft:minecart", "minecraft:chest_minecart" and so on: the entity type and the item are the same name.
+	static FName GetTypeName(EVariant Variant);
+	static TOptional<EVariant> ParseType(FName Name);
+	virtual FName GetType() const override { return GetTypeName(Variant); }
 	virtual void Tick(FMcEntityManager& Manager) override;
-	virtual FName GetItemName() const override { return TEXT("minecraft:minecart"); }
+	virtual bool Serialize(FArchive& Ar) override;
+	virtual FName GetItemName() const override { return GetTypeName(Variant); }
 	virtual float GetWearPerDamage() const override { return 1000.0f; }
+	virtual int32 GetInventorySlots() const override { return Variant == EVariant::Chest ? 27 : Variant == EVariant::Hopper ? 5 : 0; }
+	virtual FString GetInventoryTitle() const override { return Variant == EVariant::Hopper ? TEXT("Minecart with Hopper") : TEXT("Minecart with Chest"); }
+	virtual bool CanRide() const override { return Variant == EVariant::Plain; }
+	virtual EUse UseItem(FName Item, const FVector& From) override;
+
+	const EVariant Variant;
+	// A furnace cart: ticks of fuel left, and which way it was pushed (a unit vector in x and z).
+	int32 Fuel = 0;
+	FVector2D PushDirection = FVector2D::ZeroVector;
+	// A TNT cart: ticks until it goes off, or -1 while it isn't lit.
+	int32 Fuse = -1;
+	// A hopper cart on a powered activator rail picks nothing up.
+	bool bHopperLocked = false;
+	static constexpr int32 FuseTicks = 80;
+	static constexpr int32 FuelPerItem = 3600;
+	// How fast a furnace cart drives itself, blocks a tick.
+	static constexpr double FurnaceSpeed = 0.2;
 	virtual bool RunsOnRails() const override { return true; }
 	virtual FVector GetSeat() const override { return Body.Position + FVector(0.0, 0.0, 0.0); }
 
@@ -112,6 +142,8 @@ public:
 private:
 	// One tick of running along a track. Returns false if the cart isn't on one.
 	bool TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World);
+	// What the cart carries does each tick: fuel burns, a fuse runs down, a hopper takes in what lies in it.
+	void TickVariant(FMcEntityManager& Manager);
 	TOptional<FIntVector> LastDetector;
 };
 
@@ -121,7 +153,15 @@ public:
 	explicit FMcBoatEntity(bool bInChest = false);
 	static const FName& StaticType();
 	static const FName& StaticChestType();
-	virtual FName GetType() const override { return bChest ? StaticChestType() : StaticType(); }
+	// The bamboo raft is its own kind of entity, with a model of its own: a flat deck, no sides.
+	static const FName& StaticRaftType();
+	static const FName& StaticChestRaftType();
+	static bool IsBoatType(FName Type);
+	virtual FName GetType() const override
+	{
+		const bool bRaft = WoodName == TEXT("minecraft:bamboo");
+		return bChest ? (bRaft ? StaticChestRaftType() : StaticChestType()) : (bRaft ? StaticRaftType() : StaticType());
+	}
 	virtual int32 GetInventorySlots() const override { return bChest ? 27 : 0; }
 	virtual FString GetInventoryTitle() const override { return TEXT("Chest Boat"); }
 	virtual bool OpensOnUse(bool bSneaking) const override { return bChest && bSneaking; }

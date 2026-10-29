@@ -206,17 +206,28 @@ namespace McEntityModel
 				Models.Add(Slime.Kind, Slime);
 			}
 			{
-				// A minecart: a floor and four walls, the long way along the rail (z).
-				FModel Cart;
-				Cart.Kind = TEXT("minecraft:minecart");
-				Cart.TextureSize = FIntPoint(64, 32);
-				Cart.Textures = { TEXT("minecart/minecart.png") };
-				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 0), { Box(0, 10, -10, -8, -1, 20, 16, 2) }, Flat, HALF_PI));
-				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
-				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, -9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
-				Cart.Parts.Add(Part(ERole::Static, FVector(7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
-				Cart.Parts.Add(Part(ERole::Static, FVector(-7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
-				Models.Add(Cart.Kind, Cart);
+				// A minecart: a floor and four walls, the long way along the rail (z). The ones with a load (a chest, a
+				// furnace, a hopper, TNT) have a block standing in it: drawn here as a plain box cut from the cart's own
+				// picture, as the blocks' textures can't share its picture.
+				const struct { const TCHAR* Kind; int32 Height; } Carts[] = { { TEXT("minecraft:minecart"), 0 }, { TEXT("minecraft:chest_minecart"), 8 },
+					{ TEXT("minecraft:furnace_minecart"), 9 }, { TEXT("minecraft:hopper_minecart"), 6 }, { TEXT("minecraft:tnt_minecart"), 10 } };
+				for (const auto& Variant : Carts)
+				{
+					FModel Cart;
+					Cart.Kind = Variant.Kind;
+					Cart.TextureSize = FIntPoint(64, 32);
+					Cart.Textures = { TEXT("minecart/minecart.png") };
+					Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 0), { Box(0, 10, -10, -8, -1, 20, 16, 2) }, Flat, HALF_PI));
+					Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
+					Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, -9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
+					Cart.Parts.Add(Part(ERole::Static, FVector(7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
+					Cart.Parts.Add(Part(ERole::Static, FVector(-7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
+					if (Variant.Height > 0)
+					{
+						Cart.Parts.Add(Part(ERole::Static, FVector(0, 4, 0), { Box(0, 10, -6, 0, -6, 12, Variant.Height, 12) }));
+					}
+					Models.Add(Cart.Kind, Cart);
+				}
 			}
 			{
 				// A boat: a hull floor and four sides (the paddles are left out). The wood is chosen by the texture.
@@ -238,6 +249,20 @@ namespace McEntityModel
 						Boat.Parts.Add(Part(ERole::Static, FVector(0, 5, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
 					}
 					Models.Add(Boat.Kind, Boat);
+				}
+				// The bamboo raft is one flat deck (28 by 20, 4 thick), with the chest on it for the chest raft.
+				for (const bool bChest : { false, true })
+				{
+					FModel Raft;
+					Raft.Kind = bChest ? TEXT("minecraft:bamboo_chest_raft") : TEXT("minecraft:bamboo_raft");
+					Raft.TextureSize = FIntPoint(128, bChest ? 128 : 64);
+					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
+					Raft.Parts.Add(Part(ERole::Static, FVector(0, 2, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
+					if (bChest)
+					{
+						Raft.Parts.Add(Part(ERole::Static, FVector(0, 5, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
+					}
+					Models.Add(Raft.Kind, Raft);
 				}
 			}
 			return Models;
@@ -740,11 +765,12 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		}
 		return McCache::Asset(TEXT("textures/entity/banner/") + (Layer < 2 ? FString(TEXT("base")) : BannerLayers.IsValidIndex(Layer - 2) ? BannerLayers[Layer - 2].Pattern : FString(TEXT("base"))) + TEXT(".png"));
 	}
-	if (Kind == TEXT("minecraft:boat") || Kind == TEXT("minecraft:chest_boat"))
+	if (Kind == TEXT("minecraft:boat") || Kind == TEXT("minecraft:chest_boat") || Kind == TEXT("minecraft:bamboo_raft") || Kind == TEXT("minecraft:bamboo_chest_raft"))
 	{
 		FString Wood = Item.IsNone() ? FString(TEXT("oak")) : Item.ToString();
 		Wood.RemoveFromStart(TEXT("minecraft:"));
-		return McCache::Asset((Kind == TEXT("minecraft:chest_boat") ? TEXT("textures/entity/chest_boat/") : TEXT("textures/entity/boat/")) + Wood + TEXT(".png"));
+		const bool bChest = Kind == TEXT("minecraft:chest_boat") || Kind == TEXT("minecraft:bamboo_chest_raft");
+		return McCache::Asset((bChest ? TEXT("textures/entity/chest_boat/") : TEXT("textures/entity/boat/")) + Wood + TEXT(".png"));
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

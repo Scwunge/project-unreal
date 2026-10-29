@@ -216,6 +216,10 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("a plain boat has no storage"), Plain->GetInventorySlots(), 0);
 			TestEqual(TEXT("a chest boat has 27 slots"), WithChest->GetInventorySlots(), 27);
 			TestTrue(TEXT("the item's name is a type too"), FMcVehicle::IsVehicleType(Item) && FMcVehicle::IsVehicleType(ChestItem));
+			// The bamboo raft is a kind of its own (its own model); the other woods share the boat's.
+			TestEqual(TEXT("which type it is"), Plain->GetType(), bRaft ? FMcBoatEntity::StaticRaftType() : FMcBoatEntity::StaticType());
+			TestEqual(TEXT("and the chest one"), WithChest->GetType(), bRaft ? FMcBoatEntity::StaticChestRaftType() : FMcBoatEntity::StaticChestType());
+			TestTrue(TEXT("a saved one is made again from its type"), FMcVehicle::Create(Plain->GetType()).IsValid() && FMcVehicle::Create(WithChest->GetType())->GetInventorySlots() == 27);
 		}
 		TestFalse(TEXT("a bamboo boat is not a thing"), FMcVehicle::IsVehicleItem(TEXT("minecraft:bamboo_boat")));
 		TestFalse(TEXT("nor is an oak raft"), FMcVehicle::IsVehicleItem(TEXT("minecraft:oak_raft")));
@@ -263,6 +267,158 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a broken chest boat drops its boat and what it carried"), Items >= 2 && bApples && bBoat);
 		Manager.Tick();
 		TestTrue(TEXT("only a sneaking click opens a chest boat"), Chest.OpensOnUse(true) && !Chest.OpensOnUse(false));
+	}
+
+	// ---- Carts with a load ----
+	{
+		const TCHAR* Names[] = { TEXT("chest_minecart"), TEXT("furnace_minecart"), TEXT("hopper_minecart"), TEXT("tnt_minecart") };
+		const int32 Slots[] = { 27, 0, 5, 0 };
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			const FName Item(*(FString(TEXT("minecraft:")) + Names[Index]));
+			TUniquePtr<FMcVehicle> Cart = FMcVehicle::CreateFromItem(Item);
+			if (!TestTrue(*FString::Printf(TEXT("%s places a cart"), *Item.ToString()), Cart.IsValid() && Cart->RunsOnRails()))
+			{
+				continue;
+			}
+			TestEqual(TEXT("it drops itself"), Cart->GetItemName(), Item);
+			TestEqual(TEXT("its type is its name"), Cart->GetType(), Item);
+			TestEqual(TEXT("it carries what its kind does"), Cart->GetInventorySlots(), Slots[Index]);
+			TestFalse(TEXT("nobody can sit in it"), Cart->CanRide());
+			TestTrue(TEXT("the type is a vehicle's"), FMcVehicle::IsVehicleType(Item));
+		}
+		TestTrue(TEXT("a plain cart can be sat in"), FMcVehicle::CreateFromItem(TEXT("minecraft:minecart"))->CanRide());
+		TestFalse(TEXT("a command block minecart is not made"), FMcVehicle::IsVehicleItem(TEXT("minecraft:command_block_minecart")));
+
+		for (int32 X = 0; X <= 12; ++X)
+		{
+			World.SetBlock(FIntVector(X, 1, 24), State(TEXT("minecraft:rail[shape=east_west]")));
+			World.SetBlock(FIntVector(X, 1, 26), State(TEXT("minecraft:rail[shape=east_west]")));
+			World.SetBlock(FIntVector(X, 1, 28), State(TEXT("minecraft:activator_rail[powered=true,shape=east_west]")));
+			World.SetBlock(FIntVector(X, 1, -12), State(TEXT("minecraft:rail[shape=east_west]")));
+		}
+
+		// A chest cart keeps what it is given through a save, and spills it when it breaks.
+		{
+			FMcMinecartEntity Chest(FMcMinecartEntity::EVariant::Chest);
+			Chest.GetInventory()->Set(0, FMcItemStack(TEXT("minecraft:gold_ingot"), 7));
+			TArray<uint8> Bytes;
+			FMemoryWriter Writer(Bytes);
+			Chest.Serialize(Writer);
+			TUniquePtr<FMcVehicle> Loaded = FMcVehicle::Create(TEXT("minecraft:chest_minecart"));
+			FMemoryReader Reader(Bytes);
+			TestTrue(TEXT("a chest cart reads back"), Loaded.IsValid() && Loaded->Serialize(Reader));
+			TestEqual(TEXT("with its gold"), Loaded->GetInventory()->Get(0).Count, 7);
+			TestTrue(TEXT("a click opens it, sneaking or not"), Chest.OpensOnUse(false) && Chest.OpensOnUse(true));
+
+			FMcMinecartEntity* Breaking = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Chest);
+			Breaking->Body.Position = FVector(5.5, 1.0625, 24.5);
+			Breaking->GetInventory()->Set(1, FMcItemStack(TEXT("minecraft:apple"), 3));
+			Manager.Add(TUniquePtr<FMcEntity>(Breaking));
+			Breaking->OnAttacked(1.0f, false);
+			bool bApples = false, bCart = false;
+			for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+			{
+				if (Entity->GetType() == FMcItemEntity::StaticType())
+				{
+					const FMcItemEntity& Dropped = static_cast<const FMcItemEntity&>(*Entity);
+					bApples |= Dropped.Stack.Item == TEXT("minecraft:apple") && Dropped.Stack.Count == 3;
+					bCart |= Dropped.Stack.Item == TEXT("minecraft:chest_minecart");
+				}
+			}
+			TestTrue(TEXT("breaking it leaves the cart and its things"), bApples && bCart);
+			Manager.Tick();
+		}
+
+		// A furnace cart takes coal, and with it drives itself along the rail, away from the one who fed it, until it
+		// is out of fuel.
+		{
+			FMcMinecartEntity* Furnace = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Furnace);
+			Furnace->Body.Position = FVector(4.5, 1.0625, 26.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Furnace));
+			TestTrue(TEXT("a stick is no fuel"), Furnace->UseItem(TEXT("minecraft:stick"), FVector(2.5, 1.0, 26.5)) == FMcVehicle::EUse::None);
+			for (int32 Tick = 0; Tick < 5; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestTrue(TEXT("unfuelled, it stays put"), FMath::Abs(Furnace->Body.Position.X - 4.5) < 0.01);
+			TestTrue(TEXT("coal is used up"), Furnace->UseItem(TEXT("minecraft:coal"), FVector(2.5, 1.0, 26.5)) == FMcVehicle::EUse::Consumed);
+			TestEqual(TEXT("for three minutes"), Furnace->Fuel, FMcMinecartEntity::FuelPerItem);
+			for (int32 Tick = 0; Tick < 40; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestTrue(TEXT("it drives away from the player"), Furnace->Body.Position.X > 7.0);
+			TestTrue(TEXT("but no faster than 0.2 a tick"), Furnace->Body.Velocity.Size() <= FMcMinecartEntity::FurnaceSpeed + 0.001);
+			Furnace->Fuel = 1;
+			Furnace->Body.Position = FVector(1.5, 1.0625, 26.5);
+			Furnace->Body.Velocity = FVector::ZeroVector;
+			for (int32 Tick = 0; Tick < 40; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(TEXT("fuel burns out"), Furnace->Fuel, 0);
+			const double Stopped = Furnace->Body.Position.X;
+			for (int32 Tick = 0; Tick < 20; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestTrue(TEXT("and then it coasts to a stop"), FMath::Abs(Furnace->Body.Position.X - Stopped) < 0.5);
+			Furnace->bRemoved = true;
+			Manager.Tick();
+		}
+
+		// A TNT cart lit with flint and steel, or by a powered activator rail, goes off after four seconds.
+		{
+			FMcMinecartEntity* Tnt = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Tnt);
+			Tnt->Body.Position = FVector(4.5, 1.0625, -11.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Tnt));
+			for (int32 Tick = 0; Tick < 10; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(TEXT("an unlit TNT cart is quiet"), Tnt->Fuse, -1);
+			TestTrue(TEXT("flint and steel lights it and is kept"), Tnt->UseItem(TEXT("minecraft:flint_and_steel"), FVector(2.5, 1.0, -11.5)) == FMcVehicle::EUse::Kept);
+			TestEqual(TEXT("with a four second fuse"), Tnt->Fuse, FMcMinecartEntity::FuseTicks);
+			for (int32 Tick = 0; Tick < FMcMinecartEntity::FuseTicks - 1; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestFalse(TEXT("it has not gone off yet"), Tnt->bRemoved);
+			Manager.Tick();
+			Manager.Tick();
+			TestTrue(TEXT("then it explodes"), Tnt->bRemoved);
+			Manager.Tick();
+
+			FMcMinecartEntity* OnActivator = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Tnt);
+			OnActivator->Body.Position = FVector(4.5, 1.0625, 28.5);
+			Manager.Add(TUniquePtr<FMcEntity>(OnActivator));
+			Manager.Tick();
+			TestTrue(TEXT("a powered activator rail lights a TNT cart"), OnActivator->Fuse >= 0);
+			OnActivator->bRemoved = true;
+			Manager.Tick();
+		}
+
+		// A hopper cart takes in the items lying in it, unless it is on a powered activator rail.
+		{
+			FMcMinecartEntity* Hopper = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Hopper);
+			Hopper->Body.Position = FVector(4.5, 1.0625, 24.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Hopper));
+			Manager.DropItem(FVector(4.5, 1.3, 24.5), FMcItemStack(TEXT("minecraft:cobblestone"), 5), 0).Body.Velocity = FVector::ZeroVector;
+			FMcMinecartEntity* Locked = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Hopper);
+			Locked->Body.Position = FVector(8.5, 1.0625, 28.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Locked));
+			Manager.DropItem(FVector(8.5, 1.3, 28.5), FMcItemStack(TEXT("minecraft:cobblestone"), 5), 0).Body.Velocity = FVector::ZeroVector;
+			for (int32 Tick = 0; Tick < 12; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(TEXT("a hopper cart picks the stack up"), Hopper->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 5);
+			TestEqual(TEXT("one on a powered activator rail does not"), Locked->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 0);
+			Hopper->bRemoved = true;
+			Locked->bRemoved = true;
+			Manager.Tick();
+		}
 	}
 	return true;
 }

@@ -1,0 +1,8 @@
+{
+  "description": "A minecart of each kind on a rail line on classic_flat (surface y=-61): plain, chest, furnace, hopper and TNT. Summon them with -McChat (see PLAN.md, Vehicles).",
+  "camera": [6.5, -57.5, -5.0, 0.0, 22.0],
+  "blocks": [
+    { "from": [0, -60, 3], "to": [13, -60, 3], "state": "minecraft:rail[shape=east_west]" },
+    { "from": [0, -60, 6], "to": [13, -60, 6], "state": "minecraft:powered_rail[powered=true,shape=east_west]" }
+  ]
+}

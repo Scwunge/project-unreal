@@ -71,6 +71,7 @@ void UMcWorldRenderComponent::MakePassMaterials()
 		{
 			Instance->SetTextureParameterValue(TEXT("Blocks"), Blocks);
 		}
+		McRenderMode::ApplyHdBlocks(Instance);
 		PassMaterials.Add(Instance);
 	}
 	MaterialGeneration = McRenderMode::GetGeneration();

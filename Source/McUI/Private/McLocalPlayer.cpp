@@ -41,6 +41,7 @@ FMcClientOptions FMcClientOptions::Load()
 		Object->TryGetStringField(TEXT("lastServer"), Options.LastServer);
 		FString Graphics;
 		Options.bEnhancedGraphics = Object->TryGetStringField(TEXT("graphics"), Graphics) && Graphics == TEXT("enhanced");
+		Object->TryGetBoolField(TEXT("hdTextures"), Options.bHdTextures);
 	}
 	return Options;
 }
@@ -51,6 +52,7 @@ void FMcClientOptions::Save() const
 	Object->SetStringField(TEXT("name"), PlayerName);
 	Object->SetStringField(TEXT("lastServer"), LastServer);
 	Object->SetStringField(TEXT("graphics"), bEnhancedGraphics ? TEXT("enhanced") : TEXT("vanilla"));
+	Object->SetBoolField(TEXT("hdTextures"), bHdTextures);
 	FString Text;
 	FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Text));
 	FFileHelper::SaveStringToFile(Text, *GetOptionsPath(), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);

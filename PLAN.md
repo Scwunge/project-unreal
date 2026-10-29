@@ -74,6 +74,29 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       the sound plays 8 blocks or less away at a dark spot after 6000 ticks in vanilla; in Unreal Mode it is quicker
       (2400 ticks), 8 to 18 blocks out in the dark and sent through the big reverb. Sky light is approximated
       (open sky counts as light), so night on the surface does not trigger it.
+    - **HD Textures** (a second switch on top of Unreal Mode: Options "HD Textures: ON/OFF", saved as `hdTextures`,
+      `-McHd` to force it; greyed out with Unreal Mode off, and a runtime switch rebuilds the materials like the
+      Unreal Mode one). Everything is made on this machine from the textures already in `cache/`: no downloads,
+      no generated art, nothing committed.
+      - **Generator** (`McHdTextures`, pure functions, tested in `McClient.McAssets.HdScaler/HdClasses/HdMaps`): an
+        edge-aware 2x upscaler (Scale2x rule plus a similarity-limited blend) repeated from 16 px to 64 px
+        (`-McHdSize=128` and up to 512), then detail by material class (picked from the block tags and names:
+        stone cracks and pits, wood grain along the trunk or boards with seams and rings on log ends, dirt, sand
+        and gravel grains, brushed metal, ore with the gems raised well above sunken stone and shiny, leaves and
+        plants with veins and their transparency kept, wool fibre, clear glass). The maps follow the LabPBR
+        layout: normal (x, y, occlusion, height), specular (smoothness, F0 with 230+ as metal, emission).
+      - **Cache:** the first use builds the arrays and writes `Saved/HdCache/Blocks.bin`, keyed by the generator
+        version, size, layer list and the 16 px inputs; a start with nothing changed loads the file. Animated
+        layers (water, lava, fire...) are redone from each new frame.
+      - **Materials:** `M_McBlock{Opaque,Cutout,Translucent}Hd` (`tools/make_materials.py`, `MC_ONLY_HD=1`) read the
+        three arrays filtered with mips and anisotropy; opaque blocks add parallax occlusion mapping (14 steps,
+        0.12 block depth) from the height, all use metalness, occlusion and the map's emission. Water, lava, sway,
+        glow, particles and wetness are the same as the Unreal Mode twins.
+      - **Skins and mobs:** player skins and mob textures go through the same pipeline (upscale, light detail,
+        normal, roughness; UVs unchanged, so the models are too). `-McSelfShot=<blocks>` puts the camera in front
+        of the player for a skin picture, and `-McSpawnMobs=cow,4` a few mobs near the player.
+      - **Resource packs: later** (zip and LabPBR reading are not built; the arrays use the same layout so a
+        pack's maps could be dropped in).
   - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
     (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 

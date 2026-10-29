@@ -24,6 +24,8 @@ struct MCUI_API FMcClientOptions
 	FString LastServer;
 	// The look: Unreal's lighting (true) or the game's own.
 	bool bEnhancedGraphics = false;
+	// HD Textures, on top of Unreal Mode.
+	bool bHdTextures = false;
 
 	static FMcClientOptions Load();
 	void Save() const;

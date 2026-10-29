@@ -616,7 +616,16 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		: TEXT("Minecraft's own look"), CentreX, Top + 50.0f, Grey);
 	DrawCentredText(TEXT("F7 switches it while playing"), CentreX, Top + 62.0f, DarkGrey);
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Height / 6.0f + 168.0f, 200.0f, 20.0f))
+	// HD Textures: generated high-resolution textures and materials (or a resource pack), on top of Unreal Mode.
+	const bool bHd = McRenderMode::GetHdSwitch();
+	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), CentreX - 155.0f, Top + 84.0f, 310.0f, 20.0f, bUnreal))
+	{
+		ToggleHd();
+	}
+	DrawCentredText(!bUnreal ? TEXT("Needs Unreal Mode") : bHd ? TEXT("Sharper textures with bump, shine and depth") : TEXT("Minecraft's own textures"),
+		CentreX, Top + 110.0f, Grey);
+
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Height / 6.0f + 198.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}
@@ -687,6 +696,7 @@ void AMcHUD::SaveClientOptions() const
 	Options.PlayerName = PlayerName;
 	Options.LastServer = ServerAddress.TrimStartAndEnd();
 	Options.bEnhancedGraphics = McRenderMode::IsEnhanced();
+	Options.bHdTextures = McRenderMode::GetHdSwitch();
 	Options.Save();
 }
 
@@ -695,5 +705,13 @@ void AMcHUD::ToggleGraphics()
 	McRenderMode::SetEnhanced(!McRenderMode::IsEnhanced());
 	FMcClientOptions Options = FMcClientOptions::Load();
 	Options.bEnhancedGraphics = McRenderMode::IsEnhanced();
+	Options.Save();
+}
+
+void AMcHUD::ToggleHd()
+{
+	McRenderMode::SetHd(!McRenderMode::GetHdSwitch());
+	FMcClientOptions Options = FMcClientOptions::Load();
+	Options.bHdTextures = McRenderMode::GetHdSwitch();
 	Options.Save();
 }

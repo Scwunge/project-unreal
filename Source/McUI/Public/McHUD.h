@@ -144,6 +144,7 @@ private:
 	void SaveClientOptions() const;
 	// Vanilla to enhanced or back, remembered in options.json.
 	void ToggleGraphics();
+	void ToggleHd();
 
 	struct FWorldRow
 	{

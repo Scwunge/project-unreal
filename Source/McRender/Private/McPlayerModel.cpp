@@ -309,6 +309,8 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 	}
 	Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Base), this);
 	Material->SetTextureParameterValue(TEXT("Blocks"), Skin);
+	McRenderMode::ApplyHdPicture(Material, Path);
+	SkinPath = Path;
 	MaterialGeneration = McRenderMode::GetGeneration();
 	bFailed = false;
 	return true;
@@ -345,6 +347,7 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		// The look changed: the same skin on the other mode's material.
 		Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial.Get()), this);
 		Material->SetTextureParameterValue(TEXT("Blocks"), Skin);
+		McRenderMode::ApplyHdPicture(Material, SkinPath);
 		MaterialGeneration = McRenderMode::GetGeneration();
 		if (bHasSection)
 		{

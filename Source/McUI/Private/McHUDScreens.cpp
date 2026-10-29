@@ -1186,6 +1186,7 @@ void AMcHUD::DrawHUD()
 	{
 		bLookLoaded = true;
 		McRenderMode::SetEnhanced(FMcClientOptions::Load().bEnhancedGraphics || FParse::Param(FCommandLine::Get(), TEXT("McEnhanced")));
+		McRenderMode::SetHd(FMcClientOptions::Load().bHdTextures || FParse::Param(FCommandLine::Get(), TEXT("McHd")));
 	}
 	++ShakeCounter;
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);

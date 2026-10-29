@@ -11,6 +11,7 @@
 #include "CoreMinimal.h"
 
 class UMaterialInterface;
+class UMaterialInstanceDynamic;
 
 namespace McRenderMode
 {
@@ -18,7 +19,19 @@ namespace McRenderMode
 	MCRENDER_API void SetEnhanced(bool bEnhanced);
 	// Goes up by one on every switch; starts at 1.
 	MCRENDER_API uint32 GetGeneration();
+	// HD Textures: a second switch on top of Unreal Mode that draws the generated (or resource pack) high-resolution
+	// albedo, normal and specular maps. It only takes effect while Unreal Mode is on (IsHd); GetHdSwitch is the
+	// setting itself. A switch changes GetGeneration like Unreal Mode does.
+	MCRENDER_API bool IsHd();
+	MCRENDER_API bool GetHdSwitch();
+	MCRENDER_API void SetHd(bool bHd);
 	// The material to draw with in the current mode: in enhanced mode a block material's lit twin (made by
-	// tools/make_materials.py with "Lit" on the name), else Vanilla itself. Vanilla if it has no twin.
+	// tools/make_materials.py with "Lit" on the name), with HD on its HD twin ("Hd"), else Vanilla itself. The twin
+	// that exists: HD falls back to Lit, Lit to Vanilla.
 	MCRENDER_API UMaterialInterface* Pick(UMaterialInterface* Vanilla);
+	// With HD Textures on, gives a material made from a Pick the HD arrays to sample ("BlocksHd", "BlocksHdN" and
+	// "BlocksHdS"): the block layers', or those of the picture in this png (a skin, a mob). bWhite: the picture's
+	// silhouette in white, for a mob flashing. Does nothing with HD off.
+	MCRENDER_API void ApplyHdBlocks(UMaterialInstanceDynamic* Material);
+	MCRENDER_API void ApplyHdPicture(UMaterialInstanceDynamic* Material, const FString& PngPath, bool bWhite = false);
 }

@@ -232,7 +232,12 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 #if MC_WITH_RENDER
 	if (UMcPlayerModelComponent* Figure = Model.Get())
 	{
-		Figure->SetShown(!IsLocallyControlled());
+		bool bShowSelf = false;
+#if !UE_BUILD_SHIPPING
+		float SelfShotCheck = 0.0f;
+		bShowSelf = FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShotCheck);
+#endif
+		Figure->SetShown(!IsLocallyControlled() || bShowSelf);
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
 	}
 #endif
@@ -314,6 +319,19 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	SetActorLocation(LastLocation);
 	const float EyeHeight = FMath::Lerp(PreviousEyeHeight, GetEyeHeight(), Alpha);
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
+#if !UE_BUILD_SHIPPING
+	// Development: -McSelfShot=<blocks> puts the camera that far in front of the player, looking back at the player
+	// model, for a picture of the skin.
+	float SelfShot = 0.0f;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShot) && SelfShot > 0.0f)
+	{
+		Camera->bUsePawnControlRotation = false;
+		const FRotator Look(0.0f, Yaw, 0.0f);
+		const FVector Eye = GetActorLocation() + FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock * 0.9);
+		Camera->SetWorldLocation(Eye + Look.Vector() * SelfShot * McCoords::UnitsPerBlock);
+		Camera->SetWorldRotation(FRotator(0.0, Yaw + 180.0, 0.0));
+	}
+#endif
 
 	UpdateTarget();
 #if MC_WITH_RENDER

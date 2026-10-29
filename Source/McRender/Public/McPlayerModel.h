@@ -146,6 +146,8 @@ private:
 	uint32 MaterialGeneration = 0;
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2DArray> Skin;
+	// The file the skin came from (HD Textures reads the same one).
+	FString SkinPath;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> BaseMaterial;
 

@@ -478,6 +478,10 @@ void FMcBlockTextures::Tick(double GameTicks)
 		FUpload& Upload = Uploads.AddDefaulted_GetRef();
 		Upload.Layer = Animation.Layer;
 		BuildMips(Layer.Pixels, Upload.Chain);
+		if (OnLayerAnimated)
+		{
+			OnLayerAnimated(Animation.Layer);
+		}
 	}
 
 	if (Uploads.Num() == 0 || !TextureArray->GetResource())

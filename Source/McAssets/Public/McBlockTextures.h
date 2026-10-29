@@ -54,6 +54,11 @@ public:
 	// The 16x16 pixels now in the layer's top mip (the blend, for interpolated animations).
 	TConstArrayView<FColor> GetPixels(int32 Layer) const { return Layers[Layer].Pixels; }
 
+	// The id the layer was loaded for (NAME_None for the missing-texture layer).
+	FName GetLayerId(int32 Layer) const { return Layers[Layer].Id; }
+	// Called (game thread, from Tick) for each layer whose picture just changed, after GetPixels has the new one.
+	TFunction<void(int32 Layer)> OnLayerAnimated;
+
 	// Moves the animations to this game time (20 ticks a second) and uploads the layers whose picture changed.
 	void Tick(double GameTicks);
 

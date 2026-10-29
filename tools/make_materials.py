@@ -19,6 +19,11 @@ water waves (moving the surface, bending its normal, glossy, see-through face on
 glows, leaves and plants sway in the wind, blocks that give light glow, and particles. Every other surface is
 bump-mapped from its own texture (each texel's brightness against its neighbours') and goes wet and glossy where rain
 falls on it. Kinds 9 and 10 are particles of one colour (the vertex colour), and 11 is a bit of a block's texture, flat-shaded, which the vanilla look draws too.
+
+HD Textures (a second switch on top of Unreal Mode) has its own twins with "Hd" on the end of the name (M_McBlockOpaqueHd
+and so on, and McRenderMode::Pick picks them): the same surface kinds, but albedo, normal map and specular map come from
+three filtered arrays (BlocksHd, BlocksHdN, BlocksHdS), the opaque one adds parallax occlusion mapping, and they use
+metalness, ambient occlusion and the map's emission. MC_ONLY_HD=1 makes only these.
 """
 
 import os
@@ -112,6 +117,80 @@ if (m < 1e-12)
 float inv = rsqrt(m);
 float s = Strength * (k == 2.0 ? 0.5 : 1.0);
 return normalize(N - s * (dh.x * T + dh.y * B) * inv);
+"""
+
+# The HD twins (HD Textures, on top of Unreal Mode) read three arrays made by McHd: albedo ("BlocksHd"), a normal map
+# ("BlocksHdN": normal x and y in red and green, occlusion in blue, height in alpha) and a specular map ("BlocksHdS":
+# smoothness in red, F0 in green with 230 and up meaning metal, emission in alpha), the LabPBR layout. They are
+# filtered with mips and anisotropy, and opaque blocks get parallax occlusion mapping from the height.
+# The normal: water and particles as above; blocks from the normal map, put on the face with the same frame.
+LIT_NORMAL_HD_HLSL = LIT_NORMAL_HLSL[:LIT_NORMAL_HLSL.index("float3 luma")] + """
+float2 xy = (NMap.rg * 2.0 - 1.0) * Strength * (k == 2.0 ? 0.5 : 1.0);
+float z = sqrt(max(1.0 - dot(xy, xy), 0.05));
+float3 dpdx = ddx(Cam);
+float3 dpdy = ddy(Cam);
+float2 duvdx = ddx(UV);
+float2 duvdy = ddy(UV);
+float3 dp2perp = cross(dpdy, N);
+float3 dp1perp = cross(N, dpdx);
+float3 T = dp2perp * duvdx.x + dp1perp * duvdy.x;
+float3 B = dp2perp * duvdx.y + dp1perp * duvdy.y;
+if (max(dot(T, T), dot(B, B)) < 1e-12)
+{
+    return N;
+}
+T *= rsqrt(max(dot(T, T), 1e-12));
+B *= rsqrt(max(dot(B, B), 1e-12));
+return normalize(xy.x * T - xy.y * B + z * N);
+"""
+
+# Where the view ray, going into a block's surface, comes out in the picture: the whole shift in UV over the full depth
+# (Scale, in units of the picture), in the frame of the face.
+POM_SHIFT_HLSL = KIND_HLSL + """
+float3 N = normalize(VNormal);
+float3 V = normalize(View);
+float3 dpdx = ddx(Cam);
+float3 dpdy = ddy(Cam);
+float2 duvdx = ddx(UV);
+float2 duvdy = ddy(UV);
+float3 dp2perp = cross(dpdy, N);
+float3 dp1perp = cross(N, dpdx);
+float3 T = dp2perp * duvdx.x + dp1perp * duvdy.x;
+float3 B = dp2perp * duvdx.y + dp1perp * duvdy.y;
+if (max(dot(T, T), dot(B, B)) < 1e-12 || k == 2.0 || k >= 9.0)
+{
+    return float3(0.0, 0.0, 0.0);
+}
+T *= rsqrt(max(dot(T, T), 1e-12));
+B *= rsqrt(max(dot(B, B), 1e-12));
+float2 off = -float2(dot(V, T), dot(V, B)) / max(dot(V, N), 0.2) * Scale;
+return float3(off, 0.0);
+"""
+# One step of the ray march: S is (u, v, depth reached 0..1, 1 once the surface is hit). A layer above the surface (the
+# height H stands for 1 - depth) lets the ray go a step deeper.
+POM_STEP_HLSL = """
+float4 s = S;
+if (s.w < 0.5)
+{
+    if (s.z < 1.0 - H)
+    {
+        s.xy += Shift.xy * STEPSIZE;
+        s.z += STEPSIZE;
+    }
+    else
+    {
+        s.w = 1.0;
+    }
+}
+return s;
+"""
+POM_FINAL_HLSL = """
+float2 uv = S.xy;
+if (S.w > 0.5)
+{
+    uv -= 0.5 * Shift.xy * STEPSIZE;
+}
+return float3(uv, Layer);
 """
 
 # How wet the surface is: open to the sky (sky light near full) and facing up, as rain falls.
@@ -242,11 +321,13 @@ def make_placeholder_array():
     return array
 
 
-def add_custom(material, x: int, y: int, description: str, code: str, sources: dict, scalar: bool = False):
+def add_custom(material, x: int, y: int, description: str, code: str, sources: dict, scalar: bool = False,
+               four: bool = False):
     # A Custom node with one input per entry of sources (input name: (expression, output name)); float3 out, or one
-    # float with scalar.
+    # float with scalar, or float4 with four.
     node = mel.create_material_expression(material, unreal.MaterialExpressionCustom, x, y)
     node.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT1 if scalar
+                             else unreal.CustomMaterialOutputType.CMOT_FLOAT4 if four
                              else unreal.CustomMaterialOutputType.CMOT_FLOAT3)
     node.set_editor_property("description", description)
     inputs = []
@@ -296,8 +377,40 @@ def add_offset(material, x: int, y: int, source, offset):
     return node
 
 
+POM_STEPS = 14
+POM_DEPTH = 0.12
+
+
+def add_hd_sample(material, x: int, y: int, parameter: str, uvw, default_array, linear: bool):
+    node = mel.create_material_expression(material, unreal.MaterialExpressionTextureSampleParameter2DArray, x, y)
+    node.set_editor_property("parameter_name", parameter)
+    node.set_editor_property("texture", default_array)
+    node.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR if linear
+                             else unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    mel.connect_material_expressions(uvw, "", node, "UVs")
+    return node
+
+
+def make_pom(material, x: int, y: int, uv0, layer, common, uvw_extra, linear_array):
+    """Parallax occlusion mapping from the normal array's alpha: the layered ray march as a chain of nodes (a Custom node
+    can't sample a texture array). Returns the node whose output is the (u, v, layer) to read the maps at."""
+    shift = add_custom(material, x, y + 200, "McPomShift", POM_SHIFT_HLSL,
+                       {"Kind": common["Kind"], "VNormal": common["VNormal"], "View": uvw_extra["View"], "Cam": uvw_extra["Cam"],
+                        "UV": (uv0, ""), "Scale": (add_scalar(material, x - 200, y + 300, "ParallaxDepth", POM_DEPTH), "")})
+    start = add_custom(material, x, y, "McPomStart", "return float4(UV.xy, 0.0, 0.0);", {"UV": (uv0, "")}, four=True)
+    state = start
+    for step in range(POM_STEPS):
+        step_x = x + 250 * (step + 1)
+        at = add_custom(material, step_x, y, "McPomAt", "return float3(S.xy, L);", {"S": (state, ""), "L": (layer, "")})
+        height = add_hd_sample(material, step_x, y + 150, "BlocksHdN", at, linear_array, True)
+        state = add_custom(material, step_x, y + 350, "McPomStep", POM_STEP_HLSL.replace("STEPSIZE", f"{1.0 / POM_STEPS}"),
+                           {"S": (state, ""), "H": (height, "A"), "Shift": (shift, "")}, four=True)
+    return add_custom(material, x + 250 * (POM_STEPS + 1), y, "McPomFinal", POM_FINAL_HLSL.replace("STEPSIZE", f"{1.0 / POM_STEPS}"),
+                      {"S": (state, ""), "Shift": (shift, ""), "Layer": (layer, "")})
+
+
 def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool = False, two_sided: bool = False,
-                        lit: bool = False):
+                        lit: bool = False, hd_linear_array=None):
     # Nothing refers to the materials as assets (the game loads them by path), so they can be made afresh.
     # vertex_alpha: the vertex colour's alpha scales the opacity too (rain fading with distance, clouds).
     # two_sided: both sides are drawn (rain's sheets); see-through boxes like the clouds need only the near ones, or
@@ -365,33 +478,69 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         camera = mel.create_material_expression(material, unreal.MaterialExpressionCameraVectorWS, -700, 1300)
         wetness = add_scalar(material, -700, 1400, "Wetness", 0.0)
         glass = add_scalar(material, -700, 1500, "Glass", 1.0 if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT else 0.0)
-        across = add_array_sample(material, -350, -300, add_offset(material, -500, -300, uvw, (1.0 / 16.0, 0.0, 0.0)), default_array)
-        down = add_array_sample(material, -350, -450, add_offset(material, -500, -450, uvw, (0.0, 1.0 / 16.0, 0.0)), default_array)
         common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, "")}
+        hd = hd_linear_array is not None
+        if hd:
+            # The HD twin reads its own arrays (albedo, normal, specular), with parallax on opaque blocks.
+            read_uvw = uvw
+            if blend_mode == unreal.BlendMode.BLEND_OPAQUE:
+                read_uvw = make_pom(material, -2400, 1900, uv0, layer, common, {"View": (camera, ""), "Cam": (relative, "")}, hd_linear_array)
+            texture = add_hd_sample(material, -350, 0, "BlocksHd", read_uvw, default_array, False)
+            normal_map = add_hd_sample(material, -350, -300, "BlocksHdN", read_uvw, hd_linear_array, True)
+            spec_map = add_hd_sample(material, -350, -450, "BlocksHdS", read_uvw, hd_linear_array, True)
+            opacity_source = (texture, "A")
+        else:
+            across = add_array_sample(material, -350, -300, add_offset(material, -500, -300, uvw, (1.0 / 16.0, 0.0, 0.0)), default_array)
+            down = add_array_sample(material, -350, -450, add_offset(material, -500, -450, uvw, (0.0, 1.0 / 16.0, 0.0)), default_array)
 
         albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_KINDS_HLSL,
                             dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, "")))
         mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
-        glow = add_custom(material, -100, 0, "McLitEmissive", LIT_EMISSIVE_KINDS_HLSL,
-                          {"Kind": (kind, ""), "Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
+        emissive_code = LIT_EMISSIVE_KINDS_HLSL
+        emissive_extra = {}
+        if hd:
+            # LabPBR emission: alpha 255 is none, else 0..254 scales the colour.
+            emissive_code = emissive_code.replace("return e;", "float a = EmisA * 255.0;\nif (a < 254.5) e += Albedo * (a / 254.0) * 4.0;\nreturn e;")
+            emissive_extra = {"EmisA": (spec_map, "A")}
+        glow = add_custom(material, -100, 0, "McLitEmissive", emissive_code,
+                          {**emissive_extra, "Kind": (kind, ""), "Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
                            "Ambient": (add_scalar(material, -350, 700, "Ambient", 1.0), ""),
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 5.0), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
                            "Time": (time, ""), "Pos": (absolute, "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
-        normal = add_custom(material, -100, 150, "McLitNormal", LIT_NORMAL_HLSL,
-                            {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "Tex": (texture, "RGB"),
-                             "TexX": (across, "RGB"), "TexY": (down, "RGB"), "Cam": (relative, ""), "UV": (uv0, ""),
-                             "Pos": (absolute, ""), "Time": (time, ""),
-                             "Strength": (add_scalar(material, -350, 1800, "Bump", 1.6), "")})
+        if hd:
+            normal = add_custom(material, -100, 150, "McHdNormal", LIT_NORMAL_HD_HLSL,
+                                {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "NMap": (normal_map, "RGB"), "Cam": (relative, ""),
+                                 "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, ""),
+                                 "Strength": (add_scalar(material, -350, 1800, "Bump", 1.0), "")})
+            roughness = add_custom(material, -100, 450, "McHdRoughness",
+                                   KIND_HLSL + WET_HLSL + "float r = max(pow(1.0 - S.r, 2.0), 0.04);\nif (k == 1.0) r = 0.02;\nelse if (k >= 9.0) r = 0.9;\nreturn lerp(r, 0.1, wet);\n",
+                                   dict(common, S=(spec_map, "RGB")), scalar=True)
+            specular = add_custom(material, -100, 550, "McHdSpecular",
+                                  KIND_HLSL + WET_HLSL + "float s = (k == 1.0) ? 0.5 : saturate(S.g / 0.08);\nreturn lerp(s, 0.6, wet);\n",
+                                  dict(common, S=(spec_map, "RGB")), scalar=True)
+            metallic = add_custom(material, -100, 650, "McHdMetallic",
+                                  KIND_HLSL + "return (k < 9.0 && k != 1.0 && S.g >= 0.9) ? 1.0 : 0.0;\n",
+                                  {"Kind": (kind, ""), "S": (spec_map, "RGB")}, scalar=True)
+            occlusion = add_custom(material, -100, 750, "McHdOcclusion", "return lerp(1.0, N.b, 0.8);\n",
+                                   {"N": (normal_map, "RGB")}, scalar=True)
+            mel.connect_material_property(metallic, "", unreal.MaterialProperty.MP_METALLIC)
+            mel.connect_material_property(occlusion, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
+        else:
+            normal = add_custom(material, -100, 150, "McLitNormal", LIT_NORMAL_HLSL,
+                                {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "Tex": (texture, "RGB"),
+                                 "TexX": (across, "RGB"), "TexY": (down, "RGB"), "Cam": (relative, ""), "UV": (uv0, ""),
+                                 "Pos": (absolute, ""), "Time": (time, ""),
+                                 "Strength": (add_scalar(material, -350, 1800, "Bump", 1.6), "")})
+            roughness = add_custom(material, -100, 450, "McLitRoughness", LIT_ROUGHNESS_HLSL,
+                                   dict(common, Tex=(texture, "RGB"), Glass=(glass, ""),
+                                        Base=(add_scalar(material, -350, 1900, "Roughness", 0.85), "")), scalar=True)
+            specular = add_custom(material, -100, 550, "McLitSpecular", LIT_SPECULAR_HLSL,
+                                  dict(common, Glass=(glass, "")), scalar=True)
         mel.connect_material_property(normal, "", unreal.MaterialProperty.MP_NORMAL)
-        roughness = add_custom(material, -100, 450, "McLitRoughness", LIT_ROUGHNESS_HLSL,
-                               dict(common, Tex=(texture, "RGB"), Glass=(glass, ""),
-                                    Base=(add_scalar(material, -350, 1900, "Roughness", 0.85), "")), scalar=True)
         mel.connect_material_property(roughness, "", unreal.MaterialProperty.MP_ROUGHNESS)
-        specular = add_custom(material, -100, 550, "McLitSpecular", LIT_SPECULAR_HLSL,
-                              dict(common, Glass=(glass, "")), scalar=True)
         mel.connect_material_property(specular, "", unreal.MaterialProperty.MP_SPECULAR)
         if blend_mode != unreal.BlendMode.BLEND_OPAQUE:
             offset = add_custom(material, -100, 700, "McLitOffset", LIT_WPO_HLSL,
@@ -495,6 +644,40 @@ def make_sky_materials(default_array):
     unreal.log("McMaterials: made M_McSkyAdditive")
 
 
+def make_linear_placeholder():
+    """The default of the HD normal and specular arrays: like the placeholder but not sRGB, so a Linear Color sampler
+    accepts it."""
+    path = f"{FOLDER}/TA_McPlaceholderLinear"
+    if eal.does_asset_exist(path):
+        return unreal.load_asset(path)
+    task = unreal.AssetImportTask()
+    task.set_editor_property("replace_existing", True)
+    task.set_editor_property("filename", PLACEHOLDER_PNG)
+    task.set_editor_property("destination_path", FOLDER)
+    task.set_editor_property("destination_name", "T_McPlaceholderLinear")
+    task.set_editor_property("automated", True)
+    task.set_editor_property("save", True)
+    asset_tools.import_asset_tasks([task])
+    texture = unreal.load_asset(f"{FOLDER}/T_McPlaceholderLinear")
+    texture.set_editor_property("srgb", False)
+    texture.set_editor_property("filter", unreal.TextureFilter.TF_NEAREST)
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_EDITOR_ICON)
+    eal.save_loaded_asset(texture)
+    array = load_or_create("TA_McPlaceholderLinear", unreal.Texture2DArray, unreal.Texture2DArrayFactory())
+    array.set_editor_property("source_textures", [texture])
+    array.set_editor_property("srgb", False)
+    array.set_editor_property("filter", unreal.TextureFilter.TF_NEAREST)
+    eal.save_loaded_asset(array)
+    return array
+
+
+def make_hd_materials(default_array):
+    linear = make_linear_placeholder()
+    make_block_material("M_McBlockOpaqueHd", unreal.BlendMode.BLEND_OPAQUE, default_array, lit=True, hd_linear_array=linear)
+    make_block_material("M_McBlockCutoutHd", unreal.BlendMode.BLEND_MASKED, default_array, lit=True, hd_linear_array=linear)
+    make_block_material("M_McBlockTranslucentHd", unreal.BlendMode.BLEND_TRANSLUCENT, default_array, lit=True, hd_linear_array=linear)
+
+
 def make_lit_materials(default_array):
     make_block_material("M_McBlockOpaqueLit", unreal.BlendMode.BLEND_OPAQUE, default_array, lit=True)
     make_block_material("M_McBlockCutoutLit", unreal.BlendMode.BLEND_MASKED, default_array, lit=True)
@@ -505,6 +688,10 @@ def main() -> None:
     if os.environ.get("MC_ONLY_SKY"):
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
+        return
+    if os.environ.get("MC_ONLY_HD"):
+        write_checker_png(PLACEHOLDER_PNG)
+        make_hd_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
         return
     if os.environ.get("MC_ONLY_LIT"):
         make_lit_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
@@ -527,6 +714,7 @@ def main() -> None:
     make_block_material("M_McBlockCutout", unreal.BlendMode.BLEND_MASKED, array)
     make_block_material("M_McBlockTranslucent", unreal.BlendMode.BLEND_TRANSLUCENT, array)
     make_lit_materials(array)
+    make_hd_materials(array)
     # Rain and snow, and the clouds.
     make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, array, True, True)
     make_block_material("M_McClouds", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)

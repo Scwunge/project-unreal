@@ -689,6 +689,7 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Parent), this);
 	MaterialGeneration = McRenderMode::GetGeneration();
 	Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
+	McRenderMode::ApplyHdPicture(Material, Path);
 	if (Materials.Num() <= Layer)
 	{
 		Materials.SetNum(Layer + 1);
@@ -829,6 +830,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			if (UTexture2DArray* Texture = LoadCached(GetTexturePath(0), Size, bFlash))
 			{
 				Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
+				McRenderMode::ApplyHdPicture(Material, GetTexturePath(0), bFlash);
 				bFlashing = bFlash;
 			}
 		}

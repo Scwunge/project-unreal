@@ -74,6 +74,10 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
+	TFunction<void(const FIntVector& Pos, TArray<FMcItemStack>& Drops)> OnBreakDrops;
+	// An item that carries what it holds was placed at Pos (a shulker box gives its things to the new block).
+	TFunction<void(const FIntVector& Pos, const FMcItemStack& Placed)> OnPlacedStack;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
@@ -214,6 +218,8 @@ public:
 private:
 	// Stands a flag entity in the banner block at Pos with the patterns of Banner (the item); false if the block isn't a banner.
 	bool AttachBanner(const FIntVector& Pos, const FMcItemStack& Banner);
+	// Whether placing the item gives the block something from the item (a banner's patterns, a shulker box's things).
+	static bool CarriesPlacedData(FName Item);
 	// A creative placement waiting for its block to arrive.
 	FIntVector PendingBannerPos = FIntVector::ZeroValue;
 	FMcItemStack PendingBanner;

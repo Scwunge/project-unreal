@@ -232,6 +232,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     anything else out.
   - A fire charge or flint and steel lights the air in front (charge used up, steel worn by one); a shulker
     box is placed in front, facing the way the dispenser does. A blocked front does nothing.
+- **Shulker box contents** (2026-10-29), in `McShulker` and `McBlockUse`: a shulker box is a 27-slot "Shulker Box"
+  container. Breaking one drops it with its items packed into the item (`PackBoxDrops`), and placing it fills
+  the box again (`FillBox`); a dispenser placing one keeps the contents. A box cannot open with a block against
+  its lid, and shulker boxes cannot go inside one (`bNoShulkerBoxes`).
   - **Not done:** dispensing TNT, armour, minecarts and boats, thrown items, spawn eggs and the rest of the item
     behaviours.
 - **Buckets** (2026-10-28), in `McBuckets`: an empty bucket aimed at a water or lava source takes it (the aim

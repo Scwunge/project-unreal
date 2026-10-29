@@ -276,6 +276,22 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			Use->ReleaseBlock(*World, Pos);
 		}
 	};
+	Hooked.OnBreakDrops = [World](const FIntVector& Pos, TArray<FMcItemStack>& Drops)
+	{
+		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		if (Use)
+		{
+			Use->PackBoxDrops(*World, Pos, Drops);
+		}
+	};
+	Hooked.OnPlacedStack = [World](const FIntVector& Pos, const FMcItemStack& Placed)
+	{
+		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		if (Use)
+		{
+			Use->FillBox(*World, Pos, Placed);
+		}
+	};
 	Hooked.OnUseItemOn = [World](AMcPlayerPawn& User, const FIntVector& Pos, const FIntVector& Beside)
 	{
 		FMcBlockWorld* Blocks = World.IsValid() ? World->GetBlockWorld() : nullptr;

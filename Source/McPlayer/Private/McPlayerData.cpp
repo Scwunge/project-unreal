@@ -437,7 +437,11 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 			Made.Menu = MakeShared<FMcContainerMenu>(Container, SecondContainer, Inventory);
 			break;
 		}
-		Made.Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
+		{
+			const TSharedRef<FMcContainerMenu> Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
+			Menu->bNoShulkerBoxes = Title == TEXT("Shulker Box");
+			Made.Menu = Menu;
+		}
 		break;
 	case EMcWindowKind::Furnace:
 		if (!Machine.IsValid())

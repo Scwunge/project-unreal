@@ -1,4 +1,5 @@
 #include "McContainer.h"
+#include "McShulker.h"
 
 namespace
 {
@@ -549,6 +550,11 @@ FMcContainerMenu::FMcContainerMenu(const TSharedPtr<FMcContainer>& First, const 
 		AddSlot(Second, Index);
 	}
 	AddPlayerSlots(PlayerInventory);
+}
+
+bool FMcContainerMenu::MayPlace(int32 Slot, const FMcItemStack& Stack) const
+{
+	return !(bNoShulkerBoxes && Slot < PlayerStart && McShulker::IsBox(Stack.Item));
 }
 
 FMcContainerMenu::FMcContainerMenu(const TSharedPtr<FMcContainer>& InContainer, const TSharedPtr<FMcContainer>& PlayerInventory)

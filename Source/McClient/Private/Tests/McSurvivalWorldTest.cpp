@@ -1,3 +1,4 @@
+#include "McShulker.h"
 #include "McChestLink.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -210,6 +211,35 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	Use->ReleaseBlock(*Actor, ChestPos);
 	TestEqual(TEXT("and nothing drops twice"), Actor->GetEntityHost()->GetManager().GetEntities().Num() - Before, 2);
 
+	// A shulker box keeps its things in the item it drops, and gives them to the box that item becomes.
+	const FIntVector BoxPos(4, 64, 2);
+	const FIntVector BoxPos2(8, 64, 2);
+	Blocks.SetBlock(BoxPos, Registry.ParseState(TEXT("minecraft:red_shulker_box")).Get(0));
+	Blocks.SetBlock(BoxPos2, Registry.ParseState(TEXT("minecraft:red_shulker_box")).Get(0));
+	FMcBlockEntity Box = FMcBlockEntity::MakeContainer(27);
+	Box.Slots[3] = FMcItemStack(TEXT("minecraft:emerald"), 12);
+	FMcItemStack Sword(TEXT("minecraft:iron_sword"));
+	Sword.SetDamage(5);
+	Box.Slots[26] = Sword;
+	Chunk->SetBlockEntity(BoxPos.X, BoxPos.Y, BoxPos.Z, Box);
+	const int32 BeforeBox = Actor->GetEntityHost()->GetManager().GetEntities().Num();
+	Use->ReleaseBlock(*Actor, BoxPos);
+	TestEqual(TEXT("breaking a box doesn't spill it"), Actor->GetEntityHost()->GetManager().GetEntities().Num(), BeforeBox);
+	TArray<FMcItemStack> BoxDrops = { FMcItemStack(TEXT("minecraft:red_shulker_box")) };
+	Use->PackBoxDrops(*Actor, BoxPos, BoxDrops);
+	TestTrue(TEXT("the item carries a container"), BoxDrops[0].Has(TEXT("minecraft:container")));
+	TestNull(TEXT("the block entity is gone"), Chunk->FindBlockEntity(BoxPos.X, BoxPos.Y, BoxPos.Z));
+	const TArray<FMcItemStack> Carried = McShulker::Unpack(BoxDrops[0]);
+	TestEqual(TEXT("an emerald stack in slot 3"), Carried[3].Count, 12);
+	TestEqual(TEXT("and a worn sword in the last"), Carried[26].GetDamage(), 5);
+	TestTrue(TEXT("nothing else"), Carried[0].IsEmpty() && Carried[4].IsEmpty());
+	Use->FillBox(*Actor, BoxPos2, BoxDrops[0]);
+	TArray<FMcItemStack> Placed;
+	UMcBlockUseSubsystem::GetContents(*Actor, BoxPos2, Placed);
+	TestTrue(TEXT("a placed box has its things back"), Placed.Num() == 27 && Placed[3].Item == TEXT("minecraft:emerald") && Placed[26].Item == TEXT("minecraft:iron_sword"));
+	Use->ReleaseBlock(*Actor, BoxPos2);
+	TestEqual(TEXT("still nothing spilled"), Actor->GetEntityHost()->GetManager().GetEntities().Num(), BeforeBox);
+
 	// A furnace keeps what is in it through a save and a restart.
 	const TSharedPtr<FMcFurnace> Furnace = Use->GetFurnace(*Actor, FurnacePos, true);
 	if (TestTrue(TEXT("a furnace"), Furnace.IsValid()))
@@ -324,7 +354,7 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("a full bucket won't go into a furnace"), McBuckets::Pour(*Actor, TEXT("minecraft:lava_bucket"), FurnacePos));
 
 	// Fire and shulker boxes: each in a dispenser of its own, so the random slot doesn't matter.
-	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain, bool bSupported = true)
+	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain, bool bSupported = true, const FMcItemStack* Exact = nullptr)
 	{
 		const FIntVector Gun(14, 64, Z);
 		const FIntVector Muzzle(15, 64, Z);
@@ -332,7 +362,7 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		Blocks.SetBlock(Muzzle, Registry.ParseState(FrontBlock).Get(0));
 		Blocks.SetBlock(Muzzle - FIntVector(0, 1, 0), bSupported ? Registry.ParseState(TEXT("minecraft:stone")).Get(0) : Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
 		FMcBlockEntity Loaded2 = FMcBlockEntity::MakeContainer(9);
-		Loaded2.Slots[0] = FMcItemStack(ItemName);
+		Loaded2.Slots[0] = Exact ? *Exact : FMcItemStack(ItemName);
 		Chunk->SetBlockEntity(Gun.X, Gun.Y, Gun.Z, Loaded2);
 		Use->Dispense(*Actor, Gun);
 		TArray<FMcItemStack> After;
@@ -349,6 +379,15 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
 	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
 	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
+	// A box that carries things keeps them when a dispenser places it.
+	FMcItemStack FullBox(TEXT("minecraft:red_shulker_box"));
+	TArray<FMcItemStack> Kept;
+	Kept.Add(FMcItemStack(TEXT("minecraft:gold_ingot"), 9));
+	FullBox.Set(TEXT("minecraft:container"), McShulker::Pack(Kept));
+	Fire(5, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain, true, &FullBox);
+	TArray<FMcItemStack> InBox;
+	UMcBlockUseSubsystem::GetContents(*Actor, FIntVector(15, 64, 5), InBox);
+	TestTrue(TEXT("the placed box holds its gold"), !InBox.IsEmpty() && InBox[0].Item == TEXT("minecraft:gold_ingot") && InBox[0].Count == 9);
 	// Fire only where it can stay; a campfire or candle in front is lit instead.
 	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
 	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);

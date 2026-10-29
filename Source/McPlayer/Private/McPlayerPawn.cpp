@@ -1,5 +1,6 @@
 #include "McPlayerPawn.h"
 #include "McBanner.h"
+#include "McShulker.h"
 #include "McCache.h"
 #include "McBannerEntity.h"
 #include "McBlockBreak.h"
@@ -690,7 +691,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			for (const FMcPlacedBlock& Block : Placed)
 			{
 				SetBlockHandler(Block.Pos, Block.State);
-				if (Held.Item.ToString().EndsWith(TEXT("_banner")))
+				if (CarriesPlacedData(Held.Item))
 				{
 					ServerAttachBanner(Block.Pos);
 				}
@@ -1219,6 +1220,10 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 
 	TArray<FMcItemStack> Drops;
 	McBlockBreak::GetDrops(LootState, Tool, DropRandom, Drops);
+	if (OnBreakDrops)
+	{
+		OnBreakDrops(Pos, Drops);
+	}
 	// A banner drops with the patterns the placed flag holds.
 	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
 	{
@@ -1386,6 +1391,11 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	}
 }
 
+bool AMcPlayerPawn::CarriesPlacedData(FName Item)
+{
+	return Item.ToString().EndsWith(TEXT("_banner")) || McShulker::IsBox(Item);
+}
+
 void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
 {
 	if (!Data || !BlockWorld)
@@ -1401,7 +1411,7 @@ void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
 	if (Data->bCreative && SetBlockHandler)
 	{
 		SetBlockHandler(Pos, State.GetValue());
-		if (Held.Item.ToString().EndsWith(TEXT("_banner")))
+		if (CarriesPlacedData(Held.Item))
 		{
 			ServerAttachBanner(Pos);
 		}
@@ -1417,6 +1427,19 @@ void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
 
 bool AMcPlayerPawn::AttachBanner(const FIntVector& Pos, const FMcItemStack& Banner)
 {
+	if (McShulker::IsBox(Banner.Item))
+	{
+		// The box carries its things: they go into the block once it is there.
+		if (!BlockWorld || FMcBlockRegistry::Get().GetBlockOf(BlockWorld->GetBlock(Pos)).Name != Banner.Item)
+		{
+			return false;
+		}
+		if (OnPlacedStack)
+		{
+			OnPlacedStack(Pos, Banner);
+		}
+		return true;
+	}
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 	return Entities && !Banner.IsEmpty() && FMcBannerEntity::Stand(*Entities, Pos, McBanner::GetLayers(Banner)) != nullptr;
 }
@@ -1428,7 +1451,7 @@ void AMcPlayerPawn::ServerAttachBanner_Implementation(FIntVector Pos)
 		return;
 	}
 	const FMcItemStack& Held = Data->Inventory->Get(Data->SelectedSlot);
-	if (!Data->bCreative || !Held.Item.ToString().EndsWith(TEXT("_banner")))
+	if (!Data->bCreative || !CarriesPlacedData(Held.Item))
 	{
 		return;
 	}

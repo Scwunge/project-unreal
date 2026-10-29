@@ -40,6 +40,11 @@ public:
 	// nothing for any other block.
 	void ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
+	// A shulker box at Pos is being broken: what it holds goes into the box item among Drops (and is forgotten there).
+	void PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
+	// A shulker box item was placed at Pos: what it carried goes into the new box.
+	void FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box);
+
 	// How many furnaces and brewing stands are being kept (for tests and logs).
 	int32 NumFurnaces() const { return Machines.Num(); }
 	// How many hoppers are at work.

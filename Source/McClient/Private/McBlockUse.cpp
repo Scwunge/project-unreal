@@ -14,6 +14,7 @@
 #include "McAnvilMenu.h"
 #include "McArrow.h"
 #include "McBuckets.h"
+#include "McShulker.h"
 #include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
@@ -71,7 +72,7 @@ namespace
 
 	bool IsChestName(FName Name)
 	{
-		return Name == TEXT("minecraft:chest") || Name == TEXT("minecraft:trapped_chest") || Name == TEXT("minecraft:barrel");
+		return Name == TEXT("minecraft:chest") || Name == TEXT("minecraft:trapped_chest") || Name == TEXT("minecraft:barrel") || McShulker::IsBox(Name);
 	}
 
 	// How many slots the block keeps as a plain container (chests, barrels, hoppers); 0 for any other.
@@ -93,6 +94,14 @@ namespace
 		if (Facing == TEXT("east")) return FIntVector(1, 0, 0);
 		if (Facing == TEXT("up")) return FIntVector(0, 1, 0);
 		return FIntVector(0, -1, 0);
+	}
+
+	// A shulker box opens at its face: a block in the way shuts it.
+	bool IsLidBlocked(const FMcBlockWorld& Blocks, const FIntVector& Pos)
+	{
+		const FMcStateId State = Blocks.GetBlock(Pos);
+		const FIntVector Step = FacingStep(FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing")));
+		return FMcBlockShapes::Get().HasCollision(Blocks.GetBlock(Pos + Step));
 	}
 
 	bool GetFurnaceKind(FName Name, EMcFurnaceKind& OutKind)
@@ -622,6 +631,7 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 		if (Box.IsSet() && Registry.IsAir(Blocks->GetBlock(Pos + Step)))
 		{
 			WorldActor.SetBlock(Pos + Step, Box.GetValue());
+			FillBox(WorldActor, Pos + Step, One);
 			TakeOne();
 			Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
 		}
@@ -836,6 +846,11 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 
 void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
+	// A shulker box keeps its things for the item it drops (PackBoxDrops).
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && McShulker::IsBox(GetBlockName(*Blocks, Pos)))
+	{
+		return;
+	}
 	const FKey Key = MakeKey(WorldActor, Pos);
 	TArray<FMcItemStack> Contents;
 	if (const FChestEntry* Chest = Chests.Find(Key))
@@ -861,6 +876,63 @@ void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVec
 			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
 		}
 	}
+}
+
+void UMcBlockUseSubsystem::PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Blocks || !McShulker::IsBox(GetBlockName(*Blocks, Pos)))
+	{
+		return;
+	}
+	const FKey Key = MakeKey(WorldActor, Pos);
+	TArray<FMcItemStack> Contents;
+	if (const FChestEntry* Chest = Chests.Find(Key))
+	{
+		Contents = Chest->Container->GetAll();
+		Chests.Remove(Key);
+	}
+	else
+	{
+		GetContents(WorldActor, Pos, Contents);
+	}
+	if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
+	{
+		if (Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15))
+		{
+			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		}
+	}
+	const TSharedPtr<FJsonValue> Packed = McShulker::Pack(Contents);
+	for (FMcItemStack& Drop : Drops)
+	{
+		if (Packed.IsValid() && McShulker::IsBox(Drop.Item))
+		{
+			Drop.Set(TEXT("minecraft:container"), Packed);
+			return;
+		}
+	}
+	// No box to carry them (nothing dropped): they spill.
+	DropAll(WorldActor, Pos, Contents);
+}
+
+void UMcBlockUseSubsystem::FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box)
+{
+	if (!McShulker::IsBox(Box.Item) || !Box.Has(TEXT("minecraft:container")))
+	{
+		return;
+	}
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, McShulker::NumSlots);
+	if (!Container.IsValid())
+	{
+		return;
+	}
+	const TArray<FMcItemStack> Slots = McShulker::Unpack(Box);
+	for (int32 Slot = 0; Slot < Slots.Num(); ++Slot)
+	{
+		Container->Set(Slot, Slots[Slot]);
+	}
+	WriteChest(WorldActor, Pos);
 }
 
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
@@ -959,6 +1031,10 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	}
 	if (const int32 Slots = GetContainerSlots(Name))
 	{
+		if (McShulker::IsBox(Name) && IsLidBlocked(*Blocks, Pos))
+		{
+			return true;
+		}
 		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
 		if (!Container.IsValid())
 		{
@@ -985,7 +1061,7 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		const bool bHopper = Slots == McHopper::NumSlots;
 		const bool bDispenser = Slots == 9;
 		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:dispenser") ? TEXT("Dispenser") : Name == TEXT("minecraft:dropper") ? TEXT("Dropper")
-			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
+			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : McShulker::IsBox(Name) ? TEXT("Shulker Box") : TEXT("Chest");
 		const EMcWindowKind Kind = bHopper ? EMcWindowKind::Hopper : bDispenser ? EMcWindowKind::Dispenser : EMcWindowKind::Chest;
 		Data->OpenBlockWindow(Kind, Pos, Second.IsValid() ? FString(TEXT("Large Chest")) : Title, First, nullptr,
 			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos]()

@@ -4,7 +4,10 @@
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McChestLink.h"
+#include "McBrewingStand.h"
 #include "McChunk.h"
+#include "McFurnace.h"
+#include "Serialization/MemoryReader.h"
 #include "McRails.h"
 #include "McSimulation.h"
 
@@ -36,13 +39,13 @@ namespace
 		Gate,
 		Dispenser,
 		Hopper,
-	};
-
-	enum EDir : int32
 		Rail,
 		PoweredRail,
 		ActivatorRail,
 		DetectorRail,
+	};
+
+	enum EDir : int32
 	{
 		North,
 		East,
@@ -107,13 +110,13 @@ namespace
 				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
 				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
 				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
-				for (const FMcStateId State : Block.States)
-				{
-					Kinds[State] = Kind;
 				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
+				for (const FMcStateId State : Block.States)
+				{
+					Kinds[State] = Kind;
 				}
 			}
 		}
@@ -342,10 +345,10 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case Lever:
 	case Button:
 	case Plate:
+	case DetectorRail:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
-	case DetectorRail:
 	case Daylight:
 		return Number(State, TEXT("power"));
 	case Torch:
@@ -400,10 +403,10 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case Plate:
 	case PlateLight:
 	case PlateHeavy:
+	case DetectorRail:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
 	case Torch:
 	case WallTorch:
-	case DetectorRail:
 		return Toward == Down ? Signal(State, Pos, Toward) : 0;
 	case Repeater:
 	case Comparator:
@@ -517,18 +520,35 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 	{
 		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Half.X >> 4, Half.Z >> 4));
 		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Half.X & 15, Half.Y, Half.Z & 15) : nullptr;
-		if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.IsEmpty())
+		// A furnace or brewing stand keeps its slots in its saved bytes (as of the last sweep).
+		TArray<FMcItemStack> Slots;
+		if (Entity && Entity->Kind == EMcBlockEntityKind::Container)
+		{
+			Slots = Entity->Slots;
+		}
+		else if (Entity && !Entity->Data.IsEmpty() && (Entity->Kind == EMcBlockEntityKind::Furnace || Entity->Kind == EMcBlockEntityKind::BrewingStand))
+		{
+			const TSharedPtr<FMcMachine> Machine = Entity->Kind == EMcBlockEntityKind::BrewingStand ? TSharedPtr<FMcMachine>(MakeShared<FMcBrewingStand>()) : TSharedPtr<FMcMachine>(MakeShared<FMcFurnace>());
+			FMemoryReaderView Reader(Entity->Data);
+			if (Machine->Serialize(Reader))
+			{
+				Slots = Machine->GetItems()->GetAll();
+			}
+		}
+		if (Slots.IsEmpty())
 		{
 			if (Half == Pos)
 			{
-				return -1;
+				// A furnace or brewing stand nobody has used reads empty.
+				const FString Name = Reg().GetBlockOf(World.GetBlock(Pos)).Name.ToString();
+				return Name == TEXT("minecraft:furnace") || Name == TEXT("minecraft:blast_furnace") || Name == TEXT("minecraft:smoker") || Name == TEXT("minecraft:brewing_stand") ? 0 : -1;
 			}
 			// A half nobody has put anything in yet is as many empty slots.
 			NumSlots += 27;
 			continue;
 		}
-		NumSlots += Entity->Slots.Num();
-		for (const FMcItemStack& Stack : Entity->Slots)
+		NumSlots += Slots.Num();
+		for (const FMcItemStack& Stack : Slots)
 		{
 			if (!Stack.IsEmpty())
 			{
@@ -597,6 +617,10 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 	case PlateLight:
 	case PlateHeavy:
 	case Torch:
+	case Rail:
+	case PoweredRail:
+	case ActivatorRail:
+	case DetectorRail:
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Down]));
 	case WallTorch:
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
@@ -617,10 +641,6 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	const FMcStateId State = World.GetBlock(Pos);
 	const uint8 Kind = KindOf(State);
 	if (Kind == None)
-	case Rail:
-	case PoweredRail:
-	case ActivatorRail:
-	case DetectorRail:
 	{
 		return;
 	}
@@ -685,6 +705,8 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	case Trapdoor:
 	case Gate:
 	case Daylight:
+	case PoweredRail:
+	case ActivatorRail:
 		Sim.ScheduleTick(Pos, 1);
 		break;
 	case Dispenser:
@@ -705,8 +727,6 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	}
 	case Hopper:
 	{
-	case PoweredRail:
-	case ActivatorRail:
 		// A powered hopper is locked.
 		const bool bEnabled = !HasPower(Pos);
 		if (Flag(State, TEXT("enabled")) != bEnabled)
@@ -756,6 +776,19 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case Observer:
 		TickObserver(Pos, State);
 		break;
+	case PoweredRail:
+	case ActivatorRail:
+	{
+		const bool bPowered = IsRailPowered(Pos, State);
+		if (bPowered != Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+		}
+		break;
+	}
+	case DetectorRail:
+		TickDetector(Pos, State);
+		break;
 	case Piston:
 	case StickyPiston:
 		TickPiston(Pos, State);
@@ -776,19 +809,6 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case Trapdoor:
 	case Gate:
 		TickOpening(Pos, State);
-	case PoweredRail:
-	case ActivatorRail:
-	{
-		const bool bPowered = IsRailPowered(Pos, State);
-		if (bPowered != Flag(State, TEXT("powered")))
-		{
-			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
-		}
-		break;
-	}
-	case DetectorRail:
-		TickDetector(Pos, State);
-		break;
 		break;
 	case Button:
 		TickButton(Pos, State);
@@ -1226,26 +1246,6 @@ void FMcRedstone::TickButton(const FIntVector& Pos, FMcStateId State)
 	}
 }
 
-void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
-{
-	const FMcStateId State = World.GetBlock(Pos);
-	const uint8 Kind = KindOf(State);
-	if (Kind != Plate && Kind != PlateLight && Kind != PlateHeavy)
-	{
-		return;
-	}
-	Plates.Add(Pos, NumEntities);
-	// Pressing is at once; letting go takes a moment (wooden and stone plates 20 ticks, weighted ones 10).
-	Sim.ScheduleTick(Pos, NumEntities > 0 ? 1 : (Kind == Plate ? 20 : 10));
-}
-
-void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
-{
-	const int32 Count = Plates.FindRef(Pos);
-	const uint8 Kind = KindOf(State);
-	if (Kind == Plate)
-	{
-		if ((Count > 0) != Flag(State, TEXT("powered")))
 bool FMcRedstone::IsRailPowered(const FIntVector& Pos, FMcStateId State) const
 {
 	if (HasPower(Pos))
@@ -1322,6 +1322,26 @@ void FMcRedstone::TickDetector(const FIntVector& Pos, FMcStateId State)
 	}
 }
 
+void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const uint8 Kind = KindOf(State);
+	if (Kind != Plate && Kind != PlateLight && Kind != PlateHeavy)
+	{
+		return;
+	}
+	Plates.Add(Pos, NumEntities);
+	// Pressing is at once; letting go takes a moment (wooden and stone plates 20 ticks, weighted ones 10).
+	Sim.ScheduleTick(Pos, NumEntities > 0 ? 1 : (Kind == Plate ? 20 : 10));
+}
+
+void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
+{
+	const int32 Count = Plates.FindRef(Pos);
+	const uint8 Kind = KindOf(State);
+	if (Kind == Plate)
+	{
+		if ((Count > 0) != Flag(State, TEXT("powered")))
 		{
 			Set(Pos, { FChange(TEXT("powered"), Bool(Count > 0)) });
 		}

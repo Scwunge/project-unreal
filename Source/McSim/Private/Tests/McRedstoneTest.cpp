@@ -7,7 +7,9 @@
 #include "McDimensionType.h"
 #include "McItemRegistry.h"
 #include "McSimulation.h"
+#include "McFurnace.h"
 #include "Misc/AutomationTest.h"
+#include "Serialization/MemoryWriter.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -248,6 +250,20 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		World.FindChunk(FIntPoint(0, 0))->SetBlockEntity(1, 1, 0, Full);
 		Run(Sim, 4);
 		TestEqual(TEXT("one full half of a double chest is half full: 8"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 8);
+		// A furnace is read from what it holds: one full slot of three is a third, 5.
+		World.SetBlock(FIntVector(2, 1, 0), Air);
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:furnace[facing=north,lit=false]")));
+		FMcBlockEntity Oven;
+		Oven.Kind = EMcBlockEntityKind::Furnace;
+		FMcFurnace Machine;
+		FMcItemStack Ore(TEXT("minecraft:iron_ore"));
+		Ore.Count = 64;
+		Machine.GetItems()->Set(FMcFurnace::InputSlot, Ore);
+		FMemoryWriter Writer(Oven.Data);
+		Machine.Serialize(Writer);
+		World.FindChunk(FIntPoint(0, 0))->SetBlockEntity(1, 1, 0, Oven);
+		Run(Sim, 4);
+		TestEqual(TEXT("a furnace with a full stack in one of its three slots gives 5"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 5);
 	}
 	{
 		// An observer pulses for 2 ticks, 2 ticks after the block it faces changes, and lights a lamp.

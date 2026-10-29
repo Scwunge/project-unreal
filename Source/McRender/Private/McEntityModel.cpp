@@ -775,6 +775,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		Base->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 	}
 	else
 	{
@@ -823,6 +824,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		const bool bGlow = ((Model->GlowLayers >> Layer) & 1u) != 0;
 		Material->SetScalarParameterValue(TEXT("SkyFactor"), bGlow ? 1.0f : McSky::GetSkyLightFactor());
+		Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 		if (Layer == 0 && bFlash != bFlashing)
 		{
 			// The picture swapped for its white silhouette, and back.

@@ -202,6 +202,10 @@ if (k == 1.0)
 {
     a *= 0.5;
 }
+else if (k == 2.0)
+{
+    a *= 0.3;
+}
 return a * lerp(1.0, 0.62, wet);
 """
 
@@ -231,7 +235,9 @@ float3 e = Albedo * (sky + glow);
 if (k == 2.0)
 {
     float2 p = Pos.xy * 0.01;
-    e += Albedo * Lava * (0.85 + 0.15 * sin(Time * 1.7 + p.x * 1.3 + p.y * 0.9));
+    // The bright parts burn and the dark crust stays dark.
+    float burn = saturate(dot(Albedo, float3(0.3, 0.59, 0.11)) * 1.3);
+    e += Albedo * Lava * (0.04 + 0.96 * burn * burn * burn) * (0.9 + 0.1 * sin(Time * 1.7 + p.x * 1.3 + p.y * 0.9));
 }
 else if (k == 5.0)
 {
@@ -506,7 +512,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                           {**emissive_extra, "Kind": (kind, ""), "Albedo": (albedo, ""), "Light": (uv2, ""), "SkyFactor": (sky_factor, ""),
                            "Ambient": (add_scalar(material, -350, 700, "Ambient", 1.0), ""),
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
-                           "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 5.0), ""),
+                           "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
                            "Time": (time, ""), "Pos": (absolute, "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)

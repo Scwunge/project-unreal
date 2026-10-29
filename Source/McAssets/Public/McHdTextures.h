@@ -22,7 +22,7 @@
 namespace McHd
 {
 	// Bump this when the generated pictures change, so cached ones are rebuilt.
-	constexpr int32 GeneratorVersion = 2;
+	constexpr int32 GeneratorVersion = 4;
 
 	enum class EMaterialClass : uint8
 	{
@@ -53,6 +53,8 @@ namespace McHd
 	MCASSETS_API FPicture Upscale2x(const FPicture& Source, bool bWrap);
 	// Scales by a power of two with Upscale2x, or to any other size with edge-aware sampling (bilinear that does not
 	// cross a hard edge). A smaller target shrinks with a box filter.
+	// The nearest texel, every texel a hard square (for the textures themselves; ScaleTo smooths).
+	MCASSETS_API FPicture ScaleNearest(const FPicture& Source, int32 Width, int32 Height);
 	MCASSETS_API FPicture ScaleTo(const FPicture& Source, int32 Width, int32 Height, bool bWrap);
 	// A box filter down to the size: each pixel the average (alpha weighted) of the pixels it covers. bPlain: all four
 	// channels averaged as they are, for the maps (whose alpha is height or emission, not transparency).

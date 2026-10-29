@@ -23,6 +23,9 @@ namespace McRenderMode
 	// albedo, normal and specular maps. It only takes effect while Unreal Mode is on (IsHd); GetHdSwitch is the
 	// setting itself. A switch changes GetGeneration like Unreal Mode does.
 	MCRENDER_API bool IsHd();
+	// The sky-ambient light of mobs and players in Unreal Mode: their textures are darker than most blocks' (a brown
+	// cow), so they get more of it to look as bright as blocks under the same light. 1 for the vanilla look.
+	MCRENDER_API float GetEntityAmbient();
 	MCRENDER_API bool GetHdSwitch();
 	MCRENDER_API void SetHd(bool bHd);
 	// The material to draw with in the current mode: in enhanced mode a block material's lit twin (made by

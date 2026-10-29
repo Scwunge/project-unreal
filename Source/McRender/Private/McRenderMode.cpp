@@ -48,6 +48,11 @@ void McRenderMode::SetEnhanced(bool bEnhanced)
 	UE_LOG(LogMcRender, Log, TEXT("Graphics: %s"), bEnhanced ? TEXT("enhanced") : TEXT("vanilla"));
 }
 
+float McRenderMode::GetEntityAmbient()
+{
+	return IsEnhanced() ? 2.0f : 1.0f;
+}
+
 bool McRenderMode::IsHd()
 {
 	return GEnhanced && GHd;

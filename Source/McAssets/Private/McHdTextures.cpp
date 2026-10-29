@@ -146,12 +146,10 @@ namespace
 		case EMaterialClass::Stone:
 		case EMaterialClass::Ore:
 		{
-			float D = 0.35f * Signed(U, V, 4, 4, Seed) + 0.25f * Signed(U, V, 12, 12, Seed + 1);
-			// Pits where a coarse noise is low; thin cracks along the ridges of another.
-			const float Pit = Noise(U, V, 8, 8, Seed + 2);
-			D -= 0.8f * SmoothStep(0.25f, 0.0f, Pit);
-			const float Ridge = 1.0f - FMath::Abs(Noise(U, V, 3, 3, Seed + 3) * 2.0f - 1.0f);
-			D -= 0.9f * SmoothStep(0.93f, 1.0f, Ridge);
+			// Fine grain, small pits where a fine noise is low, and the odd chip where another is high.
+			float D = 0.22f * Signed(U, V, 48, 48, Seed) + 0.12f * Signed(U, V, 96, 96, Seed + 1);
+			D -= 0.7f * SmoothStep(0.18f, 0.0f, Noise(U, V, 56, 56, Seed + 2));
+			D += 0.35f * SmoothStep(0.88f, 1.0f, Noise(U, V, 40, 40, Seed + 3));
 			return FMath::Clamp(D, -1.0f, 1.0f);
 		}
 		case EMaterialClass::Gem:
@@ -354,19 +352,33 @@ namespace
 			}
 		}
 
-		// Height: the picture's own brightness, softened (the pixels of the original are gentle slopes, not cliffs),
-		// with the detail on top.
+		// Height: each texel is a small embossed tile (a rounded bevel towards its edges), lifted by its own brightness,
+		// with the class's fine detail on top. The texel's brightness is not blurred, so the dark lines of a texture
+		// (the mortar of bricks) are grooves.
+		const float Bevel = Class == EMaterialClass::Glass ? 0.0f : Class == EMaterialClass::Fabric ? 0.5f
+			: (Class == EMaterialClass::Leaves || Class == EMaterialClass::Plant) ? 0.6f : 1.0f;
+		const float TexelX = static_cast<float>(Width) / FMath::Max(SourceWidth, 1);
+		const float TexelY = static_cast<float>(Height) / FMath::Max(SourceHeight, 1);
+		TArray<float> Cavity;
+		Cavity.SetNumUninitialized(Count);
 		TArray<float> HeightField;
 		HeightField.SetNumUninitialized(Count);
-		for (int32 Index = 0; Index < Count; ++Index)
+		for (int32 Y = 0; Y < Height; ++Y)
 		{
-			const FColor& Pixel = Base.Pixels[Index];
-			HeightField[Index] = Pixel.A < 10 ? 0.0f : Luma(Pixel);
-		}
-		BoxBlur(HeightField, Width, Height, FMath::Max(1, FMath::RoundToInt32(Scale * 0.5f)), bWrap);
-		for (int32 Index = 0; Index < Count; ++Index)
-		{
-			HeightField[Index] = FMath::Clamp(HeightField[Index] * 0.5f + 0.25f + Detail[Index] * 0.45f * Params.DetailHeight, 0.0f, 1.0f);
+			for (int32 X = 0; X < Width; ++X)
+			{
+				const int32 Index = Y * Width + X;
+				const FColor& Pixel = Base.Pixels[Index];
+				const float Fx = FMath::Frac((X + 0.5f) / TexelX);
+				const float Fy = FMath::Frac((Y + 0.5f) / TexelY);
+				const float Edge = FMath::Min(FMath::Min(Fx, 1.0f - Fx), FMath::Min(Fy, 1.0f - Fy)) * 2.0f;
+				const float Dome = SmoothStep(0.0f, 0.55f, Edge);
+				const float Lift = Pixel.A < 10 ? 0.0f : Luma(Pixel);
+				// Every texel sits a little higher or lower than its neighbours (a hash of which texel it is).
+				const float Jitter = (Hash01(static_cast<uint32>(X / FMath::Max(FMath::RoundToInt32(TexelX), 1)), static_cast<uint32>(Y / FMath::Max(FMath::RoundToInt32(TexelY), 1)), Seed + 9) - 0.5f) * (Class == EMaterialClass::Glass ? 0.0f : 0.3f);
+				Cavity[Index] = Lift * 0.6f + 0.3f + Detail[Index] * 0.25f * Params.DetailHeight + Jitter;
+				HeightField[Index] = FMath::Clamp(Cavity[Index] * 0.7f + Dome * 0.5f * Bevel, 0.0f, 1.0f);
+			}
 		}
 		if (Class == EMaterialClass::Ore)
 		{
@@ -376,14 +388,15 @@ namespace
 				HeightField[Index] = FMath::Lerp(HeightField[Index] * 0.6f, 0.95f, Gem[Index]);
 			}
 		}
-		NormalFromHeight(HeightField, Width, Height, Params.NormalStrength * Scale * 0.8f, Maps.Normal.Pixels);
+		NormalFromHeight(HeightField, Width, Height, Params.NormalStrength * Scale * 0.55f, Maps.Normal.Pixels);
 
-		// Occlusion: hollows against their surroundings.
-		TArray<float> Around = HeightField;
-		BoxBlur(Around, Width, Height, FMath::Max(2, FMath::RoundToInt32(Scale)), bWrap);
+		// Occlusion: the darker and lower parts against a few texels around them (the bevels don't count), kept gentle
+		// so a face is never much darker than without it.
+		TArray<float> Around = Cavity;
+		BoxBlur(Around, Width, Height, FMath::Max(2, FMath::RoundToInt32(Scale * 1.5f)), bWrap);
 		for (int32 Index = 0; Index < Count; ++Index)
 		{
-			const float Open = FMath::Clamp(1.0f - (Around[Index] - HeightField[Index]) * 3.0f, 0.45f, 1.0f);
+			const float Open = FMath::Clamp(1.0f - (Around[Index] - Cavity[Index]) * 3.0f, 0.55f, 1.0f);
 			Maps.Normal.Pixels[Index].B = ToByte(Open);
 		}
 
@@ -544,6 +557,27 @@ McHd::FPicture McHd::Shrink(const FPicture& Source, int32 Width, int32 Height, b
 			{
 				Pixel = FColor(static_cast<uint8>(R / A), static_cast<uint8>(G / A), static_cast<uint8>(B / A), static_cast<uint8>(A / Count));
 			}
+		}
+	}
+	return Out;
+}
+
+McHd::FPicture McHd::ScaleNearest(const FPicture& Source, int32 Width, int32 Height)
+{
+	FPicture Out;
+	if (Source.Width <= 0 || Source.Height <= 0 || Width <= 0 || Height <= 0)
+	{
+		return Out;
+	}
+	Out.Width = Width;
+	Out.Height = Height;
+	Out.Pixels.SetNumUninitialized(Width * Height);
+	for (int32 Y = 0; Y < Height; ++Y)
+	{
+		const int32 Sy = FMath::Min(Y * Source.Height / Height, Source.Height - 1);
+		for (int32 X = 0; X < Width; ++X)
+		{
+			Out.Pixels[Y * Width + X] = Source.Pixels[Sy * Source.Width + FMath::Min(X * Source.Width / Width, Source.Width - 1)];
 		}
 	}
 	return Out;
@@ -754,7 +788,8 @@ void McHd::NormalFromHeight(TConstArrayView<float> Height, int32 Width, int32 He
 
 McHd::FMaps McHd::Generate(const FString& TextureId, const FPicture& Source, int32 Scale, EMaterialClass Class, bool bEmissive, bool bWrap)
 {
-	const FPicture Big = ScaleTo(Source, Source.Width * Scale, Source.Height * Scale, bWrap);
+	// Every texel stays a hard-edged square (it is Minecraft); the detail goes inside each one.
+	const FPicture Big = ScaleNearest(Source, Source.Width * Scale, Source.Height * Scale);
 	return MakeMaps(Big, Class, GetSeed(TextureId), bEmissive, bWrap, true, StripId(TextureId), Source.Width, Source.Height);
 }
 

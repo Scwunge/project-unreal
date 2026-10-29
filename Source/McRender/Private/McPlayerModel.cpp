@@ -187,7 +187,7 @@ namespace McPlayerModel
 		{
 			const FPartDef& Def = PartDefs[Index];
 			AddBox(Def, Pose.Parts[Index], Pose.BodyYaw, Def.BaseUV, 0.0f, Out);
-			AddBox(Def, Pose.Parts[Index], Pose.BodyYaw, Def.OuterUV, OuterInflate, Out);
+			AddBox(Def, Pose.Parts[Index], Pose.BodyYaw, Def.OuterUV, Index == static_cast<int32>(EMcPlayerPart::Head) ? OuterInflate : OuterInflateBody, Out);
 		}
 	}
 
@@ -357,6 +357,7 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// Lit by the sky like the blocks around them.
 	Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+	Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 
 	McPlayerModel::FMeshData Data;
 	McPlayerModel::BuildMesh(McPlayerModel::ComputePose(State.Blend(TickAccumulator / 0.05f)), Data);

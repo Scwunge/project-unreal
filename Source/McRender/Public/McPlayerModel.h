@@ -32,8 +32,10 @@ namespace McPlayerModel
 	constexpr int32 SkinSize = 64;
 	// The player is 32 pixels tall in the model but 1.8 blocks (28.8 pixels) in the game.
 	constexpr float ModelScale = 0.9375f;
-	// The outer layer is this many pixels bigger than the part on every side.
+	// The outer layer is this many pixels bigger than the part on every side: the hat's, and the jacket's, sleeves'
+	// and trousers' (Minecraft grows those by a quarter pixel; at half a pixel the sleeves floated off the arms).
 	constexpr float OuterInflate = 0.5f;
+	constexpr float OuterInflateBody = 0.25f;
 
 	// A part's box and where it turns, for the standing pose.
 	struct FPartDef

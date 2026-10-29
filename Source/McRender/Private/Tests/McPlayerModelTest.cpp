@@ -108,14 +108,31 @@ bool FMcPlayerModelShapeTest::RunTest(const FString& Parameters)
 	}
 
 	// 32 pixels tall at 0.9375 of a block's 16: 1.875 blocks to the top of the head, plus the hat's half pixel; the
-	// outer layer pokes out half a pixel at the feet and sides too. Unreal units are 100 to the block.
+	// outer layer of the body parts pokes out a quarter pixel at the feet and sides. Unreal units are 100 to the block.
 	const double Pixel = ModelScale / 16.0 * 100.0;
 	const FBox Box = Bounds(Standing);
 	TestTrue(TEXT("top of the hat"), FMath::IsNearlyEqual(Box.Max.Z, 32.5 * Pixel, 1e-3));
-	TestTrue(TEXT("sole of the pants"), FMath::IsNearlyEqual(Box.Min.Z, -0.5 * Pixel, 1e-3));
-	// Arms 4 wide beside an 8 wide body: 16 pixels across at the shoulders, 8 deep for the head; the sleeves add a pixel.
-	TestTrue(TEXT("width"), FMath::IsNearlyEqual(Box.Max.X - Box.Min.X, 17.0 * Pixel, 1e-3));
+	TestTrue(TEXT("sole of the pants"), FMath::IsNearlyEqual(Box.Min.Z, -0.25 * Pixel, 1e-3));
+	// Arms 4 wide beside an 8 wide body: 16 pixels across at the shoulders, 8 deep for the head; the sleeves add half a pixel.
+	TestTrue(TEXT("width"), FMath::IsNearlyEqual(Box.Max.X - Box.Min.X, 16.5 * Pixel, 1e-3));
 	TestTrue(TEXT("depth"), FMath::IsNearlyEqual(Box.Max.Y - Box.Min.Y, 9.0 * Pixel, 1e-3));
+
+	// Each part's outer layer (the second 24 vertices of its 48) is its own box grown by the same margin on every side,
+	// so it wraps the part: a limb's overlay can't be turned, moved or sized differently from the limb.
+	for (int32 Part = 0; Part < 6; ++Part)
+	{
+		FBox BaseBox(ForceInit), OuterBox(ForceInit);
+		for (int32 Index = 0; Index < 24; ++Index)
+		{
+			BaseBox += Standing.Positions[Part * 48 + Index];
+			OuterBox += Standing.Positions[Part * 48 + 24 + Index];
+		}
+		const double Margin = (Part == 0 ? 0.5 : 0.25) * Pixel;
+		TestTrue(*FString::Printf(TEXT("the outer layer of part %d wraps it"), Part),
+			FMath::IsNearlyEqual(BaseBox.Min.X - OuterBox.Min.X, Margin, 1e-3) && FMath::IsNearlyEqual(OuterBox.Max.X - BaseBox.Max.X, Margin, 1e-3)
+			&& FMath::IsNearlyEqual(BaseBox.Min.Y - OuterBox.Min.Y, Margin, 1e-3) && FMath::IsNearlyEqual(OuterBox.Max.Y - BaseBox.Max.Y, Margin, 1e-3)
+			&& FMath::IsNearlyEqual(BaseBox.Min.Z - OuterBox.Min.Z, Margin, 1e-3) && FMath::IsNearlyEqual(OuterBox.Max.Z - BaseBox.Max.Z, Margin, 1e-3));
+	}
 
 	// The head alone (the first 48 vertices): 8 pixels tall on top of the body.
 	FBox HeadBox(ForceInit);

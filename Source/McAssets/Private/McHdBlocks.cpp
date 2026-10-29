@@ -495,7 +495,7 @@ UTexture2DArray* FMcHdBlocks::GetWhitePicture(const FString& TextureId, const FS
 		{
 			Scale /= 2;
 		}
-		McHd::FPicture Big = McHd::ScaleTo(Source, Source.Width * Scale, Source.Height * Scale, false);
+		McHd::FPicture Big = McHd::ScaleNearest(Source, Source.Width * Scale, Source.Height * Scale);
 		for (FColor& Pixel : Big.Pixels)
 		{
 			Pixel = FColor(255, 255, 255, Pixel.A);

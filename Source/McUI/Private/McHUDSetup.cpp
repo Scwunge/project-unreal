@@ -116,7 +116,7 @@ void AMcHUD::DrawSetup(int32 Width, int32 Height)
 		Y += 30.0f * K;
 		Line(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Progress * 100.0f)), Dim);
 		Y += 8.0f * K;
-		Line(TEXT("This takes a minute or two, once."), Dim);
+		Line(TEXT("This takes 5 to 10 minutes, once. Leave the game open."), Dim);
 		return;
 	}
 

@@ -451,7 +451,12 @@ bool FMcCacheBuilder::UnpackJar(const FSources& Sources, const FString& Out, FSt
 			return false;
 		}
 		const uint8* Data = &Jar[DataAt];
-		if (Entry.Method == 0)
+		if (Entry.Size == 0)
+		{
+			// Empty marker files (.mcassetsroot) have nothing to inflate.
+			Buffer.Reset();
+		}
+		else if (Entry.Method == 0)
 		{
 			Buffer.SetNumUninitialized(Entry.Size);
 			FMemory::Memcpy(Buffer.GetData(), Data, Entry.Size);

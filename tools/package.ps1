@@ -36,11 +36,14 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "BuildCookRun failed ($LASTEXITCODE)" }
 }
 
+# Debug symbols are 240 MB and no use to a friend.
+Get-ChildItem -Recurse -File $Stage -Filter *.pdb | Remove-Item -Force
+
 # Nothing of Mojang's goes in the package: no cache/ folder, no game assets or data, no jars.
 $files = Get-ChildItem -Recurse -File $Stage
 $bad = $files | Where-Object {
     $rel = $_.FullName.Substring($Stage.Length)
-    $rel -match '(^|\)cache(\|$)' -or $rel -match '(^|\)(assets|data|reports|blockstates)\minecraft' -or
+    $rel -match '(^|[\\/])cache([\\/]|$)' -or $rel -match '(^|[\\/])(assets|data|reports|blockstates)[\\/]minecraft' -or
     $_.Extension -in '.ogg', '.jar', '.mcmeta', '.nbt' -or $_.Name -in 'sounds.json', 'blocks.json', 'registries.json'
 }
 if ($bad) {

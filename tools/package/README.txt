@@ -8,14 +8,15 @@ makes its own copy from YOUR installation of Minecraft, on your PC only.
 
 What you need
 -------------
-1. Windows 10 or 11, 64-bit, and a graphics card that runs DirectX 12.
+1. Windows 10 or 11, 64-bit, and a graphics card from the last ~8 years (DirectX 11 or 12).
 2. Minecraft Java Edition, version 26.3, installed with the official Minecraft
    Launcher (or Prism Launcher). Open the launcher, pick 26.3 and press Play
    once, all the way to the Minecraft title screen, then quit it. That makes
    the launcher download the game, its sounds and its Java, which this game
    reads. You do not need Python, Unreal, mods or anything else.
 3. If the game will not start and mentions VCRUNTIME140 or MSVCP140, run
-   Windows\Engine\Extras\Redist\en-us\UEPrereqSetup_x64.exe once.
+   Windows\Engine\Extras\Redist\en-us\vc_redist.x64.exe once
+   (Microsoft's Visual C++ runtime, included here).
 
 
 Starting it
@@ -26,7 +27,8 @@ not "Program Files") and double-click Play.bat. Don't run it from inside the zip
 The first time, the game shows "First-time setup". Press "Set up". It looks for
 Minecraft in the usual places (%APPDATA%\.minecraft and Prism's folder). If
 yours is somewhere else, click the box and type or paste (Ctrl+V) the folder
-first. The bar fills in a minute or two, once. The copy is kept in
+first. The bar fills in about 5 to 10 minutes, once
+(it copies about 600 MB; leave the game open and don't let the PC sleep). The copy is kept in
 %LOCALAPPDATA%\McUnreal\cache and is not part of this folder. If it says
 something is missing, it tells you what to do (nearly always: press Play on
 26.3 in the launcher once more) and "Try again" continues.

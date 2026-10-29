@@ -180,6 +180,13 @@ bool FMcScreenLayoutTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a named one's at its name"), Anvil::GetFieldFor(TEXT("Biter"), TEXT("Iron Sword")), FString(TEXT("Biter")));
 	TestEqual(TEXT("the usual name sends no custom name"), Anvil::GetNameToSend(TEXT("Iron Sword"), TEXT("Iron Sword")), FString());
 	TestEqual(TEXT("another name is sent"), Anvil::GetNameToSend(TEXT("Biter"), TEXT("Iron Sword")), FString(TEXT("Biter")));
+	TestEqual(TEXT("the loom's first pattern"), Loom::FindPattern(FIntPoint(61, 14), 0, 32), 0);
+	TestEqual(TEXT("one row down and across"), Loom::FindPattern(FIntPoint(60 + 14 + 1, 13 + 14 + 1), 0, 32), 5);
+	TestEqual(TEXT("scrolled a row"), Loom::FindPattern(FIntPoint(61, 14), 1, 32), 4);
+	TestEqual(TEXT("past the list is none"), Loom::FindPattern(FIntPoint(61 + 14, 14), 0, 1), -1);
+	TestEqual(TEXT("32 patterns scroll 4 rows"), Loom::MaxScroll(32), 4);
+	TestEqual(TEXT("16 fit"), Loom::MaxScroll(16), 0);
+	TestEqual(TEXT("a dye's colour"), Loom::GetDyeColour(TEXT("red")), 0xB02E26u);
 	TestEqual(TEXT("a small chest"), MakeChestLayout(3).Slots.Num(), FMcContainerMenu(MakeShared<FMcContainer>(27), Inventory).NumSlots());
 	TestEqual(TEXT("a large chest"), MakeChestLayout(6).Slots.Num(), FMcContainerMenu(MakeShared<FMcContainer>(54), Inventory).NumSlots());
 	TestEqual(TEXT("a furnace"), MakeFurnaceLayout().Slots.Num(), FMcFurnaceMenu(MakeShared<FMcFurnace>(), Inventory).NumSlots());

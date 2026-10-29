@@ -13,7 +13,7 @@
 
 namespace McGui
 {
-	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Anvil, BrewingStand, Hopper, Dispenser };
+	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Anvil, BrewingStand, Hopper, Dispenser, Loom };
 
 	using FPlayerMenuSlots = ::FMcPlayerMenuSlots;
 
@@ -48,6 +48,7 @@ namespace McGui
 	MCUI_API FScreenLayout MakeFurnaceLayout();
 	MCUI_API FScreenLayout MakeEnchantingLayout();
 	MCUI_API FScreenLayout MakeStonecutterLayout();
+	MCUI_API FScreenLayout MakeLoomLayout();
 	MCUI_API FScreenLayout MakeSmithingLayout();
 	MCUI_API FScreenLayout MakeGrindstoneLayout();
 	MCUI_API FScreenLayout MakeAnvilLayout();
@@ -72,6 +73,26 @@ namespace McGui
 		// scrolled down Scroll rows; -1 if none (Count recipes in all).
 		MCUI_API int32 FindRecipe(FIntPoint Local, int32 Scroll, int32 Count);
 		MCUI_API int32 MaxScroll(int32 Count);
+	}
+
+	namespace Loom
+	{
+		// The patterns, 4 wide and 4 high (14 square each), and the scroll bar's track beside them.
+		constexpr int32 Columns = 4;
+		constexpr int32 Rows = 4;
+		constexpr int32 PatternsX = 60;
+		constexpr int32 PatternsY = 13;
+		constexpr int32 CellSize = 14;
+		constexpr int32 ScrollX = 119;
+		constexpr int32 ScrollY = 13;
+		constexpr int32 ScrollHeight = 56;
+
+		// The pattern (an index into the menu's list) under a point from the screen's top left, with the list
+		// scrolled down Scroll rows; -1 if none (Count patterns in all).
+		MCUI_API int32 FindPattern(FIntPoint Local, int32 Scroll, int32 Count);
+		MCUI_API int32 MaxScroll(int32 Count);
+		// The colour of a dye or banner (a name such as "light_blue"), as RGB.
+		MCUI_API uint32 GetDyeColour(const FString& Name);
 	}
 
 	namespace Anvil

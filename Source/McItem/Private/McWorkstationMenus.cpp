@@ -522,3 +522,212 @@ void FMcSmithingMenu::OnClosed(TArray<FMcItemStack>& Dropped)
 	GiveBack(*Table, 3, *Player, Dropped);
 	Refresh();
 }
+
+// ---- Loom ----
+
+namespace
+{
+	bool IsBanner(const FMcItemStack& Stack)
+	{
+		const FString Name = Stack.Item.ToString();
+		return Name.EndsWith(TEXT("_banner")) && !Name.EndsWith(TEXT("_wall_banner"));
+	}
+
+	bool IsDye(const FMcItemStack& Stack)
+	{
+		return Stack.Item.ToString().EndsWith(TEXT("_dye"));
+	}
+
+	bool IsPatternItem(const FMcItemStack& Stack)
+	{
+		return Stack.Item.ToString().EndsWith(TEXT("_banner_pattern"));
+	}
+
+	TArray<TSharedPtr<FJsonValue>> LayersOf(const FMcItemStack& Banner)
+	{
+		const TSharedPtr<FJsonValue> Layers = Banner.Get(TEXT("minecraft:banner_patterns"));
+		return Layers.IsValid() && Layers->Type == EJson::Array ? Layers->AsArray() : TArray<TSharedPtr<FJsonValue>>();
+	}
+}
+
+const TArray<FName>& FMcLoomMenu::GetFreePatterns()
+{
+	static const TArray<FName> Free = {
+		TEXT("minecraft:square_bottom_left"), TEXT("minecraft:square_bottom_right"), TEXT("minecraft:square_top_left"), TEXT("minecraft:square_top_right"),
+		TEXT("minecraft:stripe_bottom"), TEXT("minecraft:stripe_top"), TEXT("minecraft:stripe_left"), TEXT("minecraft:stripe_right"),
+		TEXT("minecraft:stripe_center"), TEXT("minecraft:stripe_middle"), TEXT("minecraft:stripe_downright"), TEXT("minecraft:stripe_downleft"),
+		TEXT("minecraft:small_stripes"), TEXT("minecraft:cross"), TEXT("minecraft:straight_cross"), TEXT("minecraft:triangle_bottom"),
+		TEXT("minecraft:triangle_top"), TEXT("minecraft:triangles_bottom"), TEXT("minecraft:triangles_top"), TEXT("minecraft:diagonal_left"),
+		TEXT("minecraft:diagonal_up_right"), TEXT("minecraft:diagonal_up_left"), TEXT("minecraft:diagonal_right"), TEXT("minecraft:circle"),
+		TEXT("minecraft:rhombus"), TEXT("minecraft:half_vertical"), TEXT("minecraft:half_horizontal"), TEXT("minecraft:half_vertical_right"),
+		TEXT("minecraft:half_horizontal_bottom"), TEXT("minecraft:border"), TEXT("minecraft:gradient"), TEXT("minecraft:gradient_up"),
+	};
+	return Free;
+}
+
+TArray<FName> FMcLoomMenu::GetPatternsOfItem(FName Item)
+{
+	// Each pattern item stands for one pattern (the data's `pattern_item` tags).
+	static const TMap<FName, FName> Of = {
+		{ TEXT("minecraft:flower_banner_pattern"), TEXT("minecraft:flower") },
+		{ TEXT("minecraft:creeper_banner_pattern"), TEXT("minecraft:creeper") },
+		{ TEXT("minecraft:skull_banner_pattern"), TEXT("minecraft:skull") },
+		{ TEXT("minecraft:mojang_banner_pattern"), TEXT("minecraft:mojang") },
+		{ TEXT("minecraft:globe_banner_pattern"), TEXT("minecraft:globe") },
+		{ TEXT("minecraft:piglin_banner_pattern"), TEXT("minecraft:piglin") },
+		{ TEXT("minecraft:flow_banner_pattern"), TEXT("minecraft:flow") },
+		{ TEXT("minecraft:guster_banner_pattern"), TEXT("minecraft:guster") },
+		{ TEXT("minecraft:field_masoned_banner_pattern"), TEXT("minecraft:bricks") },
+		{ TEXT("minecraft:bordure_indented_banner_pattern"), TEXT("minecraft:curly_border") },
+	};
+	const FName* Found = Of.Find(Item);
+	return Found ? TArray<FName>{ *Found } : TArray<FName>();
+}
+
+FMcLoomMenu::FMcLoomMenu(const TSharedPtr<FMcContainer>& PlayerInventory)
+	: Table(MakeShared<FMcContainer>(4))
+	, Player(PlayerInventory)
+{
+	AddSlot(Table, BannerSlot);
+	AddSlot(Table, DyeSlot);
+	AddSlot(Table, PatternSlot);
+	AddSlot(Table, ResultSlot);
+	AddPlayerSlots(PlayerInventory);
+}
+
+bool FMcLoomMenu::MayPlace(int32 Slot, const FMcItemStack& Stack) const
+{
+	switch (Slot)
+	{
+	case BannerSlot: return IsBanner(Stack);
+	case DyeSlot: return IsDye(Stack);
+	case PatternSlot: return IsPatternItem(Stack);
+	case ResultSlot: return false;
+	default: return true;
+	}
+}
+
+void FMcLoomMenu::Refresh()
+{
+	const FMcItemStack& Banner = Table->Get(BannerSlot);
+	const FMcItemStack& Dye = Table->Get(DyeSlot);
+	const FMcItemStack& Item = Table->Get(PatternSlot);
+	const FName Chosen = Patterns.IsValidIndex(Selected) ? Patterns[Selected] : NAME_None;
+	Patterns.Reset();
+	if (!Banner.IsEmpty() && !Dye.IsEmpty() && LayersOf(Banner).Num() < MaxPatterns)
+	{
+		Patterns = Item.IsEmpty() ? GetFreePatterns() : GetPatternsOfItem(Item.Item);
+	}
+	// Still the same pattern, though it may have moved in the list; else none is chosen.
+	Selected = Chosen.IsNone() ? -1 : Patterns.IndexOfByKey(Chosen);
+	FMcItemStack Result;
+	if (Patterns.IsValidIndex(Selected))
+	{
+		Result = Banner;
+		Result.Count = 1;
+		TArray<TSharedPtr<FJsonValue>> Layers = LayersOf(Banner);
+		const TSharedRef<FJsonObject> Layer = MakeShared<FJsonObject>();
+		Layer->SetStringField(TEXT("pattern"), Patterns[Selected].ToString());
+		FString Colour = Dye.Item.ToString();
+		Colour.RemoveFromStart(TEXT("minecraft:"));
+		Colour.RemoveFromEnd(TEXT("_dye"));
+		Layer->SetStringField(TEXT("color"), Colour);
+		Layers.Add(MakeShared<FJsonValueObject>(Layer));
+		Result.Set(TEXT("minecraft:banner_patterns"), MakeShared<FJsonValueArray>(Layers));
+	}
+	Table->Set(ResultSlot, Result);
+}
+
+bool FMcLoomMenu::ClickButton(int32 Id)
+{
+	Refresh();
+	if (!Patterns.IsValidIndex(Id))
+	{
+		return false;
+	}
+	Selected = Id;
+	Refresh();
+	return true;
+}
+
+void FMcLoomMenu::SerializeState(FArchive& Ar)
+{
+	int32 Chosen = Selected;
+	Ar << Chosen;
+	if (Ar.IsLoading())
+	{
+		// The offers follow from the slots, which are synced first; the choice is read back after them.
+		Selected = -1;
+		Refresh();
+		Selected = Patterns.IsValidIndex(Chosen) ? Chosen : -1;
+		Refresh();
+	}
+}
+
+void FMcLoomMenu::SlotChanged(int32 Slot)
+{
+	if (Slot != ResultSlot)
+	{
+		Refresh();
+	}
+}
+
+void FMcLoomMenu::OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>& Dropped)
+{
+	if (Slot != ResultSlot)
+	{
+		return;
+	}
+	UseOne(*Table, BannerSlot);
+	UseOne(*Table, DyeSlot);
+	Refresh();
+}
+
+FMcItemStack FMcLoomMenu::QuickMoveStack(int32 Slot)
+{
+	const FMcItemStack Original = GetStack(Slot);
+	if (Original.IsEmpty())
+	{
+		return FMcItemStack();
+	}
+	FMcItemStack Rest = Original;
+	bool bMoved;
+	if (Slot == ResultSlot)
+	{
+		// One banner, if it fits in the inventory; shift-clicking again repeats it.
+		if (!Player->CanAddItem(Original))
+		{
+			return FMcItemStack();
+		}
+		MoveItemStackTo(Rest, PlayerStart, NumSlots(), true);
+		TArray<FMcItemStack> Dropped;
+		FMcItemStack Taken = Original;
+		Table->Set(ResultSlot, FMcItemStack());
+		OnTake(ResultSlot, Taken, Dropped);
+		return Original;
+	}
+	if (Slot < PlayerStart)
+	{
+		bMoved = MoveItemStackTo(Rest, PlayerStart, NumSlots(), true);
+	}
+	else
+	{
+		const int32 Target = IsBanner(Original) ? BannerSlot : IsDye(Original) ? DyeSlot : IsPatternItem(Original) ? PatternSlot : -1;
+		const int32 HotbarStart = PlayerStart + 27;
+		bMoved = Target >= 0 ? MoveItemStackTo(Rest, Target, Target + 1, false)
+			: Slot >= HotbarStart ? MoveItemStackTo(Rest, PlayerStart, HotbarStart, false) : MoveItemStackTo(Rest, HotbarStart, NumSlots(), false);
+	}
+	if (!bMoved)
+	{
+		return FMcItemStack();
+	}
+	SetStack(Slot, Rest.Count > 0 ? Rest : FMcItemStack());
+	return Original;
+}
+
+void FMcLoomMenu::OnClosed(TArray<FMcItemStack>& Dropped)
+{
+	Table->Set(ResultSlot, FMcItemStack());
+	GiveBack(*Table, 3, *Player, Dropped);
+	Refresh();
+}

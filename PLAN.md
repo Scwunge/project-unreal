@@ -147,6 +147,13 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Not done:** the book model above the table, and its particles.
   - **Dev switches:** `-McUse=X,Y,Z` uses that block five seconds in. `-McShiftClick=29,30` then
     shift-clicks those slots of the window it opens.
+- **Loom** (2026-10-29), in `FMcLoomMenu`, following minecraft.wiki's "Loom": a banner, a dye and optionally a banner
+  pattern item. With a banner and a dye in, the 32 patterns that need no item are offered (or, with a pattern
+  item, its own), 4 by 4 and scrolled with the wheel, each drawn as a small banner in the dye's colour. The one
+  chosen gives the banner with that layer added (`minecraft:banner_patterns`). A banner with six layers takes
+  no more. Taking the result uses one banner and one dye; the pattern item stays.
+  - **Not done:** drawing banners with their patterns as items or in the world, and the cartography table (it
+    needs maps first).
 - **Stonecutter, grindstone and smithing table** (2026-10-28), in `McWorkstationMenus`:
   - **Stonecutter.** Its recipes for the input are shown 4 by 3, scrolled with the wheel, sorted by what
     they make. Clicking one chooses it; it stays chosen while the same item is in. A menu button goes to

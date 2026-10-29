@@ -45,6 +45,8 @@ struct AMcHUD::FScreenState
 	// The stonecutter's menu and how far down its recipes are scrolled.
 	FMcStonecutterMenu* Stonecutter = nullptr;
 	int32 RecipeScroll = 0;
+	// The loom's menu (Input holds it), its patterns scrolled the same way.
+	FMcLoomMenu* Loom = nullptr;
 	// The anvil's menu, the name typed, and the item the name was set for.
 	FMcAnvilMenu* Anvil = nullptr;
 	FString AnvilName;
@@ -394,6 +396,10 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		State->Layout = McGui::MakeStonecutterLayout();
 		State->Stonecutter = static_cast<FMcStonecutterMenu*>(Window.Menu.Get());
 		break;
+	case EMcWindowKind::Loom:
+		State->Layout = McGui::MakeLoomLayout();
+		State->Loom = static_cast<FMcLoomMenu*>(Window.Menu.Get());
+		break;
 	case EMcWindowKind::SmithingTable:
 		State->Layout = McGui::MakeSmithingLayout();
 		break;
@@ -668,6 +674,26 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		if (Recipe >= 0 && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 		{
 			Data->ClickMenuButton(Recipe);
+			bTaken = true;
+		}
+	}
+	if (Screen->Loom && bInside)
+	{
+		namespace LoomGui = McGui::Loom;
+		const int32 Count = Screen->Loom->GetPatterns().Num();
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollDown))
+		{
+			Screen->RecipeScroll = FMath::Min(Screen->RecipeScroll + 1, LoomGui::MaxScroll(Count));
+		}
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp))
+		{
+			Screen->RecipeScroll = FMath::Max(Screen->RecipeScroll - 1, 0);
+		}
+		Screen->RecipeScroll = FMath::Clamp(Screen->RecipeScroll, 0, LoomGui::MaxScroll(Count));
+		const int32 Pattern = LoomGui::FindPattern(Local, Screen->RecipeScroll, Count);
+		if (Pattern >= 0 && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			Data->ClickMenuButton(Pattern);
 			bTaken = true;
 		}
 	}
@@ -993,6 +1019,47 @@ void AMcHUD::DrawStonecutter(FIntPoint Origin, FIntPoint Local)
 	}
 }
 
+void AMcHUD::DrawLoom(FIntPoint Origin, FIntPoint Local)
+{
+	namespace Layout = McGui::Loom;
+	const FMcLoomMenu& Menu = *Screen->Loom;
+	const TArray<FName>& Patterns = Menu.GetPatterns();
+	const FString Loom = FString(SpriteRoot) + TEXT("container/loom/");
+	const int32 MaxScroll = Layout::MaxScroll(Patterns.Num());
+	const float Thumb = MaxScroll > 0 ? FMath::FloorToFloat((Layout::ScrollHeight - 15) * Screen->RecipeScroll / static_cast<float>(MaxScroll)) : 0.0f;
+	DrawSprite(LoadSprite(Loom + (MaxScroll > 0 ? TEXT("scroller.png") : TEXT("scroller_disabled.png"))), Origin.X + Layout::ScrollX, Origin.Y + Layout::ScrollY + Thumb, 12, 15);
+	const bool bBanner = !Menu.GetStack(FMcLoomMenu::BannerSlot).IsEmpty();
+	const bool bDye = !Menu.GetStack(FMcLoomMenu::DyeSlot).IsEmpty();
+	if (bBanner && bDye && Patterns.IsEmpty())
+	{
+		// Nothing can go on (six patterns already, or an item that gives none).
+		DrawSprite(LoadSprite(Loom + TEXT("error.png")), Origin.X + 109, Origin.Y + 12, 17, 17);
+	}
+	const int32 Hovered = Layout::FindPattern(Local, Screen->RecipeScroll, Patterns.Num());
+	// What each button shows: the banner's colour with the pattern over it in the dye's, as a small banner.
+	FString BaseColour = Menu.GetStack(FMcLoomMenu::BannerSlot).Item.ToString();
+	BaseColour.RemoveFromStart(TEXT("minecraft:"));
+	BaseColour.RemoveFromEnd(TEXT("_banner"));
+	FString DyeColour = Menu.GetStack(FMcLoomMenu::DyeSlot).Item.ToString();
+	DyeColour.RemoveFromStart(TEXT("minecraft:"));
+	DyeColour.RemoveFromEnd(TEXT("_dye"));
+	for (int32 Cell = 0; Cell < Layout::Columns * Layout::Rows; ++Cell)
+	{
+		const int32 Index = Screen->RecipeScroll * Layout::Columns + Cell;
+		if (Index >= Patterns.Num())
+		{
+			break;
+		}
+		const float X = Origin.X + Layout::PatternsX + (Cell % Layout::Columns) * Layout::CellSize;
+		const float Y = Origin.Y + Layout::PatternsY + (Cell / Layout::Columns) * Layout::CellSize;
+		const TCHAR* Button = Index == Menu.GetSelected() ? TEXT("pattern_selected.png") : Index == Hovered ? TEXT("pattern_highlighted.png") : TEXT("pattern.png");
+		DrawSprite(LoadSprite(Loom + Button), X, Y, 14, 14);
+		const FString Banner = TEXT("textures/entity/banner/");
+		DrawRegion(LoadSprite(Banner + TEXT("banner_base.png")), X + 4, Y + 2, 6, 10, 1, 1, 20, 40, FromRgb(McGui::Loom::GetDyeColour(BaseColour)));
+		DrawRegion(LoadSprite(Banner + McCache::PathOf(Patterns[Index].ToString()) + TEXT(".png")), X + 4, Y + 2, 6, 10, 1, 1, 20, 40, FromRgb(McGui::Loom::GetDyeColour(DyeColour)));
+	}
+}
+
 void AMcHUD::DrawScreen(int32 Width, int32 Height)
 {
 	const McGui::FScreenLayout& Layout = Screen->Layout;
@@ -1072,6 +1139,14 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		if (Screen->Stonecutter)
 		{
 			DrawStonecutter(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
+		}
+		break;
+	case McGui::EScreen::Loom:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 4.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		if (Screen->Loom)
+		{
+			DrawLoom(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
 		}
 		break;
 	case McGui::EScreen::Anvil:

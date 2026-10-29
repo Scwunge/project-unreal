@@ -123,3 +123,50 @@ private:
 	TSharedPtr<FMcContainer> Player;
 	FMcCraftingMatch Match;
 };
+
+// The loom (minecraft.wiki, "Loom"): slot 0 the banner, 1 the dye, 2 the banner pattern item, 3 the result, then the
+// player's slots. With a banner and a dye in, the patterns that can go on are offered as buttons: those that need no
+// item, or, with a pattern item in, the one it stands for. A banner takes at most six patterns. The one chosen
+// (ClickButton) fills the result: the banner with the pattern added in the dye's colour. Taking it uses one banner
+// and one dye; the pattern item stays.
+class MCITEM_API FMcLoomMenu : public FMcMenu
+{
+public:
+	static constexpr int32 BannerSlot = 0;
+	static constexpr int32 DyeSlot = 1;
+	static constexpr int32 PatternSlot = 2;
+	static constexpr int32 ResultSlot = 3;
+	static constexpr int32 MaxPatterns = 6;
+
+	explicit FMcLoomMenu(const TSharedPtr<FMcContainer>& PlayerInventory);
+
+	// The patterns offered, in the order shown ("minecraft:border"), and the one chosen (an index; -1 for none).
+	const TArray<FName>& GetPatterns() const { return Patterns; }
+	int32 GetSelected() const { return Selected; }
+
+	// The patterns an item stands for: none for anything but a banner pattern item.
+	static TArray<FName> GetPatternsOfItem(FName Item);
+	// The patterns that need no item.
+	static const TArray<FName>& GetFreePatterns();
+
+	virtual bool ClickButton(int32 Id) override;
+	virtual void SerializeState(FArchive& Ar) override;
+
+protected:
+	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override;
+	virtual bool CanTakeForPickupAll(int32 Slot) const override { return Slot != ResultSlot; }
+	virtual bool CanDragTo(int32 Slot) const override { return Slot != ResultSlot; }
+	virtual FMcItemStack QuickMoveStack(int32 Slot) override;
+	virtual void SlotChanged(int32 Slot) override;
+	virtual void OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>& Dropped) override;
+	virtual void OnClosed(TArray<FMcItemStack>& Dropped) override;
+
+private:
+	// Offers the patterns the inputs allow, keeping the choice if it is still there, and sets the result.
+	void Refresh();
+
+	TSharedPtr<FMcContainer> Table;
+	TSharedPtr<FMcContainer> Player;
+	TArray<FName> Patterns;
+	int32 Selected = -1;
+};

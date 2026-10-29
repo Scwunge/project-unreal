@@ -804,6 +804,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenBlockWindow(EMcWindowKind::Stonecutter, Pos, TEXT("Stonecutter"), nullptr, nullptr);
 		return true;
 	}
+	if (Name == TEXT("minecraft:loom"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::Loom, Pos, TEXT("Loom"), nullptr, nullptr);
+		return true;
+	}
 	if (IsAnvilName(Name))
 	{
 		// Each use has a 12% chance to wear it a step: chipped, damaged, then gone (minecraft.wiki, "Anvil").
@@ -985,6 +990,8 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:enchanting_table");
 	case EMcWindowKind::Stonecutter:
 		return Name == TEXT("minecraft:stonecutter");
+	case EMcWindowKind::Loom:
+		return Name == TEXT("minecraft:loom");
 	case EMcWindowKind::SmithingTable:
 		return Name == TEXT("minecraft:smithing_table");
 	case EMcWindowKind::Grindstone:

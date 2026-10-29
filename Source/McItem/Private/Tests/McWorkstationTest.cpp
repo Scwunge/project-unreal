@@ -148,6 +148,62 @@ bool FMcWorkstationTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("half the value, rounded up"), Menu.TakeExperience(), 12);
 		TestEqual(TEXT("asked once"), Menu.TakeExperience(), 0);
 	}
+
+	// ---- Loom: a banner and a dye offer the 32 free patterns; the one chosen goes on in the dye's colour. ----
+	{
+		const TSharedPtr<FMcContainer> Bag = MakeShared<FMcContainer>(36);
+		FMcLoomMenu Menu(Bag);
+		TestTrue(TEXT("nothing offered at first"), Menu.GetPatterns().IsEmpty());
+		Menu.SetStack(FMcLoomMenu::BannerSlot, FMcItemStack(TEXT("minecraft:white_banner"), 2));
+		Menu.Click(FMcLoomMenu::BannerSlot, 0, EMcClickType::Pickup, Dropped);
+		Menu.Click(FMcLoomMenu::BannerSlot, 0, EMcClickType::Pickup, Dropped);
+		Menu.SetStack(FMcLoomMenu::DyeSlot, FMcItemStack(TEXT("minecraft:red_dye"), 2));
+		Menu.Click(FMcLoomMenu::DyeSlot, 0, EMcClickType::Pickup, Dropped);
+		Menu.Click(FMcLoomMenu::DyeSlot, 0, EMcClickType::Pickup, Dropped);
+		TestEqual(TEXT("32 patterns need no item"), Menu.GetPatterns().Num(), 32);
+		const int32 Border = Menu.GetPatterns().IndexOfByKey(FName(TEXT("minecraft:border")));
+		TestTrue(TEXT("borders are one"), Border >= 0);
+		TestFalse(TEXT("no such button"), Menu.ClickButton(99));
+		TestTrue(TEXT("choose the border"), Menu.ClickButton(Border));
+		const FMcItemStack Result = Menu.GetStack(FMcLoomMenu::ResultSlot);
+		TestEqual(TEXT("one banner"), Result.Count, 1);
+		const TSharedPtr<FJsonValue> Layers = Result.Get(TEXT("minecraft:banner_patterns"));
+		TestTrue(TEXT("with one layer"), Layers.IsValid() && Layers->AsArray().Num() == 1);
+		if (Layers.IsValid() && Layers->AsArray().Num() == 1)
+		{
+			const TSharedPtr<FJsonObject> Layer = Layers->AsArray()[0]->AsObject();
+			TestEqual(TEXT("the pattern"), Layer->GetStringField(TEXT("pattern")), FString(TEXT("minecraft:border")));
+			TestEqual(TEXT("in the dye's colour"), Layer->GetStringField(TEXT("color")), FString(TEXT("red")));
+		}
+		Menu.Click(FMcLoomMenu::ResultSlot, 0, EMcClickType::Pickup, Dropped);
+		TestEqual(TEXT("the banner is carried"), Menu.GetCarried().Item, FName(TEXT("minecraft:white_banner")));
+		TestEqual(TEXT("one banner used"), Menu.GetStack(FMcLoomMenu::BannerSlot).Count, 1);
+		TestEqual(TEXT("one dye used"), Menu.GetStack(FMcLoomMenu::DyeSlot).Count, 1);
+		TestEqual(TEXT("and the choice stays"), Menu.GetSelected(), Border);
+		TestFalse(TEXT("so another is ready"), Menu.GetStack(FMcLoomMenu::ResultSlot).IsEmpty());
+
+		// A pattern item narrows the list to its own pattern, and a banner with six layers takes no more.
+		Menu.SetCarried(FMcItemStack());
+		Menu.SetStack(FMcLoomMenu::PatternSlot, FMcItemStack(TEXT("minecraft:flower_banner_pattern")));
+		Menu.Click(FMcLoomMenu::PatternSlot, 0, EMcClickType::Pickup, Dropped);
+		Menu.Click(FMcLoomMenu::PatternSlot, 0, EMcClickType::Pickup, Dropped);
+		TestEqual(TEXT("the flower pattern alone"), Menu.GetPatterns().Num(), 1);
+		TestEqual(TEXT("it is the flower"), Menu.GetPatterns()[0], FName(TEXT("minecraft:flower")));
+		FMcItemStack Busy(TEXT("minecraft:blue_banner"));
+		TArray<TSharedPtr<FJsonValue>> Six;
+		for (int32 Index = 0; Index < FMcLoomMenu::MaxPatterns; ++Index)
+		{
+			const TSharedRef<FJsonObject> Layer = MakeShared<FJsonObject>();
+			Layer->SetStringField(TEXT("pattern"), TEXT("minecraft:cross"));
+			Layer->SetStringField(TEXT("color"), TEXT("black"));
+			Six.Add(MakeShared<FJsonValueObject>(Layer));
+		}
+		Busy.Set(TEXT("minecraft:banner_patterns"), MakeShared<FJsonValueArray>(Six));
+		Menu.SetStack(FMcLoomMenu::BannerSlot, Busy);
+		Menu.Click(FMcLoomMenu::BannerSlot, 0, EMcClickType::Pickup, Dropped);
+		Menu.Click(FMcLoomMenu::BannerSlot, 0, EMcClickType::Pickup, Dropped);
+		TestTrue(TEXT("six layers take no more"), Menu.GetPatterns().IsEmpty());
+	}
 	return true;
 }
 

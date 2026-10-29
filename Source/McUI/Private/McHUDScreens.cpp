@@ -401,7 +401,7 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		State->Layout = McGui::MakeCraftingTableLayout();
 		break;
 	case EMcWindowKind::Chest:
-		State->Layout = McGui::MakeChestLayout(FMath::Clamp(Window.Container.IsValid() ? Window.Container->Num() / 9 : 3, 1, 6));
+		State->Layout = McGui::MakeChestLayout(FMath::Clamp(Window.Menu.IsValid() ? (Window.Menu->NumSlots() - 36) / 9 : 3, 1, 6));
 		break;
 	case EMcWindowKind::BrewingStand:
 		State->Layout = McGui::MakeBrewingStandLayout();

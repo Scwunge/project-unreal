@@ -401,7 +401,7 @@ void UMcPlayerDataComponent::OpenInventoryWindow()
 	}
 }
 
-void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcMachine>& Machine, TFunction<void()> OnChanged)
+void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<FMcMachine>& Machine, TFunction<void()> OnChanged, const TSharedPtr<FMcContainer>& SecondContainer)
 {
 	if (!IsServer() || Stats.Health <= 0.0f)
 	{
@@ -426,6 +426,13 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 		}
 		Aux = Container->Num();
 		Made.Container = Container;
+		if (Kind == EMcWindowKind::Chest && SecondContainer.IsValid())
+		{
+			// A double chest: both halves in one window.
+			Aux += SecondContainer->Num();
+			Made.Menu = MakeShared<FMcContainerMenu>(Container, SecondContainer, Inventory);
+			break;
+		}
 		Made.Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
 		break;
 	case EMcWindowKind::Furnace:

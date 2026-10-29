@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McChestLink.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McFlatGenerator.h"
@@ -468,6 +469,11 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bChec
 		{
 			MulticastBlockBroken(Pos, Old);
 		}
+	}
+	// The halves of a double chest follow each other as one is placed or taken away.
+	if (HasAuthority() && Old != State && BlockWorld->HasChunk(ChunkPos))
+	{
+		McChestLink::Sync(*BlockWorld, Pos, Old, State, [this](const FIntVector& At, FMcStateId Other) { SetBlock(At, Other, false); });
 	}
 	// A portal that has lost a piece of its frame goes out.
 	if (HasAuthority() && bCheckPortals && !bFixingPortals && Old != State && BlockWorld->HasChunk(ChunkPos) && !McPortal::IsPortalBlock(State))

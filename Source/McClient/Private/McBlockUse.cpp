@@ -5,6 +5,7 @@
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
+#include "McChestLink.h"
 #include "McEnchanting.h"
 #include "McEntityHost.h"
 #include "McFurnace.h"
@@ -874,19 +875,41 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		{
 			return false;
 		}
+		// A double chest opens as both halves, the right one's slots first.
+		TSharedPtr<FMcContainer> First = Container;
+		TSharedPtr<FMcContainer> Second;
+		FIntVector SecondPos = Pos;
+		if (McChestLink::IsLinkable(Name))
+		{
+			if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pos))
+			{
+				SecondPos = Partner.GetValue();
+				const TSharedPtr<FMcContainer> Other = GetChest(WorldActor, SecondPos, Slots);
+				if (Other.IsValid())
+				{
+					const bool bRight = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("type")) == TEXT("right");
+					First = bRight ? Container : Other;
+					Second = bRight ? Other : Container;
+				}
+			}
+		}
 		const bool bHopper = Slots == McHopper::NumSlots;
 		const bool bDispenser = Slots == 9;
 		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:dispenser") ? TEXT("Dispenser") : Name == TEXT("minecraft:dropper") ? TEXT("Dropper")
 			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
 		const EMcWindowKind Kind = bHopper ? EMcWindowKind::Hopper : bDispenser ? EMcWindowKind::Dispenser : EMcWindowKind::Chest;
-		Data->OpenBlockWindow(Kind, Pos, Title, Container, nullptr,
-			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos]()
+		Data->OpenBlockWindow(Kind, Pos, Second.IsValid() ? FString(TEXT("Large Chest")) : Title, First, nullptr,
+			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos]()
 			{
 				if (AMcWorldActor* Actor = WeakWorld.Get())
 				{
 					WriteChest(*Actor, Pos);
+					if (SecondPos != Pos)
+					{
+						WriteChest(*Actor, SecondPos);
+					}
 				}
-			});
+			}, Second);
 		return true;
 	}
 	if (Name == TEXT("minecraft:brewing_stand"))
@@ -950,6 +973,11 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	case EMcWindowKind::CraftingTable:
 		return Name == TEXT("minecraft:crafting_table");
 	case EMcWindowKind::Chest:
+		// A double chest's window needs both halves (a broken one would let its items be taken twice).
+		if (Window.Menu.IsValid() && Window.Menu->NumSlots() > 27 + 36 && !McChestLink::FindPartner(*Blocks, Window.Pos).IsSet())
+		{
+			return false;
+		}
 		return IsChestName(Name);
 	case EMcWindowKind::Furnace:
 		return GetFurnaceKind(Name, Kind);

@@ -1,6 +1,7 @@
 #include "McBlockPlacement.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
+#include "McChestLink.h"
 
 namespace
 {
@@ -185,6 +186,15 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 		Properties.Add(TEXT("part"), TEXT("head"));
 		Placed.Add({ Head, Registry.FindState(PlacedName, Properties).Get(BlockState) });
 		return Placed;
+	}
+
+	// A chest beside a single chest of the same kind and facing joins it as a double chest.
+	if (McChestLink::IsLinkable(PlacedName) && Properties.Contains(TEXT("facing")))
+	{
+		if (const TOptional<TPair<FName, FIntVector>> Join = McChestLink::ChooseJoin(World, Pos, PlacedName, Properties[TEXT("facing")], Hit.Block))
+		{
+			Properties.Add(TEXT("type"), Join->Key);
+		}
 	}
 
 	const TOptional<FMcStateId> State = Registry.FindState(PlacedName, Properties);

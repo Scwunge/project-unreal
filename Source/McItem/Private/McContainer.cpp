@@ -536,6 +536,21 @@ void FMcMenu::Close(TArray<FMcItemStack>& Dropped)
 
 // ---- FMcContainerMenu ----
 
+FMcContainerMenu::FMcContainerMenu(const TSharedPtr<FMcContainer>& First, const TSharedPtr<FMcContainer>& Second, const TSharedPtr<FMcContainer>& PlayerInventory)
+	: Container(First)
+	, SecondContainer(Second)
+{
+	for (int32 Index = 0; Index < First->Num(); ++Index)
+	{
+		AddSlot(First, Index);
+	}
+	for (int32 Index = 0; Index < Second->Num(); ++Index)
+	{
+		AddSlot(Second, Index);
+	}
+	AddPlayerSlots(PlayerInventory);
+}
+
 FMcContainerMenu::FMcContainerMenu(const TSharedPtr<FMcContainer>& InContainer, const TSharedPtr<FMcContainer>& PlayerInventory)
 	: Container(InContainer)
 {

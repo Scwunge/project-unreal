@@ -154,10 +154,13 @@ class MCITEM_API FMcContainerMenu : public FMcMenu
 {
 public:
 	FMcContainerMenu(const TSharedPtr<FMcContainer>& InContainer, const TSharedPtr<FMcContainer>& PlayerInventory);
+	// A double chest: the slots of First, then of Second.
+	FMcContainerMenu(const TSharedPtr<FMcContainer>& First, const TSharedPtr<FMcContainer>& Second, const TSharedPtr<FMcContainer>& PlayerInventory);
 
 protected:
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override { return true; }
 
 private:
 	TSharedPtr<FMcContainer> Container;
+	TSharedPtr<FMcContainer> SecondContainer;
 };

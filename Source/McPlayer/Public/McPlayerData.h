@@ -137,7 +137,7 @@ public:
 	void OpenInventoryWindow();
 	// Server: opens a window on a block for this player. Chest takes the block's container (its items are what the
 	// player moves; OnChanged writes them back), Machine the furnace or brewing stand.
-	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr);
+	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr, const TSharedPtr<FMcContainer>& SecondContainer = nullptr);
 	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
 	void CloseWindow();
 	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where

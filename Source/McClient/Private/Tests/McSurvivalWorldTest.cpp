@@ -1,3 +1,4 @@
+#include "McChestLink.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "McBlockRegistry.h"
@@ -346,6 +347,23 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
 	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
 	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
+	// Double chests: facing north, the left half is east of the right one. Placing a chest beside a single one
+	// joins them, and taking one away leaves the other single again.
+	TestEqual(TEXT("a right chest's partner is clockwise"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("right")), FIntVector(1, 0, 0));
+	TestEqual(TEXT("a left chest's partner is counter-clockwise"), McChestLink::GetPartnerOffset(TEXT("east"), TEXT("left")), FIntVector(0, 0, -1));
+	TestEqual(TEXT("a single chest has none"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("single")), FIntVector::ZeroValue);
+	const FIntVector Lone(3, 64, 13);
+	const FIntVector Joiner(4, 64, 13);
+	Actor->SetBlock(Lone, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=single]")).Get(0));
+	const auto Join = McChestLink::ChooseJoin(Blocks, Joiner, TEXT("minecraft:chest"), TEXT("north"), Lone);
+	TestTrue(TEXT("a chest east of a single one joins as its left half"), Join.IsSet() && Join->Key == TEXT("left") && Join->Value == Lone);
+	TestFalse(TEXT("one facing another way can't"), McChestLink::ChooseJoin(Blocks, Joiner, TEXT("minecraft:chest"), TEXT("south"), Lone).IsSet());
+	Actor->SetBlock(Joiner, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=left]")).Get(0));
+	TestEqual(TEXT("the neighbour becomes the right half"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("right")));
+	TestTrue(TEXT("and each finds the other"), McChestLink::FindPartner(Blocks, Joiner).Get(FIntVector::ZeroValue) == Lone && McChestLink::FindPartner(Blocks, Lone).Get(FIntVector::ZeroValue) == Joiner);
+	Actor->SetBlock(Joiner, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
+	TestEqual(TEXT("taking one away leaves the other single"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("single")));
+	TestEqual(TEXT("and it keeps its facing"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("facing")), FName(TEXT("north")));
 	Finish();
 	return true;
 }

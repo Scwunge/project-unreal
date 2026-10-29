@@ -88,6 +88,7 @@ private:
 	// Text in the game's own bitmap font (textures/font/ascii.png).
 	void LoadFont();
 	float TextWidth(const FString& Text) const;
+	void DrawGalacticText(const FString& Text, float X, float Y, float Width, uint32 Rgb);
 	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f);
 
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
@@ -194,6 +195,7 @@ private:
 	TMap<FName, FIcon> ItemIcons;
 
 	TArray<uint8> GlyphWidths;
+	TArray<uint8> GalacticWidths;
 
 	TSharedPtr<FScreenState> Screen;
 	// Where the mouse was, in GUI pixels, and the slot it is over.

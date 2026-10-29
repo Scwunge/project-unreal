@@ -150,22 +150,18 @@ void AMcHUD::DrawFill(float X, float Y, float Width, float Height, const FLinear
 
 // ---- Text ----
 
-void AMcHUD::LoadFont()
+// How wide each glyph of a font sheet (16 by 16 cells of 8) is, by its rightmost pixel; 5 each if the sheet can't be read.
+static void ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& GlyphWidths)
 {
-	if (GlyphWidths.Num() > 0)
-	{
-		return;
-	}
 	GlyphWidths.Init(0, 256);
-	// A glyph is as wide as its rightmost pixel; a space is 3 and the gap after each glyph is 1.
 	TArray<uint8> File;
 	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
 	const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
 	TArray64<uint8> Raw;
-	if (!FFileHelper::LoadFileToArray(File, *McCache::Asset(TEXT("textures/font/ascii.png"))) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
+	if (!FFileHelper::LoadFileToArray(File, *McCache::Asset(Asset)) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
 		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() != 128 || Wrapper->GetHeight() != 128)
 	{
-		UE_LOG(LogMcUI, Warning, TEXT("Can't read the font"));
+		UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), Asset);
 		GlyphWidths.Init(5, 256);
 		return;
 	}
@@ -186,6 +182,17 @@ void AMcHUD::LoadFont()
 		GlyphWidths[Code] = static_cast<uint8>(Widest);
 	}
 	GlyphWidths[' '] = 3;
+}
+
+void AMcHUD::LoadFont()
+{
+	if (GlyphWidths.Num() > 0)
+	{
+		return;
+	}
+	// A glyph is as wide as its rightmost pixel; a space is 3 and the gap after each glyph is 1.
+	ReadGlyphWidths(TEXT("textures/font/ascii.png"), GlyphWidths);
+	ReadGlyphWidths(TEXT("textures/font/ascii_sga.png"), GalacticWidths);
 }
 
 float AMcHUD::TextWidth(const FString& Text) const
@@ -825,6 +832,59 @@ void AMcHUD::DrawCreative(FIntPoint Origin)
 		Origin.X + Creative::ScrollX, Origin.Y + Creative::ScrollY + Thumb, 12, 15);
 }
 
+// Text in the standard galactic alphabet, wrapped at words to Width and cut after two lines (the table's names).
+void AMcHUD::DrawGalacticText(const FString& Text, float X, float Y, float Width, uint32 Rgb)
+{
+	LoadFont();
+	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii_sga.png"));
+	const auto WidthOf = [this](const FString& Piece)
+	{
+		float Total = 0.0f;
+		for (const TCHAR Char : Piece)
+		{
+			Total += (GalacticWidths.IsValidIndex(Char) ? GalacticWidths[Char] : 5) + 1;
+		}
+		return Total;
+	};
+	TArray<FString> Words;
+	Text.ParseIntoArray(Words, TEXT(" "));
+	FString Line;
+	int32 Row = 0;
+	const auto Flush = [&]()
+	{
+		float At = X;
+		for (const TCHAR Char : Line)
+		{
+			const int32 Code = Char < 256 ? Char : '?';
+			DrawRegion(Font, At, Y + Row * 9, 8, 8, (Code % 16) * 8, (Code / 16) * 8, 8, 8, FromRgb(Rgb));
+			At += GalacticWidths[Code] + 1;
+		}
+		Line.Reset();
+		++Row;
+	};
+	for (const FString& Word : Words)
+	{
+		const FString Next = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+		if (!Line.IsEmpty() && WidthOf(Next) > Width)
+		{
+			Flush();
+			if (Row >= 2)
+			{
+				return;
+			}
+			Line = Word;
+		}
+		else
+		{
+			Line = Next;
+		}
+	}
+	if (!Line.IsEmpty() && Row < 2)
+	{
+		Flush();
+	}
+}
+
 void AMcHUD::DrawEnchanting(FIntPoint Origin, FIntPoint Local)
 {
 	namespace Enchanting = McGui::Enchanting;
@@ -835,6 +895,7 @@ void AMcHUD::DrawEnchanting(FIntPoint Origin, FIntPoint Local)
 	const bool bCreative = Data && Data->bCreative;
 	const FString Table = FString(SpriteRoot) + TEXT("container/enchanting_table/");
 	const int32 Hovered = Enchanting::FindButton(Local);
+	const TArray<FString> Names = Enchanting::GetGalacticNames(Data ? Data->EnchantSeed : 0);
 	for (int32 Option = 0; Option < 3; ++Option)
 	{
 		const float X = Origin.X + Enchanting::ButtonX;
@@ -853,6 +914,9 @@ void AMcHUD::DrawEnchanting(FIntPoint Origin, FIntPoint Local)
 		DrawSprite(LoadSprite(Table + FString::Printf(TEXT("level_%d%s.png"), Option + 1, bUsable ? TEXT("") : TEXT("_disabled"))), X + 1, Y + 1, 16, 16);
 		const FString Text = FString::FromInt(Cost);
 		DrawGuiText(Text, X + Enchanting::ButtonWidth - 2 - TextWidth(Text), Y + 9, bAffordable ? 0x80FF20 : 0x407F10, true);
+		// The made-up writing the table gives in place of the enchantment: grey-brown, halved when it can't be done.
+		const uint32 Ink = bUsable ? 0x685E4A : (0x685E4A & 0xFEFEFE) >> 1;
+		DrawGalacticText(Names[Option], X + 20, Y + 2, 86 - TextWidth(Text), Ink);
 	}
 }
 

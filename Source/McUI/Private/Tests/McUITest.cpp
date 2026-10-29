@@ -166,6 +166,16 @@ bool FMcScreenLayoutTest::RunTest(const FString& Parameters)
 	const FScreenLayout PlayerLayout = MakeInventoryLayout();
 	TestEqual(TEXT("the inventory screen has a position for every slot"), PlayerLayout.Slots.Num(), Player.NumSlots());
 	TestEqual(TEXT("the crafting table too"), MakeCraftingTableLayout().Slots.Num(), FMcCraftingMenu(3, Inventory).NumSlots());
+	const TArray<FString> Galactic = Enchanting::GetGalacticNames(1234);
+	TestEqual(TEXT("the table writes three lines"), Galactic.Num(), 3);
+	TestEqual(TEXT("and the same ones for the same seed"), Enchanting::GetGalacticNames(1234), Galactic);
+	TestTrue(TEXT("and others for another seed"), Enchanting::GetGalacticNames(1235) != Galactic);
+	for (const FString& Line : Galactic)
+	{
+		TArray<FString> Words;
+		Line.ParseIntoArray(Words, TEXT(" "));
+		TestTrue(TEXT("of three or four words"), Words.Num() == 3 || Words.Num() == 4);
+	}
 	TestEqual(TEXT("an unnamed item's field starts at its usual name"), Anvil::GetFieldFor(FString(), TEXT("Iron Sword")), FString(TEXT("Iron Sword")));
 	TestEqual(TEXT("a named one's at its name"), Anvil::GetFieldFor(TEXT("Biter"), TEXT("Iron Sword")), FString(TEXT("Biter")));
 	TestEqual(TEXT("the usual name sends no custom name"), Anvil::GetNameToSend(TEXT("Iron Sword"), TEXT("Iron Sword")), FString());

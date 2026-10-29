@@ -64,6 +64,31 @@ McGui::FScreenLayout McGui::MakeCraftingTableLayout()
 	return Layout;
 }
 
+TArray<FString> McGui::Enchanting::GetGalacticNames(int32 Seed)
+{
+	static const TCHAR* const Words[] = {
+		TEXT("the"), TEXT("elder"), TEXT("scrolls"), TEXT("klaatu"), TEXT("berata"), TEXT("niktu"), TEXT("xyzzy"), TEXT("bless"), TEXT("curse"),
+		TEXT("light"), TEXT("darkness"), TEXT("fire"), TEXT("air"), TEXT("earth"), TEXT("water"), TEXT("hot"), TEXT("dry"), TEXT("cold"), TEXT("wet"),
+		TEXT("ignite"), TEXT("snuff"), TEXT("embiggen"), TEXT("twist"), TEXT("shorten"), TEXT("stretch"), TEXT("fiddle"), TEXT("destroy"), TEXT("imbue"),
+		TEXT("galvanize"), TEXT("enchant"), TEXT("free"), TEXT("limited"), TEXT("range"), TEXT("of"), TEXT("towards"), TEXT("inside"), TEXT("sphere"),
+		TEXT("cube"), TEXT("self"), TEXT("other"), TEXT("ball"), TEXT("mental"), TEXT("physical"), TEXT("grow"), TEXT("shrink"), TEXT("demon"),
+		TEXT("elemental"), TEXT("spirit"), TEXT("animal"), TEXT("creature"), TEXT("beast"), TEXT("humanoid"), TEXT("undead"), TEXT("fresh"), TEXT("stale"),
+	};
+	FRandomStream Random(Seed);
+	TArray<FString> Names;
+	for (int32 Option = 0; Option < 3; ++Option)
+	{
+		FString Name;
+		const int32 Count = Random.RandRange(3, 4);
+		for (int32 Word = 0; Word < Count; ++Word)
+		{
+			Name += (Word > 0 ? TEXT(" ") : TEXT("")) + FString(Words[Random.RandRange(0, UE_ARRAY_COUNT(Words) - 1)]);
+		}
+		Names.Add(Name);
+	}
+	return Names;
+}
+
 FString McGui::Anvil::GetFieldFor(const FString& CustomName, const FString& DefaultName)
 {
 	return CustomName.IsEmpty() ? DefaultName : CustomName;

@@ -84,6 +84,9 @@ namespace McGui
 
 	namespace Enchanting
 	{
+		// The three made-up lines the table writes in the standard galactic alphabet, one for each option: three or four
+		// of its words each, from the player's enchantment seed (so they change only when the seed does).
+		MCUI_API TArray<FString> GetGalacticNames(int32 Seed);
 		// The three options' buttons, one under another.
 		constexpr int32 ButtonX = 60;
 		constexpr int32 ButtonY = 14;

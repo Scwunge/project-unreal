@@ -142,8 +142,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Option N takes N lapis and N levels, and needs its cost in levels. Creative players pay nothing. The
     server checks and does the enchanting (`ServerEnchant`).
   - Hovering an option shows its clue, plus the lapis and levels it takes or the level it needs.
-  - **Not done:** the enchanting-table text in the standard galactic alphabet, the book model above the
-    table, and its particles.
+  - Each option shows three or four made-up words in the standard galactic alphabet (`ascii_sga.png`), the
+    same ones until the enchantment seed changes (`McGui::Enchanting::GetGalacticNames`).
+  - **Not done:** the book model above the table, and its particles.
   - **Dev switches:** `-McUse=X,Y,Z` uses that block five seconds in. `-McShiftClick=29,30` then
     shift-clicks those slots of the window it opens.
 - **Stonecutter, grindstone and smithing table** (2026-10-28), in `McWorkstationMenus`:

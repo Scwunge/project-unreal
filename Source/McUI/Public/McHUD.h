@@ -92,6 +92,8 @@ private:
 	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f);
 
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
+	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
+	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	void DrawStack(const FMcItemStack& Stack, float X, float Y);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.

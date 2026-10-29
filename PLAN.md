@@ -105,8 +105,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     back through what was sent. Lines show above the hotbar and fade after ten seconds. Joining and leaving
     are announced in multiplayer.
   - **Commands** (`McCommands`, run on the server) use the jar's own reply text (`McLang`, from
-    `en_us.json`). The commands are /clear, /difficulty, /fill, /gamemode, /gamerule, /give, /help, /kick,
-    /kill, /list, /me, /msg (/tell, /w), /op, /deop, /say, /seed, /setblock, /summon, /teleport (/tp),
+    `en_us.json`). The commands are /clear, /difficulty, /effect, /enchant, /fill, /gamemode, /gamerule, /give,
+    /help, /kick, /kill, /list, /me, /msg (/tell, /w), /op, /deop, /say, /seed, /setblock, /summon, /teleport (/tp),
     /time, /weather, /whitelist and /xp (/experience).
   - **Difficulty and game rules** are saved in `level.json`. Difficulty sets hunger's harm and stops
     /summon making monsters on peaceful. Peaceful also removes the monsters and stops them spawning. These
@@ -116,7 +116,13 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Permission levels.** The host of a world has every level. On a dedicated server a player has the
     level `ops.json` gives them.
   - **Selectors.** @s, @p, @a, @e, @r and player names work. Selector arguments such as `[type=...]` don't.
-  - **Not done:** /effect, /enchant, /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
+  - **Effects** (2026-10-29): `McEffects` keeps a player's status effects in `FMcPlayerStats.Effects` (saved,
+    stats version 2). Working: regeneration, poison (stops at half a heart), wither, hunger, saturation,
+    instant health and damage, absorption, health boost, speed, slowness, jump boost, haste, mining
+    fatigue, strength, weakness, resistance and fire resistance. The rest are kept and shown only. The icons
+    show along the top right (blinking in the last ten seconds). `/effect give|clear` and `/enchant` (which
+    checks the item, the level and what it clashes with) are in. Potions, food and beacons don't give effects yet.
+  - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.
 - **Creative inventory** (2026-10-28):

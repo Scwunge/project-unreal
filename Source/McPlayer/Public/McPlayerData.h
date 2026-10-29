@@ -19,6 +19,14 @@ class FArchive;
 class FMcCraftingMenu;
 class FMcFurnace;
 
+// An effect the player has: its name without the namespace, the level less one and the ticks left.
+struct MCPLAYER_API FMcStatusEffect
+{
+	FName Id;
+	int32 Amplifier = 0;
+	int32 Duration = 0;
+};
+
 struct MCPLAYER_API FMcPlayerStats
 {
 	// Health in half hearts (20 is ten full hearts), and the golden absorption hearts on top of it.
@@ -51,6 +59,7 @@ struct MCPLAYER_API FMcPlayerStats
 	float Exhaustion = 0.0f;
 	// Ticks since food last healed or starved the player.
 	int32 FoodTimer = 0;
+	TArray<FMcStatusEffect> Effects;
 
 	// Reads or writes, by whether the archive is loading. False if a loading archive is malformed.
 	bool Serialize(FArchive& Ar);

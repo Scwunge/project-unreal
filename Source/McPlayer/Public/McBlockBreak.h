@@ -24,10 +24,10 @@ namespace McBlockBreak
 
 	// How fast the tool digs the block: the tool's speed (1 for a hand or the wrong tool), plus level^2 + 1 for
 	// efficiency on a tool that is faster than a hand, divided by 5 under water without aqua affinity and by 5
-	// again off the ground.
-	MCPLAYER_API float GetDigSpeed(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater);
+	// again off the ground. EffectFactor is haste or mining fatigue (McEffects::GetDigFactor), applied to the tool's speed.
+	MCPLAYER_API float GetDigSpeed(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater, float EffectFactor = 1.0f);
 	// How much of the block is dug each tick; 1 breaks it. Zero for unbreakable blocks.
-	MCPLAYER_API float GetProgressPerTick(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater);
+	MCPLAYER_API float GetProgressPerTick(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater, float EffectFactor = 1.0f);
 	// Ticks to dig it, at least 1; 0 for unbreakable blocks.
 	MCPLAYER_API int32 GetBreakTicks(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater);
 

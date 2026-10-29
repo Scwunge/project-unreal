@@ -24,6 +24,8 @@ struct FMcMoveInput
 	float Yaw = 0.0f;
 	// The movement speed attribute: 0.1 for a player walking, other values for mobs.
 	float Speed = 0.1f;
+	// Added to the jump's upward speed (jump boost).
+	float JumpBonus = 0.0f;
 };
 
 struct MCENTITY_API FMcBody

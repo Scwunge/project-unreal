@@ -142,6 +142,49 @@ namespace
 			(bLevels ? XpLevel : XpPoints) = Amount;
 			return true;
 		}
+		TMap<FName, TPair<int32, int32>> Effects;
+		FName HeldItem;
+		TMap<FName, int32> HeldEnchantments;
+		virtual bool IsEffect(FName Effect) const override { return Effect == TEXT("speed") || Effect == TEXT("poison"); }
+		virtual bool GiveEffect(const FString& Player, FName Effect, int32 Amplifier, int32 DurationTicks) override
+		{
+			if (TPair<int32, int32>* Have = Effects.Find(Effect))
+			{
+				if (Amplifier < Have->Key)
+				{
+					return false;
+				}
+			}
+			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
+			return true;
+		}
+		virtual int32 ClearEffects(const FString& Player, FName Effect) override
+		{
+			const int32 Had = Effect.IsNone() ? Effects.Num() : Effects.Contains(Effect) ? 1 : 0;
+			if (Effect.IsNone())
+			{
+				Effects.Reset();
+			}
+			else
+			{
+				Effects.Remove(Effect);
+			}
+			return Had;
+		}
+		virtual int32 GetEnchantmentMaxLevel(FName Enchantment) const override { return Enchantment == TEXT("minecraft:sharpness") ? 5 : Enchantment == TEXT("minecraft:silk_touch") ? 1 : 0; }
+		virtual EEnchantResult Enchant(const FString& Player, FName Enchantment, int32 Level) override
+		{
+			if (HeldItem.IsNone())
+			{
+				return EEnchantResult::NoItem;
+			}
+			if (Enchantment != TEXT("minecraft:sharpness"))
+			{
+				return EEnchantResult::Unsupported;
+			}
+			HeldEnchantments.Add(Enchantment, Level);
+			return EEnchantResult::Done;
+		}
 		virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) override
 		{
 			FPlayer* P = Find(Player);
@@ -328,6 +371,26 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("clear some"), Joined(McCommands::HandleChat(TEXT("/clear Alex diamond 10"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed 10")));
 	TestTrue(TEXT("clear the rest"), Joined(McCommands::HandleChat(TEXT("/clear Alex"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed 60")));
 	TestTrue(TEXT("nothing left"), AnyError(McCommands::HandleChat(TEXT("/clear Alex"), Op(TEXT("Steve")), Target)));
+
+	// /effect and /enchant
+	TestTrue(TEXT("effect give"), Joined(McCommands::HandleChat(TEXT("/effect give Steve speed 10 1"), Op(TEXT("Steve")), Target)).Contains(TEXT("Applied effect Speed to Steve")));
+	TestEqual(TEXT("it lasts 10 seconds at level II"), Target.Effects.FindRef(TEXT("speed")), TPair<int32, int32>(1, 200));
+	TestTrue(TEXT("a weaker one does not replace it"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed 99 0"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("no such effect"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve flying"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("amplifier past 255"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve poison 5 256"), Op(TEXT("Steve")), Target)));
+	McCommands::HandleChat(TEXT("/effect give Steve minecraft:poison infinite"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("infinite lasts"), Target.Effects.FindRef(TEXT("poison")).Value, 1000000000);
+	TestTrue(TEXT("clear one"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve speed"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed effect Speed from Steve")));
+	TestTrue(TEXT("clear all"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed every effect from Steve")));
+	TestTrue(TEXT("nothing to clear"), AnyError(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
+	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
+	Target.HeldItem = TEXT("minecraft:diamond_sword");
+	TestTrue(TEXT("enchant"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("Applied enchantment Sharpness III to Steve's item")));
+	TestEqual(TEXT("the level is set"), Target.HeldEnchantments.FindRef(TEXT("minecraft:sharpness")), 3);
+	TestTrue(TEXT("past the maximum"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 6"), Op(TEXT("Steve")), Target)).Contains(TEXT("6 is higher than the maximum level of 5")));
+	TestTrue(TEXT("an item the enchantment does not suit"), Joined(McCommands::HandleChat(TEXT("/enchant Steve silk_touch"), Op(TEXT("Steve")), Target)).Contains(TEXT("cannot support that enchantment")));
+	TestTrue(TEXT("no such enchantment"), AnyError(McCommands::HandleChat(TEXT("/enchant Steve gravity"), Op(TEXT("Steve")), Target)));
 
 	// The console has every level and no @s.
 	Target.bDedicated = true;

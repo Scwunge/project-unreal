@@ -3,6 +3,7 @@
 #include "McBlockPlacement.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
+#include "McEffects.h"
 #include "McBlockTags.h"
 #include "McEntityManager.h"
 #include "McItemRegistry.h"
@@ -192,6 +193,11 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	Move.bSprint = bSprinting;
 	Move.bFlying = bFlying;
 	Move.bSneak = bFlying ? Input.bSneak : bSneaking;
+	if (Data)
+	{
+		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
+		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
+	}
 	McPhysics::TickPlayer(*BlockWorld, Body, Move);
 	if (bFlying && Body.bOnGround)
 	{
@@ -681,7 +687,7 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Strength = McCombat::GetStrength(ServerAttackTicks, Attack.Speed);
 	// Falling, and not in water or on a ladder, makes a critical hit.
 	const bool bCritical = !Body.bOnGround && ServerFall.Distance > 0.0f && !Body.bInWater && !Body.bClimbing && !bServerFlying;
-	const float Damage = McCombat::GetDamage(Attack.Damage, Strength, bCritical);
+	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
 	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage))
@@ -941,7 +947,7 @@ void AMcPlayerPawn::ServerGameTick()
 				{
 					Entities->PlaySound(McSound::GetBlockSound(FMcBlockRegistry::Get().GetBlockOf(State).Name, McSound::EBlockSound::Hit, FVector(DigPos.GetValue()) + FVector(0.5)));
 				}
-				DigProgress += McBlockBreak::GetProgressPerTick(Data->GetSelected(), State, Body.bOnGround, Environment.bHeadInWater);
+				DigProgress += McBlockBreak::GetProgressPerTick(Data->GetSelected(), State, Body.bOnGround, Environment.bHeadInWater, McEffects::GetDigFactor(Data->Stats));
 				if (DigProgress >= 1.0f)
 				{
 					const FIntVector Broken = DigPos.GetValue();

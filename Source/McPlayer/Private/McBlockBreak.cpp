@@ -167,7 +167,7 @@ namespace McBlockBreak
 		return !RequiresTool(State) || (!Tool.IsEmpty() && FMcItemRegistry::Get().IsCorrectToolForDrops(Tool.Item, State));
 	}
 
-	float GetDigSpeed(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater)
+	float GetDigSpeed(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater, float EffectFactor)
 	{
 		float Speed = Tool.IsEmpty() ? 1.0f : FMcItemRegistry::Get().GetDestroySpeed(Tool.Item, State);
 		if (Speed > 1.0f)
@@ -178,6 +178,7 @@ namespace McBlockBreak
 				Speed += Efficiency * Efficiency + 1;
 			}
 		}
+		Speed *= EffectFactor;
 		if (bHeadInWater)
 		{
 			Speed /= 5.0f;
@@ -189,7 +190,7 @@ namespace McBlockBreak
 		return Speed;
 	}
 
-	float GetProgressPerTick(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater)
+	float GetProgressPerTick(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater, float EffectFactor)
 	{
 		const float Hardness = GetHardness(State);
 		if (Hardness < 0.0f)
@@ -200,7 +201,7 @@ namespace McBlockBreak
 		{
 			return 1.0f;
 		}
-		return GetDigSpeed(Tool, State, bOnGround, bHeadInWater) / Hardness / (CanHarvest(Tool, State) ? 30.0f : 100.0f);
+		return GetDigSpeed(Tool, State, bOnGround, bHeadInWater, EffectFactor) / Hardness / (CanHarvest(Tool, State) ? 30.0f : 100.0f);
 	}
 
 	int32 GetBreakTicks(const FMcItemStack& Tool, FMcStateId State, bool bOnGround, bool bHeadInWater)

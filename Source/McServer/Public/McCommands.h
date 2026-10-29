@@ -3,11 +3,11 @@
 // mode implements, so they can be tested without a world.
 //
 // Who may run what follows the game's permission levels: 0 for everyone (/help, /list, /me, /msg), 2 for cheats
-// (/clear, /difficulty, /fill, /gamemode, /gamerule, /give, /kill, /seed, /say, /setblock, /summon, /time, /tp,
+// (/clear, /difficulty, /effect, /enchant, /fill, /gamemode, /gamerule, /give, /kill, /seed, /say, /setblock, /summon, /time, /tp,
 // /weather, /xp), 3 for running a server (/kick, /op, /deop, /whitelist). The player hosting a world of their own has every level; on a dedicated server it is the level in
 // ops.json, and the console has every level too. A command the sender can't use is unknown to them, as in the game.
 //
-// Not here yet: /effect, /enchant, /spawnpoint, /execute, /clone, data tags on /summon and /setblock, and the other
+// Not here yet: /spawnpoint, /execute, /clone, data tags on /summon and /setblock, and the other
 // selector arguments (@a, @p, @r, @s and names work; [type=...] and the like don't). /gamerule keeps every rule, but
 // only doDaylightCycle changes the game so far.
 
@@ -85,6 +85,19 @@ public:
 	// Takes up to MaxCount (every one, if negative) of Item (any item, if None) from the player's inventory, armour, offhand
 	// and cursor, or with bTest only counts them. How many were found.
 	virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) = 0;
+
+	// Effects, named without the namespace ("speed"). Duration is in ticks; an instant effect ignores it.
+	virtual bool IsEffect(FName Effect) const = 0;
+	// False if the player has a stronger one already.
+	virtual bool GiveEffect(const FString& Player, FName Effect, int32 Amplifier, int32 DurationTicks) = 0;
+	// Takes one (every one, if None) from the player; how many there were.
+	virtual int32 ClearEffects(const FString& Player, FName Effect) = 0;
+
+	// How high a level the enchantment goes ("minecraft:sharpness"), or 0 for no such enchantment.
+	virtual int32 GetEnchantmentMaxLevel(FName Enchantment) const = 0;
+	enum class EEnchantResult : uint8 { Done, NoItem, Unsupported };
+	// Puts it on the item in the player's main hand, replacing a level it already has there.
+	virtual EEnchantResult Enchant(const FString& Player, FName Enchantment, int32 Level) = 0;
 
 	virtual FMcServerAccess LoadAccess() const = 0;
 	virtual void SaveAccess(const FMcServerAccess& Access) = 0;

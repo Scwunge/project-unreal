@@ -1,4 +1,5 @@
 #include "McSurvival.h"
+#include "McEffects.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McGameRules.h"
@@ -9,14 +10,31 @@
 
 bool FMcPlayerStats::Serialize(FArchive& Ar)
 {
-	int32 Version = 1;
+	int32 Version = 2;
 	Ar << Version;
-	if (Ar.IsLoading() && Version != 1)
+	if (Ar.IsLoading() && Version != 1 && Version != 2)
 	{
 		return false;
 	}
 	Ar << Health << MaxHealth << Absorption << Food << Saturation << Air << MaxAir << XpLevel << XpProgress << Armor << HurtTime << bHardcore;
 	Ar << InvulnTicks << LastDamage << OnFireTicks << Exhaustion << FoodTimer;
+	if (Version >= 2)
+	{
+		int32 Count = Effects.Num();
+		Ar << Count;
+		if (Ar.IsLoading())
+		{
+			if (Count < 0 || Count > 256)
+			{
+				return false;
+			}
+			Effects.SetNum(Count);
+		}
+		for (FMcStatusEffect& Effect : Effects)
+		{
+			Ar << Effect.Id << Effect.Amplifier << Effect.Duration;
+		}
+	}
 	return !Ar.IsError();
 }
 
@@ -97,6 +115,8 @@ namespace McSurvival
 		case EDamage::OnFire:
 		case EDamage::Starve:
 		case EDamage::Void:
+		case EDamage::Magic:
+		case EDamage::Wither:
 			return true;
 		default:
 			return false;
@@ -132,6 +152,11 @@ namespace McSurvival
 	float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn, const FMcGameRules* Rules)
 	{
 		if (Amount <= 0.0f || Stats.Health <= 0.0f || (Rules && !IsDamageEnabled(Kind, *Rules)))
+		{
+			return 0.0f;
+		}
+		const bool bFire = Kind == EDamage::InFire || Kind == EDamage::OnFire || Kind == EDamage::Lava;
+		if (bFire && McEffects::IsFireImmune(Stats))
 		{
 			return 0.0f;
 		}
@@ -176,6 +201,10 @@ namespace McSurvival
 				Stats.Armor = FMath::RoundToInt32(NewArmor);
 			}
 			Taken = ReduceByArmor(Dealt, ArmorPoints, Toughness);
+		}
+		if (Kind != EDamage::Void && Kind != EDamage::Starve)
+		{
+			Taken *= 1.0f - McEffects::GetResistance(Stats);
 		}
 		const float Absorbed = FMath::Min(Stats.Absorption, Taken);
 		Stats.Absorption -= Absorbed;
@@ -224,6 +253,15 @@ namespace McSurvival
 		}
 		Stats.HurtTime = FMath::Max(0, Stats.HurtTime - 1);
 		Stats.InvulnTicks = FMath::Max(0, Stats.InvulnTicks - 1);
+		McEffects::Tick(Stats);
+		if (Stats.Health <= 0.0f)
+		{
+			return true;
+		}
+		if (McEffects::IsFireImmune(Stats))
+		{
+			Stats.OnFireTicks = 0;
+		}
 
 		// Breath: 1 a tick under water, and each time it runs 20 ticks past empty, 2 damage; 4 a tick back in the air.
 		if (Environment.bHeadInWater)

@@ -2,6 +2,7 @@
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
 #include "McHUD.h"
+#include "McEffects.h"
 #include "McRenderMode.h"
 #include "McLocalPlayer.h"
 #include "McLaunch.h"
@@ -315,6 +316,25 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			DrawGuiText(Level, X + Offset.X, Y + Offset.Y, 0x000000, false);
 		}
 		DrawGuiText(Level, X, Y, 0x80FF20, false);
+	}
+}
+
+void AMcHUD::DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
+{
+	const float ScreenWidth = static_cast<float>(Width);
+	int32 Good = 0, Bad = 0;
+	for (const FMcStatusEffect& Effect : Data->Stats.Effects)
+	{
+		// The last ten seconds, the icon blinks.
+		if (Effect.Duration <= 200 && (Effect.Duration / 5) % 2 == 0)
+		{
+			continue;
+		}
+		const bool bHarmful = McEffects::IsHarmful(Effect.Id);
+		const float X = ScreenWidth - 25.0f * ((bHarmful ? Bad++ : Good++) + 1);
+		const float Y = bHarmful ? 26.0f : 1.0f;
+		DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("hud/effect_background.png")), X, Y, 24, 24);
+		DrawSprite(LoadSprite(TEXT("textures/mob_effect/") + Effect.Id.ToString() + TEXT(".png")), X + 3, Y + 3, 18, 18);
 	}
 }
 
@@ -1392,6 +1412,7 @@ void AMcHUD::DrawHUD()
 			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar_offhand_left.png")), Layout.Hotbar.X - 29, Layout.Hotbar.Y - 1, 29, 24);
 			DrawStack(Data->Offhand->Get(0), static_cast<float>(Layout.Hotbar.X - 26), static_cast<float>(Layout.Hotbar.Y + 3));
 		}
+		DrawEffects(Width, Height, Data);
 		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
 		if (!Data->bCreative)
 		{

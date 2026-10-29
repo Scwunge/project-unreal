@@ -22,6 +22,8 @@ namespace
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
+		{ TEXT("effect"), 2, TEXT("/effect (clear|give) ...") },
+		{ TEXT("enchant"), 2, TEXT("/enchant <targets> <enchantment> [<level>]") },
 		{ TEXT("experience"), 2, TEXT("/experience (add|query|set) ...") },
 		{ TEXT("fill"), 2, TEXT("/fill <from> <to> <block> [destroy|hollow|keep|outline|replace]") },
 		{ TEXT("gamemode"), 2, TEXT("/gamemode <gamemode> [<target>]") },
@@ -709,6 +711,166 @@ namespace
 		return { Ok(McLang::Format(Key, { FString::FromInt(Total), Who })) };
 	}
 
+	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /effect give <targets> <effect> [<seconds>|infinite] [<amplifier>] [<hideParticles>], /effect clear [<targets>] [<effect>]
+		if (Words.Num() < 2 || (Words[1] != TEXT("give") && Words[1] != TEXT("clear")))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGive = Words[1] == TEXT("give");
+		if (Words.Num() > (bGive ? 7 : 4) || (bGive && Words.Num() < 4))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words.Num() >= 3 ? Words[2] : FString(TEXT("@s")), Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		FName Effect;
+		if (Words.Num() >= 4)
+		{
+			FString Text = Words[3].ToLower();
+			Text.RemoveFromStart(TEXT("minecraft:"));
+			Effect = FName(*Text);
+			if (!Target.IsEffect(Effect))
+			{
+				return BadArgument(Command);
+			}
+		}
+		const bool bSingle = Players.Num() == 1;
+		const FString Who = bSingle ? Players[0] : FString::FromInt(Players.Num());
+		if (!bGive)
+		{
+			int32 Removed = 0;
+			for (const FString& Player : Players)
+			{
+				Removed += Target.ClearEffects(Player, Effect);
+			}
+			const bool bAll = Effect.IsNone();
+			if (Removed == 0)
+			{
+				return { Fail(McLang::Get(bAll ? TEXT("commands.effect.clear.everything.failed") : TEXT("commands.effect.clear.specific.failed"))) };
+			}
+			const FString Key = FString::Printf(TEXT("commands.effect.clear.%s.success.%s"), bAll ? TEXT("everything") : TEXT("specific"), bSingle ? TEXT("single") : TEXT("multiple"));
+			return { Ok(bAll ? McLang::Format(Key, { Who }) : McLang::Format(Key, { McLang::Get(TEXT("effect.minecraft.") + Effect.ToString()), Who })) };
+		}
+		const auto IsWhole = [](const FString& Text, int32 Min, int32 Max)
+		{
+			return Text.IsNumeric() && !Text.Contains(TEXT(".")) && FCString::Atoi(*Text) >= Min && FCString::Atoi(*Text) <= Max;
+		};
+		int32 Seconds = 30;
+		if (Words.Num() >= 5)
+		{
+			if (Words[4] == TEXT("infinite"))
+			{
+				Seconds = -1;
+			}
+			else if (!IsWhole(Words[4], 1, 1000000))
+			{
+				return BadArgument(Command);
+			}
+			else
+			{
+				Seconds = FCString::Atoi(*Words[4]);
+			}
+		}
+		int32 Amplifier = 0;
+		if (Words.Num() >= 6)
+		{
+			if (!IsWhole(Words[5], 0, 255))
+			{
+				return BadArgument(Command);
+			}
+			Amplifier = FCString::Atoi(*Words[5]);
+		}
+		if (Words.Num() == 7 && Words[6] != TEXT("true") && Words[6] != TEXT("false"))
+		{
+			return BadArgument(Command);
+		}
+		const int32 Ticks = Seconds < 0 ? 1000000000 : Seconds * 20;
+		int32 Applied = 0;
+		for (const FString& Player : Players)
+		{
+			Applied += Target.GiveEffect(Player, Effect, Amplifier, Ticks) ? 1 : 0;
+		}
+		if (Applied == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.effect.give.failed"))) };
+		}
+		return { Ok(McLang::Format(bSingle ? TEXT("commands.effect.give.success.single") : TEXT("commands.effect.give.success.multiple"),
+			{ McLang::Get(TEXT("effect.minecraft.") + Effect.ToString()), Who })) };
+	}
+
+	FReplies RunEnchant(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /enchant <targets> <enchantment> [<level>]
+		if (Words.Num() < 3 || Words.Num() > 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FName Enchantment = ItemId(Words[2]);
+		const int32 MaxLevel = Target.GetEnchantmentMaxLevel(Enchantment);
+		if (MaxLevel <= 0)
+		{
+			return BadArgument(Command);
+		}
+		int32 Level = 1;
+		if (Words.Num() == 4)
+		{
+			if (!Words[3].IsNumeric() || Words[3].Contains(TEXT(".")) || FCString::Atoi(*Words[3]) < 1)
+			{
+				return BadArgument(Command);
+			}
+			Level = FCString::Atoi(*Words[3]);
+		}
+		if (Level > MaxLevel)
+		{
+			return { Fail(McLang::Format(TEXT("commands.enchant.failed.level"), { FString::FromInt(Level), FString::FromInt(MaxLevel) })) };
+		}
+		int32 Done = 0;
+		for (const FString& Player : Players)
+		{
+			switch (Target.Enchant(Player, Enchantment, Level))
+			{
+			case IMcCommandTarget::EEnchantResult::Done:
+				++Done;
+				break;
+			case IMcCommandTarget::EEnchantResult::NoItem:
+				if (Players.Num() == 1)
+				{
+					return { Fail(McLang::Format(TEXT("commands.enchant.failed.itemless"), { Player })) };
+				}
+				break;
+			default:
+				if (Players.Num() == 1)
+				{
+					return { Fail(McLang::Format(TEXT("commands.enchant.failed.incompatible"), { Player })) };
+				}
+				break;
+			}
+		}
+		if (Done == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.enchant.failed"))) };
+		}
+		FString Shown = McLang::Get(TEXT("enchantment.") + Enchantment.ToString().Replace(TEXT(":"), TEXT(".")));
+		if (Level != 1 || MaxLevel != 1)
+		{
+			Shown += TEXT(" ") + McLang::Get(FString::Printf(TEXT("enchantment.level.%d"), Level));
+		}
+		return { Ok(Players.Num() == 1 ? McLang::Format(TEXT("commands.enchant.success.single"), { Shown, Players[0] })
+			: McLang::Format(TEXT("commands.enchant.success.multiple"), { Shown, FString::FromInt(Done) })) };
+	}
+
 	FReplies RunDifficulty(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
 	{
 		static const TCHAR* Names[] = { TEXT("peaceful"), TEXT("easy"), TEXT("normal"), TEXT("hard") };
@@ -1067,6 +1229,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("clear"))
 	{
 		return RunClear(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("effect"))
+	{
+		return RunEffect(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("enchant"))
+	{
+		return RunEnchant(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("difficulty"))
 	{

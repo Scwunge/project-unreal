@@ -16,6 +16,7 @@
 #include "McItemRegistry.h"
 #include "McLang.h"
 #include "McSurvival.h"
+#include "McEffects.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -933,6 +934,54 @@ namespace
 				}
 			}
 			return Found;
+		}
+
+		virtual bool IsEffect(FName Effect) const override
+		{
+			FName Parsed;
+			return McEffects::Parse(Effect.ToString(), Parsed);
+		}
+		virtual bool GiveEffect(const FString& Player, FName Effect, int32 Amplifier, int32 DurationTicks) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			return Pawn && Pawn->Data && McEffects::Add(Pawn->Data->Stats, Effect, Amplifier, DurationTicks);
+		}
+		virtual int32 ClearEffects(const FString& Player, FName Effect) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			return Pawn && Pawn->Data ? McEffects::Remove(Pawn->Data->Stats, Effect) : 0;
+		}
+		virtual int32 GetEnchantmentMaxLevel(FName Enchantment) const override
+		{
+			const FMcEnchantmentDef* Def = FMcItemRegistry::Get().FindEnchantment(Enchantment);
+			return Def ? Def->MaxLevel : 0;
+		}
+		virtual EEnchantResult Enchant(const FString& Player, FName Enchantment, int32 Level) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data || Pawn->Data->Inventory->Get(Pawn->Data->SelectedSlot).IsEmpty())
+			{
+				return EEnchantResult::NoItem;
+			}
+			FMcItemStack& Held = Pawn->Data->Inventory->GetMutable(Pawn->Data->SelectedSlot);
+			const FMcItemRegistry& Registry = FMcItemRegistry::Get();
+			TArray<FName> Allowed;
+			Registry.GetEnchantmentsFor(Held.Item, Allowed);
+			TMap<FName, int32> Have = Held.GetEnchantments();
+			if (!Allowed.Contains(Enchantment))
+			{
+				return EEnchantResult::Unsupported;
+			}
+			for (const TPair<FName, int32>& Other : Have)
+			{
+				if (Other.Key != Enchantment && !Registry.AreCompatible(Other.Key, Enchantment))
+				{
+					return EEnchantResult::Unsupported;
+				}
+			}
+			Have.Add(Enchantment, Level);
+			Held.SetEnchantments(Have);
+			return EEnchantResult::Done;
 		}
 
 		virtual FMcServerAccess LoadAccess() const override { return FMcServerAccess::Load(); }

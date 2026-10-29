@@ -34,6 +34,9 @@ namespace McSurvival
 		// A mob's bite or blow.
 		Mob,
 		Void,
+		// Poison, instant damage and the like, and wither; neither is turned aside by armour.
+		Magic,
+		Wither,
 	};
 
 	// What the blocks around a player are doing to them this tick.

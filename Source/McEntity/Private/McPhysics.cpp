@@ -404,7 +404,7 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 	else if (Input.bJump && Body.bOnGround)
 	{
 		const FIntVector Feet(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.5000001), FMath::FloorToInt32(Body.Position.Z));
-		Body.Velocity.Y = JumpVelocity * Shapes.GetJumpFactor(World.GetBlock(Feet));
+		Body.Velocity.Y = JumpVelocity * Shapes.GetJumpFactor(World.GetBlock(Feet)) + Input.JumpBonus;
 		if (bSprinting)
 		{
 			const double Radians = FMath::DegreesToRadians(static_cast<double>(Input.Yaw));

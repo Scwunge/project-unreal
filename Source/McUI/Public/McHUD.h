@@ -76,6 +76,8 @@ private:
 	UTexture2D* GetLayerTexture(FName TextureId);
 	const FIcon& GetIcon(FMcStateId State);
 	const FIcon& GetItemIcon(FName Item);
+	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
+	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
@@ -196,6 +198,7 @@ private:
 	TMap<FName, TObjectPtr<UTexture2D>> LayerTextures;
 	TMap<FMcStateId, FIcon> Icons;
 	TMap<FName, FIcon> ItemIcons;
+	TMap<FString, FIcon> BannerIcons;
 
 	TArray<uint8> GlyphWidths;
 	TArray<uint8> GalacticWidths;

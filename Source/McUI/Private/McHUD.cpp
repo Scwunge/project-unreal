@@ -6,6 +6,7 @@
 #include "McPlayerPawn.h"
 #include "McSectionMesher.h"
 #include "McUI.h"
+#include "Dom/JsonObject.h"
 #include "CanvasItem.h"
 #include "CanvasTypes.h"
 #include "Engine/Canvas.h"
@@ -165,6 +166,74 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 		}
 	}
 	return ItemIcons.Add(Item, MoveTemp(Icon));
+}
+
+namespace
+{
+	// The colour of a dye, as the banner and its patterns are tinted.
+	FLinearColor GetDyeColour(const FString& Name)
+	{
+		static const TMap<FString, uint32> Colours = {
+			{ TEXT("white"), 0xF9FFFE }, { TEXT("orange"), 0xF9801D }, { TEXT("magenta"), 0xC74EBD }, { TEXT("light_blue"), 0x3AB3DA },
+			{ TEXT("yellow"), 0xFED83D }, { TEXT("lime"), 0x80C71F }, { TEXT("pink"), 0xF38BAA }, { TEXT("gray"), 0x474F52 },
+			{ TEXT("light_gray"), 0x9D9D97 }, { TEXT("cyan"), 0x169C9C }, { TEXT("purple"), 0x8932B8 }, { TEXT("blue"), 0x3C44AA },
+			{ TEXT("brown"), 0x835432 }, { TEXT("green"), 0x5E7C16 }, { TEXT("red"), 0xB02E26 }, { TEXT("black"), 0x1D1D21 },
+		};
+		const uint32 Rgb = Colours.FindRef(Name);
+		return FLinearColor(FColor((Rgb >> 16) & 0xFF, (Rgb >> 8) & 0xFF, Rgb & 0xFF));
+	}
+}
+
+const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
+{
+	FString Base = McCache::PathOf(Banner.Item.ToString());
+	Base.RemoveFromEnd(TEXT("_banner"));
+	FString Key = Base;
+	TArray<TPair<FString, FString>> BannerLayers;
+	const TSharedPtr<FJsonValue> Value = Banner.Get(TEXT("minecraft:banner_patterns"));
+	if (Value.IsValid() && Value->Type == EJson::Array)
+	{
+		for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+		{
+			const TSharedPtr<FJsonObject>* Object;
+			FString Pattern, Colour;
+			if (Entry->TryGetObject(Object) && (*Object)->TryGetStringField(TEXT("pattern"), Pattern) && (*Object)->TryGetStringField(TEXT("color"), Colour))
+			{
+				BannerLayers.Emplace(McCache::PathOf(Pattern), Colour);
+				Key += TEXT("|") + Pattern + TEXT(":") + Colour;
+			}
+		}
+	}
+	if (const FIcon* Found = BannerIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	// The flag's front is 20 by 40 pixels of the 64 square sheet, from (1, 1); drawn 8 by 16 in the slot.
+	const auto AddLayer = [&](const FString& TextureId, const FLinearColor& Colour)
+	{
+		UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
+		const FVector2D Corners[4] = { FVector2D(4, 0), FVector2D(12, 0), FVector2D(12, 16), FVector2D(4, 16) };
+		const FVector2D UVs[4] = { FVector2D(1.0 / 64, 1.0 / 64), FVector2D(21.0 / 64, 1.0 / 64), FVector2D(21.0 / 64, 41.0 / 64), FVector2D(1.0 / 64, 41.0 / 64) };
+		for (const int32 First : { 0, 2 })
+		{
+			FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+			const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+			for (int32 I = 0; I < 3; ++I)
+			{
+				Triangle.Positions[I] = Corners[Indices[I]];
+				Triangle.UVs[I] = UVs[Indices[I]];
+			}
+			Triangle.Color = Colour;
+			Triangle.Texture = Texture;
+		}
+	};
+	AddLayer(TEXT("entity/banner/base"), GetDyeColour(Base));
+	for (const TPair<FString, FString>& Layer : BannerLayers)
+	{
+		AddLayer(TEXT("entity/banner/") + Layer.Key, GetDyeColour(Layer.Value));
+	}
+	return BannerIcons.Add(Key, MoveTemp(Icon));
 }
 
 void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon)

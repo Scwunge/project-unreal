@@ -260,6 +260,9 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	const McGui::FHudLayout Layout = McGui::ComputeHud(Width, Height, Stats, ShakeCounter / 3);
 	const FString Hud = FString(SpriteRoot) + TEXT("hud/");
 	const FString Hardcore = Stats.bHardcore ? TEXT("hardcore_") : TEXT("");
+	// Poison turns the hearts green and wither (which wins) black.
+	const auto HasEffect = [&](const TCHAR* Id) { return Stats.Effects.ContainsByPredicate([Id](const FMcStatusEffect& Effect) { return Effect.Id == Id; }); };
+	const FString Style = HasEffect(TEXT("wither")) ? TEXT("withered_") : HasEffect(TEXT("poison")) ? TEXT("poisoned_") : TEXT("");
 
 	for (const McGui::FBarIcon& Heart : Layout.Hearts)
 	{
@@ -267,7 +270,7 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		DrawSprite(LoadSprite(Hud + TEXT("heart/container") + (Stats.bHardcore ? TEXT("_hardcore") : TEXT("")) + Blink + TEXT(".png")), Heart.Pos.X, Heart.Pos.Y, 9, 9);
 		if (Heart.Fill != McGui::EIcon::Empty)
 		{
-			DrawSprite(LoadSprite(Hud + TEXT("heart/") + Hardcore + (Heart.Fill == McGui::EIcon::Full ? TEXT("full") : TEXT("half")) + Blink + TEXT(".png")), Heart.Pos.X, Heart.Pos.Y, 9, 9);
+			DrawSprite(LoadSprite(Hud + TEXT("heart/") + Style + Hardcore + (Heart.Fill == McGui::EIcon::Full ? TEXT("full") : TEXT("half")) + Blink + TEXT(".png")), Heart.Pos.X, Heart.Pos.Y, 9, 9);
 		}
 	}
 	for (const McGui::FBarIcon& Heart : Layout.Absorption)

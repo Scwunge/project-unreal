@@ -26,6 +26,8 @@ public:
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
 	void SetPlate(const FIntVector& Pos, int32 NumEntities);
+	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
+	void SetDetector(const FIntVector& Pos, bool bOccupied);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
 	bool Use(const FIntVector& Pos, float Yaw);
 
@@ -71,6 +73,8 @@ private:
 	void TickPlate(const FIntVector& Pos, FMcStateId State);
 	void TickDaylight(const FIntVector& Pos, FMcStateId State);
 	bool IsSupported(const FIntVector& Pos, FMcStateId State) const;
+	bool IsRailPowered(const FIntVector& Pos, FMcStateId State) const;
+	void TickDetector(const FIntVector& Pos, FMcStateId State);
 	bool HasPower(const FIntVector& Pos) const;
 
 	// Pistons.
@@ -109,6 +113,7 @@ private:
 	TMap<FIntVector, int32> ComparatorOutputs;
 	TMap<FIntVector, TArray<int64>> TorchToggles;
 	TMap<FIntVector, int32> Plates;
+	TSet<FIntVector> Detectors;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;
 	// When each extended piston started to extend, for the rule that a short pulse leaves what it pushed behind.

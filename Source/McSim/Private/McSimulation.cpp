@@ -89,6 +89,11 @@ void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 	Redstone->SetPlate(Pos, NumEntities);
 }
 
+void FMcSimulation::SetDetectorRail(const FIntVector& Pos, bool bOccupied)
+{
+	Redstone->SetDetector(Pos, bOccupied);
+}
+
 void FMcSimulation::SetSunLight(int32 Level)
 {
 	bSunFixed = true;

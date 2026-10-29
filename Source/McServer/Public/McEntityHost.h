@@ -66,7 +66,10 @@ public:
 
 	// Player attacks: the mob (if any) the ray from the eyes hits within Reach, hurt by Damage and pushed away.
 	// True if something was hit.
-	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage);
+	// A vehicle (minecart, boat) is hit as well; in creative it breaks at once and drops nothing.
+	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative = false);
+	// The nearest vehicle the ray from the eyes reaches within Reach, or null.
+	FMcEntity* FindVehicle(const FVector& Eye, const FVector& Direction, float Reach);
 
 	// The kind a weighted spawn list gives for a roll in [0, total weight); none for an empty list.
 	static FName PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll);

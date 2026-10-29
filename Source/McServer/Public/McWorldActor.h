@@ -109,7 +109,9 @@ public:
 	// The block simulation (fluids, redstone). Server only; null until the world starts.
 	FMcSimulation* GetSimulation() const { return Simulation.Get(); }
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
-	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage);
+	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
+	// The id of the nearest vehicle along the ray, or 0.
+	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
 
 	// Changes a block, loaded or not. A change to a chunk that isn't loaded is kept and put on it when it arrives. In
 	// a world without a save (no -McWorld) changes to loaded chunks are kept too, so they survive unloading; in a

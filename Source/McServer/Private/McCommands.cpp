@@ -604,11 +604,12 @@ namespace
 			return BadArgument(Command);
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
-		if (!Type)
+		// Minecarts and boats are entities without a mob type.
+		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat"))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}
-		if (Type->IsHostile() && Target.GetDifficulty() == 0)
+		if (Type && Type->IsHostile() && Target.GetDifficulty() == 0)
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed.peaceful"))) };
 		}

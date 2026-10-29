@@ -2,6 +2,7 @@
 #include "McChunk.h"
 #include "McEntityManager.h"
 #include "McMob.h"
+#include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
 #include "McEntityModel.h"
@@ -63,6 +64,11 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcItemEntity& Item = static_cast<const FMcItemEntity&>(Entity);
 		ItemId = Item.Stack.Item;
 		ItemCount = Item.Stack.Count;
+	}
+	else if (Entity.GetType() == FMcBoatEntity::StaticType())
+	{
+		// Which wood it is made of picks its picture.
+		ItemId = static_cast<const FMcBoatEntity&>(Entity).WoodName;
 	}
 	else if (Entity.IsLiving())
 	{

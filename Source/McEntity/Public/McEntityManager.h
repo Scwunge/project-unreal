@@ -24,6 +24,12 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) {}
 	// True for mobs and the like, which have health and can be hit.
 	virtual bool IsLiving() const { return false; }
+	// Minecarts and boats, which a player can ride (see McVehicle.h).
+	virtual bool IsVehicle() const { return false; }
+	// What a player's blow can land on: the living and the vehicles.
+	virtual bool IsAttackable() const { return IsLiving(); }
+	// A player hit something attackable that isn't a mob (a vehicle): Damage is what the held item does. False if it did nothing.
+	virtual bool OnAttacked(float Damage, bool bCreative) { return false; }
 	// False for what isn't worth keeping in a chunk's save (an arrow in flight).
 	virtual bool IsPersistent() const { return true; }
 
@@ -145,6 +151,18 @@ public:
 	void PlaySound(FName Name, const FVector& Position, float Volume = 1.0f, float Pitch = 1.0f) const
 	{
 		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
+	}
+
+	// ---- Detector rails ----
+	// Called when a minecart is on a detector rail (true, every tick) or has left it (false), for whoever runs the
+	// redstone. Left unset, rails don't hear.
+	TFunction<void(const FIntVector&, bool)> OnDetector;
+	void SetDetector(const FIntVector& Pos, bool bOccupied) const
+	{
+		if (OnDetector)
+		{
+			OnDetector(Pos, bOccupied);
+		}
 	}
 
 	FRandomStream& GetRandom() { return Random; }

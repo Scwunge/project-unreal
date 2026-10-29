@@ -205,6 +205,32 @@ namespace McEntityModel
 				Slime.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -4, 0, -4, 8, 8, 8) }, 0, 0, 0, 0, 1));
 				Models.Add(Slime.Kind, Slime);
 			}
+			{
+				// A minecart: a floor and four walls, the long way along the rail (z).
+				FModel Cart;
+				Cart.Kind = TEXT("minecraft:minecart");
+				Cart.TextureSize = FIntPoint(64, 32);
+				Cart.Textures = { TEXT("minecart/minecart.png") };
+				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 0), { Box(0, 10, -10, -8, -1, 20, 16, 2) }, Flat, HALF_PI));
+				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, 9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
+				Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, -9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
+				Cart.Parts.Add(Part(ERole::Static, FVector(7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
+				Cart.Parts.Add(Part(ERole::Static, FVector(-7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
+				Models.Add(Cart.Kind, Cart);
+			}
+			{
+				// A boat: a hull floor and four sides (the paddles are left out). The wood is chosen by the texture.
+				FModel Boat;
+				Boat.Kind = TEXT("minecraft:boat");
+				Boat.TextureSize = FIntPoint(128, 64);
+				Boat.Textures = { TEXT("boat/oak.png") };
+				Boat.Parts.Add(Part(ERole::Static, FVector(0, 2, 0), { Box(0, 0, -14, -8, -3, 28, 16, 3) }, Flat, HALF_PI));
+				Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, 15), { Box(0, 27, -8, 0, -1, 16, 6, 2) }));
+				Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
+				Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
+				Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
+				Models.Add(Boat.Kind, Boat);
+			}
 			return Models;
 		}
 
@@ -650,6 +676,12 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (Kind == TEXT("minecraft:boat"))
+	{
+		FString Wood = Item.IsNone() ? FString(TEXT("oak")) : Item.ToString();
+		Wood.RemoveFromStart(TEXT("minecraft:"));
+		return McCache::Asset(TEXT("textures/entity/boat/") + Wood + TEXT(".png"));
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

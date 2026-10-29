@@ -5,6 +5,7 @@
 #include "McBlockWorld.h"
 #include "McChestLink.h"
 #include "McChunk.h"
+#include "McRails.h"
 #include "McSimulation.h"
 
 namespace
@@ -38,6 +39,10 @@ namespace
 	};
 
 	enum EDir : int32
+		Rail,
+		PoweredRail,
+		ActivatorRail,
+		DetectorRail,
 	{
 		North,
 		East,
@@ -105,6 +110,10 @@ namespace
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
+				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
+				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
+				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
+				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
 				}
 			}
 		}
@@ -336,6 +345,7 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
+	case DetectorRail:
 	case Daylight:
 		return Number(State, TEXT("power"));
 	case Torch:
@@ -393,6 +403,7 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
 	case Torch:
 	case WallTorch:
+	case DetectorRail:
 		return Toward == Down ? Signal(State, Pos, Toward) : 0;
 	case Repeater:
 	case Comparator:
@@ -606,6 +617,10 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	const FMcStateId State = World.GetBlock(Pos);
 	const uint8 Kind = KindOf(State);
 	if (Kind == None)
+	case Rail:
+	case PoweredRail:
+	case ActivatorRail:
+	case DetectorRail:
 	{
 		return;
 	}
@@ -690,6 +705,8 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	}
 	case Hopper:
 	{
+	case PoweredRail:
+	case ActivatorRail:
 		// A powered hopper is locked.
 		const bool bEnabled = !HasPower(Pos);
 		if (Flag(State, TEXT("enabled")) != bEnabled)
@@ -759,6 +776,19 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case Trapdoor:
 	case Gate:
 		TickOpening(Pos, State);
+	case PoweredRail:
+	case ActivatorRail:
+	{
+		const bool bPowered = IsRailPowered(Pos, State);
+		if (bPowered != Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+		}
+		break;
+	}
+	case DetectorRail:
+		TickDetector(Pos, State);
+		break;
 		break;
 	case Button:
 		TickButton(Pos, State);
@@ -1216,6 +1246,82 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 	if (Kind == Plate)
 	{
 		if ((Count > 0) != Flag(State, TEXT("powered")))
+bool FMcRedstone::IsRailPowered(const FIntVector& Pos, FMcStateId State) const
+{
+	if (HasPower(Pos))
+	{
+		return true;
+	}
+	McRails::FTrack Track;
+	if (!McRails::GetTrack(State, Track))
+	{
+		return false;
+	}
+	// Power reaches along the track from a powered rail of the same kind up to eight rails away.
+	const FName Block = Reg().GetBlockOf(State).Name;
+	for (int32 End = 0; End < 2; ++End)
+	{
+		FIntVector Here = Pos;
+		FIntVector Dir = End ? Track.EndB : Track.EndA;
+		bool bRise = End ? Track.bRiseB : Track.bRiseA;
+		for (int32 Step = 0; Step < 8; ++Step)
+		{
+			FIntVector Next;
+			if (!McRails::FindNext(World, Here, Dir, bRise, Next) || Reg().GetBlockOf(World.GetBlock(Next)).Name != Block)
+			{
+				break;
+			}
+			if (HasPower(Next))
+			{
+				return true;
+			}
+			McRails::FTrack NextTrack;
+			McRails::GetTrack(World.GetBlock(Next), NextTrack);
+			const FIntVector Back(-Dir.X, 0, -Dir.Z);
+			const bool bOnA = NextTrack.EndA == Back;
+			Dir = bOnA ? NextTrack.EndB : NextTrack.EndA;
+			bRise = bOnA ? NextTrack.bRiseB : NextTrack.bRiseA;
+			Here = Next;
+		}
+	}
+	return false;
+}
+
+void FMcRedstone::SetDetector(const FIntVector& Pos, bool bOccupied)
+{
+	if (KindOf(World.GetBlock(Pos)) != DetectorRail)
+	{
+		return;
+	}
+	if (bOccupied)
+	{
+		Detectors.Add(Pos);
+		if (!Flag(World.GetBlock(Pos), TEXT("powered")))
+		{
+			Sim.ScheduleTick(Pos, 1);
+		}
+	}
+	else if (Detectors.Remove(Pos) > 0)
+	{
+		// Powered for a second after the cart has gone.
+		Sim.ScheduleTick(Pos, 20);
+	}
+}
+
+void FMcRedstone::TickDetector(const FIntVector& Pos, FMcStateId State)
+{
+	const bool bOccupied = Detectors.Contains(Pos);
+	if (bOccupied != Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), Bool(bOccupied)) });
+	}
+	if (bOccupied)
+	{
+		// Held while it is there: check again in a second.
+		Sim.ScheduleTick(Pos, 20);
+	}
+}
+
 		{
 			Set(Pos, { FChange(TEXT("powered"), Bool(Count > 0)) });
 		}

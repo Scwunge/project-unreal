@@ -6,6 +6,9 @@
 #include "McEffects.h"
 #include "McBlockTags.h"
 #include "McEntityManager.h"
+#include "McVehicle.h"
+#include "McPhysics.h"
+#include "McRaycast.h"
 #include "McItemRegistry.h"
 #include "McPlayerData.h"
 #include "Misc/CommandLine.h"
@@ -86,6 +89,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookYaw, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
+	DOREPLIFETIME(AMcPlayerPawn, RidingId);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -142,6 +146,30 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 {
 	PreviousPosition = Body.Position;
 	PreviousEyeHeight = GetEyeHeight();
+
+	// Sitting in a minecart or boat: the vehicle carries the body (the server moves it); the keys steer it.
+	if (RidingId != 0)
+	{
+		bSprinting = false;
+		if (HasAuthority())
+		{
+			RideForward = Input.Forward;
+			RideStrafe = Input.Strafe;
+			if (Input.bSneak)
+			{
+				ServerDismount();
+			}
+		}
+		else
+		{
+			ServerRideInput(Input.Forward, Input.Strafe, Yaw);
+			if (Input.bSneak)
+			{
+				ServerWantDismount();
+			}
+		}
+		return;
+	}
 
 	// Wait for the ground to arrive before moving.
 	const FIntPoint Chunk(McCoords::BlockToChunk(FMath::FloorToInt32(Body.Position.X)), McCoords::BlockToChunk(FMath::FloorToInt32(Body.Position.Z)));
@@ -215,7 +243,7 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 
 void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, float NewPitch, uint8 Flags)
 {
-	if (FeetPos.ContainsNaN() || !FMath::IsFinite(NewYaw) || !FMath::IsFinite(NewPitch) || bServerAwaitingTeleport)
+	if (FeetPos.ContainsNaN() || !FMath::IsFinite(NewYaw) || !FMath::IsFinite(NewPitch) || bServerAwaitingTeleport || RidingId != 0)
 	{
 		return;
 	}
@@ -469,6 +497,33 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// A click on a minecart or boat in front of the block being looked at gets in.
+	if (RidingId == 0 && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+		constexpr double RideReach = 3.0;
+		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : RideReach;
+		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
+		{
+			if (It->Kind != FMcMinecartEntity::StaticType() && It->Kind != FMcBoatEntity::StaticType())
+			{
+				continue;
+			}
+			const FVector Feet = McCoords::UnrealToBlock(It->GetActorLocation());
+			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
+			FVector HitPoint, HitNormal;
+			float Time = 0.0f;
+			if (!It->IsHidden() && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * RideReach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * RideReach < BlockDistance)
+			{
+				ServerTryRide(Look);
+				return;
+			}
+		}
+	}
+
 	// An empty bucket takes the water or lava source it is aimed at, even past the blocks the crosshair would stop on.
 	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && Data->Inventory->Get(SelectedSlot).Item == TEXT("minecraft:bucket"))
 	{
@@ -580,8 +635,22 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		ServerUseItemOn(Hit.Block, Hit.Face);
 		return;
 	}
+	// A boat goes on water (the fluid the crosshair would pass through), a minecart on a rail.
+	if (bPlaceClick && (Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft"))))
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const TOptional<FMcBlockHit> Fluid = McRaycast::Trace(*BlockWorld, McCoords::UnrealToBlock(Camera->GetComponentLocation()), Look,
+			bMayFly ? McRaycast::CreativeReach : McRaycast::SurvivalReach, true);
+		if (Fluid.IsSet())
+		{
+			ServerUseItemOn(Fluid->Block, Fluid->Face);
+			return;
+		}
+	}
 	// Flint and steel lights the block clicked; an eye of ender goes in an end portal frame.
-	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel")
+	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || Held.Item == TEXT("minecraft:minecart")
 		|| (Held.Item == TEXT("minecraft:ender_eye") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:end_portal_frame"))))
 	{
 		ServerUseItemOn(Hit.Block, Hit.Face);
@@ -690,7 +759,7 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
-	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage))
+	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative))
 	{
 		return;
 	}
@@ -771,7 +840,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
-		if (Held.Item == TEXT("minecraft:ender_eye"))
+		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:minecart") || Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft")))
 		{
 			if (--Held.Count <= 0)
 			{
@@ -783,6 +852,126 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 			Held.Clear();
 		}
 	}
+}
+
+void AMcPlayerPawn::ServerRide(int32 VehicleId)
+{
+	if (!HasAuthority() || bServerDead)
+	{
+		return;
+	}
+	if (RidingId != 0)
+	{
+		ServerDismount();
+	}
+	RidingId = VehicleId;
+	RideForward = 0.0f;
+	RideStrafe = 0.0f;
+	bSprinting = false;
+	bServerSprint = false;
+	ServerFall = McSurvival::FFallTracker();
+	Body.Velocity = FVector::ZeroVector;
+}
+
+void AMcPlayerPawn::ServerDismount()
+{
+	if (!HasAuthority() || RidingId == 0)
+	{
+		return;
+	}
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	FMcEntity* Found = Entities ? Entities->Find(RidingId) : nullptr;
+	RidingId = 0;
+	if (!Found || !Found->IsVehicle() || !BlockWorld)
+	{
+		return;
+	}
+	static_cast<FMcVehicle*>(Found)->ClearRider();
+	// Out beside it, on whichever side has room; failing that, on top.
+	const FVector Centre = Found->Body.Position;
+	const FVector Spots[] = { FVector(1.1, 0.0, 0.0), FVector(-1.1, 0.0, 0.0), FVector(0.0, 0.0, 1.1), FVector(0.0, 0.0, -1.1), FVector(0.0, 0.0, 0.0) };
+	for (const FVector& Spot : Spots)
+	{
+		FMcBody Moved = Body;
+		Moved.Position = Centre + Spot + FVector(0.0, 0.1, 0.0);
+		if (!McPhysics::Collides(*BlockWorld, Moved.GetBox()))
+		{
+			ServerTeleport(Moved.Position, McLookYaw);
+			break;
+		}
+	}
+	ServerFall = McSurvival::FFallTracker();
+}
+
+void AMcPlayerPawn::ServerTickRiding()
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	FMcEntity* Found = Entities ? Entities->Find(RidingId) : nullptr;
+	if (!Found || !Found->IsVehicle() || Found->bRemoved)
+	{
+		RidingId = 0;
+		return;
+	}
+	FMcVehicle* Vehicle = static_cast<FMcVehicle*>(Found);
+	if (Vehicle->ConsumeEject())
+	{
+		ServerDismount();
+		return;
+	}
+	Vehicle->SetRider(RideForward, RideStrafe, McLookYaw);
+	const FVector Seat = Vehicle->GetSeat();
+	Body.Position = Seat;
+	Body.Velocity = FVector::ZeroVector;
+	Body.bOnGround = true;
+	ServerPreviousPosition = Seat;
+	ServerFall = McSurvival::FFallTracker();
+	if (!IsLocallyControlled())
+	{
+		LastLocation = McCoords::BlockToUnreal(Seat);
+		SetActorLocation(LastLocation);
+		ClientRideSeat(Seat);
+	}
+}
+
+void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
+{
+	if (!HasAuthority() || bServerDead || RidingId != 0 || !FindVehicle || Look.ContainsNaN() || Look.IsNearlyZero())
+	{
+		return;
+	}
+	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
+	if (const int32 Id = FindVehicle(Eye, Look.GetSafeNormal(), 3.5))
+	{
+		ServerRide(Id);
+	}
+}
+
+void AMcPlayerPawn::ServerRideInput_Implementation(float Forward, float Strafe, float LookYaw)
+{
+	if (!FMath::IsFinite(Forward) || !FMath::IsFinite(Strafe) || !FMath::IsFinite(LookYaw))
+	{
+		return;
+	}
+	RideForward = FMath::Clamp(Forward, -1.0f, 1.0f);
+	RideStrafe = FMath::Clamp(Strafe, -1.0f, 1.0f);
+	McLookYaw = LookYaw - 90.0f;
+}
+
+void AMcPlayerPawn::ServerWantDismount_Implementation()
+{
+	ServerDismount();
+}
+
+void AMcPlayerPawn::ClientRideSeat_Implementation(FVector Feet)
+{
+	if (Feet.ContainsNaN())
+	{
+		return;
+	}
+	PreviousPosition = Body.Position;
+	Body.Position = Feet;
+	Body.Velocity = FVector::ZeroVector;
+	Body.bOnGround = true;
 }
 
 void AMcPlayerPawn::ServerRespawn_Implementation()
@@ -810,6 +999,10 @@ void AMcPlayerPawn::ServerGameTick()
 	{
 		ServerDie();
 		return;
+	}
+	if (RidingId != 0)
+	{
+		ServerTickRiding();
 	}
 
 	const FMcItemRegistry& Items = FMcItemRegistry::Get();

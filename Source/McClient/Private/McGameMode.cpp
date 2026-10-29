@@ -4,6 +4,7 @@
 #include "McClient.h"
 #include "McBlockShapes.h"
 #include "McEntityHost.h"
+#include "McVehicle.h"
 #include "McPlayerController.h"
 #include "McPlayerData.h"
 #include "McPlayerSave.h"
@@ -848,6 +849,20 @@ namespace
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
 			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			if (Host && Kind == TEXT("minecraft:minecart"))
+			{
+				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
+				Cart->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Cart));
+				return true;
+			}
+			if (Host && Kind == TEXT("minecraft:boat"))
+			{
+				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
+				Boat->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Boat));
+				return true;
+			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
 		}
 

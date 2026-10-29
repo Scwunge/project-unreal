@@ -1,0 +1,358 @@
+#include "McVehicle.h"
+#include "McBlockRegistry.h"
+#include "McBlockShapes.h"
+#include "McBlockWorld.h"
+#include "McRails.h"
+#include "Serialization/Archive.h"
+
+namespace
+{
+	bool HasWater(FMcStateId State)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		if (!Registry.IsValidState(State))
+		{
+			return false;
+		}
+		const FName Name = Registry.GetBlockOf(State).Name;
+		return Name == TEXT("minecraft:water") || Name == TEXT("minecraft:bubble_column") || Registry.GetPropertyValue(State, TEXT("waterlogged")) == TEXT("true");
+	}
+
+	// How high the water in this cell stands, 0 to 1 of the block.
+	double WaterHeight(FMcStateId State)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FName Level = Registry.GetPropertyValue(State, TEXT("level"));
+		if (Level.IsNone())
+		{
+			return 0.888889;
+		}
+		const int32 Value = FCString::Atoi(*Level.ToString());
+		return Value >= 8 ? 1.0 : (8 - Value) / 9.0;
+	}
+
+	double Friction(FName Block)
+	{
+		const FString Name = Block.ToString();
+		if (Name == TEXT("minecraft:blue_ice"))
+		{
+			return 0.989;
+		}
+		if (Name == TEXT("minecraft:ice") || Name == TEXT("minecraft:packed_ice") || Name == TEXT("minecraft:frosted_ice"))
+		{
+			return 0.98;
+		}
+		return 0.45;
+	}
+}
+
+// ---- Any vehicle ----
+
+bool FMcVehicle::OnAttacked(float Damage, bool bCreative)
+{
+	// A minecart goes at the first blow; a boat takes ten times the damage and goes past 40.
+	Wear += GetType() == FMcMinecartEntity::StaticType() ? 1000.0f : Damage * 10.0f;
+	if (!bCreative && Wear <= 40.0f)
+	{
+		return true;
+	}
+	bRemoved = true;
+	if (!bCreative && Owner)
+	{
+		Owner->DropItem(Body.Position + FVector(0.0, 0.3, 0.0), FMcItemStack(GetItemName(), 1));
+	}
+	return true;
+}
+
+bool FMcVehicle::Serialize(FArchive& Ar)
+{
+	return FMcEntity::Serialize(Ar) && (Ar << Wear, !Ar.IsError());
+}
+
+// ---- Minecart ----
+
+const FName& FMcMinecartEntity::StaticType()
+{
+	static const FName Name(TEXT("minecraft:minecart"));
+	return Name;
+}
+
+FMcMinecartEntity::FMcMinecartEntity()
+{
+	Body.Width = 0.98f;
+	Body.Height = 0.7f;
+	Body.StepHeight = 0.0f;
+}
+
+bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	// The rail in the cart's own cell, or the one below it (the cart rides a little above the rail).
+	FIntVector Cell(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+	if (!McRails::IsRail(World.GetBlock(Cell)))
+	{
+		Cell.Y -= 1;
+		if (!McRails::IsRail(World.GetBlock(Cell)))
+		{
+			return false;
+		}
+	}
+	const FMcStateId State = World.GetBlock(Cell);
+	McRails::FTrack Track;
+	if (!McRails::GetTrack(State, Track))
+	{
+		return false;
+	}
+	const FName Block = Registry.GetBlockOf(State).Name;
+	const bool bPowered = Registry.GetPropertyValue(State, TEXT("powered")) == TEXT("true");
+
+	// The track is a line from the middle of one end to the middle of the other, a block higher at a slope's top.
+	const FVector Middle(Cell.X + 0.5, Cell.Y + RailLift, Cell.Z + 0.5);
+	const FVector EndA = Middle + FVector(Track.EndA.X * 0.5, Track.bRiseA ? 1.0 : 0.0, Track.EndA.Z * 0.5);
+	const FVector EndB = Middle + FVector(Track.EndB.X * 0.5, Track.bRiseB ? 1.0 : 0.0, Track.EndB.Z * 0.5);
+	const FVector2D Line(EndB.X - EndA.X, EndB.Z - EndA.Z);
+	const double Length = Line.Size();
+	const FVector2D Along = Line / Length;
+
+	// Onto the line, keeping to where the cart is along it.
+	const double Where = FVector2D::DotProduct(FVector2D(Body.Position.X - EndA.X, Body.Position.Z - EndA.Z), Along) / Length;
+	const double T = FMath::Clamp(Where, 0.0, 1.0);
+	Body.Position = FVector(EndA.X + Line.X * Where, FMath::Lerp(EndA.Y, EndB.Y, T), EndA.Z + Line.Y * Where);
+	Body.Velocity.Y = 0.0;
+	Body.bOnGround = true;
+
+	// The speed along the track, signed by the way it is going.
+	FVector2D Move(Body.Velocity.X, Body.Velocity.Z);
+	double Speed = Move.Size();
+	const double Sign = FVector2D::DotProduct(Move, Along) >= 0.0 ? 1.0 : -1.0;
+	FVector2D Velocity = Along * Sign * Speed;
+
+	// A slope pulls the cart downhill.
+	if (Track.IsAscending())
+	{
+		// Toward the high end.
+		const FVector2D High = (Track.bRiseA ? FVector2D(EndA.X - EndB.X, EndA.Z - EndB.Z) : FVector2D(EndB.X - EndA.X, EndB.Z - EndA.Z)).GetSafeNormal();
+		Velocity -= High * SlopePull;
+	}
+
+	// Rails that push or hold.
+	const bool bPoweredRail = Block == TEXT("minecraft:powered_rail");
+	Speed = Velocity.Size();
+	if (bPoweredRail)
+	{
+		if (bPowered)
+		{
+			if (Speed > 0.01)
+			{
+				Velocity += Velocity / Speed * PoweredBoost;
+			}
+			else
+			{
+				// Standing still against something at one end, it is pushed off from it.
+				const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+				const bool bBlockedA = Shapes.HasCollision(World.GetBlock(Cell + Track.EndA));
+				const bool bBlockedB = Shapes.HasCollision(World.GetBlock(Cell + Track.EndB));
+				if (bBlockedA != bBlockedB)
+				{
+					const FVector2D Away = bBlockedA ? FVector2D(Track.EndB.X, Track.EndB.Z) : FVector2D(Track.EndA.X, Track.EndA.Z);
+					Velocity = Away.GetSafeNormal() * 0.02;
+				}
+			}
+		}
+		else if (Speed < 0.03)
+		{
+			Velocity = FVector2D::ZeroVector;
+		}
+		else
+		{
+			Velocity *= 0.5;
+		}
+	}
+	if (Block == TEXT("minecraft:activator_rail") && bPowered)
+	{
+		bEject = HasRider();
+	}
+
+	// Friction, and the speed limit.
+	Velocity *= HasRider() ? 0.997 : 0.96;
+	const double Fast = Velocity.Size();
+	if (Fast > MaxSpeed)
+	{
+		Velocity *= MaxSpeed / Fast;
+	}
+
+	// Along the line to where it gets to, and if something is in the way, stop.
+	const double Reach = FVector2D::DotProduct(Velocity, Along);
+	const double NextWhere = Where + Reach / Length;
+	const double NextT = FMath::Clamp(NextWhere, 0.0, 1.0);
+	const FVector Target(EndA.X + Line.X * NextWhere, FMath::Lerp(EndA.Y, EndB.Y, NextT), EndA.Z + Line.Y * NextWhere);
+	const FVector Before = Body.Position;
+	Body.Velocity = FVector(Velocity.X, 0.0, Velocity.Y);
+	McPhysics::Move(World, Body, Target - Before, false);
+	if (Body.bHorizontalCollision)
+	{
+		Body.Velocity = FVector::ZeroVector;
+	}
+	else
+	{
+		Body.Velocity = FVector(Velocity.X, 0.0, Velocity.Y);
+	}
+	if (Velocity.SizeSquared() > 1e-4)
+	{
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Velocity.X, Velocity.Y));
+	}
+	OnRail = Cell;
+	if (Block == TEXT("minecraft:detector_rail"))
+	{
+		Manager.SetDetector(Cell, true);
+		LastDetector = Cell;
+	}
+	return true;
+}
+
+void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
+{
+	TickRider();
+	++Age;
+	FMcBlockWorld& World = Manager.GetWorld();
+	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
+	{
+		return;
+	}
+	const TOptional<FIntVector> PreviousDetector = LastDetector;
+	LastDetector.Reset();
+	OnRail.Reset();
+	if (!TickOnRail(Manager, World))
+	{
+		// Off the rails: it falls, and drags along the ground.
+		Body.Velocity.Y -= Gravity;
+		McPhysics::Move(World, Body, Body.Velocity, false);
+		const double Drag = Body.bOnGround ? 0.5 : 0.95;
+		Body.Velocity.X *= Drag;
+		Body.Velocity.Z *= Drag;
+		Body.Velocity.Y *= 0.95;
+	}
+	if (PreviousDetector.IsSet() && (!LastDetector.IsSet() || LastDetector.GetValue() != PreviousDetector.GetValue()))
+	{
+		Manager.SetDetector(PreviousDetector.GetValue(), false);
+	}
+}
+
+// ---- Boat ----
+
+const FName& FMcBoatEntity::StaticType()
+{
+	static const FName Name(TEXT("minecraft:boat"));
+	return Name;
+}
+
+FMcBoatEntity::FMcBoatEntity()
+{
+	Body.Width = 1.375f;
+	Body.Height = 0.5625f;
+	Body.StepHeight = 0.0f;
+}
+
+bool FMcBoatEntity::Serialize(FArchive& Ar)
+{
+	FString Wood = WoodName.ToString();
+	if (!FMcVehicle::Serialize(Ar) || (Ar << Wood, Ar.IsError()))
+	{
+		return false;
+	}
+	WoodName = FName(*Wood);
+	return true;
+}
+
+FVector FMcBoatEntity::GetSeat() const
+{
+	return Body.Position + FVector(0.0, 0.1, 0.0);
+}
+
+FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	OutSurface = 0.0;
+	OutFriction = 0.9;
+	const int32 X = FMath::FloorToInt32(Body.Position.X);
+	const int32 Z = FMath::FloorToInt32(Body.Position.Z);
+	const int32 Base = FMath::FloorToInt32(Body.Position.Y);
+	// The highest cell near the boat with water in it, then up through the water above it.
+	int32 Top = INT_MIN;
+	for (int32 Y = Base + 1; Y >= Base - 1; --Y)
+	{
+		if (HasWater(World.GetBlock(FIntVector(X, Y, Z))))
+		{
+			Top = Y;
+			break;
+		}
+	}
+	if (Top != INT_MIN)
+	{
+		while (HasWater(World.GetBlock(FIntVector(X, Top + 1, Z))))
+		{
+			++Top;
+		}
+		const double Surface = Top + WaterHeight(World.GetBlock(FIntVector(X, Top, Z)));
+		OutSurface = Surface;
+		// Water over its hull lifts it; the top of the hull just in it floats.
+		return Body.Position.Y + Body.Height < Surface ? ESurface::Underwater : ESurface::Water;
+	}
+	const FIntVector Below(X, FMath::FloorToInt32(Body.Position.Y - 0.05), Z);
+	if (Body.bOnGround)
+	{
+		OutFriction = Friction(Registry.GetBlockOf(World.GetBlock(Below)).Name);
+		return ESurface::Ground;
+	}
+	return ESurface::Air;
+}
+
+void FMcBoatEntity::Tick(FMcEntityManager& Manager)
+{
+	TickRider();
+	++Age;
+	FMcBlockWorld& World = Manager.GetWorld();
+	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
+	{
+		return;
+	}
+	double Surface = 0.0, Slip = 0.9;
+	const ESurface Where = Sense(World, Surface, Slip);
+
+	// Steering: left and right turn it, forward and back push along where it faces.
+	const bool bRiding = HasRider();
+	const float Turn = bRiding ? -RiderStrafe : 0.0f;
+	TurnRate = TurnRate * 0.8f + Turn;
+	Yaw += TurnRate;
+	double Push = 0.0;
+	if (bRiding)
+	{
+		Push = RiderForward > 0.0f ? Thrust : RiderForward < 0.0f ? -ReverseThrust : 0.0;
+		// Turning alone still nudges it forward.
+		if (RiderForward == 0.0f && RiderStrafe != 0.0f)
+		{
+			Push = 0.005;
+		}
+	}
+	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
+	Body.Velocity.X += -FMath::Sin(Radians) * Push;
+	Body.Velocity.Z += FMath::Cos(Radians) * Push;
+	Body.Velocity.X *= Slip;
+	Body.Velocity.Z *= Slip;
+
+	// Up and down: it floats at the surface, rises through water over it and falls in the air.
+	switch (Where)
+	{
+	case ESurface::Water:
+		Body.Velocity.Y = FMath::Clamp((Surface - 0.2 - Body.Position.Y) * 0.5, -0.1, 0.1);
+		break;
+	case ESurface::Underwater:
+		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.04, 0.15);
+		break;
+	default:
+		Body.Velocity.Y -= Gravity;
+		Body.Velocity.Y *= 0.98;
+		break;
+	}
+	McPhysics::Move(World, Body, Body.Velocity, false);
+}

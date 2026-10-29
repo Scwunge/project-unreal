@@ -9,6 +9,7 @@
 #include "McItemRegistry.h"
 #include "McLoot.h"
 #include "McMob.h"
+#include "McVehicle.h"
 #include "McRandom.h"
 #include "McServer.h"
 #include "Engine/World.h"
@@ -400,6 +401,23 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
+		else if (Kind == FMcMinecartEntity::StaticType() || Kind == FMcBoatEntity::StaticType())
+		{
+			TUniquePtr<FMcVehicle> Vehicle;
+			if (Kind == FMcMinecartEntity::StaticType())
+			{
+				Vehicle = MakeUnique<FMcMinecartEntity>();
+			}
+			else
+			{
+				Vehicle = MakeUnique<FMcBoatEntity>();
+			}
+			if (Vehicle->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Vehicle));
+				++Restored;
+			}
+		}
 		else if (FMcMob* Mob = SpawnMob(Kind, FVector::ZeroVector))
 		{
 			if (Mob->Serialize(DataReader))
@@ -719,7 +737,33 @@ void FMcEntityHost::SyncProxies()
 	}
 }
 
-bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage)
+FMcEntity* FMcEntityHost::FindVehicle(const FVector& Eye, const FVector& Direction, float Reach)
+{
+	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
+	{
+		return nullptr;
+	}
+	FMcEntity* Best = nullptr;
+	double BestDistance = Reach;
+	const FVector Dir = Direction.GetSafeNormal();
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->IsVehicle() || Entity->bRemoved)
+		{
+			continue;
+		}
+		FVector HitPoint, HitNormal;
+		float Time = 0.0f;
+		if (FMath::LineExtentBoxIntersection(Entity->Body.GetBox(), Eye, Eye + Dir * Reach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * Reach <= BestDistance)
+		{
+			BestDistance = Time * Reach;
+			Best = Entity.Get();
+		}
+	}
+	return Best;
+}
+
+bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative)
 {
 	// The nearest living entity whose box the ray enters within Reach.
 	// The direction comes from a client: a NaN or empty one hits nothing.
@@ -727,12 +771,12 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 	{
 		return false;
 	}
-	FMcMob* Best = nullptr;
+	FMcEntity* Best = nullptr;
 	double BestDistance = Reach;
 	const FVector Dir = Direction.GetSafeNormal();
 	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 	{
-		if (!Entity->IsLiving() || Entity->bRemoved)
+		if (!Entity->IsAttackable() || Entity->bRemoved)
 		{
 			continue;
 		}
@@ -745,7 +789,7 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 			if (Distance <= BestDistance)
 			{
 				BestDistance = Distance;
-				Best = static_cast<FMcMob*>(Entity.Get());
+				Best = Entity.Get();
 			}
 		}
 	}
@@ -753,6 +797,10 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 	{
 		return false;
 	}
-	Best->Damage(Damage, &Eye);
-	return true;
+	if (Best->IsLiving())
+	{
+		static_cast<FMcMob*>(Best)->Damage(Damage, &Eye);
+		return true;
+	}
+	return Best->OnAttacked(Damage, bCreative);
 }

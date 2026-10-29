@@ -1,5 +1,6 @@
 #include "McWorldActor.h"
 #include "McChestLink.h"
+#include "McRails.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McFlatGenerator.h"
@@ -283,6 +284,14 @@ void AMcWorldActor::BeginPlay()
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	// A minecart on a detector rail powers it.
+	Entities->GetManager().OnDetector = [this](const FIntVector& Pos, bool bOccupied)
+	{
+		if (Simulation)
+		{
+			Simulation->SetDetectorRail(Pos, bOccupied);
+		}
+	};
 	// Every sound the entities make goes to the players.
 	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
 	{
@@ -424,9 +433,15 @@ void AMcWorldActor::SetEntityProxyClass(TSubclassOf<AActor> Class)
 	}
 }
 
-bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage)
+bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative)
 {
-	return Entities && Entities->Attack(Eye, Look, Reach, Damage);
+	return Entities && Entities->Attack(Eye, Look, Reach, Damage, bCreative);
+}
+
+int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float Reach)
+{
+	const FMcEntity* Found = Entities ? Entities->FindVehicle(Eye, Look, Reach) : nullptr;
+	return Found ? Found->Id : 0;
 }
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
@@ -474,6 +489,7 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bChec
 	if (HasAuthority() && Old != State && BlockWorld->HasChunk(ChunkPos))
 	{
 		McChestLink::Sync(*BlockWorld, Pos, Old, State, [this](const FIntVector& At, FMcStateId Other) { SetBlock(At, Other, false); });
+		McRails::Sync(*BlockWorld, Pos, Old, State, [this](const FIntVector& At, FMcStateId Other) { SetBlock(At, Other, false); });
 	}
 	// A portal that has lost a piece of its frame goes out.
 	if (HasAuthority() && bCheckPortals && !bFixingPortals && Old != State && BlockWorld->HasChunk(ChunkPos) && !McPortal::IsPortalBlock(State))

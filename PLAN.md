@@ -122,6 +122,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     fatigue, strength, weakness, resistance and fire resistance. The rest are kept and shown only. The icons
     show along the top right (blinking in the last ten seconds). `/effect give|clear` and `/enchant` (which
     checks the item, the level and what it clashes with) are in. Potions, food and beacons don't give effects yet.
+  - **Vehicles** (2026-10-29): `McRails` joins the four rails as they are placed (lines, curves for the plain
+    rail, slopes) and `McVehicle` has the minecart and boat entities. A cart follows its rail, slows when empty,
+    is pulled down slopes, speeds up on a powered rail and stops on an unpowered one; detector rails power while
+    one sits on them and an activator rail throws the rider off. A boat floats, glides with friction by the
+    surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
+    cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
+    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done: chests, hoppers,
+    furnaces and TNT on carts, boat paddles, more than one rider, carts pushing mobs.
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

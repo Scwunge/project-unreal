@@ -75,7 +75,9 @@ public:
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
-	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage)> MobAttack;
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
+	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
+	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
 	// An item is used on a block (flint and steel makes fire, an eye of ender goes into a frame): Pos is the block clicked, Beside
 	// the empty block next to the face clicked. Returns true if something happened.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos, const FIntVector& Beside)> OnUseItemOn;
@@ -96,6 +98,11 @@ public:
 	// Server: where the player's feet are, in block coordinates.
 	FVector GetFeetPosition() const { return Body.Position; }
 	bool IsServerDead() const { return bServerDead; }
+	// The entity id of the minecart or boat the player sits in, or 0.
+	int32 GetRidingId() const { return RidingId; }
+	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
+	void ServerRide(int32 VehicleId);
+	void ServerDismount();
 	// How far the server lets a player reach for blocks, eyes to the block's middle.
 	static constexpr double ServerReach = 6.5;
 
@@ -168,6 +175,18 @@ protected:
 	// The server hit the owner: a push for their own body, which they simulate.
 	UFUNCTION(Client, Reliable)
 	void ClientKnockback(FVector Velocity);
+	// The owner clicks on a vehicle along Look (Minecraft axes) to get in.
+	UFUNCTION(Server, Reliable)
+	void ServerTryRide(FVector Look);
+	// A riding owner's keys (forward and strafe, as in FMcMoveInput) and where they look (the camera yaw), once a tick.
+	UFUNCTION(Server, Unreliable)
+	void ServerRideInput(float Forward, float Strafe, float LookYaw);
+	// A riding owner wants out.
+	UFUNCTION(Server, Reliable)
+	void ServerWantDismount();
+	// Where the vehicle seats a riding owner whose body the server simulates.
+	UFUNCTION(Client, Unreliable)
+	void ClientRideSeat(FVector Feet);
 
 public:
 	// Asks the server for a new body; the death screen's button.
@@ -217,6 +236,12 @@ private:
 	float McLookPitch = 0.0f;
 	UPROPERTY(Replicated)
 	bool bSneakPose = false;
+	UPROPERTY(Replicated)
+	int32 RidingId = 0;
+	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.
+	float RideForward = 0.0f;
+	float RideStrafe = 0.0f;
+	void ServerTickRiding();
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;

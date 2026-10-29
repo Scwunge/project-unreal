@@ -7,6 +7,8 @@
 #include "McGameMode.h"
 #include "McPlayerData.h"
 #include "McPortal.h"
+#include "McRails.h"
+#include "McVehicle.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -258,9 +260,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
 		return Use && World.IsValid() && Use->Use(User, *World, Pos);
 	};
-	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage)
+	Hooked.FindVehicle = [World](const FVector& Eye, const FVector& Look, double Reach)
 	{
-		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage);
+		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
+	};
+	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	{
+		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
 	};
 	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
 	{
@@ -289,6 +295,54 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			}
 			World->SetBlock(Beside, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
 			McPortal::TryLight(*Blocks, Beside, Place);
+			return true;
+		}
+		const FString HeldName = Held.ToString();
+		const bool bBoat = (HeldName.EndsWith(TEXT("_boat")) || HeldName.EndsWith(TEXT("_raft"))) && !HeldName.Contains(TEXT("chest"));
+		if (Held == TEXT("minecraft:minecart") || bBoat)
+		{
+			FMcEntityHost* Host = World->GetEntityHost();
+			if (!Host)
+			{
+				return false;
+			}
+			TUniquePtr<FMcVehicle> Vehicle;
+			if (bBoat)
+			{
+				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
+				FString Wood = HeldName;
+				Wood.RemoveFromStart(TEXT("minecraft:"));
+				Wood.RemoveFromEnd(TEXT("_boat"));
+				Wood.RemoveFromEnd(TEXT("_raft"));
+				Boat->WoodName = FName(*(TEXT("minecraft:") + Wood));
+				// On the water clicked (a little under its surface), or on the empty block beside the face.
+				const FName ClickedName = Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name;
+				if (ClickedName == TEXT("minecraft:water"))
+				{
+					Boat->Body.Position = FVector(Pos.X + 0.5, Pos.Y + 0.8, Pos.Z + 0.5);
+				}
+				else if (Registry.IsAir(Blocks->GetBlock(Beside)))
+				{
+					Boat->Body.Position = FVector(Beside.X + 0.5, Beside.Y, Beside.Z + 0.5);
+				}
+				else
+				{
+					return false;
+				}
+				Vehicle = MoveTemp(Boat);
+			}
+			else
+			{
+				if (!McRails::IsRail(Blocks->GetBlock(Pos)))
+				{
+					return false;
+				}
+				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
+				Cart->Body.Position = FVector(Pos.X + 0.5, Pos.Y + FMcMinecartEntity::RailLift, Pos.Z + 0.5);
+				Vehicle = MoveTemp(Cart);
+			}
+			Vehicle->Yaw = User.GetLookYaw();
+			Host->GetManager().Add(MoveTemp(Vehicle));
 			return true;
 		}
 		const FMcStateId Clicked = Blocks->GetBlock(Pos);

@@ -47,6 +47,8 @@ public:
 	// lamps, doors and pistons run off block changes and scheduled ticks like the rest. What stands on a pressure
 	// plate is told to the simulation, and daylight detectors read the sun level (0 to 15) it is given.
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
+	// Whether a minecart is on the detector rail at Pos.
+	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.

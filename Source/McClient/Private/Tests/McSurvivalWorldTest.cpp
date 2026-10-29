@@ -6,6 +6,7 @@
 #include "McBlockUse.h"
 #include "McBuckets.h"
 #include "McBlockWorld.h"
+#include "McRails.h"
 #include "McChunk.h"
 #include "McCombat.h"
 #include "McEntityHost.h"
@@ -369,3 +370,34 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 }
 
 #endif
+	// Rails join up as they are placed: a line, a curve, a slope; a powered rail stays straight; taking one away straightens the rest.
+	{
+		const auto Shape = [&](const FIntVector& At) { return Registry.GetPropertyValue(Blocks.GetBlock(At), TEXT("shape")); };
+		const auto Place = [&](const FIntVector& At, const TCHAR* Block) { Actor->SetBlock(At, Registry.ParseState(Block).Get(0)); };
+		const FIntVector A(3, 64, 2), B(4, 64, 2), C(4, 64, 3);
+		Place(A, TEXT("minecraft:rail"));
+		TestEqual(TEXT("a lone rail runs north-south"), Shape(A), FName(TEXT("north_south")));
+		Place(B, TEXT("minecraft:rail"));
+		TestEqual(TEXT("a rail east of it joins and turns it"), Shape(A), FName(TEXT("east_west")));
+		TestEqual(TEXT("and runs the same way"), Shape(B), FName(TEXT("east_west")));
+		Place(C, TEXT("minecraft:rail"));
+		TestEqual(TEXT("one to the south makes a curve"), Shape(B), FName(TEXT("south_west")));
+		TestEqual(TEXT("and runs north-south itself"), Shape(C), FName(TEXT("north_south")));
+		Actor->SetBlock(C, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
+		TestEqual(TEXT("taking it away straightens the curve"), Shape(B), FName(TEXT("east_west")));
+		const FIntVector Low(8, 64, 5), High(9, 65, 5);
+		Place(Low, TEXT("minecraft:rail"));
+		Place(High, TEXT("minecraft:rail"));
+		TestEqual(TEXT("a rail a block up makes a slope"), Shape(Low), FName(TEXT("ascending_east")));
+		TestEqual(TEXT("and the upper one is level"), Shape(High), FName(TEXT("east_west")));
+		McRails::FTrack Track;
+		FIntVector Next;
+		TestTrue(TEXT("the slope's track"), McRails::GetTrack(Blocks.GetBlock(Low), Track) && Track.bRiseA && Track.EndA == FIntVector(1, 0, 0) && Track.EndB == FIntVector(-1, 0, 0));
+		TestTrue(TEXT("a cart goes up it to the next rail"), McRails::FindNext(Blocks, Low, Track.EndA, Track.bRiseA, Next) && Next == High);
+		TestTrue(TEXT("and down again"), McRails::FindNext(Blocks, High, FIntVector(-1, 0, 0), false, Next) && Next == Low);
+		const FIntVector P(8, 64, 9), Q(9, 64, 9), R(9, 64, 10);
+		Place(P, TEXT("minecraft:powered_rail"));
+		Place(Q, TEXT("minecraft:powered_rail"));
+		Place(R, TEXT("minecraft:powered_rail"));
+		TestEqual(TEXT("a powered rail doesn't curve"), Shape(Q), FName(TEXT("north_south")));
+	}

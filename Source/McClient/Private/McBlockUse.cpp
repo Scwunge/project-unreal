@@ -420,10 +420,27 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		return FMcSlotAccess();
 	}
 	const FName Name = GetBlockName(*Blocks, Pos);
-	if (const int32 Slots = GetContainerSlots(Name))
+		if (const int32 Slots = GetContainerSlots(Name))
 	{
 		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
-		return Container.IsValid() ? McHopper::ForContainer(Container) : FMcSlotAccess();
+		if (!Container.IsValid())
+		{
+			return FMcSlotAccess();
+		}
+		// A double chest is one 54-slot inventory, the right half's slots first.
+		if (McChestLink::IsLinkable(Name))
+		{
+			if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pos))
+			{
+				const TSharedPtr<FMcContainer> Other = GetChest(WorldActor, Partner.GetValue(), Slots);
+				if (Other.IsValid())
+				{
+					const bool bRight = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("type")) == TEXT("right");
+					return bRight ? McHopper::ForContainer(Container, Other) : McHopper::ForContainer(Other, Container);
+				}
+			}
+		}
+		return McHopper::ForContainer(Container);
 	}
 	if (Name == TEXT("minecraft:brewing_stand"))
 	{
@@ -649,6 +666,15 @@ void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FInt
 	if (Chests.Contains(MakeKey(WorldActor, Pos)))
 	{
 		WriteChest(WorldActor, Pos);
+		// The other half of a double chest may have changed too.
+		const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+		if (Blocks && McChestLink::IsLinkable(GetBlockName(*Blocks, Pos)))
+		{
+			if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pos))
+			{
+				WriteChest(WorldActor, Partner.GetValue());
+			}
+		}
 	}
 }
 

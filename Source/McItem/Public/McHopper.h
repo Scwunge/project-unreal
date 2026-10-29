@@ -20,6 +20,8 @@ class FMcBrewingStand;
 struct MCITEM_API FMcSlotAccess
 {
 	TSharedPtr<FMcContainer> Items;
+	// A second container whose slots follow Items' (the other half of a double chest); slot numbers past Items' count into it.
+	TSharedPtr<FMcContainer> More;
 	// The slots an item may go into, in the order tried, and those it may come out of.
 	TArray<int32> Insert;
 	TArray<int32> Extract;
@@ -28,6 +30,21 @@ struct MCITEM_API FMcSlotAccess
 	TFunction<int32(int32)> SlotLimit;
 
 	bool IsValid() const { return Items.IsValid(); }
+	const FMcItemStack& GetStack(int32 Slot) const
+	{
+		return More.IsValid() && Slot >= Items->Num() ? More->Get(Slot - Items->Num()) : Items->Get(Slot);
+	}
+	void SetStack(int32 Slot, const FMcItemStack& Stack) const
+	{
+		if (More.IsValid() && Slot >= Items->Num())
+		{
+			More->Set(Slot - Items->Num(), Stack);
+		}
+		else
+		{
+			Items->Set(Slot, Stack);
+		}
+	}
 };
 
 namespace McHopper
@@ -38,7 +55,7 @@ namespace McHopper
 	// The face of the other block the hopper is at.
 	enum class EFace : uint8 { Top, Bottom, Side };
 
-	MCITEM_API FMcSlotAccess ForContainer(const TSharedPtr<FMcContainer>& Items);
+	MCITEM_API FMcSlotAccess ForContainer(const TSharedPtr<FMcContainer>& Items, const TSharedPtr<FMcContainer>& More = nullptr);
 	MCITEM_API FMcSlotAccess ForFurnace(const TSharedPtr<FMcFurnace>& Furnace, EFace Face);
 	MCITEM_API FMcSlotAccess ForBrewingStand(const TSharedPtr<FMcBrewingStand>& Stand, EFace Face);
 

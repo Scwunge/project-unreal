@@ -243,9 +243,9 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	const FIntVector Bottom(10, 63, 10);
 	Blocks.SetBlock(Top, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
 	Blocks.SetBlock(Bottom, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
-	FMcBlockEntity Full = FMcBlockEntity::MakeContainer(27);
-	Full.Slots[4] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
-	Chunk->SetBlockEntity(Top.X, Top.Y, Top.Z, Full);
+	FMcBlockEntity Packed = FMcBlockEntity::MakeContainer(27);
+	Packed.Slots[4] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+	Chunk->SetBlockEntity(Top.X, Top.Y, Top.Z, Packed);
 	Blocks.SetBlock(HopperPos, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));
 	TestEqual(TEXT("the hopper is at work"), Use->NumHoppers(), 1);
 	for (int32 Step = 0; Step < 60; ++Step)
@@ -357,6 +357,30 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:fire_charge"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
 	TestEqual(TEXT("which burns"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 3)), TEXT("lit")), FName(TEXT("true")));
 	TestTrue(TEXT("using up the charge"), Remain.IsEmpty());
+	// A dropper into a double chest fills the other half once the first is full.
+	{
+		const FIntVector RightHalf(3, 64, 14), LeftHalf(4, 64, 14), Dropper(2, 64, 14);
+		Blocks.SetBlock(RightHalf, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=right]")).Get(0));
+		Blocks.SetBlock(LeftHalf, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=left]")).Get(0));
+		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+		FMcBlockEntity Stuffed = FMcBlockEntity::MakeContainer(27);
+		for (FMcItemStack& Slot : Stuffed.Slots)
+		{
+			Slot = FMcItemStack(TEXT("minecraft:dirt"));
+			Slot.Count = 64;
+		}
+		Chunk->SetBlockEntity(RightHalf.X, RightHalf.Y, RightHalf.Z, Stuffed);
+		FMcBlockEntity Feeder = FMcBlockEntity::MakeContainer(9);
+		Feeder.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"));
+		Chunk->SetBlockEntity(Dropper.X, Dropper.Y, Dropper.Z, Feeder);
+		Use->Dispense(*Actor, Dropper);
+		TArray<FMcItemStack> Other;
+		UMcBlockUseSubsystem::GetContents(*Actor, LeftHalf, Other);
+		TestTrue(TEXT("the full half sends it to the other"), Other.Num() > 0 && Other[0].Item == TEXT("minecraft:cobblestone"));
+		TArray<FMcItemStack> Right;
+		UMcBlockUseSubsystem::GetContents(*Actor, RightHalf, Right);
+		TestTrue(TEXT("and keeps what it had"), Right.Num() > 0 && Right[0].Item == TEXT("minecraft:dirt"));
+	}
 	// Double chests: facing north, the left half is east of the right one. Placing a chest beside a single one
 	// joins them, and taking one away leaves the other single again.
 	TestEqual(TEXT("a right chest's partner is clockwise"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("right")), FIntVector(1, 0, 0));
@@ -374,11 +398,6 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	Actor->SetBlock(Joiner, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
 	TestEqual(TEXT("taking one away leaves the other single"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("single")));
 	TestEqual(TEXT("and it keeps its facing"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("facing")), FName(TEXT("north")));
-	Finish();
-	return true;
-}
-
-#endif
 	// Rails join up as they are placed: a line, a curve, a slope; a powered rail stays straight; taking one away straightens the rest.
 	{
 		const auto Shape = [&](const FIntVector& At) { return Registry.GetPropertyValue(Blocks.GetBlock(At), TEXT("shape")); };
@@ -410,3 +429,8 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		Place(R, TEXT("minecraft:powered_rail"));
 		TestEqual(TEXT("a powered rail doesn't curve"), Shape(Q), FName(TEXT("north_south")));
 	}
+	Finish();
+	return true;
+}
+
+#endif

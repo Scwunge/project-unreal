@@ -534,7 +534,8 @@ void UMcParticleComponent::Draw(float Partial)
 			Kind = bUnreal ? McSurface::GlowParticle : McSurface::Particle;
 			break;
 		case EStyle::Lava:
-			Size *= 1.0f - T * T;
+			// In Unreal Mode a drop is a small glowing fleck, not a solid square.
+			Size *= (1.0f - T * T) * (bUnreal ? 0.4f : 1.0f);
 			Colour = Mix(FColor(255, 200, 60), FColor(220, 70, 10), T);
 			Kind = bUnreal ? McSurface::GlowParticle : McSurface::Particle;
 			break;

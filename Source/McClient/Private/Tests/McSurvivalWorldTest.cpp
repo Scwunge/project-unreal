@@ -324,12 +324,13 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("a full bucket won't go into a furnace"), McBuckets::Pour(*Actor, TEXT("minecraft:lava_bucket"), FurnacePos));
 
 	// Fire and shulker boxes: each in a dispenser of its own, so the random slot doesn't matter.
-	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain)
+	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain, bool bSupported = true)
 	{
 		const FIntVector Gun(14, 64, Z);
 		const FIntVector Muzzle(15, 64, Z);
 		Blocks.SetBlock(Gun, Registry.ParseState(TEXT("minecraft:dispenser[facing=east]")).Get(0));
 		Blocks.SetBlock(Muzzle, Registry.ParseState(FrontBlock).Get(0));
+		Blocks.SetBlock(Muzzle - FIntVector(0, 1, 0), bSupported ? Registry.ParseState(TEXT("minecraft:stone")).Get(0) : Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
 		FMcBlockEntity Loaded2 = FMcBlockEntity::MakeContainer(9);
 		Loaded2.Slots[0] = FMcItemStack(ItemName);
 		Chunk->SetBlockEntity(Gun.X, Gun.Y, Gun.Z, Loaded2);
@@ -348,6 +349,14 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
 	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
 	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
+	// Fire only where it can stay; a campfire or candle in front is lit instead.
+	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
+	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
+	TestEqual(TEXT("an unlit campfire is lit"), Fire(12, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:campfire[lit=false]"), Remain), FString(TEXT("minecraft:campfire")));
+	TestEqual(TEXT("burning"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 12)), TEXT("lit")), FName(TEXT("true")));
+	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:fire_charge"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
+	TestEqual(TEXT("which burns"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 3)), TEXT("lit")), FName(TEXT("true")));
+	TestTrue(TEXT("using up the charge"), Remain.IsEmpty());
 	// Double chests: facing north, the left half is east of the right one. Placing a chest beside a single one
 	// joins them, and taking one away leaves the other single again.
 	TestEqual(TEXT("a right chest's partner is clockwise"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("right")), FIntVector(1, 0, 0));

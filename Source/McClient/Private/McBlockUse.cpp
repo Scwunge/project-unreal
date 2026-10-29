@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
+#include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McChestLink.h"
@@ -29,6 +30,38 @@ namespace
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 		const FMcStateId State = Blocks.GetBlock(Pos);
 		return Registry.IsValidState(State) ? Registry.GetBlockOf(State).Name : NAME_None;
+	}
+
+	// Whether a block burns, for fire to stay beside it.
+	bool IsFlammableName(FName Name)
+	{
+	const FString Path = Name.ToString();
+	return Path.EndsWith(TEXT("_planks")) || Path.EndsWith(TEXT("_log")) || Path.EndsWith(TEXT("_wood")) || Path.EndsWith(TEXT("_leaves"))
+		|| Path.EndsWith(TEXT("_wool")) || Path.EndsWith(TEXT("_carpet"))
+		|| Path == TEXT("minecraft:hay_block") || Path == TEXT("minecraft:bookshelf") || Path == TEXT("minecraft:tnt") || Path == TEXT("minecraft:vine")
+		|| Path == TEXT("minecraft:coal_block") || Path == TEXT("minecraft:dried_kelp_block") || Path == TEXT("minecraft:short_grass") || Path == TEXT("minecraft:tall_grass")
+		|| Path == TEXT("minecraft:scaffolding");
+	}
+
+	// Fire stays on something solid under it, or against a block that burns.
+	bool CanFireStay(const FMcBlockWorld& Blocks, const FIntVector& Pos)
+	{
+	const FMcStateId Below = Blocks.GetBlock(Pos - FIntVector(0, 1, 0));
+	for (const FBox3f& Box : FMcBlockShapes::Get().GetCollision(Below))
+	{
+		if (Box.Max.Y >= 0.99f && Box.Min.X <= 0.01f && Box.Max.X >= 0.99f && Box.Min.Z <= 0.01f && Box.Max.Z >= 0.99f)
+		{
+			return true;
+		}
+	}
+	for (const FIntVector& Step : { FIntVector(1, 0, 0), FIntVector(-1, 0, 0), FIntVector(0, 0, 1), FIntVector(0, 0, -1), FIntVector(0, 1, 0), FIntVector(0, -1, 0) })
+	{
+		if (IsFlammableName(GetBlockName(Blocks, Pos + Step)))
+		{
+			return true;
+		}
+	}
+	return false;
 	}
 
 	bool IsAnvilName(FName Name)
@@ -516,11 +549,36 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 	}
 	else if (One.Item == TEXT("minecraft:fire_charge") || One.Item == TEXT("minecraft:flint_and_steel"))
 	{
-		// Fire where the front is air; a flint and steel is worn by one, a fire charge is used up.
+		// Lights an unlit campfire or candle in front, or makes fire where the front is air and the fire can stay; a flint and
+		// steel is worn by one, a fire charge is used up.
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		if (Registry.IsAir(Blocks->GetBlock(Pos + Step)))
+		const FIntVector Front = Pos + Step;
+		const FMcStateId FrontState = Blocks->GetBlock(Front);
+		const FString FrontName = GetBlockName(*Blocks, Front).ToString();
+		const bool bLightable = (FrontName == TEXT("minecraft:campfire") || FrontName == TEXT("minecraft:soul_campfire") || FrontName.EndsWith(TEXT("candle")))
+			&& Registry.GetPropertyValue(FrontState, TEXT("lit")) == TEXT("false")
+			&& Registry.GetPropertyValue(FrontState, TEXT("waterlogged")) != TEXT("true");
+		const bool bFire = Registry.IsAir(FrontState) && CanFireStay(*Blocks, Front);
+		if (bLightable || bFire)
 		{
-			WorldActor.SetBlock(Pos + Step, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			if (bLightable)
+			{
+				TMap<FName, FName> Lit;
+				for (const TCHAR* Kept : { TEXT("facing"), TEXT("signal_fire"), TEXT("waterlogged"), TEXT("candles") })
+				{
+					const FName Value = Registry.GetPropertyValue(FrontState, Kept);
+					if (!Value.IsNone())
+					{
+						Lit.Add(Kept, Value);
+					}
+				}
+				Lit.Add(TEXT("lit"), TEXT("true"));
+				WorldActor.SetBlock(Front, Registry.FindState(Registry.GetBlockOf(FrontState).Name, Lit).Get(FrontState));
+			}
+			else
+			{
+				WorldActor.SetBlock(Front, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			}
 			if (One.Item == TEXT("minecraft:fire_charge"))
 			{
 				TakeOne();

@@ -221,6 +221,35 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("subtract mode gives nothing when the side beats it"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 0);
 	}
 	{
+		// A comparator also reads blocks by their state: a cake by its bites, a composter by its level, a double chest by
+		// both halves together.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		World.SetBlock(FIntVector(-1, 1, 0), State(TEXT("minecraft:redstone_wire")));
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:comparator[facing=east,mode=compare]")));
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:cake[bites=2]")));
+		Run(Sim, 4);
+		TestEqual(TEXT("a cake with 2 bites gone gives 10"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 10);
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:composter[level=5]")));
+		Run(Sim, 4);
+		TestEqual(TEXT("a composter gives its level"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 5);
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:end_portal_frame[eye=true,facing=north]")));
+		Run(Sim, 4);
+		TestEqual(TEXT("a portal frame with an eye gives 15"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 15);
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:chest[facing=north,type=right]")));
+		World.SetBlock(FIntVector(2, 1, 0), State(TEXT("minecraft:chest[facing=north,type=left]")));
+		FMcBlockEntity Full = FMcBlockEntity::MakeContainer(27);
+		for (FMcItemStack& Slot : Full.Slots)
+		{
+			Slot.Item = TEXT("minecraft:stone");
+			Slot.Count = 64;
+		}
+		World.FindChunk(FIntPoint(0, 0))->SetBlockEntity(1, 1, 0, Full);
+		Run(Sim, 4);
+		TestEqual(TEXT("one full half of a double chest is half full: 8"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 8);
+	}
+	{
 		// An observer pulses for 2 ticks, 2 ticks after the block it faces changes, and lights a lamp.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);

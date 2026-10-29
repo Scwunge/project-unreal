@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McChestLink.h"
 #include "McChunk.h"
 #include "McSimulation.h"
 
@@ -456,23 +457,76 @@ int32 FMcRedstone::ControlInput(const FIntVector& Pos, int32 Toward, bool bOnlyD
 
 int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 {
-	const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
-	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
-	if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.IsEmpty())
+	// Blocks that give a reading from their state (minecraft.wiki, "Redstone Comparator").
+	const FMcStateId State = World.GetBlock(Pos);
+	if (Reg().IsValidState(State))
 	{
-		return -1;
+		const FString Name = Reg().GetBlockOf(State).Name.ToString();
+		if (Name == TEXT("minecraft:cake"))
+		{
+			return (7 - Number(State, TEXT("bites"))) * 2;
+		}
+		if (Name == TEXT("minecraft:composter"))
+		{
+			return Number(State, TEXT("level"));
+		}
+		if (Name == TEXT("minecraft:water_cauldron") || Name == TEXT("minecraft:powder_snow_cauldron"))
+		{
+			return Number(State, TEXT("level"));
+		}
+		if (Name == TEXT("minecraft:lava_cauldron"))
+		{
+			return 3;
+		}
+		if (Name == TEXT("minecraft:end_portal_frame"))
+		{
+			return Flag(State, TEXT("eye")) ? 15 : 0;
+		}
+		if (Name == TEXT("minecraft:respawn_anchor"))
+		{
+			const int32 Charges = Number(State, TEXT("charges"));
+			return Charges == 0 ? 0 : Charges >= 4 ? 15 : Charges * 4;
+		}
+		if (Name == TEXT("minecraft:beehive") || Name == TEXT("minecraft:bee_nest"))
+		{
+			return Number(State, TEXT("honey_level")) * 3;
+		}
+	}
+	// The slots of a container, and of the other half of a double chest.
+	TArray<FIntVector, TInlineAllocator<2>> Halves;
+	Halves.Add(Pos);
+	if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(World, Pos))
+	{
+		Halves.Add(Partner.GetValue());
 	}
 	float Fill = 0.0f;
 	int32 NonEmpty = 0;
-	for (const FMcItemStack& Stack : Entity->Slots)
+	int32 NumSlots = 0;
+	for (const FIntVector& Half : Halves)
 	{
-		if (!Stack.IsEmpty())
+		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Half.X >> 4, Half.Z >> 4));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Half.X & 15, Half.Y, Half.Z & 15) : nullptr;
+		if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.IsEmpty())
 		{
-			Fill += static_cast<float>(Stack.Count) / FMath::Max(Stack.GetMaxStackSize(), 1);
-			++NonEmpty;
+			if (Half == Pos)
+			{
+				return -1;
+			}
+			// A half nobody has put anything in yet is as many empty slots.
+			NumSlots += 27;
+			continue;
+		}
+		NumSlots += Entity->Slots.Num();
+		for (const FMcItemStack& Stack : Entity->Slots)
+		{
+			if (!Stack.IsEmpty())
+			{
+				Fill += static_cast<float>(Stack.Count) / FMath::Max(Stack.GetMaxStackSize(), 1);
+				++NonEmpty;
+			}
 		}
 	}
-	Fill /= Entity->Slots.Num();
+	Fill /= NumSlots;
 	return FMath::FloorToInt(Fill * 14.0f) + (NonEmpty > 0 ? 1 : 0);
 }
 

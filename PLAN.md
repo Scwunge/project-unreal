@@ -192,7 +192,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     of the same facing joins it (`type` left or right; a right half's partner is clockwise of its facing). Both
     halves open as one 54-slot "Large Chest", the right half's slots first (the order is an assumption: the wiki
     doesn't say), and taking one half away leaves the other single. A hopper or dropper still sees one half.
-  - **Not done:** hopper minecarts, the comparator reading, and hoppers seeing a double chest as one.
+  - **Comparator readings** (2026-10-29), following minecraft.wiki's "Redstone Comparator": besides containers (a double
+    chest reads both halves as 54 slots) it reads a cake (2 per bite left), composter and cauldron level, an end
+    portal frame with an eye (15), a respawn anchor (0, 4, 8, 12, 15), and a beehive or bee nest (3 per honey level).
+  - **Not done:** hopper minecarts, furnace, brewing stand, jukebox, lectern and item frame readings, and hoppers
+    seeing a double chest as one.
 - **Dispenser and dropper** (2026-10-28), following minecraft.wiki's "Dispenser" and "Dropper":
   - Nine slots. Powered (quasi-connectivity included, as for pistons), it is `triggered` and fires 4 ticks
     later, once a pulse, taking one item from a random slot.

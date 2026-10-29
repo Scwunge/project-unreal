@@ -512,7 +512,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : RideReach;
 		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
 		{
-			if (It->Kind != FMcMinecartEntity::StaticType() && It->Kind != FMcBoatEntity::StaticType())
+			if (!FMcVehicle::IsVehicleType(It->Kind))
 			{
 				continue;
 			}
@@ -640,7 +640,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		return;
 	}
 	// A boat goes on water (the fluid the crosshair would pass through), a minecart on a rail.
-	if (bPlaceClick && (Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft"))))
+	if (bPlaceClick && FMcVehicle::IsVehicleItem(Held.Item) && !FMcVehicle::CreateFromItem(Held.Item)->RunsOnRails())
 	{
 		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
 		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
@@ -654,7 +654,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 	// Flint and steel lights the block clicked; an eye of ender goes in an end portal frame.
-	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || Held.Item == TEXT("minecraft:minecart")
+	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || FMcVehicle::IsVehicleItem(Held.Item)
 		|| (Held.Item == TEXT("minecraft:ender_eye") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:end_portal_frame"))))
 	{
 		ServerUseItemOn(Hit.Block, Hit.Face);
@@ -848,7 +848,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
-		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:minecart") || Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft")))
+		if (Held.Item == TEXT("minecraft:ender_eye") || FMcVehicle::IsVehicleItem(Held.Item))
 		{
 			if (--Held.Count <= 0)
 			{
@@ -950,7 +950,19 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	if (const int32 Id = FindVehicle(Eye, Look.GetSafeNormal(), 3.5))
 	{
-		ServerRide(Id);
+		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+		FMcEntity* Found = Entities ? Entities->Find(Id) : nullptr;
+		FMcVehicle* Vehicle = Found && Found->IsVehicle() ? static_cast<FMcVehicle*>(Found) : nullptr;
+		if (Vehicle && Vehicle->OpensOnUse(bSneakPose))
+		{
+			// A chest cart or boat opens like a chest instead of taking a rider.
+			const FIntVector Where(FMath::FloorToInt32(Vehicle->Body.Position.X), FMath::FloorToInt32(Vehicle->Body.Position.Y), FMath::FloorToInt32(Vehicle->Body.Position.Z));
+			Data->OpenBlockWindow(Vehicle->GetInventorySlots() == 5 ? EMcWindowKind::Hopper : EMcWindowKind::Chest, Where, Vehicle->GetInventoryTitle(), Vehicle->GetInventory(), nullptr);
+		}
+		else
+		{
+			ServerRide(Id);
+		}
 	}
 }
 

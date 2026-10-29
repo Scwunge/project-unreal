@@ -2,6 +2,7 @@
 #include "McLang.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McVehicle.h"
 
 namespace
 {
@@ -619,7 +620,7 @@ namespace
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
 		// Minecarts and boats are entities without a mob type.
-		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat"))
+		if (!Type && !FMcVehicle::IsVehicleType(Kind))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}

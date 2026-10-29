@@ -51,12 +51,13 @@ namespace
 bool FMcVehicle::OnAttacked(float Damage, bool bCreative)
 {
 	// A minecart goes at the first blow; a boat takes ten times the damage and goes past 40.
-	Wear += GetType() == FMcMinecartEntity::StaticType() ? 1000.0f : Damage * 10.0f;
+	Wear += Damage * GetWearPerDamage();
 	if (!bCreative && Wear <= 40.0f)
 	{
 		return true;
 	}
 	bRemoved = true;
+	DropInventory();
 	if (!bCreative && Owner)
 	{
 		Owner->DropItem(Body.Position + FVector(0.0, 0.3, 0.0), FMcItemStack(GetItemName(), 1));
@@ -64,9 +65,104 @@ bool FMcVehicle::OnAttacked(float Damage, bool bCreative)
 	return true;
 }
 
+const TSharedPtr<FMcContainer>& FMcVehicle::GetInventory()
+{
+	if (!Inventory.IsValid() && GetInventorySlots() > 0)
+	{
+		Inventory = MakeShared<FMcContainer>(GetInventorySlots());
+	}
+	return Inventory;
+}
+
+void FMcVehicle::DropInventory()
+{
+	if (!Inventory.IsValid() || !Owner)
+	{
+		return;
+	}
+	for (FMcItemStack& Stack : Inventory->GetAll())
+	{
+		if (!Stack.IsEmpty())
+		{
+			Owner->DropItem(Body.Position + FVector(0.0, 0.3, 0.0), Stack);
+			Stack = FMcItemStack();
+		}
+	}
+}
+
 bool FMcVehicle::Serialize(FArchive& Ar)
 {
-	return FMcEntity::Serialize(Ar) && (Ar << Wear, !Ar.IsError());
+	if (!FMcEntity::Serialize(Ar) || (Ar << Wear, Ar.IsError()))
+	{
+		return false;
+	}
+	if (GetInventorySlots() > 0)
+	{
+		for (FMcItemStack& Stack : GetInventory()->GetAll())
+		{
+			if (!Stack.Serialize(Ar))
+			{
+				return false;
+			}
+		}
+	}
+	return !Ar.IsError();
+}
+
+TUniquePtr<FMcVehicle> FMcVehicle::Create(FName Type)
+{
+	if (Type == FMcMinecartEntity::StaticType())
+	{
+		return MakeUnique<FMcMinecartEntity>();
+	}
+	if (Type == FMcBoatEntity::StaticType() || Type == FMcBoatEntity::StaticChestType())
+	{
+		return MakeUnique<FMcBoatEntity>(Type == FMcBoatEntity::StaticChestType());
+	}
+	// The game's own names for the boats by wood: "minecraft:cherry_boat", "minecraft:bamboo_chest_raft".
+	return CreateFromItem(Type);
+}
+
+TUniquePtr<FMcVehicle> FMcVehicle::CreateFromItem(FName Item)
+{
+	if (Item == TEXT("minecraft:minecart"))
+	{
+		return MakeUnique<FMcMinecartEntity>();
+	}
+	FString Name = Item.ToString();
+	if (!Name.RemoveFromStart(TEXT("minecraft:")))
+	{
+		return nullptr;
+	}
+	const bool bRaft = Name.EndsWith(TEXT("_raft"));
+	if (!bRaft && !Name.EndsWith(TEXT("_boat")))
+	{
+		return nullptr;
+	}
+	Name.LeftChopInline(5);
+	const bool bChest = Name.EndsWith(TEXT("_chest"));
+	if (bChest)
+	{
+		Name.LeftChopInline(6);
+	}
+	const FName Wood(*(TEXT("minecraft:") + Name));
+	if (!FMcBoatEntity::GetWoods().Contains(Wood) || bRaft != (Wood == TEXT("minecraft:bamboo")))
+	{
+		return nullptr;
+	}
+	TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>(bChest);
+	Boat->WoodName = Wood;
+	return Boat;
+}
+
+bool FMcVehicle::IsVehicleType(FName Type)
+{
+	return Create(Type).IsValid();
+}
+
+bool FMcVehicle::IsVehicleItem(FName Item)
+{
+	return CreateFromItem(Item).IsValid();
 }
 
 // ---- Minecart ----
@@ -246,7 +342,28 @@ const FName& FMcBoatEntity::StaticType()
 	return Name;
 }
 
-FMcBoatEntity::FMcBoatEntity()
+const FName& FMcBoatEntity::StaticChestType()
+{
+	static const FName Name(TEXT("minecraft:chest_boat"));
+	return Name;
+}
+
+const TArray<FName>& FMcBoatEntity::GetWoods()
+{
+	static const TArray<FName> Woods = { TEXT("minecraft:oak"), TEXT("minecraft:spruce"), TEXT("minecraft:birch"), TEXT("minecraft:jungle"),
+		TEXT("minecraft:acacia"), TEXT("minecraft:dark_oak"), TEXT("minecraft:mangrove"), TEXT("minecraft:cherry"), TEXT("minecraft:pale_oak"),
+		TEXT("minecraft:bamboo") };
+	return Woods;
+}
+
+FName FMcBoatEntity::GetItemName() const
+{
+	const bool bRaft = WoodName == TEXT("minecraft:bamboo");
+	return FName(*(WoodName.ToString() + (bChest ? TEXT("_chest") : TEXT("")) + (bRaft ? TEXT("_raft") : TEXT("_boat"))));
+}
+
+FMcBoatEntity::FMcBoatEntity(bool bInChest)
+	: bChest(bInChest)
 {
 	Body.Width = 1.375f;
 	Body.Height = 0.5625f;

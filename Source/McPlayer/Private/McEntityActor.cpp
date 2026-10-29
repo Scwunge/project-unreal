@@ -70,7 +70,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	{
 		ItemId = FName(*static_cast<const FMcBannerEntity&>(Entity).Layers);
 	}
-	else if (Entity.GetType() == FMcBoatEntity::StaticType())
+	else if (Entity.GetType() == FMcBoatEntity::StaticType() || Entity.GetType() == FMcBoatEntity::StaticChestType())
 	{
 		// Which wood it is made of picks its picture.
 		ItemId = static_cast<const FMcBoatEntity&>(Entity).WoodName;

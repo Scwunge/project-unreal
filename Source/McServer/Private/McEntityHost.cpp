@@ -411,17 +411,9 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
-		else if (Kind == FMcMinecartEntity::StaticType() || Kind == FMcBoatEntity::StaticType())
+		else if (FMcVehicle::IsVehicleType(Kind))
 		{
-			TUniquePtr<FMcVehicle> Vehicle;
-			if (Kind == FMcMinecartEntity::StaticType())
-			{
-				Vehicle = MakeUnique<FMcMinecartEntity>();
-			}
-			else
-			{
-				Vehicle = MakeUnique<FMcBoatEntity>();
-			}
+			TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 			if (Vehicle->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Vehicle));

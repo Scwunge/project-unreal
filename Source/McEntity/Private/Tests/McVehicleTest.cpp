@@ -3,6 +3,7 @@
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McItemStack.h"
 #include "McVehicle.h"
 #include "Misc/AutomationTest.h"
 #include "Serialization/MemoryReader.h"
@@ -193,6 +194,75 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("with its wood"), Loaded.WoodName, FName(TEXT("minecraft:birch")));
 		TestEqual(TEXT("which is its item"), Loaded.GetItemName(), FName(TEXT("minecraft:birch_boat")));
 		TestNearlyEqual(TEXT("and where it was"), static_cast<float>(Loaded.Body.Position.Z), 3.0f);
+	}
+
+	// ---- Boats of every wood, and chest boats ----
+	{
+		const TCHAR* Woods[] = { TEXT("oak"), TEXT("spruce"), TEXT("birch"), TEXT("jungle"), TEXT("acacia"), TEXT("dark_oak"), TEXT("mangrove"),
+			TEXT("cherry"), TEXT("pale_oak"), TEXT("bamboo") };
+		for (const TCHAR* Wood : Woods)
+		{
+			const bool bRaft = FCString::Strcmp(Wood, TEXT("bamboo")) == 0;
+			const FName Item(*(FString(TEXT("minecraft:")) + Wood + (bRaft ? TEXT("_raft") : TEXT("_boat"))));
+			const FName ChestItem(*(FString(TEXT("minecraft:")) + Wood + (bRaft ? TEXT("_chest_raft") : TEXT("_chest_boat"))));
+			TUniquePtr<FMcVehicle> Plain = FMcVehicle::CreateFromItem(Item);
+			TUniquePtr<FMcVehicle> WithChest = FMcVehicle::CreateFromItem(ChestItem);
+			if (!TestTrue(*FString::Printf(TEXT("%s places a boat"), *Item.ToString()), Plain.IsValid() && WithChest.IsValid()))
+			{
+				continue;
+			}
+			TestEqual(*FString::Printf(TEXT("%s drops itself"), *Item.ToString()), Plain->GetItemName(), Item);
+			TestEqual(*FString::Printf(TEXT("%s drops itself"), *ChestItem.ToString()), WithChest->GetItemName(), ChestItem);
+			TestEqual(TEXT("a plain boat has no storage"), Plain->GetInventorySlots(), 0);
+			TestEqual(TEXT("a chest boat has 27 slots"), WithChest->GetInventorySlots(), 27);
+			TestTrue(TEXT("the item's name is a type too"), FMcVehicle::IsVehicleType(Item) && FMcVehicle::IsVehicleType(ChestItem));
+		}
+		TestFalse(TEXT("a bamboo boat is not a thing"), FMcVehicle::IsVehicleItem(TEXT("minecraft:bamboo_boat")));
+		TestFalse(TEXT("nor is an oak raft"), FMcVehicle::IsVehicleItem(TEXT("minecraft:oak_raft")));
+		TestFalse(TEXT("nor a poplar boat"), FMcVehicle::IsVehicleItem(TEXT("minecraft:poplar_boat")));
+		TestFalse(TEXT("a stick is not a vehicle"), FMcVehicle::IsVehicleItem(TEXT("minecraft:stick")));
+		TestTrue(TEXT("the minecart is"), FMcVehicle::IsVehicleItem(TEXT("minecraft:minecart")));
+		TestFalse(TEXT("only a minecart runs on rails"), FMcVehicle::CreateFromItem(TEXT("minecraft:oak_boat"))->RunsOnRails());
+		TestTrue(TEXT("the minecart does"), FMcVehicle::CreateFromItem(TEXT("minecraft:minecart"))->RunsOnRails());
+
+		// A chest boat keeps what it is given through a save, and drops it when it breaks.
+		FMcBoatEntity Chest(true);
+		Chest.WoodName = TEXT("minecraft:cherry");
+		TestEqual(TEXT("its type is the chest boat's"), Chest.GetType(), FMcBoatEntity::StaticChestType());
+		Chest.GetInventory()->Set(3, FMcItemStack(TEXT("minecraft:diamond"), 5));
+		Chest.GetInventory()->Set(26, FMcItemStack(TEXT("minecraft:stick"), 64));
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		Chest.Serialize(Writer);
+		TUniquePtr<FMcVehicle> Loaded = FMcVehicle::Create(FMcBoatEntity::StaticChestType());
+		FMemoryReader Reader(Bytes);
+		TestTrue(TEXT("a chest boat reads back"), Loaded.IsValid() && Loaded->Serialize(Reader));
+		if (Loaded.IsValid())
+		{
+			TestEqual(TEXT("with its diamonds"), Loaded->GetInventory()->Get(3).Count, 5);
+			TestEqual(TEXT("and its sticks in the last slot"), Loaded->GetInventory()->Get(26).Item, FName(TEXT("minecraft:stick")));
+			TestEqual(TEXT("and its wood"), static_cast<FMcBoatEntity&>(*Loaded).WoodName, FName(TEXT("minecraft:cherry")));
+		}
+		FMcBoatEntity* Breaking = new FMcBoatEntity(true);
+		Breaking->Body.Position = FVector(5.5, 1.0, 8.5);
+		Breaking->GetInventory()->Set(0, FMcItemStack(TEXT("minecraft:apple"), 2));
+		Manager.Add(TUniquePtr<FMcEntity>(Breaking));
+		Breaking->OnAttacked(10.0f, false);
+		int32 Items = 0;
+		bool bApples = false, bBoat = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			if (Entity->GetType() == FMcItemEntity::StaticType())
+			{
+				++Items;
+				const FMcItemEntity& Dropped = static_cast<const FMcItemEntity&>(*Entity);
+				bApples |= Dropped.Stack.Item == TEXT("minecraft:apple") && Dropped.Stack.Count == 2;
+				bBoat |= Dropped.Stack.Item == TEXT("minecraft:oak_chest_boat");
+			}
+		}
+		TestTrue(TEXT("a broken chest boat drops its boat and what it carried"), Items >= 2 && bApples && bBoat);
+		Manager.Tick();
+		TestTrue(TEXT("only a sneaking click opens a chest boat"), Chest.OpensOnUse(true) && !Chest.OpensOnUse(false));
 	}
 	return true;
 }

@@ -313,49 +313,37 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			McPortal::TryLight(*Blocks, Beside, Place);
 			return true;
 		}
-		const FString HeldName = Held.ToString();
-		const bool bBoat = (HeldName.EndsWith(TEXT("_boat")) || HeldName.EndsWith(TEXT("_raft"))) && !HeldName.Contains(TEXT("chest"));
-		if (Held == TEXT("minecraft:minecart") || bBoat)
+		if (TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::CreateFromItem(Held))
 		{
 			FMcEntityHost* Host = World->GetEntityHost();
 			if (!Host)
 			{
 				return false;
 			}
-			TUniquePtr<FMcVehicle> Vehicle;
-			if (bBoat)
-			{
-				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
-				FString Wood = HeldName;
-				Wood.RemoveFromStart(TEXT("minecraft:"));
-				Wood.RemoveFromEnd(TEXT("_boat"));
-				Wood.RemoveFromEnd(TEXT("_raft"));
-				Boat->WoodName = FName(*(TEXT("minecraft:") + Wood));
-				// On the water clicked (a little under its surface), or on the empty block beside the face.
-				const FName ClickedName = Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name;
-				if (ClickedName == TEXT("minecraft:water"))
-				{
-					Boat->Body.Position = FVector(Pos.X + 0.5, Pos.Y + 0.8, Pos.Z + 0.5);
-				}
-				else if (Registry.IsAir(Blocks->GetBlock(Beside)))
-				{
-					Boat->Body.Position = FVector(Beside.X + 0.5, Beside.Y, Beside.Z + 0.5);
-				}
-				else
-				{
-					return false;
-				}
-				Vehicle = MoveTemp(Boat);
-			}
-			else
+			if (Vehicle->RunsOnRails())
 			{
 				if (!McRails::IsRail(Blocks->GetBlock(Pos)))
 				{
 					return false;
 				}
-				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
-				Cart->Body.Position = FVector(Pos.X + 0.5, Pos.Y + FMcMinecartEntity::RailLift, Pos.Z + 0.5);
-				Vehicle = MoveTemp(Cart);
+				Vehicle->Body.Position = FVector(Pos.X + 0.5, Pos.Y + FMcMinecartEntity::RailLift, Pos.Z + 0.5);
+			}
+			else
+			{
+				// On the water clicked (a little under its surface), or on the empty block beside the face.
+				const FName ClickedName = Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name;
+				if (ClickedName == TEXT("minecraft:water"))
+				{
+					Vehicle->Body.Position = FVector(Pos.X + 0.5, Pos.Y + 0.8, Pos.Z + 0.5);
+				}
+				else if (Registry.IsAir(Blocks->GetBlock(Beside)))
+				{
+					Vehicle->Body.Position = FVector(Beside.X + 0.5, Beside.Y, Beside.Z + 0.5);
+				}
+				else
+				{
+					return false;
+				}
 			}
 			Vehicle->Yaw = User.GetLookYaw();
 			Host->GetManager().Add(MoveTemp(Vehicle));

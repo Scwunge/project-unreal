@@ -220,16 +220,25 @@ namespace McEntityModel
 			}
 			{
 				// A boat: a hull floor and four sides (the paddles are left out). The wood is chosen by the texture.
-				FModel Boat;
-				Boat.Kind = TEXT("minecraft:boat");
-				Boat.TextureSize = FIntPoint(128, 64);
-				Boat.Textures = { TEXT("boat/oak.png") };
-				Boat.Parts.Add(Part(ERole::Static, FVector(0, 2, 0), { Box(0, 0, -14, -8, -3, 28, 16, 3) }, Flat, HALF_PI));
-				Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, 15), { Box(0, 27, -8, 0, -1, 16, 6, 2) }));
-				Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
-				Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
-				Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
-				Models.Add(Boat.Kind, Boat);
+				// A chest boat has the same hull with a chest on its floor, cut from a taller texture.
+				for (const bool bChest : { false, true })
+				{
+					FModel Boat;
+					Boat.Kind = bChest ? TEXT("minecraft:chest_boat") : TEXT("minecraft:boat");
+					Boat.TextureSize = FIntPoint(128, bChest ? 128 : 64);
+					Boat.Textures = { bChest ? TEXT("chest_boat/oak.png") : TEXT("boat/oak.png") };
+					Boat.Parts.Add(Part(ERole::Static, FVector(0, 2, 0), { Box(0, 0, -14, -8, -3, 28, 16, 3) }, Flat, HALF_PI));
+					Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, 15), { Box(0, 27, -8, 0, -1, 16, 6, 2) }));
+					Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
+					Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
+					Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
+					if (bChest)
+					{
+						// The chest sits towards the stern, its lock facing the bow.
+						Boat.Parts.Add(Part(ERole::Static, FVector(0, 5, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
+					}
+					Models.Add(Boat.Kind, Boat);
+				}
 			}
 			return Models;
 		}
@@ -731,11 +740,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		}
 		return McCache::Asset(TEXT("textures/entity/banner/") + (Layer < 2 ? FString(TEXT("base")) : BannerLayers.IsValidIndex(Layer - 2) ? BannerLayers[Layer - 2].Pattern : FString(TEXT("base"))) + TEXT(".png"));
 	}
-	if (Kind == TEXT("minecraft:boat"))
+	if (Kind == TEXT("minecraft:boat") || Kind == TEXT("minecraft:chest_boat"))
 	{
 		FString Wood = Item.IsNone() ? FString(TEXT("oak")) : Item.ToString();
 		Wood.RemoveFromStart(TEXT("minecraft:"));
-		return McCache::Asset(TEXT("textures/entity/boat/") + Wood + TEXT(".png"));
+		return McCache::Asset((Kind == TEXT("minecraft:chest_boat") ? TEXT("textures/entity/chest_boat/") : TEXT("textures/entity/boat/")) + Wood + TEXT(".png"));
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

@@ -866,18 +866,11 @@ namespace
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
 			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
-			if (Host && Kind == TEXT("minecraft:minecart"))
+			if (Host && FMcVehicle::IsVehicleType(Kind))
 			{
-				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
-				Cart->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Cart));
-				return true;
-			}
-			if (Host && Kind == TEXT("minecraft:boat"))
-			{
-				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
-				Boat->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Boat));
+				TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
+				Vehicle->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Vehicle));
 				return true;
 			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;

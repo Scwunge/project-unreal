@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McContainer.h"
 #include "McEntityManager.h"
 
 class MCENTITY_API FMcVehicle : public FMcEntity
@@ -21,6 +22,28 @@ public:
 
 	// The item it drops when broken, and what it is placed from.
 	virtual FName GetItemName() const = 0;
+	// How hard one hit lands on it: a boat takes ten times the damage, and breaks past 40 (a minecart goes at once).
+	virtual float GetWearPerDamage() const { return 10.0f; }
+	// Whether it is put on a rail (a minecart) rather than on water.
+	virtual bool RunsOnRails() const { return false; }
+
+	// What a vehicle is made from: "minecraft:minecart", "minecraft:chest_minecart" and the like, or null if the type
+	// is not one. A boat made this way is oak.
+	static TUniquePtr<FMcVehicle> Create(FName Type);
+	// The vehicle an item places ("minecraft:acacia_chest_boat"), set up to match it, or null if the item isn't one.
+	static TUniquePtr<FMcVehicle> CreateFromItem(FName Item);
+	static bool IsVehicleType(FName Type);
+	static bool IsVehicleItem(FName Item);
+
+	// What it carries: a chest cart or boat has 27 slots, a hopper cart 5; the rest none. Made when first asked for.
+	virtual int32 GetInventorySlots() const { return 0; }
+	const TSharedPtr<FMcContainer>& GetInventory();
+	// A click opens the inventory rather than getting in: always for a cart with storage, for a chest boat when sneaking.
+	virtual bool OpensOnUse(bool bSneaking) const { return GetInventorySlots() > 0; }
+	// Throws what it carries out around it (when it breaks).
+	void DropInventory();
+	// What the window says when a player opens it.
+	virtual FString GetInventoryTitle() const { return TEXT("Chest"); }
 	// Where the rider's feet are.
 	virtual FVector GetSeat() const = 0;
 	// Called every tick by the pawn that rides it.
@@ -56,8 +79,9 @@ protected:
 	float RiderStrafe = 0.0f;
 	float RiderYaw = 0.0f;
 	bool bEject = false;
-	// Boats: how much it has been hit.
+	// How much it has been hit.
 	float Wear = 0.0f;
+	TSharedPtr<FMcContainer> Inventory;
 };
 
 class MCENTITY_API FMcMinecartEntity final : public FMcVehicle
@@ -68,6 +92,8 @@ public:
 	virtual FName GetType() const override { return StaticType(); }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual FName GetItemName() const override { return TEXT("minecraft:minecart"); }
+	virtual float GetWearPerDamage() const override { return 1000.0f; }
+	virtual bool RunsOnRails() const override { return true; }
 	virtual FVector GetSeat() const override { return Body.Position + FVector(0.0, 0.0, 0.0); }
 
 	// The fastest a cart goes along a rail, blocks a tick (8 a second).
@@ -92,16 +118,24 @@ private:
 class MCENTITY_API FMcBoatEntity final : public FMcVehicle
 {
 public:
-	FMcBoatEntity();
+	explicit FMcBoatEntity(bool bInChest = false);
 	static const FName& StaticType();
-	virtual FName GetType() const override { return StaticType(); }
+	static const FName& StaticChestType();
+	virtual FName GetType() const override { return bChest ? StaticChestType() : StaticType(); }
+	virtual int32 GetInventorySlots() const override { return bChest ? 27 : 0; }
+	virtual FString GetInventoryTitle() const override { return TEXT("Chest Boat"); }
+	virtual bool OpensOnUse(bool bSneaking) const override { return bChest && bSneaking; }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool Serialize(FArchive& Ar) override;
-	virtual FName GetItemName() const override { return FName(*(WoodName.ToString() + (WoodName == TEXT("minecraft:bamboo") ? TEXT("_raft") : TEXT("_boat")))); }
+	virtual FName GetItemName() const override;
 	virtual FVector GetSeat() const override;
 
-	// "minecraft:oak", "minecraft:birch" and so on.
+	// "minecraft:oak", "minecraft:birch" and so on: oak, spruce, birch, jungle, acacia, dark_oak, mangrove, cherry, pale_oak
+	// and bamboo (a raft).
 	FName WoodName = TEXT("minecraft:oak");
+	// A chest boat carries 27 stacks and has no rider.
+	const bool bChest;
+	static const TArray<FName>& GetWoods();
 	// The way it is facing, degrees; Yaw is the entity's own.
 	float TurnRate = 0.0f;
 

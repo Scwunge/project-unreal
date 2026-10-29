@@ -128,8 +128,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     one sits on them and an activator rail throws the rider off. A boat floats, glides with friction by the
     surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
-    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done: chests, hoppers,
+    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done: hoppers,
     furnaces and TNT on carts, boat paddles, more than one rider, carts pushing mobs.
+  - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
+    oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
+    variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
+    a vehicle from an entity name or an item; `/summon minecraft:cherry_boat` works too. A vehicle can carry an
+    inventory (`GetInventory`, saved with it, thrown out when it breaks): a chest boat has 27 slots and opens as a
+    chest when you click it sneaking (an ordinary click gets in). Shot: `Saved/Shots/boats.png`
+    (`-McScene=boats`, boats summoned with `-McChat`, see `tools/scenes/boats.json`).
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

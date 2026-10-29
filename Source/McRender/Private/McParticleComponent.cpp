@@ -545,11 +545,13 @@ void UMcParticleComponent::Draw(float Partial)
 			Kind = McSurface::GlowParticle;
 			break;
 		case EStyle::Smoke:
-			Size *= 1.0f + T * 1.5f;
+			// Puffs thin out and take on the colour of the air as they rise, rather than staying flat grey squares.
+			Size *= (1.0f + T * 1.5f) * FMath::Clamp((1.0f - T) * 2.5f, 0.0f, 1.0f);
+			Colour = Mix(Colour, FColor(190, 205, 230), T * T);
 			break;
 		case EStyle::BigSmoke:
-			Size *= 1.0f + T * 1.2f;
-			Size *= FMath::Clamp((1.0f - T) * 5.0f, 0.0f, 1.0f);
+			Size *= (1.0f + T * 1.2f) * FMath::Clamp((1.0f - T) * 2.0f, 0.0f, 1.0f);
+			Colour = Mix(Colour, FColor(190, 205, 230), T);
 			break;
 		}
 		if (Size <= 0.001f)

@@ -9,6 +9,7 @@
 #include "McItemRegistry.h"
 #include "McLoot.h"
 #include "McMob.h"
+#include "McBannerEntity.h"
 #include "McVehicle.h"
 #include "McRandom.h"
 #include "McServer.h"
@@ -398,6 +399,15 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 			if (Item->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Item));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcBannerEntity::StaticType())
+		{
+			TUniquePtr<FMcBannerEntity> Banner = MakeUnique<FMcBannerEntity>();
+			if (Banner->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Banner));
 				++Restored;
 			}
 		}

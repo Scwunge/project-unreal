@@ -400,7 +400,21 @@ namespace
 		{
 			return { Fail(Error) };
 		}
-		const FName Item = ItemId(Words[2]);
+		// Item components ride in brackets after the id: name[component=json,...] (the JSON may not contain spaces).
+		FString ItemToken = Words[2];
+		TMap<FName, FString> Components;
+		int32 Open;
+		if (ItemToken.FindChar(TEXT('['), Open) && ItemToken.EndsWith(TEXT("]")))
+		{
+			const FString Inside = ItemToken.Mid(Open + 1, ItemToken.Len() - Open - 2);
+			ItemToken.LeftInline(Open);
+			int32 Equals;
+			if (Inside.FindChar(TEXT('='), Equals))
+			{
+				Components.Add(ItemId(Inside.Left(Equals)), Inside.Mid(Equals + 1));
+			}
+		}
+		const FName Item = ItemId(ItemToken);
 		const int32 MaxStack = Target.GetMaxStackSize(Item);
 		if (MaxStack <= 0)
 		{
@@ -423,7 +437,7 @@ namespace
 		}
 		for (const FString& Player : Players)
 		{
-			Target.Give(Player, Item, Count);
+			Components.IsEmpty() ? Target.Give(Player, Item, Count) : Target.GiveWith(Player, Item, Count, Components);
 		}
 		if (Players.Num() == 1)
 		{

@@ -307,6 +307,46 @@ namespace McEntityModel
 		return Models.Find(Kind);
 	}
 
+	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out)
+	{
+		// Pixels before the two thirds the game scales a banner by; the flag faces south (+z) and hangs from the bar.
+		static const FModel Pole = []
+		{
+			FModel Result;
+			Result.TextureSize = FIntPoint(64, 64);
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(44, 0, -1, 0, -1, 2, 42, 2), Box(0, 42, -10, 42, -1, 20, 2, 2) }));
+			return Result;
+		}();
+		static const FModel WallBar = []
+		{
+			FModel Result;
+			Result.TextureSize = FIntPoint(64, 64);
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 42, -10, 22, -12, 20, 2, 2) }));
+			return Result;
+		}();
+		static const FModel Flag = []
+		{
+			FModel Result;
+			Result.TextureSize = FIntPoint(64, 64);
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 2, 1, 20, 40, 1) }));
+			return Result;
+		}();
+		static const FModel WallFlag = []
+		{
+			FModel Result;
+			Result.TextureSize = FIntPoint(64, 64);
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, -18, -10, 20, 40, 1) }));
+			return Result;
+		}();
+		FAnim Anim;
+		Anim.BodyYaw = BodyYaw;
+		BuildMesh(bFlag ? (bWall ? WallFlag : Flag) : (bWall ? WallBar : Pole), Anim, 0, Out);
+		for (FVector& Position : Out.Positions)
+		{
+			Position *= 2.0 / 3.0;
+		}
+	}
+
 	void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -619,7 +659,12 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Count = InCount;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
-	Model = bIsItem || bIsArrow ? nullptr : McEntityModel::Find(Kind);
+	bIsBanner = Kind == TEXT("mc:banner");
+	if (bIsBanner)
+	{
+		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
+	}
+	Model = bIsItem || bIsArrow || bIsBanner ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
@@ -630,7 +675,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || bIsArrow || Model != nullptr;
+	return bIsItem || bIsArrow || bIsBanner || Model != nullptr;
 }
 
 void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
@@ -676,6 +721,15 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (bIsBanner)
+	{
+		// The pole and bar have a picture of their own; the flag has the base and then one for each pattern.
+		if (Layer == 0)
+		{
+			return McCache::Asset(TEXT("textures/entity/banner/banner_base.png"));
+		}
+		return McCache::Asset(TEXT("textures/entity/banner/") + (Layer < 2 ? FString(TEXT("base")) : BannerLayers.IsValidIndex(Layer - 2) ? BannerLayers[Layer - 2].Pattern : FString(TEXT("base"))) + TEXT(".png"));
 	}
 	if (Kind == TEXT("minecraft:boat"))
 	{
@@ -840,6 +894,47 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		else
 		{
 			UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
+		}
+		return;
+	}
+	if (bIsBanner)
+	{
+		const int32 NumBannerLayers = 2 + BannerLayers.Num();
+		for (int32 Layer = 0; Layer < NumBannerLayers; ++Layer)
+		{
+			UMaterialInstanceDynamic* Material = GetMaterial(Layer);
+			if (!Material)
+			{
+				continue;
+			}
+			Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+			if (NumSections > Layer)
+			{
+				continue;
+			}
+			McPlayerModel::FMeshData Data;
+			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data);
+			if (Layer > 0)
+			{
+				// The flag takes the dye's colour (the pole and bar keep the wood).
+				const FColor Tint = McBanner::GetDyeColour(Layer == 1 ? BannerBase : BannerLayers[Layer - 2].Colour).ToFColor(true);
+				for (FColor& Color : Data.Colors)
+				{
+					Color = FColor(static_cast<uint8>(Color.R * Tint.R / 255), static_cast<uint8>(Color.G * Tint.G / 255), static_cast<uint8>(Color.B * Tint.B / 255), 255);
+				}
+				// Each layer lies a hair above the one below, on both faces, so they do not fight over the same depth.
+				for (int32 V = 0; V < Data.Positions.Num(); ++V)
+				{
+					Data.Positions[V] += FVector(Data.Normals[V]) * (0.1 * (Layer - 1));
+				}
+			}
+			TArray<FVector2D> UV1, UV2;
+			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+			SetMaterial(Layer, Material);
+			NumSections = Layer + 1;
 		}
 		return;
 	}

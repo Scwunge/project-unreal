@@ -166,6 +166,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   item, its own), 4 by 4 and scrolled with the wheel, each drawn as a small banner in the dye's colour. The one
   chosen gives the banner with that layer added (`minecraft:banner_patterns`). A banner with six layers takes
   no more. Taking the result uses one banner and one dye; the pattern item stays.
+- **Placed banners** (2026-10-29): a banner block carries a flag entity (`mc:banner`, `FMcBannerEntity`) holding its base,
+  wall/standing and layers, drawn as pole, bar and one tinted layer per pattern; placing keeps the item's patterns, breaking
+  drops them back. `/give` takes `item[component=json]`.
   - **Not done:** drawing banners with their patterns as items or in the world, and the cartography table (it
     needs maps first).
 - **Stonecutter, grindstone and smithing table** (2026-10-28), in `McWorkstationMenus`:

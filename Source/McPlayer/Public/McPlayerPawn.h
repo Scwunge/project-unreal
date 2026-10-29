@@ -153,6 +153,10 @@ protected:
 	// The owner places blocks (a door is two): the server checks them against the selected item and the world.
 	UFUNCTION(Server, Reliable)
 	void ServerPlace(const TArray<FMcNetBlockChange>& Placed);
+	// A creative owner placed the banner they hold at Pos (the block itself goes by the chunk stream): the placed flag takes
+	// its patterns.
+	UFUNCTION(Server, Reliable)
+	void ServerAttachBanner(FIntVector Pos);
 	UFUNCTION(Server, Reliable)
 	void ServerUseBlock(FIntVector Pos);
 	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
@@ -204,6 +208,16 @@ private:
 	void ApplyTeleport(const FVector& Feet, float McYaw);
 	bool bServerAwaitingTeleport = false;
 	void ServerBreakBlock(const FIntVector& Pos);
+public:
+	// Development: puts the held block at Pos the way a placing hand does (-McPlaceHeld).
+	void PlaceHeldAt(const FIntVector& Pos);
+private:
+	// Stands a flag entity in the banner block at Pos with the patterns of Banner (the item); false if the block isn't a banner.
+	bool AttachBanner(const FIntVector& Pos, const FMcItemStack& Banner);
+	// A creative placement waiting for its block to arrive.
+	FIntVector PendingBannerPos = FIntVector::ZeroValue;
+	FMcItemStack PendingBanner;
+	int32 PendingBannerTicks = 0;
 	void ServerDie();
 	// Plays the hurt (or death) sound if health has dropped since the last call.
 	void ServerHurtSound();

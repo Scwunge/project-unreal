@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McBanner.h"
 #include "McGuiLayout.h"
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
@@ -168,22 +169,6 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 	return ItemIcons.Add(Item, MoveTemp(Icon));
 }
 
-namespace
-{
-	// The colour of a dye, as the banner and its patterns are tinted.
-	FLinearColor GetDyeColour(const FString& Name)
-	{
-		static const TMap<FString, uint32> Colours = {
-			{ TEXT("white"), 0xF9FFFE }, { TEXT("orange"), 0xF9801D }, { TEXT("magenta"), 0xC74EBD }, { TEXT("light_blue"), 0x3AB3DA },
-			{ TEXT("yellow"), 0xFED83D }, { TEXT("lime"), 0x80C71F }, { TEXT("pink"), 0xF38BAA }, { TEXT("gray"), 0x474F52 },
-			{ TEXT("light_gray"), 0x9D9D97 }, { TEXT("cyan"), 0x169C9C }, { TEXT("purple"), 0x8932B8 }, { TEXT("blue"), 0x3C44AA },
-			{ TEXT("brown"), 0x835432 }, { TEXT("green"), 0x5E7C16 }, { TEXT("red"), 0xB02E26 }, { TEXT("black"), 0x1D1D21 },
-		};
-		const uint32 Rgb = Colours.FindRef(Name);
-		return FLinearColor(FColor((Rgb >> 16) & 0xFF, (Rgb >> 8) & 0xFF, Rgb & 0xFF));
-	}
-}
-
 const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 {
 	FString Base = McCache::PathOf(Banner.Item.ToString());
@@ -228,10 +213,10 @@ const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 			Triangle.Texture = Texture;
 		}
 	};
-	AddLayer(TEXT("entity/banner/base"), GetDyeColour(Base));
+	AddLayer(TEXT("entity/banner/base"), McBanner::GetDyeColour(Base));
 	for (const TPair<FString, FString>& Layer : BannerLayers)
 	{
-		AddLayer(TEXT("entity/banner/") + Layer.Key, GetDyeColour(Layer.Value));
+		AddLayer(TEXT("entity/banner/") + Layer.Key, McBanner::GetDyeColour(Layer.Value));
 	}
 	return BannerIcons.Add(Key, MoveTemp(Icon));
 }

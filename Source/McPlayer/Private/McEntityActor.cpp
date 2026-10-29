@@ -1,6 +1,7 @@
 #include "McEntityActor.h"
 #include "McChunk.h"
 #include "McEntityManager.h"
+#include "McBannerEntity.h"
 #include "McMob.h"
 #include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
@@ -64,6 +65,10 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcItemEntity& Item = static_cast<const FMcItemEntity&>(Entity);
 		ItemId = Item.Stack.Item;
 		ItemCount = Item.Stack.Count;
+	}
+	else if (Entity.GetType() == FMcBannerEntity::StaticType())
+	{
+		ItemId = FName(*static_cast<const FMcBannerEntity&>(Entity).Layers);
 	}
 	else if (Entity.GetType() == FMcBoatEntity::StaticType())
 	{

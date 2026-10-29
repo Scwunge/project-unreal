@@ -1,4 +1,7 @@
 #include "McGameMode.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "McChunk.h"
 #include "McEntityActor.h"
 #include "McClient.h"
@@ -767,6 +770,10 @@ namespace
 		}
 		virtual void Give(const FString& Player, FName Item, int32 Count) override
 		{
+			GiveWith(Player, Item, Count, {});
+		}
+		virtual void GiveWith(const FString& Player, FName Item, int32 Count, const TMap<FName, FString>& Components) override
+		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);
 			if (!Pawn || !Pawn->Data)
 			{
@@ -778,7 +785,17 @@ namespace
 				const int32 Now = FMath::Min(Count, MaxStack);
 				Count -= Now;
 				// What doesn't fit falls at the player's feet.
-				const FMcItemStack Left = Pawn->Data->Inventory->AddItem(FMcItemStack(Item, Now));
+				FMcItemStack Stack(Item, Now);
+				for (const TPair<FName, FString>& Component : Components)
+				{
+					const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(TEXT("{\"v\":") + Component.Value.Replace(TEXT("'"), TEXT("\"")) + TEXT("}"));
+					TSharedPtr<FJsonObject> Wrapper;
+					if (FJsonSerializer::Deserialize(Reader, Wrapper) && Wrapper.IsValid())
+					{
+						Stack.Set(Component.Key, Wrapper->TryGetField(TEXT("v")));
+					}
+				}
+				const FMcItemStack Left = Pawn->Data->Inventory->AddItem(Stack);
 				if (!Left.IsEmpty() && Pawn->Data->ServerDrop)
 				{
 					Pawn->Data->ServerDrop(Left);

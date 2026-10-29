@@ -56,6 +56,8 @@ public:
 	virtual int32 GetMaxStackSize(FName Item) const = 0;
 	virtual FString GetItemName(FName Item) const = 0;
 	virtual void Give(const FString& Player, FName Item, int32 Count) = 0;
+	// A give with item components, each as its JSON text (/give @s minecraft:white_banner[minecraft:banner_patterns=[...]]).
+	virtual void GiveWith(const FString& Player, FName Item, int32 Count, const TMap<FName, FString>& Components) { Give(Player, Item, Count); }
 
 	virtual double GetDayTime() const = 0;
 	virtual void SetDayTime(double Ticks) = 0;

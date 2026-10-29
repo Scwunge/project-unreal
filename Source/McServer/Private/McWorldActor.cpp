@@ -1,5 +1,7 @@
 #include "McWorldActor.h"
 #include "McChestLink.h"
+#include "McBannerEntity.h"
+#include "McCache.h"
 #include "McRails.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
@@ -490,6 +492,22 @@ void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bChec
 	{
 		McChestLink::Sync(*BlockWorld, Pos, Old, State, [this](const FIntVector& At, FMcStateId Other) { SetBlock(At, Other, false); });
 		McRails::Sync(*BlockWorld, Pos, Old, State, [this](const FIntVector& At, FMcStateId Other) { SetBlock(At, Other, false); });
+		// A flag stands only while its banner does.
+		const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+		if (Entities && McCache::PathOf(Blocks.GetBlockOf(Old).Name.ToString()).EndsWith(TEXT("_banner"))
+			&& Blocks.GetBlockOf(Old).Name != Blocks.GetBlockOf(State).Name)
+		{
+			if (FMcBannerEntity* Flag = FMcBannerEntity::FindAt(Entities->GetManager(), Pos))
+			{
+				Flag->bRemoved = true;
+			}
+		}
+		// One put down without a player's patterns (a command, a structure) is a plain flag.
+		if (Entities && McCache::PathOf(Blocks.GetBlockOf(State).Name.ToString()).EndsWith(TEXT("_banner"))
+			&& Blocks.GetBlockOf(Old).Name != Blocks.GetBlockOf(State).Name && !FMcBannerEntity::FindAt(Entities->GetManager(), Pos))
+		{
+			FMcBannerEntity::Stand(Entities->GetManager(), Pos, {});
+		}
 	}
 	// A portal that has lost a piece of its frame goes out.
 	if (HasAuthority() && bCheckPortals && !bFixingPortals && Old != State && BlockWorld->HasChunk(ChunkPos) && !McPortal::IsPortalBlock(State))

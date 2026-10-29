@@ -8,6 +8,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McBanner.h"
 #include "McPlayerModel.h"
 #include "ProceduralMeshComponent.h"
 #include "McEntityModel.generated.h"
@@ -103,6 +104,10 @@ namespace McEntityModel
 	// The mesh of one layer of the model in the pose.
 	MCRENDER_API void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out);
 
+	// A placed banner (McBanner): its pole and crossbar (bFlag false) or its flag (true), facing Minecraft yaw BodyYaw, at
+	// the size the game draws it. The flag is cut from whichever 64 square picture is laid over it.
+	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out);
+
 	// A flat picture of an item standing up, two-sided, spinning and bobbing: Count copies stacked a little apart.
 	// Width is in blocks. The picture's V runs 0..VMax (an animated item's strip is cut to its first frame).
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
@@ -183,6 +188,11 @@ private:
 	bool bItemFailed = false;
 	bool bIsItem = false;
 	bool bIsArrow = false;
+	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
+	bool bIsBanner = false;
+	bool bBannerWall = false;
+	FString BannerBase;
+	TArray<McBanner::FLayer> BannerLayers;
 	float HitboxWidth = 0.0f;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;

@@ -1,4 +1,7 @@
 #include "McPlayerPawn.h"
+#include "McBanner.h"
+#include "McCache.h"
+#include "McBannerEntity.h"
 #include "McBlockBreak.h"
 #include "McBlockPlacement.h"
 #include "McBlockRegistry.h"
@@ -687,6 +690,10 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			for (const FMcPlacedBlock& Block : Placed)
 			{
 				SetBlockHandler(Block.Pos, Block.State);
+				if (Held.Item.ToString().EndsWith(TEXT("_banner")))
+				{
+					ServerAttachBanner(Block.Pos);
+				}
 			}
 		}
 		return;
@@ -995,6 +1002,10 @@ void AMcPlayerPawn::ServerGameTick()
 		return;
 	}
 	ServerHurtSound();
+	if (PendingBannerTicks > 0 && (--PendingBannerTicks == 0 || AttachBanner(PendingBannerPos, PendingBanner)))
+	{
+		PendingBannerTicks = 0;
+	}
 	if (Stats.Health <= 0.0f)
 	{
 		ServerDie();
@@ -1208,6 +1219,26 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 
 	TArray<FMcItemStack> Drops;
 	McBlockBreak::GetDrops(LootState, Tool, DropRandom, Drops);
+	// A banner drops with the patterns the placed flag holds.
+	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
+	{
+		if (const FMcBannerEntity* Flag = FMcBannerEntity::FindAt(*Entities, Pos))
+		{
+			FString Base;
+			bool bWall;
+			TArray<McBanner::FLayer> FlagLayers;
+			if (McBanner::Decode(Flag->Layers, Base, bWall, FlagLayers) && !FlagLayers.IsEmpty())
+			{
+				for (FMcItemStack& Drop : Drops)
+				{
+					if (Drop.Item.ToString().EndsWith(TEXT("_banner")))
+					{
+						Drop.Set(TEXT("minecraft:banner_patterns"), McBanner::MakeComponent(FlagLayers));
+					}
+				}
+			}
+		}
+	}
 	const int32 Wear = McBlockBreak::GetToolWear(Tool, State);
 	const FMcStateId Air = Registry.FindDefaultState(TEXT("minecraft:air")).Get(0);
 	if (Other != Pos)
@@ -1347,10 +1378,66 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	for (const FMcNetBlockChange& Change : Placed)
 	{
 		ServerSetBlock(Change.Pos, Change.State);
+		AttachBanner(Change.Pos, Held);
 	}
 	if (!Data->bCreative && --Held.Count <= 0)
 	{
 		Held.Clear();
+	}
+}
+
+void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
+{
+	if (!Data || !BlockWorld)
+	{
+		return;
+	}
+	const FMcItemStack& Held = Data->Inventory->Get(Data->SelectedSlot);
+	const TOptional<FMcStateId> State = McBlockBreak::GetBlockForItem(Held.Item);
+	if (!State)
+	{
+		return;
+	}
+	if (Data->bCreative && SetBlockHandler)
+	{
+		SetBlockHandler(Pos, State.GetValue());
+		if (Held.Item.ToString().EndsWith(TEXT("_banner")))
+		{
+			ServerAttachBanner(Pos);
+		}
+	}
+	else
+	{
+		FMcNetBlockChange Change;
+		Change.Pos = Pos;
+		Change.State = static_cast<uint16>(State.GetValue());
+		ServerPlace({ Change });
+	}
+}
+
+bool AMcPlayerPawn::AttachBanner(const FIntVector& Pos, const FMcItemStack& Banner)
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	return Entities && !Banner.IsEmpty() && FMcBannerEntity::Stand(*Entities, Pos, McBanner::GetLayers(Banner)) != nullptr;
+}
+
+void AMcPlayerPawn::ServerAttachBanner_Implementation(FIntVector Pos)
+{
+	if (!Data || bServerDead)
+	{
+		return;
+	}
+	const FMcItemStack& Held = Data->Inventory->Get(Data->SelectedSlot);
+	if (!Data->bCreative || !Held.Item.ToString().EndsWith(TEXT("_banner")))
+	{
+		return;
+	}
+	// The block comes by another channel: try now, then for a second.
+	if (!AttachBanner(Pos, Held))
+	{
+		PendingBannerPos = Pos;
+		PendingBanner = Held;
+		PendingBannerTicks = 20;
 	}
 }
 

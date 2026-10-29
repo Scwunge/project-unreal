@@ -653,6 +653,25 @@ void AMcPlayerController::StartDevScreenshot()
 			}), UseDelay, false);
 		}
 	}
+	// -McPlaceHeld=x,y,z,seconds: puts the held block at that spot after that long, as a placing hand would.
+	FString PlaceSpec;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McPlaceHeld="), PlaceSpec, /*bShouldStopOnSeparator=*/ false))
+	{
+		TArray<FString> PlaceParts;
+		PlaceSpec.ParseIntoArray(PlaceParts, TEXT(","));
+		if (PlaceParts.Num() == 4)
+		{
+			const FIntVector PlacePos(FCString::Atoi(*PlaceParts[0]), FCString::Atoi(*PlaceParts[1]), FCString::Atoi(*PlaceParts[2]));
+			FTimerHandle PlaceTimer;
+			GetWorldTimerManager().SetTimer(PlaceTimer, FTimerDelegate::CreateWeakLambda(this, [this, PlacePos]()
+			{
+				if (AMcPlayerPawn* Placer = Cast<AMcPlayerPawn>(GetPawn()))
+				{
+					Placer->PlaceHeldAt(PlacePos);
+				}
+			}), FCString::Atof(*PlaceParts[3]), false);
+		}
+	}
 	FString Camera;
 	TArray<FString> CameraParts;
 	if (!HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McCam="), Camera, /*bShouldStopOnSeparator=*/ false))

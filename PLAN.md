@@ -168,7 +168,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Typing goes to the name field (`ServerMenuText`). The menu is told the player's levels before each click
     (`PrepareMenuClick`). The levels the result costs are taken from the player (`TakeLevelsSpent`).
   - Each result taken has a 12% chance to wear the anvil a step: chipped, damaged, then gone.
-  - **Not done:** the name field starts empty rather than at the item's own name.
+  - The name field starts at the item's name (custom, else its usual one); the usual name typed back sends no
+    custom name, so the menu sees it as taking the name off (`McGui::Anvil`).
 - **Brewing stand** (2026-10-28), in `McBrewingStand`, following minecraft.wiki's "Brewing Stand":
   - Three bottle slots, the ingredient and the blaze powder fuel. A powder gives 20 brews and is taken when
     the stand runs out.

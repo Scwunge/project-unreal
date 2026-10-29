@@ -64,6 +64,16 @@ McGui::FScreenLayout McGui::MakeCraftingTableLayout()
 	return Layout;
 }
 
+FString McGui::Anvil::GetFieldFor(const FString& CustomName, const FString& DefaultName)
+{
+	return CustomName.IsEmpty() ? DefaultName : CustomName;
+}
+
+FString McGui::Anvil::GetNameToSend(const FString& Field, const FString& DefaultName)
+{
+	return Field == DefaultName ? FString() : Field;
+}
+
 McGui::FScreenLayout McGui::MakeChestLayout(int32 Rows)
 {
 	FScreenLayout Layout;

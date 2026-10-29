@@ -619,13 +619,15 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	if (Screen->Anvil)
 	{
 		FScreenState& State = *Screen;
-		// A new item on the left starts the field at its custom name (empty for none: it keeps its own name).
+		// A new item on the left starts the field at its name (custom, or the usual one); the usual name typed back
+		// is no custom name at all.
 		const FMcItemStack& Left = State.Anvil->GetStack(FMcAnvilMenu::LeftSlot);
+		const FString Usual = Left.IsEmpty() ? FString() : DisplayName(Left.Item);
 		if (Left.Item != State.AnvilFor.Item || Left.GetCustomName() != State.AnvilFor.GetCustomName())
 		{
 			State.AnvilFor = Left;
-			State.AnvilName = Left.IsEmpty() ? FString() : Left.GetCustomName();
-			Data->SetMenuText(State.AnvilName);
+			State.AnvilName = Left.IsEmpty() ? FString() : McGui::Anvil::GetFieldFor(Left.GetCustomName(), Usual);
+			Data->SetMenuText(McGui::Anvil::GetNameToSend(State.AnvilName, Usual));
 		}
 		const FString Before = State.AnvilName;
 		const FString Typed = UMcGameViewportClient::TakeTyped();
@@ -639,7 +641,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		}
 		if (State.AnvilName != Before)
 		{
-			Data->SetMenuText(State.AnvilName);
+			Data->SetMenuText(McGui::Anvil::GetNameToSend(State.AnvilName, Usual));
 		}
 	}
 	if (Screen->Stonecutter && bInside)

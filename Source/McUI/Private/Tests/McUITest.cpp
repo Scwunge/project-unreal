@@ -166,6 +166,10 @@ bool FMcScreenLayoutTest::RunTest(const FString& Parameters)
 	const FScreenLayout PlayerLayout = MakeInventoryLayout();
 	TestEqual(TEXT("the inventory screen has a position for every slot"), PlayerLayout.Slots.Num(), Player.NumSlots());
 	TestEqual(TEXT("the crafting table too"), MakeCraftingTableLayout().Slots.Num(), FMcCraftingMenu(3, Inventory).NumSlots());
+	TestEqual(TEXT("an unnamed item's field starts at its usual name"), Anvil::GetFieldFor(FString(), TEXT("Iron Sword")), FString(TEXT("Iron Sword")));
+	TestEqual(TEXT("a named one's at its name"), Anvil::GetFieldFor(TEXT("Biter"), TEXT("Iron Sword")), FString(TEXT("Biter")));
+	TestEqual(TEXT("the usual name sends no custom name"), Anvil::GetNameToSend(TEXT("Iron Sword"), TEXT("Iron Sword")), FString());
+	TestEqual(TEXT("another name is sent"), Anvil::GetNameToSend(TEXT("Biter"), TEXT("Iron Sword")), FString(TEXT("Biter")));
 	TestEqual(TEXT("a small chest"), MakeChestLayout(3).Slots.Num(), FMcContainerMenu(MakeShared<FMcContainer>(27), Inventory).NumSlots());
 	TestEqual(TEXT("a large chest"), MakeChestLayout(6).Slots.Num(), FMcContainerMenu(MakeShared<FMcContainer>(54), Inventory).NumSlots());
 	TestEqual(TEXT("a furnace"), MakeFurnaceLayout().Slots.Num(), FMcFurnaceMenu(MakeShared<FMcFurnace>(), Inventory).NumSlots());

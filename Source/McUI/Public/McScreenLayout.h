@@ -74,6 +74,14 @@ namespace McGui
 		MCUI_API int32 MaxScroll(int32 Count);
 	}
 
+	namespace Anvil
+	{
+		// What the name field starts with for an item on the left: its custom name, else its usual name.
+		MCUI_API FString GetFieldFor(const FString& CustomName, const FString& DefaultName);
+		// What is sent to the menu for what the field holds: the usual name (or nothing) means no custom name.
+		MCUI_API FString GetNameToSend(const FString& Field, const FString& DefaultName);
+	}
+
 	namespace Enchanting
 	{
 		// The three options' buttons, one under another.

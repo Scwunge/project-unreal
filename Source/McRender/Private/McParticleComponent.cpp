@@ -314,8 +314,8 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		Puff.Gravity = bBig ? -0.0003f : -0.002f;
 		Puff.Friction = bBig ? 0.98f : 0.96f;
 		Puff.Life = bBig ? Random.FRandRange(80.0f, 160.0f) : FMath::Floor(8.0f / (Random.FRand() * 0.8f + 0.2f));
-		Puff.Size = bBig ? Random.FRandRange(0.2f, 0.35f) : 0.05f * (Random.FRand() * 0.5f + 0.5f) * 1.5f;
-		const uint8 Grey = static_cast<uint8>(Random.RandRange(bBig ? 150 : 70, bBig ? 200 : 110) + (McRenderMode::IsEnhanced() ? 50 : 0));
+		Puff.Size = bBig ? Random.FRandRange(0.07f, 0.14f) : 0.05f * (Random.FRand() * 0.5f + 0.5f) * 1.5f;
+		const uint8 Grey = static_cast<uint8>(Random.RandRange(bBig ? 100 : 70, bBig ? 135 : 110) + (McRenderMode::IsEnhanced() ? (bBig ? 15 : 50) : 0));
 		Puff.Colour = FColor(Grey, Grey, Grey);
 		Puff.Light = FVector2f(SkyLightAt(Pos), 0.6f);
 	};
@@ -342,7 +342,7 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 	}
 	case EEmitter::Campfire:
 	case EEmitter::SoulCampfire:
-		if (Random.RandRange(0, 9) < (bUnreal ? 4 : 2))
+		if (Random.RandRange(0, 9) < (bUnreal ? 6 : 3))
 		{
 			Smoke(Centre + FVector(Random.FRandRange(-0.33f, 0.33f), 0.0, Random.FRandRange(-0.33f, 0.33f)), true);
 		}

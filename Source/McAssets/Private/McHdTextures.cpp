@@ -356,7 +356,10 @@ namespace
 		// with the class's fine detail on top. The texel's brightness is not blurred, so the dark lines of a texture
 		// (the mortar of bricks) are grooves.
 		const float Bevel = Class == EMaterialClass::Glass ? 0.0f : Class == EMaterialClass::Fabric ? 0.5f
-			: (Class == EMaterialClass::Leaves || Class == EMaterialClass::Plant) ? 0.6f : 1.0f;
+			: (Class == EMaterialClass::Leaves || Class == EMaterialClass::Plant || Class == EMaterialClass::Soil || Class == EMaterialClass::Generic || Class == EMaterialClass::Wool) ? 0.7f : 1.0f;
+		// Hard things have texels at slightly different heights; soft ones (grass, dirt, leaves, wool) only catch light on the texel edges.
+		const float JitterAmount = (Class == EMaterialClass::Stone || Class == EMaterialClass::Ore || Class == EMaterialClass::Metal || Class == EMaterialClass::Gem) ? 0.15f
+			: Class == EMaterialClass::Wood ? 0.1f : 0.0f;
 		const float TexelX = static_cast<float>(Width) / FMath::Max(SourceWidth, 1);
 		const float TexelY = static_cast<float>(Height) / FMath::Max(SourceHeight, 1);
 		TArray<float> Cavity;
@@ -375,9 +378,9 @@ namespace
 				const float Dome = SmoothStep(0.0f, 0.55f, Edge);
 				const float Lift = Pixel.A < 10 ? 0.0f : Luma(Pixel);
 				// Every texel sits a little higher or lower than its neighbours (a hash of which texel it is).
-				const float Jitter = (Hash01(static_cast<uint32>(X / FMath::Max(FMath::RoundToInt32(TexelX), 1)), static_cast<uint32>(Y / FMath::Max(FMath::RoundToInt32(TexelY), 1)), Seed + 9) - 0.5f) * (Class == EMaterialClass::Glass ? 0.0f : 0.3f);
+				const float Jitter = (Hash01(static_cast<uint32>(X / FMath::Max(FMath::RoundToInt32(TexelX), 1)), static_cast<uint32>(Y / FMath::Max(FMath::RoundToInt32(TexelY), 1)), Seed + 9) - 0.5f) * JitterAmount;
 				Cavity[Index] = Lift * 0.6f + 0.3f + Detail[Index] * 0.25f * Params.DetailHeight + Jitter;
-				HeightField[Index] = FMath::Clamp(Cavity[Index] * 0.7f + Dome * 0.5f * Bevel, 0.0f, 1.0f);
+				HeightField[Index] = FMath::Clamp(Cavity[Index] * 0.7f + Dome * 0.38f * Bevel, 0.0f, 1.0f);
 			}
 		}
 		if (Class == EMaterialClass::Ore)
@@ -388,7 +391,7 @@ namespace
 				HeightField[Index] = FMath::Lerp(HeightField[Index] * 0.6f, 0.95f, Gem[Index]);
 			}
 		}
-		NormalFromHeight(HeightField, Width, Height, Params.NormalStrength * Scale * 0.55f, Maps.Normal.Pixels);
+		NormalFromHeight(HeightField, Width, Height, Params.NormalStrength * Scale * 0.45f, Maps.Normal.Pixels);
 
 		// Occlusion: the darker and lower parts against a few texels around them (the bevels don't count), kept gentle
 		// so a face is never much darker than without it.
@@ -396,7 +399,7 @@ namespace
 		BoxBlur(Around, Width, Height, FMath::Max(2, FMath::RoundToInt32(Scale * 1.5f)), bWrap);
 		for (int32 Index = 0; Index < Count; ++Index)
 		{
-			const float Open = FMath::Clamp(1.0f - (Around[Index] - Cavity[Index]) * 3.0f, 0.55f, 1.0f);
+			const float Open = FMath::Clamp(1.0f - (Around[Index] - Cavity[Index]) * 2.3f, 0.62f, 1.0f);
 			Maps.Normal.Pixels[Index].B = ToByte(Open);
 		}
 

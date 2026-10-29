@@ -22,7 +22,7 @@
 namespace McHd
 {
 	// Bump this when the generated pictures change, so cached ones are rebuilt.
-	constexpr int32 GeneratorVersion = 4;
+	constexpr int32 GeneratorVersion = 5;
 
 	enum class EMaterialClass : uint8
 	{

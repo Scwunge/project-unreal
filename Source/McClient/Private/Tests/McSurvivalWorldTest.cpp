@@ -320,6 +320,32 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	UMcBlockUseSubsystem::GetContents(*Actor, Pourer, AfterFill);
 	TestEqual(TEXT("and the bucket is full again"), AfterFill[0].Item, FName(TEXT("minecraft:water_bucket")));
 	TestFalse(TEXT("a full bucket won't go into a furnace"), McBuckets::Pour(*Actor, TEXT("minecraft:lava_bucket"), FurnacePos));
+
+	// Fire and shulker boxes: each in a dispenser of its own, so the random slot doesn't matter.
+	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain)
+	{
+		const FIntVector Gun(14, 64, Z);
+		const FIntVector Muzzle(15, 64, Z);
+		Blocks.SetBlock(Gun, Registry.ParseState(TEXT("minecraft:dispenser[facing=east]")).Get(0));
+		Blocks.SetBlock(Muzzle, Registry.ParseState(FrontBlock).Get(0));
+		FMcBlockEntity Loaded2 = FMcBlockEntity::MakeContainer(9);
+		Loaded2.Slots[0] = FMcItemStack(ItemName);
+		Chunk->SetBlockEntity(Gun.X, Gun.Y, Gun.Z, Loaded2);
+		Use->Dispense(*Actor, Gun);
+		TArray<FMcItemStack> After;
+		UMcBlockUseSubsystem::GetContents(*Actor, Gun, After);
+		Remain = After[0];
+		return Registry.GetBlockOf(Blocks.GetBlock(Muzzle)).Name.ToString();
+	};
+	FMcItemStack Remain;
+	TestEqual(TEXT("a fire charge lights the air in front"), Fire(0, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
+	TestTrue(TEXT("and is used up"), Remain.IsEmpty());
+	TestEqual(TEXT("a flint and steel lights it too"), Fire(2, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
+	TestEqual(TEXT("and is worn by one"), Remain.GetDamage(), 1);
+	TestEqual(TEXT("no fire on stone"), Fire(6, TEXT("minecraft:fire_charge"), TEXT("minecraft:stone"), Remain), FString(TEXT("minecraft:stone")));
+	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
+	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
+	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
 	Finish();
 	return true;
 }

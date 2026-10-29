@@ -196,7 +196,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     throws it out.
   - A dispenser shoots arrows, pours or fills buckets, uses bone meal on the block in front, and throws
     anything else out.
-  - **Not done:** dispensing fire, TNT, armour, minecarts and boats, shulker boxes and the rest of the item
+  - A fire charge or flint and steel lights the air in front (charge used up, steel worn by one); a shulker
+    box is placed in front, facing the way the dispenser does. A blocked front does nothing.
+  - **Not done:** dispensing TNT, armour, minecarts and boats, thrown items, spawn eggs and the rest of the item
     behaviours.
 - **Buckets** (2026-10-28), in `McBuckets`: an empty bucket aimed at a water or lava source takes it (the aim
   passes through fluids, so it looks for the source). A full one pours into the block clicked if that can be

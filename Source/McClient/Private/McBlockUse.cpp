@@ -513,6 +513,48 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			return;
 		}
 	}
+	else if (One.Item == TEXT("minecraft:fire_charge") || One.Item == TEXT("minecraft:flint_and_steel"))
+	{
+		// Fire where the front is air; a flint and steel is worn by one, a fire charge is used up.
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		if (Registry.IsAir(Blocks->GetBlock(Pos + Step)))
+		{
+			WorldActor.SetBlock(Pos + Step, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			if (One.Item == TEXT("minecraft:fire_charge"))
+			{
+				TakeOne();
+			}
+			else
+			{
+				FMcItemStack Worn = Items->Get(Slot);
+				Items->Set(Slot, Worn.HurtAndBreak(1) ? FMcItemStack() : Worn);
+				ContentsChanged(WorldActor, Pos);
+			}
+			Manager.PlaySound(FName("block.dispenser.launch"), Center, 1.0f, 1.2f);
+		}
+		else
+		{
+			Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+		}
+		return;
+	}
+	else if (One.Item.ToString().EndsWith(TEXT("shulker_box")))
+	{
+		// Placed in front, facing the way the dispenser does, if there's room.
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		TOptional<FMcStateId> Box = Registry.ParseState(One.Item.ToString() + TEXT("[facing=") + Facing.ToString() + TEXT("]"));
+		if (Box.IsSet() && Registry.IsAir(Blocks->GetBlock(Pos + Step)))
+		{
+			WorldActor.SetBlock(Pos + Step, Box.GetValue());
+			TakeOne();
+			Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
+		}
+		else
+		{
+			Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+		}
+		return;
+	}
 	else if (One.Item == TEXT("minecraft:bone_meal"))
 	{
 		FMcSimulation* Sim = WorldActor.GetSimulation();

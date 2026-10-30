@@ -74,14 +74,25 @@ namespace McEntityModel
 		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a hat, a robe, arms folded across the chest
 		// and two legs. The biome type, profession and level pictures are laid over the base one into a single picture (the
 		// game draws each over the whole body in turn, which comes to the same), so the hat and robe are cut from it as well.
-		void AddVillager(FModel& Model)
+		// A zombie villager holds its arms out in front like the zombie: two arms of its own, cut from the same place of the
+		// picture the crossed ones are, instead of the folded pair.
+		void AddVillager(FModel& Model, bool bArmsOut = false)
 		{
 			Model.TextureSize = FIntPoint(64, 64);
 			Model.BaseWidth = 0.6f;
 			Model.bComposite = true;
 			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2), Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }));
 			Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 20, -4, -12, -3, 8, 12, 6), Box(0, 38, -4, -18, -3, 8, 18, 6, 0.5f) }));
-			Model.Parts.Add(Part(ERole::Static, FVector(0, 21, 1), { Box(44, 22, -8, -6, -2, 4, 8, 4), Box(44, 22, 4, -6, -2, 4, 8, 4, 0.0f, true), Box(40, 38, -4, -6, -2, 8, 4, 4) }, -0.75f));
+			if (bArmsOut)
+			{
+				Model.bArmsForward = true;
+				Model.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(44, 22, -3, -10, -2, 4, 12, 4) }));
+				Model.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(44, 22, -1, -10, -2, 4, 12, 4, 0.0f, true) }));
+			}
+			else
+			{
+				Model.Parts.Add(Part(ERole::Static, FVector(0, 21, 1), { Box(44, 22, -8, -6, -2, 4, 8, 4), Box(44, 22, 4, -6, -2, 4, 8, 4, 0.0f, true), Box(40, 38, -4, -6, -2, 8, 4, 4) }, -0.75f));
+			}
 			Model.Parts.Add(Part(ERole::LegRight, FVector(-2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4) }));
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
@@ -236,7 +247,7 @@ namespace McEntityModel
 				FModel Zombie;
 				Zombie.Kind = TEXT("minecraft:zombie_villager");
 				Zombie.Textures = { TEXT("zombie_villager/zombie_villager.png"), TEXT("zombie_villager/type/plains.png") };
-				AddVillager(Zombie);
+				AddVillager(Zombie, true);
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{

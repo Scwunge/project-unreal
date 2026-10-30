@@ -170,6 +170,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     vanilla. Limit: a flowing top still reads the whole frame scaled to 16 (8 texels a block), since its turned square
     reaches outside any one quarter. Shot: `Saved/Shots/waterfall_close.png` (`-McScene=hull_water_side
     -McCam=12.6,-58.0,6.5,90,-5`).
+  - **Beds** (2026-10-30): in 26.3 beds are ordinary block models (`template_bed_head`/`_foot`, a picture per colour and
+    face, and the new `straw_bed`), so the block baker draws them; no block entity. Checked in `Saved/Shots/beds.png`
+    (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). Not done: the texture array is 16 pixels,
+    so pictures bigger than that are scaled down: `straw_bed` (64), signs, hanging signs and shelves (32).
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
     on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).

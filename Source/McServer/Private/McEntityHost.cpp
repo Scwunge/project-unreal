@@ -967,6 +967,8 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 							Spawned->SetYoung(FMcMob::YoungSpan);
 						}
 						Spawned->Yaw = RowYaw;
+						// -McMobRowPose=<n> holds a raider's arms in that pose (McMob ArmPose).
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowPose="), Spawned->ArmPose);
 					}
 				}
 			}

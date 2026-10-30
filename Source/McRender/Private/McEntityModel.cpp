@@ -109,10 +109,11 @@ namespace McEntityModel
 			{
 				if (Each.Role == ERole::Static && Each.Boxes.Num() == 3)
 				{
-					Each.ShowPoses = 1u;
+					// The pillager never folds its arms: its own two hang at its sides.
+					Each.ShowPoses = Style == 1 ? 0u : 1u;
 				}
 			}
-			constexpr uint32 Armed = ~1u;
+			const uint32 Armed = Style == 1 ? ~0u : ~1u;
 			Model.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(40, 46, -3, -10, -2, 4, 12, 4) }));
 			Model.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(40, 46, -1, -10, -2, 4, 12, 4, 0.0f, true) }));
 			Model.Parts.Last(1).ShowPoses = Armed;
@@ -697,7 +698,7 @@ namespace McEntityModel
 			case ERole::ArmLeft:
 			{
 				const bool bRight = Part.Role == ERole::ArmRight;
-				if (Model.IllagerStyle != 0)
+				if (Model.IllagerStyle != 0 && Anim.Pose != 0)
 				{
 					// Armed, the arms leave the folded pair: forward on a crossbow (one drawn back as it charges), up with an axe,
 					// up and out as a spell is cast.

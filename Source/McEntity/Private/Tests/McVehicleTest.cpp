@@ -244,6 +244,7 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("so a player finds it full"), Boat->SetRider(0.0f, 0.0f, 0.0f, 9));
 		const FVector Where = Boat->Body.Position;
 		TestTrue(TEXT("a pig sits where the boat is"), FVector::Dist(Pigs[0]->Body.Position, Where) < 1.0);
+		TestTrue(TEXT("down in the hull, its feet below the seat"), Pigs[0]->Body.Position.Y < Boat->GetSeat(0).Y - 0.3);
 		for (int32 Tick = 0; Tick < 20; ++Tick)
 		{
 			Manager.Tick();

@@ -149,16 +149,17 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
     primed TNT entity, so the cart keeps its own fuse. Not done: carts
     pushing mobs.
-  - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture. They rest slanting out over the
-    sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
+  - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
+    on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
   - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
     steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
     gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.
   - **Boats take mobs** (2026-10-30): a boat takes in any mob narrower than itself that it touches while it has a free seat
     (a plain boat two, a chest boat one: the chest has the back seat). The mob sits (`FMcMob::RidingId`, not saved) doing
-    nothing until the boat goes; animals sit across it. Players count against the seats, so a boat with two pigs turns a
-    player away. Shot: `Saved/Shots/boat_mobs.png` (`-McScene=paddles`, a boat and a chest boat with mobs summoned on them).
+    nothing until the boat goes, sunk four tenths of its height into the hull; animals sit across it. Players count against the seats, so a boat with two pigs turns a
+    player away. Shot: `Saved/Shots/boat_mobs.png` (`-McScene=boat_mobs`, side-on: a boat with a pig and a chicken, a chest boat with
+    a sheep, summoned with `-McChat`).
   - **Chests** (2026-10-30): placed chests are drawn from their entity pictures (`UMcChestComponent`, which finds them in the
     loaded chunks and stands an `mc:chest/...` model in each): chest, trapped, ender and the four copper chests (waxed too),
     single and double, turned to their facing, Christmas pictures on 24 to 26 December. The lid opens over ten ticks while

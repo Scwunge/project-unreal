@@ -549,7 +549,9 @@ void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
 	{
 		if (FMcMob* Mob = FindMob(MobPassengers[Index]))
 		{
-			Mob->Body.Position = GetSeat(Seats.Num() + Index);
+			// It sits down into the hull, its legs through the floor, rather than standing on it: lowered by four tenths of its height,
+			// about the length of a pig's, cow's or chicken's legs.
+			Mob->Body.Position = GetSeat(Seats.Num() + Index) - FVector(0.0, Mob->Type.Height * 0.4, 0.0);
 			Mob->Body.Velocity = FVector::ZeroVector;
 			// Animals sit across the boat, facing its side; the rest face the way it goes.
 			Mob->Yaw = Mob->Type.bPanics ? Yaw + 90.0f : Yaw;

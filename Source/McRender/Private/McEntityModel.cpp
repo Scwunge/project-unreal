@@ -77,11 +77,12 @@ namespace McEntityModel
 		}
 
 	// A boat's two paddles: a shaft and a blade each, cut from the boat's picture (the left and right pictures are where the texture has them: stacked on a boat's, side by side on a raft's).
-	// They are mounted in the sides a little aft of the middle and rest slanting out and back.
-	void AddPaddles(FModel& Model, float Height, FIntPoint Left, FIntPoint Right)
+	// They are mounted on the sides (HalfWidth from the middle, on a hull's gunwales or a raft's deck edges, clear of a
+	// chest) a little aft of the middle, and rest slanting out and back.
+	void AddPaddles(FModel& Model, float Height, float HalfWidth, FIntPoint Left, FIntPoint Right)
 	{
-		Model.Parts.Add(Part(ERole::PaddleLeft, FVector(4, Height, -2), { Box(Left.X, Left.Y, -1, -1, -5, 2, 2, 18), Box(Left.X, Left.Y, -1.001f, -3, 8, 1, 6, 7) }));
-		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-4, Height, -2), { Box(Right.X, Right.Y, -1, -1, -5, 2, 2, 18), Box(Right.X, Right.Y, 0.001f, -3, 8, 1, 6, 7) }));
+		Model.Parts.Add(Part(ERole::PaddleLeft, FVector(HalfWidth, Height, -2), { Box(Left.X, Left.Y, -1, -1, -5, 2, 2, 18), Box(Left.X, Left.Y, -1.001f, -3, 8, 1, 6, 7) }));
+		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-HalfWidth, Height, -2), { Box(Right.X, Right.Y, -1, -1, -5, 2, 2, 18), Box(Right.X, Right.Y, 0.001f, -3, 8, 1, 6, 7) }));
 	}
 
 	// A chest (minecraft.wiki: "Chest"): a base 10 high with a lid 5 high over it, 14 across and a pixel in from the
@@ -288,7 +289,7 @@ namespace McEntityModel
 					Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
 					Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
 					Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
-					AddPaddles(Boat, 8.0f, FIntPoint(62, 0), FIntPoint(62, 20));
+					AddPaddles(Boat, 9.0f, 8.0f, FIntPoint(62, 0), FIntPoint(62, 20));
 					if (bChest)
 					{
 						// The chest sits towards the stern, its lock facing the bow.
@@ -305,7 +306,7 @@ namespace McEntityModel
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
 					// It floats higher than a hull, its deck clear of the water.
 					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
-					AddPaddles(Raft, 12.0f, FIntPoint(0, 24), FIntPoint(40, 24));
+					AddPaddles(Raft, 9.0f, 10.0f, FIntPoint(0, 24), FIntPoint(40, 24));
 					if (bChest)
 					{
 						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));

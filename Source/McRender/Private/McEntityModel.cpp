@@ -228,6 +228,51 @@ namespace McEntityModel
 				AddVillager(Villager);
 				Models.Add(Villager.Kind, Villager);
 			}
+			{
+				// Pieces are cut from the textures' own nets (box sizes read off the picture), placed from minecraft.wiki's models:
+				// the body is a long box along z, the wolf's and the others' laid down as the pig's is.
+				FModel Horse;
+				Horse.Kind = TEXT("minecraft:horse");
+				Horse.TextureSize = FIntPoint(64, 64);
+				Horse.Textures = { TEXT("horse/horse_brown.png") };
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 32, -5, 11, -14, 10, 10, 24) }));
+				// The tail hangs from the rump, leaning back.
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 21, -14), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.52f));
+				// The neck, head, mane, mouth and ears all lean forward from the withers together.
+				Horse.Parts.Add(Part(ERole::Head, FVector(0, 20, 10),
+					{ Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 0, -3, 6, -5, 6, 5, 7), Box(0, 25, -2, 6, 2, 4, 5, 5), Box(56, 36, -1, -5, -7, 2, 16, 2),
+					  Box(19, 16, -2.55f, 10, -5, 2, 3, 1), Box(19, 16, 0.55f, 10, -5, 2, 3, 1) }, 0.52f));
+				AddLegs(Horse, 48, 21, 4, 11, 3, 7, -11, 11);
+				Models.Add(Horse.Kind, Horse);
+			}
+			{
+				FModel Wolf;
+				Wolf.Kind = TEXT("minecraft:wolf");
+				Wolf.Textures = { TEXT("wolf/wolf.png") };
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11, -1), { Box(18, 14, -3, -4.5f, -3, 6, 9, 6) }, Flat));
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, Flat));
+				Wolf.Parts.Add(Part(ERole::Head, FVector(0, 12, 4),
+					{ Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) }));
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 13.5f, -5.5f), { Box(9, 18, -1, -8, -1, 2, 8, 2) }, 0.6f));
+				AddLegs(Wolf, 0, 18, 2, 8, 2, 2, -4, 8);
+				Models.Add(Wolf.Kind, Wolf);
+			}
+			{
+				FModel Goat;
+				Goat.Kind = TEXT("minecraft:goat");
+				Goat.TextureSize = FIntPoint(64, 64);
+				Goat.Textures = { TEXT("goat/goat.png") };
+				Goat.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(1, 1, -4.5f, 6, -9, 9, 11, 16), Box(0, 28, -5.5f, 4, -3, 11, 14, 11) }));
+				Goat.Parts.Add(Part(ERole::Head, FVector(0, 15, 8),
+					{ Box(34, 46, -2.5f, -4, 0, 5, 7, 10), Box(12, 55, -3, 3, 2, 2, 7, 2), Box(12, 55, 1, 3, 2, 2, 7, 2, 0.0f, true) }));
+				const FBox FrontLeg = Box(49, 2, -1.5f, -10, -1.5f, 3, 10, 3);
+				const FBox BackLeg = Box(36, 29, -1.5f, -6, -1.5f, 3, 6, 3);
+				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 5), { FrontLeg }));
+				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 10, 5), { FrontLeg }));
+				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 6, -6), { BackLeg }));
+				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 6, -6), { BackLeg }));
+				Models.Add(Goat.Kind, Goat);
+			}
 			return Models;
 		}
 

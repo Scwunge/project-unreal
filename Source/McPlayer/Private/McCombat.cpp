@@ -47,6 +47,12 @@ namespace McCombat
 		return FMath::Clamp((static_cast<float>(TicksSinceAttack) + 0.5f) / (20.0f / FMath::Max(Speed, 0.1f)), 0.0f, 1.0f);
 	}
 
+	float GetBowPower(int32 DrawTicks)
+	{
+		const float Seconds = static_cast<float>(DrawTicks) / 20.0f;
+		return FMath::Min(1.0f, (Seconds * Seconds + Seconds * 2.0f) / 3.0f);
+	}
+
 	float GetDamage(float BaseDamage, float Strength, bool bCritical)
 	{
 		float Damage = BaseDamage * (0.2f + Strength * Strength * 0.8f);

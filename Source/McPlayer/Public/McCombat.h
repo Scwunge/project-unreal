@@ -23,6 +23,8 @@ namespace McCombat
 	// Damage at that charge: the full damage scaled by 0.2 + 0.8 * Strength^2, and 1.5 times that for a critical hit
 	// (falling, with the attack more than 90% charged).
 	MCPLAYER_API float GetDamage(float BaseDamage, float Strength, bool bCritical);
+	// The power of a bow drawn for this many ticks, 0 to 1: (t * t + t * 2) / 3 for t seconds. Under 0.1 the arrow stays.
+	MCPLAYER_API float GetBowPower(int32 DrawTicks);
 	// Durability the swing costs the held item: a sword 1... tools 2, anything else 0 (they are not made to hit with).
 	MCPLAYER_API int32 GetWear(const FMcItemStack& Held);
 

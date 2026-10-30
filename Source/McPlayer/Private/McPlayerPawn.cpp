@@ -38,6 +38,7 @@
 #include "Net/UnrealNetwork.h"
 
 #if MC_WITH_RENDER
+#include "McArrow.h"
 #include "McParticleComponent.h"
 #include "McBlockHighlight.h"
 #include "McHand.h"
@@ -341,7 +342,13 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		// Only the player at the keyboard sees their own hand, and not while dead.
 		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden);
 		const FMcItemStack& Held = Data->GetSelected();
-		Arm->SetHeld(Held.IsEmpty() ? NAME_None : Held.Item);
+		// A bow being drawn shows the picture of how far.
+		FName HeldName = Held.IsEmpty() ? NAME_None : Held.Item;
+		if (bBowLocal && !Held.IsEmpty())
+		{
+			HeldName = FName(*FString::Printf(TEXT("minecraft:bow_pulling_%d"), BowSecondsLocal >= 0.9f ? 2 : BowSecondsLocal >= 0.65f ? 1 : 0));
+		}
+		Arm->SetHeld(HeldName);
 		Arm->SetEating(bEatingLocal && !Held.IsEmpty(), EatSecondsLocal);
 	}
 #endif
@@ -646,10 +653,31 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	const bool bEating = bHoldingFood && !bCreative && Player.IsInputKeyDown(EKeys::RightMouseButton) && McSurvival::CanEat(Data->Stats, Food);
 	bEatingLocal = bEating;
 	EatSecondsLocal = bHoldingFood ? GetEatSeconds(Held) : 1.6f;
-	if (bEating != bUsingSent)
+	// A bow in hand with an arrow to shoot (or creative) is drawn by holding the use button.
+	const bool bDraw = !bEating && !Held.IsEmpty() && Held.Item == TEXT("minecraft:bow") && Player.IsInputKeyDown(EKeys::RightMouseButton)
+		&& (bCreative || Data->Inventory->CountItem(TEXT("minecraft:arrow")) > 0);
+	bBowLocal = bDraw;
+	BowSecondsLocal = bDraw ? BowSecondsLocal + GetWorld()->GetDeltaSeconds() : 0.0f;
+	// The view closes in as the bow draws: up to 15% of the field of view over the first second, as the game's.
+	if (bDraw)
 	{
-		bUsingSent = bEating;
-		ServerSetUsing(bEating);
+		if (BowBaseFov <= 0.0f)
+		{
+			BowBaseFov = Camera->FieldOfView;
+		}
+		const float Pull = FMath::Min(BowSecondsLocal, 1.0f);
+		Camera->SetFieldOfView(BowBaseFov * (1.0f - 0.15f * Pull * Pull));
+	}
+	else if (BowBaseFov > 0.0f)
+	{
+		Camera->SetFieldOfView(BowBaseFov);
+		BowBaseFov = 0.0f;
+	}
+	const bool bUsingNow = bEating || bDraw;
+	if (bUsingNow != bUsingSent)
+	{
+		bUsingSent = bUsingNow;
+		ServerSetUsing(bUsingNow);
 	}
 
 	// A click on a mob in front of the block being looked at hits the mob instead.
@@ -1402,6 +1430,10 @@ void AMcPlayerPawn::ServerGameTick()
 			{
 				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
 			}
+			if (McSurvival::CollectArrows(*Entities, Body.GetBox(), *Data->Inventory) > 0)
+			{
+				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
+			}
 			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats) > 0)
 			{
 				Entities->PlaySound(FName("entity.experience_orb.pickup"), Ears, 0.1f, 0.5f * ((FMath::FRand() - FMath::FRand()) * 0.7f + 1.8f));
@@ -1462,6 +1494,32 @@ void AMcPlayerPawn::ServerGameTick()
 			EatTicks = 0;
 		}
 
+		// The bow: the draw counts while the use button is held with it in hand; letting go shoots.
+		{
+			const FMcItemStack& InHand = Data->GetSelected();
+			const bool bBowHeld = !InHand.IsEmpty() && InHand.Item == TEXT("minecraft:bow");
+			const bool bCanDraw = Data->bCreative || Data->Inventory->CountItem(TEXT("minecraft:arrow")) > 0;
+			if (bServerUsing && bBowHeld && bCanDraw && (BowTicks == 0 || BowSlot == Data->SelectedSlot))
+			{
+				if (BowTicks == 0)
+				{
+					BowSlot = Data->SelectedSlot;
+				}
+				++BowTicks;
+			}
+			else if (BowTicks > 0)
+			{
+				// Let go (or the bow went out of the hand): a draw that is still in the bow's slot shoots.
+				const bool bStillBow = bBowHeld && BowSlot == Data->SelectedSlot && bCanDraw;
+				const int32 Drawn = BowTicks;
+				BowTicks = 0;
+				if (bStillBow && !bServerUsing)
+				{
+					ServerShootBow(Drawn);
+				}
+			}
+		}
+
 		// Digging: the block gives way after the time its hardness and the tool say.
 		if (DigPos.IsSet() && !Data->bCreative)
 		{
@@ -1501,6 +1559,44 @@ void AMcPlayerPawn::ServerGameTick()
 		return;
 	}
 	Data->ServerTick();
+}
+
+void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (!Entities || !Data)
+	{
+		return;
+	}
+	// The draw's power: (t * t + t * 2) / 3 for t seconds, up to 1; under a tenth is not a shot.
+	const float Power = McCombat::GetBowPower(DrawTicks);
+	if (Power < 0.1f)
+	{
+		return;
+	}
+	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
+	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
+	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	const auto Gauss = []() { return FMath::Sqrt(-2.0 * FMath::Loge(FMath::Max(static_cast<double>(FMath::FRand()), 1e-6))) * FMath::Cos(2.0 * PI * FMath::FRand()); };
+	// Three blocks a tick at full draw, with the game's own inaccuracy of 1.
+	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - 0.1, 0.0) + Look * 0.3;
+	Arrow->Body.Velocity = (Look + FVector(Gauss(), Gauss(), Gauss()) * 0.0075) * (Power * 3.0);
+	Arrow->PlayerBase = 2.0f;
+	Arrow->bCritical = Power >= 1.0f;
+	Arrow->bPickup = !Data->bCreative;
+	Entities->Add(MoveTemp(Arrow));
+	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f / (FMath::FRand() * 0.4f + 1.2f) + Power * 0.5f);
+	if (!Data->bCreative)
+	{
+		Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);
+		FMcItemStack& Bow = Data->Inventory->GetMutable(Data->SelectedSlot);
+		if (Bow.HurtAndBreak(1))
+		{
+			Bow.Clear();
+			ServerItemBroke();
+		}
+	}
 }
 
 void AMcPlayerPawn::ServerItemBroke()

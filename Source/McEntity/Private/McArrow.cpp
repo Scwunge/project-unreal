@@ -1,6 +1,8 @@
 #include "McArrow.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McEntityManager.h"
+#include "McMob.h"
 
 const FName& FMcArrowEntity::StaticType()
 {
@@ -59,8 +61,34 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 				return;
 			}
 		}
+		if (PlayerBase > 0.0f)
+		{
+			// A mob in the way takes the hit.
+			for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+			{
+				if (!Other->IsLiving() || Other->bRemoved || !Other->Body.GetBox().ExpandBy(0.1).IsInside(Next))
+				{
+					continue;
+				}
+				float Hit = FMath::CeilToFloat(static_cast<float>(Body.Velocity.Size()) * PlayerBase);
+				if (bCritical)
+				{
+					Hit += static_cast<float>(Manager.GetRandom().RandRange(0, static_cast<int32>(Hit / 2.0f) + 1));
+				}
+				const FVector From = Next - Body.Velocity.GetSafeNormal() * 2.0;
+				static_cast<FMcMob*>(Other.Get())->Damage(Hit, &From);
+				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, 1.2f / (Manager.GetRandom().FRand() * 0.2f + 0.9f));
+				bRemoved = true;
+				return;
+			}
+		}
 		for (const FVector& Player : Manager.PlayerPositions)
 		{
+			// A player's own shot passes the players (the shooter stands in its way at first).
+			if (PlayerBase > 0.0f)
+			{
+				break;
+			}
 			// The player's box, a little fatter for the arrow's own width.
 			const FBox PlayerBox(Player + FVector(-0.4, -0.1, -0.4), Player + FVector(0.4, 1.9, 0.4));
 			if (PlayerBox.IsInside(Next))

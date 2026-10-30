@@ -19,6 +19,11 @@ public:
 
 	// What it does to a player it hits.
 	float Damage = 4.0f;
+	// A player's shot: it hurts mobs too, by the game's rule (the base times the speed, rounded up, and a critical
+	// draw adds up to half as much again), and can be picked up where it lands unless it was shot in creative.
+	float PlayerBase = 0.0f;
+	bool bCritical = false;
+	bool bPickup = false;
 	bool bStuck = false;
 	int32 StuckTicks = 0;
 

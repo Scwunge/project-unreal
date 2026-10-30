@@ -257,6 +257,29 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("arrows are not kept in a chunk's save"), Shot->IsPersistent());
 	}
 	{
+		// A player's arrow at full draw (3 blocks a tick) hurts a mob in its way by 6, and passes players.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 12.5));
+		const float Before = Pig->Health;
+		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+		Arrow->Body.Position = FVector(8.5, 1.4, 5.8);
+		Arrow->Body.Velocity = FVector(0.0, 0.0, 3.0);
+		Arrow->PlayerBase = 2.0f;
+		Arrow->bPickup = true;
+		FMcArrowEntity* Shot = Arrow.Get();
+		Manager.Add(MoveTemp(Arrow));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a player's arrow hurts the pig it hits by 6"), FMath::IsNearlyEqual(Before - Pig->Health, 6.0f, 0.01f));
+		TestFalse(TEXT("the hit arrow is spent"), Shot != nullptr && !Manager.GetEntities().IsEmpty() && Manager.GetEntities().Last().Get() == Shot);
+	}
+	{
 		// Enderman: neutral until hurt; a hit teleports it off.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);

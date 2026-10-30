@@ -363,6 +363,15 @@ private:
 	int32 EatTicks = 0;
 	// Client: ticks spent eating (the crumbs follow the munching), and the colours of the food's sprite they take.
 	int32 EatCrumbTicks = 0;
+	// The bow: server ticks the draw has been held (and the slot it began in), and the client's seconds drawn and the
+	// field of view it had before the zoom of the draw.
+	int32 BowTicks = 0;
+	int32 BowSlot = -1;
+	float BowSecondsLocal = 0.0f;
+	bool bBowLocal = false;
+	float BowBaseFov = 0.0f;
+	// Lets the arrow go after DrawTicks of drawing.
+	void ServerShootBow(int32 DrawTicks);
 	FName EatCrumbItem;
 	TArray<FColor> EatCrumbColours;
 	McSound::FStepCounter ServerSteps;

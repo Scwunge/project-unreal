@@ -36,7 +36,8 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 			AddError(FString::Printf(TEXT("%s fell back to the missing-texture layer"), *Fallback.ToString()));
 		}
 	}
-	TestEqual(TEXT("layer 0 plus one per loaded texture"), Textures.NumLayers(), Stats.Loaded + 1);
+	TestEqual(TEXT("layer 0 plus one per loaded texture, and the flowing pictures' sides"), Textures.NumLayers(), Stats.Loaded + 1 + Stats.SideLayers);
+	TestEqual(TEXT("water and lava both have a side layer"), Stats.SideLayers, 2);
 	TestEqual(TEXT("every id is loaded or listed as a fallback"), Stats.Loaded + Stats.Fallbacks.Num(), Stats.Ids);
 
 	UTexture2DArray* Array = Textures.GetTextureArray();
@@ -85,6 +86,9 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 	{
 		const int32 Layer = Textures.GetLayer(Flow);
 		TestTrue(FString::Printf(TEXT("%s has its own layer, and moves"), Flow), Layer > 0 && Textures.IsAnimated(Layer));
+		// A side shows the top left quarter of the 32-pixel frames, unscaled: its own layer, moving with them.
+		const int32 Side = Textures.GetLayer(FName(FString(Flow) + TEXT("#side")));
+		TestTrue(FString::Printf(TEXT("%s#side has its own layer, and moves"), Flow), Side > 0 && Side != Layer && Textures.IsAnimated(Side));
 	}
 
 	// Colormaps and biomes.

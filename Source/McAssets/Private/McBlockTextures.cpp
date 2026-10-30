@@ -21,6 +21,7 @@ namespace
 	constexpr int32 LayerSize = FMcBlockTextures::TextureSize;
 	constexpr int32 LayerMips = FMcBlockTextures::NumMips;
 	const TCHAR* const MissingTexture = TEXT("minecraft:missingno");
+	const TCHAR* const FlowTextures[] = { TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_flow") };
 
 	int32 MipSize(int32 Mip)
 	{
@@ -236,9 +237,13 @@ bool FMcBlockTextures::EnsureLoaded()
 	}
 	// The fluids' pictures, which no block model names (water's and lava's models give only a particle): the fluid mesher
 	// draws with them.
-	for (const TCHAR* Fluid : { TEXT("minecraft:block/water_still"), TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_still"), TEXT("minecraft:block/lava_flow") })
+	for (const TCHAR* Fluid : { TEXT("minecraft:block/water_still"), TEXT("minecraft:block/lava_still") })
 	{
 		Ids.AddUnique(FName(Fluid));
+	}
+	for (const TCHAR* Flow : FlowTextures)
+	{
+		Ids.AddUnique(FName(Flow));
 	}
 	NewStats.Ids = Ids.Num();
 
@@ -353,6 +358,44 @@ bool FMcBlockTextures::EnsureLoaded()
 				NewStats.Resized.Add(FString::Printf(TEXT("%s %dx%d"), *Ids[Index].ToString(), Image.Width, Image.Height));
 			}
 		}
+	}
+
+	// A flowing fluid's side shows the top left quarter of its 32-pixel frames, 16 pixels to the block: that quarter,
+	// unscaled, is a layer of its own, "<id>#side", moving with the frames.
+	for (const TCHAR* Flow : FlowTextures)
+	{
+		const int32 Index = Ids.IndexOfByKey(FName(Flow));
+		const int32* Base = NewLayersById.Find(FName(Flow));
+		if (Index == INDEX_NONE || !Base || NewLayers[*Base].Animation == INDEX_NONE)
+		{
+			continue;
+		}
+		const FLoadedImage& Image = Images[Index];
+		FAnimation Animation = NewAnimations[NewLayers[*Base].Animation];
+		const int32 FrameSize = Image.Width;
+		const int32 LayerIndex = NewLayers.Num();
+		Animation.Layer = LayerIndex;
+		FLayer& Layer = NewLayers.AddDefaulted_GetRef();
+		Layer.Id = FName(FString(Flow) + TEXT("#side"));
+		for (int32 Frame = 0; Frame < Animation.Frames.Num(); ++Frame)
+		{
+			TArray<FColor>& Out = Animation.Frames[Frame];
+			for (int32 Y = 0; Y < LayerSize; ++Y)
+			{
+				for (int32 X = 0; X < LayerSize; ++X)
+				{
+					const int32 SourceX = FMath::Min(X, FrameSize - 1);
+					const int32 SourceY = FMath::Min(Frame * FrameSize + FMath::Min(Y, FrameSize - 1), Image.Height - 1);
+					Out[Y * LayerSize + X] = Image.Pixels[SourceY * Image.Width + SourceX];
+				}
+			}
+			MeasureAlpha(Out, Layer.bTranslucent, Layer.bCutout);
+		}
+		Layer.Pixels = Animation.Frames[Animation.Order[0]];
+		Layer.Animation = NewAnimations.Num();
+		NewLayersById.Add(Layer.Id, LayerIndex);
+		NewAnimations.Add(MoveTemp(Animation));
+		++NewStats.SideLayers;
 	}
 
 	// The array: mip m holds every layer's m-th mip one after the other.

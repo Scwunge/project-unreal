@@ -100,6 +100,14 @@ struct MCRENDER_API FMcMeshBuffers
 	bool IsEmpty() const { return Triangles.Num() == 0; }
 };
 
+namespace McTranslucent
+{
+	// Puts the quads of a pass (four vertices and six indices each, in step) in order from the farthest from View to
+	// the nearest, by the middle of each, so blending them in that order gives glass behind glass its right colour.
+	// View is in the same space as the positions (Unreal units, chunk column relative). The vertices stay where they are.
+	MCRENDER_API void SortQuadsBackToFront(FMcMeshBuffers& Buffers, const FVector& View);
+}
+
 struct MCRENDER_API FMcSectionMesh
 {
 	int32 SectionIndex = 0;

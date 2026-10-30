@@ -119,6 +119,7 @@ void UMcWorldRenderComponent::SetWorld(FMcBlockWorld* InWorld)
 	}
 	Meshes.Reset();
 	WaterMeshes.Reset();
+	TranslucentChunks.Reset();
 	Chunks.Reset();
 
 	World = InWorld;
@@ -170,6 +171,7 @@ void UMcWorldRenderComponent::HandleChunkAdded(FIntPoint Pos)
 void UMcWorldRenderComponent::HandleChunkRemoved(FIntPoint Pos)
 {
 	Chunks.Remove(Pos);
+	TranslucentChunks.Remove(Pos);
 	TObjectPtr<UProceduralMeshComponent> Mesh;
 	if (Meshes.RemoveAndCopyValue(Pos, Mesh) && Mesh)
 	{
@@ -244,6 +246,67 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	LaunchMeshTasks();
 	UploadResults();
+	ResortTranslucent();
+}
+
+FVector UMcWorldRenderComponent::GetViewLocation() const
+{
+	if (const APlayerController* Controller = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
+	{
+		if (Controller->PlayerCameraManager)
+		{
+			return Controller->PlayerCameraManager->GetCameraLocation();
+		}
+	}
+	return FVector::ZeroVector;
+}
+
+void UMcWorldRenderComponent::ResortTranslucent()
+{
+	if (TranslucentChunks.Num() == 0)
+	{
+		return;
+	}
+	// One chunk a frame: the one whose order is the most out of date, once the camera has gone a block and a half.
+	const FVector View = GetViewLocation();
+	const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+	FIntPoint Worst(0, 0);
+	double WorstMoved = FMath::Square(1.5 * McCoords::UnitsPerBlock);
+	bool bFound = false;
+	for (const TPair<FIntPoint, FTranslucentChunk>& Entry : TranslucentChunks)
+	{
+		const double Moved = FVector::DistSquared(View, Entry.Value.SortedFor);
+		if (Moved > WorstMoved)
+		{
+			WorstMoved = Moved;
+			Worst = Entry.Key;
+			bFound = true;
+		}
+	}
+	if (!bFound)
+	{
+		return;
+	}
+	FTranslucentChunk& Chunk = TranslucentChunks[Worst];
+	const TObjectPtr<UProceduralMeshComponent>* Found = Meshes.Find(Worst);
+	if (!Found || !Found->Get())
+	{
+		TranslucentChunks.Remove(Worst);
+		return;
+	}
+	UProceduralMeshComponent* Mesh = Found->Get();
+	const TArray<FVector2D> NoUVs;
+	const TArray<FProcMeshTangent> NoTangents;
+	const FVector Local = View - FVector(Worst.X * ChunkUnits, Worst.Y * ChunkUnits, 0.0);
+	for (FTranslucentSection& Section : Chunk.Sections)
+	{
+		McTranslucent::SortQuadsBackToFront(Section.Buffers, Local);
+		const FMcMeshBuffers& Buffers = Section.Buffers;
+		Mesh->CreateMeshSection(Section.MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
+		const int32 Pass = static_cast<int32>(EMcRenderPass::Translucent);
+		Mesh->SetMaterial(Section.MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+	}
+	Chunk.SortedFor = View;
 }
 
 void UMcWorldRenderComponent::LaunchMeshTasks()
@@ -374,6 +437,7 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 			Mesh->DestroyComponent();
 		}
 	};
+	TranslucentChunks.Remove(Result.ChunkPos);
 	if (Result.Sections.Num() == 0)
 	{
 		Destroy(Meshes);
@@ -419,13 +483,26 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 	{
 		for (int32 Pass = 0; Pass < McNumRenderPasses; ++Pass)
 		{
-			const FMcMeshBuffers& Buffers = Section.Passes[Pass];
-			if (Buffers.IsEmpty())
+			const FMcMeshBuffers& Built = Section.Passes[Pass];
+			if (Built.IsEmpty())
 			{
 				continue;
 			}
 			UProceduralMeshComponent* Mesh = Pass == static_cast<int32>(EMcRenderPass::Water) ? WaterMesh : BlockMesh;
 			const int32 MeshSection = Section.SectionIndex * McNumRenderPasses + Pass;
+			FMcMeshBuffers Ordered;
+			if (Pass == static_cast<int32>(EMcRenderPass::Translucent))
+			{
+				// Glass and ice go in farthest first, and are kept to be put in order again as the camera moves.
+				const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+				const FVector View = GetViewLocation();
+				Ordered = Built;
+				McTranslucent::SortQuadsBackToFront(Ordered, View - FVector(Result.ChunkPos.X * ChunkUnits, Result.ChunkPos.Y * ChunkUnits, 0.0));
+				FTranslucentChunk& Kept = TranslucentChunks.FindOrAdd(Result.ChunkPos);
+				Kept.SortedFor = View;
+				Kept.Sections.Add({ MeshSection, Ordered });
+			}
+			const FMcMeshBuffers& Buffers = Pass == static_cast<int32>(EMcRenderPass::Translucent) ? Ordered : Built;
 			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
 			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
 		}

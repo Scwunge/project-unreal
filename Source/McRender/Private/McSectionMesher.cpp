@@ -430,6 +430,48 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 	return Palette;
 }
 
+namespace McTranslucent
+{
+	void SortQuadsBackToFront(FMcMeshBuffers& Buffers, const FVector& View)
+	{
+		const int32 NumQuads = Buffers.Triangles.Num() / 6;
+		if (NumQuads < 2)
+		{
+			return;
+		}
+		struct FKey
+		{
+			double Distance;
+			int32 Quad;
+		};
+		TArray<FKey> Keys;
+		Keys.Reserve(NumQuads);
+		for (int32 Quad = 0; Quad < NumQuads; ++Quad)
+		{
+			// The quad's vertices are the four from the lowest index its triangles use.
+			int32 First = MAX_int32;
+			for (int32 Index = 0; Index < 6; ++Index)
+			{
+				First = FMath::Min(First, Buffers.Triangles[Quad * 6 + Index]);
+			}
+			const FVector Middle = (Buffers.Positions[First] + Buffers.Positions[First + 1] + Buffers.Positions[First + 2] + Buffers.Positions[First + 3]) * 0.25;
+			Keys.Add({ FVector::DistSquared(Middle, View), Quad });
+		}
+		Keys.StableSort([](const FKey& A, const FKey& B) { return A.Distance > B.Distance; });
+		TArray<int32> Sorted;
+		Sorted.SetNumUninitialized(Buffers.Triangles.Num());
+		for (int32 Slot = 0; Slot < NumQuads; ++Slot)
+		{
+			FMemory::Memcpy(&Sorted[Slot * 6], &Buffers.Triangles[Keys[Slot].Quad * 6], sizeof(int32) * 6);
+		}
+		for (int32 Index = NumQuads * 6; Index < Buffers.Triangles.Num(); ++Index)
+		{
+			Sorted[Index] = Buffers.Triangles[Index];
+		}
+		Buffers.Triangles = MoveTemp(Sorted);
+	}
+}
+
 FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FMcRenderPalette& Palette)
 {
 	FMcSectionMesh Mesh;

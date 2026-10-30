@@ -113,6 +113,22 @@ private:
 	UPROPERTY(Transient)
 	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> WaterMeshes;
 
+	// The translucent quads of each chunk's sections, kept to be put in order again, farthest first, when the camera has
+	// moved: blending glass over glass only comes out right in that order.
+	struct FTranslucentSection
+	{
+		int32 MeshSection = 0;
+		FMcMeshBuffers Buffers;
+	};
+	struct FTranslucentChunk
+	{
+		TArray<FTranslucentSection> Sections;
+		FVector SortedFor = FVector::ZeroVector;
+	};
+	TMap<FIntPoint, FTranslucentChunk> TranslucentChunks;
+	void ResortTranslucent();
+	FVector GetViewLocation() const;
+
 	// The pass materials with the texture array set, indexed by EMcRenderPass.
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInterface>> PassMaterials;

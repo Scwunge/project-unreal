@@ -28,6 +28,10 @@ struct MCENTITY_API FMcMobType
 	bool bHuntsVillagers = false;
 	// Iron golems go for the hostile mobs near them (not creepers), and leave players be unless hurt.
 	bool bHuntsHostiles = false;
+	// Evokers cast: fangs along the ground at their target, and vexes when none are about.
+	bool bCastsSpells = false;
+	// The evoker's fangs: they come up after a delay, bite what stands there once and go.
+	bool bIsFangs = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;
@@ -48,7 +52,7 @@ struct MCENTITY_API FMcMobType
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
 	// The golem fights hostile mobs rather than being one.
-	bool IsHostile() const { return (AttackDamage > 0.0f || bSwells) && !bHuntsHostiles; }
+	bool IsHostile() const { return (AttackDamage > 0.0f || bSwells || bCastsSpells) && !bHuntsHostiles; }
 
 	static const FMcMobType* Find(FName Name);
 	static const TArray<FMcMobType>& GetAll();
@@ -89,6 +93,10 @@ public:
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
 	int32 OfferTicks = 0;
+	// Fangs: ticks before they bite. A vex: ticks of life left (it starts to waste away when they run out), 0 for no limit.
+	int32 SpellDelay = 0;
+	int32 SpellCooldown = 0;
+	int32 LifeTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.

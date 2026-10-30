@@ -120,6 +120,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			Infect(static_cast<FMcVillager&>(Victim));
 		}
 	};
+	Manager.OnSpawnMob = [this](FName Kind, const FVector& Pos) { return SpawnMob(Kind, Pos); };
 	// A baby villager takes the look of the parent that called.
 	Manager.OnVillagerBred = [this](const FVector& Where, FMcMob& Parent)
 	{

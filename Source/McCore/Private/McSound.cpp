@@ -191,6 +191,10 @@ namespace
 		// The villagers and their kin: a golem has no ambient sound, and a villager and a trader no step.
 		{ TEXT("iron_golem"), false, true, true, true }, { TEXT("villager"), true, true, true, false },
 		{ TEXT("wandering_trader"), true, true, true, false }, { TEXT("zombie_villager"), true, true, true, true },
+		// The illagers: they step as the block under them, and the vex has no step at all.
+		{ TEXT("pillager"), true, true, true, false }, { TEXT("vindicator"), true, true, true, false },
+		{ TEXT("evoker"), true, true, true, false }, { TEXT("vex"), true, true, true, false },
+		{ TEXT("ravager"), true, true, true, true }, { TEXT("witch"), true, true, true, false },
 	};
 }
 

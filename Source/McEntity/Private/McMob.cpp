@@ -102,6 +102,21 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Golem = Add(TEXT("minecraft:iron_golem"), 1.4f, 2.7f, 100.f, 0.25f, 15.f, 16.f, false, false);
 		Golem.bNeutral = true;
 		Golem.bHuntsHostiles = true;
+		// The illagers (minecraft.wiki, the page of each). They go for players, villagers and golems.
+		FMcMobType& Pillager = Add(TEXT("minecraft:pillager"), 0.6f, 1.95f, 24.f, 0.35f, 4.f, 32.f, false, false);
+		Pillager.bShoots = true;
+		Pillager.bHuntsVillagers = true;
+		Add(TEXT("minecraft:vindicator"), 0.6f, 1.95f, 24.f, 0.35f, 13.f, 12.f, false, false).bHuntsVillagers = true;
+		FMcMobType& Evoker = Add(TEXT("minecraft:evoker"), 0.6f, 1.95f, 24.f, 0.5f, 0.f, 12.f, false, false);
+		Evoker.bCastsSpells = true;
+		Evoker.bHuntsVillagers = true;
+		FMcMobType& Vex = Add(TEXT("minecraft:vex"), 0.4f, 0.8f, 14.f, 0.4f, 5.f, 16.f, false, false);
+		Vex.bFlies = true;
+		Add(TEXT("minecraft:ravager"), 1.95f, 2.2f, 100.f, 0.3f, 12.f, 32.f, false, false).bHuntsVillagers = true;
+		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.
+		Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false).bShoots = true;
+		FMcMobType& Fangs = Add(TEXT("minecraft:evoker_fangs"), 0.5f, 0.8f, 1.f, 0.f, 0.f, 0.f, false, false);
+		Fangs.bIsFangs = true;
 	}
 	return Types;
 }
@@ -185,7 +200,7 @@ bool FMcMob::CanBeYoung(FName Kind)
 bool FMcMob::IsPrey(const FMcEntity& Other) const
 {
 	const FName Name = Other.GetType();
-	if (Type.bHuntsVillagers && Name == FName(TEXT("minecraft:villager")))
+	if (Type.bHuntsVillagers && (Name == FName(TEXT("minecraft:villager")) || Name == FName(TEXT("minecraft:iron_golem"))))
 	{
 		return true;
 	}
@@ -406,6 +421,47 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		return;
 	}
+	if (Type.bIsFangs)
+	{
+		// They come up after the delay, bite whatever is within reach once, and are gone a second later.
+		if (--SpellDelay == 0)
+		{
+			Manager.PlaySound(FName("entity.evoker_fangs.attack"), Body.Position, 1.0f, 1.0f);
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				if (FVector::DistSquared(FVector(Player.X, 0.0, Player.Z), FVector(Body.Position.X, 0.0, Body.Position.Z)) < 0.8 * 0.8 && FMath::Abs(Player.Y - Body.Position.Y) < 1.5)
+				{
+					Manager.HurtPlayer(Player, 6.0f);
+				}
+			}
+			for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+			{
+				if (!Other->bRemoved && Other->IsLiving() && Other.Get() != this && FVector::DistSquared(Other->Body.Position, Body.Position) < 0.8 * 0.8
+					&& FMath::Abs(Other->Body.Position.Y - Body.Position.Y) < 1.5)
+				{
+					FMcMob& Victim = static_cast<FMcMob&>(*Other);
+					if (!Victim.Type.bCastsSpells && Victim.Type.Name != FName(TEXT("minecraft:vex")) && !Victim.Type.bIsFangs)
+					{
+						Victim.Damage(6.0f, &Body.Position);
+					}
+				}
+			}
+		}
+		if (SpellDelay < -20)
+		{
+			bRemoved = true;
+		}
+		return;
+	}
+	// A vex lives 30 to 120 seconds and then wastes away.
+	if (LifeTicks > 0 && --LifeTicks == 0)
+	{
+		LifeTicks = -1;
+	}
+	if (LifeTicks < 0 && Age % 20 == 0 && Damage(1.0f, nullptr))
+	{
+		return;
+	}
 	if (YoungTicks > 0 && --YoungTicks == 0)
 	{
 		SetYoung(0);
@@ -604,6 +660,55 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			bHasTarget = false;
 		}
 	}
+	if (Type.bCastsSpells && bChasing)
+	{
+		const double Distance = FMath::Sqrt(PreyDistSq);
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Target.X - Body.Position.X), Target.Z - Body.Position.Z));
+		if (SpellCooldown > 0)
+		{
+			--SpellCooldown;
+		}
+		else if (Distance < 16.0 && Manager.OnSpawnMob)
+		{
+			SpellCooldown = 100;
+			int32 Vexes = 0;
+			for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+			{
+				Vexes += (!Other->bRemoved && Other->GetType() == FName(TEXT("minecraft:vex")) && FVector::DistSquared(Other->Body.Position, Body.Position) < 256.0) ? 1 : 0;
+			}
+			if (Vexes == 0 && Random.RandHelper(3) == 0)
+			{
+				// Three vexes round it, each with a life of 30 to 120 seconds.
+				for (int32 Index = 0; Index < 3; ++Index)
+				{
+					if (FMcMob* Vex = Manager.OnSpawnMob(TEXT("minecraft:vex"), Body.Position + FVector(Random.FRandRange(-1.0, 1.0), 0.5, Random.FRandRange(-1.0, 1.0))))
+					{
+						Vex->LifeTicks = Random.RandRange(600, 2400);
+					}
+				}
+				Manager.PlaySound(FName("entity.evoker.prepare_summon"), Body.Position, 1.0f, 1.0f);
+			}
+			else
+			{
+				// A line of fangs toward the target, one every 1.25 blocks and a little later each.
+				FVector Dir(Target.X - Body.Position.X, 0.0, Target.Z - Body.Position.Z);
+				const double Reach = FMath::Min(Dir.Size(), 16.0);
+				Dir = Dir.GetSafeNormal();
+				for (int32 Index = 1; Index * 1.25 <= Reach + 1.25; ++Index)
+				{
+					if (FMcMob* Fang = Manager.OnSpawnMob(TEXT("minecraft:evoker_fangs"), FVector(Body.Position.X + Dir.X * Index * 1.25, Target.Y, Body.Position.Z + Dir.Z * Index * 1.25)))
+					{
+						Fang->SpellDelay = 4 + Index * 2;
+					}
+				}
+				Manager.PlaySound(FName("entity.evoker.prepare_attack"), Body.Position, 1.0f, 1.0f);
+			}
+		}
+		if (Distance < 8.0)
+		{
+			bHasTarget = false;
+		}
+	}
 	if (Type.bShoots && bChasing)
 	{
 		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.
@@ -627,7 +732,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		AttackCooldown = 20;
 		if (Prey)
 		{
-			if (Prey->Damage(BiteDamage, &Body.Position) && Manager.OnVillagerSlain && Prey->GetType() == FName(TEXT("minecraft:villager")))
+			if (Prey->Damage(BiteDamage, &Body.Position) && Manager.OnVillagerSlain && Prey->GetType() == FName(TEXT("minecraft:villager")) && (Type.Name == FName(TEXT("minecraft:zombie")) || Type.Name == FName(TEXT("minecraft:zombie_villager"))))
 			{
 				Manager.OnVillagerSlain(*Prey);
 			}

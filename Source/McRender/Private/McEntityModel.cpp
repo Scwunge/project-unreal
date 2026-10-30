@@ -97,6 +97,28 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
 
+		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. The
+		// pillager has no crossed arms; it holds its crossbow out in front on two arms of its own.
+		void AddIllager(FModel& Model, bool bCrossbowArms)
+		{
+			AddVillager(Model, bCrossbowArms);
+			Model.bComposite = false;
+			if (bCrossbowArms)
+			{
+				// The arms of AddVillager(bArmsOut) are the zombie villager's; the pillager's picture has them lower down.
+				for (FPart& Part : Model.Parts)
+				{
+					if (Part.Role == ERole::ArmRight || Part.Role == ERole::ArmLeft)
+					{
+						for (FBox& Box : Part.Boxes)
+						{
+							Box.UV = FIntPoint(40, 46);
+						}
+					}
+				}
+			}
+		}
+
 		TMap<FName, FModel> BuildModels()
 		{
 			TMap<FName, FModel> Models;
@@ -163,6 +185,76 @@ namespace McEntityModel
 				Zombie.bArmsForward = true;
 				AddPerson(Zombie, false, true);
 				Models.Add(Zombie.Kind, Zombie);
+			}
+			for (const TCHAR* IllagerKind : { TEXT("pillager"), TEXT("vindicator"), TEXT("evoker") })
+			{
+				FModel Illager;
+				Illager.Kind = FName(*(FString(TEXT("minecraft:")) + IllagerKind));
+				Illager.Textures = { FString(TEXT("illager/")) + IllagerKind + TEXT(".png") };
+				AddIllager(Illager, FCString::Strcmp(IllagerKind, TEXT("pillager")) == 0);
+				Models.Add(Illager.Kind, Illager);
+			}
+			{
+				// The witch: a villager under a tall pointed hat of four stacked pieces.
+				FModel Witch;
+				Witch.Kind = TEXT("minecraft:witch");
+				Witch.TextureSize = FIntPoint(64, 128);
+				Witch.Textures = { TEXT("witch/witch.png") };
+				AddVillager(Witch);
+				Witch.TextureSize = FIntPoint(64, 128);
+				Witch.bComposite = false;
+				for (FPart& Part : Witch.Parts)
+				{
+					if (Part.Role == ERole::Head)
+					{
+						Part.Boxes.Reset();
+						Part.Boxes.Add(Box(0, 0, -4, 0, -4, 8, 10, 8));
+						Part.Boxes.Add(Box(24, 0, -1, -1, 4, 2, 4, 2));
+						Part.Boxes.Add(Box(0, 64, -5, 10, -5, 10, 2, 10));
+						Part.Boxes.Add(Box(0, 76, -3.5f, 12, -3.5f, 7, 4, 7));
+						Part.Boxes.Add(Box(0, 87, -2, 16, -2, 4, 4, 4));
+						Part.Boxes.Add(Box(0, 95, -0.5f, 20, -0.5f, 1, 2, 1));
+					}
+					else if (Part.Role == ERole::Static && Part.Boxes.Num() == 2)
+					{
+						// Its robe is part of the body picture.
+						Part.Boxes.RemoveAt(1);
+					}
+				}
+				Models.Add(Witch.Kind, Witch);
+			}
+			{
+				// The vex: a small head and body with arms, floating.
+				FModel Vex;
+				Vex.Kind = TEXT("minecraft:vex");
+				Vex.TextureSize = FIntPoint(32, 32);
+				Vex.Textures = { TEXT("illager/vex.png") };
+				Vex.Parts.Add(Part(ERole::Head, FVector(0, 7, 0), { Box(0, 0, -2.5f, 0, -2.5f, 5, 5, 5) }));
+				Vex.Parts.Add(Part(ERole::Static, FVector(0, 7, 0), { Box(0, 10, -1.5f, -4, -1, 3, 4, 2) }));
+				Vex.Parts.Add(Part(ERole::ArmRight, FVector(-2, 6.5f, 0), { Box(23, 0, -1, -3, -1, 2, 4, 2) }));
+				Vex.Parts.Add(Part(ERole::ArmLeft, FVector(2, 6.5f, 0), { Box(23, 6, -1, -3, -1, 2, 4, 2) }));
+				Models.Add(Vex.Kind, Vex);
+			}
+			{
+				// The ravager: a big body on four short legs with a head out in front.
+				FModel Ravager;
+				Ravager.Kind = TEXT("minecraft:ravager");
+				Ravager.TextureSize = FIntPoint(128, 128);
+				Ravager.Textures = { TEXT("illager/ravager.png") };
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 13, 0), { Box(0, 55, -7, 0, -10, 14, 16, 20) }));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 28, 10), { Box(0, 0, -8, -12, 0, 16, 20, 16) }));
+				AddLegs(Ravager, 96, 0, 8, 13, 8, 7, -7, 13);
+				Models.Add(Ravager.Kind, Ravager);
+			}
+			{
+				// The evoker fangs: a base with a pair of jaws.
+				FModel Fangs;
+				Fangs.Kind = TEXT("minecraft:evoker_fangs");
+				Fangs.TextureSize = FIntPoint(64, 32);
+				Fangs.Textures = { TEXT("illager/evoker_fangs.png") };
+				Fangs.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -5, 0, -5, 10, 12, 10) }));
+				Fangs.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(40, 0, -3, 0, -2, 4, 14, 8), Box(40, 0, -1, 0, -2, 4, 14, 8, 0.0f, true) }));
+				Models.Add(Fangs.Kind, Fangs);
 			}
 			{
 				// The iron golem (minecraft.wiki, "Iron Golem"): a 2.7 block tall slab of a body on short legs with arms to its knees.

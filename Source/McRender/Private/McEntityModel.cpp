@@ -297,6 +297,44 @@ namespace McEntityModel
 				AddLegs(Llama, 29, 29, 4, 14, 4, 6.5f, -6.5f, 14);
 				Models.Add(Llama.Kind, Llama);
 			}
+			{
+				FModel Bee;
+				Bee.Kind = TEXT("minecraft:bee");
+				Bee.TextureSize = FIntPoint(64, 64);
+				Bee.Textures = { TEXT("bee/bee.png") };
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(0, 0, -3.5f, -3.5f, -5, 7, 7, 10) }));
+				// Two flat wings that beat.
+				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 10, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }));
+				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 10, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }));
+				Models.Add(Bee.Kind, Bee);
+			}
+			{
+				// The nets of the rabbit's picture (read off its pixels): body 8x6x10, head 5x5x5, ears 2x5x1, haunches 4x4x4, feet 2x1x6.
+				FModel Rabbit;
+				Rabbit.Kind = TEXT("minecraft:rabbit");
+				Rabbit.TextureSize = FIntPoint(64, 64);
+				Rabbit.Textures = { TEXT("rabbit/rabbit_brown.png") };
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -4, -3, -5, 8, 6, 10) }));
+				Rabbit.Parts.Add(Part(ERole::Head, FVector(0, 7, 5), { Box(0, 16, -2.5f, 0, 0, 5, 5, 5), Box(26, 0, -2.5f, 5, 0, 2, 5, 1), Box(32, 0, 0.5f, 5, 0, 2, 5, 1) }));
+				const FBox Haunch = Box(20, 16, -2, -4, -2, 4, 4, 4);
+				const FBox Foot = Box(20, 24, -1, -4, -3, 2, 1, 6);
+				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 4, -3), { Haunch, Foot }));
+				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 4, -3), { Haunch, Foot }));
+				Models.Add(Rabbit.Kind, Rabbit);
+			}
+			{
+				// The sea turtle's shell, belly and head, and its four flippers (nets read off the picture).
+				FModel Turtle;
+				Turtle.Kind = TEXT("minecraft:turtle");
+				Turtle.TextureSize = FIntPoint(128, 64);
+				Turtle.Textures = { TEXT("turtle/turtle.png") };
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -1), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 3, -1), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
+				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 9), { Box(3, 0, -3, -2, 0, 6, 5, 6) }));
+				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
+				Turtle.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10, 0.0f, true) }));
+				Models.Add(Turtle.Kind, Turtle);
+			}
 			return Models;
 		}
 

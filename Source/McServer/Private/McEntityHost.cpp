@@ -684,6 +684,8 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 			Row.ParseIntoArray(Kinds, TEXT(","));
 			double Up = 0.0;
 			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowUp="), Up);
+			float RowYaw = 90.0f;
+			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowYaw="), RowYaw);
 			for (int32 Index = 0; Index < Kinds.Num(); ++Index)
 			{
 				const double X = Players[0].X + (Index - (Kinds.Num() - 1) * 0.5) * 2.0;
@@ -693,7 +695,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
 					{
 						Spawned->bFrozen = true;
-						Spawned->Yaw = 90.0f;
+						Spawned->Yaw = RowYaw;
 					}
 				}
 			}

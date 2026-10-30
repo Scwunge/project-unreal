@@ -587,6 +587,11 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 			}
 		}
 	}
+	// A new observer gives one pulse of its own (reference run rs_observer): its changes of its own do not.
+	if (!bObserverSelf && KindOf(State) == Observer && !Flag(State, TEXT("powered")))
+	{
+		Sim.ScheduleTick(Pos, 2);
+	}
 	// An observer sees the block it faces change.
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
@@ -695,7 +700,8 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		else if (!Flag(State, TEXT("lit")) && HasPower(Pos))
 		{
-			Sim.ScheduleTick(Pos, 1);
+			// An unlit lamp that is powered lights at once (reference run rs_repeater); only going out waits 4 ticks.
+			Set(Pos, { FChange(TEXT("lit"), TEXT("true")) });
 		}
 		break;
 	case Piston:
@@ -1193,6 +1199,7 @@ void FMcRedstone::TickLamp(const FIntVector& Pos, FMcStateId State)
 
 void FMcRedstone::TickObserver(const FIntVector& Pos, FMcStateId State)
 {
+	TGuardValue<bool> Own(bObserverSelf, true);
 	if (Flag(State, TEXT("powered")))
 	{
 		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
@@ -1501,7 +1508,9 @@ bool FMcRedstone::ResolvePush(const FIntVector& PistonPos, const FIntVector& Sta
 	return Line(Start, true);
 }
 
-void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, bool bSticky)
+// Every carried block shows as a moving piston facing the way the piston faces, type normal, for the 2 ticks it
+// takes to land (reference run rs_piston).
+void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, int32 PistonFacing)
 {
 	const FMcBlockRegistry& Registry = Reg();
 	for (const FIntVector& At : Destroy)
@@ -1518,8 +1527,8 @@ void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVe
 		World.SetBlock(At, Air());
 	}
 	TMap<FName, FName> Properties;
-	Properties.Add(TEXT("facing"), DirName[Toward]);
-	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+	Properties.Add(TEXT("facing"), DirName[PistonFacing]);
+	Properties.Add(TEXT("type"), TEXT("normal"));
 	const FMcStateId Moving = Registry.FindState(TEXT("minecraft:moving_piston"), Properties).Get(0);
 	for (int32 Index = 0; Index < Move.Num(); ++Index)
 	{
@@ -1537,12 +1546,18 @@ bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, 
 	{
 		return false;
 	}
-	MoveBlocks(Move, Destroy, Facing, bSticky);
+	MoveBlocks(Move, Destroy, Facing, Facing);
+	// The head is a moving piston of the piston's own type for 2 ticks, then the head itself.
 	TMap<FName, FName> Properties;
 	Properties.Add(TEXT("facing"), DirName[Facing]);
 	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
 	Properties.Add(TEXT("short"), TEXT("false"));
-	World.SetBlock(Pos + Vec[Facing], Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0));
+	const FMcStateId Head = Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0);
+	Properties.Remove(TEXT("short"));
+	const FIntVector HeadPos = Pos + Vec[Facing];
+	MovingBlocks.Add(HeadPos, TPair<FMcStateId, int64>(Head, Sim.GetGameTime() + 2));
+	World.SetBlock(HeadPos, Reg().FindState(TEXT("minecraft:moving_piston"), Properties).Get(0));
+	Sim.ScheduleTick(HeadPos, 2);
 	Set(Pos, { FChange(TEXT("extended"), TEXT("true")) });
 	ExtendedAt.Add(Pos, Sim.GetGameTime());
 	return true;
@@ -1555,7 +1570,15 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 	const int64* Started = ExtendedAt.Find(Pos);
 	const bool bShortPulse = Started && Sim.GetGameTime() - *Started < 3;
 	ExtendedAt.Remove(Pos);
-	Set(Pos, { FChange(TEXT("extended"), TEXT("false")) });
+	// The base shows as a moving piston of its type for 2 ticks, then is the piston again.
+	{
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("facing"), DirName[Facing]);
+		Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+		MovingBlocks.Add(Pos, TPair<FMcStateId, int64>(With(State, { FChange(TEXT("extended"), TEXT("false")) }), Sim.GetGameTime() + 2));
+		World.SetBlock(Pos, Reg().FindState(TEXT("minecraft:moving_piston"), Properties).Get(0));
+		Sim.ScheduleTick(Pos, 2);
+	}
 	const FIntVector HeadPos = Pos + Vec[Facing];
 	if (IsKind(HeadPos, PistonHead))
 	{
@@ -1569,7 +1592,7 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 		{
 			// What can't be moved or broken stays where it is.
 			Destroy.Reset();
-			MoveBlocks(Move, Destroy, Opposite(Facing), true);
+			MoveBlocks(Move, Destroy, Opposite(Facing), Facing);
 		}
 	}
 }

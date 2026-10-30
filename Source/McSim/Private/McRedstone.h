@@ -85,7 +85,7 @@ private:
 	bool Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky);
 	void Retract(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky);
 	bool ResolvePush(const FIntVector& PistonPos, const FIntVector& Start, int32 Toward, TArray<FIntVector>& Move, TArray<FIntVector>& Destroy) const;
-	void MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, bool bSticky);
+	void MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, int32 PistonFacing);
 	bool IsPushable(const FIntVector& Pos, FMcStateId State) const;
 	bool IsBreakable(FMcStateId State) const;
 
@@ -107,6 +107,8 @@ private:
 	FMcSimulation& Sim;
 	TSet<FIntVector> DirtyDust;
 	bool bFlushing = false;
+	// Set while an observer changes its own state, which is not a new observer.
+	bool bObserverSelf = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
 	int32 SunLight = 15;

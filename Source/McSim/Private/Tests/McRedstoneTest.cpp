@@ -272,7 +272,8 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		FMcSimulation Sim(World);
 		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:observer[facing=east,powered=false]")));
 		World.SetBlock(FIntVector(-1, 1, 0), State(TEXT("minecraft:redstone_lamp[lit=false]")));
-		Run(Sim, 3);
+		// A new observer pulses once by itself (reference run rs_observer); let that go by.
+		Run(Sim, 12);
 		const auto Powered = [&] { return Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 1, 0)), TEXT("powered")).ToString() == TEXT("true"); };
 		const auto Lit = [&] { return Registry.GetPropertyValue(World.GetBlock(FIntVector(-1, 1, 0)), TEXT("lit")).ToString() == TEXT("true"); };
 		TestFalse(TEXT("quiet"), Powered());

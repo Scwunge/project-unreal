@@ -26,6 +26,8 @@ struct MCENTITY_API FMcMobType
 	bool bBurnsInSun = false;
 	// Zombies chase and bite villagers as well as players.
 	bool bHuntsVillagers = false;
+	// Iron golems go for the hostile mobs near them (not creepers), and leave players be unless hurt.
+	bool bHuntsHostiles = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;
@@ -45,7 +47,8 @@ struct MCENTITY_API FMcMobType
 	bool bFlies = false;
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
-	bool IsHostile() const { return AttackDamage > 0.0f || bSwells; }
+	// The golem fights hostile mobs rather than being one.
+	bool IsHostile() const { return (AttackDamage > 0.0f || bSwells) && !bHuntsHostiles; }
 
 	static const FMcMobType* Find(FName Name);
 	static const TArray<FMcMobType>& GetAll();
@@ -62,6 +65,8 @@ public:
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
+	// Whether this mob goes for that entity as its prey (zombies: villagers; golems: hostile mobs but the creeper).
+	bool IsPrey(const FMcEntity& Other) const;
 
 	// Slimes only: 1, 2 or 4. Sets the size of the body and (with bHeal) the health, size squared.
 	void SetSize(int32 InSize, bool bHeal = true);

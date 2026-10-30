@@ -95,6 +95,10 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:zombie_villager"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
 		// The wandering trader walks about and runs from what hurts it.
 		Add(TEXT("minecraft:wandering_trader"), 0.6f, 1.95f, 20.f, 0.35f, 0.f, 0.f, true, false);
+		// The iron golem: 100 health, a heavy swing of 15, and it only turns on a player it was hurt by.
+		FMcMobType& Golem = Add(TEXT("minecraft:iron_golem"), 1.4f, 2.7f, 100.f, 0.25f, 15.f, 16.f, false, false);
+		Golem.bNeutral = true;
+		Golem.bHuntsHostiles = true;
 	}
 	return Types;
 }
@@ -173,6 +177,21 @@ bool FMcMob::CanBeYoung(FName Kind)
 		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
 	};
 	return Breeders.Contains(Kind);
+}
+
+bool FMcMob::IsPrey(const FMcEntity& Other) const
+{
+	const FName Name = Other.GetType();
+	if (Type.bHuntsVillagers && Name == FName(TEXT("minecraft:villager")))
+	{
+		return true;
+	}
+	if (Type.bHuntsHostiles && Other.IsLiving())
+	{
+		const FMcMobType* OtherType = FMcMobType::Find(Name);
+		return OtherType && OtherType->IsHostile() && !OtherType->bSwells;
+	}
+	return false;
 }
 
 bool FMcMob::Damage(float Amount, const FVector* Source)
@@ -481,13 +500,13 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 		}
 	}
-	if (Type.bHuntsVillagers && Type.FollowRange > 0.0f)
+	if ((Type.bHuntsVillagers || Type.bHuntsHostiles) && Type.FollowRange > 0.0f)
 	{
 		// The nearest villager within reach of its nose, if nearer than any player.
 		double Nearest = bChasing ? PreyDistSq : FMath::Square(Type.FollowRange);
 		for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
 		{
-			if (Other->bRemoved || Other->GetType() != FName(TEXT("minecraft:villager")))
+			if (Other->bRemoved || Other.Get() == this || !IsPrey(*Other))
 			{
 				continue;
 			}
@@ -571,7 +590,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		AttackCooldown = 20;
 		if (Prey)
 		{
-			if (Prey->Damage(BiteDamage, &Body.Position) && Manager.OnVillagerSlain)
+			if (Prey->Damage(BiteDamage, &Body.Position) && Manager.OnVillagerSlain && Prey->GetType() == FName(TEXT("minecraft:villager")))
 			{
 				Manager.OnVillagerSlain(*Prey);
 			}

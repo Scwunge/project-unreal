@@ -165,6 +165,21 @@ namespace McEntityModel
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
+				// The iron golem (minecraft.wiki, "Iron Golem"): a 2.7 block tall slab of a body on short legs with arms to its knees.
+				FModel Golem;
+				Golem.Kind = TEXT("minecraft:iron_golem");
+				Golem.TextureSize = FIntPoint(128, 128);
+				Golem.Textures = { TEXT("iron_golem/iron_golem.png") };
+				Golem.Parts.Add(Part(ERole::Head, FVector(0, 33, 0), { Box(0, 0, -4, 0, -2.5f, 8, 10, 8), Box(24, 0, -1, -1, 5.5f, 2, 4, 2) }));
+				Golem.Parts.Add(Part(ERole::Static, FVector(0, 21, 0), { Box(0, 40, -9, 0, -5, 18, 12, 11), Box(0, 70, -4.5f, -5, -3, 9, 5, 6, 0.5f) }));
+				Golem.Parts.Add(Part(ERole::ArmRight, FVector(0, 33.5f, 0), { Box(60, 21, -13, -30, -3, 4, 30, 6) }));
+				Golem.Parts.Add(Part(ERole::ArmLeft, FVector(0, 33.5f, 0), { Box(60, 58, 9, -30, -3, 4, 30, 6) }));
+				Golem.Parts.Add(Part(ERole::LegRight, FVector(-4, 13, 0), { Box(37, 0, -3.5f, -13, -2, 6, 16, 5) }));
+				Golem.Parts.Add(Part(ERole::LegLeft, FVector(5, 13, 0), { Box(60, 0, -3.5f, -13, -2, 6, 16, 5) }));
+				Golem.MaxLimbSwing = 0.5f;
+				Models.Add(Golem.Kind, Golem);
+			}
+			{
 				FModel Skeleton;
 				Skeleton.Kind = TEXT("minecraft:skeleton");
 				Skeleton.Textures = { TEXT("skeleton/skeleton.png") };

@@ -56,6 +56,8 @@ protected:
 private:
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Stand;
+	// Whether the stand-in box has been coloured and reported.
+	bool bStandInMarked = false;
 	// The mob or item as it looks; null on a server that draws nothing.
 	UPROPERTY()
 	TObjectPtr<UMcEntityModelComponent> Model;

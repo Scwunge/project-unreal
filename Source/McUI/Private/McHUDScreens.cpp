@@ -1422,7 +1422,9 @@ void AMcHUD::DrawHUD()
 			DrawBars(Width, Height, Data);
 		}
 	}
-	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed.
+	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr;
+	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}

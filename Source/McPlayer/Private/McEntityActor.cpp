@@ -5,6 +5,7 @@
 #include "McMob.h"
 #include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #if MC_WITH_RENDER
 #include "McEntityModel.h"
 #endif
@@ -107,7 +108,23 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetSwelling(Swelling);
 		if (Stand)
 		{
-			Stand->SetVisibility(!Model->HasModel());
+			const bool bStandIn = !Model->HasModel();
+			Stand->SetVisibility(bStandIn);
+			if (bStandIn && !bStandInMarked)
+			{
+				// A kind with no model yet shows as a magenta box, said once a kind in the log, so it is found and not missed.
+				bStandInMarked = true;
+				static TSet<FName> Reported;
+				if (!Reported.Contains(Kind))
+				{
+					Reported.Add(Kind);
+					UE_LOG(LogTemp, Warning, TEXT("McEntityActor: no model for %s (first at %s); drawn as a magenta box"), *Kind.ToString(), *GetActorLocation().ToString());
+				}
+				if (UMaterialInstanceDynamic* Magenta = Stand->CreateDynamicMaterialInstance(0))
+				{
+					Magenta->SetVectorParameterValue(TEXT("Color"), FLinearColor(1.0f, 0.0f, 1.0f));
+				}
+			}
 		}
 	}
 #endif

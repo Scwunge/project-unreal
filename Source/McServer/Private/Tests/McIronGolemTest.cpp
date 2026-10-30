@@ -75,12 +75,20 @@ bool FMcIronGolemTest::RunTest(const FString& Parameters)
 		}
 		Zombie->bFrozen = true;
 		Creeper->bFrozen = true;
-		for (int32 Tick = 0; Tick < 400; ++Tick)
+		// A dead mob is taken out of the world, so it is looked up by id each tick rather than held by pointer.
+		const int32 ZombieId = Zombie->Id;
+		bool bZombieGone = false;
+		for (int32 Tick = 0; Tick < 400 && !bZombieGone; ++Tick)
 		{
-			Zombie->HurtTime = 0;
+			if (FMcEntity* Found = Host.GetManager().Find(ZombieId))
+			{
+				static_cast<FMcMob*>(Found)->HurtTime = 0;
+			}
 			Host.GetManager().Tick();
+			const FMcEntity* Found = Host.GetManager().Find(ZombieId);
+			bZombieGone = !Found || Found->bRemoved || static_cast<const FMcMob*>(Found)->Health <= 0.0f;
 		}
-		TestTrue(TEXT("the zombie is dead"), Zombie->Health <= 0.0f);
+		TestTrue(TEXT("the zombie is dead"), bZombieGone);
 		TestTrue(TEXT("the creeper is untouched"), Creeper->Health >= Creeper->Type.MaxHealth);
 	}
 	{

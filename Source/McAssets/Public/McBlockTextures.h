@@ -18,6 +18,7 @@ struct FMcTextureStats
 	int32 Translucent = 0;    // layers with partial-alpha pixels
 	int32 Cutout = 0;         // layers with fully transparent pixels
 	int32 SideLayers = 0;     // the flowing pictures' "#side" layers, after the loaded ones
+	int32 Tiles = 0;          // 16-pixel tiles of pictures bigger than a layer (McTextureTiles.h)
 	TArray<FName> Fallbacks;  // ids that couldn't be loaded and use layer 0
 	TArray<FString> Resized;  // "id WxH": not 16 wide (or a 16x16 frame), scaled down with nearest
 };
@@ -40,7 +41,8 @@ public:
 	void Shutdown();
 
 	// The layer for an id like "minecraft:block/stone". 0, the missing-texture layer, for unknown ids. A flowing fluid's
-	// picture also has "<id>#side", the top left 16 pixels of its 32-pixel frames, which is what a fluid's side shows.
+	// picture also has "<id>#side", the top left 16 pixels of its 32-pixel frames, which is what a fluid's side shows. A
+	// picture bigger than a layer is in tiles, "<id>#tile:x,y:w,h" (McTextureTiles.h), as the baked quads name them.
 	int32 GetLayer(FName TextureId) const;
 	int32 NumLayers() const { return Layers.Num(); }
 	UTexture2DArray* GetTextureArray() const { return TextureArray; }

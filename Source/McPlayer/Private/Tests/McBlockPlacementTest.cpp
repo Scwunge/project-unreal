@@ -81,6 +81,9 @@ bool FMcBlockPlacementTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("one on a north face hangs from the wall, across it"), Place(TEXT("minecraft:oak_hanging_sign"), NorthHigh, 0).StartsWith(TEXT("minecraft:oak_wall_hanging_sign[facing=east")) || Place(TEXT("minecraft:oak_hanging_sign"), NorthHigh, 0).StartsWith(TEXT("minecraft:oak_wall_hanging_sign[facing=west")));
 	TestEqual(TEXT("a hanging sign on top with nothing above is not placed"), Place(TEXT("minecraft:oak_hanging_sign"), Top, 0), FString(TEXT("nothing")));
 
+	TestEqual(TEXT("a shulker box on top faces up"), Place(TEXT("minecraft:red_shulker_box"), Top, 0), FString(TEXT("minecraft:red_shulker_box[facing=up]")));
+	TestEqual(TEXT("one on a north face faces north"), Place(TEXT("minecraft:shulker_box"), NorthHigh, 0), FString(TEXT("minecraft:shulker_box[facing=north]")));
+
 	const TArray<FMcPlacedBlock> Door = McBlockPlacement::GetPlacement(World, State(TEXT("minecraft:oak_door")), Top, 0, 0);
 	TestEqual(TEXT("doors are two blocks"), Door.Num(), 2);
 

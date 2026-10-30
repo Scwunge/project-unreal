@@ -162,6 +162,11 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 			Properties.Add(TEXT("rotation"), *FString::FromInt(Rotation));
 		}
 	}
+	else if (Name.EndsWith(TEXT("shulker_box")))
+	{
+		// Its lid faces out of the face clicked (minecraft.wiki, "Shulker Box").
+		Properties.Add(TEXT("facing"), FaceNames[Face]);
+	}
 	else if (Name == TEXT("minecraft:hopper"))
 	{
 		// The spout points into the block clicked on, or down when placed on a top or bottom.

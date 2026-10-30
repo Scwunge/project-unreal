@@ -82,6 +82,65 @@ bool FMcChestModelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcShulkerModelTest, "McClient.McRender.ShulkerBoxModels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcShulkerModelTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registry loads"), Registry.EnsureLoaded()))
+	{
+		return false;
+	}
+	FQuat Rotation;
+	const auto Pick = [&](const TCHAR* Text) { return UMcChestComponent::GetShulkerModel(Registry.ParseState(Text).Get(0), Rotation); };
+	TestEqual(TEXT("the plain box"), Pick(TEXT("minecraft:shulker_box[facing=up]")), FName(TEXT("mc:shulker_box/shulker")));
+	TestTrue(TEXT("facing up is unturned"), Rotation.Equals(FQuat::Identity));
+	TestEqual(TEXT("a light blue box"), Pick(TEXT("minecraft:light_blue_shulker_box[facing=north]")), FName(TEXT("mc:shulker_box/shulker_light_blue")));
+	// The lid (Unreal +z) turned to the north is Unreal -y; to the east, +x; down, -z.
+	TestTrue(TEXT("facing north, the lid is to the north"), Rotation.RotateVector(FVector::UpVector).Equals(FVector(0, -1, 0), 1e-6));
+	Pick(TEXT("minecraft:shulker_box[facing=east]"));
+	TestTrue(TEXT("facing east, to the east"), Rotation.RotateVector(FVector::UpVector).Equals(FVector(1, 0, 0), 1e-6));
+	Pick(TEXT("minecraft:shulker_box[facing=south]"));
+	TestTrue(TEXT("facing south, to the south"), Rotation.RotateVector(FVector::UpVector).Equals(FVector(0, 1, 0), 1e-6));
+	Pick(TEXT("minecraft:shulker_box[facing=down]"));
+	TestTrue(TEXT("facing down, below"), Rotation.RotateVector(FVector::UpVector).Equals(FVector(0, 0, -1), 1e-6));
+	TestTrue(TEXT("a chest is no shulker box"), Pick(TEXT("minecraft:chest[facing=north,type=single,waterlogged=false]")).IsNone());
+	float Yaw;
+	FIntVector Partner;
+	TestTrue(TEXT("nor is a shulker box a chest"), UMcChestComponent::GetChestModel(Registry.ParseState(TEXT("minecraft:shulker_box[facing=up]")).Get(0), Yaw, Partner).IsNone());
+
+	const FModel* Box = Find(TEXT("mc:shulker_box/shulker_red"));
+	if (!TestNotNull(TEXT("a red box has a model"), Box))
+	{
+		return false;
+	}
+	FAnim Shut;
+	McPlayerModel::FMeshData Data;
+	BuildMesh(*Box, Shut, 0, Data);
+	const ::FBox Bounds(Data.Positions);
+	TestTrue(TEXT("shut, it fills the block about its middle"), Bounds.Min.Equals(FVector(-50.0), 0.2) && Bounds.Max.Equals(FVector(50.0), 0.2));
+	// The lid's top is the plain square of the picture's top row (16 to 32 across).
+	bool bLidTop = false;
+	for (int32 Index = 0; Index + 3 < Data.Positions.Num(); Index += 4)
+	{
+		if (Data.Normals[Index].Z > 0.9 && Data.Positions[Index].Z > 49.0)
+		{
+			const FVector2D Middle = (Data.UV0[Index] + Data.UV0[Index + 2]) * 0.5 * 64.0;
+			bLidTop |= Middle.X > 16.0 && Middle.X < 32.0 && Middle.Y < 16.0;
+		}
+	}
+	TestTrue(TEXT("the lid's top is the top of the lid's picture"), bLidTop);
+	FAnim Open;
+	Open.Lid = 1.0f;
+	BuildMesh(*Box, Open, 0, Data);
+	const ::FBox Opened(Data.Positions);
+	TestTrue(TEXT("open, the lid is half a block up"), FMath::IsNearlyEqual(Opened.Max.Z, 100.0, 0.2));
+	TestTrue(TEXT("and three quarters turned, still square on"), FMath::IsNearlyEqual(Opened.Max.X, 50.0, 0.2) && FMath::IsNearlyEqual(Opened.Max.Y, 50.0, 0.2));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHullMaskTest, "McClient.McRender.HullMask",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

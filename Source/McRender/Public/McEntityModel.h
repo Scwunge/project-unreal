@@ -44,6 +44,8 @@ namespace McEntityModel
 		PaddleRight,
 		// A chest's lid, which swings up about its back edge as the chest opens.
 		ChestLid,
+		// A shulker box's lid, which rises and turns as the box opens.
+		ShulkerLid,
 	};
 
 	struct FBox
@@ -124,7 +126,7 @@ namespace McEntityModel
 		float PaddleRight = 0.0f;
 		bool bPaddleLeft = false;
 		bool bPaddleRight = false;
-		// How far a chest's lid is open, 0 shut to 1 open.
+		// How far a chest's or shulker box's lid is open, 0 shut to 1 open.
 		float Lid = 0.0f;
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;

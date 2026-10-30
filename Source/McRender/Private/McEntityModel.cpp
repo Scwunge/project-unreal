@@ -340,6 +340,26 @@ namespace McEntityModel
 					}
 				}
 			}
+			{
+				// Placed shulker boxes (McChestComponent), one model for each colour: "mc:shulker_box/shulker",
+				// "mc:shulker_box/shulker_red"... (minecraft.wiki, "Shulker Box"). A base 8 high and a lid 12 high over it,
+				// whole blocks across, the lid's rim over the base's top; the origin is the block's middle, so the box can be
+				// turned to any face. The lid rises and turns as the box opens.
+				const TCHAR* const Colours[] = { TEXT(""), TEXT("_white"), TEXT("_orange"), TEXT("_magenta"), TEXT("_light_blue"), TEXT("_yellow"),
+					TEXT("_lime"), TEXT("_pink"), TEXT("_gray"), TEXT("_light_gray"), TEXT("_cyan"), TEXT("_purple"), TEXT("_blue"), TEXT("_brown"),
+					TEXT("_green"), TEXT("_red"), TEXT("_black") };
+				for (const TCHAR* Colour : Colours)
+				{
+					const FString Picture = FString(TEXT("shulker")) + Colour;
+					FModel Shulker;
+					Shulker.Kind = FName(TEXT("mc:shulker_box/") + Picture);
+					Shulker.TextureSize = FIntPoint(64, 64);
+					Shulker.Textures = { TEXT("shulker/") + Picture + TEXT(".png") };
+					Shulker.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 28, -8, -8, -8, 16, 8, 16) }));
+					Shulker.Parts.Add(Part(ERole::ShulkerLid, FVector::ZeroVector, { Box(0, 0, -8, -4, -8, 16, 12, 16, 0.01f) }));
+					Models.Add(Shulker.Kind, Shulker);
+				}
+			}
 			return Models;
 		}
 
@@ -473,6 +493,7 @@ namespace McEntityModel
 			float Yaw = Part.RestYaw;
 			float Roll = Part.RestRoll;
 			const float RestPitch = Pitch;
+			FVector Pivot = Part.Pivot;
 			const bool bGlow = Part.bGlow || ((Model.GlowLayers >> Layer) & 1u) != 0 || Anim.bFlash;
 			const float Pos = Anim.WalkPos;
 			const float Amount = Anim.WalkAmount;
@@ -534,6 +555,14 @@ namespace McEntityModel
 				Pitch += 0.35f + Dip;
 				break;
 			}
+			case ERole::ShulkerLid:
+			{
+				// Up half a block and three quarters of a turn, easing in and out.
+				const float Open = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(Anim.Lid, 0.0f, 1.0f));
+				Pivot.Y += Open * 8.0f;
+				Yaw += Open * PI * 1.5f;
+				break;
+			}
 			case ERole::ChestLid:
 			{
 				// It eases open fast and slows at the top.
@@ -563,7 +592,7 @@ namespace McEntityModel
 			const FIntPoint Size = Model.LayerTextureSizes.IsValidIndex(Layer) && Model.LayerTextureSizes[Layer].X > 0 ? Model.LayerTextureSizes[Layer] : Model.TextureSize;
 			for (const FBox& Box : Part.Boxes)
 			{
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
+				AddBox(Box, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
 			}
 		}
 	}

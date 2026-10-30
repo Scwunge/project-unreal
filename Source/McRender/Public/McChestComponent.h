@@ -1,7 +1,9 @@
-// Placed chests. A chest's block has no model of its own (its block model is only a particle picture, so the chunk
+// Placed chests and shulker boxes. A chest's block has no model of its own (its block model is only a particle picture, so the chunk
 // meshes leave it out): the game draws it from the chest's entity picture, with a lid that opens. This finds the
 // chests in the loaded chunks and stands an entity model (McEntityModel's "mc:chest/...") in each: the chest, trapped
-// chest, ender chest and copper chests, single or half of a double, turned to their facing.
+// chest, ender chest and copper chests, single or half of a double, turned to their facing. Shulker boxes are the same
+// (McEntityModel's "mc:shulker_box/..."), turned so the lid faces the way the box does, the lid rising and turning as
+// the box opens.
 
 #pragma once
 
@@ -34,6 +36,9 @@ public:
 	// where its other half is, if it is half of a double; None for a state that isn't a chest. On Christmas days the
 	// chest and trapped chest wear the Christmas picture.
 	static FName GetChestModel(FMcStateId State, float& OutYaw, FIntVector& OutPartner, bool bChristmas = false);
+	// A shulker box's model ("mc:shulker_box/shulker_red") and how it is turned so its lid faces the way the box does
+	// (the model's up onto that side, about the block's middle); None for a state that isn't one.
+	static FName GetShulkerModel(FMcStateId State, FQuat& OutRotation);
 
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

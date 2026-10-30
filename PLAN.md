@@ -172,8 +172,21 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     -McCam=12.6,-58.0,6.5,90,-5`).
   - **Beds** (2026-10-30): in 26.3 beds are ordinary block models (`template_bed_head`/`_foot`, a picture per colour and
     face, and the new `straw_bed`), so the block baker draws them; no block entity. Checked in `Saved/Shots/beds.png`
-    (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). Not done: the texture array is 16 pixels,
-    so pictures bigger than that are scaled down: `straw_bed` (64), signs, hanging signs and shelves (32).
+    (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). The 64-pixel `straw_bed` is drawn in tiles
+    (Big pictures in tiles, below).
+  - **Big pictures in tiles** (2026-10-30): the texture array is 16 pixels, so a block picture that is a whole number
+    of 16-pixel tiles and bigger than one (signs, hanging signs and shelves 32, `straw_bed` 64; not animated ones) is
+    cut into tiles, each a layer named `<picture>#tile:x,y:w,h` (`McTextureTiles`, which reads only the PNG's header).
+    The baker splits every quad drawn with such a picture along the tiles' edges, one quad a tile with UVs 0..1 over it,
+    so each pixel is kept; the HUD's block icons map tiles back onto the whole picture. Test `McAssets.TextureTiles`
+    checks the UVs carry on across a cut (a 32-pixel face split two and four ways, and turned) and that each loaded
+    tile has the PNG's pixels.
+  - **Shulker boxes** (2026-10-30): drawn by `UMcChestComponent` with entity models `mc:shulker_box/shulker[_colour]`
+    from the 64-pixel mob nets: a base (8 high) and a lid (12 high, over the base), centred in the block and turned by
+    `facing` (placement faces the clicked face, as vanilla). Opening raises the lid 8 pixels while turning it 270°,
+    eased like the chest's lid. Test `McRender.ShulkerBoxModels`; shot `Saved/Shots/shulkers.png`
+    (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles). Not done: a closed box
+    blocking its opening, and the shell's collision shape while open.
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

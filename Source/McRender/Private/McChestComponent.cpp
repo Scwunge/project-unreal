@@ -62,6 +62,32 @@ FName UMcChestComponent::GetChestModel(FMcStateId State, float& OutYaw, FIntVect
 	return FName(TEXT("mc:chest/") + Picture);
 }
 
+FName UMcChestComponent::GetShulkerModel(FMcStateId State, FQuat& OutRotation)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!Registry.IsValidState(State))
+	{
+		return NAME_None;
+	}
+	FString Name = Registry.GetBlockOf(State).Name.ToString();
+	if (!Name.RemoveFromStart(TEXT("minecraft:")) || !Name.EndsWith(TEXT("shulker_box")))
+	{
+		return NAME_None;
+	}
+	// "red_shulker_box" is drawn with "shulker_red", the plain box with "shulker".
+	Name.RemoveFromEnd(TEXT("shulker_box"));
+	Name.RemoveFromEnd(TEXT("_"));
+	// The lid points the way the box faces: the model's up (Unreal +z) turned onto that side.
+	const FName Facing = Registry.GetPropertyValue(State, TEXT("facing"));
+	OutRotation = Facing == TEXT("down") ? FQuat(FVector::XAxisVector, PI)
+		: Facing == TEXT("north") ? FQuat(FVector::XAxisVector, HALF_PI)
+		: Facing == TEXT("south") ? FQuat(FVector::XAxisVector, -HALF_PI)
+		: Facing == TEXT("east") ? FQuat(FVector::YAxisVector, HALF_PI)
+		: Facing == TEXT("west") ? FQuat(FVector::YAxisVector, -HALF_PI)
+		: FQuat::Identity;
+	return FName(TEXT("mc:shulker_box/shulker") + (Name.IsEmpty() ? FString() : TEXT("_") + Name));
+}
+
 void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 {
 	Unhook();
@@ -86,7 +112,8 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 	{
 		float Yaw;
 		FIntVector Partner;
-		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone();
+		FQuat Rotation;
+		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone();
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -187,16 +214,24 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 		}
 		Known->State = Pair.Value;
 		float Yaw = 0.0f;
-		const FName Kind = GetChestModel(Pair.Value, Yaw, Known->Partner, bChristmas);
+		FQuat Rotation = FQuat::Identity;
+		FName Kind = GetChestModel(Pair.Value, Yaw, Known->Partner, bChristmas);
+		// A shulker box's model is about the block's middle, turned to its facing.
+		const bool bShulker = Kind.IsNone();
+		if (bShulker)
+		{
+			Kind = GetShulkerModel(Pair.Value, Rotation);
+		}
 		TObjectPtr<UMcEntityModelComponent>& Model = Models.FindOrAdd(Pair.Key);
 		if (!Model)
 		{
 			Model = NewObject<UMcEntityModelComponent>(GetOwner());
 			Model->SetupAttachment(this);
 			Model->SetUsingAbsoluteLocation(true);
+			Model->SetUsingAbsoluteRotation(true);
 			Model->RegisterComponent();
-			Model->SetWorldLocation(McCoords::BlockToUnreal(FVector(Pair.Key) + FVector(0.5, 0.0, 0.5)));
 		}
+		Model->SetWorldLocationAndRotation(McCoords::BlockToUnreal(FVector(Pair.Key) + FVector(0.5, bShulker ? 0.5 : 0.0, 0.5)), Rotation);
 		Model->SetKind(Kind, NAME_None, 0);
 		Model->SetLook(Yaw, Yaw, 0.0f);
 	}

@@ -2,6 +2,7 @@
 #include "McBanner.h"
 #include "McGuiLayout.h"
 #include "McBlockModels.h"
+#include "McTextureTiles.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
 #include "McPlayerPawn.h"
@@ -309,7 +310,11 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 
 		FProjected& Projected = Quads.AddDefaulted_GetRef();
 		Projected.Depth = (P[0].Z + P[1].Z + P[2].Z + P[3].Z) * 0.25;
-		UTexture2D* Texture = GetLayerTexture(Quad.Texture);
+		// A tile of a big picture (McTextureTiles.h) is drawn from the whole picture, its UVs moved onto the tile.
+		FName Picture = Quad.Texture;
+		FIntPoint Tile(0, 0), Grid(1, 1);
+		McTextureTiles::ParseTileId(Quad.Texture, Picture, Tile, Grid);
+		UTexture2D* Texture = GetLayerTexture(Picture);
 		const int32 Corners[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
 		for (int32 T = 0; T < 2; ++T)
 		{
@@ -317,7 +322,7 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 			for (int32 I = 0; I < 3; ++I)
 			{
 				Triangle.Positions[I] = ToSlot(P[Corners[T][I]]);
-				Triangle.UVs[I] = FVector2D(Quad.UVs[Corners[T][I]]);
+				Triangle.UVs[I] = (FVector2D(Quad.UVs[Corners[T][I]]) + FVector2D(Tile)) / FVector2D(Grid);
 			}
 			Triangle.Color = Color;
 			Triangle.Texture = Texture;

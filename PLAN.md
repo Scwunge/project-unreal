@@ -440,6 +440,9 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
    vindicator's axe, the pillager's crossbow, the witch's potion, the fox's mouth item, the allay) should go through the
    same item display-transform path as the player's hand on `main` (the models' `display` entries, e.g.
    `thirdperson_righthand`), and the flat-picture special cases in `McEntityModel` (`bFlat`, `bFlatTop`) should go.
+9. **Entity shadows (cross-branch).** Vanilla draws a round, soft shadow under every mob (size from the hitbox width, fading with
+   height above the ground and with light). Nothing on `m1/blocks-and-chunks` or here draws one; a vanilla ravager beside ours shows
+   the gap. One shared decal pass for all entities, not per-mob code.
 
 ## 7. Decisions
 

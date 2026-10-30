@@ -84,6 +84,27 @@ namespace McEntityModel
 		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-4, Height, -2), { Box(Right.X, Right.Y, -1, -1, -5, 2, 2, 18), Box(Right.X, Right.Y, 0.001f, -3, 8, 1, 6, 7) }));
 	}
 
+	// A chest (minecraft.wiki: "Chest"): a base 10 high with a lid 5 high over it, 14 across and a pixel in from the
+	// block's sides, the lid's top at 14, and a lock on the front (-z) where they meet. Half of a double chest is 15
+	// across, reaching the block's side its other half is on (Seam: +1 for +x, -1 for -x, 0 for a single chest), with
+	// a lock 1 across at that side. A chest's picture is laid out the other way up from a mob's (the lid's top is where
+	// a mob's net has its bottom, and the sides are upside down), so its boxes are turned half round the z axis: they
+	// are given with x and y negated.
+	void AddChest(FModel& Model, FVector Origin, float Scale, int32 Layer, int32 Seam)
+	{
+		const int32 Width = Seam == 0 ? 14 : 15;
+		const float MinX = Seam > 0 ? -8.0f : -7.0f;
+		const float LockX = Seam == 0 ? -1.0f : Seam > 0 ? -8.0f : 7.0f;
+		const int32 LockWidth = Seam == 0 ? 2 : 1;
+		FPart Base = Part(ERole::Static, Origin, { Box(0, 19, MinX, -10, -7, Width, 10, 14) }, 0, 0, PI, 0, Layer);
+		Base.Scale = Scale;
+		Model.Parts.Add(Base);
+		// The lid and its lock swing about the lid's back edge.
+		FPart Lid = Part(ERole::ChestLid, Origin + FVector(0, 9, 7) * Scale, { Box(0, 0, MinX, -5, -14, Width, 5, 14), Box(0, 0, LockX, -2, -15, LockWidth, 4, 1) }, 0, 0, PI, 0, Layer);
+		Lid.Scale = Scale;
+		Model.Parts.Add(Lid);
+	}
+
 		TMap<FName, FModel> BuildModels()
 		{
 			TMap<FName, FModel> Models;
@@ -248,9 +269,7 @@ namespace McEntityModel
 						// A chest has no block model (it is drawn from its own picture), so it is boxes on a second layer.
 						Cart.Textures.Add(TEXT("chest/normal.png"));
 						Cart.LayerTextureSizes = { FIntPoint(0, 0), FIntPoint(64, 64) };
-						FPart Chest = Part(ERole::Static, FVector(0, 3, 0), { Box(0, 19, -7, 0, -7, 14, 10, 14), Box(0, 0, -7, 10, -7, 14, 5, 14), Box(0, 0, -1, 8, 7, 2, 4, 1) }, 0, 0, 0, 0, 1);
-						Chest.Scale = 0.75f;
-						Cart.Parts.Add(Chest);
+						AddChest(Cart, FVector(0, 3, 0), 0.75f, 1, 0);
 					}
 					Models.Add(Cart.Kind, Cart);
 				}
@@ -292,6 +311,29 @@ namespace McEntityModel
 						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
 					}
 					Models.Add(Raft.Kind, Raft);
+				}
+			}
+			{
+				// Placed chests (McChestComponent), one model for each picture: "mc:chest/normal", "mc:chest/normal_left"...
+				// A "_left" picture is the half whose other half is on its +x side, a "_right" one the half on the -x side.
+				for (const TCHAR* Picture : { TEXT("normal"), TEXT("trapped"), TEXT("christmas"), TEXT("ender"), TEXT("copper"), TEXT("copper_exposed"),
+					TEXT("copper_weathered"), TEXT("copper_oxidized") })
+				{
+					for (const int32 Seam : { 0, 1, -1 })
+					{
+						// An ender chest doesn't pair.
+						if (Seam != 0 && FCString::Strcmp(Picture, TEXT("ender")) == 0)
+						{
+							continue;
+						}
+						const FString Name = FString(Picture) + (Seam > 0 ? TEXT("_left") : Seam < 0 ? TEXT("_right") : TEXT(""));
+						FModel Chest;
+						Chest.Kind = FName(TEXT("mc:chest/") + Name);
+						Chest.TextureSize = FIntPoint(64, 64);
+						Chest.Textures = { TEXT("chest/") + Name + TEXT(".png") };
+						AddChest(Chest, FVector::ZeroVector, 1.0f, 0, Seam);
+						Models.Add(Chest.Kind, Chest);
+					}
 				}
 			}
 			return Models;
@@ -486,6 +528,13 @@ namespace McEntityModel
 				}
 				Yaw += Side * (2.0f + Swing);
 				Pitch += 0.35f + Dip;
+				break;
+			}
+			case ERole::ChestLid:
+			{
+				// It eases open fast and slows at the top.
+				const float Open = 1.0f - FMath::Cube(1.0f - FMath::Clamp(Anim.Lid, 0.0f, 1.0f));
+				Pitch -= Open * HALF_PI;
 				break;
 			}
 			case ERole::SpiderLeg:
@@ -979,11 +1028,15 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		PaddlePhase[1] = Anim.bPaddleRight ? PaddlePhase[1] + PI / 8.0f : 0.0f;
 		Anim.PaddleLeft = PaddlePhase[0];
 		Anim.PaddleRight = PaddlePhase[1];
+		// A chest's lid moves a tenth of the way each tick.
+		PreviousLid = Lid;
+		Lid = FMath::Clamp(Lid + (bOpen ? 0.1f : -0.1f), 0.0f, 1.0f);
 		Walking +=(FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
 		Anim.WalkAmount = Walking;
 		Anim.WalkPos += Walking;
 	}
 	Anim.Hurt = FMath::Max(0.0f, Anim.Hurt - DeltaTime * 2.5f);
+	Anim.Lid = FMath::Lerp(PreviousLid, Lid, TickAccumulator / 0.05f);
 
 	// Turn towards where the entity is told to face.
 	const float Turn = FMath::Min(1.0f, DeltaTime * 12.0f);

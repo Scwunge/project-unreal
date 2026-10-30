@@ -42,6 +42,8 @@ namespace McEntityModel
 		// A boat's paddles, which row while the boat has a rider pushing it.
 		PaddleLeft,
 		PaddleRight,
+		// A chest's lid, which swings up about its back edge as the chest opens.
+		ChestLid,
 	};
 
 	struct FBox
@@ -115,6 +117,8 @@ namespace McEntityModel
 		float PaddleRight = 0.0f;
 		bool bPaddleLeft = false;
 		bool bPaddleRight = false;
+		// How far a chest's lid is open, 0 shut to 1 open.
+		float Lid = 0.0f;
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
 	};
@@ -184,6 +188,8 @@ public:
 	void SetHitboxHeight(float InHeight) { HitboxHeight = InHeight; }
 	// A creeper's fuse, 0 (not lit) to 1 (about to go): it swells, shakes and flashes.
 	void SetSwelling(float InSwelling);
+	// A chest's lid opens over a few ticks while this is set, and shuts again after.
+	void SetOpen(bool bInOpen) { bOpen = bInOpen; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -248,6 +254,10 @@ private:
 	int32 HurtCount = -1;
 	// A boat's paddles' strokes, advanced a tick at a time while they row (bit 0 the left, bit 1 the right in Count).
 	float PaddlePhase[2] = { 0.0f, 0.0f };
+	// A chest's lid: whether it is to be open, and how far it is (a tenth more each tick), now and the tick before.
+	bool bOpen = false;
+	float Lid = 0.0f;
+	float PreviousLid = 0.0f;
 	FVector2D LastPosition = FVector2D::ZeroVector;
 	bool bHasPosition = false;
 	float TickAccumulator = 0.0f;

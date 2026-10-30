@@ -40,6 +40,7 @@
 #include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
 #include "McBlockLightComponent.h"
+#include "McChestComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
 #endif
@@ -464,6 +465,19 @@ void AMcPlayerController::AttachView()
 	Lamps->RegisterComponent();
 	Lamps->SetWorld(WorldActor->GetBlockWorld());
 	BlockLights = Lamps;
+
+	UMcChestComponent* ChestModels = NewObject<UMcChestComponent>(WorldActor);
+	ChestModels->SetupAttachment(WorldActor->GetRootComponent());
+	ChestModels->RegisterComponent();
+	ChestModels->SetWorld(WorldActor->GetBlockWorld());
+	// A chest's lid is up while this player has it open. (Others' open chests aren't told to this machine.)
+	ChestModels->IsOpen = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FIntVector& Pos)
+	{
+		const AMcPlayerPawn* Viewer = WeakSelf.IsValid() ? Cast<AMcPlayerPawn>(WeakSelf->GetPawn()) : nullptr;
+		const UMcPlayerDataComponent* Items = Viewer ? Viewer->Data.Get() : nullptr;
+		return Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && Items->GetWindow().Pos == Pos;
+	};
+	Chests = ChestModels;
 	WorldActor->OnBlockBroken = [WeakBits = TWeakObjectPtr<UMcParticleComponent>(Bits)](const FIntVector& Pos, FMcStateId State)
 	{
 		if (UMcParticleComponent* Live = WeakBits.Get())
@@ -502,6 +516,10 @@ void AMcPlayerController::DetachView()
 	if (UActorComponent* Lamps = BlockLights.Get())
 	{
 		Lamps->DestroyComponent();
+	}
+	if (UActorComponent* ChestModels = Chests.Get())
+	{
+		ChestModels->DestroyComponent();
 	}
 	if (UActorComponent* Precipitation = Weather.Get())
 	{

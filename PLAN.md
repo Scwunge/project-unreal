@@ -159,6 +159,17 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     (a plain boat two, a chest boat one: the chest has the back seat). The mob sits (`FMcMob::RidingId`, not saved) doing
     nothing until the boat goes; animals sit across it. Players count against the seats, so a boat with two pigs turns a
     player away. Shot: `Saved/Shots/boat_mobs.png` (`-McScene=paddles`, a boat and a chest boat with mobs summoned on them).
+  - **Chests** (2026-10-30): placed chests are drawn from their entity pictures (`UMcChestComponent`, which finds them in the
+    loaded chunks and stands an `mc:chest/...` model in each): chest, trapped, ender and the four copper chests (waxed too),
+    single and double, turned to their facing, Christmas pictures on 24 to 26 December. The lid opens over ten ticks while
+    this player has the chest open, both halves of a double together. The chest picture's net is the other way up from a
+    mob's, so the boxes are turned half round (`AddChest`, which the chest minecart uses too). Shots: `-McScene=chests`
+    (`-McChestsOpen` opens every lid), `Saved/Shots/chests_shut.png`, `chests_open.png`. Limits: another player's open
+    chest doesn't open its lid here (who has a chest open isn't sent), and the chest is lit as an entity, not by the
+    block's light. A half's picture follows where its other half is: `_left` is the half whose other half is on its +x
+    (as turned), which `McChestLink` calls `right`. Not done: the other block entities whose block models are only a
+    particle (beds, shulker boxes, skulls and heads, decorated pots, conduits, copper golem statues, end portals and
+    gateways), a bell's body, the books on lecterns and enchanting tables, and sign text.
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

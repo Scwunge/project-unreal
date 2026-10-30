@@ -173,6 +173,15 @@ bool FMcMob::Serialize(FArchive& Ar)
 	}
 	// The rest (the flash after a hit, the goal being walked to) is a few ticks' worth and starts afresh.
 	Ar << Health;
+	if (Type.Name == FName(TEXT("minecraft:wolf")))
+	{
+		// Older saves end here: a wolf with nothing after its health is a wild one.
+		if (!Ar.IsLoading() || !Ar.AtEnd())
+		{
+			Ar << bTamed << bSitting << CollarColor << OwnerName;
+			CollarColor = FMath::Clamp(CollarColor, 0, 15);
+		}
+	}
 	if (Type.bHops)
 	{
 		int32 Saved = Size;
@@ -187,6 +196,11 @@ bool FMcMob::Serialize(FArchive& Ar)
 		}
 	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
+}
+
+void FMcMob::UpdateWolfPose()
+{
+	ArmPose = (bSitting ? 1 : 0) | ((AngerTicks > 0 && !bTamed) ? 2 : 0) | (bTamed ? 4 : 0) | (CollarColor << 8);
 }
 
 void FMcMob::SetYoung(int32 Ticks)
@@ -519,6 +533,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	++Age;
 	GlowTicks = FMath::Max(0, GlowTicks - 1);
+	if (Type.Name == FName(TEXT("minecraft:wolf")))
+	{
+		UpdateWolfPose();
+	}
 	if (bFrozen)
 	{
 		return;
@@ -647,6 +665,12 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 		}
 	}
+	// A sitting wolf stays where it is, whatever happens.
+	if (bSitting)
+	{
+		PanicTicks = 0;
+		Goal.Reset();
+	}
 	// Goals, in priority order: flee, chase and bite (or shoot, or swell), wander.
 	FVector Target = FVector::ZeroVector;
 	bool bHasTarget = false;
@@ -665,7 +689,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		Target = Goal.GetValue();
 		bHasTarget = true;
 	}
-	else if (Type.FollowRange > 0.0f && (!Type.bNeutral || AngerTicks > 0) && (!Type.bNeutralInLight || AngerTicks > 0 || !bBrightHere))
+	else if (Type.FollowRange > 0.0f && !bTamed && (!Type.bNeutral || AngerTicks > 0) && (!Type.bNeutralInLight || AngerTicks > 0 || !bBrightHere))
 	{
 		double Best = Type.FollowRange * Type.FollowRange;
 		for (const FVector& Player : Manager.PlayerPositions)
@@ -704,6 +728,29 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 		}
 	}
+	if (!bHasTarget && bTamed && !bSitting)
+	{
+		// A tamed wolf comes after its owner from more than 10 blocks off, up to where it stops 3 short.
+		const FVector* Nearest = nullptr;
+		double Best = 0.0;
+		for (const FVector& Player : Manager.PlayerPositions)
+		{
+			const double Distance = FVector::DistSquared(Player, Body.Position);
+			if (!Nearest || Distance < Best)
+			{
+				Nearest = &Player;
+				Best = Distance;
+			}
+		}
+		if (Nearest && (Best > 100.0 || (Goal.IsSet() && Best > 9.0)))
+		{
+			Goal = *Nearest;
+		}
+		else if (Nearest && Best <= 9.0)
+		{
+			Goal.Reset();
+		}
+	}
 	if (!bHasTarget && LeashHolderId != 0)
 	{
 		const FMcEntity* Holder = Manager.Find(LeashHolderId);
@@ -719,7 +766,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	if (!bHasTarget)
 	{
-		if (!Goal.IsSet() && !bStayPut && OfferTicks == 0 && Random.RandHelper(120) == 0)
+		if (!Goal.IsSet() && !bStayPut && !bSitting && OfferTicks == 0 && Random.RandHelper(120) == 0)
 		{
 			Goal = Body.Position + FVector(Random.FRandRange(-10.0, 10.0), Type.bFlies ? Random.FRandRange(-2.0, 3.0) : 0.0, Random.FRandRange(-10.0, 10.0));
 		}

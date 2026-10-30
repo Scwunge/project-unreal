@@ -1002,6 +1002,15 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						Spawned->Yaw = RowYaw;
 						// -McMobRowPose=<n> holds a raider's arms in that pose (McMob ArmPose).
 						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowPose="), Spawned->ArmPose);
+						// -McMobRowTame, -McMobRowSit, -McMobRowAngry and -McMobRowCollar=<dye 0..15> set a wolf's state.
+						Spawned->bTamed = FParse::Param(FCommandLine::Get(), TEXT("McMobRowTame"));
+						Spawned->bSitting = FParse::Param(FCommandLine::Get(), TEXT("McMobRowSit"));
+						Spawned->AngerTicks = FParse::Param(FCommandLine::Get(), TEXT("McMobRowAngry")) ? 1200 : 0;
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowCollar="), Spawned->CollarColor);
+						if (Spawned->Type.Name == FName(TEXT("minecraft:wolf")))
+						{
+							Spawned->UpdateWolfPose();
+						}
 					}
 				}
 			}

@@ -432,18 +432,51 @@ namespace McEntityModel
 			{
 				FModel Wolf;
 				Wolf.Kind = TEXT("minecraft:wolf");
-				Wolf.Textures = { TEXT("wolf/wolf.png") };
+				Wolf.Textures = { TEXT("wolf/wolf.png"), TEXT("wolf/wolf_collar.png") };
+				Wolf.TintedLayers = 2u;
 				// In the order of data/minecraft/wolf_variant/ (McMobLook): the files by name.
 				for (const TCHAR* Breed : { TEXT("wolf_ashen"), TEXT("wolf_black"), TEXT("wolf_chestnut"), TEXT("wolf"), TEXT("wolf_rusty"), TEXT("wolf_snowy"), TEXT("wolf_spotted"), TEXT("wolf_striped"), TEXT("wolf_woods") })
 				{
-					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed) });
+					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed), TEXT("wolf/wolf_collar.png") });
 				}
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11, -1), { Box(18, 14, -3, -4.5f, -3, 6, 9, 6) }, Flat));
+				// The poses are bits: 1 sitting, 2 angry, 4 tame. Standing is where bit 1 is clear; the collar is drawn for tame ones.
+				constexpr uint32 Standing = 0x55u;
+				constexpr uint32 Sitting = 0xAAu;
+				constexpr uint32 Tame = 0xF0u;
+				const FBox Mane = Box(18, 14, -3, -4.5f, -3, 6, 9, 6);
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11, -1), { Mane }, Flat));
 				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, Flat));
 				Wolf.Parts.Add(Part(ERole::Head, FVector(0, 12, 4),
 					{ Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) }));
 				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 13.5f, -5.5f), { Box(9, 18, -1, -8, -1, 2, 8, 2) }, 0.6f));
 				AddLegs(Wolf, 0, 18, 2, 8, 2, 2, -4, 8);
+				for (FPart& Each : Wolf.Parts)
+				{
+					if (Each.Role != ERole::Head)
+					{
+						Each.ShowPoses = Standing;
+					}
+				}
+				// Sitting: the rear on its haunches, the chest raised, the hind legs folded forward and the front ones straight down.
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Mane }, 0.7854f));
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 8, 3), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, 1.2566f));
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 3, -6), { Box(9, 18, -1, -8, -1, 2, 8, 2) }, 0.6f));
+				{
+					const FBox Leg = Box(0, 18, -1, -8, -1, 2, 8, 2);
+					Wolf.Parts.Add(Part(ERole::Static, FVector(-2, 1.3f, -2), { Leg }, 4.7124f));
+					Wolf.Parts.Add(Part(ERole::Static, FVector(2, 1.3f, -2), { Leg }, 4.7124f));
+					Wolf.Parts.Add(Part(ERole::Static, FVector(-2, 7, 4), { Leg }, 5.8119f));
+					Wolf.Parts.Add(Part(ERole::Static, FVector(2, 7, 4), { Leg }, 5.8119f));
+				}
+				for (int32 Index = Wolf.Parts.Num() - 7; Index < Wolf.Parts.Num(); ++Index)
+				{
+					Wolf.Parts[Index].ShowPoses = Sitting;
+				}
+				// The collar: the chest drawn again, a hair larger, in the collar's own picture.
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f) }, Flat, 0.0f, 0.0f, 0, 1));
+				Wolf.Parts.Last().ShowPoses = Standing & Tame;
+				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 8, 3), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f) }, 1.2566f, 0.0f, 0.0f, 0, 1));
+				Wolf.Parts.Last().ShowPoses = Sitting & Tame;
 				Models.Add(Wolf.Kind, Wolf);
 			}
 			{
@@ -696,6 +729,15 @@ namespace McEntityModel
 		return Textures;
 	}
 
+	FColor GetDyeColor(int32 Index)
+	{
+		static const FColor Colors[16] = {
+			FColor(249, 255, 254), FColor(249, 128, 29), FColor(199, 78, 189), FColor(58, 179, 218), FColor(254, 216, 61), FColor(128, 199, 31),
+			FColor(243, 139, 170), FColor(71, 79, 82), FColor(157, 157, 151), FColor(22, 156, 156), FColor(137, 50, 184), FColor(60, 68, 170),
+			FColor(131, 84, 50), FColor(94, 124, 22), FColor(176, 46, 38), FColor(29, 29, 33) };
+		return Colors[FMath::Clamp(Index, 0, 15)];
+	}
+
 	void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -814,6 +856,15 @@ namespace McEntityModel
 					continue;
 				}
 				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Anim.bBaby ? BabyScale : 1.0f, Out);
+			}
+		}
+		if (((Model.TintedLayers >> Layer) & 1u) != 0)
+		{
+			for (FColor& Color : Out.Colors)
+			{
+				Color.R = static_cast<uint8>(Color.R * Anim.Tint.R / 255);
+				Color.G = static_cast<uint8>(Color.G * Anim.Tint.G / 255);
+				Color.B = static_cast<uint8>(Color.B * Anim.Tint.B / 255);
 			}
 		}
 	}
@@ -1063,6 +1114,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	TextureOverrides.Reset();
 	LookKey = NAME_None;
 	VariantSeed = INT32_MIN;
+	WolfTextureState = 0;
 	bBabyLook = false;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
@@ -1104,11 +1156,40 @@ void UMcEntityModelComponent::SetVariantSeed(int32 InSeed)
 		return;
 	}
 	VariantSeed = InSeed;
-	TextureOverrides = Model->Variants[FMath::Abs(InSeed) % Model->Variants.Num()];
+	ApplyVariant();
+}
+
+void UMcEntityModelComponent::ApplyVariant()
+{
+	TextureOverrides = Model->Variants[FMath::Abs(VariantSeed) % Model->Variants.Num()];
+	if (Kind == TEXT("minecraft:wolf") && WolfTextureState != 0 && !TextureOverrides.IsEmpty())
+	{
+		// wolf_ashen.png -> wolf_ashen_tame.png, wolf_ashen_angry.png
+		FString& Base = TextureOverrides[0];
+		Base = Base.LeftChop(4) + (WolfTextureState == 2 ? TEXT("_tame.png") : TEXT("_angry.png"));
+	}
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
 	bFlashing = false;
+}
+
+void UMcEntityModelComponent::SetPose(int32 InPose)
+{
+	PoseLook = InPose;
+	if (Kind == TEXT("minecraft:wolf"))
+	{
+		// Tame wins over angry (a tamed wolf is never drawn angry); the picture changes only when that does.
+		const int32 State = (InPose & 4) ? 2 : (InPose & 2) ? 1 : 0;
+		if (State != WolfTextureState)
+		{
+			WolfTextureState = State;
+			if (Model && !Model->Variants.IsEmpty() && VariantSeed != INT32_MIN)
+			{
+				ApplyVariant();
+			}
+		}
+	}
 }
 
 bool UMcEntityModelComponent::HasModel() const
@@ -1343,7 +1424,11 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.bFlash = bFlash;
 	Anim.bBaby = bBabyLook;
 	Anim.bOffering = bOfferingLook;
-	Anim.Pose = PoseLook;
+	Anim.Pose = PoseLook & 31;
+	if (Model->TintedLayers != 0)
+	{
+		Anim.Tint = McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
+	}
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);

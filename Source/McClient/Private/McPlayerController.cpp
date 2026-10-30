@@ -301,6 +301,58 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
 		const int32 Id = Mob->Id;
 		const FIntVector Where(FMath::FloorToInt(Mob->Body.Position.X), FMath::FloorToInt(Mob->Body.Position.Y), FMath::FloorToInt(Mob->Body.Position.Z));
+		if (Mob->GetType() == FName(TEXT("minecraft:wolf")))
+		{
+			// A bone tames a wild wolf one time in three; a tamed wolf takes a dye for its collar, and its owner's bare hand sits it or stands it.
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (!Mob->bTamed)
+			{
+				if (Held.Item != TEXT("minecraft:bone"))
+				{
+					return false;
+				}
+				UseOne();
+				if (FMath::RandRange(0, 2) == 0)
+				{
+					Mob->bTamed = true;
+					Mob->bSitting = true;
+					Mob->OwnerName = Player;
+					Mob->AngerTicks = 0;
+					Mob->Health = 40.0f;
+				}
+				return true;
+			}
+			static const TCHAR* const Dyes[16] = { TEXT("white"), TEXT("orange"), TEXT("magenta"), TEXT("light_blue"), TEXT("yellow"), TEXT("lime"), TEXT("pink"), TEXT("gray"),
+				TEXT("light_gray"), TEXT("cyan"), TEXT("purple"), TEXT("blue"), TEXT("brown"), TEXT("green"), TEXT("red"), TEXT("black") };
+			for (int32 Color = 0; Color < 16; ++Color)
+			{
+				if (Held.Item == FName(*FString::Printf(TEXT("minecraft:%s_dye"), Dyes[Color])))
+				{
+					if (Mob->OwnerName != Player || Mob->CollarColor == Color)
+					{
+						return false;
+					}
+					Mob->CollarColor = Color;
+					UseOne();
+					return true;
+				}
+			}
+			if (Mob->OwnerName != Player)
+			{
+				return false;
+			}
+			Mob->bSitting = !Mob->bSitting;
+			return true;
+		}
 		if (Mob->GetType() == FMcZombieVillager::StaticType())
 		{
 			// A splash potion of weakness, then a golden apple, cure it; the player's hand gives up one of each.

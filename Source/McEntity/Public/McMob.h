@@ -108,6 +108,13 @@ public:
 	int32 RaidId = 0;
 	// Never despawns for being far from everyone (a swamp hut's witch).
 	bool bPersistent = false;
+	// Wolves: tamed by a player (the name is who), told to sit (it stays put, and stands again when told), and the dye of the collar (0..15, red 14).
+	bool bTamed = false;
+	bool bSitting = false;
+	int32 CollarColor = 14;
+	FString OwnerName;
+	// Sets the wolf's ArmPose, which is how its look reaches the screen: bit 1 sitting, 2 angry, 4 tame, the collar from bit 8 up.
+	void UpdateWolfPose();
 	// What the arms are doing, for how it is drawn: 0 idle, 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
 	int32 ArmPose = 0;
 	// A witch drinking: ticks left of the drink and what is in it ("healing"), and ticks until it may drink again.

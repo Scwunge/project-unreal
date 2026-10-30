@@ -100,6 +100,8 @@ namespace McEntityModel
 		int32 IllagerStyle = 0;
 		// The wings beat all the time (a vex).
 		bool bFlutter = false;
+		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
+		uint32 TintedLayers = 0;
 	};
 
 	// The model for a registry name like "minecraft:pig", null if the kind has none.
@@ -122,6 +124,7 @@ namespace McEntityModel
 		bool bOffering = false;
 		// What the arms are doing: 0 idle (an illager's folded), 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
 		int32 Pose = 0;
+		FColor Tint = FColor::White;
 	};
 	constexpr float BabyScale = 0.5f;
 	constexpr float BabyHeadScale = 1.5f;
@@ -129,6 +132,9 @@ namespace McEntityModel
 	// The pictures a villager (or zombie villager) is drawn from, by layer: the base, the biome type's hat, the
 	// profession's clothes and the level's badge (the last only for a profession that has one). Under textures/entity/.
 	MCRENDER_API TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level);
+
+	// The colour of the dye with that index (0 white .. 15 black, in the game's order), for a collar.
+	MCRENDER_API FColor GetDyeColor(int32 Index);
 
 	// The mesh of one layer of the model in the pose.
 	MCRENDER_API void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out);
@@ -189,7 +195,7 @@ public:
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
 	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
-	void SetPose(int32 InPose) { PoseLook = InPose; }
+	void SetPose(int32 InPose);
 	void SetBaby(bool bInBaby) { if (bInBaby != bBabyLook) { bBabyLook = bInBaby; bDirty = true; } }
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
 	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
@@ -202,6 +208,8 @@ private:
 	void Rebuild();
 	// The picture a layer is cut from.
 	FString GetTexturePath(int32 Layer) const;
+	// The pictures of a kind that comes in looks: the variant the seed picks, and for a wolf its tame or angry version.
+	void ApplyVariant();
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
@@ -229,6 +237,8 @@ private:
 	bool bBabyLook = false;
 	bool bOfferingLook = false;
 	int32 PoseLook = 0;
+	// A wolf's look as the textures were last chosen: 0 wild, 1 angry, 2 tame.
+	int32 WolfTextureState = 0;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;

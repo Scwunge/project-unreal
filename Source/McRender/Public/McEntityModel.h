@@ -8,6 +8,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McBanner.h"
 #include "McCore.h"
 #include "McPlayerModel.h"
 #include "ProceduralMeshComponent.h"

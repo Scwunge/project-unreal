@@ -117,6 +117,16 @@ namespace McHand
 		return FVector2D(FMath::Sin(WalkPos * PI) * 0.5, -FMath::Abs(FMath::Cos(WalkPos * PI))) * (0.06 * WalkAmount);
 	}
 
+	FTransform GetEatTransform(float Lift, float Time, float Seconds)
+	{
+		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
+		// Chewing: a quick bob five times a second, until the last fifth.
+		const float Bob = Time < Seconds * 0.8f ? FMath::Abs(FMath::Cos(Time * 5.0f * PI)) * 0.06f : 0.0f;
+		const FVector Move(6.0 * Eased, -54.0 * Eased, 4.0 * Eased + 50.0 * Bob * Eased);
+		const FRotator Turn(6.0f * Eased, 45.0f * Eased, -8.0f * Eased);
+		return FTransform(Turn, Move);
+	}
+
 	FVector GetTipInArm()
 	{
 		return FVector(0.0, 0.0, -TipLength * Units);
@@ -437,6 +447,12 @@ void UMcHandComponent::ShowHeld(FName Item)
 	HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind) * ArmRest.Inverse());
 }
 
+void UMcHandComponent::SetEating(bool bInEating, float InSeconds)
+{
+	bEating = bInEating;
+	EatSeconds = FMath::Max(InSeconds, 0.1f);
+}
+
 void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -475,7 +491,7 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	{
 		if (const APlayerController* Controller = Cast<APlayerController>(Pawn->GetController()))
 		{
-			if (Controller->IsLocalController() && !Controller->bShowMouseCursor && SwingAge >= McHand::SwingSeconds)
+			if (Controller->IsLocalController() && !Controller->bShowMouseCursor && SwingAge >= McHand::SwingSeconds && !bEating)
 			{
 				if (Controller->IsInputKeyDown(EKeys::LeftMouseButton) || Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
 				{
@@ -521,7 +537,17 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	{
 		Stroke = McHand::GetSwingStroke(FrozenSwing);
 	}
-	SetRelativeTransform(McHand::GetArmTransform(Stroke, Equip, McHand::GetBob(WalkPos, WalkAmount)));
+	EatLift = FMath::Clamp(EatLift + (bEating ? DeltaTime : -DeltaTime) / 0.25f, 0.0f, 1.0f);
+	EatTime = bEating ? EatTime + DeltaTime : 0.0f;
+	FTransform Pose = McHand::GetArmTransform(Stroke, Equip, McHand::GetBob(WalkPos, WalkAmount));
+	if (EatLift > 0.0f)
+	{
+		// Moved in the camera's space, but turned about its own middle.
+		const FTransform Eat = McHand::GetEatTransform(EatLift, EatTime, EatSeconds);
+		Pose.SetRotation(Eat.GetRotation() * Pose.GetRotation());
+		Pose.AddToTranslation(Eat.GetTranslation());
+	}
+	SetRelativeTransform(Pose);
 	// Only an empty hand shows its arm.
 	SetMeshSectionVisible(0, Shown.IsNone());
 	// Lit by the sky like the blocks around.

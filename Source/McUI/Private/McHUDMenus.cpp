@@ -6,7 +6,9 @@
 #include "McGameViewportClient.h"
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
+#include "McCore.h"
 #include "McRenderMode.h"
+#include "McSound.h"
 #include "McUI.h"
 #include "McPlayerPawn.h"
 #include "McWorldActor.h"
@@ -277,7 +279,19 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 		return true;
 	}
 #endif
-	return bOver && bMenuClick;
+	if (bOver && bMenuClick)
+	{
+		// The click is heard where the player is: on the listener, not in the world.
+		FVector Eye = FVector::ZeroVector;
+		FRotator Look;
+		if (APlayerController* Player = GetOwningPlayerController())
+		{
+			Player->GetPlayerViewPoint(Eye, Look);
+		}
+		FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName("ui.button.click"), McCoords::UnrealToBlock(Eye), 1.0f, 1.0f });
+		return true;
+	}
+	return false;
 }
 
 float AMcHUD::MenuSlider(int32 Id, const FString& Text, float Value, float X, float Y, float W, float H)

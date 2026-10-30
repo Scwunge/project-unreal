@@ -31,6 +31,12 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no stroke at the end"), FMath::IsNearlyZero(GetSwingStroke(1.0f), 1e-4f));
 	TestTrue(TEXT("full stroke a quarter in"), FMath::IsNearlyEqual(GetSwingStroke(0.25f), 1.0f, 1e-4f));
 
+	// Eating: nothing moves with the item down, it is raised and turned with it up, and it bobs only until four fifths of the meal.
+	TestTrue(TEXT("a lowered food is not moved"), GetEatTransform(0.0f, 0.5f, 1.6f).GetTranslation().IsNearlyZero());
+	TestTrue(TEXT("a raised food moves toward the middle and up"), GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Y < 0.0 && GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Z > 0.0);
+	TestTrue(TEXT("it bobs while chewed"), GetEatTransform(1.0f, 0.0f, 1.6f).GetTranslation().Z > GetEatTransform(1.0f, 0.1f, 1.6f).GetTranslation().Z);
+	TestTrue(TEXT("and holds still at the end"), FMath::IsNearlyEqual(GetEatTransform(1.0f, 1.4f, 1.6f).GetTranslation().Z, GetEatTransform(1.0f, 1.5f, 1.6f).GetTranslation().Z));
+
 	// A swing punches the hand forward, across to the left and down.
 	const FVector Struck = GetArmTransform(1.0f, 0.0f, NoBob).TransformPosition(GetTipInArm());
 	TestTrue(TEXT("a swing goes forward"), Struck.X > Tip.X);

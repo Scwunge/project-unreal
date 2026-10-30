@@ -328,6 +328,9 @@ private:
 	// The block the dig button is held on, so the server is told when it changes.
 	TOptional<FIntVector> DigSent;
 	bool bUsingSent = false;
+	// The local player is eating what is in hand, and how long that takes (for the hand's animation).
+	bool bEatingLocal = false;
+	float EatSecondsLocal = 1.6f;
 	int32 LastSelectedSent = -1;
 
 	// ---- Server side ----

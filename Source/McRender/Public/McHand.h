@@ -46,6 +46,10 @@ namespace McHand
 	// Where the held thing sits when the arm is at rest, in the camera's space.
 	MCRENDER_API FTransform GetHeldRestTransform(EHeld Kind);
 
+	// The shift in the camera's space of what is eaten: Lift is how far it is raised toward the face (0 to 1), Time and
+	// Seconds the progress of the meal. It bobs for the first four fifths of it.
+	MCRENDER_API FTransform GetEatTransform(float Lift, float Time, float Seconds);
+
 	// The fingertips in the arm's own space.
 	MCRENDER_API FVector GetTipInArm();
 
@@ -87,6 +91,9 @@ public:
 	void SetShown(bool bInShown);
 	// Starts a swing (the component also starts one for the buttons).
 	void Swing();
+	// Whether the held item is being eaten and how long the whole meal takes: the item comes up toward the face and
+	// bobs while it is chewed.
+	void SetEating(bool bInEating, float InSeconds);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -113,6 +120,11 @@ private:
 	McHand::EHeld ShownKind = McHand::EHeld::Nothing;
 	float Equip = 1.0f;
 	float SwingAge = 100.0f;
+	bool bEating = false;
+	float EatSeconds = 1.6f;
+	// How far the item is raised (0 to 1) and how long it has been eaten.
+	float EatLift = 0.0f;
+	float EatTime = 0.0f;
 	float WalkPos = 0.0f;
 	float WalkAmount = 0.0f;
 	FVector LastLocation = FVector::ZeroVector;

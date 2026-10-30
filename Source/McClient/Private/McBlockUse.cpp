@@ -1108,11 +1108,25 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:dispenser") ? TEXT("Dispenser") : Name == TEXT("minecraft:dropper") ? TEXT("Dropper")
 			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : McShulker::IsBox(Name) ? TEXT("Shulker Box") : TEXT("Chest");
 		const EMcWindowKind Kind = bHopper ? EMcWindowKind::Hopper : bDispenser ? EMcWindowKind::Dispenser : EMcWindowKind::Chest;
+		// Chests, barrels and shulker boxes creak when they open and again when they shut.
+		const TCHAR* Lid = Name == TEXT("minecraft:barrel") ? TEXT("barrel") : McShulker::IsBox(Name) ? TEXT("shulker_box") : IsChestName(Name) ? TEXT("chest") : nullptr;
+		const auto LidSound = [Lid, Pos](AMcWorldActor& Actor, bool bOpen)
+		{
+			if (Lid)
+			{
+				if (FMcEntityHost* Host = Actor.GetEntityHost())
+				{
+					Host->GetManager().PlaySound(FName(*FString::Printf(TEXT("block.%s.%s"), Lid, bOpen ? TEXT("open") : TEXT("close"))), FVector(Pos) + FVector(0.5), 0.5f, FMath::FRandRange(0.9f, 1.0f));
+				}
+			}
+		};
+		LidSound(WorldActor, true);
 		Data->OpenBlockWindow(Kind, Pos, Second.IsValid() ? FString(TEXT("Large Chest")) : Title, First, nullptr,
-			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos]()
+			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos, LidSound]()
 			{
 				if (AMcWorldActor* Actor = WeakWorld.Get())
 				{
+					LidSound(*Actor, false);
 					WriteChest(*Actor, Pos);
 					if (SecondPos != Pos)
 					{

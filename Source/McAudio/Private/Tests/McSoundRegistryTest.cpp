@@ -150,4 +150,29 @@ bool FMcSoundCacheTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPlayedEventsExistTest, "McClient.McAudio.PlayedEventsExist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPlayedEventsExistTest::RunTest(const FString& Parameters)
+{
+	// The events the game plays by name (not the block and mob ones built from a group), against the real sounds.json.
+	if (!FMcSoundRegistry::Get().EnsureLoaded())
+	{
+		AddInfo(TEXT("No sounds.json in the cache: skipped."));
+		return true;
+	}
+	const TCHAR* Events[] = {
+		TEXT("entity.generic.eat"), TEXT("entity.player.burp"), TEXT("entity.item.pickup"), TEXT("entity.experience_orb.pickup"),
+		TEXT("entity.player.levelup"), TEXT("entity.player.attack.strong"), TEXT("entity.player.attack.weak"), TEXT("entity.player.attack.crit"),
+		TEXT("block.chest.open"), TEXT("block.chest.close"), TEXT("block.barrel.open"), TEXT("block.barrel.close"),
+		TEXT("block.shulker_box.open"), TEXT("block.shulker_box.close"), TEXT("ui.button.click"),
+	};
+	FMcSoundVariant Variant;
+	for (const TCHAR* Event : Events)
+	{
+		TestTrue(FString::Printf(TEXT("%s is in sounds.json"), Event), FMcSoundRegistry::Get().Pick(FName(Event), 0.0f, Variant));
+	}
+	return true;
+}
+
 #endif

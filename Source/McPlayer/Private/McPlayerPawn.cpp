@@ -102,6 +102,24 @@ AMcPlayerPawn::AMcPlayerPawn()
 #endif
 }
 
+namespace
+{
+	// How long a food takes to eat: 1.6 seconds unless it says otherwise.
+	float GetEatSeconds(const FMcItemStack& Held)
+	{
+		if (const TSharedPtr<FJsonValue> Consumable = Held.Get(TEXT("minecraft:consumable")))
+		{
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			double Value = 0.0;
+			if (Consumable->TryGetObject(Object) && (*Object)->TryGetNumberField(TEXT("consume_seconds"), Value))
+			{
+				return static_cast<float>(Value);
+			}
+		}
+		return 1.6f;
+	}
+}
+
 void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -323,6 +341,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden);
 		const FMcItemStack& Held = Data->GetSelected();
 		Arm->SetHeld(Held.IsEmpty() ? NAME_None : Held.Item);
+		Arm->SetEating(bEatingLocal && !Held.IsEmpty(), EatSecondsLocal);
 	}
 #endif
 
@@ -482,6 +501,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		if (bBlocked || bSleeping)
 		{
 			StopDigging();
+			bEatingLocal = false;
 			if (bUsingSent)
 			{
 				bUsingSent = false;
@@ -588,6 +608,8 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	FMcFoodData Food;
 	const bool bHoldingFood = !Held.IsEmpty() && FMcItemRegistry::Get().GetFood(Held.Item, Food);
 	const bool bEating = bHoldingFood && !bCreative && Player.IsInputKeyDown(EKeys::RightMouseButton) && McSurvival::CanEat(Data->Stats, Food);
+	bEatingLocal = bEating;
+	EatSecondsLocal = bHoldingFood ? GetEatSeconds(Held) : 1.6f;
 	if (bEating != bUsingSent)
 	{
 		bUsingSent = bEating;
@@ -893,6 +915,11 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative))
 	{
 		return;
+	}
+	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
+	{
+		// A full swing sounds strong (or a critical one), a rushed one weak.
+		Entities->PlaySound(FName(bCritical && Strength > 0.9f ? "entity.player.attack.crit" : Strength > 0.9f ? "entity.player.attack.strong" : "entity.player.attack.weak"), Body.Position + FVector(0.0, 1.0, 0.0));
 	}
 	if (!Data->bCreative)
 	{
@@ -1304,8 +1331,21 @@ void AMcPlayerPawn::ServerGameTick()
 
 		if (Entities && Stats.Health > 0.0f)
 		{
-			McSurvival::CollectItems(*Entities, Body.GetBox(), *Data->Inventory);
-			McSurvival::CollectXp(*Entities, Body.GetBox(), Stats);
+			const FVector Ears = Body.Position + FVector(0.0, 0.5, 0.0);
+			const int32 LevelBefore = Stats.XpLevel;
+			if (McSurvival::CollectItems(*Entities, Body.GetBox(), *Data->Inventory) > 0)
+			{
+				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
+			}
+			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats) > 0)
+			{
+				Entities->PlaySound(FName("entity.experience_orb.pickup"), Ears, 0.1f, 0.5f * ((FMath::FRand() - FMath::FRand()) * 0.7f + 1.8f));
+			}
+			if (Stats.XpLevel > LevelBefore)
+			{
+				// Every fifth level rings louder.
+				Entities->PlaySound(FName("entity.player.levelup"), Ears, Stats.XpLevel % 5 == 0 ? 1.0f : 0.75f, 1.0f);
+			}
 		}
 
 		// Eating takes a while with the food held: 1.6 seconds unless the food says otherwise.
@@ -1313,19 +1353,21 @@ void AMcPlayerPawn::ServerGameTick()
 		const FMcItemStack& Held = Data->GetSelected();
 		if (bServerUsing && !Data->bCreative && !Held.IsEmpty() && Items.GetFood(Held.Item, Food) && McSurvival::CanEat(Stats, Food))
 		{
-			float Seconds = 1.6f;
-			if (const TSharedPtr<FJsonValue> Consumable = Held.Get(TEXT("minecraft:consumable")))
+			const float Seconds = GetEatSeconds(Held);
+			const int32 MealTicks = FMath::Max(1, FMath::RoundToInt32(Seconds * 20.0f));
+			++EatTicks;
+			if (Entities && EatTicks < MealTicks && EatTicks > 6 && EatTicks % 4 == 0)
 			{
-				const TSharedPtr<FJsonObject>* Object = nullptr;
-				double Value = 0.0;
-				if (Consumable->TryGetObject(Object) && (*Object)->TryGetNumberField(TEXT("consume_seconds"), Value))
-				{
-					Seconds = static_cast<float>(Value);
-				}
+				// Munching, every fourth tick after the first few.
+				Entities->PlaySound(FName("entity.generic.eat"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, FMath::FRand() * 0.1f + 0.9f);
 			}
-			if (++EatTicks >= FMath::Max(1, FMath::RoundToInt32(Seconds * 20.0f)))
+			if (EatTicks >= MealTicks)
 			{
 				EatTicks = 0;
+				if (Entities)
+				{
+					Entities->PlaySound(FName("entity.player.burp"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, FMath::FRand() * 0.1f + 0.9f);
+				}
 				McSurvival::Eat(Stats, Food);
 				const FName Remainder = Items.GetUseRemainder(Held.Item);
 				FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);

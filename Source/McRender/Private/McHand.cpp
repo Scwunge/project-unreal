@@ -127,14 +127,24 @@ namespace McHand
 		return FTransform(Turn, Move);
 	}
 
+	FQuat GetBowStandRotation()
+	{
+		// The picture's up-left diagonal (where the arrow points) goes forward, its other diagonal (the limbs) goes up,
+		// and its face turns to the right: the bow seen side-on, as it is held to shoot. Mesh x, y, z in the camera's space.
+		const double R = FMath::Sqrt(0.5);
+		return MakeBasis(FVector(0, 1, 0), FVector(-R, 0, R), FVector(R, 0, R));
+	}
+
 	FTransform GetDrawTransform(float Lift, float Seconds)
 	{
 		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
-		// A full draw (a second) trembles a little.
-		const float Shake = Seconds >= 1.0f ? FMath::Sin(Seconds * 2.0f * PI * 8.0f) * 0.4f : 0.0f;
-		const FVector Move(14.0 * Eased, 109.0 * Eased + Shake * 0.5f, -121.0 * Eased + Shake);
-		const FRotator Turn(-6.0f * Eased, -25.0f * Eased, -10.0f * Eased);
-		return FTransform(Turn, Move, FVector(1.0 + 2.2 * Eased));
+		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
+		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
+		// held close to the eye, in the camera's space (forward, right, up) moved from where it rests and turned a little about
+		// its own middle. The size is the idle one; being nearer is what makes it larger.
+		const FVector Move = FVector(-42.0, -31.0, 1.0) * Eased;
+		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 10.0f, 8.0f).Quaternion(), Eased);
+		return FTransform(Turn, Move, FVector::OneVector);
 	}
 
 	FVector GetTipInArm()
@@ -277,6 +287,54 @@ namespace McHand
 			const double X = Layer * 0.02;
 			const FVector Corners[4] = { FVector(X, -H, -H), FVector(X, H, -H), FVector(X, H, H), FVector(X, -H, H) };
 			AddQuad(Out, Corners, FVector::ForwardVector, UV, Layer == 0 ? FColor::White : FColor(215, 215, 215, 255));
+		}
+	}
+
+	void BuildExtrudedMesh(const TArray<FColor>& Pixels, int32 Width, float VMax, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Half = 0.5 / 16.0;
+		const double Pixel = 1.0 / Width;
+		const FVector2D UV[4] = { FVector2D(0, VMax), FVector2D(1, VMax), FVector2D(1, 0), FVector2D(0, 0) };
+		for (int32 Side = -1; Side <= 1; Side += 2)
+		{
+			const double X = Side * Half;
+			const FVector Corners[4] = { FVector(X, -0.5, -0.5), FVector(X, 0.5, -0.5), FVector(X, 0.5, 0.5), FVector(X, -0.5, 0.5) };
+			AddQuad(Out, Corners, FVector(Side, 0, 0), UV, FColor::White);
+		}
+		auto Solid = [&](int32 Column, int32 Row) { return Column >= 0 && Column < Width && Row >= 0 && Row < Width && Pixels.IsValidIndex(Row * Width + Column) && Pixels[Row * Width + Column].A > 0; };
+		for (int32 Row = 0; Row < Width; ++Row)
+		{
+			for (int32 Column = 0; Column < Width; ++Column)
+			{
+				if (!Solid(Column, Row))
+				{
+					continue;
+				}
+				const double Left = Column * Pixel - 0.5, Right = Left + Pixel, Top = 0.5 - Row * Pixel, Bottom = Top - Pixel;
+				const FVector2D Centre((Column + 0.5) * Pixel, (Row + 0.5) * Pixel * VMax);
+				const FVector2D Same[4] = { Centre, Centre, Centre, Centre };
+				// Each way out of this pixel: the edge's two ends, and which way it faces.
+				struct FEdge { int32 DC, DR; FVector A, B; FVector Normal; float Shade; };
+				const FEdge Edges[4] = {
+					{ -1, 0, FVector(-Half, Left, Bottom), FVector(-Half, Left, Top), FVector(0, -1, 0), 0.8f },
+					{ 1, 0, FVector(-Half, Right, Top), FVector(-Half, Right, Bottom), FVector(0, 1, 0), 0.8f },
+					{ 0, -1, FVector(-Half, Left, Top), FVector(-Half, Right, Top), FVector(0, 0, 1), 1.0f },
+					{ 0, 1, FVector(-Half, Right, Bottom), FVector(-Half, Left, Bottom), FVector(0, 0, -1), 0.6f } };
+				for (const FEdge& Edge : Edges)
+				{
+					if (Solid(Column + Edge.DC, Row + Edge.DR))
+					{
+						continue;
+					}
+					const FVector Quad[4] = { Edge.A, Edge.B, FVector(Half, Edge.B.Y, Edge.B.Z), FVector(Half, Edge.A.Y, Edge.A.Z) };
+					AddQuad(Out, Quad, Edge.Normal, Same, Multiply(FColor::White, Edge.Shade));
+				}
+			}
 		}
 	}
 
@@ -433,7 +491,16 @@ void UMcHandComponent::ShowHeld(FName Item)
 	McPlayerModel::FMeshData Data;
 	if (Pictures.Kind == McHand::EHeld::Flat)
 	{
-		McHand::BuildFlatMesh(SideV, Data);
+		TArray<FColor> Pixels;
+		int32 PixelWidth = 0, PixelHeight = 0;
+		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight) && PixelWidth > 0 && PixelHeight >= PixelWidth)
+		{
+			McHand::BuildExtrudedMesh(Pixels, PixelWidth, SideV, Data);
+		}
+		else
+		{
+			McHand::BuildFlatMesh(SideV, Data);
+		}
 		MakeSection(*HeldMesh, 0, Data);
 		HeldMesh->SetMaterial(0, Side);
 	}
@@ -560,9 +627,17 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	if (DrawLift > 0.0f)
 	{
 		const FTransform Draw = McHand::GetDrawTransform(DrawLift, DrawSeconds);
-		Pose.SetRotation(Draw.GetRotation() * Pose.GetRotation());
-		Pose.AddToTranslation(Draw.GetTranslation());
-		Pose.SetScale3D(Pose.GetScale3D() * Draw.GetScale3D());
+		const FTransform Rest = McHand::GetHeldRestTransform(ShownKind);
+		// Only the held thing moves, in the camera's space; the arm stays where it was.
+		const float Eased = DrawLift * DrawLift * (3.0f - 2.0f * DrawLift);
+		const FQuat Stand = FQuat::Slerp(Rest.GetRotation(), McHand::GetBowStandRotation(), Eased);
+		HeldMesh->SetRelativeTransform(FTransform(Draw.GetRotation() * Stand, Rest.GetTranslation() + Draw.GetTranslation(), Rest.GetScale3D()) * ArmRest.Inverse());
+		bDrawApplied = true;
+	}
+	else if (bDrawApplied)
+	{
+		HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind) * ArmRest.Inverse());
+		bDrawApplied = false;
 	}
 	if (EatLift > 0.0f)
 	{

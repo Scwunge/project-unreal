@@ -726,8 +726,8 @@ void AMcHUD::ApplyOptions()
 	bSettingsApplied = true;
 	if (APlayerController* Controller = GetOwningPlayerController())
 	{
-		// The game's near plane is 0.05 blocks; the engine's 10 units would cut the hand held up to the camera.
-		Controller->ConsoleCommand(TEXT("r.SetNearClipPlane 2"));
+		// The game's near plane is 0.05 blocks; the engine's 10 units would cut the hand held up to the camera, and the drawn bow's string comes within a unit or two of it.
+		Controller->ConsoleCommand(TEXT("r.SetNearClipPlane 1"));
 	}
 	APawn* Pawn = GetOwningPawn();
 	SettingsPawn = Pawn;

@@ -63,6 +63,28 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 	McPlayerModel::FMeshData Flat, Sides, Top;
 	BuildFlatMesh(1.0f, Flat);
 	TestEqual(TEXT("a flat item is three layers, two sides each"), Flat.Triangles.Num(), 3 * 2 * 6);
+	// A picture of one opaque pixel stands as a one-pixel-thick slab: front, back and four edges.
+	{
+		TArray<FColor> Pixels;
+		Pixels.Init(FColor(0, 0, 0, 0), 16);
+		Pixels[5] = FColor::White;
+		McPlayerModel::FMeshData Slab;
+		BuildExtrudedMesh(Pixels, 4, 1.0f, Slab);
+		TestEqual(TEXT("one pixel is six faces, each seen from both sides"), Slab.Triangles.Num(), 6 * 2 * 6);
+		Pixels[6] = FColor::White;
+		BuildExtrudedMesh(Pixels, 4, 1.0f, Slab);
+		TestEqual(TEXT("two neighbours hide the edges between them"), Slab.Triangles.Num(), (2 + 6) * 2 * 6);
+		const FBox Bounds(Slab.Positions);
+		TestTrue(TEXT("a pixel thick"), FMath::IsNearlyEqual(Bounds.Max.X - Bounds.Min.X, 100.0 / 16.0, 0.01));
+	}
+	// A drawn bow's arrow (the picture's up-left diagonal) points forward and its limbs (the other diagonal) up.
+	{
+		const double R = FMath::Sqrt(0.5);
+		const FVector Arrow = GetBowStandRotation().RotateVector(FVector(0, -R, R));
+		const FVector Limbs = GetBowStandRotation().RotateVector(FVector(0, R, R));
+		TestTrue(TEXT("the arrow points forward"), Arrow.Equals(FVector(1, 0, 0), 0.001));
+		TestTrue(TEXT("the limbs stand up"), Limbs.Equals(FVector(0, 0, 1), 0.001));
+	}
 	BuildCubeSidesMesh(FColor::White, 1.0f, Sides);
 	BuildCubeTopMesh(FColor::White, 1.0f, Top);
 	TestEqual(TEXT("a cube's four sides"), Sides.Triangles.Num(), 4 * 2 * 6);

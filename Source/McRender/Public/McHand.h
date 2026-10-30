@@ -71,7 +71,11 @@ namespace McHand
 	// The meshes, in the arm's or the held thing's own space. Cubes are 1 block, flats 1 block wide; the held thing's
 	// transform shrinks them.
 	MCRENDER_API void BuildArmMesh(McPlayerModel::FMeshData& Out);
+	// How the held bow is turned while it is drawn, in the camera's space.
+	MCRENDER_API FQuat GetBowStandRotation();
 	MCRENDER_API void BuildFlatMesh(float VMax, McPlayerModel::FMeshData& Out);
+	// The picture's opaque pixels stood one pixel thick, as the game's generated item models are: a front and a back face and a narrow face on every edge between a pixel and a see-through one. Pixels are rows from the top, Width across, and the top Width rows are the picture.
+	MCRENDER_API void BuildExtrudedMesh(const TArray<FColor>& Pixels, int32 Width, float VMax, McPlayerModel::FMeshData& Out);
 	MCRENDER_API void BuildCubeSidesMesh(const FColor& Tint, float VMax, McPlayerModel::FMeshData& Out);
 	MCRENDER_API void BuildCubeTopMesh(const FColor& Tint, float VMax, McPlayerModel::FMeshData& Out);
 }
@@ -131,6 +135,7 @@ private:
 	bool bDrawing = false;
 	float DrawSeconds = 0.0f;
 	float DrawLift = 0.0f;
+	bool bDrawApplied = false;
 	float WalkPos = 0.0f;
 	float WalkAmount = 0.0f;
 	FVector LastLocation = FVector::ZeroVector;

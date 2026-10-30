@@ -191,4 +191,48 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHorsePoseTest, "McClient.McRender.HorsePose",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcHorsePoseTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	const FModel* Horse = Find(TEXT("minecraft:horse"));
+	if (!TestNotNull(TEXT("The horse has a model"), Horse))
+	{
+		return false;
+	}
+	// One box of one part alone in the rest pose; its faces come in the order south, north, east, west, up, down, four
+	// vertices each. The mesh is in Unreal units with the game's z as y and its y as z.
+	const auto FaceCentre = [&](int32 PartIndex, int32 BoxIndex, int32 Face)
+	{
+		FModel Alone = *Horse;
+		Alone.Parts = { Horse->Parts[PartIndex] };
+		Alone.Parts[0].Boxes = { Horse->Parts[PartIndex].Boxes[BoxIndex] };
+		Alone.Parts[0].Role = ERole::Static;
+		McPlayerModel::FMeshData Data;
+		BuildMesh(Alone, FAnim(), 0, Data);
+		FVector Sum = FVector::ZeroVector;
+		for (int32 Corner = 0; Corner < 4; ++Corner)
+		{
+			Sum += Data.Positions[Face * 4 + Corner];
+		}
+		return Sum / 4.0;
+	};
+
+	// The head (part 2, box 1) lies along z: its nose end (the south face) is further forward and lower than its back end,
+	// which is how a neck leaning forward carries it.
+	const FVector Nose = FaceCentre(2, 1, 0);
+	const FVector Back = FaceCentre(2, 1, 1);
+	TestTrue(TEXT("The nose is further forward than the back of the head"), Nose.Y > Back.Y);
+	TestTrue(TEXT("The nose is lower than the back of the head"), Nose.Z < Back.Z);
+	// The tail hangs from its root (the top face) with its tip (the bottom) lower and further back.
+	const FVector Root = FaceCentre(1, 0, 4);
+	const FVector Tip = FaceCentre(1, 0, 5);
+	TestTrue(TEXT("The tail's tip is lower than its root"), Tip.Z < Root.Z);
+	TestTrue(TEXT("The tail's tip is further back than its root"), Tip.Y < Root.Y);
+	return true;
+}
+
 #endif

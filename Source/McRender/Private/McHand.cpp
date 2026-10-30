@@ -144,7 +144,7 @@ namespace McHand
 		// The item models' display.firstperson_righthand: item/generated and item/handheld give a flat item
 		// rotation (0, -90, 25), translation (1.13, 3.2, 1.13) pixels, scale 0.68; block/block a block rotation
 		// (0, 45, 0), no translation, scale 0.4. The model (x right, y up, z to the viewer, centred, 16 pixels a block)
-		// is scaled, rotated about z then y (the other way round from a right-handed y: the camera looks along the model's -z) then x, moved by the translation, and put at the hand's anchor.
+		// is scaled, rotated about z, y then x (the angles turn the other way from a right-handed model's, all three), moved by the translation, and put at the hand's anchor.
 		const bool bCube = Kind == EHeld::Cube;
 		const FVector Rotation = bCube ? FVector(0.0, 45.0, 0.0) : FVector(0.0, -90.0, 25.0);
 		const FVector Translation = bCube ? FVector::ZeroVector : FVector(1.13, 3.2, 1.13);
@@ -162,7 +162,7 @@ namespace McHand
 		auto Image = [&](const FVector& Mesh)
 		{
 			const FVector Model = MeshToModel(Mesh) * ItemScale;
-			return ToCamera(RotateX(RotateY(RotateZ(Model, Rotation.Z), -Rotation.Y), Rotation.X));
+			return ToCamera(RotateX(RotateY(RotateZ(Model, -Rotation.Z), -Rotation.Y), -Rotation.X));
 		};
 		const FVector Origin = (HeldAnchor + ToCamera(Translation / 16.0)) * Units;
 		return FTransform(FMatrix(Image(FVector(1, 0, 0)), Image(FVector(0, 1, 0)), Image(FVector(0, 0, 1)), Origin));

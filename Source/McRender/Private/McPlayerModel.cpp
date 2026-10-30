@@ -147,9 +147,9 @@ namespace McPlayerModel
 			const FVector Min = Def.BoxMin - FVector(Inflate);
 			const FVector Max = Def.BoxMin + FVector(Def.Size.X, Def.Size.Y, Def.Size.Z) + FVector(Inflate);
 
-			// Turn the part about its pivot (roll, tip, then twist), put it there, and lean and turn the whole model
-			// about the feet.
-			const FQuat PartRotation = FQuat(FVector::YAxisVector, Part.YawRad) * FQuat(FVector::XAxisVector, Part.PitchRad) * FQuat(FVector::ZAxisVector, Part.RollRad);
+			// Turn the part about its pivot (tip, twist, then roll: a wing tipped back is then swung out), put it there,
+			// and lean and turn the whole model about the feet.
+			const FQuat PartRotation = FQuat(FVector::ZAxisVector, Part.RollRad) * FQuat(FVector::YAxisVector, Part.YawRad) * FQuat(FVector::XAxisVector, Part.PitchRad);
 			const FQuat ModelRotation = FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(Pose.BodyYaw)) * FQuat(FVector::XAxisVector, Pose.TiltRad);
 			const FVector Flip(bMirror ? -1.0 : 1.0, 1.0, 1.0);
 			auto Place = [&](const FVector& Local)

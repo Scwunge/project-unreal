@@ -33,6 +33,7 @@
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
 #include "McScreenLayout.h"
+#include "McTotem.h"
 #include "McUI.h"
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
@@ -1406,6 +1407,16 @@ void AMcHUD::DrawHUD()
 	if (!Player)
 	{
 		return;
+	}
+	// A totem that just saved the player flies up at them, spinning (its picture narrows edge on, then shows its back).
+	if (const McTotem::FFlight Flight = McTotem::GetFlight(Player->GetTotemAge()); Flight.bVisible)
+	{
+		const float Size = Flight.Size * static_cast<float>(Height);
+		const float Face = FMath::Cos(Flight.Turn);
+		const float Wide = Size * FMath::Abs(Face);
+		const float X = static_cast<float>(Flight.Centre.X * Width) - Wide / 2.0f;
+		const float Y = static_cast<float>(Flight.Centre.Y * Height) - Size / 2.0f;
+		DrawRegion(LoadSprite(TEXT("textures/item/totem_of_undying.png")), X, Y, Wide, Size, Face < 0.0f ? 16.0f : 0.0f, 0.0f, Face < 0.0f ? -16.0f : 16.0f, 16.0f);
 	}
 	const int32 Selected = Data ? Data->SelectedSlot : Player->SelectedSlot;
 	DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar.png")), Layout.Hotbar.X, Layout.Hotbar.Y, 182, 22);

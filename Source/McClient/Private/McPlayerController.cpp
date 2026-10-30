@@ -733,6 +733,25 @@ void AMcPlayerController::StartDevScreenshot()
 			}
 		}), FMath::Max(GlideDelay, 0.1f), false);
 	}
+	// -McTotem=seconds: the host's player holds a Totem of Undying in the off hand and, after that long, takes a blow
+	// that would kill them.
+	float TotemDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McTotem="), TotemDelay))
+	{
+		if (AMcPlayerPawn* Holder = Cast<AMcPlayerPawn>(GetPawn()); Holder && Holder->Data && Holder->Data->Offhand)
+		{
+			Holder->Data->Offhand->Set(0, FMcItemStack(FName("minecraft:totem_of_undying"), 1));
+		}
+		FTimerHandle TotemTimer;
+		GetWorldTimerManager().SetTimer(TotemTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Holder = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				Holder->ServerHurt(100.0f, McSurvival::EDamage::Generic);
+				UE_LOG(LogMcClient, Display, TEXT("Dealt a killing blow"));
+			}
+		}), FMath::Max(TotemDelay, 0.1f), false);
+	}
 	// -McPlaceHeld=x,y,z,seconds: puts the held block at that spot after that long, as a placing hand would.
 	FString PlaceSpec;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-McPlaceHeld="), PlaceSpec, /*bShouldStopOnSeparator=*/ false))

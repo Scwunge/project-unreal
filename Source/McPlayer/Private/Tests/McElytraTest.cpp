@@ -15,45 +15,65 @@ bool FMcElytraTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Glides for a minute at a fixed pitch from a gentle start; the steady velocity, in blocks a tick.
-	const auto Settle = [](float Pitch, int32 Boosted = 0)
+	// Glides from a jump off a high place (falling at 0.44 blocks a tick, as vanilla is when the script's glide starts)
+	// through looks held for so many ticks each; the velocity after, in blocks a tick, and the height lost over the last.
+	struct FLeg { float Pitch; int32 Ticks; };
+	const auto Fly = [](std::initializer_list<FLeg> Legs, int32 Boosted = 0, double* LastDrop = nullptr)
 	{
-		FVector Velocity(0.0, 0.0, 0.5);
-		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		FVector Velocity(0.0, -0.44, 0.0);
+		int32 Left = 0;
+		for (const FLeg& Leg : Legs)
 		{
-			Velocity = McElytra::Glide(Velocity, 0.0f, Pitch);
-			if (Tick >= 1200 - Boosted)
+			Left += Leg.Ticks;
+		}
+		for (const FLeg& Leg : Legs)
+		{
+			double Drop = 0.0;
+			for (int32 Tick = 0; Tick < Leg.Ticks; ++Tick, --Left)
 			{
-				Velocity = McElytra::Boost(Velocity, 0.0f, Pitch);
+				Velocity = McElytra::Glide(Velocity, 0.0f, Leg.Pitch);
+				if (Left <= Boosted)
+				{
+					Velocity = McElytra::Boost(Velocity, 0.0f, Leg.Pitch);
+				}
+				Drop -= Velocity.Y;
+			}
+			if (LastDrop)
+			{
+				*LastDrop = Drop;
 			}
 		}
 		return Velocity;
 	};
 
-	// Level flight goes about 10 blocks for each one lost, at about 12 metres a second.
+	// Measured in vanilla (mc-reference scripts/glide_steady.txt): 10 s level runs at 1.18 blocks a tick and sinks
+	// 0.135; 7 s at 20 down after 21 s level, 1.85 ahead; 10 s straight down after 10 s level, 3.0 a tick down.
 	{
-		const FVector Level = Settle(0.0f);
-		const double Ahead = FVector2D(Level.X, Level.Z).Size();
+		const FVector Level = Fly({ { 0.0f, 200 } });
 		TestTrue(TEXT("level flight heads the way it looks"), Level.Z > 0.0 && FMath::Abs(Level.X) < 1e-6);
-		TestTrue(TEXT("level flight sinks slowly"), Level.Y < 0.0 && Ahead / -Level.Y > 9.0 && Ahead / -Level.Y < 11.0);
-		TestTrue(TEXT("at about 12 m/s"), Level.Size() * 20.0 > 11.0 && Level.Size() * 20.0 < 13.5);
+		TestTrue(TEXT("10 s of level flight runs at about 1.18 a tick"), Level.Z > 1.0 && Level.Z < 1.35);
+		TestTrue(TEXT("and sinks about 0.135 a tick"), Level.Y < -0.1 && Level.Y > -0.2);
+		const FVector Long = Fly({ { 0.0f, 1200 } });
+		TestTrue(TEXT("a long level glide goes about 10 blocks for each one lost (wiki)"), Long.Z / -Long.Y > 8.0 && Long.Z / -Long.Y < 13.0);
+		const FVector Down = Fly({ { 0.0f, 420 }, { 20.0f, 140 } });
+		TestTrue(TEXT("20 down holds about 1.85 a tick"), Down.Z > 1.6 && Down.Z < 2.1);
+		double Drop = 0.0;
+		Fly({ { 0.0f, 200 }, { 90.0f, 200 } }, 0, &Drop);
+		TestTrue(TEXT("straight down averages about 3 a tick over 10 s"), Drop / 200.0 > 2.7 && Drop / 200.0 < 3.3);
 	}
-	// Straight down tops out near 68 m/s, and a 45 degree dive between the two.
+	// Climbing steeply loses its speed ahead and stalls.
 	{
-		const double Dive = Settle(90.0f).Size() * 20.0;
-		const double Half = Settle(45.0f).Size() * 20.0;
-		TestTrue(TEXT("a dive tops out near 68 m/s"), Dive > 62.0 && Dive < 74.0);
-		TestTrue(TEXT("a 45 degree dive is in between"), Half > 30.0 && Half < Dive);
-	}
-	// Climbing steeply loses speed and stalls.
-	{
-		const FVector Climb = Settle(-60.0f);
-		TestTrue(TEXT("a steep climb stalls and sinks"), Climb.Size() * 20.0 < 9.0 && Climb.Y < 0.0);
+		const FVector Climb = Fly({ { 0.0f, 200 }, { -60.0f, 1200 } });
+		TestTrue(TEXT("a steep climb stalls and sinks"), Climb.Z < 0.2 && Climb.Y < 0.0);
 	}
 	// A rocket pulls toward 33.5 blocks a second along the look.
 	{
-		const FVector Boosted = Settle(0.0f, 40);
-		TestTrue(TEXT("a rocket speeds a level glide up to near 33.5 m/s"), Boosted.Z * 20.0 > 25.0 && Boosted.Size() * 20.0 < 34.0);
+		const FVector Boosted = Fly({ { 0.0f, 1200 } }, 40);
+		TestTrue(TEXT("a rocket speeds a level glide up to near 33.5 m/s"), Boosted.Z * 20.0 > 32.0 && Boosted.Size() * 20.0 < 34.0);
+		// Measured (scripts/glide_speed.txt): the gap to the rocket's speed about halves each tick.
+		const FVector Start(0.0, 0.0, 1.0);
+		const FVector Next = McElytra::Boost(Start, 0.0f, 0.0f);
+		TestTrue(TEXT("halving the gap each tick"), FMath::IsNearlyEqual((33.5 / 20.0 - Next.Z) / (33.5 / 20.0 - Start.Z), 0.5, 0.05));
 		FRandomStream Random(3);
 		int32 Low = MAX_int32, High = 0;
 		for (int32 Roll = 0; Roll < 2000; ++Roll)

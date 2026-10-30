@@ -314,6 +314,20 @@ private:
 	UFUNCTION(Client, Reliable)
 	void ClientBoost(int32 Ticks);
 
+	// ---- Totem of Undying (McTotem.cpp) ----
+	// Server: a blow that would have killed: a totem in either hand is used up instead (McTotem::TryUse), with its
+	// sound and its show for everyone. True if it saved the player.
+	bool ServerTryTotem();
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastTotem();
+	// Every machine: ticks since the totem went off, -1 if not lately; the sparks fly for the first ParticleTicks.
+	float TotemAge = -1.0f;
+	void TickTotem(float DeltaSeconds);
+public:
+	// Ticks since this player's totem went off (its flight across their screen), or -1.
+	float GetTotemAge() const { return TotemAge; }
+private:
+
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;
 

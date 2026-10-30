@@ -1,6 +1,6 @@
 // Fishing (minecraft.wiki: "Fishing", "Fishing Rod"): the bobber a rod casts. It flies under gravity (0.03 a tick) and
-// drag (0.99 across, 0.92 up and down), hooks the first mob, vehicle or item it touches, and otherwise lands: on a
-// block, where it lies (and goes after 1200 ticks), or in water, where it floats at the surface and waits for a bite.
+// drag (0.92 a tick; both measured from vanilla), hooks the first mob, vehicle or item it touches, and otherwise lands: on a
+// block, where it lies until reeled in, or in water, where it floats at the surface and waits for a bite.
 //
 // The wait is 100 to 600 ticks, 100 less at each end for each level of Lure (a wait that comes out at nothing is
 // over at once). Each tick counts it down by 1, but under a roof (no sky) only half the ticks count, and in rain each
@@ -30,8 +30,6 @@ namespace McFishing
 	constexpr int32 MaxBite = 40;
 	// The angler loses the bobber beyond this, and anything it holds is let go.
 	constexpr double MaxDistance = 32.0;
-	// Ticks a bobber may lie on the ground before it goes.
-	constexpr int32 GroundTicks = 1200;
 
 	// What reeling in costs the rod.
 	constexpr int32 CatchDamage = 1;
@@ -69,7 +67,7 @@ public:
 	};
 
 	// Casts from the angler's eye (block coordinates) along their look (Minecraft yaw and pitch, degrees): a little
-	// below and ahead of the eye, at about 0.6 a tick with a small spread.
+	// below and ahead of the eye, at 1.1 a tick looking level and harder the steeper (measured from vanilla).
 	void Cast(const FVector& Eye, float LookYaw, float LookPitch, FRandomStream& Random);
 
 	struct FReel
@@ -104,7 +102,8 @@ public:
 	bool bOpenWater = true;
 
 	// The thrown catch's speed toward the angler from the bobber at From: a tenth of the way, with a lift by the
-	// square root of the distance so it arcs over to them.
+	// square root of the distance so it arcs over to them. Not yet measured from vanilla (a catch can't be timed from
+	// a script); to be checked against a recorded catch.
 	static FVector ThrowToward(const FVector& From, const FVector& To);
 
 private:

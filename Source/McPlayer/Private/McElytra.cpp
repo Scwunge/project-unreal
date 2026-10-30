@@ -16,26 +16,35 @@ FVector McElytra::LookOf(float Yaw, float Pitch)
 
 FVector McElytra::Glide(const FVector& Velocity, float Yaw, float Pitch)
 {
-	const FVector Look = LookOf(Yaw, Pitch);
-	const double CosPitch = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(Pitch)));
-	FVector Out = Velocity;
-	const double Speed = Velocity.Size();
-	const double Along = FVector::DotProduct(Velocity, Look);
-	if (Speed > 1e-9 && Along > 0.0)
+	const double PitchRad = FMath::DegreesToRadians(static_cast<double>(Pitch));
+	const double CosPitch = FMath::Abs(FMath::Cos(PitchRad));
+	double Up = Velocity.Y;
+	double Ahead = FVector2D(Velocity.X, Velocity.Z).Size();
+	// The wings hold up most of the weight looking level and none looking straight down.
+	Up -= Gravity * (1.0 - Carry * FMath::Pow(CosPitch, CarryPower));
+	if (Up < 0.0)
 	{
-		// Lift, square across the way it moves (so it turns the motion and adds no speed), toward up.
-		const FVector Way = Velocity / Speed;
-		const FVector Across = FVector(0.0, 1.0, 0.0) - Way * Way.Y;
-		if (Across.SizeSquared() > 1e-12)
-		{
-			Out += Across.GetSafeNormal() * (FMath::Min(LiftPerSpeed * Along, MaxLift) * CosPitch * CosPitch);
-		}
+		// Some of the fall is turned into speed ahead, less the steeper the look.
+		const double Gain = -Up * FallToAhead * CosPitch;
+		Up += Gain;
+		Ahead += Gain;
 	}
-	Out -= Velocity * (Drag + DragPerSpeed * Speed);
-	Out.Y -= Gravity;
-	// The body swings round to fly the way it looks, keeping its speed.
-	const double After = Out.Size();
-	return Out + (Look * After - Out) * Turn;
+	if (Pitch < 0.0f)
+	{
+		// Looking up trades speed ahead for height.
+		const double Climb = Ahead * FMath::Sin(-PitchRad) * AheadToClimb;
+		Up += Climb;
+		Ahead -= Climb;
+	}
+	const double Keep = 1.0 - DragPerSpeed * FMath::Sqrt(Up * Up + Ahead * Ahead);
+	Up *= KeepUp * Keep;
+	Ahead *= Keep;
+	// The motion along the ground is pulled toward the look's heading at the same speed, so a sharp turn loses speed.
+	const FVector Look = LookOf(Yaw, 0.0f);
+	const FVector2D Was(Velocity.X, Velocity.Z);
+	const FVector2D Way = Was.SizeSquared() > 1e-12 ? Was.GetSafeNormal() * Ahead : FVector2D(Look.X, Look.Z) * Ahead;
+	const FVector2D Flat = Way + (FVector2D(Look.X, Look.Z) * Ahead - Way) * Turn;
+	return FVector(Flat.X, Up, Flat.Y);
 }
 
 FVector McElytra::Boost(const FVector& Velocity, float Yaw, float Pitch)

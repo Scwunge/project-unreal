@@ -294,6 +294,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Figure->SetWings(bWearsElytra);
 	}
 #endif
+	TickTotem(DeltaSeconds);
 
 	if (HasAuthority())
 	{
@@ -1070,6 +1071,8 @@ void AMcPlayerPawn::ServerGameTick()
 	{
 		return;
 	}
+	// A blow that would kill may be cheated by a totem in hand.
+	ServerTryTotem();
 	ServerHurtSound();
 	if (PendingBannerTicks > 0 && (--PendingBannerTicks == 0 || AttachBanner(PendingBannerPos, PendingBanner)))
 	{
@@ -1239,6 +1242,8 @@ void AMcPlayerPawn::ServerGameTick()
 		}
 	}
 
+	// A blow that would kill may be cheated by a totem in hand.
+	ServerTryTotem();
 	ServerHurtSound();
 	if (Stats.Health <= 0.0f)
 	{

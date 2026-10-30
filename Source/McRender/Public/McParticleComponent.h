@@ -20,6 +20,8 @@
 #include "McParticleComponent.generated.h"
 
 class FMcBlockWorld;
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UMcWorldRenderComponent;
 
 UCLASS(ClassGroup = (Mc))
@@ -46,6 +48,9 @@ public:
 	void FishingSplash(const FVector& Pos);
 	// The wake of a fish swimming under the surface at Pos (each tick it is on its way to a bobber).
 	void FishingWake(const FVector& Pos);
+	// One tick of a Totem of Undying going off round a body Height tall with its feet at Feet: green and yellow sparks
+	// thrown out every way, slowing and drifting down as they fade.
+	void TotemBurst(const FVector& Feet, float Height);
 
 	int32 NumParticles() const { return Particles.Num(); }
 
@@ -74,6 +79,7 @@ private:
 		Splash,  // a drop thrown up off water, falling back
 		Bubble,  // rising a little and bursting
 		Wake,    // a fleck of foam over a swimming fish
+		Totem,   // a spark off a Totem of Undying
 	};
 
 	struct FParticle
@@ -121,4 +127,16 @@ private:
 	double TickTime = 0.0;  // ticks run, and the part of one since
 	FVector CameraBlock = FVector::ZeroVector;
 	uint32 MaterialGeneration = 0;
+
+	// The totem's sparks are drawn from their own sprites (particles/totem_of_undying.json: glitter_7 down to
+	// glitter_0 over a spark's life), the eight frames side by side in one picture, on a second section.
+	static constexpr int32 GlitterFrames = 8;
+	UMaterialInstanceDynamic* EnsureGlitter();
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> GlitterMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2DArray> Glitter;
+	bool bGlitterFailed = false;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SpriteBase;
 };

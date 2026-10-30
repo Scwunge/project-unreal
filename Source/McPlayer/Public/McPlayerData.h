@@ -53,6 +53,8 @@ struct MCPLAYER_API FMcPlayerStats
 	// difference), and the damage of the hit that started it.
 	int32 InvulnTicks = 0;
 	float LastDamage = 0.0f;
+	// The kind of the last damage that landed (McSurvival::EDamage), so a death knows what killed it.
+	uint8 LastHurtKind = 0;
 	// Ticks left burning.
 	int32 OnFireTicks = 0;
 	// Hunger's hidden bar: it fills as the player works, and a full 4 costs saturation, then food.

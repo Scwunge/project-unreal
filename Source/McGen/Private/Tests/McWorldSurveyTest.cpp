@@ -117,6 +117,77 @@ bool FMcBiomeMixTest::RunTest(const FString& Parameters)
 			AddInfo(FString::Printf(TEXT("CLIMATE %d: %s"), Index, *Row));
 		}
 	}
+	// The spread of each climate value, averaged over 12 seeds (a world has few climate features, so one seed's is rough).
+	{
+		double SumDev[6] = {};
+		double SumMean[6] = {};
+		constexpr int32 DevSeeds = 12;
+		for (int32 SeedIndex = 0; SeedIndex < DevSeeds; ++SeedIndex)
+		{
+			const FMcNoiseGenerator Generator(Settings, 555ull + SeedIndex * 104729ull, TEXT("minecraft:overworld"));
+			double Sum[6] = {};
+			double SumSq[6] = {};
+			for (int32 Z = 0; Z < 48; ++Z)
+			{
+				for (int32 X = 0; X < 48; ++X)
+				{
+					const FMcClimate Climate = Generator.SampleClimate(-6144 + X * 256, 64, -6144 + Z * 256);
+					for (int32 Index = 0; Index < 6; ++Index)
+					{
+						Sum[Index] += Climate.Values[Index];
+						SumSq[Index] += Climate.Values[Index] * Climate.Values[Index];
+					}
+				}
+			}
+			for (int32 Index = 0; Index < 6; ++Index)
+			{
+				const double Mean = Sum[Index] / 2304.0;
+				SumDev[Index] += FMath::Sqrt(SumSq[Index] / 2304.0 - Mean * Mean) / DevSeeds;
+				SumMean[Index] += Mean / DevSeeds;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("CLIMATESD temperature %.3f humidity %.3f continentalness %.3f erosion %.3f depth %.3f weirdness %.3f"), SumDev[0], SumDev[1], SumDev[2], SumDev[3], SumDev[4], SumDev[5]));
+	}
+	return true;
+}
+
+// The ground height over the grid the vanilla reference's surface-height log uses (32 by 32 points 128 apart from
+// -2048), over several seeds: quantiles and shares at sea level and in the mountains.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHeightMixTest, "McClient.McGen.HeightMix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcHeightMixTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	TArray<int32> Heights;
+	for (int32 SeedIndex = 0; SeedIndex < 4; ++SeedIndex)
+	{
+		const FMcNoiseGenerator Generator(Settings, 321ull + SeedIndex * 99991ull, TEXT("minecraft:overworld"));
+		for (int32 Z = 0; Z < 32; ++Z)
+		{
+			for (int32 X = 0; X < 32; ++X)
+			{
+				Heights.Add(Generator.FindSurfaceY(-2048 + X * 128, -2048 + Z * 128));
+			}
+		}
+	}
+	Heights.Sort();
+	const int32 Count = Heights.Num();
+	auto Quantile = [&](double P) { return Heights[FMath::FloorToInt32(P * (Count - 1))]; };
+	int32 AtSea = 0, High100 = 0, High150 = 0;
+	for (const int32 Height : Heights)
+	{
+		AtSea += Height <= 63 ? 1 : 0;
+		High100 += Height >= 100 ? 1 : 0;
+		High150 += Height >= 150 ? 1 : 0;
+	}
+	AddInfo(FString::Printf(TEXT("HEIGHTS %d points: q5 %d q25 %d q50 %d q75 %d q95 %d max %d, at or under 63: %.2f, 100 up: %.2f, 150 up: %.2f"),
+		Count, Quantile(0.05), Quantile(0.25), Quantile(0.5), Quantile(0.75), Quantile(0.95), Heights.Last(),
+		double(AtSea) / Count, double(High100) / Count, double(High150) / Count));
 	return true;
 }
 

@@ -1,5 +1,5 @@
 {
-  "description": "Mob heads on classic_flat (surface y=-61, stone floor), seen from the south: on the floor at z=4, facing the camera, skeleton, wither skeleton, zombie, creeper, piglin and player at x=0..10 in twos; behind them on a stone brick wall at z=1, the same heads hanging facing south at y=-59; at x=12 a skeleton skull turned to face west (rotation 4); a dragon head at x=6, z=6 turned south-west (rotation 2), and a dragon wall head at x=12 on the wall.",
+  "description": "Mob heads on classic_flat (surface y=-61, stone floor), seen from the south: on the floor at z=4, rotation 0 (facing north, away from the camera), skeleton, wither skeleton, zombie, creeper, piglin and player at x=0..10 in twos; behind them on a stone brick wall at z=1, the same heads hanging facing south at y=-59; at x=12 a skeleton skull turned to face east (rotation 4); a dragon head at x=6, z=6 turned north-east (rotation 2), and a dragon wall head at x=12 on the wall.",
   "camera": [6.0, -57.5, 10.5, 180.0, 18.0],
   "blocks": [
     { "from": [-2, -61, -1], "to": [14, -61, 8], "state": "minecraft:stone" },

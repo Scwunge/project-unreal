@@ -1,0 +1,10 @@
+{
+  "description": "A dragon wall head facing east on a stone brick block, seen side on from the south at the jaw's height (vanilla: E:/mc-reference/scripts/dragon_jaw.txt, ref_jaw_wall).",
+  "camera": [6.5, -58.71, 3.0, 180.0, 0.0],
+  "blocks": [
+    { "from": [-4, -61, -4], "to": [10, -61, 8], "state": "minecraft:stone" },
+    { "from": [2, -60, 2], "to": [2, -60, 2], "state": "minecraft:dragon_head[powered=false,rotation=4]" },
+    { "from": [5, -60, 1], "to": [5, -58, 1], "state": "minecraft:stone_bricks" },
+    { "from": [6, -59, 1], "to": [6, -59, 1], "state": "minecraft:dragon_wall_head[facing=east,powered=false]" }
+  ]
+}

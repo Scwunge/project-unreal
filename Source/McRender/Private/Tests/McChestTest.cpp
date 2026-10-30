@@ -270,7 +270,8 @@ bool FMcHeadTest::RunTest(const FString& Parameters)
 	const auto Pick = [&](const TCHAR* Text) { return UMcChestComponent::GetHeadModel(Registry.ParseState(Text).Get(0), Centre, Yaw); };
 	TestEqual(TEXT("a skeleton skull"), Pick(TEXT("minecraft:skeleton_skull[powered=false,rotation=4]")), FName(TEXT("mc:head/skeleton")));
 	TestTrue(TEXT("stands on the floor's middle"), Centre.Equals(FVector(0.5, 0.0, 0.5)));
-	TestEqual(TEXT("rotation 4 faces west"), Yaw, 90.0f);
+	// Rotation 0 faces north and 4 east, the same yaw as a wall head facing east (ref_scene_heads).
+	TestEqual(TEXT("rotation 4 faces east"), Yaw, 270.0f);
 	TestEqual(TEXT("a wither skeleton's on a wall"), Pick(TEXT("minecraft:wither_skeleton_wall_skull[facing=east,powered=false]")), FName(TEXT("mc:head/wither_skeleton")));
 	// Facing east out of a wall to its west: set back against it, half way up.
 	TestTrue(TEXT("against the wall"), Centre.Equals(FVector(0.25, 0.25, 0.5)));
@@ -287,6 +288,8 @@ bool FMcHeadTest::RunTest(const FString& Parameters)
 		// 12 across at three quarters, its jaws reaching out south past the block.
 		TestTrue(TEXT("the dragon's is 12 across"), FMath::IsNearlyEqual(Big.Max.X - Big.Min.X, 75.0, 0.1));
 		TestTrue(TEXT("its jaws reach south"), FMath::IsNearlyEqual(Big.Max.Y, 112.5, 0.1));
+		// The lower jaw hangs 0.2 radians open from its back top edge (3 up, 6 out): its front bottom dips under the floor.
+		TestTrue(TEXT("its jaw hangs open"), FMath::IsNearlyEqual(Big.Min.Z, (3.0 - 3.0 * FMath::Cos(0.2) - 12.0 * FMath::Sin(0.2)) * 6.25, 0.1));
 	}
 	TestTrue(TEXT("a piston head is no head"), Pick(TEXT("minecraft:piston_head[facing=north,short=false,type=normal]")).IsNone());
 	for (const TCHAR* Kind : { TEXT("mc:head/skeleton"), TEXT("mc:head/wither_skeleton"), TEXT("mc:head/zombie"), TEXT("mc:head/creeper"), TEXT("mc:head/player"), TEXT("mc:head/piglin") })

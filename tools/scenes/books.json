@@ -1,6 +1,7 @@
 {
-  "description": "Books on classic_flat (surface y=-61, stone floor), seen from the south within 3 blocks of the enchanting table at x=5, so its book has turned to the camera and opened: lecterns with books facing south (towards the camera) at x=3, east at x=7 and north (seen from behind) at x=5, z=2, and an empty lectern at x=8.",
-  "camera": [5.5, -58.3, 7.6, 180.0, 30.0],
+  "description": "Books on classic_flat (surface y=-61, stone floor), seen by a player standing on the floor to the south within 3 blocks of the enchanting table at x=5, so its book has turned to the camera and opened: lecterns with books facing south (towards the camera) at x=3, east at x=7 and north (seen from behind) at x=5, z=2, and an empty lectern at x=8.",
+  "camera": [5.5, -58.38, 7.6, 180.0, 30.0],
+  "standing": true,
   "blocks": [
     { "from": [0, -61, 0], "to": [10, -61, 8], "state": "minecraft:stone" },
     { "from": [5, -60, 5], "to": [5, -60, 5], "state": "minecraft:enchanting_table" },

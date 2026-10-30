@@ -225,6 +225,16 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     `Saved/Shots/heads.png` (`-McScene=heads`). Not done: player heads' owners' skins (all Steve), the dragon's and
     piglin's moving jaw and ears when powered, wearing a head, and heads in the inventory drawn as models. Where the
     dragon's scales and nostrils sit is read from their sizes, not checked against the game.
+  - **Re-shoots against vanilla** (2026-10-30): every block-entity scene (`tools/scenes/*.json`) is built in vanilla
+    26.3 from the same JSON (`tools/scene_to_mcfunction.py --script`, run with mc-reference's `ref.sh`) and shot from
+    the same camera: a spectator with FOV effects off (`fov steady`), or, with `"standing": true`, a creative player
+    on the floor with the HUD hidden (`hud off`), since an enchanting table's book ignores spectators. Side by sides in
+    `Saved/Pairs/`. Found and fixed: a floor head's `rotation` 0 faces north (half a turn from a sign's), the dragon
+    head's lower jaw hangs 0.2 radians open, the enchanting table's open book lies back with its spine 11 degrees over
+    level, covers 10 degrees short of flat and its middle 0.91 up, and a lectern's book folds 28 degrees a cover.
+    Pots, bells, signs, beds and shulker boxes matched. Differences left to others: vanilla's vignette (part of its HUD:
+    every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes). Not yet
+    measured: the enchanting book's bob, how fast it turns and opens, its pages' flutter, and how near a player must be.
   - **Decorated pots and conduits** (2026-10-30): a pot is an entity model `mc:decorated_pot` (a 14 by 16 body with
     an 8 by 4 neck: its top, bottom and neck from `decorated_pot_base.png`, each side the middle of a side picture),
     turned by `facing`. A conduit is its 6 cube shell (`mc:conduit/shell`) while asleep and, awake, the 8 cube cage

@@ -188,7 +188,8 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 		}
 		else
 		{
-			const int32 Rotation = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw + 180.0f, 360.0f) + 360.0f, 360.0f) / 22.5f) & 15;
+			// A head's rotation 0 faces north (a sign's south), so one facing the player takes the player's own yaw.
+			const int32 Rotation = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw, 360.0f) + 360.0f, 360.0f) / 22.5f) & 15;
 			Properties.Add(TEXT("rotation"), *FString::FromInt(Rotation));
 		}
 	}

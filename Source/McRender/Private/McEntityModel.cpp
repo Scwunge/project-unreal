@@ -433,10 +433,14 @@ namespace McEntityModel
 					Box(112, 30, -8, 0, -8, 16, 16, 16),
 					Box(0, 0, -5, 16, -4, 2, 4, 6), Box(0, 0, 3, 16, -4, 2, 4, 6, 0.0f, true),
 					Box(176, 44, -6, 4, 8, 12, 5, 16),
-					Box(112, 0, -5, 9, 18, 2, 2, 4), Box(112, 0, 3, 9, 18, 2, 2, 4, 0.0f, true),
-					Box(176, 65, -6, 0, 8, 12, 4, 16) });
+					Box(112, 0, -5, 9, 18, 2, 2, 4), Box(112, 0, 3, 9, 18, 2, 2, 4, 0.0f, true) });
 				DragonHead.Scale = 0.75f;
 				Dragon.Parts.Add(DragonHead);
+				// The lower jaw hangs open from its top back edge, 0.2 radians (11.4 degrees measured side on in vanilla,
+				// ref_jaw_wall, for an unpowered head).
+				FPart DragonJaw = Part(ERole::Static, FVector(0, 4, 8) * 0.75f, { Box(176, 65, -6, -4, 0, 12, 4, 16) }, 0.2f);
+				DragonJaw.Scale = 0.75f;
+				Dragon.Parts.Add(DragonJaw);
 				Models.Add(Dragon.Kind, Dragon);
 			}
 			{

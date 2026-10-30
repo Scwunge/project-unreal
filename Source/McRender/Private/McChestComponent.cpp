@@ -139,8 +139,9 @@ FName UMcChestComponent::GetHeadModel(FMcStateId State, FVector& OutCentre, floa
 	}
 	else
 	{
+		// Rotation 0 faces north, 4 east, 2 north-east: half a turn from a sign's (measured in vanilla, ref_scene_heads).
 		OutCentre = FVector(0.5, 0.0, 0.5);
-		OutYaw = FCString::Atoi(*Registry.GetPropertyValue(State, TEXT("rotation")).ToString()) * 22.5f;
+		OutYaw = FCString::Atoi(*Registry.GetPropertyValue(State, TEXT("rotation")).ToString()) * 22.5f + 180.0f;
 	}
 	return FName(FString(TEXT("mc:head/")) + Kind);
 }
@@ -482,14 +483,16 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		{
 			if (Book->Shape == EShape::LecternBook)
 			{
-				// Open, not quite flat.
-				Pair.Value->SetBook(0.9f, 0.0f, 0.0f);
+				// Open, each cover folded about 28 degrees up from flat, so the pages meet at the spine (measured in vanilla:
+				// the near half's edge stands 3.8 pixels off the slope side on, ref_scene_lectern_side and _top).
+				Pair.Value->SetBook(0.69f, 0.0f, 0.0f);
 				continue;
 			}
 			// Over an enchanting table it bobs; with a player within 3 blocks it turns to them and opens, its loose pages
 			// waving over and back, and without one it shuts and slowly turns round.
 			Book->BookAge += DeltaTime;
-			const FVector Centre = FVector(Pair.Key) + FVector(0.5, 1.0 + 0.05 * FMath::Sin(Book->BookAge * 2.0f), 0.5);
+			// Its middle about 0.91 up (measured, ref_book_level and ref_book_above); the bob is not measured yet.
+			const FVector Centre = FVector(Pair.Key) + FVector(0.5, 0.91 + 0.05 * FMath::Sin(Book->BookAge * 2.0f), 0.5);
 			const FVector Towards = Viewer - Centre;
 			const bool bNear = Towards.SizeSquared() < 9.0;
 			if (bNear)
@@ -501,13 +504,15 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			{
 				Book->BookYaw = FMath::UnwindRadians(Book->BookYaw + DeltaTime * 0.4f);
 			}
-			Book->BookOpen = FMath::FInterpConstantTo(Book->BookOpen, bNear ? 0.7f : 0.0f, DeltaTime, 1.5f);
+			// Open, its covers lie about 10 degrees short of flat (measured in vanilla, ref_book_level and ref_book_above).
+			Book->BookOpen = FMath::FInterpConstantTo(Book->BookOpen, bNear ? 0.89f : 0.0f, DeltaTime, 1.5f);
 			for (int32 Page = 0; Page < 2; ++Page)
 			{
 				Book->BookFlip[Page] = 0.5f + 0.5f * FMath::Sin(Book->BookAge * (Page == 0 ? 1.3f : 0.8f));
 			}
-			// Its pages face the way it turns, tipped up a little; the spine stays near upright.
-			const double Lean = 0.35;
+			// It lies tipped back, its pages up and towards the way it turns, its spine 11 degrees over level and running away
+			// (measured in vanilla from a player 2.5 blocks off, ref_book_level and ref_book_above, the two fitting each other).
+			const double Lean = FMath::DegreesToRadians(79.0);
 			const FVector Facing(-FMath::Sin(Book->BookYaw), 0.0, FMath::Cos(Book->BookYaw));
 			const FVector Up(0.0, 1.0, 0.0);
 			const FVector Pages = Facing * FMath::Cos(Lean) + Up * FMath::Sin(Lean);

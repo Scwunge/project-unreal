@@ -77,6 +77,16 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 		const FBox Bounds(Slab.Positions);
 		TestTrue(TEXT("a pixel thick"), FMath::IsNearlyEqual(Bounds.Max.X - Bounds.Min.X, 100.0 / 16.0, 0.01));
 	}
+	// The hand display comes from the model in the cache, parents followed: a rod has its own, a stick the handheld one.
+	{
+		const FHeldDisplay Rod = ReadHeldDisplay(TEXT("minecraft:fishing_rod"));
+		TestTrue(TEXT("a rod's own hand rotation and translation"), Rod.Rotation.Equals(FVector(0, 90, 25)) && Rod.Translation.Equals(FVector(0, 1.6, 0.8)));
+		const FHeldDisplay Stick = ReadHeldDisplay(TEXT("minecraft:stick"));
+		TestTrue(TEXT("a stick has the handheld display"), Stick.Rotation.Equals(FVector(0, -90, 25)) && FMath::IsNearlyEqual(Stick.Scale, 0.68));
+		const FHeldPictures Idle = FindHeldPictures(TEXT("minecraft:fishing_rod"), false);
+		const FHeldPictures Cast = FindHeldPictures(TEXT("minecraft:fishing_rod"), true);
+		TestTrue(TEXT("a cast rod shows the cast picture"), Idle.Side.EndsWith(TEXT("fishing_rod.png")) && Cast.Side.EndsWith(TEXT("fishing_rod_cast.png")));
+	}
 	// A drawn bow's arrow (the picture's up-left diagonal) points forward and its limbs (the other diagonal) up.
 	{
 		const double R = FMath::Sqrt(0.5);

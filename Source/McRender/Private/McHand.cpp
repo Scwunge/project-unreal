@@ -17,7 +17,11 @@
 #include "InputCoreTypes.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace McHand
@@ -142,10 +146,10 @@ namespace McHand
 		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
 		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
 		// moved toward the middle of the screen and up from where it rests, in the camera's space (forward, right, up), and turned a
-		// little about its own middle. The size is the idle one.
-		const FVector Move = FVector(0.0, -26.0, 21.0) * Eased;
-		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 0.0f, 12.0f).Quaternion(), Eased);
-		return FTransform(Turn, Move, FVector::OneVector);
+		// little about its own middle. It grows to 1.4 times the idle size.
+		const FVector Move = FVector(6.0, -24.0, 20.0) * Eased;
+		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 17.0f, 2.0f).Quaternion(), Eased);
+		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.4f, Eased)));
 	}
 
 	FVector GetTipInArm()
@@ -170,17 +174,18 @@ namespace McHand
 		return FTransform(MakeBasis(AxisX, AxisY, AxisZ), Pivot * (Scale * Units), FVector(Scale));
 	}
 
-	FTransform GetHeldRestTransform(EHeld Kind)
+	FTransform GetHeldRestTransform(EHeld Kind, const FHeldDisplay& Display)
 	{
 		// The item models' display.firstperson_righthand: item/generated and item/handheld give a flat item
 		// rotation (0, -90, 25), translation (1.13, 3.2, 1.13) pixels, scale 0.68 (drawn with the signs of the rotation turned over: matched to the reference client's held sword, stick, bow and snowball); block/block a block rotation
 		// (0, 45, 0), no translation, scale 0.4. The model (x right, y up, z to the viewer, centred, 16 pixels a block)
 		// is scaled, rotated about z, y then x (the angles turn the other way from a right-handed model's, all three), moved by the translation, and put at the hand's anchor.
 		const bool bCube = Kind == EHeld::Cube;
-		FVector Rotation = bCube ? FVector(0.0, 45.0, 0.0) : FVector(0.0, 90.0, -25.0);
-		const FVector Translation = bCube ? FVector::ZeroVector : FVector(1.13, 3.2, 1.13);
+		// The signs of the rotation's y and z turned over (matched to the reference client's held items).
+		const FVector Rotation = bCube ? FVector(0.0, 45.0, 0.0) : FVector(Display.Rotation.X, -Display.Rotation.Y, -Display.Rotation.Z);
+		const FVector Translation = bCube ? FVector::ZeroVector : Display.Translation;
 		// The display transform's own scale, as the game draws it (a model of 16 pixels is a block).
-		const double ItemScale = bCube ? 0.4 : 0.68;
+		const double ItemScale = bCube ? 0.4 : Display.Scale;
 
 		auto RotateZ = [](const FVector& V, double Degrees) { const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees)); return FVector(V.X * C - V.Y * S, V.X * S + V.Y * C, V.Z); };
 		auto RotateY = [](const FVector& V, double Degrees) { const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees)); return FVector(V.X * C + V.Z * S, V.Y, -V.X * S + V.Z * C); };
@@ -198,14 +203,60 @@ namespace McHand
 		return FTransform(FMatrix(Image(FVector(1, 0, 0)), Image(FVector(0, 1, 0)), Image(FVector(0, 0, 1)), Origin));
 	}
 
-	FHeldPictures FindHeldPictures(FName Item)
+	FHeldDisplay ReadHeldDisplay(FName Item)
+	{
+		FHeldDisplay Result;
+		FString Model = TEXT("item/") + McCache::PathOf(Item.ToString());
+		for (int32 Depth = 0; Depth < 6; ++Depth)
+		{
+			FString Text;
+			TSharedPtr<FJsonObject> Json;
+			if (!FFileHelper::LoadFileToString(Text, *McCache::Asset(TEXT("models/") + Model + TEXT(".json"))) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Json) || !Json.IsValid())
+			{
+				break;
+			}
+			const TSharedPtr<FJsonObject>* Display = nullptr;
+			const TSharedPtr<FJsonObject>* Displays = nullptr;
+			const TSharedPtr<FJsonObject>* Hand = nullptr;
+			if (Json->TryGetObjectField(TEXT("display"), Displays) && (*Displays)->TryGetObjectField(TEXT("firstperson_righthand"), Hand))
+			{
+				auto Triple = [&Hand](const TCHAR* Name, FVector& Out)
+				{
+					const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+					if ((*Hand)->TryGetArrayField(Name, Values) && Values->Num() == 3)
+					{
+						Out = FVector((*Values)[0]->AsNumber(), (*Values)[1]->AsNumber(), (*Values)[2]->AsNumber());
+					}
+				};
+				FVector ScaleValues = FVector(Result.Scale);
+				Triple(TEXT("rotation"), Result.Rotation);
+				Triple(TEXT("translation"), Result.Translation);
+				Triple(TEXT("scale"), ScaleValues);
+				Result.Scale = ScaleValues.X;
+				break;
+			}
+			FString Parent;
+			if (!Json->TryGetStringField(TEXT("parent"), Parent))
+			{
+				break;
+			}
+			Model = Parent.StartsWith(TEXT("minecraft:")) ? Parent.RightChop(10) : Parent;
+		}
+		return Result;
+	}
+
+	FHeldPictures FindHeldPictures(FName Item, bool bCast)
 	{
 		FHeldPictures Result;
 		if (Item.IsNone())
 		{
 			return Result;
 		}
-		const FString Name = McCache::PathOf(Item.ToString());
+		FString Name = McCache::PathOf(Item.ToString());
+		if (bCast && Name == TEXT("fishing_rod"))
+		{
+			Name = TEXT("fishing_rod_cast");
+		}
 		const FString Own = FindPicture({ TEXT("item/") + Name });
 		if (!Own.IsEmpty())
 		{
@@ -472,10 +523,15 @@ void UMcHandComponent::EnsureArm()
 
 void UMcHandComponent::ShowHeld(FName Item)
 {
+	// -McRodCast shows a held rod cast, for screenshots.
+	static const bool bForceCast = FParse::Param(FCommandLine::Get(), TEXT("McRodCast"));
+	bRodCast |= bForceCast;
 	Shown = Item;
 	HeldMesh->ClearAllMeshSections();
 	ShownKind = McHand::EHeld::Nothing;
-	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item, bRodCast);
+	bHasRodTip = false;
+	ShownDisplay = McHand::ReadHeldDisplay(Item);
 	if (Pictures.Kind == McHand::EHeld::Nothing)
 	{
 		return;
@@ -496,6 +552,23 @@ void UMcHandComponent::ShowHeld(FName Item)
 		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight) && PixelWidth > 0 && PixelHeight >= PixelWidth)
 		{
 			McHand::BuildExtrudedMesh(Pixels, PixelWidth, SideV, Data);
+			if (McCache::PathOf(Item.ToString()) == TEXT("fishing_rod"))
+			{
+				// The line leaves from the end of the rod: its opaque pixel farthest toward the top right.
+				int32 Best = INT32_MIN;
+				for (int32 Row = 0; Row < PixelWidth; ++Row)
+				{
+					for (int32 Column = 0; Column < PixelWidth; ++Column)
+					{
+						if (Pixels[Row * PixelWidth + Column].A > 0 && Column - Row > Best)
+						{
+							Best = Column - Row;
+							RodTipMesh = FVector(0.0, ((Column + 0.5) / PixelWidth - 0.5) * McCoords::UnitsPerBlock, (0.5 - (Row + 0.5) / PixelWidth) * McCoords::UnitsPerBlock);
+							bHasRodTip = true;
+						}
+					}
+				}
+			}
 		}
 		else
 		{
@@ -521,7 +594,29 @@ void UMcHandComponent::ShowHeld(FName Item)
 	}
 	ShownKind = Pictures.Kind;
 	// Fixed in the arm's own space, so it goes where the arm goes.
-	HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind) * ArmRest.Inverse());
+	HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind, ShownDisplay) * ArmRest.Inverse());
+}
+
+void UMcHandComponent::SetRodCast(bool bInCast)
+{
+	if (bRodCast != bInCast)
+	{
+		bRodCast = bInCast;
+		if (Shown == Wanted && !Shown.IsNone())
+		{
+			ShowHeld(Shown);
+		}
+	}
+}
+
+bool UMcHandComponent::GetRodTipWorld(FVector& OutTip) const
+{
+	if (!bHasRodTip || !HeldMesh)
+	{
+		return false;
+	}
+	OutTip = HeldMesh->GetComponentTransform().TransformPosition(RodTipMesh);
+	return true;
 }
 
 void UMcHandComponent::SetEating(bool bInEating, float InSeconds)
@@ -627,16 +722,16 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	if (DrawLift > 0.0f)
 	{
 		const FTransform Draw = McHand::GetDrawTransform(DrawLift, DrawSeconds);
-		const FTransform Rest = McHand::GetHeldRestTransform(ShownKind);
+		const FTransform Rest = McHand::GetHeldRestTransform(ShownKind, ShownDisplay);
 		// Only the held thing moves, in the camera's space; the arm stays where it was.
 		const float Eased = DrawLift * DrawLift * (3.0f - 2.0f * DrawLift);
 		const FQuat Stand = FQuat::Slerp(Rest.GetRotation(), McHand::GetBowStandRotation(), Eased);
-		HeldMesh->SetRelativeTransform(FTransform(Draw.GetRotation() * Stand, Rest.GetTranslation() + Draw.GetTranslation(), Rest.GetScale3D()) * ArmRest.Inverse());
+		HeldMesh->SetRelativeTransform(FTransform(Draw.GetRotation() * Stand, Rest.GetTranslation() + Draw.GetTranslation(), Rest.GetScale3D() * Draw.GetScale3D()) * ArmRest.Inverse());
 		bDrawApplied = true;
 	}
 	else if (bDrawApplied)
 	{
-		HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind) * ArmRest.Inverse());
+		HeldMesh->SetRelativeTransform(McHand::GetHeldRestTransform(ShownKind, ShownDisplay) * ArmRest.Inverse());
 		bDrawApplied = false;
 	}
 	if (EatLift > 0.0f)

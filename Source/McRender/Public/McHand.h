@@ -43,8 +43,19 @@ namespace McHand
 	// local -z axis). Swing is the stroke (GetSwingStroke), Equip how far it is lowered out of view (0 up, 1 gone).
 	MCRENDER_API FTransform GetArmTransform(float Stroke, float Equip, const FVector2D& Bob);
 
-	// Where the held thing sits when the arm is at rest, in the camera's space.
-	MCRENDER_API FTransform GetHeldRestTransform(EHeld Kind);
+	// An item model's display.firstperson_righthand (rotation degrees, translation in sixteenths of a block, scale).
+	struct FHeldDisplay
+	{
+		FVector Rotation = FVector(0.0, -90.0, 25.0);
+		FVector Translation = FVector(1.13, 3.2, 1.13);
+		double Scale = 0.68;
+	};
+
+	// The hand display of an item's model in the cache, following its parents (the flat-item default if it has none).
+	MCRENDER_API FHeldDisplay ReadHeldDisplay(FName Item);
+
+	// Where the held thing sits when the arm is at rest, in the camera's space. Display is only for flat items.
+	MCRENDER_API FTransform GetHeldRestTransform(EHeld Kind, const FHeldDisplay& Display = FHeldDisplay());
 
 	// The shift in the camera's space of what is eaten: Lift is how far it is raised toward the face (0 to 1), Time and
 	// Seconds the progress of the meal. It bobs for the first four fifths of it.
@@ -66,7 +77,8 @@ namespace McHand
 
 	// What picture(s) a held item uses: its own picture (item/<name>) flat, or, for a full block, the sides and top of
 	// its textures; a block that is not a full cube is drawn flat from its picture.
-	MCRENDER_API FHeldPictures FindHeldPictures(FName Item);
+	// bCast: a fishing rod is shown cast (its picture with the line out).
+	MCRENDER_API FHeldPictures FindHeldPictures(FName Item, bool bCast = false);
 
 	// The meshes, in the arm's or the held thing's own space. Cubes are 1 block, flats 1 block wide; the held thing's
 	// transform shrinks them.
@@ -101,6 +113,10 @@ public:
 	// Whether a bow is being drawn and for how long: it swings toward the middle of the screen, tilted, and shakes at
 	// full draw.
 	void SetDrawing(bool bInDrawing, float InSeconds);
+	// Whether the held fishing rod is cast (the cast picture is shown). Takes effect at once.
+	void SetRodCast(bool bInCast);
+	// Where the end of the held fishing rod is in the world (where its line leaves), valid while a rod is shown.
+	bool GetRodTipWorld(FVector& OutTip) const;
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -136,6 +152,11 @@ private:
 	float DrawSeconds = 0.0f;
 	float DrawLift = 0.0f;
 	bool bDrawApplied = false;
+	bool bRodCast = false;
+	// The held rod's tip in the held mesh's own space, and its display.
+	bool bHasRodTip = false;
+	FVector RodTipMesh = FVector::ZeroVector;
+	McHand::FHeldDisplay ShownDisplay;
 	float WalkPos = 0.0f;
 	float WalkAmount = 0.0f;
 	FVector LastLocation = FVector::ZeroVector;

@@ -106,6 +106,8 @@ namespace McEntityModel
 		bool bFlash = false;
 		// A young one: half the size about its feet, the head half as big again.
 		bool bBaby = false;
+		// A golem holding out its poppy: the right arm is raised.
+		bool bOffering = false;
 	};
 	constexpr float BabyScale = 0.5f;
 	constexpr float BabyHeadScale = 1.5f;
@@ -172,6 +174,7 @@ public:
 	void SetSwelling(float InSwelling);
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
+	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
 	void SetBaby(bool bInBaby) { if (bInBaby != bBabyLook) { bBabyLook = bInBaby; bDirty = true; } }
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
 	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
@@ -209,6 +212,7 @@ private:
 	bool bIsArrow = false;
 	float HitboxWidth = 0.0f;
 	bool bBabyLook = false;
+	bool bOfferingLook = false;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;

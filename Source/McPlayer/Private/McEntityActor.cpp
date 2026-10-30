@@ -53,6 +53,7 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, Profession);
 	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
 	DOREPLIFETIME(AMcEntityActor, bBaby);
+	DOREPLIFETIME(AMcEntityActor, bOffering);
 	DOREPLIFETIME(AMcEntityActor, LookSeed);
 }
 
@@ -76,6 +77,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// The mob counts its hits; clients flash it whenever this changes.
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
+		bOffering = Mob.OfferTicks > 0;
 		if (Kind != FMcVillager::StaticType())
 		{
 			bBaby = Mob.IsYoung();
@@ -115,6 +117,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetVillagerLook(Variant, Profession, VillagerLevel, bBaby);
 		Model->SetVariantSeed(LookSeed);
 		Model->SetBaby(bBaby);
+		Model->SetOffering(bOffering);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

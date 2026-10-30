@@ -210,6 +210,27 @@ bool FMcIronGolemTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(TEXT("three loaves are twelve points"), static_cast<FMcVillager*>(Villager)->GetFood(), 12);
 	}
+	{
+		// A golem holds a poppy out to a child villager near it.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFloor(World);
+		FMcEntityHost Host(World, 1);
+		FMcMob* Golem = Host.SpawnMob(TEXT("minecraft:iron_golem"), FVector(10.5, 1.0, 10.5));
+		FMcMob* Child = Host.SpawnMob(TEXT("minecraft:villager"), FVector(13.5, 1.0, 10.5));
+		if (!Golem || !Child)
+		{
+			return false;
+		}
+		static_cast<FMcVillager*>(Child)->SetBaby(true);
+		Child->bFrozen = true;
+		int32 MostOffered = 0;
+		for (int32 Tick = 0; Tick < 1500; ++Tick)
+		{
+			Host.GetManager().Tick();
+			MostOffered = FMath::Max(MostOffered, Golem->OfferTicks);
+		}
+		TestTrue(TEXT("the golem offers a poppy"), MostOffered > 0);
+	}
 	return true;
 }
 

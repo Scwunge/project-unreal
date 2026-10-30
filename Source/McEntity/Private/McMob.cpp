@@ -1,4 +1,5 @@
 #include "McMob.h"
+#include "McVillager.h"
 #include "McArrow.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -467,6 +468,27 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		bBrightHere = Manager.EstimateLightLevel(FeetCell(Body.Position)) > 11;
 	}
 
+	// A golem sometimes holds a poppy out to a child villager near it, for 20 seconds, standing still.
+	if (Type.bHuntsHostiles)
+	{
+		if (OfferTicks > 0)
+		{
+			--OfferTicks;
+		}
+		else if (Age % 100 == Id % 100 && Random.RandHelper(3) == 0)
+		{
+			for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+			{
+				if (!Other->bRemoved && Other->GetType() == FName(TEXT("minecraft:villager")) && FVector::DistSquared(Other->Body.Position, Body.Position) < 36.0
+					&& static_cast<const FMcVillager&>(*Other).IsBaby())
+				{
+					OfferTicks = 400;
+					Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Other->Body.Position.X - Body.Position.X), Other->Body.Position.Z - Body.Position.Z));
+					break;
+				}
+			}
+		}
+	}
 	// Goals, in priority order: flee, chase and bite (or shoot, or swell), wander.
 	FVector Target = FVector::ZeroVector;
 	bool bHasTarget = false;
@@ -539,7 +561,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	if (!bHasTarget)
 	{
-		if (!Goal.IsSet() && !bStayPut && Random.RandHelper(120) == 0)
+		if (!Goal.IsSet() && !bStayPut && OfferTicks == 0 && Random.RandHelper(120) == 0)
 		{
 			Goal = Body.Position + FVector(Random.FRandRange(-10.0, 10.0), Type.bFlies ? Random.FRandRange(-2.0, 3.0) : 0.0, Random.FRandRange(-10.0, 10.0));
 		}

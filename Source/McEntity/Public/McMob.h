@@ -87,6 +87,8 @@ public:
 	int32 AngerTicks = 0;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
+	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
+	int32 OfferTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.

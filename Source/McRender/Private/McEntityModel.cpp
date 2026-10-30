@@ -541,6 +541,12 @@ namespace McEntityModel
 			case ERole::ArmLeft:
 			{
 				const bool bRight = Part.Role == ERole::ArmRight;
+				if (Anim.bOffering && bRight)
+				{
+					// Held out in front, a little up.
+					Pitch += -HALF_PI * 0.9f + FMath::Sin(Anim.Age * 2.0f) * 0.05f;
+					break;
+				}
 				if (Model.bArmsForward)
 				{
 					// Out in front, swaying a little as it walks.
@@ -1110,6 +1116,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;
 	Anim.bBaby = bBabyLook;
+	Anim.bOffering = bOfferingLook;
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);

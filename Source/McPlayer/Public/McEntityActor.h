@@ -56,6 +56,9 @@ public:
 	int32 VillagerLevel = 1;
 	UPROPERTY(Replicated)
 	bool bBaby = false;
+	// A golem holding out a poppy.
+	UPROPERTY(Replicated)
+	bool bOffering = false;
 	// Which coat or breed the mob has, where its kind has several (McMobLook).
 	UPROPERTY(Replicated)
 	int32 LookSeed = 0;

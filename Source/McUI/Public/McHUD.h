@@ -92,7 +92,7 @@ private:
 	void LoadFont();
 	float TextWidth(const FString& Text) const;
 	void DrawGalacticText(const FString& Text, float X, float Y, float Width, uint32 Rgb);
-	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f);
+	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f, float TextScale = 1.0f);
 
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// F3: where the player is, what they face and stand in, and what they aim at.
@@ -230,4 +230,6 @@ private:
 	FVector2D GuiMouse = FVector2D::ZeroVector;
 	int32 HoverSlot = INDEX_NONE;
 	bool bDeathShown = false;
+	// When the death screen came up: its buttons wake a second later.
+	double DeathShownTime = 0.0;
 };

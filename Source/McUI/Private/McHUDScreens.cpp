@@ -215,7 +215,7 @@ float AMcHUD::TextWidth(const FString& Text) const
 	return Width;
 }
 
-void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha)
+void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha, float TextScale)
 {
 	LoadFont();
 	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii.png"));
@@ -225,14 +225,14 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 		for (const TCHAR Char : Text)
 		{
 			const int32 Code = Char < 256 ? Char : '?';
-			DrawRegion(Font, At, Y + OffsetY, 8, 8, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Tint);
-			At += GlyphWidths[Code] + 1;
+			DrawRegion(Font, At, Y + OffsetY, 8 * TextScale, 8 * TextScale, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Tint);
+			At += (GlyphWidths[Code] + 1) * TextScale;
 		}
 	};
 	if (bShadow)
 	{
 		// The shadow is the colour at a quarter of its brightness, one pixel down and right.
-		Draw(1, 1, FromRgb(Rgb) * 0.25f * Alpha);
+		Draw(TextScale, TextScale, FromRgb(Rgb) * 0.25f * Alpha);
 	}
 	Draw(0, 0, FromRgb(Rgb, Alpha));
 }
@@ -1306,6 +1306,7 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 	if (!bDeathShown)
 	{
 		bDeathShown = true;
+		DeathShownTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 		if (Screen.IsValid())
 		{
 			HideScreen();
@@ -1319,40 +1320,31 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 		}
 	}
 	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.5f, 0.0f, 0.0f, 0.5f));
+	// The title is drawn at twice the size, centred on the screen, and the score under it.
 	const FString Title = TEXT("You died!");
-	DrawGuiText(Title, Width / 2.0f - TextWidth(Title) * 1.5f, Height / 4.0f, 0xFFFFFF, true);
-
+	DrawGuiText(Title, FMath::RoundToFloat(Width / 2.0f - TextWidth(Title)), 30.0f, 0xFFFFFF, true, 1.0f, 2.0f);
 	const FString ScoreLabel = TEXT("Score: ");
 	const FString ScoreValue = FString::FromInt(Dead.GetDeathScore());
 	const float ScoreX = Width / 2.0f - (TextWidth(ScoreLabel) + TextWidth(ScoreValue)) / 2.0f;
-	DrawGuiText(ScoreLabel, ScoreX, Height / 4.0f + 36.0f, 0xFFFFFF, true);
-	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), Height / 4.0f + 36.0f, 0xFFFF55, true);
+	DrawGuiText(ScoreLabel, ScoreX, 85.0f, 0xFFFFFF, true);
+	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), 85.0f, 0xFFFF55, true);
 
-	// Two 200 by 20 buttons under the score: Respawn, then Title Screen.
-	const float ButtonX = Width / 2.0f - 100.0f;
-	const float ButtonY = Height / 4.0f + 72.0f;
+	// Two 200 by 20 buttons: Respawn, then Title Screen. Both are asleep for the first second.
 	float MouseX = 0.0f, MouseY = 0.0f;
 	if (Player)
 	{
 		Player->GetMousePosition(MouseX, MouseY);
 	}
 	GuiMouse = FVector2D(MouseX, MouseY) / Scale;
-	const bool bOver = GuiMouse.X >= ButtonX && GuiMouse.X < ButtonX + 200.0f && GuiMouse.Y >= ButtonY && GuiMouse.Y < ButtonY + 20.0f;
-	DrawFill(ButtonX - 1, ButtonY - 1, 202, 22, FLinearColor::Black);
-	DrawFill(ButtonX, ButtonY, 200, 20, bOver ? FLinearColor(0.44f, 0.5f, 0.75f, 1.0f) : FLinearColor(0.44f, 0.44f, 0.44f, 1.0f));
-	const FString Label = TEXT("Respawn");
-	DrawGuiText(Label, ButtonX + 100.0f - TextWidth(Label) / 2.0f, ButtonY + 6.0f, bOver ? 0xFFFFA0 : 0xFFFFFF, true);
-	if (bOver && Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	bMenuClick = Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton);
+	const bool bAwake = GetWorld() && GetWorld()->GetTimeSeconds() - DeathShownTime >= 1.0;
+	const float ButtonX = Width / 2.0f - 100.0f;
+	const float ButtonY = Height / 4.0f + 72.0f;
+	if (MenuButton(TEXT("Respawn"), ButtonX, ButtonY, 200.0f, 20.0f, bAwake))
 	{
 		Dead.RequestRespawn();
 	}
-	const float TitleY = ButtonY + 24.0f;
-	const bool bOverTitle = GuiMouse.X >= ButtonX && GuiMouse.X < ButtonX + 200.0f && GuiMouse.Y >= TitleY && GuiMouse.Y < TitleY + 20.0f;
-	DrawFill(ButtonX - 1, TitleY - 1, 202, 22, FLinearColor::Black);
-	DrawFill(ButtonX, TitleY, 200, 20, bOverTitle ? FLinearColor(0.44f, 0.5f, 0.75f, 1.0f) : FLinearColor(0.44f, 0.44f, 0.44f, 1.0f));
-	const FString TitleLabel = TEXT("Title Screen");
-	DrawGuiText(TitleLabel, ButtonX + 100.0f - TextWidth(TitleLabel) / 2.0f, TitleY + 6.0f, bOverTitle ? 0xFFFFA0 : 0xFFFFFF, true);
-	if (bOverTitle && Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	else if (MenuButton(TEXT("Title Screen"), ButtonX, ButtonY + 24.0f, 200.0f, 20.0f, bAwake))
 	{
 		// Leaving the map saves the world and the player, like Save and Quit to Title.
 		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));

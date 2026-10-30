@@ -18,6 +18,14 @@ namespace McVillager
 	constexpr int32 GolemCheckTicks = 600;
 	// A baby takes this long to grow up.
 	constexpr int32 BabyTicks = 24000;
+	// Food points a villager must have eaten to be willing to breed (a loaf of bread is 4, a carrot, potato or beetroot 1),
+	// the most it keeps, how far off a mate can be and the wait after a child.
+	constexpr int32 BreedFood = 12;
+	constexpr int32 MaxFood = 24;
+	constexpr double BreedRange = 5.0;
+	constexpr int32 BreedCooldownTicks = 6000;
+	// What a food item is worth to a villager, 0 for anything else.
+	MCENTITY_API int32 GetFoodValue(FName Item);
 	// How far a villager looks for a job site, and how far up and down.
 	constexpr int32 SearchRadius = 16;
 	constexpr int32 SearchHeight = 6;
@@ -98,6 +106,10 @@ public:
 
 	// A baby is half the size, takes no profession and can't trade. Growing up is BabyTicks from birth.
 	void SetBaby(bool bInBaby);
+	int32 GetFood() const { return FoodPoints; }
+	void SetFood(int32 Points) { FoodPoints = FMath::Clamp(Points, 0, McVillager::MaxFood); }
+	// Ready to have a child: grown, fed enough and not just had one.
+	bool IsWilling() const { return !bBaby && FoodPoints >= McVillager::BreedFood && BreedCooldown <= 0; }
 	bool IsBaby() const { return bBaby; }
 	int32 GetGrowthTicksLeft() const { return GrowthTicks; }
 	void SetGrowthTicksLeft(int32 Ticks) { GrowthTicks = Ticks; }
@@ -149,6 +161,12 @@ private:
 	bool IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
 	// Calls for a golem if at least that many villagers live near and none is guarding them.
 	void WantGolem(FMcEntityManager& Manager, int32 MinVillagers);
+	// Eats the bread and vegetables lying within a block and a half.
+	void PickUpFood(FMcEntityManager& Manager);
+	// With a willing mate near and a bed to spare, has a baby.
+	void TryBreed(FMcEntityManager& Manager);
+	// A baby runs after a villager near it, now and then.
+	void Play(FMcEntityManager& Manager);
 	// At night a villager shuts the open wooden doors within 3 blocks of it.
 	void CloseDoorsNearby(FMcEntityManager& Manager);
 	// Once a second: picks the activity for the hour and walks to where it is done, or stays put when there.
@@ -166,6 +184,8 @@ private:
 	int32 LastRestockAge = 0;
 	bool bBaby = false;
 	int32 GrowthTicks = 0;
+	int32 FoodPoints = 0;
+	int32 BreedCooldown = 0;
 	bool bHasJobSite = false;
 	FIntVector JobSite = FIntVector::ZeroValue;
 	McVillager::EActivity Activity = McVillager::EActivity::Idle;

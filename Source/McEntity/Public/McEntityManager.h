@@ -137,6 +137,8 @@ public:
 	TFunction<void(const FVector&)> OnGolemWanted;
 	// Called to change a block (a villager shutting a door), so the owner of the blocks can send the change on.
 	TFunction<void(const FIntVector&, FMcStateId)> OnSetBlock;
+	// Called with where two villagers made a baby and the one that called (for its look); the host puts the baby there.
+	TFunction<void(const FVector&, FMcMob&)> OnVillagerBred;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;

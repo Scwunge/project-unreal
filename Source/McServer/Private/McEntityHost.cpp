@@ -120,6 +120,16 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			Infect(static_cast<FMcVillager&>(Victim));
 		}
 	};
+	// A baby villager takes the look of the parent that called.
+	Manager.OnVillagerBred = [this](const FVector& Where, FMcMob& Parent)
+	{
+		if (FMcMob* Made = SpawnMob(FMcVillager::StaticType(), Where))
+		{
+			FMcVillager& Baby = static_cast<FMcVillager&>(*Made);
+			Baby.SetVariant(static_cast<FMcVillager&>(Parent).GetVariant());
+			Baby.SetBaby(true);
+		}
+	};
 	// A village that wants a golem gets one on open ground within 3 to 6 blocks of the villager that called.
 	Manager.OnGolemWanted = [this](const FVector& Around)
 	{

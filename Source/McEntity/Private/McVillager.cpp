@@ -36,7 +36,7 @@ namespace
 	const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
 
 	// 2 added the bed.
-	constexpr int32 SaveVersion = 4;
+	constexpr int32 SaveVersion = 5;
 	// What a player's standing with a villager runs between.
 	constexpr int32 MinReputation = -200;
 	constexpr int32 MaxReputation = 100;
@@ -533,6 +533,118 @@ void FMcVillager::CloseDoorsNearby(FMcEntityManager& Manager)
 	}
 }
 
+int32 McVillager::GetFoodValue(FName Item)
+{
+	if (Item == FName(TEXT("minecraft:bread")))
+	{
+		return 4;
+	}
+	if (Item == FName(TEXT("minecraft:carrot")) || Item == FName(TEXT("minecraft:potato")) || Item == FName(TEXT("minecraft:beetroot")))
+	{
+		return 1;
+	}
+	return 0;
+}
+
+void FMcVillager::PickUpFood(FMcEntityManager& Manager)
+{
+	if (bBaby || FoodPoints >= McVillager::MaxFood)
+	{
+		return;
+	}
+	for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+	{
+		if (Other->bRemoved || Other->GetType() != FMcItemEntity::StaticType() || FVector::DistSquared(Other->Body.Position, Body.Position) > 2.25)
+		{
+			continue;
+		}
+		FMcItemEntity& Item = static_cast<FMcItemEntity&>(*Other);
+		const int32 Value = McVillager::GetFoodValue(Item.Stack.Item);
+		if (Value <= 0 || Item.PickupDelay > 0 || Item.Stack.Count <= 0)
+		{
+			continue;
+		}
+		// As much of the stack as it has room for.
+		const int32 Eaten = FMath::Min(Item.Stack.Count, (McVillager::MaxFood - FoodPoints + Value - 1) / Value);
+		FoodPoints = FMath::Min(McVillager::MaxFood, FoodPoints + Eaten * Value);
+		Item.Stack.Count -= Eaten;
+		if (Item.Stack.Count <= 0)
+		{
+			Item.bRemoved = true;
+		}
+		if (FoodPoints >= McVillager::MaxFood)
+		{
+			return;
+		}
+	}
+}
+
+void FMcVillager::TryBreed(FMcEntityManager& Manager)
+{
+	if (!IsWilling() || !Manager.OnVillagerBred)
+	{
+		return;
+	}
+	// A mate in range that is willing too.
+	FMcVillager* Mate = nullptr;
+	for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+	{
+		if (Other.Get() != this && !Other->bRemoved && Other->GetType() == StaticType()
+			&& FVector::DistSquared(Other->Body.Position, Body.Position) < FMath::Square(McVillager::BreedRange)
+			&& static_cast<FMcVillager&>(*Other).IsWilling())
+		{
+			Mate = static_cast<FMcVillager*>(Other.Get());
+			break;
+		}
+	}
+	if (!Mate)
+	{
+		return;
+	}
+	// And a bed nobody sleeps in, for the child.
+	const FMcBlockWorld& World = Manager.GetWorld();
+	const FIntVector Here(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+	FIntVector Free;
+	if (!McVillager::FindNearestBlock(World, Here, McVillager::SearchRadius, McVillager::SearchHeight, [&](FName Block, const FIntVector& Pos) { return McVillager::IsBed(Block) && !IsBedClaimedByOther(Manager, Pos) && !Mate->IsBedClaimedByOther(Manager, Pos) && !(bHasBed && Bed == Pos) && !(Mate->bHasBed && Mate->Bed == Pos); }, Free))
+	{
+		return;
+	}
+	FoodPoints -= McVillager::BreedFood;
+	Mate->FoodPoints -= McVillager::BreedFood;
+	BreedCooldown = McVillager::BreedCooldownTicks;
+	Mate->BreedCooldown = McVillager::BreedCooldownTicks;
+	Manager.OnVillagerBred((Body.Position + Mate->Body.Position) * 0.5, *this);
+}
+
+void FMcVillager::Play(FMcEntityManager& Manager)
+{
+	if (!bBaby || Age % 100 != Id % 100 || PanicTicks > 0)
+	{
+		return;
+	}
+	// The nearest other villager within 12 blocks, a baby by preference.
+	FMcVillager* Friend = nullptr;
+	double Best = FMath::Square(12.0);
+	for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+	{
+		if (Other.Get() == this || Other->bRemoved || Other->GetType() != StaticType())
+		{
+			continue;
+		}
+		FMcVillager& Candidate = static_cast<FMcVillager&>(*Other);
+		const double Distance = FVector::DistSquared(Candidate.Body.Position, Body.Position) * (Candidate.IsBaby() ? 0.25 : 1.0);
+		if (Distance > 4.0 && Distance < Best)
+		{
+			Best = Distance;
+			Friend = &Candidate;
+		}
+	}
+	if (Friend)
+	{
+		Goal = Friend->Body.Position;
+	}
+}
+
 void FMcVillager::WantGolem(FMcEntityManager& Manager, int32 MinVillagers)
 {
 	if (!Manager.OnGolemWanted || bBaby)
@@ -569,6 +681,16 @@ void FMcVillager::Tick(FMcEntityManager& Manager)
 	{
 		SetBaby(false);
 	}
+	if (BreedCooldown > 0)
+	{
+		--BreedCooldown;
+	}
+	if (Age % 10 == Id % 10)
+	{
+		PickUpFood(Manager);
+		TryBreed(Manager);
+	}
+	Play(Manager);
 	// A villager runs from the zombies and illagers within 8 blocks, away from the nearest.
 	if (Age % 10 == Id % 10 && PanicTicks <= 0)
 	{
@@ -679,6 +801,15 @@ bool FMcVillager::Serialize(FArchive& Ar)
 			{
 				Ar << Known.Key << Known.Value;
 			}
+		}
+	}
+	if (Version >= 5)
+	{
+		Ar << FoodPoints << BreedCooldown;
+		if (Ar.IsLoading())
+		{
+			FoodPoints = FMath::Clamp(FoodPoints, 0, McVillager::MaxFood);
+			BreedCooldown = FMath::Max(0, BreedCooldown);
 		}
 	}
 	if (Ar.IsLoading())

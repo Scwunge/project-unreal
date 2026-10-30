@@ -159,6 +159,57 @@ bool FMcIronGolemTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the upper half is shut"), Registry.GetPropertyValue(World.GetBlock(FIntVector(5, 2, 5)), TEXT("open")), FName(TEXT("false")));
 		TestEqual(TEXT("the iron door stays open"), Registry.GetPropertyValue(World.GetBlock(FIntVector(8, 1, 5)), TEXT("open")), FName(TEXT("true")));
 	}
+	{
+		// Two villagers that ate enough, with a bed to spare, have a baby; the baby runs after them and grows up.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFloor(World);
+		FMcEntityHost Host(World, 1);
+		Host.GetManager().OnVillagerBred = [&Host](const FVector& Where, FMcMob& Parent)
+		{
+			if (FMcMob* Made = Host.SpawnMob(FMcVillager::StaticType(), Where))
+			{
+				static_cast<FMcVillager&>(*Made).SetBaby(true);
+			}
+		};
+		World.SetBlock(FIntVector(12, 1, 12), Registry.ParseState(TEXT("minecraft:red_bed[facing=north,occupied=false,part=foot]")).Get(0));
+		FMcMob* First = Host.SpawnMob(TEXT("minecraft:villager"), FVector(10.5, 1.0, 10.5));
+		FMcMob* Second = Host.SpawnMob(TEXT("minecraft:villager"), FVector(11.5, 1.0, 10.5));
+		if (!First || !Second)
+		{
+			return false;
+		}
+		static_cast<FMcVillager*>(First)->SetFood(12);
+		static_cast<FMcVillager*>(Second)->SetFood(12);
+		for (int32 Tick = 0; Tick < 60; ++Tick)
+		{
+			Host.GetManager().Tick();
+		}
+		int32 Babies = 0;
+		for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
+		{
+			Babies += (!Entity->bRemoved && Entity->GetType() == FMcVillager::StaticType() && static_cast<FMcVillager&>(*Entity).IsBaby()) ? 1 : 0;
+		}
+		TestEqual(TEXT("one baby is born"), Babies, 1);
+		TestEqual(TEXT("the parents spent their food"), static_cast<FMcVillager*>(First)->GetFood(), 0);
+		TestFalse(TEXT("and are not willing again at once"), static_cast<FMcVillager*>(First)->IsWilling());
+	}
+	{
+		// Bread lying near a villager is eaten.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFloor(World);
+		FMcEntityHost Host(World, 1);
+		FMcMob* Villager = Host.SpawnMob(TEXT("minecraft:villager"), FVector(10.5, 1.0, 10.5));
+		if (!Villager)
+		{
+			return false;
+		}
+		Host.GetManager().DropItem(FVector(10.5, 1.0, 10.5), FMcItemStack(TEXT("minecraft:bread"), 3), 0);
+		for (int32 Tick = 0; Tick < 60; ++Tick)
+		{
+			Host.GetManager().Tick();
+		}
+		TestEqual(TEXT("three loaves are twelve points"), static_cast<FMcVillager*>(Villager)->GetFood(), 12);
+	}
 	return true;
 }
 

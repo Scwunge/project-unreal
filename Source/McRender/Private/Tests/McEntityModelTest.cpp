@@ -232,6 +232,17 @@ bool FMcHorsePoseTest::RunTest(const FString& Parameters)
 	const FVector Tip = FaceCentre(1, 0, 5);
 	TestTrue(TEXT("The tail's tip is lower than its root"), Tip.Z < Root.Z);
 	TestTrue(TEXT("The tail's tip is further back than its root"), Tip.Y < Root.Y);
+
+	// The mane runs up the back of the neck: its top is above the neck's top and behind the ears, and its foot is not in
+	// front of the neck's front.
+	const FVector ManeTop = FaceCentre(2, 3, 4);
+	const FVector ManeFoot = FaceCentre(2, 3, 5);
+	const FVector NeckTop = FaceCentre(2, 0, 4);
+	const FVector NeckFront = FaceCentre(2, 0, 0);
+	const FVector Ear = FaceCentre(2, 4, 4);
+	TestTrue(TEXT("The mane's top is above the neck's top"), ManeTop.Z > NeckTop.Z - 1.0);
+	TestTrue(TEXT("The mane's top is behind the ears"), ManeTop.Y < Ear.Y);
+	TestTrue(TEXT("The mane's foot is behind the neck's front"), ManeFoot.Y < NeckFront.Y);
 	return true;
 }
 

@@ -111,6 +111,15 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
 	};
+	// A villager a zombie killed may rise as a zombie villager: never on Easy, half the time on Normal, always on Hard.
+	Manager.OnVillagerSlain = [this](FMcMob& Victim)
+	{
+		const int32 Difficulty = Rules.Difficulty;
+		if (Victim.GetType() == FMcVillager::StaticType() && (Difficulty >= 3 || (Difficulty == 2 && Random.FRand() < 0.5f)))
+		{
+			Infect(static_cast<FMcVillager&>(Victim));
+		}
+	};
 	// What an explosion leaves behind: each block it destroyed rolls its own loot table (blocks/<name>), as when
 	// broken with no tool and blown up with this power: survives_explosion and explosion_decay keep each item with a
 	// chance of one in the power, so stone gives cobblestone and a leaf block its saplings, never itself.
@@ -317,10 +326,6 @@ FName FMcEntityHost::GetBiomeName(const FIntVector& Cell) const
 
 FMcMob* FMcEntityHost::Infect(FMcVillager& Villager)
 {
-	if (Villager.bRemoved)
-	{
-		return nullptr;
-	}
 	FMcMob* Made = SpawnMob(FMcZombieVillager::StaticType(), Villager.Body.Position);
 	if (!Made)
 	{

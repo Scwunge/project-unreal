@@ -20,6 +20,8 @@ namespace McVillager
 	// The look of a villager by the biome it was born in: "plains", "desert" and so on, without the namespace.
 	MCENTITY_API FName GetVariantOfBiome(FName Biome);
 	MCENTITY_API const TArray<FName>& GetVariants();
+	// What a villager runs from: zombies, illagers and vexes.
+	MCENTITY_API bool IsFeared(FName Kind);
 
 	// The profession a job site block gives ("minecraft:composter" gives "minecraft:farmer"); none for any other block.
 	MCENTITY_API FName GetProfessionOfJobSite(FName Block);

@@ -24,6 +24,8 @@ struct MCENTITY_API FMcMobType
 	bool bPanics = false;
 	// Burns in daylight.
 	bool bBurnsInSun = false;
+	// Zombies chase and bite villagers as well as players.
+	bool bHuntsVillagers = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;

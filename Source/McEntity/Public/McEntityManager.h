@@ -13,6 +13,7 @@
 class FArchive;
 class FMcBlockWorld;
 class FMcEntityManager;
+class FMcMob;
 
 class MCENTITY_API FMcEntity
 {
@@ -130,6 +131,8 @@ public:
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
+	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
+	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;

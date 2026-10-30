@@ -46,6 +46,12 @@ namespace
 
 namespace McVillager
 {
+	bool IsFeared(FName Kind)
+	{
+		static const TSet<FName> Feared = { TEXT("minecraft:zombie"), TEXT("minecraft:zombie_villager"), TEXT("minecraft:husk"), TEXT("minecraft:drowned"), TEXT("minecraft:pillager"), TEXT("minecraft:vindicator"), TEXT("minecraft:evoker"), TEXT("minecraft:illusioner"), TEXT("minecraft:vex"), TEXT("minecraft:ravager") };
+		return Feared.Contains(Kind);
+	}
+
 	const TArray<FName>& GetVariants()
 	{
 		static const TArray<FName> Variants = { TEXT("desert"), TEXT("jungle"), TEXT("plains"), TEXT("savanna"), TEXT("snow"), TEXT("swamp"), TEXT("taiga") };
@@ -479,8 +485,38 @@ void FMcVillager::Tick(FMcEntityManager& Manager)
 	{
 		SetBaby(false);
 	}
+	// A villager runs from the zombies and illagers within 8 blocks, away from the nearest.
+	if (Age % 10 == Id % 10 && PanicTicks <= 0)
+	{
+		const FVector* Fear = nullptr;
+		double Nearest = 8.0 * 8.0;
+		for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+		{
+			if (Other.Get() != this && !Other->bRemoved && McVillager::IsFeared(Other->GetType()))
+			{
+				const double Distance = FVector::DistSquared(Other->Body.Position, Body.Position);
+				if (Distance < Nearest)
+				{
+					Nearest = Distance;
+					Fear = &Other->Body.Position;
+				}
+			}
+		}
+		if (Fear)
+		{
+			FVector Away = Body.Position - *Fear;
+			Away.Y = 0.0;
+			Away = Away.GetSafeNormal();
+			if (Away.IsNearlyZero())
+			{
+				Away = FVector(1.0, 0.0, 0.0);
+			}
+			Goal = Body.Position + Away * 12.0;
+			PanicTicks = 60;
+		}
+	}
 	// Spread over the villagers by id, so they don't all look in the same tick.
-	if (Age % ProfessionInterval == Id % ProfessionInterval)
+	if (PanicTicks <= 0 && Age % ProfessionInterval == Id % ProfessionInterval)
 	{
 		UpdateProfession(Manager);
 		UpdateRoutine(Manager);

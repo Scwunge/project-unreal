@@ -57,7 +57,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:cow"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:sheep"), 0.9f, 1.3f, 8.f, 0.23f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:chicken"), 0.4f, 0.7f, 4.f, 0.25f, 0.f, 0.f, true, false);
-		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
 		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
@@ -92,7 +92,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// Villagers walk about at 0.5 of a 0.5 speed attribute and run from what hurts them.
 		Add(TEXT("minecraft:villager"), 0.6f, 1.95f, 20.f, 0.25f, 0.f, 0.f, true, false);
 		// A villager a zombie got: as a zombie, a bite of 3 and burning in the sun.
-		Add(TEXT("minecraft:zombie_villager"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		Add(TEXT("minecraft:zombie_villager"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
 		// The wandering trader walks about and runs from what hurts it.
 		Add(TEXT("minecraft:wandering_trader"), 0.6f, 1.95f, 20.f, 0.35f, 0.f, 0.f, true, false);
 	}
@@ -451,6 +451,8 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	bool bHasTarget = false;
 	bool bChasing = false;
 	double PreyDistSq = 0.0;
+	// A villager being hunted, rather than a player.
+	FMcMob* Prey = nullptr;
 	if (PanicTicks > 0)
 	{
 		--PanicTicks;
@@ -472,6 +474,29 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			{
 				Best = Distance;
 				Target = Player;
+				Prey = nullptr;
+				PreyDistSq = Distance;
+				bHasTarget = true;
+				bChasing = true;
+			}
+		}
+	}
+	if (Type.bHuntsVillagers && Type.FollowRange > 0.0f)
+	{
+		// The nearest villager within reach of its nose, if nearer than any player.
+		double Nearest = bChasing ? PreyDistSq : FMath::Square(Type.FollowRange);
+		for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+		{
+			if (Other->bRemoved || Other->GetType() != FName(TEXT("minecraft:villager")))
+			{
+				continue;
+			}
+			const double Distance = FVector::DistSquared(Other->Body.Position, Body.Position);
+			if (Distance < Nearest)
+			{
+				Nearest = Distance;
+				Prey = static_cast<FMcMob*>(Other.Get());
+				Target = Other->Body.Position;
 				PreyDistSq = Distance;
 				bHasTarget = true;
 				bChasing = true;
@@ -544,7 +569,14 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		&& PreyDistSq < FMath::Square(FMath::Max(2.0, 1.0 + Body.Width)))
 	{
 		AttackCooldown = 20;
-		if (OnAttackPlayer)
+		if (Prey)
+		{
+			if (Prey->Damage(BiteDamage, &Body.Position) && Manager.OnVillagerSlain)
+			{
+				Manager.OnVillagerSlain(*Prey);
+			}
+		}
+		else if (OnAttackPlayer)
 		{
 			OnAttackPlayer(Target, BiteDamage);
 		}

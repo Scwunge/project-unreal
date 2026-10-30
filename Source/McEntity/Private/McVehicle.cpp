@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McMob.h"
 #include "McRails.h"
 #include "Serialization/Archive.h"
 
@@ -511,6 +512,57 @@ bool FMcBoatEntity::Serialize(FArchive& Ar)
 	return true;
 }
 
+void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
+{
+	const auto FindMob = [&Manager](int32 MobId) -> FMcMob*
+	{
+		FMcEntity* Found = Manager.Find(MobId);
+		return Found && !Found->bRemoved && Found->IsLiving() ? static_cast<FMcMob*>(Found) : nullptr;
+	};
+	MobPassengers.RemoveAll([&](int32 MobId)
+	{
+		const FMcMob* Mob = FindMob(MobId);
+		return !Mob || Mob->RidingId != Id;
+	});
+	if (HasFreeSeat())
+	{
+		TArray<FMcEntity*> Near;
+		Manager.FindInBox(Body.GetBox().ExpandBy(FVector(0.2, 0.0, 0.2)), Near);
+		for (FMcEntity* Entity : Near)
+		{
+			if (!HasFreeSeat())
+			{
+				break;
+			}
+			if (Entity->IsLiving() && !Entity->bRemoved)
+			{
+				FMcMob* Mob = static_cast<FMcMob*>(Entity);
+				if (Mob->RidingId == 0 && CanCarryMob(*Mob))
+				{
+					Mob->RidingId = Id;
+					MobPassengers.Add(Mob->Id);
+				}
+			}
+		}
+	}
+	for (int32 Index = 0; Index < MobPassengers.Num(); ++Index)
+	{
+		if (FMcMob* Mob = FindMob(MobPassengers[Index]))
+		{
+			Mob->Body.Position = GetSeat(Seats.Num() + Index);
+			Mob->Body.Velocity = FVector::ZeroVector;
+			// Animals sit across the boat, facing its side; the rest face the way it goes.
+			Mob->Yaw = Mob->Type.bPanics ? Yaw + 90.0f : Yaw;
+		}
+	}
+}
+
+bool FMcBoatEntity::CanCarryMob(const FMcMob& Mob) const
+{
+	// Anything smaller than the boat that comes up against it (and a rider who is a player takes a seat by asking).
+	return Mob.Type.Width < Body.Width;
+}
+
 FVector FMcBoatEntity::GetSeat(int32 Index) const
 {
 	// Two aboard sit one behind the other: the first a fifth of a block forward, the second six tenths back.
@@ -605,4 +657,5 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		break;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
+	TickPassengers(Manager);
 }

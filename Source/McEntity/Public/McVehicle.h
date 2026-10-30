@@ -12,6 +12,8 @@
 #include "McContainer.h"
 #include "McEntityManager.h"
 
+class FMcMob;
+
 class MCENTITY_API FMcVehicle : public FMcEntity
 {
 public:
@@ -128,6 +130,12 @@ protected:
 		RiderYaw = Driver ? Driver->Yaw : 0.0f;
 	}
 
+	// Whether it takes this mob in when they touch (a boat does one smaller than itself; nothing else does yet).
+	virtual bool CanCarryMob(const FMcMob& Mob) const { return false; }
+	// Once a tick, after it has moved: drops mobs that got out, takes in those it touches while it has room and sets the
+	// seated ones where they sit.
+	void TickPassengers(FMcEntityManager& Manager);
+
 	struct FSeat
 	{
 		int32 Key = 0;
@@ -226,7 +234,9 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool Serialize(FArchive& Ar) override;
 	virtual FName GetItemName() const override;
-	virtual int32 GetCapacity() const override { return 2; }
+	// Two, or one with a chest taking the back seat.
+	virtual int32 GetCapacity() const override { return bChest ? 1 : 2; }
+	virtual bool CanCarryMob(const FMcMob& Mob) const override;
 	virtual FVector GetSeat(int32 Index = 0) const override;
 
 	// "minecraft:oak", "minecraft:birch" and so on: oak, spruce, birch, jungle, acacia, dark_oak, mangrove, cherry, pale_oak

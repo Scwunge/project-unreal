@@ -74,6 +74,9 @@ public:
 	// Counts up with every hit that gets through, so a watcher can tell a new hit from the last without having to
 	// catch HurtTime at its peak (it has already counted down once by the time the tick is over).
 	int32 HurtEvents = 0;
+	// The id of the vehicle it sits in (a boat picks up what it bumps into), or 0. A mob that sits does nothing and is
+	// moved by its vehicle; it gets out when that goes. Not saved.
+	int32 RidingId = 0;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).

@@ -4,6 +4,7 @@
 #include "McDimensionType.h"
 #include "McEntityManager.h"
 #include "McItemStack.h"
+#include "McMob.h"
 #include "McVehicle.h"
 #include "Misc/AutomationTest.h"
 #include "Serialization/MemoryReader.h"
@@ -215,6 +216,68 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("pushed forward by its rider, it moves"), FVector::Dist(Before, Boat->Body.Position) > 0.5);
 		Boat->bRemoved = true;
+		Manager.Tick();
+	}
+
+	// ---- A boat takes in the mobs it bumps into, up to its seats ----
+	{
+		FMcBoatEntity* Boat = new FMcBoatEntity();
+		Boat->Body.Position = FVector(5.5, 2.0, 15.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Boat));
+		TArray<FMcMob*> Pigs;
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			FMcMob* Pig = new FMcMob(*FMcMobType::Find(TEXT("minecraft:pig")));
+			Pig->Body.Position = FVector(5.5, 2.0, 15.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Pig));
+			Pigs.Add(Pig);
+		}
+		Manager.Tick();
+		Manager.Tick();
+		int32 Aboard = 0;
+		for (const FMcMob* Pig : Pigs)
+		{
+			Aboard += Pig->RidingId == Boat->Id ? 1 : 0;
+		}
+		TestEqual(TEXT("two pigs get in and the third is left"), Aboard, 2);
+		TestEqual(TEXT("the boat counts them"), Boat->GetPassengerCount(), 2);
+		TestFalse(TEXT("so a player finds it full"), Boat->SetRider(0.0f, 0.0f, 0.0f, 9));
+		const FVector Where = Boat->Body.Position;
+		TestTrue(TEXT("a pig sits where the boat is"), FVector::Dist(Pigs[0]->Body.Position, Where) < 1.0);
+		for (int32 Tick = 0; Tick < 20; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("and stays there"), FVector::Dist(Pigs[0]->Body.Position, Boat->Body.Position) < 1.0 && Pigs[0]->RidingId == Boat->Id);
+		Boat->bRemoved = true;
+		Manager.Tick();
+		Manager.Tick();
+		TestEqual(TEXT("they get out when it breaks"), Pigs[0]->RidingId, 0);
+		for (FMcMob* Pig : Pigs)
+		{
+			Pig->bRemoved = true;
+		}
+		Manager.Tick();
+
+		// A player in it leaves one seat.
+		FMcBoatEntity* Second = new FMcBoatEntity();
+		Second->Body.Position = FVector(8.5, 2.0, 15.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Second));
+		Second->SetRider(0.0f, 0.0f, 0.0f, 4);
+		FMcMob* Cow = new FMcMob(*FMcMobType::Find(TEXT("minecraft:cow")));
+		Cow->Body.Position = FVector(8.5, 2.0, 15.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Cow));
+		FMcMob* Sheep = new FMcMob(*FMcMobType::Find(TEXT("minecraft:sheep")));
+		Sheep->Body.Position = FVector(8.5, 2.0, 15.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Sheep));
+		Manager.Tick();
+		Manager.Tick();
+		FMcBoatEntity ChestBoat(true);
+		TestEqual(TEXT("a chest boat seats one"), ChestBoat.GetCapacity(), 1);
+		TestEqual(TEXT("a boat with a player takes one mob"), (Cow->RidingId == Second->Id ? 1 : 0) + (Sheep->RidingId == Second->Id ? 1 : 0), 1);
+		Second->bRemoved = true;
+		Cow->bRemoved = true;
+		Sheep->bRemoved = true;
 		Manager.Tick();
 	}
 

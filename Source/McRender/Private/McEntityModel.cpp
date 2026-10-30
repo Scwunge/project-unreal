@@ -273,6 +273,30 @@ namespace McEntityModel
 				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 6, -6), { BackLeg }));
 				Models.Add(Goat.Kind, Goat);
 			}
+			{
+				FModel Fox;
+				Fox.Kind = TEXT("minecraft:fox");
+				Fox.TextureSize = FIntPoint(48, 32);
+				Fox.Textures = { TEXT("fox/fox.png") };
+				Fox.Parts.Add(Part(ERole::Static, FVector(0, 9, 0.5f), { Box(24, 15, -3, -5.5f, -3, 6, 11, 6) }, Flat));
+				Fox.Parts.Add(Part(ERole::Head, FVector(0, 10.5f, 5.5f),
+					{ Box(1, 5, -4, -3, 0, 8, 6, 6), Box(8, 1, -3.5f, 3, 1, 2, 2, 1), Box(15, 1, 1.5f, 3, 1, 2, 2, 1), Box(6, 18, -2, -2.5f, 6, 4, 2, 3) }));
+				// The tail trails behind, a little drooped.
+				Fox.Parts.Add(Part(ERole::Static, FVector(0, 10, -5), { Box(30, 0, -2, 0, -2.5f, 4, 9, 5) }, -1.7f));
+				AddLegs(Fox, 4, 24, 2, 6, 2, 4, -3.5f, 6);
+				Models.Add(Fox.Kind, Fox);
+			}
+			{
+				FModel Llama;
+				Llama.Kind = TEXT("minecraft:llama");
+				Llama.TextureSize = FIntPoint(128, 64);
+				Llama.Textures = { TEXT("llama/llama_brown.png") };
+				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, 0), { Box(29, 0, -6, -9, -5, 12, 18, 10) }, Flat));
+				Llama.Parts.Add(Part(ERole::Static, FVector(0, 14, 8), { Box(0, 14, -4, 0, -3, 8, 18, 6) }));
+				Llama.Parts.Add(Part(ERole::Head, FVector(0, 28, 9), { Box(0, 0, -2, 0, -1, 4, 4, 9), Box(17, 0, -3, 4, 3, 3, 3, 1), Box(17, 0, 0, 4, 3, 3, 3, 1) }));
+				AddLegs(Llama, 29, 29, 4, 14, 4, 6.5f, -6.5f, 14);
+				Models.Add(Llama.Kind, Llama);
+			}
 			return Models;
 		}
 

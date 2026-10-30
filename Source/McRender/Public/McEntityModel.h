@@ -50,6 +50,9 @@ namespace McEntityModel
 		// A flat picture rather than a box (a held item): it lies in the part's y-z plane at Min.X, Size.Y by Size.Z, the whole
 		// of its layer's picture on it with the top towards -y and the right towards +z. Drawn from both sides.
 		bool bFlat = false;
+		// With bFlat: lying in the part's x-y plane instead, centred on (Min.X + Size.X / 2, Min.Y + Size.Y / 2) at Min.Z and Size.Y
+		// across, turned 45 degrees so an item icon's barrel (its diagonal) points along -y: a crossbow held out flat.
+		bool bFlatTop = false;
 	};
 
 	struct FPart

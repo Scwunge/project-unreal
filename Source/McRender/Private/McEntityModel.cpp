@@ -121,10 +121,11 @@ namespace McEntityModel
 			if (Held)
 			{
 				Model.Textures.Add(FString(TEXT("../item/")) + Held + TEXT(".png"));
-				FBox Picture = Style == 1 ? Box(0, 0, -1, -13, -13, 0, 12, 12) : Box(0, 0, -1, -22, -1, 0, 12, 12);
+				FBox Picture = Style == 1 ? Box(0, 0, -1, -16, 0, 12, 12, 0) : Box(0, 0, -1, -22, -1, 0, 12, 12);
 				Picture.bFlat = true;
-				// Lying level in front of the chest, its barrel forward: the icon's diagonal turned flat.
-				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, Style == 1 ? -0.785f : 0.0f, 0, 0, 0, 1);
+				// The crossbow lies flat along the arms, its barrel forward (the item model's display turns it down by 90 degrees).
+				Picture.bFlatTop = Style == 1;
+				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, 0.0f, 0, 0, 0, 1);
 				Hand.ShowPoses = Armed;
 				Model.Parts.Add(Hand);
 			}
@@ -275,9 +276,9 @@ namespace McEntityModel
 				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 27, 0), { Box(68, 73, -5, -5, -3, 10, 10, 15) }));
 				// The back of the head tucks against the front legs and the body, so no neck shows; the nose hangs from the face.
 				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 18, 6), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16), Box(0, 0, -2, -12, 16, 4, 8, 4) }));
-				// The horns come out of the sides of the head and lie back, nearly level, a little outward.
-				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 26, 14), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, -1.4f, 0.7f, 0));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 26, 14), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, -1.4f, -0.7f, 0));
+				// The horns stand on the head's top corners and lean well forward (vanilla's 63 degrees).
+				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 22, 16), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 1.1f, 0, 0));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 22, 16), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 1.1f, 0, 0));
 				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37);
 				Models.Add(Ravager.Kind, Ravager);
 			}
@@ -552,6 +553,38 @@ namespace McEntityModel
 		void AddFlat(const FBox& Box, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, float Hurt, float WholeScale, McPlayerModel::FMeshData& Out)
 		{
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			if (Box.bFlatTop)
+			{
+				// Corners of the picture (u right, v up) laid in the x-y plane with its diagonal along -y.
+				const FVector Centre(Box.Min.X + Box.Size.X * 0.5f, Box.Min.Y + Box.Size.Y * 0.5f, Box.Min.Z);
+				const FVector U(0.7071, -0.7071, 0.0);
+				const FVector V(-0.7071, -0.7071, 0.0);
+				const FVector2D Uv[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+				for (const bool bBack : { false, true })
+				{
+					const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(FVector(0.0, 0.0, bBack ? -1.0 : 1.0)));
+					const FColor Color = Shade(Normal, Hurt);
+					const int32 First = Out.Positions.Num();
+					for (const FVector2D& Corner : Uv)
+					{
+						const FVector Local = Centre + Box.Size.Y * ((Corner.X - 0.5) * U + (Corner.Y - 0.5) * V);
+						const FVector Model = ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local)) * WholeScale;
+						Out.Positions.Add(FVector(Model.X, Model.Z, Model.Y) * (McCoords::UnitsPerBlock / 16.0));
+						Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+						Out.UV0.Add(FVector2D(Corner.X, 1.0 - Corner.Y));
+						Out.Colors.Add(Color);
+					}
+					if (bBack)
+					{
+						Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+					}
+					else
+					{
+						Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+					}
+				}
+				return;
+			}
 			const float Y0 = Box.Min.Y;
 			const float Y1 = Box.Min.Y + Box.Size.Y;
 			const float Z0 = Box.Min.Z;

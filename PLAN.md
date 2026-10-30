@@ -436,6 +436,10 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 6. **The model baker (M2).** Mechanical but long: UV lock, multipart states, AO flags, rotated elements.
 7. **Lumen with runtime meshes (M10 only).** RealtimeMeshComponent's distance-field and Lumen card support is
    in its paid Pro edition. The vanilla-look mode doesn't need it.
+8. **Held items on mobs (after the villagers branch merges).** Every mob-held item (zombie and skeleton weapons, the
+   vindicator's axe, the pillager's crossbow, the witch's potion, the fox's mouth item, the allay) should go through the
+   same item display-transform path as the player's hand on `main` (the models' `display` entries, e.g.
+   `thirdperson_righthand`), and the flat-picture special cases in `McEntityModel` (`bFlat`, `bFlatTop`) should go.
 
 ## 7. Decisions
 

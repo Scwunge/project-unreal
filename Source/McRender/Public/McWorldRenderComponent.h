@@ -87,6 +87,7 @@ private:
 	void LaunchMeshTasks();
 	void UploadResults();
 	void Upload(FChunkResult& Result);
+	UProceduralMeshComponent* MakeMesh(TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map, FIntPoint Pos, int32 SortPriority);
 
 	FMcBlockWorld* World = nullptr;
 	FDelegateHandle AddedHandle;
@@ -107,6 +108,10 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> Meshes;
+	// The water of each chunk, in a mesh of its own that is drawn before all the other translucent things (ice,
+	// glass), whichever chunk they are in; one mesh cannot order them against another chunk's.
+	UPROPERTY(Transient)
+	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> WaterMeshes;
 
 	// The pass materials with the texture array set, indexed by EMcRenderPass.
 	UPROPERTY(Transient)

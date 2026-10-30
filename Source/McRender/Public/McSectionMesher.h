@@ -53,12 +53,13 @@ struct MCRENDER_API FMcSectionSnapshot
 	static FMcSectionSnapshot FromRegion(const FMcLightRegion& Region, int32 SectionIndex, const FMcRenderPalette& Palette);
 };
 
-// How a quad is drawn; one material each (M_McBlockOpaque, M_McBlockCutout, M_McBlockTranslucent).
+// How a quad is drawn; one material each (M_McBlockOpaque, M_McBlockCutout, M_McBlockTranslucent; Water uses the translucent one).
 enum class EMcRenderPass : uint8
 {
 	Opaque,
 	Cutout,       // texels are either fully opaque or dropped
 	Translucent,  // blended
+	Water,        // blended too, but drawn before all of the Translucent (ice, glass) so they show over it
 	Num,
 };
 

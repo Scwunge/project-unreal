@@ -236,6 +236,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   closes a screen first, then opens the pause menu. Options has sliders for field of view, render distance,
   sensitivity and volume (kept in `Saved/options.json`) and the Unreal Mode / HD choice. Open to LAN starts a listen
   server on the running world. **Not tested:** another client joining.
+- **Water draws before ice and glass** (2026-10-30): water is its own render pass (`EMcRenderPass::Water`, same
+  translucent material) in a mesh of its own per chunk with translucent sort priority -1, so over a frozen lake every
+  chunk's ice is blended over the water below it instead of the order following the chunk meshes' distances.
+  Still per-mesh: translucent blocks against each other (glass behind glass) sort by chunk distance only.
 - **First-person hand** (2026-10-30), `McHand`: the right arm (empty hand only) and the held item, drawn with UE
   first-person rendering (camera `FirstPersonScale` 0.1, its own 70 degree vertical field of view). A held item is
   placed from the models' `display.firstperson_righthand` data at one anchor (`HeldAnchor`); swing, walk bob and the

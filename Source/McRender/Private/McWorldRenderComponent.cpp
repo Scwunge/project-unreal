@@ -59,7 +59,7 @@ void UMcWorldRenderComponent::MakePassMaterials()
 {
 	UTexture2DArray* Blocks = FMcBlockTextures::Get().EnsureLoaded() ? FMcBlockTextures::Get().GetTextureArray() : nullptr;
 	PassMaterials.Reset();
-	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get() })
+	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get(), TranslucentMaterial.Get() })
 	{
 		if (!Base)
 		{
@@ -77,14 +77,17 @@ void UMcWorldRenderComponent::MakePassMaterials()
 	MaterialGeneration = McRenderMode::GetGeneration();
 
 	// Meshes already drawn take the new ones: mesh section SectionIndex * passes + pass is that pass.
-	for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : Meshes)
+	for (const TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>* Map : { &Meshes, &WaterMeshes })
 	{
-		if (UProceduralMeshComponent* Mesh = Pair.Value)
+		for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : *Map)
 		{
-			for (int32 MeshSection = 0; MeshSection < Mesh->GetNumSections(); ++MeshSection)
+			if (UProceduralMeshComponent* Mesh = Pair.Value)
 			{
-				const int32 Pass = MeshSection % McNumRenderPasses;
-				Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+				for (int32 MeshSection = 0; MeshSection < Mesh->GetNumSections(); ++MeshSection)
+				{
+					const int32 Pass = MeshSection % McNumRenderPasses;
+					Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+				}
 			}
 		}
 	}
@@ -104,14 +107,18 @@ void UMcWorldRenderComponent::SetWorld(FMcBlockWorld* InWorld)
 		World->OnChunkRemoved.Remove(RemovedHandle);
 		World->OnChunkChanged.Remove(ChangedHandle);
 	}
-	for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Mesh : Meshes)
+	for (const TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>* Map : { &Meshes, &WaterMeshes })
 	{
-		if (Mesh.Value)
+		for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Mesh : *Map)
 		{
-			Mesh.Value->DestroyComponent();
+			if (Mesh.Value)
+			{
+				Mesh.Value->DestroyComponent();
+			}
 		}
 	}
 	Meshes.Reset();
+	WaterMeshes.Reset();
 	Chunks.Reset();
 
 	World = InWorld;
@@ -165,6 +172,10 @@ void UMcWorldRenderComponent::HandleChunkRemoved(FIntPoint Pos)
 	Chunks.Remove(Pos);
 	TObjectPtr<UProceduralMeshComponent> Mesh;
 	if (Meshes.RemoveAndCopyValue(Pos, Mesh) && Mesh)
+	{
+		Mesh->DestroyComponent();
+	}
+	if (WaterMeshes.RemoveAndCopyValue(Pos, Mesh) && Mesh)
 	{
 		Mesh->DestroyComponent();
 	}
@@ -332,33 +343,76 @@ void UMcWorldRenderComponent::UploadResults()
 	}
 }
 
+UProceduralMeshComponent* UMcWorldRenderComponent::MakeMesh(TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map, FIntPoint Pos, int32 SortPriority)
+{
+	if (const TObjectPtr<UProceduralMeshComponent>* Existing = Map.Find(Pos))
+	{
+		if (UProceduralMeshComponent* Mesh = Existing->Get())
+		{
+			Mesh->ClearAllMeshSections();
+			return Mesh;
+		}
+	}
+	UProceduralMeshComponent* Mesh = NewObject<UProceduralMeshComponent>(GetOwner());
+	Mesh->SetupAttachment(this);
+	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Mesh->SetTranslucentSortPriority(SortPriority);
+	Mesh->RegisterComponent();
+	const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+	Mesh->SetWorldLocation(FVector(Pos.X * ChunkUnits, Pos.Y * ChunkUnits, 0.0));
+	Map.Add(Pos, Mesh);
+	return Mesh;
+}
+
 void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 {
-	TObjectPtr<UProceduralMeshComponent>* Existing = Meshes.Find(Result.ChunkPos);
+	auto Destroy = [&Result](TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map)
+	{
+		TObjectPtr<UProceduralMeshComponent> Mesh;
+		if (Map.RemoveAndCopyValue(Result.ChunkPos, Mesh) && Mesh)
+		{
+			Mesh->DestroyComponent();
+		}
+	};
 	if (Result.Sections.Num() == 0)
 	{
-		if (Existing && *Existing)
-		{
-			(*Existing)->DestroyComponent();
-		}
-		Meshes.Remove(Result.ChunkPos);
+		Destroy(Meshes);
+		Destroy(WaterMeshes);
 		return;
 	}
 
-	UProceduralMeshComponent* Mesh = Existing ? Existing->Get() : nullptr;
-	if (!Mesh)
+	// Mesh section SectionIndex * passes + pass holds that pass of that chunk section; the water pass is in the
+	// chunk's water mesh, the other passes in its block mesh.
+	bool bAnyWater = false, bAnyBlocks = false;
+	for (const FMcSectionMesh& Section : Result.Sections)
 	{
-		Mesh = NewObject<UProceduralMeshComponent>(GetOwner());
-		Mesh->SetupAttachment(this);
-		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Mesh->RegisterComponent();
-		const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
-		Mesh->SetWorldLocation(FVector(Result.ChunkPos.X * ChunkUnits, Result.ChunkPos.Y * ChunkUnits, 0.0));
-		Meshes.Add(Result.ChunkPos, Mesh);
+		for (int32 Pass = 0; Pass < McNumRenderPasses; ++Pass)
+		{
+			if (!Section.Passes[Pass].IsEmpty())
+			{
+				(Pass == static_cast<int32>(EMcRenderPass::Water) ? bAnyWater : bAnyBlocks) = true;
+			}
+		}
+	}
+	UProceduralMeshComponent* BlockMesh = nullptr;
+	UProceduralMeshComponent* WaterMesh = nullptr;
+	if (bAnyBlocks)
+	{
+		BlockMesh = MakeMesh(Meshes, Result.ChunkPos, 0);
+	}
+	else
+	{
+		Destroy(Meshes);
+	}
+	if (bAnyWater)
+	{
+		WaterMesh = MakeMesh(WaterMeshes, Result.ChunkPos, -1);
+	}
+	else
+	{
+		Destroy(WaterMeshes);
 	}
 
-	// Mesh section SectionIndex * passes + pass holds that pass of that chunk section.
-	Mesh->ClearAllMeshSections();
 	const TArray<FVector2D> NoUVs;
 	const TArray<FProcMeshTangent> NoTangents;
 	for (const FMcSectionMesh& Section : Result.Sections)
@@ -370,6 +424,7 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 			{
 				continue;
 			}
+			UProceduralMeshComponent* Mesh = Pass == static_cast<int32>(EMcRenderPass::Water) ? WaterMesh : BlockMesh;
 			const int32 MeshSection = Section.SectionIndex * McNumRenderPasses + Pass;
 			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
 			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);

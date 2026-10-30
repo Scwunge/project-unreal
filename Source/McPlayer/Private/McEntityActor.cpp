@@ -58,7 +58,7 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 {
-	LookSeed = Entity.Id;
+	LookSeed = Entity.IsLiving() && static_cast<const FMcMob&>(Entity).LookSeed >= 0 ? static_cast<const FMcMob&>(Entity).LookSeed : 0;
 	SetActorLocation(McCoords::BlockToUnreal(Entity.Body.Position));
 	Kind = Entity.GetType();
 	Size = FVector2D(Entity.Body.Width, Entity.Body.Height);

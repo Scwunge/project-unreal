@@ -169,7 +169,7 @@ public:
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
-	// Picks the look of a kind that comes in several (a horse's coat) from a number that is the same for the mob's life.
+	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
 	void SetVariantSeed(int32 InSeed);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

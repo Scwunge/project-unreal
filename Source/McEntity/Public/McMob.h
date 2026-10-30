@@ -80,6 +80,8 @@ public:
 	int32 AngerTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
+	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
+	int32 LookSeed = -1;
 
 	// Creepers: ticks the fuse has burned (it explodes at FuseTicks), and whether it is burning now.
 	int32 SwellTicks = 0;

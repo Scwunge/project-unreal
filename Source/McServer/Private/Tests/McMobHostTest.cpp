@@ -6,6 +6,7 @@
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityHost.h"
+#include "McMobLook.h"
 #include "McMob.h"
 #include "Misc/AutomationTest.h"
 
@@ -143,6 +144,58 @@ bool FMcMobHostTest::RunTest(const FString& Parameters)
 	const TConstArrayView<FMcSpawnEntry> Deltas = Biomes.GetSpawns(Biomes.Find(TEXT("minecraft:basalt_deltas")).Get(0), TEXT("monster"));
 	const FMcSpawnEntry* Cubes = Deltas.FindByPredicate([](const FMcSpawnEntry& Entry) { return Entry.Kind == TEXT("minecraft:magma_cube"); });
 	TestTrue(TEXT("magma cubes come 2 to 5 in the basalt deltas"), Cubes && Cubes->MinCount == 2 && Cubes->MaxCount == 5);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMobLookTest, "McClient.McServer.MobLook",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcMobLookTest::RunTest(const FString& Parameters)
+{
+	// The biome picks: a desert rabbit is gold, a snowy one white, a snowy fox is the snow one, a taiga wolf is pale.
+	FRandomStream Random(7);
+	TestEqual(TEXT("desert rabbit"), McMobLook::Pick(TEXT("minecraft:rabbit"), TEXT("minecraft:desert"), Random), 3);
+	TestEqual(TEXT("snowy rabbit"), McMobLook::Pick(TEXT("minecraft:rabbit"), TEXT("minecraft:snowy_plains"), Random), 1);
+	TestEqual(TEXT("snowy fox"), McMobLook::Pick(TEXT("minecraft:fox"), TEXT("minecraft:snowy_taiga"), Random), 1);
+	TestEqual(TEXT("taiga fox"), McMobLook::Pick(TEXT("minecraft:fox"), TEXT("minecraft:taiga"), Random), 0);
+	TestEqual(TEXT("taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:taiga"), Random), 0);
+	TestEqual(TEXT("snowy taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:snowy_taiga"), Random), 1);
+	TestEqual(TEXT("a pig has one look"), McMobLook::GetCount(TEXT("minecraft:pig")), 0);
+	for (int32 Index = 0; Index < 50; ++Index)
+	{
+		const int32 Horse = McMobLook::Pick(TEXT("minecraft:horse"), NAME_None, Random);
+		TestTrue(TEXT("a horse's look is on its list"), Horse >= 0 && Horse < McMobLook::GetCount(TEXT("minecraft:horse")));
+	}
+
+	// A horse keeps its coat through a save.
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcBlockWorld World{FMcDimensionType()};
+	World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+	FMcEntityHost Host(World, 1);
+	FMcMob* Horse = Host.SpawnMob(TEXT("minecraft:horse"), FVector(8.5, 1.0, 8.5));
+	if (!TestNotNull(TEXT("a horse spawns"), Horse))
+	{
+		return false;
+	}
+	Horse->LookSeed = 17;
+	const TArray<uint8> Bytes = Host.CaptureChunk(FIntPoint(0, 0));
+	Horse->bRemoved = true;
+	TestEqual(TEXT("the horse is in the save"), Host.RestoreChunk(Bytes), 1);
+	int32 Found = 0;
+	for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
+	{
+		if (Entity->IsLiving() && !Entity->bRemoved)
+		{
+			++Found;
+			TestEqual(TEXT("it keeps its coat"), static_cast<FMcMob&>(*Entity).LookSeed, 17);
+		}
+	}
+	TestEqual(TEXT("one horse came back"), Found, 1);
 	return true;
 }
 

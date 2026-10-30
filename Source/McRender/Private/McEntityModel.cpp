@@ -822,9 +822,7 @@ void UMcEntityModelComponent::SetVariantSeed(int32 InSeed)
 		return;
 	}
 	VariantSeed = InSeed;
-	// Ids count up one at a time, so spread them.
-	const uint32 Hash = static_cast<uint32>(InSeed) * 2654435761u;
-	TextureOverrides = Model->Variants[(Hash >> 8) % static_cast<uint32>(Model->Variants.Num())];
+	TextureOverrides = Model->Variants[FMath::Abs(InSeed) % Model->Variants.Num()];
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;

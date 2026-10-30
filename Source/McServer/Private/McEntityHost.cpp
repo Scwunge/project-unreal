@@ -11,6 +11,7 @@
 #include "McMob.h"
 #include "McRandom.h"
 #include "McVillager.h"
+#include "McMobLook.h"
 #include "McServer.h"
 #include "Engine/World.h"
 #include "Serialization/MemoryReader.h"
@@ -260,6 +261,10 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
+	if (McMobLook::GetCount(Kind) > 0)
+	{
+		Mob->LookSeed = McMobLook::Pick(Kind, GetBiomeName(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))), Random);
+	}
 	Mob->OnDeath = [this](FMcMob& Dead)
 	{
 		if (Dead.Type.bHops && Dead.Size > 1)
@@ -289,15 +294,21 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	return Mob;
 }
 
-FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const
+FName FMcEntityHost::GetBiomeName(const FIntVector& Cell) const
 {
 	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
 	const FMcChunk* Chunk = World.FindChunk(FIntPoint(McCoords::BlockToChunk(Cell.X), McCoords::BlockToChunk(Cell.Z)));
 	if (!Biomes.IsLoaded() || !Chunk)
 	{
-		return TEXT("plains");
+		return NAME_None;
 	}
-	return McVillager::GetVariantOfBiome(Biomes.GetName(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15)));
+	return Biomes.GetName(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15));
+}
+
+FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const
+{
+	const FName Biome = GetBiomeName(Cell);
+	return Biome.IsNone() ? FName(TEXT("plains")) : McVillager::GetVariantOfBiome(Biome);
 }
 
 void FMcEntityHost::SplitSlime(FMcMob& Dead)
@@ -383,6 +394,12 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		TArray<uint8> Data;
 		FMemoryWriter DataWriter(Data);
 		Entity->Serialize(DataWriter);
+		if (Entity->IsLiving())
+		{
+			// After what the kind itself keeps, so an older save without it still reads.
+			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
+			DataWriter << Look;
+		}
 		Writer << Type << Data;
 		++Count;
 	}
@@ -426,6 +443,15 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
+				if (!DataReader.AtEnd())
+				{
+					int32 Look = -1;
+					DataReader << Look;
+					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
+					{
+						Mob->LookSeed = Look;
+					}
+				}
 				++Restored;
 			}
 			else

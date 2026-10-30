@@ -56,7 +56,7 @@ public:
 	int32 VillagerLevel = 1;
 	UPROPERTY(Replicated)
 	bool bBaby = false;
-	// The mob's id, which picks its coat or breed where a kind has several.
+	// Which coat or breed the mob has, where its kind has several (McMobLook).
 	UPROPERTY(Replicated)
 	int32 LookSeed = 0;
 

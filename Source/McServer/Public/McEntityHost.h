@@ -87,6 +87,8 @@ private:
 	void SplitSlime(FMcMob& Dead);
 	// The look a villager born at the block has: its biome's.
 	FName GetVillagerVariant(const FIntVector& Cell) const;
+	// The biome at a block ("minecraft:plains"), none when it isn't known.
+	FName GetBiomeName(const FIntVector& Cell) const;
 	// Puts the herd (if the chunk gets one) on the ground. Done a few chunks a tick, not all inside OnChunkAdded:
 	// each herd searches columns for ground, and a player joining brings hundreds of chunks at once.
 	void SeedChunk(FIntPoint Chunk);

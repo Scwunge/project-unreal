@@ -31,7 +31,8 @@ namespace McHand
 		constexpr double TipLength = 10.0 * McPlayerModel::ModelScale / 16.0;
 		constexpr double Units = McCoords::UnitsPerBlock;
 		// Where the held thing's centre is before its display transform: forward, right, up of the camera, in blocks.
-		const FVector HeldAnchor(0.72, 0.38, -0.25);
+		// Solved from the reference client's idle held stone (the corners of its top face) at the display scale 0.4.
+		const FVector HeldAnchor(0.72, 0.567, -0.525);
 
 		FQuat MakeBasis(const FVector& X, const FVector& Y, const FVector& Z)
 		{
@@ -140,10 +141,10 @@ namespace McHand
 		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
 		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
 		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
-		// held close to the eye, in the camera's space (forward, right, up) moved from where it rests and turned a little about
-		// its own middle. The size is the idle one; being nearer is what makes it larger.
-		const FVector Move = FVector(-42.0, -31.0, 1.0) * Eased;
-		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 10.0f, 8.0f).Quaternion(), Eased);
+		// moved toward the middle of the screen and up from where it rests, in the camera's space (forward, right, up), and turned a
+		// little about its own middle. The size is the idle one.
+		const FVector Move = FVector(0.0, -26.0, 21.0) * Eased;
+		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 0.0f, 12.0f).Quaternion(), Eased);
 		return FTransform(Turn, Move, FVector::OneVector);
 	}
 
@@ -172,15 +173,14 @@ namespace McHand
 	FTransform GetHeldRestTransform(EHeld Kind)
 	{
 		// The item models' display.firstperson_righthand: item/generated and item/handheld give a flat item
-		// rotation (0, -90, 25), translation (1.13, 3.2, 1.13) pixels, scale 0.68; block/block a block rotation
+		// rotation (0, -90, 25), translation (1.13, 3.2, 1.13) pixels, scale 0.68 (drawn with the signs of the rotation turned over: matched to the reference client's held sword, stick, bow and snowball); block/block a block rotation
 		// (0, 45, 0), no translation, scale 0.4. The model (x right, y up, z to the viewer, centred, 16 pixels a block)
 		// is scaled, rotated about z, y then x (the angles turn the other way from a right-handed model's, all three), moved by the translation, and put at the hand's anchor.
 		const bool bCube = Kind == EHeld::Cube;
-		const FVector Rotation = bCube ? FVector(0.0, 45.0, 0.0) : FVector(0.0, -90.0, 25.0);
+		FVector Rotation = bCube ? FVector(0.0, 45.0, 0.0) : FVector(0.0, 90.0, -25.0);
 		const FVector Translation = bCube ? FVector::ZeroVector : FVector(1.13, 3.2, 1.13);
-		// How much smaller than the model's own scale the picture is drawn, found by matching the game's held block
-		// (about 200 pixels across at 1280x720) and item (about 150).
-		const double ItemScale = bCube ? 0.4 * 0.5 : 0.68 * 0.37;
+		// The display transform's own scale, as the game draws it (a model of 16 pixels is a block).
+		const double ItemScale = bCube ? 0.4 : 0.68;
 
 		auto RotateZ = [](const FVector& V, double Degrees) { const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees)); return FVector(V.X * C - V.Y * S, V.X * S + V.Y * C, V.Z); };
 		auto RotateY = [](const FVector& V, double Degrees) { const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees)); return FVector(V.X * C + V.Z * S, V.Y, -V.X * S + V.Z * C); };

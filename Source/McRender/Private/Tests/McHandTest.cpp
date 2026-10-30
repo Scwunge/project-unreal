@@ -98,20 +98,30 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("held thing near the fingertips"), FVector::Dist(Place, Tip) < 40.0);
 	}
 
-	// A held block is about 200 pixels across on a 1280x720 screen at 70 degrees (vertical): not 400.
+	// The held block's top face, on a 1280x720 screen at 70 degrees (vertical): its left, far and right corners are where
+	// the reference client's held stone has them (measured from its shot, within a few pixels); the near corner is off the screen.
 	{
 		const FTransform Block = GetHeldRestTransform(EHeld::Cube);
 		const double TanHalf = FMath::Tan(FMath::DegreesToRadians(35.0));
-		FBox2D Screen(ForceInit);
-		for (int32 Corner = 0; Corner < 8; ++Corner)
+		TArray<FVector2D> Corners;
+		for (int32 Corner = 0; Corner < 4; ++Corner)
 		{
-			const FVector Local(Corner & 1 ? 50.0 : -50.0, Corner & 2 ? 50.0 : -50.0, Corner & 4 ? 50.0 : -50.0);
-			const FVector P = Block.TransformPosition(Local);
-			Screen += FVector2D(640.0 + P.Y / P.X / (TanHalf * 16.0 / 9.0) * 640.0, 360.0 - P.Z / P.X / TanHalf * 360.0);
+			const FVector P = Block.TransformPosition(FVector(Corner & 1 ? 50.0 : -50.0, Corner & 2 ? 50.0 : -50.0, 50.0));
+			Corners.Add(FVector2D(640.0 + P.Y / P.X / (TanHalf * 16.0 / 9.0) * 640.0, 360.0 - P.Z / P.X / TanHalf * 360.0));
 		}
-		TestTrue(TEXT("a held block is 150 to 250 pixels wide"), Screen.GetSize().X > 150.0 && Screen.GetSize().X < 250.0);
-		TestTrue(TEXT("a held block sits in the right of the screen"), Screen.GetCenter().X > 800.0 && Screen.GetCenter().X < 1000.0);
-		TestTrue(TEXT("a held block sits in the lower part of the screen"), Screen.GetCenter().Y > 480.0 && Screen.GetCenter().Y < 640.0);
+		// The near corner is off the screen; each of the three others has one of ours within a few pixels.
+		auto NearestTo = [&Corners](const FVector2D& Wanted)
+		{
+			double Best = TNumericLimits<double>::Max();
+			for (const FVector2D& C : Corners)
+			{
+				Best = FMath::Min(Best, FVector2D::Distance(C, Wanted));
+			}
+			return Best;
+		};
+		TestTrue(TEXT("a held block's left corner"), NearestTo(FVector2D(840, 592)) < 8.0);
+		TestTrue(TEXT("a held block's far corner"), NearestTo(FVector2D(930, 525)) < 8.0);
+		TestTrue(TEXT("a held block's right corner"), NearestTo(FVector2D(1245, 590)) < 8.0);
 	}
 	return true;
 }

@@ -233,8 +233,24 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     head's lower jaw hangs 0.2 radians open, the enchanting table's open book lies back with its spine 11 degrees over
     level, covers 10 degrees short of flat and its middle 0.91 up, and a lectern's book folds 28 degrees a cover.
     Pots, bells, signs, beds and shulker boxes matched. Differences left to others: vanilla's vignette (part of its HUD:
-    every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes). Not yet
-    measured: the enchanting book's bob, how fast it turns and opens, its pages' flutter, and how near a player must be.
+    every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes).
+  - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
+    struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
+    mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
+    the simulation's `OnBellRung` goes to the world actor's `MulticastBellRung`. Ceiling bells assumed the same.
+  - **Enchanting book motion, measured** (2026-10-30): mc-reference's `log table x y z ticks` prints a table's book
+    state each tick (scripts `table_book_log.txt`, `table_book_run2.txt`: 2500 ticks), and frame runs shoot it every 2
+    (`table_book_frames.txt`) or 14 ticks (`table_book_bob.txt`). The state rules fit every logged tick:
+    `FMcTableBook` steps 20 times a second. Near (feet within 3 blocks of the table's middle: opens at 2.9 level, not
+    3.0) it aims at the player, opens 0.1 a tick and its page target jumps by -3..3 (measured counts) every tick while
+    under half open, else one tick in 45; away it shuts 0.1 a tick and its aim creeps 0.02 a tick. Its turn closes
+    0.4 of the gap a tick; the flip springs (0.4 of the gap, capped 0.2, nine tenths of the change taken). Each of the
+    two loose pages turns over in the second part of its half-offset flip (fitted to 11 mid-turn frames). Open, each
+    cover lies 37 degrees off flat and the spine's middle 0.735 up (our model's gold corners fitted to both vanilla
+    views together, to 2 pixels; the earlier 10 degrees and 0.91 drew them a fifth too wide). Left: vanilla's page
+    blocks lie flatter than its covers and meet over the spine, where ours fold with the covers; a book
+    opening part way folds its covers as our model's shut does (gold corner fits). The bob is two waves of the table's
+    age, 0.010 blocks at 0.1 a tick and 0.026 at 0.02 (fitted to 90 frames to 0.1 pixel).
   - **Decorated pots and conduits** (2026-10-30): a pot is an entity model `mc:decorated_pot` (a 14 by 16 body with
     an 8 by 4 neck: its top, bottom and neck from `decorated_pot_base.png`, each side the middle of a side picture),
     turned by `facing`. A conduit is its 6 cube shell (`mc:conduit/shell`) while asleep and, awake, the 8 cube cage

@@ -230,6 +230,41 @@ bool FMcBookTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("its pages face up and east"), Rotation.RotateVector(FVector(0, 1, 0)).Equals(FVector(Sin, 0, Cos), 1e-4));
 	}
 
+	// An enchanting table's book, a tick at a time (the rules measured from vanilla's logged state).
+	{
+		FMcTableBook Table;
+		FRandomStream Random(7);
+		Table.Tick(true, FVector2D(0.0, 2.0), Random);
+		TestTrue(TEXT("a player near opens it a tenth"), FMath::IsNearlyEqual(Table.Open, 0.1f, 1e-5f));
+		TestTrue(TEXT("and it aims at them (south is half pi)"), FMath::IsNearlyEqual(Table.TRot, HALF_PI, 1e-5f));
+		TestTrue(TEXT("closing 0.4 of the way"), FMath::IsNearlyEqual(Table.Rot, 0.4f * HALF_PI, 1e-5f));
+		TestTrue(TEXT("its pages' target jumps while it is under half open"), Table.FlipT != 0.0f);
+		for (int32 Tick = 0; Tick < 9; ++Tick)
+		{
+			Table.Tick(true, FVector2D(0.0, 2.0), Random);
+		}
+		TestTrue(TEXT("open in ten ticks"), FMath::IsNearlyEqual(Table.Open, 1.0f, 1e-5f));
+		FMcTableBook Spring;
+		Spring.FlipT = 2.0f;
+		Spring.Open = 1.0f;
+		FRandomStream Never(1);
+		Spring.Tick(true, FVector2D(1.0, 0.0), Never);
+		TestTrue(TEXT("the flip moves 0.18 its first tick (0.2 capped, nine tenths taken)"), FMath::IsNearlyEqual(Spring.Flip, 0.18f, 1e-5f) || Spring.FlipT != 2.0f);
+		FMcTableBook Away;
+		Away.Open = 1.0f;
+		Away.Tick(false, FVector2D(9.0, 0.0), Random);
+		TestTrue(TEXT("away it shuts a tenth"), FMath::IsNearlyEqual(Away.Open, 0.9f, 1e-5f));
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Away.Tick(false, FVector2D(9.0, 0.0), Random);
+		}
+		TestTrue(TEXT("and creeps round, 0.03 behind its aim"), FMath::IsNearlyEqual(FMath::FindDeltaAngleRadians(Away.Rot, Away.TRot), 0.03f, 1e-3f));
+		TestTrue(TEXT("its flip stays put away"), Away.FlipT == 0.0f);
+		TestTrue(TEXT("at rest page 0 lies on the right"), FMcTableBook::PageTurn(0.0f, 0) == 0.0f);
+		TestTrue(TEXT("page 0 stands up at three quarters"), FMath::IsNearlyEqual(FMcTableBook::PageTurn(0.75f, 0), 0.5f, 1e-5f));
+		TestTrue(TEXT("page 1 half a turn on"), FMath::IsNearlyEqual(FMcTableBook::PageTurn(0.25f, 1), 0.5f, 1e-5f));
+	}
+
 	const FModel* Book = Find(TEXT("mc:book"));
 	if (!TestNotNull(TEXT("a book has a model"), Book))
 	{

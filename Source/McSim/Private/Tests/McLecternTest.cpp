@@ -159,6 +159,23 @@ bool FMcLecternTest::RunTest(const FString& Parameters)
 		World.SetBlock(At, State(TEXT("minecraft:lectern[facing=north,has_book=false,powered=false]")));
 		Run(4);
 		TestEqual(TEXT("an empty lectern reads 0"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 0);
+
+		// A bell rings when power comes on, as if struck on its facing side, and not when it goes.
+		const FIntVector BellAt(4, 1, 4);
+		World.SetBlock(BellAt, State(TEXT("minecraft:bell[attachment=floor,facing=west,powered=false]")));
+		int32 Rings = 0;
+		int32 RungSide = -1;
+		int32 Bells = 0;
+		Sim.OnBellRung = [&](const FIntVector& Pos, int32 Side) { Rings += Pos == BellAt; RungSide = Side; };
+		Sim.OnSound = [&](const FMcSoundEvent& Event) { Bells += Event.Name == FName(TEXT("block.bell.use")); };
+		World.SetBlock(BellAt + FIntVector(0, 0, 1), State(TEXT("minecraft:redstone_block")));
+		Run(2);
+		TestTrue(TEXT("powered, the bell rings once from its facing (west, side 2)"), Rings == 1 && RungSide == 2 && Bells == 1);
+		TestEqual(TEXT("and is powered"), Registry.GetPropertyValue(World.GetBlock(BellAt), TEXT("powered")).ToString(), FString(TEXT("true")));
+		World.SetBlock(BellAt + FIntVector(0, 0, 1), State(TEXT("minecraft:air")));
+		Run(2);
+		TestTrue(TEXT("unpowered, it is quiet"), Rings == 1 && Bells == 1);
+		TestEqual(TEXT("and unpowered"), Registry.GetPropertyValue(World.GetBlock(BellAt), TEXT("powered")).ToString(), FString(TEXT("false")));
 	}
 	return true;
 }

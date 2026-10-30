@@ -25,6 +25,59 @@ namespace
 	}
 }
 
+void FMcTableBook::Tick(bool bNear, const FVector2D& ToPlayer, FRandomStream& Random)
+{
+	ORot = Rot;
+	OOpen = Open;
+	OFlip = Flip;
+	++Time;
+	// Near, it turns to the player and opens a tenth a tick; away, it shuts as fast and its aim creeps round 0.02 a tick.
+	// The pages' target jumps by a whole -3 to 3 pages every tick while it is under half open, else about one tick in 45
+	// (42 in 1885 ticks), the sizes counted from 70 jumps.
+	if (bNear)
+	{
+		TRot = static_cast<float>(FMath::Atan2(ToPlayer.Y, ToPlayer.X));
+		Open = FMath::Min(Open + 0.1f, 1.0f);
+		if (Open < 0.5f || Random.RandRange(0, 44) == 0)
+		{
+			static const int32 Steps[] = { -3, -2, -1, 1, 2, 3 };
+			static const int32 Counts[] = { 4, 10, 14, 27, 11, 4 };
+			int32 Pick = Random.RandRange(0, 69);
+			int32 Index = 0;
+			while (Pick >= Counts[Index])
+			{
+				Pick -= Counts[Index++];
+			}
+			FlipT += Steps[Index];
+		}
+	}
+	else
+	{
+		TRot += 0.02f;
+		Open = FMath::Max(Open - 0.1f, 0.0f);
+	}
+	// Rot closes 0.4 of the (shorter way round) gap a tick; kept within a turn of nought.
+	Rot += 0.4f * FMath::FindDeltaAngleRadians(Rot, TRot);
+	if (FMath::Abs(Rot) > PI)
+	{
+		const float Turn = Rot > 0.0f ? -TWO_PI : TWO_PI;
+		Rot += Turn;
+		ORot += Turn;
+		TRot += Turn;
+	}
+	// The flip springs towards its target, at most 0.2 a tick, its speed keeping a tenth of the last tick's.
+	FlipA += (FMath::Clamp((FlipT - Flip) * 0.4f, -0.2f, 0.2f) - FlipA) * 0.9f;
+	Flip += FlipA;
+}
+
+float FMcTableBook::PageTurn(float Flip, int32 Page)
+{
+	// Measured from frames of the pages mid-turn (ref_bf_15 to 22 and 67 to 69 against the logged flip): each page goes
+	// over in the second part of its own half-offset turn, standing up at three quarters.
+	const float Phase = Flip + Page * 0.5f;
+	return FMath::Clamp(1.6f * (Phase - FMath::FloorToFloat(Phase)) - 0.7f, 0.0f, 1.0f);
+}
+
 UMcChestComponent::UMcChestComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -490,35 +543,42 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			}
 			// Over an enchanting table it bobs; with a player within 3 blocks it turns to them and opens, its loose pages
 			// waving over and back, and without one it shuts and slowly turns round.
-			Book->BookAge += DeltaTime;
-			// Its middle about 0.91 up (measured, ref_book_level and ref_book_above); the bob is not measured yet.
-			const FVector Centre = FVector(Pair.Key) + FVector(0.5, 0.91 + 0.05 * FMath::Sin(Book->BookAge * 2.0f), 0.5);
-			const FVector Towards = Viewer - Centre;
-			const bool bNear = Towards.SizeSquared() < 9.0;
-			if (bNear)
+			// Near is a player's feet within 3 blocks of the table's middle (vanilla opens at 2.9 blocks level with the
+			// table and not at 3.0, table_book_run2).
+			const FVector Middle = FVector(Pair.Key) + FVector(0.5);
+			const FVector Feet = Viewer - FVector(0.0, 1.62, 0.0);
+			FMcTableBook& State = Book->Book;
+			if (State.Time == 0)
 			{
-				const float Target = FMath::Atan2(-Towards.X, Towards.Z);
-				Book->BookYaw += FMath::FindDeltaAngleRadians(Book->BookYaw, Target) * FMath::Min(1.0f, DeltaTime * 4.0f);
+				Book->BookRandom.Initialize(GetTypeHash(Pair.Key));
 			}
-			else
+			// A long frame (a hitch) steps at most a second's ticks.
+			for (Book->BookTickPart = FMath::Min(Book->BookTickPart + DeltaTime * 20.0f, 20.0f); Book->BookTickPart >= 1.0f; Book->BookTickPart -= 1.0f)
 			{
-				Book->BookYaw = FMath::UnwindRadians(Book->BookYaw + DeltaTime * 0.4f);
+				const FVector Towards = Feet - Middle;
+				State.Tick(Towards.SizeSquared() < 9.0, FVector2D(Towards.X, Towards.Z), Book->BookRandom);
 			}
-			// Open, its covers lie about 10 degrees short of flat (measured in vanilla, ref_book_level and ref_book_above).
-			Book->BookOpen = FMath::FInterpConstantTo(Book->BookOpen, bNear ? 0.89f : 0.0f, DeltaTime, 1.5f);
-			for (int32 Page = 0; Page < 2; ++Page)
-			{
-				Book->BookFlip[Page] = 0.5f + 0.5f * FMath::Sin(Book->BookAge * (Page == 0 ? 1.3f : 0.8f));
-			}
-			// It lies tipped back, its pages up and towards the way it turns, its spine 11 degrees over level and running away
-			// (measured in vanilla from a player 2.5 blocks off, ref_book_level and ref_book_above, the two fitting each other).
-			const double Lean = FMath::DegreesToRadians(79.0);
-			const FVector Facing(-FMath::Sin(Book->BookYaw), 0.0, FMath::Cos(Book->BookYaw));
+			const float Part = FMath::Min(Book->BookTickPart, 1.0f);
+			const float Rot = State.ORot + FMath::FindDeltaAngleRadians(State.ORot, State.Rot) * Part;
+			const float Open = FMath::Lerp(State.OOpen, State.Open, Part);
+			const float Flip = FMath::Lerp(State.OFlip, State.Flip, Part);
+			const float Time = State.Time + Part;
+			// Open, it lies tipped back, its pages up and towards the way it turns, its spine 10.4 degrees over level and
+			// running away, each cover 37 degrees short of flat and the spine's middle 0.735 up, just under the table's top:
+			// our model's gold corners fitted to vanilla's in ref_bf_05 to 14 and ref_book_above together, to 2 pixels (the
+			// frames' bob, -0.02, taken off). Part open, the covers fold further as the book shuts, as our model's do (gold
+			// corner fits of frames ref_bf_02 to 05). It bobs by two waves of its age in ticks: 0.010 blocks at 0.1 a tick
+			// and 0.026 at 0.02 (fitted to the gold corners' height in 90 frames 14 ticks apart, to 0.1 pixel,
+			// E:/mc-reference/scripts/table_book_bob.txt).
+			const FVector Centre = Middle + FVector(0.0, 0.235 + 0.010 * FMath::Sin(0.1f * Time) - 0.026 * FMath::Sin(0.02f * Time), 0.0);
+			const double Lean = FMath::DegreesToRadians(79.6);
+			const float BookYaw = Rot - HALF_PI;
+			const FVector Facing(-FMath::Sin(BookYaw), 0.0, FMath::Cos(BookYaw));
 			const FVector Up(0.0, 1.0, 0.0);
 			const FVector Pages = Facing * FMath::Cos(Lean) + Up * FMath::Sin(Lean);
 			const FVector Spine = Up * FMath::Cos(Lean) - Facing * FMath::Sin(Lean);
 			Pair.Value->SetWorldLocationAndRotation(McCoords::BlockToUnreal(Centre), RotationFromAxes(FVector::CrossProduct(Spine, Pages), Spine, Pages));
-			Pair.Value->SetBook(Book->BookOpen, Book->BookFlip[0], Book->BookFlip[1]);
+			Pair.Value->SetBook(0.59f * Open, FMcTableBook::PageTurn(Flip, 0), FMcTableBook::PageTurn(Flip, 1));
 			continue;
 		}
 		const FChest* Chest = Chests.Find(Pair.Key);

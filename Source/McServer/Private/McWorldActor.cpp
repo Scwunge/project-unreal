@@ -284,6 +284,10 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Simulation->OnBellRung = [this](const FIntVector& Pos, int32 Side)
+	{
+		MulticastBellRung(Pos, static_cast<uint8>(Side));
+	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
 	// A minecart on a detector rail powers it.

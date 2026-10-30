@@ -45,6 +45,7 @@ namespace
 		ActivatorRail,
 		DetectorRail,
 		Lectern,
+		Bell,
 	};
 
 	enum EDir : int32
@@ -117,6 +118,7 @@ namespace
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
 				else if (Name == TEXT("minecraft:lectern")) Kind = Lectern;
+				else if (Name == TEXT("minecraft:bell")) Kind = Bell;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -691,6 +693,24 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		break;
 	}
+	case Bell:
+		// Power coming on rings it at once, as if struck on its facing side; power going off only clears powered
+		// (measured in vanilla: E:/mc-reference/scripts/bell_redstone.txt, bell_wall_side.txt).
+		if (HasPower(Pos) != Flag(State, TEXT("powered")))
+		{
+			const bool bPowered = HasPower(Pos);
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+			if (bPowered)
+			{
+				Sim.PlaySound(FMcSoundEvent{ FName(TEXT("block.bell.use")), FVector(Pos) + FVector(0.5), 2.0f, 1.0f });
+				if (Sim.OnBellRung)
+				{
+					const FName Facing = Reg().GetPropertyValue(State, TEXT("facing"));
+					Sim.OnBellRung(Pos, Facing == TEXT("north") ? 0 : Facing == TEXT("south") ? 1 : Facing == TEXT("west") ? 2 : 3);
+				}
+			}
+		}
+		break;
 	case Comparator:
 		if (ComparatorOutput(Pos, State) != ComparatorOutputs.FindRef(Pos) || (ComparatorOutput(Pos, State) > 0) != Flag(State, TEXT("powered")))
 		{

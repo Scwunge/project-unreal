@@ -84,6 +84,8 @@ public:
 
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
+	// The bell at Pos was rung by redstone, as if struck on Side (McBell's numbering): it swings for every viewer.
+	TFunction<void(const FIntVector&, int32)> OnBellRung;
 
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;

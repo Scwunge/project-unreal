@@ -712,7 +712,7 @@ namespace McEntityModel
 				}
 				else
 				{
-					const float Flip = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(Anim.BookFlip[Part.Index & 1], 0.0f, 1.0f));
+					const float Flip = FMath::Clamp(Anim.BookFlip[Part.Index & 1], 0.0f, 1.0f);
 					Yaw += FMath::Lerp(-Shut * HALF_PI, -PI + Shut * HALF_PI, Flip);
 				}
 				break;

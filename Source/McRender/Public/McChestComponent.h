@@ -18,6 +18,23 @@
 class FMcBlockWorld;
 class UMcEntityModelComponent;
 
+// An enchanting table's book, stepped 20 times a second as vanilla's is (every rule here measured from vanilla's
+// per-tick state, E:/mc-reference/scripts/table_book_log.txt and table_book_run2.txt). Rot is the way its pages face
+// (radians, Minecraft's atan2(dz, dx): 0 east, half pi south); Open runs 0 to 1; Flip is the loose pages' turn, a whole
+// number at rest, springing towards FlipT.
+struct MCRENDER_API FMcTableBook
+{
+	int32 Time = 0;
+	float Rot = 0.0f, ORot = 0.0f, TRot = 0.0f;
+	float Open = 0.0f, OOpen = 0.0f;
+	float Flip = 0.0f, OFlip = 0.0f, FlipT = 0.0f, FlipA = 0.0f;
+
+	// One tick. bNear: a player's feet are within 3 blocks of the table's middle; ToPlayer is the way to them (x, z).
+	void Tick(bool bNear, const FVector2D& ToPlayer, FRandomStream& Random);
+	// How far over loose page 0 or 1 is, from lying on the right half (0) to lying on the left (1), at a flip.
+	static float PageTurn(float Flip, int32 Page);
+};
+
 UCLASS(ClassGroup = (Mc))
 class MCRENDER_API UMcChestComponent : public USceneComponent
 {
@@ -80,12 +97,10 @@ private:
 	{
 		FMcStateId State = 0;
 		EShape Shape = EShape::Chest;
-		// An enchanting table's book: which way it faces (radians about up, 0 facing south), how far open, and its loose
-		// pages, each flipping over and back.
-		float BookYaw = 0.0f;
-		float BookOpen = 0.0f;
-		float BookFlip[2] = { 0.0f, 0.0f };
-		float BookAge = 0.0f;
+		// An enchanting table's book, and how far into its next tick the frame is (in ticks).
+		FMcTableBook Book;
+		float BookTickPart = 0.0f;
+		FRandomStream BookRandom;
 		// A conduit: whether it was awake when last looked at, and how long until it is looked at again.
 		bool bAwake = false;
 		float UntilCheck = 0.0f;

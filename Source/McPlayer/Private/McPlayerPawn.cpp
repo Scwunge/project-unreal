@@ -33,6 +33,7 @@
 
 #if MC_WITH_RENDER
 #include "McParticleComponent.h"
+#include "McBlockHighlight.h"
 #include "McHand.h"
 #include "McPlayerModel.h"
 #endif
@@ -90,6 +91,9 @@ AMcPlayerPawn::AMcPlayerPawn()
 	Model->SetupAttachment(RootComponent);
 	Hand = CreateDefaultSubobject<UMcHandComponent>(TEXT("Hand"));
 	Hand->SetupAttachment(Camera);
+	Highlight = CreateDefaultSubobject<UMcBlockHighlightComponent>(TEXT("Highlight"));
+	Highlight->SetupAttachment(RootComponent);
+	Highlight->SetAbsolute(true, true, true);
 #endif
 }
 
@@ -100,6 +104,8 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, RidingId);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigStage, COND_OwnerOnly);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigBlockPos, COND_OwnerOnly);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -386,6 +392,26 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 
 	UpdateTarget();
 #if MC_WITH_RENDER
+	if (UMcBlockHighlightComponent* Marks = Highlight.Get())
+	{
+		// The aimed block's outline (not while a window is open or in a spectator's view) and the dug block's cracks.
+		TOptional<FIntVector> Aimed;
+		TArray<FBox> Shape;
+		if (Player && Player->IsLocalController() && !bBlocked && Target.IsSet())
+		{
+			Aimed = Target->Block;
+			for (const FBox3f& Box : FMcBlockShapes::Get().GetCollision(Target->State))
+			{
+				Shape.Add(FBox(FVector(Box.Min), FVector(Box.Max)));
+			}
+			if (Shape.Num() == 0)
+			{
+				Shape.Add(FBox(FVector(0.2, 0.0, 0.2), FVector(0.8, 0.6, 0.8)));
+			}
+		}
+		Marks->SetTarget(Aimed, Shape);
+		Marks->SetDig(DigBlockPos, Player && Player->IsLocalController() ? DigStage : -1);
+	}
 	// The block being dug chips, every tick (survival; creative breaks at once).
 	if (Ticks > 0 && DigSent.IsSet() && Target.IsSet() && Target->Block == DigSent.GetValue())
 	{
@@ -1176,6 +1202,9 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 		}
 	}
+
+	DigStage = DigPos.IsSet() ? FMath::Clamp(FMath::FloorToInt(DigProgress * 10.0f), 0, 9) : -1;
+	DigBlockPos = DigPos.IsSet() ? DigPos.GetValue() : FIntVector::ZeroValue;
 
 	ServerHurtSound();
 	if (Stats.Health <= 0.0f)

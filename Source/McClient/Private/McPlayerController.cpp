@@ -1,6 +1,7 @@
 #include "McPlayerController.h"
 #include "McLaunch.h"
 #include "McBlockUse.h"
+#include "McDevInput.h"
 #include "McBuckets.h"
 #include "McEntityActor.h"
 #include "McEntityHost.h"
@@ -73,6 +74,17 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 	}
 
 #if !UE_BUILD_SHIPPING
+	// Development: -McInput="hold:W:2;key:Q;shot:name" plays that input (see McDevInput.h).
+	if (IsLocalController() && FMcDevInput::Wanted())
+	{
+		if (!DevInput.IsValid())
+		{
+			FString Script;
+			FParse::Value(FCommandLine::Get(), TEXT("-McInput="), Script, false);
+			DevInput = MakeShared<FMcDevInput>(Script.TrimQuotes());
+		}
+		DevInput->Tick(*this, DeltaSeconds);
+	}
 	// Development: -McNetLog logs where this player is and how many chunks it has, every two seconds.
 	static const bool bNetLog = FParse::Param(FCommandLine::Get(), TEXT("McNetLog"));
 	NetLogTimer += DeltaSeconds;

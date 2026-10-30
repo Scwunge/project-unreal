@@ -36,6 +36,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	float MouseSensitivity = 0.15f;
 
+	// Development (-McInput): turns the view by these degrees, as the mouse would. Positive pitch looks up.
+	void DevTurn(float DeltaYaw, float DeltaPitch)
+	{
+		Yaw = FMath::Fmod(Yaw + DeltaYaw, 360.0f);
+		Pitch = FMath::Clamp(Pitch + DeltaPitch, -89.9f, 89.9f);
+	}
+
 	// Whether a double tap of Space starts and stops flying, as in creative mode.
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	bool bMayFly = true;
@@ -267,6 +274,8 @@ private:
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;
 	// The player's own arm and what it holds, in first person.
 	TWeakObjectPtr<class UMcHandComponent> Hand;
+	// The outline round the aimed block and the cracks on the dug one, in the world.
+	TWeakObjectPtr<class UMcBlockHighlightComponent> Highlight;
 
 	TOptional<FMcBlockHit> Target;
 	// Seconds until holding a button breaks or places again.
@@ -294,6 +303,11 @@ private:
 	FMcGameRules GameRules;
 	TOptional<FIntVector> DigPos;
 	float DigProgress = 0.0f;
+	// How far the dig has gone, in tenths (0 to 9, -1 for none), and on what block: the digger's client draws the cracks.
+	UPROPERTY(Replicated)
+	int32 DigStage = -1;
+	UPROPERTY(Replicated)
+	FIntVector DigBlockPos = FIntVector::ZeroValue;
 	// Ticks spent on the block being dug; it is hit (with its sound) every 4.
 	int32 DigTicks = 0;
 	int32 EatTicks = 0;

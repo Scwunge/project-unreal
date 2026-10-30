@@ -160,8 +160,12 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     generator rather than merging the .uassets. Shots: `Saved/Shots/hull_water_above.png` and `hull_water_side.png`
     (`-McScene=hull_water_above` / `hull_water_side`: a boat with a pig, one half under a waterfall, one on land).
     A boat under flowing water (a waterfall) is held down and sinks slowly instead of being lifted up the fall
-    (`ESurface::UnderFlowing`). Not mine, seen in those shots: falling water (`water[level=8]`) draws as a solid, untextured
-    blue box (McFluidMesher).
+    (`ESurface::UnderFlowing`).
+  - **Flowing fluids' pictures** (2026-10-30, for main): falling water drew as a solid blue-violet box because
+    `water_flow` and `lava_flow` were never in the texture array (it held only what block models name, and the fluids'
+    models give only a particle), so the fluid mesher got layer 0, the missing texture, tinted. `FMcBlockTextures` now
+    always loads the four fluid pictures; McFluidMesher is unchanged. Limit: the 32-pixel flow frames are scaled to the
+    array's 16, so a flowing side, which shows half the picture, has 8 texels a block where vanilla has 16.
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
     on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).

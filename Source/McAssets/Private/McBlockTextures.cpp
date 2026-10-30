@@ -234,6 +234,12 @@ bool FMcBlockTextures::EnsureLoaded()
 			Ids.Add(Id);
 		}
 	}
+	// The fluids' pictures, which no block model names (water's and lava's models give only a particle): the fluid mesher
+	// draws with them.
+	for (const TCHAR* Fluid : { TEXT("minecraft:block/water_still"), TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_still"), TEXT("minecraft:block/lava_flow") })
+	{
+		Ids.AddUnique(FName(Fluid));
+	}
 	NewStats.Ids = Ids.Num();
 
 	TArray<FLoadedImage> Images;

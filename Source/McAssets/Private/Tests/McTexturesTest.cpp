@@ -80,6 +80,12 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("the layer's pixels changed with the frame"), FirstPixels != TArray<FColor>(Textures.GetPixels(Water)));
 		Textures.Tick(0.0);
 	}
+	// No block model names the flowing pictures, but falling and running water and lava are drawn with them.
+	for (const TCHAR* Flow : { TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_flow") })
+	{
+		const int32 Layer = Textures.GetLayer(Flow);
+		TestTrue(FString::Printf(TEXT("%s has its own layer, and moves"), Flow), Layer > 0 && Textures.IsAnimated(Layer));
+	}
 
 	// Colormaps and biomes.
 	FMcBiomeColorTable& Biomes = FMcBiomeColorTable::Get();

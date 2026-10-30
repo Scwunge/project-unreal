@@ -913,7 +913,37 @@ void AMcPlayerPawn::ServerGameTick()
 		// Eating takes a while with the food held: 1.6 seconds unless the food says otherwise.
 		FMcFoodData Food;
 		const FMcItemStack& Held = Data->GetSelected();
-		if (bServerUsing && !Data->bCreative && !Held.IsEmpty() && Items.GetFood(Held.Item, Food) && McSurvival::CanEat(Stats, Food))
+		if (bServerUsing && !Held.IsEmpty() && Held.Item == FName(TEXT("minecraft:ominous_bottle")))
+		{
+			// An ominous bottle is drunk in 1.6 seconds and gives Bad Omen for 100 minutes, a level above its amplifier.
+			if (++EatTicks >= 32)
+			{
+				EatTicks = 0;
+				int32 Level = 0;
+				if (const TSharedPtr<FJsonValue> Amplifier = Held.Get(TEXT("minecraft:ominous_bottle_amplifier")))
+				{
+					Level = FMath::Clamp(FMath::RoundToInt32(Amplifier->AsNumber()), 0, 4);
+				}
+				McEffects::Add(Stats, TEXT("bad_omen"), Level, 120000);
+				if (!Data->bCreative)
+				{
+					FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
+					if (--Slot.Count <= 0)
+					{
+						Slot = FMcItemStack(FName(TEXT("minecraft:glass_bottle")), 1);
+					}
+					else
+					{
+						const FMcItemStack Left = Data->Inventory->AddItem(FMcItemStack(FName(TEXT("minecraft:glass_bottle")), 1));
+						if (!Left.IsEmpty() && Entities)
+						{
+							Entities->DropItem(Feet + FVector(0.0, 1.0, 0.0), Left);
+						}
+					}
+				}
+			}
+		}
+		else if (bServerUsing && !Data->bCreative && !Held.IsEmpty() && Items.GetFood(Held.Item, Food) && McSurvival::CanEat(Stats, Food))
 		{
 			float Seconds = 1.6f;
 			if (const TSharedPtr<FJsonValue> Consumable = Held.Get(TEXT("minecraft:consumable")))

@@ -817,6 +817,8 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		if (FMcEntityHost* Host = WorldActor.GetEntityHost())
 		{
 			Host->GetManager().SoundAlarm(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5), McVillager::AlarmTicks);
+			// Any raider within 48 blocks shows through the walls for 3 seconds.
+			Host->RingBell(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5));
 		}
 		return true;
 	}

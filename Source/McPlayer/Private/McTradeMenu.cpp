@@ -10,10 +10,11 @@ FMcTradeMenu::FMcTradeMenu(const TSharedPtr<FMcContainer>& PlayerInventory)
 	AddPlayerSlots(PlayerInventory);
 }
 
-void FMcTradeMenu::SetTrader(const TArray<McTrading::FOffer>& InOffers, int32 InReputation, int32 InLevel, int32 InXp, bool bInLevels)
+void FMcTradeMenu::SetTrader(const TArray<McTrading::FOffer>& InOffers, int32 InReputation, int32 InLevel, int32 InXp, bool bInLevels, int32 InHero)
 {
 	Offers = InOffers;
 	Reputation = InReputation;
+	Hero = InHero;
 	Level = InLevel;
 	Xp = InXp;
 	bLevels = bInLevels;
@@ -31,7 +32,7 @@ void FMcTradeMenu::UpdateTrader(const TArray<McTrading::FOffer>& InOffers, int32
 
 int32 FMcTradeMenu::GetCost(int32 Index) const
 {
-	return Offers.IsValidIndex(Index) ? McTrading::GetCost(Offers[Index], Reputation) : 0;
+	return Offers.IsValidIndex(Index) ? McTrading::GetCost(Offers[Index], Reputation, Hero) : 0;
 }
 
 bool FMcTradeMenu::Pays(const FMcItemStack& Wanted, int32 Count, const FMcItemStack& Held) const
@@ -241,7 +242,7 @@ void FMcTradeMenu::OnClosed(TArray<FMcItemStack>& Dropped)
 void FMcTradeMenu::SerializeState(FArchive& Ar)
 {
 	int32 Count = Offers.Num();
-	Ar << Count << Selected << Reputation << Level << Xp << bLevels;
+	Ar << Count << Selected << Reputation << Level << Xp << bLevels << Hero;
 	if (Ar.IsLoading())
 	{
 		if (Count < 0 || Count > 64)

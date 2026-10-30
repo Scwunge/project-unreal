@@ -90,9 +90,62 @@ public:
 
 	bool MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const;
 
+	// ---- Patrols and raids (minecraft.wiki, "Pillager patrol" and "Raid") ----
+	// A raid: waves of raiders sent at a village. It waits 15 seconds, sends a wave, and sends the next once the last is
+	// dead; the last one dead is a victory, and no village left (or 40 minutes) a defeat.
+	struct FRaid
+	{
+		enum class EStatus : uint8 { Waiting, Active, Victory, Defeat };
+		int32 Id = 0;
+		FVector Center = FVector::ZeroVector;
+		// The level of the Bad Omen that called it, 1 to 5; a raid from level 2 up has an extra wave.
+		int32 Level = 1;
+		// Waves sent so far, and how many there are in all.
+		int32 Wave = 0;
+		int32 TotalWaves = 5;
+		EStatus Status = EStatus::Waiting;
+		int64 Age = 0;
+		// Ticks to the next step: the first wave, the next wave, or the end of the celebration.
+		int32 Timer = 0;
+		// The health of the wave when it came, and the ids of those of it still about.
+		float WaveHealth = 1.0f;
+		TArray<int32> Raiders;
+	};
+	static constexpr int32 RaidWarmupTicks = 300;
+	static constexpr int32 RaidWaveDelayTicks = 100;
+	static constexpr int32 RaidCelebrationTicks = 600;
+	static constexpr int64 RaidMaxTicks = 48000;
+	static constexpr double RaidBarRange = 96.0;
+	static constexpr double BellGlowRange = 48.0;
+	static constexpr int32 BellGlowTicks = 60;
+	static constexpr int64 PatrolIntervalTicks = 12000;
+	static constexpr int64 PatrolFirstDay = 5;
+
+	// The waves there are for a difficulty (1 easy to 3 hard) and omen level, extra one included.
+	static int32 GetWaveCount(int32 Difficulty, int32 Level);
+	// The raiders of one wave (1 to the last), by kind, drawn from Random.
+	static void RollWave(int32 Difficulty, int32 Wave, FRandomStream& Random, TArray<TPair<FName, int32>>& Out);
+	// Whether a village is round a point (a villager within 48 blocks) and where its middle is (the villagers' average).
+	bool FindVillage(const FVector& Where, FVector& OutCenter) const;
+	// Calls a raid on the village at Center that starts after DelayTicks (the raid omen); returns its id, 0 if refused
+	// (peaceful, or one is running there already).
+	int32 StartRaid(const FVector& Center, int32 Level, int32 DelayTicks);
+	const TArray<FRaid>& GetRaids() const { return Raids; }
+	const FRaid* FindRaid(int32 Id) const;
+	// The raid bar a player at that point sees: the nearest raid within 96 blocks, its title and how full it is.
+	bool GetRaidBar(const FVector& Player, FString& OutTitle, float& OutFraction) const;
+	// A bell rung at the point makes the raiders within 48 blocks glow for 3 seconds. Returns how many.
+	int32 RingBell(const FVector& Bell);
+	// A raid party arrives near a player: a captain and some pillagers. False if there was no room or a village is near.
+	bool SpawnPatrol(const FVector& Player);
+	// Called with the middle of a raid that was won and its omen level: the players round it become Heroes of the Village.
+	TFunction<void(const FVector&, int32)> OnRaidWon;
+
 private:
 	// The zombie villagers that have shaken long enough turn back into the villagers they were.
 	void FinishCures();
+	void TickRaids();
+	void SpawnWave(FRaid& Raid);
 	void SpawnHostiles(const TArray<FVector>& Players);
 	void SyncProxies();
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.
@@ -113,6 +166,9 @@ private:
 	int64 Seed;
 	int64 Ticks = 0;
 	int32 TraderChance = 25;
+	int64 NextPatrolTick = 0;
+	int32 NextRaidId = 1;
+	TArray<FRaid> Raids;
 	static constexpr int64 WanderingTraderIntervalTicks = 24000;
 	FRandomStream Random;
 	// The chunks that have had their turn at animals, or are queued for it; forgotten when the chunk unloads.

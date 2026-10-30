@@ -9,6 +9,7 @@
 #include "McPlayerMenu.h"
 #include "McTradeMenu.h"
 #include "McSurvival.h"
+#include "McEffects.h"
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 #include "Serialization/MemoryReader.h"
@@ -573,7 +574,8 @@ void UMcPlayerDataComponent::OpenTrading(const FIntVector& Pos, const FString& T
 	}
 	FMcWindow Made = MakeWindow(EMcWindowKind::Trading, ++NextWindowId, 0);
 	FMcTradeMenu* Menu = static_cast<FMcTradeMenu*>(Made.Menu.Get());
-	Menu->SetTrader(Offers, Reputation, Level, Xp, bLevels);
+	const FMcStatusEffect* Hero = McEffects::Find(Stats, TEXT("hero_of_the_village"));
+	Menu->SetTrader(Offers, Reputation, Level, Xp, bLevels, bLevels && Hero ? Hero->Amplifier : -1);
 	// The menu lives as long as the window, and so does this.
 	Menu->OnTrade = [Menu, OnTrade = MoveTemp(OnTrade)](int32 Index, int32 TraderXp)
 	{
@@ -749,6 +751,12 @@ void UMcPlayerDataComponent::ServerTick()
 	{
 		return;
 	}
+	if (RaidBarFraction != SentRaidFraction || RaidBarTitle != SentRaidTitle)
+	{
+		SentRaidFraction = RaidBarFraction;
+		SentRaidTitle = RaidBarTitle;
+		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -826,6 +834,18 @@ void UMcPlayerDataComponent::ServerChat_Implementation(const FString& Text)
 	{
 		ServerOnChat(Text);
 	}
+}
+
+void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
+{
+	RaidBarFraction = Fraction;
+	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)
+{
+	RaidBarFraction = Fraction;
+	RaidBarTitle = Title;
 }
 
 void UMcPlayerDataComponent::ClientSetStats_Implementation(const TArray<uint8>& Bytes)

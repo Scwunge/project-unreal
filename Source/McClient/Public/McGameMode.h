@@ -82,6 +82,12 @@ private:
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
 	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	// Once a second: a player with Bad Omen in a village calls a raid on it (the omen turns into Raid Omen, 30 seconds
+	// before the first wave), and the players near a raid are shown its bar.
+	void TickVillages();
+	FTimerHandle VillageTimer;
+	// A raid on a village was won: the players round it become Heroes of the Village.
+	void HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level);
 	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
 	void SetUpWorld(AMcWorldActor& World);
 	// Every player with a pawn; called whenever the world saves.

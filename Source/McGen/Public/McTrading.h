@@ -42,7 +42,9 @@ namespace McTrading
 
 	// What a player with Reputation (the trader's opinion of them, from -a lot to +a lot) pays for the stack the trade
 	// wants: its count, plus the demand's rise, less the reputation's discount (never below 1, never above the stack size).
-	MCGEN_API int32 GetCost(const FOffer& Offer, int32 Reputation);
+	// Hero is the amplifier of the player's Hero of the Village effect (-1 for none): it takes off 30% of the stack, 6.25%
+	// more a level (at least 1).
+	MCGEN_API int32 GetCost(const FOffer& Offer, int32 Reputation, int32 Hero = -1);
 
 	// The trade is restocked: demand follows how much of it was used, and it can be made again.
 	MCGEN_API void Restock(FOffer& Offer);

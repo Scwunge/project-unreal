@@ -219,11 +219,19 @@ public:
 	// Times the server refused a click or a drag, for logging and tests.
 	int32 NumRefused = 0;
 
+	// The raid bar at the top of the screen: how full it is (0 to 1, below 0 for none) and its title. The server sets
+	// it every second or so; a remote owner is sent it.
+	float RaidBarFraction = -1.0f;
+	FString RaidBarTitle;
+	void SetRaidBar(float Fraction, const FString& Title);
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION(Client, Reliable)
 	void ClientSetStats(const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Unreliable)
+	void ClientSetRaidBar(float Fraction, const FString& Title);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -280,6 +288,8 @@ private:
 	TArray<FMcItemStack> Thrown;
 	// Server: what the owner was last sent.
 	TArray<uint8> SentStats;
+	float SentRaidFraction = -1.0f;
+	FString SentRaidTitle;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

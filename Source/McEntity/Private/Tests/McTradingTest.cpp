@@ -66,6 +66,8 @@ bool FMcTradingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and a good reputation takes some off"), McTrading::GetCost(Priced, 5), 31);
 	Priced.Demand = 0;
 	TestTrue(TEXT("a bad one costs more"), McTrading::GetCost(Priced, -4) > 20);
+	TestEqual(TEXT("a Hero of the Village pays 30 percent less"), McTrading::GetCost(Priced, 0, 0), 14);
+	TestEqual(TEXT("and a little less for each level on top"), McTrading::GetCost(Priced, 0, 4), 9);
 
 	// A villager makes its trades from its profession, levels up with the experience of the trades and keeps them in a save.
 	const FMcMobType* Type = FMcMobType::Find(FMcVillager::StaticType());

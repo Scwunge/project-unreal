@@ -169,11 +169,15 @@ bool McTrading::RollLevel(FName Profession, int32 Level, FName VillagerVariant, 
 	return RollSet(McCache::PathOf(Profession.ToString()) + FString::Printf(TEXT("/level_%d"), Level), VillagerVariant, Random, Out);
 }
 
-int32 McTrading::GetCost(const FOffer& Offer, int32 Reputation)
+int32 McTrading::GetCost(const FOffer& Offer, int32 Reputation, int32 Hero)
 {
 	const int32 Base = Offer.Wants.Count;
 	const int32 Raised = Base + FMath::Max(0, FMath::FloorToInt32(Base * Offer.Demand * Offer.Discount));
-	const int32 Cost = Raised - FMath::FloorToInt32(Base * Offer.Discount * Reputation);
+	int32 Cost = Raised - FMath::FloorToInt32(Base * Offer.Discount * Reputation);
+	if (Hero >= 0)
+	{
+		Cost -= FMath::Max(1, FMath::FloorToInt32((0.3 + 0.0625 * Hero) * Base));
+	}
 	return FMath::Clamp(Cost, 1, FMath::Max(1, Offer.Wants.GetMaxStackSize()));
 }
 

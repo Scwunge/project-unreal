@@ -94,6 +94,8 @@ private:
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
+	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
+	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
 	void DrawStack(const FMcItemStack& Stack, float X, float Y);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.

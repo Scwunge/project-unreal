@@ -21,7 +21,7 @@ public:
 
 	// What the trader sells and how it stands with the player; the experience bar's numbers (a wandering trader has no
 	// levels).
-	void SetTrader(const TArray<McTrading::FOffer>& InOffers, int32 InReputation, int32 InLevel, int32 InXp, bool bInLevels);
+	void SetTrader(const TArray<McTrading::FOffer>& InOffers, int32 InReputation, int32 InLevel, int32 InXp, bool bInLevels, int32 InHero = -1);
 	// The trader's offers, level and experience after a trade (more offers on a new level); the pick stays.
 	void UpdateTrader(const TArray<McTrading::FOffer>& InOffers, int32 InLevel, int32 InXp);
 	const TArray<McTrading::FOffer>& GetOffers() const { return Offers; }
@@ -62,6 +62,8 @@ private:
 	TArray<McTrading::FOffer> Offers;
 	int32 Selected = -1;
 	int32 Reputation = 0;
+	// The amplifier of the buyer's Hero of the Village effect, -1 for none.
+	int32 Hero = -1;
 	int32 Level = 1;
 	int32 Xp = 0;
 	bool bLevels = true;

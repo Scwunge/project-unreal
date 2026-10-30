@@ -322,6 +322,26 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 }
 
+void AMcHUD::DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data)
+{
+	if (Data->RaidBarFraction < 0.0f)
+	{
+		return;
+	}
+	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
+	DrawGuiText(Data->RaidBarTitle, (static_cast<float>(Width) - TextWidth(Data->RaidBarTitle)) * 0.5f, 3.0f, 0xFFFFFF, true);
+	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_background.png")), X, 12.0f, 182, 5);
+	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_background.png")), X, 12.0f, 182, 5);
+	const float Filled = FMath::Clamp(Data->RaidBarFraction, 0.0f, 1.0f);
+	if (Filled > 0.0f)
+	{
+		// The progress pictures are 182 wide; only the filled part of them is shown.
+		const float Part = 182.0f * Filled;
+		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+	}
+}
+
 void AMcHUD::DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 {
 	const float ScreenWidth = static_cast<float>(Width);
@@ -1518,6 +1538,7 @@ void AMcHUD::DrawHUD()
 			DrawStack(Data->Offhand->Get(0), static_cast<float>(Layout.Hotbar.X - 26), static_cast<float>(Layout.Hotbar.Y + 3));
 		}
 		DrawEffects(Width, Height, Data);
+		DrawRaidBar(Width, Data);
 		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
 		if (!Data->bCreative)
 		{

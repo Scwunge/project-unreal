@@ -25,6 +25,9 @@ namespace McLoot
 	// trade does to what it gives.
 	MCGEN_API void ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack);
 
+	// Rolls a mob's table; bCaptain answers the raider predicate (is_captain) that decides the ominous bottle.
+	MCGEN_API bool RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out);
+
 	// What a block's loot table can ask about its being broken: the block state (match_block), and the power of the
 	// blast that broke it, if one did (survives_explosion and explosion_decay each keep an item with a chance of 1
 	// over the power). Nobody holds a tool: the silk touch and shears conditions fail, and fortune counts as level 0.

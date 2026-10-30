@@ -106,15 +106,23 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Pillager = Add(TEXT("minecraft:pillager"), 0.6f, 1.95f, 24.f, 0.35f, 4.f, 32.f, false, false);
 		Pillager.bShoots = true;
 		Pillager.bHuntsVillagers = true;
-		Add(TEXT("minecraft:vindicator"), 0.6f, 1.95f, 24.f, 0.35f, 13.f, 12.f, false, false).bHuntsVillagers = true;
+		Pillager.bIsRaider = true;
+		FMcMobType& Vindicator = Add(TEXT("minecraft:vindicator"), 0.6f, 1.95f, 24.f, 0.35f, 13.f, 12.f, false, false);
+		Vindicator.bHuntsVillagers = true;
+		Vindicator.bIsRaider = true;
 		FMcMobType& Evoker = Add(TEXT("minecraft:evoker"), 0.6f, 1.95f, 24.f, 0.5f, 0.f, 12.f, false, false);
 		Evoker.bCastsSpells = true;
 		Evoker.bHuntsVillagers = true;
+		Evoker.bIsRaider = true;
 		FMcMobType& Vex = Add(TEXT("minecraft:vex"), 0.4f, 0.8f, 14.f, 0.4f, 5.f, 16.f, false, false);
 		Vex.bFlies = true;
-		Add(TEXT("minecraft:ravager"), 1.95f, 2.2f, 100.f, 0.3f, 12.f, 32.f, false, false).bHuntsVillagers = true;
+		FMcMobType& Ravager = Add(TEXT("minecraft:ravager"), 1.95f, 2.2f, 100.f, 0.3f, 12.f, 32.f, false, false);
+		Ravager.bHuntsVillagers = true;
+		Ravager.bIsRaider = true;
 		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.
-		Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false).bShoots = true;
+		FMcMobType& Witch = Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false);
+		Witch.bShoots = true;
+		Witch.bIsRaider = true;
 		FMcMobType& Fangs = Add(TEXT("minecraft:evoker_fangs"), 0.5f, 0.8f, 1.f, 0.f, 0.f, 0.f, false, false);
 		Fangs.bIsFangs = true;
 	}
@@ -417,6 +425,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		StepLast = Body.Position;
 	}
 	++Age;
+	GlowTicks = FMath::Max(0, GlowTicks - 1);
 	if (bFrozen)
 	{
 		return;

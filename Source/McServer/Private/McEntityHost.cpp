@@ -517,7 +517,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
 	TArray<FMcItemStack> Drops;
-	if (McLoot::Roll(Table, Rng, Drops))
+	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops))
 	{
 		for (const FMcItemStack& Stack : Drops)
 		{
@@ -846,6 +846,21 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 
 	Manager.PlayerPositions = Players;
 
+	// Every 10 minutes or so a raid party may come to a player, from the fifth day on and in daylight.
+	if (NextPatrolTick == 0)
+	{
+		NextPatrolTick = PatrolIntervalTicks + Random.RandHelper(1200);
+	}
+	if (Ticks >= NextPatrolTick)
+	{
+		NextPatrolTick = Ticks + PatrolIntervalTicks + Random.RandHelper(1200);
+		if (!Players.IsEmpty() && Rules.bDoMobSpawning && !Rules.IsPeaceful() && DayTicks / 24000.0 >= PatrolFirstDay && TimeOfDay < 12000 && Random.RandHelper(5) == 0)
+		{
+			SpawnPatrol(Players[Random.RandHelper(Players.Num())]);
+		}
+	}
+	TickRaids();
+
 	// Every game day a trader may come to a player: a 25% chance, up from there by 25% each day it doesn't, to 75%, and
 	// none while one is about.
 	if (Ticks % WanderingTraderIntervalTicks == 0 && !Players.IsEmpty() && Rules.bDoMobSpawning)
@@ -890,7 +905,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				continue;
 			}
 			FMcMob& Mob = static_cast<FMcMob&>(*Entity);
-			if (!Mob.Type.IsHostile())
+			if (!Mob.Type.IsHostile() || Mob.RaidId != 0)
 			{
 				continue;
 			}

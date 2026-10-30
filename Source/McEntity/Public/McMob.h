@@ -32,6 +32,8 @@ struct MCENTITY_API FMcMobType
 	bool bCastsSpells = false;
 	// The evoker's fangs: they come up after a delay, bite what stands there once and go.
 	bool bIsFangs = false;
+	// The illagers that raid: pillager, vindicator, evoker, ravager and witch. A patrol or a raid has them, one a captain.
+	bool bIsRaider = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;
@@ -97,6 +99,11 @@ public:
 	int32 SpellDelay = 0;
 	int32 SpellCooldown = 0;
 	int32 LifeTicks = 0;
+	// The one leading a patrol or a wave of a raid: it carries the ominous banner and drops an ominous bottle. Not saved.
+	bool bCaptain = false;
+	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
+	int32 GlowTicks = 0;
+	int32 RaidId = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.

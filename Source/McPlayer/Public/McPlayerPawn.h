@@ -180,6 +180,8 @@ public:
 	void RequestRespawn() { ServerRespawn(); }
 	// Right-clicks the block at Pos as the hand does (the -McUse development flag).
 	void RequestUseBlock(const FIntVector& Pos) { ServerUseBlock(Pos); }
+	// Right-clicks the mob in front, looking along Look in Minecraft axes (the -McTrade development flag).
+	void RequestUseMob(const FVector& Look) { ServerUseMob(Look); }
 
 protected:
 

@@ -765,7 +765,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						// Villagers stand in a row in front of the camera (facing south, +Z), 6.5 blocks away, for a picture
 						// of each one with its job site.
 						X = FMath::FloorToInt32(Players[0].X + (Index - (N - 1) * 0.5) * 1.8);
-						Z = FMath::FloorToInt32(Players[0].Z + 6.5);
+						Z = FMath::FloorToInt32(Players[0].Z + (FParse::Param(FCommandLine::Get(), TEXT("McTrade")) ? 2.0 : 6.5));
 					}
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
@@ -776,6 +776,13 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 							FMcVillager& Villager = static_cast<FMcVillager&>(*Spawned);
 							Villager.SetVariant(McVillager::GetVariants()[Index % McVillager::GetVariants().Num()]);
 							Villager.SetBaby(Index % 5 == 4);
+							if (FParse::Param(FCommandLine::Get(), TEXT("McTrade")))
+							{
+								// -McTrade: a frozen librarian two blocks south, for -McTrade to open its trades.
+								Villager.SetProfession(TEXT("minecraft:librarian"));
+								Villager.SetLevelAndXp(2, 30);
+								Villager.bFrozen = true;
+							}
 						}
 					}
 				}

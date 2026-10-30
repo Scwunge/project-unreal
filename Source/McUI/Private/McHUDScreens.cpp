@@ -585,6 +585,16 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 				}
 			}
 		}
+		// -McTrade right-clicks the villager that -McSpawnMobs=villager,1 put two blocks south of the player, six seconds in.
+		static bool bDevTradeDone = false;
+		if (!bDevTradeDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McTrade")))
+		{
+			bDevTradeDone = true;
+			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+			{
+				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
+			}
+		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
 		static bool bDevInventoryDone = false;
 		FString DevSearch;

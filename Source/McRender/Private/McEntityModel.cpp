@@ -304,8 +304,8 @@ namespace McEntityModel
 				Bee.Textures = { TEXT("bee/bee.png") };
 				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(0, 0, -3.5f, -3.5f, -5, 7, 7, 10) }));
 				// Two flat wings that beat.
-				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 10, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }));
-				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 10, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }));
+				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 10, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }, 0.0f, 0.0f, -0.6f));
+				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 10, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }, 0.0f, 0.0f, 0.6f));
 				Models.Add(Bee.Kind, Bee);
 			}
 			{
@@ -320,6 +320,7 @@ namespace McEntityModel
 				const FBox Foot = Box(20, 24, -1, -4, -3, 2, 1, 6);
 				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 4, -3), { Haunch, Foot }));
 				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 4, -3), { Haunch, Foot }));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 6, -5), { Box(24, 16, -1.5f, -1.5f, -1, 3, 3, 1) }));
 				Models.Add(Rabbit.Kind, Rabbit);
 			}
 			{
@@ -333,6 +334,8 @@ namespace McEntityModel
 				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 9), { Box(3, 0, -3, -2, 0, 6, 5, 6) }));
 				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
 				Turtle.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10, 0.0f, true) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 2, 4), { Box(27, 30, -13, -1, -2, 13, 1, 5) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 2, 4), { Box(27, 30, 0, -1, -2, 13, 1, 5, 0.0f, true) }));
 				Models.Add(Turtle.Kind, Turtle);
 			}
 			return Models;

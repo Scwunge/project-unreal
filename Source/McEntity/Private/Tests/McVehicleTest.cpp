@@ -270,6 +270,28 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		Boat->bRemoved = true;
 		Manager.Tick();
 	}
+	{
+		// A waterfall onto the pond: the boat under it stays down in the pond, where still water would lift it to the top.
+		for (int32 Y = 3; Y <= 6; ++Y)
+		{
+			World.SetBlock(FIntVector(9, Y, 18), State(TEXT("minecraft:water[level=8]")));
+		}
+		World.SetBlock(FIntVector(9, 7, 18), State(TEXT("minecraft:water")));
+		FMcBoatEntity* Boat = new FMcBoatEntity();
+		Boat->Body.Position = FVector(9.5, 2.5, 18.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Boat));
+		for (int32 Tick = 0; Tick < 80; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a boat under a waterfall doesn't climb it"), Boat->Body.Position.Y < 3.0);
+		Boat->bRemoved = true;
+		Manager.Tick();
+		for (int32 Y = 3; Y <= 7; ++Y)
+		{
+			World.SetBlock(FIntVector(9, Y, 18), State(TEXT("minecraft:air")));
+		}
+	}
 
 	// ---- A boat takes in the mobs it bumps into, up to its seats ----
 	{

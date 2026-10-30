@@ -260,6 +260,14 @@ if (k == 1.0)
 return A;
 """
 
+# Water is not drawn inside a boat's hull: the hull's mask (McEntityModel::HullStencil, drawn only into custom depth)
+# marks the pixels, and water farther than the mask there is left out. Nothing else writes this stencil value.
+HULL_STENCIL = 77
+HULL_MASK_HLSL = KIND_HLSL + f"""
+if (k == 1.0 && abs(Stencil - {HULL_STENCIL}.0) < 0.5 && Depth > Mask) return 0.0;
+return A;
+"""
+
 # The sky's materials. The dome and the stars' squares take their colour from the vertex colour (display space, raised
 # to 2.2 like the blocks'). The additive one draws the sun, the moon and the stars on top of the dome: Solid swaps the
 # texture for white (the stars), Tint scales the result (the stars fading in).
@@ -574,7 +582,15 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         mel.connect_material_expressions(vertex_color, "A", opacity, "B")
         mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
-        mel.connect_material_property(opacity_source[0], opacity_source[1], unreal.MaterialProperty.MP_OPACITY)
+        stencil = mel.create_material_expression(material, unreal.MaterialExpressionSceneTexture, -350, 2000)
+        stencil.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_CUSTOM_STENCIL)
+        mask_depth = mel.create_material_expression(material, unreal.MaterialExpressionSceneTexture, -350, 2100)
+        mask_depth.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_CUSTOM_DEPTH)
+        depth = mel.create_material_expression(material, unreal.MaterialExpressionPixelDepth, -350, 2200)
+        hull = add_custom(material, 100, 300, "McHullMask", HULL_MASK_HLSL,
+                          {"Kind": (kind, ""), "A": opacity_source, "Stencil": (add_mask(material, -200, 2000, stencil, "r"), ""),
+                           "Mask": (add_mask(material, -200, 2100, mask_depth, "r"), ""), "Depth": (depth, "")}, scalar=True)
+        mel.connect_material_property(hull, "", unreal.MaterialProperty.MP_OPACITY)
 
     mel.recompile_material(material)
     eal.save_loaded_asset(material)

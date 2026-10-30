@@ -82,4 +82,28 @@ bool FMcChestModelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHullMaskTest, "McClient.McRender.HullMask",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcHullMaskTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	const FModel* Boat = Find(TEXT("minecraft:boat"));
+	const FModel* Raft = Find(TEXT("minecraft:bamboo_raft"));
+	if (!TestNotNull(TEXT("a boat"), Boat) || !TestNotNull(TEXT("a raft"), Raft))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the boat's mask comes after its picture"), Boat->MaskLayer, Boat->Textures.Num());
+	TestEqual(TEXT("a raft has no hull to keep water out of"), Raft->MaskLayer, INDEX_NONE);
+	FAnim Still;
+	McPlayerModel::FMeshData Data;
+	BuildMesh(*Boat, Still, Boat->MaskLayer, Data);
+	const ::FBox Mask(Data.Positions);
+	// Inside the sides (16 across, 28 long) from the floor up to their tops, 9 pixels up.
+	TestTrue(TEXT("between the sides"), FMath::IsNearlyEqual(Mask.Max.X - Mask.Min.X, 100.0, 0.1) && FMath::IsNearlyEqual(Mask.Max.Y - Mask.Min.Y, 175.0, 0.1));
+	TestTrue(TEXT("up to the gunwales"), FMath::IsNearlyEqual(Mask.Max.Z, 56.25, 0.1));
+	return true;
+}
+
 #endif

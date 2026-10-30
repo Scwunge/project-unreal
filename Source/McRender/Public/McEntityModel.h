@@ -98,7 +98,14 @@ namespace McEntityModel
 		float MaxLimbSwing = 0.0f;
 		// The hitbox width the model is drawn for, blocks; the model grows with a hitbox that is wider (slimes). 0 for fixed.
 		float BaseWidth = 0.0f;
+		// The layer whose parts are not drawn but mark where water is left out (a boat's hull, under its gunwales), or
+		// INDEX_NONE. It is after the textures' layers.
+		int32 MaskLayer = INDEX_NONE;
 	};
+
+	// The custom stencil value a hull's mask writes; the translucent materials (tools/make_materials.py) leave out the
+	// water behind it. Nothing else uses it.
+	constexpr int32 HullStencil = 77;
 
 	// The model for a registry name like "minecraft:pig", null if the kind has none.
 	MCRENDER_API const FModel* Find(FName Kind);
@@ -218,6 +225,9 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> FlashMaterial;
 	FString BlockText;
 	int32 BlockVertices = 0;
+	// The model's mask layer (FModel::MaskLayer), drawn only into custom depth.
+	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> Mask;
 
 	FName Kind;
 	FName Item;

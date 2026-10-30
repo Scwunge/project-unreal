@@ -278,7 +278,8 @@ public:
 	static constexpr float BreakWear = 40.0f;
 
 private:
-	enum class ESurface : uint8 { Air, Water, Underwater, Ground };
+	// UnderFlowing: under flowing water, a waterfall, which holds it down where still water would lift it.
+	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.45 land, more on ice).
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
 };

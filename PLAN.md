@@ -152,6 +152,16 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:
     `Saved/Shots/cart_mobs.png` (`-McScene=cart_mobs`, a cart rolled down a slope into a cow and a pig).
+  - **Water out of hulls** (2026-10-30): a boat (not a raft) has a mask over the space inside its sides up to their tops
+    (`FModel::MaskLayer`), drawn only into custom depth with **custom stencil 77** (`McEntityModel::HullStencil`; nothing
+    else may use 77). The translucent block materials (`tools/make_materials.py`, `HULL_STENCIL`) leave out water (kind 1)
+    farther than the mask where the stencil is 77, so water in front of the boat, and a waterfall pouring into it, still
+    show. Needs `r.CustomDepth=3` (`Config/DefaultEngine.ini`). Whoever changes the translucent materials re-runs the
+    generator rather than merging the .uassets. Shots: `Saved/Shots/hull_water_above.png` and `hull_water_side.png`
+    (`-McScene=hull_water_above` / `hull_water_side`: a boat with a pig, one half under a waterfall, one on land).
+    A boat under flowing water (a waterfall) is held down and sinks slowly instead of being lifted up the fall
+    (`ESurface::UnderFlowing`). Not mine, seen in those shots: falling water (`water[level=8]`) draws as a solid, untextured
+    blue box (McFluidMesher).
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
     on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).

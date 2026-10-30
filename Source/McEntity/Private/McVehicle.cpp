@@ -647,8 +647,15 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 		}
 		const double Surface = Top + WaterHeight(World.GetBlock(FIntVector(X, Top, Z)));
 		OutSurface = Surface;
-		// Water over its hull lifts it; the top of the hull just in it floats.
-		return Body.Position.Y + Body.Height < Surface ? ESurface::Underwater : ESurface::Water;
+		// Water over its hull lifts it, unless it is flowing water (a waterfall), which holds it down; the top of the hull
+		// just in it floats.
+		if (Body.Position.Y + Body.Height >= Surface)
+		{
+			return ESurface::Water;
+		}
+		const FMcStateId Over = World.GetBlock(FIntVector(X, FMath::FloorToInt32(Body.Position.Y + Body.Height), Z));
+		const FName Level = Registry.GetPropertyValue(Over, TEXT("level"));
+		return HasWater(Over) && !Level.IsNone() && Level != FName(TEXT("0")) ? ESurface::UnderFlowing : ESurface::Underwater;
 	}
 	const FIntVector Below(X, FMath::FloorToInt32(Body.Position.Y - 0.05), Z);
 	if (Body.bOnGround)
@@ -700,6 +707,9 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		break;
 	case ESurface::Underwater:
 		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.04, 0.15);
+		break;
+	case ESurface::UnderFlowing:
+		Body.Velocity.Y = FMath::Max(Body.Velocity.Y * 0.9 - 0.002, -0.05);
 		break;
 	default:
 		Body.Velocity.Y -= Gravity;

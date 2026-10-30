@@ -290,6 +290,9 @@ namespace McEntityModel
 					Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
 					Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
 					AddPaddles(Boat, 9.0f, 8.0f, FIntPoint(62, 0), FIntPoint(62, 20));
+					// The space inside the sides, up to their tops: water is not drawn there.
+					Boat.MaskLayer = 1;
+					Boat.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -8, 3, -14, 16, 6, 28) }, 0, 0, 0, 0, 1));
 					if (bChest)
 					{
 						// The chest sits towards the stern, its lock facing the bow.
@@ -1182,6 +1185,37 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
+	}
+	if (Model->MaskLayer != INDEX_NONE)
+	{
+		if (!Mask)
+		{
+			Mask = NewObject<UProceduralMeshComponent>(GetOwner());
+			Mask->SetupAttachment(this);
+			Mask->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Mask->SetCastShadow(false);
+			Mask->SetRenderInMainPass(false);
+			Mask->SetRenderInDepthPass(false);
+			Mask->SetRenderCustomDepth(true);
+			Mask->SetCustomDepthStencilValue(McEntityModel::HullStencil);
+			Mask->RegisterComponent();
+		}
+		McPlayerModel::FMeshData Data;
+		McEntityModel::BuildMesh(*Model, Anim, Model->MaskLayer, Data);
+		if (Mask->GetNumSections() == 0)
+		{
+			Mask->CreateMeshSection(0, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, Data.Colors, TArray<FProcMeshTangent>(), false);
+			Mask->SetMaterial(0, BaseMaterial);
+		}
+		else
+		{
+			Mask->UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, Data.Colors, TArray<FProcMeshTangent>());
+		}
+	}
+	else if (Mask)
+	{
+		Mask->DestroyComponent();
+		Mask = nullptr;
 	}
 	if (!Model->Block.IsEmpty())
 	{

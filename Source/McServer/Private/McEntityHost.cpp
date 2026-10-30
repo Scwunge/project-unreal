@@ -399,6 +399,8 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 			// After what the kind itself keeps, so an older save without it still reads.
 			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
 			DataWriter << Look;
+			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
+			DataWriter << Young;
 		}
 		Writer << Type << Data;
 		++Count;
@@ -450,6 +452,15 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
 					{
 						Mob->LookSeed = Look;
+					}
+					int32 Young = 0;
+					if (!DataReader.AtEnd())
+					{
+						DataReader << Young;
+						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
+						{
+							Mob->SetYoung(Young);
+						}
 					}
 				}
 				++Restored;
@@ -547,7 +558,14 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 		}
 		if (Y && IsSpawnGround(Kind, Registry.GetBlockOf(World.GetBlock(FIntVector(X, Y.GetValue() - 1, Z))).Name))
 		{
-			SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+			if (FMcMob* Born = SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5)))
+			{
+				// About one in twenty of a natural herd is young.
+				if (FMcMob::CanBeYoung(Kind) && Local.FRand() < 0.05f)
+				{
+					Born->SetYoung(Local.RandRange(FMcMob::YoungSpan / 4, FMcMob::YoungSpan));
+				}
+			}
 			++Placed;
 		}
 	}
@@ -721,6 +739,10 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
 					{
 						Spawned->bFrozen = true;
+						if (FParse::Param(FCommandLine::Get(), TEXT("McMobRowBaby")) && FMcMob::CanBeYoung(Spawned->GetType()))
+						{
+							Spawned->SetYoung(FMcMob::YoungSpan);
+						}
 						Spawned->Yaw = RowYaw;
 					}
 				}

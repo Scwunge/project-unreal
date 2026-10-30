@@ -153,6 +153,24 @@ bool FMcMob::Serialize(FArchive& Ar)
 	return !Ar.IsError() && !FMath::IsNaN(Health);
 }
 
+void FMcMob::SetYoung(int32 Ticks)
+{
+	YoungTicks = FMath::Max(0, Ticks);
+	const float Scale = YoungTicks > 0 ? 0.5f : 1.0f;
+	Body.Width = Type.Width * Scale;
+	Body.Height = Type.Height * Scale;
+}
+
+bool FMcMob::CanBeYoung(FName Kind)
+{
+	static const TSet<FName> Breeders = {
+		TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken"), TEXT("minecraft:horse"),
+		TEXT("minecraft:wolf"), TEXT("minecraft:goat"), TEXT("minecraft:fox"), TEXT("minecraft:llama"), TEXT("minecraft:rabbit"),
+		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
+	};
+	return Breeders.Contains(Kind);
+}
+
 bool FMcMob::Damage(float Amount, const FVector* Source)
 {
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.
@@ -361,6 +379,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	if (bFrozen)
 	{
 		return;
+	}
+	if (YoungTicks > 0 && --YoungTicks == 0)
+	{
+		SetYoung(0);
 	}
 	if (HurtTime > 0)
 	{

@@ -76,6 +76,10 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// The mob counts its hits; clients flash it whenever this changes.
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
+		if (Kind != FMcVillager::StaticType())
+		{
+			bBaby = Mob.IsYoung();
+		}
 		// The game's swell runs over the fuse less 2 ticks.
 		if (Kind == FMcVillager::StaticType())
 		{
@@ -103,6 +107,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetSwelling(Swelling);
 		Model->SetVillagerLook(Variant, Profession, VillagerLevel, bBaby);
 		Model->SetVariantSeed(LookSeed);
+		Model->SetBaby(bBaby);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

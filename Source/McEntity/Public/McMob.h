@@ -82,6 +82,13 @@ public:
 	bool bFrozen = false;
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
 	int32 LookSeed = -1;
+	// A young animal: half the size, and grown up when the ticks run out. 0 for a grown one. (Villagers keep their own.)
+	int32 YoungTicks = 0;
+	static constexpr int32 YoungSpan = 24000;
+	bool IsYoung() const { return YoungTicks > 0; }
+	void SetYoung(int32 Ticks);
+	// The animals that breed, and so have young.
+	static bool CanBeYoung(FName Kind);
 
 	// Creepers: ticks the fuse has burned (it explodes at FuseTicks), and whether it is burning now.
 	int32 SwellTicks = 0;

@@ -155,13 +155,23 @@ bool FMcMobLookTest::RunTest(const FString& Parameters)
 {
 	// The biome picks: a desert rabbit is gold, a snowy one white, a snowy fox is the snow one, a taiga wolf is pale.
 	FRandomStream Random(7);
+	// Picked from the game's data: wolf and farm animal variants by their biome conditions, the rabbit and fox by tags.
+	// (The wolf list is in name order: ashen, black, chestnut, pale, rusty, snowy, spotted, striped, woods.)
 	TestEqual(TEXT("desert rabbit"), McMobLook::Pick(TEXT("minecraft:rabbit"), TEXT("minecraft:desert"), Random), 3);
 	TestEqual(TEXT("snowy rabbit"), McMobLook::Pick(TEXT("minecraft:rabbit"), TEXT("minecraft:snowy_plains"), Random), 1);
 	TestEqual(TEXT("snowy fox"), McMobLook::Pick(TEXT("minecraft:fox"), TEXT("minecraft:snowy_taiga"), Random), 1);
 	TestEqual(TEXT("taiga fox"), McMobLook::Pick(TEXT("minecraft:fox"), TEXT("minecraft:taiga"), Random), 0);
-	TestEqual(TEXT("taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:taiga"), Random), 0);
-	TestEqual(TEXT("snowy taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:snowy_taiga"), Random), 1);
-	TestEqual(TEXT("a pig has one look"), McMobLook::GetCount(TEXT("minecraft:pig")), 0);
+	TestEqual(TEXT("taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:taiga"), Random), 3);
+	TestEqual(TEXT("snowy taiga wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:snowy_taiga"), Random), 0);
+	TestEqual(TEXT("jungle wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:bamboo_jungle"), Random), 4);
+	TestEqual(TEXT("savanna wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:savanna"), Random), 6);
+	TestEqual(TEXT("badlands wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:eroded_badlands"), Random), 7);
+	TestEqual(TEXT("an unlisted biome's wolf"), McMobLook::Pick(TEXT("minecraft:wolf"), TEXT("minecraft:plains"), Random), 3);
+	TestEqual(TEXT("a wolf's name"), McMobLook::GetName(TEXT("minecraft:wolf"), 4), FName(TEXT("rusty")));
+	TestEqual(TEXT("cold pig"), McMobLook::GetName(TEXT("minecraft:pig"), McMobLook::Pick(TEXT("minecraft:pig"), TEXT("minecraft:snowy_plains"), Random)), FName(TEXT("cold")));
+	TestEqual(TEXT("warm cow"), McMobLook::GetName(TEXT("minecraft:cow"), McMobLook::Pick(TEXT("minecraft:cow"), TEXT("minecraft:desert"), Random)), FName(TEXT("warm")));
+	TestEqual(TEXT("temperate chicken"), McMobLook::GetName(TEXT("minecraft:chicken"), McMobLook::Pick(TEXT("minecraft:chicken"), TEXT("minecraft:plains"), Random)), FName(TEXT("temperate")));
+	TestEqual(TEXT("a sheep has one look"), McMobLook::GetCount(TEXT("minecraft:sheep")), 0);
 	for (int32 Index = 0; Index < 50; ++Index)
 	{
 		const int32 Horse = McMobLook::Pick(TEXT("minecraft:horse"), NAME_None, Random);
@@ -183,6 +193,8 @@ bool FMcMobLookTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Horse->LookSeed = 17;
+	Horse->SetYoung(30);
+	TestTrue(TEXT("a young horse is half the size"), FMath::IsNearlyEqual(Horse->Body.Width, Horse->Type.Width * 0.5f));
 	const TArray<uint8> Bytes = Host.CaptureChunk(FIntPoint(0, 0));
 	Horse->bRemoved = true;
 	TestEqual(TEXT("the horse is in the save"), Host.RestoreChunk(Bytes), 1);
@@ -193,6 +205,14 @@ bool FMcMobLookTest::RunTest(const FString& Parameters)
 		{
 			++Found;
 			TestEqual(TEXT("it keeps its coat"), static_cast<FMcMob&>(*Entity).LookSeed, 17);
+			FMcMob& Back = static_cast<FMcMob&>(*Entity);
+			TestEqual(TEXT("and its youth"), Back.YoungTicks, 30);
+			TestTrue(TEXT("and its small box"), FMath::IsNearlyEqual(Back.Body.Height, Back.Type.Height * 0.5f));
+			Back.SetYoung(1);
+			Back.bFrozen = false;
+			Back.Tick(Host.GetManager());
+			TestFalse(TEXT("it grows up"), Back.IsYoung());
+			TestTrue(TEXT("to the full box"), FMath::IsNearlyEqual(Back.Body.Height, Back.Type.Height));
 		}
 	}
 	TestEqual(TEXT("one horse came back"), Found, 1);

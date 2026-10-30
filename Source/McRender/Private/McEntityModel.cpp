@@ -96,6 +96,7 @@ namespace McEntityModel
 				Pig.Kind = TEXT("minecraft:pig");
 				Pig.TextureSize = FIntPoint(64, 64);
 				Pig.Textures = { TEXT("pig/pig_temperate.png") };
+				Pig.Variants = { { TEXT("pig/pig_cold.png") }, { TEXT("pig/pig_temperate.png") }, { TEXT("pig/pig_warm.png") } };
 				Pig.Parts.Add(Part(ERole::Static, FVector(0, 10, 0), { Box(28, 8, -5, -8, -4, 10, 16, 8) }, Flat));
 				Pig.Parts.Add(Part(ERole::Head, FVector(0, 12, 8), { Box(0, 0, -4, -4, 0, 8, 8, 8), Box(16, 16, -2, -3, 8, 4, 3, 1) }));
 				AddLegs(Pig, 0, 16, 4, 6, 3, 5, -5, 6);
@@ -106,6 +107,7 @@ namespace McEntityModel
 				Cow.Kind = TEXT("minecraft:cow");
 				Cow.TextureSize = FIntPoint(64, 64);
 				Cow.Textures = { TEXT("cow/cow_temperate.png") };
+				Cow.Variants = { { TEXT("cow/cow_cold.png") }, { TEXT("cow/cow_temperate.png") }, { TEXT("cow/cow_warm.png") } };
 				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
 				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 9), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 3, 1, 1, 3, 1), Box(22, 0, 4, 3, 1, 1, 3, 1, 0.0f, true) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 7, -7, 12);
@@ -132,6 +134,7 @@ namespace McEntityModel
 				FModel Chicken;
 				Chicken.Kind = TEXT("minecraft:chicken");
 				Chicken.Textures = { TEXT("chicken/chicken_temperate.png") };
+				Chicken.Variants = { { TEXT("chicken/chicken_cold.png") }, { TEXT("chicken/chicken_temperate.png") }, { TEXT("chicken/chicken_warm.png") } };
 				Chicken.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 9, -3, -4, -3, 6, 8, 6) }, Flat));
 				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -2, 4, 6, 3), Box(14, 0, -2, 2, 1, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
 				const FBox Leg = Box(26, 0, -1.5f, -5, -1.5f, 3, 5, 3);
@@ -258,7 +261,8 @@ namespace McEntityModel
 				FModel Wolf;
 				Wolf.Kind = TEXT("minecraft:wolf");
 				Wolf.Textures = { TEXT("wolf/wolf.png") };
-				for (const TCHAR* Breed : { TEXT("wolf"), TEXT("wolf_ashen"), TEXT("wolf_black"), TEXT("wolf_chestnut"), TEXT("wolf_rusty"), TEXT("wolf_snowy"), TEXT("wolf_spotted"), TEXT("wolf_striped"), TEXT("wolf_woods") })
+				// In the order of data/minecraft/wolf_variant/ (McMobLook): the files by name.
+				for (const TCHAR* Breed : { TEXT("wolf_ashen"), TEXT("wolf_black"), TEXT("wolf_chestnut"), TEXT("wolf"), TEXT("wolf_rusty"), TEXT("wolf_snowy"), TEXT("wolf_spotted"), TEXT("wolf_striped"), TEXT("wolf_woods") })
 				{
 					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed) });
 				}
@@ -374,14 +378,14 @@ namespace McEntityModel
 			return FColor(Byte(Value), Byte(Value * Rest), Byte(Value * Rest), 255);
 		}
 
-		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, McPlayerModel::FMeshData& Out)
+		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, float LocalScale, float WholeScale, McPlayerModel::FMeshData& Out)
 		{
-			const FVector Min = Box.Min - FVector(Box.Inflate);
-			const FVector Max = Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate);
+			const FVector Min = (Box.Min - FVector(Box.Inflate)) * LocalScale;
+			const FVector Max = (Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate)) * LocalScale;
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
 			const auto Place = [&](const FVector& Local)
 			{
-				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local));
+				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local)) * WholeScale;
 			};
 
 			struct FFace { EBoxFace Face; FVector Normal; FVector Corners[4]; };
@@ -465,6 +469,8 @@ namespace McEntityModel
 			{
 				continue;
 			}
+			// A young one is half the size, with its head only a third smaller than a grown one's, so the head is big for it.
+			const bool bHeadBig = Anim.bBaby && Part.Role == ERole::Head;
 			float Pitch = Part.RestPitch;
 			float Yaw = Part.RestYaw;
 			float Roll = Part.RestRoll;
@@ -532,7 +538,7 @@ namespace McEntityModel
 			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
 			for (const FBox& Box : Part.Boxes)
 			{
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, Out);
+				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Anim.bBaby ? BabyScale : 1.0f, Out);
 			}
 		}
 	}
@@ -782,6 +788,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	TextureOverrides.Reset();
 	LookKey = NAME_None;
 	VariantSeed = INT32_MIN;
+	bBabyLook = false;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	Model = bIsItem || bIsArrow ? nullptr : McEntityModel::Find(Kind);
@@ -1059,6 +1066,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// Every other tenth of the fuse the creeper goes white.
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;
+	Anim.bBaby = bBabyLook;
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);

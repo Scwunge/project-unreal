@@ -283,6 +283,8 @@ void AMcWorldActor::BeginPlay()
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	// A villager shutting a door goes through the same path as any other change.
+	Entities->GetManager().OnSetBlock = [this](const FIntVector& Pos, FMcStateId State) { SetBlock(Pos, State); };
 	// Every sound the entities make goes to the players.
 	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
 	{

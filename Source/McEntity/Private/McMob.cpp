@@ -81,6 +81,8 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:horse"), 1.3965f, 1.6f, 22.5f, 0.225f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:goat"), 0.9f, 1.3f, 10.f, 0.2f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
+		// The wandering trader's llamas are a llama in all but their blanket.
+		Add(TEXT("minecraft:trader_llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		// A turtle is slow on land.
 		Add(TEXT("minecraft:turtle"), 1.2f, 0.4f, 30.f, 0.1f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:frog"), 0.5f, 0.5f, 10.f, 0.15f, 0.f, 0.f, true, false);
@@ -520,6 +522,19 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 				bHasTarget = true;
 				bChasing = true;
 			}
+		}
+	}
+	if (!bHasTarget && LeashHolderId != 0)
+	{
+		const FMcEntity* Holder = Manager.Find(LeashHolderId);
+		if (!Holder || Holder->bRemoved)
+		{
+			LeashHolderId = 0;
+		}
+		else if (FVector::DistSquared(Holder->Body.Position, Body.Position) > 25.0)
+		{
+			// Pulled along once it is more than 5 blocks off.
+			Goal = Holder->Body.Position;
 		}
 	}
 	if (!bHasTarget)

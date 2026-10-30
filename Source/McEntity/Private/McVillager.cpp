@@ -401,6 +401,11 @@ void FMcVillager::UpdateRoutine(FMcEntityManager& Manager)
 	{
 		Restock();
 	}
+	// From dusk on, doors left open are shut behind the villagers.
+	if (!Manager.bDaylight && !bBaby)
+	{
+		CloseDoorsNearby(Manager);
+	}
 	if (Now != Activity)
 	{
 		Activity = Now;
@@ -476,6 +481,55 @@ void FMcVillager::UpdateRoutine(FMcEntityManager& Manager)
 	if (Activity != McVillager::EActivity::Rest)
 	{
 		bSleeping = false;
+	}
+}
+
+void FMcVillager::CloseDoorsNearby(FMcEntityManager& Manager)
+{
+	if (!Manager.OnSetBlock)
+	{
+		return;
+	}
+	const FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FIntVector Here(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+	const auto Shut = [&](const FIntVector& Cell)
+	{
+		const FMcStateId State = World.GetBlock(Cell);
+		if (!Registry.IsValidState(State))
+		{
+			return false;
+		}
+		const FString Name = Registry.GetBlockOf(State).Name.ToString();
+		// Iron doors answer only to redstone.
+		if (!Name.EndsWith(TEXT("_door")) || Name.Contains(TEXT("iron")) || Registry.GetPropertyValue(State, TEXT("open")) != FName(TEXT("true")))
+		{
+			return false;
+		}
+		const TOptional<FMcStateId> Closed = Registry.ParseState(Registry.Describe(State).Replace(TEXT("open=true"), TEXT("open=false")));
+		if (!Closed.IsSet())
+		{
+			return false;
+		}
+		Manager.OnSetBlock(Cell, Closed.GetValue());
+		return true;
+	};
+	for (int32 X = -3; X <= 3; ++X)
+	{
+		for (int32 Z = -3; Z <= 3; ++Z)
+		{
+			for (int32 Y = -1; Y <= 2; ++Y)
+			{
+				const FIntVector Cell = Here + FIntVector(X, Y, Z);
+				if (Shut(Cell))
+				{
+					// A door is two blocks, each with its own state.
+					const FMcStateId State = World.GetBlock(Cell);
+					const bool bLower = Registry.GetPropertyValue(State, TEXT("half")) == FName(TEXT("lower"));
+					Shut(Cell + FIntVector(0, bLower ? 1 : -1, 0));
+				}
+			}
+		}
 	}
 }
 

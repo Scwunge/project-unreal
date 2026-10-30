@@ -346,9 +346,10 @@ namespace McEntityModel
 				AddLegs(Fox, 4, 24, 2, 6, 2, 4, -3.5f, 6);
 				Models.Add(Fox.Kind, Fox);
 			}
+			for (const TCHAR* LlamaKind : { TEXT("minecraft:llama"), TEXT("minecraft:trader_llama") })
 			{
 				FModel Llama;
-				Llama.Kind = TEXT("minecraft:llama");
+				Llama.Kind = LlamaKind;
 				Llama.TextureSize = FIntPoint(128, 64);
 				Llama.Textures = { TEXT("llama/llama_brown.png") };
 				Llama.Variants = { { TEXT("llama/llama_creamy.png") }, { TEXT("llama/llama_white.png") }, { TEXT("llama/llama_brown.png") }, { TEXT("llama/llama_gray.png") } };

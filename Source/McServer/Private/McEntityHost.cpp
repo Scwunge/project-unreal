@@ -399,6 +399,37 @@ void FMcEntityHost::FinishCures()
 	}
 }
 
+bool FMcEntityHost::SpawnWanderingTrader(const FVector& Player)
+{
+	for (int32 Try = 0; Try < 20; ++Try)
+	{
+		const float Angle = Random.FRand() * 2.0f * PI;
+		const float Radius = 24.0f + Random.FRand() * 24.0f;
+		const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Radius);
+		const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Radius);
+		const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 16);
+		if (!Y.IsSet())
+		{
+			continue;
+		}
+		FMcMob* Trader = SpawnMob(FMcWanderingTrader::StaticType(), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+		if (!Trader)
+		{
+			return false;
+		}
+		const int32 TraderId = Trader->Id;
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			if (FMcMob* Llama = SpawnMob(TEXT("minecraft:trader_llama"), FVector(X + 0.5 + (Index ? 1.5 : -1.5), Y.GetValue(), Z + 0.5)))
+			{
+				Llama->LeashHolderId = TraderId;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
 bool FMcEntityHost::MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const
 {
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
@@ -803,6 +834,28 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
+
+	// Every game day a trader may come to a player: a 25% chance, up from there by 25% each day it doesn't, to 75%, and
+	// none while one is about.
+	if (Ticks % WanderingTraderIntervalTicks == 0 && !Players.IsEmpty() && Rules.bDoMobSpawning)
+	{
+		bool bAbout = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bAbout |= !Entity->bRemoved && Entity->GetType() == FMcWanderingTrader::StaticType();
+		}
+		if (!bAbout)
+		{
+			if (Random.FRand() * 100.0f < TraderChance && SpawnWanderingTrader(Players[Random.RandHelper(Players.Num())]))
+			{
+				TraderChance = 25;
+			}
+			else
+			{
+				TraderChance = FMath::Min(75, TraderChance + 25);
+			}
+		}
+	}
 
 	// A few chunks a tick get their animals.
 	for (int32 Budget = MaxChunkSeedsPerTick; Budget > 0 && !SeedQueue.IsEmpty(); --Budget)

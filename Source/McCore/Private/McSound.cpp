@@ -133,6 +133,11 @@ namespace
 		{
 			Text.RightChopInline(Colon + 1);
 		}
+		// The trader's llamas sound as llamas.
+		if (Text == TEXT("trader_llama"))
+		{
+			return TEXT("llama");
+		}
 		return Text;
 	}
 
@@ -183,6 +188,9 @@ namespace
 		{ TEXT("goat"), true, true, true, true }, { TEXT("llama"), true, true, true, true },
 		{ TEXT("turtle"), false, true, true, false }, { TEXT("frog"), true, true, true, true },
 		{ TEXT("bee"), false, true, true, false },
+		// The villagers and their kin: a golem has no ambient sound, and a villager and a trader no step.
+		{ TEXT("iron_golem"), false, true, true, true }, { TEXT("villager"), true, true, true, false },
+		{ TEXT("wandering_trader"), true, true, true, false }, { TEXT("zombie_villager"), true, true, true, true },
 	};
 }
 

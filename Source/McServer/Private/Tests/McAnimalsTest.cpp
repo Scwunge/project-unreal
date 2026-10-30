@@ -59,6 +59,11 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:turtle"), 30.0f, { TEXT("minecraft:seagrass"), TEXT("minecraft:bowl") } },
 		{ TEXT("minecraft:frog"), 10.0f, {} },
 		{ TEXT("minecraft:bee"), 10.0f, {} },
+		{ TEXT("minecraft:iron_golem"), 100.0f, { TEXT("minecraft:poppy"), TEXT("minecraft:iron_ingot") } },
+		{ TEXT("minecraft:trader_llama"), 22.5f, { TEXT("minecraft:leather") } },
+		{ TEXT("minecraft:villager"), 20.0f, {} },
+		{ TEXT("minecraft:wandering_trader"), 20.0f, {} },
+		{ TEXT("minecraft:zombie_villager"), 20.0f, { TEXT("minecraft:rotten_flesh"), TEXT("minecraft:iron_ingot"), TEXT("minecraft:carrot"), TEXT("minecraft:potato") } },
 	};
 
 	for (const FAnimal& Animal : Animals)
@@ -70,7 +75,7 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 			continue;
 		}
 		TestTrue(*FString::Printf(TEXT("%s has the wiki's health"), Animal.Name), FMath::IsNearlyEqual(Type->MaxHealth, Animal.Health));
-		TestFalse(*FString::Printf(TEXT("%s is not counted as hostile"), Animal.Name), Type->IsHostile() && Kind != FName(TEXT("minecraft:wolf")) && Kind != FName(TEXT("minecraft:bee")));
+		TestFalse(*FString::Printf(TEXT("%s is not counted as hostile"), Animal.Name), Type->IsHostile() && Kind != FName(TEXT("minecraft:wolf")) && Kind != FName(TEXT("minecraft:bee")) && Kind != FName(TEXT("minecraft:zombie_villager")));
 		TestFalse(*FString::Printf(TEXT("%s is not named as an animal that has no sounds"), Animal.Name), McSound::GetMobSoundName(Kind, McSound::EMobSound::Hurt).IsNone());
 
 		FMcBlockWorld World{FMcDimensionType()};
@@ -94,6 +99,35 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 				TestTrue(*FString::Printf(TEXT("%s dropped %s, which its table lists"), Animal.Name, *Item.ToString()), Animal.Drops.Contains(Item));
 			}
 		}
+	}
+
+	// Over a few kills a golem gives both its iron and its poppies.
+	{
+		bool bIron = false;
+		bool bPoppy = false;
+		for (int32 Kill = 0; Kill < 12 && !(bIron && bPoppy); ++Kill)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			Fill(World, Registry);
+			FMcEntityHost Host(World, 100 + Kill);
+			FMcMob* Golem = Host.SpawnMob(TEXT("minecraft:iron_golem"), FVector(8.5, 1.0, 8.5));
+			if (!Golem)
+			{
+				break;
+			}
+			Golem->Damage(1000.0f, nullptr);
+			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
+			{
+				if (Entity->GetType() == FMcItemEntity::StaticType())
+				{
+					const FName Item = static_cast<const FMcItemEntity&>(*Entity).Stack.Item;
+					bIron |= Item == FName(TEXT("minecraft:iron_ingot"));
+					bPoppy |= Item == FName(TEXT("minecraft:poppy"));
+				}
+			}
+		}
+		TestTrue(TEXT("a golem drops iron"), bIron);
+		TestTrue(TEXT("a golem drops poppies"), bPoppy);
 	}
 
 	// A wolf leaves a player alone until hit, then goes for them and bites.

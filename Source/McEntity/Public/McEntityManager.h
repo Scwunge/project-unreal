@@ -135,6 +135,8 @@ public:
 	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.
 	TFunction<void(const FVector&)> OnGolemWanted;
+	// Called to change a block (a villager shutting a door), so the owner of the blocks can send the change on.
+	TFunction<void(const FIntVector&, FMcStateId)> OnSetBlock;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;

@@ -149,6 +149,8 @@ private:
 	bool IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
 	// Calls for a golem if at least that many villagers live near and none is guarding them.
 	void WantGolem(FMcEntityManager& Manager, int32 MinVillagers);
+	// At night a villager shuts the open wooden doors within 3 blocks of it.
+	void CloseDoorsNearby(FMcEntityManager& Manager);
 	// Once a second: picks the activity for the hour and walks to where it is done, or stays put when there.
 	void UpdateRoutine(FMcEntityManager& Manager);
 	// Heads for Place (block coordinates), and stays put once within two blocks. True when there.

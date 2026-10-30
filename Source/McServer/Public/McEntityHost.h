@@ -85,6 +85,9 @@ public:
 	// A carved pumpkin or jack o'lantern was just placed at Pumpkin: whether it tops an iron golem (a column of two iron
 	// blocks with an iron block on each side of the upper one, the arms, along either axis). True gives the five blocks
 	// to clear and where the golem stands, the feet of the lower block.
+	// A wandering trader arrives near a player, with two trader llamas on leads. False if there was no room.
+	bool SpawnWanderingTrader(const FVector& Player);
+
 	bool MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const;
 
 private:
@@ -109,6 +112,8 @@ private:
 	FMcEntityManager Manager;
 	int64 Seed;
 	int64 Ticks = 0;
+	int32 TraderChance = 25;
+	static constexpr int64 WanderingTraderIntervalTicks = 24000;
 	FRandomStream Random;
 	// The chunks that have had their turn at animals, or are queued for it; forgotten when the chunk unloads.
 	TSet<FIntPoint> Seeded;

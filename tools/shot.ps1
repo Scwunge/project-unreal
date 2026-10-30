@@ -21,7 +21,8 @@ $OutPath = if ([IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path (Split-P
 if (Test-Path $OutPath) { Remove-Item $OutPath }
 # One build, test or shot at a time across checkouts: an editor started beside another session's build waits for it.
 while (Get-Process -Name dotnet, UnrealEditor, UnrealEditor-Cmd -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 10 }
-$All = "`"$Project`" -game -windowed -ResX=1280 -ResY=720 -nosound -log -McShotDelay=12 -McShot=`"$OutPath`" $Args"
+$Delay = if ($Args -match "-McShotDelay=") { "" } else { "-McShotDelay=12" }
+$All = "`"$Project`" -game -windowed -ResX=1280 -ResY=720 -nosound -log $Delay -McShot=`"$OutPath`" $Args"
 $Process = Start-Process $Editor $All -PassThru
 if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
     Stop-Process -Id $Process.Id -Force

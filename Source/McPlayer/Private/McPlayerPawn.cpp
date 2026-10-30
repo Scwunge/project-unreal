@@ -111,6 +111,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AMcPlayerPawn, RidingId);
 	DOREPLIFETIME(AMcPlayerPawn, bSleeping);
 	DOREPLIFETIME(AMcPlayerPawn, SleepTicks);
+	DOREPLIFETIME(AMcPlayerPawn, DeathScore);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigStage, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigBlockPos, COND_OwnerOnly);
 }
@@ -1509,6 +1510,7 @@ void AMcPlayerPawn::ServerDie()
 		return;
 	}
 	bServerDead = true;
+	DeathScore = McSurvival::GetTotalXp(Data->Stats);
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();
 	// With keepInventory the inventory, armour and experience stay with the player.

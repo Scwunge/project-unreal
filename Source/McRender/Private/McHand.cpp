@@ -458,13 +458,10 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	{
 		if (GEngine && GEngine->GameViewport)
 		{
-			FVector2D Size;
-			GEngine->GameViewport->GetViewportSize(Size);
-			if (Size.X > 0.0 && Size.Y > 0.0)
-			{
-				Camera->bEnableFirstPersonFieldOfView = true;
-				Camera->FirstPersonFieldOfView = static_cast<float>(FMath::RadiansToDegrees(2.0 * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(35.0)) * Size.X / Size.Y)));
-			}
+			// The hand is drawn at the vertical 70 of the game's own view, whatever the FOV option says (the project keeps
+			// the vertical angle, r.UseLegacyMaintainYFOVViewMatrix).
+			Camera->bEnableFirstPersonFieldOfView = true;
+			Camera->FirstPersonFieldOfView = 70.0f;
 		}
 	}
 	EnsureArm();

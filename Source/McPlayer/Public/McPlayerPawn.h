@@ -104,6 +104,8 @@ public:
 	// Server: the points of experience as orbs at the player (a death drops them).
 	void ServerDropXp(int32 Points);
 	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
+	// The experience points the player had when they died: the death screen's "Score".
+	int32 GetDeathScore() const { return DeathScore; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
 	void ServerTeleport(const FVector& Feet, float McYaw);
 	// Server: where the player's feet are, in block coordinates.
@@ -295,6 +297,8 @@ private:
 	bool bSleeping = false;
 	UPROPERTY(Replicated)
 	int32 SleepTicks = 0;
+	UPROPERTY(Replicated)
+	int32 DeathScore = 0;
 	FIntVector SleepBed = FIntVector::ZeroValue;
 	bool bSleptThroughSent = false;
 	bool bHudHidden = false;

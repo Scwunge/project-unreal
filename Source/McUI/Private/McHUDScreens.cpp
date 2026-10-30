@@ -1,6 +1,7 @@
 // The parts of the HUD that use the player's data: the bars, the hotbar with its items, and the container screens
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
+#include "Kismet/GameplayStatics.h"
 #include "McHUD.h"
 #include "McEffects.h"
 #include "McRenderMode.h"
@@ -1321,7 +1322,13 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 	const FString Title = TEXT("You died!");
 	DrawGuiText(Title, Width / 2.0f - TextWidth(Title) * 1.5f, Height / 4.0f, 0xFFFFFF, true);
 
-	// A 200 by 20 button under the title.
+	const FString ScoreLabel = TEXT("Score: ");
+	const FString ScoreValue = FString::FromInt(Dead.GetDeathScore());
+	const float ScoreX = Width / 2.0f - (TextWidth(ScoreLabel) + TextWidth(ScoreValue)) / 2.0f;
+	DrawGuiText(ScoreLabel, ScoreX, Height / 4.0f + 36.0f, 0xFFFFFF, true);
+	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), Height / 4.0f + 36.0f, 0xFFFF55, true);
+
+	// Two 200 by 20 buttons under the score: Respawn, then Title Screen.
 	const float ButtonX = Width / 2.0f - 100.0f;
 	const float ButtonY = Height / 4.0f + 72.0f;
 	float MouseX = 0.0f, MouseY = 0.0f;
@@ -1338,6 +1345,17 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 	if (bOver && Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 	{
 		Dead.RequestRespawn();
+	}
+	const float TitleY = ButtonY + 24.0f;
+	const bool bOverTitle = GuiMouse.X >= ButtonX && GuiMouse.X < ButtonX + 200.0f && GuiMouse.Y >= TitleY && GuiMouse.Y < TitleY + 20.0f;
+	DrawFill(ButtonX - 1, TitleY - 1, 202, 22, FLinearColor::Black);
+	DrawFill(ButtonX, TitleY, 200, 20, bOverTitle ? FLinearColor(0.44f, 0.5f, 0.75f, 1.0f) : FLinearColor(0.44f, 0.44f, 0.44f, 1.0f));
+	const FString TitleLabel = TEXT("Title Screen");
+	DrawGuiText(TitleLabel, ButtonX + 100.0f - TextWidth(TitleLabel) / 2.0f, TitleY + 6.0f, bOverTitle ? 0xFFFFA0 : 0xFFFFFF, true);
+	if (bOverTitle && Player && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		// Leaving the map saves the world and the player, like Save and Quit to Title.
+		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));
 	}
 }
 

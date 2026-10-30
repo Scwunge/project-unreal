@@ -526,6 +526,14 @@ void AMcWorldActor::MulticastBlockBroken_Implementation(FIntVector Pos, int32 St
 	}
 }
 
+void AMcWorldActor::MulticastBellRung_Implementation(FIntVector Pos, uint8 Side)
+{
+	if (bViewed && OnBellRung)
+	{
+		OnBellRung(Pos, Side);
+	}
+}
+
 void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch)
 {
 	if (!bViewed)

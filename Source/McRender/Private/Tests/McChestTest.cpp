@@ -1,3 +1,4 @@
+#include "McBell.h"
 #include "McBlockRegistry.h"
 #include "McChestComponent.h"
 #include "McEntityModel.h"
@@ -138,6 +139,58 @@ bool FMcShulkerModelTest::RunTest(const FString& Parameters)
 	const ::FBox Opened(Data.Positions);
 	TestTrue(TEXT("open, the lid is half a block up"), FMath::IsNearlyEqual(Opened.Max.Z, 100.0, 0.2));
 	TestTrue(TEXT("and three quarters turned, still square on"), FMath::IsNearlyEqual(Opened.Max.X, 50.0, 0.2) && FMath::IsNearlyEqual(Opened.Max.Y, 50.0, 0.2));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcBellTest, "McClient.McRender.Bells",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcBellTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registry loads"), Registry.EnsureLoaded()))
+	{
+		return false;
+	}
+	const auto Side = [&](const TCHAR* Text, const FVector& Eye) { return McBell::GetStruckSide(Registry.ParseState(Text).Get(0), FIntVector(0, 0, 0), Eye); };
+	// A floor bell facing north hangs between posts east and west: struck from the north or south only.
+	const TCHAR* Floor = TEXT("minecraft:bell[attachment=floor,facing=north,powered=false]");
+	TestEqual(TEXT("floor, from the north"), Side(Floor, FVector(0.5, 1.6, -2.0)), 0);
+	TestEqual(TEXT("floor, from the south"), Side(Floor, FVector(0.7, 1.6, 3.0)), 1);
+	TestEqual(TEXT("floor, not from the east"), Side(Floor, FVector(3.0, 1.6, 0.5)), INDEX_NONE);
+	// A wall bell facing north hangs from a bar running north: struck from the west or east.
+	const TCHAR* Wall = TEXT("minecraft:bell[attachment=single_wall,facing=north,powered=false]");
+	TestEqual(TEXT("wall, from the west"), Side(Wall, FVector(-2.0, 1.6, 0.5)), 2);
+	TestEqual(TEXT("wall, from the east"), Side(Wall, FVector(3.0, 1.6, 0.4)), 3);
+	TestEqual(TEXT("wall, not from the north"), Side(Wall, FVector(0.5, 1.6, -2.0)), INDEX_NONE);
+	TestEqual(TEXT("a ceiling bell from anywhere"), Side(TEXT("minecraft:bell[attachment=ceiling,facing=east,powered=false]"), FVector(0.5, 1.6, -2.0)), 0);
+	TestEqual(TEXT("stone is no bell"), Side(TEXT("minecraft:stone"), FVector(0.5, 1.6, -2.0)), INDEX_NONE);
+
+	TestEqual(TEXT("at rest when struck"), McBell::GetSwing(0.0f), 0.0f);
+	TestTrue(TEXT("then away from the blow"), McBell::GetSwing(4.0f) > 0.3f);
+	TestTrue(TEXT("back past the middle"), McBell::GetSwing(12.0f) < 0.0f);
+	TestTrue(TEXT("dying away"), FMath::Abs(McBell::GetSwing(36.0f)) < McBell::GetSwing(4.0f) * 0.3f);
+	TestEqual(TEXT("still once done"), McBell::GetSwing(static_cast<float>(McBell::RingTicks)), 0.0f);
+
+	const FModel* Bell = Find(TEXT("mc:bell"));
+	if (!TestNotNull(TEXT("a bell has a model"), Bell))
+	{
+		return false;
+	}
+	FAnim Still;
+	McPlayerModel::FMeshData Data;
+	BuildMesh(*Bell, Still, 0, Data);
+	const ::FBox Bounds(Data.Positions);
+	// The rim 8 across at 4 to 6 pixels up, the cup up to 13.
+	TestTrue(TEXT("8 across"), FMath::IsNearlyEqual(Bounds.Min.X, -25.0, 0.1) && FMath::IsNearlyEqual(Bounds.Max.X, 25.0, 0.1));
+	TestTrue(TEXT("4 to 13 up"), FMath::IsNearlyEqual(Bounds.Min.Z, 25.0, 0.1) && FMath::IsNearlyEqual(Bounds.Max.Z, 81.25, 0.1));
+	// Struck on the north, its rim swings south (Unreal +y) about the top.
+	FAnim Swung;
+	Swung.SwingPitch = -McBell::GetSwing(4.0f);
+	BuildMesh(*Bell, Swung, 0, Data);
+	const ::FBox Away(Data.Positions);
+	TestTrue(TEXT("the rim swings south"), Away.Max.Y > 35.0 && Away.Min.Y > -25.0);
 	return true;
 }
 

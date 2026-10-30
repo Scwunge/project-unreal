@@ -3,7 +3,7 @@
 // chests in the loaded chunks and stands an entity model (McEntityModel's "mc:chest/...") in each: the chest, trapped
 // chest, ender chest and copper chests, single or half of a double, turned to their facing. Shulker boxes are the same
 // (McEntityModel's "mc:shulker_box/..."), turned so the lid faces the way the box does, the lid rising and turning as
-// the box opens.
+// the box opens. A bell's body is one too ("mc:bell"; its frame is the block model), swinging when it is rung.
 
 #pragma once
 
@@ -31,6 +31,11 @@ public:
 	TFunction<bool(const FIntVector&)> IsOpen;
 
 	int32 NumChests() const { return Chests.Num(); }
+
+	// The bell at Pos was struck on Side (McBell's numbering): it swings away from that side for a while.
+	void RingBell(const FIntVector& Pos, int32 Side);
+	// How the bell at Pos is swung now (McEntityModel::FAnim's pitch and roll), zero if it isn't swinging.
+	FVector2D GetBellSwing(const FIntVector& Pos) const;
 
 	// The model a chest state is drawn with ("mc:chest/normal_left"), the yaw it is turned by (Minecraft degrees) and
 	// where its other half is, if it is half of a double; None for a state that isn't a chest. On Christmas days the
@@ -60,6 +65,9 @@ private:
 	{
 		FMcStateId State = 0;
 		FIntVector Partner = FIntVector::ZeroValue;
+		// A bell: the side it was last struck on, and seconds since (negative for never).
+		int32 StruckSide = 0;
+		float SinceStruck = -1.0f;
 	};
 	TMap<FIntVector, FChest> Chests;
 	TMap<FIntPoint, TArray<FIntVector>> ChestsByChunk;

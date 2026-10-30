@@ -187,6 +187,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     eased like the chest's lid. Test `McRender.ShulkerBoxModels`; shot `Saved/Shots/shulkers.png`
     (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles). Not done: a closed box
     blocking its opening, and the shell's collision shape while open.
+  - **Bells** (2026-10-30): the block models are only the frame (bar, posts, chain), so the body is an entity model
+    `mc:bell` from `entity/bell/bell_body.png` (a cup 6 across, a rim 8 across), stood in each bell by
+    `UMcChestComponent`. Using a bell rings it (`block.bell.use`) when struck from a side it can swing away from: a
+    floor bell's front or back, a wall bell's sides along the wall, a ceiling bell's any side (`McBell::GetStruckSide`,
+    from where the player's eye is). The server tells every screen (`AMcWorldActor::MulticastBellRung`) and the body
+    swings away from the blow about its top for 50 ticks, dying away (`McBell::GetSwing`). Placement: floor and ceiling
+    bells face the player, wall bells face the wall, double wall with a block on the far side too. Test
+    `McRender.Bells`; shots `Saved/Shots/bells.png` and `bells_swung.png` (`-McScene=bells`, `-McBellsSwung`). Not
+    done: ringing by redstone, and villagers and raids hearing it.
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

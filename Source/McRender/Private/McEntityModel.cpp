@@ -360,6 +360,16 @@ namespace McEntityModel
 					Models.Add(Shulker.Kind, Shulker);
 				}
 			}
+			{
+				// A placed bell's body (McChestComponent; the bar, posts and chain are its block model): a cup 6 across and 7
+				// high with a rim 8 across and 2 high under it, hanging from a pivot at the top of the cup, 12 pixels up.
+				FModel Bell;
+				Bell.Kind = FName(TEXT("mc:bell"));
+				Bell.TextureSize = FIntPoint(32, 32);
+				Bell.Textures = { TEXT("bell/bell_body.png") };
+				Bell.Parts.Add(Part(ERole::BellBody, FVector(0, 12, 0), { Box(0, 0, -3, -6, -3, 6, 7, 6), Box(0, 13, -4, -8, -4, 8, 2, 8) }));
+				Models.Add(Bell.Kind, Bell);
+			}
 			return Models;
 		}
 
@@ -563,6 +573,10 @@ namespace McEntityModel
 				Yaw += Open * PI * 1.5f;
 				break;
 			}
+			case ERole::BellBody:
+				Pitch += Anim.SwingPitch;
+				Roll += Anim.SwingRoll;
+				break;
 			case ERole::ChestLid:
 			{
 				// It eases open fast and slows at the top.

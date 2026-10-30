@@ -5,6 +5,7 @@
 #include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBell.h"
 #include "McChunk.h"
 #include "McChestLink.h"
 #include "McEnchanting.h"
@@ -1081,6 +1082,18 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (McSign::GetKind(Name) != McSign::EKind::None)
 	{
 		return UseSign(Player, WorldActor, Pos);
+	}
+	if (McBell::IsBell(Blocks->GetBlock(Pos)))
+	{
+		// Struck from a side it can swing away from, it rings (and swings on every screen); from its bar's ends, nothing.
+		const int32 Side = McBell::GetStruckSide(Blocks->GetBlock(Pos), Pos, Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0));
+		if (Side == INDEX_NONE)
+		{
+			return false;
+		}
+		WorldActor.MulticastSound(FName("block.bell.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, 1.0f);
+		WorldActor.MulticastBellRung(Pos, static_cast<uint8>(Side));
+		return true;
 	}
 	EMcFurnaceKind FurnaceKind;
 	if (Name == TEXT("minecraft:crafting_table"))

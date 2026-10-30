@@ -84,6 +84,11 @@ bool FMcBlockPlacementTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a shulker box on top faces up"), Place(TEXT("minecraft:red_shulker_box"), Top, 0), FString(TEXT("minecraft:red_shulker_box[facing=up]")));
 	TestEqual(TEXT("one on a north face faces north"), Place(TEXT("minecraft:shulker_box"), NorthHigh, 0), FString(TEXT("minecraft:shulker_box[facing=north]")));
 
+	// Looking south (yaw 0) the bells face north, back at the player; on a north face one hangs facing south, towards the wall.
+	TestTrue(TEXT("a bell on top stands on the floor"), Place(TEXT("minecraft:bell"), Top, 0).Contains(TEXT("attachment=floor,facing=north")));
+	TestTrue(TEXT("under a block it hangs from the ceiling"), Place(TEXT("minecraft:bell"), Under, 0).Contains(TEXT("attachment=ceiling")));
+	TestTrue(TEXT("on a north face, from the wall"), Place(TEXT("minecraft:bell"), NorthHigh, 0).Contains(TEXT("attachment=single_wall,facing=south")));
+
 	const TArray<FMcPlacedBlock> Door = McBlockPlacement::GetPlacement(World, State(TEXT("minecraft:oak_door")), Top, 0, 0);
 	TestEqual(TEXT("doors are two blocks"), Door.Num(), 2);
 

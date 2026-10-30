@@ -46,6 +46,8 @@ namespace McEntityModel
 		ChestLid,
 		// A shulker box's lid, which rises and turns as the box opens.
 		ShulkerLid,
+		// A bell's body, which swings about the top when it is rung.
+		BellBody,
 	};
 
 	struct FBox
@@ -128,6 +130,9 @@ namespace McEntityModel
 		bool bPaddleRight = false;
 		// How far a chest's or shulker box's lid is open, 0 shut to 1 open.
 		float Lid = 0.0f;
+		// A rung bell's swing, radians: tipped about x (positive takes its bottom north) and about z (east).
+		float SwingPitch = 0.0f;
+		float SwingRoll = 0.0f;
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
 	};
@@ -199,6 +204,8 @@ public:
 	void SetSwelling(float InSwelling);
 	// A chest's lid opens over a few ticks while this is set, and shuts again after.
 	void SetOpen(bool bInOpen) { bOpen = bInOpen; }
+	// A bell's swing (see FAnim), radians.
+	void SetSwing(float Pitch, float Roll) { Anim.SwingPitch = Pitch; Anim.SwingRoll = Roll; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

@@ -138,6 +138,12 @@ public:
 	void MulticastBlockBroken(FIntVector Pos, int32 State);
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> OnBlockBroken;
 
+	// Every machine showing this dimension: the bell at Pos was rung from its Side (0 north, 1 south, 2 west, 3 east),
+	// so it swings away from there (the view's OnBellRung).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBellRung(FIntVector Pos, uint8 Side);
+	TFunction<void(const FIntVector& Pos, uint8 Side)> OnBellRung;
+
 	// ---- Lightning (M8) ----
 	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on
 	// a random column of it, on the block above the top one, where the sky is open and rain (not snow) falls. A strike

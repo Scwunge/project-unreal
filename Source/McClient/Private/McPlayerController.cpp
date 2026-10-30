@@ -487,6 +487,13 @@ void AMcPlayerController::AttachView()
 		return Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && Items->GetWindow().Pos == Pos;
 	};
 	Chests = ChestModels;
+	WorldActor->OnBellRung = [WeakChests = TWeakObjectPtr<UMcChestComponent>(ChestModels)](const FIntVector& Pos, uint8 Side)
+	{
+		if (UMcChestComponent* Live = WeakChests.Get())
+		{
+			Live->RingBell(Pos, Side);
+		}
+	};
 	UMcSignComponent* SignText = NewObject<UMcSignComponent>(WorldActor);
 	SignText->SetupAttachment(WorldActor->GetRootComponent());
 	SignText->RegisterComponent();

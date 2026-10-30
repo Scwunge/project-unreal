@@ -167,6 +167,22 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 		// Its lid faces out of the face clicked (minecraft.wiki, "Shulker Box").
 		Properties.Add(TEXT("facing"), FaceNames[Face]);
 	}
+	else if (Name == TEXT("minecraft:bell"))
+	{
+		// On a floor it stands in its frame, under a block it hangs, both turned to the player; on a side it hangs from a
+		// bar out of the wall (facing the wall), or across to a block on the far side too (minecraft.wiki, "Bell").
+		if (Face >= 2)
+		{
+			const bool bBetween = !McRaycast::IsReplaceable(World.GetBlock(Pos + McRaycast::FaceDirection(Face)));
+			Properties.Add(TEXT("attachment"), bBetween ? TEXT("double_wall") : TEXT("single_wall"));
+			Properties.Add(TEXT("facing"), FaceNames[OppositeFace(Face)]);
+		}
+		else
+		{
+			Properties.Add(TEXT("attachment"), Face == 1 ? TEXT("floor") : TEXT("ceiling"));
+			Properties.Add(TEXT("facing"), FaceNames[OppositeFace(HorizontalFacing(Yaw))]);
+		}
+	}
 	else if (Name == TEXT("minecraft:hopper"))
 	{
 		// The spout points into the block clicked on, or down when placed on a top or bottom.

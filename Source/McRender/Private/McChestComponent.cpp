@@ -1,4 +1,5 @@
 #include "McChestComponent.h"
+#include "McBell.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McChestLink.h"
@@ -88,6 +89,34 @@ FName UMcChestComponent::GetShulkerModel(FMcStateId State, FQuat& OutRotation)
 	return FName(TEXT("mc:shulker_box/shulker") + (Name.IsEmpty() ? FString() : TEXT("_") + Name));
 }
 
+void UMcChestComponent::RingBell(const FIntVector& Pos, int32 Side)
+{
+	FChest* Bell = Chests.Find(Pos);
+	if (Bell && McBell::IsBell(Bell->State))
+	{
+		Bell->StruckSide = Side;
+		Bell->SinceStruck = 0.0f;
+	}
+}
+
+FVector2D UMcChestComponent::GetBellSwing(const FIntVector& Pos) const
+{
+	const FChest* Bell = Chests.Find(Pos);
+	if (!Bell || Bell->SinceStruck < 0.0f)
+	{
+		return FVector2D::ZeroVector;
+	}
+	// Away from the blow: struck on the north its bottom goes south (negative pitch), struck on the west it goes east.
+	const float Swing = McBell::GetSwing(Bell->SinceStruck * 20.0f);
+	switch (Bell->StruckSide)
+	{
+	case 0: return FVector2D(-Swing, 0.0f);
+	case 1: return FVector2D(Swing, 0.0f);
+	case 2: return FVector2D(0.0f, Swing);
+	default: return FVector2D(0.0f, -Swing);
+	}
+}
+
 void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 {
 	Unhook();
@@ -113,7 +142,8 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 		float Yaw;
 		FIntVector Partner;
 		FQuat Rotation;
-		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone();
+		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone()
+			|| McBell::IsBell(static_cast<FMcStateId>(Id));
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -216,9 +246,15 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 		float Yaw = 0.0f;
 		FQuat Rotation = FQuat::Identity;
 		FName Kind = GetChestModel(Pair.Value, Yaw, Known->Partner, bChristmas);
-		// A shulker box's model is about the block's middle, turned to its facing.
-		const bool bShulker = Kind.IsNone();
-		if (bShulker)
+		// A shulker box's model is about the block's middle, turned to its facing. A bell's body hangs the same in every
+		// frame, unturned.
+		const bool bBell = McBell::IsBell(Pair.Value);
+		const bool bShulker = Kind.IsNone() && !bBell;
+		if (bBell)
+		{
+			Kind = FName(TEXT("mc:bell"));
+		}
+		else if (bShulker)
 		{
 			Kind = GetShulkerModel(Pair.Value, Rotation);
 		}
@@ -246,12 +282,32 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// Development: -McChestsOpen opens every chest (for a -McShot of their lids).
 	static const bool bAllOpen = FParse::Param(FCommandLine::Get(), TEXT("McChestsOpen"));
+	// Development: -McBellsSwung holds every bell at the top of a swing from the north (for a -McShot of it).
+	static const bool bAllSwung = FParse::Param(FCommandLine::Get(), TEXT("McBellsSwung"));
+	for (auto& Pair : Chests)
+	{
+		if (Pair.Value.SinceStruck >= 0.0f)
+		{
+			Pair.Value.SinceStruck += DeltaTime;
+			if (Pair.Value.SinceStruck * 20.0f >= McBell::RingTicks)
+			{
+				Pair.Value.SinceStruck = -1.0f;
+			}
+		}
+		if (bAllSwung && McBell::IsBell(Pair.Value.State))
+		{
+			Pair.Value.StruckSide = 0;
+			Pair.Value.SinceStruck = 4.0f / 20.0f;
+		}
+	}
 	for (const auto& Pair : Models)
 	{
 		if (!Pair.Value)
 		{
 			continue;
 		}
+		const FVector2D Swing = GetBellSwing(Pair.Key);
+		Pair.Value->SetSwing(Swing.X, Swing.Y);
 		const FChest* Chest = Chests.Find(Pair.Key);
 		const FIntVector Partner = Chest ? Chest->Partner : FIntVector::ZeroValue;
 		const bool bOpen = bAllOpen || (IsOpen && (IsOpen(Pair.Key) || (Partner != FIntVector::ZeroValue && IsOpen(Pair.Key + Partner))));

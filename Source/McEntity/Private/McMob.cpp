@@ -358,6 +358,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		StepLast = Body.Position;
 	}
 	++Age;
+	if (bFrozen)
+	{
+		return;
+	}
 	if (HurtTime > 0)
 	{
 		--HurtTime;

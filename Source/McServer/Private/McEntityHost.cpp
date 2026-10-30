@@ -675,6 +675,29 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	if (!bDevSpawnDone && Ticks >= 100 && !Players.IsEmpty())
 	{
 		bDevSpawnDone = true;
+		// -McMobRow=cow,pig,... puts one of each frozen in a row 5.5 blocks south of the player, facing east (yaw 90), 2 apart;
+		// -McMobRowUp=<blocks> lifts them off the ground to be seen from underneath.
+		FString Row;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRow="), Row, false))
+		{
+			TArray<FString> Kinds;
+			Row.ParseIntoArray(Kinds, TEXT(","));
+			double Up = 0.0;
+			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowUp="), Up);
+			for (int32 Index = 0; Index < Kinds.Num(); ++Index)
+			{
+				const double X = Players[0].X + (Index - (Kinds.Num() - 1) * 0.5) * 2.0;
+				const int32 Z = FMath::FloorToInt32(Players[0].Z + 5.5);
+				if (const TOptional<int32> Y = FindStandingY(FMath::FloorToInt32(X), Z, FMath::FloorToInt32(Players[0].Y), 24))
+				{
+					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
+					{
+						Spawned->bFrozen = true;
+						Spawned->Yaw = 90.0f;
+					}
+				}
+			}
+		}
 		FString Spec;
 		if (FParse::Value(FCommandLine::Get(), TEXT("-McSpawnMobs="), Spec, false))
 		{

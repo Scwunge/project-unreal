@@ -78,6 +78,8 @@ public:
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
 	int32 AngerTicks = 0;
+	// Development: stands where it was put, doing nothing (for a picture).
+	bool bFrozen = false;
 
 	// Creepers: ticks the fuse has burned (it explodes at FuseTicks), and whether it is burning now.
 	int32 SwellTicks = 0;

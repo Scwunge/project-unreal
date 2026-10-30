@@ -174,6 +174,24 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     face, and the new `straw_bed`), so the block baker draws them; no block entity. Checked in `Saved/Shots/beds.png`
     (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). Not done: the texture array is 16 pixels,
     so pictures bigger than that are scaled down: `straw_bed` (64), signs, hanging signs and shelves (32).
+  - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
+    lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
+    signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities
+    with their chunks (`McChunkCodec` version 3; containers' contents stay on the server) and each change after
+    (`ClientBlockEntity`, from `FMcBlockWorld::OnBlockEntityChanged`). Placing a sign opens the editor (`FMcSignMenu`,
+    the window kind `Sign`); right-clicking one opens the side the player is in front of, unless it is waxed. The screen
+    (`AMcHUD::DrawSign`/`PollSign`) shows the board with four lines, each stopped at the board's width in the font's
+    pixels (90, a hanging sign's 60: `McFont`, shared from McAssets), a cursor that moves with the arrows, Home and End,
+    and Done or Esc to send; the server cuts each line to the width again. A dye recolours text, a glow ink sac makes it
+    glow and an ink sac stops that, honeycomb waxes it (each used up outside creative, with its sound; a waxed sign
+    plays `block.sign.waxed_interact_fail`). `UMcSignComponent` draws the text on standing, wall, hanging and wall
+    hanging signs, both sides, at 1/96 of a block a font pixel (hanging 0.9/64): plain text at four tenths of its dye,
+    glowing text full bright with its eight-way outline (cream round black, seen from any distance; the others' only
+    within 16 blocks). Placement now turns signs: standing in sixteen steps towards the player, wall signs on side faces,
+    hanging signs under a block (or on top with something above) and wall hanging signs across the face clicked.
+    Scenes take a `signs` list (`tools/scenes/signs.json`, which `scene_to_mcfunction.py` turns into `data merge`).
+    Shot: `Saved/Shots/signs.png` (`-McScene=signs`). Limits: formatting codes and other fonts (unicode) are not drawn;
+    the text is lit as a block entity, not by the block's own light.
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
     on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
@@ -195,7 +213,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     block's light. A half's picture follows where its other half is: `_left` is the half whose other half is on its +x
     (as turned), which `McChestLink` calls `right`. Not done: the other block entities whose block models are only a
     particle (beds, shulker boxes, skulls and heads, decorated pots, conduits, copper golem statues, end portals and
-    gateways), a bell's body, the books on lecterns and enchanting tables, and sign text.
+    gateways), a bell's body, and the books on lecterns and enchanting tables (sign text is done: see above).
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

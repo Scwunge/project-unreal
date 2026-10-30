@@ -626,7 +626,8 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		TEXT("minecraft:damaged_anvil"), TEXT("minecraft:brewing_stand"), TEXT("minecraft:hopper"), TEXT("minecraft:dispenser"), TEXT("minecraft:dropper") };
 	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
 	const FString ClickedName = Clicked.ToString();
-	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate"))
+	// A sign opens its editor, or takes the dye, ink or wax in hand.
+	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || ClickedName.EndsWith(TEXT("_sign"))
 		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
@@ -1419,7 +1420,8 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 
 bool AMcPlayerPawn::CarriesPlacedData(FName Item)
 {
-	return Item.ToString().EndsWith(TEXT("_banner")) || McShulker::IsBox(Item);
+	// A sign carries nothing, but whoever places it is to write on it.
+	return Item.ToString().EndsWith(TEXT("_banner")) || McShulker::IsBox(Item) || Item.ToString().EndsWith(TEXT("_sign"));
 }
 
 void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
@@ -1463,6 +1465,19 @@ bool AMcPlayerPawn::AttachBanner(const FIntVector& Pos, const FMcItemStack& Bann
 		if (OnPlacedStack)
 		{
 			OnPlacedStack(Pos, Banner);
+		}
+		return true;
+	}
+	if (Banner.Item.ToString().EndsWith(TEXT("_sign")))
+	{
+		// Once the sign is there: a standing or wall one for a sign, a hanging one for a hanging sign.
+		if (!BlockWorld || !McBlockBreak::IsBlockOfItem(BlockWorld->GetBlock(Pos), Banner.Item))
+		{
+			return false;
+		}
+		if (OnPlacedSign)
+		{
+			OnPlacedSign(*this, Pos);
 		}
 		return true;
 	}

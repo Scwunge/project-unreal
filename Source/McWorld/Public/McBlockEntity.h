@@ -21,6 +21,22 @@ enum class EMcBlockEntityKind : uint8
 	Furnace,
 	// A brewing stand: Data is FMcBrewingStand::Serialize's bytes.
 	BrewingStand,
+	// A sign, standing, on a wall or hanging: SignSides and bWaxed.
+	Sign,
+};
+
+// One side of a sign (minecraft.wiki, "Sign"): four lines of text, the dye they are written in, and whether glow ink
+// was put on them.
+struct MCWORLD_API FMcSignSide
+{
+	static constexpr int32 NumLines = 4;
+	FString Lines[NumLines];
+	// The dye's name without the namespace, e.g. "black" (the colour a sign starts with) or "light_blue".
+	FName Color = TEXT("black");
+	bool bGlowing = false;
+
+	bool HasText() const;
+	bool operator==(const FMcSignSide& Other) const;
 };
 
 struct MCWORLD_API FMcBlockEntity
@@ -35,9 +51,13 @@ struct MCWORLD_API FMcBlockEntity
 	FName EntityId;
 	// A furnace's saved state.
 	TArray<uint8> Data;
+	// A sign's front, then its back; honeycomb waxes it, and then nobody can change it.
+	FMcSignSide SignSides[2];
+	bool bWaxed = false;
 
 	static FMcBlockEntity MakeContainer(int32 NumSlots);
 	static FMcBlockEntity MakeSpawner(FName InEntityId);
+	static FMcBlockEntity MakeSign();
 
 	// Reads or writes, by whether the archive is loading. Names are saved as text, so a save doesn't depend on
 	// the name table. False if a loading archive is malformed.

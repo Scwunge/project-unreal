@@ -8,6 +8,7 @@
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FMcOnChunkEvent, FIntPoint /*ChunkPos*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMcOnBlockChanged, const FIntVector& /*Pos*/, FMcStateId /*State*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FMcOnBlockEntityChanged, const FIntVector& /*Pos*/);
 
 // Game thread only. Work on other threads (meshing) takes copies of the blocks it needs, so chunks can
 // change or unload while that work runs.
@@ -43,6 +44,9 @@ public:
 	FMcOnChunkEvent OnChunkChanged;
 	// Broadcast by SetBlock for each block that changed, before OnChunkChanged.
 	FMcOnBlockChanged OnBlockChanged;
+	// A block entity's data changed where players see it (a sign's text, its dye or wax); broadcast by whoever changed
+	// it, after the change. Changes to a container's items are not told here.
+	FMcOnBlockEntityChanged OnBlockEntityChanged;
 
 private:
 	FMcDimensionType Dimension;

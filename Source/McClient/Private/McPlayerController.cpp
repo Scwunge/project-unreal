@@ -41,6 +41,7 @@
 #include "McWorldRenderComponent.h"
 #include "McBlockLightComponent.h"
 #include "McChestComponent.h"
+#include "McSignComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
 #endif
@@ -293,6 +294,14 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			Use->FillBox(*World, Pos, Placed);
 		}
 	};
+	Hooked.OnPlacedSign = [World](AMcPlayerPawn& User, const FIntVector& Pos)
+	{
+		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		if (Use)
+		{
+			Use->PlacedSign(User, *World, Pos);
+		}
+	};
 	Hooked.OnUseItemOn = [World](AMcPlayerPawn& User, const FIntVector& Pos, const FIntVector& Beside)
 	{
 		FMcBlockWorld* Blocks = World.IsValid() ? World->GetBlockWorld() : nullptr;
@@ -478,6 +487,11 @@ void AMcPlayerController::AttachView()
 		return Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && Items->GetWindow().Pos == Pos;
 	};
 	Chests = ChestModels;
+	UMcSignComponent* SignText = NewObject<UMcSignComponent>(WorldActor);
+	SignText->SetupAttachment(WorldActor->GetRootComponent());
+	SignText->RegisterComponent();
+	SignText->SetWorld(WorldActor->GetBlockWorld());
+	Signs = SignText;
 	WorldActor->OnBlockBroken = [WeakBits = TWeakObjectPtr<UMcParticleComponent>(Bits)](const FIntVector& Pos, FMcStateId State)
 	{
 		if (UMcParticleComponent* Live = WeakBits.Get())
@@ -520,6 +534,10 @@ void AMcPlayerController::DetachView()
 	if (UActorComponent* ChestModels = Chests.Get())
 	{
 		ChestModels->DestroyComponent();
+	}
+	if (UActorComponent* SignText = Signs.Get())
+	{
+		SignText->DestroyComponent();
 	}
 	if (UActorComponent* Precipitation = Weather.Get())
 	{

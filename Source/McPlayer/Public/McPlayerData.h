@@ -84,6 +84,8 @@ enum class EMcWindowKind : uint8
 	// A dispenser or dropper: nine slots in a square.
 	Dispenser,
 	Loom,
+	// The sign editor: the menu is an FMcSignMenu with the lines of the side being written.
+	Sign,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -160,6 +162,9 @@ public:
 	// the item list destroys what is dropped on it), or with bToInventory into the inventory instead. The server
 	// checks the player is in creative and that the item exists, and keeps the count to a stack.
 	void CreativeTake(FName Item, int32 Count, bool bToInventory);
+	// Server: opens the editor on one side of the sign at Pos (Block is the sign's block, Kind its McSign::EKind, Colour
+	// its dye's text colour), starting from Lines. OnDone gets what the player wrote when the window closes.
+	void OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone);
 	// Server: opens an enchanting table at Pos with Bookshelves around it.
 	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
 	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.

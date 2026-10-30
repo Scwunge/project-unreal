@@ -15,6 +15,8 @@
 #include "McArrow.h"
 #include "McBuckets.h"
 #include "McShulker.h"
+#include "McFont.h"
+#include "McSign.h"
 #include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
@@ -935,6 +937,133 @@ void UMcBlockUseSubsystem::FillBox(AMcWorldActor& WorldActor, const FIntVector& 
 	WriteChest(WorldActor, Pos);
 }
 
+FMcBlockEntity* UMcBlockUseSubsystem::FindSign(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Blocks || !Chunk || McSign::GetKind(Blocks->GetBlock(Pos)) == McSign::EKind::None)
+	{
+		return nullptr;
+	}
+	FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	if (!Entity || Entity->Kind != EMcBlockEntityKind::Sign)
+	{
+		// A sign from before signs kept text, or one a structure put there.
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeSign());
+		Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	}
+	return Entity;
+}
+
+void UMcBlockUseSubsystem::SignChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	if (FMcBlockWorld* Blocks = WorldActor.GetBlockWorld())
+	{
+		Blocks->OnBlockEntityChanged.Broadcast(Pos);
+	}
+}
+
+void UMcBlockUseSubsystem::PlacedSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	if (!FindSign(WorldActor, Pos))
+	{
+		return;
+	}
+	SignChanged(WorldActor, Pos);
+	EditSign(Player, WorldActor, Pos, false);
+}
+
+void UMcBlockUseSubsystem::EditSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, bool bBack)
+{
+	const FMcBlockEntity* Sign = FindSign(WorldActor, Pos);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Sign || !Blocks || !Player.Data)
+	{
+		return;
+	}
+	const FMcSignSide& Side = Sign->SignSides[bBack ? 1 : 0];
+	const TArray<FString> Lines(Side.Lines, FMcSignSide::NumLines);
+	const McSign::EKind Kind = McSign::GetKind(Blocks->GetBlock(Pos));
+	Player.Data->OpenSignEditor(Pos, GetBlockName(*Blocks, Pos), static_cast<uint8>(Kind), bBack, McSign::GetTextColour(Side.Color), Lines,
+		[WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, bBack, Kind](const TArray<FString>& Written)
+		{
+			AMcWorldActor* Actor = WeakWorld.Get();
+			FMcBlockEntity* Entity = Actor ? FindSign(*Actor, Pos) : nullptr;
+			// Gone, turned into another kind of sign, or waxed by someone else meanwhile: nothing is written.
+			if (!Entity || Entity->bWaxed || McSign::GetKind(Actor->GetBlockWorld()->GetBlock(Pos)) != Kind)
+			{
+				return;
+			}
+			FMcSignSide& Into = Entity->SignSides[bBack ? 1 : 0];
+			const FMcSignSide Before = Into;
+			for (int32 Line = 0; Line < FMcSignSide::NumLines; ++Line)
+			{
+				// The screen keeps each line to the sign's width; this keeps a client that didn't to it too.
+				Into.Lines[Line] = Written.IsValidIndex(Line) ? McFont::FitToWidth(Written[Line], McSign::GetMaxLineWidth(Kind)) : FString();
+			}
+			if (!(Into == Before))
+			{
+				SignChanged(*Actor, Pos);
+			}
+		});
+}
+
+bool UMcBlockUseSubsystem::UseSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	FMcBlockEntity* Sign = FindSign(WorldActor, Pos);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	UMcPlayerDataComponent* Data = Player.Data;
+	if (!Sign || !Blocks || !Data)
+	{
+		return false;
+	}
+	const FVector Centre = FVector(Pos) + FVector(0.5);
+	if (Sign->bWaxed)
+	{
+		WorldActor.MulticastSound(FName("block.sign.waxed_interact_fail"), FVector_NetQuantize10(Centre), 1.0f, 1.0f);
+		return true;
+	}
+	const bool bBack = !McSign::IsFacingFront(Blocks->GetBlock(Pos), Pos, Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0));
+	FMcSignSide& Side = Sign->SignSides[bBack ? 1 : 0];
+	FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+	// What the held item does: a dye or glow ink on text not already so, an ink sac on glowing text, honeycomb on any sign.
+	FName Sound;
+	const FName Dye = McSign::GetDyeOfItem(Held.Item);
+	if (!Dye.IsNone() && Side.HasText() && Side.Color != Dye)
+	{
+		Side.Color = Dye;
+		Sound = FName("item.dye.use");
+	}
+	else if (Held.Item == TEXT("minecraft:glow_ink_sac") && Side.HasText() && !Side.bGlowing)
+	{
+		Side.bGlowing = true;
+		Sound = FName("item.glow_ink_sac.use");
+	}
+	else if (Held.Item == TEXT("minecraft:ink_sac") && Side.HasText() && Side.bGlowing)
+	{
+		Side.bGlowing = false;
+		Sound = FName("item.ink_sac.use");
+	}
+	else if (Held.Item == TEXT("minecraft:honeycomb"))
+	{
+		Sign->bWaxed = true;
+		Sound = FName("item.honeycomb.wax_on");
+	}
+	if (!Sound.IsNone())
+	{
+		if (!Data->bCreative && --Held.Count <= 0)
+		{
+			Held.Clear();
+		}
+		WorldActor.MulticastSound(Sound, FVector_NetQuantize10(Centre), 1.0f, 1.0f);
+		SignChanged(WorldActor, Pos);
+		return true;
+	}
+	EditSign(Player, WorldActor, Pos, bBack);
+	return true;
+}
+
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -949,6 +1078,10 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		return true;
 	}
 	const FName Name = GetBlockName(*Blocks, Pos);
+	if (McSign::GetKind(Name) != McSign::EKind::None)
+	{
+		return UseSign(Player, WorldActor, Pos);
+	}
 	EMcFurnaceKind FurnaceKind;
 	if (Name == TEXT("minecraft:crafting_table"))
 	{
@@ -1164,6 +1297,8 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:hopper");
 	case EMcWindowKind::Dispenser:
 		return Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper");
+	case EMcWindowKind::Sign:
+		return McSign::GetKind(Name) != McSign::EKind::None;
 	default:
 		return false;
 	}

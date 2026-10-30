@@ -87,6 +87,10 @@ protected:
 	UFUNCTION(Client, Reliable)
 	void ClientBlockChanges(const TArray<FMcNetBlockChange>& Changes);
 
+	// A block entity a player sees changed (a sign's text): its bytes (FMcBlockEntity::Serialize), or none if it went.
+	UFUNCTION(Client, Reliable)
+	void ClientBlockEntity(FIntVector Pos, const TArray<uint8>& Bytes);
+
 	UFUNCTION(Server, Reliable)
 	void ServerAckPieces(int32 Count);
 
@@ -105,17 +109,20 @@ private:
 	FIntPoint GetPlayerChunk(bool& bOutHasPlayer) const;
 	void SendChunks();
 	void HandleBlockChanged(const FIntVector& Pos, FMcStateId State);
+	void HandleBlockEntityChanged(const FIntVector& Pos);
 	void HandleChunkRemoved(FIntPoint Pos);
 	void Unbind();
 
 	FMcBlockWorld* BlockWorld = nullptr;
 	FDelegateHandle BlockChangedHandle;
+	FDelegateHandle BlockEntityHandle;
 	FDelegateHandle ChunkRemovedHandle;
 
 	// Server side.
 	bool bClientReady = false;
 	TSet<FIntPoint> Sent;
 	TArray<FMcNetBlockChange> PendingChanges;
+	TArray<FIntVector> PendingEntities;
 	int32 PiecesInFlight = 0;
 
 	// Client side: pieces of chunks still arriving.

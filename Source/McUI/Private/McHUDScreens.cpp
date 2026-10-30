@@ -16,6 +16,7 @@
 #include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
 #include "McCache.h"
+#include "McFont.h"
 #include "McGameViewportClient.h"
 #include "McItemRegistry.h"
 #include "McLang.h"
@@ -24,6 +25,7 @@
 #include "McEnchantMenu.h"
 #include "McWorkstationMenus.h"
 #include "McAnvilMenu.h"
+#include "McSignMenu.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
 #include "McMenuInput.h"
@@ -52,8 +54,12 @@ struct AMcHUD::FScreenState
 	FMcAnvilMenu* Anvil = nullptr;
 	FString AnvilName;
 	FMcItemStack AnvilFor;
-	// Whether keys go to a text field (the creative search, the anvil's name) rather than the slots.
-	bool IsTyping() const { return bCreative || Anvil != nullptr; }
+	// The sign editor's menu, the line being written (0 to 3) and where in it the cursor is.
+	FMcSignMenu* Sign = nullptr;
+	int32 SignLine = 0;
+	int32 SignCursor = 0;
+	// Whether keys go to a text field (the creative search, the anvil's name, a sign) rather than the slots.
+	bool IsTyping() const { return bCreative || Anvil != nullptr || Sign != nullptr; }
 	FString Title;
 	// The creative screen: what the search finds, how far down the list is scrolled, the item under the mouse (an
 	// index into CreativeItems) and whether the scroll bar is being dragged.
@@ -153,40 +159,6 @@ void AMcHUD::DrawFill(float X, float Y, float Width, float Height, const FLinear
 
 // ---- Text ----
 
-// How wide each glyph of a font sheet (16 by 16 cells of 8) is, by its rightmost pixel; 5 each if the sheet can't be read.
-static void ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& GlyphWidths)
-{
-	GlyphWidths.Init(0, 256);
-	TArray<uint8> File;
-	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-	const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
-	TArray64<uint8> Raw;
-	if (!FFileHelper::LoadFileToArray(File, *McCache::Asset(Asset)) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
-		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() != 128 || Wrapper->GetHeight() != 128)
-	{
-		UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), Asset);
-		GlyphWidths.Init(5, 256);
-		return;
-	}
-	for (int32 Code = 0; Code < 256; ++Code)
-	{
-		int32 Widest = 0;
-		for (int32 Column = 0; Column < 8; ++Column)
-		{
-			for (int32 Row = 0; Row < 8; ++Row)
-			{
-				const int64 Pixel = (static_cast<int64>((Code / 16) * 8 + Row) * 128 + (Code % 16) * 8 + Column) * 4;
-				if (Raw[Pixel + 3] != 0)
-				{
-					Widest = Column + 1;
-				}
-			}
-		}
-		GlyphWidths[Code] = static_cast<uint8>(Widest);
-	}
-	GlyphWidths[' '] = 3;
-}
-
 void AMcHUD::LoadFont()
 {
 	if (GlyphWidths.Num() > 0)
@@ -194,8 +166,8 @@ void AMcHUD::LoadFont()
 		return;
 	}
 	// A glyph is as wide as its rightmost pixel; a space is 3 and the gap after each glyph is 1.
-	ReadGlyphWidths(TEXT("textures/font/ascii.png"), GlyphWidths);
-	ReadGlyphWidths(TEXT("textures/font/ascii_sga.png"), GalacticWidths);
+	GlyphWidths = McFont::GetGlyphWidths();
+	McFont::ReadGlyphWidths(TEXT("textures/font/ascii_sga.png"), GalacticWidths);
 }
 
 float AMcHUD::TextWidth(const FString& Text) const
@@ -451,6 +423,13 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Furnace:
 		State->Layout = McGui::MakeFurnaceLayout();
 		break;
+	case EMcWindowKind::Sign:
+		// It opens on the first line, the cursor at its end; backspaces from before it opened are not its.
+		State->Sign = static_cast<FMcSignMenu*>(Window.Menu.Get());
+		State->SignCursor = State->Sign->Lines.IsEmpty() ? 0 : State->Sign->Lines[0].Len();
+		UMcGameViewportClient::TakeTyped();
+		UMcGameViewportClient::TakeBackspaces();
+		break;
 	default:
 		if (Data->bCreative)
 		{
@@ -614,6 +593,11 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			}
 #endif
 		}
+		return;
+	}
+	if (Screen->Sign)
+	{
+		PollSign(*Player, *Data, Width, Height);
 		return;
 	}
 	if (Player->WasInputKeyJustPressed(EKeys::Escape))
@@ -1085,6 +1069,11 @@ void AMcHUD::DrawLoom(FIntPoint Origin, FIntPoint Local)
 
 void AMcHUD::DrawScreen(int32 Width, int32 Height)
 {
+	if (Screen->Sign)
+	{
+		DrawSign(Width, Height);
+		return;
+	}
 	const McGui::FScreenLayout& Layout = Screen->Layout;
 	const FMcMenu& Menu = Screen->Input->GetMenu();
 	const FIntPoint Origin = Layout.Origin(Width, Height);
@@ -1561,4 +1550,204 @@ void AMcHUD::DrawChatInput(int32 Width, int32 Height)
 	}
 	const bool bCaret = FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3;
 	DrawGuiText(bCaret ? Shown + TEXT("_") : Shown, 4.0f, Height - 12.0f, 0xFFFFFF, true);
+}
+
+// ---- Sign editor ----
+
+namespace
+{
+	namespace SignEdit
+	{
+		// McSign::EKind as the menu carries it.
+		bool IsHanging(uint8 Kind) { return Kind == 3 || Kind == 4; }
+		// A line may be as wide as this many font pixels: the board's width at the text's scale.
+		float MaxWidth(uint8 Kind) { return IsHanging(Kind) ? 60.0f : 90.0f; }
+		float LineHeight(uint8 Kind) { return IsHanging(Kind) ? 9.0f : 10.0f; }
+		// GUI pixels per font pixel.
+		float TextScale(uint8 Kind) { return IsHanging(Kind) ? 0.9f : 1.0f; }
+		// The text's centre, and the board's size.
+		constexpr float CentreY = 90.0f;
+		constexpr float BoardWidth = 96.0f;
+		constexpr float BoardHeight = 48.0f;
+		constexpr float HangingSize = 72.0f;
+		constexpr float DoneY = 144.0f;
+
+		// "minecraft:dark_oak_wall_hanging_sign" -> "dark_oak".
+		FString WoodOf(FName Block)
+		{
+			FString Wood = Block.ToString();
+			Wood.RemoveFromStart(TEXT("minecraft:"));
+			for (const TCHAR* Suffix : { TEXT("_wall_hanging_sign"), TEXT("_hanging_sign"), TEXT("_wall_sign"), TEXT("_sign") })
+			{
+				if (Wood.RemoveFromEnd(Suffix))
+				{
+					break;
+				}
+			}
+			return Wood;
+		}
+
+		bool IsOverDone(const FVector2D& Mouse, int32 Width, int32 Height)
+		{
+			const float X = Width / 2.0f - 100.0f;
+			const float Y = Height / 4.0f + DoneY;
+			return Mouse.X >= X && Mouse.X < X + 200.0f && Mouse.Y >= Y && Mouse.Y < Y + 20.0f;
+		}
+	}
+}
+
+void AMcHUD::PollSign(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height)
+{
+	FScreenState& State = *Screen;
+	FMcSignMenu& Menu = *State.Sign;
+	LoadFont();
+	float MouseX = 0.0f, MouseY = 0.0f;
+	Player.GetMousePosition(MouseX, MouseY);
+	GuiMouse = FVector2D(MouseX, MouseY) / Scale;
+
+	// Done and Esc both keep what was written: the lines go to the server, which writes them as the window closes.
+	if (Player.WasInputKeyJustPressed(EKeys::Escape)
+		|| (Player.WasInputKeyJustPressed(EKeys::LeftMouseButton) && SignEdit::IsOverDone(GuiMouse, Width, Height)))
+	{
+		Data.SetMenuText(FMcSignMenu::Join(Menu.Lines));
+		CloseScreen();
+		return;
+	}
+
+	int32& Line = State.SignLine;
+	int32& Cursor = State.SignCursor;
+	FString& Text = Menu.Lines[Line];
+	Cursor = FMath::Clamp(Cursor, 0, Text.Len());
+	// What was typed goes in at the cursor, a character at a time while the line still fits the board.
+	const float Max = SignEdit::MaxWidth(Menu.SignKind);
+	for (const TCHAR Char : UMcGameViewportClient::TakeTyped())
+	{
+		if (Char == TEXT('§'))
+		{
+			continue;
+		}
+		const FString Longer = Text.Left(Cursor) + Char + Text.Mid(Cursor);
+		if (Longer.Len() <= FMcSignMenu::MaxLineLength && TextWidth(Longer) <= Max)
+		{
+			Text = Longer;
+			++Cursor;
+		}
+	}
+	for (int32 Back = UMcGameViewportClient::TakeBackspaces(); Back > 0 && Cursor > 0; --Back)
+	{
+		Text.RemoveAt(--Cursor);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::Delete) && Cursor < Text.Len())
+	{
+		Text.RemoveAt(Cursor);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::Left))
+	{
+		Cursor = FMath::Max(0, Cursor - 1);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::Right))
+	{
+		Cursor = FMath::Min(Text.Len(), Cursor + 1);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::Home))
+	{
+		Cursor = 0;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::End))
+	{
+		Cursor = Text.Len();
+	}
+	// Up goes to the line above, Down and Enter to the one below, round from the last to the first.
+	int32 Move = 0;
+	if (Player.WasInputKeyJustPressed(EKeys::Up))
+	{
+		Move = -1;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::Down) || Player.WasInputKeyJustPressed(EKeys::Enter))
+	{
+		Move = 1;
+	}
+	if (Move != 0)
+	{
+		Line = (Line + Move + FMcSignMenu::NumLines) % FMcSignMenu::NumLines;
+		Cursor = Menu.Lines[Line].Len();
+	}
+}
+
+void AMcHUD::DrawSign(int32 Width, int32 Height)
+{
+	const FMcSignMenu& Menu = *Screen->Sign;
+	const uint8 Kind = Menu.SignKind;
+	const float CentreX = Width / 2.0f;
+	LoadFont();
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.6f));
+	DrawCentredText(TEXT("Edit Sign Message"), CentreX, 40.0f, 0xFFFFFF);
+
+	const FString Wood = SignEdit::WoodOf(Menu.Block);
+	float TextCentreY = SignEdit::CentreY;
+	if (SignEdit::IsHanging(Kind))
+	{
+		// The screen's own picture of the hanging sign, chains and board, its sixteen pixels drawn four and a half times.
+		const float Top = SignEdit::CentreY - SignEdit::HangingSize / 2.0f;
+		DrawSprite(LoadSprite(TEXT("textures/gui/hanging_signs/") + Wood + TEXT(".png")), CentreX - SignEdit::HangingSize / 2.0f, Top, SignEdit::HangingSize, SignEdit::HangingSize);
+		TextCentreY = Top + SignEdit::HangingSize * 0.625f;
+	}
+	else
+	{
+		// The board's front from the block's picture, and the stick under it for one on the ground.
+		UTexture2D* Picture = LoadSprite(TEXT("textures/block/") + Wood + TEXT("_sign.png"));
+		const float Top = SignEdit::CentreY - SignEdit::BoardHeight / 2.0f;
+		DrawRegion(Picture, CentreX - SignEdit::BoardWidth / 2.0f, Top, SignEdit::BoardWidth, SignEdit::BoardHeight, 0, 2, 24, 12);
+		if (Kind == 1)
+		{
+			DrawRegion(Picture, CentreX - 4.0f, Top + SignEdit::BoardHeight, 8.0f, 56.0f, 28, 0, 2, 14);
+		}
+	}
+
+	// The lines in the side's dye, centred; the cursor blinks on the one being written.
+	const float TextScale = SignEdit::TextScale(Kind);
+	const float LineHeight = SignEdit::LineHeight(Kind);
+	const bool bBlink = FMath::FloorToInt(FPlatformTime::Seconds() / 0.3) % 2 == 0;
+	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii.png"));
+	const FLinearColor Colour = FromRgb(Menu.TextColour);
+	const auto DrawGlyph = [&](TCHAR Char, float X, float Y)
+	{
+		const int32 Code = Char < 256 ? Char : '?';
+		DrawRegion(Font, X, Y, 8 * TextScale, 8 * TextScale, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Colour);
+		return (GlyphWidths[Code] + 1) * TextScale;
+	};
+	for (int32 Index = 0; Index < Menu.Lines.Num(); ++Index)
+	{
+		const FString& Text = Menu.Lines[Index];
+		const float Y = TextCentreY + (Index - 2) * LineHeight * TextScale;
+		float At = FMath::RoundToFloat(CentreX - TextWidth(Text) * TextScale / 2.0f);
+		float CursorX = At;
+		for (int32 Char = 0; Char < Text.Len(); ++Char)
+		{
+			if (Char == Screen->SignCursor)
+			{
+				CursorX = At;
+			}
+			At += DrawGlyph(Text[Char], At, Y);
+		}
+		if (Index != Screen->SignLine || !bBlink)
+		{
+			continue;
+		}
+		// At the end of the line the cursor is an underscore after the text; within it, a thin bar before the character.
+		if (Screen->SignCursor >= Text.Len())
+		{
+			DrawGlyph(TEXT('_'), At, Y);
+		}
+		else
+		{
+			DrawFill(CursorX - 1.0f, Y - 1.0f, 1.0f, LineHeight * TextScale, Colour);
+		}
+	}
+
+	const bool bOver = SignEdit::IsOverDone(GuiMouse, Width, Height);
+	const float DoneTop = Height / 4.0f + SignEdit::DoneY;
+	DrawNineSlice(LoadSprite(bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png")),
+		CentreX - 100.0f, DoneTop, 200.0f, 20.0f, 200.0f, 20.0f, 3.0f);
+	DrawCentredText(TEXT("Done"), CentreX, DoneTop + 6.0f, 0xFFFFFF);
 }

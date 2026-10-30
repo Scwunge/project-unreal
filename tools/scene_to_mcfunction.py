@@ -27,6 +27,18 @@ def main() -> int:
         x1, y1, z1 = box["from"]
         x2, y2, z2 = box["to"]
         print(f"fill {x1} {y1} {z1} {x2} {y2} {z2} {box['state']}")
+    for sign in scene.get("signs", []):
+        x, y, z = sign["at"]
+        sides = []
+        for key, prefix in (("front_text", ""), ("back_text", "back_")):
+            lines = list(sign.get("front" if not prefix else "back", []))[:4]
+            lines += [""] * (4 - len(lines))
+            messages = ",".join(json.dumps(line) for line in lines)
+            glowing = "1b" if sign.get(prefix + "glowing", False) else "0b"
+            color = sign.get(prefix + "color", "black")
+            sides.append(f"{key}:{{color:\"{color}\",has_glowing_text:{glowing},messages:[{messages}]}}")
+        waxed = "1b" if sign.get("waxed", False) else "0b"
+        print(f"data merge block {x} {y} {z} {{{','.join(sides)},is_waxed:{waxed}}}")
     x, y, z, yaw, pitch = scene["camera"]
     # The camera is the eye position; /tp places the feet, 1.62 blocks lower.
     print(f"tp @s {x} {y - 1.62:.2f} {z} {yaw} {pitch}")

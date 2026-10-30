@@ -2,6 +2,8 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "McBlockEntity.h"
+#include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityActor.h"
 #include "McClient.h"
@@ -222,6 +224,10 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 	}
 
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	auto ToBlock = [](const TArray<TSharedPtr<FJsonValue>>& Values)
+	{
+		return FIntVector(FMath::RoundToInt32(Values[0]->AsNumber()), FMath::RoundToInt32(Values[1]->AsNumber()), FMath::RoundToInt32(Values[2]->AsNumber()));
+	};
 	int32 Placed = 0;
 	for (const TSharedPtr<FJsonValue>& BoxValue : Scene->GetArrayField(TEXT("blocks")))
 	{
@@ -236,10 +242,6 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			continue;
 		}
 
-		auto ToBlock = [](const TArray<TSharedPtr<FJsonValue>>& Values)
-		{
-			return FIntVector(FMath::RoundToInt32(Values[0]->AsNumber()), FMath::RoundToInt32(Values[1]->AsNumber()), FMath::RoundToInt32(Values[2]->AsNumber()));
-		};
 		const FIntVector A = ToBlock(From);
 		const FIntVector B = ToBlock(To);
 		for (int32 Y = FMath::Min(A.Y, B.Y); Y <= FMath::Max(A.Y, B.Y); ++Y)
@@ -253,6 +255,75 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 				}
 			}
 		}
+	}
+
+	// Signs' words: { "at": [x, y, z], "front": [up to four lines], "color": "red", "glowing": true, and "back",
+	// "back_color", "back_glowing" for the other side, "waxed" }. Written once the sign's chunk is there.
+	struct FSceneSign
+	{
+		FIntVector Pos;
+		FMcBlockEntity Entity;
+	};
+	TSharedRef<TArray<FSceneSign>> Signs = MakeShared<TArray<FSceneSign>>();
+	const TArray<TSharedPtr<FJsonValue>>* SignValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("signs"), SignValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *SignValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a sign needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			FSceneSign& Sign = Signs->Emplace_GetRef();
+			Sign.Pos = ToBlock(*At);
+			Sign.Entity = FMcBlockEntity::MakeSign();
+			for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+			{
+				FMcSignSide& Side = Sign.Entity.SignSides[SideIndex];
+				const FString Prefix = SideIndex == 0 ? FString() : FString(TEXT("back_"));
+				const TArray<TSharedPtr<FJsonValue>>* Lines = nullptr;
+				if (Object->TryGetArrayField(SideIndex == 0 ? TEXT("front") : TEXT("back"), Lines))
+				{
+					for (int32 Line = 0; Line < FMath::Min(Lines->Num(), FMcSignSide::NumLines); ++Line)
+					{
+						Side.Lines[Line] = (*Lines)[Line]->AsString();
+					}
+				}
+				FString Color;
+				if (Object->TryGetStringField(Prefix + TEXT("color"), Color))
+				{
+					Side.Color = FName(*Color);
+				}
+				Object->TryGetBoolField(Prefix + TEXT("glowing"), Side.bGlowing);
+			}
+			Object->TryGetBoolField(TEXT("waxed"), Sign.Entity.bWaxed);
+		}
+	}
+	if (Signs->Num() > 0)
+	{
+		TSharedRef<FTimerHandle> SignTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*SignTimer, FTimerDelegate::CreateWeakLambda(this, [this, Signs, SignTimer]()
+		{
+			FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+			for (int32 Index = Signs->Num() - 1; Blocks && Index >= 0; --Index)
+			{
+				const FSceneSign& Sign = (*Signs)[Index];
+				if (FMcChunk* Chunk = Blocks->FindChunk(FIntPoint(Sign.Pos.X >> 4, Sign.Pos.Z >> 4)))
+				{
+					Chunk->SetBlockEntity(Sign.Pos.X & 15, Sign.Pos.Y, Sign.Pos.Z & 15, Sign.Entity);
+					WorldActor->MarkChunkDirty(FIntPoint(Sign.Pos.X >> 4, Sign.Pos.Z >> 4));
+					Blocks->OnBlockEntityChanged.Broadcast(Sign.Pos);
+					Signs->RemoveAt(Index);
+				}
+			}
+			if (Signs->Num() == 0)
+			{
+				GetWorldTimerManager().ClearTimer(*SignTimer);
+			}
+		}), 0.25f, true);
 	}
 
 	TArray<FString> CameraParts;

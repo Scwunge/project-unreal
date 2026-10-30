@@ -6,7 +6,7 @@
 
 namespace
 {
-	constexpr uint8 Version = 2;
+	constexpr uint8 Version = 3;
 	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 
 	enum class ESection : uint8
@@ -42,6 +42,22 @@ TArray<uint8> McChunkCodec::Encode(const FMcChunk& Chunk)
 	// Then the biome cells, 64 per section.
 	TArray<FMcBiomeId> Biomes(Chunk.GetBiomes());
 	Writer.Serialize(Biomes.GetData(), Biomes.Num());
+	// Then the block entities a player sees (signs, for their text); what containers hold stays on the server.
+	TArray<TPair<FIntVector, FMcBlockEntity>> Shown;
+	for (const TPair<FIntVector, FMcBlockEntity>& Pair : Chunk.GetBlockEntities())
+	{
+		if (Pair.Value.Kind == EMcBlockEntityKind::Sign)
+		{
+			Shown.Add(Pair);
+		}
+	}
+	int32 NumShown = Shown.Num();
+	Writer << NumShown;
+	for (TPair<FIntVector, FMcBlockEntity>& Pair : Shown)
+	{
+		Writer << Pair.Key;
+		Pair.Value.Serialize(Writer);
+	}
 
 	// Zlib keeps runs of the same state small; the header says how big the bytes were.
 	const int32 RawSize = Raw.Num();
@@ -66,8 +82,8 @@ bool McChunkCodec::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk)
 	}
 	int32 RawSize = 0;
 	FMemory::Memcpy(&RawSize, &Bytes[1], sizeof(int32));
-	// A chunk can't be bigger than every section in full.
-	if (RawSize <= 0 || RawSize > 1 + Chunk.NumSections() * (1 + SectionVolume * static_cast<int32>(sizeof(FMcStateId)) + 64))
+	// A chunk can't be bigger than every section in full, and its signs.
+	if (RawSize <= 0 || RawSize > 1 + Chunk.NumSections() * (1 + SectionVolume * static_cast<int32>(sizeof(FMcStateId)) + 64) + 4 + 4 * 1024 * 1024)
 	{
 		return false;
 	}
@@ -122,5 +138,22 @@ bool McChunkCodec::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk)
 		return false;
 	}
 	Chunk.LoadBiomes(Biomes);
+	int32 NumShown = 0;
+	Reader << NumShown;
+	if (Reader.IsError() || NumShown < 0 || NumShown > 16 * 16 * Chunk.NumSections() * 16)
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < NumShown; ++Index)
+	{
+		FIntVector Key;
+		FMcBlockEntity Entity;
+		Reader << Key;
+		if (Reader.IsError() || !Entity.Serialize(Reader))
+		{
+			return false;
+		}
+		Chunk.SetBlockEntity(Key.X, Key.Y, Key.Z, MoveTemp(Entity));
+	}
 	return true;
 }

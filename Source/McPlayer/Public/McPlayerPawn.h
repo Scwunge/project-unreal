@@ -78,6 +78,8 @@ public:
 	TFunction<void(const FIntVector& Pos, TArray<FMcItemStack>& Drops)> OnBreakDrops;
 	// An item that carries what it holds was placed at Pos (a shulker box gives its things to the new block).
 	TFunction<void(const FIntVector& Pos, const FMcItemStack& Placed)> OnPlacedStack;
+	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
+	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.

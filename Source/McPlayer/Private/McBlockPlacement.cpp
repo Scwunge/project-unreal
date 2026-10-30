@@ -108,6 +108,60 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 			}
 		}
 	}
+	else if (Name.EndsWith(TEXT("_hanging_sign")) && !Name.Contains(TEXT("_wall_")))
+	{
+		// Under a block it hangs from chains, facing the player square on (minecraft.wiki, "Hanging Sign"); on a side
+		// it hangs from a bar out of the wall, its board across the wall, facing the side the player looks from.
+		if (Face >= 2)
+		{
+			FString Wall = Name;
+			Wall.ReplaceInline(TEXT("_hanging_sign"), TEXT("_wall_hanging_sign"));
+			if (!Registry.FindBlock(FName(*Wall)))
+			{
+				return {};
+			}
+			PlacedName = FName(*Wall);
+			const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
+			const FVector2D Look(-FMath::Sin(Radians), FMath::Cos(Radians));
+			// Across the clicked face's axis: z for an east or west face, x for a north or south one.
+			const int32 Across = Face >= 4 ? (Look.Y >= 0.0 ? 3 : 2) : (Look.X >= 0.0 ? 5 : 4);
+			Properties.Add(TEXT("facing"), FaceNames[OppositeFace(Across)]);
+		}
+		else if (Face == 0 || !McRaycast::IsReplaceable(World.GetBlock(Pos + FIntVector(0, 1, 0))))
+		{
+			const int32 Quarter = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw + 180.0f, 360.0f) + 360.0f, 360.0f) / 90.0f) & 3;
+			Properties.Add(TEXT("rotation"), *FString::FromInt(Quarter * 4));
+			Properties.Add(TEXT("attached"), TEXT("false"));
+		}
+		else
+		{
+			return {};
+		}
+	}
+	else if (Name.EndsWith(TEXT("_sign")) && !Name.Contains(TEXT("_wall_")))
+	{
+		// On top of a block it stands, facing the player in sixteen steps; on a side it goes on the wall.
+		if (Face == 0)
+		{
+			return {};
+		}
+		if (Face >= 2)
+		{
+			FString Wall = Name;
+			Wall.ReplaceInline(TEXT("_sign"), TEXT("_wall_sign"));
+			if (!Registry.FindBlock(FName(*Wall)))
+			{
+				return {};
+			}
+			PlacedName = FName(*Wall);
+			Properties.Add(TEXT("facing"), FaceNames[Face]);
+		}
+		else
+		{
+			const int32 Rotation = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw + 180.0f, 360.0f) + 360.0f, 360.0f) / 22.5f) & 15;
+			Properties.Add(TEXT("rotation"), *FString::FromInt(Rotation));
+		}
+	}
 	else if (Name == TEXT("minecraft:hopper"))
 	{
 		// The spout points into the block clicked on, or down when placed on a top or bottom.

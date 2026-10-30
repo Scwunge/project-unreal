@@ -1,4 +1,5 @@
 #include "McPlayerData.h"
+#include "McSignMenu.h"
 #include "McCraftingMenu.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
@@ -242,6 +243,9 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 	case EMcWindowKind::BrewingStand:
 		Made.Brewing = MakeShared<FMcBrewingStand>();
 		Made.Menu = MakeShared<FMcBrewingMenu>(Made.Brewing, Inventory);
+		break;
+	case EMcWindowKind::Sign:
+		Made.Menu = MakeShared<FMcSignMenu>();
 		break;
 	default:
 		break;
@@ -547,6 +551,31 @@ void UMcPlayerDataComponent::CreativeTake(FName Item, int32 Count, bool bToInven
 	{
 		Window.OnChanged();
 	}
+}
+
+void UMcPlayerDataComponent::OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Sign, ++NextWindowId, 0);
+	const TSharedPtr<FMcSignMenu> Menu = StaticCastSharedPtr<FMcSignMenu>(Made.Menu);
+	Menu->bBack = bBack;
+	Menu->SignKind = Kind;
+	Menu->Block = Block;
+	Menu->TextColour = Colour;
+	Menu->SetText(FMcSignMenu::Join(Lines));
+	Made.Pos = Pos;
+	// Called as the window closes, by then with what the player sent.
+	Made.OnChanged = [WeakMenu = TWeakPtr<FMcSignMenu>(Menu), OnDone = MoveTemp(OnDone)]()
+	{
+		if (const TSharedPtr<FMcSignMenu> Open = WeakMenu.Pin(); Open.IsValid() && OnDone)
+		{
+			OnDone(Open->Lines);
+		}
+	};
+	OpenServerWindow(MoveTemp(Made), 0);
 }
 
 void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves)

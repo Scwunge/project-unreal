@@ -104,6 +104,10 @@ private:
 	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
 	void DrawLoom(FIntPoint Origin, FIntPoint Local);
 	void DrawAnvil(FIntPoint Origin);
+	// The sign editor: the board large in the middle with the four lines on it, the cursor on the line being written,
+	// and Done. Its keys are taken by PollSign; Done and Esc send the lines and close it.
+	void DrawSign(int32 Width, int32 Height);
+	void PollSign(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it
 	// took this frame's click.

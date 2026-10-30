@@ -1,6 +1,7 @@
 #include "McMob.h"
 #include "McVillager.h"
 #include "McArrow.h"
+#include "McPotion.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
@@ -122,6 +123,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.
 		FMcMobType& Witch = Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false);
 		Witch.bShoots = true;
+		Witch.bThrowsPotions = true;
 		Witch.bIsRaider = true;
 		FMcMobType& Fangs = Add(TEXT("minecraft:evoker_fangs"), 0.5f, 0.8f, 1.f, 0.f, 0.f, 0.f, false, false);
 		Fangs.bIsFangs = true;
@@ -366,6 +368,97 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 	Arrow->Damage = static_cast<float>(Random.RandRange(3, 5));
 	Manager.Add(MoveTemp(Arrow));
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
+}
+
+void FMcMob::ThrowPotion(FMcEntityManager& Manager, const FVector& TargetFeet)
+{
+	const FVector Eye = Body.Position + FVector(0.0, Type.Height * 0.85, 0.0);
+	const FVector Flat(TargetFeet.X - Body.Position.X, 0.0, TargetFeet.Z - Body.Position.Z);
+	const double Distance = Flat.Size();
+	TUniquePtr<FMcThrownPotion> Potion = MakeUnique<FMcThrownPotion>();
+	// Slowness from far (8 blocks and more), weakness from close; otherwise harming, or poison one time in four.
+	if (Distance >= 8.0)
+	{
+		Potion->Effect = FName(TEXT("slowness"));
+		Potion->Duration = 20 * 30;
+	}
+	else if (Distance <= 3.0 && Random.FRand() < 0.25f)
+	{
+		Potion->Effect = FName(TEXT("weakness"));
+		Potion->Duration = 20 * 22;
+	}
+	else if (Random.FRand() < 0.25f)
+	{
+		Potion->Effect = FName(TEXT("poison"));
+		Potion->Duration = 20 * 22;
+	}
+	// Thrown up a little at the target's head height, a flat arc the length of the throw.
+	FVector Aim = TargetFeet + FVector(0.0, 1.0, 0.0) - Eye;
+	Aim.Y += Distance * 0.2;
+	Potion->Body.Position = Eye;
+	Potion->Body.Velocity = Aim.GetSafeNormal() * 0.75;
+	Manager.Add(MoveTemp(Potion));
+	Manager.PlaySound(FName("entity.witch.throw"), Eye, 1.0f, 0.8f + Random.FRand() * 0.4f);
+}
+
+void FMcMob::TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance)
+{
+	if (DrinkCooldown > 0)
+	{
+		--DrinkCooldown;
+	}
+	if (SwiftTicks > 0)
+	{
+		--SwiftTicks;
+	}
+	if (DrinkTicks > 0)
+	{
+		// Drinking takes a second; the potion is in hand the while.
+		ArmPose = 4;
+		if (--DrinkTicks == 0)
+		{
+			Manager.PlaySound(FName("entity.witch.drink"), Body.Position, 1.0f, 0.8f + Random.FRand() * 0.4f);
+			if (DrinkEffect == FName(TEXT("healing")))
+			{
+				Health = FMath::Min(Type.MaxHealth, Health + 4.0f);
+			}
+			else if (DrinkEffect == FName(TEXT("swiftness")))
+			{
+				SwiftTicks = 20 * 30;
+			}
+			DrinkEffect = NAME_None;
+			DrinkCooldown = 40;
+		}
+		return;
+	}
+	ArmPose = (bChasing && TargetDistance <= ShootRange) ? 1 : 0;
+	if (DrinkCooldown > 0)
+	{
+		return;
+	}
+	FName Pick;
+	if (Body.bInLava)
+	{
+		Pick = FName(TEXT("fire_resistance"));
+	}
+	else if (Body.bInWater)
+	{
+		Pick = FName(TEXT("water_breathing"));
+	}
+	else if (Health < Type.MaxHealth * 0.5f)
+	{
+		Pick = FName(TEXT("healing"));
+	}
+	else if (bChasing && TargetDistance >= 8.0 && SwiftTicks == 0 && Random.FRand() < 0.01f)
+	{
+		Pick = FName(TEXT("swiftness"));
+	}
+	if (!Pick.IsNone())
+	{
+		DrinkEffect = Pick;
+		DrinkTicks = 32;
+		ArmPose = 4;
+	}
 }
 
 FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
@@ -718,7 +811,27 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			bHasTarget = false;
 		}
 	}
-	if (Type.bShoots && bChasing)
+	if (Type.bThrowsPotions)
+	{
+		TickWitch(Manager, bChasing, bChasing ? FMath::Sqrt(PreyDistSq) : 0.0);
+	}
+	else if (Type.bIsRaider)
+	{
+		// Arms: up for a crossbow or an axe once it has a target, drawn back while the crossbow reloads, raised to cast.
+		if (Type.bCastsSpells)
+		{
+			ArmPose = (bChasing && SpellCooldown > 60) ? 3 : 0;
+		}
+		else if (Type.bShoots)
+		{
+			ArmPose = !bChasing ? 0 : (ShootCooldown > 0 && ShootCooldown <= 25) ? 2 : 1;
+		}
+		else
+		{
+			ArmPose = bChasing ? 1 : 0;
+		}
+	}
+	if (Type.bShoots && bChasing && DrinkTicks == 0)
 	{
 		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.
 		const double Distance = FMath::Sqrt(PreyDistSq);
@@ -727,7 +840,14 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			&& HasLineOfSight(World, Body.Position + FVector(0.0, Type.Height * 0.85, 0.0), Target + FVector(0.0, 1.2, 0.0)))
 		{
 			ShootCooldown = ShootIntervalTicks;
-			Shoot(Manager, Target);
+			if (Type.bThrowsPotions)
+			{
+				ThrowPotion(Manager, Target);
+			}
+			else
+			{
+				Shoot(Manager, Target);
+			}
 		}
 		if (Distance < ShootStopRange)
 		{
@@ -765,7 +885,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 			else
 			{
-				Velocity = To.GetSafeNormal() * (Type.Speed * BlocksPerSecondPerSpeed / 20.0);
+				Velocity = To.GetSafeNormal() * (Type.Speed * BlocksPerSecondPerSpeed / 20.0) * (SwiftTicks > 0 ? 1.3 : 1.0);
 				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
 			}
 		}

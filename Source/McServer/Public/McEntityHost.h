@@ -53,6 +53,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// A splash potion's effect on the player at the position (name, level less one, ticks).
+	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 
 	// The game rules and difficulty the host obeys: peaceful removes the hostile mobs and stops them spawning,
 	// doMobSpawning off stops every natural spawn, doMobLoot off makes mobs drop nothing and doTileDrops off makes

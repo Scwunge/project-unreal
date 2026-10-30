@@ -2,6 +2,7 @@
 #include "McChunk.h"
 #include "McEntityManager.h"
 #include "McMob.h"
+#include "McPotion.h"
 #include "McVillager.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
@@ -54,6 +55,7 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
 	DOREPLIFETIME(AMcEntityActor, bBaby);
 	DOREPLIFETIME(AMcEntityActor, bOffering);
+	DOREPLIFETIME(AMcEntityActor, ArmPose);
 	DOREPLIFETIME(AMcEntityActor, LookSeed);
 }
 
@@ -66,7 +68,14 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcItemEntity::StaticType())
+	if (Kind == FMcThrownPotion::StaticType())
+	{
+		// Drawn as the splash potion bottle in flight.
+		Kind = FMcItemEntity::StaticType();
+		ItemId = FName(TEXT("minecraft:splash_potion"));
+		ItemCount = 1;
+	}
+	else if (Kind == FMcItemEntity::StaticType())
 	{
 		const FMcItemEntity& Item = static_cast<const FMcItemEntity&>(Entity);
 		ItemId = Item.Stack.Item;
@@ -78,6 +87,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
 		bOffering = Mob.OfferTicks > 0;
+		ArmPose = Mob.ArmPose;
 		if (Kind != FMcVillager::StaticType())
 		{
 			bBaby = Mob.IsYoung();
@@ -118,6 +128,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetVariantSeed(LookSeed);
 		Model->SetBaby(bBaby);
 		Model->SetOffering(bOffering);
+		Model->SetPose(ArmPose);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

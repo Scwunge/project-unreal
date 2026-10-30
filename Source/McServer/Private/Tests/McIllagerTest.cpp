@@ -5,6 +5,7 @@
 #include "McDimensionType.h"
 #include "McEntityHost.h"
 #include "McMob.h"
+#include "McPotion.h"
 #include "McVillager.h"
 #include "Misc/AutomationTest.h"
 
@@ -104,6 +105,48 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("fangs come up"), MostFangs > 0);
 		TestTrue(TEXT("vexes are summoned"), MostVexes >= 3);
 		TestTrue(TEXT("the villager was hurt"), Villager->Health < Villager->Type.MaxHealth);
+	}
+	{
+		// A witch throws potions at a player in reach, and drinks healing when hurt.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFloor(World);
+		FMcEntityHost Host(World, 3);
+		FMcGameRules Rules;
+		Rules.Difficulty = 2;
+		Host.SetRules(Rules);
+		FMcMob* Witch = Host.SpawnMob(TEXT("minecraft:witch"), FVector(8.5, 1.0, 8.5));
+		if (!Witch)
+		{
+			return false;
+		}
+		int32 Effects = 0;
+		int32 Hurts = 0;
+		Host.OnPlayerEffect = [&Effects](const FVector&, FName, int32, int32) { ++Effects; };
+		Host.OnPlayerHit = [&Hurts](const FVector&, float) { ++Hurts; };
+		int32 MostPotions = 0;
+		for (int32 Tick = 0; Tick < 400; ++Tick)
+		{
+			TArray<FVector> Players;
+			Players.Add(FVector(8.5, 1.0, 16.5));
+			Host.Tick(Players, 6000.0);
+			int32 Potions = 0;
+			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
+			{
+				Potions += (!Entity->bRemoved && Entity->GetType() == FMcThrownPotion::StaticType()) ? 1 : 0;
+			}
+			MostPotions = FMath::Max(MostPotions, Potions);
+		}
+		TestTrue(TEXT("potions are thrown"), MostPotions > 0);
+		TestTrue(TEXT("and land on the player"), Effects + Hurts > 0);
+		Witch->Health = 5.0f;
+		bool bDrank = false;
+		for (int32 Tick = 0; Tick < 100; ++Tick)
+		{
+			Host.Tick(TArray<FVector>(), 6000.0);
+			bDrank |= Witch->ArmPose == 4;
+		}
+		TestTrue(TEXT("a hurt witch drinks"), bDrank);
+		TestTrue(TEXT("and is healed"), Witch->Health > 5.0f);
 	}
 	return true;
 }

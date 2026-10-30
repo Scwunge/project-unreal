@@ -131,6 +131,9 @@ public:
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
+	// Called with the position of a player, an effect's name ("poison"), its level less one and its ticks, for a splash
+	// potion that reached them. Left unset, the effect is dropped.
+	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
 	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.

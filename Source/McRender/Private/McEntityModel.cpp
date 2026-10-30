@@ -97,25 +97,34 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
 
-		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. The
-		// pillager has no crossed arms; it holds its crossbow out in front on two arms of its own.
-		void AddIllager(FModel& Model, bool bCrossbowArms)
+		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. Idle it
+		// folds its arms like the villager; armed it has two arms of its own, held out with the weapon of its Style (1 a crossbow,
+		// 2 an axe, 3 none: it casts), and Held is the item picture drawn in the right hand.
+		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
 		{
-			AddVillager(Model, bCrossbowArms);
+			AddVillager(Model, false);
 			Model.bComposite = false;
-			if (bCrossbowArms)
+			Model.IllagerStyle = Style;
+			for (FPart& Each : Model.Parts)
 			{
-				// The arms of AddVillager(bArmsOut) are the zombie villager's; the pillager's picture has them lower down.
-				for (FPart& Part : Model.Parts)
+				if (Each.Role == ERole::Static && Each.Boxes.Num() == 3)
 				{
-					if (Part.Role == ERole::ArmRight || Part.Role == ERole::ArmLeft)
-					{
-						for (FBox& Box : Part.Boxes)
-						{
-							Box.UV = FIntPoint(40, 46);
-						}
-					}
+					Each.ShowPoses = 1u;
 				}
+			}
+			constexpr uint32 Armed = ~1u;
+			Model.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(40, 46, -3, -10, -2, 4, 12, 4) }));
+			Model.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(40, 46, -1, -10, -2, 4, 12, 4, 0.0f, true) }));
+			Model.Parts.Last(1).ShowPoses = Armed;
+			Model.Parts.Last(0).ShowPoses = Armed;
+			if (Held)
+			{
+				Model.Textures.Add(FString(TEXT("../item/")) + Held + TEXT(".png"));
+				FBox Picture = Box(0, 0, -1, -22, -1, 0, 12, 12);
+				Picture.bFlat = true;
+				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, 0, 0, 0, 0, 1);
+				Hand.ShowPoses = Armed;
+				Model.Parts.Add(Hand);
 			}
 		}
 
@@ -186,13 +195,16 @@ namespace McEntityModel
 				AddPerson(Zombie, false, true);
 				Models.Add(Zombie.Kind, Zombie);
 			}
-			for (const TCHAR* IllagerKind : { TEXT("pillager"), TEXT("vindicator"), TEXT("evoker") })
 			{
-				FModel Illager;
-				Illager.Kind = FName(*(FString(TEXT("minecraft:")) + IllagerKind));
-				Illager.Textures = { FString(TEXT("illager/")) + IllagerKind + TEXT(".png") };
-				AddIllager(Illager, FCString::Strcmp(IllagerKind, TEXT("pillager")) == 0);
-				Models.Add(Illager.Kind, Illager);
+				struct FIllager { const TCHAR* Name; int32 Style; const TCHAR* Held; };
+				for (const FIllager& Each : { FIllager{ TEXT("pillager"), 1, TEXT("crossbow_standby") }, FIllager{ TEXT("vindicator"), 2, TEXT("iron_axe") }, FIllager{ TEXT("evoker"), 3, nullptr } })
+				{
+					FModel Illager;
+					Illager.Kind = FName(*(FString(TEXT("minecraft:")) + Each.Name));
+					Illager.Textures = { FString(TEXT("illager/")) + Each.Name + TEXT(".png") };
+					AddIllager(Illager, Each.Style, Each.Held);
+					Models.Add(Illager.Kind, Illager);
+				}
 			}
 			{
 				// The witch: a villager under a tall pointed hat of four stacked pieces.
@@ -221,6 +233,14 @@ namespace McEntityModel
 						Part.Boxes.RemoveAt(1);
 					}
 				}
+				// The potion it holds up to drink, in front of its face.
+				Witch.Textures.Add(TEXT("../item/potion.png"));
+				FBox Bottle = Box(0, 0, -1, 0, 3, 0, 10, 10);
+				Bottle.bFlat = true;
+				Bottle.bMirror = true;
+				FPart Drinking = Part(ERole::Static, FVector(0, 24, 0), { Bottle }, 0, 0, 0, 0, 1);
+				Drinking.ShowPoses = 1u << 4;
+				Witch.Parts.Add(Drinking);
 				Models.Add(Witch.Kind, Witch);
 			}
 			{
@@ -233,17 +253,26 @@ namespace McEntityModel
 				Vex.Parts.Add(Part(ERole::Static, FVector(0, 7, 0), { Box(0, 10, -1.5f, -4, -1, 3, 4, 2) }));
 				Vex.Parts.Add(Part(ERole::ArmRight, FVector(-2, 6.5f, 0), { Box(23, 0, -1, -3, -1, 2, 4, 2) }));
 				Vex.Parts.Add(Part(ERole::ArmLeft, FVector(2, 6.5f, 0), { Box(23, 6, -1, -3, -1, 2, 4, 2) }));
+				// Two wings at its back, beating all the time.
+				Vex.bFlutter = true;
+				Vex.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 6.5f, -1), { Box(16, 22, 0, 0, -8, 0, 5, 8) }));
+				Vex.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 6.5f, -1), { Box(16, 22, 0, 0, -8, 0, 5, 8, 0.0f, true) }));
 				Models.Add(Vex.Kind, Vex);
 			}
 			{
-				// The ravager: a big body on four short legs with a head out in front.
+				// The ravager (minecraft.wiki, "Ravager"): a tall body on four thick legs, a long neck out in front of it and a head
+				// carried low at the end with a jaw under it and two horns on top. The legs are cut off at the ground, as the
+				// picture has them longer than they stand.
 				FModel Ravager;
 				Ravager.Kind = TEXT("minecraft:ravager");
 				Ravager.TextureSize = FIntPoint(128, 128);
 				Ravager.Textures = { TEXT("illager/ravager.png") };
-				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 13, 0), { Box(0, 55, -7, 0, -10, 14, 16, 20) }));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 28, 10), { Box(0, 0, -8, -12, 0, 16, 20, 16) }));
-				AddLegs(Ravager, 96, 0, 8, 13, 8, 7, -7, 13);
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(0, 55, -7, -8, -10, 14, 16, 20) }, Flat));
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(68, 73, -5, -5, 2, 10, 10, 18) }));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 25, 18), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16) }));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(-6, 35, 24), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 0, 0, 0.35f));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(6, 35, 24), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 0, 0, -0.35f));
+				AddLegs(Ravager, 96, 0, 8, 37, 8, 10, -10, 16);
 				Models.Add(Ravager.Kind, Ravager);
 			}
 			{
@@ -513,6 +542,41 @@ namespace McEntityModel
 			return FColor(Byte(Value), Byte(Value * Rest), Byte(Value * Rest), 255);
 		}
 
+		// A held picture: two faces back to back, the whole of the picture on each.
+		void AddFlat(const FBox& Box, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, float Hurt, float WholeScale, McPlayerModel::FMeshData& Out)
+		{
+			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const float Y0 = Box.Min.Y;
+			const float Y1 = Box.Min.Y + Box.Size.Y;
+			const float Z0 = Box.Min.Z;
+			const float Z1 = Box.Min.Z + Box.Size.Z;
+			const FVector Corners[4] = { FVector(Box.Min.X, Y1, Z0), FVector(Box.Min.X, Y1, Z1), FVector(Box.Min.X, Y0, Z1), FVector(Box.Min.X, Y0, Z0) };
+			// Hanging down from a shoulder the top of the picture is towards -y; mirrored, it stands up with its top towards +y.
+			const FVector2D UVs[4] = { FVector2D(0, Box.bMirror ? 0 : 1), FVector2D(1, Box.bMirror ? 0 : 1), FVector2D(1, Box.bMirror ? 1 : 0), FVector2D(0, Box.bMirror ? 1 : 0) };
+			for (const bool bBack : { false, true })
+			{
+				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(FVector(bBack ? -1.0 : 1.0, 0.0, 0.0)));
+				const FColor Color = Shade(Normal, Hurt);
+				const int32 First = Out.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Model = ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Corners[Corner])) * WholeScale;
+					Out.Positions.Add(FVector(Model.X, Model.Z, Model.Y) * (McCoords::UnitsPerBlock / 16.0));
+					Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+					Out.UV0.Add(UVs[Corner]);
+					Out.Colors.Add(Color);
+				}
+				if (bBack)
+				{
+					Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+				}
+				else
+				{
+					Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+				}
+			}
+		}
+
 		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, float LocalScale, float WholeScale, McPlayerModel::FMeshData& Out)
 		{
 			const FVector Min = (Box.Min - FVector(Box.Inflate)) * LocalScale;
@@ -600,7 +664,7 @@ namespace McEntityModel
 		Out.Triangles.Reset();
 		for (const FPart& Part : Model.Parts)
 		{
-			if (Part.Layer != Layer)
+			if (Part.Layer != Layer || ((Part.ShowPoses >> FMath::Clamp(Anim.Pose, 0, 31)) & 1u) == 0)
 			{
 				continue;
 			}
@@ -633,6 +697,27 @@ namespace McEntityModel
 			case ERole::ArmLeft:
 			{
 				const bool bRight = Part.Role == ERole::ArmRight;
+				if (Model.IllagerStyle != 0)
+				{
+					// Armed, the arms leave the folded pair: forward on a crossbow (one drawn back as it charges), up with an axe,
+					// up and out as a spell is cast.
+					const float Wave = FMath::Sin(Anim.Age * 9.0f);
+					if (Anim.Pose == 3)
+					{
+						Pitch += -2.25f + FMath::Cos(Anim.Age * 13.0f * 0.6662f) * 0.05f;
+						Roll += (bRight ? 1.0f : -1.0f) * (0.4f + Wave * 0.1f);
+					}
+					else if (Model.IllagerStyle == 1)
+					{
+						Pitch += (bRight ? -1.45f : (Anim.Pose == 2 ? -0.9f : -1.45f));
+						Yaw += (bRight ? 0.25f : -0.35f);
+					}
+					else
+					{
+						Pitch += (bRight ? -2.3f : -1.0f) + Wave * 0.35f * Amount + Wave * 0.15f;
+					}
+					break;
+				}
 				if (Anim.bOffering && bRight)
 				{
 					// Held out in front, a little up.
@@ -655,7 +740,7 @@ namespace McEntityModel
 			{
 				// Folded in, and beating when it runs.
 				const float Side = Part.Role == ERole::WingRight ? 1.0f : -1.0f;
-				Roll += Side * (0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
+				Roll += Side * (Model.bFlutter ? 0.7f + FMath::Sin(Anim.Age * 40.0f) * 0.5f : 0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
 				break;
 			}
 			case ERole::SpiderLeg:
@@ -679,6 +764,11 @@ namespace McEntityModel
 			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
 			for (const FBox& Box : Part.Boxes)
 			{
+				if (Box.bFlat)
+				{
+					AddFlat(Box, Rotation, Part.Pivot, Anim.BodyYaw, Anim.Hurt, Anim.bBaby ? BabyScale : 1.0f, Out);
+					continue;
+				}
 				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Anim.bBaby ? BabyScale : 1.0f, Out);
 			}
 		}
@@ -1209,6 +1299,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.bFlash = bFlash;
 	Anim.bBaby = bBabyLook;
 	Anim.bOffering = bOfferingLook;
+	Anim.Pose = PoseLook;
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);

@@ -47,6 +47,9 @@ namespace McEntityModel
 		FIntVector Size;
 		float Inflate = 0.0f;
 		bool bMirror = false;
+		// A flat picture rather than a box (a held item): it lies in the part's y-z plane at Min.X, Size.Y by Size.Z, the whole
+		// of its layer's picture on it with the top towards -y and the right towards +z. Drawn from both sides.
+		bool bFlat = false;
 	};
 
 	struct FPart
@@ -63,6 +66,8 @@ namespace McEntityModel
 		float RestYaw = 0.0f;
 		float RestRoll = 0.0f;
 		TArray<FBox> Boxes;
+		// The poses (bit per FAnim::Pose) it is drawn in.
+		uint32 ShowPoses = 0xFFFFFFFFu;
 	};
 
 	struct FModel
@@ -88,6 +93,10 @@ namespace McEntityModel
 		float MaxLimbSwing = 0.0f;
 		// The hitbox width the model is drawn for, blocks; the model grows with a hitbox that is wider (slimes). 0 for fixed.
 		float BaseWidth = 0.0f;
+		// How an illager holds its arms when armed: 1 a crossbow, 2 an axe, 3 casting (0 for no such arms).
+		int32 IllagerStyle = 0;
+		// The wings beat all the time (a vex).
+		bool bFlutter = false;
 	};
 
 	// The model for a registry name like "minecraft:pig", null if the kind has none.
@@ -108,6 +117,8 @@ namespace McEntityModel
 		bool bBaby = false;
 		// A golem holding out its poppy: the right arm is raised.
 		bool bOffering = false;
+		// What the arms are doing: 0 idle (an illager's folded), 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
+		int32 Pose = 0;
 	};
 	constexpr float BabyScale = 0.5f;
 	constexpr float BabyHeadScale = 1.5f;
@@ -175,6 +186,7 @@ public:
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
 	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
+	void SetPose(int32 InPose) { PoseLook = InPose; }
 	void SetBaby(bool bInBaby) { if (bInBaby != bBabyLook) { bBabyLook = bInBaby; bDirty = true; } }
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
 	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
@@ -213,6 +225,7 @@ private:
 	float HitboxWidth = 0.0f;
 	bool bBabyLook = false;
 	bool bOfferingLook = false;
+	int32 PoseLook = 0;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;

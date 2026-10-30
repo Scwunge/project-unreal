@@ -34,6 +34,8 @@ struct MCENTITY_API FMcMobType
 	bool bIsFangs = false;
 	// The illagers that raid: pillager, vindicator, evoker, ravager and witch. A patrol or a raid has them, one a captain.
 	bool bIsRaider = false;
+	// Witches throw potions at their target from up to 10 blocks (and drink their own when they need to).
+	bool bThrowsPotions = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;
@@ -104,6 +106,14 @@ public:
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;
+	// What the arms are doing, for how it is drawn: 0 idle, 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
+	int32 ArmPose = 0;
+	// A witch drinking: ticks left of the drink and what is in it ("healing"), and ticks until it may drink again.
+	int32 DrinkTicks = 0;
+	int32 DrinkCooldown = 0;
+	FName DrinkEffect;
+	// A witch's speed potion: ticks of the swift legs it gives.
+	int32 SwiftTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
@@ -162,6 +172,10 @@ private:
 	// has moved or the mob is stuck; Dest itself when it is near or there is no path.
 	FVector NextWaypoint(FMcEntityManager& Manager, const FVector& Dest);
 	void Shoot(FMcEntityManager& Manager, const FVector& TargetFeet);
+	// Throws a potion at the target: harming or poison at a player, slowness from far and weakness from close.
+	void ThrowPotion(FMcEntityManager& Manager, const FVector& TargetFeet);
+	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
+	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

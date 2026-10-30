@@ -143,6 +143,13 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				HurtPlayerNear(*Here, Position, Damage);
 			}
 		};
+		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				EffectPlayerNear(*Here, Position, Effect, Amplifier, Duration);
+			}
+		};
 		Host->OnRaidWon = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Center, int32 Level)
 		{
 			if (const AMcWorldActor* Here = Weak.Get())
@@ -565,6 +572,23 @@ void AMcGameMode::HonourHeroes(const AMcWorldActor& World, const FVector& Center
 		{
 			// 40 minutes, a level for each level of omen past the first.
 			McEffects::Add(Pawn->Data->Stats, TEXT("hero_of_the_village"), FMath::Max(0, Level - 1), 48000);
+		}
+	}
+}
+
+void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (McPawn && McPawn->Data && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5)
+		{
+			McEffects::Add(McPawn->Data->Stats, Effect, Amplifier, Duration);
 		}
 	}
 }

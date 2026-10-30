@@ -111,6 +111,13 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
 	};
+	Manager.OnPlayerEffect = [this](const FVector& PlayerPos, FName Effect, int32 Amplifier, int32 Duration)
+	{
+		if (OnPlayerEffect)
+		{
+			OnPlayerEffect(PlayerPos, Effect, Amplifier, Duration);
+		}
+	};
 	// A villager a zombie killed may rise as a zombie villager: never on Easy, half the time on Normal, always on Hard.
 	Manager.OnVillagerSlain = [this](FMcMob& Victim)
 	{

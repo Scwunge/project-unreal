@@ -59,6 +59,9 @@ public:
 	// A golem holding out a poppy.
 	UPROPERTY(Replicated)
 	bool bOffering = false;
+	// What a raider's arms are doing (McMob ArmPose).
+	UPROPERTY(Replicated)
+	int32 ArmPose = 0;
 	// Which coat or breed the mob has, where its kind has several (McMobLook).
 	UPROPERTY(Replicated)
 	int32 LookSeed = 0;

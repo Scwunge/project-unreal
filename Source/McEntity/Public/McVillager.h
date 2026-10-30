@@ -6,6 +6,7 @@
 
 #include "CoreMinimal.h"
 #include "McMob.h"
+#include "McTrading.h"
 
 namespace McVillager
 {
@@ -87,6 +88,14 @@ public:
 	int32 GetXp() const { return Xp; }
 	void SetLevelAndXp(int32 InLevel, int32 InXp) { Level = FMath::Clamp(InLevel, 1, McVillager::MaxLevel); Xp = FMath::Max(0, InXp); }
 
+	// What it sells: made from its profession's trade sets when first asked, a set more at each level reached. Empty for one
+	// that has no profession.
+	TArray<McTrading::FOffer>& GetOffers();
+	// A trade was made: the villager earns Xp, and on reaching a new level offers the trades of that level.
+	void AddTradeXp(int32 Amount);
+	// Its trades are fresh again (what it does at its job site twice a day).
+	void Restock();
+
 	// The job site claimed, if any; none for the jobless.
 	TOptional<FIntVector> GetJobSite() const { return bHasJobSite ? TOptional<FIntVector>(JobSite) : TOptional<FIntVector>(); }
 	void ClaimJobSite(const FIntVector& Pos) { bHasJobSite = true; JobSite = Pos; }
@@ -119,6 +128,9 @@ private:
 	FName Profession;
 	int32 Level = 1;
 	int32 Xp = 0;
+	TArray<McTrading::FOffer> Offers;
+	int32 RestocksToday = 0;
+	int32 LastRestockAge = 0;
 	bool bBaby = false;
 	int32 GrowthTicks = 0;
 	bool bHasJobSite = false;

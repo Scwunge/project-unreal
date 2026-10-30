@@ -844,6 +844,11 @@ namespace
 	}
 }
 
+void McLoot::ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack)
+{
+	Modify(Modifier, Random, Stack);
+}
+
 bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>& Out)
 {
 	const TSharedPtr<FJsonObject> Json = FindTable(Table);

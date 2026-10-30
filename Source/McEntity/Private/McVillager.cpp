@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McCache.h"
+#include "McRandom.h"
 #include "Serialization/Archive.h"
 
 namespace
@@ -33,7 +34,7 @@ namespace
 	const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
 
 	// 2 added the bed.
-	constexpr int32 SaveVersion = 2;
+	constexpr int32 SaveVersion = 3;
 	// Ticks between looks at the job site.
 	constexpr int32 ProfessionInterval = 20;
 }
@@ -224,11 +225,54 @@ void FMcVillager::SetBaby(bool bInBaby)
 
 void FMcVillager::SetProfession(FName InProfession)
 {
+	const FName Old = Profession;
 	Profession = InProfession.IsNone() ? NoProfession() : InProfession;
+	if (Profession != Old)
+	{
+		Offers.Reset();
+	}
 	if (!HasProfession())
 	{
 		bHasJobSite = false;
 	}
+}
+
+TArray<McTrading::FOffer>& FMcVillager::GetOffers()
+{
+	if (Offers.IsEmpty() && HasProfession() && !bBaby)
+	{
+		FMcRandom Rolls(static_cast<uint64>(Id) * 7919u + 17u);
+		for (int32 Reached = 1; Reached <= Level; ++Reached)
+		{
+			McTrading::RollLevel(Profession, Reached, Variant, Rolls, Offers);
+		}
+	}
+	return Offers;
+}
+
+void FMcVillager::AddTradeXp(int32 Amount)
+{
+	Xp += FMath::Max(0, Amount);
+	const int32 Reached = McVillager::GetLevelOfXp(Xp);
+	if (Reached > Level)
+	{
+		FMcRandom Rolls(static_cast<uint64>(Id) * 104729u + Reached);
+		for (int32 Next = Level + 1; Next <= Reached; ++Next)
+		{
+			McTrading::RollLevel(Profession, Next, Variant, Rolls, Offers);
+		}
+		Level = Reached;
+	}
+}
+
+void FMcVillager::Restock()
+{
+	for (McTrading::FOffer& Offer : Offers)
+	{
+		Offer.Uses = 0;
+	}
+	++RestocksToday;
+	LastRestockAge = Age;
 }
 
 bool FMcVillager::IsClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const
@@ -264,6 +308,7 @@ void FMcVillager::UpdateProfession(FMcEntityManager& Manager)
 		if (Xp == 0 && Level == 1)
 		{
 			Profession = NoProfession();
+			Offers.Reset();
 		}
 		return;
 	}
@@ -283,7 +328,7 @@ void FMcVillager::UpdateProfession(FMcEntityManager& Manager)
 	{
 		return;
 	}
-	Profession = McVillager::GetProfessionOfJobSite(Registry.GetBlockOf(World.GetBlock(Found)).Name);
+	SetProfession(McVillager::GetProfessionOfJobSite(Registry.GetBlockOf(World.GetBlock(Found)).Name));
 	ClaimJobSite(Found);
 }
 
@@ -324,6 +369,15 @@ void FMcVillager::UpdateRoutine(FMcEntityManager& Manager)
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	const FIntVector Here(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
 	const McVillager::EActivity Now = McVillager::GetActivityAt(Manager.TimeOfDay, Manager.IsAlarmSounding());
+	if (Manager.TimeOfDay < McVillager::WorkStart)
+	{
+		RestocksToday = 0;
+	}
+	// At its job site it restocks, up to twice a day, at least 2400 ticks apart.
+	if (Now == McVillager::EActivity::Work && bHasJobSite && !Offers.IsEmpty() && RestocksToday < 2 && (RestocksToday == 0 || Age - LastRestockAge >= 2400))
+	{
+		Restock();
+	}
 	if (Now != Activity)
 	{
 		Activity = Now;
@@ -436,6 +490,26 @@ bool FMcVillager::Serialize(FArchive& Ar)
 	if (Version >= 2)
 	{
 		Ar << bHasBed << Bed.X << Bed.Y << Bed.Z;
+	}
+	if (Version >= 3)
+	{
+		int32 NumOffers = Offers.Num();
+		Ar << NumOffers << RestocksToday;
+		if (Ar.IsLoading())
+		{
+			if (NumOffers < 0 || NumOffers > 64)
+			{
+				return false;
+			}
+			Offers.SetNum(NumOffers);
+		}
+		for (McTrading::FOffer& Offer : Offers)
+		{
+			if (!Offer.Serialize(Ar))
+			{
+				return false;
+			}
+		}
 	}
 	if (Ar.IsLoading())
 	{

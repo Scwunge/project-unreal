@@ -921,8 +921,13 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
-	if (!Owner || !HasModel() || ((bIsItem || bIsArrow) && bItemFailed))
+	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow) && bItemFailed))
 	{
+		return;
+	}
+	if (!HasModel())
+	{
+		TickStandIn();
 		return;
 	}
 	Anim.Age += DeltaTime;
@@ -1128,6 +1133,59 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	{
 		TickBlock(NumLayers);
 	}
+}
+
+void UMcEntityModelComponent::TickStandIn()
+{
+	if (Materials.Num() > 0 && MaterialGeneration != McRenderMode::GetGeneration())
+	{
+		Materials.Reset();
+		ClearAllMeshSections();
+		NumSections = 0;
+	}
+	if (Materials.Num() == 0)
+	{
+		// Drawn with the white silhouette of the minecart's picture, from a corner that is opaque, and tinted magenta: a
+		// lit engine material would be black here, where the light is in the pictures' vertex colours.
+		FIntPoint Size;
+		UTexture2DArray* White = LoadCached(McCache::Asset(TEXT("textures/entity/minecart/minecart.png")), Size, true);
+		if (!White || !BaseMaterial)
+		{
+			return;
+		}
+		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+		MaterialGeneration = McRenderMode::GetGeneration();
+		Material->SetTextureParameterValue(TEXT("Blocks"), White);
+		Materials = { Material };
+	}
+	Materials[0]->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+	Materials[0]->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+	const FVector2D Hitbox(FMath::Max(HitboxWidth, 0.25f), FMath::Max(HitboxHeight, 0.25f));
+	if (NumSections > 0 && StandInSize == Hitbox)
+	{
+		return;
+	}
+	StandInSize = Hitbox;
+	McEntityModel::FModel Box;
+	const int32 Width = FMath::Max(1, FMath::RoundToInt32(Hitbox.X * 16.0f));
+	const int32 Height = FMath::Max(1, FMath::RoundToInt32(Hitbox.Y * 16.0f));
+	McEntityModel::FPart Part;
+	Part.Boxes.Add({ FIntPoint::ZeroValue, FVector(-Width * 0.5f, 0.0f, -Width * 0.5f), FIntVector(Width, Height, Width) });
+	Box.Parts.Add(Part);
+	McPlayerModel::FMeshData Data;
+	McEntityModel::BuildMesh(Box, McEntityModel::FAnim(), 0, Data);
+	for (int32 Index = 0; Index < Data.Positions.Num(); ++Index)
+	{
+		Data.UV0[Index] = FVector2D(0.2, 0.6);
+		Data.Colors[Index] = FColor(Data.Colors[Index].R, 0, Data.Colors[Index].R, 255);
+	}
+	TArray<FVector2D> UV1, UV2;
+	UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+	UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+	ClearAllMeshSections();
+	CreateMeshSection(0, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+	SetMaterial(0, Materials[0]);
+	NumSections = 1;
 }
 
 void UMcEntityModelComponent::TickBlock(int32 Section)

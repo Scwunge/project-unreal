@@ -5,7 +5,6 @@
 #include "McMob.h"
 #include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #if MC_WITH_RENDER
 #include "McEntityModel.h"
 #endif
@@ -105,24 +104,20 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetLook(BodyYaw, HeadYaw, HeadPitch);
 		Model->SetHurtCount(HurtCount);
 		Model->SetHitboxWidth(Size.X);
+		Model->SetHitboxHeight(Size.Y);
 		Model->SetSwelling(Swelling);
 		if (Stand)
 		{
-			const bool bStandIn = !Model->HasModel();
-			Stand->SetVisibility(bStandIn);
-			if (bStandIn && !bStandInMarked)
+			// The model draws a kind with no model yet as a magenta box; it is said once a kind in the log, so it is found and not missed.
+			Stand->SetVisibility(false);
+			if (!Model->HasModel() && !bStandInMarked)
 			{
-				// A kind with no model yet shows as a magenta box, said once a kind in the log, so it is found and not missed.
 				bStandInMarked = true;
 				static TSet<FName> Reported;
 				if (!Reported.Contains(Kind))
 				{
 					Reported.Add(Kind);
 					UE_LOG(LogTemp, Warning, TEXT("McEntityActor: no model for %s (first at %s); drawn as a magenta box"), *Kind.ToString(), *GetActorLocation().ToString());
-				}
-				if (UMaterialInstanceDynamic* Magenta = Stand->CreateDynamicMaterialInstance(0))
-				{
-					Magenta->SetVectorParameterValue(TEXT("Color"), FLinearColor(1.0f, 0.0f, 1.0f));
 				}
 			}
 		}

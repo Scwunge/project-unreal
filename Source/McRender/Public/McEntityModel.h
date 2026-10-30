@@ -172,8 +172,8 @@ class MCRENDER_API UMcEntityModelComponent : public UProceduralMeshComponent
 public:
 	UMcEntityModelComponent(const FObjectInitializer& ObjectInitializer);
 
-	// What to draw. A mob kind with no model draws nothing, and HasModel says so. For "minecraft:item" the item
-	// and its count say what picture to show.
+	// What to draw. A mob kind with no model yet draws a magenta box the size of its hitbox, and HasModel says it has
+	// none. For "minecraft:item" the item and its count say what picture to show.
 	void SetKind(FName InKind, FName InItem, int32 InCount);
 	bool HasModel() const;
 	// Where the mob looks (Minecraft degrees, body and head) and the count that goes up when it is hurt.
@@ -181,6 +181,7 @@ public:
 	void SetHurtCount(int32 InHurtCount);
 	// The hitbox the entity has, for a model that grows with it (a slime's size).
 	void SetHitboxWidth(float InWidth);
+	void SetHitboxHeight(float InHeight) { HitboxHeight = InHeight; }
 	// A creeper's fuse, 0 (not lit) to 1 (about to go): it swells, shakes and flashes.
 	void SetSwelling(float InSwelling);
 
@@ -191,6 +192,8 @@ private:
 	void Rebuild();
 	// The block in the model, as a section after the layers.
 	void TickBlock(int32 Section);
+	// The magenta box for a kind with no model.
+	void TickStandIn();
 	// The picture a layer is cut from.
 	FString GetTexturePath(int32 Layer) const;
 
@@ -225,6 +228,9 @@ private:
 	FString BannerBase;
 	TArray<McBanner::FLayer> BannerLayers;
 	float HitboxWidth = 0.0f;
+	float HitboxHeight = 0.0f;
+	// The hitbox the magenta box was last made for.
+	FVector2D StandInSize = FVector2D::ZeroVector;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;

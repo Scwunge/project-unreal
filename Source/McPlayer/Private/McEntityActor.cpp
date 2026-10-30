@@ -75,6 +75,12 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// Which wood it is made of picks its picture.
 		ItemId = static_cast<const FMcBoatEntity&>(Entity).WoodName;
 	}
+	else if (FMcMinecartEntity::ParseType(Entity.GetType()).IsSet())
+	{
+		// A furnace cart tells whether it burns, a TNT cart the fuse it has left (the model lights and flashes by it).
+		const FMcMinecartEntity& Cart = static_cast<const FMcMinecartEntity&>(Entity);
+		ItemCount = Cart.Variant == FMcMinecartEntity::EVariant::Furnace ? (Cart.Fuel > 0 ? 1 : 0) : Cart.Variant == FMcMinecartEntity::EVariant::Tnt ? FMath::Max(Cart.Fuse, 0) : 0;
+	}
 	else if (Entity.IsLiving())
 	{
 		// The mob counts its hits; clients flash it whenever this changes.

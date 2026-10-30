@@ -8,7 +8,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "McBanner.h"
+#include "McCore.h"
 #include "McPlayerModel.h"
 #include "ProceduralMeshComponent.h"
 #include "McEntityModel.generated.h"
@@ -59,6 +59,8 @@ namespace McEntityModel
 		// Drawn at full brightness whatever the light (a spider's or an enderman's eyes).
 		bool bGlow = false;
 		FVector Pivot = FVector::ZeroVector;
+		// Its boxes shrunk about the pivot (a chest at three quarters in a minecart).
+		float Scale = 1.0f;
 		// The rest pose, radians: tip forward, turn, lean sideways.
 		float RestPitch = 0.0f;
 		float RestYaw = 0.0f;
@@ -70,6 +72,13 @@ namespace McEntityModel
 	{
 		FName Kind;
 		FIntPoint TextureSize = FIntPoint(64, 32);
+		// A layer cut from a picture of another size (a chest's on a minecart's), by layer; empty or 0 for TextureSize.
+		TArray<FIntPoint> LayerTextureSizes;
+		// A block drawn in the model from its own model and pictures (a furnace in a minecart): the state, where its
+		// middle sits (pixels from the model's origin) and how big (1 is a whole block). Empty for none.
+		FString Block;
+		FVector BlockOffset = FVector::ZeroVector;
+		float BlockScale = 0.75f;
 		// A texture file for each layer, under textures/entity/.
 		TArray<FString> Textures;
 		TArray<FPart> Parts;
@@ -100,6 +109,10 @@ namespace McEntityModel
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
 	};
+
+	// A block state's quads in the pose of Model.Block: Flash draws it white from a picture's opaque corner (UV 0.2, 0.6
+	// of whatever picture the material has). UV1 gets the texture array layer for each vertex.
+	MCRENDER_API void BuildBlockMesh(const FModel& Model, FMcStateId State, float BodyYaw, bool bFlash, McPlayerModel::FMeshData& Out, TArray<FVector2D>& UV1);
 
 	// The mesh of one layer of the model in the pose.
 	MCRENDER_API void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out);
@@ -167,6 +180,8 @@ public:
 private:
 	UMaterialInstanceDynamic* GetMaterial(int32 Layer);
 	void Rebuild();
+	// The block in the model, as a section after the layers.
+	void TickBlock(int32 Section);
 	// The picture a layer is cut from.
 	FString GetTexturePath(int32 Layer) const;
 
@@ -178,6 +193,13 @@ private:
 	TObjectPtr<UMaterialInterface> BaseMaterial;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> TranslucentMaterial;
+	// The block in the model (see FModel::Block): its material over the block pictures, and over the white one.
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> BlockMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> FlashMaterial;
+	FString BlockText;
+	int32 BlockVertices = 0;
 
 	FName Kind;
 	FName Item;

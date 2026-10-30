@@ -1,6 +1,9 @@
 #include "McEntityModel.h"
 #include "McRenderMode.h"
 #include "McCache.h"
+#include "McBlockModels.h"
+#include "McBlockRegistry.h"
+#include "McBlockTextures.h"
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderTextures.h"
@@ -206,11 +209,14 @@ namespace McEntityModel
 				Models.Add(Slime.Kind, Slime);
 			}
 			{
-				// A minecart: a floor and four walls, the long way along the rail (z). The ones with a load (a chest, a
-				// furnace, a hopper, TNT) have a block standing in it: drawn here as a plain box cut from the cart's own
-				// picture, as the blocks' textures can't share its picture.
-				const struct { const TCHAR* Kind; int32 Height; } Carts[] = { { TEXT("minecraft:minecart"), 0 }, { TEXT("minecraft:chest_minecart"), 8 },
-					{ TEXT("minecraft:furnace_minecart"), 9 }, { TEXT("minecraft:hopper_minecart"), 6 }, { TEXT("minecraft:tnt_minecart"), 10 } };
+				// A minecart: a floor and four walls, the long way along the rail (z). The ones with a load have a block
+				// standing in it at three quarters size: a chest (the entity's own picture), or a furnace, hopper or TNT from
+				// the block's own model and pictures.
+				const struct { const TCHAR* Kind; const TCHAR* Block; } Carts[] = {
+					{ TEXT("minecraft:minecart"), nullptr }, { TEXT("minecraft:chest_minecart"), nullptr },
+					{ TEXT("minecraft:furnace_minecart"), TEXT("minecraft:furnace[facing=south,lit=false]") },
+					{ TEXT("minecraft:hopper_minecart"), TEXT("minecraft:hopper[enabled=true,facing=down]") },
+					{ TEXT("minecraft:tnt_minecart"), TEXT("minecraft:tnt") } };
 				for (const auto& Variant : Carts)
 				{
 					FModel Cart;
@@ -222,9 +228,19 @@ namespace McEntityModel
 					Cart.Parts.Add(Part(ERole::Static, FVector(0, 3, -9), { Box(0, 0, -8, 0, -1, 16, 8, 2) }));
 					Cart.Parts.Add(Part(ERole::Static, FVector(7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
 					Cart.Parts.Add(Part(ERole::Static, FVector(-7, 3, 0), { Box(0, 0, -8, 0, -1, 16, 8, 2) }, 0, HALF_PI));
-					if (Variant.Height > 0)
+					if (Variant.Block)
 					{
-						Cart.Parts.Add(Part(ERole::Static, FVector(0, 4, 0), { Box(0, 10, -6, 0, -6, 12, Variant.Height, 12) }));
+						Cart.Block = Variant.Block;
+						Cart.BlockOffset = FVector(0, 9, 0);
+					}
+					else if (Cart.Kind == TEXT("minecraft:chest_minecart"))
+					{
+						// A chest has no block model (it is drawn from its own picture), so it is boxes on a second layer.
+						Cart.Textures.Add(TEXT("chest/normal.png"));
+						Cart.LayerTextureSizes = { FIntPoint(0, 0), FIntPoint(64, 64) };
+						FPart Chest = Part(ERole::Static, FVector(0, 3, 0), { Box(0, 19, -7, 0, -7, 14, 10, 14), Box(0, 0, -7, 10, -7, 14, 5, 14), Box(0, 0, -1, 8, 7, 2, 4, 1) }, 0, 0, 0, 0, 1);
+						Chest.Scale = 0.75f;
+						Cart.Parts.Add(Chest);
 					}
 					Models.Add(Cart.Kind, Cart);
 				}
@@ -257,10 +273,11 @@ namespace McEntityModel
 					Raft.Kind = bChest ? TEXT("minecraft:bamboo_chest_raft") : TEXT("minecraft:bamboo_raft");
 					Raft.TextureSize = FIntPoint(128, bChest ? 128 : 64);
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
-					Raft.Parts.Add(Part(ERole::Static, FVector(0, 2, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
+					// It floats higher than a hull, its deck clear of the water.
+					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
 					if (bChest)
 					{
-						Raft.Parts.Add(Part(ERole::Static, FVector(0, 5, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
+						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
 					}
 					Models.Add(Raft.Kind, Raft);
 				}
@@ -286,7 +303,7 @@ namespace McEntityModel
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
 			const auto Place = [&](const FVector& Local)
 			{
-				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local));
+				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local * Part.Scale));
 			};
 
 			struct FFace { EBoxFace Face; FVector Normal; FVector Corners[4]; };
@@ -459,10 +476,56 @@ namespace McEntityModel
 			}
 			// Turn, tip and lean, in the order the player's parts are turned.
 			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
+			const FIntPoint Size = Model.LayerTextureSizes.IsValidIndex(Layer) && Model.LayerTextureSizes[Layer].X > 0 ? Model.LayerTextureSizes[Layer] : Model.TextureSize;
 			for (const FBox& Box : Part.Boxes)
 			{
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, Out);
+				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
 			}
+		}
+	}
+
+	void BuildBlockMesh(const FModel& Model, FMcStateId State, float BodyYaw, bool bFlash, McPlayerModel::FMeshData& Out, TArray<FVector2D>& UV1)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		UV1.Reset();
+		const FMcBlockModels& Models = FMcBlockModels::Get();
+		if (!Models.IsBaked() || State >= Models.NumStates())
+		{
+			return;
+		}
+		const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+		for (const FMcBakedQuad& Quad : Models.GetModel(State).Quads)
+		{
+			FVector Normal = FVector::ZeroVector;
+			switch (Quad.Face)
+			{
+			case EMcDirection::Down: Normal = FVector(0, -1, 0); break;
+			case EMcDirection::Up: Normal = FVector(0, 1, 0); break;
+			case EMcDirection::North: Normal = FVector(0, 0, -1); break;
+			case EMcDirection::South: Normal = FVector(0, 0, 1); break;
+			case EMcDirection::West: Normal = FVector(-1, 0, 0); break;
+			case EMcDirection::East: Normal = FVector(1, 0, 0); break;
+			default: break;
+			}
+			Normal = ModelRotation.RotateVector(Normal);
+			const FColor Color = bFlash ? FColor::White : Shade(Normal, 0.0f);
+			const float Layer = static_cast<float>(FMcBlockTextures::Get().GetLayer(Quad.Texture));
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				const FVector Local = (FVector(Quad.Positions[Corner]) - FVector(0.5)) * 16.0 * Model.BlockScale + Model.BlockOffset;
+				const FVector Placed = ModelRotation.RotateVector(Local);
+				Out.Positions.Add(FVector(Placed.X, Placed.Z, Placed.Y) * (McCoords::UnitsPerBlock / 16.0));
+				Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+				Out.UV0.Add(bFlash ? FVector2D(0.2, 0.6) : FVector2D(Quad.UVs[Corner]));
+				Out.Colors.Add(Color);
+				UV1.Add(FVector2D(bFlash ? 0.0f : Layer, 0.0f));
+			}
+			Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
 		}
 	}
 
@@ -700,6 +763,10 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	}
 	Model = bIsItem || bIsArrow || bIsBanner ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
+	BlockMaterial = nullptr;
+	FlashMaterial = nullptr;
+	BlockText.Reset();
+	BlockVertices = 0;
 	ClearAllMeshSections();
 	NumSections = 0;
 	bItemFailed = false;
@@ -832,6 +899,9 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	{
 		// The look changed: the materials are made again, and the mesh with them.
 		Materials.Reset();
+		BlockMaterial = nullptr;
+		FlashMaterial = nullptr;
+		BlockVertices = 0;
 		ClearAllMeshSections();
 		NumSections = 0;
 		bFlashing = false;
@@ -1014,4 +1084,69 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
+	if (!Model->Block.IsEmpty())
+	{
+		TickBlock(NumLayers);
+	}
+}
+
+void UMcEntityModelComponent::TickBlock(int32 Section)
+{
+	// A lit furnace burns; a TNT cart (its count is the fuse left) flashes white every five ticks.
+	FString Text = Model->Block;
+	if (Kind == TEXT("minecraft:furnace_minecart") && Count > 0)
+	{
+		Text.ReplaceInline(TEXT("lit=false"), TEXT("lit=true"));
+	}
+	const bool bBlockFlash = Kind == TEXT("minecraft:tnt_minecart") && Count > 0 && (Count / 5) % 2 == 0;
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	if (!FMcBlockModels::Get().EnsureBaked() || !Textures.EnsureLoaded())
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	TOptional<FMcStateId> State = Registry.ParseState(Text);
+	if (!State.IsSet())
+	{
+		FString Name = Text;
+		Name.Split(TEXT("["), &Name, nullptr);
+		State = Registry.FindDefaultState(FName(*Name));
+	}
+	if (!State.IsSet())
+	{
+		return;
+	}
+	if (!BlockMaterial)
+	{
+		BlockMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+		BlockMaterial->SetTextureParameterValue(TEXT("Blocks"), Textures.GetTextureArray());
+	}
+	if (bBlockFlash && !FlashMaterial)
+	{
+		FIntPoint Size;
+		if (UTexture2DArray* White = LoadCached(GetTexturePath(0), Size, true))
+		{
+			FlashMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+			FlashMaterial->SetTextureParameterValue(TEXT("Blocks"), White);
+		}
+	}
+	UMaterialInstanceDynamic* Material = bBlockFlash && FlashMaterial ? FlashMaterial.Get() : BlockMaterial.Get();
+	Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+	Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+	McPlayerModel::FMeshData Data;
+	TArray<FVector2D> UV1;
+	McEntityModel::BuildBlockMesh(*Model, State.GetValue(), Anim.BodyYaw, bBlockFlash && FlashMaterial, Data, UV1);
+	TArray<FVector2D> UV2;
+	UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+	if (Data.Positions.Num() == BlockVertices && BlockText == Text)
+	{
+		UpdateMeshSection(Section, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
+	}
+	else
+	{
+		CreateMeshSection(Section, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+		BlockVertices = Data.Positions.Num();
+		BlockText = Text;
+	}
+	SetMaterial(Section, Material);
 }

@@ -854,6 +854,8 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 					Spawned->SetOwner(this);
 				}
 			}));
+			// It rains, for the world's rules (a fishing bobber's bite comes sooner), once the rain is more than a fifth on.
+			Entities->GetManager().bRaining = RainLevel > 0.2f;
 			// Where the time never changes it is always night to the mobs (none burn).
 			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);

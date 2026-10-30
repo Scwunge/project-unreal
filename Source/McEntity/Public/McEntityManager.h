@@ -97,6 +97,8 @@ public:
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
 	bool bDaylight = false;
+	// Whether it rains (where the sky is open); set by the server each tick.
+	bool bRaining = false;
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
 	// Whether nothing solid is over the block, so rain and sun reach it.

@@ -49,6 +49,7 @@ namespace
 	}
 	constexpr float StandingEyeHeight = 1.62f;
 	constexpr float SneakingEyeHeight = 1.27f;
+	constexpr float GlidingEyeHeight = 0.4f;
 	constexpr float StandingHeight = 1.8f;
 	constexpr float SneakingHeight = 1.5f;
 	// A second press of Space within this many ticks toggles flying.
@@ -94,6 +95,9 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, RidingId);
+	DOREPLIFETIME(AMcPlayerPawn, bRodCast);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bGlidePose, COND_SkipOwner);
+	DOREPLIFETIME(AMcPlayerPawn, bWearsElytra);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -143,7 +147,7 @@ void AMcPlayerPawn::SetView(const FVector& EyePos, float McYaw, float McPitch)
 
 float AMcPlayerPawn::GetEyeHeight() const
 {
-	return bSneaking ? SneakingEyeHeight : StandingEyeHeight;
+	return bGliding ? GlidingEyeHeight : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
 }
 
 void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
@@ -183,7 +187,8 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	}
 
 	// Space tapped twice quickly starts or stops flying; landing stops it too.
-	if (Input.bJump && !bJumpWasDown && bMayFly)
+	const bool bJumpPressed = Input.bJump && !bJumpWasDown;
+	if (bJumpPressed && bMayFly)
 	{
 		if (FlyToggleTicks > 0)
 		{
@@ -200,7 +205,7 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 
 	// Sneaking shrinks the hitbox; standing up again needs the room.
 	const bool bWantSneak = Input.bSneak && !bFlying;
-	if (bWantSneak != bSneaking)
+	if (bWantSneak != bSneaking && !bGliding)
 	{
 		FMcBody Resized = Body;
 		Resized.Height = bWantSneak ? SneakingHeight : StandingHeight;
@@ -230,7 +235,11 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
 		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
 	}
-	McPhysics::TickPlayer(*BlockWorld, Body, Move);
+	// Elytra glide in place of walking.
+	if (!TickGlide(Move, bJumpPressed))
+	{
+		McPhysics::TickPlayer(*BlockWorld, Body, Move);
+	}
 	if (bFlying && Body.bOnGround)
 	{
 		bFlying = false;
@@ -241,7 +250,11 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	bServerPositionKnown = true;
 	if (!HasAuthority())
 	{
-		ServerMove(Body.Position, Yaw, Pitch, (bSneaking ? 1 : 0) | (Body.bOnGround ? 2 : 0) | (bSprinting ? 4 : 0) | (bFlying ? 8 : 0));
+		ServerMove(Body.Position, Yaw, Pitch, (bSneaking ? 1 : 0) | (Body.bOnGround ? 2 : 0) | (bSprinting ? 4 : 0) | (bFlying ? 8 : 0) | (bGliding ? 16 : 0));
+	}
+	else
+	{
+		bServerGliding = bGliding;
 	}
 }
 
@@ -255,6 +268,7 @@ void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, flo
 	Body.bOnGround = (Flags & 2) != 0;
 	bServerSprint = (Flags & 4) != 0;
 	bServerFlying = (Flags & 8) != 0;
+	bServerGliding = (Flags & 16) != 0;
 	bServerPositionKnown = true;
 	LastLocation = McCoords::BlockToUnreal(FeetPos);
 	SetActorLocationAndRotation(LastLocation, FRotator(0.0f, NewYaw, 0.0f));
@@ -276,7 +290,8 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		bShowSelf = FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShotCheck);
 #endif
 		Figure->SetShown(!IsLocallyControlled() || bShowSelf);
-		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
+		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
+		Figure->SetWings(bWearsElytra);
 	}
 #endif
 
@@ -338,6 +353,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	McLookYaw = Yaw - 90.0f;
 	McLookPitch = -Pitch;
 	bSneakPose = bSneaking;
+	bGlidePose = bGliding;
 
 	TickAccumulator += DeltaSeconds;
 	int32 Ticks = 0;
@@ -359,15 +375,20 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
 #if !UE_BUILD_SHIPPING
 	// Development: -McSelfShot=<blocks> puts the camera that far in front of the player, looking back at the player
-	// model, for a picture of the skin.
+	// model, for a picture of the skin. -McSelfShotYaw=degrees swings the camera round the player from there (180 looks
+	// at their back), and -McSelfShotRise=blocks lifts it, looking down at them.
 	float SelfShot = 0.0f;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShot) && SelfShot > 0.0f)
 	{
+		float Around = 0.0f, Rise = 0.0f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McSelfShotYaw="), Around);
+		FParse::Value(FCommandLine::Get(), TEXT("-McSelfShotRise="), Rise);
 		Camera->bUsePawnControlRotation = false;
-		const FRotator Look(0.0f, Yaw, 0.0f);
+		const FRotator Look(0.0f, Yaw + Around, 0.0f);
 		const FVector Eye = GetActorLocation() + FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock * 0.9);
-		Camera->SetWorldLocation(Eye + Look.Vector() * SelfShot * McCoords::UnitsPerBlock);
-		Camera->SetWorldRotation(FRotator(0.0, Yaw + 180.0, 0.0));
+		const FVector Offset = Look.Vector() * SelfShot * McCoords::UnitsPerBlock + FVector(0.0, 0.0, Rise * McCoords::UnitsPerBlock);
+		Camera->SetWorldLocation(Eye + Offset);
+		Camera->SetWorldRotation((-Offset).Rotation());
 	}
 #endif
 
@@ -543,8 +564,15 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// A fishing rod casts or reels in, and a firework rocket pulls a glider along: at nothing, or (below) at a block that
+	// doesn't open or move.
+	const bool bUsedInAir = Held.Item == TEXT("minecraft:fishing_rod") || (bGliding && Held.Item == TEXT("minecraft:firework_rocket"));
 	if (!Target.IsSet())
 	{
+		if (bUsedInAir && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
+		{
+			ServerUseItem();
+		}
 		StopDigging();
 		return;
 	}
@@ -637,6 +665,14 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);
+		return;
+	}
+	if (bUsedInAir)
+	{
+		if (bPlaceClick)
+		{
+			ServerUseItem();
+		}
 		return;
 	}
 	// A bucket of water or lava pours into the block clicked (if it can be replaced) or the one beside it.
@@ -1070,7 +1106,9 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			else
 			{
-				const bool bBreaksFall = bFlyingNow || Environment.bFeetInWater || Environment.bClimbing || Environment.bInCobweb;
+				// A glide that isn't diving fast doesn't build up a fall.
+				const bool bGlideHolds = bServerGliding && Step.Y > -0.5;
+				const bool bBreaksFall = bFlyingNow || bGlideHolds || Environment.bFeetInWater || Environment.bClimbing || Environment.bInCobweb;
 				const int32 FallDamage = ServerFall.Update(ServerPreviousPosition.Y, Feet.Y, Body.bOnGround, bBreaksFall);
 				if (FallDamage > 0)
 				{
@@ -1104,6 +1142,11 @@ void AMcPlayerPawn::ServerGameTick()
 			McSurvival::Tick(Stats, Environment, Difficulty, Data->Armor.Get(), &GameRules);
 		}
 		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+		if (Entities)
+		{
+			ServerTickFishing(*Entities);
+		}
+		ServerTickElytra();
 
 		// Footsteps, on the ground and not sneaking (sneaking is quiet), at the step sound of the block underfoot.
 		const bool bSneakNow = bLocal ? bSneaking : bSneakPose;

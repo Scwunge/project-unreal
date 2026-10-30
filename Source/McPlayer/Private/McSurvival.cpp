@@ -186,12 +186,13 @@ namespace McSurvival
 			if (Worn)
 			{
 				GetArmorValues(*Worn, ArmorPoints, Toughness);
-				// Every piece takes some wear from the blow, and one may break.
+				// Every piece takes some wear from the blow, and one may break. Elytra aren't armour: only flying wears them.
 				const int32 Wear = FMath::Max(1, FMath::FloorToInt32(Dealt / 4.0f));
+				static const FName Elytra(TEXT("minecraft:elytra"));
 				for (int32 Slot = 0; Slot < Worn->Num(); ++Slot)
 				{
 					FMcItemStack& Piece = Worn->GetMutable(Slot);
-					if (!Piece.IsEmpty() && Piece.HurtAndBreak(Wear))
+					if (!Piece.IsEmpty() && Piece.Item != Elytra && Piece.HurtAndBreak(Wear))
 					{
 						Piece.Clear();
 					}

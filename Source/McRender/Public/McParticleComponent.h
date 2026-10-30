@@ -42,6 +42,10 @@ public:
 	void BlockBroken(const FIntVector& Pos, FMcStateId State);
 	// The block at Pos is being dug on its Face side (a unit step out of it).
 	void BlockHit(const FIntVector& Pos, const FIntVector& Face);
+	// A fish bit at a bobber floating at Pos: a splash of drops and bubbles on the water.
+	void FishingSplash(const FVector& Pos);
+	// The wake of a fish swimming under the surface at Pos (each tick it is on its way to a bobber).
+	void FishingWake(const FVector& Pos);
 
 	int32 NumParticles() const { return Particles.Num(); }
 
@@ -67,6 +71,9 @@ private:
 		Lava,      // a burning drop that falls back
 		Spark,     // a tiny glowing fleck off lava (Unreal Mode)
 		Leaf,
+		Splash,  // a drop thrown up off water, falling back
+		Bubble,  // rising a little and bursting
+		Wake,    // a fleck of foam over a swimming fish
 	};
 
 	struct FParticle

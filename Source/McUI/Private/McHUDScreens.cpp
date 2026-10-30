@@ -208,13 +208,13 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 
 // ---- Items ----
 
-void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y)
+void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture)
 {
 	if (Stack.IsEmpty())
 	{
 		return;
 	}
-	DrawIcon(Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
+	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
 	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{
@@ -1412,9 +1412,15 @@ void AMcHUD::DrawHUD()
 	DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar_selection.png")), Layout.Hotbar.X - 1 + Selected * 20, Layout.Hotbar.Y - 1, 24, 23);
 	if (Data)
 	{
+		// The rod held while its bobber is out is drawn cast, its line hanging.
+		static const FName Rod(TEXT("minecraft:fishing_rod"));
+		const AMcPlayerPawn* Angler = Cast<AMcPlayerPawn>(GetOwningPawn());
+		const bool bCast = Angler && Angler->IsRodCast();
 		for (int32 Slot = 0; Slot < 9; ++Slot)
 		{
-			DrawStack(Data->Inventory->Get(Slot), static_cast<float>(Layout.HotbarSlots[Slot].X), static_cast<float>(Layout.HotbarSlots[Slot].Y));
+			const FMcItemStack& Stack = Data->Inventory->Get(Slot);
+			const FName Picture = bCast && Slot == Selected && Stack.Item == Rod ? FName(TEXT("minecraft:fishing_rod_cast")) : NAME_None;
+			DrawStack(Stack, static_cast<float>(Layout.HotbarSlots[Slot].X), static_cast<float>(Layout.HotbarSlots[Slot].Y), Picture);
 		}
 		if (!Data->Offhand->Get(0).IsEmpty())
 		{

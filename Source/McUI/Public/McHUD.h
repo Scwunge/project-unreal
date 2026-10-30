@@ -96,7 +96,8 @@ private:
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
-	void DrawStack(const FMcItemStack& Stack, float X, float Y);
+	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
+	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);

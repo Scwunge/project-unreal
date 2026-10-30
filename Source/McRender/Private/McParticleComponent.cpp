@@ -277,6 +277,42 @@ void UMcParticleComponent::BlockHit(const FIntVector& Pos, const FIntVector& Fac
 	Bit.Light = FVector2f(SkyLightAt(Pos + Face), 0.0f);
 }
 
+void UMcParticleComponent::FishingSplash(const FVector& Pos)
+{
+	const float Light = SkyLightAt(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y) + 1, FMath::FloorToInt32(Pos.Z)));
+	for (int32 Index = 0; Index < 12; ++Index)
+	{
+		const bool bBubble = Index % 2 == 0;
+		const FVector At = Pos + FVector(Random.FRandRange(-0.25f, 0.25f), 0.0, Random.FRandRange(-0.25f, 0.25f));
+		FParticle& Drop = Add(bBubble ? EStyle::Bubble : EStyle::Splash, At,
+			bBubble ? FVector(Random.FRandRange(-0.02f, 0.02f), Random.FRandRange(0.01f, 0.04f), Random.FRandRange(-0.02f, 0.02f))
+				: FVector(Random.FRandRange(-0.08f, 0.08f), Random.FRandRange(0.1f, 0.2f), Random.FRandRange(-0.08f, 0.08f)));
+		Drop.Gravity = bBubble ? 0.0f : 0.04f;
+		Drop.Life = bBubble ? Random.RandRange(4, 10) : Random.RandRange(8, 16);
+		Drop.Size = bBubble ? 0.03f : 0.025f;
+		Drop.Colour = bBubble ? FColor(200, 225, 255) : FColor(120, 160, 230);
+		Drop.Light = FVector2f(Light, 0.0f);
+	}
+}
+
+void UMcParticleComponent::FishingWake(const FVector& Pos)
+{
+	FParticle& Foam = Add(EStyle::Wake, Pos, FVector(0.0, 0.01, 0.0));
+	Foam.Life = Random.RandRange(6, 12);
+	Foam.Size = 0.03f;
+	Foam.Colour = FColor(235, 245, 255);
+	Foam.Light = FVector2f(SkyLightAt(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y) + 1, FMath::FloorToInt32(Pos.Z))), 0.0f);
+	if (Random.FRand() < 0.15f)
+	{
+		FParticle& Drop = Add(EStyle::Splash, Pos, FVector(Random.FRandRange(-0.03f, 0.03f), Random.FRandRange(0.05f, 0.1f), Random.FRandRange(-0.03f, 0.03f)));
+		Drop.Gravity = 0.04f;
+		Drop.Life = Random.RandRange(6, 10);
+		Drop.Size = 0.02f;
+		Drop.Colour = FColor(120, 160, 230);
+		Drop.Light = Foam.Light;
+	}
+}
+
 void UMcParticleComponent::Ambient()
 {
 	// As the game does: a number of blocks at random near the player, within 16 and within 32.
@@ -543,6 +579,11 @@ void UMcParticleComponent::Draw(float Partial)
 			Size *= FMath::Clamp((1.0f - T) * 3.0f, 0.0f, 1.0f);
 			Colour = Mix(FColor(255, 230, 120), FColor(255, 90, 20), T);
 			Kind = McSurface::GlowParticle;
+			break;
+		case EStyle::Splash:
+		case EStyle::Bubble:
+		case EStyle::Wake:
+			Size *= FMath::Clamp((1.0f - T) * 3.0f, 0.0f, 1.0f);
 			break;
 		case EStyle::Smoke:
 			// Puffs thin out and take on the colour of the air as they rise, rather than staying flat grey squares.

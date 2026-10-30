@@ -234,6 +234,37 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: a pot's sherds (no block
     entity yet: every side is plain), its wobble and what it holds; the conduit's wind, its closed eye when hunting,
     Conduit Power and attacking hostile mobs (none of which the server does yet).
+  - **Fishing** (2026-10-30): using a fishing rod casts a bobber (`FMcFishingBobber` in McEntity, `McFishing`) from the
+    eyes along the look with a little scatter; it flies under gravity, hooks the first mob, player or item it touches,
+    lies on ground or sticks to a wall, and in water floats on a spring at the surface. In water the wait for a bite is
+    100 to 600 ticks, 100 shorter at each end per level of Lure; under open sky in rain a tick in four counts double,
+    and without sky half the ticks don't count. Then a fish swims in for 20 to 80 ticks (its wake drawn on the water)
+    and bites for 20 to 40 (the bobber dips, a splash). Using the rod again reels in (`McPlayerFishing.cpp`): during a
+    bite the catch is rolled from the data's `gameplay/fishing` loot table (`McLoot::RollFishing`: luck of the sea
+    adds each entry's quality, the treasure needs open water, a 5 by 4 by 5 box of only water and air, and the jungle
+    bamboo needs a jungle) and flung to the angler with 1 to 6 experience; a hooked mob or item is pulled toward them.
+    The rod wears 1 for a catch, 2 on the ground, 3 for an item, 5 for a mob. The bobber goes when the rod is put away,
+    is 32 blocks off, or has lain on the ground for a minute. Drawn as the hook picture facing the camera, with a
+    black line hanging slack to the rod tip in the angler's hand (`UMcEntityModelComponent::SetFishingLine`); the hotbar shows
+    the cast rod. Sounds: `entity.fishing_bobber.throw`, `.splash`, `.retrieve`. Test `McPlayer.Fishing`; shot
+    `Saved/Shots/fishing.png` (`-McScene=fishing -McCast=6`). Not done: the rod and line in a third-person hand (the
+    player model holds nothing), Lure's and luck's effect on mobs' fishing, and fishing advancements; vanilla has no
+    command to cast, so there is no reference shot.
+  - **Elytra** (2026-10-30): worn in the chest slot (the data's equippable slot), a jump in the air starts a glide
+    (`McPlayerElytra.cpp`), which ends on landing, in water or lava, on a ladder or vine, or when the wings are down to
+    their last point (they never break: 432 points, 1 a second while gliding, none from blows). Gliding the body is a
+    0.6 cube with the eyes 0.4 up, falls no further than a dive of 0.5 a tick allows for fall damage, and flying into a
+    wall hurts by 10 times the sideways speed lost less 3. The flight (`McElytra`) is this port's own model tuned to the
+    wiki's figures, not the game's: lift across the motion in proportion to the speed along the look, drag, and the
+    motion turned toward the look, so level flight goes about 10 blocks per block lost at about 12 m/s and a dive tops
+    out near 68 m/s. A firework rocket used while gliding is spent and pulls toward 33.5 blocks a second along the look
+    for 10 (flight + 1) ticks plus up to 11 (`entity.firework_rocket.launch`). Other players see wings on the back
+    (`McPlayerModel::BuildWings`: two 10 by 20 by 2 boxes from `equipment/wings/elytra.png`, hung from behind the
+    shoulders and fanned 15 degrees, matching the vanilla husk in `ref_elytra_back.png`), and a glider lying along the
+    look, head bent back, wings spread. Test `McPlayer.Elytra`; shots `Saved/Shots/elytra_back.png` and
+    `elytra_glide.png` (`-McGlide`, `-McSelfShot` with `-McSelfShotYaw` and `-McSelfShotRise`). Not done: the rocket
+    entity and its trail, rockets' explosion damage, the wind sound, the camera roll, wings on armour stands and mobs,
+    and the server checking the glide.
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

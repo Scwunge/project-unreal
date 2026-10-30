@@ -700,6 +700,39 @@ void AMcPlayerController::StartDevScreenshot()
 			}), UseDelay, false);
 		}
 	}
+	// -McCast=seconds: the host's player takes a fishing rod into the selected slot and casts it after that long.
+	float CastDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McCast="), CastDelay))
+	{
+		FTimerHandle CastTimer;
+		GetWorldTimerManager().SetTimer(CastTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Angler = Cast<AMcPlayerPawn>(GetPawn()); Angler && Angler->Data)
+			{
+				Angler->Data->Inventory->Set(Angler->Data->SelectedSlot, FMcItemStack(FName("minecraft:fishing_rod"), 1));
+				Angler->RequestUseItem();
+				UE_LOG(LogMcClient, Display, TEXT("Cast a fishing rod"));
+			}
+		}), FMath::Max(CastDelay, 0.1f), false);
+	}
+	// -McGlide=seconds: the host's player puts on elytra and, after that long, starts gliding where they are.
+	float GlideDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McGlide="), GlideDelay))
+	{
+		if (AMcPlayerPawn* Glider = Cast<AMcPlayerPawn>(GetPawn()); Glider && Glider->Data && Glider->Data->Armor)
+		{
+			Glider->Data->Armor->Set(1, FMcItemStack(FName("minecraft:elytra"), 1));
+		}
+		FTimerHandle GlideTimer;
+		GetWorldTimerManager().SetTimer(GlideTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Glider = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				Glider->StartGlide();
+				UE_LOG(LogMcClient, Display, TEXT("Gliding"));
+			}
+		}), FMath::Max(GlideDelay, 0.1f), false);
+	}
 	// -McPlaceHeld=x,y,z,seconds: puts the held block at that spot after that long, as a placing hand would.
 	FString PlaceSpec;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-McPlaceHeld="), PlaceSpec, /*bShouldStopOnSeparator=*/ false))

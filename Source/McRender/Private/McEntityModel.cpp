@@ -11,7 +11,9 @@
 #include "McRenderTextures.h"
 #include "McSkyComponent.h"
 #include "Engine/Texture2DArray.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
@@ -1017,12 +1019,13 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Count = InCount;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
+	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsBanner = Kind == TEXT("mc:banner");
 	if (bIsBanner)
 	{
 		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
 	}
-	Model = bIsItem || bIsArrow || bIsBanner ? nullptr : McEntityModel::Find(Kind);
+	Model = bIsItem || bIsArrow || bIsBobber || bIsBanner ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	BlockMaterial = nullptr;
 	FlashMaterial = nullptr;
@@ -1037,7 +1040,89 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || bIsArrow || bIsBanner || Model != nullptr;
+	return bIsItem || bIsArrow || bIsBobber || bIsBanner || Model != nullptr;
+}
+
+void UMcEntityModelComponent::BuildBobber(McPlayerModel::FMeshData& Out) const
+{
+	const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	if (!Player || !Player->PlayerCameraManager)
+	{
+		return;
+	}
+	const FVector CameraAt = Player->PlayerCameraManager->GetCameraLocation();
+	const FVector Origin = GetComponentLocation();
+	const double Units = McCoords::UnitsPerBlock;
+	// A quad from four corners (relative to the component), both sides, its picture spanning UVMin to UVMax.
+	const auto Quad = [&Out](const FVector (&Corners)[4], const FVector2D& UVMin, const FVector2D& UVMax, const FColor& Colour)
+	{
+		const FVector Normal = FVector::CrossProduct(Corners[1] - Corners[0], Corners[2] - Corners[0]).GetSafeNormal();
+		const FVector2D UVs[4] = { FVector2D(UVMin.X, UVMin.Y), FVector2D(UVMin.X, UVMax.Y), FVector2D(UVMax.X, UVMax.Y), FVector2D(UVMax.X, UVMin.Y) };
+		for (const double Side : { 1.0, -1.0 })
+		{
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(Corners[Corner]);
+				Out.Normals.Add(Normal * Side);
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(Colour);
+			}
+			if (Side > 0.0)
+			{
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+			else
+			{
+				Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+			}
+		}
+	};
+
+	// The hook's picture, half a block square, turned to the camera, centred on the hitbox.
+	const FVector Centre = FVector(0.0, 0.0, HitboxHeight * 0.5 * Units);
+	const FVector ToCamera = (CameraAt - (Origin + Centre)).GetSafeNormal();
+	// The camera's right and up as it sees the bobber (Unreal's axes turn the left-handed way).
+	FVector Right = FVector::CrossProduct(ToCamera, FVector::UpVector).GetSafeNormal();
+	if (Right.IsNearlyZero())
+	{
+		Right = FVector::RightVector;
+	}
+	const FVector Up = FVector::CrossProduct(Right, ToCamera).GetSafeNormal();
+	const double Half = 0.25 * Units;
+	const FVector Sprite[4] = { Centre - Right * Half + Up * Half, Centre - Right * Half - Up * Half, Centre + Right * Half - Up * Half, Centre + Right * Half + Up * Half };
+	Quad(Sprite, FVector2D(0.0, 0.0), FVector2D(1.0, 1.0), FColor::White);
+
+	if (!RodTip.IsSet())
+	{
+		return;
+	}
+	// The line: from the rod tip to the top of the bobber, hanging slack, as a thin strip turned to the camera and a hair
+	// over a pixel wide at any distance. Its colour comes from a black pixel of the hook's picture.
+	const FVector From = McCoords::BlockToUnreal(*RodTip) - Origin;
+	const FVector To = Centre + FVector(0.0, 0.0, 0.1 * Units);
+	const FVector2D Black(4.5 / 8.0, 4.5 / 8.0);
+	constexpr int32 Segments = 16;
+	const auto At = [&](int32 Index)
+	{
+		// Straight out across, but it drops steeply from the rod and runs in flat to the bobber: the height above the
+		// bobber goes as the square of the way along, so the line never dips below the lower end.
+		const double T = static_cast<double>(Index) / Segments;
+		const double S = 1.0 - T;
+		FVector Point = FMath::Lerp(From, To, T);
+		Point.Z = To.Z + (From.Z - To.Z) * (S * S + S) * 0.5;
+		return Point;
+	};
+	for (int32 Index = 0; Index < Segments; ++Index)
+	{
+		const FVector A = At(Index);
+		const FVector B = At(Index + 1);
+		const FVector Mid = (A + B) * 0.5;
+		const FVector Across = FVector::CrossProduct(B - A, CameraAt - (Origin + Mid)).GetSafeNormal();
+		const double Width = FVector::Dist(CameraAt, Origin + Mid) * 0.0012;
+		const FVector Strip[4] = { A - Across * Width, B - Across * Width, B + Across * Width, A + Across * Width };
+		Quad(Strip, Black, Black, FColor::Black);
+	}
 }
 
 void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
@@ -1083,6 +1168,10 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (bIsBobber)
+	{
+		return McCache::Asset(TEXT("textures/entity/fishing/fishing_hook.png"));
 	}
 	if (bIsBanner)
 	{
@@ -1151,7 +1240,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
-	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow) && bItemFailed))
+	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber) && bItemFailed))
 	{
 		return;
 	}
@@ -1249,9 +1338,25 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	else
 	{
-		if (bIsItem || bIsArrow)
+		if (bIsItem || bIsArrow || bIsBobber)
 		{
 			bItemFailed = true;
+		}
+		return;
+	}
+	if (bIsBobber)
+	{
+		// Its quads change in number as the line comes and goes, so the section is made again each frame.
+		McPlayerModel::FMeshData Data;
+		BuildBobber(Data);
+		TArray<FVector2D> UV1, UV2;
+		UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+		UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+		CreateMeshSection(0, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+		if (NumSections == 0)
+		{
+			SetMaterial(0, Materials[0]);
+			NumSections = 1;
 		}
 		return;
 	}

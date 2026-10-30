@@ -220,6 +220,8 @@ public:
 	void SetSwing(float Pitch, float Roll) { Anim.SwingPitch = Pitch; Anim.SwingRoll = Roll; }
 	// A book's pose (see FAnim).
 	void SetBook(float Open, float FlipA, float FlipB) { Anim.BookOpen = Open; Anim.BookFlip[0] = FlipA; Anim.BookFlip[1] = FlipB; }
+	// A fishing bobber: the rod tip its line runs from (block coordinates), unset if the angler isn't to be seen.
+	void SetFishingLine(const TOptional<FVector>& InTip) { RodTip = InTip; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -261,6 +263,10 @@ private:
 	bool bItemFailed = false;
 	bool bIsItem = false;
 	bool bIsArrow = false;
+	// A fishing bobber: its picture facing the camera, and the line from the rod tip, made again each frame.
+	bool bIsBobber = false;
+	TOptional<FVector> RodTip;
+	void BuildBobber(McPlayerModel::FMeshData& Out) const;
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
 	bool bIsBanner = false;
 	bool bBannerWall = false;

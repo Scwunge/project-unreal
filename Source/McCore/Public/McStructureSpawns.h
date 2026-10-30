@@ -35,6 +35,10 @@ class MCCORE_API FMcStructureSpawns
 public:
 	static FMcStructureSpawns& Get();
 
+	// Whether zones and mobs are taken at all: a running world turns it on (and forgets what an earlier world left), so
+	// the generator, run on its own in tests and tools, leaves nothing behind for a world to pick up.
+	void SetRecording(bool bOn);
+
 	// Adds a zone; one with the same structure and corners is kept once (a structure is built a chunk at a time).
 	void AddZone(const FMcStructureZone& Zone);
 	// Adds a mob unless the key (structure and start) has put its mobs here already.
@@ -42,8 +46,10 @@ public:
 
 	// The zone whose monster list is the one for this block, null if none.
 	bool FindMonsterZone(const FIntVector& Cell, FMcStructureZone& Out) const;
-	// The zones with monsters whose box is within Radius blocks (across) of the point.
-	void GetMonsterZonesNear(double X, double Z, double Radius, TArray<FMcStructureZone>& Out) const;
+	// The zones that reach into a chunk, written for its save, and read back when it is loaded (zones already known are
+	// not added twice). So what a structure spawns outlives the session, as the structure does in the chunks.
+	TArray<uint8> EncodeChunk(FIntPoint Chunk) const;
+	void DecodeChunk(TConstArrayView<uint8> Bytes);
 	// Hands each waiting mob to Take, which returns true when it has been used (so it is dropped).
 	void TakeMobs(TFunctionRef<bool(const FMcStructureMob&)> Take);
 	// Forgets everything (a new world, or a test).
@@ -54,4 +60,5 @@ private:
 	TArray<FMcStructureZone> Zones;
 	TArray<FMcStructureMob> Mobs;
 	TSet<FString> MobKeys;
+	bool bRecording = false;
 };

@@ -36,7 +36,7 @@ bool FMcStructureSpawnTest::RunTest(const FString& Parameters)
 		}
 	}
 	FMcStructureSpawns& Spawns = FMcStructureSpawns::Get();
-	Spawns.Clear();
+	Spawns.SetRecording(true);
 	FMcStructureZone Outpost;
 	Outpost.Structure = TEXT("minecraft:pillager_outpost");
 	Outpost.Min = FIntVector(90, 0, 90);
@@ -50,9 +50,16 @@ bool FMcStructureSpawnTest::RunTest(const FString& Parameters)
 	FMcStructureZone Found;
 	TestTrue(TEXT("the zone is found inside"), Spawns.FindMonsterZone(FIntVector(95, 3, 95), Found));
 	TestFalse(TEXT("and not outside"), Spawns.FindMonsterZone(FIntVector(60, 3, 60), Found));
-	TArray<FMcStructureZone> Near;
-	Spawns.GetMonsterZonesNear(64.0, 64.0, 128.0, Near);
-	TestEqual(TEXT("added once however often it is built"), Near.Num(), 1);
+	// A chunk's save carries the zones that reach it, once, and loading it brings them back.
+	const TArray<uint8> Saved = Spawns.EncodeChunk(FIntPoint(5, 5));
+	TestTrue(TEXT("the chunk under the outpost has it"), !Saved.IsEmpty());
+	TestTrue(TEXT("a chunk away from it has none"), Spawns.EncodeChunk(FIntPoint(0, 0)).IsEmpty());
+	Spawns.Clear();
+	TestFalse(TEXT("forgotten"), Spawns.FindMonsterZone(FIntVector(95, 3, 95), Found));
+	Spawns.DecodeChunk(Saved);
+	Spawns.DecodeChunk(Saved);
+	TestTrue(TEXT("and back with the chunk"), Spawns.FindMonsterZone(FIntVector(95, 3, 95), Found) && Found.Monsters.Num() == 1 && Found.Monsters[0].Kind == FName(TEXT("minecraft:pillager")));
+	TestTrue(TEXT("not twice"), Spawns.EncodeChunk(FIntPoint(5, 5)) == Saved);
 
 	FMcStructureMob Witch;
 	Witch.Kind = TEXT("minecraft:witch");
@@ -62,8 +69,8 @@ bool FMcStructureSpawnTest::RunTest(const FString& Parameters)
 
 	FMcEntityHost Host(World, 1);
 	const TArray<FVector> Players = { FVector(5.5, 1.0, 5.5) };
-	// Close enough for the zone's edge to be 85 blocks off.
-	const TArray<FVector> Near2 = { FVector(64.5, 1.0, 64.5) };
+	// A player 25 to 48 blocks from the outpost's middle has the ring cross it now and then.
+	const TArray<FVector> Near2 = { FVector(64.5, 1.0, 98.5) };
 	for (int32 Tick = 0; Tick < 60; ++Tick)
 	{
 		Host.Tick(Players, 6000.0);
@@ -89,7 +96,7 @@ bool FMcStructureSpawnTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("alive after the far-mob sweep"), bWitchLives);
 
-	// With a player some way off, pillagers turn up (in the outpost, where the spawner is sent half the time).
+	// Pillagers come where the ordinary spawning ring falls inside the outpost: a player right beside it.
 	for (int32 Tick = 0; Tick < 6000; ++Tick)
 	{
 		Host.Tick(Near2, 6000.0);
@@ -103,7 +110,7 @@ bool FMcStructureSpawnTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("some came"), Pillagers >= 1);
-	Spawns.Clear();
+	Spawns.SetRecording(false);
 	return true;
 }
 

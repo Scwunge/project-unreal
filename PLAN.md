@@ -443,6 +443,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 9. **Entity shadows (cross-branch).** Vanilla draws a round, soft shadow under every mob (size from the hitbox width, fading with
    height above the ground and with light). Nothing on `m1/blocks-and-chunks` or here draws one; a vanilla ravager beside ours shows
    the gap. One shared decal pass for all entities, not per-mob code.
+10. **Cat (mob), then the swamp hut's cat.** There is no cat mob yet. The hut places its witch and cat when the structure generates
+    (`McStructureSpawns` already queues the witch; add the cat to the same queue once `minecraft:cat` exists).
 
 ## 7. Decisions
 

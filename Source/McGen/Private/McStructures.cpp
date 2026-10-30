@@ -838,8 +838,26 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 					{
 						FMcSpawnEntry Spawn;
 						Spawn.Kind = FName(*Type);
-						Spawn.Weight = Object->HasField(TEXT("weight")) ? static_cast<int32>(Object->GetNumberField(TEXT("weight"))) : 1;
-						Spawn.MinCount = Spawn.MaxCount = Object->HasField(TEXT("count")) ? static_cast<int32>(Object->GetNumberField(TEXT("count"))) : 1;
+						double Weight = 1.0;
+						Object->TryGetNumberField(TEXT("weight"), Weight);
+						Spawn.Weight = static_cast<int32>(Weight);
+						// The group size is a number, or a uniform range ({"min_inclusive", "max_inclusive"}).
+						Spawn.MinCount = Spawn.MaxCount = 1;
+						double Count = 1.0;
+						const TSharedPtr<FJsonObject>* Range = nullptr;
+						if (Object->TryGetNumberField(TEXT("count"), Count))
+						{
+							Spawn.MinCount = Spawn.MaxCount = static_cast<int32>(Count);
+						}
+						else if (Object->TryGetObjectField(TEXT("count"), Range))
+						{
+							double Low = 1.0;
+							double High = 1.0;
+							(*Range)->TryGetNumberField(TEXT("min_inclusive"), Low);
+							(*Range)->TryGetNumberField(TEXT("max_inclusive"), High);
+							Spawn.MinCount = static_cast<int32>(Low);
+							Spawn.MaxCount = static_cast<int32>(High);
+						}
 						Out.Add(Spawn);
 					}
 				}
@@ -1332,21 +1350,33 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		}
 		const FMcRandom PlaceBase = FMcRandom(Seed).Fork(Start.X, Salt + 3, Start.Y);
 		Jigsaws->Place(Region, *Layout, Context.ClipMin, Context.ClipMax, PlaceBase, Structure.bBeard, FeatureLibrary, SeaLevel);
-		// Its own mobs spawn through the whole of it (the outpost's pillagers).
-		if (!Layout->Pieces.IsEmpty() && (!Structure.OverrideMonsters.IsEmpty() || !Structure.OverrideCreatures.IsEmpty()) && !Structure.bMonstersPerPiece)
+		// Its own mobs spawn through the whole of its box, or inside each piece (the bounding_box setting).
+		if (!Layout->Pieces.IsEmpty() && (!Structure.OverrideMonsters.IsEmpty() || !Structure.OverrideCreatures.IsEmpty()))
 		{
 			FMcStructureZone Zone;
 			Zone.Structure = Structure.Id;
+			Zone.Monsters = Structure.OverrideMonsters;
+			Zone.Creatures = Structure.OverrideCreatures;
 			Zone.Min = Layout->Pieces[0].Min;
 			Zone.Max = Layout->Pieces[0].Max;
 			for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
 			{
-				Zone.Min = FIntVector(FMath::Min(Zone.Min.X, Piece.Min.X), FMath::Min(Zone.Min.Y, Piece.Min.Y), FMath::Min(Zone.Min.Z, Piece.Min.Z));
-				Zone.Max = FIntVector(FMath::Max(Zone.Max.X, Piece.Max.X), FMath::Max(Zone.Max.Y, Piece.Max.Y), FMath::Max(Zone.Max.Z, Piece.Max.Z));
+				if (Structure.bMonstersPerPiece)
+				{
+					Zone.Min = Piece.Min;
+					Zone.Max = Piece.Max;
+					FMcStructureSpawns::Get().AddZone(Zone);
+				}
+				else
+				{
+					Zone.Min = FIntVector(FMath::Min(Zone.Min.X, Piece.Min.X), FMath::Min(Zone.Min.Y, Piece.Min.Y), FMath::Min(Zone.Min.Z, Piece.Min.Z));
+					Zone.Max = FIntVector(FMath::Max(Zone.Max.X, Piece.Max.X), FMath::Max(Zone.Max.Y, Piece.Max.Y), FMath::Max(Zone.Max.Z, Piece.Max.Z));
+				}
 			}
-			Zone.Monsters = Structure.OverrideMonsters;
-			Zone.Creatures = Structure.OverrideCreatures;
-			FMcStructureSpawns::Get().AddZone(Zone);
+			if (!Structure.bMonstersPerPiece)
+			{
+				FMcStructureSpawns::Get().AddZone(Zone);
+			}
 		}
 	}
 	else if (Type == TEXT("mineshaft") || Type == TEXT("stronghold") || Type == TEXT("ocean_monument") || Type == TEXT("fortress") || Type == TEXT("woodland_mansion")

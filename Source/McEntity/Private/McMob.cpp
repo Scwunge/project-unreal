@@ -91,6 +91,10 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 
 		// Villagers walk about at 0.5 of a 0.5 speed attribute and run from what hurts them.
 		Add(TEXT("minecraft:villager"), 0.6f, 1.95f, 20.f, 0.25f, 0.f, 0.f, true, false);
+		// A villager a zombie got: as a zombie, a bite of 3 and burning in the sun.
+		Add(TEXT("minecraft:zombie_villager"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		// The wandering trader walks about and runs from what hurts it.
+		Add(TEXT("minecraft:wandering_trader"), 0.6f, 1.95f, 20.f, 0.35f, 0.f, 0.f, true, false);
 	}
 	return Types;
 }

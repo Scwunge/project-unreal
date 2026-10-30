@@ -232,6 +232,22 @@ namespace McEntityModel
 				Models.Add(Villager.Kind, Villager);
 			}
 			{
+				// A zombie villager is the villager's shape in the zombie's greens; the pictures are chosen per one.
+				FModel Zombie;
+				Zombie.Kind = TEXT("minecraft:zombie_villager");
+				Zombie.Textures = { TEXT("zombie_villager/zombie_villager.png"), TEXT("zombie_villager/type/plains.png") };
+				AddVillager(Zombie);
+				Models.Add(Zombie.Kind, Zombie);
+			}
+			{
+				// The wandering trader wears one picture, laid out as the villager's.
+				FModel Trader;
+				Trader.Kind = TEXT("minecraft:wandering_trader");
+				Trader.Textures = { TEXT("wandering_trader/wandering_trader.png") };
+				AddVillager(Trader);
+				Models.Add(Trader.Kind, Trader);
+			}
+			{
 				// Pieces are cut from the textures' own nets (box sizes read off the picture), placed from minecraft.wiki's models:
 				// the body is a long box along z, the wolf's and the others' laid down as the pig's is.
 				FModel Horse;

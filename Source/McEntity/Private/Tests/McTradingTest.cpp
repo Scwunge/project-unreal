@@ -92,6 +92,76 @@ bool FMcTradingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and how often they were made"), Loaded.GetOffers()[0].Uses, 3);
 	Villager.Restock();
 	TestEqual(TEXT("restocked"), Villager.GetOffers()[0].Uses, 0);
+
+	// What a villager thinks of a player is kept, and runs between its limits.
+	Villager.AddReputation(TEXT("Alex"), 30);
+	Villager.AddReputation(TEXT("Alex"), -5);
+	Villager.AddReputation(TEXT("Steve"), -500);
+	TestEqual(TEXT("opinion adds up"), Villager.GetReputation(TEXT("Alex")), 25);
+	TestEqual(TEXT("and has a floor"), Villager.GetReputation(TEXT("Steve")), -200);
+	TestEqual(TEXT("a stranger is neutral"), Villager.GetReputation(TEXT("Nobody")), 0);
+	Bytes.Reset();
+	{
+		FMemoryWriter Writer(Bytes);
+		Villager.Serialize(Writer);
+	}
+	FMcVillager Remembered(*Type);
+	FMemoryReader RememberedReader(Bytes);
+	TestTrue(TEXT("it loads again"), Remembered.Serialize(RememberedReader));
+	TestEqual(TEXT("with the opinion"), Remembered.GetReputation(TEXT("Alex")), 25);
+
+	// A zombie villager keeps the villager, and needs weakness and a golden apple to be cured.
+	const FMcMobType* ZombieType = FMcMobType::Find(FMcZombieVillager::StaticType());
+	if (TestNotNull(TEXT("zombie villager type"), ZombieType))
+	{
+		FMcZombieVillager Zombie(*ZombieType);
+		Zombie.Become(Villager);
+		TestEqual(TEXT("it keeps the profession"), Zombie.GetProfession(), FName(TEXT("minecraft:farmer")));
+		TestFalse(TEXT("no cure without weakness"), Zombie.StartCure(TEXT("Alex"), 10));
+		Zombie.Weaken();
+		TestTrue(TEXT("weakened, the apple starts it"), Zombie.StartCure(TEXT("Alex"), 3));
+		TestFalse(TEXT("only once"), Zombie.StartCure(TEXT("Alex"), 3));
+		TestFalse(TEXT("not done yet"), Zombie.IsCured());
+		for (int32 Tick = 0; Tick < 3; ++Tick)
+		{
+			Zombie.AdvanceCure();
+		}
+		TestTrue(TEXT("done after the ticks"), Zombie.IsCured());
+		TArray<uint8> ZombieBytes;
+		{
+			FMemoryWriter Writer(ZombieBytes);
+			Zombie.Serialize(Writer);
+		}
+		FMcZombieVillager ZombieLoaded(*ZombieType);
+		FMemoryReader ZombieReader(ZombieBytes);
+		TestTrue(TEXT("it loads"), ZombieLoaded.Serialize(ZombieReader));
+		TestTrue(TEXT("still curing"), ZombieLoaded.IsCured());
+		FMcVillager Cured(*Type);
+		FMemoryReaderView VillagerReader(ZombieLoaded.GetVillagerData());
+		TestTrue(TEXT("the villager comes back"), Cured.Serialize(VillagerReader));
+		TestEqual(TEXT("with its trades"), Cured.GetOffers().Num(), Villager.GetOffers().Num());
+		TestEqual(TEXT("and its opinions"), Cured.GetReputation(TEXT("Alex")), 25);
+	}
+
+	// The wandering trader sells nine trades from its three sets, and keeps them in a save.
+	const FMcMobType* TraderType = FMcMobType::Find(FMcWanderingTrader::StaticType());
+	if (TestNotNull(TEXT("trader type"), TraderType))
+	{
+		FMcWanderingTrader Trader(*TraderType);
+		Trader.Id = 5;
+		TestTrue(TEXT("it has trades"), Trader.GetOffers().Num() > 0);
+		Trader.GetOffers()[0].Uses = 1;
+		TArray<uint8> TraderBytes;
+		{
+			FMemoryWriter Writer(TraderBytes);
+			Trader.Serialize(Writer);
+		}
+		FMcWanderingTrader TraderLoaded(*TraderType);
+		FMemoryReader TraderReader(TraderBytes);
+		TestTrue(TEXT("it loads"), TraderLoaded.Serialize(TraderReader));
+		TestEqual(TEXT("with the trades"), TraderLoaded.GetOffers().Num(), Trader.GetOffers().Num());
+		TestEqual(TEXT("and their use"), TraderLoaded.GetOffers()[0].Uses, 1);
+	}
 	return true;
 }
 

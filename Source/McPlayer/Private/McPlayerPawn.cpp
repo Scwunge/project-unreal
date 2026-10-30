@@ -480,7 +480,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : UseReach;
 		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
 		{
-			if (It->IsHidden() || (It->Kind != TEXT("minecraft:villager") && It->Kind != TEXT("minecraft:wandering_trader")))
+			if (It->IsHidden() || (It->Kind != TEXT("minecraft:villager") && It->Kind != TEXT("minecraft:wandering_trader") && It->Kind != TEXT("minecraft:zombie_villager")))
 			{
 				continue;
 			}

@@ -9,6 +9,8 @@
 #include "McPortal.h"
 #include "McVillager.h"
 #include "McCache.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -260,14 +262,86 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
 		return Use && World.IsValid() && Use->Use(User, *World, Pos);
 	};
-	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage)
 	{
-		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage);
+		if (!World.IsValid())
+		{
+			return false;
+		}
+		// A villager that is hit thinks the less of whoever did it.
+		FMcMob* Target = World->FindMob(Eye, Look, static_cast<float>(Reach));
+		if (Target && Target->GetType() == FMcVillager::StaticType() && WeakAttacker.IsValid())
+		{
+			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
+		}
+		return World->AttackMobs(Eye, Look, Reach, Damage);
 	};
 	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
 	{
 		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
-		if (!Mob || Mob->GetType() != FMcVillager::StaticType())
+		if (!Mob)
+		{
+			return false;
+		}
+		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
+		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
+		const int32 Id = Mob->Id;
+		const FIntVector Where(FMath::FloorToInt(Mob->Body.Position.X), FMath::FloorToInt(Mob->Body.Position.Y), FMath::FloorToInt(Mob->Body.Position.Z));
+		if (Mob->GetType() == FMcZombieVillager::StaticType())
+		{
+			// A splash potion of weakness, then a golden apple, cure it; the player's hand gives up one of each.
+			FMcZombieVillager& Zombie = static_cast<FMcZombieVillager&>(*Mob);
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (Held.Item == TEXT("minecraft:splash_potion") && !Zombie.IsWeakened())
+			{
+				const TSharedPtr<FJsonValue> Contents = Held.Get(TEXT("minecraft:potion_contents"));
+				FString Potion;
+				if (Contents.IsValid() && Contents->Type == EJson::Object && Contents->AsObject()->TryGetStringField(TEXT("potion"), Potion) && Potion.Contains(TEXT("weakness")))
+				{
+					Zombie.Weaken();
+					UseOne();
+					return true;
+				}
+			}
+			if (Held.Item == TEXT("minecraft:golden_apple") && Zombie.IsWeakened() && !Zombie.IsCuring()
+				&& Zombie.StartCure(Player, FMath::RandRange(McZombieVillager::MinCureTicks, McZombieVillager::MaxCureTicks)))
+			{
+				UseOne();
+				return true;
+			}
+			return false;
+		}
+		if (Mob->GetType() == FMcWanderingTrader::StaticType())
+		{
+			FMcWanderingTrader& Trader = static_cast<FMcWanderingTrader&>(*Mob);
+			User.Data->OpenTrading(Where, TEXT("Wandering Trader"), Trader.GetOffers(), 0, 1, 0, false,
+				[WeakWorld, Id](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+				{
+					FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+					FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+					if (!Found || Found->GetType() != FMcWanderingTrader::StaticType())
+					{
+						return;
+					}
+					FMcWanderingTrader& Seller = static_cast<FMcWanderingTrader&>(*Found);
+					if (Seller.GetOffers().IsValidIndex(Index))
+					{
+						++Seller.GetOffers()[Index].Uses;
+					}
+					OutOffers = Seller.GetOffers();
+				});
+			return true;
+		}
+		if (Mob->GetType() != FMcVillager::StaticType())
 		{
 			return false;
 		}
@@ -276,14 +350,9 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			return false;
 		}
-		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
 		FString Profession = McCache::PathOf(Villager.GetProfession().ToString());
 		Profession = FText::FromString(Profession.Left(1)).ToUpper().ToString() + Profession.Mid(1);
-		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
-		// Trades go on with the villager as it is when each is made; it is looked for again by its id then.
-		const int32 Id = Villager.Id;
-		User.Data->OpenTrading(FIntVector(FMath::FloorToInt(Villager.Body.Position.X), FMath::FloorToInt(Villager.Body.Position.Y), FMath::FloorToInt(Villager.Body.Position.Z)),
-			Profession + TEXT(" - ") + McVillager::GetLevelName(Villager.GetLevel()), Villager.GetOffers(), Villager.GetReputation(Player), Villager.GetLevel(), Villager.GetXp(), true,
+		User.Data->OpenTrading(Where, Profession + TEXT(" - ") + McVillager::GetLevelName(Villager.GetLevel()), Villager.GetOffers(), Villager.GetReputation(Player), Villager.GetLevel(), Villager.GetXp(), true,
 			[WeakWorld, Id, Player](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
 			{
 				FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;

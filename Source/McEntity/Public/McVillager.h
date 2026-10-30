@@ -53,6 +53,8 @@ namespace McVillager
 	constexpr int32 BellRadius = 48;
 	// How long a bell rung for an alarm keeps the villagers at it.
 	constexpr int32 AlarmTicks = 1200;
+	// What hitting a villager lowers its opinion of the player by.
+	constexpr int32 HitReputation = 25;
 	MCENTITY_API EActivity GetActivityAt(int32 TimeOfDay, bool bAlarm);
 
 	// Whether the block is a bed (either half) and whether it is a bell.
@@ -61,6 +63,21 @@ namespace McVillager
 
 	// The nearest block within Radius across and Height up and down for which Is (given its name and place) gives true; false if none.
 	MCENTITY_API bool FindNearestBlock(const FMcBlockWorld& World, const FIntVector& Origin, int32 Radius, int32 Height, TFunctionRef<bool(FName, const FIntVector&)> Is, FIntVector& Out);
+}
+
+namespace McZombieVillager
+{
+	// Curing takes between 3 and 5 minutes once a weakened zombie villager has eaten a golden apple.
+	constexpr int32 MinCureTicks = 3600;
+	constexpr int32 MaxCureTicks = 6000;
+	// What a cure raises the curing player's standing with the villager by (its price discount, and the villagers around hear).
+	constexpr int32 CureReputation = 20;
+}
+
+namespace McWanderingTrader
+{
+	// It leaves after this long (48000 ticks, two days).
+	constexpr int32 StayTicks = 48000;
 }
 
 class MCENTITY_API FMcVillager : public FMcMob
@@ -148,3 +165,70 @@ private:
 	bool bHasBell = false;
 	FIntVector Bell = FIntVector::ZeroValue;
 };
+
+// A villager a zombie got (minecraft.wiki, "Zombie Villager"): it keeps what the villager was (its look, trades and
+// what the players thought of it), to give back when it is cured. Curing needs it weakened (a splash potion of
+// weakness) and then fed a golden apple; it shakes for 3 to 5 minutes and is a villager again.
+class MCENTITY_API FMcZombieVillager : public FMcMob
+{
+public:
+	explicit FMcZombieVillager(const FMcMobType& InType);
+	static const FName& StaticType();
+
+	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
+
+	// Takes what the villager was.
+	void Become(FMcVillager& Villager);
+	// The saved villager, to make again on a cure; empty for a zombie villager that was never one.
+	const TArray<uint8>& GetVillagerData() const { return VillagerData; }
+
+	FName GetVariant() const { return Variant; }
+	void SetVariant(FName InVariant) { Variant = InVariant; }
+	FName GetProfession() const { return Profession; }
+	int32 GetLevel() const { return Level; }
+
+	bool IsWeakened() const { return bWeakened; }
+	void Weaken() { bWeakened = true; }
+	bool IsCuring() const { return CureTicks > 0; }
+	// Whether it has shaken for long enough.
+	bool IsCured() const { return bCuring && CureTicks <= 0; }
+	// A golden apple was eaten by a weakened one: the cure starts, for the player (by name) who fed it. False if it
+	// can't (not weakened, or already curing).
+	bool StartCure(const FString& InCurer, int32 Ticks);
+	const FString& GetCurer() const { return Curer; }
+	// One tick of the shaking (Tick does it too).
+	void AdvanceCure() { if (bCuring && CureTicks > 0) { --CureTicks; } }
+
+private:
+	FName Variant;
+	FName Profession;
+	int32 Level = 1;
+	TArray<uint8> VillagerData;
+	bool bWeakened = false;
+	bool bCuring = false;
+	int32 CureTicks = 0;
+	FString Curer;
+};
+
+// The wandering trader (minecraft.wiki, "Wandering Trader"): sells from three sets of trades (what it buys for
+// emeralds, and the common and uncommon things it sells), has no levels, no restock and no standing with players, and
+// leaves two days after it came.
+class MCENTITY_API FMcWanderingTrader : public FMcMob
+{
+public:
+	explicit FMcWanderingTrader(const FMcMobType& InType);
+	static const FName& StaticType();
+
+	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
+
+	// What it sells: made when first asked.
+	TArray<McTrading::FOffer>& GetOffers();
+	int32 GetStayTicksLeft() const { return StayTicks; }
+
+private:
+	TArray<McTrading::FOffer> Offers;
+	int32 StayTicks = McWanderingTrader::StayTicks;
+};
+

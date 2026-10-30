@@ -89,6 +89,13 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 			VillagerLevel = Villager.GetLevel();
 			bBaby = Villager.IsBaby();
 		}
+		if (Kind == FMcZombieVillager::StaticType())
+		{
+			const FMcZombieVillager& Zombie = static_cast<const FMcZombieVillager&>(Entity);
+			Variant = Zombie.GetVariant();
+			Profession = Zombie.GetProfession();
+			VillagerLevel = Zombie.GetLevel();
+		}
 		Swelling = Mob.Type.bSwells ? FMath::Clamp(static_cast<float>(Mob.SwellTicks) / (FMcMob::FuseTicks - 2), 0.0f, 1.0f) : 0.0f;
 	}
 	ApplyLook();

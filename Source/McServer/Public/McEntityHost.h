@@ -13,6 +13,7 @@ class AActor;
 class UWorld;
 class FMcBlockWorld;
 class FMcMob;
+class FMcVillager;
 
 class MCSERVER_API FMcEntityHost
 {
@@ -69,6 +70,8 @@ public:
 	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage);
 	// The nearest living mob the ray from the eyes enters within Reach, or null.
 	FMcMob* FindMob(const FVector& Eye, const FVector& Direction, float Reach);
+	// A zombie got the villager: a zombie villager stands where it did, with what it was kept for a cure. Null if it is gone.
+	FMcMob* Infect(FMcVillager& Villager);
 
 	// The kind a weighted spawn list gives for a roll in [0, total weight); none for an empty list.
 	static FName PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll);
@@ -80,6 +83,8 @@ public:
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
 
 private:
+	// The zombie villagers that have shaken long enough turn back into the villagers they were.
+	void FinishCures();
 	void SpawnHostiles(const TArray<FVector>& Players);
 	void SyncProxies();
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.

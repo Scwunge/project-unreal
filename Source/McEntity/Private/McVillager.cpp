@@ -4,6 +4,8 @@
 #include "McCache.h"
 #include "McRandom.h"
 #include "Serialization/Archive.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 
 namespace
 {
@@ -564,6 +566,134 @@ bool FMcVillager::Serialize(FArchive& Ar)
 		const int32 Saved = GrowthTicks;
 		SetBaby(bSavedBaby);
 		GrowthTicks = bSavedBaby ? FMath::Max(1, Saved) : 0;
+	}
+	return !Ar.IsError();
+}
+
+const FName& FMcZombieVillager::StaticType()
+{
+	static const FName Name(TEXT("minecraft:zombie_villager"));
+	return Name;
+}
+
+FMcZombieVillager::FMcZombieVillager(const FMcMobType& InType)
+	: FMcMob(InType)
+	, Variant(TEXT("plains"))
+	, Profession(FMcVillager::NoProfession())
+{
+}
+
+void FMcZombieVillager::Become(FMcVillager& Villager)
+{
+	Variant = Villager.GetVariant();
+	Profession = Villager.GetProfession();
+	Level = Villager.GetLevel();
+	VillagerData.Reset();
+	FMemoryWriter Writer(VillagerData);
+	Villager.Serialize(Writer);
+}
+
+bool FMcZombieVillager::StartCure(const FString& InCurer, int32 Ticks)
+{
+	if (!bWeakened || bCuring)
+	{
+		return false;
+	}
+	bCuring = true;
+	CureTicks = FMath::Max(1, Ticks);
+	Curer = InCurer;
+	return true;
+}
+
+void FMcZombieVillager::Tick(FMcEntityManager& Manager)
+{
+	AdvanceCure();
+	FMcMob::Tick(Manager);
+}
+
+bool FMcZombieVillager::Serialize(FArchive& Ar)
+{
+	if (!FMcMob::Serialize(Ar))
+	{
+		return false;
+	}
+	FString VariantText = Variant.ToString();
+	FString ProfessionText = Profession.ToString();
+	int32 NumBytes = VillagerData.Num();
+	Ar << VariantText << ProfessionText << Level << bWeakened << bCuring << CureTicks << Curer << NumBytes;
+	if (Ar.IsLoading())
+	{
+		if (NumBytes < 0 || NumBytes > 1 << 20 || Level < 1 || Level > McVillager::MaxLevel || VariantText.IsEmpty() || ProfessionText.IsEmpty() || Ar.IsError())
+		{
+			return false;
+		}
+		Variant = FName(*VariantText);
+		Profession = FName(*ProfessionText);
+		VillagerData.SetNumUninitialized(NumBytes);
+	}
+	if (NumBytes > 0)
+	{
+		Ar.Serialize(VillagerData.GetData(), NumBytes);
+	}
+	return !Ar.IsError();
+}
+
+const FName& FMcWanderingTrader::StaticType()
+{
+	static const FName Name(TEXT("minecraft:wandering_trader"));
+	return Name;
+}
+
+FMcWanderingTrader::FMcWanderingTrader(const FMcMobType& InType)
+	: FMcMob(InType)
+{
+}
+
+TArray<McTrading::FOffer>& FMcWanderingTrader::GetOffers()
+{
+	if (Offers.IsEmpty())
+	{
+		FMcRandom Rolls(static_cast<uint64>(Id) * 7919u + 29u);
+		for (const TCHAR* Set : { TEXT("wandering_trader/buying"), TEXT("wandering_trader/common"), TEXT("wandering_trader/uncommon") })
+		{
+			McTrading::RollSet(Set, FName(), Rolls, Offers);
+		}
+	}
+	return Offers;
+}
+
+void FMcWanderingTrader::Tick(FMcEntityManager& Manager)
+{
+	if (--StayTicks <= 0)
+	{
+		bRemoved = true;
+		return;
+	}
+	FMcMob::Tick(Manager);
+}
+
+bool FMcWanderingTrader::Serialize(FArchive& Ar)
+{
+	if (!FMcMob::Serialize(Ar))
+	{
+		return false;
+	}
+	int32 NumOffers = Offers.Num();
+	Ar << StayTicks << NumOffers;
+	if (Ar.IsLoading())
+	{
+		if (NumOffers < 0 || NumOffers > 64 || StayTicks < 0)
+		{
+			return false;
+		}
+		Offers.SetNum(NumOffers);
+	}
+	for (McTrading::FOffer& Offer : Offers)
+	{
+		if (!Offer.Serialize(Ar))
+		{
+			return false;
+		}
 	}
 	return !Ar.IsError();
 }

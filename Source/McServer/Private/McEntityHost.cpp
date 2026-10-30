@@ -255,6 +255,16 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 		Villager->SetVariant(GetVillagerVariant(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))));
 		Mob = Villager;
 	}
+	else if (Kind == FMcZombieVillager::StaticType())
+	{
+		FMcZombieVillager* Zombie = new FMcZombieVillager(*Type);
+		Zombie->SetVariant(GetVillagerVariant(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))));
+		Mob = Zombie;
+	}
+	else if (Kind == FMcWanderingTrader::StaticType())
+	{
+		Mob = new FMcWanderingTrader(*Type);
+	}
 	else
 	{
 		Mob = new FMcMob(*Type);
@@ -303,6 +313,68 @@ FName FMcEntityHost::GetBiomeName(const FIntVector& Cell) const
 		return NAME_None;
 	}
 	return Biomes.GetName(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15));
+}
+
+FMcMob* FMcEntityHost::Infect(FMcVillager& Villager)
+{
+	if (Villager.bRemoved)
+	{
+		return nullptr;
+	}
+	FMcMob* Made = SpawnMob(FMcZombieVillager::StaticType(), Villager.Body.Position);
+	if (!Made)
+	{
+		return nullptr;
+	}
+	FMcZombieVillager& Zombie = static_cast<FMcZombieVillager&>(*Made);
+	Zombie.Become(Villager);
+	Zombie.Body.Velocity = Villager.Body.Velocity;
+	Zombie.Yaw = Villager.Yaw;
+	Villager.bRemoved = true;
+	return Made;
+}
+
+void FMcEntityHost::FinishCures()
+{
+	TArray<FMcZombieVillager*> Done;
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->bRemoved && Entity->GetType() == FMcZombieVillager::StaticType() && static_cast<FMcZombieVillager&>(*Entity).IsCured())
+		{
+			Done.Add(static_cast<FMcZombieVillager*>(Entity.Get()));
+		}
+	}
+	for (FMcZombieVillager* Zombie : Done)
+	{
+		FMcMob* Made = SpawnMob(FMcVillager::StaticType(), Zombie->Body.Position);
+		if (!Made)
+		{
+			continue;
+		}
+		FMcVillager& Villager = static_cast<FMcVillager&>(*Made);
+		if (!Zombie->GetVillagerData().IsEmpty())
+		{
+			FMemoryReaderView Reader(Zombie->GetVillagerData());
+			if (!Villager.Serialize(Reader))
+			{
+				// A damaged record: the villager it was is lost, so a plain one in its look comes back.
+				Villager.SetVariant(Zombie->GetVariant());
+			}
+		}
+		else
+		{
+			Villager.SetVariant(Zombie->GetVariant());
+		}
+		Villager.Body.Position = Zombie->Body.Position;
+		Villager.Body.Velocity = Zombie->Body.Velocity;
+		Villager.Yaw = Zombie->Yaw;
+		// The player who cured it is thanked with cheaper trades.
+		if (!Zombie->GetCurer().IsEmpty())
+		{
+			Villager.AddReputation(Zombie->GetCurer(), McZombieVillager::CureReputation);
+		}
+		Zombie->bRemoved = true;
+	}
 }
 
 FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const
@@ -794,6 +866,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 		UE_LOG(LogTemp, Log, TEXT("Entities: %d, hostile %d"), Manager.GetEntities().Num(), NumHostile());
 	}
 #endif
+	FinishCures();
 	Manager.Tick();
 	SyncProxies();
 }

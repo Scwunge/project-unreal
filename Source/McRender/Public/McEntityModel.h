@@ -72,6 +72,9 @@ namespace McEntityModel
 		// A texture file for each layer, under textures/entity/.
 		TArray<FString> Textures;
 		TArray<FPart> Parts;
+		// The pictures are laid over each other into one (a villager's biome type, profession and level over its base) and the
+		// whole model is drawn from that, as layer 0.
+		bool bComposite = false;
 		// Zombies hold their arms out in front.
 		bool bArmsForward = false;
 		// Layers (bit per layer) drawn see-through, so a slime's outer shell shows what is inside.

@@ -99,6 +99,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetHurtCount(HurtCount);
 		Model->SetHitboxWidth(Size.X);
 		Model->SetSwelling(Swelling);
+		Model->SetVillagerLook(Variant, Profession, VillagerLevel, bBaby);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

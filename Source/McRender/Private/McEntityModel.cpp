@@ -71,25 +71,19 @@ namespace McEntityModel
 				{ bOwnLeftLimbs ? Box(16, 48, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize) : Box(0, 16, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize, 0.0f, true) }));
 		}
 
-		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a robe, arms folded across the chest and
-		// two legs. Layers 1 to 3 are the same head hat and robe cut from the biome type, profession and level pictures.
-		void AddVillager(FModel& Model, int32 NumLayers)
+		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a hat, a robe, arms folded across the chest
+		// and two legs. The biome type, profession and level pictures are laid over the base one into a single picture (the
+		// game draws each over the whole body in turn, which comes to the same), so the hat and robe are cut from it as well.
+		void AddVillager(FModel& Model)
 		{
 			Model.TextureSize = FIntPoint(64, 64);
 			Model.BaseWidth = 0.6f;
-			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2) }));
+			Model.bComposite = true;
+			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2), Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }));
 			Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 20, -4, -12, -3, 8, 12, 6), Box(0, 38, -4, -18, -3, 8, 18, 6, 0.5f) }));
 			Model.Parts.Add(Part(ERole::Static, FVector(0, 21, 1), { Box(44, 22, -8, -6, -2, 4, 8, 4), Box(44, 22, 4, -6, -2, 4, 8, 4, 0.0f, true), Box(40, 38, -4, -6, -2, 8, 4, 4) }, -0.75f));
 			Model.Parts.Add(Part(ERole::LegRight, FVector(-2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4) }));
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
-			for (int32 Layer = 1; Layer < NumLayers; ++Layer)
-			{
-				Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }, 0, 0, 0, 0, Layer));
-				if (Layer >= 2)
-				{
-					Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(0, 38, -4, -18, -3, 8, 18, 6, 0.51f) }, 0, 0, 0, 0, Layer));
-				}
-			}
 		}
 
 		TMap<FName, FModel> BuildModels()
@@ -231,7 +225,7 @@ namespace McEntityModel
 				FModel Villager;
 				Villager.Kind = TEXT("minecraft:villager");
 				Villager.Textures = { TEXT("villager/villager.png"), TEXT("villager/type/plains.png"), TEXT("villager/profession/farmer.png"), TEXT("villager/profession_level/stone.png") };
-				AddVillager(Villager, 4);
+				AddVillager(Villager);
 				Models.Add(Villager.Kind, Villager);
 			}
 			return Models;
@@ -597,6 +591,23 @@ namespace
 		return Texture;
 	}
 
+	// The pictures laid over each other, kept like LoadCached's (a villager's look is the same for every villager that has it).
+	UTexture2DArray* LoadCompositeCached(const TArray<FString>& Paths, FIntPoint& OutSize)
+	{
+		const FString Key = FString::Join(Paths, TEXT("|")) + TEXT("#composite");
+		if (const TStrongObjectPtr<UTexture2DArray>* Found = TextureCache().Find(Key))
+		{
+			OutSize = SizeCache().FindRef(Key);
+			return Found->Get();
+		}
+		int32 Width = 0, Height = 0;
+		UTexture2DArray* Texture = McRenderTextures::LoadPngLayersAsArray(GetTransientPackage(), Paths, Width, Height);
+		TextureCache().Add(Key, TStrongObjectPtr<UTexture2DArray>(Texture));
+		SizeCache().Add(Key, FIntPoint(Width, Height));
+		OutSize = FIntPoint(Width, Height);
+		return Texture;
+	}
+
 	// The texture of an item: its own picture, or its block's side, top or front.
 	FString FindItemTexture(FName Item)
 	{
@@ -749,7 +760,20 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		return nullptr;
 	}
 	FIntPoint Size;
-	UTexture2DArray* Texture = LoadCached(Path, Size);
+	UTexture2DArray* Texture = nullptr;
+	if (Model && Model->bComposite)
+	{
+		TArray<FString> Paths;
+		for (int32 Index = 0; Index < FMath::Max(Model->Textures.Num(), TextureOverrides.Num()); ++Index)
+		{
+			Paths.Add(GetTexturePath(Index));
+		}
+		Texture = LoadCompositeCached(Paths, Size);
+	}
+	else
+	{
+		Texture = LoadCached(Path, Size);
+	}
 	if (!Texture)
 	{
 		return nullptr;
@@ -884,7 +908,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		return;
 	}
-	const int32 NumLayers = Model->Textures.Num();
+	const int32 NumLayers = Model->bComposite ? 1 : Model->Textures.Num();
 	// Every other tenth of the fuse the creeper goes white.
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;

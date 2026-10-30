@@ -50,41 +50,99 @@ public:
 	void DropInventory();
 	// What the window says when a player opens it.
 	virtual FString GetInventoryTitle() const { return TEXT("Chest"); }
-	// Where the rider's feet are.
-	virtual FVector GetSeat() const = 0;
-	// Called every tick by the pawn that rides it.
-	void SetRider(float Forward, float Strafe, float LookYaw)
+	// How many it carries: the player who drives it, and whoever else sits in (a boat takes two).
+	virtual int32 GetCapacity() const { return 1; }
+	// Where the feet of the one in seat Index are (0 the driver's).
+	virtual FVector GetSeat(int32 Index = 0) const = 0;
+	// Called every tick by each pawn that rides it, Key naming the pawn: it takes a seat if there is one free and the
+	// first in is the driver, whose keys and look steer. False if it was full. The key of a lone rider can be left 0.
+	bool SetRider(float Forward, float Strafe, float LookYaw, int32 Key = 0)
 	{
-		RiderTicks = RiderGraceTicks;
-		RiderForward = Forward;
-		RiderStrafe = Strafe;
-		RiderYaw = LookYaw;
+		FSeat* Seat = Seats.FindByPredicate([Key](const FSeat& S) { return S.Key == Key; });
+		if (!Seat)
+		{
+			if (!HasFreeSeat())
+			{
+				return false;
+			}
+			Seat = &Seats.Add_GetRef(FSeat{ Key });
+		}
+		Seat->Ticks = RiderGraceTicks;
+		Seat->Forward = Forward;
+		Seat->Strafe = Strafe;
+		Seat->Yaw = LookYaw;
+		UpdateDriver();
+		return true;
 	}
 	// The rider got off (or was thrown off).
-	void ClearRider() { RiderTicks = 0; }
-	bool HasRider() const { return RiderTicks > 0; }
-	// Set by a powered activator rail: whoever rides is thrown off. The pawn reads and clears it.
-	bool ConsumeEject()
+	void ClearRider(int32 Key = 0)
 	{
-		const bool bWas = bEject;
-		bEject = false;
+		Seats.RemoveAll([Key](const FSeat& S) { return S.Key == Key; });
+		UpdateDriver();
+	}
+	// Whether a player sits in it (the driver is the first in).
+	bool HasRider() const { return Seats.Num() > 0; }
+	// Everyone aboard, players and mobs.
+	int32 GetPassengerCount() const { return Seats.Num() + MobPassengers.Num(); }
+	bool HasFreeSeat() const { return GetPassengerCount() < GetCapacity(); }
+	// Which seat a pawn has, or -1 if none.
+	int32 GetSeatIndex(int32 Key) const { return Seats.IndexOfByPredicate([Key](const FSeat& S) { return S.Key == Key; }); }
+	// Set by a powered activator rail: whoever rides is thrown off. Each pawn reads and clears its own.
+	void EjectRiders()
+	{
+		for (FSeat& Seat : Seats)
+		{
+			Seat.bEject = true;
+		}
+	}
+	bool ConsumeEject(int32 Key = 0)
+	{
+		FSeat* Seat = Seats.FindByPredicate([Key](const FSeat& S) { return S.Key == Key; });
+		const bool bWas = Seat && Seat->bEject;
+		if (Seat)
+		{
+			Seat->bEject = false;
+		}
 		return bWas;
 	}
 
 	static constexpr int32 RiderGraceTicks = 3;
 
 protected:
-	// Counts the rider's time down; call at the top of Tick.
+	// Counts the riders' time down and drops those nobody has told it of for a few ticks; call at the top of Tick.
 	void TickRider()
 	{
-		RiderTicks = FMath::Max(0, RiderTicks - 1);
+		for (FSeat& Seat : Seats)
+		{
+			--Seat.Ticks;
+		}
+		Seats.RemoveAll([](const FSeat& S) { return S.Ticks <= 0; });
+		UpdateDriver();
+	}
+	// Whose keys steer: the first seat's, or nobody's.
+	void UpdateDriver()
+	{
+		const FSeat* Driver = Seats.Num() > 0 ? &Seats[0] : nullptr;
+		RiderForward = Driver ? Driver->Forward : 0.0f;
+		RiderStrafe = Driver ? Driver->Strafe : 0.0f;
+		RiderYaw = Driver ? Driver->Yaw : 0.0f;
 	}
 
-	int32 RiderTicks = 0;
+	struct FSeat
+	{
+		int32 Key = 0;
+		int32 Ticks = 0;
+		float Forward = 0.0f;
+		float Strafe = 0.0f;
+		float Yaw = 0.0f;
+		bool bEject = false;
+	};
+	TArray<FSeat> Seats;
+	// Mobs sitting in it (see McMob), by entity id, after the players in the order of seats.
+	TArray<int32> MobPassengers;
 	float RiderForward = 0.0f;
 	float RiderStrafe = 0.0f;
 	float RiderYaw = 0.0f;
-	bool bEject = false;
 	// How much it has been hit.
 	float Wear = 0.0f;
 	TSharedPtr<FMcContainer> Inventory;
@@ -124,7 +182,7 @@ public:
 	// How fast a furnace cart drives itself, blocks a tick.
 	static constexpr double FurnaceSpeed = 0.2;
 	virtual bool RunsOnRails() const override { return true; }
-	virtual FVector GetSeat() const override { return Body.Position + FVector(0.0, 0.0, 0.0); }
+	virtual FVector GetSeat(int32 Index = 0) const override { return Body.Position + FVector(0.0, 0.0, 0.0); }
 
 	// The fastest a cart goes along a rail, blocks a tick (8 a second).
 	static constexpr double MaxSpeed = 0.4;
@@ -168,7 +226,8 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool Serialize(FArchive& Ar) override;
 	virtual FName GetItemName() const override;
-	virtual FVector GetSeat() const override;
+	virtual int32 GetCapacity() const override { return 2; }
+	virtual FVector GetSeat(int32 Index = 0) const override;
 
 	// "minecraft:oak", "minecraft:birch" and so on: oak, spruce, birch, jungle, acacia, dark_oak, mangrove, cherry, pale_oak
 	// and bamboo (a raft).

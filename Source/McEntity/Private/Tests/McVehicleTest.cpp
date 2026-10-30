@@ -134,6 +134,30 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("turning left rows the right paddle"), Boat.GetPaddleBits(), 2);
 	}
 
+	// ---- Two riders in a boat, one in a cart ----
+	{
+		FMcBoatEntity Boat;
+		Boat.Yaw = 0.0f;
+		TestEqual(TEXT("a boat carries two"), Boat.GetCapacity(), 2);
+		TestTrue(TEXT("the first sits"), Boat.SetRider(1.0f, 0.0f, 0.0f, 11));
+		const FVector Alone = Boat.GetSeat(0);
+		TestTrue(TEXT("and the second"), Boat.SetRider(0.0f, 1.0f, 0.0f, 22));
+		TestFalse(TEXT("a third finds it full"), Boat.SetRider(0.0f, 0.0f, 0.0f, 33));
+		TestEqual(TEXT("the first is the driver"), Boat.GetPaddleBits(), 3);
+		TestEqual(TEXT("seats are in the order they were taken"), Boat.GetSeatIndex(22), 1);
+		TestTrue(TEXT("two sit apart, front and back along the way it faces (south at yaw 0)"), Boat.GetSeat(0).Z > Alone.Z && Boat.GetSeat(1).Z < Alone.Z);
+		Boat.ClearRider(11);
+		TestEqual(TEXT("the second becomes the driver when the first gets out"), Boat.GetPaddleBits(), 2);
+		TestTrue(TEXT("and there is room for another"), Boat.HasFreeSeat());
+		Boat.EjectRiders();
+		TestTrue(TEXT("a rider thrown off is told so once"), Boat.ConsumeEject(22));
+		TestFalse(TEXT("and only once"), Boat.ConsumeEject(22));
+
+		FMcMinecartEntity Cart;
+		TestTrue(TEXT("a cart takes one"), Cart.SetRider(0.0f, 0.0f, 0.0f, 5));
+		TestFalse(TEXT("and not a second"), Cart.SetRider(0.0f, 0.0f, 0.0f, 6));
+	}
+
 	// ---- Breaking one ----
 	{
 		FMcMinecartEntity* Cart = new FMcMinecartEntity();

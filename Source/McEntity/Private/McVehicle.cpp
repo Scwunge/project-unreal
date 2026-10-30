@@ -317,7 +317,7 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	if (Block == TEXT("minecraft:activator_rail") && bPowered)
 	{
 		// A powered activator rail throws the rider off, lights a TNT cart and stops a hopper cart picking things up.
-		bEject = HasRider();
+		EjectRiders();
 		bHopperLocked = true;
 		if (Variant == EVariant::Tnt && Fuse < 0)
 		{
@@ -511,9 +511,12 @@ bool FMcBoatEntity::Serialize(FArchive& Ar)
 	return true;
 }
 
-FVector FMcBoatEntity::GetSeat() const
+FVector FMcBoatEntity::GetSeat(int32 Index) const
 {
-	return Body.Position + FVector(0.0, 0.1, 0.0);
+	// Two aboard sit one behind the other: the first a fifth of a block forward, the second six tenths back.
+	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
+	const double Along = GetPassengerCount() > 1 ? (Index == 0 ? 0.2 : -0.6) : 0.0;
+	return Body.Position + FVector(0.0, 0.1, 0.0) + FVector(-FMath::Sin(Radians), 0.0, FMath::Cos(Radians)) * Along;
 }
 
 FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const

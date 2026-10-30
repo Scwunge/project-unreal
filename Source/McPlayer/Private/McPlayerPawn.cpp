@@ -894,7 +894,7 @@ void AMcPlayerPawn::ServerDismount()
 	{
 		return;
 	}
-	static_cast<FMcVehicle*>(Found)->ClearRider();
+	static_cast<FMcVehicle*>(Found)->ClearRider(GetUniqueID());
 	// Out beside it, on whichever side has room; failing that, on top.
 	const FVector Centre = Found->Body.Position;
 	const FVector Spots[] = { FVector(1.1, 0.0, 0.0), FVector(-1.1, 0.0, 0.0), FVector(0.0, 0.0, 1.1), FVector(0.0, 0.0, -1.1), FVector(0.0, 0.0, 0.0) };
@@ -921,13 +921,18 @@ void AMcPlayerPawn::ServerTickRiding()
 		return;
 	}
 	FMcVehicle* Vehicle = static_cast<FMcVehicle*>(Found);
-	if (Vehicle->ConsumeEject())
+	if (Vehicle->ConsumeEject(GetUniqueID()))
 	{
 		ServerDismount();
 		return;
 	}
-	Vehicle->SetRider(RideForward, RideStrafe, McLookYaw);
-	const FVector Seat = Vehicle->GetSeat();
+	if (!Vehicle->SetRider(RideForward, RideStrafe, McLookYaw, GetUniqueID()))
+	{
+		// Someone else took the last seat.
+		RidingId = 0;
+		return;
+	}
+	const FVector Seat = Vehicle->GetSeat(Vehicle->GetSeatIndex(GetUniqueID()));
 	Body.Position = Seat;
 	Body.Velocity = FVector::ZeroVector;
 	Body.bOnGround = true;
@@ -968,7 +973,7 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 				Held.Clear();
 			}
 		}
-		else
+		else if (Vehicle && Vehicle->HasFreeSeat())
 		{
 			ServerRide(Id);
 		}

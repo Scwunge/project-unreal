@@ -159,6 +159,58 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("and not a second"), Cart.SetRider(0.0f, 0.0f, 0.0f, 6));
 	}
 
+	// ---- A cart shoves mobs aside, and a plain one going along takes one in ----
+	{
+		FMcMinecartEntity* Chest = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Chest);
+		Chest->Body.Position = FVector(2.5, 1.0625, 0.5);
+		Chest->Body.Velocity = FVector(0.3, 0.0, 0.0);
+		Manager.Add(TUniquePtr<FMcEntity>(Chest));
+		FMcMob* Pig = new FMcMob(*FMcMobType::Find(TEXT("minecraft:pig")));
+		Pig->Body.Position = FVector(3.3, 1.0, 0.7);
+		Manager.Add(TUniquePtr<FMcEntity>(Pig));
+		const FVector PigBefore = Pig->Body.Position;
+		Manager.Tick();
+		Manager.Tick();
+		TestEqual(TEXT("a chest cart takes no mob in"), Pig->RidingId, 0);
+		TestTrue(TEXT("but shoves it out of the way"), FVector2D::Distance(FVector2D(Pig->Body.Position.X, Pig->Body.Position.Z), FVector2D(PigBefore.X, PigBefore.Z)) > 0.1);
+		Chest->bRemoved = true;
+		Pig->bRemoved = true;
+		Manager.Tick();
+
+		FMcMinecartEntity* Still = new FMcMinecartEntity();
+		Still->Body.Position = FVector(8.5, 1.0625, 0.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Still));
+		FMcMob* Cow = new FMcMob(*FMcMobType::Find(TEXT("minecraft:cow")));
+		Cow->Body.Position = FVector(8.5, 1.0, 0.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Cow));
+		Manager.Tick();
+		TestEqual(TEXT("a cart standing still takes nothing in"), Cow->RidingId, 0);
+		Still->bRemoved = true;
+		Manager.Tick();
+
+		FMcMinecartEntity* Rolling = new FMcMinecartEntity();
+		Rolling->Body.Position = FVector(4.5, 1.0625, 0.5);
+		Rolling->Body.Velocity = FVector(0.3, 0.0, 0.0);
+		Manager.Add(TUniquePtr<FMcEntity>(Rolling));
+		Cow->Body.Position = FVector(5.2, 1.0, 0.5);
+		for (int32 Tick = 0; Tick < 3; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("a plain cart running into a mob takes it in"), Cow->RidingId, Rolling->Id);
+		TestFalse(TEXT("so a player can't get in"), Rolling->SetRider(0.0f, 0.0f, 0.0f, 3));
+		TestTrue(TEXT("and the mob goes with it, sitting down in it"), FVector2D::Distance(FVector2D(Cow->Body.Position.X, Cow->Body.Position.Z), FVector2D(Rolling->Body.Position.X, Rolling->Body.Position.Z)) < 0.01
+			&& Cow->Body.Position.Y < Rolling->GetSeat(0).Y);
+		Rolling->EjectRiders();
+		Manager.Tick();
+		TestEqual(TEXT("an activator rail throws the mob out"), Cow->RidingId, 0);
+		Manager.Tick();
+		TestEqual(TEXT("and it isn't taken straight back in"), Cow->RidingId, 0);
+		Rolling->bRemoved = true;
+		Cow->bRemoved = true;
+		Manager.Tick();
+	}
+
 	// ---- Breaking one ----
 	{
 		FMcMinecartEntity* Cart = new FMcMinecartEntity();

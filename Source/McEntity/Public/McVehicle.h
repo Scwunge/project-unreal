@@ -89,13 +89,15 @@ public:
 	bool HasFreeSeat() const { return GetPassengerCount() < GetCapacity(); }
 	// Which seat a pawn has, or -1 if none.
 	int32 GetSeatIndex(int32 Key) const { return Seats.IndexOfByPredicate([Key](const FSeat& S) { return S.Key == Key; }); }
-	// Set by a powered activator rail: whoever rides is thrown off. Each pawn reads and clears its own.
+	// Set by a powered activator rail: whoever rides is thrown off. Each pawn reads and clears its own; mobs get out
+	// at the next TickPassengers, and none get in for half a second after.
 	void EjectRiders()
 	{
 		for (FSeat& Seat : Seats)
 		{
 			Seat.bEject = true;
 		}
+		bEjectMobs = true;
 	}
 	bool ConsumeEject(int32 Key = 0)
 	{
@@ -148,6 +150,8 @@ protected:
 	TArray<FSeat> Seats;
 	// Mobs sitting in it (see McMob), by entity id, after the players in the order of seats.
 	TArray<int32> MobPassengers;
+	bool bEjectMobs = false;
+	int32 BoardCooldown = 0;
 	float RiderForward = 0.0f;
 	float RiderStrafe = 0.0f;
 	float RiderYaw = 0.0f;
@@ -176,6 +180,8 @@ public:
 	virtual FString GetInventoryTitle() const override { return Variant == EVariant::Hopper ? TEXT("Minecart with Hopper") : TEXT("Minecart with Chest"); }
 	virtual bool CanRide() const override { return Variant == EVariant::Plain; }
 	virtual EUse UseItem(FName Item, const FVector& From) override;
+	// A plain cart going along takes in a mob it runs into (not a player, who gets in by asking).
+	virtual bool CanCarryMob(const FMcMob& Mob) const override;
 
 	const EVariant Variant;
 	// A furnace cart: ticks of fuel left, and which way it was pushed (a unit vector in x and z).
@@ -210,6 +216,8 @@ private:
 	bool TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World);
 	// What the cart carries does each tick: fuel burns, a fuse runs down, a hopper takes in what lies in it.
 	void TickVariant(FMcEntityManager& Manager);
+	// Shoves the mobs it touches aside, harder the faster it goes.
+	void PushMobs(FMcEntityManager& Manager);
 	TOptional<FIntVector> LastDetector;
 };
 

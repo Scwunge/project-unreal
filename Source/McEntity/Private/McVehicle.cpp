@@ -400,6 +400,35 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 		Manager.SetDetector(PreviousDetector.GetValue(), false);
 	}
 	TickVariant(Manager);
+	TickPassengers(Manager);
+	PushMobs(Manager);
+}
+
+bool FMcMinecartEntity::CanCarryMob(const FMcMob& Mob) const
+{
+	return Variant == EVariant::Plain && FVector2D(Body.Velocity.X, Body.Velocity.Z).SizeSquared() > 0.01 * 0.01
+		&& Mob.Type.Name != TEXT("minecraft:iron_golem");
+}
+
+void FMcMinecartEntity::PushMobs(FMcEntityManager& Manager)
+{
+	TArray<FMcEntity*> Near;
+	Manager.FindInBox(Body.GetBox().ExpandBy(FVector(0.2, 0.0, 0.2)), Near);
+	const FVector2D Moving(Body.Velocity.X, Body.Velocity.Z);
+	for (FMcEntity* Entity : Near)
+	{
+		if (!Entity->IsLiving() || Entity->bRemoved || static_cast<FMcMob*>(Entity)->RidingId != 0)
+		{
+			continue;
+		}
+		// Away from the cart's middle, or the way it goes when they are on top of each other.
+		FVector2D Away(Entity->Body.Position.X - Body.Position.X, Entity->Body.Position.Z - Body.Position.Z);
+		const double Distance = Away.Size();
+		Away = Distance > 0.01 ? Away / Distance : (Moving.SizeSquared() > 1e-6 ? Moving.GetSafeNormal() : FVector2D(1.0, 0.0));
+		const double Push = 0.05 + Moving.Size() * 0.5;
+		Entity->Body.Velocity.X += Away.X * Push;
+		Entity->Body.Velocity.Z += Away.Y * Push;
+	}
 }
 
 void FMcMinecartEntity::TickVariant(FMcEntityManager& Manager)
@@ -524,7 +553,26 @@ void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
 		const FMcMob* Mob = FindMob(MobId);
 		return !Mob || Mob->RidingId != Id;
 	});
-	if (HasFreeSeat())
+	if (bEjectMobs)
+	{
+		bEjectMobs = false;
+		BoardCooldown = 10;
+		for (const int32 MobId : MobPassengers)
+		{
+			if (FMcMob* Mob = FindMob(MobId))
+			{
+				// Back up out of the hull, onto its floor.
+				Mob->RidingId = 0;
+				Mob->Body.Position.Y += Mob->Type.Height * 0.4;
+			}
+		}
+		MobPassengers.Reset();
+	}
+	if (BoardCooldown > 0)
+	{
+		--BoardCooldown;
+	}
+	else if (HasFreeSeat())
 	{
 		TArray<FMcEntity*> Near;
 		Manager.FindInBox(Body.GetBox().ExpandBy(FVector(0.2, 0.0, 0.2)), Near);

@@ -147,8 +147,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     over it and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
     `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
     cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
-    primed TNT entity, so the cart keeps its own fuse. Not done: carts
-    pushing mobs.
+    primed TNT entity, so the cart keeps its own fuse.
+  - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
+    which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
+    other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:
+    `Saved/Shots/cart_mobs.png` (`-McScene=cart_mobs`, a cart rolled down a slope into a cow and a pig).
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
     on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
     (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).

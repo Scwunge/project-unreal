@@ -216,6 +216,9 @@ protected:
 	// A sleeping owner presses to get up.
 	UFUNCTION(Server, Reliable)
 	void ServerWantWake();
+	// The owner presses Q (one of the selected item) or Ctrl+Q (the whole stack): it is thrown from the eyes along the look.
+	UFUNCTION(Server, Reliable)
+	void ServerDropSelected(bool bWholeStack);
 	// Where the vehicle seats a riding owner whose body the server simulates.
 	UFUNCTION(Client, Unreliable)
 	void ClientRideSeat(FVector Feet);

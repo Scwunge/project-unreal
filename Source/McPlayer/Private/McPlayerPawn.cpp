@@ -475,9 +475,9 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	SleepFade = FMath::Clamp(SleepFade + (bSleeping ? DeltaSeconds / 5.0f : -DeltaSeconds), 0.0f, 1.0f);
 
 	ShowPosition();
-	}
+}
 
-	void AMcPlayerPawn::UpdateTarget()
+void AMcPlayerPawn::UpdateTarget()
 {
 	Target.Reset();
 	if (!BlockWorld)
@@ -526,6 +526,11 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollUp))
 	{
 		SelectedSlot = UMcPlayerDataComponent::Scroll(SelectedSlot, -1);
+	}
+	// Q throws one of what is in hand, Ctrl+Q all of it.
+	if (Player.WasInputKeyJustPressed(EKeys::Q))
+	{
+		ServerDropSelected(Player.IsInputKeyDown(EKeys::LeftControl) || Player.IsInputKeyDown(EKeys::RightControl));
 	}
 	if (SelectedSlot != LastSelectedSent)
 	{
@@ -1102,6 +1107,37 @@ void AMcPlayerPawn::ServerWakeUp()
 		}
 	}
 	ServerTeleport(Feet, McLookYaw);
+}
+
+void AMcPlayerPawn::ServerDropSelected_Implementation(bool bWholeStack)
+{
+	FMcEntityManager* Manager = GetEntities ? GetEntities() : nullptr;
+	if (!Manager || bServerDead || bSleeping || !Data || Data->HasWindow() || RidingId != 0)
+	{
+		return;
+	}
+	const int32 Slot = FMath::Clamp(Data->SelectedSlot, 0, UMcPlayerDataComponent::InventorySize - 1);
+	FMcItemStack Held = Data->Inventory->Get(Slot);
+	if (Held.IsEmpty())
+	{
+		return;
+	}
+	FMcItemStack Thrown = Held;
+	Thrown.Count = bWholeStack ? Held.Count : 1;
+	Held.Count -= Thrown.Count;
+	if (Held.Count <= 0)
+	{
+		Held.Clear();
+	}
+	Data->Inventory->Set(Slot, Held);
+
+	// From just under the eyes, 0.3 blocks a tick along the look and a little up, with the pickup held off for two seconds.
+	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
+	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
+	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	FMcItemEntity& Item = Manager->DropItem(Body.Position + FVector(0.0, GetEyeHeight() - 0.3, 0.0), Thrown, 40);
+	Item.Body.Velocity = Look * 0.3 + FVector(0.0, 0.1, 0.0);
+	UE_LOG(LogMcPlayer, Display, TEXT("Threw %d of %s"), Thrown.Count, *Thrown.Item.ToString());
 }
 
 void AMcPlayerPawn::ServerWantWake_Implementation()

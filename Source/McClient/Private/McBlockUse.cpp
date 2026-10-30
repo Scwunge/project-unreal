@@ -1,6 +1,7 @@
 #include "McBlockUse.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
+#include "McBed.h"
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
 #include "McBlockShapes.h"
@@ -935,6 +936,45 @@ void UMcBlockUseSubsystem::FillBox(AMcWorldActor& WorldActor, const FIntVector& 
 	WriteChest(WorldActor, Pos);
 }
 
+void UMcBlockUseSubsystem::UseBed(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	UMcPlayerDataComponent* Data = Player.Data;
+	FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	const TOptional<FIntVector> Head = Blocks ? McBed::GetHead(*Blocks, Pos) : TOptional<FIntVector>();
+	if (!Data || !Head.IsSet() || Player.IsSleeping())
+	{
+		return;
+	}
+	FMcEntityHost* Host = WorldActor.GetEntityHost();
+	// Out of the overworld a bed is a bomb (minecraft.wiki: "Bed", "Explosion").
+	if (WorldActor.Dimension != TEXT("minecraft:overworld"))
+	{
+		if (Host)
+		{
+			Host->GetManager().Explode(FVector(Pos.X + 0.5, Pos.Y + 0.5, Pos.Z + 0.5), 5.0f);
+		}
+		return;
+	}
+	// Clicking a bed sets where they come back to, whether or not they can sleep in it now.
+	if (!Data->SpawnBed.IsSet() || McBed::GetHead(*Blocks, Data->SpawnBed.GetValue()) != Head)
+	{
+		Data->TellOwner(TEXT("Respawn point set"), 0xFFFFFF);
+	}
+	Data->SpawnBed = Head.GetValue();
+	const int64 DayTime = static_cast<int64>(WorldActor.GetDayTime());
+	if (!McBed::CanSleepAt(DayTime, WorldActor.GetThunderLevel() > 0.9f))
+	{
+		Data->TellOwner(TEXT("You can only sleep at night"), 0xFFFFFF);
+		return;
+	}
+	if (Host && McBed::HasMonstersNear(Host->GetManager(), Head.GetValue()))
+	{
+		Data->TellOwner(TEXT("You may not rest now, there are monsters nearby"), 0xFFFFFF);
+		return;
+	}
+	Player.ServerStartSleep(Head.GetValue());
+}
+
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -950,6 +990,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	}
 	const FName Name = GetBlockName(*Blocks, Pos);
 	EMcFurnaceKind FurnaceKind;
+	if (McBed::IsBed(Name.ToString()))
+	{
+		UseBed(Player, WorldActor, Pos);
+		return true;
+	}
 	if (Name == TEXT("minecraft:crafting_table"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::CraftingTable, Pos, TEXT("Crafting"), nullptr, nullptr);

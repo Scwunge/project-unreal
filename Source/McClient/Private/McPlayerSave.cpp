@@ -34,6 +34,12 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	Out.Stats.Add(TEXT("xp_progress"), Stats.XpProgress);
 	Out.Stats.Add(TEXT("fire_ticks"), Stats.OnFireTicks);
 	Out.Stats.Add(TEXT("food_timer"), Stats.FoodTimer);
+	if (Data.SpawnBed.IsSet())
+	{
+		Out.Stats.Add(TEXT("spawn_x"), Data.SpawnBed->X);
+		Out.Stats.Add(TEXT("spawn_y"), Data.SpawnBed->Y);
+		Out.Stats.Add(TEXT("spawn_z"), Data.SpawnBed->Z);
+	}
 
 	Out.Slots.Reset();
 	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::InventorySize; ++Slot)
@@ -98,6 +104,12 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		}
 	}
 	Data.Stats = Stats;
+	Data.SpawnBed.Reset();
+	if (Saved.Stats.Contains(TEXT("spawn_x")) && Saved.Stats.Contains(TEXT("spawn_y")) && Saved.Stats.Contains(TEXT("spawn_z")))
+	{
+		Data.SpawnBed = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_y"))),
+			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_z"))));
+	}
 	// The mode stays what the server was started with (-McCreative); only what the player carried comes back.
 	Data.SelectedSlot = FMath::Clamp(Saved.SelectedSlot, 0, 8);
 	Data.UpdateArmor();

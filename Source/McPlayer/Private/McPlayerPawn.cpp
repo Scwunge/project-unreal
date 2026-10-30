@@ -3,6 +3,8 @@
 #include "McShulker.h"
 #include "McCache.h"
 #include "McBannerEntity.h"
+#include "McBed.h"
+#include "McPlayer.h"
 #include "McBlockBreak.h"
 #include "McBlockPlacement.h"
 #include "McBlockRegistry.h"
@@ -104,6 +106,8 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, RidingId);
+	DOREPLIFETIME(AMcPlayerPawn, bSleeping);
+	DOREPLIFETIME(AMcPlayerPawn, SleepTicks);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigStage, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigBlockPos, COND_OwnerOnly);
 }
@@ -155,7 +159,8 @@ void AMcPlayerPawn::SetView(const FVector& EyePos, float McYaw, float McPitch)
 
 float AMcPlayerPawn::GetEyeHeight() const
 {
-	return bSneaking ? SneakingEyeHeight : StandingEyeHeight;
+	// Lying down, the eyes are just above the mattress.
+	return bSleeping ? 0.2f : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
 }
 
 void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
@@ -182,6 +187,24 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 			if (Input.bSneak)
 			{
 				ServerWantDismount();
+			}
+		}
+		return;
+	}
+
+	// In bed: the server holds the body at the pillow; sneaking or jumping gets up.
+	if (bSleeping)
+	{
+		bSprinting = false;
+		if (Input.bSneak || Input.bJump)
+		{
+			if (HasAuthority())
+			{
+				ServerWakeUp();
+			}
+			else
+			{
+				ServerWantWake();
 			}
 		}
 		return;
@@ -259,7 +282,7 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 
 void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, float NewPitch, uint8 Flags)
 {
-	if (FeetPos.ContainsNaN() || !FMath::IsFinite(NewYaw) || !FMath::IsFinite(NewPitch) || bServerAwaitingTeleport || RidingId != 0)
+	if (FeetPos.ContainsNaN() || !FMath::IsFinite(NewYaw) || !FMath::IsFinite(NewPitch) || bServerAwaitingTeleport || RidingId != 0 || bSleeping)
 	{
 		return;
 	}
@@ -293,7 +316,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	if (UMcHandComponent* Arm = Hand.Get())
 	{
 		// Only the player at the keyboard sees their own hand, and not while dead.
-		Arm->SetShown(IsLocallyControlled() && !IsDead());
+		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping);
 		const FMcItemStack& Held = Data->GetSelected();
 		Arm->SetHeld(Held.IsEmpty() ? NAME_None : Held.Item);
 	}
@@ -341,9 +364,13 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 			// Look. Kept here rather than in the controller's input scaling so the feel doesn't depend on ini settings.
 			float MouseX = 0.0f, MouseY = 0.0f;
 			Player->GetInputMouseDelta(MouseX, MouseY);
-			Yaw = FMath::Fmod(Yaw + MouseX * MouseSensitivity, 360.0f);
-			Pitch = FMath::Clamp(Pitch + MouseY * MouseSensitivity, -89.9f, 89.9f);
-			Player->SetControlRotation(FRotator(Pitch, Yaw, 0.0f));
+			// In bed the view stays along the mattress.
+			if (!bSleeping)
+			{
+				Yaw = FMath::Fmod(Yaw + MouseX * MouseSensitivity, 360.0f);
+				Pitch = FMath::Clamp(Pitch + MouseY * MouseSensitivity, -89.9f, 89.9f);
+				Player->SetControlRotation(FRotator(Pitch, Yaw, 0.0f));
+			}
 
 			auto Key = [Player](const FKey& K) { return Player->IsInputKeyDown(K) ? 1.0f : 0.0f; };
 			Input.Forward = Key(EKeys::W) - Key(EKeys::S);
@@ -409,7 +436,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 				Shape.Add(FBox(FVector(0.2, 0.0, 0.2), FVector(0.8, 0.6, 0.8)));
 			}
 		}
-		Marks->SetTarget(Aimed, Shape);
+		Marks->SetTarget(Aimed, Shape, Target.IsSet() ? FVector::Dist(McCoords::UnrealToBlock(Camera->GetComponentLocation()), FVector(Target->Point)) : 4.0);
 		Marks->SetDig(DigBlockPos, Player && Player->IsLocalController() ? DigStage : -1);
 	}
 	// The block being dug chips, every tick (survival; creative breaks at once).
@@ -429,7 +456,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	PlaceCooldown -= DeltaSeconds;
 	if (Player && Player->IsLocalController())
 	{
-		if (bBlocked)
+		if (bBlocked || bSleeping)
 		{
 			StopDigging();
 			if (bUsingSent)
@@ -444,10 +471,13 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		}
 	}
 
-	ShowPosition();
-}
+	// The screen goes dark in about five seconds of sleep, and comes back in a second or so after.
+	SleepFade = FMath::Clamp(SleepFade + (bSleeping ? DeltaSeconds / 5.0f : -DeltaSeconds), 0.0f, 1.0f);
 
-void AMcPlayerPawn::UpdateTarget()
+	ShowPosition();
+	}
+
+	void AMcPlayerPawn::UpdateTarget()
 {
 	Target.Reset();
 	if (!BlockWorld)
@@ -665,7 +695,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		TEXT("minecraft:damaged_anvil"), TEXT("minecraft:brewing_stand"), TEXT("minecraft:hopper"), TEXT("minecraft:dispenser"), TEXT("minecraft:dropper") };
 	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
 	const FString ClickedName = Clicked.ToString();
-	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate"))
+	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || McBed::IsBed(ClickedName)
 		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
@@ -760,6 +790,10 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		return 0.0f;
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
+	if (Taken > 0.0f && bSleeping)
+	{
+		ServerWakeUp();
+	}
 	if (Taken > 0.0f && From && Data->Stats.Health > 0.0f)
 	{
 		const FVector Push = McCombat::GetKnockback(Body.Position, *From, FVector::ZeroVector);
@@ -1021,6 +1055,60 @@ void AMcPlayerPawn::ClientRideSeat_Implementation(FVector Feet)
 	Body.bOnGround = true;
 }
 
+void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
+{
+	if (!HasAuthority() || bServerDead || !BlockWorld || bSleeping)
+	{
+		return;
+	}
+	const TOptional<float> SleepYaw = McBed::GetSleepYaw(*BlockWorld, Head);
+	if (!SleepYaw.IsSet())
+	{
+		return;
+	}
+	if (RidingId != 0)
+	{
+		ServerDismount();
+	}
+	bSleeping = true;
+	SleepTicks = 0;
+	UE_LOG(LogMcPlayer, Display, TEXT("Went to bed at %s"), *Head.ToString());
+	bSleptThroughSent = false;
+	SleepBed = Head;
+	bSneaking = false;
+	Body.Height = StandingHeight;
+	ServerTeleport(McBed::GetSleepPosition(Head), SleepYaw.GetValue());
+	if (IsLocallyControlled())
+	{
+		Pitch = 0.0f;
+	}
+}
+
+void AMcPlayerPawn::ServerWakeUp()
+{
+	if (!HasAuthority() || !bSleeping)
+	{
+		return;
+	}
+	bSleeping = false;
+	SleepTicks = 0;
+	UE_LOG(LogMcPlayer, Display, TEXT("Got up from the bed at %s"), *SleepBed.ToString());
+	FVector Feet = FVector(SleepBed.X + 0.5, SleepBed.Y + 1.0, SleepBed.Z + 0.5);
+	if (BlockWorld)
+	{
+		if (const TOptional<FVector> Stand = McBed::FindStandPosition(*BlockWorld, SleepBed))
+		{
+			Feet = Stand.GetValue();
+		}
+	}
+	ServerTeleport(Feet, McLookYaw);
+}
+
+void AMcPlayerPawn::ServerWantWake_Implementation()
+{
+	ServerWakeUp();
+}
+
 void AMcPlayerPawn::ServerRespawn_Implementation()
 {
 	if (bServerDead && OnRespawnRequest)
@@ -1042,6 +1130,18 @@ void AMcPlayerPawn::ServerGameTick()
 		return;
 	}
 	ServerHurtSound();
+	if (bSleeping)
+	{
+		// Up if the bed is gone; after a hundred ticks the controller sees whether everyone is in bed and skips the night.
+		if (!BlockWorld || !McBed::GetHead(*BlockWorld, SleepBed).IsSet())
+		{
+			ServerWakeUp();
+		}
+		else if (++SleepTicks >= McBed::TicksToSleep && !bSleptThroughSent && OnSleptThrough)
+		{
+			OnSleptThrough(*this);
+		}
+	}
 	if (PendingBannerTicks > 0 && (--PendingBannerTicks == 0 || AttachBanner(PendingBannerPos, PendingBanner)))
 	{
 		PendingBannerTicks = 0;

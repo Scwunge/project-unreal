@@ -1398,6 +1398,11 @@ void AMcHUD::DrawHUD()
 	SyncScreen(Data);
 
 	const McGui::FHudLayout Layout = McGui::ComputeHud(Width, Height, Data ? Data->Stats : FMcPlayerStats());
+	// Lying in bed, the world fades to dark.
+	if (Player && Player->GetSleepFade() > 0.0f)
+	{
+		DrawRect(FLinearColor(0.0f, 0.0f, 0.05f, 0.85f * Player->GetSleepFade()), 0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height));
+	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{

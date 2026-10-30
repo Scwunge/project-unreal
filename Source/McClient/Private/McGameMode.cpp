@@ -2,6 +2,8 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "McBed.h"
+#include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityActor.h"
 #include "McClient.h"
@@ -411,8 +413,13 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		float KeptProgress = 0.0f;
 		int32 KeptSlot = 0;
 		bool bKeep = false;
+		TOptional<FIntVector> Bed;
 		if (const AMcPlayerPawn* Dead = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
+			if (Dead->Data)
+			{
+				Bed = Dead->Data->SpawnBed;
+			}
 			bKeep = Dead->Data && Dead->GetGameRules().bKeepInventory;
 			if (bKeep)
 			{
@@ -440,10 +447,39 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			Player->EnterWorld(*WorldActor);
 		}
-		RestartPlayerAtTransform(Who, GetSpawnTransform());
+		// Beside the bed they last slept in, if it is still there and has room beside it (minecraft.wiki: "Respawn").
+		FTransform Spawn = GetSpawnTransform();
+		bool bBedMissing = false;
+		const FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+		if (Bed.IsSet() && Blocks)
+		{
+			const FIntPoint Chunk(McCoords::BlockToChunk(Bed->X), McCoords::BlockToChunk(Bed->Z));
+			if (!Blocks->HasChunk(Chunk))
+			{
+				// Not loaded: they come down on the bed, and the world loads round them.
+				Spawn.SetLocation(McCoords::BlockToUnreal(FVector(Bed->X + 0.5, Bed->Y + 1.0, Bed->Z + 0.5)));
+			}
+			else if (const TOptional<FVector> Stand = McBed::FindStandPosition(*Blocks, Bed.GetValue()))
+			{
+				Spawn.SetLocation(McCoords::BlockToUnreal(Stand.GetValue()));
+			}
+			else
+			{
+				bBedMissing = true;
+			}
+		}
+		RestartPlayerAtTransform(Who, Spawn);
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
 			McPawn->SetGameRules(GetGameRules());
+			if (McPawn->Data)
+			{
+				McPawn->Data->SpawnBed = bBedMissing ? TOptional<FIntVector>() : Bed;
+				if (bBedMissing)
+				{
+					McPawn->Data->TellOwner(TEXT("Your home bed was missing or obstructed"), 0xFFFFFF);
+				}
+			}
 			ApplyDefaultGameMode(*McPawn);
 			if (bKeep && McPawn->Data)
 			{

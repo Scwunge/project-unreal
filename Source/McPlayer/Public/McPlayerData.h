@@ -129,6 +129,8 @@ public:
 	int32 SelectedSlot = 0;
 	// Creative: unlimited blocks, instant breaking, flying, no damage. The server decides; the client is told.
 	bool bCreative = false;
+	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
+	TOptional<FIntVector> SpawnBed;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.

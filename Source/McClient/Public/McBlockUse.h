@@ -33,6 +33,12 @@ public:
 	// true if it did. Server only.
 	bool Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
+private:
+	// A click on a bed: sets the respawn point, and puts the player to sleep if it is night and no monsters are near.
+	void UseBed(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+
+public:
+
 	// Whether the window the player has open may stay open: the block is still what it was, and they are close.
 	static bool IsWindowValid(const AMcPlayerPawn& Player, const AMcWorldActor& WorldActor, const FMcWindow& Window);
 

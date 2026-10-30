@@ -33,7 +33,8 @@ public:
 	UMcBlockHighlightComponent(const FObjectInitializer& ObjectInitializer);
 
 	// What is aimed at: the block, and the boxes of its shape in the block's own space (0 to 1). Nothing to hide it.
-	void SetTarget(const TOptional<FIntVector>& Block, const TArray<FBox>& Shape);
+	// ViewDistance is how far the eye is from it, in blocks, to keep the line the same width on screen.
+	void SetTarget(const TOptional<FIntVector>& Block, const TArray<FBox>& Shape, double ViewDistance);
 	// The block being dug and its crack stage (see GetCrackStage); stage -1 for none.
 	void SetDig(const FIntVector& Block, int32 Stage);
 
@@ -53,5 +54,6 @@ private:
 	TArray<FBox> Shape;
 	FIntVector DigBlock = FIntVector::ZeroValue;
 	int32 Stage = -1;
+	double BarWidth = 0.01;
 	bool bDirty = true;
 };

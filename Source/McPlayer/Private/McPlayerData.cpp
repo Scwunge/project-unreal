@@ -753,6 +753,8 @@ TArray<UMcPlayerDataComponent::FChatLine>& UMcPlayerDataComponent::GetChatLog()
 
 void UMcPlayerDataComponent::AddChatLine(const FString& Text, uint32 Rgb)
 {
+	// The game's own chat goes to the log too, which is how a run without eyes sees what the player was told.
+	UE_LOG(LogMcPlayerData, Display, TEXT("Chat: %s"), *Text);
 	TArray<FChatLine>& Log = GetChatLog();
 	FChatLine& Line = Log.AddDefaulted_GetRef();
 	Line.Text = Text;

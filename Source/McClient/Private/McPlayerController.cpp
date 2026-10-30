@@ -1,6 +1,8 @@
 #include "McPlayerController.h"
 #include "McLaunch.h"
+#include "McBed.h"
 #include "McBlockUse.h"
+#include "McSimulation.h"
 #include "McDevInput.h"
 #include "McBuckets.h"
 #include "McEntityActor.h"
@@ -385,6 +387,28 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			return true;
 		}
 		return false;
+	};
+	// A night slept through: once every player is in bed for the hundred ticks, it is morning and the weather has cleared.
+	Hooked.OnSleptThrough = [World](AMcPlayerPawn& Sleeper)
+	{
+		UWorld* Level = Sleeper.GetWorld();
+		if (!World.IsValid() || !Level)
+		{
+			return;
+		}
+		for (TActorIterator<AMcPlayerPawn> It(Level); It; ++It)
+		{
+			if (!It->IsServerDead() && It->Data && !It->Data->bCreative && (!It->IsSleeping() || It->GetSleepTicks() < McBed::TicksToSleep))
+			{
+				return;
+			}
+		}
+		World->SetDayTime(static_cast<double>(McBed::GetMorning(static_cast<int64>(World->GetDayTime()))));
+		World->SetWeather(EMcWeather::Clear, 6000);
+		for (TActorIterator<AMcPlayerPawn> It(Level); It; ++It)
+		{
+			It->ServerWakeUp();
+		}
 	};
 	// Dying shows the death screen; the player comes back when they press Respawn.
 	Hooked.OnRespawnRequest = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](AMcPlayerPawn&)

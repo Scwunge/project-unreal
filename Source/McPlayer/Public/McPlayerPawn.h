@@ -109,6 +109,20 @@ public:
 	// Server: where the player's feet are, in block coordinates.
 	FVector GetFeetPosition() const { return Body.Position; }
 	bool IsServerDead() const { return bServerDead; }
+	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
+	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
+	bool IsSleeping() const { return bSleeping; }
+	int32 GetSleepTicks() const { return SleepTicks; }
+	// How dark the screen is from sleeping, 0 to 1: it fades to black as the night goes by and back in when they get up.
+	float GetSleepFade() const { return SleepFade; }
+	// Server: puts the player to bed in the bed whose head is at Head. The caller has checked the time and the monsters.
+	void ServerStartSleep(const FIntVector& Head);
+	// Server: gets the player up, to the free spot beside the bed.
+	void ServerWakeUp();
+	// Server: where the player was put to bed.
+	const FIntVector& GetSleepBed() const { return SleepBed; }
+	// Server: told each tick a player has slept the whole 100 (by the controller, which knows the other players and the world).
+	TFunction<void(AMcPlayerPawn& Player)> OnSleptThrough;
 	// The entity id of the minecart or boat the player sits in, or 0.
 	int32 GetRidingId() const { return RidingId; }
 	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
@@ -199,6 +213,9 @@ protected:
 	// A riding owner wants out.
 	UFUNCTION(Server, Reliable)
 	void ServerWantDismount();
+	// A sleeping owner presses to get up.
+	UFUNCTION(Server, Reliable)
+	void ServerWantWake();
 	// Where the vehicle seats a riding owner whose body the server simulates.
 	UFUNCTION(Client, Unreliable)
 	void ClientRideSeat(FVector Feet);
@@ -265,6 +282,14 @@ private:
 	bool bSneakPose = false;
 	UPROPERTY(Replicated)
 	int32 RidingId = 0;
+	UPROPERTY(Replicated)
+	bool bSleeping = false;
+	UPROPERTY(Replicated)
+	int32 SleepTicks = 0;
+	FIntVector SleepBed = FIntVector::ZeroValue;
+	bool bSleptThroughSent = false;
+	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.
+	float SleepFade = 0.0f;
 	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.
 	float RideForward = 0.0f;
 	float RideStrafe = 0.0f;

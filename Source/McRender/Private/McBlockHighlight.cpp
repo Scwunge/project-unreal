@@ -7,6 +7,11 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
+namespace
+{
+	const FString OutlinePath = TEXT("outline");
+}
+
 namespace McHighlight
 {
 	int32 GetCrackStage(float Progress)
@@ -97,12 +102,16 @@ UMcBlockHighlightComponent::UMcBlockHighlightComponent(const FObjectInitializer&
 	TranslucentMaterial = Translucent.Object;
 }
 
-void UMcBlockHighlightComponent::SetTarget(const TOptional<FIntVector>& InBlock, const TArray<FBox>& InShape)
+void UMcBlockHighlightComponent::SetTarget(const TOptional<FIntVector>& InBlock, const TArray<FBox>& InShape, double InViewDistance)
 {
-	if (Block != InBlock || Shape != InShape)
+	// A bar about a pixel and a half wide whatever the distance: a block's width on a 720-line screen is about
+	// 0.0019 per pixel of distance (70 degrees up and down).
+	const double Wanted = FMath::Clamp(InViewDistance * 0.0029, 0.004, 0.03);
+	if (Block != InBlock || Shape != InShape || FMath::Abs(Wanted - BarWidth) > BarWidth * 0.15)
 	{
 		Block = InBlock;
 		Shape = InShape;
+		BarWidth = Wanted;
 		bDirty = true;
 	}
 }
@@ -127,17 +136,35 @@ UMaterialInstanceDynamic* UMcBlockHighlightComponent::GetMaterial(const FString&
 	{
 		return *Found;
 	}
-	const bool bCrack = Path.Contains(TEXT("destroy_stage"));
-	UMaterialInterface* Base = bCrack ? TranslucentMaterial.Get() : OpaqueMaterial.Get();
-	int32 Width = 0, Height = 0;
-	UTexture2DArray* Array = Base ? McRenderTextures::LoadPngAsArray(this, Path, Width, Height) : nullptr;
+	UMaterialInterface* Base = TranslucentMaterial.Get();
+	int32 Width = 1, Height = 1;
+	TArray<FColor> Pixels;
+	if (Path == OutlinePath)
+	{
+		// Black at 40%: a thin dark line, as the game's, rather than a solid bar.
+		Pixels.Add(FColor(0, 0, 0, 102));
+	}
+	else if (Base && McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height))
+	{
+		// The game multiplies the crack picture over the block, so its cracks darken what is under them and the rest is
+		// left alone. Drawn as black with the darkening for its opacity: a crack of grey 0.3 takes 40% off the block's light.
+		for (FColor& Pixel : Pixels)
+		{
+			const float Grey = (Pixel.R + Pixel.G + Pixel.B) / (3.0f * 255.0f);
+			Pixel = FColor(0, 0, 0, Pixel.A < 26 ? 0 : static_cast<uint8>(FMath::Clamp(1.0f - 2.0f * Grey, 0.0f, 1.0f) * 255.0f));
+		}
+	}
+	else
+	{
+		return nullptr;
+	}
+	UTexture2DArray* Array = Base ? McRenderTextures::MakeArray(this, Pixels, Width, Height) : nullptr;
 	if (!Array)
 	{
 		return nullptr;
 	}
 	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Base), this);
 	Material->SetTextureParameterValue(TEXT("Blocks"), Array);
-	McRenderMode::ApplyHdPicture(Material, Path);
 	Materials.Add(Path, Material);
 	return Material;
 }
@@ -195,9 +222,9 @@ void UMcBlockHighlightComponent::Rebuild()
 		const FVector Origin(Block.GetValue());
 		for (const FBox& Box : Shape)
 		{
-			McHighlight::AddOutline(FBox(Origin + Box.Min, Origin + Box.Max), 0.012, 0.003, Positions, Triangles);
+			McHighlight::AddOutline(FBox(Origin + Box.Min, Origin + Box.Max), BarWidth, FMath::Max(0.002, BarWidth * 0.6), Positions, Triangles);
 		}
-		Make(0, Positions, Triangles, NoUVs, FColor(0, 0, 0, 255), McCache::Asset(TEXT("textures/block/black_concrete.png")));
+		Make(0, Positions, Triangles, NoUVs, FColor::White, OutlinePath);
 	}
 	// The cracks: the stage's picture over every face of the block being dug.
 	if (Stage >= 0 && Stage <= 9)

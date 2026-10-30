@@ -42,6 +42,14 @@ FMcBlockEntity FMcBlockEntity::MakeSign()
 	return Result;
 }
 
+FMcBlockEntity FMcBlockEntity::MakeLectern(const FMcItemStack& Book)
+{
+	FMcBlockEntity Result;
+	Result.Kind = EMcBlockEntityKind::Lectern;
+	Result.Slots.Add(Book);
+	return Result;
+}
+
 bool FMcSignSide::HasText() const
 {
 	for (const FString& Line : Lines)
@@ -72,7 +80,7 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << KindByte;
 	if (Ar.IsLoading())
 	{
-		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Sign))
+		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Lectern))
 		{
 			return false;
 		}
@@ -138,11 +146,15 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 		}
 		Ar << bWaxed;
 	}
+	if (Kind == EMcBlockEntityKind::Lectern)
+	{
+		Ar << Page;
+	}
 	return !Ar.IsError();
 }
 
 bool FMcBlockEntity::operator==(const FMcBlockEntity& Other) const
 {
 	return Kind == Other.Kind && Slots == Other.Slots && LootTable == Other.LootTable && LootSeed == Other.LootSeed && EntityId == Other.EntityId && Data == Other.Data
-		&& SignSides[0] == Other.SignSides[0] && SignSides[1] == Other.SignSides[1] && bWaxed == Other.bWaxed;
+		&& SignSides[0] == Other.SignSides[0] && SignSides[1] == Other.SignSides[1] && bWaxed == Other.bWaxed && Page == Other.Page;
 }

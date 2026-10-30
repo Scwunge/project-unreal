@@ -108,6 +108,11 @@ private:
 	// and Done. Its keys are taken by PollSign; Done and Esc send the lines and close it.
 	void DrawSign(int32 Width, int32 Height);
 	void PollSign(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
+	// A lectern's book (the game's book screen): the open page with "Page n of m" and the arrows to turn it, and under
+	// the book Done and Take Book. PollLectern turns the pages (the arrows, Page Up and Page Down) through the menu's
+	// buttons, which the server answers.
+	void DrawLectern(int32 Width, int32 Height);
+	void PollLectern(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it
 	// took this frame's click.

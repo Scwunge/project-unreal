@@ -627,8 +627,13 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
 	const FString ClickedName = Clicked.ToString();
 	// A sign opens its editor, or takes the dye, ink or wax in hand.
+	// A shulker box opens and a bell rings. A lectern with a book opens it, and an empty one takes a book and quill or
+	// written book held (anything else is placed against it).
+	const bool bLectern = Clicked == TEXT("minecraft:lectern") && (Registry.GetPropertyValue(Hit.State, TEXT("has_book")) == TEXT("true")
+		|| Held.Item == TEXT("minecraft:writable_book") || Held.Item == TEXT("minecraft:written_book"));
 	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || ClickedName.EndsWith(TEXT("_sign"))
-		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
+		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")))
+		|| ClickedName.EndsWith(TEXT("shulker_box")) || Clicked == TEXT("minecraft:bell") || bLectern;
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);

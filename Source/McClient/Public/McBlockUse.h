@@ -125,6 +125,14 @@ private:
 	static FMcBlockEntity* FindSign(AMcWorldActor& WorldActor, const FIntVector& Pos);
 	// After a sign's text, dye or wax changed: saved with its chunk, and the players who see it told.
 	static void SignChanged(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A player used the lectern at Pos (minecraft.wiki, "Lectern"): an empty one takes the book and quill or written
+	// book they hold; one with a book opens it to read. False for an empty lectern and anything else in hand.
+	static bool UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A reader of the lectern at Pos pressed a button: the book opens at the menu's page for everyone reading it, the
+	// lectern giving a 2-tick pulse, or the book is taken off into the reader's inventory.
+	static void LecternButton(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, class FMcLecternMenu& Menu);
+	// The lectern's block entity, if Pos holds a lectern with a book on it.
+	static FMcBlockEntity* FindLectern(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	TMap<FKey, FChestEntry> Chests;
 	TMap<FKey, FMachineEntry> Machines;

@@ -202,8 +202,20 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     lays one open on the slanted top of each lectern with `has_book=true` (`GetLecternBook`: spine up the slope, facing
     the reader), and floats one over each enchanting table: bobbing, turning slowly while nobody is near, and within 3
     blocks of this machine's player turning to them and opening, its loose pages waving. Test `McRender.Books`; shots
-    `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`). Not done: lecterns' gameplay (putting a book on,
-    reading it, taking it, the comparator signal), so `has_book` is only set by scenes and commands.
+    `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`).
+  - **Lecterns** (2026-10-30): using an empty lectern with a book and quill or a written book puts one on (a `Lectern`
+    block entity: the book and the page it lies open at, saved after the existing data; `item.book.put`; creative keeps
+    its own). Using one with a book opens it to read (window kind `Lectern`, `FMcLecternMenu`: the pages as plain text,
+    `McBook::GetPages`, and the page). The screen (`AMcHUD::DrawLectern`/`PollLectern`) is the game's book: the page
+    picture from `gui/book.png`, "Page n of m", the text wrapped to 114 font pixels, 14 lines, the page arrows and Page
+    Up/Down, and Done and Take Book under it. A page turn is a menu button the server answers: everyone reading it turns
+    with it, `item.book.page_turn` sounds and the lectern gives a full pulse for 2 ticks (`powered`, strong into the
+    block below); Take Book puts the book in the reader's inventory (or at their feet) and leaves the lectern bare.
+    Breaking it drops the book. A comparator reads floor(1 + 14 (page - 1) / (pages - 1)), 15 for a one-page book
+    (`McBook::GetComparatorSignal`). Scenes put books on with `"lecterns"`. Test `McSim.Lectern`; shots
+    `Saved/Shots/lectern.png` and `lectern_book.png` (`-McScene=lectern`, `-McUse=2,-60,2`). Not done: reading a book
+    held in the hand, writing in a book and quill, the text's colours and formatting (pages are plain), and hoppers
+    taking the book.
   - **Mob heads** (2026-10-30): skeleton, wither skeleton, zombie, creeper, piglin, player (Steve's picture) and dragon
     heads and their wall forms are entity models `mc:head/...` cut from each mob's own picture (an 8 cube, with the hat
     layer for the zombie and player; the piglin's 10 wide with snout, tusks and ears; the dragon's a 16 cube with

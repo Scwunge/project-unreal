@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBook.h"
 #include "McChestLink.h"
 #include "McBrewingStand.h"
 #include "McChunk.h"
@@ -43,6 +44,7 @@ namespace
 		PoweredRail,
 		ActivatorRail,
 		DetectorRail,
+		Lectern,
 	};
 
 	enum EDir : int32
@@ -114,6 +116,7 @@ namespace
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
+				else if (Name == TEXT("minecraft:lectern")) Kind = Lectern;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -346,6 +349,7 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case Button:
 	case Plate:
 	case DetectorRail:
+	case Lectern:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
@@ -404,6 +408,7 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case PlateLight:
 	case PlateHeavy:
 	case DetectorRail:
+	case Lectern:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
 	case Torch:
 	case WallTorch:
@@ -504,6 +509,17 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		if (Name == TEXT("minecraft:beehive") || Name == TEXT("minecraft:bee_nest"))
 		{
 			return Number(State, TEXT("honey_level")) * 3;
+		}
+		if (Name == TEXT("minecraft:lectern"))
+		{
+			// By the page its book lies open at: 1 on the first up to 15 on the last.
+			const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+			if (!Flag(State, TEXT("has_book")) || !Entity || Entity->Kind != EMcBlockEntityKind::Lectern || Entity->Slots.IsEmpty())
+			{
+				return 0;
+			}
+			return McBook::GetComparatorSignal(Entity->Page, McBook::GetPages(Entity->Slots[0]).Num());
 		}
 	}
 	// The slots of a container, and of the other half of a double chest.
@@ -788,6 +804,13 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	}
 	case DetectorRail:
 		TickDetector(Pos, State);
+		break;
+	case Lectern:
+		// The end of the pulse a page turn gives.
+		if (Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+		}
 		break;
 	case Piston:
 	case StickyPiston:

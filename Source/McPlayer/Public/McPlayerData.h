@@ -86,6 +86,8 @@ enum class EMcWindowKind : uint8
 	Loom,
 	// The sign editor: the menu is an FMcSignMenu with the lines of the side being written.
 	Sign,
+	// A lectern's book being read: the menu is an FMcLecternMenu with its pages and the one it is open at.
+	Lectern,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -105,7 +107,7 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
-	// Server: told after clicks, to write a chest's items back to the world.
+	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
 	bool IsOpen() const { return Menu.IsValid(); }
@@ -165,6 +167,9 @@ public:
 	// Server: opens the editor on one side of the sign at Pos (Block is the sign's block, Kind its McSign::EKind, Colour
 	// its dye's text colour), starting from Lines. OnDone gets what the player wrote when the window closes.
 	void OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone);
+	// Server: opens the book on the lectern at Pos, at Page of Pages. OnButton is told after each button the player
+	// presses (a page turned, or Take Book), with the menu as it is then.
+	void OpenLectern(const FIntVector& Pos, const TArray<FString>& Pages, int32 Page, TFunction<void(class FMcLecternMenu&)> OnButton);
 	// Server: opens an enchanting table at Pos with Bookshelves around it.
 	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
 	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.

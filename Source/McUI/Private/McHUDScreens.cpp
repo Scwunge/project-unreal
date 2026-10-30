@@ -26,6 +26,7 @@
 #include "McWorkstationMenus.h"
 #include "McAnvilMenu.h"
 #include "McSignMenu.h"
+#include "McLecternMenu.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
 #include "McMenuInput.h"
@@ -58,8 +59,11 @@ struct AMcHUD::FScreenState
 	FMcSignMenu* Sign = nullptr;
 	int32 SignLine = 0;
 	int32 SignCursor = 0;
-	// Whether keys go to a text field (the creative search, the anvil's name, a sign) rather than the slots.
-	bool IsTyping() const { return bCreative || Anvil != nullptr || Sign != nullptr; }
+	// A lectern's book being read.
+	FMcLecternMenu* Lectern = nullptr;
+	// Whether keys go to a text field (the creative search, the anvil's name, a sign) rather than the slots; a book
+	// takes its keys too (E doesn't close it).
+	bool IsTyping() const { return bCreative || Anvil != nullptr || Sign != nullptr || Lectern != nullptr; }
 	FString Title;
 	// The creative screen: what the search finds, how far down the list is scrolled, the item under the mouse (an
 	// index into CreativeItems) and whether the scroll bar is being dragged.
@@ -430,6 +434,9 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		UMcGameViewportClient::TakeTyped();
 		UMcGameViewportClient::TakeBackspaces();
 		break;
+	case EMcWindowKind::Lectern:
+		State->Lectern = static_cast<FMcLecternMenu*>(Window.Menu.Get());
+		break;
 	default:
 		if (Data->bCreative)
 		{
@@ -598,6 +605,11 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	if (Screen->Sign)
 	{
 		PollSign(*Player, *Data, Width, Height);
+		return;
+	}
+	if (Screen->Lectern)
+	{
+		PollLectern(*Player, *Data, Width, Height);
 		return;
 	}
 	if (Player->WasInputKeyJustPressed(EKeys::Escape))
@@ -1072,6 +1084,11 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	if (Screen->Sign)
 	{
 		DrawSign(Width, Height);
+		return;
+	}
+	if (Screen->Lectern)
+	{
+		DrawLectern(Width, Height);
 		return;
 	}
 	const McGui::FScreenLayout& Layout = Screen->Layout;
@@ -1750,4 +1767,122 @@ void AMcHUD::DrawSign(int32 Width, int32 Height)
 	DrawNineSlice(LoadSprite(bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png")),
 		CentreX - 100.0f, DoneTop, 200.0f, 20.0f, 200.0f, 20.0f, 3.0f);
 	DrawCentredText(TEXT("Done"), CentreX, DoneTop + 6.0f, 0xFFFFFF);
+}
+
+// ---- Book (on a lectern) ----
+
+namespace
+{
+	namespace BookView
+	{
+		// The page picture is the top left 192 by 192 of textures/gui/book.png, centred at the top of the screen; the
+		// text 114 wide from 36 in and 32 down, 9 a line, at most 14 lines; the arrows 23 by 13; the buttons under it.
+		constexpr float Size = 192.0f;
+		constexpr float Top = 2.0f;
+		constexpr float TextX = 36.0f;
+		constexpr float TextY = 32.0f;
+		constexpr float TextWidth = 114.0f;
+		constexpr float LineHeight = 9.0f;
+		constexpr int32 MaxLines = 14;
+		constexpr float ArrowW = 23.0f;
+		constexpr float ArrowH = 13.0f;
+		constexpr float ForwardX = 116.0f;
+		constexpr float BackX = 43.0f;
+		constexpr float ArrowY = 159.0f;
+		constexpr float ButtonsY = 196.0f;
+
+		float Left(int32 Width) { return FMath::FloorToFloat((Width - Size) / 2.0f); }
+
+		bool IsOver(const FVector2D& Mouse, float X, float Y, float W, float H)
+		{
+			return Mouse.X >= X && Mouse.X < X + W && Mouse.Y >= Y && Mouse.Y < Y + H;
+		}
+		bool IsOverForward(const FVector2D& Mouse, int32 Width) { return IsOver(Mouse, Left(Width) + ForwardX, Top + ArrowY, ArrowW, ArrowH); }
+		bool IsOverBack(const FVector2D& Mouse, int32 Width) { return IsOver(Mouse, Left(Width) + BackX, Top + ArrowY, ArrowW, ArrowH); }
+		// Done, then Take Book, each 98 wide, side by side.
+		bool IsOverDone(const FVector2D& Mouse, int32 Width) { return IsOver(Mouse, Width / 2.0f - 100.0f, ButtonsY, 98.0f, 20.0f); }
+		bool IsOverTake(const FVector2D& Mouse, int32 Width) { return IsOver(Mouse, Width / 2.0f + 2.0f, ButtonsY, 98.0f, 20.0f); }
+	}
+}
+
+void AMcHUD::PollLectern(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height)
+{
+	const FMcLecternMenu& Menu = *Screen->Lectern;
+	float MouseX = 0.0f, MouseY = 0.0f;
+	Player.GetMousePosition(MouseX, MouseY);
+	GuiMouse = FVector2D(MouseX, MouseY) / Scale;
+	const bool bClick = Player.WasInputKeyJustPressed(EKeys::LeftMouseButton);
+	if (Player.WasInputKeyJustPressed(EKeys::Escape) || (bClick && BookView::IsOverDone(GuiMouse, Width)))
+	{
+		CloseScreen();
+		return;
+	}
+	if (bClick && BookView::IsOverTake(GuiMouse, Width))
+	{
+		// The server hands the book over; the window closes once the lectern is bare.
+		Data.ClickMenuButton(FMcLecternMenu::TakeBook);
+		return;
+	}
+	const bool bCanBack = Menu.Page > 0;
+	const bool bCanForward = Menu.Page < Menu.Pages.Num() - 1;
+	if (bCanBack && (Player.WasInputKeyJustPressed(EKeys::PageUp) || (bClick && BookView::IsOverBack(GuiMouse, Width))))
+	{
+		Data.ClickMenuButton(FMcLecternMenu::PreviousPage);
+	}
+	else if (bCanForward && (Player.WasInputKeyJustPressed(EKeys::PageDown) || (bClick && BookView::IsOverForward(GuiMouse, Width))))
+	{
+		Data.ClickMenuButton(FMcLecternMenu::NextPage);
+	}
+}
+
+void AMcHUD::DrawLectern(int32 Width, int32 Height)
+{
+	const FMcLecternMenu& Menu = *Screen->Lectern;
+	LoadFont();
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.6f));
+	const float Left = BookView::Left(Width);
+	DrawRegion(LoadSprite(TEXT("textures/gui/book.png")), Left, BookView::Top, BookView::Size, BookView::Size, 0, 0, BookView::Size, BookView::Size);
+
+	// "Page 1 of 3" in the top right corner of the page, then the page's text in black, wrapped to the page.
+	const int32 NumPages = FMath::Max(1, Menu.Pages.Num());
+	const FString Indicator = FString::Printf(TEXT("Page %d of %d"), Menu.Page + 1, NumPages);
+	DrawGuiText(Indicator, Left + BookView::Size - 44.0f - TextWidth(Indicator), BookView::Top + 16.0f, 0x000000, false);
+	if (Menu.Pages.IsValidIndex(Menu.Page))
+	{
+		TArray<FString> Lines;
+		TArray<FString> Paragraphs;
+		Menu.Pages[Menu.Page].ParseIntoArray(Paragraphs, TEXT("\n"), false);
+		for (const FString& Paragraph : Paragraphs)
+		{
+			Lines.Append(WrapText(Paragraph, BookView::TextWidth));
+		}
+		for (int32 Line = 0; Line < FMath::Min(Lines.Num(), BookView::MaxLines); ++Line)
+		{
+			DrawGuiText(Lines[Line], Left + BookView::TextX, BookView::Top + BookView::TextY + Line * BookView::LineHeight, 0x000000, false);
+		}
+	}
+
+	// The arrows, where there is a page that way; lit under the mouse.
+	const FString Widget = TEXT("textures/gui/sprites/widget/");
+	if (Menu.Page < Menu.Pages.Num() - 1)
+	{
+		const bool bOver = BookView::IsOverForward(GuiMouse, Width);
+		DrawSprite(LoadSprite(Widget + (bOver ? TEXT("page_forward_highlighted.png") : TEXT("page_forward.png"))),
+			Left + BookView::ForwardX, BookView::Top + BookView::ArrowY, BookView::ArrowW, BookView::ArrowH);
+	}
+	if (Menu.Page > 0)
+	{
+		const bool bOver = BookView::IsOverBack(GuiMouse, Width);
+		DrawSprite(LoadSprite(Widget + (bOver ? TEXT("page_backward_highlighted.png") : TEXT("page_backward.png"))),
+			Left + BookView::BackX, BookView::Top + BookView::ArrowY, BookView::ArrowW, BookView::ArrowH);
+	}
+
+	const auto Button = [this](const FString& Label, float X, bool bOver)
+	{
+		DrawNineSlice(LoadSprite(bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png")),
+			X, BookView::ButtonsY, 98.0f, 20.0f, 200.0f, 20.0f, 3.0f);
+		DrawCentredText(Label, X + 49.0f, BookView::ButtonsY + 6.0f, 0xFFFFFF);
+	};
+	Button(TEXT("Done"), Width / 2.0f - 100.0f, BookView::IsOverDone(GuiMouse, Width));
+	Button(TEXT("Take Book"), Width / 2.0f + 2.0f, BookView::IsOverTake(GuiMouse, Width));
 }

@@ -6,6 +6,8 @@
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McBell.h"
+#include "McBook.h"
+#include "McLecternMenu.h"
 #include "McChunk.h"
 #include "McChestLink.h"
 #include "McEnchanting.h"
@@ -832,7 +834,7 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 	{
 		return;
 	}
-	if (Entity->Kind == EMcBlockEntityKind::Container)
+	if (Entity->Kind == EMcBlockEntityKind::Container || Entity->Kind == EMcBlockEntityKind::Lectern)
 	{
 		Out.Append(Entity->Slots);
 	}
@@ -1065,6 +1067,133 @@ bool UMcBlockUseSubsystem::UseSign(AMcPlayerPawn& Player, AMcWorldActor& WorldAc
 	return true;
 }
 
+FMcBlockEntity* UMcBlockUseSubsystem::FindLectern(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Blocks || !Chunk || GetBlockName(*Blocks, Pos) != TEXT("minecraft:lectern")
+		|| FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("has_book")) != TEXT("true"))
+	{
+		return nullptr;
+	}
+	FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	return Entity && Entity->Kind == EMcBlockEntityKind::Lectern && !Entity->Slots.IsEmpty() && !Entity->Slots[0].IsEmpty() ? Entity : nullptr;
+}
+
+namespace
+{
+	// The lectern state with its facing kept and the book and power as given.
+	FMcStateId LecternState(FMcStateId State, bool bHasBook, bool bPowered)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("facing"), Registry.GetPropertyValue(State, TEXT("facing")));
+		Properties.Add(TEXT("has_book"), bHasBook ? TEXT("true") : TEXT("false"));
+		Properties.Add(TEXT("powered"), bPowered ? TEXT("true") : TEXT("false"));
+		return Registry.FindState(TEXT("minecraft:lectern"), Properties).Get(State);
+	}
+}
+
+bool UMcBlockUseSubsystem::UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	UMcPlayerDataComponent* Data = Player.Data;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Data || !Blocks || !Chunk)
+	{
+		return false;
+	}
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	if (FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("has_book")) != TEXT("true"))
+	{
+		// The book in hand goes on (one of it; creative keeps its own).
+		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+		if (!McBook::IsLecternBook(Held.Item))
+		{
+			return false;
+		}
+		FMcItemStack One = Held;
+		One.Count = 1;
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeLectern(One));
+		if (!Data->bCreative && --Held.Count <= 0)
+		{
+			Held.Clear();
+		}
+		WorldActor.SetBlock(Pos, LecternState(State, true, false));
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		WorldActor.MulticastSound(FName("item.book.put"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 1.0f, 1.0f);
+		return true;
+	}
+	const FMcBlockEntity* Lectern = FindLectern(WorldActor, Pos);
+	if (!Lectern)
+	{
+		return false;
+	}
+	Data->OpenLectern(Pos, McBook::GetPages(Lectern->Slots[0]), Lectern->Page,
+		[WeakPlayer = TWeakObjectPtr<AMcPlayerPawn>(&Player), WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos](FMcLecternMenu& Menu)
+		{
+			AMcPlayerPawn* Reader = WeakPlayer.Get();
+			AMcWorldActor* Actor = WeakWorld.Get();
+			if (Reader && Actor)
+			{
+				LecternButton(*Reader, *Actor, Pos, Menu);
+			}
+		});
+	return true;
+}
+
+void UMcBlockUseSubsystem::LecternButton(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, FMcLecternMenu& Menu)
+{
+	FMcBlockEntity* Lectern = FindLectern(WorldActor, Pos);
+	UMcPlayerDataComponent* Data = Player.Data;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Lectern || !Data || !Blocks)
+	{
+		// Gone, or someone else took the book meanwhile: the window closes as it is found invalid.
+		return;
+	}
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	if (Menu.bTakeAsked)
+	{
+		// Into the reader's inventory, or at their feet if it is full; the lectern is left bare and unpowered.
+		Menu.bTakeAsked = false;
+		const FMcItemStack Rest = Data->Inventory->AddItem(Lectern->Slots[0]);
+		if (!Rest.IsEmpty())
+		{
+			Data->DropFromWindow(Rest);
+		}
+		if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
+		{
+			Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+		}
+		WorldActor.SetBlock(Pos, LecternState(State, false, false));
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		return;
+	}
+	if (Menu.Page == Lectern->Page)
+	{
+		return;
+	}
+	Lectern->Page = Menu.Page;
+	WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	WorldActor.MulticastSound(FName("item.book.page_turn"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, FMath::FRandRange(0.9f, 1.0f));
+	// Everyone else reading it turns with it.
+	for (TActorIterator<AMcPlayerPawn> It(WorldActor.GetWorld()); It; ++It)
+	{
+		UMcPlayerDataComponent* Other = It->Data;
+		if (Other && Other->GetWindow().Kind == EMcWindowKind::Lectern && Other->GetWindow().Pos == Pos && Other->GetWindow().Menu.Get() != &Menu)
+		{
+			static_cast<FMcLecternMenu*>(Other->GetWindow().Menu.Get())->Page = Menu.Page;
+		}
+	}
+	// A full-strength pulse for 2 ticks (the redstone ends it), which also has comparators read the new page.
+	WorldActor.SetBlock(Pos, LecternState(State, true, true));
+	if (FMcSimulation* Sim = WorldActor.GetSimulation())
+	{
+		Sim->ScheduleTick(Pos, 2);
+	}
+}
+
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -1082,6 +1211,10 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (McSign::GetKind(Name) != McSign::EKind::None)
 	{
 		return UseSign(Player, WorldActor, Pos);
+	}
+	if (Name == TEXT("minecraft:lectern"))
+	{
+		return UseLectern(Player, WorldActor, Pos);
 	}
 	if (McBell::IsBell(Blocks->GetBlock(Pos)))
 	{
@@ -1312,6 +1445,8 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper");
 	case EMcWindowKind::Sign:
 		return McSign::GetKind(Name) != McSign::EKind::None;
+	case EMcWindowKind::Lectern:
+		return Name == TEXT("minecraft:lectern") && FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Window.Pos), TEXT("has_book")) == TEXT("true");
 	default:
 		return false;
 	}

@@ -23,6 +23,8 @@ enum class EMcBlockEntityKind : uint8
 	BrewingStand,
 	// A sign, standing, on a wall or hanging: SignSides and bWaxed.
 	Sign,
+	// A lectern: the book on it in Slots[0] (none without one) and the Page it lies open at, from 0.
+	Lectern,
 };
 
 // One side of a sign (minecraft.wiki, "Sign"): four lines of text, the dye they are written in, and whether glow ink
@@ -54,10 +56,13 @@ struct MCWORLD_API FMcBlockEntity
 	// A sign's front, then its back; honeycomb waxes it, and then nobody can change it.
 	FMcSignSide SignSides[2];
 	bool bWaxed = false;
+	// The page a lectern's book lies open at.
+	int32 Page = 0;
 
 	static FMcBlockEntity MakeContainer(int32 NumSlots);
 	static FMcBlockEntity MakeSpawner(FName InEntityId);
 	static FMcBlockEntity MakeSign();
+	static FMcBlockEntity MakeLectern(const FMcItemStack& Book);
 
 	// Reads or writes, by whether the archive is loading. Names are saved as text, so a save doesn't depend on
 	// the name table. False if a loading archive is malformed.

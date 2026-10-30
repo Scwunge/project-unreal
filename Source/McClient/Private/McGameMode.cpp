@@ -302,6 +302,49 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Object->TryGetBoolField(TEXT("waxed"), Sign.Entity.bWaxed);
 		}
 	}
+	// Lecterns' books: { "at": [x, y, z], "pages": ["text", ...], "page": 0, "title": ..., "author": ... }, a written
+	// book. Written the same way as the signs; the lectern (placed with has_book=false) then gets has_book=true, so
+	// that a comparator reading it reads the book.
+	const TArray<TSharedPtr<FJsonValue>>* LecternValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("lecterns"), LecternValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *LecternValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a lectern needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			const TSharedRef<FJsonObject> Content = MakeShared<FJsonObject>();
+			TArray<TSharedPtr<FJsonValue>> Pages;
+			const TArray<TSharedPtr<FJsonValue>>* PageValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("pages"), PageValues))
+			{
+				for (const TSharedPtr<FJsonValue>& Page : *PageValues)
+				{
+					const TSharedRef<FJsonObject> Raw = MakeShared<FJsonObject>();
+					Raw->SetStringField(TEXT("raw"), Page->AsString());
+					Pages.Add(MakeShared<FJsonValueObject>(Raw));
+				}
+			}
+			Content->SetArrayField(TEXT("pages"), Pages);
+			FString TitleText, Author;
+			Object->TryGetStringField(TEXT("title"), TitleText);
+			Object->TryGetStringField(TEXT("author"), Author);
+			const TSharedRef<FJsonObject> Title = MakeShared<FJsonObject>();
+			Title->SetStringField(TEXT("raw"), TitleText);
+			Content->SetObjectField(TEXT("title"), Title);
+			Content->SetStringField(TEXT("author"), Author);
+			FMcItemStack Book(TEXT("minecraft:written_book"));
+			Book.Set(TEXT("minecraft:written_book_content"), MakeShared<FJsonValueObject>(Content));
+			FSceneSign& Lectern = Signs->Emplace_GetRef();
+			Lectern.Pos = ToBlock(*At);
+			Lectern.Entity = FMcBlockEntity::MakeLectern(Book);
+			Object->TryGetNumberField(TEXT("page"), Lectern.Entity.Page);
+		}
+	}
 	if (Signs->Num() > 0)
 	{
 		TSharedRef<FTimerHandle> SignTimer = MakeShared<FTimerHandle>();
@@ -316,6 +359,12 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 					Chunk->SetBlockEntity(Sign.Pos.X & 15, Sign.Pos.Y, Sign.Pos.Z & 15, Sign.Entity);
 					WorldActor->MarkChunkDirty(FIntPoint(Sign.Pos.X >> 4, Sign.Pos.Z >> 4));
 					Blocks->OnBlockEntityChanged.Broadcast(Sign.Pos);
+					if (Sign.Entity.Kind == EMcBlockEntityKind::Lectern)
+					{
+						const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+						const FString Facing = Registry.GetPropertyValue(Blocks->GetBlock(Sign.Pos), TEXT("facing")).ToString();
+						WorldActor->SetBlock(Sign.Pos, Registry.ParseState(TEXT("minecraft:lectern[facing=") + Facing + TEXT(",has_book=true,powered=false]")).Get(0));
+					}
 					Signs->RemoveAt(Index);
 				}
 			}

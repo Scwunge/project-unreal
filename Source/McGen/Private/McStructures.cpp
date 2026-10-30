@@ -9,6 +9,7 @@
 #include "McPoolAliases.h"
 #include "McProceduralStructures.h"
 #include "McRandom.h"
+#include "McStructureSpawns.h"
 #include "McStructureTemplate.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -54,6 +55,12 @@ struct FMcStructureLibrary::FStructure
 	bool bBeard = false;
 	TArray<TSharedPtr<FJsonValue>> PoolAliases;
 	bool bSupported = false;
+
+	// Mobs that spawn here instead of the biome's (spawn_overrides): by category, and whether the box is the whole
+	// structure ("full") or each piece ("piece").
+	TArray<FMcSpawnEntry> OverrideMonsters;
+	TArray<FMcSpawnEntry> OverrideCreatures;
+	bool bMonstersPerPiece = false;
 };
 
 struct FMcStructureLibrary::FSet
@@ -204,6 +211,9 @@ namespace
 		int32 MinY;
 
 		FIntVector Centre() const { return FIntVector(Start.X * 16 + 8, 0, Start.Y * 16 + 8); }
+		// Where a swamp hut stood, set by building one: its box and the middle of its floor.
+		TOptional<TPair<FIntVector, FIntVector>> HutBox;
+		FVector HutFloor = FVector::ZeroVector;
 		FMcTemplatePlaceSettings Settings() const
 		{
 			FMcTemplatePlaceSettings Result;
@@ -460,6 +470,9 @@ namespace
 		B.Set(1, 2, 1, TEXT("minecraft:crafting_table"));
 		B.Set(5, 2, 1, TEXT("minecraft:cauldron"));
 		B.Set(5, 2, 5, TEXT("minecraft:potted_red_mushroom"));
+		// Whoever lives there: a witch and her cat, standing in the middle of the room (the game's too).
+		Context.HutBox = TPair<FIntVector, FIntVector>(FIntVector(Centre.X - 3, BaseY, Centre.Z - 3), FIntVector(Centre.X + 3, BaseY + 6, Centre.Z + 3));
+		Context.HutFloor = FVector(Centre.X + 0.5, BaseY + 2, Centre.Z + 0.5);
 	}
 
 	void BuildBuriedTreasure(FCtx& Context)
@@ -796,6 +809,43 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 					Structure->Biomes[*Id] = true;
 				}
 			}
+		}
+		const TSharedPtr<FJsonObject>* Overrides = nullptr;
+		if (Json->TryGetObjectField(TEXT("spawn_overrides"), Overrides))
+		{
+			const auto ReadCategory = [&](const TCHAR* Category, TArray<FMcSpawnEntry>& Out, bool* bPiece)
+			{
+				const TSharedPtr<FJsonObject>* Entry = nullptr;
+				if (!(*Overrides)->TryGetObjectField(Category, Entry))
+				{
+					return;
+				}
+				FString Box;
+				if (bPiece)
+				{
+					*bPiece = (*Entry)->TryGetStringField(TEXT("bounding_box"), Box) && Box == TEXT("piece");
+				}
+				const TArray<TSharedPtr<FJsonValue>>* Spawns = nullptr;
+				if (!(*Entry)->TryGetArrayField(TEXT("spawns"), Spawns))
+				{
+					return;
+				}
+				for (const TSharedPtr<FJsonValue>& Value : *Spawns)
+				{
+					const TSharedPtr<FJsonObject> Object = Value->AsObject();
+					FString Type;
+					if (Object.IsValid() && Object->TryGetStringField(TEXT("type"), Type))
+					{
+						FMcSpawnEntry Spawn;
+						Spawn.Kind = FName(*Type);
+						Spawn.Weight = Object->HasField(TEXT("weight")) ? static_cast<int32>(Object->GetNumberField(TEXT("weight"))) : 1;
+						Spawn.MinCount = Spawn.MaxCount = Object->HasField(TEXT("count")) ? static_cast<int32>(Object->GetNumberField(TEXT("count"))) : 1;
+						Out.Add(Spawn);
+					}
+				}
+			};
+			ReadCategory(TEXT("monster"), Structure->OverrideMonsters, &Structure->bMonstersPerPiece);
+			ReadCategory(TEXT("creature"), Structure->OverrideCreatures, nullptr);
 		}
 		Json->TryGetBoolField(TEXT("is_beached"), Structure->bBeached);
 		FString Temperature;
@@ -1202,6 +1252,28 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 	else if (Type == TEXT("swamp_hut"))
 	{
 		BuildSwampHut(Context);
+		if (Context.HutBox.IsSet())
+		{
+			FMcStructureZone Zone;
+			Zone.Structure = Structure.Id;
+			Zone.Min = Context.HutBox->Key;
+			Zone.Max = Context.HutBox->Value;
+			Zone.Monsters = Structure.OverrideMonsters;
+			Zone.Creatures = Structure.OverrideCreatures;
+			FMcStructureSpawns::Get().AddZone(Zone);
+			// The first of each kind the structure names lives there from the start.
+			const FString Key = FString::Printf(TEXT("%llu/%d/%d/%s"), Seed, Start.X, Start.Y, *Structure.Id.ToString());
+			for (const TArray<FMcSpawnEntry>* List : { &Structure.OverrideMonsters, &Structure.OverrideCreatures })
+			{
+				if (!List->IsEmpty())
+				{
+					FMcStructureMob Mob;
+					Mob.Kind = (*List)[0].Kind;
+					Mob.Position = Context.HutFloor;
+					FMcStructureSpawns::Get().AddMob(Key, Mob);
+				}
+			}
+		}
 	}
 	else if (Type == TEXT("buried_treasure"))
 	{
@@ -1260,6 +1332,22 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		}
 		const FMcRandom PlaceBase = FMcRandom(Seed).Fork(Start.X, Salt + 3, Start.Y);
 		Jigsaws->Place(Region, *Layout, Context.ClipMin, Context.ClipMax, PlaceBase, Structure.bBeard, FeatureLibrary, SeaLevel);
+		// Its own mobs spawn through the whole of it (the outpost's pillagers).
+		if (!Layout->Pieces.IsEmpty() && (!Structure.OverrideMonsters.IsEmpty() || !Structure.OverrideCreatures.IsEmpty()) && !Structure.bMonstersPerPiece)
+		{
+			FMcStructureZone Zone;
+			Zone.Structure = Structure.Id;
+			Zone.Min = Layout->Pieces[0].Min;
+			Zone.Max = Layout->Pieces[0].Max;
+			for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+			{
+				Zone.Min = FIntVector(FMath::Min(Zone.Min.X, Piece.Min.X), FMath::Min(Zone.Min.Y, Piece.Min.Y), FMath::Min(Zone.Min.Z, Piece.Min.Z));
+				Zone.Max = FIntVector(FMath::Max(Zone.Max.X, Piece.Max.X), FMath::Max(Zone.Max.Y, Piece.Max.Y), FMath::Max(Zone.Max.Z, Piece.Max.Z));
+			}
+			Zone.Monsters = Structure.OverrideMonsters;
+			Zone.Creatures = Structure.OverrideCreatures;
+			FMcStructureSpawns::Get().AddZone(Zone);
+		}
 	}
 	else if (Type == TEXT("mineshaft") || Type == TEXT("stronghold") || Type == TEXT("ocean_monument") || Type == TEXT("fortress") || Type == TEXT("woodland_mansion")
 		|| Type == TEXT("end_city") || Type == TEXT("nether_fossil"))

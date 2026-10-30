@@ -106,6 +106,8 @@ public:
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;
+	// Never despawns for being far from everyone (a swamp hut's witch).
+	bool bPersistent = false;
 	// What the arms are doing, for how it is drawn: 0 idle, 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
 	int32 ArmPose = 0;
 	// A witch drinking: ticks left of the drink and what is in it ("healing"), and ticks until it may drink again.

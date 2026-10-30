@@ -10,6 +10,7 @@
 #include "McLoot.h"
 #include "McMob.h"
 #include "McRandom.h"
+#include "McStructureSpawns.h"
 #include "McVillager.h"
 #include "McMobLook.h"
 #include "McServer.h"
@@ -86,6 +87,8 @@ namespace
 
 	// Hostile mobs stay under this many in the world per player, and are removed past this distance from every player.
 	constexpr int32 HostileCapPerPlayer = 20;
+	// Most of one kind a structure with mobs of its own keeps about itself by spawning.
+	constexpr int32 StructureMobCap = 4;
 	constexpr double DespawnDistance = 100.0;
 	constexpr double MinSpawnDistance = 24.0;
 	constexpr double MaxSpawnDistance = 48.0;
@@ -764,26 +767,65 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		return;
 	}
 	const FVector& Player = Players[Random.RandHelper(Players.Num())];
-	const double Angle = Random.FRandRange(0.0, 2.0 * PI);
-	const double Distance = Random.FRandRange(MinSpawnDistance, MaxSpawnDistance);
-	const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Distance);
-	const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Distance);
-	const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	// Half the tries go to a structure with mobs of its own near the player (an outpost, a hut), if there is one: the
+	// game's spawner tries every chunk, so the places a structure covers are not left to a lucky ring.
+	TArray<FMcStructureZone> Zones;
+	FMcStructureSpawns::Get().GetMonsterZonesNear(Player.X, Player.Z, MaxSpawnDistance, Zones);
+	const FMcStructureZone* Zone = !Zones.IsEmpty() && Random.FRand() < 0.5f ? &Zones[Random.RandHelper(Zones.Num())] : nullptr;
+	int32 X;
+	int32 Z;
+	TOptional<int32> Y;
+	if (Zone)
+	{
+		X = Random.RandRange(Zone->Min.X, Zone->Max.X);
+		Z = Random.RandRange(Zone->Min.Z, Zone->Max.Z);
+		Y = FindStandingY(X, Z, (Zone->Min.Y + Zone->Max.Y) / 2, FMath::Max(8, (Zone->Max.Y - Zone->Min.Y) / 2 + 1));
+		const double Across = FVector2D::Distance(FVector2D(X + 0.5, Z + 0.5), FVector2D(Player.X, Player.Z));
+		if (Y && (Across < MinSpawnDistance || Across > MaxSpawnDistance || !Zone->Contains(FIntVector(X, Y.GetValue(), Z))))
+		{
+			return;
+		}
+	}
+	else
+	{
+		const double Angle = Random.FRandRange(0.0, 2.0 * PI);
+		const double Distance = Random.FRandRange(MinSpawnDistance, MaxSpawnDistance);
+		X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Distance);
+		Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Distance);
+		Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	}
 	if (!Y)
 	{
 		return;
 	}
-	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach).
 	const FIntVector Cell(X, Y.GetValue(), Z);
-	if (!Manager.IsDarkEnoughToSpawn(Cell))
+	const FVector Pos(X + 0.5, Y.GetValue(), Z + 0.5);
+
+	// What the biome there spawns, or the structure's own list where it has one. A kind we have no mob for yet (a
+	// ghast, a piglin) uses up the roll and nothing comes, so the others keep the share they have in the game.
+	FMcStructureZone Here;
+	const bool bStructure = FMcStructureSpawns::Get().FindMonsterZone(Cell, Here);
+	const TConstArrayView<FMcSpawnEntry> Monsters = bStructure ? TConstArrayView<FMcSpawnEntry>(Here.Monsters) : GetMonsterSpawns(Cell);
+	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach). A
+	// raider's patrol and so the outpost's pillagers only mind block light, over 8.
+	const bool bPatroller = bStructure && !Monsters.IsEmpty() && Monsters[0].Kind == TEXT("minecraft:pillager");
+	if (bPatroller ? Manager.EstimateBlockLight(Cell) > 8 : !Manager.IsDarkEnoughToSpawn(Cell))
 	{
 		return;
 	}
-	const FVector Pos(X + 0.5, Y.GetValue(), Z + 0.5);
-
-	// What the biome there spawns. A kind we have no mob for yet (a ghast, a piglin) uses up the roll and nothing
-	// comes, so the others keep the share they have in the game.
-	const TConstArrayView<FMcSpawnEntry> Monsters = GetMonsterSpawns(Cell);
+	if (bStructure)
+	{
+		// Not too crowded: a few of them about the place, not the whole mob cap.
+		int32 Near = 0;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			Near += Entity->IsLiving() && Here.Contains(FIntVector(FMath::FloorToInt32(Entity->Body.Position.X), FMath::FloorToInt32(Entity->Body.Position.Y), FMath::FloorToInt32(Entity->Body.Position.Z))) && Entity->GetType() == Monsters[0].Kind ? 1 : 0;
+		}
+		if (Near >= StructureMobCap)
+		{
+			return;
+		}
+	}
 	int32 TotalWeight = 0;
 	for (const FMcSpawnEntry& Entry : Monsters)
 	{
@@ -901,6 +943,28 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 		}
 	}
 
+	// The mobs structures came with (a swamp hut's witch) are born once their chunk is here.
+	if (Ticks % 20 == 0)
+	{
+		FMcStructureSpawns::Get().TakeMobs([this](const FMcStructureMob& Born)
+		{
+			const FMcMobType* Type = FMcMobType::Find(Born.Kind);
+			if (!Type)
+			{
+				return true;
+			}
+			if (!World.HasChunk(FIntPoint(McCoords::BlockToChunk(FMath::FloorToInt32(Born.Position.X)), McCoords::BlockToChunk(FMath::FloorToInt32(Born.Position.Z)))) || (Type->IsHostile() && Rules.IsPeaceful()))
+			{
+				return false;
+			}
+			if (FMcMob* Mob = SpawnMob(Born.Kind, Born.Position))
+			{
+				Mob->bPersistent = true;
+			}
+			return true;
+		});
+	}
+
 	// Hostile mobs far from everyone are removed. With nobody in the world (a listen server before its player has a
 	// pawn, the moments after a death) there is nobody to be far from, so they stay.
 	if (!Players.IsEmpty() && Ticks % 40 == 0)
@@ -912,7 +976,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				continue;
 			}
 			FMcMob& Mob = static_cast<FMcMob&>(*Entity);
-			if (!Mob.Type.IsHostile() || Mob.RaidId != 0)
+			if (!Mob.Type.IsHostile() || Mob.RaidId != 0 || Mob.bPersistent)
 			{
 				continue;
 			}

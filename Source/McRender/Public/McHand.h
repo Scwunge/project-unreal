@@ -22,11 +22,10 @@ namespace McHand
 	// How much smaller than the game's distances everything is drawn, and so how much nearer the camera.
 	constexpr double Scale = 1.0;
 	constexpr float SwingSeconds = 0.3f;
-	constexpr float ThrowSeconds = 0.3f;
-
-	// How far the item has dipped out of sight after a throw, 0 to 1, a given time after the click.
-	float GetThrowDip(float Age);
-	constexpr float EquipSeconds = 0.2f;
+	// How far a swung item is carried toward the middle and down out of the view, in the camera's space, at the full stroke.
+	const FVector UseSwingMove(0.0, -46.0, -40.0);
+	// Lowering or raising the held item takes this long each way: two to three ticks in the reference client's shots.
+	constexpr float EquipSeconds = 0.12f;
 
 	// What the hand holds, as it is drawn.
 	enum class EHeld : uint8
@@ -107,7 +106,8 @@ public:
 	UMcHandComponent(const FObjectInitializer& ObjectInitializer);
 
 	// The item in the selected slot (none for an empty hand). Changing it lowers the hand and brings it up again.
-	void SetHeld(FName InItem);
+	// A bigger stack of the same item lowers and raises it too (a pickup does; the count going down does not).
+	void SetHeld(FName InItem, int32 InCount = 1);
 	void SetShown(bool bInShown);
 	// Starts a swing (the component also starts one for the buttons).
 	void Swing();
@@ -147,7 +147,9 @@ private:
 	McHand::EHeld ShownKind = McHand::EHeld::Nothing;
 	float Equip = 1.0f;
 	float SwingAge = 100.0f;
-	float ThrowAge = 100.0f;
+	bool bUseSwing = false;
+	bool bReequip = false;
+	int32 WantedCount = 0;
 	bool bEating = false;
 	float EatSeconds = 1.6f;
 	// How far the item is raised (0 to 1) and how long it has been eaten.

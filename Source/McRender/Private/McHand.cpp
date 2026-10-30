@@ -112,15 +112,6 @@ namespace McHand
 		}
 	}
 
-	float GetThrowDip(float Age)
-	{
-		// Fitted to the reference client's held snowball after a throw (ref_snow_*): still in place on the click, gone from the
-		// screen's bottom centre 1 to 3 ticks later (only a sliver left), back in place by tick 6.
-		const auto Smooth = [](float T) { T = FMath::Clamp(T, 0.0f, 1.0f); return T * T * (3.0f - 2.0f * T); };
-		const float P = Age / ThrowSeconds;
-		return Smooth(P / 0.2f) * (1.0f - Smooth((P - 0.55f) / 0.45f));
-	}
-
 	float GetSwingStroke(float Progress)
 	{
 		return FMath::Sin(FMath::Sqrt(FMath::Clamp(Progress, 0.0f, 1.0f)) * PI);
@@ -451,9 +442,14 @@ UMcHandComponent::UMcHandComponent(const FObjectInitializer& ObjectInitializer)
 #endif
 }
 
-void UMcHandComponent::SetHeld(FName InItem)
+void UMcHandComponent::SetHeld(FName InItem, int32 InCount)
 {
+	if (InItem == Wanted && InCount > WantedCount && !InItem.IsNone())
+	{
+		bReequip = true;
+	}
 	Wanted = InItem;
+	WantedCount = InCount;
 }
 
 void UMcHandComponent::SetShown(bool bInShown)
@@ -683,20 +679,12 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 				if (Controller->IsInputKeyDown(EKeys::LeftMouseButton) || Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
 				{
 					Swing();
-					if (Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
-					{
-						const FString Thrown = McCache::PathOf(Shown.ToString());
-						if (Thrown == TEXT("snowball") || Thrown == TEXT("egg") || Thrown == TEXT("ender_pearl"))
-						{
-							ThrowAge = 0.0f;
-						}
-					}
+					bUseSwing = Controller->WasInputKeyJustPressed(EKeys::RightMouseButton);
 				}
 			}
 		}
 	}
 	SwingAge += DeltaTime;
-	ThrowAge += DeltaTime;
 
 	// How fast and how far the player walked this frame, along the ground.
 	const FVector Location = Owner->GetActorLocation();
@@ -715,12 +703,16 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	WalkAmount = FMath::FInterpTo(WalkAmount, Target, DeltaTime, 8.0f);
 
 	// A different item in the hand: lower it, change it, bring it up.
-	if (Wanted != Shown)
+	if (Wanted != Shown || bReequip)
 	{
 		Equip = FMath::Min(Equip + DeltaTime / McHand::EquipSeconds, 1.0f);
 		if (Equip >= 1.0f)
 		{
-			ShowHeld(Wanted);
+			bReequip = false;
+			if (Wanted != Shown)
+			{
+				ShowHeld(Wanted);
+			}
 		}
 	}
 	else if (Equip > 0.0f)
@@ -759,11 +751,10 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		Pose.SetRotation(Eat.GetRotation() * Pose.GetRotation());
 		Pose.AddToTranslation(Eat.GetTranslation());
 	}
-	if (ThrowAge < McHand::ThrowSeconds)
+	if (bUseSwing && !Shown.IsNone() && Stroke > 0.0f)
 	{
-		// The thrown item drops out of the bottom of the view, toward the middle.
-		const float Dip = McHand::GetThrowDip(ThrowAge);
-		Pose.AddToTranslation(FVector(0.0, -40.0 * Dip, -100.0 * Dip));
+		// Using the item (a throw) carries it toward the middle and down out of the view and back, as the swing runs.
+		Pose.AddToTranslation(McHand::UseSwingMove * Stroke);
 	}
 	SetRelativeTransform(Pose);
 	// Only an empty hand shows its arm.

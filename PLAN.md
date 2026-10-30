@@ -232,6 +232,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     anything else out.
   - A fire charge or flint and steel lights the air in front (charge used up, steel worn by one); a shulker
     box is placed in front, facing the way the dispenser does. A blocked front does nothing.
+- **Pause menu and options** (2026-10-30), in `McHUDMenus`: Back to Game, Options, Open to LAN and Save and Quit; Esc
+  closes a screen first, then opens the pause menu. Options has sliders for field of view, render distance,
+  sensitivity and volume (kept in `Saved/options.json`) and the Unreal Mode / HD choice. Open to LAN starts a listen
+  server on the running world. **Not tested:** another client joining.
+- **First-person hand** (2026-10-30), `McHand`: the right arm (empty hand only) and the held item, drawn with UE
+  first-person rendering (camera `FirstPersonScale` 0.1, its own 70 degree vertical field of view). A held item is
+  placed from the models' `display.firstperson_righthand` data at one anchor (`HeldAnchor`); swing, walk bob and the
+  drop when the item changes are in. Held block 150-250 px wide is a test. **Not done:** maps in hand, off-hand,
+  enchantment glint, tools that differ from item/handheld (rods, mace).
 - **Shulker box contents** (2026-10-29), in `McShulker` and `McBlockUse`: a shulker box is a 27-slot "Shulker Box"
   container. Breaking one drops it with its items packed into the item (`PackBoxDrops`), and placing it fills
   the box again (`FillBox`); a dispenser placing one keeps the contents. A box cannot open with a block against

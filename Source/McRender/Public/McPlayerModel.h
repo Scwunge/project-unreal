@@ -104,6 +104,9 @@ namespace McPlayerModel
 	// Draws all twelve boxes (six parts, each with its outer layer) in the pose.
 	MCRENDER_API void BuildMesh(const FPose& Pose, FMeshData& Out);
 
+	// One part with its outer layer, standing, added to Out: its pivot at the origin, in the same units.
+	MCRENDER_API void BuildPartMesh(EMcPlayerPart Part, FMeshData& Out);
+
 	// Slow-moving state that makes the pose out of what the world sees: where the player is, and where they look.
 	struct FAnimState
 	{

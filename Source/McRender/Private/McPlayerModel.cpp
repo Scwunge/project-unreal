@@ -191,6 +191,15 @@ namespace McPlayerModel
 		}
 	}
 
+	void BuildPartMesh(EMcPlayerPart Part, FMeshData& Out)
+	{
+		const FPartDef& Def = GetPartDef(Part);
+		FPartPose Pose;
+		Pose.Pivot = FVector::ZeroVector;
+		AddBox(Def, Pose, 0.0f, Def.BaseUV, 0.0f, Out);
+		AddBox(Def, Pose, 0.0f, Def.OuterUV, OuterInflateBody, Out);
+	}
+
 	float TurnBody(float BodyYaw, float HeadYaw, bool bMoving)
 	{
 		float Diff = WrapDegrees(HeadYaw - BodyYaw);

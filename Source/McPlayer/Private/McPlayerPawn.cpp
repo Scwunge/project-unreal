@@ -33,6 +33,7 @@
 
 #if MC_WITH_RENDER
 #include "McParticleComponent.h"
+#include "McHand.h"
 #include "McPlayerModel.h"
 #endif
 
@@ -72,6 +73,9 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// Minecraft's default Field of View setting is 70 degrees, measured vertically; DefaultEngine.ini sets
 	// the local player to keep the vertical angle fixed so this matches.
 	Camera->SetFieldOfView(70.0f);
+	// The hand is drawn with this scale, which squeezes its depth toward the camera.
+	Camera->bEnableFirstPersonScale = true;
+	Camera->FirstPersonScale = 0.1f;
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, StandingEyeHeight * McCoords::UnitsPerBlock));
 
 	Data = CreateDefaultSubobject<UMcPlayerDataComponent>(TEXT("PlayerData"));
@@ -84,6 +88,8 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// The body other players see. It stays hidden on the machine that plays this pawn.
 	Model = CreateDefaultSubobject<UMcPlayerModelComponent>(TEXT("Body"));
 	Model->SetupAttachment(RootComponent);
+	Hand = CreateDefaultSubobject<UMcHandComponent>(TEXT("Hand"));
+	Hand->SetupAttachment(Camera);
 #endif
 }
 
@@ -277,6 +283,13 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 #endif
 		Figure->SetShown(!IsLocallyControlled() || bShowSelf);
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
+	}
+	if (UMcHandComponent* Arm = Hand.Get())
+	{
+		// Only the player at the keyboard sees their own hand, and not while dead.
+		Arm->SetShown(IsLocallyControlled() && !IsDead());
+		const FMcItemStack& Held = Data->GetSelected();
+		Arm->SetHeld(Held.IsEmpty() ? NAME_None : Held.Item);
 	}
 #endif
 

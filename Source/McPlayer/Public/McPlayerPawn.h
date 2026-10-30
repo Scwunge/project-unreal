@@ -265,6 +265,8 @@ private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;
+	// The player's own arm and what it holds, in first person.
+	TWeakObjectPtr<class UMcHandComponent> Hand;
 
 	TOptional<FMcBlockHit> Target;
 	// Seconds until holding a button breaks or places again.

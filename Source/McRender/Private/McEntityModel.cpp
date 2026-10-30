@@ -89,7 +89,7 @@ namespace McEntityModel
 		TMap<FName, FModel> BuildModels()
 		{
 			TMap<FName, FModel> Models;
-			constexpr float Flat = -HALF_PI;
+			constexpr float Flat = HALF_PI;
 
 			{
 				FModel Pig;
@@ -106,7 +106,7 @@ namespace McEntityModel
 				Cow.Kind = TEXT("minecraft:cow");
 				Cow.TextureSize = FIntPoint(64, 64);
 				Cow.Textures = { TEXT("cow/cow_temperate.png") };
-				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(18, 4, -6, -9, -5, 12, 18, 10) }, Flat));
+				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
 				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 9), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 3, 1, 1, 3, 1), Box(22, 0, 4, 3, 1, 1, 3, 1, 0.0f, true) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 7, -7, 12);
 				Models.Add(Cow.Kind, Cow);

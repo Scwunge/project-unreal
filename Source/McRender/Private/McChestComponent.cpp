@@ -100,6 +100,45 @@ FName UMcChestComponent::GetShulkerModel(FMcStateId State, FQuat& OutRotation)
 	return FName(TEXT("mc:shulker_box/shulker") + (Name.IsEmpty() ? FString() : TEXT("_") + Name));
 }
 
+FName UMcChestComponent::GetHeadModel(FMcStateId State, FVector& OutCentre, float& OutYaw)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!Registry.IsValidState(State))
+	{
+		return NAME_None;
+	}
+	FString Name = Registry.GetBlockOf(State).Name.ToString();
+	if (!Name.RemoveFromStart(TEXT("minecraft:")) || Name == TEXT("piston_head"))
+	{
+		return NAME_None;
+	}
+	const bool bWall = Name.Contains(TEXT("_wall_"));
+	Name.ReplaceInline(TEXT("_wall_"), TEXT("_"));
+	const TCHAR* Kind = Name == TEXT("skeleton_skull") ? TEXT("skeleton") : Name == TEXT("wither_skeleton_skull") ? TEXT("wither_skeleton")
+		: Name == TEXT("zombie_head") ? TEXT("zombie") : Name == TEXT("creeper_head") ? TEXT("creeper")
+		: Name == TEXT("piglin_head") ? TEXT("piglin") : Name == TEXT("player_head") ? TEXT("player")
+		: Name == TEXT("dragon_head") ? TEXT("dragon") : nullptr;
+	if (!Kind)
+	{
+		return NAME_None;
+	}
+	if (bWall)
+	{
+		// Its face points out of the wall, its back against it.
+		const FName Facing = Registry.GetPropertyValue(State, TEXT("facing"));
+		const FVector Out = Facing == TEXT("north") ? FVector(0, 0, -1) : Facing == TEXT("south") ? FVector(0, 0, 1)
+			: Facing == TEXT("west") ? FVector(-1, 0, 0) : FVector(1, 0, 0);
+		OutCentre = FVector(0.5, 0.25, 0.5) - Out * 0.25;
+		OutYaw = Facing == TEXT("west") ? 90.0f : Facing == TEXT("north") ? 180.0f : Facing == TEXT("east") ? 270.0f : 0.0f;
+	}
+	else
+	{
+		OutCentre = FVector(0.5, 0.0, 0.5);
+		OutYaw = FCString::Atoi(*Registry.GetPropertyValue(State, TEXT("rotation")).ToString()) * 22.5f;
+	}
+	return FName(FString(TEXT("mc:head/")) + Kind);
+}
+
 FQuat UMcChestComponent::RotationFromAxes(const FVector& X, const FVector& Y, const FVector& Z)
 {
 	// McEntityModel puts model (x, y, z) at Unreal (x, z, y), as McCoords does blocks.
@@ -197,7 +236,7 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 		FVector Centre;
 		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone()
 			|| McBell::IsBell(static_cast<FMcStateId>(Id)) || IsEnchantingTable(static_cast<FMcStateId>(Id))
-			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation);
+			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation) || !GetHeadModel(static_cast<FMcStateId>(Id), Centre, Yaw).IsNone();
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -316,6 +355,11 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 		{
 			Known->Shape = EShape::LecternBook;
 			Kind = FName(TEXT("mc:book"));
+		}
+		else if (const FName Head = GetHeadModel(Pair.Value, Centre, Yaw); !Head.IsNone())
+		{
+			Known->Shape = EShape::Head;
+			Kind = Head;
 		}
 		else if (IsEnchantingTable(Pair.Value))
 		{

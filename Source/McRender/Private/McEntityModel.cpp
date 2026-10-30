@@ -386,6 +386,57 @@ namespace McEntityModel
 				Book.Parts.Add(Part(ERole::BookPage, FVector(0, 0, 1), { Box(24, 10, 0, -4, 0.03f, 5, 8, 0) }, 0, 0, 0, 1));
 				Models.Add(Book.Kind, Book);
 			}
+			{
+				// Placed mob heads (McChestComponent): "mc:head/zombie"... An 8 cube from the mob's own picture standing on the
+				// model's origin, facing south, with the hat layer a little bigger over it where the picture has one. The
+				// piglin's is wider (10), with its snout, tusks and floppy ears, as its picture lays them out.
+				struct FHeadKind { const TCHAR* Name; const TCHAR* Texture; int32 Height; bool bHat; };
+				const FHeadKind Kinds[] = {
+					{ TEXT("skeleton"), TEXT("skeleton/skeleton.png"), 32, false },
+					{ TEXT("wither_skeleton"), TEXT("skeleton/wither_skeleton.png"), 32, false },
+					{ TEXT("zombie"), TEXT("zombie/zombie.png"), 64, true },
+					{ TEXT("creeper"), TEXT("creeper/creeper.png"), 32, false },
+					{ TEXT("player"), TEXT("player/wide/steve.png"), 64, true },
+				};
+				for (const FHeadKind& Kind : Kinds)
+				{
+					FModel Head;
+					Head.Kind = FName(FString(TEXT("mc:head/")) + Kind.Name);
+					Head.TextureSize = FIntPoint(64, Kind.Height);
+					Head.Textures = { Kind.Texture };
+					Head.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
+					if (Kind.bHat)
+					{
+						Head.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(32, 0, -4, 0, -4, 8, 8, 8, 0.25f) }));
+					}
+					Models.Add(Head.Kind, Head);
+				}
+				FModel Piglin;
+				Piglin.Kind = FName(TEXT("mc:head/piglin"));
+				Piglin.TextureSize = FIntPoint(64, 64);
+				Piglin.Textures = { TEXT("piglin/piglin.png") };
+				Piglin.Parts.Add(Part(ERole::Static, FVector::ZeroVector, {
+					Box(0, 0, -5, 0, -4, 10, 8, 8), Box(31, 1, -2, 0, 4, 4, 4, 1), Box(2, 0, 2, 0, 4, 1, 2, 1), Box(2, 4, -3, 0, 4, 1, 2, 1) }));
+				// The ears hang from the top of each side, leaning out.
+				Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, 6, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, 0.5f));
+				Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, 6, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -0.5f));
+				Models.Add(Piglin.Kind, Piglin);
+				// The dragon's, cut from its 256 picture and drawn at three quarters: a 16 cube with two scales on top, and
+				// in front an upper jaw (12 by 5 by 16, two nostrils on it) over a lower one (12 by 4 by 16).
+				FModel Dragon;
+				Dragon.Kind = FName(TEXT("mc:head/dragon"));
+				Dragon.TextureSize = FIntPoint(256, 256);
+				Dragon.Textures = { TEXT("enderdragon/dragon.png") };
+				FPart DragonHead = Part(ERole::Static, FVector::ZeroVector, {
+					Box(112, 30, -8, 0, -8, 16, 16, 16),
+					Box(0, 0, -5, 16, -4, 2, 4, 6), Box(0, 0, 3, 16, -4, 2, 4, 6, 0.0f, true),
+					Box(176, 44, -6, 4, 8, 12, 5, 16),
+					Box(112, 0, -5, 9, 18, 2, 2, 4), Box(112, 0, 3, 9, 18, 2, 2, 4, 0.0f, true),
+					Box(176, 65, -6, 0, 8, 12, 4, 16) });
+				DragonHead.Scale = 0.75f;
+				Dragon.Parts.Add(DragonHead);
+				Models.Add(Dragon.Kind, Dragon);
+			}
 			return Models;
 		}
 

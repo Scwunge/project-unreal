@@ -84,6 +84,10 @@ bool FMcBlockPlacementTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a shulker box on top faces up"), Place(TEXT("minecraft:red_shulker_box"), Top, 0), FString(TEXT("minecraft:red_shulker_box[facing=up]")));
 	TestEqual(TEXT("one on a north face faces north"), Place(TEXT("minecraft:shulker_box"), NorthHigh, 0), FString(TEXT("minecraft:shulker_box[facing=north]")));
 
+	TestTrue(TEXT("a skull on top faces the player"), Place(TEXT("minecraft:skeleton_skull"), Top, 0).StartsWith(TEXT("minecraft:skeleton_skull[")) && Place(TEXT("minecraft:skeleton_skull"), Top, 0).Contains(TEXT("rotation=8")));
+	TestTrue(TEXT("a head on a north face hangs on the wall"), Place(TEXT("minecraft:zombie_head"), NorthHigh, 0).StartsWith(TEXT("minecraft:zombie_wall_head[")) && Place(TEXT("minecraft:zombie_head"), NorthHigh, 0).Contains(TEXT("facing=north")));
+	TestEqual(TEXT("not under a block"), Place(TEXT("minecraft:creeper_head"), Under, 0), FString(TEXT("nothing")));
+
 	// Looking south (yaw 0) the bells face north, back at the player; on a north face one hangs facing south, towards the wall.
 	TestTrue(TEXT("a bell on top stands on the floor"), Place(TEXT("minecraft:bell"), Top, 0).Contains(TEXT("attachment=floor,facing=north")));
 	TestTrue(TEXT("under a block it hangs from the ceiling"), Place(TEXT("minecraft:bell"), Under, 0).Contains(TEXT("attachment=ceiling")));

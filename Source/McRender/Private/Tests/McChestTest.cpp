@@ -251,6 +251,66 @@ bool FMcBookTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHeadTest, "McClient.McRender.Heads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcHeadTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registry loads"), Registry.EnsureLoaded()))
+	{
+		return false;
+	}
+	FVector Centre;
+	float Yaw = -1.0f;
+	const auto Pick = [&](const TCHAR* Text) { return UMcChestComponent::GetHeadModel(Registry.ParseState(Text).Get(0), Centre, Yaw); };
+	TestEqual(TEXT("a skeleton skull"), Pick(TEXT("minecraft:skeleton_skull[powered=false,rotation=4]")), FName(TEXT("mc:head/skeleton")));
+	TestTrue(TEXT("stands on the floor's middle"), Centre.Equals(FVector(0.5, 0.0, 0.5)));
+	TestEqual(TEXT("rotation 4 faces west"), Yaw, 90.0f);
+	TestEqual(TEXT("a wither skeleton's on a wall"), Pick(TEXT("minecraft:wither_skeleton_wall_skull[facing=east,powered=false]")), FName(TEXT("mc:head/wither_skeleton")));
+	// Facing east out of a wall to its west: set back against it, half way up.
+	TestTrue(TEXT("against the wall"), Centre.Equals(FVector(0.25, 0.25, 0.5)));
+	TestEqual(TEXT("facing east"), Yaw, 270.0f);
+	TestEqual(TEXT("a player head"), Pick(TEXT("minecraft:player_head[powered=false,rotation=0]")), FName(TEXT("mc:head/player")));
+	TestEqual(TEXT("a piglin's on a wall"), Pick(TEXT("minecraft:piglin_wall_head[facing=north,powered=false]")), FName(TEXT("mc:head/piglin")));
+	TestEqual(TEXT("a dragon head"), Pick(TEXT("minecraft:dragon_head[powered=false,rotation=0]")), FName(TEXT("mc:head/dragon")));
+	if (const FModel* Dragon = Find(TEXT("mc:head/dragon")))
+	{
+		FAnim Still;
+		McPlayerModel::FMeshData Mesh;
+		BuildMesh(*Dragon, Still, 0, Mesh);
+		const ::FBox Big(Mesh.Positions);
+		// 12 across at three quarters, its jaws reaching out south past the block.
+		TestTrue(TEXT("the dragon's is 12 across"), FMath::IsNearlyEqual(Big.Max.X - Big.Min.X, 75.0, 0.1));
+		TestTrue(TEXT("its jaws reach south"), FMath::IsNearlyEqual(Big.Max.Y, 112.5, 0.1));
+	}
+	TestTrue(TEXT("a piston head is no head"), Pick(TEXT("minecraft:piston_head[facing=north,short=false,type=normal]")).IsNone());
+	for (const TCHAR* Kind : { TEXT("mc:head/skeleton"), TEXT("mc:head/wither_skeleton"), TEXT("mc:head/zombie"), TEXT("mc:head/creeper"), TEXT("mc:head/player"), TEXT("mc:head/piglin") })
+	{
+		TestNotNull(FString::Printf(TEXT("%s has a model"), Kind), Find(FName(Kind)));
+	}
+	const FModel* Skull = Find(TEXT("mc:head/creeper"));
+	if (!Skull)
+	{
+		return false;
+	}
+	FAnim Pose;
+	McPlayerModel::FMeshData Data;
+	BuildMesh(*Skull, Pose, 0, Data);
+	const ::FBox Bounds(Data.Positions);
+	TestTrue(TEXT("a half block cube on the floor"), Bounds.Min.Equals(FVector(-25.0, -25.0, 0.0), 0.1) && Bounds.Max.Equals(FVector(25.0, 25.0, 50.0), 0.1));
+	// Its face (the picture's 8..16 across, 8..16 down) is on the south side, Unreal +y.
+	bool bFaceSouth = false;
+	for (int32 Index = 0; Index + 3 < Data.Positions.Num(); Index += 4)
+	{
+		const FVector2D Middle = (Data.UV0[Index] + Data.UV0[Index + 2]) * 0.5 * FVector2D(64.0, 32.0);
+		bFaceSouth |= Data.Normals[Index].Y > 0.9 && Middle.X > 8.0 && Middle.X < 16.0 && Middle.Y > 8.0 && Middle.Y < 16.0;
+	}
+	TestTrue(TEXT("its face looks south"), bFaceSouth);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHullMaskTest, "McClient.McRender.HullMask",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

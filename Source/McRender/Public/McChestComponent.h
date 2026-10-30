@@ -5,7 +5,7 @@
 // (McEntityModel's "mc:shulker_box/..."), turned so the lid faces the way the box does, the lid rising and turning as
 // the box opens. A bell's body is one too ("mc:bell"; its frame is the block model), swinging when it is rung, and so
 // are the books ("mc:book"): lying open on a lectern that has one, and floating over an enchanting table, turning to
-// the nearest player and opening, its pages flipping, while one is near.
+// the nearest player and opening, its pages flipping, while one is near. Mob heads are too ("mc:head/...").
 
 #pragma once
 
@@ -50,6 +50,10 @@ public:
 	// block's corner) and the Unreal rotation of the book model, lying open on the slanted top with its top up the
 	// slope. False for a state that isn't a lectern with a book.
 	static bool GetLecternBook(FMcStateId State, FVector& OutCentre, FQuat& OutRotation);
+	// A mob head's model ("mc:head/zombie"), where the model's origin goes in the block (from its corner, in blocks)
+	// and the Minecraft yaw it faces: on the floor in sixteen steps, on a wall out of it, set back against it and half
+	// way up. None for a state that isn't a head.
+	static FName GetHeadModel(FMcStateId State, FVector& OutCentre, float& OutYaw);
 	// The Unreal rotation that takes the model's x, y and z (Minecraft's axes, as McEntityModel builds them) to the
 	// given block directions.
 	static FQuat RotationFromAxes(const FVector& X, const FVector& Y, const FVector& Z);
@@ -70,7 +74,7 @@ private:
 	// Whether a state is a chest, by state id.
 	TBitArray<> IsChest;
 
-	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook };
+	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head };
 	struct FChest
 	{
 		FMcStateId State = 0;

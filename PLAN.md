@@ -204,6 +204,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     blocks of this machine's player turning to them and opening, its loose pages waving. Test `McRender.Books`; shots
     `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`). Not done: lecterns' gameplay (putting a book on,
     reading it, taking it, the comparator signal), so `has_book` is only set by scenes and commands.
+  - **Mob heads** (2026-10-30): skeleton, wither skeleton, zombie, creeper, piglin, player (Steve's picture) and dragon
+    heads and their wall forms are entity models `mc:head/...` cut from each mob's own picture (an 8 cube, with the hat
+    layer for the zombie and player; the piglin's 10 wide with snout, tusks and ears; the dragon's a 16 cube with
+    scales, nostrils and two jaws, at three quarters), stood by `UMcChestComponent` (`GetHeadModel`): on the floor in
+    sixteen steps of `rotation`, on a wall facing out with the back against it, half way up. Placement turns floor heads
+    to the player and puts heads on walls when a side is clicked (none under a block). Test `McRender.Heads`; shot
+    `Saved/Shots/heads.png` (`-McScene=heads`). Not done: player heads' owners' skins (all Steve), the dragon's and
+    piglin's moving jaw and ears when powered, wearing a head, and heads in the inventory drawn as models. Where the
+    dragon's scales and nostrils sit is read from their sizes, not checked against the game.
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

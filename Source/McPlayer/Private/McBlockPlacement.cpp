@@ -167,6 +167,31 @@ TArray<FMcPlacedBlock> McBlockPlacement::GetPlacement(const FMcBlockWorld& World
 		// Its lid faces out of the face clicked (minecraft.wiki, "Shulker Box").
 		Properties.Add(TEXT("facing"), FaceNames[Face]);
 	}
+	else if ((Name.EndsWith(TEXT("_skull")) || Name.EndsWith(TEXT("_head"))) && Name != TEXT("minecraft:piston_head") && !Name.Contains(TEXT("_wall_")))
+	{
+		// On a floor a head faces the player in sixteen steps; on a side it goes on the wall, facing out (minecraft.wiki,
+		// "Head"). Not under a block.
+		if (Face == 0)
+		{
+			return {};
+		}
+		if (Face >= 2)
+		{
+			const int32 Last = Name.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			const FString Wall = Name.Left(Last) + TEXT("_wall") + Name.Mid(Last);
+			if (!Registry.FindBlock(FName(*Wall)))
+			{
+				return {};
+			}
+			PlacedName = FName(*Wall);
+			Properties.Add(TEXT("facing"), FaceNames[Face]);
+		}
+		else
+		{
+			const int32 Rotation = FMath::RoundToInt32(FMath::Fmod(FMath::Fmod(Yaw + 180.0f, 360.0f) + 360.0f, 360.0f) / 22.5f) & 15;
+			Properties.Add(TEXT("rotation"), *FString::FromInt(Rotation));
+		}
+	}
 	else if (Name == TEXT("minecraft:bell"))
 	{
 		// On a floor it stands in its frame, under a block it hangs, both turned to the player; on a side it hangs from a

@@ -429,6 +429,11 @@ bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Re
 	return Entities && Entities->Attack(Eye, Look, Reach, Damage);
 }
 
+FMcMob* AMcWorldActor::FindMob(const FVector& Eye, const FVector& Look, float Reach)
+{
+	return Entities ? Entities->FindMob(Eye, Look, Reach) : nullptr;
+}
+
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
 {
 	if (!BlockWorld)

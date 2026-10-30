@@ -469,6 +469,33 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// A right click on a trader in front of the block being looked at asks it to trade (not while sneaking).
+	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && !bSneaking)
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+		constexpr double UseReach = 3.0;
+		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : UseReach;
+		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
+		{
+			if (It->IsHidden() || (It->Kind != TEXT("minecraft:villager") && It->Kind != TEXT("minecraft:wandering_trader")))
+			{
+				continue;
+			}
+			const FVector Feet = McCoords::UnrealToBlock(It->GetActorLocation());
+			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
+			FVector HitPoint, HitNormal;
+			float Time = 0.0f;
+			if (FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * UseReach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * UseReach < BlockDistance)
+			{
+				ServerUseMob(Look);
+				return;
+			}
+		}
+	}
+
 	// An empty bucket takes the water or lava source it is aimed at, even past the blocks the crosshair would stop on.
 	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && Data->Inventory->Get(SelectedSlot).Item == TEXT("minecraft:bucket"))
 	{
@@ -1173,6 +1200,15 @@ void AMcPlayerPawn::ServerUseBlock_Implementation(FIntVector Pos)
 		return;
 	}
 	OnUseBlock(*this, Pos);
+}
+
+void AMcPlayerPawn::ServerUseMob_Implementation(FVector Look)
+{
+	if (!OnUseMob || bServerDead || !Data || Look.ContainsNaN() || Look.IsNearlyZero())
+	{
+		return;
+	}
+	OnUseMob(*this, Body.Position + FVector(0.0, GetEyeHeight(), 0.0), Look.GetSafeNormal(), 3.0);
 }
 
 void AMcPlayerPawn::ServerSetUsing_Implementation(bool bUsing)

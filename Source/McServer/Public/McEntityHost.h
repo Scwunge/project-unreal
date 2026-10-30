@@ -67,6 +67,8 @@ public:
 	// Player attacks: the mob (if any) the ray from the eyes hits within Reach, hurt by Damage and pushed away.
 	// True if something was hit.
 	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage);
+	// The nearest living mob the ray from the eyes enters within Reach, or null.
+	FMcMob* FindMob(const FVector& Eye, const FVector& Direction, float Reach);
 
 	// The kind a weighted spawn list gives for a roll in [0, total weight); none for an empty list.
 	static FName PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll);

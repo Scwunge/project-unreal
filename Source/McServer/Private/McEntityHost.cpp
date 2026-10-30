@@ -829,13 +829,13 @@ void FMcEntityHost::SyncProxies()
 	}
 }
 
-bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage)
+FMcMob* FMcEntityHost::FindMob(const FVector& Eye, const FVector& Direction, float Reach)
 {
 	// The nearest living entity whose box the ray enters within Reach.
 	// The direction comes from a client: a NaN or empty one hits nothing.
 	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
 	{
-		return false;
+		return nullptr;
 	}
 	FMcMob* Best = nullptr;
 	double BestDistance = Reach;
@@ -859,6 +859,12 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 			}
 		}
 	}
+	return Best;
+}
+
+bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage)
+{
+	FMcMob* Best = FindMob(Eye, Direction, Reach);
 	if (!Best)
 	{
 		return false;

@@ -982,6 +982,11 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	{
 		return false;
 	}
+	// A trader's window is on whoever stands there, not on a block.
+	if (Window.Kind == EMcWindowKind::Trading)
+	{
+		return true;
+	}
 	const FName Name = GetBlockName(*Blocks, Window.Pos);
 	EMcFurnaceKind Kind;
 	switch (Window.Kind)

@@ -20,8 +20,11 @@ namespace McTrading
 		FMcItemStack Gives;
 		int32 MaxUses = 12;
 		int32 Uses = 0;
+		// How much the trade has been asked for (each restock adds the uses and takes the unused), which raises its price.
+		int32 Demand = 0;
 		// What the trader earns from it.
 		int32 Xp = 1;
+		// The price multiplier: demand raises the price, and a good reputation lowers it, by this much of the base price for each.
 		float Discount = 0.0f;
 
 		bool IsOutOfStock() const { return Uses >= MaxUses; }
@@ -38,6 +41,9 @@ namespace McTrading
 	MCGEN_API bool RollLevel(FName Profession, int32 Level, FName VillagerVariant, FMcRandom& Random, TArray<FOffer>& Out);
 
 	// What a player with Reputation (the trader's opinion of them, from -a lot to +a lot) pays for the stack the trade
-	// wants: its count less the discount (at least 1 below the count, never below 1).
+	// wants: its count, plus the demand's rise, less the reputation's discount (never below 1, never above the stack size).
 	MCGEN_API int32 GetCost(const FOffer& Offer, int32 Reputation);
+
+	// The trade is restocked: demand follows how much of it was used, and it can be made again.
+	MCGEN_API void Restock(FOffer& Offer);
 }

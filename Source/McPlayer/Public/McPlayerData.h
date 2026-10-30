@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "McContainer.h"
+#include "McTrading.h"
 #include "McPlayerData.generated.h"
 
 class FArchive;
@@ -84,6 +85,8 @@ enum class EMcWindowKind : uint8
 	// A dispenser or dropper: nine slots in a square.
 	Dispenser,
 	Loom,
+	// A villager's or wandering trader's trades; Pos is where the trader stands.
+	Trading,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -162,6 +165,10 @@ public:
 	void CreativeTake(FName Item, int32 Count, bool bToInventory);
 	// Server: opens an enchanting table at Pos with Bookshelves around it.
 	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
+	// Server: opens the trading window of a trader at Pos. Offers is what it sells; OnTrade is told of each trade made (the
+	// offer's index, the trader's experience from it) to keep the trader's side, and gives back the trader's offers, level
+	// and experience as they are then.
+	void OpenTrading(const FIntVector& Pos, const FString& Title, const TArray<McTrading::FOffer>& Offers, int32 Reputation, int32 Level, int32 Xp, bool bLevels, TFunction<void(int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)> OnTrade);
 	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.
 	void ClickMenuButton(int32 Id);
 	// The owner typed in the open menu's text field (an anvil's name).

@@ -76,6 +76,9 @@ public:
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage)> MobAttack;
+	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the
+	// reach; true if something was done.
+	TFunction<bool(AMcPlayerPawn& Player, const FVector& Eye, const FVector& Look, double Reach)> OnUseMob;
 	// An item is used on a block (flint and steel makes fire, an eye of ender goes into a frame): Pos is the block clicked, Beside
 	// the empty block next to the face clicked. Returns true if something happened.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos, const FIntVector& Beside)> OnUseItemOn;
@@ -148,6 +151,9 @@ protected:
 	void ServerPlace(const TArray<FMcNetBlockChange>& Placed);
 	UFUNCTION(Server, Reliable)
 	void ServerUseBlock(FIntVector Pos);
+	// The owner right-clicks a mob in front of them, looking along Look (Minecraft axes).
+	UFUNCTION(Server, Reliable)
+	void ServerUseMob(FVector Look);
 	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
 	UFUNCTION(Server, Reliable)
 	void ServerUseItemOn(FIntVector Pos, int32 Face);

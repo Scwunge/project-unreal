@@ -57,7 +57,14 @@ bool FMcTradingTest::RunTest(const FString& Parameters)
 	Priced.Gives = FMcItemStack(TEXT("minecraft:emerald"), 1);
 	Priced.Discount = 0.05f;
 	TestEqual(TEXT("no reputation, no discount"), McTrading::GetCost(Priced, 0), 20);
-	TestEqual(TEXT("a good one halves nothing below one"), McTrading::GetCost(Priced, 100), 1);
+	TestEqual(TEXT("a good one never goes below one"), McTrading::GetCost(Priced, 100), 1);
+	Priced.Uses = 16;
+	Priced.MaxUses = 16;
+	McTrading::Restock(Priced);
+	TestEqual(TEXT("a trade used up has demand 16"), Priced.Demand, 16);
+	TestEqual(TEXT("which raises the price by a base times demand times the multiplier"), McTrading::GetCost(Priced, 0), 36);
+	TestEqual(TEXT("and a good reputation takes some off"), McTrading::GetCost(Priced, 5), 31);
+	Priced.Demand = 0;
 	TestTrue(TEXT("a bad one costs more"), McTrading::GetCost(Priced, -4) > 20);
 
 	// A villager makes its trades from its profession, levels up with the experience of the trades and keeps them in a save.

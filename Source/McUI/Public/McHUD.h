@@ -101,6 +101,7 @@ private:
 	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
 	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
 	void DrawLoom(FIntPoint Origin, FIntPoint Local);
+	void DrawTrading(FIntPoint Origin, FIntPoint Local);
 	void DrawAnvil(FIntPoint Origin);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it

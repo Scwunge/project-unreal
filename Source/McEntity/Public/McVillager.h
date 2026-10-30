@@ -93,6 +93,10 @@ public:
 	TArray<McTrading::FOffer>& GetOffers();
 	// A trade was made: the villager earns Xp, and on reaching a new level offers the trades of that level.
 	void AddTradeXp(int32 Amount);
+	// How the villager thinks of a player (by name): trades made, a cure and a hero's deeds raise it, a blow lowers it. Cheaper
+	// trades for the high, dearer for the low.
+	int32 GetReputation(const FString& Player) const;
+	void AddReputation(const FString& Player, int32 Amount);
 	// Its trades are fresh again (what it does at its job site twice a day).
 	void Restock();
 
@@ -129,6 +133,7 @@ private:
 	int32 Level = 1;
 	int32 Xp = 0;
 	TArray<McTrading::FOffer> Offers;
+	TMap<FString, int32> Reputation;
 	int32 RestocksToday = 0;
 	int32 LastRestockAge = 0;
 	bool bBaby = false;

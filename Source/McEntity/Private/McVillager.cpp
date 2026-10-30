@@ -34,7 +34,10 @@ namespace
 	const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
 
 	// 2 added the bed.
-	constexpr int32 SaveVersion = 3;
+	constexpr int32 SaveVersion = 4;
+	// What a player's standing with a villager runs between.
+	constexpr int32 MinReputation = -200;
+	constexpr int32 MaxReputation = 100;
 	// Ticks between looks at the job site.
 	constexpr int32 ProfessionInterval = 20;
 }
@@ -265,11 +268,23 @@ void FMcVillager::AddTradeXp(int32 Amount)
 	}
 }
 
+int32 FMcVillager::GetReputation(const FString& Player) const
+{
+	const int32* Standing = Reputation.Find(Player);
+	return Standing ? *Standing : 0;
+}
+
+void FMcVillager::AddReputation(const FString& Player, int32 Amount)
+{
+	int32& Standing = Reputation.FindOrAdd(Player);
+	Standing = FMath::Clamp(Standing + Amount, MinReputation, MaxReputation);
+}
+
 void FMcVillager::Restock()
 {
 	for (McTrading::FOffer& Offer : Offers)
 	{
-		Offer.Uses = 0;
+		McTrading::Restock(Offer);
 	}
 	++RestocksToday;
 	LastRestockAge = Age;
@@ -508,6 +523,33 @@ bool FMcVillager::Serialize(FArchive& Ar)
 			if (!Offer.Serialize(Ar))
 			{
 				return false;
+			}
+		}
+	}
+	if (Version >= 4)
+	{
+		int32 NumKnown = Reputation.Num();
+		Ar << NumKnown;
+		if (Ar.IsLoading())
+		{
+			if (NumKnown < 0 || NumKnown > 256)
+			{
+				return false;
+			}
+			Reputation.Reset();
+			for (int32 Index = 0; Index < NumKnown; ++Index)
+			{
+				FString Player;
+				int32 Standing = 0;
+				Ar << Player << Standing;
+				Reputation.Add(Player, FMath::Clamp(Standing, MinReputation, MaxReputation));
+			}
+		}
+		else
+		{
+			for (TPair<FString, int32>& Known : Reputation)
+			{
+				Ar << Known.Key << Known.Value;
 			}
 		}
 	}

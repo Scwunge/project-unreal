@@ -7,6 +7,8 @@
 #include "McGameMode.h"
 #include "McPlayerData.h"
 #include "McPortal.h"
+#include "McVillager.h"
+#include "McCache.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -261,6 +263,47 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage)
 	{
 		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage);
+	};
+	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
+	{
+		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
+		if (!Mob || Mob->GetType() != FMcVillager::StaticType())
+		{
+			return false;
+		}
+		FMcVillager& Villager = static_cast<FMcVillager&>(*Mob);
+		if (Villager.IsBaby() || !Villager.HasProfession() || Villager.IsSleeping())
+		{
+			return false;
+		}
+		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
+		FString Profession = McCache::PathOf(Villager.GetProfession().ToString());
+		Profession = FText::FromString(Profession.Left(1)).ToUpper().ToString() + Profession.Mid(1);
+		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
+		// Trades go on with the villager as it is when each is made; it is looked for again by its id then.
+		const int32 Id = Villager.Id;
+		User.Data->OpenTrading(FIntVector(FMath::FloorToInt(Villager.Body.Position.X), FMath::FloorToInt(Villager.Body.Position.Y), FMath::FloorToInt(Villager.Body.Position.Z)),
+			Profession + TEXT(" - ") + McVillager::GetLevelName(Villager.GetLevel()), Villager.GetOffers(), Villager.GetReputation(Player), Villager.GetLevel(), Villager.GetXp(), true,
+			[WeakWorld, Id, Player](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+			{
+				FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+				FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+				if (!Found || Found->GetType() != FMcVillager::StaticType())
+				{
+					return;
+				}
+				FMcVillager& Trader = static_cast<FMcVillager&>(*Found);
+				if (Trader.GetOffers().IsValidIndex(Index))
+				{
+					++Trader.GetOffers()[Index].Uses;
+				}
+				Trader.AddTradeXp(TraderXp);
+				Trader.AddReputation(Player, 1);
+				OutOffers = Trader.GetOffers();
+				OutLevel = Trader.GetLevel();
+				OutXp = Trader.GetXp();
+			});
+		return true;
 	};
 	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
 	{

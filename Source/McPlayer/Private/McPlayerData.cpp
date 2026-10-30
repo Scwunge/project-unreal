@@ -7,6 +7,7 @@
 #include "McAnvilMenu.h"
 #include "McItemRegistry.h"
 #include "McPlayerMenu.h"
+#include "McTradeMenu.h"
 #include "McSurvival.h"
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
@@ -232,6 +233,9 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		Made.Enchanting = &Menu.Get();
 		break;
 	}
+	case EMcWindowKind::Trading:
+		Made.Menu = MakeShared<FMcTradeMenu>(Inventory);
+		break;
 	case EMcWindowKind::Furnace:
 		if (Aux >= 0 && Aux <= static_cast<int32>(EMcFurnaceKind::Smoker))
 		{
@@ -559,6 +563,29 @@ void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bo
 	Made.Title = TEXT("Enchant");
 	Made.Pos = Pos;
 	OpenServerWindow(MoveTemp(Made), Bookshelves);
+}
+
+void UMcPlayerDataComponent::OpenTrading(const FIntVector& Pos, const FString& Title, const TArray<McTrading::FOffer>& Offers, int32 Reputation, int32 Level, int32 Xp, bool bLevels, TFunction<void(int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)> OnTrade)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Trading, ++NextWindowId, 0);
+	FMcTradeMenu* Menu = static_cast<FMcTradeMenu*>(Made.Menu.Get());
+	Menu->SetTrader(Offers, Reputation, Level, Xp, bLevels);
+	// The menu lives as long as the window, and so does this.
+	Menu->OnTrade = [Menu, OnTrade = MoveTemp(OnTrade)](int32 Index, int32 TraderXp)
+	{
+		TArray<McTrading::FOffer> Current;
+		int32 NewLevel = 1;
+		int32 NewXp = 0;
+		OnTrade(Index, TraderXp, Current, NewLevel, NewXp);
+		Menu->UpdateTrader(Current, NewLevel, NewXp);
+	};
+	Made.Title = Title;
+	Made.Pos = Pos;
+	OpenServerWindow(MoveTemp(Made), 0);
 }
 
 void UMcPlayerDataComponent::ClickMenuButton(int32 Id)

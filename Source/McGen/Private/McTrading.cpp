@@ -133,7 +133,7 @@ bool McTrading::FOffer::Serialize(FArchive& Ar)
 	{
 		return false;
 	}
-	Ar << MaxUses << Uses << Xp << Discount;
+	Ar << MaxUses << Uses << Demand << Xp << Discount;
 	return !Ar.IsError() && MaxUses > 0 && Uses >= 0 && Xp >= 0 && !Wants.IsEmpty() && !Gives.IsEmpty();
 }
 
@@ -172,5 +172,13 @@ bool McTrading::RollLevel(FName Profession, int32 Level, FName VillagerVariant, 
 int32 McTrading::GetCost(const FOffer& Offer, int32 Reputation)
 {
 	const int32 Base = Offer.Wants.Count;
-	return FMath::Max(1, Base - FMath::FloorToInt32(Base * Offer.Discount * Reputation));
+	const int32 Raised = Base + FMath::Max(0, FMath::FloorToInt32(Base * Offer.Demand * Offer.Discount));
+	const int32 Cost = Raised - FMath::FloorToInt32(Base * Offer.Discount * Reputation);
+	return FMath::Clamp(Cost, 1, FMath::Max(1, Offer.Wants.GetMaxStackSize()));
+}
+
+void McTrading::Restock(FOffer& Offer)
+{
+	Offer.Demand = FMath::Max(0, Offer.Demand + Offer.Uses - (Offer.MaxUses - Offer.Uses));
+	Offer.Uses = 0;
 }

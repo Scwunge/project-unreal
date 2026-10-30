@@ -247,9 +247,23 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	const TWeakObjectPtr<AMcWorldActor> World = WorldActor;
 	Hooked.ServerSetBlock = [World](const FIntVector& Pos, FMcStateId State)
 	{
-		if (World.IsValid())
+		if (!World.IsValid())
 		{
-			World->SetBlock(Pos, State);
+			return;
+		}
+		World->SetBlock(Pos, State);
+		// A pumpkin on a T of iron blocks becomes a golem.
+		FMcEntityHost* Host = World->GetEntityHost();
+		TArray<FIntVector> Blocks;
+		FVector Feet;
+		if (Host && Host->MatchGolem(Pos, Blocks, Feet))
+		{
+			const TOptional<FMcStateId> Air = FMcBlockRegistry::Get().ParseState(TEXT("minecraft:air"));
+			for (const FIntVector& Cell : Blocks)
+			{
+				World->SetBlock(Cell, Air.Get(0));
+			}
+			Host->SpawnMob(TEXT("minecraft:iron_golem"), Feet);
 		}
 	};
 	Hooked.GetEntities = [World]() -> FMcEntityManager*

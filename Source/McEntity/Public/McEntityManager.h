@@ -133,6 +133,8 @@ public:
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
 	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
 	TFunction<void(FMcMob&)> OnVillagerSlain;
+	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.
+	TFunction<void(const FVector&)> OnGolemWanted;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;

@@ -479,6 +479,36 @@ void FMcVillager::UpdateRoutine(FMcEntityManager& Manager)
 	}
 }
 
+void FMcVillager::WantGolem(FMcEntityManager& Manager, int32 MinVillagers)
+{
+	if (!Manager.OnGolemWanted || bBaby)
+	{
+		return;
+	}
+	int32 Villagers = 0;
+	for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+	{
+		if (Other->bRemoved)
+		{
+			continue;
+		}
+		const double Distance = FVector::DistSquared(Other->Body.Position, Body.Position);
+		if (Other->GetType() == StaticType() && Distance < FMath::Square(McVillager::GolemVillageRadius))
+		{
+			++Villagers;
+		}
+		else if (Other->GetType() == FName(TEXT("minecraft:iron_golem")) && Distance < FMath::Square(McVillager::GolemGuardRadius))
+		{
+			// The village is guarded already.
+			return;
+		}
+	}
+	if (Villagers >= MinVillagers)
+	{
+		Manager.OnGolemWanted(Body.Position);
+	}
+}
+
 void FMcVillager::Tick(FMcEntityManager& Manager)
 {
 	if (bBaby && --GrowthTicks <= 0)
@@ -513,7 +543,13 @@ void FMcVillager::Tick(FMcEntityManager& Manager)
 			}
 			Goal = Body.Position + Away * 12.0;
 			PanicTicks = 60;
+			WantGolem(Manager, 2);
 		}
+	}
+	// A village of three or more calls for a golem every so often (gossip: the villagers that have seen each other lately).
+	if (Age % McVillager::GolemCheckTicks == Id % McVillager::GolemCheckTicks && (Age / McVillager::GolemCheckTicks + Id) % 4 == 0)
+	{
+		WantGolem(Manager, 3);
 	}
 	// Spread over the villagers by id, so they don't all look in the same tick.
 	if (PanicTicks <= 0 && Age % ProfessionInterval == Id % ProfessionInterval)

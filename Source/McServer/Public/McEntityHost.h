@@ -82,6 +82,11 @@ public:
 	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
 
+	// A carved pumpkin or jack o'lantern was just placed at Pumpkin: whether it tops an iron golem (a column of two iron
+	// blocks with an iron block on each side of the upper one, the arms, along either axis). True gives the five blocks
+	// to clear and where the golem stands, the feet of the lower block.
+	bool MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const;
+
 private:
 	// The zombie villagers that have shaken long enough turn back into the villagers they were.
 	void FinishCures();

@@ -120,6 +120,23 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			Infect(static_cast<FMcVillager&>(Victim));
 		}
 	};
+	// A village that wants a golem gets one on open ground within 3 to 6 blocks of the villager that called.
+	Manager.OnGolemWanted = [this](const FVector& Around)
+	{
+		for (int32 Try = 0; Try < 12; ++Try)
+		{
+			const float Angle = Random.FRand() * 2.0f * PI;
+			const float Radius = 3.0f + Random.FRand() * 3.0f;
+			const int32 X = FMath::FloorToInt32(Around.X + FMath::Cos(Angle) * Radius);
+			const int32 Z = FMath::FloorToInt32(Around.Z + FMath::Sin(Angle) * Radius);
+			const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Around.Y), 4);
+			if (Y.IsSet())
+			{
+				SpawnMob(TEXT("minecraft:iron_golem"), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+				return;
+			}
+		}
+	};
 	// What an explosion leaves behind: each block it destroyed rolls its own loot table (blocks/<name>), as when
 	// broken with no tool and blown up with this power: survives_explosion and explosion_decay keep each item with a
 	// chance of one in the power, so stone gives cobblestone and a leaf block its saplings, never itself.
@@ -380,6 +397,49 @@ void FMcEntityHost::FinishCures()
 		}
 		Zombie->bRemoved = true;
 	}
+}
+
+bool FMcEntityHost::MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto Is = [&](const FIntVector& Cell, std::initializer_list<const TCHAR*> Names)
+	{
+		const FMcStateId State = World.GetBlock(Cell);
+		if (!Registry.IsValidState(State))
+		{
+			return false;
+		}
+		const FName Name = Registry.GetBlockOf(State).Name;
+		for (const TCHAR* Wanted : Names)
+		{
+			if (Name == FName(Wanted))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	if (!Is(Pumpkin, { TEXT("minecraft:carved_pumpkin"), TEXT("minecraft:jack_o_lantern") }))
+	{
+		return false;
+	}
+	const FIntVector Chest = Pumpkin - FIntVector(0, 1, 0);
+	const FIntVector Base = Pumpkin - FIntVector(0, 2, 0);
+	static const TCHAR* Iron = TEXT("minecraft:iron_block");
+	if (!Is(Chest, { Iron }) || !Is(Base, { Iron }))
+	{
+		return false;
+	}
+	for (const FIntVector& Side : { FIntVector(1, 0, 0), FIntVector(0, 0, 1) })
+	{
+		if (Is(Chest + Side, { Iron }) && Is(Chest - Side, { Iron }))
+		{
+			OutBlocks = { Pumpkin, Chest, Base, Chest + Side, Chest - Side };
+			OutFeet = FVector(Base.X + 0.5, Base.Y, Base.Z + 0.5);
+			return true;
+		}
+	}
+	return false;
 }
 
 FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const

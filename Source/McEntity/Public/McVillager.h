@@ -11,6 +11,11 @@
 namespace McVillager
 {
 	constexpr int32 MaxLevel = 5;
+	// Villagers this close count as one village, and a golem within the guard distance is already guarding it.
+	constexpr double GolemVillageRadius = 16.0;
+	constexpr double GolemGuardRadius = 32.0;
+	// How often (ticks) each villager thinks about calling for a golem.
+	constexpr int32 GolemCheckTicks = 600;
 	// A baby takes this long to grow up.
 	constexpr int32 BabyTicks = 24000;
 	// How far a villager looks for a job site, and how far up and down.
@@ -142,6 +147,8 @@ private:
 	bool IsClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
 	// Whether another villager has the bed (either half of it) as its own.
 	bool IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
+	// Calls for a golem if at least that many villagers live near and none is guarding them.
+	void WantGolem(FMcEntityManager& Manager, int32 MinVillagers);
 	// Once a second: picks the activity for the hour and walks to where it is done, or stays put when there.
 	void UpdateRoutine(FMcEntityManager& Manager);
 	// Heads for Place (block coordinates), and stays put once within two blocks. True when there.

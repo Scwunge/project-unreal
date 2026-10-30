@@ -317,7 +317,10 @@ namespace McEntityModel
 				Bee.Kind = TEXT("minecraft:bee");
 				Bee.TextureSize = FIntPoint(64, 64);
 				Bee.Textures = { TEXT("bee/bee.png") };
-				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(0, 0, -3.5f, -3.5f, -5, 7, 7, 10) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(0, 0, -3.5f, -3.5f, -5, 7, 7, 10), Box(26, 7, 0, -0.5f, -7, 0, 1, 2) }));
+				// The antennae, and three legs that are flat planes (a box with no depth, drawn both sides).
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(2, 0, 1.5f, 2, 5, 1, 2, 3), Box(2, 3, -2.5f, 2, 5, 1, 2, 3) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(26, 1, -3.5f, -5.5f, 3, 7, 2, 0), Box(26, 3, -3.5f, -5.5f, 0, 7, 2, 0), Box(26, 5, -3.5f, -5.5f, -3, 7, 2, 0) }));
 				// Two flat wings that beat.
 				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 10, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }, 0.0f, 0.0f, -0.6f));
 				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 10, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }, 0.0f, 0.0f, 0.6f));

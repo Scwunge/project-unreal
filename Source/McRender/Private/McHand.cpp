@@ -146,10 +146,10 @@ namespace McHand
 		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
 		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
 		// moved toward the middle of the screen and up from where it rests, in the camera's space (forward, right, up), and turned a
-		// little about its own middle. It grows to 1.4 times the idle size.
-		const FVector Move = FVector(6.0, -24.0, 20.0) * Eased;
-		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 17.0f, 2.0f).Quaternion(), Eased);
-		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.4f, Eased)));
+		// little about its own middle. It grows to 1.2 times the idle size (moving it nearer alone made the arrow shaft far too long).
+		const FVector Move = FVector(-2.0, -20.0, 20.0) * Eased;
+		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 22.0f, 7.0f).Quaternion(), Eased);
+		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.2f, Eased)));
 	}
 
 	FVector GetTipInArm()

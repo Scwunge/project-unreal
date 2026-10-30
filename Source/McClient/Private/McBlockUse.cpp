@@ -16,6 +16,7 @@
 #include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
+#include "McVillager.h"
 #include "McWorldActor.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
@@ -807,6 +808,16 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (Name == TEXT("minecraft:loom"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::Loom, Pos, TEXT("Loom"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:bell"))
+	{
+		// Ringing the bell is the alarm: the villagers within reach come and gather at it for a minute.
+		WorldActor.MulticastSound(FName("block.bell.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, 1.0f);
+		if (FMcEntityHost* Host = WorldActor.GetEntityHost())
+		{
+			Host->GetManager().SoundAlarm(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5), McVillager::AlarmTicks);
+		}
 		return true;
 	}
 	if (IsAnvilName(Name))

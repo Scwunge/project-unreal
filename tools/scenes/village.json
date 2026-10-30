@@ -1,12 +1,14 @@
 {
-  "description": "Villager test on classic_flat (surface y=-61): a few job site blocks on a stone floor, for -McSpawnMobs=villager,7 (every biome type, and a baby).",
-  "camera": [-2.5, -58.5, -4.5, -25.0, 3.0],
+  "description": "Villager test on classic_flat (surface y=-61): seven job site blocks in a row on a stone floor, for -McSpawnMobs=villager,7 -McTime=3000 (a row of villagers 6.5 blocks in front of the camera, one of each biome type and a baby, each walking to a job site 3 blocks from the camera and facing it).",
+  "camera": [0.5, -58.5, -9.5, 0.0, 4.0],
   "blocks": [
-    { "from": [-6, -60, -10], "to": [10, -60, 8], "state": "minecraft:stone" },
-    { "from": [4, -59, -2], "to": [4, -59, -2], "state": "minecraft:composter[level=0]" },
-    { "from": [-4, -59, -3], "to": [-4, -59, -3], "state": "minecraft:lectern[facing=south,has_book=false,powered=false]" },
-    { "from": [0, -59, -6], "to": [0, -59, -6], "state": "minecraft:blast_furnace[facing=south,lit=false]" },
-    { "from": [-6, -59, 2], "to": [-6, -59, 2], "state": "minecraft:loom[facing=south]" },
-    { "from": [7, -59, 2], "to": [7, -59, 2], "state": "minecraft:brewing_stand[has_bottle_0=false,has_bottle_1=false,has_bottle_2=false]" }
+    { "from": [-10, -60, -14], "to": [10, -60, 6], "state": "minecraft:stone" },
+    { "from": [-4, -59, -7], "to": [-4, -59, -7], "state": "minecraft:composter[level=0]" },
+    { "from": [-3, -59, -7], "to": [-3, -59, -7], "state": "minecraft:lectern[facing=north,has_book=false,powered=false]" },
+    { "from": [-1, -59, -7], "to": [-1, -59, -7], "state": "minecraft:blast_furnace[facing=north,lit=false]" },
+    { "from": [1, -59, -7], "to": [1, -59, -7], "state": "minecraft:loom[facing=north]" },
+    { "from": [3, -59, -7], "to": [3, -59, -7], "state": "minecraft:brewing_stand[has_bottle_0=false,has_bottle_1=false,has_bottle_2=false]" },
+    { "from": [5, -59, -7], "to": [5, -59, -7], "state": "minecraft:smithing_table" },
+    { "from": [6, -59, -7], "to": [6, -59, -7], "state": "minecraft:grindstone[face=floor,facing=north]" }
   ]
 }

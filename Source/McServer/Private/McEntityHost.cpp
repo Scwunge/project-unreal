@@ -619,6 +619,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	const int32 TimeOfDay = static_cast<int32>(FMath::Fmod(DayTicks, 24000.0));
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
+	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
 
@@ -684,8 +685,15 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				for (int32 Index = 0; Index < N; ++Index)
 				{
 					const double Angle = 2.0 * PI * Index / FMath::Max(N, 1);
-					const int32 X = FMath::FloorToInt32(Players[0].X + FMath::Cos(Angle) * 5.0);
-					const int32 Z = FMath::FloorToInt32(Players[0].Z + FMath::Sin(Angle) * 5.0);
+					int32 X = FMath::FloorToInt32(Players[0].X + FMath::Cos(Angle) * 5.0);
+					int32 Z = FMath::FloorToInt32(Players[0].Z + FMath::Sin(Angle) * 5.0);
+					if (Kind == TEXT("villager"))
+					{
+						// Villagers stand in a row in front of the camera (facing south, +Z), 6.5 blocks away, for a picture
+						// of each one with its job site.
+						X = FMath::FloorToInt32(Players[0].X + (Index - (N - 1) * 0.5) * 1.8);
+						Z = FMath::FloorToInt32(Players[0].Z + 6.5);
+					}
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
 						FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));

@@ -109,6 +109,8 @@ public:
 
 	// Where the mob is walking, if anywhere.
 	TOptional<FVector> Goal;
+	// Set by a mob's routine while it works or sleeps: it stays where it is instead of wandering off.
+	bool bStayPut = false;
 	// Called with the damage when the mob bites a player at that position.
 	TFunction<void(const FVector&, float)> OnAttackPlayer;
 	// Called when the mob dies, to drop its loot.

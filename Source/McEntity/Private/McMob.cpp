@@ -450,7 +450,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	if (!bHasTarget)
 	{
-		if (!Goal.IsSet() && Random.RandHelper(120) == 0)
+		if (!Goal.IsSet() && !bStayPut && Random.RandHelper(120) == 0)
 		{
 			Goal = Body.Position + FVector(Random.FRandRange(-10.0, 10.0), Type.bFlies ? Random.FRandRange(-2.0, 3.0) : 0.0, Random.FRandRange(-10.0, 10.0));
 		}

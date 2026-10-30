@@ -143,6 +143,10 @@ FMcItemEntity& FMcEntityManager::DropItem(const FVector& Pos, const FMcItemStack
 
 void FMcEntityManager::Tick()
 {
+	if (AlarmTicks > 0)
+	{
+		--AlarmTicks;
+	}
 	// Entities added while ticking (a mob dropping an item) join the next tick.
 	const int32 Count = Entities.Num();
 	for (int32 Index = 0; Index < Count; ++Index)

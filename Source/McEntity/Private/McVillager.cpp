@@ -32,7 +32,8 @@ namespace
 	// Experience at which each level starts.
 	const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
 
-	constexpr int32 SaveVersion = 1;
+	// 2 added the bed.
+	constexpr int32 SaveVersion = 2;
 	// Ticks between looks at the job site.
 	constexpr int32 ProfessionInterval = 20;
 }
@@ -134,6 +135,37 @@ namespace McVillager
 	{
 		static const TCHAR* Names[] = { TEXT("Novice"), TEXT("Apprentice"), TEXT("Journeyman"), TEXT("Expert"), TEXT("Master") };
 		return Names[FMath::Clamp(Level, 1, MaxLevel) - 1];
+	}
+
+	EActivity GetActivityAt(int32 TimeOfDay, bool bAlarm)
+	{
+		if (bAlarm)
+		{
+			return EActivity::Alarm;
+		}
+		if (TimeOfDay >= RestStart)
+		{
+			return EActivity::Rest;
+		}
+		if (TimeOfDay >= MeetStart && TimeOfDay < FreeStart)
+		{
+			return EActivity::Meet;
+		}
+		if (TimeOfDay >= WorkStart && TimeOfDay < MeetStart)
+		{
+			return EActivity::Work;
+		}
+		return EActivity::Idle;
+	}
+
+	bool IsBed(FName Block)
+	{
+		return McCache::PathOf(Block.ToString()).EndsWith(TEXT("_bed"));
+	}
+
+	bool IsBell(FName Block)
+	{
+		return Block == TEXT("minecraft:bell");
 	}
 
 	bool FindNearestBlock(const FMcBlockWorld& World, const FIntVector& Origin, int32 Radius, int32 Height, TFunctionRef<bool(FName, const FIntVector&)> Is, FIntVector& Out)
@@ -255,6 +287,121 @@ void FMcVillager::UpdateProfession(FMcEntityManager& Manager)
 	ClaimJobSite(Found);
 }
 
+bool FMcVillager::IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const
+{
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (Entity.Get() != this && !Entity->bRemoved && Entity->GetType() == StaticType())
+		{
+			const FMcVillager& Other = static_cast<const FMcVillager&>(*Entity);
+			// The two halves of a bed are one bed.
+			if (Other.bHasBed && Other.Bed.Y == Pos.Y && FMath::Abs(Other.Bed.X - Pos.X) + FMath::Abs(Other.Bed.Z - Pos.Z) <= 1)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool FMcVillager::WalkTo(const FVector& Place)
+{
+	const double Across = FVector::Dist2D(Place, Body.Position);
+	if (Across < 2.0 && FMath::Abs(Place.Y - Body.Position.Y) < 3.0)
+	{
+		bStayPut = true;
+		Goal.Reset();
+		return true;
+	}
+	bStayPut = false;
+	Goal = Place;
+	return false;
+}
+
+void FMcVillager::UpdateRoutine(FMcEntityManager& Manager)
+{
+	const FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FIntVector Here(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+	const McVillager::EActivity Now = McVillager::GetActivityAt(Manager.TimeOfDay, Manager.IsAlarmSounding());
+	if (Now != Activity)
+	{
+		Activity = Now;
+		bHasBell = false;
+		bStayPut = false;
+		Goal.Reset();
+	}
+	// A baby plays, and a villager hurt in its sleep gets up.
+	if (bBaby || HurtTime > 0)
+	{
+		bSleeping = false;
+		bStayPut = false;
+		return;
+	}
+	const auto CenterOf = [](const FIntVector& Cell) { return FVector(Cell.X + 0.5, Cell.Y, Cell.Z + 0.5); };
+	bool bWalking = false;
+	switch (Activity)
+	{
+	case McVillager::EActivity::Work:
+		if (bHasJobSite)
+		{
+			WalkTo(CenterOf(JobSite));
+			bWalking = true;
+		}
+		break;
+	case McVillager::EActivity::Meet:
+		if (!bHasBell)
+		{
+			bHasBell = McVillager::FindNearestBlock(World, Here, McVillager::BellRadius, McVillager::SearchHeight, [](FName Block, const FIntVector&) { return McVillager::IsBell(Block); }, Bell);
+		}
+		if (bHasBell)
+		{
+			WalkTo(CenterOf(Bell));
+			bWalking = true;
+		}
+		break;
+	case McVillager::EActivity::Alarm:
+		WalkTo(Manager.GetAlarmPos());
+		bWalking = true;
+		break;
+	case McVillager::EActivity::Rest:
+	{
+		if (bHasBed)
+		{
+			const FMcStateId State = World.GetBlock(Bed);
+			if (!Registry.IsValidState(State) || !McVillager::IsBed(Registry.GetBlockOf(State).Name))
+			{
+				ReleaseBed();
+			}
+		}
+		if (!bHasBed)
+		{
+			FIntVector Found;
+			if (McVillager::FindNearestBlock(World, Here, McVillager::SearchRadius, McVillager::SearchHeight, [&](FName Block, const FIntVector& Pos) { return McVillager::IsBed(Block) && !IsBedClaimedByOther(Manager, Pos); }, Found))
+			{
+				ClaimBed(Found);
+			}
+		}
+		if (bHasBed)
+		{
+			bSleeping = WalkTo(CenterOf(Bed));
+			bWalking = true;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+	if (!bWalking)
+	{
+		bStayPut = false;
+	}
+	if (Activity != McVillager::EActivity::Rest)
+	{
+		bSleeping = false;
+	}
+}
+
 void FMcVillager::Tick(FMcEntityManager& Manager)
 {
 	if (bBaby && --GrowthTicks <= 0)
@@ -265,6 +412,7 @@ void FMcVillager::Tick(FMcEntityManager& Manager)
 	if (Age % ProfessionInterval == Id % ProfessionInterval)
 	{
 		UpdateProfession(Manager);
+		UpdateRoutine(Manager);
 	}
 	FMcMob::Tick(Manager);
 }
@@ -277,7 +425,7 @@ bool FMcVillager::Serialize(FArchive& Ar)
 	}
 	int32 Version = SaveVersion;
 	Ar << Version;
-	if (Ar.IsLoading() && Version != SaveVersion)
+	if (Ar.IsLoading() && (Version < 1 || Version > SaveVersion))
 	{
 		return false;
 	}
@@ -285,6 +433,10 @@ bool FMcVillager::Serialize(FArchive& Ar)
 	FString ProfessionText = Profession.ToString();
 	bool bSavedBaby = bBaby;
 	Ar << VariantText << ProfessionText << Level << Xp << bSavedBaby << GrowthTicks << bHasJobSite << JobSite.X << JobSite.Y << JobSite.Z;
+	if (Version >= 2)
+	{
+		Ar << bHasBed << Bed.X << Bed.Y << Bed.Z;
+	}
 	if (Ar.IsLoading())
 	{
 		if (Level < 1 || Level > McVillager::MaxLevel || Xp < 0 || VariantText.IsEmpty() || ProfessionText.IsEmpty() || Ar.IsError())

@@ -33,6 +33,31 @@ namespace McVillager
 	// "Novice", "Apprentice", "Journeyman", "Expert" or "Master".
 	MCENTITY_API FString GetLevelName(int32 Level);
 
+	// What a villager is doing by the hour (minecraft.wiki, "Villager#Daily routine"), the day starting at 0 with sunrise:
+	// work at the job site from 2000 to 9000, meet at the bell until 11000, free time to 12000 and sleep in a bed after.
+	// A sounding alarm sends every villager to the bell.
+	enum class EActivity : uint8
+	{
+		Idle,
+		Work,
+		Meet,
+		Rest,
+		Alarm,
+	};
+	constexpr int32 WorkStart = 2000;
+	constexpr int32 MeetStart = 9000;
+	constexpr int32 FreeStart = 11000;
+	constexpr int32 RestStart = 12000;
+	// How far a villager looks for a bell, wider than for a job site or bed.
+	constexpr int32 BellRadius = 48;
+	// How long a bell rung for an alarm keeps the villagers at it.
+	constexpr int32 AlarmTicks = 1200;
+	MCENTITY_API EActivity GetActivityAt(int32 TimeOfDay, bool bAlarm);
+
+	// Whether the block is a bed (either half) and whether it is a bell.
+	MCENTITY_API bool IsBed(FName Block);
+	MCENTITY_API bool IsBell(FName Block);
+
 	// The nearest block within Radius across and Height up and down for which Is (given its name and place) gives true; false if none.
 	MCENTITY_API bool FindNearestBlock(const FMcBlockWorld& World, const FIntVector& Origin, int32 Radius, int32 Height, TFunctionRef<bool(FName, const FIntVector&)> Is, FIntVector& Out);
 }
@@ -67,7 +92,14 @@ public:
 	void ClaimJobSite(const FIntVector& Pos) { bHasJobSite = true; JobSite = Pos; }
 	void ReleaseJobSite() { bHasJobSite = false; }
 
-	static FName NoProfession() { return FName(TEXT("minecraft:none")); }
+	// What it is doing now (decided about once a second), the bed it has claimed and whether it is asleep in it.
+	McVillager::EActivity GetActivity() const { return Activity; }
+	TOptional<FIntVector> GetBed() const { return bHasBed ? TOptional<FIntVector>(Bed) : TOptional<FIntVector>(); }
+	void ClaimBed(const FIntVector& Pos) { bHasBed = true; Bed = Pos; }
+	void ReleaseBed() { bHasBed = false; bSleeping = false; }
+	bool IsSleeping() const { return bSleeping; }
+
+	static FName NoProfession(){ return FName(TEXT("minecraft:none")); }
 	static FName NitwitProfession() { return FName(TEXT("minecraft:nitwit")); }
 
 private:
@@ -76,6 +108,12 @@ private:
 	void UpdateProfession(FMcEntityManager& Manager);
 	// Whether another villager has the block as its job site.
 	bool IsClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
+	// Whether another villager has the bed (either half of it) as its own.
+	bool IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
+	// Once a second: picks the activity for the hour and walks to where it is done, or stays put when there.
+	void UpdateRoutine(FMcEntityManager& Manager);
+	// Heads for Place (block coordinates), and stays put once within two blocks. True when there.
+	bool WalkTo(const FVector& Place);
 
 	FName Variant;
 	FName Profession;
@@ -85,4 +123,11 @@ private:
 	int32 GrowthTicks = 0;
 	bool bHasJobSite = false;
 	FIntVector JobSite = FIntVector::ZeroValue;
+	McVillager::EActivity Activity = McVillager::EActivity::Idle;
+	bool bHasBed = false;
+	FIntVector Bed = FIntVector::ZeroValue;
+	bool bSleeping = false;
+	// The bell found for the meeting, looked for again when the activity changes.
+	bool bHasBell = false;
+	FIntVector Bell = FIntVector::ZeroValue;
 };

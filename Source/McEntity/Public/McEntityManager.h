@@ -91,6 +91,16 @@ public:
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
 	bool bDaylight = false;
+	// The tick of the day, 0 at sunrise to 23999; set by the server each tick. Villagers keep their hours by it.
+	int32 TimeOfDay = 0;
+	// A bell rung for an alarm (a raid): every villager that hears it goes to Pos until it has run out.
+	void SoundAlarm(const FVector& Pos, int32 Ticks)
+	{
+		AlarmPos = Pos;
+		AlarmTicks = Ticks;
+	}
+	bool IsAlarmSounding() const { return AlarmTicks > 0; }
+	const FVector& GetAlarmPos() const { return AlarmPos; }
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
 	// Whether nothing solid is over the block, so rain and sun reach it.
@@ -154,4 +164,6 @@ private:
 	TArray<TUniquePtr<FMcEntity>> Entities;
 	int32 NextId = 1;
 	FRandomStream Random{ 7 };
+	int32 AlarmTicks = 0;
+	FVector AlarmPos = FVector::ZeroVector;
 };

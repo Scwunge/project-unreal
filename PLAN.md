@@ -129,7 +129,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
     placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done:
-    boat paddles, more than one rider, carts pushing mobs.
+    more than one rider, carts pushing mobs.
   - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
     oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
     variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
@@ -147,8 +147,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     over it and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
     `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
     cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
-    primed TNT entity, so the cart keeps its own fuse. Not done: boat paddles, more than one rider, carts
+    primed TNT entity, so the cart keeps its own fuse. Not done: more than one rider, carts
     pushing mobs, boats taking mobs.
+  - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture. They rest slanting out over the
+    sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
+    (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

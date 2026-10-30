@@ -74,6 +74,8 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	{
 		// Which wood it is made of picks its picture.
 		ItemId = static_cast<const FMcBoatEntity&>(Entity).WoodName;
+		// Which paddles row (bits).
+		ItemCount = static_cast<const FMcBoatEntity&>(Entity).GetPaddleBits();
 	}
 	else if (FMcMinecartEntity::ParseType(Entity.GetType()).IsSet())
 	{

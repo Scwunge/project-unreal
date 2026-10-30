@@ -120,6 +120,20 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("and gets out"), Cart.HasRider());
 	}
 
+	// ---- A boat's paddles row with its rider ----
+	{
+		FMcBoatEntity Boat;
+		TestEqual(TEXT("no rider, no rowing"), Boat.GetPaddleBits(), 0);
+		Boat.SetRider(0.0f, 0.0f, 0.0f);
+		TestEqual(TEXT("a rider doing nothing rows nothing"), Boat.GetPaddleBits(), 0);
+		Boat.SetRider(1.0f, 0.0f, 0.0f);
+		TestEqual(TEXT("forward rows both"), Boat.GetPaddleBits(), 3);
+		Boat.SetRider(0.0f, -1.0f, 0.0f);
+		TestEqual(TEXT("turning right rows the left paddle"), Boat.GetPaddleBits(), 1);
+		Boat.SetRider(0.0f, 1.0f, 0.0f);
+		TestEqual(TEXT("turning left rows the right paddle"), Boat.GetPaddleBits(), 2);
+	}
+
 	// ---- Breaking one ----
 	{
 		FMcMinecartEntity* Cart = new FMcMinecartEntity();

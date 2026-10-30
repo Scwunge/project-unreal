@@ -38,6 +38,9 @@ namespace McEntityModel
 		WingLeft,
 		// One of eight, Index 0..7: row = Index / 2 from the front, odd on the left.
 		SpiderLeg,
+		// A boat's paddles, which row while the boat has a rider pushing it.
+		PaddleLeft,
+		PaddleRight,
 	};
 
 	struct FBox
@@ -106,6 +109,11 @@ namespace McEntityModel
 		float WalkAmount = 0.0f;
 		float Age = 0.0f;       // seconds, for what idles
 		float Hurt = 0.0f;      // 1 just hurt, down to 0
+		// A boat's paddles: how far round the stroke each is (radians) and whether it is rowing.
+		float PaddleLeft = 0.0f;
+		float PaddleRight = 0.0f;
+		bool bPaddleLeft = false;
+		bool bPaddleRight = false;
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
 	};
@@ -231,6 +239,8 @@ private:
 	float TargetHeadPitch = 0.0f;
 	bool bHasLook = false;
 	int32 HurtCount = -1;
+	// A boat's paddles' strokes, advanced a tick at a time while they row (bit 0 the left, bit 1 the right in Count).
+	float PaddlePhase[2] = { 0.0f, 0.0f };
 	FVector2D LastPosition = FVector2D::ZeroVector;
 	bool bHasPosition = false;
 	float TickAccumulator = 0.0f;

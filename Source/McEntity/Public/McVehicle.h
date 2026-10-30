@@ -183,6 +183,20 @@ public:
 	// How much a key press pushes it a tick.
 	static constexpr double Thrust = 0.04;
 	static constexpr double ReverseThrust = 0.005;
+	// Which paddles row (bit 0 the left, bit 1 the right): both going forward or back, the left turning right and the
+	// right turning left. Nothing rows without a rider. (RiderStrafe is positive to the left, as Turn reads it.)
+	int32 GetPaddleBits() const
+	{
+		if (!HasRider())
+		{
+			return 0;
+		}
+		if (RiderForward != 0.0f)
+		{
+			return 3;
+		}
+		return (RiderStrafe < 0.0f ? 1 : 0) | (RiderStrafe > 0.0f ? 2 : 0);
+	}
 	// What it takes to break it.
 	static constexpr float BreakWear = 40.0f;
 

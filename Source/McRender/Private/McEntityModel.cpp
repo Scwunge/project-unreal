@@ -1,4 +1,6 @@
 #include "McEntityModel.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "McRenderMode.h"
 #include "McCache.h"
 #include "McBlockModels.h"
@@ -73,6 +75,14 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(1.9f, 12, 0),
 				{ bOwnLeftLimbs ? Box(16, 48, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize) : Box(0, 16, -LegWidth * 0.5f, -12, -LegWidth * 0.5f, LegSize, 12, LegSize, 0.0f, true) }));
 		}
+
+	// A boat's two paddles: a shaft and a blade each, cut from the boat's picture (the left and right pictures are where the texture has them: stacked on a boat's, side by side on a raft's).
+	// They are mounted in the sides a little aft of the middle and rest slanting out and back.
+	void AddPaddles(FModel& Model, float Height, FIntPoint Left, FIntPoint Right)
+	{
+		Model.Parts.Add(Part(ERole::PaddleLeft, FVector(4, Height, -2), { Box(Left.X, Left.Y, -1, -1, -5, 2, 2, 18), Box(Left.X, Left.Y, -1.001f, -3, 8, 1, 6, 7) }));
+		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-4, Height, -2), { Box(Right.X, Right.Y, -1, -1, -5, 2, 2, 18), Box(Right.X, Right.Y, 0.001f, -3, 8, 1, 6, 7) }));
+	}
 
 		TMap<FName, FModel> BuildModels()
 		{
@@ -246,7 +256,7 @@ namespace McEntityModel
 				}
 			}
 			{
-				// A boat: a hull floor and four sides (the paddles are left out). The wood is chosen by the texture.
+				// A boat: a hull floor and four sides and two paddles. The wood is chosen by the texture.
 				// A chest boat has the same hull with a chest on its floor, cut from a taller texture.
 				for (const bool bChest : { false, true })
 				{
@@ -259,6 +269,7 @@ namespace McEntityModel
 					Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
 					Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
 					Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
+					AddPaddles(Boat, 8.0f, FIntPoint(62, 0), FIntPoint(62, 20));
 					if (bChest)
 					{
 						// The chest sits towards the stern, its lock facing the bow.
@@ -275,6 +286,7 @@ namespace McEntityModel
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
 					// It floats higher than a hull, its deck clear of the water.
 					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
+					AddPaddles(Raft, 12.0f, FIntPoint(0, 24), FIntPoint(40, 24));
 					if (bChest)
 					{
 						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
@@ -455,6 +467,25 @@ namespace McEntityModel
 				// Folded in, and beating when it runs.
 				const float Side = Part.Role == ERole::WingRight ? 1.0f : -1.0f;
 				Roll += Side * (0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
+				break;
+			}
+			case ERole::PaddleLeft:
+			case ERole::PaddleRight:
+			{
+				// At rest the blade trails out over the side; rowing swings it fore and aft, dipping it on the pull.
+				const bool bLeft = Part.Role == ERole::PaddleLeft;
+				const float Side = bLeft ? 1.0f : -1.0f;
+				const float Stroke = bLeft ? Anim.PaddleLeft : Anim.PaddleRight;
+				const bool bRowing = bLeft ? Anim.bPaddleLeft : Anim.bPaddleRight;
+				float Swing = 0.0f;
+				float Dip = 0.0f;
+				if (bRowing)
+				{
+					Swing = FMath::Sin(Stroke) * 0.55f;
+					Dip = (FMath::Cos(Stroke) * 0.5f + 0.5f) * 0.45f;
+				}
+				Yaw += Side * (2.0f + Swing);
+				Pitch += 0.35f + Dip;
 				break;
 			}
 			case ERole::SpiderLeg:
@@ -934,6 +965,15 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		Squish.Tick(bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f);
 		LastY = Feet.Y;
 		bHasY = true;
+		// A boat's paddles go round the stroke while they row (Count's bits), and start again from the top.
+		// Development: -McPaddling rows every boat's paddles (for a -McShot of them).
+		static const bool bAlwaysPaddling = FParse::Param(FCommandLine::Get(), TEXT("McPaddling"));
+		Anim.bPaddleLeft = bAlwaysPaddling || (Count & 1) != 0;
+		Anim.bPaddleRight = bAlwaysPaddling || (Count & 2) != 0;
+		PaddlePhase[0] = Anim.bPaddleLeft ? PaddlePhase[0] + PI / 8.0f : 0.0f;
+		PaddlePhase[1] = Anim.bPaddleRight ? PaddlePhase[1] + PI / 8.0f : 0.0f;
+		Anim.PaddleLeft = PaddlePhase[0];
+		Anim.PaddleRight = PaddlePhase[1];
 		Walking +=(FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
 		Anim.WalkAmount = Walking;
 		Anim.WalkPos += Walking;

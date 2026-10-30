@@ -53,10 +53,12 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, Profession);
 	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
 	DOREPLIFETIME(AMcEntityActor, bBaby);
+	DOREPLIFETIME(AMcEntityActor, LookSeed);
 }
 
 void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 {
+	LookSeed = Entity.Id;
 	SetActorLocation(McCoords::BlockToUnreal(Entity.Body.Position));
 	Kind = Entity.GetType();
 	Size = FVector2D(Entity.Body.Width, Entity.Body.Height);
@@ -100,6 +102,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetHitboxWidth(Size.X);
 		Model->SetSwelling(Swelling);
 		Model->SetVillagerLook(Variant, Profession, VillagerLevel, bBaby);
+		Model->SetVariantSeed(LookSeed);
 		if (Stand)
 		{
 			Stand->SetVisibility(!Model->HasModel());

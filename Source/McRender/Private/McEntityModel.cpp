@@ -235,6 +235,15 @@ namespace McEntityModel
 				Horse.Kind = TEXT("minecraft:horse");
 				Horse.TextureSize = FIntPoint(64, 64);
 				Horse.Textures = { TEXT("horse/horse_brown.png") };
+				// The coat with its markings laid over it.
+				Horse.bComposite = true;
+				for (const TCHAR* Coat : { TEXT("white"), TEXT("creamy"), TEXT("chestnut"), TEXT("brown"), TEXT("black"), TEXT("gray"), TEXT("darkbrown") })
+				{
+					for (const TCHAR* Marking : { TEXT(""), TEXT("white"), TEXT("whitefield"), TEXT("whitedots"), TEXT("blackdots") })
+					{
+						Horse.Variants.Add({ FString::Printf(TEXT("horse/horse_%s.png"), Coat), FCString::Strlen(Marking) ? FString::Printf(TEXT("horse/horse_markings_%s.png"), Marking) : FString() });
+					}
+				}
 				Horse.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 32, -5, 11, -14, 10, 10, 24) }));
 				// The tail hangs from the rump, leaning back.
 				Horse.Parts.Add(Part(ERole::Static, FVector(0, 21, -14), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.52f));
@@ -249,6 +258,10 @@ namespace McEntityModel
 				FModel Wolf;
 				Wolf.Kind = TEXT("minecraft:wolf");
 				Wolf.Textures = { TEXT("wolf/wolf.png") };
+				for (const TCHAR* Breed : { TEXT("wolf"), TEXT("wolf_ashen"), TEXT("wolf_black"), TEXT("wolf_chestnut"), TEXT("wolf_rusty"), TEXT("wolf_snowy"), TEXT("wolf_spotted"), TEXT("wolf_striped"), TEXT("wolf_woods") })
+				{
+					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed) });
+				}
 				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11, -1), { Box(18, 14, -3, -4.5f, -3, 6, 9, 6) }, Flat));
 				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, Flat));
 				Wolf.Parts.Add(Part(ERole::Head, FVector(0, 12, 4),
@@ -278,6 +291,7 @@ namespace McEntityModel
 				Fox.Kind = TEXT("minecraft:fox");
 				Fox.TextureSize = FIntPoint(48, 32);
 				Fox.Textures = { TEXT("fox/fox.png") };
+				Fox.Variants = { { TEXT("fox/fox.png") }, { TEXT("fox/fox_snow.png") } };
 				Fox.Parts.Add(Part(ERole::Static, FVector(0, 9, 0.5f), { Box(24, 15, -3, -5.5f, -3, 6, 11, 6) }, Flat));
 				Fox.Parts.Add(Part(ERole::Head, FVector(0, 10.5f, 5.5f),
 					{ Box(1, 5, -4, -3, 0, 8, 6, 6), Box(8, 1, -3.5f, 3, 1, 2, 2, 1), Box(15, 1, 1.5f, 3, 1, 2, 2, 1), Box(6, 18, -2, -2.5f, 6, 4, 2, 3) }));
@@ -291,6 +305,7 @@ namespace McEntityModel
 				Llama.Kind = TEXT("minecraft:llama");
 				Llama.TextureSize = FIntPoint(128, 64);
 				Llama.Textures = { TEXT("llama/llama_brown.png") };
+				Llama.Variants = { { TEXT("llama/llama_creamy.png") }, { TEXT("llama/llama_white.png") }, { TEXT("llama/llama_brown.png") }, { TEXT("llama/llama_gray.png") } };
 				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, 0), { Box(29, 0, -6, -9, -5, 12, 18, 10) }, Flat));
 				Llama.Parts.Add(Part(ERole::Static, FVector(0, 14, 8), { Box(0, 14, -4, 0, -3, 8, 18, 6) }));
 				Llama.Parts.Add(Part(ERole::Head, FVector(0, 28, 9), { Box(0, 0, -2, 0, -1, 4, 4, 9), Box(17, 0, -3, 4, 3, 3, 3, 1), Box(17, 0, 0, 4, 3, 3, 3, 1) }));
@@ -314,6 +329,10 @@ namespace McEntityModel
 				Rabbit.Kind = TEXT("minecraft:rabbit");
 				Rabbit.TextureSize = FIntPoint(64, 64);
 				Rabbit.Textures = { TEXT("rabbit/rabbit_brown.png") };
+				for (const TCHAR* Coat : { TEXT("brown"), TEXT("white"), TEXT("black"), TEXT("gold"), TEXT("salt"), TEXT("white_splotched"), TEXT("toast") })
+				{
+					Rabbit.Variants.Add({ FString::Printf(TEXT("rabbit/rabbit_%s.png"), Coat) });
+				}
 				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -4, -3, -5, 8, 6, 10) }));
 				Rabbit.Parts.Add(Part(ERole::Head, FVector(0, 7, 5), { Box(0, 16, -2.5f, 0, 0, 5, 5, 5), Box(26, 0, -2.5f, 5, 0, 2, 5, 1), Box(32, 0, 0.5f, 5, 0, 2, 5, 1) }));
 				const FBox Haunch = Box(20, 16, -2, -4, -2, 4, 4, 4);
@@ -759,6 +778,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Count = InCount;
 	TextureOverrides.Reset();
 	LookKey = NAME_None;
+	VariantSeed = INT32_MIN;
 	bIsItem = Kind == TEXT("minecraft:item");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	Model = bIsItem || bIsArrow ? nullptr : McEntityModel::Find(Kind);
@@ -786,6 +806,22 @@ void UMcEntityModelComponent::SetVillagerLook(FName InVariant, FName InProfessio
 	LookKey = Key;
 	TextureOverrides = McEntityModel::GetVillagerTextures(bZombie, InVariant, InProfession, InLevel);
 	// The layers are made again from the new pictures.
+	Materials.Reset();
+	ClearAllMeshSections();
+	NumSections = 0;
+	bFlashing = false;
+}
+
+void UMcEntityModelComponent::SetVariantSeed(int32 InSeed)
+{
+	if (!Model || Model->Variants.IsEmpty() || InSeed == VariantSeed)
+	{
+		return;
+	}
+	VariantSeed = InSeed;
+	// Ids count up one at a time, so spread them.
+	const uint32 Hash = static_cast<uint32>(InSeed) * 2654435761u;
+	TextureOverrides = Model->Variants[(Hash >> 8) % static_cast<uint32>(Model->Variants.Num())];
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;

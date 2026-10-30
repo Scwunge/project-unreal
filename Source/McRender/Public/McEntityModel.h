@@ -75,6 +75,9 @@ namespace McEntityModel
 		// The pictures are laid over each other into one (a villager's biome type, profession and level over its base) and the
 		// whole model is drawn from that, as layer 0.
 		bool bComposite = false;
+		// Looks the kind comes in (a horse's coat and markings, a wolf's breed): each the pictures for the layers. One is picked by
+		// the mob's look seed. Empty for a kind with one look.
+		TArray<TArray<FString>> Variants;
 		// Zombies hold their arms out in front.
 		bool bArmsForward = false;
 		// Layers (bit per layer) drawn see-through, so a slime's outer shell shows what is inside.
@@ -166,6 +169,8 @@ public:
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
+	// Picks the look of a kind that comes in several (a horse's coat) from a number that is the same for the mob's life.
+	void SetVariantSeed(int32 InSeed);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -190,6 +195,7 @@ private:
 	// The pictures that stand in for the model's own, for the layers they name (a villager's look).
 	TArray<FString> TextureOverrides;
 	FName LookKey;
+	int32 VariantSeed = INT32_MIN;
 	const McEntityModel::FModel* Model = nullptr;
 	// For an item: its picture's V extent, once it is loaded.
 	float ItemVMax = 1.0f;

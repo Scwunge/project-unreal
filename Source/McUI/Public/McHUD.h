@@ -13,6 +13,7 @@
 #include "GameFramework/HUD.h"
 #include "McCore.h"
 #include "McGuiLayout.h"
+#include "McLocalPlayer.h"
 #include "McHUD.generated.h"
 
 class FMcContainer;
@@ -139,6 +140,9 @@ private:
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
 	// focused; a click focuses it, Tab moves on).
 	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);
+	// A slider (0 to 1) drawn with its label and value as text; returns the value, which follows the mouse while it is
+	// held on the bar. Id names the slider being dragged.
+	float MenuSlider(int32 Id, const FString& Text, float Value, float X, float Y, float W, float H);
 	void MenuTextField(FString& Text, int32 Id, float X, float Y, float W, float H, int32 MaxLength);
 	void DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Border);
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
@@ -151,6 +155,16 @@ private:
 	// Vanilla to enhanced or back, remembered in options.json.
 	void ToggleGraphics();
 	void ToggleHd();
+	// Sends the saved Field of View, sensitivity, volume and render distance to the pawn, the sound and the world.
+	void ApplyOptions();
+	// Open to LAN: the world starts listening for other players on the game's port.
+	void OpenToLan();
+	bool bLanOpen = false;
+	int32 DraggedSlider = INDEX_NONE;
+	FMcClientOptions Settings;
+	bool bSettingsApplied = false;
+	TWeakObjectPtr<APawn> SettingsPawn;
+	int32 LanPort = 0;
 
 	struct FWorldRow
 	{

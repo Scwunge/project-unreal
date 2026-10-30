@@ -1365,6 +1365,12 @@ void AMcHUD::DrawHUD()
 	AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(GetOwningPawn());
 	UMcPlayerDataComponent* Data = Player ? Player->FindComponentByClass<UMcPlayerDataComponent>() : nullptr;
 	const bool bDead = Player && Player->IsDead();
+	if (Player && (!bSettingsApplied || SettingsPawn != Player))
+	{
+		// The saved Field of View, sensitivity, volume and render distance, once the world and the player are there.
+		Settings = FMcClientOptions::Load();
+		ApplyOptions();
+	}
 	if (!bDead && bDeathShown)
 	{
 		// Back from the dead: give the player the world again.
@@ -1422,7 +1428,9 @@ void AMcHUD::DrawHUD()
 			DrawBars(Width, Height, Data);
 		}
 	}
-	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed.
+	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr;
+	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}

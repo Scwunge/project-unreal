@@ -8,7 +8,12 @@
 #include "McLocalPlayer.h"
 #include "McRenderMode.h"
 #include "McUI.h"
+#include "McPlayerPawn.h"
+#include "McWorldActor.h"
 #include "McWorldSave.h"
+#include "AudioDevice.h"
+#include "Camera/CameraComponent.h"
+#include "EngineUtils.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
@@ -273,6 +278,35 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 	}
 #endif
 	return bOver && bMenuClick;
+}
+
+float AMcHUD::MenuSlider(int32 Id, const FString& Text, float Value, float X, float Y, float W, float H)
+{
+	const bool bOver = GuiMouse.X >= X && GuiMouse.X < X + W && GuiMouse.Y >= Y && GuiMouse.Y < Y + H;
+	APlayerController* Player = GetOwningPlayerController();
+	const bool bDown = Player && Player->IsInputKeyDown(EKeys::LeftMouseButton);
+	if (bOver && bMenuClick)
+	{
+		DraggedSlider = Id;
+	}
+	if (DraggedSlider == Id)
+	{
+		if (bDown)
+		{
+			// The handle is 8 wide and its middle follows the mouse.
+			Value = FMath::Clamp(static_cast<float>((GuiMouse.X - X - 4.0) / (W - 8.0)), 0.0f, 1.0f);
+		}
+		else
+		{
+			DraggedSlider = INDEX_NONE;
+		}
+	}
+	const bool bHot = bOver || DraggedSlider == Id;
+	DrawNineSlice(LoadSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_highlighted.png") : TEXT("textures/gui/sprites/widget/slider.png")), X, Y, W, H, 200.0f, 20.0f, 3.0f);
+	DrawNineSlice(LoadSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_handle_highlighted.png") : TEXT("textures/gui/sprites/widget/slider_handle.png")),
+		X + Value * (W - 8.0f), Y, 8.0f, H, 8.0f, 20.0f, 2.0f);
+	DrawCentredText(Text, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, White);
+	return Value;
 }
 
 void AMcHUD::MenuTextField(FString& Text, int32 Id, float X, float Y, float W, float H, int32 MaxLength)
@@ -569,25 +603,35 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	const float CentreX = Width / 2.0f;
 	DrawCentredText(TEXT("Game Menu"), CentreX, 40.0f, White);
 	const bool bClient = GetNetMode() == NM_Client;
-	if (MenuButton(TEXT("Back to Game"), CentreX - 102.0f, Height / 4.0f + 8.0f, 204.0f, 20.0f))
+	const float Top = Height / 4.0f + 24.0f;
+	if (MenuButton(TEXT("Back to Game"), CentreX - 102.0f, Top, 204.0f, 20.0f))
 	{
 		OpenMenu(EMenu::None);
 	}
-	else if (MenuButton(TEXT("Options..."), CentreX - 102.0f, Height / 4.0f + 80.0f, 204.0f, 20.0f))
+	else if (MenuButton(TEXT("Options..."), CentreX - 102.0f, Top + 48.0f, 98.0f, 20.0f))
 	{
 		OpenOptions(EMenu::Pause);
 	}
-	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Height / 4.0f + 104.0f, 204.0f, 20.0f))
+	else if (MenuButton(bLanOpen ? TEXT("LAN: Open") : TEXT("Open to LAN"), CentreX + 4.0f, Top + 48.0f, 98.0f, 20.0f, !bClient && !bLanOpen))
+	{
+		OpenToLan();
+	}
+	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Top + 72.0f, 204.0f, 20.0f))
 	{
 		// Leaving the map saves the world and the player (AMcWorldActor and AMcGameMode end play).
 		OpenMenu(EMenu::None);
 		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));
+	}
+	if (bLanOpen)
+	{
+		DrawCentredText(FString::Printf(TEXT("Local game hosted on port %d"), LanPort), CentreX, Top + 100.0f, Grey);
 	}
 }
 
 void AMcHUD::OpenOptions(EMenu Back)
 {
 	OptionsBack = Back;
+	Settings = FMcClientOptions::Load();
 	OpenMenu(EMenu::Options);
 }
 
@@ -604,30 +648,121 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	}
 	const float CentreX = Width / 2.0f;
 	const float Top = Height / 6.0f;
+	const float Left = CentreX - 155.0f;
+	const float Right = CentreX + 5.0f;
 	DrawCentredText(TEXT("Options"), CentreX, 15.0f, White);
+
+	const int32 Dragging = DraggedSlider;
+	const FMcClientOptions Before = Settings;
+
+	// Field of View 30 to 110 (70 is "Normal"), render distance 2 to 32 chunks, sensitivity 0 to 200%, volume 0 to 100%.
+	const int32 Fov = FMath::RoundToInt(Settings.FieldOfView);
+	const FString FovText = Fov == 70 ? FString(TEXT("FOV: Normal")) : Fov == 110 ? FString(TEXT("FOV: Quake Pro")) : FString::Printf(TEXT("FOV: %d"), Fov);
+	Settings.FieldOfView = FMath::RoundToFloat(30.0f + 80.0f * MenuSlider(0, FovText, (Settings.FieldOfView - 30.0f) / 80.0f, Left, Top + 24.0f, 150.0f, 20.0f));
+	Settings.RenderDistance = 2 + FMath::RoundToInt(30.0f * MenuSlider(1, FString::Printf(TEXT("Render Distance: %d chunks"), Settings.RenderDistance),
+		(Settings.RenderDistance - 2) / 30.0f, Right, Top + 24.0f, 150.0f, 20.0f));
+	const int32 SensPercent = FMath::RoundToInt(Settings.Sensitivity * 100.0f);
+	const FString SensText = SensPercent == 0 ? FString(TEXT("Sensitivity: *yawn*")) : SensPercent == 200 ? FString(TEXT("Sensitivity: HYPERSPEED!!!"))
+		: FString::Printf(TEXT("Sensitivity: %d%%"), SensPercent);
+	Settings.Sensitivity = FMath::RoundToFloat(200.0f * MenuSlider(2, SensText, Settings.Sensitivity / 2.0f, Left, Top + 48.0f, 150.0f, 20.0f)) / 100.0f;
+	const int32 VolPercent = FMath::RoundToInt(Settings.MasterVolume * 100.0f);
+	const FString VolText = VolPercent == 0 ? FString(TEXT("Master Volume: OFF")) : FString::Printf(TEXT("Master Volume: %d%%"), VolPercent);
+	Settings.MasterVolume = FMath::RoundToFloat(100.0f * MenuSlider(3, VolText, Settings.MasterVolume, Right, Top + 48.0f, 150.0f, 20.0f)) / 100.0f;
+	if (Before.FieldOfView != Settings.FieldOfView || Before.RenderDistance != Settings.RenderDistance
+		|| Before.Sensitivity != Settings.Sensitivity || Before.MasterVolume != Settings.MasterVolume)
+	{
+		ApplyOptions();
+	}
+	if (Dragging != INDEX_NONE && DraggedSlider == INDEX_NONE)
+	{
+		// Let go: remembered.
+		FMcClientOptions Saved = FMcClientOptions::Load();
+		Saved.FieldOfView = Settings.FieldOfView;
+		Saved.RenderDistance = Settings.RenderDistance;
+		Saved.Sensitivity = Settings.Sensitivity;
+		Saved.MasterVolume = Settings.MasterVolume;
+		Saved.Save();
+	}
 
 	// Unreal Mode: the game lit by Unreal (Lumen, real shadows, fog, bloom) instead of Minecraft's own light.
 	const bool bUnreal = McRenderMode::IsEnhanced();
-	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), CentreX - 155.0f, Top + 24.0f, 310.0f, 20.0f))
+	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), Left, Top + 84.0f, 150.0f, 20.0f))
 	{
 		ToggleGraphics();
 	}
-	DrawCentredText(bUnreal ? TEXT("Lumen lighting, real shadows, volumetric fog and bloom")
-		: TEXT("Minecraft's own look"), CentreX, Top + 50.0f, Grey);
-	DrawCentredText(TEXT("F7 switches it while playing"), CentreX, Top + 62.0f, DarkGrey);
-
 	// HD Textures: generated high-resolution textures and materials (or a resource pack), on top of Unreal Mode.
 	const bool bHd = McRenderMode::GetHdSwitch();
-	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), CentreX - 155.0f, Top + 84.0f, 310.0f, 20.0f, bUnreal))
+	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), Right, Top + 84.0f, 150.0f, 20.0f, bUnreal))
 	{
 		ToggleHd();
 	}
-	DrawCentredText(!bUnreal ? TEXT("Needs Unreal Mode") : bHd ? TEXT("Sharper textures with bump, shine and depth") : TEXT("Minecraft's own textures"),
-		CentreX, Top + 110.0f, Grey);
+	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
+		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
+	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
+		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Height / 6.0f + 198.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 150.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
+	}
+}
+
+void AMcHUD::ApplyOptions()
+{
+	bSettingsApplied = true;
+	if (APlayerController* Controller = GetOwningPlayerController())
+	{
+		// The game's near plane is 0.05 blocks; the engine's 10 units would cut the hand held up to the camera.
+		Controller->ConsoleCommand(TEXT("r.SetNearClipPlane 2"));
+	}
+	APawn* Pawn = GetOwningPawn();
+	SettingsPawn = Pawn;
+	if (AMcPlayerPawn* Player = Cast<AMcPlayerPawn>(Pawn))
+	{
+		if (Player->Camera)
+		{
+			Player->Camera->SetFieldOfView(Settings.FieldOfView);
+		}
+		// 100% is the 0.15 degrees per count the player started with.
+		Player->MouseSensitivity = 0.15f * Settings.Sensitivity;
+	}
+	if (GEngine)
+	{
+		if (FAudioDevice* Device = GEngine->GetMainAudioDevice().GetAudioDevice())
+		{
+			Device->SetTransientPrimaryVolume(Settings.MasterVolume);
+		}
+	}
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AMcWorldActor> It(World); It; ++It)
+		{
+			if (It->HasAuthority())
+			{
+				It->ViewDistance = Settings.RenderDistance;
+			}
+		}
+	}
+}
+
+void AMcHUD::OpenToLan()
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() != NM_Standalone)
+	{
+		return;
+	}
+	// The same listen socket a hosted game opens: other players join with this machine's address on the game's port.
+	FURL Url(nullptr, TEXT("?listen"), TRAVEL_Absolute);
+	if (World->Listen(Url))
+	{
+		bLanOpen = true;
+		LanPort = Url.Port;
+		UE_LOG(LogMcUI, Display, TEXT("Open to LAN: listening on port %d"), LanPort);
+	}
+	else
+	{
+		UE_LOG(LogMcUI, Warning, TEXT("Open to LAN: the game could not listen on port %d"), Url.Port);
 	}
 }
 
@@ -692,7 +827,7 @@ void AMcHUD::LoadClientOptions()
 void AMcHUD::SaveClientOptions() const
 {
 	// The engine sends this name when it opens a world or joins a server (UMcLocalPlayer).
-	FMcClientOptions Options;
+	FMcClientOptions Options = FMcClientOptions::Load();
 	Options.PlayerName = PlayerName;
 	Options.LastServer = ServerAddress.TrimStartAndEnd();
 	Options.bEnhancedGraphics = McRenderMode::IsEnhanced();

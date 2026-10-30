@@ -127,6 +127,16 @@ namespace McHand
 		return FTransform(Turn, Move);
 	}
 
+	FTransform GetDrawTransform(float Lift, float Seconds)
+	{
+		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
+		// A full draw (a second) trembles a little.
+		const float Shake = Seconds >= 1.0f ? FMath::Sin(Seconds * 2.0f * PI * 8.0f) * 0.4f : 0.0f;
+		const FVector Move(14.0 * Eased, 109.0 * Eased + Shake * 0.5f, -121.0 * Eased + Shake);
+		const FRotator Turn(-6.0f * Eased, -25.0f * Eased, -10.0f * Eased);
+		return FTransform(Turn, Move, FVector(1.0 + 2.2 * Eased));
+	}
+
 	FVector GetTipInArm()
 	{
 		return FVector(0.0, 0.0, -TipLength * Units);
@@ -453,6 +463,12 @@ void UMcHandComponent::SetEating(bool bInEating, float InSeconds)
 	EatSeconds = FMath::Max(InSeconds, 0.1f);
 }
 
+void UMcHandComponent::SetDrawing(bool bInDrawing, float InSeconds)
+{
+	bDrawing = bInDrawing;
+	DrawSeconds = FMath::Max(InSeconds, 0.0f);
+}
+
 void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -539,7 +555,15 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	}
 	EatLift = FMath::Clamp(EatLift + (bEating ? DeltaTime : -DeltaTime) / 0.25f, 0.0f, 1.0f);
 	EatTime = bEating ? EatTime + DeltaTime : 0.0f;
+	DrawLift = FMath::Clamp(DrawLift + (bDrawing ? DeltaTime : -DeltaTime) / 0.15f, 0.0f, 1.0f);
 	FTransform Pose = McHand::GetArmTransform(Stroke, Equip, McHand::GetBob(WalkPos, WalkAmount));
+	if (DrawLift > 0.0f)
+	{
+		const FTransform Draw = McHand::GetDrawTransform(DrawLift, DrawSeconds);
+		Pose.SetRotation(Draw.GetRotation() * Pose.GetRotation());
+		Pose.AddToTranslation(Draw.GetTranslation());
+		Pose.SetScale3D(Pose.GetScale3D() * Draw.GetScale3D());
+	}
 	if (EatLift > 0.0f)
 	{
 		// Moved in the camera's space, but turned about its own middle.

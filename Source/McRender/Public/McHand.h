@@ -94,6 +94,9 @@ public:
 	// Whether the held item is being eaten and how long the whole meal takes: the item comes up toward the face and
 	// bobs while it is chewed.
 	void SetEating(bool bInEating, float InSeconds);
+	// Whether a bow is being drawn and for how long: it swings toward the middle of the screen, tilted, and shakes at
+	// full draw.
+	void SetDrawing(bool bInDrawing, float InSeconds);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -125,6 +128,9 @@ private:
 	// How far the item is raised (0 to 1) and how long it has been eaten.
 	float EatLift = 0.0f;
 	float EatTime = 0.0f;
+	bool bDrawing = false;
+	float DrawSeconds = 0.0f;
+	float DrawLift = 0.0f;
 	float WalkPos = 0.0f;
 	float WalkAmount = 0.0f;
 	FVector LastLocation = FVector::ZeroVector;

@@ -351,6 +351,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Arm->SetHeld(HeldName);
 		Arm->SetEating(bEatingLocal && !Held.IsEmpty(), EatSecondsLocal);
 	}
+		Arm->SetDrawing(bBowLocal && !Held.IsEmpty(), BowSecondsLocal);
 #endif
 
 	if (HasAuthority())

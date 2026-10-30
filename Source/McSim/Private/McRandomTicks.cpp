@@ -164,19 +164,86 @@ void FMcSimulation::RandomTickBlock(const FIntVector& Pos)
 		}
 		return;
 	}
+	const bool bStem = Name == TEXT("minecraft:melon_stem") || Name == TEXT("minecraft:pumpkin_stem");
+	if (Name == TEXT("minecraft:nether_wart") || Name == TEXT("minecraft:cocoa"))
+	{
+		// Light and the ground don't matter to either. Per random tick: wart 1 in 10, a cocoa pod 1 in 5 (wiki: "Nether Wart", "Cocoa Beans").
+		const int32 Age = NumberProperty(State, TEXT("age"));
+		if (Age < MaxValue(State, TEXT("age")) && Random.RandHelper(Name == TEXT("minecraft:cocoa") ? 5 : 10) == 0)
+		{
+			World.SetBlock(Pos, SetProp(State, TEXT("age"), FString::FromInt(Age + 1)));
+		}
+		return;
+	}
 	if (Tags.Has(TEXT("minecraft:crops"), State))
 	{
 		const int32 Age = NumberProperty(State, TEXT("age"));
-		if (Age >= 0 && Age < MaxValue(State, TEXT("age")))
+		const bool bFruiting = bStem && Age == 7;
+		if (Age < 0 || (Age >= MaxValue(State, TEXT("age")) && !bFruiting))
 		{
-			// One growth in about (25 / points) + 1 random ticks; wet farmland is worth twice dry.
-			const FMcStateId Below = World.GetBlock(Pos + Down);
-			const int32 Points = NameOf(Below) == TEXT("minecraft:farmland") && NumberProperty(Below, TEXT("moisture")) > 0 ? 2 : 1;
-			if (Random.RandHelper(25 / Points + 1) == 0)
+			return;
+		}
+		// Needs light 9 or more where it stands (wiki: "Wheat Seeds", "Melon Seeds").
+		if (FMath::Max(Nature->SkyLightAt(Pos), Nature->BlockLightAt(Pos)) < 9)
+		{
+			return;
+		}
+		// Growth speed (wiki, "Tutorial:Crop farming"): the farmland under it is 4 if wet and 2 if dry, each of the eight
+		// beside that adds 0.75 wet or 0.25 dry; halved if the same plant stands diagonally, or in line on both axes.
+		float Speed = 0.0f;
+		for (int32 DX = -1; DX <= 1; ++DX)
+		{
+			for (int32 DZ = -1; DZ <= 1; ++DZ)
 			{
-				World.SetBlock(Pos, SetProp(State, TEXT("age"), FString::FromInt(Age + 1)));
+				const FMcStateId Soil = World.GetBlock(Pos + FIntVector(DX, -1, DZ));
+				if (NameOf(Soil) == TEXT("minecraft:farmland"))
+				{
+					const bool bWetSoil = NumberProperty(Soil, TEXT("moisture")) > 0;
+					Speed += DX == 0 && DZ == 0 ? (bWetSoil ? 4.0f : 2.0f) : (bWetSoil ? 0.75f : 0.25f);
+				}
 			}
 		}
+		const auto Same = [&](int32 DX, int32 DZ) { return NameOf(World.GetBlock(Pos + FIntVector(DX, 0, DZ))) == Name; };
+		const bool bRowX = Same(-1, 0) || Same(1, 0);
+		const bool bRowZ = Same(0, -1) || Same(0, 1);
+		if ((bRowX && bRowZ) || Same(-1, -1) || Same(1, -1) || Same(-1, 1) || Same(1, 1))
+		{
+			Speed /= 2.0f;
+		}
+		if (Speed <= 0.0f || Random.RandHelper(FMath::FloorToInt(25.0f / Speed) + 1) != 0)
+		{
+			return;
+		}
+		if (bFruiting)
+		{
+			// A stem with its fruit beside it grows no more; otherwise one of the four sides is tried.
+			const FString Fruit = Name == TEXT("minecraft:melon_stem") ? TEXT("minecraft:melon") : TEXT("minecraft:pumpkin");
+			static const TCHAR* Sides[4] = { TEXT("north"), TEXT("east"), TEXT("south"), TEXT("west") };
+			static const FIntVector SideStep[4] = { FIntVector(0, 0, -1), FIntVector(1, 0, 0), FIntVector(0, 0, 1), FIntVector(-1, 0, 0) };
+			for (int32 Side = 0; Side < 4; ++Side)
+			{
+				if (NameOf(World.GetBlock(Pos + SideStep[Side])) == Fruit)
+				{
+					return;
+				}
+			}
+			const int32 Side = Random.RandHelper(4);
+			const FIntVector Target = Pos + SideStep[Side];
+			const FMcStateId Ground = World.GetBlock(Target + Down);
+			if (FMcBlockRegistry::Get().IsAir(World.GetBlock(Target)) && (NameOf(Ground) == TEXT("minecraft:farmland") || Tags.Has(TEXT("minecraft:dirt"), Ground)))
+			{
+				World.SetBlock(Target, StateOf(*Fruit));
+				const FString Attached = Name == TEXT("minecraft:melon_stem") ? TEXT("minecraft:attached_melon_stem") : TEXT("minecraft:attached_pumpkin_stem");
+				World.SetBlock(Pos, SetProp(StateOf(*Attached), TEXT("facing"), Sides[Side]));
+			}
+			return;
+		}
+		// Beetroot fails to advance a third of the time that growth comes up.
+		if (Name == TEXT("minecraft:beetroots") && Random.RandHelper(3) == 0)
+		{
+			return;
+		}
+		World.SetBlock(Pos, SetProp(State, TEXT("age"), FString::FromInt(Age + 1)));
 		return;
 	}
 	if (Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus"))
@@ -249,11 +316,40 @@ void FMcSimulation::TickSupport(const FIntVector& Pos, FMcStateId State)
 	}
 	else if (Name == TEXT("minecraft:sugar_cane"))
 	{
-		bOk = BelowName == Name || Tags.Has(TEXT("minecraft:supports_sugar_cane"), Below);
+		// On cane, or on ground with water (or frosted ice) beside it.
+		bOk = BelowName == Name;
+		if (!bOk && Tags.Has(TEXT("minecraft:supports_sugar_cane"), Below))
+		{
+			for (int32 Side = 0; Side < 4 && !bOk; ++Side)
+			{
+				const FMcStateId Next = World.GetBlock(Pos + Down + Around[Side]);
+				bOk = IsWaterAt(World, Pos + Down + Around[Side]) || NameOf(Next) == TEXT("minecraft:frosted_ice");
+			}
+		}
 	}
 	else if (Name == TEXT("minecraft:cactus"))
 	{
+		// Breaks if a solid block or lava is beside it, or water or lava above.
 		bOk = BelowName == Name || Tags.Has(TEXT("minecraft:supports_cactus"), Below);
+		const FMcBlockLight& Light = FMcBlockLight::Get();
+		for (int32 Side = 0; Side < 4 && bOk; ++Side)
+		{
+			const FMcStateId Next = World.GetBlock(Pos + Around[Side]);
+			bOk = !(Light.GetDampening(Next) >= 15 && FMcBlockShapes::Get().HasCollision(Next)) && FMcBlockShapes::Get().GetFluid(Next) != EMcFluid::Lava;
+		}
+		bOk = bOk && FMcBlockShapes::Get().GetFluid(World.GetBlock(Pos + Up)) == EMcFluid::None;
+	}
+	else if (Name == TEXT("minecraft:attached_melon_stem") || Name == TEXT("minecraft:attached_pumpkin_stem"))
+	{
+		// The fruit gone, the stem goes back to full grown and can bear another.
+		const FString Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing")).ToString();
+		const FIntVector Step = Facing == TEXT("north") ? Around[0] : Facing == TEXT("south") ? Around[1] : Facing == TEXT("west") ? Around[2] : Around[3];
+		const FString Fruit = Name == TEXT("minecraft:attached_melon_stem") ? TEXT("minecraft:melon") : TEXT("minecraft:pumpkin");
+		if (NameOf(World.GetBlock(Pos + Step)) != Fruit)
+		{
+			World.SetBlock(Pos, SetProp(StateOf(Name == TEXT("minecraft:attached_melon_stem") ? TEXT("minecraft:melon_stem") : TEXT("minecraft:pumpkin_stem")), TEXT("age"), TEXT("7")));
+		}
+		return;
 	}
 	else if (Name == TEXT("minecraft:dead_bush"))
 	{

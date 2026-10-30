@@ -199,7 +199,7 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 	}
 	else if (Tags.Has(TEXT("minecraft:flowers"), State) || Tags.Has(TEXT("minecraft:saplings"), State) || Tags.Has(TEXT("minecraft:crops"), State)
 		|| Name == TEXT("minecraft:short_grass") || Name == TEXT("minecraft:fern") || Name == TEXT("minecraft:tall_grass") || Name == TEXT("minecraft:large_fern")
-		|| Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:dead_bush"))
+		|| Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:attached_melon_stem") || Name == TEXT("minecraft:attached_pumpkin_stem") || Name == TEXT("minecraft:dead_bush"))
 	{
 		ScheduleTick(Pos, 1);
 	}
@@ -214,14 +214,21 @@ void FMcSimulation::Tick()
 		Redstone->SetSunLight(Nature->GetDetectorLevel());
 	}
 	// Ticks that run now may schedule more for later; those never come due in this same tick (delay 1 or more).
+	// Earliest due first, and within one tick in the order they were asked for.
 	TArray<FIntVector> Now;
-	for (auto It = Due.CreateIterator(); It; ++It)
+	TArray<int64> DueTimes;
+	for (const TPair<int64, TArray<FIntVector>>& Entry : Due)
 	{
-		if (It.Key() <= GameTime)
+		if (Entry.Key <= GameTime)
 		{
-			Now.Append(It.Value());
-			It.RemoveCurrent();
+			DueTimes.Add(Entry.Key);
 		}
+	}
+	DueTimes.Sort();
+	for (const int64 Time : DueTimes)
+	{
+		Now.Append(Due[Time]);
+		Due.Remove(Time);
 	}
 	for (const FIntVector& Pos : Now)
 	{

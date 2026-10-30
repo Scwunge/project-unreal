@@ -437,6 +437,41 @@ namespace McEntityModel
 				Dragon.Parts.Add(DragonHead);
 				Models.Add(Dragon.Kind, Dragon);
 			}
+			{
+				// A decorated pot (McChestComponent), 14 across and 16 high with a neck 8 across and 4 high on top. The base
+				// picture has the neck's net at its top left and the body's top and bottom side by side under it; each side
+				// is the middle 14 columns of a side picture (all the plain one: a pot's sherds aren't kept yet).
+				FModel Pot;
+				Pot.Kind = FName(TEXT("mc:decorated_pot"));
+				Pot.TextureSize = FIntPoint(32, 32);
+				Pot.Textures = { TEXT("decorated_pot/decorated_pot_base.png"), TEXT("decorated_pot/decorated_pot_side.png") };
+				Pot.LayerTextureSizes = { FIntPoint(32, 32), FIntPoint(16, 16) };
+				Pot.Parts.Add(Part(ERole::Static, FVector::ZeroVector, {
+					Box(0, 0, -4, 16, -4, 8, 4, 8), Box(-14, 13, -7, 16, -7, 14, 0, 14), Box(-14, 13, -7, 0, -7, 14, 0, 14) }));
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					Pot.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(1, 0, -7, 0, 7, 14, 16, 0) }, 0, Side * HALF_PI, 0, 0, 1));
+				}
+				Models.Add(Pot.Kind, Pot);
+			}
+			{
+				// A conduit (McChestComponent) about the block's middle: idle, its 6 cube shell; active, the 8 cube cage
+				// turning, with the eye inside looking at the player.
+				FModel Shell;
+				Shell.Kind = FName(TEXT("mc:conduit/shell"));
+				Shell.TextureSize = FIntPoint(32, 16);
+				Shell.Textures = { TEXT("conduit/base.png") };
+				Shell.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -3, -3, -3, 6, 6, 6) }));
+				Models.Add(Shell.Kind, Shell);
+				FModel Cage;
+				Cage.Kind = FName(TEXT("mc:conduit/cage"));
+				Cage.TextureSize = FIntPoint(32, 16);
+				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/open_eye.png") };
+				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16) };
+				Cage.Parts.Add(Part(ERole::ConduitCage, FVector::ZeroVector, { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
+				Cage.Parts.Add(Part(ERole::ConduitEye, FVector::ZeroVector, { Box(0, 0, -4, -4, 0, 8, 8, 0) }, 0, 0, 0, 0, 1));
+				Models.Add(Cage.Kind, Cage);
+			}
 			return Models;
 		}
 
@@ -643,6 +678,16 @@ namespace McEntityModel
 			case ERole::BellBody:
 				Pitch += Anim.SwingPitch;
 				Roll += Anim.SwingRoll;
+				break;
+			case ERole::ConduitCage:
+				// About a turn every eight seconds, tipped and rocking a little.
+				Yaw += Anim.Age * 0.8f;
+				Pitch += 0.3f + FMath::Sin(Anim.Age * 0.6f) * 0.15f;
+				break;
+			case ERole::ConduitEye:
+				// The model is never turned (BodyYaw 0), so the eye turns by the whole look.
+				Yaw -= FMath::DegreesToRadians(Anim.HeadYaw);
+				Pitch += FMath::DegreesToRadians(Anim.HeadPitch);
 				break;
 			case ERole::BookLeft:
 			case ERole::BookRight:

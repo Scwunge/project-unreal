@@ -1,5 +1,6 @@
 #include "McChestComponent.h"
 #include "McBell.h"
+#include "McConduit.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McChestLink.h"
@@ -12,10 +13,15 @@
 
 namespace
 {
-	bool IsEnchantingTable(FMcStateId State)
+	bool IsNamed(FMcStateId State, const TCHAR* Name)
 	{
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		return Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == FName(TEXT("minecraft:enchanting_table"));
+		return Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == FName(Name);
+	}
+
+	bool IsEnchantingTable(FMcStateId State)
+	{
+		return IsNamed(State, TEXT("minecraft:enchanting_table"));
 	}
 }
 
@@ -236,7 +242,8 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 		FVector Centre;
 		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone()
 			|| McBell::IsBell(static_cast<FMcStateId>(Id)) || IsEnchantingTable(static_cast<FMcStateId>(Id))
-			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation) || !GetHeadModel(static_cast<FMcStateId>(Id), Centre, Yaw).IsNone();
+			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation) || !GetHeadModel(static_cast<FMcStateId>(Id), Centre, Yaw).IsNone()
+			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:decorated_pot")) || McConduit::IsConduit(static_cast<FMcStateId>(Id));
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -361,6 +368,23 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 			Known->Shape = EShape::Head;
 			Kind = Head;
 		}
+		else if (IsNamed(Pair.Value, TEXT("minecraft:decorated_pot")))
+		{
+			// Its front faces the way it was placed.
+			Known->Shape = EShape::Pot;
+			Kind = FName(TEXT("mc:decorated_pot"));
+			const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(Pair.Value, TEXT("facing"));
+			Yaw = Facing == TEXT("west") ? 90.0f : Facing == TEXT("north") ? 180.0f : Facing == TEXT("east") ? 270.0f : 0.0f;
+		}
+		else if (McConduit::IsConduit(Pair.Value))
+		{
+			// Looked at again straight away, in case it is awake.
+			Known->Shape = EShape::Conduit;
+			Known->bAwake = false;
+			Known->UntilCheck = 0.0f;
+			Kind = FName(TEXT("mc:conduit/shell"));
+			Centre = FVector(0.5);
+		}
 		else if (IsEnchantingTable(Pair.Value))
 		{
 			Known->Shape = EShape::TableBook;
@@ -433,6 +457,27 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		}
 		const FVector2D Swing = GetBellSwing(Pair.Key);
 		Pair.Value->SetSwing(Swing.X, Swing.Y);
+		if (FChest* Conduit = Chests.Find(Pair.Key); Conduit && Conduit->Shape == EShape::Conduit)
+		{
+			// Whether it is awake is looked at twice a second (its frame or water may change without it changing).
+			Conduit->UntilCheck -= DeltaTime;
+			if (Conduit->UntilCheck <= 0.0f && World)
+			{
+				Conduit->UntilCheck = 0.5f;
+				const bool bAwake = McConduit::IsActive(*World, Pair.Key);
+				if (bAwake != Conduit->bAwake)
+				{
+					Conduit->bAwake = bAwake;
+					Pair.Value->SetKind(FName(bAwake ? TEXT("mc:conduit/cage") : TEXT("mc:conduit/shell")), NAME_None, 0);
+				}
+			}
+			// The eye looks at the player.
+			const FVector Towards = Viewer - (FVector(Pair.Key) + FVector(0.5));
+			const float EyeYaw = FMath::RadiansToDegrees(FMath::Atan2(-Towards.X, Towards.Z));
+			const float EyePitch = -FMath::RadiansToDegrees(FMath::Atan2(Towards.Y, FVector2D(Towards.X, Towards.Z).Size()));
+			Pair.Value->SetLook(0.0f, EyeYaw, EyePitch);
+			continue;
+		}
 		if (FChest* Book = Chests.Find(Pair.Key); Book && (Book->Shape == EShape::TableBook || Book->Shape == EShape::LecternBook))
 		{
 			if (Book->Shape == EShape::LecternBook)

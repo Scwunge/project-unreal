@@ -213,6 +213,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     `Saved/Shots/heads.png` (`-McScene=heads`). Not done: player heads' owners' skins (all Steve), the dragon's and
     piglin's moving jaw and ears when powered, wearing a head, and heads in the inventory drawn as models. Where the
     dragon's scales and nostrils sit is read from their sizes, not checked against the game.
+  - **Decorated pots and conduits** (2026-10-30): a pot is an entity model `mc:decorated_pot` (a 14 by 16 body with
+    an 8 by 4 neck: its top, bottom and neck from `decorated_pot_base.png`, each side the middle of a side picture),
+    turned by `facing`. A conduit is its 6 cube shell (`mc:conduit/shell`) while asleep and, awake, the 8 cube cage
+    turning slowly with the eye inside looking at the player (`mc:conduit/cage`). Awake is `McConduit::IsActive`:
+    waterlogged, water in all 26 blocks round it, and at least 16 of the 42 frame places (three rings five across)
+    holding prismarine, prismarine bricks, dark prismarine or sea lanterns; the view looks again twice a second. Test
+    `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: a pot's sherds (no block
+    entity yet: every side is plain), its wobble and what it holds; the conduit's wind, its closed eye when hunting,
+    Conduit Power and attacking hostile mobs (none of which the server does yet).
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

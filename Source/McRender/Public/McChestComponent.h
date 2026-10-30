@@ -5,7 +5,8 @@
 // (McEntityModel's "mc:shulker_box/..."), turned so the lid faces the way the box does, the lid rising and turning as
 // the box opens. A bell's body is one too ("mc:bell"; its frame is the block model), swinging when it is rung, and so
 // are the books ("mc:book"): lying open on a lectern that has one, and floating over an enchanting table, turning to
-// the nearest player and opening, its pages flipping, while one is near. Mob heads are too ("mc:head/...").
+// the nearest player and opening, its pages flipping, while one is near. Mob heads are too ("mc:head/..."), and
+// decorated pots and conduits (the shell, or while it is awake the turning cage with its eye on the player).
 
 #pragma once
 
@@ -74,7 +75,7 @@ private:
 	// Whether a state is a chest, by state id.
 	TBitArray<> IsChest;
 
-	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head };
+	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head, Pot, Conduit };
 	struct FChest
 	{
 		FMcStateId State = 0;
@@ -85,6 +86,9 @@ private:
 		float BookOpen = 0.0f;
 		float BookFlip[2] = { 0.0f, 0.0f };
 		float BookAge = 0.0f;
+		// A conduit: whether it was awake when last looked at, and how long until it is looked at again.
+		bool bAwake = false;
+		float UntilCheck = 0.0f;
 		FIntVector Partner = FIntVector::ZeroValue;
 		// A bell: the side it was last struck on, and seconds since (negative for never).
 		int32 StruckSide = 0;

@@ -1,5 +1,8 @@
 #include "McBell.h"
 #include "McBlockRegistry.h"
+#include "McBlockWorld.h"
+#include "McConduit.h"
+#include "McDimensionType.h"
 #include "McChestComponent.h"
 #include "McEntityModel.h"
 #include "Misc/AutomationTest.h"
@@ -308,6 +311,65 @@ bool FMcHeadTest::RunTest(const FString& Parameters)
 		bFaceSouth |= Data.Normals[Index].Y > 0.9 && Middle.X > 8.0 && Middle.X < 16.0 && Middle.Y > 8.0 && Middle.Y < 16.0;
 	}
 	TestTrue(TEXT("its face looks south"), bFaceSouth);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPotConduitTest, "McClient.McRender.PotsAndConduits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPotConduitTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registry loads"), Registry.EnsureLoaded()))
+	{
+		return false;
+	}
+	const FModel* Pot = Find(TEXT("mc:decorated_pot"));
+	if (TestNotNull(TEXT("a pot has a model"), Pot))
+	{
+		FAnim Still;
+		McPlayerModel::FMeshData Body, Sides;
+		BuildMesh(*Pot, Still, 0, Body);
+		BuildMesh(*Pot, Still, 1, Sides);
+		const ::FBox Top(Body.Positions);
+		// The neck stands 4 above the 16 high body, 8 across; the body is 14 across.
+		TestTrue(TEXT("the body and neck reach 20 up"), FMath::IsNearlyEqual(Top.Max.Z, 125.0, 0.1) && FMath::IsNearlyEqual(Top.Min.Z, 0.0, 0.1));
+		const ::FBox Round(Sides.Positions);
+		TestTrue(TEXT("its sides 14 across all round"), Round.Min.Equals(FVector(-43.75, -43.75, 0.0), 0.1) && Round.Max.Equals(FVector(43.75, 43.75, 100.0), 0.1));
+	}
+	TestNotNull(TEXT("a conduit's shell"), Find(TEXT("mc:conduit/shell")));
+	TestNotNull(TEXT("and its cage"), Find(TEXT("mc:conduit/cage")));
+
+	TestEqual(TEXT("42 frame places"), McConduit::GetFramePlaces().Num(), 42);
+	FMcBlockWorld World{FMcDimensionType()};
+	World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+	const FIntVector At(8, 10, 8);
+	const FMcStateId Water = Registry.ParseState(TEXT("minecraft:water[level=0]")).Get(0);
+	for (int32 X = -1; X <= 1; ++X)
+	{
+		for (int32 Y = -1; Y <= 1; ++Y)
+		{
+			for (int32 Z = -1; Z <= 1; ++Z)
+			{
+				World.SetBlock(At + FIntVector(X, Y, Z), Water);
+			}
+		}
+	}
+	World.SetBlock(At, Registry.ParseState(TEXT("minecraft:conduit[waterlogged=true]")).Get(0));
+	TestFalse(TEXT("in water with no frame it sleeps"), McConduit::IsActive(World, At));
+	const FMcStateId Prismarine = Registry.ParseState(TEXT("minecraft:prismarine")).Get(0);
+	const TArray<FIntVector>& Places = McConduit::GetFramePlaces();
+	for (int32 Index = 0; Index < McConduit::MinFrame - 1; ++Index)
+	{
+		World.SetBlock(At + Places[Index], Prismarine);
+	}
+	TestFalse(TEXT("15 frame blocks aren't enough"), McConduit::IsActive(World, At));
+	World.SetBlock(At + Places[McConduit::MinFrame - 1], Registry.ParseState(TEXT("minecraft:sea_lantern")).Get(0));
+	TestEqual(TEXT("a sea lantern counts"), McConduit::CountFrame(World, At), 16);
+	TestTrue(TEXT("16 wake it"), McConduit::IsActive(World, At));
+	World.SetBlock(At + FIntVector(1, 1, 1), Registry.ParseState(TEXT("minecraft:air")).Get(0));
+	TestFalse(TEXT("out of water it sleeps"), McConduit::IsActive(World, At));
 	return true;
 }
 

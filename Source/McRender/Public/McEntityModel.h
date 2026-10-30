@@ -53,6 +53,10 @@ namespace McEntityModel
 		BookLeft,
 		BookRight,
 		BookPage,
+		// An active conduit's cage, turning slowly about its middle, and its eye, which looks at the player (HeadYaw and
+		// HeadPitch, unclamped).
+		ConduitCage,
+		ConduitEye,
 	};
 
 	struct FBox

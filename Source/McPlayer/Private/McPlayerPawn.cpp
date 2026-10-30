@@ -15,6 +15,9 @@
 #include "McVehicle.h"
 #include "McPhysics.h"
 #include "McRaycast.h"
+#include "Misc/DateTime.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
 #include "McItemRegistry.h"
 #include "McPlayerData.h"
 #include "Misc/CommandLine.h"
@@ -310,13 +313,13 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		float SelfShotCheck = 0.0f;
 		bShowSelf = FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShotCheck);
 #endif
-		Figure->SetShown(!IsLocallyControlled() || bShowSelf);
+		Figure->SetShown(!IsLocallyControlled() || bShowSelf || ViewMode != 0);
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
 	}
 	if (UMcHandComponent* Arm = Hand.Get())
 	{
 		// Only the player at the keyboard sees their own hand, and not while dead.
-		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping);
+		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden);
 		const FMcItemStack& Held = Data->GetSelected();
 		Arm->SetHeld(Held.IsEmpty() ? NAME_None : Held.Item);
 	}
@@ -355,6 +358,10 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	}
 
 	APlayerController* Player = Cast<APlayerController>(GetController());
+	if (Player && Player->IsLocalController())
+	{
+		HandleFunctionKeys(*Player);
+	}
 	FMcMoveInput Input;
 	if (Player && Player->IsLocalController())
 	{
@@ -403,6 +410,21 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	SetActorLocation(LastLocation);
 	const float EyeHeight = FMath::Lerp(PreviousEyeHeight, GetEyeHeight(), Alpha);
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
+	// F5: from behind the player, or from the front looking back, four blocks off or as far as the blocks let it.
+	Camera->bUsePawnControlRotation = true;
+	if (ViewMode != 0 && BlockWorld)
+	{
+		const double ViewYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double ViewPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(ViewYaw) * FMath::Cos(ViewPitch), -FMath::Sin(ViewPitch), FMath::Cos(ViewYaw) * FMath::Cos(ViewPitch));
+		const FVector EyeBlock = McCoords::UnrealToBlock(GetActorLocation() + FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
+		const FVector Away = ViewMode == 1 ? -Look : Look;
+		const TOptional<FMcBlockHit> Blocked = McRaycast::Trace(*BlockWorld, EyeBlock, Away, 4.0);
+		const double Distance = Blocked.IsSet() ? FMath::Max(0.0, FVector::Dist(EyeBlock, Blocked->Point) - 0.2) : 4.0;
+		Camera->bUsePawnControlRotation = false;
+		Camera->SetWorldLocation(McCoords::BlockToUnreal(EyeBlock + Away * Distance));
+		Camera->SetWorldRotation(ViewMode == 1 ? FRotator(Pitch, Yaw, 0.0f) : FRotator(-Pitch, Yaw + 180.0f, 0.0f));
+	}
 #if !UE_BUILD_SHIPPING
 	// Development: -McSelfShot=<blocks> puts the camera that far in front of the player, looking back at the player
 	// model, for a picture of the skin.
@@ -477,6 +499,28 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	ShowPosition();
 }
 
+void AMcPlayerPawn::HandleFunctionKeys(APlayerController& Player)
+{
+	if (Player.WasInputKeyJustPressed(EKeys::F1))
+	{
+		bHudHidden = !bHudHidden;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::F3))
+	{
+		bDebugShown = !bDebugShown;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::F5))
+	{
+		ViewMode = (ViewMode + 1) % 3;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::F2))
+	{
+		const FString Name = FDateTime::Now().ToString(TEXT("%Y-%m-%d_%H.%M.%S")) + TEXT(".png");
+		FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name, false, false);
+		UMcPlayerDataComponent::AddChatLine(TEXT("Saved screenshot as ") + Name, 0xFFFFFF);
+	}
+}
+
 void AMcPlayerPawn::UpdateTarget()
 {
 	Target.Reset();
@@ -488,7 +532,7 @@ void AMcPlayerPawn::UpdateTarget()
 	const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
-	const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+	const FVector Eye = McCoords::UnrealToBlock(GetActorLocation() + FVector(0.0, 0.0, GetEyeHeight() * McCoords::UnitsPerBlock));
 	Target = McRaycast::Trace(*BlockWorld, Eye, Look, bMayFly ? McRaycast::CreativeReach : McRaycast::SurvivalReach);
 }
 

@@ -95,6 +95,14 @@ private:
 	void DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha = 1.0f);
 
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
+	// F3: where the player is, what they face and stand in, and what they aim at.
+	void DrawDebug(int32 Width, int32 Height, class AMcPlayerPawn& Player);
+	// The light and biome at the player's block, worked out about once a second (a region of nine chunks is lit afresh).
+	double DebugSampleTime = -10.0;
+	int32 DebugSky = 0;
+	int32 DebugBlockLight = 0;
+	FString DebugBiome;
+	float DebugDelta = 0.016f;
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	void DrawStack(const FMcItemStack& Stack, float X, float Y);

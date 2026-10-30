@@ -109,6 +109,12 @@ public:
 	// Server: where the player's feet are, in block coordinates.
 	FVector GetFeetPosition() const { return Body.Position; }
 	bool IsServerDead() const { return bServerDead; }
+	// The function keys, as this machine's player has set them: F1 hides the HUD and hand, F3 shows the debug text, F5 cycles
+	// the view (0 from the eyes, 1 from behind, 2 from the front looking back).
+	bool IsHudHidden() const { return bHudHidden; }
+	bool IsDebugShown() const { return bDebugShown; }
+	int32 GetViewMode() const { return ViewMode; }
+	const FMcBlockWorld* GetBlockWorld() const { return BlockWorld; }
 	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
 	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
 	bool IsSleeping() const { return bSleeping; }
@@ -291,6 +297,10 @@ private:
 	int32 SleepTicks = 0;
 	FIntVector SleepBed = FIntVector::ZeroValue;
 	bool bSleptThroughSent = false;
+	bool bHudHidden = false;
+	bool bDebugShown = false;
+	int32 ViewMode = 0;
+	void HandleFunctionKeys(APlayerController& Player);
 	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.
 	float SleepFade = 0.0f;
 	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.

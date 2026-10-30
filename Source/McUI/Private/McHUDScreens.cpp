@@ -19,6 +19,12 @@
 #include "McGameViewportClient.h"
 #include "McItemRegistry.h"
 #include "McLang.h"
+#include "McBiomeRegistry.h"
+#include "McBlockRegistry.h"
+#include "McBlockWorld.h"
+#include "McChunk.h"
+#include "McLightEngine.h"
+#include "McRaycast.h"
 #include "McContainer.h"
 #include "McCraftingMenu.h"
 #include "McEnchantMenu.h"
@@ -1403,6 +1409,11 @@ void AMcHUD::DrawHUD()
 	{
 		DrawRect(FLinearColor(0.0f, 0.0f, 0.05f, 0.85f * Player->GetSleepFade()), 0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height));
 	}
+	// F1 hides everything but the world (and the sleep fade above).
+	if (Player && Player->IsHudHidden() && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead)
+	{
+		return;
+	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{
@@ -1432,6 +1443,10 @@ void AMcHUD::DrawHUD()
 		{
 			DrawBars(Width, Height, Data);
 		}
+	}
+	if (Player && Player->IsDebugShown() && !bDead)
+	{
+		DrawDebug(Width, Height, *Player);
 	}
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed.
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr;
@@ -1572,4 +1587,83 @@ void AMcHUD::DrawChatInput(int32 Width, int32 Height)
 	}
 	const bool bCaret = FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3;
 	DrawGuiText(bCaret ? Shown + TEXT("_") : Shown, 4.0f, Height - 12.0f, 0xFFFFFF, true);
+}
+
+// ---- F3 ----
+
+void AMcHUD::DrawDebug(int32 Width, int32 Height, AMcPlayerPawn& Player)
+{
+	const FVector Feet = Player.GetFeetPosition();
+	const FIntVector Block(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+	const FMcBlockWorld* World = Player.GetBlockWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+
+	// What the game's debug screen shows of the light and biome at the feet: sky and block light, and the biome's name.
+	const double Now = FPlatformTime::Seconds();
+	if (World && Now - DebugSampleTime > 1.0)
+	{
+		DebugSampleTime = Now;
+		static TSharedPtr<const FMcLightPalette> Palette;
+		if (!Palette.IsValid())
+		{
+			Palette = FMcLightPalette::Build();
+		}
+		const FIntPoint Chunk(McCoords::BlockToChunk(Block.X), McCoords::BlockToChunk(Block.Z));
+		if (World->HasChunk(Chunk))
+		{
+			FMcLightRegion Region = FMcLightRegion::Capture(*World, Chunk);
+			Region.Compute(*Palette);
+			const int32 X = Block.X - (Chunk.X - 1) * 16;
+			const int32 Z = Block.Z - (Chunk.Y - 1) * 16;
+			DebugSky = Region.GetSkyLight(X, Block.Y, Z);
+			DebugBlockLight = Region.GetBlockLight(X, Block.Y, Z);
+			const FMcBiomeId Biome = Region.GetBiome(X, Block.Y, Z);
+			DebugBiome = Biome == FMcLightRegion::NoBiome ? FString(TEXT("unknown")) : FMcBiomeRegistry::Get().GetName(Biome).ToString();
+		}
+	}
+	DebugDelta = FMath::Lerp(DebugDelta, FMath::Max(GetWorld()->GetDeltaSeconds(), 0.0001f), 0.05f);
+
+	// Facing: Minecraft's yaw runs 0 south, 90 west, 180 north, 270 east.
+	const float Yaw = FRotator::NormalizeAxis(Player.GetLookYaw());
+	const float Pitch = Player.GetLookPitch();
+	const float Wrapped = FMath::Fmod(FMath::Fmod(Yaw, 360.0f) + 360.0f, 360.0f);
+	static const TCHAR* Names[4] = { TEXT("south (Towards positive Z)"), TEXT("west (Towards negative X)"), TEXT("north (Towards negative Z)"), TEXT("east (Towards positive X)") };
+	const int32 Quarter = FMath::RoundToInt32(Wrapped / 90.0f) & 3;
+
+	TArray<FString> Left;
+	Left.Add(TEXT("Minecraft 26.3 (Unreal port)"));
+	Left.Add(FString::Printf(TEXT("%d fps"), FMath::RoundToInt32(1.0f / DebugDelta)));
+	Left.Add(FString());
+	Left.Add(FString::Printf(TEXT("XYZ: %.3f / %.5f / %.3f"), Feet.X, Feet.Y, Feet.Z));
+	Left.Add(FString::Printf(TEXT("Block: %d %d %d"), Block.X, Block.Y, Block.Z));
+	Left.Add(FString::Printf(TEXT("Chunk: %d %d %d in %d %d"), Block.X & 15, Block.Y & 15, Block.Z & 15, McCoords::BlockToChunk(Block.X), McCoords::BlockToChunk(Block.Z)));
+	Left.Add(FString::Printf(TEXT("Facing: %s (%.1f / %.1f)"), Names[Quarter], Yaw, Pitch));
+	Left.Add(FString::Printf(TEXT("Light: %d (%d sky, %d block)"), FMath::Max(DebugSky, DebugBlockLight), DebugSky, DebugBlockLight));
+	Left.Add(TEXT("Biome: ") + DebugBiome);
+
+	TArray<FString> Right;
+	if (Player.GetTarget().IsSet() && World)
+	{
+		const FMcBlockHit& Hit = Player.GetTarget().GetValue();
+		Right.Add(FString::Printf(TEXT("Targeted Block: %d, %d, %d"), Hit.Block.X, Hit.Block.Y, Hit.Block.Z));
+		Right.Add(Registry.GetBlockOf(Hit.State).Name.ToString());
+	}
+
+	auto DrawLines = [this](const TArray<FString>& Lines, bool bRight, int32 Width)
+	{
+		float Y = 2.0f;
+		for (const FString& Line : Lines)
+		{
+			if (!Line.IsEmpty())
+			{
+				const float W = TextWidth(Line);
+				const float X = bRight ? Width - 2.0f - W : 2.0f;
+				DrawFill(X - 1.0f, Y - 1.0f, W + 2.0f, 10.0f, FLinearColor(0.31f, 0.31f, 0.31f, 0.56f));
+				DrawGuiText(Line, X, Y, 0xE0E0E0, false);
+			}
+			Y += 9.0f;
+		}
+	};
+	DrawLines(Left, false, Width);
+	DrawLines(Right, true, Width);
 }

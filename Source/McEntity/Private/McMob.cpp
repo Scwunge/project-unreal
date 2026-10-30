@@ -106,6 +106,13 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.StepHeight = 0.6f;
 }
 
+void FMcMob::MakeBaby()
+{
+	BabyTicks = 24000;
+	Body.Width = Type.Width * 0.5f;
+	Body.Height = Type.Height * 0.5f;
+}
+
 void FMcMob::SetSize(int32 InSize, bool bHeal)
 {
 	Size = InSize;
@@ -355,6 +362,11 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		StepLast = Body.Position;
 	}
 	++Age;
+	if (BabyTicks > 0 && --BabyTicks == 0)
+	{
+		Body.Width = Type.Width;
+		Body.Height = Type.Height;
+	}
 	if (HurtTime > 0)
 	{
 		--HurtTime;

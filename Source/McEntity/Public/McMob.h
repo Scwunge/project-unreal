@@ -61,6 +61,10 @@ public:
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
 
+	// A chick: half the size, and grown up after twenty minutes (the baby's age counts up from -24000).
+	void MakeBaby();
+	int32 BabyTicks = 0;
+
 	// Slimes only: 1, 2 or 4. Sets the size of the body and (with bHeal) the health, size squared.
 	void SetSize(int32 InSize, bool bHeal = true);
 	// What a bite does: the type's, except for slimes, where the smallest does none and the others their size.

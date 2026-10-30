@@ -195,6 +195,9 @@ protected:
 	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
 	UFUNCTION(Server, Reliable)
 	void ServerUseItemOn(FIntVector Pos, int32 Face);
+	// The owner throws the snowball, egg or ender pearl they hold, along where they look.
+	UFUNCTION(Server, Reliable)
+	void ServerThrow();
 	// The server moved the owner: they move too, and say so, since until then the server ignores where they say they are.
 	UFUNCTION(Client, Reliable)
 	void ClientTeleport(FVector Feet, float McYaw);
@@ -341,6 +344,8 @@ private:
 	bool bServerPositionKnown = false;
 	bool bServerInitialised = false;
 	bool bServerDead = false;
+	// When the next ender pearl may be thrown (a second's wait after each).
+	double PearlReadyTime = 0.0;
 	bool bServerSprint = false;
 	bool bServerFlying = false;
 	bool bServerWasOnGround = true;

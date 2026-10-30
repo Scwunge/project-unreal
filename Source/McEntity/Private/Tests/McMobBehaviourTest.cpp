@@ -5,6 +5,7 @@
 #include "McDimensionType.h"
 #include "McEntityManager.h"
 #include "McMob.h"
+#include "McThrown.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -278,6 +279,48 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("a player's arrow hurts the pig it hits by 6"), FMath::IsNearlyEqual(Before - Pig->Health, 6.0f, 0.01f));
 		TestFalse(TEXT("the hit arrow is spent"), Shot != nullptr && !Manager.GetEntities().IsEmpty() && Manager.GetEntities().Last().Get() == Shot);
+	}
+	{
+		// A snowball knocks a pig back without hurting it; an egg breaks into a chick one time in eight; a pearl comes
+		// down in front of the wall it hits and tells where.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 9.5));
+		const float Health = Pig->Health;
+		TUniquePtr<FMcThrownEntity> Ball = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::Snowball);
+		Ball->Body.Position = FVector(8.5, 1.4, 5.8);
+		Ball->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		Manager.Add(MoveTemp(Ball));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("a snowball flinches the pig it hits"), Pig->HurtEvents, 1);
+		TestEqual(TEXT("without taking health"), Pig->Health, Health);
+
+		TestEqual(TEXT("an egg rolling under an eighth makes a chick"), FMcThrownEntity::GetChickCount(0.1f, 0.5f), 1);
+		TestEqual(TEXT("one in thirty-two of those make four"), FMcThrownEntity::GetChickCount(0.1f, 0.01f), 4);
+		TestEqual(TEXT("and over an eighth makes none"), FMcThrownEntity::GetChickCount(0.2f, 0.01f), 0);
+
+		FillBox(World, 8, 1, 14, 9, 3, 14, Stone);
+		TUniquePtr<FMcThrownEntity> Pearl = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderPearl);
+		Pearl->Body.Position = FVector(8.5, 3.5, 5.8);
+		Pearl->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		FVector Landed = FVector::ZeroVector;
+		Pearl->OnPearlLanded = [&Landed](const FVector& At) { Landed = At; };
+		Manager.Add(MoveTemp(Pearl));
+		for (int32 Tick = 0; Tick < 12; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a pearl lands in front of the wall"), Landed.Z > 12.0 && Landed.Z < 14.0);
+		// A baby chicken is half the size and grows up.
+		FMcMob* Chick = AddMob(Manager, TEXT("minecraft:chicken"), FVector(2.5, 1.0, 2.5));
+		Chick->MakeBaby();
+		TestTrue(TEXT("a chick is half a chicken's size"), FMath::IsNearlyEqual(Chick->Body.Width, 0.2f, 0.001f));
 	}
 	{
 		// Enderman: neutral until hurt; a hit teleports it off.

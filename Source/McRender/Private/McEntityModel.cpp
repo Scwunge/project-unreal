@@ -117,6 +117,8 @@ namespace McEntityModel
 				FModel Chicken;
 				Chicken.Kind = TEXT("minecraft:chicken");
 				Chicken.Textures = { TEXT("chicken/chicken_temperate.png") };
+				// A chick is the same model at half the width.
+				Chicken.BaseWidth = 0.4f;
 				Chicken.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 9, -3, -4, -3, 6, 8, 6) }, Flat));
 				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -2, 4, 6, 3), Box(14, 0, -2, 2, 1, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
 				const FBox Leg = Box(26, 0, -1.5f, -5, -1.5f, 3, 5, 3);
@@ -528,6 +530,38 @@ namespace McEntityModel
 		AddQuad(Fletch, FletchPixels, FVector(0, 0, -1));
 	}
 
+	// A thrown item: its picture 0.25 across on two squares crossed at the middle of the 0.25 body, seen from any side.
+	void BuildThrownMesh(float VMax, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const double Half = 0.125 * Units;
+		const FVector2D UVs[4] = { FVector2D(0, VMax), FVector2D(1, VMax), FVector2D(1, 0), FVector2D(0, 0) };
+		for (const FVector& Across : { FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0) })
+		{
+			const FVector Normal(Across.Y, Across.X, 0.0);
+			const FVector Centre(0.0, 0.0, Half);
+			const FVector Corners[4] = { Centre - Across * Half - FVector(0, 0, Half), Centre + Across * Half - FVector(0, 0, Half),
+				Centre + Across * Half + FVector(0, 0, Half), Centre - Across * Half + FVector(0, 0, Half) };
+			for (const bool bBack : { false, true })
+			{
+				const int32 First = Out.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					Out.Positions.Add(Corners[bBack ? 3 - Corner : Corner]);
+					Out.Normals.Add(bBack ? -Normal : Normal);
+					Out.UV0.Add(UVs[bBack ? 3 - Corner : Corner]);
+					Out.Colors.Add(FColor::White);
+				}
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -657,8 +691,9 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Kind = InKind;
 	Item = InItem;
 	Count = InCount;
-	bIsItem = Kind == TEXT("minecraft:item");
+	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
+	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsBanner = Kind == TEXT("mc:banner");
 	if (bIsBanner)
 	{
@@ -877,6 +912,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		if (bIsArrow)
 		{
 			McEntityModel::BuildArrowMesh(TargetBodyYaw, TargetHeadPitch, Data);
+		}
+		else if (bIsThrown)
+		{
+			McEntityModel::BuildThrownMesh(ItemVMax, Data);
 		}
 		else
 		{

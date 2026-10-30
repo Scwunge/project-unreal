@@ -39,6 +39,7 @@
 
 #if MC_WITH_RENDER
 #include "McArrow.h"
+#include "McThrown.h"
 #include "McParticleComponent.h"
 #include "McBlockHighlight.h"
 #include "McHand.h"
@@ -350,8 +351,8 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		}
 		Arm->SetHeld(HeldName);
 		Arm->SetEating(bEatingLocal && !Held.IsEmpty(), EatSecondsLocal);
-	}
 		Arm->SetDrawing(bBowLocal && !Held.IsEmpty(), BowSecondsLocal);
+	}
 #endif
 
 	if (HasAuthority())
@@ -667,7 +668,8 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			BowBaseFov = Camera->FieldOfView;
 		}
 		const float Pull = FMath::Min(BowSecondsLocal, 1.0f);
-		Camera->SetFieldOfView(BowBaseFov * (1.0f - 0.15f * Pull * Pull));
+		// TODO: the zoom while drawing (its curve and cap) measured from the reference client; none until then.
+		(void)Pull;
 	}
 	else if (BowBaseFov > 0.0f)
 	{
@@ -731,6 +733,17 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 				ServerTryRide(Look);
 				return;
 			}
+		}
+	}
+
+	// A snowball, egg or ender pearl is thrown wherever the player looks, block or not.
+	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && !Held.IsEmpty() && !bEating)
+	{
+		FMcThrownEntity::EKind ThrownKind;
+		if (FMcThrownEntity::FindKind(Held.Item, ThrownKind))
+		{
+			ServerThrow();
+			return;
 		}
 	}
 
@@ -1047,6 +1060,71 @@ void AMcPlayerPawn::ClientTeleport_Implementation(FVector Feet, float McYaw)
 void AMcPlayerPawn::ServerTeleported_Implementation()
 {
 	bServerAwaitingTeleport = false;
+}
+
+void AMcPlayerPawn::ServerThrow_Implementation()
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (!Entities || !Data || bServerDead)
+	{
+		return;
+	}
+	FMcThrownEntity::EKind Kind;
+	const FMcItemStack& Held = Data->GetSelected();
+	if (Held.IsEmpty() || !FMcThrownEntity::FindKind(Held.Item, Kind))
+	{
+		return;
+	}
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Kind == FMcThrownEntity::EKind::EnderPearl)
+	{
+		if (Now < PearlReadyTime)
+		{
+			return;
+		}
+		PearlReadyTime = Now + 1.0;
+	}
+	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
+	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
+	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	TUniquePtr<FMcThrownEntity> Thrown = MakeUnique<FMcThrownEntity>(Kind);
+	// TODO: the launch point's offset from the eye and the aim's spread, measured from the reference client (none until then).
+	Thrown->Body.Position = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
+	// 1.5 blocks a tick along the look, with the game's inaccuracy, and the thrower's own speed on top.
+	Thrown->Body.Velocity = Look * FMcThrownEntity::Speed
+		+ FVector(Body.Velocity.X, Body.bOnGround ? 0.0 : Body.Velocity.Y, Body.Velocity.Z);
+	if (Kind == FMcThrownEntity::EKind::EnderPearl)
+	{
+		TWeakObjectPtr<AMcPlayerPawn> Thrower(this);
+		Thrown->OnPearlLanded = [Thrower](const FVector& At)
+		{
+			if (AMcPlayerPawn* Pawn = Thrower.Get())
+			{
+				if (Pawn->bServerDead)
+				{
+					return;
+				}
+				// The thrower arrives where it landed, hurt by 5 (a creative player isn't), with the teleport's sound.
+				Pawn->ServerTeleport(At, Pawn->McLookYaw);
+				Pawn->ServerHurt(5.0f, McSurvival::EDamage::Fall, nullptr);
+				if (const FMcEntityManager* Sounds = Pawn->GetEntities ? Pawn->GetEntities() : nullptr)
+				{
+					Sounds->PlaySound(FName("entity.player.teleport"), At, 1.0f, 1.0f);
+				}
+			}
+		};
+	}
+	Entities->Add(MoveTemp(Thrown));
+	static const FName Sounds[3] = { FName("entity.snowball.throw"), FName("entity.egg.throw"), FName("entity.ender_pearl.throw") };
+	Entities->PlaySound(Sounds[static_cast<int32>(Kind)], Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f /* TODO: volume and pitch measured from the reference client */);
+	if (!Data->bCreative)
+	{
+		FMcItemStack& Stack = Data->Inventory->GetMutable(Data->SelectedSlot);
+		if (--Stack.Count <= 0)
+		{
+			Stack.Clear();
+		}
+	}
 }
 
 void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
@@ -1578,16 +1656,15 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
-	const auto Gauss = []() { return FMath::Sqrt(-2.0 * FMath::Loge(FMath::Max(static_cast<double>(FMath::FRand()), 1e-6))) * FMath::Cos(2.0 * PI * FMath::FRand()); };
-	// Three blocks a tick at full draw, with the game's own inaccuracy of 1.
+	// Three blocks a tick at full draw. TODO: the aim's spread and the launch point's offset from the eye, measured from the reference client (none until then).
 	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
-	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - 0.1, 0.0) + Look * 0.3;
-	Arrow->Body.Velocity = (Look + FVector(Gauss(), Gauss(), Gauss()) * 0.0075) * (Power * 3.0);
+	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight(), 0.0) + Look * 0.3;
+	Arrow->Body.Velocity = Look * (Power * 3.0);
 	Arrow->PlayerBase = 2.0f;
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;
 	Entities->Add(MoveTemp(Arrow));
-	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f / (FMath::FRand() * 0.4f + 1.2f) + Power * 0.5f);
+	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f /* TODO: pitch and its dependence on power measured from the reference client */);
 	if (!Data->bCreative)
 	{
 		Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);

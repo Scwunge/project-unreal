@@ -188,6 +188,8 @@ private:
 	bool bItemFailed = false;
 	bool bIsItem = false;
 	bool bIsArrow = false;
+	// A snowball, egg or ender pearl in flight: its item's picture on two crossed squares.
+	bool bIsThrown = false;
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
 	bool bIsBanner = false;
 	bool bBannerWall = false;

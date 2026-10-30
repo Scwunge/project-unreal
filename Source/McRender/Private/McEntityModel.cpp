@@ -121,9 +121,10 @@ namespace McEntityModel
 			if (Held)
 			{
 				Model.Textures.Add(FString(TEXT("../item/")) + Held + TEXT(".png"));
-				FBox Picture = Box(0, 0, -1, -22, -1, 0, 12, 12);
+				FBox Picture = Style == 1 ? Box(0, 0, -1, -13, -13, 0, 12, 12) : Box(0, 0, -1, -22, -1, 0, 12, 12);
 				Picture.bFlat = true;
-				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, 0, 0, 0, 0, 1);
+				// Lying level in front of the chest, its barrel forward: the icon's diagonal turned flat.
+				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, Style == 1 ? -0.785f : 0.0f, 0, 0, 0, 1);
 				Hand.ShowPoses = Armed;
 				Model.Parts.Add(Hand);
 			}
@@ -261,19 +262,23 @@ namespace McEntityModel
 				Models.Add(Vex.Kind, Vex);
 			}
 			{
-				// The ravager (minecraft.wiki, "Ravager"): a tall body on four thick legs, a long neck out in front of it and a head
-				// carried low at the end with a jaw under it and two horns on top. The legs are cut off at the ground, as the
-				// picture has them longer than they stand.
+				// The ravager (minecraft.wiki, "Ravager"): a long torso between four tall legs and a big head
+				// carried low in front with a jaw under it and two horns at its sides.
 				FModel Ravager;
 				Ravager.Kind = TEXT("minecraft:ravager");
 				Ravager.TextureSize = FIntPoint(128, 128);
 				Ravager.Textures = { TEXT("illager/ravager.png") };
-				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(0, 55, -7, -8, -10, 14, 16, 20) }, Flat));
-				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(68, 73, -5, -5, 2, 10, 10, 18) }));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 25, 18), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16) }));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(-6, 35, 24), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 0, 0, 0.35f));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(6, 35, 24), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 0, 0, -0.35f));
-				AddLegs(Ravager, 96, 0, 8, 37, 8, 10, -10, 16);
+				// The torso is two blocks end to end: the front 14x16x20 (its saddle patch on top) and behind it the 12x13x18
+				// hindquarters, so it runs about 29 long and 20 high between four whole 8x37x8 legs that stand a little above
+				// its back. The head hangs low in front, its bottom near the knees, the neck hidden inside it.
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(0, 55, -7, -8, -10, 14, 16, 20), Box(0, 91, -6, -21, -8, 12, 13, 18) }, Flat));
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 27, 0), { Box(68, 73, -5, -5, -3, 10, 10, 15) }));
+				// The back of the head tucks against the front legs and the body, so no neck shows; the nose hangs from the face.
+				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 18, 6), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16), Box(0, 0, -2, -12, 16, 4, 8, 4) }));
+				// The horns come out of the sides of the head and lie back, nearly level, a little outward.
+				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 26, 14), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, -1.4f, 0.7f, 0));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 26, 14), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, -1.4f, -0.7f, 0));
+				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37);
 				Models.Add(Ravager.Kind, Ravager);
 			}
 			{
@@ -705,13 +710,16 @@ namespace McEntityModel
 					const float Wave = FMath::Sin(Anim.Age * 9.0f);
 					if (Anim.Pose == 3)
 					{
-						Pitch += -2.25f + FMath::Cos(Anim.Age * 13.0f * 0.6662f) * 0.05f;
-						Roll += (bRight ? 1.0f : -1.0f) * (0.4f + Wave * 0.1f);
+						// Both arms out and up to the sides, mirror images, swinging together (vanilla's 135 degrees of roll, its
+						// sign flipped in this model space).
+						Pitch += FMath::Cos(Anim.Age * 13.0f * 0.6662f) * 0.25f;
+						Roll += (bRight ? -2.3562f : 2.3562f);
 					}
 					else if (Model.IllagerStyle == 1)
 					{
-						Pitch += (bRight ? -1.45f : (Anim.Pose == 2 ? -0.9f : -1.45f));
-						Yaw += (bRight ? 0.25f : -0.35f);
+						// Both straight forward at the target, the right a little inward and the left more, as the crossbow is held.
+						Pitch += (bRight ? -1.5708f : (Anim.Pose == 2 ? -0.9f : -1.5708f));
+						Yaw += (bRight ? 0.3f : -0.6f);
 					}
 					else
 					{

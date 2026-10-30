@@ -177,6 +177,7 @@ namespace McSurvival
 			Stats.InvulnTicks = 20;
 		}
 		Stats.HurtTime = 10;
+		Stats.LastDamageKind = static_cast<uint8>(Kind);
 
 		float Taken = Dealt;
 		if (!BypassesArmor(Kind))

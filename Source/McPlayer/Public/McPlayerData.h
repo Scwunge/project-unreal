@@ -53,6 +53,8 @@ struct MCPLAYER_API FMcPlayerStats
 	// difference), and the damage of the hit that started it.
 	int32 InvulnTicks = 0;
 	float LastDamage = 0.0f;
+	// The McSurvival::EDamage of the last hit, for the sound of being hurt (not saved).
+	uint8 LastDamageKind = 0;
 	// Ticks left burning.
 	int32 OnFireTicks = 0;
 	// Hunger's hidden bar: it fills as the player works, and a full 4 costs saturation, then food.
@@ -181,6 +183,8 @@ public:
 	TFunction<void(const FMcItemStack&)> ServerDrop;
 	// Whether the player may still have the window open (the block is still there, they are close); asked each tick.
 	TFunction<bool(const FMcWindow&)> ServerWindowValid;
+	// Plays a sound for what the player did in a window (an enchantment bought), at their position.
+	TFunction<void(FName Event, float Volume, float Pitch)> ServerSound;
 	// Sends the owner what changed. Called each game tick by the pawn.
 	void ServerTick();
 	// The stats and containers as bytes, for the owner and for the save.

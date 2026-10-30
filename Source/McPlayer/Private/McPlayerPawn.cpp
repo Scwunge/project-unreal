@@ -964,6 +964,7 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 		if (Wear > 0 && Held.HurtAndBreak(Wear))
 		{
 			Held.Clear();
+			ServerItemBroke();
 		}
 	}
 }
@@ -1044,6 +1045,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 		else if (Held.HurtAndBreak(1))
 		{
 			Held.Clear();
+			ServerItemBroke();
 		}
 	}
 }
@@ -1313,6 +1315,7 @@ void AMcPlayerPawn::ServerGameTick()
 		// A jump of more than 10 blocks in a tick is a teleport (spawning, the dev camera), not a fall.
 		const bool bTeleported = Step.SizeSquared() > 100.0;
 
+		const int32 FireBefore = Stats.OnFireTicks;
 		if (!Data->bCreative)
 		{
 			if (bTeleported)
@@ -1361,6 +1364,32 @@ void AMcPlayerPawn::ServerGameTick()
 		if (!bTeleported && Body.bOnGround && !bFlyingNow && !bSneakNow && ServerSteps.Walk(FVector2D(Step.X, Step.Z).Size()) && Entities)
 		{
 			Entities->PlaySound(McSound::GetBlockSound(GetBlockNameBelow(*BlockWorld, Feet), McSound::EBlockSound::Step, Feet));
+		}
+		// Water: a splash going in (louder and higher the faster), swimming sounds on the way, and a fire put out.
+		if (Entities && !bTeleported && !bFlyingNow)
+		{
+			const bool bInWater = Environment.bFeetInWater;
+			const float Speed = FMath::Clamp(FMath::Sqrt(static_cast<float>(Step.X * Step.X * 0.2 + Step.Y * Step.Y + Step.Z * Step.Z * 0.2)) * 0.2f, 0.12f, 1.0f);
+			const float Wobble = 1.0f + (FMath::FRand() - FMath::FRand()) * 0.4f;
+			if (bInWater && !bServerWasInWater)
+			{
+				Entities->PlaySound(FName(Speed < 0.25f ? "entity.player.splash" : "entity.player.splash.high_speed"), Feet, Speed, Wobble);
+				ServerSwum = 0.0;
+			}
+			else if (bInWater && !Body.bOnGround)
+			{
+				ServerSwum += Step.Size();
+				if (ServerSwum > 1.6)
+				{
+					ServerSwum = 0.0;
+					Entities->PlaySound(FName("entity.player.swim"), Feet, 0.3f, Wobble);
+				}
+			}
+			if (FireBefore > 0 && Stats.OnFireTicks == 0 && (bInWater || Environment.bInLava))
+			{
+				Entities->PlaySound(FName("entity.generic.extinguish_fire"), Feet, 0.7f, 1.6f + (FMath::FRand() - FMath::FRand()) * 0.4f);
+			}
+			bServerWasInWater = bInWater;
 		}
 		ServerPreviousPosition = Feet;
 		bServerWasOnGround = Body.bOnGround;
@@ -1474,6 +1503,14 @@ void AMcPlayerPawn::ServerGameTick()
 	Data->ServerTick();
 }
 
+void AMcPlayerPawn::ServerItemBroke()
+{
+	if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
+	{
+		Sounds->PlaySound(FName("entity.item.break"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.8f, 0.8f + FMath::FRand() * 0.4f);
+	}
+}
+
 void AMcPlayerPawn::ServerHurtSound()
 {
 	// Hurt by anything since the last look (a fall, a bite, an arrow, hunger): the player's hurt or death sound.
@@ -1483,7 +1520,13 @@ void AMcPlayerPawn::ServerHurtSound()
 		if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
 		{
 			const float VoicePitch = McSound::GetVoicePitch(DropRandom.FRand(), DropRandom.FRand());
-			Sounds->PlaySound(Health <= 0.0f ? FName(TEXT("entity.player.death")) : FName(TEXT("entity.player.hurt")), Body.Position, 1.0f, VoicePitch);
+			// What hurt picks the voice: drowning gasps, burning crackles, the rest is the plain grunt.
+			const McSurvival::EDamage Kind = static_cast<McSurvival::EDamage>(Data->Stats.LastDamageKind);
+			const bool bBurn = Kind == McSurvival::EDamage::InFire || Kind == McSurvival::EDamage::OnFire || Kind == McSurvival::EDamage::Lava;
+			Sounds->PlaySound(Health <= 0.0f ? FName(TEXT("entity.player.death"))
+				: Kind == McSurvival::EDamage::Drown ? FName(TEXT("entity.player.hurt_drown"))
+				: bBurn ? FName(TEXT("entity.player.hurt_on_fire"))
+				: FName(TEXT("entity.player.hurt")), Body.Position, 1.0f, VoicePitch);
 		}
 	}
 	ServerLastHealth = Health;
@@ -1577,6 +1620,7 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	if (Wear > 0 && Tool.HurtAndBreak(Wear))
 	{
 		Tool.Clear();
+		ServerItemBroke();
 	}
 	McSurvival::AddExhaustion(Data->Stats, McSurvival::BreakBlockExhaustion);
 }

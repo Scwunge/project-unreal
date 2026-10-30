@@ -660,6 +660,10 @@ void UMcPlayerDataComponent::ServerEnchant_Implementation(int32 WindowId, int32 
 	{
 		++NumRefused;
 	}
+	else if (ServerSound)
+	{
+		ServerSound(FName("block.enchantment_table.use"), 1.0f, FMath::FRand() * 0.1f + 0.9f);
+	}
 	LastSequence = Sequence;
 	SendWindowTo(Sequence);
 }

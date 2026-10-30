@@ -44,6 +44,12 @@ void UMcAudioSubsystem::Deinitialize()
 
 void UMcAudioSubsystem::OnSound(const FMcSoundEvent& Event)
 {
+	// -McLogSounds writes every event to the log, for checking what plays in a run with the sound off.
+	static const bool bLogSounds = FParse::Param(FCommandLine::Get(), TEXT("McLogSounds"));
+	if (bLogSounds)
+	{
+		UE_LOG(LogMcAudio, Display, TEXT("Sound: %s %.2f %.2f"), *Event.Name.ToString(), Event.Volume, Event.Pitch);
+	}
 	Play(Event);
 }
 

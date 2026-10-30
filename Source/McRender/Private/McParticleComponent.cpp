@@ -8,6 +8,7 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McRenderMode.h"
+#include "McSound.h"
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.h"
 
@@ -110,6 +111,9 @@ void UMcParticleComponent::BuildEmitters()
 		else if (Name == TEXT("minecraft:campfire") && bLit) Emitter = EEmitter::Campfire;
 		else if (Name == TEXT("minecraft:soul_campfire") && bLit) Emitter = EEmitter::SoulCampfire;
 		else if ((Name == TEXT("minecraft:furnace") || Name == TEXT("minecraft:blast_furnace") || Name == TEXT("minecraft:smoker")) && bLit) Emitter = EEmitter::Furnace;
+		else if (Name == TEXT("minecraft:fire") || Name == TEXT("minecraft:soul_fire")) Emitter = EEmitter::Fire;
+		else if (Name == TEXT("minecraft:nether_portal")) Emitter = EEmitter::Portal;
+		else if (Name == TEXT("minecraft:water") && Registry.GetPropertyValue(State, TEXT("level")) != TEXT("0")) Emitter = EEmitter::FlowingWater;
 		else if (Tags.Has(Leaves, State)) Emitter = EEmitter::Leaves;
 	}
 }
@@ -345,6 +349,11 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		Puff.Colour = FColor(Grey, Grey, Grey);
 		Puff.Light = FVector2f(SkyLightAt(Pos), 0.6f);
 	};
+	// What the block says now and again, as the game's: a sound at the block, a little off at random in pitch.
+	auto Say = [&](const TCHAR* Event, float Volume, float Pitch)
+	{
+		FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(Event), FVector(Pos) + FVector(0.5), Volume, Pitch });
+	};
 	const FVector Centre = FVector(Pos) + FVector(0.5);
 	const FIntVector& Facing0 = Facing[State];
 	switch (Emitters[State])
@@ -368,6 +377,10 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 	}
 	case EEmitter::Campfire:
 	case EEmitter::SoulCampfire:
+		if (Emitters[State] == EEmitter::Campfire && Random.FRand() < 0.11f)
+		{
+			Say(TEXT("block.campfire.crackle"), 0.5f + Random.FRand(), Random.FRand() * 0.7f + 0.6f);
+		}
 		if (Random.RandRange(0, 9) < (bUnreal ? 6 : 3))
 		{
 			Smoke(Centre + FVector(Random.FRandRange(-0.33f, 0.33f), 0.0, Random.FRandRange(-0.33f, 0.33f)), true);
@@ -378,6 +391,10 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		}
 		break;
 	case EEmitter::Furnace:
+		if (Random.FRand() < 0.1f)
+		{
+			Say(TEXT("block.furnace.fire_crackle"), 1.0f, 1.0f);
+		}
 		if (Random.RandRange(0, 1) == 0 && Facing0 != FIntVector::ZeroValue)
 		{
 			// Out of the front, low down.
@@ -391,6 +408,14 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		// A drop thrown up off the surface, now and again; in Unreal Mode sparks too.
 		if (World->GetBlock(Pos + FIntVector(0, 1, 0)) == 0)
 		{
+			if (Random.RandRange(0, 99) == 0)
+			{
+				Say(TEXT("block.lava.pop"), Random.FRand() * 0.2f + 0.2f, Random.FRand() * 0.15f + 0.9f);
+			}
+			if (Random.RandRange(0, 199) == 0)
+			{
+				Say(TEXT("block.lava.ambient"), Random.FRand() * 0.2f + 0.2f, Random.FRand() * 0.15f + 0.9f);
+			}
 			if (Random.RandRange(0, 99) == 0)
 			{
 				FParticle& Drop = Add(EStyle::Lava, FVector(Pos) + FVector(Random.FRand(), 1.0, Random.FRand()),
@@ -412,6 +437,24 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 				Spark.Size = Random.FRandRange(0.012f, 0.025f);
 				Spark.Light = FVector2f(1.0f, 1.0f);
 			}
+		}
+		break;
+	case EEmitter::Fire:
+		if (Random.RandRange(0, 23) == 0)
+		{
+			Say(TEXT("block.fire.ambient"), Random.FRand() + 1.0f, Random.FRand() * 0.7f + 0.3f);
+		}
+		break;
+	case EEmitter::Portal:
+		if (Random.RandRange(0, 99) == 0)
+		{
+			Say(TEXT("block.portal.ambient"), 0.5f, Random.FRand() * 0.4f + 0.8f);
+		}
+		break;
+	case EEmitter::FlowingWater:
+		if (Random.RandRange(0, 63) == 0)
+		{
+			Say(TEXT("block.water.ambient"), Random.FRand() * 0.25f + 0.75f, Random.FRand() + 0.5f);
 		}
 		break;
 	case EEmitter::Leaves:

@@ -262,6 +262,8 @@ private:
 	void ServerDie();
 	// Plays the hurt (or death) sound if health has dropped since the last call.
 	void ServerHurtSound();
+	// A tool or weapon wore out: the crack of it breaking.
+	void ServerItemBroke();
 	void StopDigging();
 	float GetEyeHeight() const;
 	void ShowPosition() const;
@@ -342,6 +344,9 @@ private:
 	bool bServerSprint = false;
 	bool bServerFlying = false;
 	bool bServerWasOnGround = true;
+	// Server: for the splash on entering water, the swimming sound's count of blocks, and putting a fire out.
+	bool bServerWasInWater = false;
+	double ServerSwum = 0.0;
 	FVector ServerPreviousPosition = FVector::ZeroVector;
 	McSurvival::FFallTracker ServerFall;
 	McSurvival::EDifficulty Difficulty = McSurvival::EDifficulty::Normal;

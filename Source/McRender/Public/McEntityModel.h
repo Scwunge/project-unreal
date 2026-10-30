@@ -100,6 +100,8 @@ namespace McEntityModel
 		int32 IllagerStyle = 0;
 		// The wings beat all the time (a vex).
 		bool bFlutter = false;
+		// The whole model drawn at this size about the feet (the villagers and illagers are 15/16: their root sits 1.5 pixels low in the game).
+		float Scale = 1.0f;
 		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
 		uint32 TintedLayers = 0;
 	};

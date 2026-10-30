@@ -80,6 +80,7 @@ namespace McEntityModel
 		// picture the crossed ones are, instead of the folded pair.
 		void AddVillager(FModel& Model, bool bArmsOut = false)
 		{
+			Model.Scale = 15.0f / 16.0f;
 			Model.TextureSize = FIntPoint(64, 64);
 			Model.BaseWidth = 0.6f;
 			Model.bComposite = true;
@@ -104,6 +105,7 @@ namespace McEntityModel
 		// 2 an axe, 3 none: it casts), and Held is the item picture drawn in the right hand.
 		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
 		{
+			Model.Scale = 15.0f / 16.0f;
 			AddVillager(Model, false);
 			Model.bComposite = false;
 			Model.IllagerStyle = Style;
@@ -858,10 +860,10 @@ namespace McEntityModel
 			{
 				if (Box.bFlat)
 				{
-					AddFlat(Box, Rotation, Part.Pivot, Anim.BodyYaw, Anim.Hurt, Anim.bBaby ? BabyScale : 1.0f, Out);
+					AddFlat(Box, Rotation, Part.Pivot, Anim.BodyYaw, Anim.Hurt, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 					continue;
 				}
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Anim.bBaby ? BabyScale : 1.0f, Out);
+				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 			}
 		}
 		if (((Model.TintedLayers >> Layer) & 1u) != 0)

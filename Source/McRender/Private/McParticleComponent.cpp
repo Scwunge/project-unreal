@@ -277,6 +277,32 @@ void UMcParticleComponent::BlockHit(const FIntVector& Pos, const FIntVector& Fac
 	Bit.Light = FVector2f(SkyLightAt(Pos + Face), 0.0f);
 }
 
+void UMcParticleComponent::ItemEaten(const FVector& Eye, const FVector& Forward, const TArray<FColor>& Colours)
+{
+	if (Colours.IsEmpty())
+	{
+		return;
+	}
+	// The game throws a handful from just below the mouth, up and a little ahead.
+	const int32 Count = McRenderMode::IsEnhanced() ? 8 : 5;
+	const FVector Side = FVector::CrossProduct(FVector(0.0, 1.0, 0.0), Forward).GetSafeNormal();
+	const FIntVector EyeBlock(FMath::FloorToInt(Eye.X), FMath::FloorToInt(Eye.Y), FMath::FloorToInt(Eye.Z));
+	const float Sky = SkyLightAt(EyeBlock);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FVector At = Eye + Forward * 0.6 + Side * Random.FRandRange(-0.15f, 0.15f) + FVector(0.0, Random.FRandRange(-0.25f, -0.12f), 0.0);
+		FVector Velocity = Forward * Random.FRandRange(0.01f, 0.05f) + Side * Random.FRandRange(-0.03f, 0.03f);
+		Velocity.Y += Random.FRandRange(0.08f, 0.14f);
+		FParticle& Bit = Add(EStyle::Crumb, At, Velocity);
+		Bit.Gravity = 0.04f;
+		Bit.bPhysics = true;
+		Bit.Life = Random.FRandRange(10.0f, 20.0f);
+		Bit.Size = 0.012f * (Random.FRand() * 0.5f + 0.75f);
+		Bit.Colour = Colours[Random.RandRange(0, Colours.Num() - 1)];
+		Bit.Light = FVector2f(Sky, 0.0f);
+	}
+}
+
 void UMcParticleComponent::Ambient()
 {
 	// As the game does: a number of blocks at random near the player, within 16 and within 32.
@@ -514,6 +540,9 @@ void UMcParticleComponent::Draw(float Partial)
 			{
 				Size *= FMath::Clamp((1.0f - T) * 4.0f, 0.0f, 1.0f);
 			}
+			break;
+		case EStyle::Crumb:
+			Size *= FMath::Clamp((1.0f - T) * 4.0f, 0.0f, 1.0f);
 			break;
 		case EStyle::Dust:
 			bTextured = true;

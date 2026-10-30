@@ -43,6 +43,10 @@ public:
 	// The block at Pos is being dug on its Face side (a unit step out of it).
 	void BlockHit(const FIntVector& Pos, const FIntVector& Face);
 
+	// Food being eaten: a few bits of its picture fly from the mouth at Eye (blocks) looking along Forward. Colours are the opaque pixels
+	// of the food's sprite; each bit takes one at random.
+	void ItemEaten(const FVector& Eye, const FVector& Forward, const TArray<FColor>& Colours);
+
 	int32 NumParticles() const { return Particles.Num(); }
 
 	// The component drawing particles for World on this machine, if any (the player's digging finds it this way).
@@ -67,6 +71,7 @@ private:
 		Lava,      // a burning drop that falls back
 		Spark,     // a tiny glowing fleck off lava (Unreal Mode)
 		Leaf,
+		Crumb,     // a bit of eaten food: one colour, falls and lands
 	};
 
 	struct FParticle

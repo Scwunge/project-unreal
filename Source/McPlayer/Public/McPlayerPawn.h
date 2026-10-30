@@ -356,6 +356,10 @@ private:
 	// Ticks spent on the block being dug; it is hit (with its sound) every 4.
 	int32 DigTicks = 0;
 	int32 EatTicks = 0;
+	// Client: ticks spent eating (the crumbs follow the munching), and the colours of the food's sprite they take.
+	int32 EatCrumbTicks = 0;
+	FName EatCrumbItem;
+	TArray<FColor> EatCrumbColours;
 	McSound::FStepCounter ServerSteps;
 	// The health at the end of the last tick, for the hurt sound whatever did the damage; below 0 until the first.
 	float ServerLastHealth = -1.0f;

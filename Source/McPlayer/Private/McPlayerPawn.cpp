@@ -2,6 +2,7 @@
 #include "McBanner.h"
 #include "McShulker.h"
 #include "McCache.h"
+#include "McRenderTextures.h"
 #include "McBannerEntity.h"
 #include "McBed.h"
 #include "McPlayer.h"
@@ -492,6 +493,41 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 				Particles->BlockHit(Target->Block, Faces[FMath::Clamp(Target->Face, 0, 5)]);
 			}
 		}
+	}
+	// Food being eaten throws bits of itself from the mouth, on the beat of the munching.
+	if (Player && Player->IsLocalController() && bEatingLocal)
+	{
+		const FMcItemStack& Eaten = Data->GetSelected();
+		if (!Eaten.IsEmpty() && Eaten.Item != EatCrumbItem)
+		{
+			EatCrumbItem = Eaten.Item;
+			EatCrumbColours.Reset();
+			TArray<FColor> Pixels;
+			int32 Width = 0, Height = 0;
+			if (McRenderTextures::LoadPngPixels(McCache::Asset(TEXT("textures/item/") + McCache::PathOf(Eaten.Item.ToString()) + TEXT(".png")), Pixels, Width, Height))
+			{
+				for (const FColor& Pixel : Pixels)
+				{
+					if (Pixel.A > 128)
+					{
+						EatCrumbColours.Add(FColor(Pixel.R, Pixel.G, Pixel.B));
+					}
+				}
+			}
+		}
+		UMcParticleComponent* Particles = UMcParticleComponent::FindFor(BlockWorld);
+		for (int32 Tick = 0; Tick < FMath::Min(Ticks, MaxTicksPerFrame); ++Tick)
+		{
+			if (++EatCrumbTicks > 6 && EatCrumbTicks % 4 == 0 && Particles)
+			{
+				const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+				Particles->ItemEaten(Eye, McCoords::UnrealToBlock(Camera->GetForwardVector()).GetSafeNormal(), EatCrumbColours);
+			}
+		}
+	}
+	else
+	{
+		EatCrumbTicks = 0;
 	}
 #endif
 	BreakCooldown -= DeltaSeconds;

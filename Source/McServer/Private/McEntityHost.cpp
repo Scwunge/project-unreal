@@ -953,10 +953,17 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowUp="), Up);
 			float RowYaw = 90.0f;
 			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowYaw="), RowYaw);
+				// -McMobRowAt=x,z puts the row's middle at that block column instead of in front of the player.
+				FVector2D RowAt(Players[0].X, Players[0].Z + 5.5);
+				FString At, AtX, AtZ;
+				if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRowAt="), At, false) && At.Split(TEXT(","), &AtX, &AtZ))
+				{
+					RowAt = FVector2D(FCString::Atod(*AtX), FCString::Atod(*AtZ));
+				}
 			for (int32 Index = 0; Index < Kinds.Num(); ++Index)
 			{
-				const double X = Players[0].X + (Index - (Kinds.Num() - 1) * 0.5) * 2.0;
-				const int32 Z = FMath::FloorToInt32(Players[0].Z + 5.5);
+				const double X = RowAt.X + (Index - (Kinds.Num() - 1) * 0.5) * 2.0;
+				const int32 Z = FMath::FloorToInt32(RowAt.Y);
 				if (const TOptional<int32> Y = FindStandingY(FMath::FloorToInt32(X), Z, FMath::FloorToInt32(Players[0].Y), 24))
 				{
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))

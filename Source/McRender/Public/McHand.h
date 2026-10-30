@@ -22,6 +22,10 @@ namespace McHand
 	// How much smaller than the game's distances everything is drawn, and so how much nearer the camera.
 	constexpr double Scale = 1.0;
 	constexpr float SwingSeconds = 0.3f;
+	constexpr float ThrowSeconds = 0.3f;
+
+	// How far the item has dipped out of sight after a throw, 0 to 1, a given time after the click.
+	float GetThrowDip(float Age);
 	constexpr float EquipSeconds = 0.2f;
 
 	// What the hand holds, as it is drawn.
@@ -143,6 +147,7 @@ private:
 	McHand::EHeld ShownKind = McHand::EHeld::Nothing;
 	float Equip = 1.0f;
 	float SwingAge = 100.0f;
+	float ThrowAge = 100.0f;
 	bool bEating = false;
 	float EatSeconds = 1.6f;
 	// How far the item is raised (0 to 1) and how long it has been eaten.

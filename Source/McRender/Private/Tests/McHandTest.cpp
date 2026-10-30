@@ -31,6 +31,12 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no stroke at the end"), FMath::IsNearlyZero(GetSwingStroke(1.0f), 1e-4f));
 	TestTrue(TEXT("full stroke a quarter in"), FMath::IsNearlyEqual(GetSwingStroke(0.25f), 1.0f, 1e-4f));
 
+	// A thrown item is in place on the click, out of sight 1 to 3 ticks later and back in place by tick 6 (the reference client's shots).
+	TestTrue(TEXT("throw dip starts at nothing"), FMath::IsNearlyZero(GetThrowDip(0.0f)));
+	TestTrue(TEXT("throw dip is mostly down by tick 1"), GetThrowDip(0.05f) > 0.8f);
+	TestTrue(TEXT("throw dip is full at tick 3"), GetThrowDip(0.15f) > 0.99f);
+	TestTrue(TEXT("throw dip is over by tick 6"), FMath::IsNearlyZero(GetThrowDip(0.3f), 1e-4f));
+
 	// Eating: nothing moves with the item down, it is raised and turned with it up, and it bobs only until four fifths of the meal.
 	TestTrue(TEXT("a lowered food is not moved"), GetEatTransform(0.0f, 0.5f, 1.6f).GetTranslation().IsNearlyZero());
 	TestTrue(TEXT("a raised food moves toward the middle and up"), GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Y < 0.0 && GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Z > 0.0);

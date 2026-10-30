@@ -502,3 +502,4 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - Data generators: https://wiki.vg/Data_Generators
 - Running the data generator: https://minecraft.gamepedia.com/Tutorials/Running_the_Data_Generator
 - Entity Model Features: https://modrinth.com/mod/entity-model-features
+- **Thrown item dip** (2026-10-30): after a right-click throw of a snowball, egg or ender pearl the held item drops out of the bottom of the view toward the middle and comes back in 0.3 s (`McHand::GetThrowDip`: smooth down in the first fifth, out of sight until just over half, smooth back up), on top of the ordinary swing. Fitted to ref_snow_*: item in place on the click, gone at 1 to 3 ticks (only a sliver at the bottom centre), back by 6. Only the three on/off facts are measured; the depth and sideways move (100 and 40 units) are chosen to put it off screen, and our dev-input shots cannot be timed to the tick, so the curve is not checked frame by frame.

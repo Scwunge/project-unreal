@@ -112,6 +112,15 @@ namespace McHand
 		}
 	}
 
+	float GetThrowDip(float Age)
+	{
+		// Fitted to the reference client's held snowball after a throw (ref_snow_*): still in place on the click, gone from the
+		// screen's bottom centre 1 to 3 ticks later (only a sliver left), back in place by tick 6.
+		const auto Smooth = [](float T) { T = FMath::Clamp(T, 0.0f, 1.0f); return T * T * (3.0f - 2.0f * T); };
+		const float P = Age / ThrowSeconds;
+		return Smooth(P / 0.2f) * (1.0f - Smooth((P - 0.55f) / 0.45f));
+	}
+
 	float GetSwingStroke(float Progress)
 	{
 		return FMath::Sin(FMath::Sqrt(FMath::Clamp(Progress, 0.0f, 1.0f)) * PI);
@@ -674,11 +683,20 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 				if (Controller->IsInputKeyDown(EKeys::LeftMouseButton) || Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
 				{
 					Swing();
+					if (Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
+					{
+						const FString Thrown = McCache::PathOf(Shown.ToString());
+						if (Thrown == TEXT("snowball") || Thrown == TEXT("egg") || Thrown == TEXT("ender_pearl"))
+						{
+							ThrowAge = 0.0f;
+						}
+					}
 				}
 			}
 		}
 	}
 	SwingAge += DeltaTime;
+	ThrowAge += DeltaTime;
 
 	// How fast and how far the player walked this frame, along the ground.
 	const FVector Location = Owner->GetActorLocation();
@@ -740,6 +758,12 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		const FTransform Eat = McHand::GetEatTransform(EatLift, EatTime, EatSeconds);
 		Pose.SetRotation(Eat.GetRotation() * Pose.GetRotation());
 		Pose.AddToTranslation(Eat.GetTranslation());
+	}
+	if (ThrowAge < McHand::ThrowSeconds)
+	{
+		// The thrown item drops out of the bottom of the view, toward the middle.
+		const float Dip = McHand::GetThrowDip(ThrowAge);
+		Pose.AddToTranslation(FVector(0.0, -40.0 * Dip, -100.0 * Dip));
 	}
 	SetRelativeTransform(Pose);
 	// Only an empty hand shows its arm.

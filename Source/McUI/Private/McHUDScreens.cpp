@@ -5,6 +5,7 @@
 #include "McHUD.h"
 #include "McEffects.h"
 #include "McRenderMode.h"
+#include "McSkyComponent.h"
 #include "McLocalPlayer.h"
 #include "McLaunch.h"
 #include "Misc/CommandLine.h"
@@ -1423,6 +1424,15 @@ void AMcHUD::DrawHUD()
 	if (Player && Player->IsHudHidden() && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead)
 	{
 		return;
+	}
+	// The screen's edges are darkened, under everything else the HUD draws (it goes with F1, above).
+	if (!bDead)
+	{
+		if (UTexture2D* Vignette = LoadVignette())
+		{
+			DrawRegion(Vignette, 0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height), 0.0f, 0.0f, 256.0f, 256.0f,
+				FLinearColor(1.0f, 1.0f, 1.0f, McGui::GetVignetteStrength(McSky::GetSkyLightFactor())));
+		}
 	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)

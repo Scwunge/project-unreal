@@ -84,6 +84,8 @@ private:
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
 	void DrawSprite(UTexture2D* Texture, float X, float Y, float Width, float Height);
 	// A part of a picture: U, V, UW and VH are in pixels of the picture itself.
+	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
+	UTexture2D* LoadVignette();
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
 	void DrawIcon(const FIcon& Icon, float X, float Y);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);

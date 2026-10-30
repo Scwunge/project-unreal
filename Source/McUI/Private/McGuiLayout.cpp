@@ -19,6 +19,13 @@ namespace
 	}
 }
 
+float McGui::GetVignetteStrength(float Brightness)
+{
+	// Noon 0.356 and night 0.289 (the sky light factor is 1 and 0.24 there); a lit room at level 8 gave 0.33, near the line
+	// between them. Linear in the brightness.
+	return 0.289f + 0.067f * FMath::Clamp(Brightness, 0.0f, 1.0f);
+}
+
 int32 McGui::GetGuiScale(int32 Width, int32 Height, int32 Setting)
 {
 	int32 Largest = 1;

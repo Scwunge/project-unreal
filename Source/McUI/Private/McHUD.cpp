@@ -40,15 +40,15 @@ namespace
 		return FVector3d(X, Y, Depth);
 	}
 
-	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height)
+	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height, bool bSmooth = false)
 	{
 		UTexture2D* Texture = UTexture2D::CreateTransient(Width, Height, PF_B8G8R8A8);
 		if (!Texture)
 		{
 			return nullptr;
 		}
-		Texture->Filter = TF_Nearest;
-		Texture->SRGB = true;
+		Texture->Filter = bSmooth ? TF_Bilinear : TF_Nearest;
+		Texture->SRGB = !bSmooth;
 		Texture->LODGroup = TEXTUREGROUP_Pixels2D;
 		void* Data = Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
 		FMemory::Memcpy(Data, Bgra.GetData(), static_cast<SIZE_T>(Width) * Height * 4);
@@ -58,7 +58,7 @@ namespace
 	}
 
 	// A PNG from the jar, cut to its top square when it is an animation strip.
-	UTexture2D* LoadPng(const FString& Path, bool bFirstFrame)
+	UTexture2D* LoadPng(const FString& Path, bool bFirstFrame, bool bGreyToAlpha = false)
 	{
 		TArray<uint8> File;
 		if (!FFileHelper::LoadFileToArray(File, *Path))
@@ -81,7 +81,17 @@ namespace
 			Height = Width;
 			Raw.SetNum(static_cast<int64>(Width) * Height * 4);
 		}
-		return MakeTexture(Raw, Width, Height);
+		if (bGreyToAlpha)
+		{
+			// Black with the picture's grey as its opacity (the screen-edge darkening: how much of the picture is lost).
+			for (int64 Pixel = 0; Pixel < static_cast<int64>(Width) * Height; ++Pixel)
+			{
+				uint8* Bgra = Raw.GetData() + Pixel * 4;
+				Bgra[3] = Bgra[0];
+				Bgra[0] = Bgra[1] = Bgra[2] = 0;
+			}
+		}
+		return MakeTexture(Raw, Width, Height, bGreyToAlpha);
 	}
 }
 
@@ -102,6 +112,18 @@ UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
 		? FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), RelativeAssetPath.Mid(10)) : McCache::Asset(RelativeAssetPath);
 	UTexture2D* Texture = LoadPng(Path, false);
 	Sprites.Add(RelativeAssetPath, Texture);
+	return Texture;
+}
+
+UTexture2D* AMcHUD::LoadVignette()
+{
+	const FString Key = TEXT("vignette:alpha");
+	if (TObjectPtr<UTexture2D>* Found = Sprites.Find(Key))
+	{
+		return *Found;
+	}
+	UTexture2D* Texture = LoadPng(McCache::Asset(TEXT("textures/misc/vignette.png")), false, true);
+	Sprites.Add(Key, Texture);
 	return Texture;
 }
 

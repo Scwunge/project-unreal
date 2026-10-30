@@ -21,6 +21,10 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(FString::Printf(TEXT("%s: (%d, %d), expected (%d, %d)"), What, Actual.X, Actual.Y, Expected.X, Expected.Y), Actual == Expected);
 	};
+	// The vignette is a little stronger by day than at night.
+	TestTrue(TEXT("noon vignette strength"), FMath::IsNearlyEqual(GetVignetteStrength(1.0f), 0.356f, 1e-4f));
+	TestTrue(TEXT("night vignette is weaker"), GetVignetteStrength(0.24f) < GetVignetteStrength(1.0f));
+
 	// The GUI scale: the largest that keeps 320 x 240, or the setting if smaller.
 	TestEqual(TEXT("1080p is scale 4"), GetGuiScale(1920, 1080), 4);
 	TestEqual(TEXT("640 x 480 is scale 2"), GetGuiScale(640, 480), 2);

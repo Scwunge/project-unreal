@@ -4,9 +4,20 @@
 #include "McBlockWorld.h"
 #include "McChestLink.h"
 #include "McChunk.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "McEntityModel.h"
+
+namespace
+{
+	bool IsEnchantingTable(FMcStateId State)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		return Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == FName(TEXT("minecraft:enchanting_table"));
+	}
+}
 
 UMcChestComponent::UMcChestComponent()
 {
@@ -89,6 +100,47 @@ FName UMcChestComponent::GetShulkerModel(FMcStateId State, FQuat& OutRotation)
 	return FName(TEXT("mc:shulker_box/shulker") + (Name.IsEmpty() ? FString() : TEXT("_") + Name));
 }
 
+FQuat UMcChestComponent::RotationFromAxes(const FVector& X, const FVector& Y, const FVector& Z)
+{
+	// McEntityModel puts model (x, y, z) at Unreal (x, z, y), as McCoords does blocks.
+	const auto ToUnreal = [](const FVector& V) { return FVector(V.X, V.Z, V.Y); };
+	return FQuat(FMatrix(ToUnreal(X), ToUnreal(Z), ToUnreal(Y), FVector::ZeroVector)).GetNormalized();
+}
+
+bool UMcChestComponent::GetLecternBook(FMcStateId State, FVector& OutCentre, FQuat& OutRotation)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != FName(TEXT("minecraft:lectern"))
+		|| Registry.GetPropertyValue(State, TEXT("has_book")) != FName(TEXT("true")))
+	{
+		return false;
+	}
+	// Facing north, the lectern's top (16 by 13 pixels, its top face 16 up, tipped 22.5 degrees about the block's middle)
+	// rises to the south, so whoever reads stands north. The book lies on it, its spine up the slope and its right half
+	// on the reader's right (west).
+	const double Sin = FMath::Sin(FMath::DegreesToRadians(22.5));
+	const double Cos = FMath::Cos(FMath::DegreesToRadians(22.5));
+	const FVector Up(0.0, Cos, -Sin);
+	FVector Axes[3] = { FVector(-1.0, 0.0, 0.0), FVector(0.0, Sin, Cos), Up };
+	// The middle of the top face, turned with the top, and a hair above it.
+	FVector Centre = FVector(8.0, 8.0 + 8.0 * Cos + 1.5 * Sin, 8.0 - 8.0 * Sin + 1.5 * Cos) + Up * 0.05;
+	const FName Facing = Registry.GetPropertyValue(State, TEXT("facing"));
+	const int32 Quarters = Facing == TEXT("east") ? 1 : Facing == TEXT("south") ? 2 : Facing == TEXT("west") ? 3 : 0;
+	// Each quarter turns north to east about the block's middle.
+	const auto Turn = [](const FVector& V) { return FVector(-V.Z, V.Y, V.X); };
+	for (int32 Quarter = 0; Quarter < Quarters; ++Quarter)
+	{
+		for (FVector& Axis : Axes)
+		{
+			Axis = Turn(Axis);
+		}
+		Centre = Turn(Centre - FVector(8.0, 0.0, 8.0)) + FVector(8.0, 0.0, 8.0);
+	}
+	OutCentre = Centre / 16.0;
+	OutRotation = RotationFromAxes(Axes[0], Axes[1], Axes[2]);
+	return true;
+}
+
 void UMcChestComponent::RingBell(const FIntVector& Pos, int32 Side)
 {
 	FChest* Bell = Chests.Find(Pos);
@@ -142,8 +194,10 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 		float Yaw;
 		FIntVector Partner;
 		FQuat Rotation;
+		FVector Centre;
 		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone()
-			|| McBell::IsBell(static_cast<FMcStateId>(Id));
+			|| McBell::IsBell(static_cast<FMcStateId>(Id)) || IsEnchantingTable(static_cast<FMcStateId>(Id))
+			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation);
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -247,16 +301,33 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 		FQuat Rotation = FQuat::Identity;
 		FName Kind = GetChestModel(Pair.Value, Yaw, Known->Partner, bChristmas);
 		// A shulker box's model is about the block's middle, turned to its facing. A bell's body hangs the same in every
-		// frame, unturned.
-		const bool bBell = McBell::IsBell(Pair.Value);
-		const bool bShulker = Kind.IsNone() && !bBell;
-		if (bBell)
+		// frame, unturned. A lectern's book lies on its top; an enchanting table's is placed each frame as it floats.
+		FVector Centre(0.5, 0.0, 0.5);
+		if (!Kind.IsNone())
 		{
+			Known->Shape = EShape::Chest;
+		}
+		else if (McBell::IsBell(Pair.Value))
+		{
+			Known->Shape = EShape::Bell;
 			Kind = FName(TEXT("mc:bell"));
 		}
-		else if (bShulker)
+		else if (GetLecternBook(Pair.Value, Centre, Rotation))
 		{
+			Known->Shape = EShape::LecternBook;
+			Kind = FName(TEXT("mc:book"));
+		}
+		else if (IsEnchantingTable(Pair.Value))
+		{
+			Known->Shape = EShape::TableBook;
+			Kind = FName(TEXT("mc:book"));
+			Centre = FVector(0.5, 1.0, 0.5);
+		}
+		else
+		{
+			Known->Shape = EShape::Shulker;
 			Kind = GetShulkerModel(Pair.Value, Rotation);
+			Centre = FVector(0.5);
 		}
 		TObjectPtr<UMcEntityModelComponent>& Model = Models.FindOrAdd(Pair.Key);
 		if (!Model)
@@ -267,7 +338,7 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 			Model->SetUsingAbsoluteRotation(true);
 			Model->RegisterComponent();
 		}
-		Model->SetWorldLocationAndRotation(McCoords::BlockToUnreal(FVector(Pair.Key) + FVector(0.5, bShulker ? 0.5 : 0.0, 0.5)), Rotation);
+		Model->SetWorldLocationAndRotation(McCoords::BlockToUnreal(FVector(Pair.Key) + Centre), Rotation);
 		Model->SetKind(Kind, NAME_None, 0);
 		Model->SetLook(Yaw, Yaw, 0.0f);
 	}
@@ -300,6 +371,16 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			Pair.Value.SinceStruck = 4.0f / 20.0f;
 		}
 	}
+
+	// Where this machine's player looks from, for the enchanting tables' books.
+	FVector Viewer(TNumericLimits<float>::Max());
+	if (const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
+	{
+		FVector Location;
+		FRotator Rotation;
+		Player->GetPlayerViewPoint(Location, Rotation);
+		Viewer = McCoords::UnrealToBlock(Location);
+	}
 	for (const auto& Pair : Models)
 	{
 		if (!Pair.Value)
@@ -308,6 +389,44 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		}
 		const FVector2D Swing = GetBellSwing(Pair.Key);
 		Pair.Value->SetSwing(Swing.X, Swing.Y);
+		if (FChest* Book = Chests.Find(Pair.Key); Book && (Book->Shape == EShape::TableBook || Book->Shape == EShape::LecternBook))
+		{
+			if (Book->Shape == EShape::LecternBook)
+			{
+				// Open, not quite flat.
+				Pair.Value->SetBook(0.9f, 0.0f, 0.0f);
+				continue;
+			}
+			// Over an enchanting table it bobs; with a player within 3 blocks it turns to them and opens, its loose pages
+			// waving over and back, and without one it shuts and slowly turns round.
+			Book->BookAge += DeltaTime;
+			const FVector Centre = FVector(Pair.Key) + FVector(0.5, 1.0 + 0.05 * FMath::Sin(Book->BookAge * 2.0f), 0.5);
+			const FVector Towards = Viewer - Centre;
+			const bool bNear = Towards.SizeSquared() < 9.0;
+			if (bNear)
+			{
+				const float Target = FMath::Atan2(-Towards.X, Towards.Z);
+				Book->BookYaw += FMath::FindDeltaAngleRadians(Book->BookYaw, Target) * FMath::Min(1.0f, DeltaTime * 4.0f);
+			}
+			else
+			{
+				Book->BookYaw = FMath::UnwindRadians(Book->BookYaw + DeltaTime * 0.4f);
+			}
+			Book->BookOpen = FMath::FInterpConstantTo(Book->BookOpen, bNear ? 0.7f : 0.0f, DeltaTime, 1.5f);
+			for (int32 Page = 0; Page < 2; ++Page)
+			{
+				Book->BookFlip[Page] = 0.5f + 0.5f * FMath::Sin(Book->BookAge * (Page == 0 ? 1.3f : 0.8f));
+			}
+			// Its pages face the way it turns, tipped up a little; the spine stays near upright.
+			const double Lean = 0.35;
+			const FVector Facing(-FMath::Sin(Book->BookYaw), 0.0, FMath::Cos(Book->BookYaw));
+			const FVector Up(0.0, 1.0, 0.0);
+			const FVector Pages = Facing * FMath::Cos(Lean) + Up * FMath::Sin(Lean);
+			const FVector Spine = Up * FMath::Cos(Lean) - Facing * FMath::Sin(Lean);
+			Pair.Value->SetWorldLocationAndRotation(McCoords::BlockToUnreal(Centre), RotationFromAxes(FVector::CrossProduct(Spine, Pages), Spine, Pages));
+			Pair.Value->SetBook(Book->BookOpen, Book->BookFlip[0], Book->BookFlip[1]);
+			continue;
+		}
 		const FChest* Chest = Chests.Find(Pair.Key);
 		const FIntVector Partner = Chest ? Chest->Partner : FIntVector::ZeroValue;
 		const bool bOpen = bAllOpen || (IsOpen && (IsOpen(Pair.Key) || (Partner != FIntVector::ZeroValue && IsOpen(Pair.Key + Partner))));

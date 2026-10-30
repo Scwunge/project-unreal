@@ -194,6 +194,63 @@ bool FMcBellTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcBookTest, "McClient.McRender.Books",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcBookTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registry loads"), Registry.EnsureLoaded()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("unturned axes are no turn"), UMcChestComponent::RotationFromAxes(FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1)).Equals(FQuat::Identity, 1e-6));
+
+	FVector Centre;
+	FQuat Rotation;
+	TestFalse(TEXT("a lectern without a book shows none"), UMcChestComponent::GetLecternBook(Registry.ParseState(TEXT("minecraft:lectern[facing=north,has_book=false,powered=false]")).Get(0), Centre, Rotation));
+	TestFalse(TEXT("nor does stone"), UMcChestComponent::GetLecternBook(Registry.ParseState(TEXT("minecraft:stone")).Get(0), Centre, Rotation));
+	const double Sin = FMath::Sin(FMath::DegreesToRadians(22.5));
+	const double Cos = FMath::Cos(FMath::DegreesToRadians(22.5));
+	if (TestTrue(TEXT("a lectern with a book"), UMcChestComponent::GetLecternBook(Registry.ParseState(TEXT("minecraft:lectern[facing=north,has_book=true,powered=false]")).Get(0), Centre, Rotation)))
+	{
+		// On the top's middle, a block up and north of the middle, its pages (model +z, Unreal local +y) facing up the
+		// way the top is tipped: towards the reader at the north.
+		TestTrue(TEXT("on the top"), FMath::IsNearlyEqual(Centre.X, 0.5, 1e-3) && FMath::IsNearlyEqual(Centre.Y, 1.0, 0.01) && Centre.Z > 0.35 && Centre.Z < 0.45);
+		TestTrue(TEXT("its pages face up and north"), Rotation.RotateVector(FVector(0, 1, 0)).Equals(FVector(0, -Sin, Cos), 1e-4));
+		TestTrue(TEXT("its right half on the reader's right (west)"), Rotation.RotateVector(FVector(1, 0, 0)).Equals(FVector(-1, 0, 0), 1e-4));
+	}
+	if (TestTrue(TEXT("one facing east"), UMcChestComponent::GetLecternBook(Registry.ParseState(TEXT("minecraft:lectern[facing=east,has_book=true,powered=false]")).Get(0), Centre, Rotation)))
+	{
+		TestTrue(TEXT("is east of the middle"), Centre.X > 0.55 && FMath::IsNearlyEqual(Centre.Z, 0.5, 1e-3));
+		TestTrue(TEXT("its pages face up and east"), Rotation.RotateVector(FVector(0, 1, 0)).Equals(FVector(Sin, 0, Cos), 1e-4));
+	}
+
+	const FModel* Book = Find(TEXT("mc:book"));
+	if (!TestNotNull(TEXT("a book has a model"), Book))
+	{
+		return false;
+	}
+	FAnim Pose;
+	McPlayerModel::FMeshData Data;
+	BuildMesh(*Book, Pose, 0, Data);
+	const ::FBox Shut(Data.Positions);
+	// Shut: the covers stand from the spine's edges (x -1 and 1) out to 6 in front (model +z, Unreal +y), 10 high.
+	TestTrue(TEXT("shut, 2 thick"), FMath::IsNearlyEqual(Shut.Min.X, -6.25, 0.1) && FMath::IsNearlyEqual(Shut.Max.X, 6.25, 0.1));
+	TestTrue(TEXT("and 6 deep"), FMath::IsNearlyEqual(Shut.Min.Y, 0.0, 0.1) && FMath::IsNearlyEqual(Shut.Max.Y, 37.5, 0.1));
+	TestTrue(TEXT("and 10 high"), FMath::IsNearlyEqual(Shut.Min.Z, -31.25, 0.1) && FMath::IsNearlyEqual(Shut.Max.Z, 31.25, 0.1));
+	Pose.BookOpen = 1.0f;
+	BuildMesh(*Book, Pose, 0, Data);
+	const ::FBox Open(Data.Positions);
+	TestTrue(TEXT("open flat, 14 across"), FMath::IsNearlyEqual(Open.Min.X, -43.75, 0.1) && FMath::IsNearlyEqual(Open.Max.X, 43.75, 0.1));
+	TestTrue(TEXT("and only its pages deep"), Open.Max.Y < 8.0);
+	Pose.BookFlip[0] = 0.5f;
+	BuildMesh(*Book, Pose, 0, Data);
+	TestTrue(TEXT("a page half turned stands up off the pages"), ::FBox(Data.Positions).Max.Y > 35.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHullMaskTest, "McClient.McRender.HullMask",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

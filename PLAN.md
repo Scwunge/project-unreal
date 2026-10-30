@@ -196,6 +196,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     bells face the player, wall bells face the wall, double wall with a block on the far side too. Test
     `McRender.Bells`; shots `Saved/Shots/bells.png` and `bells_swung.png` (`-McScene=bells`, `-McBellsSwung`). Not
     done: ringing by redstone, and villagers and raids hearing it.
+  - **Books on lecterns and enchanting tables** (2026-10-30): an entity model `mc:book` cut from
+    `entity/enchantment/enchanting_table_book.png` as the picture is laid out (two covers and a spine, a block of pages
+    in each half, two loose pages), posed by how far open it is and how far over each loose page is. `UMcChestComponent`
+    lays one open on the slanted top of each lectern with `has_book=true` (`GetLecternBook`: spine up the slope, facing
+    the reader), and floats one over each enchanting table: bobbing, turning slowly while nobody is near, and within 3
+    blocks of this machine's player turning to them and opening, its loose pages waving. Test `McRender.Books`; shots
+    `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`). Not done: lecterns' gameplay (putting a book on,
+    reading it, taking it, the comparator signal), so `has_book` is only set by scenes and commands.
   - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
     lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
     signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities

@@ -370,6 +370,22 @@ namespace McEntityModel
 				Bell.Parts.Add(Part(ERole::BellBody, FVector(0, 12, 0), { Box(0, 0, -3, -6, -3, 6, 7, 6), Box(0, 13, -4, -8, -4, 8, 2, 8) }));
 				Models.Add(Bell.Kind, Bell);
 			}
+			{
+				// The book on a lectern and over an enchanting table (McChestComponent), cut as its picture is laid out: two
+				// covers 6 by 10 and the spine 2 by 10 between them, a block of pages 5 by 8 by 1 in each half, and a loose
+				// page 5 by 8. The spine runs up the model's y at its origin; opened flat the covers lie across x with the
+				// pages on their +z side, and shut they fold up to +z about the spine's edges.
+				FModel Book;
+				Book.Kind = FName(TEXT("mc:book"));
+				Book.TextureSize = FIntPoint(64, 32);
+				Book.Textures = { TEXT("enchantment/enchanting_table_book.png") };
+				Book.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(12, 0, -1, -5, 0, 2, 10, 0) }));
+				Book.Parts.Add(Part(ERole::BookLeft, FVector(-1, 0, 0), { Box(0, 0, -6, -5, 0, 6, 10, 0), Box(0, 10, -5, -4, 0.01f, 5, 8, 1) }));
+				Book.Parts.Add(Part(ERole::BookRight, FVector(1, 0, 0), { Box(16, 0, 0, -5, 0, 6, 10, 0), Box(12, 10, 0, -4, 0.01f, 5, 8, 1) }));
+				Book.Parts.Add(Part(ERole::BookPage, FVector(0, 0, 1), { Box(24, 10, 0, -4, 0.02f, 5, 8, 0) }, 0, 0, 0, 0));
+				Book.Parts.Add(Part(ERole::BookPage, FVector(0, 0, 1), { Box(24, 10, 0, -4, 0.03f, 5, 8, 0) }, 0, 0, 0, 1));
+				Models.Add(Book.Kind, Book);
+			}
 			return Models;
 		}
 
@@ -577,6 +593,28 @@ namespace McEntityModel
 				Pitch += Anim.SwingPitch;
 				Roll += Anim.SwingRoll;
 				break;
+			case ERole::BookLeft:
+			case ERole::BookRight:
+			case ERole::BookPage:
+			{
+				// Shut, each half is turned a quarter towards +z: the left (-x) one forward, the right one back. A loose page
+				// goes over the top (through +z) from the right half's angle to the left's.
+				const float Shut = 1.0f - FMath::Clamp(Anim.BookOpen, 0.0f, 1.0f);
+				if (Part.Role == ERole::BookLeft)
+				{
+					Yaw += Shut * HALF_PI;
+				}
+				else if (Part.Role == ERole::BookRight)
+				{
+					Yaw -= Shut * HALF_PI;
+				}
+				else
+				{
+					const float Flip = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(Anim.BookFlip[Part.Index & 1], 0.0f, 1.0f));
+					Yaw += FMath::Lerp(-Shut * HALF_PI, -PI + Shut * HALF_PI, Flip);
+				}
+				break;
+			}
 			case ERole::ChestLid:
 			{
 				// It eases open fast and slows at the top.

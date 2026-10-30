@@ -48,6 +48,11 @@ namespace McEntityModel
 		ShulkerLid,
 		// A bell's body, which swings about the top when it is rung.
 		BellBody,
+		// A book's halves (cover and pages), which close about the spine, and a loose page (Index 0 or 1) that flips
+		// from the right half to the left.
+		BookLeft,
+		BookRight,
+		BookPage,
 	};
 
 	struct FBox
@@ -133,6 +138,9 @@ namespace McEntityModel
 		// A rung bell's swing, radians: tipped about x (positive takes its bottom north) and about z (east).
 		float SwingPitch = 0.0f;
 		float SwingRoll = 0.0f;
+		// A book: how far open (0 shut, 1 lying flat), and how far over each loose page is (0 on the right, 1 the left).
+		float BookOpen = 0.0f;
+		float BookFlip[2] = { 0.0f, 0.0f };
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
 	};
@@ -206,6 +214,8 @@ public:
 	void SetOpen(bool bInOpen) { bOpen = bInOpen; }
 	// A bell's swing (see FAnim), radians.
 	void SetSwing(float Pitch, float Roll) { Anim.SwingPitch = Pitch; Anim.SwingRoll = Roll; }
+	// A book's pose (see FAnim).
+	void SetBook(float Open, float FlipA, float FlipB) { Anim.BookOpen = Open; Anim.BookFlip[0] = FlipA; Anim.BookFlip[1] = FlipB; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

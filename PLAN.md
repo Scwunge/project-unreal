@@ -448,7 +448,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 11. **Audit: mob models and animations that may rest on memory, not on textures, shots or the wiki.** Rule: write a vanilla
     reference script, shoot vanilla at a matched camera, fit the pivots, tilts and constants to the shots (silhouette fit), recommit.
     Most visible first; tick one off when its commit lands.
-    - [ ] Wolf (standing, sitting, angry, tame): re-fitted from shots, built and shot next. Fitted: body, legs, head, tail angles.
+    - [x] Wolf (standing, sitting, angry, tame): refitted to vanilla shots with `fov steady` at our FOV 70 (pivots, tilts, tail angles by mood). Left: sitting front legs a little short, a few px of framing, shadows (item 9).
     - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
           Measure stride from a vanilla walking-loop filmed at a fixed camera.
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).

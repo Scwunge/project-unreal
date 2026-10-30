@@ -440,43 +440,49 @@ namespace McEntityModel
 					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed), TEXT("wolf/wolf_collar.png") });
 				}
 				// The poses are bits: 1 sitting, 2 angry, 4 tame. Standing is where bit 1 is clear; the collar is drawn for tame ones.
+				// The boxes are cut from the picture; where they sit (pivots, tilts, the tail's angle by mood) was fitted to the
+				// silhouettes of side-on shots of the real thing, at the same camera and a steady field of view.
 				constexpr uint32 Standing = 0x55u;
 				constexpr uint32 Sitting = 0xAAu;
+				constexpr uint32 Wild = 0x03u;
+				constexpr uint32 Angry = 0x0Cu;
 				constexpr uint32 Tame = 0xF0u;
-				const FBox Mane = Box(18, 14, -3, -4.5f, -3, 6, 9, 6);
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11, -1), { Mane }, Flat));
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, Flat));
-				Wolf.Parts.Add(Part(ERole::Head, FVector(0, 12, 4),
-					{ Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) }));
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 13.5f, -5.5f), { Box(9, 18, -1, -8, -1, 2, 8, 2) }, 0.6f));
-				AddLegs(Wolf, 0, 18, 2, 8, 2, 2, -4, 8);
-				for (FPart& Each : Wolf.Parts)
+				const FBox Rear = Box(18, 14, -3, -4.5f, -3, 6, 9, 6);
+				const FBox Chest = Box(21, 0, -4, -3, -3.5f, 8, 6, 7);
+				const FBox ChestCollar = Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f);
+				const FBox Tail = Box(9, 18, -1, -8, -1, 2, 8, 2);
+				const FBox Leg = Box(0, 18, -1, -8, -1, 2, 8, 2);
+				const auto Add = [&Wolf](FPart Each, uint32 Poses)
 				{
-					if (Each.Role != ERole::Head)
-					{
-						Each.ShowPoses = Standing;
-					}
-				}
+					Each.ShowPoses = Poses;
+					Wolf.Parts.Add(Each);
+				};
+				const std::initializer_list<FBox> HeadBoxes = { Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) };
+				// Standing.
+				Add(Part(ERole::Head, FVector(0, 9.9f, 5.65f), HeadBoxes), Standing);
+				Add(Part(ERole::Static, FVector(0, 8.34f, -4.1f), { Rear }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(0, 8.55f, 3.52f), { Chest }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 0.56f), Standing & Wild);
+				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 1.45f), Standing & Angry);
+				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 1.65f), Standing & Tame);
+				Add(Part(ERole::LegFrontRight, FVector(-1.25f, 8, 5.05f), { Leg }), Standing);
+				Add(Part(ERole::LegFrontLeft, FVector(1.25f, 8, 5.05f), { Leg }), Standing);
+				Add(Part(ERole::LegBackRight, FVector(-1.25f, 8, -5.96f), { Leg }), Standing);
+				Add(Part(ERole::LegBackLeft, FVector(1.25f, 8, -5.96f), { Leg }), Standing);
 				// Sitting: the rear on its haunches, the chest raised, the hind legs folded forward and the front ones straight down.
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Mane }, 0.7854f));
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 8, 3), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7) }, 1.2566f));
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 3, -6), { Box(9, 18, -1, -8, -1, 2, 8, 2) }, 0.6f));
-				{
-					const FBox Leg = Box(0, 18, -1, -8, -1, 2, 8, 2);
-					Wolf.Parts.Add(Part(ERole::Static, FVector(-2, 1.3f, -2), { Leg }, 4.7124f));
-					Wolf.Parts.Add(Part(ERole::Static, FVector(2, 1.3f, -2), { Leg }, 4.7124f));
-					Wolf.Parts.Add(Part(ERole::Static, FVector(-2, 7, 4), { Leg }, 5.8119f));
-					Wolf.Parts.Add(Part(ERole::Static, FVector(2, 7, 4), { Leg }, 5.8119f));
-				}
-				for (int32 Index = Wolf.Parts.Num() - 7; Index < Wolf.Parts.Num(); ++Index)
-				{
-					Wolf.Parts[Index].ShowPoses = Sitting;
-				}
+				Add(Part(ERole::Head, FVector(0, 10.12f, 6.26f), HeadBoxes), Sitting);
+				Add(Part(ERole::Static, FVector(0, 2.28f, -1.18f), { Rear }, 0.83f), Sitting);
+				Add(Part(ERole::Static, FVector(0, 6.77f, 3.12f), { Chest }, 1.27f), Sitting);
+				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 0.82f), Sitting & Wild);
+				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 1.5f), Sitting & Angry);
+				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 1.64f), Sitting & Tame);
+				Add(Part(ERole::Static, FVector(-1.25f, -0.95f, -2.93f), { Leg }, 4.65f), Sitting);
+				Add(Part(ERole::Static, FVector(1.25f, -0.95f, -2.93f), { Leg }, 4.65f), Sitting);
+				Add(Part(ERole::Static, FVector(-1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
+				Add(Part(ERole::Static, FVector(1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
 				// The collar: the chest drawn again, a hair larger, in the collar's own picture.
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 1.5f), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f) }, Flat, 0.0f, 0.0f, 0, 1));
-				Wolf.Parts.Last().ShowPoses = Standing & Tame;
-				Wolf.Parts.Add(Part(ERole::Static, FVector(0, 8, 3), { Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f) }, 1.2566f, 0.0f, 0.0f, 0, 1));
-				Wolf.Parts.Last().ShowPoses = Sitting & Tame;
+				Add(Part(ERole::Static, FVector(0, 8.55f, 3.52f), { ChestCollar }, Flat, 0.0f, 0.0f, 0, 1), Standing & Tame);
+				Add(Part(ERole::Static, FVector(0, 6.77f, 3.12f), { ChestCollar }, 1.27f, 0.0f, 0.0f, 0, 1), Sitting & Tame);
 				Models.Add(Wolf.Kind, Wolf);
 			}
 			{

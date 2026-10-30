@@ -65,6 +65,14 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// Minecraft's default Field of View setting is 70 degrees, measured vertically; DefaultEngine.ini sets
 	// the local player to keep the vertical angle fixed so this matches.
 	Camera->SetFieldOfView(70.0f);
+#if !UE_BUILD_SHIPPING
+	// Development: -McFov=<degrees> (the reference client in spectator mode shoots at about 80, not the setting).
+	float DevFov = 0.0f;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McFov="), DevFov) && DevFov > 10.0f)
+	{
+		Camera->SetFieldOfView(DevFov);
+	}
+#endif
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, StandingEyeHeight * McCoords::UnitsPerBlock));
 
 	Data = CreateDefaultSubobject<UMcPlayerDataComponent>(TEXT("PlayerData"));

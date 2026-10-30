@@ -1007,6 +1007,8 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						Spawned->bSitting = FParse::Param(FCommandLine::Get(), TEXT("McMobRowSit"));
 						Spawned->AngerTicks = FParse::Param(FCommandLine::Get(), TEXT("McMobRowAngry")) ? 1200 : 0;
 						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowCollar="), Spawned->CollarColor);
+						// -McMobRowLook=<n> picks the coat or breed (a wolf's 3 is the pale one a vanilla summon gets on a flat plain).
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowLook="), Spawned->LookSeed);
 						if (Spawned->Type.Name == FName(TEXT("minecraft:wolf")))
 						{
 							Spawned->UpdateWolfPose();

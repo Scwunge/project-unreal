@@ -445,6 +445,23 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
    the gap. One shared decal pass for all entities, not per-mob code.
 10. **Cat (mob), then the swamp hut's cat.** There is no cat mob yet. The hut places its witch and cat when the structure generates
     (`McStructureSpawns` already queues the witch; add the cat to the same queue once `minecraft:cat` exists).
+11. **Audit: mob models and animations that may rest on memory, not on textures, shots or the wiki.** Rule: write a vanilla
+    reference script, shoot vanilla at a matched camera, fit the pivots, tilts and constants to the shots (silhouette fit), recommit.
+    Most visible first; tick one off when its commit lands.
+    - [ ] Wolf (standing, sitting, angry, tame): re-fitted from shots, built and shot next. Fitted: body, legs, head, tail angles.
+    - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
+          Measure stride from a vanilla walking-loop filmed at a fixed camera.
+    - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).
+    - [ ] Pillager / vindicator / evoker / illusioner poses: crossbow arms (-90 degrees, yaw 0.3 / -0.6, charging -0.9), axe arms
+          (-2.3 / -1.0 plus a wave at rate 9), spell arms (roll 135 degrees, swing at 13 x 0.6662).
+    - [ ] Ravager: body tilt, head and mouth pivots, neck, horn; stun and roar poses.
+    - [ ] Vex: wing roll (0.7 + sin(40 t) x 0.5), body lean, charging pose, arm raise.
+    - [ ] Witch: hat bend stack (three boxes, tilts), nose, mole, drinking arm.
+    - [ ] Horse (and donkey, mule, llama, trader llama): body, neck tilt, head, tail, leg pivots, rear-up; saddle and armour layers.
+    - [ ] Iron golem: arm pivot, leg swing cap (`MaxLimbSwing` 0.5), offering-poppy arm, cracks layer.
+    - [ ] Enderman (leg swing cap 0.4, arms), skeleton, creeper (swell shake 1 + sin(100 s) s 0.01), spider (leg yaw 0.4, roll 0.4, rate 1.3324).
+    - [ ] Pig, cow, sheep, chicken (wing flap rate 25, 0.08 rest roll), goat, fox, bee, rabbit, turtle, slime: boxes from the textures;
+          pivots and animation constants as above.
 
 ## 7. Decisions
 

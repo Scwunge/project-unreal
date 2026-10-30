@@ -574,7 +574,12 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         mel.connect_material_expressions(vertex_color, "A", opacity, "B")
         mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
-        mel.connect_material_property(opacity_source[0], opacity_source[1], unreal.MaterialProperty.MP_OPACITY)
+        # The game blends see-through blocks in sRGB, where Unreal blends in linear light: a texture's 40% glass looks
+        # about 56% as strong there. Raising the opacity (alpha ** 0.63) makes the blend the same for glass, ice, water,
+        # slime and honey (measured against the game's own shots; the 0.4 of stained glass lands on 0.56).
+        srgb = add_custom(material, -100, 350, "McSrgbOpacity", "return pow(saturate(A), 0.63);",
+                          {"A": (opacity_source[0], opacity_source[1])}, scalar=True)
+        mel.connect_material_property(srgb, "", unreal.MaterialProperty.MP_OPACITY)
 
     mel.recompile_material(material)
     eal.save_loaded_asset(material)

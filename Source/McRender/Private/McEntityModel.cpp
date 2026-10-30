@@ -43,13 +43,15 @@ namespace McEntityModel
 		}
 
 		// The four legs of a pig, cow or sheep.
-		void AddLegs(FModel& Model, int32 U, int32 V, float Width, float Height, float X, float Front, float Back, float Top)
+		// LeftU, if it is not negative, is where the left legs' own picture starts (the ravager has one for each side).
+		void AddLegs(FModel& Model, int32 U, int32 V, float Width, float Height, float X, float Front, float Back, float Top, int32 LeftU = -1)
 		{
 			const FBox Leg = Box(U, V, -Width * 0.5f, -Height, -Width * 0.5f, static_cast<int32>(Width), static_cast<int32>(Height), static_cast<int32>(Width));
+			const FBox LeftLeg = LeftU < 0 ? Leg : Box(LeftU, V, -Width * 0.5f, -Height, -Width * 0.5f, static_cast<int32>(Width), static_cast<int32>(Height), static_cast<int32>(Width));
 			Model.Parts.Add(Part(ERole::LegFrontRight, FVector(-X, Top, Front), { Leg }));
-			Model.Parts.Add(Part(ERole::LegFrontLeft, FVector(X, Top, Front), { Leg }));
+			Model.Parts.Add(Part(ERole::LegFrontLeft, FVector(X, Top, Front), { LeftLeg }));
 			Model.Parts.Add(Part(ERole::LegBackRight, FVector(-X, Top, Back), { Leg }));
-			Model.Parts.Add(Part(ERole::LegBackLeft, FVector(X, Top, Back), { Leg }));
+			Model.Parts.Add(Part(ERole::LegBackLeft, FVector(X, Top, Back), { LeftLeg }));
 		}
 
 		// A person: head, body, two arms and two legs laid out on the player's skin. The left limbs have their own
@@ -274,12 +276,12 @@ namespace McEntityModel
 				// its back. The head hangs low in front, its bottom near the knees, the neck hidden inside it.
 				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(0, 55, -7, -8, -10, 14, 16, 20), Box(0, 91, -6, -21, -8, 12, 13, 18) }, Flat));
 				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 27, 0), { Box(68, 73, -5, -5, -3, 10, 10, 15) }));
-				// The back of the head tucks against the front legs and the body, so no neck shows; the nose hangs from the face.
-				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 18, 6), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16), Box(0, 0, -2, -12, 16, 4, 8, 4) }));
+				// The head stands level with the top of the legs, its back against the front legs' fronts, so no neck shows; the nose hangs from the face.
+				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 25, 9), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16), Box(0, 0, -2, -12, 16, 4, 8, 4) }));
 				// The horns stand on the head's top corners and lean well forward (vanilla's 63 degrees).
-				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 22, 16), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 1.1f, 0, 0));
-				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 22, 16), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 1.1f, 0, 0));
-				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37);
+				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 1.1f, 0, 0));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 1.1f, 0, 0));
+				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37, 64);
 				Models.Add(Ravager.Kind, Ravager);
 			}
 			{

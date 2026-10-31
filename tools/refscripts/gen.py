@@ -122,3 +122,15 @@ L = cmd("weather clear") + L + ["wait 100"]
 for t in (6000, 0, 12500, 13500, 18000, 23000, 1000):
     L += cmd(f"time set {t}") + step(24)
 write("daylight", L + cmd("tick unfreeze"))
+
+# Daylight detector pinned: clear weather, time set by command, nothing above.
+L = cmd("weather clear 1000000") + cmd("time set noon") + cmd("setblock 0 -60 0 daylight_detector[inverted=false,power=0]") + cmd("setblock 2 -60 0 daylight_detector[inverted=true,power=0]") + cmd("tick step 150") + ["wait 40"]
+for t in (6000, 0, 12500, 13500, 18000, 23000, 1000):
+    L += cmd(f"time set {t}") + step(24)
+write("daylight", L + cmd("tick unfreeze"))
+
+# Leaves: a log with a chain of leaves; distance values settle, then the log goes and distances rise (short, before random decay).
+L = cmd("setblock 0 -60 0 oak_log")
+for x in range(1, 9): L += cmd(f"setblock {x} -60 0 oak_leaves[persistent=false]")
+L += step(12) + cmd("setblock 0 -60 0 air") + step(12)
+write("leaves", L + cmd("tick unfreeze"))

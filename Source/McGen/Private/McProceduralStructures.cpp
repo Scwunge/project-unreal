@@ -210,8 +210,61 @@ namespace
 			Air = D.S(TEXT("minecraft:air"));
 		}
 
+		// Open to the sky at this block (above the ground of its column): the wiki says no wooden part is made there.
+		// (The surface of the chunk being drawn, which is cheap; only the piece-level test below needs the noise.)
+		bool Exposed(int32 X, int32 Y, int32 Z) const { return Y >= D.Env.Region.GetHeight(EMcHeightmap::WorldSurfaceWG, X, Z); }
+
+		// The ground of a column, worked out once (it is not cheap).
+		int32 GroundAt(int32 X, int32 Z) const
+		{
+			const int64 Key = (static_cast<int64>(X) << 32) ^ static_cast<uint32>(Z);
+			if (const int32* Found = Grounds.Find(Key))
+			{
+				return *Found;
+			}
+			return Grounds.Add(Key, D.Env.Floor(X, Z));
+		}
+		mutable TMap<int64, int32> Grounds;
+
+		// The wooden parts leave out whatever is exposed to the sky.
+		void Fill(const FFrame& F, int32 U0, int32 Y0, int32 V0, int32 U1, int32 Y1, int32 V1, FMcStateId State, EMode Mode = EMode::Set)
+		{
+			D.FillWith(F, U0, Y0, V0, U1, Y1, V1, [&](int32 X, int32 Y, int32 Z) { return Exposed(X, Y, Z) ? McTemplate::SkipState : State; }, Mode);
+		}
+
+		void Put(const FFrame& F, int32 U, int32 Y, int32 V, FMcStateId State)
+		{
+			const FIntVector P = F.W(U, Y, V);
+			if (!Exposed(P.X, P.Y, P.Z))
+			{
+				D.Put(F, U, Y, V, State);
+			}
+		}
+
+		// A piece with no ground under or round any of it, hanging in the air, is not made.
+		bool Floating(const FBounds& Box) const
+		{
+			// Its corners and middle, not every column: finding the ground runs the noise.
+			const int32 MidX = (Box.Min.X + Box.Max.X) / 2;
+			const int32 MidZ = (Box.Min.Z + Box.Max.Z) / 2;
+			const int32 Xs[5] = { Box.Min.X, Box.Max.X, Box.Min.X, Box.Max.X, MidX };
+			const int32 Zs[5] = { Box.Min.Z, Box.Min.Z, Box.Max.Z, Box.Max.Z, MidZ };
+			for (int32 Index = 0; Index < 5; ++Index)
+			{
+				if (GroundAt(Xs[Index], Zs[Index]) >= Box.Min.Y)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
 		bool Free(const FBounds& Box) const
 		{
+			if (Floating(Box))
+			{
+				return false;
+			}
 			if (!Within(Box, Centre.X, Centre.Z, 88) || Box.Min.Y < D.Env.MinY + 4 || Box.Max.Y > D.Env.MaxY - 4)
 			{
 				return false;
@@ -253,24 +306,24 @@ namespace
 			Boxes.Add(Box);
 			++Count;
 			const uint32 Salt = Hash(F.Origin.X, F.Origin.Y, F.Origin.Z);
-			D.FillWith(F, -1, 0, 0, 1, 2, Length - 1, [&](int32 X, int32 Y, int32 Z) { return Hash(X, Y, Z, Salt) % 100 < 4 ? Web : Air; }, EMode::Carve);
-			D.Fill(F, -1, -1, 0, 1, -1, Length - 1, Planks, EMode::IfOpen);
+			D.FillWith(F, -1, 0, 0, 1, 2, Length - 1, [&](int32 X, int32 Y, int32 Z) { return !Exposed(X, Y, Z) && Hash(X, Y, Z, Salt) % 100 < 4 ? Web : Air; }, EMode::Carve);
+			Fill(F, -1, -1, 0, 1, -1, Length - 1, Planks, EMode::IfOpen);
 			for (int32 V = 1; V < Length; V += 4)
 			{
-				D.Fill(F, -1, 0, V, -1, 1, V, Fence);
-				D.Fill(F, 1, 0, V, 1, 1, V, Fence);
-				D.Fill(F, -1, 2, V, 1, 2, V, Planks);
+				Fill(F, -1, 0, V, -1, 1, V, Fence);
+				Fill(F, 1, 0, V, 1, 1, V, Fence);
+				Fill(F, -1, 2, V, 1, 2, V, Planks);
 			}
 			if (bRails)
 			{
 				for (int32 V = 0; V < Length; ++V)
 				{
-					D.Put(F, 0, 0, V, V % 6 == 5 ? Powered : Rail);
+					Put(F, 0, 0, V, V % 6 == 5 ? Powered : Rail);
 				}
 			}
 			if (bSpawner)
 			{
-				D.Fill(F, -1, 0, Length / 2 - 1, 1, 2, Length / 2 + 1, Web, EMode::IfOpen);
+				Fill(F, -1, 0, Length / 2 - 1, 1, 2, Length / 2 + 1, Web, EMode::IfOpen);
 				D.Spawner(F, 0, 0, Length / 2, TEXT("minecraft:cave_spider"));
 			}
 			const FFrame End = F.Child(0, Length, 0);
@@ -302,12 +355,12 @@ namespace
 			Boxes.Add(Box);
 			++Count;
 			D.Fill(F, -2, 0, 0, 2, 3, 4, Air, EMode::Carve);
-			D.Fill(F, -2, -1, 0, 2, -1, 4, Planks, EMode::IfOpen);
+			Fill(F, -2, -1, 0, 2, -1, 4, Planks, EMode::IfOpen);
 			for (const int32 U : { -2, 2 })
 			{
 				for (const int32 V : { 0, 4 })
 				{
-					D.Fill(F, U, 0, V, U, 3, V, Log);
+					Fill(F, U, 0, V, U, 3, V, Log);
 				}
 			}
 			if (bForward)
@@ -344,9 +397,9 @@ namespace
 			Boxes.Add(Box);
 			++Count;
 			D.Fill(F, -Half, 0, 0, Half, 4, Length - 1, Air, EMode::Carve);
-			D.Fill(F, -Half, -1, 0, Half, -1, Length - 1, Planks, EMode::IfOpen);
-			D.Fill(F, -Half, 0, 0, -Half, 1, 0, Fence);
-			D.Fill(F, Half, 0, 0, Half, 1, 0, Fence);
+			Fill(F, -Half, -1, 0, Half, -1, Length - 1, Planks, EMode::IfOpen);
+			Fill(F, -Half, 0, 0, -Half, 1, 0, Fence);
+			Fill(F, Half, 0, 0, Half, 1, 0, Fence);
 			if (bForward)
 			{
 				Corridor(F.Child(ExitU, Length, 0), Depth + 1);

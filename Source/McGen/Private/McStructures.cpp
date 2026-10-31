@@ -1383,7 +1383,29 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		|| Type == TEXT("end_city") || Type == TEXT("nether_fossil"))
 	{
 		McProcedural::FEnv Env{ Region, Start, Context.ClipMin, Context.ClipMax, MinY, Region.GetMaxY(), SeaLevel,
-			[this, &Context](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : Context.Ground.Floor(X, Z); } };
+			[this, &Context](int32 X, int32 Z)
+			{
+				if (!HeightSource)
+				{
+					return Context.Ground.Floor(X, Z);
+				}
+				const int64 Key = (static_cast<int64>(X) << 32) ^ static_cast<uint32>(Z);
+				{
+					FScopeLock Guard(&GroundLock);
+					if (const int32* Found = GroundCache.Find(Key))
+					{
+						return *Found;
+					}
+				}
+				const int32 Height = HeightSource(X, Z);
+				FScopeLock Guard(&GroundLock);
+				if (GroundCache.Num() > 4000000)
+				{
+					GroundCache.Reset();
+				}
+				GroundCache.Add(Key, Height);
+				return Height;
+			} };
 		Env.LootSeed = Random.Fork(TEXT("loot")).NextLong();
 		if (Type == TEXT("mineshaft"))
 		{

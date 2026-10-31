@@ -446,6 +446,33 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("%s: best %d blocks changed; blocks: %s"), Case.Id, BestChanged, *FString::Join(Sorted, TEXT(" ")).Left(400)));
 	}
 
+	// ---- A mineshaft's pieces hanging in the air are not made (minecraft.wiki, "Mineshaft") ----
+	{
+		const auto Build = [&](TFunction<int32(int32, int32)> Height)
+		{
+			Structures.SetHeightSource(Height);
+			FScene Scene(Settings, EScene::Land, Size, FIntPoint(0, 0));
+			const TArray<TArray<FMcStateId>> Before = Scene.Snapshot();
+			for (int32 Index = 0; Index < 13 * 13; ++Index)
+			{
+				FMcChunk* Around[9];
+				const int32 CX = 1 + Index % 13;
+				const int32 CZ = 1 + Index / 13;
+				Scene.Around(CX, CZ, Around);
+				FMcGenRegion Region(FIntPoint(CX, CZ), Around);
+				Structures.PlaceStructure(Region, TEXT("minecraft:mineshaft_mesa"), 1, Start);
+			}
+			int32 Changed = 0;
+			Scene.Names(Before, Changed);
+			return Changed;
+		};
+		const int32 Whole = Build([](int32, int32) { return 64; });
+		// The ground drops away to 20 beyond a few blocks of the start: what is made out there would hang over it.
+		const int32 Hanging = Build([](int32 X, int32 Z) { return FMath::Abs(X - 120) <= 6 && FMath::Abs(Z - 120) <= 6 ? 64 : 20; });
+		AddInfo(FString::Printf(TEXT("mesa mineshaft blocks changed: %d over ground, %d with the ground dropped away round the start"), Whole, Hanging));
+		TestTrue(TEXT("a mineshaft's pieces that would hang in the air are left out"), Hanging < Whole);
+	}
+
 	// ---- Trial chambers: their spawner pools come through the aliases ----
 	{
 		FScene Scene(Settings, EScene::Land, Size, FIntPoint(0, 0));

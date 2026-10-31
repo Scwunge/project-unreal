@@ -3,6 +3,11 @@
 // rows 36 high.
 
 #include "McHUD.h"
+#include "McCache.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonReader.h"
+#include "Dom/JsonObject.h"
 #include "McGameViewportClient.h"
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
@@ -221,6 +226,11 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 
 void AMcHUD::DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Border)
 {
+	DrawNineSlice(Texture, X, Y, W, H, TexW, TexH, Border, Border, Border, Border);
+}
+
+void AMcHUD::DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Left, float Top, float Right, float Bottom)
+{
 	if (!Texture)
 	{
 		return;
@@ -228,15 +238,16 @@ void AMcHUD::DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float
 	// The picture may be drawn at a higher resolution than its GUI size (a resource pack's); scale the UVs to it.
 	const float Ku = Texture->GetSizeX() / TexW;
 	const float Kv = Texture->GetSizeY() / TexH;
-	const float B = FMath::Min(Border, FMath::Min(W, H) / 2.0f);
-	const float Xs[3] = { X, X + B, X + W - B };
-	const float Ws[3] = { B, W - 2 * B, B };
-	const float Us[3] = { 0.0f, Border, TexW - Border };
-	const float UWs[3] = { Border, TexW - 2 * Border, Border };
-	const float Ys[3] = { Y, Y + B, Y + H - B };
-	const float Hs[3] = { B, H - 2 * B, B };
-	const float Vs[3] = { 0.0f, Border, TexH - Border };
-	const float VHs[3] = { Border, TexH - 2 * Border, Border };
+	const float BL = FMath::Min(Left, W / 2.0f), BR = FMath::Min(Right, W / 2.0f);
+	const float BT = FMath::Min(Top, H / 2.0f), BB = FMath::Min(Bottom, H / 2.0f);
+	const float Xs[3] = { X, X + BL, X + W - BR };
+	const float Ws[3] = { BL, W - BL - BR, BR };
+	const float Us[3] = { 0.0f, Left, TexW - Right };
+	const float UWs[3] = { Left, TexW - Left - Right, Right };
+	const float Ys[3] = { Y, Y + BT, Y + H - BB };
+	const float Hs[3] = { BT, H - BT - BB, BB };
+	const float Vs[3] = { 0.0f, Top, TexH - Bottom };
+	const float VHs[3] = { Top, TexH - Top - Bottom, Bottom };
 	for (int32 Row = 0; Row < 3; ++Row)
 	{
 		for (int32 Column = 0; Column < 3; ++Column)
@@ -246,6 +257,102 @@ void AMcHUD::DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float
 				DrawRegion(Texture, Xs[Column], Ys[Row], Ws[Column], Hs[Row], Us[Column] * Ku, Vs[Row] * Kv, UWs[Column] * Ku, VHs[Row] * Kv);
 			}
 		}
+	}
+}
+
+// The "gui" section of a sprite's .png.mcmeta: { "scaling": { "type": "stretch" | "tile" | "nine_slice", "width", "height",
+// "border": n or { left, top, right, bottom } } }. The mcmeta of the sprite's own pack counts; a pack's sprite without one is stretched.
+AMcHUD::FGuiScaling AMcHUD::GetGuiScaling(const FString& Sprite, UTexture2D* Texture)
+{
+	if (const FGuiScaling* Found = GuiScalings.Find(Sprite))
+	{
+		return *Found;
+	}
+	FGuiScaling Scaling;
+	const FString Relative = Sprite;
+	FString Meta;
+	const bool bPackPicture = McPacks::IsFromPack(Relative);
+	const FString MetaPath = McCache::Asset(Relative + TEXT(".mcmeta"));
+	if ((!bPackPicture || McPacks::IsFromPack(Relative + TEXT(".mcmeta"))) && FFileHelper::LoadFileToString(Meta, *MetaPath))
+	{
+		TSharedPtr<FJsonObject> Root;
+		const TSharedPtr<FJsonObject>* Gui = nullptr;
+		const TSharedPtr<FJsonObject>* Object = nullptr;
+		if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Meta), Root) && Root.IsValid() && Root->TryGetObjectField(TEXT("gui"), Gui)
+			&& (*Gui)->TryGetObjectField(TEXT("scaling"), Object))
+		{
+			FString Type;
+			(*Object)->TryGetStringField(TEXT("type"), Type);
+			Type.RemoveFromStart(TEXT("minecraft:"));
+			double Width = Texture ? Texture->GetSizeX() : 0.0, Height = Texture ? Texture->GetSizeY() : 0.0;
+			(*Object)->TryGetNumberField(TEXT("width"), Width);
+			(*Object)->TryGetNumberField(TEXT("height"), Height);
+			Scaling.Width = static_cast<float>(Width);
+			Scaling.Height = static_cast<float>(Height);
+			if (Type == TEXT("tile"))
+			{
+				Scaling.Type = FGuiScaling::EType::Tile;
+			}
+			else if (Type == TEXT("nine_slice"))
+			{
+				Scaling.Type = FGuiScaling::EType::NineSlice;
+				double Border = 0.0;
+				const TSharedPtr<FJsonObject>* Sides;
+				if ((*Object)->TryGetNumberField(TEXT("border"), Border))
+				{
+					Scaling.Left = Scaling.Top = Scaling.Right = Scaling.Bottom = static_cast<float>(Border);
+				}
+				else if ((*Object)->TryGetObjectField(TEXT("border"), Sides))
+				{
+					double Left = 0, Top = 0, Right = 0, Bottom = 0;
+					(*Sides)->TryGetNumberField(TEXT("left"), Left);
+					(*Sides)->TryGetNumberField(TEXT("top"), Top);
+					(*Sides)->TryGetNumberField(TEXT("right"), Right);
+					(*Sides)->TryGetNumberField(TEXT("bottom"), Bottom);
+					Scaling.Left = static_cast<float>(Left);
+					Scaling.Top = static_cast<float>(Top);
+					Scaling.Right = static_cast<float>(Right);
+					Scaling.Bottom = static_cast<float>(Bottom);
+				}
+			}
+		}
+	}
+	GuiScalings.Add(Sprite, Scaling);
+	return Scaling;
+}
+
+void AMcHUD::DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H)
+{
+	UTexture2D* Texture = LoadSprite(Sprite);
+	if (!Texture)
+	{
+		return;
+	}
+	const FGuiScaling Scaling = GetGuiScaling(Sprite, Texture);
+	const float TexW = Texture->GetSizeX(), TexH = Texture->GetSizeY();
+	switch (Scaling.Type)
+	{
+	case FGuiScaling::EType::NineSlice:
+		DrawNineSlice(Texture, X, Y, W, H, Scaling.Width, Scaling.Height, Scaling.Left, Scaling.Top, Scaling.Right, Scaling.Bottom);
+		break;
+	case FGuiScaling::EType::Tile:
+	{
+		// Tiles of the declared size, the last ones cut off at the edge.
+		const float TileW = FMath::Max(Scaling.Width, 1.0f), TileH = FMath::Max(Scaling.Height, 1.0f);
+		const float Ku = TexW / TileW, Kv = TexH / TileH;
+		for (float Top = 0.0f; Top < H; Top += TileH)
+		{
+			for (float Left = 0.0f; Left < W; Left += TileW)
+			{
+				const float DrawW = FMath::Min(TileW, W - Left), DrawH = FMath::Min(TileH, H - Top);
+				DrawRegion(Texture, X + Left, Y + Top, DrawW, DrawH, 0.0f, 0.0f, DrawW * Ku, DrawH * Kv);
+			}
+		}
+		break;
+	}
+	default:
+		DrawRegion(Texture, X, Y, W, H, 0.0f, 0.0f, TexW, TexH);
+		break;
 	}
 }
 
@@ -260,7 +367,7 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 	const bool bOver = bEnabled && GuiMouse.X >= X && GuiMouse.X < X + W && GuiMouse.Y >= Y && GuiMouse.Y < Y + H;
 	const TCHAR* Sprite = !bEnabled ? TEXT("textures/gui/sprites/widget/button_disabled.png")
 		: bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png");
-	DrawNineSlice(LoadSprite(Sprite), X, Y, W, H, 200.0f, 20.0f, 3.0f);
+	DrawGuiSprite(Sprite, X, Y, W, H);
 	DrawCentredText(Label, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, bEnabled ? White : Grey);
 #if !UE_BUILD_SHIPPING
 	// Development: -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a
@@ -324,9 +431,9 @@ float AMcHUD::MenuSlider(int32 Id, const FString& Text, float Value, float X, fl
 		}
 	}
 	const bool bHot = bOver || DraggedSlider == Id;
-	DrawNineSlice(LoadSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_highlighted.png") : TEXT("textures/gui/sprites/widget/slider.png")), X, Y, W, H, 200.0f, 20.0f, 3.0f);
-	DrawNineSlice(LoadSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_handle_highlighted.png") : TEXT("textures/gui/sprites/widget/slider_handle.png")),
-		X + Value * (W - 8.0f), Y, 8.0f, H, 8.0f, 20.0f, 2.0f);
+	DrawGuiSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_highlighted.png") : TEXT("textures/gui/sprites/widget/slider.png"), X, Y, W, H);
+	DrawGuiSprite(bHot ? TEXT("textures/gui/sprites/widget/slider_handle_highlighted.png") : TEXT("textures/gui/sprites/widget/slider_handle.png"),
+		X + Value * (W - 8.0f), Y, 8.0f, H);
 	DrawCentredText(Text, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, White);
 	return Value;
 }
@@ -354,8 +461,7 @@ void AMcHUD::MenuTextField(FString& Text, int32 Id, float X, float Y, float W, f
 			Text.LeftChopInline(1);
 		}
 	}
-	DrawNineSlice(LoadSprite(bFocused ? TEXT("textures/gui/sprites/widget/text_field_highlighted.png") : TEXT("textures/gui/sprites/widget/text_field.png")),
-		X, Y, W, H, 200.0f, 20.0f, 1.0f);
+	DrawGuiSprite(bFocused ? TEXT("textures/gui/sprites/widget/text_field_highlighted.png") : TEXT("textures/gui/sprites/widget/text_field.png"), X, Y, W, H);
 	// The end of what's typed shows if it is longer than the field.
 	FString Shown = Text;
 	while (!Shown.IsEmpty() && TextWidth(Shown) > W - 10.0f)
@@ -818,6 +924,7 @@ void AMcHUD::ApplyResourcePacks()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
+	GuiScalings.Empty();
 	Glyphs.Reset();
 	GalacticWidths.Reset();
 	if (OptionsBack == EMenu::Pause)
@@ -1203,6 +1310,24 @@ void AMcHUD::ToggleGraphics()
 void AMcHUD::ToggleHd()
 {
 	McRenderMode::SetHd(!McRenderMode::GetHdSwitch());
+	if (McRenderMode::GetHdSwitch() && !McPacks::GetUsePbr())
+	{
+		// HD Textures bring a pack's _n/_s maps; the textures already loaded were read without them.
+		McPacks::SetUsePbr(true);
+		if (McPacks::HasPacks())
+		{
+			if (OptionsBack == EMenu::Pause)
+			{
+				bPacksNeedRestart = true;
+			}
+			else
+			{
+				FMcBlockModels::Get().Unload();
+				FMcBlockTextures::Get().Unload();
+				FMcHdBlocks::Get().Unload();
+			}
+		}
+	}
 	FMcClientOptions Options = FMcClientOptions::Load();
 	Options.bHdTextures = McRenderMode::GetHdSwitch();
 	Options.Save();

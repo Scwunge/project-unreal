@@ -870,7 +870,17 @@ namespace McPacks
 		FScopeLock Lock(&GLock);
 		if (GUsePbr < 0)
 		{
-			GUsePbr = FParse::Param(FCommandLine::Get(), TEXT("McPackPbr")) ? 1 : 0;
+			// A pack's _n/_s maps are used when asked for (-McPackPbr), and whenever HD Textures are on (-McHd, or the option
+			// saved in options.json), since those are what the maps are for.
+			bool bHd = FParse::Param(FCommandLine::Get(), TEXT("McHd"));
+			FString Text;
+			TSharedPtr<FJsonObject> Options;
+			if (!bHd && FFileHelper::LoadFileToString(Text, *(FPaths::ProjectSavedDir() / TEXT("options.json")))
+				&& FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Options) && Options.IsValid())
+			{
+				Options->TryGetBoolField(TEXT("hdTextures"), bHd);
+			}
+			GUsePbr = (bHd || FParse::Param(FCommandLine::Get(), TEXT("McPackPbr"))) ? 1 : 0;
 		}
 		return GUsePbr != 0;
 	}

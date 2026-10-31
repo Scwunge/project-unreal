@@ -356,8 +356,10 @@ Textures
   read through `McCache::Asset`, so a pack's file replaces the game's
 - [x] Colormaps (`colormap/grass.png`, `foliage.png`, `dry_foliage.png`)
 - [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
-- [~] `.png.mcmeta` for textures (`blur`, `clamp`), villager (`hat`), GUI (`gui.scaling`: nine_slice borders, tile,
-  stretch): partly. Nine-slice borders are fixed at the vanilla sizes; `blur`/`clamp`/`hat` are not read
+- [x] GUI `.png.mcmeta` scaling (`gui.scaling`: nine_slice with one border or per side, tile, stretch) for the widget
+  sprites (button, slider and handle, text field), from the sprite's own pack
+- [ ] Texture `.png.mcmeta` `blur`, `clamp` (one shared sampler per array, so a per-picture setting cannot apply) and
+  villager `hat` (the villagers session's model): not read
 - [x] `atlases/*.json` for every atlas: unstitch, paletted_permutations and filter sources become pictures the game finds as a pack's own (McPackAtlas.cpp; tests PackAtlas, PackAtlasSprites); single and directory sources need nothing (textures are found by path)
 - [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
 - [~] `font/default.json` providers: bitmap and space providers (packs first, references, filters), any glyph incl. Greek/Cyrillic/accented; ttf, unihex, legacy_unicode and other font ids missing
@@ -372,8 +374,10 @@ Models and items
 Other assets
 - [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`)
 - [x] `lang/*.json` merged key by key
-- [ ] `texts/` (splashes, credits, end poem), `particles/*.json` definitions, `shaders/` (post effects, core),
-  `waypoint_style`, `regional_compliance`: missing (shaders cannot apply: Unreal draws the world)
+- [ ] `texts/` (splashes, credits, end poem) and `particles/*.json`: nothing in the game reads them yet (no splash
+  text on the title screen, no credits, particles are drawn from block pictures and colours, not the particle sheets),
+  so a pack's copy has nothing to change until those features exist. `shaders/` (post effects, core) cannot apply:
+  Unreal draws the world. `waypoint_style`, `regional_compliance`: missing
 
 PBR (LabPBR 1.3, an Optifine/shader-pack feature, not vanilla)
 - [x] `_n`/`_s` maps kept per layer with `-McPackPbr`; HD arrays use them (normal RG xy, B AO, A height; specular

@@ -162,6 +162,19 @@ private:
 	float MenuSlider(int32 Id, const FString& Text, float Value, float X, float Y, float W, float H);
 	void MenuTextField(FString& Text, int32 Id, float X, float Y, float W, float H, int32 MaxLength);
 	void DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Border);
+	void DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Left, float Top, float Right, float Bottom);
+	// A GUI sprite (textures/gui/sprites/...) in the box, scaled the way its .png.mcmeta says: stretched (the default),
+	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
+	struct FGuiScaling
+	{
+		enum class EType : uint8 { Stretch, Tile, NineSlice };
+		EType Type = EType::Stretch;
+		float Width = 0, Height = 0;
+		float Left = 0, Top = 0, Right = 0, Bottom = 0;
+	};
+	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
+	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
+	TMap<FString, FGuiScaling> GuiScalings;
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
 	void SetMenuInput(bool bMenu);
 	void CreateWorld();

@@ -95,8 +95,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       - **Skins and mobs:** player skins and mob textures go through the same pipeline (upscale, light detail,
         normal, roughness; UVs unchanged, so the models are too). `-McSelfShot=<blocks>` puts the camera in front
         of the player for a skin picture, and `-McSpawnMobs=cow,4` a few mobs near the player.
-      - **Resource packs: later** (zip and LabPBR reading are not built; the arrays use the same layout so a
-        pack's maps could be dropped in).
+      - **Resource packs:** see "Resource packs" below: `-McPacks=` stacks zips and folders over the vanilla
+        assets, and with `-McPackPbr` their LabPBR `_n` and `_s` maps replace the generated ones.
   - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
     (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 
@@ -271,6 +271,54 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Right-clicking a workstation, brewing stand, hopper, dispenser or dropper now opens it in play; only the
     crafting table, chests and furnaces did before.
   - **Not done:** buckets of fish, axolotls and powder snow, milk, and waterlogging blocks.
+
+### Resource packs (2026-10-31)
+
+**Where the game read textures and models before packs** (the gaps this work closes):
+- Every asset path went through `McCache::Asset(rel)` to `cache/client/assets/minecraft/<rel>` and then straight to
+  a file read. There was no layer between the path and the disk, so nothing could be overridden.
+- `FMcBlockTextures` made one 16x16 `UTexture2DArray` (nearest, 5 mips) from the textures the baked models name.
+  16 was a constant in the loader, the mips, the animation uploads and the HD generator. A texture of another size
+  was sampled down to 16 at its texel centres, so a 1024 pack could never show.
+- `.png.mcmeta` was read beside the png at that same path; animation frames were all squeezed to 16x16.
+- `FMcHdBlocks` (Unreal Mode plus HD Textures) made albedo, normal and specular arrays from those 16 pixels
+  (`-McHdSize`, 64 by default); its comment said "resource packs are not read yet". Its LabPBR layout is the one
+  Faithful PBR uses, so a pack's `_n` and `_s` maps could go straight in.
+- Blockstates and models were read in `McBlockModels` from `McCache::Asset`. Entity, sky, weather, particle, GUI
+  and item pictures were read by the callers that need them (`McEntityModel`, `McSkyComponent`, `McHUD`, `McHand`...),
+  all through `McCache::Asset` too, except sounds (`McCache::Root()/assets/...`, not part of this work).
+- `McHand` built a quad-per-pixel mesh from the held item's picture: fine at 16, millions of quads at 1024.
+- No notion of pack order, `pack.mcmeta`, `pack.png`, zip reading or a pack folder.
+
+**What is built:**
+- `McResourcePacks` (McCore): `FMcResourcePack` opens a zip (own reader: stored and deflated, zip64) or a folder and
+  reads `pack.mcmeta` (`pack_format`, `min_format`/`max_format`, `supported_formats` as number, pair or range,
+  `description` as a text component, the `filter.block` rules) and notes `pack.png`. `FMcPackStack` puts packs in
+  order, later wins per file, a pack's `filter` hides what is below it, and vanilla is the bottom layer.
+  Source of the format: minecraft.wiki "Resource pack".
+- `McCache::Asset` asks the stack first. A folder pack's file is used where it is; a zip's file is taken out once
+  into `Saved/McPackCache/<hash of zip path, size and time>/` (with its `.png.mcmeta`, and only that pack's, as in
+  vanilla where the animation file comes from the pack that gave the png), so every existing reader sees the
+  override with no change: block and item textures, animations, blockstates, models, and the entity, environment,
+  particle, GUI, painting and font pictures the renderer loads. Item models and entity pictures are read the same way.
+- `-McPacks=a.zip,b` names the packs: a file in the `resourcepacks/` folder next to the project (or a path), last
+  listed on top. Without it nothing changes. `-McPackMaxSize=<px>` (default 512), `-McPackBudgetMB=<MB>` (default
+  1536) and `-McPackPbr` (default off) are the options.
+- **High resolution:** one array, as wide as the widest pack texture (a power of two), lowered to `-McPackMaxSize` and
+  then until the array and its mips fit the budget; every layer is scaled to it (shrunk with an alpha-weighted box
+  filter, vanilla 16 pixel layers repeated). The array is filtered like the HD arrays (trilinear, anisotropic) above 16.
+  Animated frames are scaled the same way. `McHand`'s extruded item mesh shrinks the picture to 64 first.
+- **PBR:** with `-McPackPbr`, a pack's `<name>_n.png` and `<name>_s.png` (first frame) are kept per layer. The HD
+  arrays (Unreal Mode plus HD Textures) use them in place of the generated maps, and make the missing one from the
+  picture without added detail. Vanilla Mode ignores them, as vanilla does. HD arrays are sized to a third of the budget.
+- **Not done / later:**
+  - An options screen like vanilla's (list of packs, move up and down, enable). The launch argument is the interface.
+  - One array per size, so a pack of 100 big textures and 900 vanilla ones wouldn't repeat the 16 pixel layers up to
+    the big size. It needs the block materials to sample two arrays (`tools/make_materials.py`), so it waits for the
+    editor.
+  - Entity and GUI pictures at pack size get no mips in vanilla mode (`McRenderTextures::MakeArray`).
+  - Pack `overlays`, `optifine/` and `mcpatcher/` data (CTM, custom colormaps), the `lang` and sounds from packs.
+  - A pack's animated normal and specular maps use the first frame.
 
 ### M4 build order
 

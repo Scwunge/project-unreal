@@ -2,6 +2,8 @@
 #include "McBlockRegistry.h"
 #include "McDensityFunction.h"
 #include "McNoiseGenerator.h"
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -312,6 +314,64 @@ bool FMcNoiseSpectrumTest::RunTest(const FString& Parameters)
 			Row += FString::Printf(TEXT("%.1f "), BandSum[Band] * 1000.0);
 		}
 		AddInfo(FString::Printf(TEXT("SPECTRUM %s var %.3f sd %.3f bands: %s"), Names[Function], VarianceSum, FMath::Sqrt(VarianceSum), *Row));
+	}
+	return true;
+}
+
+// Pointwise check against the reference client: the six router climate functions along the first logged line
+// (x -16384 + 8 i, z 0, y 64, 1/10000 resolution), for each seed the reference saves use. An exact construction
+// agrees to the log's rounding; the best seed's errors are printed per function.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcClimatePointTest, "McClient.McGen.ClimatePoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcClimatePointTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	FString Text;
+	if (!TestTrue(TEXT("reference line"), FFileHelper::LoadFileToString(Text, *(FPaths::ProjectContentDir() / TEXT("Tests/vanilla_line0.txt")))))
+	{
+		return false;
+	}
+	TArray<TArray<double>> Reference;
+	TArray<FString> Rows;
+	Text.ParseIntoArrayLines(Rows);
+	for (const FString& Row : Rows)
+	{
+		TArray<FString> Parts;
+		Row.ParseIntoArrayWS(Parts);
+		TArray<double>& Values = Reference.AddDefaulted_GetRef();
+		for (int32 Index = 1; Index < Parts.Num(); ++Index)
+		{
+			Values.Add(FCString::Atod(*Parts[Index]) / 10000.0);
+		}
+	}
+	const TCHAR* Names[6] = { TEXT("temperature"), TEXT("vegetation"), TEXT("continents"), TEXT("erosion"), TEXT("depth"), TEXT("ridges") };
+	const int64 Seeds[] = { 4242424242ll, 1001ll, -77777ll, 909090909ll, 0x75088ff07ll, -8467505393108131185ll };
+	for (const int64 Seed : Seeds)
+	{
+		const FMcNoiseGenerator Generator(Settings, static_cast<uint64>(Seed), TEXT("minecraft:overworld"));
+		FMcDensityContext Context(Generator.GetGraph());
+		FString Line = FString::Printf(TEXT("POINTS seed %lld max/mean:"), Seed);
+		for (int32 Function = 0; Function < 6 && Function < Reference.Num(); ++Function)
+		{
+			const int32 Node = Generator.GetRouterFunction(Names[Function]);
+			double Max = 0.0;
+			double Sum = 0.0;
+			const int32 Count = Reference[Function].Num();
+			for (int32 Index = 0; Index < Count; ++Index)
+			{
+				Context.SetPos(-16384 + Index * 8, 64, 0);
+				const double Error = FMath::Abs(Generator.GetGraph().Evaluate(Node, Context) - Reference[Function][Index]);
+				Max = FMath::Max(Max, Error);
+				Sum += Error / Count;
+			}
+			Line += FString::Printf(TEXT(" %.4f/%.4f"), Max, Sum);
+		}
+		AddInfo(Line);
 	}
 	return true;
 }

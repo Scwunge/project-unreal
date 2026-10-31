@@ -180,6 +180,11 @@ public:
 		}
 	}
 
+	// ---- Target blocks ----
+	// Called when an arrow sticks in a block: the cell, where it hit (block coordinates) and which way it was flying, for
+	// whoever runs the redstone. Left unset, targets don't hear.
+	TFunction<void(const FIntVector&, const FVector&, const FVector&)> OnArrowHit;
+
 	FRandomStream& GetRandom() { return Random; }
 
 private:

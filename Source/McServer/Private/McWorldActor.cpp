@@ -305,6 +305,28 @@ void AMcWorldActor::BeginPlay()
 			Simulation->SetDetectorRail(Pos, bOccupied);
 		}
 	};
+	// An arrow in a target block gives it a signal for 20 ticks. Strength by where it hit: 15 in the middle of the face
+	// down to 1 at the edge. UNMEASURED: the wiki gives the range only and the reference tool cannot shoot yet.
+	Entities->GetManager().OnArrowHit = [this](const FIntVector& Cell, const FVector& Hit, const FVector& Velocity)
+	{
+		if (!Simulation)
+		{
+			return;
+		}
+		const FVector Local = Hit - FVector(Cell);
+		const FVector Abs = Velocity.GetAbs();
+		// The two axes across the face the arrow came in by.
+		const int32 Axis = Abs.X >= Abs.Y && Abs.X >= Abs.Z ? 0 : Abs.Y >= Abs.Z ? 1 : 2;
+		double Away = 0.0;
+		for (int32 Other = 0; Other < 3; ++Other)
+		{
+			if (Other != Axis)
+			{
+				Away = FMath::Max(Away, FMath::Abs(Local[Other] - 0.5));
+			}
+		}
+		Simulation->HitTarget(Cell, FMath::Clamp(15 - FMath::FloorToInt32(Away * 2.0 * 15.0), 1, 15), 20);
+	};
 	// Every sound the entities make goes to the players.
 	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
 	{
@@ -552,6 +574,70 @@ void AMcWorldActor::MulticastLightning_Implementation(FVector_NetQuantize10 Posi
 	{
 		OnLightning(FVector(Position), BoltSeed);
 	}
+}
+
+void AMcWorldActor::FeedPressurePlates()
+{
+	if (!Simulation || !Entities || !BlockWorld)
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	TMap<FIntVector, int32> Counts;
+	// One entity of the box (feet at Bottom, Width across) on the plates it touches; bLiving: a mob or player.
+	const auto Stand = [&](const FVector& Feet, float Width, bool bLiving)
+	{
+		const int32 Y = FMath::FloorToInt32(Feet.Y);
+		const double Half = Width * 0.5;
+		for (int32 X = FMath::FloorToInt32(Feet.X - Half); X <= FMath::FloorToInt32(Feet.X + Half); ++X)
+		{
+			for (int32 Z = FMath::FloorToInt32(Feet.Z - Half); Z <= FMath::FloorToInt32(Feet.Z + Half); ++Z)
+			{
+				const FIntVector Cell(X, Y, Z);
+				const FMcStateId State = BlockWorld->GetBlock(Cell);
+				if (!Registry.IsValidState(State))
+				{
+					continue;
+				}
+				const FString Name = Registry.GetBlockOf(State).Name.ToString();
+				if (!Name.EndsWith(TEXT("_pressure_plate")))
+				{
+					continue;
+				}
+				const bool bStone = Name == TEXT("minecraft:stone_pressure_plate") || Name == TEXT("minecraft:polished_blackstone_pressure_plate");
+				if (!bStone || bLiving)
+				{
+					Counts.FindOrAdd(Cell) += 1;
+				}
+			}
+		}
+	};
+	for (const TUniquePtr<FMcEntity>& Entity : Entities->GetManager().GetEntities())
+	{
+		if (!Entity->bRemoved)
+		{
+			Stand(Entity->Body.Position, Entity->Body.Width, Entity->IsLiving());
+		}
+	}
+	for (const FVector& Player : Entities->GetManager().PlayerPositions)
+	{
+		Stand(Player, 0.6f, true);
+	}
+	for (const TPair<FIntVector, int32>& Pair : Counts)
+	{
+		if (FedPlates.FindRef(Pair.Key) != Pair.Value)
+		{
+			Simulation->SetPressurePlate(Pair.Key, Pair.Value);
+		}
+	}
+	for (const TPair<FIntVector, int32>& Pair : FedPlates)
+	{
+		if (!Counts.Contains(Pair.Key))
+		{
+			Simulation->SetPressurePlate(Pair.Key, 0);
+		}
+	}
+	FedPlates = MoveTemp(Counts);
 }
 
 void AMcWorldActor::SyncFallingBlocks()
@@ -861,6 +947,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		{
 			Simulation->Tick();
 			SyncFallingBlocks();
+			FeedPressurePlates();
 			TickLightning();
 			// Development: -McStrike=x,z strikes the top of that column every three seconds.
 			if (!DevStrike.IsEmpty() && ++DevStrikeTicks % 60 == 0)

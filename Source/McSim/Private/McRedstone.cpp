@@ -43,6 +43,7 @@ namespace
 		PoweredRail,
 		ActivatorRail,
 		DetectorRail,
+		Target,
 	};
 
 	enum EDir : int32
@@ -114,6 +115,7 @@ namespace
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
+				else if (Name == TEXT("minecraft:target")) Kind = Target;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -350,6 +352,7 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case PlateLight:
 	case PlateHeavy:
 	case Daylight:
+	case Target:
 		return Number(State, TEXT("power"));
 	case Torch:
 		return Flag(State, TEXT("lit")) && Toward != Up ? 15 : 0;
@@ -828,6 +831,9 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case Daylight:
 		TickDaylight(Pos, State);
 		break;
+	case Target:
+		TickTarget(Pos, State);
+		break;
 	default:
 		break;
 	}
@@ -851,6 +857,7 @@ bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
 	case WallTorch:
 	case Comparator:
 	case Daylight:
+	case Target:
 		return true;
 	case Repeater:
 		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
@@ -1361,6 +1368,40 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 		{
 			Set(Pos, { FChange(TEXT("power"), Power) });
 		}
+	}
+}
+
+// A projectile hit a target block: it gives Power for Duration ticks (minecraft.wiki, "Target": 20 for arrows and
+// tridents, 8 for the other projectiles; a new hit starts the time again). The strength by where it hit is not
+// measured yet (no reference verb shoots), so the caller's figure stands.
+void FMcRedstone::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	if (KindOf(State) != Target)
+	{
+		return;
+	}
+	TargetUntil.Add(Pos, Sim.GetGameTime() + Duration);
+	if (Power != Number(State, TEXT("power")))
+	{
+		Set(Pos, { FChange(TEXT("power"), Power) });
+	}
+	Sim.ScheduleTick(Pos, Duration);
+}
+
+void FMcRedstone::TickTarget(const FIntVector& Pos, FMcStateId State)
+{
+	const int64* Until = TargetUntil.Find(Pos);
+	const int64 Left = Until ? *Until - Sim.GetGameTime() : 0;
+	if (Left > 0)
+	{
+		Sim.ScheduleTick(Pos, static_cast<int32>(Left));
+		return;
+	}
+	TargetUntil.Remove(Pos);
+	if (Number(State, TEXT("power")) != 0)
+	{
+		Set(Pos, { FChange(TEXT("power"), 0) });
 	}
 }
 

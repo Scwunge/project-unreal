@@ -246,6 +246,10 @@ private:
 	void TickLightning();
 	// Mirrors the simulation's falling blocks as entities (so clients see them) and drops what lands unplaced.
 	void SyncFallingBlocks();
+	// Tells the simulation how many entities stand on each pressure plate (minecraft.wiki, "Pressure Plate": wooden
+	// and weighted plates feel every entity, stone ones only mobs and players).
+	void FeedPressurePlates();
+	TMap<FIntVector, int32> FedPlates;
 	// Simulation falling block id -> entity id.
 	TMap<int32, int32> FallingEntities;
 	FRandomStream LightningRandom{ 31 };

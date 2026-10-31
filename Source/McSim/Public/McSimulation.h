@@ -47,6 +47,8 @@ public:
 	// lamps, doors and pistons run off block changes and scheduled ticks like the rest. What stands on a pressure
 	// plate is told to the simulation, and daylight detectors read the sun level (0 to 15) it is given.
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
+	// A projectile hit the target block at Pos: it gives Power (1 to 15) for Duration ticks.
+	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
 	void SetSunLight(int32 Level);

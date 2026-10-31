@@ -89,6 +89,11 @@ void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 	Redstone->SetPlate(Pos, NumEntities);
 }
 
+void FMcSimulation::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration)
+{
+	Redstone->HitTarget(Pos, Power, Duration);
+}
+
 void FMcSimulation::SetDetectorRail(const FIntVector& Pos, bool bOccupied)
 {
 	Redstone->SetDetector(Pos, bOccupied);

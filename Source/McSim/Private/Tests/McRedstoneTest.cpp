@@ -508,7 +508,19 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		Sim.SetPressurePlate(FIntVector(8, 1, 4), 5);
 		Run(Sim, 2);
 		TestEqual(TEXT("a light plate gives 1 a thing on it"), Registry.GetPropertyValue(World.GetBlock(FIntVector(8, 1, 4)), TEXT("power")).ToString(), FString(TEXT("5")));
-		// A daylight detector reads the sun.
+		// A target block hit by an arrow gives its strength for 20 ticks, and a new hit starts the time again.
+			World.SetBlock(FIntVector(14, 1, 0), State(TEXT("minecraft:target[power=0]")));
+			World.SetBlock(FIntVector(15, 1, 0), State(TEXT("minecraft:redstone_wire")));
+			Sim.HitTarget(FIntVector(14, 1, 0), 9, 20);
+			Run(Sim, 1);
+			TestEqual(TEXT("a hit target powers the dust beside it"), Sim.GetDustPower(FIntVector(15, 1, 0)), 9);
+			Run(Sim, 10);
+			Sim.HitTarget(FIntVector(14, 1, 0), 9, 20);
+			Run(Sim, 15);
+			TestEqual(TEXT("a second hit keeps it on"), Registry.GetPropertyValue(World.GetBlock(FIntVector(14, 1, 0)), TEXT("power")).ToString(), FString(TEXT("9")));
+			Run(Sim, 10);
+			TestEqual(TEXT("and it lets go 20 ticks after the last"), Registry.GetPropertyValue(World.GetBlock(FIntVector(14, 1, 0)), TEXT("power")).ToString(), FString(TEXT("0")));
+			// A daylight detector reads the sun.
 		World.SetBlock(FIntVector(12, 1, 0), State(TEXT("minecraft:daylight_detector[inverted=false,power=0]")));
 		Sim.SetSunLight(11);
 		Run(Sim, 3);

@@ -88,6 +88,8 @@ public:
 	// Sand, gravel and the like in the air: a falling block is not a block until it lands. Position is the bottom of the block.
 	struct FFallingBlock
 	{
+		// Unique among the falling blocks, for whoever mirrors them as entities.
+		int32 Id = 0;
 		FIntVector Column;
 		double Y = 0.0;
 		double Velocity = 0.0;
@@ -134,6 +136,7 @@ private:
 	TMap<int64, TArray<FIntVector>> Due;
 	TSet<FIntVector> Pending;
 	TArray<FFallingBlock> Falling;
+	int32 NextFallingId = 1;
 	TArray<FIntPoint> TickingChunks;
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };

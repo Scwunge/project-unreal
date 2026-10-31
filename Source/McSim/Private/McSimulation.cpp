@@ -300,6 +300,7 @@ void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
 	}
 	World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
 	FFallingBlock Block;
+	Block.Id = NextFallingId++;
 	Block.Column = Pos;
 	Block.Y = Pos.Y;
 	Block.State = State;

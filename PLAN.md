@@ -502,3 +502,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - Data generators: https://wiki.vg/Data_Generators
 - Running the data generator: https://minecraft.gamepedia.com/Tutorials/Running_the_Data_Generator
 - Entity Model Features: https://modrinth.com/mod/entity-model-features
+
+## M5 redstone session: where I stopped (2026-10-31)
+- Done and held to vanilla traces: hoppers, droppers, falling blocks, water, lava, fire (see commits up to 872262b).
+- WIP, built but not tested or seen: falling-block entity. `FMcFallingBlockEntity` (McEntityManager.h) is mirrored from `FMcSimulation::GetFallingBlocks` by `AMcWorldActor::SyncFallingBlocks`; `UMcEntityModelComponent` draws a cube with the block's side texture (`BuildBlockMesh`), eased between ticks. Landing-unplaced blocks drop as items (`OnFallingBlockDropped`). A shot (`-McChat="/setblock 1 -30 3 minecraft:sand"`) was queued and stopped before it ran. Cube uses one texture on all faces (no separate top).
+- Next, in order: check the shot and run McSim/McServer suites; pressure plates, tripwire, target blocks (entities; no reference verb yet); crops/melon edge rows; detector rain/thunder values; Bell hook (`git show 9f78f77 -- Source/McSim`, `OnBellRung`).

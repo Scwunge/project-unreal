@@ -244,6 +244,10 @@ private:
 	bool HasWeather() const;
 	// One tick of the storm's chances of a strike on each loaded chunk.
 	void TickLightning();
+	// Mirrors the simulation's falling blocks as entities (so clients see them) and drops what lands unplaced.
+	void SyncFallingBlocks();
+	// Simulation falling block id -> entity id.
+	TMap<int32, int32> FallingEntities;
 	FRandomStream LightningRandom{ 31 };
 	// -McStrike=x,z (development): the column struck every three seconds.
 	FString DevStrike;

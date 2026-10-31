@@ -286,6 +286,17 @@ void AMcWorldActor::BeginPlay()
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	// A falling block that lands where it can't stand (a torch, a slab) breaks into the item of the same name.
+	Simulation->OnFallingBlockDropped = [this](const FIntVector& Pos, FMcStateId State)
+	{
+		if (Entities)
+		{
+			FMcItemStack Stack;
+			Stack.Item = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+			Stack.Count = 1;
+			Entities->GetManager().DropItem(FVector(Pos) + FVector(0.5), Stack);
+		}
+	};
 	// A minecart on a detector rail powers it.
 	Entities->GetManager().OnDetector = [this](const FIntVector& Pos, bool bOccupied)
 	{
@@ -540,6 +551,42 @@ void AMcWorldActor::MulticastLightning_Implementation(FVector_NetQuantize10 Posi
 	if (bViewed && OnLightning)
 	{
 		OnLightning(FVector(Position), BoltSeed);
+	}
+}
+
+void AMcWorldActor::SyncFallingBlocks()
+{
+	if (!Simulation || !Entities)
+	{
+		return;
+	}
+	FMcEntityManager& Manager = Entities->GetManager();
+	TSet<int32> Alive;
+	for (const FMcSimulation::FFallingBlock& Block : Simulation->GetFallingBlocks())
+	{
+		Alive.Add(Block.Id);
+		int32& EntityId = FallingEntities.FindOrAdd(Block.Id, 0);
+		FMcFallingBlockEntity* Entity = EntityId != 0 ? static_cast<FMcFallingBlockEntity*>(Manager.Find(EntityId)) : nullptr;
+		if (!Entity)
+		{
+			TUniquePtr<FMcFallingBlockEntity> Fresh = MakeUnique<FMcFallingBlockEntity>();
+			Entity = Fresh.Get();
+			Entity->Block = FMcBlockRegistry::Get().GetBlockOf(Block.State).Name;
+			EntityId = Manager.Add(MoveTemp(Fresh)).Id;
+		}
+		// Position is the bottom centre of the block.
+		Entity->Body.Position = FVector(Block.Column.X + 0.5, Block.Y, Block.Column.Z + 0.5);
+	}
+	for (auto It = FallingEntities.CreateIterator(); It; ++It)
+	{
+		if (!Alive.Contains(It.Key()))
+		{
+			if (FMcEntity* Gone = Manager.Find(It.Value()))
+			{
+				Gone->bRemoved = true;
+			}
+			It.RemoveCurrent();
+		}
 	}
 }
 
@@ -813,6 +860,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			SyncFallingBlocks();
 			TickLightning();
 			// Development: -McStrike=x,z strikes the top of that column every three seconds.
 			if (!DevStrike.IsEmpty() && ++DevStrikeTicks % 60 == 0)

@@ -157,6 +157,20 @@ void AMcPlayerPawn::ServerTickElytra()
 		Hat.Count = 1;
 		Data->Armor->GetMutable(0) = Hat;
 	}
+	// -McHotbar=minecraft:skeleton_skull,minecraft:zombie_head,... fills the hotbar from the left, once, the last one held.
+	static bool bHotbarDone = false;
+	FString Hotbar;
+	if (!bHotbarDone && Data && Data->Inventory && FParse::Value(FCommandLine::Get(), TEXT("-McHotbar="), Hotbar, false))
+	{
+		bHotbarDone = true;
+		TArray<FString> Items;
+		Hotbar.ParseIntoArray(Items, TEXT(","));
+		for (int32 Slot = 0; Slot < FMath::Min(Items.Num(), 9); ++Slot)
+		{
+			Data->Inventory->Set(Slot, FMcItemStack(FName(*Items[Slot]), 1));
+		}
+		Data->SelectedSlot = FMath::Clamp(Items.Num() - 1, 0, 8);
+	}
 #endif
 	// The head slot (armor slot 0) too: everyone sees a worn head.
 	WornHead = Data && Data->Armor ? Data->Armor->Get(0).Item : NAME_None;

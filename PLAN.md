@@ -54,6 +54,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       dark strip at the world edge on the horizon; stars and moon phase on the atmosphere sky.
     - Water (done, 2026-10-31): the lit and HD translucent materials tint by depth (scene depth minus pixel depth)
       and show a drifting foam line where the water is shallow.
+    - Storm wind (done, 2026-10-31): the leaf, plant and water sway scales with the wetness (rain level eased in
+      over 5 s): about 2.6 times the amplitude and 1.6 times the speed at full rain. Shot: `storm_unreal` (thunder).
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

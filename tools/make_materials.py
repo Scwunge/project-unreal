@@ -67,13 +67,16 @@ if (k == 3.0 || k == 4.0)
     float gust = 0.55 + 0.45 * sin(Time * 0.35 + p.x * 0.05 + p.y * 0.04);
     float s = sin(Time * 1.9 + p.x * 0.7 + p.y * 0.45 + Pos.z * 0.013);
     float c = cos(Time * 1.4 + p.x * 0.38 - p.y * 0.62);
-    float a = (k == 3.0 ? 2.0 : 5.5) * gust * w;
+    // In rain the wind picks up: stronger gusts, and the sway quickens.
+    float storm = 1.0 + 1.6 * Wet;
+    s = sin(Time * 1.9 * (1.0 + 0.6 * Wet) + p.x * 0.7 + p.y * 0.45 + Pos.z * 0.013);
+    float a = (k == 3.0 ? 2.0 : 5.5) * gust * w * storm;
     o = float3(s * a, c * a * 0.7, k == 3.0 ? s * c * 0.8 : 0.0);
 }
 else if (k == 1.0)
 {
     float h = sin(Time * 1.3 + p.x * 0.9 + p.y * 0.6) * 0.5 + sin(Time * 1.9 - p.x * 0.5 + p.y * 1.1) * 0.5;
-    o = float3(0.0, 0.0, -3.0 + 2.0 * h);
+    o = float3(0.0, 0.0, -3.0 + 2.0 * h * (1.0 + 0.8 * Wet));
 }
 return o;
 """
@@ -571,7 +574,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         mel.connect_material_property(specular, "", unreal.MaterialProperty.MP_SPECULAR)
         if blend_mode != unreal.BlendMode.BLEND_OPAQUE:
             offset = add_custom(material, -100, 700, "McLitOffset", LIT_WPO_HLSL,
-                                {"Kind": (kind, ""), "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, "")})
+                                {"Kind": (kind, ""), "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, ""), "Wet": (wetness, "")})
             mel.connect_material_property(offset, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
         if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
             fresnel = add_custom(material, -100, 300, "McLitOpacity", LIT_OPACITY_HLSL,

@@ -419,12 +419,19 @@ namespace McEntityModel
 				Piglin.Textures = { TEXT("piglin/piglin.png") };
 				Piglin.Parts.Add(Part(ERole::Static, FVector::ZeroVector, {
 					Box(0, 0, -5, 0, -4, 10, 8, 8), Box(31, 1, -2, 0, 4, 4, 4, 1), Box(2, 0, 2, 0, 4, 1, 2, 1), Box(2, 4, -3, 0, 4, 1, 2, 1) }));
-				// The ears hang from the top of each side, leaning out 0.9 radians (vanilla wall heads, ref_scene_heads, against
-				// -McPiglinEar=0.5, 0.7 and 0.9 on -McScene=heads; -McPiglinEar=<radians> tries another lean).
-				float EarLean = 0.9f;
-				FParse::Value(FCommandLine::Get(), TEXT("-McPiglinEar="), EarLean);
-				Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, 6, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, EarLean));
-				Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, 6, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -EarLean));
+				// The ears hang from the top edge of each side, leaning out 0.9 radians. Fitted to vanilla's placed heads
+				// (ref_scene_heads) and hotbar icon (ref_heads_hotbar) by sweeping leans 0.5 to 1.3 and hinge heights 6 to 8;
+				// -McPiglinEar=<radians>[,<hinge>] tries others.
+				float EarLean = 0.9f, EarHinge = 8.0f;
+				FString EarArg;
+				if (FParse::Value(FCommandLine::Get(), TEXT("-McPiglinEar="), EarArg))
+				{
+					FString Lean, Hinge;
+					EarLean = FCString::Atof(*(EarArg.Split(TEXT(","), &Lean, &Hinge) ? Lean : EarArg));
+					EarHinge = Hinge.IsEmpty() ? EarHinge : FCString::Atof(*Hinge);
+				}
+				Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, EarHinge, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, EarLean));
+				Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, EarHinge, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -EarLean));
 				Models.Add(Piglin.Kind, Piglin);
 				// The dragon's, cut from its 256 picture and drawn at three quarters: a 16 cube with two scales on top, and
 				// in front an upper jaw (12 by 5 by 16, two nostrils on it) over a lower one (12 by 4 by 16).

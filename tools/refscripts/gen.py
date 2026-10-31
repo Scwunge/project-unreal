@@ -104,3 +104,21 @@ L += cmd("setblock 1 -60 0 repeater[delay=1,facing=west]") + cmd("setblock 2 -60
 L += cmd("setblock 1 -60 2 repeater[delay=1,facing=east]") + cmd("setblock 0 -60 1 repeater[delay=1,facing=south]")
 L += step(6) + cmd("setblock 0 -60 -1 redstone_block") + step(2) + cmd("setblock 0 -60 -1 air") + step(70)
 write("ring", L + cmd("tick unfreeze"))
+
+# Buttons and a lever, pressed by the client's use-block call: stone button 20 ticks, oak 30, lever stays; each beside a lamp
+# through a block so the lamp shows the power. Daylight detector (and inverted) follows the clock under `time set`.
+L = []
+for i, (name, extra) in enumerate((("stone_button", "face=floor,facing=north"), ("oak_button", "face=floor,facing=north"), ("lever", "face=floor,facing=north"))):
+    x = 1 + 3 * i
+    L += cmd(f"setblock {x} -60 1 stone") + cmd(f"setblock {x} -60 2 redstone_lamp") + cmd(f"setblock {x} -60 0 {name}[{extra}]")
+    L += cmd(f"setblock {x} -59 1 redstone_wire")
+L = cmd("gamemode creative") + cmd("tp @s 4 -58 2") + L
+L += step(4) + ["press 1 -60 0"] + step(30) + ["press 4 -60 0"] + step(40) + ["press 7 -60 0"] + step(4) + ["press 7 -60 0"] + step(4)
+write("buttons", L + cmd("tick unfreeze"))
+
+L = cmd("setblock 0 -60 0 daylight_detector[inverted=false,power=0]") + cmd("setblock 2 -60 0 daylight_detector[inverted=true,power=0]")
+L += cmd("setblock 4 -60 0 daylight_detector[inverted=false,power=0]") + cmd("setblock 4 -59 0 stone")
+L = cmd("weather clear") + L + ["wait 100"]
+for t in (6000, 0, 12500, 13500, 18000, 23000, 1000):
+    L += cmd(f"time set {t}") + step(24)
+write("daylight", L + cmd("tick unfreeze"))

@@ -83,6 +83,14 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			{
 				Fill(P, 2, P[8]);
 			}
+			else if (P.Num() == 4 && P[0] == TEXT("press"))
+			{
+				Sim.UseBlock(FIntVector(FCString::Atoi(*P[1]), FCString::Atoi(*P[2]) + Lift, FCString::Atoi(*P[3])), 0.0f);
+			}
+			else if (P.Num() == 4 && P[0] == TEXT("cmd") && P[1] == TEXT("time") && P[2] == TEXT("set"))
+			{
+				Sim.SetDayTime(FCString::Atoi64(*P[3]));
+			}
 			else if (P.Num() >= 4 && P[0] == TEXT("cmd") && P[1] == TEXT("tick") && P[2] == TEXT("step"))
 			{
 				for (int32 Index = 0; Index < FCString::Atoi(*P[3]); ++Index) Sim.Tick();

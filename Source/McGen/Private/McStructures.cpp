@@ -36,6 +36,7 @@ struct FMcStructureLibrary::FStructure
 	FString Type;
 	FString Variant;  // a mineshaft's "normal" or "mesa"
 	TBitArray<> Biomes;
+	TBitArray<> Surround;  // a monument also wants ocean or river biomes all round it
 	bool bBeached = false;
 	bool bWarm = false;
 	float Cluster = 0.9f;
@@ -797,6 +798,12 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 				}
 			}
 		}
+		if (Structure->Type == TEXT("ocean_monument"))
+		{
+			Structure->Surround.Init(false, NumBiomes);
+			ResolveTag(TEXT("#minecraft:is_ocean"), Structure->Surround, 0);
+			ResolveTag(TEXT("#minecraft:is_river"), Structure->Surround, 0);
+		}
 		Json->TryGetBoolField(TEXT("is_beached"), Structure->bBeached);
 		FString Temperature;
 		Structure->bWarm = Json->TryGetStringField(TEXT("biome_temp"), Temperature) && Temperature == TEXT("warm");
@@ -1070,19 +1077,36 @@ bool FMcStructureLibrary::IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chu
 	return false;
 }
 
-const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const
+// The weighted pick among the set's structures that the biome allows; a set tries its entries until one fits.
+const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk, TFunctionRef<bool(const FStructure&)> Fits) const
 {
 	FMcRandom Random = FMcRandom(Seed).Fork(Chunk.X, Set.Salt + 1, Chunk.Y);
-	int32 Pick = Random.NextInt(FMath::Max(1, Set.TotalWeight));
+	int32 Total = 0;
 	for (const TPair<int32, int32>& Entry : Set.Entries)
 	{
+		if (Fits(*Structures[Entry.Key]))
+		{
+			Total += Entry.Value;
+		}
+	}
+	if (Total <= 0)
+	{
+		return nullptr;
+	}
+	int32 Pick = Random.NextInt(Total);
+	for (const TPair<int32, int32>& Entry : Set.Entries)
+	{
+		if (!Fits(*Structures[Entry.Key]))
+		{
+			continue;
+		}
 		if (Pick < Entry.Value)
 		{
 			return Structures[Entry.Key].Get();
 		}
 		Pick -= Entry.Value;
 	}
-	return Structures[Set.Entries.Last().Key].Get();
+	return nullptr;
 }
 
 void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const
@@ -1091,16 +1115,31 @@ void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FNa
 	{
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
-			Out.Add(Choose(*Set, Seed, Chunk)->Id);
+			Out.Add(Choose(*Set, Seed, Chunk, [](const FStructure&) { return true; })->Id);
 		}
 	}
 }
 
-bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk, bool bInRegion) const
+void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, FMcBiomeId Biome, TArray<FName>& Out) const
+{
+	for (const TSharedPtr<FSet>& Set : Sets)
+	{
+		if (IsStartChunk(*Set, Seed, Chunk))
+		{
+			const FStructure* Structure = Choose(*Set, Seed, Chunk, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; });
+			if (Structure)
+			{
+				Out.Add(Structure->Id);
+			}
+		}
+	}
+}
+
+bool FMcStructureLibrary::StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool bInRegion, FMcBiomeId& Biome) const
 {
 	const int32 X = Chunk.X * 16 + 8;
 	const int32 Z = Chunk.Y * 16 + 8;
-	FMcBiomeId Biome = 0;
+	Biome = 0;
 	if (BiomeSource && HeightSource)
 	{
 		// The same answer from every chunk that looks.
@@ -1115,7 +1154,45 @@ bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Stru
 	{
 		return false;
 	}
-	return Structure.Biomes.IsValidIndex(Biome) && Structure.Biomes[Biome];
+	return true;
+}
+
+// Whether the biomes round a start suit a structure that wants them to; the circle is sampled the way a monument's is.
+bool FMcStructureLibrary::SurroundFits(const FStructure& Structure, FIntPoint Chunk) const
+{
+	if (Structure.Surround.IsEmpty() || !BiomeSource || !HeightSource)
+	{
+		return true;
+	}
+	return SurroundAllows(Structure.Id, Chunk, [this](int32 X, int32 Z) { return BiomeSource(X, HeightSource(X, Z) - 1, Z); });
+}
+
+bool FMcStructureLibrary::SurroundAllows(FName Id, FIntPoint Chunk, TFunctionRef<FMcBiomeId(int32, int32)> BiomeAt) const
+{
+	for (const TSharedPtr<FStructure>& Structure : Structures)
+	{
+		if (Structure->Id != Id || Structure->Surround.IsEmpty())
+		{
+			continue;
+		}
+		static const int32 Steps[] = { -29, -15, 0, 15, 29 };
+		for (const int32 DZ : Steps)
+		{
+			for (const int32 DX : Steps)
+			{
+				if (DX * DX + DZ * DZ > 29 * 29)
+				{
+					continue;
+				}
+				const FMcBiomeId Biome = BiomeAt(Chunk.X * 16 + 8 + DX, Chunk.Y * 16 + 8 + DZ);
+				if (!Structure->Surround.IsValidIndex(Biome) || !Structure->Surround[Biome])
+				{
+					return false;
+				}
+			}
+		}
+	}
+	return true;
 }
 
 // A village wants dry ground without much of a slope round its centre.
@@ -1147,8 +1224,9 @@ void FMcStructureLibrary::GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint
 	{
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
-			const FStructure* Structure = Choose(*Set, Seed, Chunk);
-			if (BiomeFits(Region, *Structure, Chunk, true))
+			FMcBiomeId Biome;
+			const FStructure* Structure = StartBiome(Region, Chunk, true, Biome) ? Choose(*Set, Seed, Chunk, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; }) : nullptr;
+			if (Structure && SurroundFits(*Structure, Chunk))
 			{
 				Out.Add(Structure->Id);
 			}
@@ -1170,8 +1248,9 @@ void FMcStructureLibrary::Place(FMcGenRegion& Region, uint64 Seed) const
 				const FIntPoint Start(Centre.X + DX, Centre.Y + DZ);
 				if (IsStartChunk(*Set, Seed, Start))
 				{
-					const FStructure* Structure = Choose(*Set, Seed, Start);
-					if (BiomeFits(Region, *Structure, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1))
+					FMcBiomeId Biome;
+					const FStructure* Structure = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome) ? Choose(*Set, Seed, Start, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; }) : nullptr;
+					if (Structure && SurroundFits(*Structure, Start))
 					{
 						Build(Region, *Structure, Seed, Start, Set->Salt);
 					}

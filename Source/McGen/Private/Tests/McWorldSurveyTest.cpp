@@ -743,12 +743,15 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 					continue;
 				}
 				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Settings.SeaLevel + 4, Z * 16 + 8);
+				Here.Reset();
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Biome, Here);
 				for (const FName Name : Here)
 				{
-					if (Structures.BiomeAllows(Name, Biome))
+					if (!Structures.SurroundAllows(Name, FIntPoint(X, Z), [&](int32 BX, int32 BZ) { return Generator.GetBiome(BX, Settings.SeaLevel + 4, BZ); }))
 					{
-						Counts.FindOrAdd(Name)++;
+						continue;
 					}
+					Counts.FindOrAdd(Name)++;
 				}
 			}
 		}

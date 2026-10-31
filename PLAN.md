@@ -324,13 +324,14 @@ exact, so only shares and densities are compared.
 | Spore blossom | | placed 0 of 39 tries before, 39 of 39 now | fixed: it is in the flowers tag, so the ground check rejected it; now needs a sturdy ceiling |
 | Cave water / air above y 0 | see rows above | | mostly world-to-world variance (per-world vanilla bands overlap ours); sea floor depth in `McClient.McGen.FloorMix` vs the reference's `log floors` agrees within the spread except one ocean-heavy seed |
 
-**Where worldgen stopped (2026-10-31, paused at the user's request).** Fitted and committed: trees, lava, aquifer, dripstone,
-geodes, sea and river floors (surface rule `water` condition), frozen ocean, icebergs. Left as variance (inside the per-world
-spread): swamp, beach gravel, moss, y 32+ cave water, raw copper. Next: structures. Ours is `McClient.McGen.StructureStarts`
-(`STARTS <seed> <structure> <count>`, 256 x 256 chunks from -128, 5 seeds; `Saved/rt_starts.txt`); the reference side is the
-`log starts` verb with `scripts/terrain_starts.txt` (`wait` is in ticks: 6000 = 5 min). Only world `terrain4` is logged
-(`Saved/vst_live.txt`); `terrain`, `terrain2`, `terrain3`, `terrain5` still need `Saved/vstart3.sh` (the verb's first-run bugs are
-fixed, unverified on a clean run). Then compare counts per structure and fit the ones outside the spread.
+**Where worldgen stands (2026-10-31).** Fitted and committed: trees, lava, aquifer, dripstone, geodes, sea and river floors
+(surface rule `water` condition), frozen ocean, icebergs, structure starts. Left as variance (inside the per-world spread): swamp,
+beach gravel, moss, y 32+ cave water, raw copper. Structure starts: a set now makes its weighted pick among the entries the start
+biome allows (it used to pick one and reject it, which left villages at 2.5% of start chunks against about 32%), and a monument
+also wants ocean or river biomes within 29 blocks. Ours is `McClient.McGen.StructureStarts` (`STARTS <seed> <structure> <count>`,
+256 x 256 chunks from -128, 5 seeds); the reference side is the `log starts` verb with `scripts/terrain_starts.txt` (`wait` is in
+ticks: 6000 = 5 min; logged for `terrain`, `terrain2`, `terrain3`, `terrain4`; `terrain5` pending). Every count is inside the
+vanilla spread of those four; monument (mean 9.6 against 4.5) and desert villages (1.6 against 5.0) sit at the edge.
 
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

@@ -44,7 +44,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **What the chunks still supply.** Sky ambient comes only where the chunk's sky light reaches, so caves
     stay dark. Block light (torches, lava) is added as warm emissive.
   - **Not done:**
-    - The Nether and the End have no sun, so enhanced mode lights them only by block light.
+    - Nether and End mood (done, 2026-10-31): a shadowless fill light (the Nether's `ambient_light_color` warmed
+      towards lava, 3 lux; the End's `sky_light_color`, 1.2 lux), a warm or cool colour grade with more bloom and
+      vignette, and a faint tinted glow in the volumetric fog. Tuning args: `-McNetherFill=`, `-McEndFill=`,
+      `-McFogGlow=`. The End reads well; the Nether still shows faint box edges at the fog volume or Lumen probe
+      grid (not fixed; try a lower fill, or lighting through the material's sky ambient instead).
     - Lumen traces the screen only, because the procedural meshes have no distance fields.
     - Clouds, rain and the sky stay unlit.
   - **Dev switches:**

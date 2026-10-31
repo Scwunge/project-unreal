@@ -45,6 +45,9 @@ namespace
 	// tonemapper; the moon is a tenth of a lux or so, enough to see by.
 	constexpr float SunLux = 7.0f;
 	constexpr float MoonLux = 0.6f;
+		// The Nether's and the End's fill lights, in lux: just enough that shapes read where no block light reaches.
+		constexpr float NetherFillLux = 3.0f;
+		constexpr float EndFillLux = 1.2f;
 	// How much of the fog's thickness the volumetric fog takes: a haze with light shafts, not a wall.
 	constexpr float VolumetricFogShare = 0.04f;
 
@@ -454,6 +457,7 @@ void UMcSkyComponent::BuildEnhanced()
 	Settings.ColorSaturation = FVector4(1.08, 1.08, 1.08, 1.0);
 	Settings.bOverride_ColorContrast = true;
 	Settings.ColorContrast = FVector4(1.05, 1.05, 1.05, 1.0);
+	Settings.bOverride_ColorGain = true;
 	Settings.bOverride_VignetteIntensity = true;
 	Settings.VignetteIntensity = 0.35f;
 	Settings.bOverride_SceneFringeIntensity = true;
@@ -513,11 +517,48 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	{
 		return;
 	}
+	// The grade follows the dimension: warm and heavy in the Nether, cool and violet in the End.
+	{
+		const bool bNether = Mode == EMode::Nether;
+		const bool bEnd = Mode == EMode::End;
+		FPostProcessSettings& Grade = EnhancedPost->Settings;
+		Grade.ColorGain = bNether ? FVector4(1.14, 0.94, 0.84, 1.0) : bEnd ? FVector4(0.94, 0.9, 1.14, 1.0) : FVector4(1.0, 1.0, 1.0, 1.0);
+		Grade.BloomIntensity = Mode == EMode::Overworld ? 0.6f : 0.95f;
+		Grade.VignetteIntensity = Mode == EMode::Overworld ? 0.35f : 0.5f;
+		SunLight->SetCastShadows(Mode == EMode::Overworld);
+		// An unshadowed fill scattering in the volumetric fog draws the edges of its grid.
+		SunLight->SetVolumetricScatteringIntensity(Mode == EMode::Overworld ? 1.0f : 0.0f);
+	}
 	if (Mode != EMode::Overworld)
 	{
-		// No sun in the Nether or the End: only the blocks' own light.
-		SunLight->SetIntensity(0.0f);
+		// No sun in the Nether or the End. Their mood is a dim fill light from above with no shadows (so it reaches
+		// everywhere, as the Nether's glow does), the fog lit from inside by the lava's colour, and the blocks' own light.
+		const bool bNether = Mode == EMode::Nether;
+		SunLight->SetWorldRotation(FRotator(-65.0f, 40.0f, 0.0f));
+		// The fills' colours are the dimension types' own: the Nether's ambient_light_color (#302821, scaled up to full
+		// brightness and warmed towards the lava) and the End's sky_light_color (#ac60cd).
+		float Fill = bNether ? NetherFillLux : EndFillLux;
+		float Glow = 0.12f;
+#if !UE_BUILD_SHIPPING
+		// For tuning: -McNetherFill=, -McEndFill= (lux) and -McFogGlow= (times the fog's emissive).
+		FParse::Value(FCommandLine::Get(), bNether ? TEXT("-McNetherFill=") : TEXT("-McEndFill="), Fill);
+		FParse::Value(FCommandLine::Get(), TEXT("-McFogGlow="), Glow);
+#endif
+		const FLinearColor NetherAmbient = FLinearColor(FColor(0x30, 0x28, 0x21)) * 5.0f;
+		SunLight->SetLightColor(bNether ? FLinearColor::LerpUsingHSV(NetherAmbient.GetClamped(), FLinearColor(1.0f, 0.3f, 0.1f), 0.5f) : FLinearColor(FColor(0xac, 0x60, 0xcd)));
+		SunLight->SetIntensity(Fill);
+		if (Fog)
+		{
+			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
+			Fog->SetVolumetricFogEmissive(bNether ? FLinearColor(0.12f, 0.025f, 0.004f) * Glow : FLinearColor(0.02f, 0.01f, 0.05f) * Glow);
+			Fog->SetVolumetricFogAlbedo(bNether ? FColor(255, 110, 60) : FColor(200, 160, 255));
+		}
 		return;
+	}
+	if (Fog)
+	{
+		Fog->SetVolumetricFogEmissive(FLinearColor::Black);
+		Fog->SetVolumetricFogAlbedo(FColor::White);
 	}
 	float SunIntensity = SunLux;
 	const float MoonIntensity = MoonLux;

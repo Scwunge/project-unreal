@@ -1,6 +1,6 @@
 {
   "description": "Resource pack look test on classic_flat (surface y=-61): stone, ores, grass, dirt, wood, sand, wool, a crafting table and furnace, a water pool. Shoot it with -McSpawnMobs=cow,3 for a mob, with and without -McPacks.",
-  "camera": [4.5, -58.6, -5.5, 0.0, 20.0],
+  "camera": [4.5, -55.5, -3.5, 0.0, 42.0],
   "blocks": [
     { "from": [0, -60, 0], "to": [0, -60, 0], "state": "minecraft:stone" },
     { "from": [1, -60, 0], "to": [1, -60, 0], "state": "minecraft:cobblestone" },

@@ -94,6 +94,12 @@ namespace McEntityModel
 		uint32 GlowLayers = 0;
 		// Most a leg or arm swings either way, radians; 0 for no limit (an enderman strides stiffly).
 		float MaxLimbSwing = 0.0f;
+		// How far the legs swing per point of walk amount, radians (measured from the game's own model at a steady walk), the front legs'
+		// own if they differ (negative for the same), and the arms'. The golem's swing is a triangle wave of 13 steps, not a cosine.
+		float LegSwing = 1.4f;
+		float FrontLegSwing = -1.0f;
+		float ArmSwing = 1.0f;
+		bool bTriangleWalk = false;
 		// The hitbox width the model is drawn for, blocks; the model grows with a hitbox that is wider (slimes). 0 for fixed.
 		float BaseWidth = 0.0f;
 		// How an illager holds its arms when armed: 1 a crossbow, 2 an axe, 3 casting (0 for no such arms).

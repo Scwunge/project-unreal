@@ -81,6 +81,8 @@ namespace McEntityModel
 		void AddVillager(FModel& Model, bool bArmsOut = false)
 		{
 			Model.Scale = 15.0f / 16.0f;
+			// Measured: their legs swing half as far as a person's (0.7 a point of walk amount).
+			Model.LegSwing = 0.7f;
 			Model.TextureSize = FIntPoint(64, 64);
 			Model.BaseWidth = 0.6f;
 			Model.bComposite = true;
@@ -284,6 +286,7 @@ namespace McEntityModel
 				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 1.1f, 0, 0));
 				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 1.1f, 0, 0));
 				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37, 64);
+				Ravager.LegSwing = 0.4f;
 				Models.Add(Ravager.Kind, Ravager);
 			}
 			{
@@ -308,7 +311,10 @@ namespace McEntityModel
 				Golem.Parts.Add(Part(ERole::ArmLeft, FVector(0, 33.5f, 0), { Box(60, 58, 9, -30, -3, 4, 30, 6) }));
 				Golem.Parts.Add(Part(ERole::LegRight, FVector(-4, 13, 0), { Box(37, 0, -3.5f, -13, -2, 6, 16, 5) }));
 				Golem.Parts.Add(Part(ERole::LegLeft, FVector(5, 13, 0), { Box(60, 0, -3.5f, -13, -2, 6, 16, 5) }));
-				Golem.MaxLimbSwing = 0.5f;
+				// Measured: a triangle wave of 13 steps a cycle, 1.5 radians a point of walk amount, no limit below that.
+				Golem.bTriangleWalk = true;
+				Golem.LegSwing = 1.5f;
+				Golem.ArmSwing = 1.5f;
 				Models.Add(Golem.Kind, Golem);
 			}
 			{
@@ -360,6 +366,8 @@ namespace McEntityModel
 				Enderman.Textures = { TEXT("enderman/enderman.png"), TEXT("enderman/enderman_eyes.png") };
 				Enderman.GlowLayers = 2;
 				Enderman.MaxLimbSwing = 0.4f;
+				Enderman.LegSwing = 0.7f;
+				Enderman.ArmSwing = 0.5f;
 				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
 				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
 				Enderman.Parts.Add(Part(ERole::Static, FVector(0, 38, 0), { Box(32, 16, -4, -12, -2, 8, 12, 4) }));
@@ -412,6 +420,9 @@ namespace McEntityModel
 				Horse.Kind = TEXT("minecraft:horse");
 				Horse.TextureSize = FIntPoint(64, 64);
 				Horse.Textures = { TEXT("horse/horse_brown.png") };
+				// Measured: the hind legs swing 0.5 a point of walk amount and the front legs 0.8.
+				Horse.LegSwing = 0.5f;
+				Horse.FrontLegSwing = 0.8f;
 				// The coat with its markings laid over it.
 				Horse.bComposite = true;
 				for (const TCHAR* Coat : { TEXT("white"), TEXT("creamy"), TEXT("chestnut"), TEXT("brown"), TEXT("black"), TEXT("gray"), TEXT("darkbrown") })
@@ -709,9 +720,15 @@ namespace McEntityModel
 			}
 		}
 
-		float Swing(float WalkPos, float WalkAmount, float Phase)
+		// The swing of a limb at a walk position: a cosine, or for the golem a triangle wave (13 steps to a cycle) of the same reach.
+		float Swing(const FModel& Model, float WalkPos, float WalkAmount, float Phase, float Reach)
 		{
-			return FMath::Cos(WalkPos * 0.6662f + Phase) * 1.4f * WalkAmount;
+			if (Model.bTriangleWalk)
+			{
+				const float Cycle = FMath::Frac(WalkPos / 13.0f + 0.41f + Phase / (2.0f * PI));
+				return (4.0f * FMath::Abs(Cycle - 0.5f) - 1.0f) * Reach * WalkAmount;
+			}
+			return FMath::Cos(WalkPos * 0.6662f + Phase) * Reach * WalkAmount;
 		}
 	}
 
@@ -777,12 +794,12 @@ namespace McEntityModel
 			case ERole::LegFrontRight:
 			case ERole::LegBackLeft:
 			case ERole::LegRight:
-				Pitch += Swing(Pos, Amount, 0.0f);
+				Pitch += Swing(Model, Pos, Amount, 0.0f, (Part.Role == ERole::LegFrontRight && Model.FrontLegSwing >= 0.0f) ? Model.FrontLegSwing : Model.LegSwing);
 				break;
 			case ERole::LegFrontLeft:
 			case ERole::LegBackRight:
 			case ERole::LegLeft:
-				Pitch += Swing(Pos, Amount, PI);
+				Pitch += Swing(Model, Pos, Amount, PI, (Part.Role == ERole::LegFrontLeft && Model.FrontLegSwing >= 0.0f) ? Model.FrontLegSwing : Model.LegSwing);
 				break;
 			case ERole::ArmRight:
 			case ERole::ArmLeft:
@@ -825,7 +842,7 @@ namespace McEntityModel
 				}
 				else
 				{
-					Pitch += FMath::Cos(Pos * 0.6662f + (bRight ? PI : 0.0f)) * Amount;
+					Pitch += Swing(Model, Pos, Amount, bRight ? PI : 0.0f, Model.ArmSwing);
 				}
 				break;
 			}

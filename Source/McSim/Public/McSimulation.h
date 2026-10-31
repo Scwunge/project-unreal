@@ -85,6 +85,18 @@ public:
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 
+	// Sand, gravel and the like in the air: a falling block is not a block until it lands. Position is the bottom of the block.
+	struct FFallingBlock
+	{
+		FIntVector Column;
+		double Y = 0.0;
+		double Velocity = 0.0;
+		FMcStateId State = 0;
+	};
+	const TArray<FFallingBlock>& GetFallingBlocks() const { return Falling; }
+	// A falling block lands somewhere it can't be placed (a torch, a slab): it breaks and drops as an item.
+	TFunction<void(const FIntVector&, FMcStateId)> OnFallingBlockDropped;
+
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
 	void PlaySound(const FMcSoundEvent& Event) const
@@ -108,6 +120,7 @@ private:
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
+	void StepFalling();
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);
 	void TickFire(const FIntVector& Pos, FMcStateId State);
@@ -120,6 +133,7 @@ private:
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;
 	TSet<FIntVector> Pending;
+	TArray<FFallingBlock> Falling;
 	TArray<FIntPoint> TickingChunks;
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };

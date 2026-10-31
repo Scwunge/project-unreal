@@ -236,6 +236,7 @@ void FMcSimulation::Tick()
 		Pending.Remove(Pos);
 		RunTick(Pos);
 	}
+	StepFalling();
 	RandomTicks();
 }
 
@@ -272,23 +273,64 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	}
 }
 
+// A block that can't stand on what is under it turns into a falling block (minecraft.wiki, "Falling Block": gravity 0.04 a
+// tick, 2% drag). It takes its first step in the tick it turns, after the scheduled ticks; measured in the reference
+// client (rs_falling): 4 blocks down lands on the 15th step, 8 on the 21st.
 void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
 {
 	const int32 MinY = World.GetDimension().MinY;
-	const auto CanFallInto = [&](int32 Y)
+	const FIntVector Below = Pos + FIntVector(0, -1, 0);
+	const FMcStateId Under = World.GetBlock(Below);
+	if (Below.Y < MinY || !(IsDisplaceable(Under) || FluidOf(Under) != EMcFluid::None))
 	{
-		const FMcStateId Below = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
-		return Y >= MinY && (IsDisplaceable(Below) || FluidOf(Below) != EMcFluid::None);
-	};
-	int32 Y = Pos.Y;
-	while (CanFallInto(Y - 1))
-	{
-		--Y;
+		return;
 	}
-	if (Y != Pos.Y)
+	World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
+	FFallingBlock Block;
+	Block.Column = Pos;
+	Block.Y = Pos.Y;
+	Block.State = State;
+	Falling.Add(Block);
+}
+
+void FMcSimulation::StepFalling()
+{
+	const int32 MinY = World.GetDimension().MinY;
+	for (int32 Index = 0; Index < Falling.Num();)
 	{
-		World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
-		World.SetBlock(FIntVector(Pos.X, Y, Pos.Z), State);
+		FFallingBlock& Block = Falling[Index];
+		const auto CanFallInto = [&](int32 Y)
+		{
+			const FMcStateId Cell = World.GetBlock(FIntVector(Block.Column.X, Y, Block.Column.Z));
+			return Y >= MinY && (IsDisplaceable(Cell) || FluidOf(Cell) != EMcFluid::None);
+		};
+		// The lowest cell it can get to from the one it is in.
+		int32 Rest = FMath::FloorToInt(Block.Y + 1e-6);
+		while (CanFallInto(Rest - 1))
+		{
+			--Rest;
+		}
+		Block.Velocity -= 0.04;
+		Block.Y += Block.Velocity;
+		Block.Velocity *= 0.98;
+		if (Block.Y > Rest)
+		{
+			++Index;
+			continue;
+		}
+		const FIntVector At(Block.Column.X, Rest, Block.Column.Z);
+		const FMcStateId Cell = World.GetBlock(At);
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId State = Block.State;
+		Falling.RemoveAt(Index);
+		if (Registry.IsAir(Cell) || FluidOf(Cell) != EMcFluid::None || FMcBlockTags::Get().Has(TEXT("minecraft:replaceable"), Cell))
+		{
+			World.SetBlock(At, State);
+		}
+		else if (OnFallingBlockDropped)
+		{
+			OnFallingBlockDropped(At, State);
+		}
 	}
 }
 
@@ -304,7 +346,7 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 	const FMcStateId Air = StateOf(TEXT("minecraft:air"));
 	const int32 Drop = bWater ? 1 : 2;
 	const int32 SlopeReach = bWater ? 4 : 2;
-	const int32 Level = LevelOf(State);
+	int32 Level = LevelOf(State);
 	const FName Block = Registry.GetBlockOf(State).Name;
 
 	// Lava beside water hardens: a source into obsidian, flowing lava into cobblestone (water above or beside it).
@@ -366,8 +408,10 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 		}
 		if (NewLevel != Level)
 		{
+			// It changes and spreads on from its new level in the same tick (rs_water: water that a fall reaches sends its own
+			// sideways water on that tick, not 5 later).
 			SetFluid(Pos, NewLevel);
-			return;
+			Level = NewLevel;
 		}
 	}
 
@@ -392,11 +436,10 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 		}
 		if (bOpen)
 		{
+			// A source over a drop falls first and spreads sideways on its next turn (reference run rs_water: the sideways
+			// water comes 5 ticks after the fall starts, not with it).
 			SetFluid(BelowPos, 8);
-			if (Level != 0)
-			{
-				return;
-			}
+			return;
 		}
 	}
 

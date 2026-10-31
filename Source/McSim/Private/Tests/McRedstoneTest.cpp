@@ -620,6 +620,31 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(4, 1, -1), Air);
 		TestEqual(TEXT("and free again"), Value(Hopper, TEXT("enabled")), FString(TEXT("true")));
 	}
+	{
+		// Held to the reference client's dropper run (log_dropper1): power at tick 3 fires on 7 and holding it adds nothing; a one-tick
+		// pulse still fires 4 ticks on; powered and dropped within the delay it fires with nothing powering it; power put back the
+		// tick after it fired is a new pulse.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		int32 Now = 0;
+		TArray<int32> Fired;
+		Sim.OnDispense = [&](const FIntVector&) { Fired.Add(Now + 1); };
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:dropper[facing=east,triggered=false]")));
+		const auto Step = [&](int32 Count) { for (int32 Index = 0; Index < Count; ++Index) { Sim.Tick(); ++Now; } };
+		const auto Power = [&](bool bOn) { World.SetBlock(FIntVector(0, 1, -1), bOn ? State(TEXT("minecraft:redstone_block")) : Air); };
+		Step(3); Power(true); Step(25); Power(false); Step(5);
+		Power(true); Step(1); Power(false); Step(15);
+		Power(true); Step(3); Power(false); Step(1); Power(true); Step(20);
+		TestEqual(TEXT("dropper fires four times"), Fired.Num(), 4);
+		if (Fired.Num() == 4)
+		{
+			TestEqual(TEXT("first fire"), Fired[0], 7);
+			TestEqual(TEXT("pulse fire"), Fired[1], 37);
+			TestEqual(TEXT("fire after power dropped inside the delay"), Fired[2], 53);
+			TestEqual(TEXT("fire on the new pulse"), Fired[3], 57);
+		}
+	}
 	return true;
 }
 

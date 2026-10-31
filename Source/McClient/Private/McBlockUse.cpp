@@ -546,6 +546,11 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			{
 				TakeOne();
 				ContentsChanged(WorldActor, Pos + Step);
+				// A hopper handed an item starts its wait (reference run log_dropper1: a dropper into a hopper, the hopper sends 7 on).
+				if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Pos + Step)))
+				{
+					Receiver->Cooldown = McHopper::Cooldown;
+				}
 			}
 			return;
 		}

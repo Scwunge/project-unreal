@@ -126,7 +126,7 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		MakeWorld(World);
 		FMcSimulation Sim(World);
 		World.SetBlock(FIntVector(0, 6, 0), State(TEXT("minecraft:sand")));
-		Run(Sim, 10);
+		Run(Sim, 30);
 		TestEqual(TEXT("sand lands on the floor"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
 		TestTrue(TEXT("and leaves its place"), Registry.IsAir(World.GetBlock(FIntVector(0, 6, 0))));
 	}

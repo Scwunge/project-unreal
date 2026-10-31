@@ -39,8 +39,6 @@ public:
 	EPrecipitation GetPrecipitation(const FIntVector& Pos) const;
 	// Rain or snow is falling on Pos now: raining, nothing above, the biome has some.
 	bool IsRainingAt(const FIntVector& Pos) const;
-	// Jungles, swamps, snowy slopes, frozen and jagged peaks and mushroom fields (minecraft.wiki, "Fire"): fire spreads half as readily there.
-	bool IsHumidAt(const FIntVector& Pos) const;
 	bool IsExposedToSky(const FIntVector& Pos) const;
 
 	// Block light an estimate: sources within reach, each dimmed by distance (walls aren't counted).
@@ -62,7 +60,6 @@ private:
 	{
 		float Temperature = 0.8f;
 		bool bPrecipitation = true;
-		bool bHumid = false;
 	};
 	const FBiomeInfo& InfoAt(const FIntVector& Pos) const;
 	void NextRain();

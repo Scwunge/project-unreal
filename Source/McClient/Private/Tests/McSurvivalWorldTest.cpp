@@ -355,6 +355,22 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		for (int32 Index = 0; Index < ChainArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper chain: item %d arrives"), Index), ChainArrivals[Index], 22 + 8 * Index);
 		for (int32 Index = 0; Index < SinkArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper under a chest: item %d arrives"), Index), SinkArrivals[Index], 9 + 8 * Index);
 		TestEqual(TEXT("hopper chain: the cobblestone goes first, then the sticks"), Total(ChainEnd, TEXT("minecraft:stick")), 5);
+		// A dropper that hands a hopper an item sets its wait too: it sends on 7 ticks later (log_dropper1).
+		const FIntVector Dropper(1, 70, 9), Between(2, 70, 9), Catch(3, 70, 9);
+		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+		Blocks.SetBlock(Between, Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		Blocks.SetBlock(Catch, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Loaded = FMcBlockEntity::MakeContainer(9);
+		Loaded.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+		Chunk->SetBlockEntity(Dropper.X, Dropper.Y, Dropper.Z, Loaded);
+		Use->Dispense(*Actor, Dropper);
+		int32 Landed = 0;
+		for (int32 Step = 1; Step <= 12 && !Landed; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			Landed = Total(Catch, TEXT("minecraft:cobblestone")) > 0 ? Step : 0;
+		}
+		TestEqual(TEXT("dropper into a hopper: the item reaches the chest on the 8th tick"), Landed, 8);
 	}
 
 	const FIntVector Open(12, 64, 12);

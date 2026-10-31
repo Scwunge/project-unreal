@@ -143,3 +143,28 @@ for t in (6000, 0, 12500, 13500, 18000, 23000, 1000):
     L += cmd(f"time set {t}") + ["wait 10", "log light 3", "wait 10"] + step(24)
 write("daylight_high", L + cmd("tick unfreeze"))
 setbox("-1 -60 -1 12 -58 6")
+
+# The sea outside this area floods it; these three runs wall it in first.
+def walls():
+    return (cmd("fill -3 -62 -3 15 -49 -3 stone") + cmd("fill -3 -62 9 15 -49 9 stone") + cmd("fill -3 -62 -3 -3 -49 9 stone")
+            + cmd("fill 15 -62 -3 15 -49 9 stone") + cmd("fill -3 -49 -3 15 -49 9 stone"))
+
+# Water: a source on the floor spreading seven blocks, a wall with a gap it goes round, and a source high up falling to the floor.
+setbox("-1 -60 -1 12 -56 8")
+L = walls() + cmd("fill 6 -60 -1 6 -59 6 stone") + cmd("setblock 6 -60 3 air") + cmd("setblock 0 -60 0 water") + cmd("setblock 9 -56 7 water")
+L += step(80)
+write("water", L + cmd("tick unfreeze"))
+
+# Lava: a source alone spreading at the slower overworld rate; a source that flowing water reaches (obsidian); flowing lava
+# that meets water (cobblestone). Command-placed blocks tell no neighbours, so the meetings are made by the flows themselves.
+setbox("-1 -60 -1 12 -58 8")
+L = walls() + cmd("setblock 0 -60 0 lava") + cmd("setblock 1 -60 4 water") + cmd("setblock 6 -60 4 lava") + cmd("setblock 10 -60 1 lava") + cmd("setblock 10 -60 5 water")
+L += step(120)
+write("lava", L + cmd("tick unfreeze"))
+
+# Falling blocks: sand and gravel dropped by command from three heights onto the floor, onto a torch and into water.
+setbox("-1 -60 -1 8 -50 3")
+L = walls() + cmd("setblock 3 -60 1 torch") + cmd("setblock 5 -60 0 water") + cmd("setblock 0 -52 0 sand") + cmd("setblock 2 -56 0 gravel") + cmd("setblock 3 -57 1 sand") + cmd("setblock 5 -56 0 sand")
+L += step(40)
+write("falling", L + cmd("tick unfreeze"))
+setbox("-1 -60 -1 12 -58 6")

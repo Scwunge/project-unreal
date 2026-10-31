@@ -7,8 +7,8 @@ ref=parse(f'E:/mc-reference/run/log_rs_{name}.log','mcref')
 ours=[];cur=None
 for l in open('Saved/Remote/ours.log',encoding='utf-8',errors='ignore'):
     m=re.search(r'mcours script (\S+)',l)
-    if m: cur=m.group(1)
-    if cur==f'rs_{name}.txt' and 'mcours states:' in l:
+    if m and 'LogAutomationController' not in l: cur=m.group(1)
+    if cur==f'rs_{name}.txt' and 'mcours states:' in l and 'LogAutomationController' not in l:
         ours.append(l)
 open('Saved/Remote/ours_tmp.log','w').write(''.join(ours))
 ours=parse('Saved/Remote/ours_tmp.log','mcours')

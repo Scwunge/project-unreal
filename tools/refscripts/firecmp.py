@@ -1,8 +1,9 @@
-# Vanilla (run/log_fire3.log) and ours (Saved/Remote/fire_ours.log) block counts per row of the fire field, side by side.
-import re,collections
+# Vanilla (run/log_fire3.log, or the log named on the command line) and ours (Saved/Remote/fire_ours.log) block counts per row of the fire field, side by side.
+import re,collections,sys
+VLOG=sys.argv[1] if len(sys.argv)>1 else 'E:/mc-reference/run/log_fire3.log'
 def vanilla():
     out={}
-    rows=[l for l in open('E:/mc-reference/run/log_fire3.log',encoding='utf-8',errors='ignore') if 'mcref box' in l]
+    rows=[l for l in open(VLOG,encoding='utf-8',errors='ignore') if 'mcref box' in l]
     for i,l in enumerate(rows):
         m=re.search(r't=(\d+) \{(.*)\}',l); d=collections.Counter()
         for it in m.group(2).split(', '):

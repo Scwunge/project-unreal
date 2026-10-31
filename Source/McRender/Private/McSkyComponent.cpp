@@ -152,6 +152,13 @@ float McSky::ApplyWeatherToLight(float Factor, float Rain, float Thunder)
 void UMcSkyComponent::Flash()
 {
 	FlashTime = 0.2f;
+#if !UE_BUILD_SHIPPING
+	// Development: -McFlashHold keeps the flash lit, for a screenshot.
+	if (FParse::Param(FCommandLine::Get(), TEXT("McFlashHold")))
+	{
+		FlashTime = 1.0e6f;
+	}
+#endif
 }
 
 UMcSkyComponent::UMcSkyComponent(const FObjectInitializer& ObjectInitializer)
@@ -711,6 +718,13 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		{
 			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
 		}
+	}
+	// A lightning flash lights the scene: a pale blue light from high up, with shadows, over the sun or the moon.
+	if (Mode == EMode::Overworld && FlashTime > 0.0f)
+	{
+		SunLight->SetWorldRotation(FRotator(-75.0f, 30.0f, 0.0f));
+		SunLight->SetLightColor(FLinearColor(0.75f, 0.85f, 1.0f));
+		SunLight->SetIntensity(SunIntensity * 1.0f * FMath::Clamp(FlashTime / 0.2f, 0.0f, 1.0f));
 	}
 }
 

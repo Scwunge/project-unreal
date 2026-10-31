@@ -84,6 +84,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       cloud slabs (the volumetric clouds replace them; vanilla keeps them). Shore: `show_shore3` (sand, a flat sea level
       with the land, ripples, sunset sky). Shots go on fresh `-McWorld=` names, and the camera for a scene can be
       overridden with `-McCam=` (the sun shots show it works without a scene).
+    - Lightning (done, 2026-10-31): a flash lights the scene with a pale blue light from high up for 0.2 s, with shadows
+      (`flash_on` with `-McFlashHold -McStrike=20,-10` against `flash_off`, a night thunderstorm). The held shot used 1.5
+      times the sun's lux; the shipped value is 1.0 (not re-shot). Seen but not fixed: at night the rain streaks stay
+      bright blue (they are unlit particles), so lit rain still needs their material to take the sky factor.
     - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
       the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
       lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.

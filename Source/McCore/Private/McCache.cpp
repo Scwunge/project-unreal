@@ -1,5 +1,6 @@
 #include "McCache.h"
 #include "McCore.h"
+#include "McResourcePacks.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -31,6 +32,12 @@ namespace McCache
 
 	FString Asset(const FString& RelativePath)
 	{
+		// A resource pack that has the file wins over the cache.
+		FString FromPack;
+		if (McPacks::TryResolve(RelativePath, FromPack))
+		{
+			return FromPack;
+		}
 		return Root() / TEXT("client/assets/minecraft") / RelativePath;
 	}
 

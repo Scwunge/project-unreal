@@ -16,7 +16,8 @@ namespace McCache
 	// A file from the jar's data/minecraft/, e.g. Data("dimension_type/overworld.json").
 	MCCORE_API FString Data(const FString& RelativePath);
 
-	// A file from the jar's assets/minecraft/, e.g. Asset("blockstates/stone.json").
+	// A file from the jar's assets/minecraft/, e.g. Asset("blockstates/stone.json"). A resource pack that has the file
+	// wins (McResourcePacks.h): the path is then the pack's file, or for a zip the copy taken out into Saved/McPackCache.
 	MCCORE_API FString Asset(const FString& RelativePath);
 
 	// Reads and parses a JSON file whose top level is an object. Logs and returns null on failure.

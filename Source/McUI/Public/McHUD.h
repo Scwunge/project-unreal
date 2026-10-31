@@ -247,7 +247,17 @@ private:
 	TMap<FName, FIcon> ItemIcons;
 	TMap<FString, FIcon> BannerIcons;
 
-	TArray<uint8> GlyphWidths;
+	// One character of the font: where its picture is on a sheet (texels), how big it is drawn and how far the next one is,
+	// in GUI pixels. A space provider's character has no sprite, only an advance.
+	struct FGlyph
+	{
+		FString Sprite;
+		float U = 0, V = 0, CellWidth = 0, CellHeight = 0;
+		float DrawWidth = 0, DrawHeight = 0, OffsetY = 0;
+		float Advance = 0;
+	};
+	TMap<TCHAR, FGlyph> Glyphs;
+	const FGlyph* FindGlyph(TCHAR Char) const;
 	TArray<uint8> GalacticWidths;
 
 	TSharedPtr<FScreenState> Screen;

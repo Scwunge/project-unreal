@@ -818,7 +818,7 @@ void AMcHUD::ApplyResourcePacks()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
-	GlyphWidths.Reset();
+	Glyphs.Reset();
 	GalacticWidths.Reset();
 	if (OptionsBack == EMenu::Pause)
 	{

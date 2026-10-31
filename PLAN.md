@@ -360,7 +360,7 @@ Textures
   stretch): partly. Nine-slice borders are fixed at the vanilla sizes; `blur`/`clamp`/`hat` are not read
 - [~] `atlases/*.json`: `unstitch` and `filter` sources on the block atlas done (test PackAtlas); `paletted_permutations` and the other atlases missing
 - [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
-- [ ] `font/*.json` providers (bitmap, ttf, unihex, space, reference): missing; only the two sheets above
+- [~] `font/default.json` providers: bitmap and space providers (packs first, references, filters), any glyph incl. Greek/Cyrillic/accented; ttf, unihex, legacy_unicode and other font ids missing
 
 Models and items
 - [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's (tested)

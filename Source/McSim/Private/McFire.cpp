@@ -126,7 +126,7 @@ void FMcSimulation::TickFire(const FIntVector& Pos, FMcStateId State)
 	for (const FIntVector& Offset : Around)
 	{
 		const FIntVector At = Pos + Offset;
-		const int32 Odds = BurnOdds(World.GetBlock(At));
+		const int32 Odds = BurnOdds(World.GetBlock(At)) / (Nature->IsHumidAt(At) ? 2 : 1);
 		if (Odds > 0 && Random.RandHelper(300) < Odds)
 		{
 			const bool bFireInstead = Random.RandHelper(Age + 10) < 5 && !Nature->IsRainingAt(At);
@@ -174,8 +174,9 @@ void FMcSimulation::TickFire(const FIntVector& Pos, FMcStateId State)
 		{
 			continue;
 		}
+		// Half as likely in a humid biome (the wiki; unmeasured).
 		const int32 Degree = (Ignite + 7 * Difficulty + 40) / (Age + 30);
-		const int32 Base = Dy > 1 ? 100 * (Dy - 1) + 100 : 100;
+		const int32 Base = (Dy > 1 ? 100 * (Dy - 1) + 100 : 100) * (Nature->IsHumidAt(At) ? 2 : 1);
 		if (Degree > 0 && Random.RandHelper(Base) <= Degree)
 		{
 			TMap<FName, FName> Properties;

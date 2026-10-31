@@ -100,6 +100,8 @@ private:
 	{
 		TWeakObjectPtr<AMcWorldActor> World;
 		int32 Cooldown = 0;
+		// The order hoppers were set down in, which is the order they take their turn in each tick.
+		int64 Order = 0;
 	};
 
 	static FKey MakeKey(const AMcWorldActor& WorldActor, const FIntVector& Pos);
@@ -122,6 +124,7 @@ private:
 	TMap<FKey, FChestEntry> Chests;
 	TMap<FKey, FMachineEntry> Machines;
 	TMap<FKey, FHopperEntry> Hoppers;
+	int64 NextHopperOrder = 0;
 	TSet<TWeakObjectPtr<AMcWorldActor>> Watched;
 	float Accumulator = 0.0f;
 	int32 CleanTimer = 0;

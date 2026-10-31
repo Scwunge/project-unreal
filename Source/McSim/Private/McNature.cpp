@@ -193,6 +193,9 @@ const FMcNature::FBiomeInfo& FMcNature::InfoAt(const FIntVector& Pos) const
 	// A biome's temperature and whether anything falls from its sky are in its data file.
 	FBiomeInfo Info;
 	const FString Name = FMcBiomeRegistry::Get().GetName(Id).ToString();
+	static const TSet<FString> Humid = { TEXT("minecraft:jungle"), TEXT("minecraft:sparse_jungle"), TEXT("minecraft:bamboo_jungle"), TEXT("minecraft:swamp"),
+		TEXT("minecraft:mangrove_swamp"), TEXT("minecraft:snowy_slopes"), TEXT("minecraft:frozen_peaks"), TEXT("minecraft:jagged_peaks"), TEXT("minecraft:mushroom_fields") };
+	Info.bHumid = Humid.Contains(Name);
 	if (const TSharedPtr<FJsonObject> Object = McCache::LoadJsonObject(McCache::Data(TEXT("worldgen/biome/") + McCache::PathOf(Name) + TEXT(".json"))))
 	{
 		double Temperature = 0.8;
@@ -229,6 +232,11 @@ bool FMcNature::IsExposedToSky(const FIntVector& Pos) const
 		}
 	}
 	return true;
+}
+
+bool FMcNature::IsHumidAt(const FIntVector& Pos) const
+{
+	return InfoAt(Pos).bHumid;
 }
 
 bool FMcNature::IsRainingAt(const FIntVector& Pos) const

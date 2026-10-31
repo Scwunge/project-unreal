@@ -713,6 +713,10 @@ void FMcFeatureLibrary::SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)
 	}
 }
 
+FCriticalSection McFeatureStatsLock;
+TMap<FString, TPair<int64, int64>> McFeatureStats;
+bool bMcFeatureStatsOn = false;
+
 void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 {
 	const FIntPoint Chunk = Region.GetCentre();
@@ -774,7 +778,15 @@ bool FMcPlacedFeature::Place(FMcFeatureContext& Context, const FIntVector& Origi
 	bool bPlaced = false;
 	for (const FIntVector& Pos : Positions)
 	{
-		bPlaced |= Feature->Place(Context, Pos);
+		const bool bThis = Feature->Place(Context, Pos);
+		bPlaced |= bThis;
+		if (bMcFeatureStatsOn && !Id.IsEmpty())
+		{
+			FScopeLock Lock(&McFeatureStatsLock);
+			TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(Id, TPair<int64, int64>(0, 0));
+			Stat.Key++;
+			Stat.Value += bThis ? 1 : 0;
+		}
 	}
 	return bPlaced;
 }

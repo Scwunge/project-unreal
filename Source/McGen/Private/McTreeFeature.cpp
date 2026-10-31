@@ -6,7 +6,7 @@
 //
 // Trunk placers written: straight, forking, giant, mega_jungle, dark_oak, fancy, cherry. The others (bending,
 // upwards_branching, poplar) place a straight trunk of their height, and foliage placers we don't know (poplar)
-// a blob, so every tree type places something. Decorators written: beehive, trunk_vine, leave_vine, alter_ground.
+// a blob, so every tree type places something. Decorators written: beehive, trunk_vine, leave_vine, alter_ground, place_on_ground.
 
 #include "McFeatureTypes.h"
 #include "Dom/JsonObject.h"
@@ -29,7 +29,7 @@ namespace
 
 	enum class ETrunk : uint8 { Straight, Forking, Giant, MegaJungle, DarkOak, Fancy, Cherry };
 	enum class EFoliage : uint8 { Blob, Spruce, Pine, Acacia, Bush, RandomSpread, DarkOak, Fancy, MegaPine, Cherry, Jungle };
-	enum class EDecorator : uint8 { Beehive, TrunkVine, LeaveVine, AlterGround };
+	enum class EDecorator : uint8 { Beehive, TrunkVine, LeaveVine, AlterGround, PlaceOnGround };
 	// Which corner cells of a square layer of leaves are left out.
 	enum class ECorners : uint8 { Square, Cut, Random, Round };
 
@@ -38,6 +38,10 @@ namespace
 		EDecorator Type = EDecorator::Beehive;
 		float Probability = 1.0f;
 		TSharedPtr<const FMcStateProvider> Provider;
+		// place_on_ground: attempts, and how far each may stray from the foot (blocks sideways, blocks up or down).
+		int32 Tries = 128;
+		int32 Radius = 2;
+		int32 Height = 1;
 	};
 
 	// Where leaves attach: the cell above a branch's last log. A double one is the north-west cell of a 2x2 top.
@@ -169,8 +173,14 @@ namespace
 			{
 				TopY = FMath::Max(TopY, Log.Pos.Y);
 			}
+			// Trees with a wider trunk (several feet) skip the ring: dark forest measured 61..112 per 1000 columns, and
+			// the ring held it to 35..73.
 			for (const FIntVector& Foot : Plan.Foot)
 			{
+				if (Plan.Foot.Num() > 1)
+				{
+					break;
+				}
 				for (int32 Y = Foot.Y; Y <= TopY; ++Y)
 				{
 					for (int32 DZ = -1; DZ <= 1; ++DZ)
@@ -752,6 +762,28 @@ namespace
 				}
 				break;
 			}
+			case EDecorator::PlaceOnGround:
+			{
+				// Litter scattered round the foot: each try picks a cell within the radius and height and sets the block
+				// there if it is air with something to rest on.
+				if (!Decorator.Provider.IsValid())
+				{
+					return;
+				}
+				for (int32 Try = 0; Try < Decorator.Tries; ++Try)
+				{
+					const FIntVector At = B.Origin + FIntVector(
+						Random.NextInt(Decorator.Radius * 2 + 1) - Decorator.Radius,
+						Random.NextInt(Decorator.Height * 2 + 1) - Decorator.Height,
+						Random.NextInt(Decorator.Radius * 2 + 1) - Decorator.Radius);
+					const TOptional<FMcStateId> State = Decorator.Provider->Get(B.Region, Random, At);
+					if (State.IsSet() && B.Region.IsAir(B.Region.GetBlock(At)) && FMcBlockPredicate::CanSurvive(B.Region, At, State.GetValue()))
+					{
+						B.Region.SetBlock(At, State.GetValue());
+					}
+				}
+				break;
+			}
 			case EDecorator::AlterGround:
 			{
 				// Podzol (or whatever the provider gives) scattered over the ground around the trunk's foot.
@@ -893,9 +925,18 @@ namespace
 					Decorator.Type = EDecorator::AlterGround;
 					Decorator.Provider = FMcStateProvider::Parse(Object->TryGetField(TEXT("provider")));
 				}
+				else if (Type == TEXT("place_on_ground"))
+				{
+					Decorator.Type = EDecorator::PlaceOnGround;
+					Decorator.Provider = FMcStateProvider::Parse(Object->TryGetField(TEXT("block_state_provider")));
+					int32 Value = 0;
+					if (Object->TryGetNumberField(TEXT("tries"), Value)) Decorator.Tries = Value;
+					if (Object->TryGetNumberField(TEXT("radius"), Value)) Decorator.Radius = Value;
+					if (Object->TryGetNumberField(TEXT("height"), Value)) Decorator.Height = Value;
+				}
 				else
 				{
-					// cocoa, attached_to_leaves, attached_to_logs, place_on_ground and the rest: not written.
+					// cocoa, attached_to_leaves, attached_to_logs and the rest: not written.
 					continue;
 				}
 				Tree->Decorators.Add(Decorator);

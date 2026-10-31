@@ -1,6 +1,11 @@
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McDensityFunction.h"
+#include "McBlockShapes.h"
+#include "McBlockTags.h"
+#include "McChunk.h"
+#include "McFeature.h"
+#include "McGenRegion.h"
 #include "McNoiseGenerator.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
@@ -375,5 +380,147 @@ bool FMcClimatePointTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+// Block statistics over 5 by 5 patches of 4 by 4 chunks (patch corners 32 chunks apart from chunk -64, -64), fully
+// generated and decorated, in the form the reference client's "log stats" verb prints, for comparing worlds that
+// are not seed-matched:
+//   STATA <seed> <block> <16-block band counts from the world bottom, 24 of them>
+//   STATG <seed> <biome> <block> <columns>   the ground (top block that blocks motion, without leaves and logs)
+//   STATV <seed> <biome> <block> <count>     blocks above the ground
+//   STATC <seed> <biome> <columns>
+namespace
+{
+	bool RunWorldStats(FAutomationTestBase& Test, int32 SeedIndex)
+	{
+		FMcNoiseSettings Settings;
+		if (!Test.TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+		{
+			return false;
+		}
+		const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+		const uint64 Seed = Seeds[SeedIndex];
+		const TSharedRef<FMcNoiseGenerator> Generator = MakeShared<FMcNoiseGenerator>(Settings, Seed, TEXT("minecraft:overworld"));
+		FMcFeatureLibrary Features(Settings.SeaLevel, Settings.MinY, Settings.Height);
+		Features.LoadBiomes();
+		bMcFeatureStatsOn = true;
+		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
+		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
+		const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+		TMap<FString, TArray<int64>> Bands;
+		TMap<FString, int64> Ground, Above, Columns;
+		// Per biome and log block: trunk bases (a log with no log below it) and logs.
+		TMap<FString, TPair<int64, int64>> Trees;
+		auto NameOf = [&Blocks](FMcStateId State) { return Blocks.GetBlockOf(State).Name.ToString(); };
+		for (int32 PatchZ = 0; PatchZ < 5; ++PatchZ)
+		{
+			for (int32 PatchX = 0; PatchX < 5; ++PatchX)
+			{
+				const FIntPoint Corner(-64 + PatchX * 32, -64 + PatchZ * 32);
+				constexpr int32 Side = 6;
+				TArray<TUniquePtr<FMcChunk>> Chunks;
+				for (int32 Index = 0; Index < Side * Side; ++Index)
+				{
+					Chunks.Add(MakeUnique<FMcChunk>(FIntPoint(Corner.X - 1 + Index % Side, Corner.Y - 1 + Index / Side), Settings.MinY, Settings.Height / 16));
+					Generator->Generate(*Chunks.Last());
+				}
+				auto Around = [&](int32 CX, int32 CZ, FMcChunk** Out)
+				{
+					for (int32 Index = 0; Index < 9; ++Index)
+					{
+						Out[Index] = Chunks[(CZ - 1 + Index / 3) * Side + (CX - 1 + Index % 3)].Get();
+					}
+				};
+				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
+				{
+					for (int32 CX = 1; CX < Side - 1; ++CX)
+					{
+						FMcChunk* Nine[9];
+						Around(CX, CZ, Nine);
+						FMcGenRegion Region(FIntPoint(Corner.X - 1 + CX, Corner.Y - 1 + CZ), Nine);
+						Features.Decorate(Region, Seed);
+					}
+				}
+				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
+				{
+					for (int32 CX = 1; CX < Side - 1; ++CX)
+					{
+						FMcChunk* Nine[9];
+						Around(CX, CZ, Nine);
+						FMcGenRegion Region(FIntPoint(Corner.X - 1 + CX, Corner.Y - 1 + CZ), Nine);
+						const FMcChunk& Chunk = *Chunks[CZ * Side + CX];
+						for (int32 LZ = 0; LZ < 16; ++LZ)
+						{
+							for (int32 LX = 0; LX < 16; ++LX)
+							{
+								const int32 X = Chunk.GetPos().X * 16 + LX;
+								const int32 Z = Chunk.GetPos().Y * 16 + LZ;
+								int32 GroundY = Region.GetHeight(EMcHeightmap::OceanFloor, X, Z) - 1;
+								while (GroundY > Settings.MinY)
+								{
+									const FString Name = NameOf(Chunk.GetBlock(LX, GroundY, LZ));
+									if (Name.EndsWith(TEXT("leaves")) || Name.EndsWith(TEXT("_log")) || Name.EndsWith(TEXT("_wood")))
+									{
+										--GroundY;
+									}
+									else
+									{
+										break;
+									}
+								}
+								const FString Biome = FMcBiomeRegistry::Get().GetName(Chunk.GetBiome(LX, GroundY, LZ)).ToString();
+								Columns.FindOrAdd(Biome)++;
+								bool bLogBelow = false;
+								for (int32 Y = Settings.MinY; Y < Settings.MinY + Settings.Height; ++Y)
+								{
+									const FString Name = NameOf(Chunk.GetBlock(LX, Y, LZ));
+									const bool bLog = Name.EndsWith(TEXT("_log"));
+									if (bLog)
+									{
+										TPair<int64, int64>& Tree = Trees.FindOrAdd(FMcBiomeRegistry::Get().GetName(Chunk.GetBiome(LX, Y, LZ)).ToString() + TEXT(" ") + Name, TPair<int64, int64>(0, 0));
+										Tree.Key += bLogBelow ? 0 : 1;
+										Tree.Value++;
+									}
+									bLogBelow = bLog;
+									Bands.FindOrAdd(Name, TArray<int64>()).SetNumZeroed(24);
+									Bands[Name][(Y - Settings.MinY) >> 4]++;
+									if (Y == GroundY)
+									{
+										Ground.FindOrAdd(Biome + TEXT(" ") + Name)++;
+									}
+									else if (Y > GroundY && Name != TEXT("minecraft:air") && Name != TEXT("minecraft:cave_air"))
+									{
+										Above.FindOrAdd(Biome + TEXT(" ") + Name)++;
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		for (const TPair<FString, TArray<int64>>& Pair : Bands)
+		{
+			FString Row;
+			for (const int64 Count : Pair.Value)
+			{
+				Row += FString::Printf(TEXT(" %lld"), Count);
+			}
+			Test.AddInfo(FString::Printf(TEXT("STATA %d %s%s"), SeedIndex, *Pair.Key, *Row));
+		}
+		for (const TPair<FString, int64>& Pair : Ground) { Test.AddInfo(FString::Printf(TEXT("STATG %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
+		for (const TPair<FString, int64>& Pair : Above) { Test.AddInfo(FString::Printf(TEXT("STATV %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
+		for (const TPair<FString, TPair<int64, int64>>& Pair : Trees) { Test.AddInfo(FString::Printf(TEXT("STATT %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
+		for (const TPair<FString, TPair<int64, int64>>& Pair : McFeatureStats) { Test.AddInfo(FString::Printf(TEXT("STATF %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
+		for (const TPair<FString, int64>& Pair : Columns) { Test.AddInfo(FString::Printf(TEXT("STATC %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
+		return true;
+	}
+}
+
+#define MC_WORLD_STATS_TEST(Index) 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcWorldStats##Index##Test, "McClient.McGen.WorldStats" #Index, 		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter) 	bool FMcWorldStats##Index##Test::RunTest(const FString& Parameters) { return RunWorldStats(*this, Index); }
+MC_WORLD_STATS_TEST(0)
+MC_WORLD_STATS_TEST(1)
+MC_WORLD_STATS_TEST(2)
+MC_WORLD_STATS_TEST(3)
+MC_WORLD_STATS_TEST(4)
 
 #endif

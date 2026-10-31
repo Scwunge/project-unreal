@@ -61,6 +61,13 @@ public:
 	bool Place(FMcFeatureContext& Context, const FIntVector& Origin) const;
 };
 
+// Placement counts per named placed feature: how many positions were tried (after the placement modifiers) and how many placed something.
+MCGEN_API extern FCriticalSection McFeatureStatsLock;
+MCGEN_API extern TMap<FString, TPair<int64, int64>> McFeatureStats;
+
+// Off unless a test turns it on.
+MCGEN_API extern bool bMcFeatureStatsOn;
+
 // Parses and keeps configured and placed features by id, and decorates chunks with the features their biomes
 // list. Load on the game thread (it reads files and the registries); after LoadBiomes it is read only, so
 // worker threads may decorate with one library.

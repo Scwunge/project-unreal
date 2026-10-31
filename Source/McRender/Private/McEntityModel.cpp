@@ -230,7 +230,10 @@ namespace McEntityModel
 					{
 						Part.Boxes.Reset();
 						Part.Boxes.Add(Box(0, 0, -4, 0, -4, 8, 10, 8));
-						Part.Boxes.Add(Box(24, 0, -1, -1, 4, 2, 4, 2));
+						FBox Nose = Box(24, 0, -1, -1, 4, 2, 4, 2);
+						Nose.BoxPivot = FVector(0, 2, 0);
+						Nose.bNoseWobble = true;
+						Part.Boxes.Add(Nose);
 						// The hat bends: the brim, then three cones each on the last, every one turned about its own pivot (the
 						// pivots and turns are the vanilla model's as logged, x and y offsets in its own frame: y down, z south).
 						const auto Turn = [](float Pitch, float Roll) { return FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch); };
@@ -902,7 +905,15 @@ namespace McEntityModel
 					AddFlat(Box, Rotation, Part.Pivot, Anim.BodyYaw, Anim.Hurt, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 					continue;
 				}
-				AddBox(Box, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
+				FBox Drawn = Box;
+				if (Box.bNoseWobble)
+				{
+					// Measured from the logged model: a smooth circle, 0.0785 radians about x and 0.0436 about z (its sign flipped here),
+					// a quarter of a cycle apart, 0.0898 radians a tick.
+					const float Angle = Anim.Age * 20.0f * 0.0898f; // Age is in seconds
+					Drawn.BoxRotation = FQuat(FVector::ZAxisVector, -0.0436f * FMath::Cos(Angle)) * FQuat(FVector::XAxisVector, 0.0785f * FMath::Sin(Angle));
+				}
+				AddBox(Drawn, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 			}
 		}
 		if (((Model.TintedLayers >> Layer) & 1u) != 0)

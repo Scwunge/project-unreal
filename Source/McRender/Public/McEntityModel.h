@@ -57,6 +57,8 @@ namespace McEntityModel
 		// four pieces, each on the last.
 		FVector BoxPivot = FVector::ZeroVector;
 		FQuat BoxRotation = FQuat::Identity;
+		// A witch's nose turns in a slow circle about BoxPivot with the mob's age (see Build).
+		bool bNoseWobble = false;
 	};
 
 	struct FPart

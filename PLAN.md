@@ -460,8 +460,9 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
           horn tilt 1.0996 (63 degrees) is the logged value, leg pivots match, head and body within about 1 px. Left: stun and roar poses; our jaw hangs
           about 1 px lower than vanilla's closed mouth (logged mouth turn 0.031). Shots need the `rotations` scene: in `-McFlat` an extra mob stands at the camera.
     - [ ] Vex: wing roll (0.7 + sin(40 t) x 0.5), body lean, charging pose, arm raise.
-    - [ ] Witch: hat bend stack DONE (logged pivots and turns, matches vanilla shots). Left: nose wobble (xRot 0.078, zRot +-0.04), mole,
-          drinking arm.
+    - [ ] Witch: hat bend stack DONE (logged pivots and turns, matches vanilla shots). Left: nose wobble (logged: a smooth circle, xRot 0.0785 sin(0.0898 t) and
+          zRot 0.0436 cos(0.0898 t), t in ticks from an unknown phase; about 0.3 px at the nose tip, so not worth a per-box animation yet), mole,
+          drinking arm (needs a vanilla witch caught mid-drink to log).
     - [ ] Horse (and donkey, mule, llama, trader llama): body, neck tilt, head, tail, leg pivots, rear-up; saddle and armour layers.
     - [ ] Iron golem: arm pivot, leg swing cap (`MaxLimbSwing` 0.5), offering-poppy arm, cracks layer.
     - [ ] Enderman (leg swing cap 0.4, arms), skeleton, creeper (swell shake 1 + sin(100 s) s 0.01), spider (leg yaw 0.4, roll 0.4, rate 1.3324).

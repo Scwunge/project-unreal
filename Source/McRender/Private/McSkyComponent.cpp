@@ -777,6 +777,7 @@ void UMcSkyComponent::UpdateDome(double Ticks)
 	TArray<FVector> Normals;
 	TArray<FVector2D> UV0;
 	TArray<FColor> Colours;
+	TArray<FColor> SkirtColours;
 	Positions.Reserve(DomeDirections.Num());
 	Normals.Reserve(DomeDirections.Num());
 	UV0.Reserve(DomeDirections.Num());
@@ -805,6 +806,13 @@ void UMcSkyComponent::UpdateDome(double Ticks)
 			}
 		}
 		Colours.Add(ToDisplayColor(Colour));
+		// The skirt under the physical sky takes the dusk glow all the way round, as the atmosphere's horizon does.
+		FLinearColor Under = Colour;
+		if (bHasGlow)
+		{
+			Under = FMath::Lerp(Colour, FLinearColor(Glow.R, Glow.G, Glow.B, 1.0f), Glow.A * 0.7f * FMath::Clamp(1.0f - FMath::Abs(Dir.Y) / 0.45f, 0.0f, 1.0f));
+		}
+		SkirtColours.Add(ToDisplayColor(Under));
 	}
 	TArray<FVector2D> Zero;
 	Zero.Init(FVector2D::ZeroVector, Positions.Num());
@@ -815,7 +823,7 @@ void UMcSkyComponent::UpdateDome(double Ticks)
 		const int32 SkirtVertices = (DomeRings / 2 + 1) * (DomeSegments + 1);
 		Skirt->UpdateMeshSection(0, TArray<FVector>(Positions.GetData(), SkirtVertices), TArray<FVector>(Normals.GetData(), SkirtVertices),
 			TArray<FVector2D>(UV0.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices),
-			TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FColor>(Colours.GetData(), SkirtVertices), NoTangents);
+			TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FColor>(SkirtColours.GetData(), SkirtVertices), NoTangents);
 	}
 }
 

@@ -70,6 +70,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       under a roof in the Overworld the exposure rises up to 1.5 stops over a second or two and falls back outdoors.
       Scene `tools/scenes/cave.json`, shot `cave_unreal`. Depth of field is left off on purpose (it softens voxel
       edges); `r.DepthOfFieldQuality` is still set at Ultra if it is ever enabled in the post settings.
+    - Vanilla-look check (2026-10-31): a baseline built from dfe04f8 (before the Unreal Mode work) against this branch, Unreal
+      Mode off, on fresh worlds: the cave scene differs by 9 pixels (the torch flame), the village scene only where mobs
+      stand; terrain, sky and HUD are identical. Daylight Unreal shot `day_noon` shows no exposure regression.
+    - Showcase scenes (`tools/scenes/forest.json`, `shore.json`, `village.json`; shots `show_forest` at sunset, `show_village`
+      at night): the forest and village read well. The shore (`show_shore2`) does not yet: the sea is a raised block basin,
+      so it reads as a dark wall; use a generated ocean for that shot. Shots need a fresh `-McWorld=` name per scene: a
+      world keeps the blocks of scenes placed in it before. `-McCam` did not change the view of `-McScene=unreal` (the scene's
+      camera wins), so the sun disc facing the sun is still unchecked.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

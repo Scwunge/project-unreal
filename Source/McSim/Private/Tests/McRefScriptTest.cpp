@@ -106,6 +106,10 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			{
 				Sim.UseBlock(FIntVector(FCString::Atoi(*P[1]), FCString::Atoi(*P[2]) + Lift, FCString::Atoi(*P[3])), 0.0f);
 			}
+			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && P[1] == TEXT("weather"))
+			{
+				Sim.SetWeather(P[2] == TEXT("thunder") ? EMcWeather::Thunder : P[2] == TEXT("rain") ? EMcWeather::Rain : EMcWeather::Clear, P.Num() > 3 ? FCString::Atoi(*P[3]) : 0);
+			}
 			else if (P.Num() == 4 && P[0] == TEXT("cmd") && P[1] == TEXT("time") && P[2] == TEXT("set"))
 			{
 				Sim.SetDayTime(FCString::Atoi64(*P[3]));

@@ -168,3 +168,18 @@ L = walls() + cmd("setblock 3 -60 1 torch") + cmd("setblock 5 -60 0 water") + cm
 L += step(40)
 write("falling", L + cmd("tick unfreeze"))
 setbox("-1 -60 -1 12 -58 6")
+
+# Daylight detectors under weather: high up so nothing shades them, at noon and mid-afternoon; clear, then rain, thunder
+# and clear again, one tick at a time. Rain and thunder take 100 ticks to come on and go off, and the detectors read
+# the sky every 20 ticks.
+setbox("-1 200 -1 3 203 1")
+L = cmd("tp @s 0.5 201 0.5") + ["wait 60"] + cmd("weather clear 1000000") + cmd("time set 6000") + cmd("fill -2 200 -2 4 319 2 air") + cmd("setblock 0 200 0 stone") + cmd("setblock 2 200 0 stone")
+L += cmd("setblock 0 201 0 daylight_detector[inverted=false,power=0]") + cmd("setblock 2 201 0 daylight_detector[inverted=true,power=0]") + cmd("tick step 1500") + ["wait 40"]
+L += step(25)
+for kind in ("rain", "thunder", "clear"):
+    L += cmd(f"weather {kind} 1000000") + step(130)
+L += cmd("time set 3000") + step(25)
+for kind in ("rain", "clear"):
+    L += cmd(f"weather {kind} 1000000") + step(130)
+write("daylight_weather", L + cmd("tick unfreeze"))
+setbox("-1 -60 -1 12 -58 6")

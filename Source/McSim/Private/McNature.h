@@ -76,6 +76,9 @@ private:
 	bool bWeatherCycle = true;
 	bool bRaining = false;
 	bool bThundering = false;
+	// How much rain and thunder the sky shows, 0 to 1: they follow the flags by 0.01 a tick.
+	float RainLevel = 0.0f;
+	float ThunderLevel = 0.0f;
 	int32 RainTime = 0;
 	int32 ThunderTime = 0;
 	int32 SnowAccumulation = 1;

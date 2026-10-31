@@ -112,6 +112,9 @@ void FMcNature::NextThunder()
 
 void FMcNature::Tick()
 {
+	// Rain and thunder come on and go off over 100 ticks, 0.01 a tick (the reference client's detector series, rs_daylight_weather, agrees within one 20-tick step except the thunder onset and recovery, cause not found; its expect file is held back in tools/refscripts/expect_pending_*).
+	RainLevel = FMath::Clamp(RainLevel + (bRaining ? 0.01f : -0.01f), 0.0f, 1.0f);
+	ThunderLevel = FMath::Clamp(ThunderLevel + (bThundering ? 0.01f : -0.01f), 0.0f, 1.0f);
 	if (!bWeatherCycle)
 	{
 		return;
@@ -155,14 +158,8 @@ int32 FMcNature::GetSunLight() const
 	// 0.505 is a fit: it keeps the wiki's daylight detector table within a tick at its steps and the reference client's inverted detector right at 7 times of day (0.5 is 1 off at tick 13500).
 	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.505);
 	Level = 1.0 - FMath::Clamp(Level, 0.0, 1.0);
-	if (bRaining)
-	{
-		Level *= 1.0 - 5.0 / 16.0;
-		if (bThundering)
-		{
-			Level *= 1.0 - 5.0 / 16.0;
-		}
-	}
+	Level *= 1.0 - RainLevel * 5.0 / 16.0;
+	Level *= 1.0 - ThunderLevel * RainLevel * 5.0 / 16.0;
 	return 15 - static_cast<int32>((1.0 - Level) * 11.0);
 }
 

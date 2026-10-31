@@ -161,6 +161,30 @@ namespace
 					return false;
 				}
 			}
+			// A tree keeps off other trunks: the ring of columns around each foot has to be free up to the trunk's top.
+			// Fitted to the reference client's trunk density per forest column (about 29 per 1000, against twice that
+			// without the ring); the radius is the one-block ring, not read from any data file.
+			int32 TopY = MIN_int32;
+			for (const FLog& Log : Plan.Logs)
+			{
+				TopY = FMath::Max(TopY, Log.Pos.Y);
+			}
+			for (const FIntVector& Foot : Plan.Foot)
+			{
+				for (int32 Y = Foot.Y; Y <= TopY; ++Y)
+				{
+					for (int32 DZ = -1; DZ <= 1; ++DZ)
+					{
+						for (int32 DX = -1; DX <= 1; ++DX)
+						{
+							if (!IsFree(B.Region, B.Region.GetBlock(FIntVector(Foot.X + DX, Y, Foot.Z + DZ))))
+							{
+								return false;
+							}
+						}
+					}
+				}
+			}
 
 			if (BelowProvider.IsValid())
 			{

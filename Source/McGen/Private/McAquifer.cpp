@@ -10,6 +10,10 @@ namespace
 	constexpr int32 LavaLevel = -54;
 	// Aquifers deeper than this may hold lava.
 	constexpr int32 LavaAquiferTop = -10;
+	// Scale on the floodedness noise. The wiki's thresholds read against the noise's documented amplitude flood too
+	// much underground: measured on the reference client (5 worlds, 25 patches each), water in caves at y -64 to -33
+	// is 0.01 to 0.13% of the volume and the deep lava 0.67%; at 1.0 we had 0.57% water, at 0.5 0.09%.
+	constexpr double FloodScale = 0.5;
 	// Squared distances closer than this to the nearest centre's count as a boundary.
 	constexpr int32 BoundaryDistance = 25;
 
@@ -118,7 +122,7 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 	{
 		Context.SetPos(Centre.X, Centre.Y, Centre.Z);
 		const bool bExcluded = Exclusion != INDEX_NONE && Graph->Evaluate(Exclusion, Context) > 0.0;
-		const double Flood = FMath::Clamp(Graph->Evaluate(Floodedness, Context), -1.0, 1.0);
+		const double Flood = FMath::Clamp(Graph->Evaluate(Floodedness, Context) * FloodScale, -1.0, 1.0);
 		double Full = 0.8;
 		double Partial = 0.4;
 		if (OwnSurface < SeaLevel)
@@ -173,6 +177,11 @@ FMcStateId FMcAquifer::FluidAt(const FStatus& Status, int32 Y) const
 	if (Status.bGlobal)
 	{
 		return GlobalAt(Y);
+	}
+	// A dry cell below the lava level holds lava too (measured: caves at y -64 to -49 are 0.67% lava, 1.69% air).
+	if (Status.Level == MIN_int32 && Y < LavaLevel)
+	{
+		return Lava;
 	}
 	return Y < Status.Level ? Status.Fluid : Air;
 }

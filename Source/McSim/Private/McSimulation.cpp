@@ -177,6 +177,19 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 		}
 		return;
 	case EMcFluid::Lava:
+		// Lava that water touches (beside or above) hardens at once when the water arrives, not on its own next tick:
+		// a source into obsidian, flowing lava into cobblestone (rs_lava).
+		if (IsFluidBlock(State))
+		{
+			for (const FIntVector& Offset : { Sides[0], Sides[1], Sides[2], Sides[3], Up })
+			{
+				if (FluidOf(World.GetBlock(Pos + Offset)) == EMcFluid::Water)
+				{
+					World.SetBlock(Pos, StateOf(LevelOf(State) == 0 ? TEXT("minecraft:obsidian") : TEXT("minecraft:cobblestone")));
+					return;
+				}
+			}
+		}
 		ScheduleTick(Pos, LavaDelay);
 		return;
 	default:

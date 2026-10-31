@@ -104,6 +104,14 @@ private:
 	int32 DebugSky = 0;
 	int32 DebugBlockLight = 0;
 	FString DebugBiome;
+	// The screen's edge darkening: its strength eases towards what the light at the eyes asks for. The light is
+	// worked out twice a second.
+	float VignetteStrength = -1.0f;
+	double VignetteLightTime = -10.0;
+	double VignetteLastTime = 0.0;
+	float VignetteEyeLight = 15.0f;
+	float GetEyeLight(const class AMcPlayerPawn& Player);
+	float StepVignette(const class AMcPlayerPawn& Player);
 	float DebugDelta = 0.016f;
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);

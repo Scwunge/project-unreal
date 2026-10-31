@@ -1431,7 +1431,7 @@ void AMcHUD::DrawHUD()
 		if (UTexture2D* Vignette = LoadVignette())
 		{
 			DrawRegion(Vignette, 0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height), 0.0f, 0.0f, 256.0f, 256.0f,
-				FLinearColor(1.0f, 1.0f, 1.0f, McGui::GetVignetteStrength(McSky::GetSkyLightFactor())));
+				FLinearColor(1.0f, 1.0f, 1.0f, Player ? StepVignette(*Player) : 0.0f));
 		}
 	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
@@ -1607,6 +1607,47 @@ void AMcHUD::DrawChatInput(int32 Width, int32 Height)
 	}
 	const bool bCaret = FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3;
 	DrawGuiText(bCaret ? Shown + TEXT("_") : Shown, 4.0f, Height - 12.0f, 0xFFFFFF, true);
+}
+
+// ---- The vignette ----
+
+float AMcHUD::GetEyeLight(const AMcPlayerPawn& Player)
+{
+	const double Now = FPlatformTime::Seconds();
+	if (Now - VignetteLightTime < 0.5)
+	{
+		return VignetteEyeLight;
+	}
+	VignetteLightTime = Now;
+	const FVector Feet = Player.GetFeetPosition();
+	const FIntVector Eye(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y + 1.62), FMath::FloorToInt32(Feet.Z));
+	const FMcBlockWorld* World = Player.GetBlockWorld();
+	const FIntPoint Chunk(McCoords::BlockToChunk(Eye.X), McCoords::BlockToChunk(Eye.Z));
+	if (World && World->HasChunk(Chunk))
+	{
+		static TSharedPtr<const FMcLightPalette> Palette;
+		if (!Palette.IsValid())
+		{
+			Palette = FMcLightPalette::Build();
+		}
+		FMcLightRegion Region = FMcLightRegion::Capture(*World, Chunk);
+		Region.Compute(*Palette);
+		const int32 X = Eye.X - (Chunk.X - 1) * 16;
+		const int32 Z = Eye.Z - (Chunk.Y - 1) * 16;
+		// The sky's light counts as much as the day lets through (the night's is a fraction of it).
+		VignetteEyeLight = FMath::Max<float>(Region.GetBlockLight(X, Eye.Y, Z), Region.GetSkyLight(X, Eye.Y, Z) * McSky::GetSkyLightFactor());
+	}
+	return VignetteEyeLight;
+}
+
+float AMcHUD::StepVignette(const AMcPlayerPawn& Player)
+{
+	const double Now = FPlatformTime::Seconds();
+	const float Target = McGui::GetVignetteTarget(GetEyeLight(Player));
+	// The first frame starts at its target; after that the strength eases a little each game tick (20 a second).
+	VignetteStrength = VignetteStrength < 0.0f ? Target : McGui::EaseVignette(VignetteStrength, Target, static_cast<float>((Now - VignetteLastTime) * 20.0));
+	VignetteLastTime = Now;
+	return VignetteStrength;
 }
 
 // ---- F3 ----

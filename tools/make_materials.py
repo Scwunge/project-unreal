@@ -240,7 +240,9 @@ LIT_EMISSIVE_KINDS_HLSL = KIND_HLSL + """
 float2 l = saturate(Light.xy);
 float2 b = l / (4.0 - 3.0 * l);
 float3 sky = pow(b.x * SkyFactor, 2.2) * float3(0.55, 0.65, 0.85) * Ambient;
-float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow;
+// Torch light breathes a little, each place out of step with the next.
+float flick = 1.0 + 0.07 * sin(Time * 9.0 + Pos.x * 0.004 + Pos.y * 0.003) * sin(Time * 5.3 + Pos.y * 0.004 - Pos.x * 0.002);
+float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow * lerp(1.0, flick, saturate(b.y * 1.5 - b.x * 0.5));
 float3 e = Albedo * (sky + glow);
 if (k == 2.0)
 {

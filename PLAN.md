@@ -59,8 +59,12 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     - Quality presets (done, 2026-10-31): Options has Quality Low, Medium, High, Ultra (saved in options.json; `-McQuality=N`
       to test) and an FPS counter (`stat fps`; `-McFps`). Presets set render scale (70, 85, 100, 100 percent with TSR),
       Lumen probe density and reflections, virtual shadow detail, volumetric fog, bloom, DoF and motion-blur quality, only
-      while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Not yet measured: the 1070's fps at Medium (the stat fps text
-      is not in screenshots; read it in a live window), and which cvars matter most.
+      while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Measured on the 1070 (720p, the unreal scene, one frame
+      before the shot, logged by `-McShot`): Medium 100 fps, High 95 fps. The scene is tiny; measure a forest later.
+    - Torch flicker (done, 2026-10-31): block light in the lit and HD materials breathes by about 7 percent, out of step
+      from place to place. Shot: `torch_night`. Not fixed: the dark strip at the horizon of the atmosphere sky (setting
+      the atmosphere's ground albedo did not change it; the strip sits where the loaded terrain ends, so try fogging
+      the edge with the fog colour).
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

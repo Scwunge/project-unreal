@@ -857,7 +857,7 @@ void AMcPlayerController::StartDevScreenshot()
 			GetWorldTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot, Waited]() { (*TakeShot)(Waited + 1); }), 1.0f, false);
 			return;
 		}
-		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
+		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001));
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()

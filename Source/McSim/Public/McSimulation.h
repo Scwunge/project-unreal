@@ -86,6 +86,13 @@ public:
 	TFunction<void(const FIntVector&)> OnDispense;
 	// The bell at Pos was rung by redstone, as if struck on Side (McBell's numbering): it swings for every viewer.
 	TFunction<void(const FIntVector&, int32)> OnBellRung;
+	// An awake conduit at Pos looks round, every ConduitPeriod ticks: players within Range blocks of its middle who
+	// are in water or rain get Conduit Power for ConduitPowerTicks. Hunting: it has the whole frame of 42.
+	TFunction<void(const FIntVector&, int32 Range, bool bHunting)> OnConduitPulse;
+	// Measured in vanilla (conduit_log): the conduit wakes, sleeps and refreshes the effect only on a check every 40
+	// ticks, and the effect is seen at 259 the tick after it is given.
+	static constexpr int32 ConduitPeriod = 40;
+	static constexpr int32 ConduitPowerTicks = 260;
 
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
@@ -109,6 +116,7 @@ private:
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
+	void TickConduit(const FIntVector& Pos);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);

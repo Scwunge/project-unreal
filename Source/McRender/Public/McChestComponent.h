@@ -103,6 +103,7 @@ private:
 		FRandomStream BookRandom;
 		// A conduit: whether it was awake when last looked at, and how long until it is looked at again.
 		bool bAwake = false;
+		bool bHunting = false;
 		float UntilCheck = 0.0f;
 		FIntVector Partner = FIntVector::ZeroValue;
 		// A bell: the side it was last struck on, and seconds since (negative for never).

@@ -4,6 +4,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McConduit.h"
 #include "McNature.h"
 #include "McRedstone.h"
 #include "McSim.h"
@@ -158,6 +159,12 @@ int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
 void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
 	Redstone->OnBlockChanged(Pos, State);
+	// A conduit placed in a ready frame wakes at once, its round of checks counted from then (vanilla's was awake 5
+	// ticks after it was set, conduit_rain).
+	if (McConduit::IsConduit(State))
+	{
+		ScheduleTick(Pos, 1);
+	}
 	Notify(Pos);
 	for (const FIntVector& Offset : Around)
 	{
@@ -168,6 +175,12 @@ void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 void FMcSimulation::Notify(const FIntVector& Pos)
 {
 	const FMcStateId State = World.GetBlock(Pos);
+	// A conduit keeps its own 40 tick round of checks going from when it is placed (it holds water, so before fluids).
+	if (McConduit::IsConduit(State))
+	{
+		ScheduleTick(Pos, ConduitPeriod);
+		return;
+	}
 	switch (FluidOf(State))
 	{
 	case EMcFluid::Water:
@@ -245,7 +258,11 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	{
 		return;
 	}
-	if (FluidOf(State) != EMcFluid::None)
+	if (McConduit::IsConduit(State))
+	{
+		TickConduit(Pos);
+	}
+	else if (FluidOf(State) != EMcFluid::None)
 	{
 		TickFluid(Pos, State);
 	}
@@ -264,6 +281,16 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	else
 	{
 		TickSupport(Pos, State);
+	}
+}
+
+void FMcSimulation::TickConduit(const FIntVector& Pos)
+{
+	ScheduleTick(Pos, ConduitPeriod);
+	if (OnConduitPulse && McConduit::IsActive(World, Pos))
+	{
+		const int32 Frame = McConduit::CountFrame(World, Pos);
+		OnConduitPulse(Pos, McConduit::GetRange(Frame), Frame == McConduit::GetFramePlaces().Num());
 	}
 }
 

@@ -82,6 +82,8 @@ private:
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
 	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
+	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);
 	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
 	void SetUpWorld(AMcWorldActor& World);
 	// Every player with a pawn; called whenever the world saves.

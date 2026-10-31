@@ -266,7 +266,8 @@ namespace McSurvival
 		}
 
 		// Breath: 1 a tick under water, and each time it runs 20 ticks past empty, 2 damage; 4 a tick back in the air.
-		if (Environment.bHeadInWater)
+		// Water Breathing and Conduit Power fill it under water too (minecraft.wiki, "Conduit Power").
+		if (Environment.bHeadInWater && !McEffects::Find(Stats, TEXT("water_breathing")) && !McEffects::Find(Stats, TEXT("conduit_power")))
 		{
 			if (--Stats.Air <= -20)
 			{

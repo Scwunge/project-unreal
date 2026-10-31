@@ -239,10 +239,20 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     A worn dragon head stands 5% narrower and 15% shorter (top to lip) than vanilla's from the front
     (sc_wear_dragon_head against ref_wh_dragon), so not a plain scale: likely its snout's offset or pitch, to be
     measured side on. Zombie, pumpkin and bare heads match to the pixel.
+    Conduit: the cage's turn and tilt, the eye's bob and the wind shells are still guesses; the logged rotation field
+    goes 0.0375 a tick while awake and stops while asleep (conduit_log), but how the renderer turns that into the
+    cage's angle needs frame shots. Hunting conduits don't attack mobs yet (minecraft.wiki: 4 damage every 2 seconds to
+    one hostile mob within 8 blocks in water or rain).
     For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
     (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
   - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
     McRedstone's `Bell` kind (below) are already in; further block-entity redstone input gets a hook here first.
+  - **Conduit Power, measured** (2026-10-30): mc-reference's `log conduit x y z ticks` prints the player's effect and
+    the conduit's state each tick (scripts `conduit_log.txt`, `conduit_rain.txt`). A conduit checks itself every 40
+    ticks (and just after it is set): awake, it gives Conduit Power for 260 ticks to players within 16 blocks per whole
+    7 of frame (given at 31 with 16 frame blocks, not at 33) who are in water or out in the rain; it wakes and sleeps
+    only on those checks, and hunts (the eye opens) with all 42. The effect keeps the player's breath full and digs as
+    Haste I (minecraft.wiki). Conduits in chunks loaded from disk start checking when a block beside them changes.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

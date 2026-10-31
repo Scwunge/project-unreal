@@ -481,11 +481,17 @@ namespace McEntityModel
 				FModel Cage;
 				Cage.Kind = FName(TEXT("mc:conduit/cage"));
 				Cage.TextureSize = FIntPoint(32, 16);
-				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/open_eye.png") };
+				// The eye is shut while the conduit is awake, and opens when it hunts, with the whole frame (vanilla's
+				// hunting flag comes on with the 42nd frame block, conduit_log; minecraft.wiki: "an orange iris").
+				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png") };
 				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16) };
 				Cage.Parts.Add(Part(ERole::ConduitCage, FVector::ZeroVector, { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
 				Cage.Parts.Add(Part(ERole::ConduitEye, FVector::ZeroVector, { Box(0, 0, -4, -4, 0, 8, 8, 0) }, 0, 0, 0, 0, 1));
 				Models.Add(Cage.Kind, Cage);
+				FModel Hunting = Cage;
+				Hunting.Kind = FName(TEXT("mc:conduit/hunting"));
+				Hunting.Textures[1] = TEXT("conduit/open_eye.png");
+				Models.Add(Hunting.Kind, Hunting);
 			}
 			return Models;
 		}

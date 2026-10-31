@@ -22,4 +22,7 @@ namespace McConduit
 	MCWORLD_API int32 CountFrame(const FMcBlockWorld& World, const FIntVector& Pos);
 	// Whether the conduit at Pos is awake: waterlogged, water all round, and enough frame.
 	MCWORLD_API bool IsActive(const FMcBlockWorld& World, const FIntVector& Pos);
+	// How far Conduit Power reaches, a sphere about the conduit's middle: 16 blocks for every whole 7 of frame
+	// (minecraft.wiki), so 32 to 96. Vanilla gives it at 31 blocks with 16 frame blocks and not at 33 (conduit_log).
+	inline int32 GetRange(int32 Frame) { return Frame / 7 * 16; }
 }

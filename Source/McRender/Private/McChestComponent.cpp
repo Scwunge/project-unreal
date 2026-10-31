@@ -519,10 +519,12 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			{
 				Conduit->UntilCheck = 0.5f;
 				const bool bAwake = McConduit::IsActive(*World, Pair.Key);
-				if (bAwake != Conduit->bAwake)
+				const bool bHunting = bAwake && McConduit::CountFrame(*World, Pair.Key) == McConduit::GetFramePlaces().Num();
+				if (bAwake != Conduit->bAwake || bHunting != Conduit->bHunting)
 				{
 					Conduit->bAwake = bAwake;
-					Pair.Value->SetKind(FName(bAwake ? TEXT("mc:conduit/cage") : TEXT("mc:conduit/shell")), NAME_None, 0);
+					Conduit->bHunting = bHunting;
+					Pair.Value->SetKind(FName(bHunting ? TEXT("mc:conduit/hunting") : bAwake ? TEXT("mc:conduit/cage") : TEXT("mc:conduit/shell")), NAME_None, 0);
 				}
 			}
 			// The eye looks at the player.

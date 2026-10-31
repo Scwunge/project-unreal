@@ -23,6 +23,7 @@
 #include "McLang.h"
 #include "McSurvival.h"
 #include "McEffects.h"
+#include "McSimulation.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -147,6 +148,16 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 			if (const AMcWorldActor* Here = Weak.Get())
 			{
 				HurtPlayerNear(*Here, Position, Damage);
+			}
+		};
+	}
+	if (FMcSimulation* Sim = World.GetSimulation())
+	{
+		Sim->OnConduitPulse = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FIntVector& Pos, int32 Range, bool bHunting)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				GiveConduitPower(*Here, FVector(Pos) + FVector(0.5), Range);
 			}
 		};
 	}
@@ -639,6 +650,31 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	{
 		// The mob that bit is at Position: the player is knocked away from it.
 		Nearest->ServerHurt(Damage, McSurvival::EDamage::Mob, &Position);
+	}
+}
+
+void AMcGameMode::GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range)
+{
+	const FMcSimulation* Sim = World.GetSimulation();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (!McPawn || !McPawn->Data || FVector::DistSquared(McPawn->GetFeetPosition(), Middle) > FMath::Square(double(Range)))
+		{
+			continue;
+		}
+		// Only players in water or out in the rain (minecraft.wiki).
+		const FVector Feet = McPawn->GetFeetPosition();
+		const FIntVector Block(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+		if (McPawn->GetBody().bInWater || (Sim && Sim->IsRainingAt(Block)))
+		{
+			McEffects::Add(McPawn->Data->Stats, TEXT("conduit_power"), 0, FMcSimulation::ConduitPowerTicks);
+		}
 	}
 }
 

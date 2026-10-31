@@ -26,6 +26,9 @@ struct MCUI_API FMcClientOptions
 	bool bEnhancedGraphics = false;
 	// HD Textures, on top of Unreal Mode.
 	bool bHdTextures = false;
+	// Unreal Mode's quality, 0 Low to 3 Ultra, and the frames-per-second readout.
+	int32 Quality = 2;
+	bool bShowFps = false;
 	// The video, mouse and sound settings of the Options screen. Field of View is in degrees (30 to 110), render
 	// distance in chunks (2 to 32), sensitivity a fraction of the default (0 to 2) and volume 0 to 1.
 	float FieldOfView = 70.0f;

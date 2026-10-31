@@ -21,6 +21,16 @@ namespace
 		return bHd ? HdTwins : Twins;
 	}
 
+	int32 GQuality = 2;
+
+	void SetConsoleFloat(const TCHAR* Name, float Value)
+	{
+		if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			Variable->Set(Value, ECVF_SetByCode);
+		}
+	}
+
 	void SetConsoleVariable(const TCHAR* Name, int32 Value)
 	{
 		if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name))
@@ -29,6 +39,8 @@ namespace
 		}
 	}
 }
+
+static void ApplyQuality();
 
 bool McRenderMode::IsEnhanced()
 {
@@ -45,7 +57,46 @@ void McRenderMode::SetEnhanced(bool bEnhanced)
 	++GGeneration;
 	// The project turns virtual shadow maps off for the vanilla look, which casts no shadows at all.
 	SetConsoleVariable(TEXT("r.Shadow.Virtual.Enable"), bEnhanced ? 1 : 0);
+	ApplyQuality();
 	UE_LOG(LogMcRender, Log, TEXT("Graphics: %s"), bEnhanced ? TEXT("enhanced") : TEXT("vanilla"));
+}
+
+// Quality presets are listed Low to Ultra. Vanilla (Unreal Mode off) goes back to the plain full-scale picture.
+static void ApplyQuality()
+{
+	struct FPreset { float Scale; int32 Probe; int32 Reflections; float ShadowBias; int32 Fog; int32 Post; };
+	static const FPreset Presets[4] = {
+		{ 70.0f, 32, 0, 2.0f, 0, 0 },
+		{ 85.0f, 16, 1, 1.0f, 1, 1 },
+		{ 100.0f, 16, 1, 0.0f, 1, 2 },
+		{ 100.0f, 8, 1, -0.5f, 1, 3 },
+	};
+	const FPreset& P = Presets[FMath::Clamp(GQuality, 0, 3)];
+	if (!GEnhanced)
+	{
+		SetConsoleFloat(TEXT("r.ScreenPercentage"), 100.0f);
+		return;
+	}
+	SetConsoleFloat(TEXT("r.ScreenPercentage"), P.Scale);
+	SetConsoleVariable(TEXT("r.Lumen.ScreenProbeGather.DownsampleFactor"), P.Probe);
+	SetConsoleVariable(TEXT("r.Lumen.Reflections.Allow"), P.Reflections);
+	SetConsoleFloat(TEXT("r.Shadow.Virtual.ResolutionLodBiasDirectional"), P.ShadowBias);
+	SetConsoleVariable(TEXT("r.VolumetricFog"), P.Fog);
+	SetConsoleVariable(TEXT("r.BloomQuality"), P.Post == 0 ? 3 : 5);
+	SetConsoleVariable(TEXT("r.DepthOfFieldQuality"), P.Post >= 3 ? 2 : 0);
+	SetConsoleVariable(TEXT("r.MotionBlurQuality"), P.Post >= 2 ? 3 : 0);
+}
+
+int32 McRenderMode::GetQuality()
+{
+	return GQuality;
+}
+
+void McRenderMode::SetQuality(int32 Quality)
+{
+	GQuality = FMath::Clamp(Quality, 0, 3);
+	ApplyQuality();
+	UE_LOG(LogMcRender, Log, TEXT("Unreal Mode quality: %d"), GQuality);
 }
 
 float McRenderMode::GetEntityAmbient()

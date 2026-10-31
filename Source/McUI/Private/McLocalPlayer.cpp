@@ -42,7 +42,9 @@ FMcClientOptions FMcClientOptions::Load()
 		FString Graphics;
 		Options.bEnhancedGraphics = Object->TryGetStringField(TEXT("graphics"), Graphics) && Graphics == TEXT("enhanced");
 		Object->TryGetBoolField(TEXT("hdTextures"), Options.bHdTextures);
+		Object->TryGetBoolField(TEXT("showFps"), Options.bShowFps);
 		double Number = 0.0;
+		if (Object->TryGetNumberField(TEXT("quality"), Number)) { Options.Quality = FMath::Clamp(static_cast<int32>(Number), 0, 3); }
 		if (Object->TryGetNumberField(TEXT("fov"), Number)) { Options.FieldOfView = FMath::Clamp(static_cast<float>(Number), 30.0f, 110.0f); }
 		if (Object->TryGetNumberField(TEXT("renderDistance"), Number)) { Options.RenderDistance = FMath::Clamp(static_cast<int32>(Number), 2, 32); }
 		if (Object->TryGetNumberField(TEXT("sensitivity"), Number)) { Options.Sensitivity = FMath::Clamp(static_cast<float>(Number), 0.0f, 2.0f); }
@@ -58,6 +60,8 @@ void FMcClientOptions::Save() const
 	Object->SetStringField(TEXT("lastServer"), LastServer);
 	Object->SetStringField(TEXT("graphics"), bEnhancedGraphics ? TEXT("enhanced") : TEXT("vanilla"));
 	Object->SetBoolField(TEXT("hdTextures"), bHdTextures);
+	Object->SetBoolField(TEXT("showFps"), bShowFps);
+	Object->SetNumberField(TEXT("quality"), Quality);
 	Object->SetNumberField(TEXT("fov"), FieldOfView);
 	Object->SetNumberField(TEXT("renderDistance"), RenderDistance);
 	Object->SetNumberField(TEXT("sensitivity"), Sensitivity);

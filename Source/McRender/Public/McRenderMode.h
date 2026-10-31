@@ -23,6 +23,12 @@ namespace McRenderMode
 	// albedo, normal and specular maps. It only takes effect while Unreal Mode is on (IsHd); GetHdSwitch is the
 	// setting itself. A switch changes GetGeneration like Unreal Mode does.
 	MCRENDER_API bool IsHd();
+	// Unreal Mode's quality preset, 0 Low, 1 Medium, 2 High, 3 Ultra (default High): the render scale (TSR fills the rest),
+	// Lumen's probe density and reflections, shadow detail, volumetric fog and the post effects. The preset only
+	// reaches the engine while Unreal Mode is on; vanilla always draws at full scale. Low and Medium are for cards like
+	// the GTX 1070, on software Lumen.
+	MCRENDER_API int32 GetQuality();
+	MCRENDER_API void SetQuality(int32 Quality);
 	// The sky-ambient light of mobs and players in Unreal Mode: their textures are darker than most blocks' (a brown
 	// cow), so they get more of it to look as bright as blocks under the same light. 1 for the vanilla look.
 	MCRENDER_API float GetEntityAmbient();

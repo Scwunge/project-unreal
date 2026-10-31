@@ -56,6 +56,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       and show a drifting foam line where the water is shallow.
     - Storm wind (done, 2026-10-31): the leaf, plant and water sway scales with the wetness (rain level eased in
       over 5 s): about 2.6 times the amplitude and 1.6 times the speed at full rain. Shot: `storm_unreal` (thunder).
+    - Quality presets (done, 2026-10-31): Options has Quality Low, Medium, High, Ultra (saved in options.json; `-McQuality=N`
+      to test) and an FPS counter (`stat fps`; `-McFps`). Presets set render scale (70, 85, 100, 100 percent with TSR),
+      Lumen probe density and reflections, virtual shadow detail, volumetric fog, bloom, DoF and motion-blur quality, only
+      while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Not yet measured: the 1070's fps at Medium (the stat fps text
+      is not in screenshots; read it in a live window), and which cvars matter most.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

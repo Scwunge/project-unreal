@@ -710,12 +710,28 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	{
 		ToggleHd();
 	}
+	// Quality, for Unreal Mode: cycles Low, Medium, High, Ultra; the FPS readout works in both looks.
+	static const TCHAR* const QualityNames[4] = { TEXT("Quality: Low"), TEXT("Quality: Medium"), TEXT("Quality: High"), TEXT("Quality: Ultra") };
+	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 132.0f, 150.0f, 20.0f, bUnreal))
+	{
+		McRenderMode::SetQuality((McRenderMode::GetQuality() + 1) % 4);
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.Quality = McRenderMode::GetQuality();
+		Options.Save();
+	}
+	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
+	{
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.bShowFps = !Options.bShowFps;
+		Options.Save();
+		GetOwningPlayerController()->ConsoleCommand(TEXT("stat fps"));
+	}
 	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
 		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 150.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 168.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}

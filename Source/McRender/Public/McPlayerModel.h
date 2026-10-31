@@ -113,6 +113,13 @@ namespace McPlayerModel
 		TArray<int32> Triangles;
 	};
 
+	// Something worn on the head ("minecraft:zombie_head", "minecraft:carved_pumpkin"): the entity model it is drawn
+	// with ("mc:head/zombie", "mc:worn/carved_pumpkin") and how much bigger than as placed; None for anything else.
+	// Measured in vanilla from the front (ref_wh_*): a mob head 1.175 times its placed size, sitting on the neck.
+	MCRENDER_API FName GetWornHeadModel(FName Item, float& OutScale);
+	// Where a worn head's model goes in the pose, relative to the actor: its origin on the neck, turned with the head.
+	MCRENDER_API FTransform GetWornHeadTransform(const FPose& Pose, float Scale);
+
 	// Draws all twelve boxes (six parts, each with its outer layer) in the pose.
 	MCRENDER_API void BuildMesh(const FPose& Pose, FMeshData& Out);
 	// The two wings in the pose, with UVs over the wings picture.
@@ -150,6 +157,8 @@ public:
 	void SetLook(float InYaw, float InPitch, bool bInSneaking, bool bInGliding = false);
 	// Whether elytra are worn (in the chest slot): they hang on the back.
 	void SetWings(bool bInWings) { bWings = bInWings; }
+	// The item in the head slot: a mob head or carved pumpkin is drawn on the head.
+	void SetWornHead(FName Item) { WornHead = Item; }
 	// Hides or shows the model; the local player doesn't see their own.
 	void SetShown(bool bShown);
 
@@ -170,6 +179,9 @@ private:
 	bool bHasWingsSection = false;
 	bool bWings = false;
 	bool bGliding = false;
+	FName WornHead;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMcEntityModelComponent> Worn;
 	// The look (McRenderMode) the material was made for.
 	uint32 MaterialGeneration = 0;
 	UPROPERTY(Transient)

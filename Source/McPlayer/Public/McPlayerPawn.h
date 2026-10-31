@@ -301,6 +301,9 @@ private:
 	bool bGlidePose = false;
 	UPROPERTY(Replicated)
 	bool bWearsElytra = false;
+	// The item in the head slot, for a head or carved pumpkin drawn on the head.
+	UPROPERTY(Replicated)
+	FName WornHead;
 	// Server: ticks of gliding, for the wings' wear.
 	int32 ServerGlideTicks = 0;
 	bool bServerGliding = false;

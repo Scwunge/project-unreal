@@ -234,6 +234,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     level, covers 10 degrees short of flat and its middle 0.91 up, and a lectern's book folds 28 degrees a cover.
     Pots, bells, signs, beds and shulker boxes matched. Differences left to others: vanilla's vignette (part of its HUD:
     every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes).
+  - **Polish list** (block entities): the enchanting book's page blocks lie flatter than its covers in vanilla and
+    meet over the spine, where ours fold with the covers (measure from ref_book_level and ref_book_above).
+    A worn dragon head stands 5% narrower and 15% shorter (top to lip) than vanilla's from the front
+    (sc_wear_dragon_head against ref_wh_dragon), so not a plain scale: likely its snout's offset or pitch, to be
+    measured side on. Zombie, pumpkin and bare heads match to the pixel.
+    For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
+    (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
+  - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
+    McRedstone's `Bell` kind (below) are already in; further block-entity redstone input gets a hook here first.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

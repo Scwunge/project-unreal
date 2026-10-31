@@ -5,6 +5,7 @@
 #include "McDimensionType.h"
 #include "McChestComponent.h"
 #include "McEntityModel.h"
+#include "McPlayerModel.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -325,6 +326,24 @@ bool FMcHeadTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("its jaws reach south"), FMath::IsNearlyEqual(Big.Max.Y, 112.5, 0.1));
 		// The lower jaw hangs 0.2 radians open from its back top edge (3 up, 6 out): its front bottom dips under the floor.
 		TestTrue(TEXT("its jaw hangs open"), FMath::IsNearlyEqual(Big.Min.Z, (3.0 - 3.0 * FMath::Cos(0.2) - 12.0 * FMath::Sin(0.2)) * 6.25, 0.1));
+	}
+	// Worn on a player's head.
+	{
+		float Scale = 0.0f;
+		TestEqual(TEXT("a worn zombie head is the placed one"), McPlayerModel::GetWornHeadModel(TEXT("minecraft:zombie_head"), Scale), FName(TEXT("mc:head/zombie")));
+		TestTrue(TEXT("1.175 times as big"), FMath::IsNearlyEqual(Scale, 1.175f));
+		TestEqual(TEXT("a worn pumpkin"), McPlayerModel::GetWornHeadModel(TEXT("minecraft:carved_pumpkin"), Scale), FName(TEXT("mc:worn/carved_pumpkin")));
+		TestNotNull(TEXT("which has a model"), Find(TEXT("mc:worn/carved_pumpkin")));
+		TestTrue(TEXT("a helmet is none of these"), McPlayerModel::GetWornHeadModel(TEXT("minecraft:iron_helmet"), Scale).IsNone());
+		TestTrue(TEXT("nor is nothing"), McPlayerModel::GetWornHeadModel(NAME_None, Scale).IsNone());
+		McPlayerModel::FAnim Look;
+		Look.HeadYaw = 90.0f;
+		Look.BodyYaw = 90.0f;
+		const FTransform Placed = McPlayerModel::GetWornHeadTransform(McPlayerModel::ComputePose(Look), 1.0f);
+		// Looking west, the model's front (south, Unreal +y) turns to the west (Unreal -x); it sits on the neck, 24
+		// pixels up at fifteen sixteenths.
+		TestTrue(TEXT("faces the way the head does"), Placed.GetRotation().RotateVector(FVector(0, 1, 0)).Equals(FVector(-1, 0, 0), 1e-3));
+		TestTrue(TEXT("on the neck"), FMath::IsNearlyEqual(Placed.GetLocation().Z, 24.0 * 0.9375 * 6.25, 0.1));
 	}
 	TestTrue(TEXT("a piston head is no head"), Pick(TEXT("minecraft:piston_head[facing=north,short=false,type=normal]")).IsNone());
 	for (const TCHAR* Kind : { TEXT("mc:head/skeleton"), TEXT("mc:head/wither_skeleton"), TEXT("mc:head/zombie"), TEXT("mc:head/creeper"), TEXT("mc:head/player"), TEXT("mc:head/piglin") })

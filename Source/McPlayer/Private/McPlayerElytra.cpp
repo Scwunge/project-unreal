@@ -9,6 +9,8 @@
 #include "McPlayerData.h"
 #include "McSurvival.h"
 #include "Dom/JsonObject.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -143,6 +145,21 @@ bool AMcPlayerPawn::ServerBoost()
 void AMcPlayerPawn::ServerTickElytra()
 {
 	bWearsElytra = Data && Data->Armor && Data->Armor->Get(ChestSlot).Item == FName(TEXT("minecraft:elytra"));
+#if !UE_BUILD_SHIPPING
+	// Development: -McWear=minecraft:zombie_head puts that in the head slot once (for a -McSelfShot of it).
+	static bool bWearDone = false;
+	FString Wear;
+	if (!bWearDone && Data && Data->Armor && FParse::Value(FCommandLine::Get(), TEXT("-McWear="), Wear))
+	{
+		bWearDone = true;
+		FMcItemStack Hat;
+		Hat.Item = FName(*Wear);
+		Hat.Count = 1;
+		Data->Armor->GetMutable(0) = Hat;
+	}
+#endif
+	// The head slot (armor slot 0) too: everyone sees a worn head.
+	WornHead = Data && Data->Armor ? Data->Armor->Get(0).Item : NAME_None;
 	bGlidePose = bServerGliding;
 	if (!bServerGliding || !Data || !Data->Armor)
 	{

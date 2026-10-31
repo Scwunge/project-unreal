@@ -1,4 +1,7 @@
 #include "McPlayerModel.h"
+#include "McBlockRegistry.h"
+#include "McChestComponent.h"
+#include "McEntityModel.h"
 #include "McRenderMode.h"
 #include "McCache.h"
 #include "McChunk.h"
@@ -289,6 +292,36 @@ namespace McPlayerModel
 		Result.BodyYaw = Previous.BodyYaw + WrapDegrees(Current.BodyYaw - Previous.BodyYaw) * Alpha;
 		return Result;
 	}
+
+	FName GetWornHeadModel(FName Item, float& OutScale)
+	{
+		if (Item == TEXT("minecraft:carved_pumpkin"))
+		{
+			OutScale = 1.0f;
+			return FName(TEXT("mc:worn/carved_pumpkin"));
+		}
+		// A head item is named as its floor block, so the placed head's model is the one.
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const TOptional<FMcStateId> State = Item.IsNone() ? TOptional<FMcStateId>() : Registry.FindDefaultState(Item);
+		FVector Centre;
+		float Yaw;
+		const FName Model = State.IsSet() ? UMcChestComponent::GetHeadModel(State.GetValue(), Centre, Yaw) : NAME_None;
+		// 76 pixels to the bare head's 64 from the front, which, the worn face being 0.7 pixels nearer the camera 4
+		// blocks off, is 1.175 (ref_wh_zombie against ref_wh_bare; its top 1.4 pixels over the head's, so its bottom
+		// on the neck).
+		OutScale = 1.175f;
+		return Model;
+	}
+
+	FTransform GetWornHeadTransform(const FPose& Pose, float Scale)
+	{
+		const FPartPose& Head = Pose.Parts[static_cast<int32>(EMcPlayerPart::Head)];
+		const FQuat PartRotation = FQuat(FVector::ZAxisVector, Head.RollRad) * FQuat(FVector::YAxisVector, Head.YawRad) * FQuat(FVector::XAxisVector, Head.PitchRad);
+		const FQuat ModelRotation = FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(Pose.BodyYaw)) * FQuat(FVector::XAxisVector, Pose.TiltRad);
+		const FQuat Turn = ModelRotation * PartRotation;
+		const FQuat Rotation = UMcChestComponent::RotationFromAxes(Turn.RotateVector(FVector::XAxisVector), Turn.RotateVector(FVector::YAxisVector), Turn.RotateVector(FVector::ZAxisVector));
+		return FTransform(Rotation, ToUnreal(ModelRotation.RotateVector(Head.Pivot)), FVector(Scale * ModelScale));
+	}
 }
 
 UMcPlayerModelComponent::UMcPlayerModelComponent(const FObjectInitializer& ObjectInitializer)
@@ -350,7 +383,7 @@ void UMcPlayerModelComponent::SetShown(bool bInShown)
 	if (bShown != bInShown)
 	{
 		bShown = bInShown;
-		SetVisibility(bShown);
+		SetVisibility(bShown, true);
 	}
 }
 
@@ -437,6 +470,28 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	McPlayerModel::FMeshData Data;
 	const McPlayerModel::FPose Pose = McPlayerModel::ComputePose(State.Blend(TickAccumulator / 0.05f));
 	McPlayerModel::BuildMesh(Pose, Data);
+
+	// A mob head or carved pumpkin worn on the head: its own model, turned with the head.
+	float WornScale = 1.0f;
+	const FName WornModel = McPlayerModel::GetWornHeadModel(WornHead, WornScale);
+	if (!WornModel.IsNone() && !Worn)
+	{
+		Worn = NewObject<UMcEntityModelComponent>(GetOwner());
+		Worn->SetupAttachment(this);
+		Worn->RegisterComponent();
+	}
+	if (Worn)
+	{
+		Worn->SetVisibility(!WornModel.IsNone() && bShown);
+		if (!WornModel.IsNone())
+		{
+			Worn->SetKind(WornModel, NAME_None, 0);
+			// The model sets its own scale each frame (a swelling creeper's), times this.
+			const FTransform Placed = McPlayerModel::GetWornHeadTransform(Pose, WornScale);
+			Worn->SetModelScale(Placed.GetScale3D().X);
+			Worn->SetRelativeLocationAndRotation(Placed.GetLocation(), Placed.GetRotation());
+		}
+	}
 	const TArray<FVector2D> Layer = { };
 	TArray<FVector2D> UV1, UV2;
 	UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());

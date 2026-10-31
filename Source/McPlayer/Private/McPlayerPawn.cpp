@@ -98,6 +98,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AMcPlayerPawn, bRodCast);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bGlidePose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, bWearsElytra);
+	DOREPLIFETIME(AMcPlayerPawn, WornHead);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -292,6 +293,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Figure->SetShown(!IsLocallyControlled() || bShowSelf);
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
 		Figure->SetWings(bWearsElytra);
+		Figure->SetWornHead(WornHead);
 	}
 #endif
 	TickTotem(DeltaSeconds);

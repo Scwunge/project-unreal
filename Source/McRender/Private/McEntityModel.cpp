@@ -442,6 +442,15 @@ namespace McEntityModel
 				DragonJaw.Scale = 0.75f;
 				Dragon.Parts.Add(DragonJaw);
 				Models.Add(Dragon.Kind, Dragon);
+				// A carved pumpkin worn on a head (McPlayerModel): its block model 10.1 pixels across (the block at 0.63),
+				// its middle on the head's, 4 over the neck, its face forward (measured in vanilla, ref_wh_pumpkin against
+				// ref_wh_bare, from the front: 82 pixels to the bare head's 64, its top 1 pixel over the head's).
+				FModel Pumpkin;
+				Pumpkin.Kind = FName(TEXT("mc:worn/carved_pumpkin"));
+				Pumpkin.Block = TEXT("minecraft:carved_pumpkin[facing=south]");
+				Pumpkin.BlockScale = 0.63f;
+				Pumpkin.BlockOffset = FVector(0, 4, 0);
+				Models.Add(Pumpkin.Kind, Pumpkin);
 			}
 			{
 				// A decorated pot (McChestComponent), 14 across and 16 high with a neck 8 across and 4 high on top. The base
@@ -1332,7 +1341,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			Swell *= Squish.GetScale(TickAccumulator / 0.05f, Grow);
 		}
-		SetRelativeScale3D(FVector(Swell.X * Grow, Swell.X * Grow, Swell.Y * Grow));
+		SetRelativeScale3D(FVector(Swell.X * Grow, Swell.X * Grow, Swell.Y * Grow) * ModelScale);
 	}
 
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
@@ -1340,8 +1349,9 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 		Base->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 	}
-	else
+	else if (!Model || !Model->Textures.IsEmpty())
 	{
+		// (A model that is only a block, as a worn pumpkin, has no picture of its own.)
 		if (bIsItem || bIsArrow || bIsBobber)
 		{
 			bItemFailed = true;

@@ -222,6 +222,8 @@ public:
 	void SetBook(float Open, float FlipA, float FlipB) { Anim.BookOpen = Open; Anim.BookFlip[0] = FlipA; Anim.BookFlip[1] = FlipB; }
 	// A fishing bobber: the rod tip its line runs from (block coordinates), unset if the angler isn't to be seen.
 	void SetFishingLine(const TOptional<FVector>& InTip) { RodTip = InTip; }
+	// Draws the model this many times its size (a head worn on a player's).
+	void SetModelScale(float InScale) { ModelScale = InScale; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -266,6 +268,7 @@ private:
 	// A fishing bobber: its picture facing the camera, and the line from the rod tip, made again each frame.
 	bool bIsBobber = false;
 	TOptional<FVector> RodTip;
+	float ModelScale = 1.0f;
 	void BuildBobber(McPlayerModel::FMeshData& Out) const;
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
 	bool bIsBanner = false;

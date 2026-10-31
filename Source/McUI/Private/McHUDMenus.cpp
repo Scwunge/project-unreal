@@ -726,12 +726,24 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Options.Save();
 		GetOwningPlayerController()->ConsoleCommand(TEXT("stat fps"));
 	}
+	// Ray tracing: greyed out, with the reason, without Unreal Mode or a card (and DX12) that traces rays.
+	const bool bRaysCan = McRenderMode::IsRayTracingSupported();
+	const bool bRays = McRenderMode::GetRayTracingSwitch();
+	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 156.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
+	{
+		McRenderMode::SetRayTracing(!bRays);
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.bRayTracing = McRenderMode::GetRayTracingSwitch();
+		Options.Save();
+	}
+	DrawCentredText(!bUnreal ? TEXT("Ray Tracing needs Unreal Mode") : !bRaysCan ? TEXT("Ray Tracing: this card or graphics API can't trace rays (needs DX12)")
+		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 180.0f, Grey);
 	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
 		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 168.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 196.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}

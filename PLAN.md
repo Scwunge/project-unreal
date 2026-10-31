@@ -65,6 +65,13 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       from place to place. Shot: `torch_night`. Not fixed: the dark strip at the horizon of the atmosphere sky (setting
       the atmosphere's ground albedo did not change it; the strip sits where the loaded terrain ends, so try fogging
       the edge with the fog colour).
+    - Hardware ray tracing (code done, 2026-10-31, untested where it is supported): a separate Options button, off by
+      default (`-McRayTracing` for development), on top of Unreal Mode, greyed out with a reason when the RHI can't trace rays
+      (`GRHISupportsRayTracing`, `IsRayTracingEnabled`). On: `r.Lumen.HardwareRayTracing`, ray traced sun shadows,
+      translucency and reflections, procedural meshes in the ray tracing scene. `DefaultEngine.ini` sets `r.RayTracing=True`
+      and `r.SkinCache.CompileShaders=True`: that compiles the ray tracing shaders for the build, so the first shader
+      compile and the packaged size grow (not measured yet). The 1070 runs DX11 ("not supported by current RHI"), so there
+      the button is greyed and the switch does nothing; the supported path needs a DX12 RTX machine to check.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

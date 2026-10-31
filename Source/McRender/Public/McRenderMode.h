@@ -29,6 +29,13 @@ namespace McRenderMode
 	// the GTX 1070, on software Lumen.
 	MCRENDER_API int32 GetQuality();
 	MCRENDER_API void SetQuality(int32 Quality);
+	// Hardware ray tracing, a switch on top of Unreal Mode (off by default): hardware Lumen, ray traced sun shadows and
+	// reflections on water and glass. IsRayTracingSupported is false without DX12, SM6 and a card that traces rays
+	// (the Options button greys out); IsRayTracing is the switch and support and Unreal Mode all together.
+	MCRENDER_API bool IsRayTracingSupported();
+	MCRENDER_API bool IsRayTracing();
+	MCRENDER_API bool GetRayTracingSwitch();
+	MCRENDER_API void SetRayTracing(bool bRayTracing);
 	// The sky-ambient light of mobs and players in Unreal Mode: their textures are darker than most blocks' (a brown
 	// cow), so they get more of it to look as bright as blocks under the same light. 1 for the vanilla look.
 	MCRENDER_API float GetEntityAmbient();

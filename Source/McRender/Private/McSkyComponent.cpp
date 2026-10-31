@@ -568,6 +568,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		Grade.BloomIntensity = Mode == EMode::Overworld ? 0.6f : 0.95f;
 		Grade.VignetteIntensity = Mode == EMode::Overworld ? 0.35f : 0.5f;
 		SunLight->SetCastShadows(Mode == EMode::Overworld);
+		SunLight->SetCastRaytracedShadow(McRenderMode::IsRayTracing());
 		// An unshadowed fill scattering in the volumetric fog draws the edges of its grid.
 		SunLight->SetVolumetricScatteringIntensity(Mode == EMode::Overworld ? 1.0f : 0.0f);
 	}

@@ -80,9 +80,9 @@ namespace McEntityModel
 		// picture the crossed ones are, instead of the folded pair.
 		void AddVillager(FModel& Model, bool bArmsOut = false)
 		{
-			Model.Scale = 15.0f / 16.0f;
-			// Measured: their legs swing half as far as a person's (0.7 a point of walk amount).
-			Model.LegSwing = 0.7f;
+			// Measured: the zombie villager is full size and swings its legs like a zombie; the others are 15/16 and swing half as far (0.7).
+			Model.Scale = bArmsOut ? 1.0f : 15.0f / 16.0f;
+			Model.LegSwing = bArmsOut ? 1.4f : 0.7f;
 			Model.TextureSize = FIntPoint(64, 64);
 			Model.BaseWidth = 0.6f;
 			Model.bComposite = true;
@@ -837,8 +837,11 @@ namespace McEntityModel
 				}
 				if (Model.bArmsForward)
 				{
-					// Out in front, swaying a little as it walks.
-					Pitch += -HALF_PI + FMath::Cos(Pos * 0.6662f + (bRight ? PI : 0.0f)) * 0.2f * Amount + FMath::Sin(Anim.Age * 1.2f) * 0.04f;
+					// Out in front at 80 degrees, not swinging with the legs, only swaying a little (measured: 0.05 radians, the two arms
+					// in opposite phase, forward and back every 4.7 seconds and in and out every 3.5).
+					const float Side = bRight ? 1.0f : -1.0f;
+					Pitch += -1.396f - Side * FMath::Sin(Anim.Age * 1.34f) * 0.05f;
+					Roll -= Side * (0.05f + FMath::Sin(Anim.Age * 1.8f) * 0.05f);
 				}
 				else
 				{

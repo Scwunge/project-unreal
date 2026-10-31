@@ -140,6 +140,10 @@ namespace McPacks
 	MCCORE_API void ReadAll(const FString& Relative, TArray<TArray<uint8>>& Out);
 	// True if a pack provides the file.
 	MCCORE_API bool IsFromPack(const FString& Relative);
+	// A sprite the packs' atlases make (unstitch, paletted_permutations): the PNG written for "textures/block/x.png", if any.
+	MCCORE_API bool FindAtlasSprite(const FString& Relative, FString& OutPath);
+	// Whether a pack's atlas filter hides this texture ("textures/block/x.png") of the game's.
+	MCCORE_API bool IsAtlasFiltered(const FString& Relative);
 
 	// ---- The picker's side ----
 	// A zip or folder in the resourcepacks folder. Pack is null (and Error says why) if it can't be used.

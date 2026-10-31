@@ -1,6 +1,9 @@
 #include "McResourcePacks.h"
 #include "McCache.h"
 #include "HAL/FileManager.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
+#include "Modules/ModuleManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
@@ -337,6 +340,64 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		IFileManager::Get().DeleteDirectory(*(McPacks::GetFolder() / TEXT("zz_mc_test_broken")), false, true);
 	}
 
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// Atlas sources of every atlas become pictures the game finds like a pack's own: "paletted_permutations" recolours a texture
+// by swapping the colours of a key palette for another palette's, "unstitch" cuts a sprite from a sheet, "filter" hides.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAtlasSpritesTest, "McClient.McCore.PackAtlasSprites",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackAtlasSpritesTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackAtlasSpritesTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Assets = Root / TEXT("assets/minecraft");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"atlas sprites\"}}"), *(Root / TEXT("pack.mcmeta")));
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const auto WritePng = [&](const FString& Name, int32 Width, int32 Height, const TArray<FColor>& Pixels)
+	{
+		const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+		if (Png.IsValid() && Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, Width, Height, ERGBFormat::BGRA, 8))
+		{
+			const TArray64<uint8> Data = Png->GetCompressed();
+			FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Data.GetData(), Data.Num()), *(Assets / TEXT("textures") / Name));
+		}
+	};
+	// A 2 x 1 texture in the two key colours (one transparent texel); the key palette; a palette to turn it into.
+	WritePng(TEXT("trims/zz_base.png"), 3, 1, { FColor(10, 10, 10, 255), FColor(20, 20, 20, 255), FColor(0, 0, 0, 0) });
+	WritePng(TEXT("trims/zz_key.png"), 2, 1, { FColor(10, 10, 10, 255), FColor(20, 20, 20, 255) });
+	WritePng(TEXT("trims/zz_red.png"), 2, 1, { FColor(200, 0, 0, 255), FColor(100, 0, 0, 255) });
+	FFileHelper::SaveStringToFile(TEXT("{\"sources\":[{\"type\":\"minecraft:paletted_permutations\",\"textures\":[\"minecraft:trims/zz_base\"],"
+		"\"palette_key\":\"minecraft:trims/zz_key\",\"permutations\":{\"red\":\"minecraft:trims/zz_red\"},\"separator\":\"_\"},"
+		"{\"type\":\"minecraft:filter\",\"path\":\"block/dirt\"}]}"), *(Assets / TEXT("atlases/blocks.json")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FString Path;
+	if (TestTrue(TEXT("the recoloured sprite is found"), McPacks::FindAtlasSprite(TEXT("textures/trims/zz_base_red.png"), Path)))
+	{
+		TArray<uint8> File;
+		const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+		TArray64<uint8> Raw;
+		if (TestTrue(TEXT("it can be read"), FFileHelper::LoadFileToArray(File, *Path) && Png.IsValid() && Png->SetCompressed(File.GetData(), File.Num()) && Png->GetRaw(ERGBFormat::BGRA, 8, Raw) && Raw.Num() == 12))
+		{
+			TestEqual(TEXT("first colour swapped"), FColor(Raw[2], Raw[1], Raw[0], Raw[3]), FColor(200, 0, 0, 255));
+			TestEqual(TEXT("second colour swapped"), FColor(Raw[6], Raw[5], Raw[4], Raw[7]), FColor(100, 0, 0, 255));
+			TestEqual(TEXT("transparent stays transparent"), static_cast<int32>(Raw[11]), 0);
+		}
+	}
+	TestTrue(TEXT("the atlas sprite counts as the pack's"), McPacks::IsFromPack(TEXT("textures/trims/zz_base_red.png")));
+	TestTrue(TEXT("the filter hides the game's dirt"), McPacks::IsAtlasFiltered(TEXT("textures/block/dirt.png")));
+	TestFalse(TEXT("but not stone"), McPacks::IsAtlasFiltered(TEXT("textures/block/stone.png")));
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
 	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }

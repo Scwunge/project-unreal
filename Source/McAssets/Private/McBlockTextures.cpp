@@ -9,7 +9,6 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "Misc/FileHelper.h"
-#include "Internationalization/Regex.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "RenderingThread.h"
@@ -277,129 +276,6 @@ namespace
 	}
 
 
-	// What a resource pack's atlases/blocks.json adds to the block array beyond the plain textures: "unstitch" sources cut
-	// sprites out of a picture (the region in units of the picture divided by divisor_x/y), and "filter" sources hide
-	// sprites whose id matches the patterns. "single" and "directory" sources need nothing here, since a texture the models
-	// name is found by its path in the packs anyway. Cut sprites are written as PNGs under Saved/McAtlasCache so the
-	// rest of the loading sees them as pictures from a pack.
-	struct FAtlasEdits
-	{
-		TMap<FName, FString> Cut;  // sprite id -> the PNG written for it
-		TArray<TPair<FRegexPattern, FRegexPattern>> Filters;  // namespace, path
-		bool IsFiltered(const FName Id) const
-		{
-			const FString Text = Id.ToString();
-			FString Namespace = TEXT("minecraft"), Path = Text;
-			Text.Split(TEXT(":"), &Namespace, &Path);
-			for (const TPair<FRegexPattern, FRegexPattern>& Filter : Filters)
-			{
-				FRegexMatcher NamespaceMatcher(Filter.Key, Namespace), PathMatcher(Filter.Value, Path);
-				if (NamespaceMatcher.FindNext() && PathMatcher.FindNext())
-				{
-					return true;
-				}
-			}
-			return false;
-		}
-	};
-
-	FString QualifyId(const FString& Id)
-	{
-		return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id;
-	}
-
-	FAtlasEdits ReadAtlasEdits(IImageWrapperModule& ImageModule, const TCHAR* AtlasName)
-	{
-		FAtlasEdits Edits;
-		TArray<TArray<uint8>> Files;
-		McPacks::ReadAll(FString::Printf(TEXT("atlases/%s.json"), AtlasName), Files);
-		for (const TArray<uint8>& File : Files)
-		{
-			FString Text;
-			FFileHelper::BufferToString(Text, File.GetData(), File.Num());
-			TSharedPtr<FJsonObject> Root;
-			const TArray<TSharedPtr<FJsonValue>>* Sources = nullptr;
-			if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid() || !Root->TryGetArrayField(TEXT("sources"), Sources))
-			{
-				continue;
-			}
-			for (const TSharedPtr<FJsonValue>& SourceValue : *Sources)
-			{
-				const TSharedPtr<FJsonObject>* Source;
-				FString Type;
-				if (!SourceValue->TryGetObject(Source) || !(*Source)->TryGetStringField(TEXT("type"), Type))
-				{
-					continue;
-				}
-				Type.RemoveFromStart(TEXT("minecraft:"));
-				if (Type == TEXT("filter"))
-				{
-					FString Namespace = TEXT(".*"), Path = TEXT(".*");
-					(*Source)->TryGetStringField(TEXT("namespace"), Namespace);
-					(*Source)->TryGetStringField(TEXT("path"), Path);
-					Edits.Filters.Emplace(FRegexPattern(Namespace), FRegexPattern(Path));
-				}
-				else if (Type == TEXT("unstitch"))
-				{
-					FString Resource;
-					double DivisorX = 1.0, DivisorY = 1.0;
-					const TArray<TSharedPtr<FJsonValue>>* Regions = nullptr;
-					if (!(*Source)->TryGetStringField(TEXT("resource"), Resource) || !(*Source)->TryGetArrayField(TEXT("regions"), Regions))
-					{
-						continue;
-					}
-					(*Source)->TryGetNumberField(TEXT("divisor_x"), DivisorX);
-					(*Source)->TryGetNumberField(TEXT("divisor_y"), DivisorY);
-					const FString SourcePath = McCache::Asset(TEXT("textures/") + McCache::PathOf(QualifyId(Resource)) + TEXT(".png"));
-					const FLoadedImage Image = LoadImage(ImageModule, SourcePath);
-					if (!Image.bOk || DivisorX <= 0.0 || DivisorY <= 0.0)
-					{
-						continue;
-					}
-					for (const TSharedPtr<FJsonValue>& RegionValue : *Regions)
-					{
-						const TSharedPtr<FJsonObject>* Region;
-						FString Sprite;
-						double X = 0, Y = 0, W = 0, H = 0;
-						if (!RegionValue->TryGetObject(Region) || !(*Region)->TryGetStringField(TEXT("sprite"), Sprite))
-						{
-							continue;
-						}
-						(*Region)->TryGetNumberField(TEXT("x"), X);
-						(*Region)->TryGetNumberField(TEXT("y"), Y);
-						(*Region)->TryGetNumberField(TEXT("width"), W);
-						(*Region)->TryGetNumberField(TEXT("height"), H);
-						const int32 Left = FMath::RoundToInt(X * Image.Width / DivisorX), Top = FMath::RoundToInt(Y * Image.Height / DivisorY);
-						const int32 Width = FMath::RoundToInt(W * Image.Width / DivisorX), Height = FMath::RoundToInt(H * Image.Height / DivisorY);
-						if (Width <= 0 || Height <= 0 || Left < 0 || Top < 0 || Left + Width > Image.Width || Top + Height > Image.Height)
-						{
-							continue;
-						}
-						TArray<FColor> Cut;
-						Cut.SetNumUninitialized(Width * Height);
-						for (int32 Row = 0; Row < Height; ++Row)
-						{
-							FMemory::Memcpy(&Cut[Row * Width], &Image.Pixels[(Top + Row) * Image.Width + Left], Width * sizeof(FColor));
-						}
-						const TSharedPtr<IImageWrapper> Wrapper = ImageModule.CreateImageWrapper(EImageFormat::PNG);
-						if (!Wrapper.IsValid() || !Wrapper->SetRaw(Cut.GetData(), Cut.Num() * sizeof(FColor), Width, Height, ERGBFormat::BGRA, 8))
-						{
-							continue;
-						}
-						const FName Id(*QualifyId(Sprite));
-						const FString Out = FPaths::ProjectSavedDir() / TEXT("McAtlasCache") / (TEXT("textures/") + McCache::PathOf(Id.ToString()) + TEXT(".png"));
-						const TArray64<uint8>& Png = Wrapper->GetCompressed();
-						if (FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Png.GetData(), Png.Num()), *Out))
-						{
-							Edits.Cut.Add(Id, Out);
-						}
-					}
-				}
-			}
-		}
-		return Edits;
-	}
-
 	// What the first pass learns about a texture without decoding it.
 	struct FProbe
 	{
@@ -489,7 +365,6 @@ bool FMcBlockTextures::EnsureLoaded()
 		}
 	}
 	NewStats.Ids = Ids.Num();
-	const FAtlasEdits Atlas = ReadAtlasEdits(ImageModule, TEXT("blocks"));
 	const bool bPbr = McPacks::GetUsePbr() && McPacks::HasPacks();
 
 	// Pass 1, without decoding: where each picture comes from and how big it is. The widest one a resource pack brings
@@ -502,12 +377,7 @@ bool FMcBlockTextures::EnsureLoaded()
 		FProbe& Probe = Probes[Index];
 		Probe.Path = McCache::Asset(Relative);
 		Probe.bFromPack = McPacks::IsFromPack(Relative);
-		if (const FString* Cut = Atlas.Cut.Find(Ids[Index]))
-		{
-			Probe.Path = *Cut;
-			Probe.bFromPack = true;
-		}
-		Probe.bFound = !Atlas.IsFiltered(Ids[Index]) && ReadPngSize(Probe.Path, Probe.Width, Probe.Height);
+		Probe.bFound = ReadPngSize(Probe.Path, Probe.Width, Probe.Height);
 		if (!Probe.bFound)
 		{
 			return;

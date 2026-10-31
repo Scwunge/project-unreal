@@ -761,12 +761,12 @@ namespace McPacks
 		const int32 Index = Stack->Find(InPack);
 		if (Index == INDEX_NONE)
 		{
-			if (Stack->IsVanillaHidden(InPack))
+			if (Stack->IsVanillaHidden(InPack) || IsAtlasFiltered(Relative))
 			{
 				OutPath = McCache::Root() / TEXT("hidden-by-resource-pack") / Relative;
 				return true;
 			}
-			return false;
+			return FindAtlasSprite(Relative, OutPath);
 		}
 		const FMcResourcePack& Pack = Stack->Get(Index);
 		if (!Pack.GetInfo().bZip)
@@ -814,7 +814,8 @@ namespace McPacks
 	bool IsFromPack(const FString& Relative)
 	{
 		const TSharedRef<const FMcPackStack> Stack = GetStack();
-		return Stack->Num() > 0 && Stack->Find(TEXT("assets/minecraft/") + Relative) != INDEX_NONE;
+		FString Unused;
+		return Stack->Num() > 0 && (Stack->Find(TEXT("assets/minecraft/") + Relative) != INDEX_NONE || FindAtlasSprite(Relative, Unused));
 	}
 
 	FString GetSignature()

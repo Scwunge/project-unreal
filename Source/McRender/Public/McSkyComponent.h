@@ -99,6 +99,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Dome;
 	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> Skirt;
+	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Stars;
 	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Sun;

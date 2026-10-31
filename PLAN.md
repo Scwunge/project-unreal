@@ -62,20 +62,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Measured on the 1070 (720p, the unreal scene, one frame
       before the shot, logged by `-McShot`): Medium 100 fps, High 95 fps. The scene is tiny; measure a forest later.
     - Torch flicker (done, 2026-10-31): block light in the lit and HD materials breathes by about 7 percent, out of step
-      from place to place. Shot: `torch_night`. Not fixed: the dark strip at the horizon of the atmosphere sky (setting
-      the atmosphere's ground albedo did not change it; the strip sits where the loaded terrain ends, so try fogging
-      the edge with the fog colour).
-    - Hardware ray tracing (code done, 2026-10-31, untested where it is supported): a separate Options button, off by
-      default (`-McRayTracing` for development), on top of Unreal Mode, greyed out with a reason when the RHI can't trace rays
-      (`GRHISupportsRayTracing`, `IsRayTracingEnabled`). On: `r.Lumen.HardwareRayTracing`, ray traced sun shadows,
-      translucency and reflections, procedural meshes in the ray tracing scene. `DefaultEngine.ini` sets `r.RayTracing=True`
-      and `r.SkinCache.CompileShaders=True`: that compiles the ray tracing shaders for the build, so the first shader
-      compile and the packaged size grow (not measured yet). The 1070 runs DX11 ("not supported by current RHI"), so there
-      the button is greyed and the switch does nothing; the supported path needs a DX12 RTX machine to check.
-    - Post (done in part, 2026-10-31): Unreal Mode now uses TSR (`r.AntiAliasingMethod 4`; vanilla stays at none) and a
-      light motion blur (amount 0.25, only drawn at High and Ultra). Parallax on the HD blocks was already in. Shots:
-      `post_tsr` (Unreal), `post_vanilla` (crisp, unchanged look). Not done: auto-exposure for caves against
-      daylight (exposure is still manual), lens flare, and depth of field at Ultra only has the quality cvar so far.
+      from place to place. Shot: `torch_night`. The dark strip at the horizon is fixed (2026-10-31): past the loaded terrain
+      the atmosphere's own ground showed a dark band, so the physical sky draws the dome's lower half (to the horizon) in
+      the fog colour. Shots `skirt_noon`, `skirt_sunset`. At dusk the band is a paler grey than the glowing horizon behind
+      it; blend it with the glow. `-McHide=fog,clouds,stars,moon,post` leaves parts out for finding artifacts.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

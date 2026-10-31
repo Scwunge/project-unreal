@@ -267,6 +267,25 @@ void UMcSkyComponent::BuildDome()
 	const TArray<FProcMeshTangent> NoTangents;
 	Dome->CreateMeshSection(0, Positions, Triangles, Normals, UV0, Zero, Zero, Zero, Colours, NoTangents, false);
 	Dome->SetMaterial(0, DomeMaterial);
+
+	// The dome's lower half, up to the horizon, for the physical sky: past the loaded terrain the atmosphere's own ground
+	// shows as a dark band between the last grass and the horizon, so the fog colour is drawn there as it is in vanilla.
+	Skirt = MakeMesh(TEXT("Skirt"));
+	const int32 SkirtVertices = (DomeRings / 2 + 1) * Stride;
+	TArray<int32> SkirtTriangles;
+	for (int32 Ring = 0; Ring < DomeRings / 2; ++Ring)
+	{
+		for (int32 Segment = 0; Segment < DomeSegments; ++Segment)
+		{
+			const int32 A = Ring * Stride + Segment;
+			SkirtTriangles.Append({ A, A + 1, A + Stride + 1, A, A + Stride + 1, A + Stride });
+		}
+	}
+	Skirt->CreateMeshSection(0, TArray<FVector>(Positions.GetData(), SkirtVertices), SkirtTriangles, TArray<FVector>(Normals.GetData(), SkirtVertices),
+		TArray<FVector2D>(UV0.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices),
+		TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FColor>(Colours.GetData(), SkirtVertices), NoTangents, false);
+	Skirt->SetMaterial(0, DomeMaterial);
+	Skirt->SetVisibility(false);
 }
 
 void UMcSkyComponent::BuildStars()
@@ -393,6 +412,7 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	}
 	// The end sky is the whole sky, drawn on black rather than added to the dome's colour.
 	Dome->SetVisibility(Mode != EMode::End && !bPhysicalSky);
+	Skirt->SetVisibility(bPhysicalSky);
 
 	UpdateDome(Ticks);
 	if (bOverworld)
@@ -592,6 +612,18 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 			Clouds->SetVisibility(bSky);
 		}
 		SunLight->SetAtmosphereSunLight(bSky);
+#if !UE_BUILD_SHIPPING
+		// Development: -McHide=fog,clouds,stars,moon,moonsky (what to leave out, to find what draws a line).
+		FString Hide;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McHide="), Hide))
+		{
+			if (Hide.Contains(TEXT("fog"))) { Fog->SetVisibility(false); }
+			if (Hide.Contains(TEXT("clouds")) && Clouds) { Clouds->SetVisibility(false); }
+			if (Hide.Contains(TEXT("stars"))) { Stars->SetVisibility(false); }
+			if (Hide.Contains(TEXT("moon"))) { Moon->SetVisibility(false); }
+			if (Hide.Contains(TEXT("post")) && EnhancedPost) { EnhancedPost->bEnabled = false; }
+		}
+#endif
 	}
 	if (Mode != EMode::Overworld)
 	{
@@ -760,6 +792,13 @@ void UMcSkyComponent::UpdateDome(double Ticks)
 	Zero.Init(FVector2D::ZeroVector, Positions.Num());
 	const TArray<FProcMeshTangent> NoTangents;
 	Dome->UpdateMeshSection(0, Positions, Normals, UV0, Zero, Zero, Zero, Colours, NoTangents);
+	if (Skirt)
+	{
+		const int32 SkirtVertices = (DomeRings / 2 + 1) * (DomeSegments + 1);
+		Skirt->UpdateMeshSection(0, TArray<FVector>(Positions.GetData(), SkirtVertices), TArray<FVector>(Normals.GetData(), SkirtVertices),
+			TArray<FVector2D>(UV0.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FVector2D>(Zero.GetData(), SkirtVertices),
+			TArray<FVector2D>(Zero.GetData(), SkirtVertices), TArray<FColor>(Colours.GetData(), SkirtVertices), NoTangents);
+	}
 }
 
 void UMcSkyComponent::UpdateStars(double Ticks)

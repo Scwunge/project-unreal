@@ -216,6 +216,7 @@ private:
 	bool bPacksNeedRestart = false;
 	TArray<FPackRow> PacksAvailable;
 	TArray<FPackRow> PacksSelected;   // the topmost pack first
+	FString PacksSearch;
 	int32 PacksScrollAvailable = 0;
 	int32 PacksScrollSelected = 0;
 	int32 SelectedWorld = INDEX_NONE;

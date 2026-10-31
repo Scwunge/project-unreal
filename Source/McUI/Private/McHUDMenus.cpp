@@ -745,6 +745,7 @@ void AMcHUD::OpenResourcePacks()
 	PacksSelected.Reset();
 	PacksScrollAvailable = 0;
 	PacksScrollSelected = 0;
+	PacksSearch.Reset();
 
 	auto MakeRow = [this](const FString& Name, const TSharedPtr<FMcResourcePack>& Pack, const FString& Error)
 	{
@@ -833,13 +834,17 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	}
 	LoadFont();
 	const float CentreX = Width / 2.0f;
-	DrawCentredText(TEXT("Select Resource Packs"), CentreX, 8.0f, White);
+	DrawCentredText(TEXT("Select Resource Packs"), CentreX, 4.0f, White);
+	DrawCentredText(TEXT("Drag and drop files into this window to add packs"), CentreX, 17.0f, Grey);
+	MenuTextField(PacksSearch, 0, CentreX - 100.0f, 29.0f, 200.0f, 15.0f, 40);
 
-	constexpr float ListWidth = 200.0f;
+	// Two lists as wide as half the screen less a gap, between a header and a footer line.
+	const float ListWidth = CentreX - 15.0f;
 	constexpr float RowHeight = 36.0f;
-	const float ListTop = 32.0f;
-	const float ListBottom = Height - 52.0f;
-	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop) / RowHeight));
+	const float ListTop = 48.0f;
+	const float ListBottom = Height - 31.0f;
+	const bool bInWorld = OptionsBack == EMenu::Pause;
+	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop - 18.0f) / RowHeight));
 
 	enum class EOp : uint8 { None, Select, Unselect, Up, Down };
 	EOp Op = EOp::None;
@@ -865,23 +870,49 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 
 	auto DrawList = [&](const TArray<FPackRow>& Rows, bool bSelected, float X, int32& Scroll)
 	{
-		DrawCentredText(bSelected ? TEXT("Selected") : TEXT("Available"), X + ListWidth / 2.0f, 21.0f, White);
-		DrawFill(X, ListTop, ListWidth, ListBottom - ListTop, FLinearColor(0.0f, 0.0f, 0.0f, 0.35f));
+		// The list's own background, the picture tiled, with the header's title in bold and underlined.
+		if (UTexture2D* Tile = LoadSprite(bInWorld ? TEXT("textures/gui/inworld_menu_list_background.png") : TEXT("textures/gui/menu_list_background.png")))
+		{
+			for (float TileY = ListTop; TileY < ListBottom; TileY += 16.0f)
+			{
+				for (float TileX = X; TileX < X + ListWidth; TileX += 16.0f)
+				{
+					const float TileW = FMath::Min(16.0f, X + ListWidth - TileX);
+					const float TileH = FMath::Min(16.0f, ListBottom - TileY);
+					const float Ku = Tile->GetSizeX() / 16.0f;
+					DrawRegion(Tile, TileX, TileY, TileW, TileH, 0.0f, 0.0f, TileW * Ku, TileH * Ku);
+				}
+			}
+		}
+		const FString Header = bSelected ? TEXT("Selected") : TEXT("Available");
+		const float HeaderX = FMath::RoundToFloat(X + ListWidth / 2.0f - TextWidth(Header) / 2.0f);
+		DrawGuiText(Header, HeaderX, ListTop + 5.0f, White, true);
+		DrawGuiText(Header, HeaderX + 1.0f, ListTop + 5.0f, White, false);
+		DrawFill(HeaderX, ListTop + 14.0f, TextWidth(Header) + 1.0f, 1.0f, FLinearColor::White);
+		TArray<int32> Shown;
+		for (int32 Index = 0; Index < Rows.Num(); ++Index)
+		{
+			if (PacksSearch.IsEmpty() || Rows[Index].Title.Contains(PacksSearch, ESearchCase::IgnoreCase))
+			{
+				Shown.Add(Index);
+			}
+		}
 		const bool bInList = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom;
 		if (bInList)
 		{
 			Scroll += (bWheelDown ? 1 : 0) - (bWheelUp ? 1 : 0);
 		}
-		Scroll = FMath::Clamp(Scroll, 0, FMath::Max(0, Rows.Num() - Visible));
+		Scroll = FMath::Clamp(Scroll, 0, FMath::Max(0, Shown.Num() - Visible));
 		if (Rows.IsEmpty() && !bSelected)
 		{
-			DrawCentredText(TEXT("Put pack zips or folders in:"), X + ListWidth / 2.0f, ListTop + 6.0f, Grey);
-			DrawCentredText(Clip(McPacks::GetFolder(), ListWidth - 8.0f), X + ListWidth / 2.0f, ListTop + 18.0f, DarkGrey);
+			DrawCentredText(TEXT("Put pack zips or folders in:"), X + ListWidth / 2.0f, ListTop + 24.0f, Grey);
+			DrawCentredText(Clip(McPacks::GetFolder(), ListWidth - 8.0f), X + ListWidth / 2.0f, ListTop + 36.0f, DarkGrey);
 		}
-		for (int32 Index = Scroll; Index < Rows.Num() && Index < Scroll + Visible; ++Index)
+		for (int32 Slot = Scroll; Slot < Shown.Num() && Slot < Scroll + Visible; ++Slot)
 		{
+			const int32 Index = Shown[Slot];
 			const FPackRow& Row = Rows[Index];
-			const float Y = ListTop + 2.0f + (Index - Scroll) * RowHeight;
+			const float Y = ListTop + 18.0f + (Slot - Scroll) * RowHeight;
 			const bool bOver = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= Y - 2.0f && GuiMouse.Y < Y + RowHeight - 2.0f;
 			UTexture2D* Icon = Row.IconKey.IsEmpty() ? nullptr : Sprites.FindRef(Row.IconKey).Get();
 			if (!Icon)
@@ -895,7 +926,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 			}
 			const bool bUsable = Row.Error.IsEmpty();
 			const float TextX = IconX + 32.0f + 3.0f;
-			const float TextWidthMax = ListWidth - 32.0f - 10.0f;
+			const float TextWidthMax = ListWidth - 32.0f - 12.0f;
 			DrawGuiText(Clip(Row.Title, TextWidthMax), TextX, Y + 1.0f, bUsable ? White : Red, true);
 			if (bUsable)
 			{
@@ -958,10 +989,24 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 		}
 	};
 
-	const float LeftX = CentreX - 4.0f - ListWidth;
-	const float RightX = CentreX + 4.0f;
-	DrawList(PacksAvailable, false, LeftX, PacksScrollAvailable);
-	DrawList(PacksSelected, true, RightX, PacksScrollSelected);
+	DrawList(PacksAvailable, false, 0.0f, PacksScrollAvailable);
+	DrawList(PacksSelected, true, CentreX + 15.0f, PacksScrollSelected);
+	// The lines above and below the lists.
+	for (const bool bHeader : { true, false })
+	{
+		const TCHAR* Path = bHeader ? (bInWorld ? TEXT("textures/gui/inworld_header_separator.png") : TEXT("textures/gui/header_separator.png"))
+			: (bInWorld ? TEXT("textures/gui/inworld_footer_separator.png") : TEXT("textures/gui/footer_separator.png"));
+		if (UTexture2D* Line = LoadSprite(Path))
+		{
+			const float LineY = bHeader ? ListTop - 2.0f : ListBottom;
+			const float Ku = Line->GetSizeX() / 32.0f;
+			for (float LineX = 0.0f; LineX < Width; LineX += 32.0f)
+			{
+				const float LineW = FMath::Min(32.0f, Width - LineX);
+				DrawRegion(Line, LineX, LineY, LineW, 2.0f, 0.0f, 0.0f, LineW * Ku, 2.0f * Ku);
+			}
+		}
+	}
 
 	switch (Op)
 	{
@@ -992,7 +1037,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 		break;
 	}
 
-	const float ButtonY = Height - 28.0f;
+	const float ButtonY = Height - 26.0f;
 	if (MenuButton(TEXT("Open Pack Folder"), CentreX - 154.0f, ButtonY, 150.0f, 20.0f))
 	{
 		IFileManager::Get().MakeDirectory(*McPacks::GetFolder(), true);

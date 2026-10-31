@@ -667,9 +667,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		{
 			BowBaseFov = Camera->FieldOfView;
 		}
-		const float Pull = FMath::Min(BowSecondsLocal, 1.0f);
-		// TODO: the zoom while drawing (its curve and cap) measured from the reference client; none until then.
-		(void)Pull;
+		Camera->SetFieldOfView(BowBaseFov * McCombat::GetBowFovScale(BowSecondsLocal));
 	}
 	else if (BowBaseFov > 0.0f)
 	{

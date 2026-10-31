@@ -51,6 +51,10 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a draw of 10 ticks has power 0.5"), McCombat::GetBowPower(10), (0.25f + 1.0f) / 3.0f, 0.001f);
 	TestEqual(TEXT("a draw of a second is full"), McCombat::GetBowPower(20), 1.0f, 0.001f);
 	TestEqual(TEXT("and no more after"), McCombat::GetBowPower(100), 1.0f, 0.001f);
+	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
+	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
+	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowFovScale(3.0f), 0.85f, 0.001f);
 	TestEqual(TEXT("a critical does half as much again"), McCombat::GetDamage(7.0f, 1.0f, true), 10.5f, 0.001f);
 	TestEqual(TEXT("a tenth charge does 0.2 + 0.8 * 0.01"), McCombat::GetDamage(7.0f, 0.1f, false), 7.0f * 0.208f, 0.001f);
 

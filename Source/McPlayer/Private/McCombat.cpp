@@ -53,6 +53,12 @@ namespace McCombat
 		return FMath::Min(1.0f, (Seconds * Seconds + Seconds * 2.0f) / 3.0f);
 	}
 
+	float GetBowFovScale(float DrawSeconds)
+	{
+		const float T = FMath::Clamp(DrawSeconds, 0.0f, 1.0f);
+		return 1.0f - 0.15f * T * T;
+	}
+
 	float GetDamage(float BaseDamage, float Strength, bool bCritical)
 	{
 		float Damage = BaseDamage * (0.2f + Strength * Strength * 0.8f);

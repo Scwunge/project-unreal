@@ -25,6 +25,9 @@ namespace McCombat
 	MCPLAYER_API float GetDamage(float BaseDamage, float Strength, bool bCritical);
 	// The power of a bow drawn for this many ticks, 0 to 1: (t * t + t * 2) / 3 for t seconds. Under 0.1 the arrow stays.
 	MCPLAYER_API float GetBowPower(int32 DrawTicks);
+	// The scale of the field of view (the angle) while a bow is drawn for this many seconds: 1 - 0.15 * t^2, t up to 1, so the
+	// angle closes by 15 percent at the full draw (a second). Measured from the reference client (fov zoom, 5 to 25 ticks of draw).
+	MCPLAYER_API float GetBowFovScale(float DrawSeconds);
 	// Durability the swing costs the held item: a sword 1... tools 2, anything else 0 (they are not made to hit with).
 	MCPLAYER_API int32 GetWear(const FMcItemStack& Held);
 

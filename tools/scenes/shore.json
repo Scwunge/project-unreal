@@ -1,165 +1,126 @@
 {
- "description": "A sandy shore with a shallow sea and palms, for the ocean showcase shot.",
+ "description": "A sand beach and a flat sea level with the land, palms on the beach, for the ocean showcase shot.",
  "camera": [
-  9.5,
-  -58.4,
-  -4.0,
-  25.0,
-  4.0
+  8.5,
+  -59.4,
+  -2.0,
+  20.0,
+  3.0
  ],
  "blocks": [
   {
    "from": [
-    -20,
+    -24,
     -61,
     0
    ],
    "to": [
-    30,
+    24,
     -61,
-    6
-   ],
-   "state": "minecraft:sand"
-  },
-  {
-   "from": [
-    -20,
-    -60,
-    0
-   ],
-   "to": [
-    30,
-    -60,
-    3
-   ],
-   "state": "minecraft:sand"
-  },
-  {
-   "from": [
-    -20,
-    -60,
     4
    ],
-   "to": [
-    30,
-    -60,
+   "state": "minecraft:sand"
+  },
+  {
+   "from": [
+    -24,
+    -61,
     5
    ],
-   "state": "minecraft:sand"
-  },
-  {
-   "from": [
-    -20,
+   "to": [
+    24,
     -61,
-    7
-   ],
-   "to": [
-    30,
-    -58,
-    40
-   ],
-   "state": "minecraft:sand"
-  },
-  {
-   "from": [
-    -20,
-    -60,
-    7
-   ],
-   "to": [
-    30,
-    -58,
-    40
+    36
    ],
    "state": "minecraft:water[level=0]"
   },
   {
    "from": [
-    -20,
-    -57,
-    7
+    -24,
+    -62,
+    5
    ],
    "to": [
-    30,
-    -57,
-    40
+    24,
+    -62,
+    36
    ],
-   "state": "minecraft:air"
-  },
-  {
-   "from": [
-    -6,
-    -59,
-    1
-   ],
-   "to": [
-    -6,
-    -56,
-    1
-   ],
-   "state": "minecraft:jungle_log[axis=y]"
+   "state": "minecraft:sand"
   },
   {
    "from": [
     -8,
-    -55,
-    -1
-   ],
-   "to": [
-    -4,
-    -55,
-    3
-   ],
-   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
-  },
-  {
-   "from": [
-    5,
-    -59,
+    -60,
     1
    ],
    "to": [
-    5,
-    -56,
+    -8,
+    -57,
     1
    ],
    "state": "minecraft:jungle_log[axis=y]"
+  },
+  {
+   "from": [
+    -10,
+    -56,
+    -1
+   ],
+   "to": [
+    -6,
+    -56,
+    3
+   ],
+   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
   },
   {
    "from": [
     3,
-    -55,
-    -1
-   ],
-   "to": [
-    7,
-    -55,
-    3
-   ],
-   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
-  },
-  {
-   "from": [
-    14,
-    -59,
+    -60,
     1
    ],
    "to": [
-    14,
-    -56,
+    3,
+    -57,
     1
    ],
    "state": "minecraft:jungle_log[axis=y]"
   },
   {
    "from": [
-    12,
-    -55,
+    1,
+    -56,
     -1
    ],
    "to": [
-    16,
-    -55,
+    5,
+    -56,
+    3
+   ],
+   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    1
+   ],
+   "to": [
+    12,
+    -57,
+    1
+   ],
+   "state": "minecraft:jungle_log[axis=y]"
+  },
+  {
+   "from": [
+    10,
+    -56,
+    -1
+   ],
+   "to": [
+    14,
+    -56,
     3
    ],
    "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"

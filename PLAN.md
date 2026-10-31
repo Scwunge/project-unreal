@@ -78,11 +78,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       so it reads as a dark wall; use a generated ocean for that shot. Shots need a fresh `-McWorld=` name per scene: a
       world keeps the blocks of scenes placed in it before. `-McCam` did not change the view of `-McScene=unreal` (the scene's
       camera wins), so the sun disc facing the sun is still unchecked.
-    - Where I stopped (Unreal Mode session, 2026-10-31, paused at the user's request; everything committed, no jobs
-      running). Next: a generated-ocean shore shot, the sun disc facing the sun (needs a scene whose camera faces east),
-      a dusk re-shoot to check the skirt blend, the ray tracing path on a DX12 RTX machine (untested, the 1070 is DX11),
-      forest-scale fps at Medium on the 1070, then the roadmap items not started: lit rain and snow, lightning that lights
-      the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.
+    - Sun and sunset (checked 2026-10-31): facing the sun (`sun_c`, `-McCam=0.5,-59.4,0.5,-90,-8` at `-McTime=500`) the
+      atmosphere draws a sun disc with bloom, lens-like glare spots and its glint on the grass; the sunset (`dusk_w`,
+      `-McTime=12400`, yaw 90) is orange to dark with the skirt a thin line at the horizon. Unreal Mode hides the vanilla
+      cloud slabs (the volumetric clouds replace them; vanilla keeps them). Shore: `show_shore3` (sand, a flat sea level
+      with the land, ripples, sunset sky). Shots go on fresh `-McWorld=` names, and the camera for a scene can be
+      overridden with `-McCam=` (the sun shots show it works without a scene).
+    - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
+      the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
+      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

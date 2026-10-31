@@ -3,6 +3,7 @@
 #include "McChunk.h"
 #include "McDimensionType.h"
 #include "McRender.h"
+#include "McRenderMode.h"
 #include "McRenderTextures.h"
 #include "McSkyComponent.h"
 #include "Camera/PlayerCameraManager.h"
@@ -75,6 +76,8 @@ bool UMcCloudComponent::IsCloud(FIntPoint Cell) const
 void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	// Unreal Mode has its own volumetric clouds in the sky (UMcSkyComponent); the vanilla slabs are for the vanilla look.
+	SetVisibility(!McRenderMode::IsEnhanced());
 	const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
 	if (!Height || PatternWidth == 0 || !Material || !Controller || !Controller->PlayerCameraManager)
 	{

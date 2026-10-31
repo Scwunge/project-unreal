@@ -127,7 +127,8 @@ void UMcCloudComponent::Rebuild(FIntPoint Centre, const FLinearColor& Colour)
 			UV0.Add(FVector2D(0.5, 0.5));
 			Colours.Add(FColor(Face.R, Face.G, Face.B, Alpha));
 		}
-		Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		// Swapping the axes into the engine's mirrors the corners' order, so this order faces them outwards.
+		Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
 	};
 	static const FVector Top[4] = { FVector(0, 1, 0), FVector(1, 1, 0), FVector(1, 1, 1), FVector(0, 1, 1) };
 	static const FVector Bottom[4] = { FVector(0, 0, 0), FVector(0, 0, 1), FVector(1, 0, 1), FVector(1, 0, 0) };

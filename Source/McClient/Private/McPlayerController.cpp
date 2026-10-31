@@ -216,6 +216,17 @@ void AMcPlayerController::ConnectToWorld()
 	if (MyPawn && !MyPawn->HasBlockWorld())
 	{
 		MyPawn->SetBlockWorld(BlockWorld);
+		MyPawn->LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
+		{
+			const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+			const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
+			if (!Lids || Lids->GetTicks() == LastLidTick)
+			{
+				return FVector::ZeroVector;
+			}
+			LastLidTick = Lids->GetTicks();
+			return Lids->GetPush(Box);
+		};
 		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
 		{
 			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
@@ -479,9 +490,15 @@ void AMcPlayerController::AttachView()
 	ChestModels->SetupAttachment(WorldActor->GetRootComponent());
 	ChestModels->RegisterComponent();
 	ChestModels->SetWorld(WorldActor->GetBlockWorld());
-	// A chest's lid is up while this player has it open. (Others' open chests aren't told to this machine.)
+	// A chest's lid is up while this player has it open, and a shulker box's while anyone does. (Others' open chests
+	// aren't told to this machine.)
 	ChestModels->IsOpen = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FIntVector& Pos)
 	{
+		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+		if (const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr; Lids && Lids->GetOpeners(Pos) > 0)
+		{
+			return true;
+		}
 		const AMcPlayerPawn* Viewer = WeakSelf.IsValid() ? Cast<AMcPlayerPawn>(WeakSelf->GetPawn()) : nullptr;
 		const UMcPlayerDataComponent* Items = Viewer ? Viewer->Data.Get() : nullptr;
 		return Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && Items->GetWindow().Pos == Pos;

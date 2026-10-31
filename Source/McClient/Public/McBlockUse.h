@@ -112,6 +112,8 @@ private:
 	void StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos);
 	// One game tick of every hopper.
 	void TickHoppers();
+	// Tells each world which shulker boxes are open, and for how many (their lids follow on every machine).
+	void TickShulkers();
 	// Moves an item into the block the hopper faces, then one in from above; true if either moved.
 	bool TickHopper(AMcWorldActor& WorldActor, const FIntVector& Pos, FMcStateId State);
 	// What a hopper at the given face of the block at Pos may reach of its slots (none if it isn't a container).

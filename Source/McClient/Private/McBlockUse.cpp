@@ -1,5 +1,6 @@
 #include "McBlockUse.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
@@ -18,6 +19,7 @@
 #include "McArrow.h"
 #include "McBuckets.h"
 #include "McShulker.h"
+#include "McShulkerLids.h"
 #include "McFont.h"
 #include "McSign.h"
 #include "McSimulation.h"
@@ -99,14 +101,6 @@ namespace
 		if (Facing == TEXT("east")) return FIntVector(1, 0, 0);
 		if (Facing == TEXT("up")) return FIntVector(0, 1, 0);
 		return FIntVector(0, -1, 0);
-	}
-
-	// A shulker box opens at its face: a block in the way shuts it.
-	bool IsLidBlocked(const FMcBlockWorld& Blocks, const FIntVector& Pos)
-	{
-		const FMcStateId State = Blocks.GetBlock(Pos);
-		const FIntVector Step = FacingStep(FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing")));
-		return FMcBlockShapes::Get().HasCollision(Blocks.GetBlock(Pos + Step));
 	}
 
 	bool GetFurnaceKind(FName Name, EMcFurnaceKind& OutKind)
@@ -251,11 +245,35 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 			Pair.Value.Machine->Tick();
 		}
 		TickHoppers();
+		TickShulkers();
 		if (++CleanTimer >= 100)
 		{
 			CleanTimer = 0;
 			Sweep();
 		}
+	}
+}
+
+void UMcBlockUseSubsystem::TickShulkers()
+{
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		const FMcBlockWorld* Blocks = It->HasAuthority() ? It->GetBlockWorld() : nullptr;
+		if (!Blocks)
+		{
+			continue;
+		}
+		TMap<FIntVector, int32> Openers;
+		for (FConstPlayerControllerIterator Controller = GetWorld()->GetPlayerControllerIterator(); Controller; ++Controller)
+		{
+			const AMcPlayerPawn* Pawn = Controller->IsValid() && (!It->PlayerFilter || It->PlayerFilter(*Controller->Get())) ? Cast<AMcPlayerPawn>(Controller->Get()->GetPawn()) : nullptr;
+			const UMcPlayerDataComponent* Items = Pawn ? Pawn->Data.Get() : nullptr;
+			if (Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && McShulker::IsBox(GetBlockName(*Blocks, Items->GetWindow().Pos)))
+			{
+				++Openers.FindOrAdd(Items->GetWindow().Pos);
+			}
+		}
+		It->SetShulkerOpeners(Openers);
 	}
 }
 
@@ -1347,7 +1365,7 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	}
 	if (const int32 Slots = GetContainerSlots(Name))
 	{
-		if (McShulker::IsBox(Name) && IsLidBlocked(*Blocks, Pos))
+		if (McShulker::IsBox(Name) && FMcShulkerLids::IsBlocked(*Blocks, Pos))
 		{
 			return true;
 		}

@@ -48,7 +48,14 @@ public:
 	// it, after the change. Changes to a container's items are not told here.
 	FMcOnBlockEntityChanged OnBlockEntityChanged;
 
+	// Collision boxes (block-local) that stand in for a block's own while it moves: an open shulker box's shell. Cleared
+	// when the block changes.
+	void SetCollisionOverride(const FIntVector& Pos, TArray<FBox3f> Boxes) { CollisionOverrides.Add(Pos, MoveTemp(Boxes)); }
+	void ClearCollisionOverride(const FIntVector& Pos) { CollisionOverrides.Remove(Pos); }
+	const TArray<FBox3f>* FindCollisionOverride(const FIntVector& Pos) const { return CollisionOverrides.IsEmpty() ? nullptr : CollisionOverrides.Find(Pos); }
+
 private:
 	FMcDimensionType Dimension;
 	TMap<FIntPoint, TUniquePtr<FMcChunk>> Chunks;
+	TMap<FIntVector, TArray<FBox3f>> CollisionOverrides;
 };

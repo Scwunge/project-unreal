@@ -58,6 +58,9 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> SetBlockHandler;
 	// Swings at a mob in front of the player: the look direction. Set by the controller.
 	TFunction<void(const FVector& Look)> AttackHandler;
+	// How far this tick's opening shulker lids move a body with this box (zero once a lid tick has been asked about,
+	// so a frame with two movement steps is not pushed twice): the view's world, set by the controller.
+	TFunction<FVector(const FBox& Box, int64& LastLidTick)> LidPush;
 
 	UPROPERTY(VisibleAnywhere, Category = "Mc")
 	TObjectPtr<UMcPlayerDataComponent> Data;
@@ -247,6 +250,7 @@ private:
 	void ShowPosition() const;
 
 	const FMcBlockWorld* BlockWorld = nullptr;
+	int64 LastLidTick = 0;
 	FMcBody Body;
 	FVector PreviousPosition = FVector::ZeroVector;
 	float PreviousEyeHeight = 1.62f;

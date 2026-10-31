@@ -185,8 +185,17 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     from the 64-pixel mob nets: a base (8 high) and a lid (12 high, over the base), centred in the block and turned by
     `facing` (placement faces the clicked face, as vanilla). Opening raises the lid 8 pixels while turning it 270°,
     eased like the chest's lid. Test `McRender.ShulkerBoxModels`; shot `Saved/Shots/shulkers.png`
-    (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles). Not done: a closed box
-    blocking its opening, and the shell's collision shape while open.
+    (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles).
+  - **Shulker box lids and collision** (2026-10-31): `FMcShulkerLids` (McEntity), fitted to vanilla's logged per-tick
+    state (mc-reference `shulker_log.txt`, `log shulker`): progress goes 0.1 a tick to 1 while anyone has the box open
+    and back when no one does; the collision is the block grown by half the progress the way it faces (an override in
+    `FMcBlockWorld`, read by `McPhysics::GatherBoxes`); while opening, what overlaps the block shifted by the progress
+    (0.01 further) moves 0.11 a tick along the facing (a player on top rose 1.1, one in front of an east-facing box
+    went 0.88). A box stays shut when a block's collision is in the half block in front: stone, a bottom slab, carpet
+    and a chest stopped it, a top slab and a torch did not. The server counts each box's openers every tick
+    (`UMcBlockUseSubsystem::TickShulkers`) and multicasts changes; every machine steps the lids, the server pushes mobs
+    and items, each player's machine its own player; others' open boxes now show their lids. Test
+    `McEntity.ShulkerLids`. Not done: a player joining while a box is open sees it shut until it next changes.
   - **Bells** (2026-10-30): the block models are only the frame (bar, posts, chain), so the body is an entity model
     `mc:bell` from `entity/bell/bell_body.png` (a cup 6 across, a rim 8 across), stood in each bell by
     `UMcChestComponent`. Using a bell rings it (`block.bell.use`) when struck from a side it can swing away from: a

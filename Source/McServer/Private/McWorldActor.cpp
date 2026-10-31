@@ -14,6 +14,7 @@
 #include "McNoiseGenerator.h"
 #include "McPortal.h"
 #include "McSimulation.h"
+#include "McPhysics.h"
 #include "McServer.h"
 #include "McWorldStorage.h"
 #include "McLaunch.h"
@@ -538,6 +539,37 @@ void AMcWorldActor::MulticastBellRung_Implementation(FIntVector Pos, uint8 Side)
 	}
 }
 
+void AMcWorldActor::SetShulkerOpeners(const TMap<FIntVector, int32>& Openers)
+{
+	for (const TPair<FIntVector, int32>& Pair : Openers)
+	{
+		if (ShulkerOpeners.FindRef(Pair.Key) != Pair.Value)
+		{
+			MulticastShulkerOpeners(Pair.Key, Pair.Value);
+		}
+	}
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (!Openers.Contains(Pair.Key))
+		{
+			MulticastShulkerOpeners(Pair.Key, 0);
+		}
+	}
+	ShulkerOpeners = Openers;
+}
+
+void AMcWorldActor::MulticastShulkerOpeners_Implementation(FIntVector Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpeners(Pos, Count);
+	}
+}
+
 void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch)
 {
 	if (!bViewed)
@@ -817,6 +849,27 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	if (BlockWorld && Generator)
 	{
 		StreamChunks();
+	}
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	LidRemainder = FMath::Min(LidRemainder + DeltaSeconds, 0.25);
+	for (; ShulkerLids && LidRemainder >= 0.05; LidRemainder -= 0.05)
+	{
+		ShulkerLids->Tick();
+		// The server moves the mobs and items in an opening lid's way; each player's own machine moves them.
+		if (HasAuthority() && Entities)
+		{
+			for (const TUniquePtr<FMcEntity>& Entity : Entities->GetManager().GetEntities())
+			{
+				const FVector Push = ShulkerLids->GetPush(Entity->Body.GetBox());
+				if (!Entity->bRemoved && !Push.IsZero())
+				{
+					McPhysics::Move(*BlockWorld, Entity->Body, Push, false);
+				}
+			}
+		}
 	}
 	if (Simulation)
 	{

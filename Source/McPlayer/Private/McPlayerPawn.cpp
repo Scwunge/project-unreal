@@ -236,6 +236,15 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
 		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
 	}
+	// An opening shulker box's lid moves what is in its way.
+	if (LidPush)
+	{
+		const FVector Push = LidPush(Body.GetBox(), LastLidTick);
+		if (!Push.IsZero())
+		{
+			McPhysics::Move(*BlockWorld, Body, Push, false);
+		}
+	}
 	// Elytra glide in place of walking.
 	if (!TickGlide(Move, bJumpPressed))
 	{

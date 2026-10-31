@@ -60,6 +60,25 @@ namespace McCache
 		return Object;
 	}
 
+	FTextureMeta ReadTextureMeta(const FString& PngPath)
+	{
+		FTextureMeta Meta;
+		FString Text;
+		const FString MetaPath = PngPath + TEXT(".mcmeta");
+		if (!FPaths::FileExists(MetaPath) || !FFileHelper::LoadFileToString(Text, *MetaPath))
+		{
+			return Meta;
+		}
+		TSharedPtr<FJsonObject> Root;
+		const TSharedPtr<FJsonObject>* Texture = nullptr;
+		if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) && Root.IsValid() && Root->TryGetObjectField(TEXT("texture"), Texture))
+		{
+			(*Texture)->TryGetBoolField(TEXT("blur"), Meta.bBlur);
+			Meta.bHasClamp = (*Texture)->TryGetBoolField(TEXT("clamp"), Meta.bClamp);
+		}
+		return Meta;
+	}
+
 	FString Namespaced(const FString& Id)
 	{
 		return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id;

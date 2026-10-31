@@ -66,6 +66,9 @@ public:
 	// The folder pack's file on disk, or empty for a zip.
 	FString GetFolderFile(const FString& Relative) const;
 
+	// The first file of a zip whose name ends with this (a font's "unifont.hex" in its zip), no pack.mcmeta needed.
+	static bool ReadZipEntry(const FString& ZipPath, const FString& NameEnding, TArray<uint8>& Out);
+
 	// How many files a zip pack lists (0 for a folder).
 	int32 NumZipEntries() const { return Entries.Num(); }
 	// Identifies the pack's content for caches: path, size and time of the zip, or the folder's path and pack.mcmeta time.

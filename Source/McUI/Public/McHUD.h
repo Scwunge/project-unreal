@@ -19,9 +19,11 @@
 class FMcContainer;
 class FMcFurnace;
 class FMcMenuInput;
+class FMcRasterFonts;
 class UMcPlayerDataComponent;
 class UTexture2D;
 struct FMcItemStack;
+struct FMcRasterGlyph;
 
 UCLASS()
 class MCUI_API AMcHUD : public AHUD
@@ -265,12 +267,24 @@ private:
 	struct FGlyph
 	{
 		FString Sprite;
+		// A character a provider drew itself (ttf, unihex, legacy_unicode) has its own small picture instead of a sheet cell.
+		UTexture2D* Texture = nullptr;
 		float U = 0, V = 0, CellWidth = 0, CellHeight = 0;
-		float DrawWidth = 0, DrawHeight = 0, OffsetY = 0;
+		float DrawWidth = 0, DrawHeight = 0, OffsetX = 0, OffsetY = 0;
 		float Advance = 0;
+		// How far the shadow is moved, in pixels; half for the half-size glyphs of Unifont.
+		float ShadowOffset = 1.0f;
+		// The glyph's provider in the font definition: the first provider to have the character wins.
+		int32 Priority = 0;
 	};
 	TMap<TCHAR, FGlyph> Glyphs;
 	const FGlyph* FindGlyph(TCHAR Char) const;
+	UTexture2D* MakeGlyphTexture(const FMcRasterGlyph& Glyph);
+	// The providers that draw their characters when they are first needed, and the characters they were already asked for.
+	TSharedPtr<FMcRasterFonts> RasterFonts;
+	TSet<TCHAR> RasterAsked;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTexture2D>> GlyphTextures;
 	TArray<uint8> GalacticWidths;
 
 	TSharedPtr<FScreenState> Screen;

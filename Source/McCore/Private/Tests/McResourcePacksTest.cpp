@@ -402,4 +402,35 @@ bool FMcPackAtlasSpritesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A picture's .png.mcmeta "texture" section: blur and clamp, each only when it names them.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcTextureMetaTest, "McClient.McCore.TextureMeta",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcTextureMetaTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McTextureMetaTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const auto Meta = [&](const TCHAR* Name, const TCHAR* Json)
+	{
+		if (Json)
+		{
+			FFileHelper::SaveStringToFile(Json, *(Root / Name + TEXT(".mcmeta")));
+		}
+		return McCache::ReadTextureMeta(Root / Name);
+	};
+	McCache::FTextureMeta Blur = Meta(TEXT("a.png"), TEXT("{\"texture\":{\"blur\":true}}"));
+	TestTrue(TEXT("blur"), Blur.bBlur);
+	TestFalse(TEXT("clamp not named"), Blur.bHasClamp);
+	McCache::FTextureMeta Clamp = Meta(TEXT("b.png"), TEXT("{\"texture\":{\"clamp\":false}}"));
+	TestFalse(TEXT("no blur"), Clamp.bBlur);
+	TestTrue(TEXT("clamp named"), Clamp.bHasClamp);
+	TestFalse(TEXT("as false"), Clamp.bClamp);
+	McCache::FTextureMeta Other = Meta(TEXT("c.png"), TEXT("{\"animation\":{\"frametime\":2}}"));
+	TestFalse(TEXT("a mcmeta without the section"), Other.bBlur || Other.bHasClamp);
+	McCache::FTextureMeta None = Meta(TEXT("d.png"), nullptr);
+	TestFalse(TEXT("no mcmeta"), None.bBlur || None.bHasClamp);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 #endif

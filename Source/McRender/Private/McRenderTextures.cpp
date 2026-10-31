@@ -1,5 +1,6 @@
 #include "McRenderTextures.h"
 #include "McRender.h"
+#include "McCache.h"
 #include "Engine/Texture2DArray.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
@@ -60,7 +61,7 @@ bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPix
 	return true;
 }
 
-UTexture2DArray* McRenderTextures::MakeArray(UObject* Outer, const TArray<FColor>& Pixels, int32 Width, int32 Height)
+UTexture2DArray* McRenderTextures::MakeArray(UObject* Outer, const TArray<FColor>& Pixels, int32 Width, int32 Height, bool bBlur, bool bClamp)
 {
 	UTexture2DArray* Array = NewObject<UTexture2DArray>(Outer, NAME_None, RF_Transient);
 	Array->SetPlatformData(new FTexturePlatformData());
@@ -77,9 +78,9 @@ UTexture2DArray* McRenderTextures::MakeArray(UObject* Outer, const TArray<FColor
 	FMemory::Memcpy(Destination, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	MipMap->BulkData.Unlock();
 	Array->SRGB = true;
-	Array->Filter = TF_Nearest;
-	Array->AddressX = TA_Clamp;
-	Array->AddressY = TA_Clamp;
+	Array->Filter = bBlur ? TF_Bilinear : TF_Nearest;
+	Array->AddressX = bClamp ? TA_Clamp : TA_Wrap;
+	Array->AddressY = bClamp ? TA_Clamp : TA_Wrap;
 	Array->NeverStream = true;
 	Array->LODGroup = TEXTUREGROUP_Pixels2D;
 #if WITH_EDITORONLY_DATA
@@ -104,5 +105,6 @@ UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString&
 			Pixel = FColor(255, 255, 255, Pixel.A);
 		}
 	}
-	return MakeArray(Outer, Pixels, OutWidth, OutHeight);
+	const McCache::FTextureMeta Meta = McCache::ReadTextureMeta(Path);
+	return MakeArray(Outer, Pixels, OutWidth, OutHeight, Meta.bBlur, !Meta.bHasClamp || Meta.bClamp);
 }

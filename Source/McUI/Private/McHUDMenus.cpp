@@ -926,6 +926,9 @@ void AMcHUD::ApplyResourcePacks()
 	LayerTextures.Empty();
 	GuiScalings.Empty();
 	Glyphs.Reset();
+	RasterFonts.Reset();
+	RasterAsked.Reset();
+	GlyphTextures.Reset();
 	GalacticWidths.Reset();
 	if (OptionsBack == EMenu::Pause)
 	{

@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McFontRaster.h"
 #include "McBanner.h"
 #include "McGuiLayout.h"
 #include "McBlockModels.h"
@@ -40,7 +41,7 @@ namespace
 		return FVector3d(X, Y, Depth);
 	}
 
-	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height, bool bSmooth = false)
+	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height, bool bSmooth = false, bool bClamp = false)
 	{
 		UTexture2D* Texture = UTexture2D::CreateTransient(Width, Height, PF_B8G8R8A8);
 		if (!Texture)
@@ -48,6 +49,11 @@ namespace
 			return nullptr;
 		}
 		Texture->Filter = bSmooth ? TF_Bilinear : TF_Nearest;
+		if (bClamp)
+		{
+			Texture->AddressX = TA_Clamp;
+			Texture->AddressY = TA_Clamp;
+		}
 		Texture->SRGB = !bSmooth;
 		Texture->LODGroup = TEXTUREGROUP_Pixels2D;
 		void* Data = Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
@@ -99,7 +105,9 @@ namespace
 				Bgra[0] = Bgra[1] = Bgra[2] = 0;
 			}
 		}
-		return MakeTexture(Raw, Width, Height, bGreyToAlpha);
+		// The picture's own .png.mcmeta may ask for smooth filtering or clamping.
+		const McCache::FTextureMeta Meta = McCache::ReadTextureMeta(Path);
+		return MakeTexture(Raw, Width, Height, bGreyToAlpha || Meta.bBlur, Meta.bHasClamp && Meta.bClamp);
 	}
 }
 
@@ -131,6 +139,18 @@ UTexture2D* AMcHUD::LoadPackIcon(const FString& Key, const TArray<uint8>& Png)
 	}
 	UTexture2D* Texture = LoadPngBytes(Png, Key, false, false);
 	Sprites.Add(Key, Texture);
+	return Texture;
+}
+
+UTexture2D* AMcHUD::MakeGlyphTexture(const FMcRasterGlyph& Glyph)
+{
+	TArray64<uint8> Bgra;
+	Bgra.Append(Glyph.Bgra.GetData(), Glyph.Bgra.Num());
+	UTexture2D* Texture = MakeTexture(Bgra, Glyph.Width, Glyph.Height);
+	if (Texture)
+	{
+		GlyphTextures.Add(Texture);
+	}
 	return Texture;
 }
 

@@ -1,5 +1,6 @@
 #include "McContainer.h"
 #include "McCraftingMenu.h"
+#include "McFontRaster.h"
 #include "McFurnace.h"
 #include "McGuiLayout.h"
 #include "McItemRegistry.h"
@@ -8,6 +9,8 @@
 #include "McRecipe.h"
 #include "McScreenLayout.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -473,6 +476,62 @@ bool FMcCreativeScreenTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no search, everything"), Creative::Filter(Items, TEXT("  "), Name).Num(), 3);
 	TestEqual(TEXT("one word"), Creative::Filter(Items, TEXT("LOG"), Name).Num(), 2);
 	TestEqual(TEXT("every word"), Creative::Filter(Items, TEXT("log oak"), Name), TArray<FName>{ TEXT("minecraft:oak_log") });
+	return true;
+}
+
+// The providers that make their characters on demand: a Unifont .hex line is cut to the columns it uses and drawn at half size;
+// a TrueType font is rendered with its advance; the provider earlier in the definition has the character.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcRasterFontsTest, "McClient.McUI.RasterFonts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcRasterFontsTest::RunTest(const FString& Parameters)
+{
+	// 0041: eight pixels wide, rows 4 to 11 with the columns 2 to 5 set; 4E00: sixteen wide, the top row all set.
+	FString Hex = TEXT("0041:00000000") TEXT("3C3C3C3C3C3C3C3C") TEXT("00000000") TEXT("\n4E00:FFFF") + FString::ChrN(60, TEXT('0')) + TEXT("\n");
+	TArray<uint8> Bytes;
+	Bytes.Append(reinterpret_cast<const uint8*>(TCHAR_TO_ANSI(*Hex)), Hex.Len());
+
+	FMcRasterFonts Fonts;
+	Fonts.AddUnihex(2, Bytes, {});
+	FMcRasterGlyph Glyph;
+	if (TestTrue(TEXT("A is in the file"), Fonts.Make(TEXT('A'), MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("A is cut to its columns"), Glyph.Width, 4);
+		TestEqual(TEXT("sixteen rows"), Glyph.Height, 16);
+		TestEqual(TEXT("half size"), Glyph.DrawWidth, 2.0f);
+		TestEqual(TEXT("starting at column 2, half as far"), Glyph.OffsetX, 1.0f);
+		TestEqual(TEXT("advance is half the columns and one"), Glyph.Advance, 3.0f);
+		TestEqual(TEXT("a pixel of the glyph"), static_cast<int32>(Glyph.Bgra[(4 * Glyph.Width) * 4 + 3]), 255);
+		TestEqual(TEXT("a pixel above it"), static_cast<int32>(Glyph.Bgra[3]), 0);
+	}
+	if (TestTrue(TEXT("a wide one"), Fonts.Make(TEXT('\x4E00'), MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("sixteen columns"), Glyph.Width, 16);
+		TestEqual(TEXT("advance 9"), Glyph.Advance, 9.0f);
+	}
+	TestFalse(TEXT("not a character of the file"), Fonts.Make(TEXT('B'), MAX_int32, Glyph));
+	TestFalse(TEXT("a provider after the limit is not asked"), Fonts.Make(TEXT('A'), 2, Glyph));
+
+	const FString Roboto = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
+	TArray<uint8> File;
+	if (TestTrue(TEXT("the engine's font is there"), FFileHelper::LoadFileToArray(File, *Roboto)))
+	{
+		FMcRasterFonts Type;
+		Type.AddTrueType(0, File, 16.0f, 2.0f, FVector2D::ZeroVector, TEXT("B"));
+		if (TestTrue(TEXT("a glyph of the ttf"), Type.Make(TEXT('A'), MAX_int32, Glyph)))
+		{
+			TestTrue(TEXT("it has a picture"), Glyph.Width > 0 && Glyph.Height > 0 && Glyph.Bgra.Num() == Glyph.Width * Glyph.Height * 4);
+			TestTrue(TEXT("scaled down by the oversample"), FMath::IsNearlyEqual(Glyph.DrawWidth, Glyph.Width / 2.0f));
+			TestTrue(TEXT("it advances"), Glyph.Advance > 3.0f && Glyph.Advance < 16.0f);
+			TestTrue(TEXT("it sits on the baseline"), Glyph.OffsetY + Glyph.DrawHeight < 7.5f && Glyph.OffsetY + Glyph.DrawHeight > 6.0f);
+		}
+		TestFalse(TEXT("a skipped character"), Type.Make(TEXT('B'), MAX_int32, Glyph));
+		if (TestTrue(TEXT("the space"), Type.Make(TEXT(' '), MAX_int32, Glyph)))
+		{
+			TestEqual(TEXT("has no picture"), Glyph.Width, 0);
+			TestTrue(TEXT("but room"), Glyph.Advance > 0.0f);
+		}
+	}
 	return true;
 }
 

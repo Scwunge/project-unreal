@@ -358,11 +358,12 @@ Textures
 - [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
 - [x] GUI `.png.mcmeta` scaling (`gui.scaling`: nine_slice with one border or per side, tile, stretch) for the widget
   sprites (button, slider and handle, text field), from the sprite's own pack
-- [ ] Texture `.png.mcmeta` `blur`, `clamp` (one shared sampler per array, so a per-picture setting cannot apply) and
-  villager `hat` (the villagers session's model): not read
+- [~] Texture `.png.mcmeta` `blur`/`clamp` read for standalone textures (GUI pictures, block texture arrays; each texture asset carries its own sampler, so no second sampler was needed; atlas sprites ignore blur as in vanilla). Villager `hat` (the villagers session's model): not read
+
+> **Where I stopped (resource packs, paused):** ttf/unihex/legacy_unicode fonts are in (McFontRaster.cpp, lazy per-glyph textures, FreeType) as is blur/clamp, but WIP and unverified: tests `McClient.McUI.RasterFonts` and `McClient.McCore.TextureMeta` have not run, and no full McClient run on the 1070 has happened since. The ours-vs-vanilla shots (font_u_ours.png, font_t_ours.png vs E:\mc-referenceun\screenshotsef_unicode_vanilla.png / ref_ttf_vanilla.png) were queued but not compared, so unihex advance/offset/shadow and ttf em/baseline are from memory. Next: run those shots, fit metrics, check ASCII still uses the bitmap sheet, run the full McClient run, then drop the WIP prefix. The zz_test_ttf pack exists only on the 1070.
 - [x] `atlases/*.json` for every atlas: unstitch, paletted_permutations and filter sources become pictures the game finds as a pack's own (McPackAtlas.cpp; tests PackAtlas, PackAtlasSprites); single and directory sources need nothing (textures are found by path)
 - [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
-- [~] `font/default.json` providers: bitmap and space providers (packs first, references, filters), any glyph incl. Greek/Cyrillic/accented; ttf, unihex, legacy_unicode and other font ids missing
+- [x] `font/default.json` providers: bitmap, space, unihex (Unifont .hex zips, size_overrides; the game's own Unifont stands in where the jar's include/unifont.json is empty), legacy_unicode (glyph_sizes.bin and unicode_page_XX.png) and ttf (FreeType: size, oversample, shift, skip) in the packs' order; the last three draw a character into a small texture of its own on first use (McFontRaster.cpp, glyph textures in AMcHUD). Other font ids (alt, illageralt, uniform) are not read (only the enchanting table's galactic font has its own code)
 
 Models and items
 - [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's (tested)

@@ -20,6 +20,17 @@ namespace McCache
 	// wins (McResourcePacks.h): the path is then the pack's file, or for a zip the copy taken out into Saved/McPackCache.
 	MCCORE_API FString Asset(const FString& RelativePath);
 
+	// The "texture" section of a picture's .png.mcmeta, for pictures drawn on their own (not cut into an atlas): how the
+	// game samples it. Blur filters it smoothly instead of nearest; clamp holds its edge pixels past 0 and 1, where
+	// otherwise it repeats. A picture without the section, or a key not in it, leaves the sampling as the caller has it.
+	struct FTextureMeta
+	{
+		bool bBlur = false;
+		bool bHasClamp = false;
+		bool bClamp = false;
+	};
+	MCCORE_API FTextureMeta ReadTextureMeta(const FString& PngPath);
+
 	// Reads and parses a JSON file whose top level is an object. Logs and returns null on failure.
 	MCCORE_API TSharedPtr<FJsonObject> LoadJsonObject(const FString& Path);
 

@@ -412,6 +412,26 @@ bool FMcResourcePack::OpenZip(const FString& PackPath, FString& OutError)
 	return true;
 }
 
+bool FMcResourcePack::ReadZipEntry(const FString& ZipPath, const FString& NameEnding, TArray<uint8>& Out)
+{
+	FMcResourcePack Zip;
+	Zip.Info.bZip = true;
+	Zip.Info.Path = ZipPath;
+	FString Error;
+	if (!Zip.OpenZip(ZipPath, Error))
+	{
+		return false;
+	}
+	for (const TPair<FString, FZipEntry>& Entry : Zip.Entries)
+	{
+		if (Entry.Key.EndsWith(NameEnding))
+		{
+			return Zip.Read(Entry.Key, Out);
+		}
+	}
+	return false;
+}
+
 bool FMcResourcePack::HasExact(const FString& Path) const
 {
 	if (Info.bZip)

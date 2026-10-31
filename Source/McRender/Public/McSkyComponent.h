@@ -1,4 +1,4 @@
-// The sky: a dome that follows the camera and shades from the fog colour at the horizon to the sky colour overhead,
+﻿// The sky: a dome that follows the camera and shades from the fog colour at the horizon to the sky colour overhead,
 // with the sunrise and sunset glow, stars, and the sun and moon from the jar's pictures, all driven by the time of
 // day (FMcDayCycle). It also fogs the distance in the fog colour and says how much of the sky's light reaches the
 // blocks, which the block materials read.
@@ -32,6 +32,11 @@ namespace McSky
 	// the exposure up in caves, over a second or two, as an eye adjusts.
 	MCRENDER_API float GetCameraOpen();
 	MCRENDER_API void SetCameraOpen(float Open);
+
+	// 1 when the camera is under water (the world renderer measures it), else 0. Unreal Mode thickens the fog to the
+	// sea's blue-green, dims the sun and lets its light dance as caustics.
+	MCRENDER_API float GetCameraUnderwater();
+	MCRENDER_API void SetCameraUnderwater(float Under);
 
 	// A sky or fog colour (display values) under rain and thunder (0 to 1 each; thunder as heavy as the rain is):
 	// greyed and darkened towards its own brightness, as the sky goes grey in a storm (minecraft.wiki: "Rain").

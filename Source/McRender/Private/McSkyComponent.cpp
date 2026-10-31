@@ -1,4 +1,4 @@
-#include "McSkyComponent.h"
+﻿#include "McSkyComponent.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McDayCycle.h"
@@ -110,6 +110,18 @@ float McSky::GetCameraOpen()
 void McSky::SetCameraOpen(float Open)
 {
 	GCameraOpen = Open;
+}
+
+static float GCameraUnderwater = 0.0f;
+
+float McSky::GetCameraUnderwater()
+{
+	return GCameraUnderwater;
+}
+
+void McSky::SetCameraUnderwater(float Under)
+{
+	GCameraUnderwater = Under;
 }
 
 float McSky::GetSkyLightFactor()
@@ -614,7 +626,10 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		// back outdoors.
 		const float Target = Mode == EMode::Overworld ? (1.0f - McSky::GetCameraOpen()) * 1.5f : 0.0f;
 		CaveExposure = FMath::FInterpTo(CaveExposure, Target, GetWorld()->GetDeltaSeconds(), 1.0f);
-		Grade.AutoExposureBias = BaseExposure + CaveExposure;
+		// Under water the picture goes blue-green and a little darker, the red light being lost first.
+		const float Sea = McRenderMode::IsEnhanced() ? McSky::GetCameraUnderwater() : 0.0f;
+		Grade.ColorGain = FMath::Lerp(Grade.ColorGain, FVector4(0.3, 0.72, 0.95, 1.0), Sea);
+		Grade.AutoExposureBias = BaseExposure + CaveExposure - 1.1f * Sea;
 		Grade.VignetteIntensity = Mode == EMode::Overworld ? 0.35f : 0.5f;
 		SunLight->SetCastShadows(Mode == EMode::Overworld);
 		SunLight->SetCastRaytracedShadow(McRenderMode::IsRayTracing());
@@ -681,6 +696,12 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		Fog->SetVolumetricFogEmissive(FLinearColor::Black);
 		Fog->SetVolumetricFogAlbedo(FColor::White);
 	}
+	// Under water the sun's light dances as caustics (a light function, only while it matters).
+	{
+		static UMaterialInterface* Caustics = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Mc/Materials/M_McCaustics.M_McCaustics"));
+		const bool bCaustic = Caustics && McRenderMode::IsEnhanced() && McSky::GetCameraUnderwater() > 0.5f;
+		SunLight->SetLightFunctionMaterial(bCaustic ? Caustics : nullptr);
+	}
 	float SunIntensity = SunLux;
 	const float MoonIntensity = MoonLux;
 #if !UE_BUILD_SHIPPING
@@ -701,7 +722,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		const float High = FMath::Clamp(static_cast<float>(ToSun.Z) * 3.0f, 0.0f, 1.0f);
 		// The atmosphere's own transmittance reddens the low sun; the light itself is white.
 			SunLight->SetLightColor(FLinearColor::White);
-		SunLight->SetIntensity(SunIntensity * Day * Clear);
+		SunLight->SetIntensity(SunIntensity * Day * Clear * (1.0f - 0.35f * (McRenderMode::IsEnhanced() ? McSky::GetCameraUnderwater() : 0.0f)));
 		// Looking towards the sun the haze glows its colour, most of all as it sets.
 		if (Fog)
 		{
@@ -873,13 +894,18 @@ void UMcSkyComponent::UpdateFog()
 	// Thick at the view distance, starting at three fifths of it. 3.3 optical depths take the fog to about 90%.
 	const bool bNether = Mode == EMode::Nether;
 	// Rain brings the fog 30% closer.
-	const float End = (bNether ? FMath::Min(FogEndBlocks, NetherFogEndBlocks) : FogEndBlocks * (1.0f - 0.3f * Rain)) * McCoords::UnitsPerBlock;
-	const float Start = bNether ? NetherFogStartBlocks * McCoords::UnitsPerBlock : End * 0.6f;
+	// Under water (Unreal Mode) the view closes in to about 16 blocks, in the sea's own colour, darker the less sky there is.
+	const float Under = McRenderMode::IsEnhanced() ? McSky::GetCameraUnderwater() : 0.0f;
+	const float AboveEnd = (bNether ? FMath::Min(FogEndBlocks, NetherFogEndBlocks) : FogEndBlocks * (1.0f - 0.3f * Rain)) * McCoords::UnitsPerBlock;
+	const float End = FMath::Lerp(AboveEnd, 16.0f * McCoords::UnitsPerBlock, Under);
+	const float Start = FMath::Lerp(bNether ? NetherFogStartBlocks * McCoords::UnitsPerBlock : AboveEnd * 0.6f, 0.0f, Under);
 	Fog->SetStartDistance(Start);
 	Fog->SetFogCutoffDistance(DomeRadius * 0.8f);
 	// Under the physical sky the atmosphere hazes the distance itself, so the distance fog is half as thick.
 	const float Thin = (Mode == EMode::Overworld && McRenderMode::IsEnhanced() && Atmosphere) ? 0.5f : 1.0f;
 	Fog->SetFogDensity(3.3f / FMath::Max(End - Start, 1.0f) * 1000.0f * Thin);
-	Fog->FogInscatteringLuminance = DisplayToLinear(FogColor);
+	const FLinearColor SeaColour(0.04f, 0.2f, 0.34f, 1.0f);
+	const FLinearColor Shown = FMath::Lerp(FogColor, SeaColour * (0.35f + 0.65f * McSky::GetSkyLightFactor()), Under);
+	Fog->FogInscatteringLuminance = DisplayToLinear(Shown);
 	Fog->MarkRenderStateDirty();
 }

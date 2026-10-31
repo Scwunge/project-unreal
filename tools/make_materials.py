@@ -1,4 +1,4 @@
-"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
+﻿"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
 
     "E:/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" McClient.uproject
         -run=pythonscript -script="<abs path>/tools/make_materials.py" -unattended -nopause -NullRHI
@@ -681,6 +681,38 @@ def make_sky_materials(default_array):
     unreal.log("McMaterials: made M_McSkyAdditive")
 
 
+def make_caustics_material():
+    # The sun's light function while the camera is under water: a moving net of bright lines over a dim base, as light
+    # through the surface's ripples lands on the sea floor.
+    name = "M_McCaustics"
+    if eal.does_asset_exist(f"{FOLDER}/{name}"):
+        eal.delete_asset(f"{FOLDER}/{name}")
+    material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("material_domain", unreal.MaterialDomain.MD_LIGHT_FUNCTION)
+    position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -600, 0)
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -600, 150)
+    code = """
+float2 q = Pos.xy * 0.011;
+float t = Time * 0.55;
+float2 i = q;
+float c = 0.0;
+for (int n = 0; n < 3; n++)
+{
+    t *= 1.25;
+    i = q + float2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
+    c += 1.0 / length(float2(q.x / (sin(i.x + t) / 0.006), q.y / (cos(i.y + t) / 0.006)));
+}
+c = saturate(1.17 - pow(c / 3.0, 1.4));
+float lines = pow(c, 8.0);
+return float3(1, 1, 1) * lerp(0.45, 2.2, saturate(lines));
+"""
+    node = add_custom(material, -300, 0, "McCaustics", code, {"Pos": (position, ""), "Time": (time, "")})
+    mel.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.recompile_material(material)
+    eal.save_loaded_asset(material)
+    unreal.log("McMaterials: made M_McCaustics")
+
+
 def make_linear_placeholder():
     """The default of the HD normal and specular arrays: like the placeholder but not sRGB, so a Linear Color sampler
     accepts it."""
@@ -722,6 +754,9 @@ def make_lit_materials(default_array):
 
 
 def main() -> None:
+    if os.environ.get("MC_ONLY_CAUSTICS"):
+        make_caustics_material()
+        return
     if os.environ.get("MC_ONLY_SKY"):
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
@@ -756,6 +791,7 @@ def main() -> None:
     make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, array, True, True)
     make_block_material("M_McClouds", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)
     make_sky_materials(array)
+    make_caustics_material()
 
 
 main()

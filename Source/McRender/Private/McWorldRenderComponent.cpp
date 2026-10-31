@@ -1,4 +1,4 @@
-#include "McWorldRenderComponent.h"
+﻿#include "McWorldRenderComponent.h"
 #include "McBlockModels.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
@@ -243,6 +243,11 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 		}
 		McSky::SetCameraOpen(Open);
+		// Eyes in a water block: the sea's fog and dim light.
+		const FMcStateId Here = World->GetBlock(Pos);
+		const bool bWet = FluidPalette.IsValid() && FluidPalette->States.IsValidIndex(Here) && FluidPalette->States[Here].Kind == McFluidMesher::EFluid::Water;
+		Underwater = FMath::FInterpTo(Underwater, bWet ? 1.0f : 0.0f, DeltaTime, 8.0f);
+		McSky::SetCameraUnderwater(Underwater);
 	}
 	for (UMaterialInterface* Material : PassMaterials)
 	{

@@ -28,6 +28,11 @@ namespace McCombat
 	// The scale of the field of view (the angle) while a bow is drawn for this many seconds: 1 - 0.15 * t^2, t up to 1, so the
 	// angle closes by 15 percent at the full draw (a second). Measured from the reference client (fov zoom, 5 to 25 ticks of draw).
 	MCPLAYER_API float GetBowFovScale(float DrawSeconds);
+	// The aim of a shot arrow before it is scaled by the speed: the look direction with a Gaussian of 0.0085 on each
+	// component (measured: 50 full draws, the spread of the launch direction 0.0090 across, 0.0082 up). The arrow starts 0.1 block
+	// under the eye, on the eye's line.
+	MCPLAYER_API FVector GetBowAim(const FVector& Look, FRandomStream& Random);
+	MCPLAYER_API double GetBowLaunchDrop();
 	// Durability the swing costs the held item: a sword 1... tools 2, anything else 0 (they are not made to hit with).
 	MCPLAYER_API int32 GetWear(const FMcItemStack& Held);
 

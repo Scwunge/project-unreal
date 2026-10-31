@@ -1654,10 +1654,10 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
-	// Three blocks a tick at full draw. TODO: the aim's spread and the launch point's offset from the eye, measured from the reference client (none until then).
+	// Three blocks a tick at full draw, aimed with the measured spread, from 0.1 block under the eye.
 	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
-	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight(), 0.0) + Look * 0.3;
-	Arrow->Body.Velocity = Look * (Power * 3.0);
+	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - McCombat::GetBowLaunchDrop(), 0.0);
+	Arrow->Body.Velocity = McCombat::GetBowAim(Look, DropRandom) * (Power * 3.0);
 	Arrow->PlayerBase = 2.0f;
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;

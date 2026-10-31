@@ -59,6 +59,26 @@ namespace McCombat
 		return 1.0f - 0.15f * T * T;
 	}
 
+	namespace
+	{
+		double Gaussian(FRandomStream& Random)
+		{
+			// Box-Muller from two uniforms.
+			const double U1 = FMath::Max(static_cast<double>(Random.FRand()), 1.0e-9);
+			return FMath::Sqrt(-2.0 * FMath::Loge(U1)) * FMath::Cos(2.0 * PI * static_cast<double>(Random.FRand()));
+		}
+	}
+
+	FVector GetBowAim(const FVector& Look, FRandomStream& Random)
+	{
+		return Look + FVector(Gaussian(Random), Gaussian(Random), Gaussian(Random)) * 0.0085;
+	}
+
+	double GetBowLaunchDrop()
+	{
+		return 0.1;
+	}
+
 	float GetDamage(float BaseDamage, float Strength, bool bCritical)
 	{
 		float Damage = BaseDamage * (0.2f + Strength * Strength * 0.8f);

@@ -51,6 +51,23 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a draw of 10 ticks has power 0.5"), McCombat::GetBowPower(10), (0.25f + 1.0f) / 3.0f, 0.001f);
 	TestEqual(TEXT("a draw of a second is full"), McCombat::GetBowPower(20), 1.0f, 0.001f);
 	TestEqual(TEXT("and no more after"), McCombat::GetBowPower(100), 1.0f, 0.001f);
+	{
+		// The aim's spread: 0.0085 on each component, centred on the look.
+		FRandomStream Random(5);
+		double Sum = 0.0;
+		double SumSquares = 0.0;
+		const int32 Count = 4000;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Off = McCombat::GetBowAim(FVector(0.0, 0.0, 1.0), Random).X;
+			Sum += Off;
+			SumSquares += Off * Off;
+		}
+		const double Mean = Sum / Count;
+		TestTrue(TEXT("the aim is centred on the look"), FMath::Abs(Mean) < 0.0008);
+		TestEqual(TEXT("with a spread of 0.0085"), FMath::Sqrt(SumSquares / Count - Mean * Mean), 0.0085, 0.0006);
+		TestEqual(TEXT("an arrow starts 0.1 under the eye"), McCombat::GetBowLaunchDrop(), 0.1, 1.0e-9);
+	}
 	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
 	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
 	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);

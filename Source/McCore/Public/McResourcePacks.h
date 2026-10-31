@@ -33,6 +33,16 @@ struct MCCORE_API FMcPackInfo
 		FString Path;
 	};
 	TArray<FBlock> Blocks;
+	// "overlays": { "entries": [ { "formats": ..., "directory": "name" } ] }. A folder inside the pack whose files replace the
+	// pack's own for the formats it names (0 means no limit on that side). Later entries win.
+	struct FOverlay
+	{
+		FString Directory;
+		int32 MinFormat = 0;
+		int32 MaxFormat = 0;
+		bool bHasRange = false;
+	};
+	TArray<FOverlay> Overlays;
 };
 
 class MCCORE_API FMcResourcePack
@@ -71,6 +81,9 @@ private:
 	};
 
 	bool OpenZip(const FString& PackPath, FString& OutError);
+	// The path a file has inside the pack: in the last overlay for this game's format that has it, else as given.
+	FString Resolve(const FString& Relative) const;
+	bool HasExact(const FString& Path) const;
 
 	FMcPackInfo Info;
 	FString Stamp;

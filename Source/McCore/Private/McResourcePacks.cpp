@@ -179,6 +179,47 @@ bool FMcResourcePack::ParseMcmeta(const FString& Json, FMcPackInfo& Out)
 	}
 	Out.Description = FlattenText((*Pack)->TryGetField(TEXT("description")));
 
+	Out.Overlays.Reset();
+	const TSharedPtr<FJsonObject>* OverlaysObject;
+	const TArray<TSharedPtr<FJsonValue>>* Entries;
+	if (Root->TryGetObjectField(TEXT("overlays"), OverlaysObject) && (*OverlaysObject)->TryGetArrayField(TEXT("entries"), Entries))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Entries)
+		{
+			const TSharedPtr<FJsonObject>* Entry;
+			FMcPackInfo::FOverlay Overlay;
+			if (!Value->TryGetObject(Entry) || !(*Entry)->TryGetStringField(TEXT("directory"), Overlay.Directory) || Overlay.Directory.IsEmpty())
+			{
+				continue;
+			}
+			// "formats" like supported_formats (a number, [min, max] or { min_inclusive, max_inclusive }), or min_format / max_format.
+			const TSharedPtr<FJsonValue> Formats = (*Entry)->TryGetField(TEXT("formats"));
+			const TArray<TSharedPtr<FJsonValue>>* Range;
+			const TSharedPtr<FJsonObject>* RangeObject;
+			double Number;
+			if (Formats.IsValid() && Formats->TryGetNumber(Number))
+			{
+				Overlay.MinFormat = Overlay.MaxFormat = static_cast<int32>(Number);
+				Overlay.bHasRange = true;
+			}
+			else if (Formats.IsValid() && Formats->TryGetArray(Range) && Range->Num() >= 2)
+			{
+				Overlay.bHasRange = ReadFormat((*Range)[0], Overlay.MinFormat) | ReadFormat((*Range)[1], Overlay.MaxFormat);
+			}
+			else if (Formats.IsValid() && Formats->TryGetObject(RangeObject))
+			{
+				(*RangeObject)->TryGetNumberField(TEXT("min_inclusive"), Overlay.MinFormat);
+				(*RangeObject)->TryGetNumberField(TEXT("max_inclusive"), Overlay.MaxFormat);
+				Overlay.bHasRange = true;
+			}
+			else
+			{
+				Overlay.bHasRange = ReadFormat((*Entry)->TryGetField(TEXT("min_format")), Overlay.MinFormat) | ReadFormat((*Entry)->TryGetField(TEXT("max_format")), Overlay.MaxFormat);
+			}
+			Out.Overlays.Add(Overlay);
+		}
+	}
+
 	Out.Blocks.Reset();
 	const TSharedPtr<FJsonObject>* Filter;
 	const TArray<TSharedPtr<FJsonValue>>* Blocks;
@@ -371,22 +412,49 @@ bool FMcResourcePack::OpenZip(const FString& PackPath, FString& OutError)
 	return true;
 }
 
-bool FMcResourcePack::Has(const FString& Relative) const
+bool FMcResourcePack::HasExact(const FString& Path) const
 {
 	if (Info.bZip)
 	{
-		return Entries.Contains(Relative);
+		return Entries.Contains(Path);
 	}
-	return IFileManager::Get().FileExists(*(Info.Path / Relative));
+	return IFileManager::Get().FileExists(*(Info.Path / Path));
+}
+
+FString FMcResourcePack::Resolve(const FString& Relative) const
+{
+	if (Info.Overlays.Num() > 0 && Relative.StartsWith(TEXT("assets/")))
+	{
+		for (int32 Index = Info.Overlays.Num() - 1; Index >= 0; --Index)
+		{
+			const FMcPackInfo::FOverlay& Overlay = Info.Overlays[Index];
+			if (!Overlay.bHasRange || (Overlay.MinFormat > 0 && McPacks::GameFormat < Overlay.MinFormat) || (Overlay.MaxFormat > 0 && McPacks::GameFormat > Overlay.MaxFormat))
+			{
+				continue;
+			}
+			const FString InOverlay = Overlay.Directory / Relative;
+			if (HasExact(InOverlay))
+			{
+				return InOverlay;
+			}
+		}
+	}
+	return Relative;
+}
+
+bool FMcResourcePack::Has(const FString& Relative) const
+{
+	return HasExact(Resolve(Relative));
 }
 
 FString FMcResourcePack::GetFolderFile(const FString& Relative) const
 {
-	return Info.bZip ? FString() : Info.Path / Relative;
+	return Info.bZip ? FString() : Info.Path / Resolve(Relative);
 }
 
-bool FMcResourcePack::Read(const FString& Relative, TArray<uint8>& Out) const
+bool FMcResourcePack::Read(const FString& Name, TArray<uint8>& Out) const
 {
+	const FString Relative = Resolve(Name);
 	if (!Info.bZip)
 	{
 		return FFileHelper::LoadFileToArray(Out, *(Info.Path / Relative));

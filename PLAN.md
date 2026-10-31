@@ -345,7 +345,7 @@ Pack files
 - [x] `pack.png` icon (picker)
 - [x] `filter.block` rules hiding lower packs' files
 - [x] Pack compatibility with the game's resource format (97): marked Incompatible, still loads
-- [ ] `overlays` (format-dependent extra directories): missing
+- [x] `overlays` (pack.mcmeta entries with formats or min/max_format and a directory; later entries win; test in McResourcePacks)
 - [x] Broken zip, missing pack, missing file: listed with the reason, skipped, vanilla's file used
 - [ ] Drag and drop of packs onto the window, server-sent packs, the "are you sure" confirm screen: missing
 

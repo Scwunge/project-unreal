@@ -256,6 +256,32 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// Overlays: a directory of the pack replaces its files for the formats it names. This game's format is inside the
+	// first entry's range, outside the second's; a later entry wins, so only the first is looked at for x.txt.
+	{
+		const FString FolderD = Root / TEXT("d");
+		WriteFile(FolderD / TEXT("pack.mcmeta"),
+			TEXT("{\"pack\":{\"pack_format\":97},\"overlays\":{\"entries\":["
+				"{\"formats\":[90,100],\"directory\":\"new\"},"
+				"{\"formats\":{\"min_inclusive\":1,\"max_inclusive\":5},\"directory\":\"old\"},"
+				"{\"min_format\":200,\"directory\":\"future\"}]}}"));
+		const FString X = TEXT("assets/minecraft/x.txt");
+		WriteFile(FolderD / X, TEXT("base"));
+		WriteFile(FolderD / TEXT("new") / X, TEXT("new overlay"));
+		WriteFile(FolderD / TEXT("old") / X, TEXT("old overlay"));
+		WriteFile(FolderD / TEXT("future") / X, TEXT("future overlay"));
+		WriteFile(FolderD / TEXT("assets/minecraft/y.txt"), TEXT("only base"));
+		const TSharedPtr<FMcResourcePack> D = FMcResourcePack::Open(FolderD, &Error);
+		if (TestTrue(TEXT("overlay pack opens"), D.IsValid()))
+		{
+			TestEqual(TEXT("three overlay entries read"), D->GetInfo().Overlays.Num(), 3);
+			TestTrue(TEXT("read x"), D->Read(X, Data));
+			TestEqual(TEXT("the overlay for this format wins"), ReadText(Data), FString(TEXT("new overlay")));
+			TestTrue(TEXT("a file only in the base is still read"), D->Read(TEXT("assets/minecraft/y.txt"), Data) && ReadText(Data) == TEXT("only base"));
+			TestEqual(TEXT("a folder pack's path is the overlay's"), D->GetFolderFile(X), FolderD / TEXT("new") / X);
+		}
+	}
+
 	// No packs: the cache paths exactly.
 	McPacks::SetStack(MakeShared<FMcPackStack>());
 	TestEqual(TEXT("no packs, no change"), McCache::Asset(StoneRelative), McCache::Root() / TEXT("client/assets/minecraft/textures/block/stone.png"));

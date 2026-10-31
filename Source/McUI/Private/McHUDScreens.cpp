@@ -462,12 +462,21 @@ void AMcHUD::LoadFont()
 				UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), *Sprite);
 				continue;
 			}
-			TArray<FString> Rows;
+			// A cell is a code point: one beyond the basic plane is two UTF-16 units here but one cell, and has no glyph (a TCHAR
+			// cannot name it).
+			TArray<TArray<TCHAR>> Rows;
 			int32 Columns = 0;
 			for (const TSharedPtr<FJsonValue>& Line : *Lines)
 			{
-				Rows.Add(Line->AsString());
-				Columns = FMath::Max(Columns, Rows.Last().Len());
+				const FString Text = Line->AsString();
+				TArray<TCHAR>& Row = Rows.AddDefaulted_GetRef();
+				for (int32 At = 0; At < Text.Len(); ++At)
+				{
+					const bool bPair = Text[At] >= 0xd800 && Text[At] < 0xdc00 && At + 1 < Text.Len() && Text[At + 1] >= 0xdc00 && Text[At + 1] < 0xe000;
+					Row.Add(bPair ? static_cast<TCHAR>(0xffff) : Text[At]);
+					At += bPair ? 1 : 0;
+				}
+				Columns = FMath::Max(Columns, Row.Num());
 			}
 			const int32 CellWidth = Sheet.Width / FMath::Max(Columns, 1), CellHeight = Sheet.Height / Rows.Num();
 			if (CellWidth < 1 || CellHeight < 1 || Height <= 0.0)
@@ -477,7 +486,7 @@ void AMcHUD::LoadFont()
 			const float GlyphScale = static_cast<float>(Height) / CellHeight;
 			for (int32 Row = 0; Row < Rows.Num(); ++Row)
 			{
-				for (int32 Column = 0; Column < Rows[Row].Len(); ++Column)
+				for (int32 Column = 0; Column < Rows[Row].Num(); ++Column)
 				{
 					const TCHAR Char = Rows[Row][Column];
 					if (Char == 0 || Char == 0xffff || Glyphs.Contains(Char))

@@ -321,6 +321,7 @@ exact, so only shares and densities are compared.
 | Sea and river floor, top block (ocean / river / lukewarm / cold) | gravel .68 sand .15 dirt .13 / gravel .36 sand .30 dirt .27 / sand .86 / gravel .87 | gravel .77 sand .09 dirt .09 / .45 .18 .27 / sand .86 / gravel .83 | fitted: the surface rules' `water` condition applies its offset to the water line (not_underwater, not_under_deep_water), so shallow floors are dirt and the disks turn them to sand, gravel and clay; before, every floor was gravel (.95). Still open: swamp (dirt .51 vs ours grass .67), frozen ocean (ice 1.0 vs ice .47 gravel .35 packed ice .14), beach gravel .15 vs .24 |
 | Frozen ocean top block | ice .47 gravel .35 packed ice .14 (deep frozen: gravel .77) | ice .46 gravel .53 (was ice 1.0, blue ice .39) | fitted: the `frozen` temperature modifier moves the temperature in patches (offset .033 + .42 x noise/.4: 61% of frozen ocean freezes, 18% of deep); blue ice only replaces existing ice. Icebergs: radius 4..10 covered 4% (168 columns each, `IcebergArea`), now radius 7..18, 532 columns each, 1 per 16 chunks = 13% against vanilla's 14% packed ice |
 | Moss blocks / raw copper blocks | 6.7k / 77 | 3.1k / 29 | inside the per-world spread for moss (vanilla 2.5k..11.4k, ours 0.15k..6.6k: how much lush cave a seed has); raw copper 29 vs 52 per world but raw iron 30 vs 18 (`log veins` / `STATY`, per y, 3 vanilla worlds: ore and granite are not low, the rule is shared), so variance of clumped veins, not fitted. Patches are the right size (126 blocks each), too few of them in lush caves |
+| Lily pads per swamp column | 2.3% / 1.6% (two worlds with swamp) | 0 before; 1.7% in the seed with 1.0 water blocks per column, 0.1% in the one with 0.3 | fixed: the placement check only accepted the `supports_lily_pad` tag (ice); a still water source below now counts. Density follows how much water a swamp has |
 | Spore blossom | | placed 0 of 39 tries before, 39 of 39 now | fixed: it is in the flowers tag, so the ground check rejected it; now needs a sturdy ceiling |
 | Cave water / air above y 0 | see rows above | | mostly world-to-world variance (per-world vanilla bands overlap ours); sea floor depth in `McClient.McGen.FloorMix` vs the reference's `log floors` agrees within the spread except one ocean-heavy seed |
 
@@ -331,7 +332,9 @@ biome allows (it used to pick one and reject it, which left villages at 2.5% of 
 also wants ocean or river biomes within 29 blocks. Ours is `McClient.McGen.StructureStarts` (`STARTS <seed> <structure> <count>`,
 256 x 256 chunks from -128, 5 seeds); the reference side is the `log starts` verb with `scripts/terrain_starts.txt` (`wait` is in
 ticks: 6000 = 5 min; logged for `terrain`, `terrain2`, `terrain3`, `terrain4`; `terrain5` pending). Every count is inside the
-vanilla spread of those four; monument (mean 9.6 against 4.5) and desert villages (1.6 against 5.0) sit at the edge.
+vanilla spread of those five worlds; monument (mean 9.6 against 3.8) and desert villages (1.6 against 4.0) sit at the edge, and
+are biome-area effects: deep ocean covers 13.7% of our sampled columns against 5.1%, the surround check removes almost nothing
+(8 to 8, 20 to 19, 10 to 10 candidates), and vanilla desert area runs 2.6% to 19% from world to world.
 
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

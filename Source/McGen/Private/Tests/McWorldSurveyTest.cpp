@@ -732,6 +732,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 		const uint64 Seed = Seeds[SeedIndex];
 		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
 		TMap<FName, int64> Counts;
+		TMap<FName, int64> Pre;
 		for (int32 Z = -128; Z < 128; ++Z)
 		{
 			for (int32 X = -128; X < 128; ++X)
@@ -747,6 +748,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 				Structures.GetCandidates(Seed, FIntPoint(X, Z), Biome, Here);
 				for (const FName Name : Here)
 				{
+					Pre.FindOrAdd(Name)++;
 					if (!Structures.SurroundAllows(Name, FIntPoint(X, Z), [&](int32 BX, int32 BZ) { return Generator.GetBiome(BX, Settings.SeaLevel + 4, BZ); }))
 					{
 						continue;
@@ -758,6 +760,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 		for (const TPair<FName, int64>& Pair : Counts)
 		{
 			AddInfo(FString::Printf(TEXT("STARTS %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+			AddInfo(FString::Printf(TEXT("STARTSPRE %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pre.FindRef(Pair.Key)));
 		}
 	}
 	return true;

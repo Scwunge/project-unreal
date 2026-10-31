@@ -300,6 +300,26 @@ orders, either half first; octave stream forked by name (four spellings) or draw
 shuffle orders with four integer-draw rules; origin drawn before or after the permutation. None landed, so the
 statistically matched construction stays. A hit needs the reference's exact seeding, which no permitted source gives.
 
+**Statistics against the reference client** (5 vanilla worlds `terrain`..`terrain5`, 25 patches of 4x4 chunks each, via
+`log stats` / `log trees`; ours: `McClient.McGen.WorldStats0..4`, 5 seeds, same patches; scripts in `Saved/`). Not seed
+exact, so only shares and densities are compared.
+
+| What | Vanilla | Ours | State |
+|---|---|---|---|
+| Surface height q95 / share at y 101+ | 88..116 / 2..12% | ~108 / 7% | inside the spread |
+| Biome mix at y 64, 0, -40 (8 seeds, `BiomeMix`) | dripstone caves 4.5 / 13.3 / 3.3%, lush 9.5% at y 0, deep dark 6.2% at -40 | 3.4 / 11.6 / 2.8%, 9.5%, 6.7% | inside the spread |
+| Trunk bases per 1000 forest columns | 28..30 | 23..34 (was 45..58) | fitted: free 3x3 ring round a one-foot trunk |
+| Trunk bases, dark forest / taiga / jungle | 61..112 / 17..27 / 61..79 | 67..103 / 14..23 / 72..78 | inside the spread |
+| Forest leaves / logs per column | 1.18 / 0.112 | 1.0 / 0.10 | close |
+| Forest leaf litter per column | 0.114 | 0.092 | `place_on_ground` tree decorator added |
+| Cave air % at y -64 / -48 / -32 / -16 | 1.69 / 8.2 / 10.3 / 10.3 | 1.9 / 8.6 / 10.7 / 10.2 | inside the spread |
+| Cave lava % at y -64 / -48 / -32 | .67 / .047 / .08 | .72 / .051 / .13 | fitted: aquifer floodedness x0.5, dry cells below -54 hold lava |
+| Cave air % at y 0 / 16 / 32 | 8.3 / 8.3 / 5.2 | 6.0 / 6.0 / 2.9 | open: about 30% low |
+| Cave water % at y 32 | 6.6 | 13.3 | open: aquifer flooding too wide above y 16 |
+| Ores (coal, iron, copper, gold, redstone, diamond, lapis, granite, diorite, andesite, tuff, gravel) | | 0.75..1.18 of vanilla | inside the spread |
+| Dripstone blocks | 6.2k per 100k columns | 27k | open: x4.4 with the same cave biome share, so the clusters or the large cones are too big |
+| Amethyst / calcite / moss / raw copper blocks | 6.6k / 8.4k / 6.7k / 77 | 0.5k / 2.8k / 2.9k / 29 | open: geode and moss patch volumes too small (amethyst about 12x per geode); geode layer thickness is not in the data |
+
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.
 2. **Density functions:** parse every type the data uses into a graph and evaluate it, with caches and cell

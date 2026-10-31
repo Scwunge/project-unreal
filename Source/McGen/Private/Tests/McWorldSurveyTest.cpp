@@ -92,6 +92,30 @@ bool FMcBiomeMixTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	for (const int32 SampleY : { 0, -40 })
+	{
+		TMap<FName, int32> AtY;
+		int32 AtTotal = 0;
+		for (int32 SeedIndex = 0; SeedIndex < Seeds; ++SeedIndex)
+		{
+			const FMcNoiseGenerator Generator(Settings, SeedIndex == 0 ? 4242424242ull : 1000ull + SeedIndex * 7919ull, TEXT("minecraft:overworld"));
+			for (int32 Z = 0; Z < 48; ++Z)
+			{
+				for (int32 X = 0; X < 48; ++X)
+				{
+					AtY.FindOrAdd(Registry.GetName(Generator.GetBiome(-6144 + X * 256, SampleY, -6144 + Z * 256)))++;
+					++AtTotal;
+				}
+			}
+		}
+		AtY.ValueSort([](int32 A, int32 B) { return A > B; });
+		FString Row;
+		for (const TPair<FName, int32>& Entry : AtY)
+		{
+			Row += FString::Printf(TEXT("%s=%.2f "), *Entry.Key.ToString().RightChop(10), 100.0 * Entry.Value / AtTotal);
+		}
+		AddInfo(FString::Printf(TEXT("MIXY %d: %s"), SampleY, *Row));
+	}
 	Counts.ValueSort([](int32 A, int32 B) { return A > B; });
 	FString Line;
 	for (const TPair<FName, int32>& Entry : Counts)

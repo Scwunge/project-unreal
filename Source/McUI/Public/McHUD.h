@@ -62,6 +62,12 @@ public:
 	// Why the last attempt to join a server failed, shown on the title screen the failure lands on. Kept across maps.
 	static void SetConnectError(const FString& Error);
 
+	// For tests: what the font gives a code point, as the text is drawn: its advance and shadow offset in GUI pixels, and
+	// the width of a whole string. The glyphs are read (and drawn into their textures) as in the game.
+	float GetGlyphAdvance(int32 Char);
+	float GetGlyphShadowOffset(int32 Char);
+	float GetTextWidth(const FString& Text);
+
 private:
 	struct FIconTriangle
 	{
@@ -285,12 +291,12 @@ private:
 		// The glyph's provider in the font definition: the first provider to have the character wins.
 		int32 Priority = 0;
 	};
-	TMap<TCHAR, FGlyph> Glyphs;
-	const FGlyph* FindGlyph(TCHAR Char) const;
+	TMap<int32, FGlyph> Glyphs;   // by code point
+	const FGlyph* FindGlyph(int32 Char) const;
 	UTexture2D* MakeGlyphTexture(const FMcRasterGlyph& Glyph);
 	// The providers that draw their characters when they are first needed, and the characters they were already asked for.
 	TSharedPtr<FMcRasterFonts> RasterFonts;
-	TSet<TCHAR> RasterAsked;
+	TSet<int32> RasterAsked;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTexture2D>> GlyphTextures;
 	TArray<uint8> GalacticWidths;

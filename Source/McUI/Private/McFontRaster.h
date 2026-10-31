@@ -30,7 +30,7 @@ public:
 
 	struct FUnihexOverride
 	{
-		TCHAR From = 0, To = 0;
+		int32 From = 0, To = 0;
 		int32 Left = 0, Right = 0;
 	};
 
@@ -43,8 +43,8 @@ public:
 	// larger and scaled down by, the shift of its glyphs, and the characters it leaves out.
 	void AddTrueType(int32 Priority, TArray<uint8> File, float Size, float Oversample, FVector2D Shift, const FString& Skip);
 
-	// The character from the first provider before BeforePriority that has it.
-	bool Make(TCHAR Char, int32 BeforePriority, FMcRasterGlyph& Out);
+	// The code point from the first provider before BeforePriority that has it.
+	bool Make(int32 Char, int32 BeforePriority, FMcRasterGlyph& Out);
 
 private:
 	TArray<TSharedPtr<FProvider>> Providers;

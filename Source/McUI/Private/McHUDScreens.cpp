@@ -235,7 +235,17 @@ namespace
 		McPacks::ReadAll(Relative, Files);
 		Algo::Reverse(Files);
 		TArray<uint8> Vanilla;
-		if (FFileHelper::LoadFileToArray(Vanilla, *FPaths::Combine(McCache::Root(), TEXT("client/assets/minecraft"), Relative)))
+		const FString InJar = FPaths::Combine(McCache::Root(), TEXT("client/assets/minecraft"), Relative);
+		FFileHelper::LoadFileToArray(Vanilla, *InJar);
+		// The jar's include/unifont.json has no providers (the launcher builds it, with the size overrides of the CJK and Hangul
+		// blocks); the launcher's own copy, with the asset files, has them.
+		TArray<uint8> FromAssets;
+		if (FString(reinterpret_cast<const char*>(Vanilla.GetData()), Vanilla.Num()).Contains(TEXT("\"type\"")) == false
+			&& FFileHelper::LoadFileToArray(FromAssets, *FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative)))
+		{
+			Vanilla = MoveTemp(FromAssets);
+		}
+		if (Vanilla.Num() > 0)
 		{
 			Files.Add(MoveTemp(Vanilla));
 		}
@@ -301,6 +311,17 @@ namespace
 			Path = FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative);
 		}
 		return FMcResourcePack::ReadZipEntry(Path, TEXT(".hex"), Out);
+	}
+
+	// The code point at Text[At] (a surrogate pair is one), and At moved past it.
+	int32 NextCodePoint(const FString& Text, int32& At)
+	{
+		const int32 High = Text[At++];
+		if (High >= 0xd800 && High < 0xdc00 && At < Text.Len() && Text[At] >= 0xdc00 && Text[At] < 0xe000)
+		{
+			return 0x10000 + ((High - 0xd800) << 10) + (Text[At++] - 0xdc00);
+		}
+		return High;
 	}
 
 	bool ReadSheet(const FString& Path, FSheet& Sheet)
@@ -434,9 +455,11 @@ void AMcHUD::LoadFont()
 				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Advances)->Values)
 				{
 					double Advance = 0.0;
-					if (Entry.Key.Len() == 1 && Entry.Value->TryGetNumber(Advance) && !Glyphs.Contains(Entry.Key[0]))
+					int32 KeyAt = 0;
+					const int32 KeyChar = Entry.Key.IsEmpty() ? 0 : NextCodePoint(Entry.Key, KeyAt);
+					if (KeyChar != 0 && KeyAt == Entry.Key.Len() && Entry.Value->TryGetNumber(Advance) && !Glyphs.Contains(KeyChar))
 					{
-						FGlyph& Glyph = Glyphs.Add(Entry.Key[0]);
+						FGlyph& Glyph = Glyphs.Add(KeyChar);
 						Glyph.Priority = Priority;
 						Glyph.Advance = static_cast<float>(Advance);
 					}
@@ -462,19 +485,16 @@ void AMcHUD::LoadFont()
 				UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), *Sprite);
 				continue;
 			}
-			// A cell is a code point: one beyond the basic plane is two UTF-16 units here but one cell, and has no glyph (a TCHAR
-			// cannot name it).
-			TArray<TArray<TCHAR>> Rows;
+			// A cell is a code point: one beyond the basic plane is two UTF-16 units here but one cell.
+			TArray<TArray<int32>> Rows;
 			int32 Columns = 0;
 			for (const TSharedPtr<FJsonValue>& Line : *Lines)
 			{
 				const FString Text = Line->AsString();
-				TArray<TCHAR>& Row = Rows.AddDefaulted_GetRef();
-				for (int32 At = 0; At < Text.Len(); ++At)
+				TArray<int32>& Row = Rows.AddDefaulted_GetRef();
+				for (int32 At = 0; At < Text.Len();)
 				{
-					const bool bPair = Text[At] >= 0xd800 && Text[At] < 0xdc00 && At + 1 < Text.Len() && Text[At + 1] >= 0xdc00 && Text[At + 1] < 0xe000;
-					Row.Add(bPair ? static_cast<TCHAR>(0xffff) : Text[At]);
-					At += bPair ? 1 : 0;
+					Row.Add(NextCodePoint(Text, At));
 				}
 				Columns = FMath::Max(Columns, Row.Num());
 			}
@@ -488,7 +508,7 @@ void AMcHUD::LoadFont()
 			{
 				for (int32 Column = 0; Column < Rows[Row].Num(); ++Column)
 				{
-					const TCHAR Char = Rows[Row][Column];
+					const int32 Char = Rows[Row][Column];
 					if (Char == 0 || Char == 0xffff || Glyphs.Contains(Char))
 					{
 						continue;
@@ -540,7 +560,7 @@ void AMcHUD::LoadFont()
 
 // The character's glyph: from the sheet providers read at once, unless a provider before that one draws it itself, which
 // happens the first time it is asked for. A character nothing has shows as "?".
-const AMcHUD::FGlyph* AMcHUD::FindGlyph(TCHAR Char) const
+const AMcHUD::FGlyph* AMcHUD::FindGlyph(int32 Char) const
 {
 	const FGlyph* Found = Glyphs.Find(Char);
 	if (RasterFonts.IsValid() && !RasterAsked.Contains(Char))
@@ -571,12 +591,32 @@ const AMcHUD::FGlyph* AMcHUD::FindGlyph(TCHAR Char) const
 	return Char == TEXT('?') ? nullptr : FindGlyph(TEXT('?'));
 }
 
+float AMcHUD::GetGlyphAdvance(int32 Char)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	return Glyph ? Glyph->Advance : 6.0f;
+}
+
+float AMcHUD::GetGlyphShadowOffset(int32 Char)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	return Glyph ? Glyph->ShadowOffset : 1.0f;
+}
+
+float AMcHUD::GetTextWidth(const FString& Text)
+{
+	LoadFont();
+	return TextWidth(Text);
+}
+
 float AMcHUD::TextWidth(const FString& Text) const
 {
 	float Width = 0.0f;
-	for (const TCHAR Char : Text)
+	for (int32 At = 0; At < Text.Len();)
 	{
-		const FGlyph* Glyph = FindGlyph(Char);
+		const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, At));
 		Width += Glyph ? Glyph->Advance : 6.0f;
 	}
 	return Width;
@@ -589,9 +629,9 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 	const auto Draw = [&](bool bShadowPass, const FLinearColor& Tint)
 	{
 		float At = X;
-		for (const TCHAR Char : Text)
+		for (int32 CharAt = 0; CharAt < Text.Len();)
 		{
-			const FGlyph* Glyph = FindGlyph(Char);
+			const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, CharAt));
 			if (!Glyph)
 			{
 				At += 6.0f * TextScale;

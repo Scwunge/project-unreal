@@ -3,9 +3,11 @@
 #include "McFontRaster.h"
 #include "McFurnace.h"
 #include "McGuiLayout.h"
+#include "McHUD.h"
 #include "McItemRegistry.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
+#include "McResourcePacks.h"
 #include "McRecipe.h"
 #include "McScreenLayout.h"
 #include "Misc/AutomationTest.h"
@@ -487,7 +489,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcRasterFontsTest, "McClient.McUI.RasterFonts"
 bool FMcRasterFontsTest::RunTest(const FString& Parameters)
 {
 	// 0041: eight pixels wide, rows 4 to 11 with the columns 2 to 5 set; 4E00: sixteen wide, the top row all set.
-	FString Hex = TEXT("0041:00000000") TEXT("3C3C3C3C3C3C3C3C") TEXT("00000000") TEXT("\n4E00:FFFF") + FString::ChrN(60, TEXT('0')) + TEXT("\n");
+	FString Hex = TEXT("0041:00000000") TEXT("3C3C3C3C3C3C3C3C") TEXT("00000000") TEXT("\n4E00:FFFF") + FString::ChrN(60, TEXT('0')) + TEXT("\n1F600:") + FString::ChrN(32, TEXT('F')) + TEXT("\n");
 	TArray<uint8> Bytes;
 	Bytes.Append(reinterpret_cast<const uint8*>(TCHAR_TO_ANSI(*Hex)), Hex.Len());
 
@@ -509,7 +511,11 @@ bool FMcRasterFontsTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("sixteen columns"), Glyph.Width, 16);
 		TestEqual(TEXT("advance 9"), Glyph.Advance, 9.0f);
 	}
-	TestFalse(TEXT("not a character of the file"), Fonts.Make(TEXT('B'), MAX_int32, Glyph));
+	if (TestTrue(TEXT("a character beyond the basic plane"), Fonts.Make(0x1F600, MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("eight columns"), Glyph.Width, 8);
+	}
+	TestFalse(TEXT("not a character of the file"),Fonts.Make(TEXT('B'), MAX_int32, Glyph));
 	TestFalse(TEXT("a provider after the limit is not asked"), Fonts.Make(TEXT('A'), 2, Glyph));
 
 	const FString Roboto = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
@@ -532,6 +538,170 @@ bool FMcRasterFontsTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("but room"), Glyph.Advance > 0.0f);
 		}
 	}
+	return true;
+}
+
+// The font against the vanilla client's own numbers: the advance and shadow offset of each character of a fixed string
+// (ASCII, the accented and symbol sheets, Cyrillic, Greek, Unifont CJK and Hangul), read with the reference's
+// "log glyphs" verb (scripts/respack_metrics.txt), and the width of the whole string.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFontMetricsTest, "McClient.McUI.FontMetrics",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcFontMetricsTest::RunTest(const FString& Parameters)
+{
+	struct FRow { int32 Char; float Advance; float Shadow; };
+	static const FRow Vanilla[] = {
+		{ 0x0041, 6.0f, 1.0f },
+		{ 0x0062, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x0057, 6.0f, 1.0f },
+		{ 0x0069, 2.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x0030, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x002E, 2.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x002C, 2.0f, 1.0f },
+		{ 0x0069, 2.0f, 1.0f },
+		{ 0x00DC, 6.0f, 1.0f },
+		{ 0x006E, 6.0f, 1.0f },
+		{ 0x00EF, 4.0f, 1.0f },
+		{ 0x0063, 6.0f, 1.0f },
+		{ 0x00F6, 6.0f, 1.0f },
+		{ 0x0064, 6.0f, 1.0f },
+		{ 0x00E9, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x00F1, 6.0f, 1.0f },
+		{ 0x00DF, 6.0f, 1.0f },
+		{ 0x00E6, 10.0f, 1.0f },
+		{ 0x00F8, 6.0f, 1.0f },
+		{ 0x20AC, 7.0f, 1.0f },
+		{ 0x00A3, 6.0f, 1.0f },
+		{ 0x00A9, 8.0f, 1.0f },
+		{ 0x00B1, 6.0f, 1.0f },
+		{ 0x00D7, 6.0f, 1.0f },
+		{ 0x2026, 8.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x041F, 6.0f, 1.0f },
+		{ 0x0440, 6.0f, 1.0f },
+		{ 0x0438, 6.0f, 1.0f },
+		{ 0x0432, 6.0f, 1.0f },
+		{ 0x0435, 6.0f, 1.0f },
+		{ 0x0442, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x03B1, 6.0f, 1.0f },
+		{ 0x03B2, 6.0f, 1.0f },
+		{ 0x03B3, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x65E5, 9.0f, 0.5f },
+		{ 0x672C, 9.0f, 0.5f },
+		{ 0x8A9E, 9.0f, 0.5f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0xD55C, 8.0f, 0.5f },
+		{ 0xAD6D, 8.0f, 0.5f },
+		{ 0xC5B4, 8.0f, 0.5f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x2603, 8.0f, 1.0f },
+		{ 0x2605, 8.0f, 1.0f },
+		{ 0x2665, 6.0f, 1.0f }
+	};
+	AMcHUD* Hud = NewObject<AMcHUD>(GetTransientPackage());
+	FString Text;
+	for (const FRow& Row : Vanilla)
+	{
+		Text.AppendChar(static_cast<TCHAR>(Row.Char));
+		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	TestTrue(TEXT("the whole string is 308 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 308.0f, 1.0f));
+	return true;
+}
+
+// The same with the ttf pack the reference tests use (Cascadia Mono, size 10, oversample 4): the advances are whole
+// pixels of the oversampled glyph. Skipped where that pack is not in the resourcepacks folder (it lives on the 1070).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFontMetricsTrueTypeTest, "McClient.McUI.FontMetricsTrueType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcFontMetricsTrueTypeTest::RunTest(const FString& Parameters)
+{
+	bool bHasPack = false;
+	for (const McPacks::FFolderEntry& Entry : McPacks::ScanFolder())
+	{
+		bHasPack |= Entry.Name == TEXT("zz_test_ttf") && Entry.Pack.IsValid();
+	}
+	if (!bHasPack)
+	{
+		AddInfo(TEXT("zz_test_ttf is not in the resourcepacks folder: skipped"));
+		return true;
+	}
+	struct FRow { int32 Char; float Advance; float Shadow; };
+	static const FRow Vanilla[] = {
+		{ 0x0041, 5.75f, 1.0f },
+		{ 0x0062, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x0057, 5.75f, 1.0f },
+		{ 0x0069, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x0030, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x002E, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x002C, 5.75f, 1.0f },
+		{ 0x0069, 5.75f, 1.0f },
+		{ 0x00DC, 5.75f, 1.0f },
+		{ 0x006E, 5.75f, 1.0f },
+		{ 0x00EF, 5.75f, 1.0f },
+		{ 0x0063, 5.75f, 1.0f },
+		{ 0x00F6, 5.75f, 1.0f },
+		{ 0x0064, 5.75f, 1.0f },
+		{ 0x00E9, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x00F1, 5.75f, 1.0f },
+		{ 0x00DF, 5.75f, 1.0f },
+		{ 0x00E6, 5.75f, 1.0f },
+		{ 0x00F8, 5.75f, 1.0f },
+		{ 0x20AC, 5.75f, 1.0f },
+		{ 0x00A3, 5.75f, 1.0f },
+		{ 0x00A9, 5.75f, 1.0f },
+		{ 0x00B1, 5.75f, 1.0f },
+		{ 0x00D7, 5.75f, 1.0f },
+		{ 0x2026, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x041F, 5.75f, 1.0f },
+		{ 0x0440, 5.75f, 1.0f },
+		{ 0x0438, 5.75f, 1.0f },
+		{ 0x0432, 5.75f, 1.0f },
+		{ 0x0435, 5.75f, 1.0f },
+		{ 0x0442, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x03B1, 5.75f, 1.0f },
+		{ 0x03B2, 5.75f, 1.0f },
+		{ 0x03B3, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x65E5, 9.00f, 0.5f },
+		{ 0x672C, 9.00f, 0.5f },
+		{ 0x8A9E, 9.00f, 0.5f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0xD55C, 8.00f, 0.5f },
+		{ 0xAD6D, 8.00f, 0.5f },
+		{ 0xC5B4, 8.00f, 0.5f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x2603, 8.00f, 1.0f },
+		{ 0x2605, 8.00f, 1.0f },
+		{ 0x2665, 5.75f, 1.0f }
+	};
+	const TArray<FString> Before = McPacks::GetSelectedNames();
+	McPacks::ApplySelection({ TEXT("zz_test_ttf") });
+	AMcHUD* Hud = NewObject<AMcHUD>(GetTransientPackage());
+	FString Text;
+	for (const FRow& Row : Vanilla)
+	{
+		Text.AppendChar(static_cast<TCHAR>(Row.Char));
+		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	TestTrue(TEXT("the whole string is 326 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 326.0f, 1.0f));
+	McPacks::ApplySelection(Before);
 	return true;
 }
 

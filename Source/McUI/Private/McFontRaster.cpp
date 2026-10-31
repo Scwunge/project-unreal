@@ -17,7 +17,7 @@ struct FMcRasterFonts::FProvider
 {
 	int32 Priority = 0;
 	virtual ~FProvider() = default;
-	virtual bool Make(TCHAR Char, FMcRasterGlyph& Out) = 0;
+	virtual bool Make(int32 Char, FMcRasterGlyph& Out) = 0;
 };
 
 namespace
@@ -39,7 +39,7 @@ namespace
 	{
 		TArray<uint8> Text;
 		TArray<FMcRasterFonts::FUnihexOverride> Overrides;
-		TMap<TCHAR, int32> Lines;   // where the digits of the character begin in Text
+		TMap<int32, int32> Lines;   // where the digits of the character begin in Text
 		bool bIndexed = false;
 
 		void Index()
@@ -59,9 +59,9 @@ namespace
 				}
 				if (At < Num && Text[At] == ':')
 				{
-					if (Code > 0 && Code < 0x10000 && Digits <= 6)
+					if (Code > 0 && Code < 0x110000 && Digits <= 6)
 					{
-						Lines.Add(static_cast<TCHAR>(Code), At + 1);
+						Lines.Add(Code, At + 1);
 					}
 					while (At < Num && Text[At] != '\n')
 					{
@@ -72,7 +72,7 @@ namespace
 			}
 		}
 
-		virtual bool Make(TCHAR Char, FMcRasterGlyph& Out) override
+		virtual bool Make(int32 Char, FMcRasterGlyph& Out) override
 		{
 			if (!bIndexed)
 			{
@@ -184,7 +184,7 @@ namespace
 			return nullptr;
 		}
 
-		virtual bool Make(TCHAR Char, FMcRasterGlyph& Out) override
+		virtual bool Make(int32 Char, FMcRasterGlyph& Out) override
 		{
 			if (Char >= Sizes.Num())
 			{
@@ -226,7 +226,7 @@ namespace
 		float Size = 11.0f;
 		float Oversample = 1.0f;
 		FVector2D Shift = FVector2D::ZeroVector;
-		TSet<TCHAR> Skip;
+		TSet<int32> Skip;
 		FT_Library Library = nullptr;
 		FT_Face Face = nullptr;
 
@@ -259,7 +259,7 @@ namespace
 			return FT_Set_Char_Size(Face, 0, static_cast<FT_F26Dot6>(Em * 64.0 + 0.5), 72, 72) == 0;
 		}
 
-		virtual bool Make(TCHAR Char, FMcRasterGlyph& Out) override
+		virtual bool Make(int32 Char, FMcRasterGlyph& Out) override
 		{
 			if (!Face || Skip.Contains(Char))
 			{
@@ -271,7 +271,8 @@ namespace
 				return false;
 			}
 			FT_GlyphSlot Slot = Face->glyph;
-			Out.Advance = static_cast<float>(Slot->linearHoriAdvance / 65536.0 / Oversample);
+			// The advance is whole pixels of the oversampled glyph, as the game measures it.
+			Out.Advance = static_cast<float>(FMath::RoundToDouble(Slot->linearHoriAdvance / 65536.0) / Oversample);
 			if (Slot->format != FT_GLYPH_FORMAT_OUTLINE)
 			{
 				return true;
@@ -342,9 +343,12 @@ void FMcRasterFonts::AddTrueType(int32 Priority, TArray<uint8> File, float Size,
 	Provider->Size = Size;
 	Provider->Oversample = FMath::Max(Oversample, 1.0f);
 	Provider->Shift = Shift;
-	for (const TCHAR Char : Skip)
+	for (int32 At = 0; At < Skip.Len();)
 	{
-		Provider->Skip.Add(Char);
+		const int32 Char = Skip[At];
+		const bool bPair = Char >= 0xd800 && Char < 0xdc00 && At + 1 < Skip.Len() && Skip[At + 1] >= 0xdc00 && Skip[At + 1] < 0xe000;
+		Provider->Skip.Add(bPair ? 0x10000 + ((Char - 0xd800) << 10) + (Skip[At + 1] - 0xdc00) : Char);
+		At += bPair ? 2 : 1;
 	}
 	if (Provider->Open())
 	{
@@ -352,7 +356,7 @@ void FMcRasterFonts::AddTrueType(int32 Priority, TArray<uint8> File, float Size,
 	}
 }
 
-bool FMcRasterFonts::Make(TCHAR Char, int32 BeforePriority, FMcRasterGlyph& Out)
+bool FMcRasterFonts::Make(int32 Char, int32 BeforePriority, FMcRasterGlyph& Out)
 {
 	for (const TSharedPtr<FProvider>& Provider : Providers)
 	{

@@ -32,6 +32,8 @@ namespace
 		Plate,
 		PlateLight,
 		PlateHeavy,
+		Tripwire,
+		TripwireHook,
 		Daylight,
 		RedstoneBlock,
 		Door,
@@ -104,6 +106,8 @@ namespace
 				else if (Name == TEXT("minecraft:light_weighted_pressure_plate")) Kind = PlateLight;
 				else if (Name == TEXT("minecraft:heavy_weighted_pressure_plate")) Kind = PlateHeavy;
 				else if (Name.EndsWith(TEXT("_pressure_plate"))) Kind = Plate;
+				else if (Name == TEXT("minecraft:tripwire")) Kind = Tripwire;
+				else if (Name == TEXT("minecraft:tripwire_hook")) Kind = TripwireHook;
 				else if (Name == TEXT("minecraft:daylight_detector")) Kind = Daylight;
 				else if (Name == TEXT("minecraft:redstone_block")) Kind = RedstoneBlock;
 				else if (Name.EndsWith(TEXT("_door"))) Kind = Door;
@@ -348,6 +352,7 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case Button:
 	case Plate:
 	case DetectorRail:
+	case TripwireHook:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
@@ -408,6 +413,9 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case PlateHeavy:
 	case DetectorRail:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
+	// The hook powers the block it hangs on (the receiver sees it in the direction the hook faces).
+	case TripwireHook:
+		return Toward == FacingOf(State) ? Signal(State, Pos, Toward) : 0;
 	case Torch:
 	case WallTorch:
 		return Toward == Down ? Signal(State, Pos, Toward) : 0;
@@ -670,6 +678,10 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	case Dust:
 		DirtyDust.Add(Pos);
 		break;
+	case Tripwire:
+	case TripwireHook:
+		UpdateTripwires(Pos);
+		break;
 	case Repeater:
 	{
 		const bool bLocked = IsRepeaterLocked(Pos, State);
@@ -834,6 +846,9 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case Target:
 		TickTarget(Pos, State);
 		break;
+	case Tripwire:
+		TickTripwire(Pos, State);
+		break;
 	default:
 		break;
 	}
@@ -858,6 +873,7 @@ bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
 	case Comparator:
 	case Daylight:
 	case Target:
+	case TripwireHook:
 		return true;
 	case Repeater:
 		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
@@ -1341,6 +1357,16 @@ void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
 {
 	const FMcStateId State = World.GetBlock(Pos);
 	const uint8 Kind = KindOf(State);
+	if (Kind == Tripwire)
+	{
+		Plates.Add(Pos, NumEntities);
+		if (NumEntities > 0 && !Flag(State, TEXT("disarmed")) && !Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+			Sim.ScheduleTick(Pos, TripwireDelay);
+		}
+		return;
+	}
 	if (Kind != Plate && Kind != PlateLight && Kind != PlateHeavy)
 	{
 		return;
@@ -1369,6 +1395,109 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 			Set(Pos, { FChange(TEXT("power"), Power) });
 		}
 	}
+}
+
+// ---- Tripwire (minecraft.wiki, "Tripwire", "Tripwire Hook") ----
+// Two hooks facing each other 1 to 40 blocks apart with string between them. An entity touching the string powers it
+// (not once it is disarmed); the hooks are powered while any of the string is. The string looks again 10 ticks after
+// it was triggered and every 10 while something stays in it. Not measured against the reference client yet.
+
+void FMcRedstone::UpdateTripwires(const FIntVector& Pos)
+{
+	// The hooks whose line passes through Pos (or that is Pos itself).
+	TArray<FIntVector> Hooks;
+	if (KindOf(World.GetBlock(Pos)) == TripwireHook)
+	{
+		Hooks.Add(Pos);
+	}
+	else
+	{
+		for (const int32 Dir : { North, East, South, West })
+		{
+			FIntVector Cell = Pos;
+			for (int32 Step = 0; Step <= TripwireMaxLength + 1; ++Step)
+			{
+				Cell += Vec[Dir];
+				const FMcStateId State = World.GetBlock(Cell);
+				const uint8 Kind = KindOf(State);
+				if (Kind == TripwireHook)
+				{
+					if (FacingOf(State) == Opposite(Dir))
+					{
+						Hooks.Add(Cell);
+					}
+					break;
+				}
+				if (Kind != Tripwire)
+				{
+					break;
+				}
+			}
+		}
+	}
+	for (const FIntVector& Hook : Hooks)
+	{
+		UpdateHookLine(Hook);
+	}
+}
+
+void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
+{
+	const FMcStateId HookState = World.GetBlock(Hook);
+	if (KindOf(HookState) != TripwireHook)
+	{
+		return;
+	}
+	const int32 Dir = FacingOf(HookState);
+	bool bAttached = false;
+	bool bPowered = false;
+	FIntVector Other = Hook;
+	for (int32 Step = 1; Step <= TripwireMaxLength + 1; ++Step)
+	{
+		const FIntVector Cell = Hook + Vec[Dir] * Step;
+		const FMcStateId State = World.GetBlock(Cell);
+		const uint8 Kind = KindOf(State);
+		if (Kind == TripwireHook)
+		{
+			bAttached = FacingOf(State) == Opposite(Dir) && Step >= 2;
+			Other = Cell;
+			break;
+		}
+		if (Kind != Tripwire)
+		{
+			break;
+		}
+		bPowered |= Flag(State, TEXT("powered")) && !Flag(State, TEXT("disarmed"));
+	}
+	bPowered &= bAttached;
+	const auto Apply = [&](const FIntVector& Pos)
+	{
+		const FMcStateId State = World.GetBlock(Pos);
+		if (Flag(State, TEXT("attached")) != bAttached || Flag(State, TEXT("powered")) != bPowered)
+		{
+			Set(Pos, { FChange(TEXT("attached"), Bool(bAttached)), FChange(TEXT("powered"), Bool(bPowered)) });
+		}
+	};
+	Apply(Hook);
+	if (bAttached)
+	{
+		Apply(Other);
+	}
+}
+
+void FMcRedstone::TickTripwire(const FIntVector& Pos, FMcStateId State)
+{
+	if (Plates.FindRef(Pos) > 0 && !Flag(State, TEXT("disarmed")))
+	{
+		Sim.ScheduleTick(Pos, TripwireDelay);
+		UpdateTripwires(Pos);
+		return;
+	}
+	if (Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+	}
+	UpdateTripwires(Pos);
 }
 
 // A projectile hit a target block: it gives Power for Duration ticks (minecraft.wiki, "Target": 20 for arrows and

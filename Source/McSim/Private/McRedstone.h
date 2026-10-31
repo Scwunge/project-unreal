@@ -74,6 +74,12 @@ private:
 	void TickOpening(const FIntVector& Pos, FMcStateId State);
 	void TickButton(const FIntVector& Pos, FMcStateId State);
 	void TickPlate(const FIntVector& Pos, FMcStateId State);
+	void TickTripwire(const FIntVector& Pos, FMcStateId State);
+	// Recomputes every hook whose line passes through Pos (or is Pos), and those hooks' ends.
+	void UpdateTripwires(const FIntVector& Pos);
+	void UpdateHookLine(const FIntVector& Hook);
+	static constexpr int32 TripwireDelay = 10;
+	static constexpr int32 TripwireMaxLength = 40;
 	void TickTarget(const FIntVector& Pos, FMcStateId State);
 	void TickDaylight(const FIntVector& Pos, FMcStateId State);
 	bool IsSupported(const FIntVector& Pos, FMcStateId State) const;

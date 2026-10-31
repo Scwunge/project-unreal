@@ -600,6 +600,11 @@ void AMcWorldActor::FeedPressurePlates()
 					continue;
 				}
 				const FString Name = Registry.GetBlockOf(State).Name.ToString();
+				if (Name == TEXT("minecraft:tripwire"))
+				{
+					Counts.FindOrAdd(Cell) += 1;
+					continue;
+				}
 				if (!Name.EndsWith(TEXT("_pressure_plate")))
 				{
 					continue;

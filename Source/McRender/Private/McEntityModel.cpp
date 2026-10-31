@@ -149,8 +149,8 @@ namespace McEntityModel
 				Pig.Textures = { TEXT("pig/pig_temperate.png") };
 				Pig.Variants = { { TEXT("pig/pig_cold.png") }, { TEXT("pig/pig_temperate.png") }, { TEXT("pig/pig_warm.png") } };
 				Pig.Parts.Add(Part(ERole::Static, FVector(0, 10, 0), { Box(28, 8, -5, -8, -4, 10, 16, 8) }, Flat));
-				Pig.Parts.Add(Part(ERole::Head, FVector(0, 12, 8), { Box(0, 0, -4, -4, 0, 8, 8, 8), Box(16, 16, -2, -3, 8, 4, 3, 1) }));
-				AddLegs(Pig, 0, 16, 4, 6, 3, 5, -5, 6);
+				Pig.Parts.Add(Part(ERole::Head, FVector(0, 12, 6), { Box(0, 0, -4, -4, 0, 8, 8, 8), Box(16, 16, -2, -3, 8, 4, 3, 1) }));
+				AddLegs(Pig, 0, 16, 4, 6, 3, 5, -7, 6);
 				Models.Add(Pig.Kind, Pig);
 			}
 			{
@@ -159,9 +159,9 @@ namespace McEntityModel
 				Cow.TextureSize = FIntPoint(64, 64);
 				Cow.Textures = { TEXT("cow/cow_temperate.png") };
 				Cow.Variants = { { TEXT("cow/cow_cold.png") }, { TEXT("cow/cow_temperate.png") }, { TEXT("cow/cow_warm.png") } };
-				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
-				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 9), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 3, 1, 1, 3, 1), Box(22, 0, 4, 3, 1, 1, 3, 1, 0.0f, true) }));
-				AddLegs(Cow, 0, 16, 4, 12, 4, 7, -7, 12);
+				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, -1), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
+				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true) }));
+				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
 			}
 			{
@@ -169,16 +169,16 @@ namespace McEntityModel
 				Sheep.Kind = TEXT("minecraft:sheep");
 				Sheep.Textures = { TEXT("sheep/sheep.png"), TEXT("sheep/sheep_wool.png") };
 				Sheep.Parts.Add(Part(ERole::Static, FVector(0, 16, 0), { Box(28, 8, -4, -8, -3, 8, 16, 6) }, Flat));
-				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 8), { Box(0, 0, -3, -3, 0, 6, 6, 8) }));
-				AddLegs(Sheep, 0, 16, 4, 12, 3, 5, -5, 12);
+				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 18, 8), { Box(0, 0, -3, -2, -2, 6, 6, 8) }));
+				AddLegs(Sheep, 0, 16, 4, 12, 3, 5, -7, 12);
 				// The wool: a bigger body, a head covering, and the top of each leg.
 				Sheep.Parts.Add(Part(ERole::Static, FVector(0, 16, 0), { Box(28, 8, -4, -8, -3, 8, 16, 6, 1.75f) }, Flat, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 8), { Box(0, 0, -3, -3, 0, 6, 6, 6, 0.6f) }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 6), { Box(0, 0, -3, -3, 0, 6, 6, 6, 0.6f) }, 0, 0, 0, 0, 1));
 				const FBox WoolLeg = Box(0, 16, -2, -6, -2, 4, 6, 4, 0.5f);
 				Sheep.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -5), { WoolLeg }, 0, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -5), { WoolLeg }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
 				Models.Add(Sheep.Kind, Sheep);
 			}
 			{
@@ -187,10 +187,10 @@ namespace McEntityModel
 				Chicken.Textures = { TEXT("chicken/chicken_temperate.png") };
 				Chicken.Variants = { { TEXT("chicken/chicken_cold.png") }, { TEXT("chicken/chicken_temperate.png") }, { TEXT("chicken/chicken_warm.png") } };
 				Chicken.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 9, -3, -4, -3, 6, 8, 6) }, Flat));
-				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -2, 4, 6, 3), Box(14, 0, -2, 2, 1, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
-				const FBox Leg = Box(26, 0, -1.5f, -5, -1.5f, 3, 5, 3);
-				Chicken.Parts.Add(Part(ERole::LegRight, FVector(-2, 5, 0), { Leg }));
-				Chicken.Parts.Add(Part(ERole::LegLeft, FVector(2, 5, 0), { Leg }));
+				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -1, 4, 6, 3), Box(14, 0, -2, 2, 2, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
+				const FBox Leg = Box(26, 0, -1, -5, 0, 3, 5, 3);
+				Chicken.Parts.Add(Part(ERole::LegRight, FVector(-2, 5, -1), { Leg }));
+				Chicken.Parts.Add(Part(ERole::LegLeft, FVector(1, 5, -1), { Leg }));
 				Chicken.Parts.Add(Part(ERole::WingRight, FVector(-3, 11, 0), { Box(24, 13, -1, -4, -3, 1, 4, 6) }));
 				Chicken.Parts.Add(Part(ERole::WingLeft, FVector(3, 11, 0), { Box(24, 13, 0, -4, -3, 1, 4, 6) }));
 				Models.Add(Chicken.Kind, Chicken);
@@ -278,14 +278,15 @@ namespace McEntityModel
 				Vex.Kind = TEXT("minecraft:vex");
 				Vex.TextureSize = FIntPoint(32, 32);
 				Vex.Textures = { TEXT("illager/vex.png") };
-				Vex.Parts.Add(Part(ERole::Head, FVector(0, 7, 0), { Box(0, 0, -2.5f, 0, -2.5f, 5, 5, 5) }));
-				Vex.Parts.Add(Part(ERole::Static, FVector(0, 7, 0), { Box(0, 10, -1.5f, -4, -1, 3, 4, 2) }));
-				Vex.Parts.Add(Part(ERole::ArmRight, FVector(-2, 6.5f, 0), { Box(23, 0, -1, -3, -1, 2, 4, 2) }));
-				Vex.Parts.Add(Part(ERole::ArmLeft, FVector(2, 6.5f, 0), { Box(23, 6, -1, -3, -1, 2, 4, 2) }));
+				// Placed from the logged model (the model sits 2.5 higher than its parts say; the body leans 0.1571 forward at rest).
+				Vex.Parts.Add(Part(ERole::Head, FVector(0, 6.5f, 0), { Box(0, 0, -2.5f, 0, -2.5f, 5, 5, 5) }));
+				Vex.Parts.Add(Part(ERole::Static, FVector(0, 6.5f, 0), { Box(0, 10, -1.5f, -4, -1, 3, 4, 2), Box(0, 16, -1.5f, -6, -1, 3, 5, 2) }, 0.1571f));
+				Vex.Parts.Add(Part(ERole::ArmRight, FVector(-1.75f, 6.25f, 0), { Box(23, 0, -1.25f, -3.5f, -1, 2, 4, 2) }));
+				Vex.Parts.Add(Part(ERole::ArmLeft, FVector(1.75f, 6.25f, 0), { Box(23, 6, -0.75f, -3.5f, -1, 2, 4, 2) }));
 				// Two wings at its back, beating all the time.
 				Vex.bFlutter = true;
-				Vex.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 6.5f, -1), { Box(16, 22, 0, 0, -8, 0, 5, 8) }));
-				Vex.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 6.5f, -1), { Box(16, 22, 0, 0, -8, 0, 5, 8, 0.0f, true) }));
+				Vex.Parts.Add(Part(ERole::WingRight, FVector(-0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8) }));
+				Vex.Parts.Add(Part(ERole::WingLeft, FVector(0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8, 0.0f, true) }));
 				Models.Add(Vex.Kind, Vex);
 			}
 			{
@@ -325,8 +326,8 @@ namespace McEntityModel
 				Golem.Kind = TEXT("minecraft:iron_golem");
 				Golem.TextureSize = FIntPoint(128, 128);
 				Golem.Textures = { TEXT("iron_golem/iron_golem.png") };
-				Golem.Parts.Add(Part(ERole::Head, FVector(0, 33, 0), { Box(0, 0, -4, 0, -2.5f, 8, 10, 8), Box(24, 0, -1, -1, 5.5f, 2, 4, 2) }));
-				Golem.Parts.Add(Part(ERole::Static, FVector(0, 21, 0), { Box(0, 40, -9, 0, -5, 18, 12, 11), Box(0, 70, -4.5f, -5, -3, 9, 5, 6, 0.5f) }));
+				Golem.Parts.Add(Part(ERole::Head, FVector(0, 31, 2), { Box(0, 0, -4, 2, -2.5f, 8, 10, 8), Box(24, 0, -1, 1, 5.5f, 2, 4, 2) }));
+				Golem.Parts.Add(Part(ERole::Static, FVector(0, 21, 0), { Box(0, 40, -9, 0, -5, 18, 12, 11), Box(0, 70, -4.5f, -5, -3, 9, 5, 6) }));
 				Golem.Parts.Add(Part(ERole::ArmRight, FVector(0, 33.5f, 0), { Box(60, 21, -13, -30, -3, 4, 30, 6) }));
 				Golem.Parts.Add(Part(ERole::ArmLeft, FVector(0, 33.5f, 0), { Box(60, 58, 9, -30, -3, 4, 30, 6) }));
 				Golem.Parts.Add(Part(ERole::LegRight, FVector(-4, 13, 0), { Box(37, 0, -3.5f, -13, -2, 6, 16, 5) }));
@@ -355,12 +356,13 @@ namespace McEntityModel
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, 0), { Box(0, 0, -3, -3, -3, 6, 6, 6) }));
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, -9), { Box(0, 12, -5, -4, -6, 10, 8, 12) }));
 				// Four legs a side, fanned out and sloping down.
-				const float Fan[4] = { 0.78f, 0.39f, -0.39f, -0.78f };
-				const float Spread[4] = { 4.0f, 1.5f, -1.0f, -3.5f };
+				const float Fan[4] = { 0.7854f, 0.3927f, -0.3927f, -0.7854f };
+				const float Spread[4] = { 1.0f, 0.0f, -1.0f, -2.0f };
+				const float Roll[4] = { 0.7854f, 0.5812f, 0.5812f, 0.7854f };
 				for (int32 Row = 0; Row < 4; ++Row)
 				{
-					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(-4, 9, Spread[Row]), { Box(18, 0, -16, -1, -1, 16, 2, 2) }, 0, Fan[Row], 0.58f, Row * 2));
-					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(4, 9, Spread[Row]), { Box(18, 0, 0, -1, -1, 16, 2, 2, 0.0f, true) }, 0, -Fan[Row], -0.58f, Row * 2 + 1));
+					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(-4, 9, Spread[Row]), { Box(18, 0, -16, -1, -1, 16, 2, 2) }, 0, Fan[Row], Roll[Row], Row * 2));
+					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(4, 9, Spread[Row]), { Box(18, 0, 0, -1, -1, 16, 2, 2, 0.0f, true) }, 0, -Fan[Row], -Roll[Row], Row * 2 + 1));
 				}
 				Models.Add(Spider.Kind, Spider);
 			}
@@ -903,8 +905,9 @@ namespace McEntityModel
 			{
 				Pitch = RestPitch + FMath::Clamp(Pitch - RestPitch, -Model.MaxLimbSwing, Model.MaxLimbSwing);
 			}
-			// Turn, tip and lean, in the order the player's parts are turned.
-			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
+			// Lean (x) first, then turn (y), then tip (z): the order the logged spider legs and vex wings are drawn in (a spider's
+			// outer legs, 0.7854 turned and 0.7854 tipped, only come to rest on the ground that way round).
+			const FQuat Rotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
 			for (const FBox& Box : Part.Boxes)
 			{
 				if (Box.bFlat)

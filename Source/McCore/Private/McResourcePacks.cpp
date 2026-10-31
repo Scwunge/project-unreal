@@ -719,6 +719,52 @@ namespace McPacks
 		return Entries;
 	}
 
+	FDrop SortDropped(const TArray<FString>& Paths)
+	{
+		FDrop Drop;
+		for (const FString& Path : Paths)
+		{
+			const bool bFolder = IFileManager::Get().DirectoryExists(*Path);
+			const bool bZip = !bFolder && Path.EndsWith(TEXT(".zip"), ESearchCase::IgnoreCase) && IFileManager::Get().FileExists(*Path);
+			if (bZip || (bFolder && IFileManager::Get().FileExists(*(Path / TEXT("pack.mcmeta")))))
+			{
+				Drop.Packs.Add(Path);
+				Drop.Names.Add(FPaths::GetCleanFilename(Path));
+			}
+			else
+			{
+				Drop.Others.Add(FPaths::GetCleanFilename(Path));
+			}
+		}
+		return Drop;
+	}
+
+	TArray<FString> CopyDropped(const FDrop& Drop, TArray<FString>& Failed, const FString& IntoFolder)
+	{
+		const FString Folder = IntoFolder.IsEmpty() ? GetFolder() : IntoFolder;
+		IFileManager::Get().MakeDirectory(*Folder, true);
+		TArray<FString> Copied;
+		for (int32 Index = 0; Index < Drop.Packs.Num(); ++Index)
+		{
+			const FString To = Folder / Drop.Names[Index];
+			const bool bFolder = IFileManager::Get().DirectoryExists(*Drop.Packs[Index]);
+			if (IFileManager::Get().FileExists(*To) || IFileManager::Get().DirectoryExists(*To))
+			{
+				Failed.Add(Drop.Names[Index]);
+			}
+			else if (bFolder ? FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*To, *Drop.Packs[Index], false)
+				: IFileManager::Get().Copy(*To, *Drop.Packs[Index]) == COPY_OK)
+			{
+				Copied.Add(Drop.Names[Index]);
+			}
+			else
+			{
+				Failed.Add(Drop.Names[Index]);
+			}
+		}
+		return Copied;
+	}
+
 	TArray<FString> GetSelectedNames()
 	{
 		const TSharedRef<const FMcPackStack> Stack = GetStack();

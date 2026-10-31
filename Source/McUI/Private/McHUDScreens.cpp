@@ -4,6 +4,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "McHUD.h"
 #include "McFontRaster.h"
+#include "McDropTarget.h"
+#include "Engine/GameViewportClient.h"
 #include "McEffects.h"
 #include "McRenderMode.h"
 #include "McSkyComponent.h"
@@ -145,7 +147,13 @@ namespace
 }
 
 AMcHUD::AMcHUD() = default;
-AMcHUD::~AMcHUD() = default;
+AMcHUD::~AMcHUD()
+{
+	if (DropTarget.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(DropTarget.ToSharedRef());
+	}
+}
 
 void AMcHUD::DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint)
 {
@@ -1723,6 +1731,11 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 void AMcHUD::DrawHUD()
 {
 	Super::DrawHUD();
+	if (!DropTarget.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		DropTarget = SNew(SMcDropTarget).OnFiles(FMcOnFilesDropped::CreateUObject(this, &AMcHUD::OnFilesDropped));
+		GEngine->GameViewport->AddViewportWidgetContent(DropTarget.ToSharedRef(), 1000);
+	}
 	if (!Canvas)
 	{
 		return;
@@ -1837,7 +1850,7 @@ void AMcHUD::DrawHUD()
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed (unless -McShowChat: text for a font test).
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr
 		&& !FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
-	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options && ActiveMenu != EMenu::ResourcePacks)
+	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options && ActiveMenu != EMenu::ResourcePacks && ActiveMenu != EMenu::ConfirmPacks)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}
@@ -1903,7 +1916,9 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 	{
 		const UMcPlayerDataComponent::FChatLine& Entry = Log[Index];
 		float Alpha = 1.0f;
-		if (!bOpen)
+		// -McShowChat (a font test's shot) keeps the lines at full strength.
+		static const bool bKeepLines = FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
+		if (!bOpen && !bKeepLines)
 		{
 			// Ten seconds on screen, the last of them fading.
 			const double Age = Now - Entry.Time;

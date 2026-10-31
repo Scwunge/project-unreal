@@ -14,6 +14,7 @@
 #include "McCore.h"
 #include "McGuiLayout.h"
 #include "McLocalPlayer.h"
+#include "McResourcePacks.h"
 #include "McHUD.generated.h"
 
 class FMcContainer;
@@ -54,7 +55,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -143,11 +144,15 @@ private:
 	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
 	void DrawOptions(int32 Width, int32 Height);
 	// The menus drawn over a world being played (the rest replace the screen).
-	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::ResourcePacks) && OptionsBack == EMenu::Pause); }
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks) && OptionsBack == EMenu::Pause); }
 	void OpenOptions(EMenu Back);
 	// The resource packs screen (from the options): the packs in the packs folder in two lists, available and selected
 	// (the top of the selected list wins), moved between them and up and down by the arrows over a pack's icon.
 	void OpenResourcePacks();
+	// Files dropped on the window from the desktop. On the resource packs screen, the packs among them are offered
+	// (ConfirmPacks, "Do you want to add the following packs to Minecraft?"); on Yes they are copied into the packs folder.
+	void OnFilesDropped(const TArray<FString>& Paths);
+	void DrawConfirmPacks(int32 Width, int32 Height);
 	void DrawResourcePacks(int32 Width, int32 Height);
 	void ApplyResourcePacks();
 	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
@@ -233,6 +238,9 @@ private:
 	TArray<FPackRow> PacksAvailable;
 	TArray<FPackRow> PacksSelected;   // the topmost pack first
 	FString PacksSearch;
+	McPacks::FDrop PendingDrop;
+	TArray<FString> DropFailed;
+	TSharedPtr<class SWidget> DropTarget;
 	int32 PacksScrollAvailable = 0;
 	int32 PacksScrollSelected = 0;
 	int32 SelectedWorld = INDEX_NONE;

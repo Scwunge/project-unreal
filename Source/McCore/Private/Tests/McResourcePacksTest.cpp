@@ -433,4 +433,39 @@ bool FMcTextureMetaTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// Files dropped on the window: packs are told from other files, and copied into the resourcepacks folder without
+// overwriting a pack of that name.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackDropTest, "McClient.McCore.PackDrop",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackDropTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackDropTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Source = Root / TEXT("from"), Target = Root / TEXT("resourcepacks");
+	FFileHelper::SaveStringToFile(TEXT("zip"), *(Source / TEXT("a.zip")));
+	FFileHelper::SaveStringToFile(TEXT("hi"), *(Source / TEXT("notes.txt")));
+	FFileHelper::SaveStringToFile(TEXT("{}"), *(Source / TEXT("dir_pack/pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("x"), *(Source / TEXT("dir_pack/assets/minecraft/a.txt")));
+	FFileHelper::SaveStringToFile(TEXT("x"), *(Source / TEXT("plain_dir/a.txt")));
+
+	const McPacks::FDrop Drop = McPacks::SortDropped({ Source / TEXT("a.zip"), Source / TEXT("notes.txt"), Source / TEXT("dir_pack"), Source / TEXT("plain_dir"), Source / TEXT("missing.zip") });
+	TestEqual(TEXT("packs"), Drop.Packs.Num(), 2);
+	TestTrue(TEXT("names"), Drop.Names.Contains(TEXT("a.zip")) && Drop.Names.Contains(TEXT("dir_pack")));
+	TestEqual(TEXT("others"), Drop.Others.Num(), 3);
+
+	TArray<FString> Failed;
+	TArray<FString> Copied = McPacks::CopyDropped(Drop, Failed, Target);
+	TestEqual(TEXT("copied"), Copied.Num(), 2);
+	TestEqual(TEXT("none failed"), Failed.Num(), 0);
+	TestTrue(TEXT("the zip is there"), IFileManager::Get().FileExists(*(Target / TEXT("a.zip"))));
+	TestTrue(TEXT("the folder came with its files"), IFileManager::Get().FileExists(*(Target / TEXT("dir_pack/assets/minecraft/a.txt"))));
+
+	Copied = McPacks::CopyDropped(Drop, Failed, Target);
+	TestEqual(TEXT("a second drop copies nothing"), Copied.Num(), 0);
+	TestEqual(TEXT("and fails both"), Failed.Num(), 2);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 #endif

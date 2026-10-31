@@ -201,6 +201,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
 		case EMenu::ResourcePacks: ApplyResourcePacks(); OpenMenu(EMenu::Options); break;
+		case EMenu::ConfirmPacks: ActiveMenu = EMenu::ResourcePacks; break;
 		default: break;
 		}
 	}
@@ -217,6 +218,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Chat: DrawChatInput(Width, Height); break;
 	case EMenu::Options: DrawOptions(Width, Height); break;
 	case EMenu::ResourcePacks: DrawResourcePacks(Width, Height); break;
+	case EMenu::ConfirmPacks: DrawConfirmPacks(Width, Height); break;
 	default: break;
 	}
 	return !IsWorldMenu() && ActiveMenu != EMenu::None;
@@ -1171,6 +1173,63 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	{
 		ApplyResourcePacks();
 		OpenMenu(EMenu::Options);
+	}
+}
+
+void AMcHUD::OnFilesDropped(const TArray<FString>& Paths)
+{
+	if (ActiveMenu != EMenu::ResourcePacks)
+	{
+		return;
+	}
+	PendingDrop = McPacks::SortDropped(Paths);
+	DropFailed.Reset();
+	if (PendingDrop.Packs.Num() > 0)
+	{
+		ActiveMenu = EMenu::ConfirmPacks;
+	}
+}
+
+void AMcHUD::DrawConfirmPacks(int32 Width, int32 Height)
+{
+	DrawMenuBackground(Width, Height, true);
+	const float CentreX = Width / 2.0f;
+	const float ButtonY = Height / 6.0f + 96.0f + 9.0f * PendingDrop.Names.Num();
+	if (DropFailed.Num() > 0)
+	{
+		DrawCentredText(TEXT("Failed to copy packs"), CentreX, 70.0f, White);
+		for (int32 Index = 0; Index < DropFailed.Num(); ++Index)
+		{
+			DrawCentredText(DropFailed[Index], CentreX, 90.0f + 9.0f * Index, Grey);
+		}
+		if (MenuButton(TEXT("Back"), CentreX - 75.0f, 100.0f + 9.0f * DropFailed.Num(), 150.0f, 20.0f))
+		{
+			DropFailed.Reset();
+			PendingDrop = McPacks::FDrop();
+			OpenResourcePacks();
+		}
+		return;
+	}
+	DrawCentredText(TEXT("Do you want to add the following packs to Minecraft?"), CentreX, 70.0f, White);
+	for (int32 Index = 0; Index < PendingDrop.Names.Num(); ++Index)
+	{
+		DrawCentredText(PendingDrop.Names[Index], CentreX, 90.0f + 9.0f * Index, Grey);
+	}
+	if (MenuButton(TEXT("Yes"), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
+	{
+		// What was picked on the screen so far stays picked when the lists are read afresh.
+		ApplyResourcePacks();
+		McPacks::CopyDropped(PendingDrop, DropFailed);
+		if (DropFailed.Num() == 0)
+		{
+			PendingDrop = McPacks::FDrop();
+			OpenResourcePacks();
+		}
+	}
+	else if (MenuButton(TEXT("No"), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
+	{
+		PendingDrop = McPacks::FDrop();
+		ActiveMenu = EMenu::ResourcePacks;
 	}
 }
 

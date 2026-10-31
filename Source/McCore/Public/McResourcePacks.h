@@ -159,6 +159,18 @@ namespace McPacks
 	};
 	// Everything in the folder that is a zip or a directory, by name.
 	MCCORE_API TArray<FFolderEntry> ScanFolder();
+	// Dropping files onto the window: the paths that are packs (a .zip, or a folder holding pack.mcmeta), by the name they
+	// would have in the resourcepacks folder, and the others, which the game does not offer to add.
+	struct FDrop
+	{
+		TArray<FString> Packs;
+		TArray<FString> Names;
+		TArray<FString> Others;
+	};
+	MCCORE_API FDrop SortDropped(const TArray<FString>& Paths);
+	// Copies those packs (as SortDropped found them) into the resourcepacks folder, a folder and everything in it. A name the
+	// folder already has is not overwritten; it, and any copy that failed, goes into Failed. Returns the names copied.
+	MCCORE_API TArray<FString> CopyDropped(const FDrop& Drop, TArray<FString>& Failed, const FString& IntoFolder = FString());
 	// The names of the packs in use, lowest first.
 	MCCORE_API TArray<FString> GetSelectedNames();
 	// Uses exactly these packs (lowest first) and remembers them in Saved/McResourcePacks.json for the next start. A

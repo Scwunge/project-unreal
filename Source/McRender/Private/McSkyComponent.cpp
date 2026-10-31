@@ -100,6 +100,18 @@ namespace
 	}
 }
 
+static float GCameraOpen = 1.0f;
+
+float McSky::GetCameraOpen()
+{
+	return GCameraOpen;
+}
+
+void McSky::SetCameraOpen(float Open)
+{
+	GCameraOpen = Open;
+}
+
 float McSky::GetSkyLightFactor()
 {
 	return GSkyLightFactor;
@@ -543,6 +555,7 @@ void UMcSkyComponent::BuildEnhanced()
 #if !UE_BUILD_SHIPPING
 	// For tuning: -McEnhancedExposure= (stops), -McSunLux=.
 	FParse::Value(FCommandLine::Get(), TEXT("-McEnhancedExposure="), Settings.AutoExposureBias);
+	BaseExposure = Settings.AutoExposureBias;
 #endif
 	EnhancedPost->RegisterComponent();
 }
@@ -590,6 +603,11 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		FPostProcessSettings& Grade = EnhancedPost->Settings;
 		Grade.ColorGain = bNether ? FVector4(1.14, 0.94, 0.84, 1.0) : bEnd ? FVector4(0.94, 0.9, 1.14, 1.0) : FVector4(1.0, 1.0, 1.0, 1.0);
 		Grade.BloomIntensity = Mode == EMode::Overworld ? 0.6f : 0.95f;
+		// Eyes adjust: under a roof in the Overworld the exposure rises over a second or two (up to 1.5 stops), and falls
+		// back outdoors.
+		const float Target = Mode == EMode::Overworld ? (1.0f - McSky::GetCameraOpen()) * 1.5f : 0.0f;
+		CaveExposure = FMath::FInterpTo(CaveExposure, Target, GetWorld()->GetDeltaSeconds(), 1.0f);
+		Grade.AutoExposureBias = BaseExposure + CaveExposure;
 		Grade.VignetteIntensity = Mode == EMode::Overworld ? 0.35f : 0.5f;
 		SunLight->SetCastShadows(Mode == EMode::Overworld);
 		SunLight->SetCastRaytracedShadow(McRenderMode::IsRayTracing());

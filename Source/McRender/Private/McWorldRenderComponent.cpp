@@ -4,6 +4,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McBlockTags.h"
 #include "McFluidMesher.h"
 #include "McLightEngine.h"
 #include "McRender.h"
@@ -226,6 +227,23 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// Mode what the rain falls on goes wet in about five seconds, and dries in about thirty once it stops.
 	const float Rain = GetRain ? FMath::Clamp(GetRain(), 0.0f, 1.0f) : 0.0f;
 	Wetness = Rain > Wetness ? FMath::Min(Rain, Wetness + DeltaTime / 5.0f) : FMath::Max(Rain, Wetness - DeltaTime / 30.0f);
+	// How open to the sky the camera is: nothing but air (or leaves, which let half through) in the 24 blocks above it.
+	if (World)
+	{
+		const FVector Eye = McCoords::UnrealToBlock(GetViewLocation());
+		const FIntVector Pos(FMath::FloorToInt(Eye.X), FMath::FloorToInt(Eye.Y), FMath::FloorToInt(Eye.Z));
+		static const int32 Leaves = FMcBlockTags::Get().Find(TEXT("leaves"));
+		float Open = 1.0f;
+		for (int32 Up = 1; Up <= 24 && Open > 0.0f; ++Up)
+		{
+			const FMcStateId Above = World->GetBlock(Pos + FIntVector(0, Up, 0));
+			if (Above != 0 && !FMcBlockTags::Get().Has(Leaves, Above))
+			{
+				Open = 0.0f;
+			}
+		}
+		McSky::SetCameraOpen(Open);
+	}
 	for (UMaterialInterface* Material : PassMaterials)
 	{
 		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))

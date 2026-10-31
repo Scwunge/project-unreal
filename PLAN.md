@@ -66,6 +66,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       the atmosphere's own ground showed a dark band, so the physical sky draws the dome's lower half (to the horizon) in
       the fog colour. Shots `skirt_noon`, `skirt_sunset`. At dusk the band is a paler grey than the glowing horizon behind
       it; blend it with the glow. `-McHide=fog,clouds,stars,moon,post` leaves parts out for finding artifacts.
+    - Cave exposure (done, 2026-10-31): the world renderer checks the 24 blocks above the camera (leaves count as open);
+      under a roof in the Overworld the exposure rises up to 1.5 stops over a second or two and falls back outdoors.
+      Scene `tools/scenes/cave.json`, shot `cave_unreal`. Depth of field is left off on purpose (it softens voxel
+      edges); `r.DepthOfFieldQuality` is still set at Ultra if it is ever enabled in the post settings.
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

@@ -28,6 +28,11 @@ namespace McSky
 	MCRENDER_API float GetSkyLightFactor();
 	MCRENDER_API void SetSkyLightFactor(float Factor);
 
+	// How open to the sky the camera is, 1 outdoors to 0 under a roof (the world renderer measures it): Unreal Mode opens
+	// the exposure up in caves, over a second or two, as an eye adjusts.
+	MCRENDER_API float GetCameraOpen();
+	MCRENDER_API void SetCameraOpen(float Open);
+
 	// A sky or fog colour (display values) under rain and thunder (0 to 1 each; thunder as heavy as the rain is):
 	// greyed and darkened towards its own brightness, as the sky goes grey in a storm (minecraft.wiki: "Rain").
 	MCRENDER_API FLinearColor ApplyWeather(const FLinearColor& Colour, float Rain, float Thunder);
@@ -121,6 +126,8 @@ private:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> CloudMaterial;
 	uint32 LookGeneration = 0;
+	float BaseExposure = 0.0f;
+	float CaveExposure = 0.0f;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> DomeMaterial;

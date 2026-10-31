@@ -57,6 +57,8 @@ namespace
 		return Texture;
 	}
 
+	UTexture2D* LoadPngBytes(const TArray<uint8>& File, const FString& Path, bool bFirstFrame, bool bGreyToAlpha);
+
 	// A PNG from the jar, cut to its top square when it is an animation strip.
 	UTexture2D* LoadPng(const FString& Path, bool bFirstFrame, bool bGreyToAlpha = false)
 	{
@@ -66,6 +68,12 @@ namespace
 			UE_LOG(LogMcUI, Warning, TEXT("Can't read %s"), *Path);
 			return nullptr;
 		}
+		return LoadPngBytes(File, Path, bFirstFrame, bGreyToAlpha);
+	}
+
+	// The same from bytes already in memory (Path only names it in the log).
+	UTexture2D* LoadPngBytes(const TArray<uint8>& File, const FString& Path, bool bFirstFrame, bool bGreyToAlpha)
+	{
 		IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
 		const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
 		TArray64<uint8> Raw;
@@ -112,6 +120,17 @@ UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
 		? FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), RelativeAssetPath.Mid(10)) : McCache::Asset(RelativeAssetPath);
 	UTexture2D* Texture = LoadPng(Path, false);
 	Sprites.Add(RelativeAssetPath, Texture);
+	return Texture;
+}
+
+UTexture2D* AMcHUD::LoadPackIcon(const FString& Key, const TArray<uint8>& Png)
+{
+	if (TObjectPtr<UTexture2D>* Found = Sprites.Find(Key))
+	{
+		return *Found;
+	}
+	UTexture2D* Texture = LoadPngBytes(Png, Key, false, false);
+	Sprites.Add(Key, Texture);
 	return Texture;
 }
 

@@ -7,6 +7,10 @@
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
 #include "McCore.h"
+#include "McBlockModels.h"
+#include "McBlockTextures.h"
+#include "McHdBlocks.h"
+#include "McResourcePacks.h"
 #include "McRenderMode.h"
 #include "McSound.h"
 #include "McUI.h"
@@ -23,6 +27,8 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Kismet/GameplayStatics.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -189,6 +195,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
+		case EMenu::ResourcePacks: ApplyResourcePacks(); OpenMenu(EMenu::Options); break;
 		default: break;
 		}
 	}
@@ -204,6 +211,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Pause: DrawPause(Width, Height); break;
 	case EMenu::Chat: DrawChatInput(Width, Height); break;
 	case EMenu::Options: DrawOptions(Width, Height); break;
+	case EMenu::ResourcePacks: DrawResourcePacks(Width, Height); break;
 	default: break;
 	}
 	return !IsWorldMenu() && ActiveMenu != EMenu::None;
@@ -715,9 +723,285 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 150.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Resource Packs..."), CentreX - 100.0f, Top + 150.0f, 200.0f, 20.0f))
+	{
+		OpenResourcePacks();
+		return;
+	}
+	if (bPacksNeedRestart)
+	{
+		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 174.0f, Grey);
+	}
+
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 198.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
+	}
+}
+
+void AMcHUD::OpenResourcePacks()
+{
+	PacksAvailable.Reset();
+	PacksSelected.Reset();
+	PacksScrollAvailable = 0;
+	PacksScrollSelected = 0;
+
+	auto MakeRow = [this](const FString& Name, const TSharedPtr<FMcResourcePack>& Pack, const FString& Error)
+	{
+		FPackRow Row;
+		Row.Name = Name;
+		Row.Title = Name;
+		Row.Error = Error;
+		if (Pack.IsValid())
+		{
+			Row.Description = Pack->GetInfo().Description;
+			TArray<uint8> Icon;
+			if (Pack->GetInfo().bHasIcon && Pack->Read(TEXT("pack.png"), Icon) && LoadPackIcon(TEXT("pack:") + Name, Icon))
+			{
+				Row.IconKey = TEXT("pack:") + Name;
+			}
+		}
+		return Row;
+	};
+
+	const TArray<McPacks::FFolderEntry> InFolder = McPacks::ScanFolder();
+	TSet<FString> Taken;
+	// The selection is kept lowest first; the screen lists the topmost first.
+	const TArray<FString> Chosen = McPacks::GetSelectedNames();
+	for (int32 Index = Chosen.Num() - 1; Index >= 0; --Index)
+	{
+		const FString& Name = Chosen[Index];
+		Taken.Add(Name);
+		const McPacks::FFolderEntry* Found = InFolder.FindByPredicate([&Name](const McPacks::FFolderEntry& Entry) { return Entry.Name == Name; });
+		if (Found)
+		{
+			PacksSelected.Add(MakeRow(Name, Found->Pack, Found->Error));
+		}
+		else
+		{
+			// Named with -McPacks as a path somewhere else.
+			FString Error;
+			const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(McPacks::ResolveName(Name), &Error);
+			PacksSelected.Add(MakeRow(Name, Pack, Error));
+		}
+	}
+	for (const McPacks::FFolderEntry& Entry : InFolder)
+	{
+		if (!Taken.Contains(Entry.Name))
+		{
+			PacksAvailable.Add(MakeRow(Entry.Name, Entry.Pack, Entry.Error));
+		}
+	}
+	OpenMenu(EMenu::ResourcePacks);
+}
+
+void AMcHUD::ApplyResourcePacks()
+{
+	TArray<FString> Names;
+	for (int32 Index = PacksSelected.Num() - 1; Index >= 0; --Index)
+	{
+		Names.Add(PacksSelected[Index].Name);
+	}
+	if (Names == McPacks::GetSelectedNames())
+	{
+		return;
+	}
+	McPacks::ApplySelection(Names);
+	// The menu pictures come from the packs too.
+	Sprites.Empty();
+	LayerTextures.Empty();
+	if (OptionsBack == EMenu::Pause)
+	{
+		// A world is using the models and the texture array.
+		bPacksNeedRestart = true;
+		return;
+	}
+	FMcBlockModels::Get().Unload();
+	FMcBlockTextures::Get().Unload();
+	FMcHdBlocks::Get().Unload();
+}
+
+void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
+{
+	if (OptionsBack == EMenu::Pause)
+	{
+		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+	}
+	else
+	{
+		DrawMenuBackground(Width, Height, true);
+	}
+	LoadFont();
+	const float CentreX = Width / 2.0f;
+	DrawCentredText(TEXT("Select Resource Packs"), CentreX, 8.0f, White);
+
+	constexpr float ListWidth = 200.0f;
+	constexpr float RowHeight = 36.0f;
+	const float ListTop = 32.0f;
+	const float ListBottom = Height - 52.0f;
+	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop) / RowHeight));
+
+	enum class EOp : uint8 { None, Select, Unselect, Up, Down };
+	EOp Op = EOp::None;
+	int32 OpIndex = INDEX_NONE;
+
+	APlayerController* Player = GetOwningPlayerController();
+	const bool bWheelUp = Player && Player->WasInputKeyJustPressed(EKeys::MouseScrollUp);
+	const bool bWheelDown = Player && Player->WasInputKeyJustPressed(EKeys::MouseScrollDown);
+
+	auto Clip = [this](const FString& Text, float MaxWidth)
+	{
+		if (TextWidth(Text) <= MaxWidth)
+		{
+			return Text;
+		}
+		FString Cut = Text;
+		while (Cut.Len() > 1 && TextWidth(Cut + TEXT("...")) > MaxWidth)
+		{
+			Cut.LeftChopInline(1);
+		}
+		return Cut + TEXT("...");
+	};
+
+	auto DrawList = [&](const TArray<FPackRow>& Rows, bool bSelected, float X, int32& Scroll)
+	{
+		DrawCentredText(bSelected ? TEXT("Selected") : TEXT("Available"), X + ListWidth / 2.0f, 21.0f, White);
+		DrawFill(X, ListTop, ListWidth, ListBottom - ListTop, FLinearColor(0.0f, 0.0f, 0.0f, 0.35f));
+		const bool bInList = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom;
+		if (bInList)
+		{
+			Scroll += (bWheelDown ? 1 : 0) - (bWheelUp ? 1 : 0);
+		}
+		Scroll = FMath::Clamp(Scroll, 0, FMath::Max(0, Rows.Num() - Visible));
+		if (Rows.IsEmpty() && !bSelected)
+		{
+			DrawCentredText(TEXT("Put pack zips or folders in:"), X + ListWidth / 2.0f, ListTop + 6.0f, Grey);
+			DrawCentredText(Clip(McPacks::GetFolder(), ListWidth - 8.0f), X + ListWidth / 2.0f, ListTop + 18.0f, DarkGrey);
+		}
+		for (int32 Index = Scroll; Index < Rows.Num() && Index < Scroll + Visible; ++Index)
+		{
+			const FPackRow& Row = Rows[Index];
+			const float Y = ListTop + 2.0f + (Index - Scroll) * RowHeight;
+			const bool bOver = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= Y - 2.0f && GuiMouse.Y < Y + RowHeight - 2.0f;
+			UTexture2D* Icon = Row.IconKey.IsEmpty() ? nullptr : Sprites.FindRef(Row.IconKey).Get();
+			if (!Icon)
+			{
+				Icon = LoadSprite(TEXT("textures/misc/unknown_pack.png"));
+			}
+			const float IconX = X + 2.0f;
+			if (Icon)
+			{
+				DrawRegion(Icon, IconX, Y, 32.0f, 32.0f, 0.0f, 0.0f, static_cast<float>(Icon->GetSizeX()), static_cast<float>(Icon->GetSizeY()));
+			}
+			const bool bUsable = Row.Error.IsEmpty();
+			const float TextX = IconX + 32.0f + 3.0f;
+			const float TextWidthMax = ListWidth - 32.0f - 10.0f;
+			DrawGuiText(Clip(Row.Title, TextWidthMax), TextX, Y + 1.0f, bUsable ? White : Red, true);
+			if (bUsable)
+			{
+				const TArray<FString> Lines = WrapText(Row.Description.Replace(TEXT("\n"), TEXT(" ")), TextWidthMax);
+				for (int32 Line = 0; Line < 2 && Line < Lines.Num(); ++Line)
+				{
+					const FString Text = (Line == 1 && Lines.Num() > 2) ? Clip(Lines[Line] + TEXT("..."), TextWidthMax) : Lines[Line];
+					DrawGuiText(Text, TextX, Y + 12.0f + Line * 10.0f, DarkGrey, true);
+				}
+			}
+			else
+			{
+				DrawGuiText(Clip(Row.Error, TextWidthMax), TextX, Y + 12.0f, DarkGrey, true);
+			}
+			if (bOver && bUsable)
+			{
+				// The arrows over the icon: left half takes it out of the list it is in, right half moves it up or down.
+				const float RelX = static_cast<float>(GuiMouse.X) - IconX;
+				const float RelY = static_cast<float>(GuiMouse.Y) - Y;
+				const bool bOnIcon = RelX >= 0.0f && RelX < 32.0f && RelY >= 0.0f && RelY < 32.0f;
+				DrawFill(IconX, Y, 32.0f, 32.0f, FLinearColor(0.56f, 0.56f, 0.56f, 0.63f));
+				auto Arrow = [&](const TCHAR* Name, bool bHot)
+				{
+					const FString Path = FString::Printf(TEXT("textures/gui/sprites/transferable_list/%s%s.png"), Name, bHot ? TEXT("_highlighted") : TEXT(""));
+					if (UTexture2D* Sprite = LoadSprite(Path))
+					{
+						DrawRegion(Sprite, IconX, Y, 32.0f, 32.0f, 0.0f, 0.0f, static_cast<float>(Sprite->GetSizeX()), static_cast<float>(Sprite->GetSizeY()));
+					}
+				};
+				if (!bSelected)
+				{
+					Arrow(TEXT("select"), bOnIcon);
+					if (bOnIcon && bMenuClick)
+					{
+						Op = EOp::Select;
+						OpIndex = Index;
+					}
+				}
+				else
+				{
+					const bool bLeft = bOnIcon && RelX < 16.0f;
+					const bool bUp = bOnIcon && RelX >= 16.0f && RelY < 16.0f && Index > 0;
+					const bool bDown = bOnIcon && RelX >= 16.0f && RelY >= 16.0f && Index < Rows.Num() - 1;
+					Arrow(TEXT("unselect"), bLeft);
+					if (Index > 0)
+					{
+						Arrow(TEXT("move_up"), bUp);
+					}
+					if (Index < Rows.Num() - 1)
+					{
+						Arrow(TEXT("move_down"), bDown);
+					}
+					if (bMenuClick)
+					{
+						OpIndex = Index;
+						Op = bLeft ? EOp::Unselect : bUp ? EOp::Up : bDown ? EOp::Down : EOp::None;
+					}
+				}
+			}
+		}
+	};
+
+	const float LeftX = CentreX - 4.0f - ListWidth;
+	const float RightX = CentreX + 4.0f;
+	DrawList(PacksAvailable, false, LeftX, PacksScrollAvailable);
+	DrawList(PacksSelected, true, RightX, PacksScrollSelected);
+
+	switch (Op)
+	{
+	case EOp::Select:
+		PacksSelected.Insert(PacksAvailable[OpIndex], 0);
+		PacksAvailable.RemoveAt(OpIndex);
+		break;
+	case EOp::Unselect:
+		{
+			// Back into the available list, which is kept by name.
+			const FPackRow Row = PacksSelected[OpIndex];
+			PacksSelected.RemoveAt(OpIndex);
+			int32 At = 0;
+			while (At < PacksAvailable.Num() && PacksAvailable[At].Name.Compare(Row.Name, ESearchCase::IgnoreCase) < 0)
+			{
+				++At;
+			}
+			PacksAvailable.Insert(Row, At);
+		}
+		break;
+	case EOp::Up:
+		PacksSelected.Swap(OpIndex, OpIndex - 1);
+		break;
+	case EOp::Down:
+		PacksSelected.Swap(OpIndex, OpIndex + 1);
+		break;
+	default:
+		break;
+	}
+
+	const float ButtonY = Height - 28.0f;
+	if (MenuButton(TEXT("Open Pack Folder"), CentreX - 154.0f, ButtonY, 150.0f, 20.0f))
+	{
+		IFileManager::Get().MakeDirectory(*McPacks::GetFolder(), true);
+		FPlatformProcess::ExploreFolder(*McPacks::GetFolder());
+	}
+	if (MenuButton(TEXT("Done"), CentreX + 4.0f, ButtonY, 150.0f, 20.0f))
+	{
+		ApplyResourcePacks();
+		OpenMenu(EMenu::Options);
 	}
 }
 

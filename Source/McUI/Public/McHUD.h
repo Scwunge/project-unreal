@@ -52,7 +52,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -74,6 +74,8 @@ private:
 	struct FScreenState;
 
 	UTexture2D* LoadSprite(const FString& RelativeAssetPath);
+	// A pack's pack.png from its bytes, kept under Key; null if it isn't a picture.
+	UTexture2D* LoadPackIcon(const FString& Key, const TArray<uint8>& Png);
 	UTexture2D* GetLayerTexture(FName TextureId);
 	const FIcon& GetIcon(FMcStateId State);
 	const FIcon& GetItemIcon(FName Item);
@@ -139,8 +141,13 @@ private:
 	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
 	void DrawOptions(int32 Width, int32 Height);
 	// The menus drawn over a world being played (the rest replace the screen).
-	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || (ActiveMenu == EMenu::Options && OptionsBack == EMenu::Pause); }
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::ResourcePacks) && OptionsBack == EMenu::Pause); }
 	void OpenOptions(EMenu Back);
+	// The resource packs screen (from the options): the packs in the packs folder in two lists, available and selected
+	// (the top of the selected list wins), moved between them and up and down by the arrows over a pack's icon.
+	void OpenResourcePacks();
+	void DrawResourcePacks(int32 Width, int32 Height);
+	void ApplyResourcePacks();
 	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
@@ -197,6 +204,20 @@ private:
 	int32 FocusedField = 0;
 	int32 FieldCount = 0;
 	TArray<FWorldRow> WorldRows;
+	struct FPackRow
+	{
+		FString Name;         // the file or folder name in the packs folder (what the selection file stores)
+		FString Title;
+		FString Description;
+		FString IconKey;
+		FString Error;
+	};
+	// Packs chosen while a world is open wait for the next start: the world is using the textures.
+	bool bPacksNeedRestart = false;
+	TArray<FPackRow> PacksAvailable;
+	TArray<FPackRow> PacksSelected;   // the topmost pack first
+	int32 PacksScrollAvailable = 0;
+	int32 PacksScrollSelected = 0;
 	int32 SelectedWorld = INDEX_NONE;
 	int32 WorldScroll = 0;
 	double LastRowClick = 0.0;

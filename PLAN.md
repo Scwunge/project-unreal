@@ -311,8 +311,16 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
 - **PBR:** with `-McPackPbr`, a pack's `<name>_n.png` and `<name>_s.png` (first frame) are kept per layer. The HD
   arrays (Unreal Mode plus HD Textures) use them in place of the generated maps, and make the missing one from the
   picture without added detail. Vanilla Mode ignores them, as vanilla does. HD arrays are sized to a third of the budget.
+- **Picker:** Options, Resource Packs... (`EMenu::ResourcePacks`): the packs in `resourcepacks/` (zips and folders,
+  `McPacks::ScanFolder`) in Available and Selected lists, arrows over the icon (select, unselect, move up/down as in
+  vanilla's `transferable_list` sprites), Open Pack Folder, Done applies. The choice is kept in
+  `Saved/McResourcePacks.json`, which `-McPacks=` overrides. The topmost selected pack wins.
+- **HD plus PBR check (Faithful PBR 1024 on the packs scene):** 108 layers carry `_n`/`_s` maps, the HD arrays are
+  256 px under the budget, and the normal array's alpha is the pack's height map, so parallax can read it from there.
 - **Not done / later:**
-  - An options screen like vanilla's (list of packs, move up and down, enable). The launch argument is the interface.
+  - Switching packs while a world is open: the world holds the models and the texture array, so the choice is saved
+    and applies at the next start. From the title screen the caches are unloaded and rebuilt on the next world.
+  - The picker doesn't take dropped files or show pack compatibility warnings (`pack_format` is not checked).
   - One array per size, so a pack of 100 big textures and 900 vanilla ones wouldn't repeat the 16 pixel layers up to
     the big size. It needs the block materials to sample two arrays (`tools/make_materials.py`), so it waits for the
     editor.

@@ -1470,7 +1470,7 @@ void AMcHUD::DrawHUD()
 	}
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed.
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr;
-	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options && ActiveMenu != EMenu::ResourcePacks)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}

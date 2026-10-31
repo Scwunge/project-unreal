@@ -241,8 +241,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     measured side on. Zombie, pumpkin and bare heads match to the pixel.
     Conduit: the cage's turn and tilt, the eye's bob and the wind shells are still guesses; the logged rotation field
     goes 0.0375 a tick while awake and stops while asleep (conduit_log), but how the renderer turns that into the
-    cage's angle needs frame shots. Hunting conduits don't attack mobs yet (minecraft.wiki: 4 damage every 2 seconds to
-    one hostile mob within 8 blocks in water or rain).
+    cage's angle needs frame shots (to batch with a later visual run).
     For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
     (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
   - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
@@ -252,7 +251,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     ticks (and just after it is set): awake, it gives Conduit Power for 260 ticks to players within 16 blocks per whole
     7 of frame (given at 31 with 16 frame blocks, not at 33) who are in water or out in the rain; it wakes and sleeps
     only on those checks, and hunts (the eye opens) with all 42. The effect keeps the player's breath full and digs as
-    Haste I (minecraft.wiki). Conduits in chunks loaded from disk start checking when a block beside them changes.
+    Haste I (minecraft.wiki). Conduits in a chunk start their checks as it loads.
+    Hunting (`log mobs`, script `conduit_hunt.txt`): each check with a target hits it for 4, the picking check
+    included; with none it picks at random among wet hostile mobs whose box reaches the conduit's block grown by 8,
+    and keeps it while it lives, is wet and stands within 8 blocks of the middle (McConduitHunt). Dry and passive
+    mobs are left alone.
+  - **Ticking block entities start as their chunk loads** (2026-10-31): hoppers (found by their block, so empty ones
+    too, which before only started when placed) and part-done furnaces and brewing stands (which waited for the next
+    5 second sweep) start when the chunk comes in. Mob spawners have no tick at all yet.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

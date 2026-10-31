@@ -24,6 +24,8 @@
 #include "McSurvival.h"
 #include "McEffects.h"
 #include "McSimulation.h"
+#include "McConduitHunt.h"
+#include "McEntityManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -153,11 +155,35 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 	}
 	if (FMcSimulation* Sim = World.GetSimulation())
 	{
-		Sim->OnConduitPulse = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FIntVector& Pos, int32 Range, bool bHunting)
+		// Each hunting conduit's target, by where it is.
+		TSharedRef<TMap<FIntVector, int32>> Targets = MakeShared<TMap<FIntVector, int32>>();
+		Sim->OnConduitPulse = [this, Targets, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FIntVector& Pos, int32 Range, bool bHunting)
 		{
-			if (const AMcWorldActor* Here = Weak.Get())
+			AMcWorldActor* Here = Weak.Get();
+			if (!Here)
 			{
-				GiveConduitPower(*Here, FVector(Pos) + FVector(0.5), Range);
+				return;
+			}
+			GiveConduitPower(*Here, FVector(Pos) + FVector(0.5), Range);
+			FMcEntityHost* Host = Here->GetEntityHost();
+			const FMcSimulation* HereSim = Here->GetSimulation();
+			if (!bHunting || !Host || !HereSim)
+			{
+				Targets->Remove(Pos);
+				return;
+			}
+			const int32 Target = McConduitHunt::Pulse(Host->GetManager(), Pos, Targets->FindRef(Pos), [HereSim](const FMcEntity& Mob)
+			{
+				const FVector& Feet = Mob.Body.Position;
+				return Mob.Body.bInWater || HereSim->IsRainingAt(FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z)));
+			});
+			if (Target != 0)
+			{
+				Targets->Add(Pos, Target);
+			}
+			else
+			{
+				Targets->Remove(Pos);
 			}
 		};
 	}

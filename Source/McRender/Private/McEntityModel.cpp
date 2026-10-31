@@ -258,11 +258,6 @@ namespace McEntityModel
 							Part.Boxes.Add(Piece);
 						}
 					}
-					else if (Part.Role == ERole::Static && Part.Boxes.Num() == 2)
-					{
-						// Its robe is part of the body picture.
-						Part.Boxes.RemoveAt(1);
-					}
 				}
 				// The potion it holds up to drink, in front of its face.
 				Witch.Textures.Add(TEXT("../item/potion.png"));

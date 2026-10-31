@@ -764,6 +764,35 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 0.1f, 0.5f), { Box(8, 7, 0, 0, -0.5f, 2, 0, 1) }));  // leftFrontLeg
 					Models.Add(Baby.Kind, Baby);
 				}
+				{
+					FModel Baby = Young(TEXT("minecraft:pig"), 32, 32);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 5, 2), { Box(0, 15, -3.5f, -1, -1, 7, 6, 6), Box(6, 27, -1.5f, -0.025f, 5, 3, 2, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 5, -0.5f), { Box(0, 0, -3.5f, -3, -4.5f, 7, 6, 9) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 2, -4), { Box(23, 4, -1, -2, -1, 2, 2, 2) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 2, -4), { Box(0, 4, -1, -2, -1, 2, 2, 2) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 2, 3), { Box(23, 0, -1, -2, -1, 2, 2, 2) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 2, 3), { Box(0, 0, -1, -2, -1, 2, 2, 2) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:cow"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 10.431f, 5.1667f), { Box(0, 18, -3, -1.431f, -0.167f, 6, 6, 5), Box(8, 29, 3, 3.569f, 2.833f, 1, 2, 1), Box(4, 29, -4, 3.569f, 2.833f, 1, 2, 1), Box(12, 29, -2, -1.431f, 4.833f, 4, 3, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(3, 5, 5), { Box(0, 0, -7, 1, -11, 8, 6, 12) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6, -3.5f), { Box(22, 27, -1.5f, -6, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6, -3.5f), { Box(34, 27, -1.5f, -6, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6, 3.5f), { Box(22, 18, -1.5f, -6, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6, 3.5f), { Box(34, 18, -1.5f, -6, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:chicken"), 16, 16);
+					Baby.Parts.Add(Part(ERole::LegRight, FVector(-1, 2, -0.5f), { Box(0, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 0, -0.5f, -2, 0, 1, 0, 1) }));  // rightLeg
+					Baby.Parts.Add(Part(ERole::LegLeft, FVector(1, 2, -0.5f), { Box(2, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 1, -0.5f, -2, 0, 1, 0, 1) }));  // leftLeg
+					Baby.Parts.Add(Part(ERole::WingLeft, FVector(2, 4, 0), { Box(6, 8, 0, 0, -1, 1, 0, 2) }, 0, 0, -0.0611f));  // rightWing
+					Baby.Parts.Add(Part(ERole::WingRight, FVector(-2, 4, 0), { Box(4, 8, -1, 0, -1, 1, 0, 2) }, 0, 0, 0.0611f));  // leftWing
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 3.75f, 1.25f), { Box(0, 0, -2, -1.75f, -3.25f, 4, 4, 4), Box(10, 8, -1, -0.75f, 0.75f, 2, 1, 1) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
 			}
 			return Models;
 		}

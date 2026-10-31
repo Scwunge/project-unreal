@@ -456,7 +456,9 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).
     - [ ] Pillager / vindicator / evoker / illusioner poses: crossbow arms (-90 degrees, yaw 0.3 / -0.6, charging -0.9), axe arms
           (-2.3 / -1.0 plus a wave at rate 9), spell arms (roll 135 degrees, swing at 13 x 0.6662).
-    - [ ] Ravager: body tilt, head and mouth pivots, neck, horn; stun and roar poses.
+    - [x] Ravager: checked against `log model ravager` and side/front shots at the same distance (scene `rotations`, `-McMobRowAt=-21,-25`, camera 9 away):
+          horn tilt 1.0996 (63 degrees) is the logged value, leg pivots match, head and body within about 1 px. Left: stun and roar poses; our jaw hangs
+          about 1 px lower than vanilla's closed mouth (logged mouth turn 0.031). Shots need the `rotations` scene: in `-McFlat` an extra mob stands at the camera.
     - [ ] Vex: wing roll (0.7 + sin(40 t) x 0.5), body lean, charging pose, arm raise.
     - [ ] Witch: hat bend stack DONE (logged pivots and turns, matches vanilla shots). Left: nose wobble (xRot 0.078, zRot +-0.04), mole,
           drinking arm.

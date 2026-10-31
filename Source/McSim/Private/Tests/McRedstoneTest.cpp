@@ -608,7 +608,10 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		// Quasi-connectivity: power beside the block above counts.
 		World.SetBlock(FIntVector(0, 2, -1), State(TEXT("minecraft:redstone_block")));
 		Run(Sim, 5);
-		TestEqual(TEXT("powered through the block above"), Fired.Num(), 2);
+		TestEqual(TEXT("no update reaches it yet (vanilla rs_quasi)"), Fired.Num(), 1);
+		World.SetBlock(FIntVector(0, 1, -1), State(TEXT("minecraft:stone")));
+		Run(Sim, 5);
+		TestEqual(TEXT("powered through the block above once a neighbour updates"), Fired.Num(), 2);
 
 		const FIntVector Hopper(4, 1, 0);
 		World.SetBlock(Hopper, State(TEXT("minecraft:hopper[enabled=true,facing=down]")));

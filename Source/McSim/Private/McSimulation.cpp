@@ -230,12 +230,10 @@ void FMcSimulation::Tick()
 		Now.Append(Due[Time]);
 		Due.Remove(Time);
 	}
+	// A tick stays pending until its own turn, so an update arriving earlier in this same game tick cannot queue it twice.
 	for (const FIntVector& Pos : Now)
 	{
 		Pending.Remove(Pos);
-	}
-	for (const FIntVector& Pos : Now)
-	{
 		RunTick(Pos);
 	}
 	RandomTicks();

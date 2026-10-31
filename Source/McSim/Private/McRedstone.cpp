@@ -572,7 +572,8 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	}
 	// One step further: through a conductor (a block a signal passes through), and from anything redstone does
 	// itself, so a piston still hears dust that reaches the block above it.
-	const bool bFull = KindOf(State) != None || Reg().IsAir(State);
+	// (A redstone block or a removed block sends no update past its own neighbours: reference run rs_quasi.)
+	const bool bFull = KindOf(State) != None && KindOf(State) != RedstoneBlock;
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
 		const FIntVector Next = Pos + Vec[Dir];

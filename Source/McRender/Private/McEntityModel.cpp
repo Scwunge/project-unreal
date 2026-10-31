@@ -231,10 +231,32 @@ namespace McEntityModel
 						Part.Boxes.Reset();
 						Part.Boxes.Add(Box(0, 0, -4, 0, -4, 8, 10, 8));
 						Part.Boxes.Add(Box(24, 0, -1, -1, 4, 2, 4, 2));
-						Part.Boxes.Add(Box(0, 64, -5, 10, -5, 10, 2, 10));
-						Part.Boxes.Add(Box(0, 76, -3.5f, 12, -3.5f, 7, 4, 7));
-						Part.Boxes.Add(Box(0, 87, -2, 16, -2, 4, 4, 4));
-						Part.Boxes.Add(Box(0, 95, -0.5f, 20, -0.5f, 1, 2, 1));
+						// The hat bends: the brim, then three cones each on the last, every one turned about its own pivot (the
+						// pivots and turns are the vanilla model's as logged, x and y offsets in its own frame: y down, z south).
+						const auto Turn = [](float Pitch, float Roll) { return FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch); };
+						FVector Pivot(-5.0f, 10.03125f, 5.0f);
+						FQuat Frame = FQuat::Identity;
+						FBox Brim = Box(0, 64, 0, 0, 0, 10, 10, 2);
+						Brim.Min += Pivot;
+						Brim.BoxPivot = Pivot;
+						Brim.BoxRotation = FQuat(FVector::XAxisVector, -HALF_PI);
+						Part.Boxes.Add(Brim);
+						struct FCone { int32 V; int32 W, H, D; float Dx, Dy, Dz; float Pitch, Roll; };
+						const FCone Cones[] = {
+							{ 76, 7, 4, 7, 1.75f, 4.0f, -2.0f, -0.0524f, -0.0262f },
+							{ 87, 4, 4, 4, 1.75f, 4.0f, -2.0f, -0.1047f, -0.0524f },
+							{ 95, 1, 2, 1, 1.75f, 2.0f, -2.0f, -0.2094f, -0.1047f },
+						};
+						for (const FCone& Cone : Cones)
+						{
+							Pivot += Frame.RotateVector(FVector(Cone.Dx, Cone.Dy, Cone.Dz));
+							Frame = Frame * Turn(Cone.Pitch, Cone.Roll);
+							FBox Piece = Box(0, Cone.V, 0, -Cone.H, -Cone.D, Cone.W, Cone.H, Cone.D);
+							Piece.Min += Pivot;
+							Piece.BoxPivot = Pivot;
+							Piece.BoxRotation = Frame;
+							Part.Boxes.Add(Piece);
+						}
 					}
 					else if (Part.Role == ERole::Static && Part.Boxes.Num() == 2)
 					{
@@ -675,9 +697,11 @@ namespace McEntityModel
 			const FVector Min = (Box.Min - FVector(Box.Inflate)) * LocalScale;
 			const FVector Max = (Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate)) * LocalScale;
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const FVector BendPivot = Box.BoxPivot * LocalScale;
 			const auto Place = [&](const FVector& Local)
 			{
-				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local)) * WholeScale;
+				const FVector Bent = BendPivot + Box.BoxRotation.RotateVector(Local - BendPivot);
+				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Bent)) * WholeScale;
 			};
 
 			struct FFace { EBoxFace Face; FVector Normal; FVector Corners[4]; };
@@ -704,7 +728,7 @@ namespace McEntityModel
 					FVector2D(Left, Rect.Max.Y), FVector2D(Right, Rect.Max.Y),
 					FVector2D(Right, Rect.Min.Y), FVector2D(Left, Rect.Min.Y),
 				};
-				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Face.Normal));
+				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Box.BoxRotation.RotateVector(Face.Normal)));
 				const FVector UnrealNormal(Normal.X, Normal.Z, Normal.Y);
 				const FColor Color = bGlow ? FColor::White : Shade(Normal, Hurt);
 				const int32 First = Out.Positions.Num();

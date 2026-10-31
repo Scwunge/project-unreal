@@ -53,6 +53,10 @@ namespace McEntityModel
 		// With bFlat: lying in the part's x-y plane instead, centred on (Min.X + Size.X / 2, Min.Y + Size.Y / 2) at Min.Z and Size.Y
 		// across, turned 45 degrees so an item icon's barrel (its diagonal) points along -y: a crossbow held out flat.
 		bool bFlatTop = false;
+		// Turned about BoxPivot (in the part's own space) before the part's own pose is applied: a witch's hat bends in
+		// four pieces, each on the last.
+		FVector BoxPivot = FVector::ZeroVector;
+		FQuat BoxRotation = FQuat::Identity;
 	};
 
 	struct FPart

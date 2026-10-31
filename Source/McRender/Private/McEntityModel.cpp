@@ -390,8 +390,8 @@ namespace McEntityModel
 				Enderman.MaxLimbSwing = 0.4f;
 				Enderman.LegSwing = 0.7f;
 				Enderman.ArmSwing = 0.5f;
-				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
-				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
 				Enderman.Parts.Add(Part(ERole::Static, FVector(0, 38, 0), { Box(32, 16, -4, -12, -2, 8, 12, 4) }));
 				Enderman.Parts.Add(Part(ERole::ArmRight, FVector(-5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2) }));
 				Enderman.Parts.Add(Part(ERole::ArmLeft, FVector(5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2, 0.0f, true) }));
@@ -492,6 +492,12 @@ namespace McEntityModel
 				const FBox Rear = Box(18, 14, -3, -4.5f, -3, 6, 9, 6);
 				const FBox Chest = Box(21, 0, -4, -3, -3.5f, 8, 6, 7);
 				const FBox ChestCollar = Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f);
+				// Standing, from the logged model (pivots and every box's extent).
+				const FBox StandRear = Box(18, 14, -3, -7, -3, 6, 9, 6);
+				const FBox StandChest = Box(21, 0, -3, -3, -4, 8, 6, 7);
+				const FBox StandChestCollar = Box(21, 0, -3, -3, -4, 8, 6, 7, 0.03f);
+				const FBox StandLeg = Box(0, 18, 0, -8, -1, 2, 8, 2);
+				const FBox StandTail = Box(9, 18, 0, -8, -1, 2, 8, 2);
 				const FBox Tail = Box(9, 18, -1, -8, -1, 2, 8, 2);
 				const FBox Leg = Box(0, 18, -1, -8, -1, 2, 8, 2);
 				const auto Add = [&Wolf](FPart Each, uint32 Poses)
@@ -501,16 +507,16 @@ namespace McEntityModel
 				};
 				const std::initializer_list<FBox> HeadBoxes = { Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) };
 				// Standing.
-				Add(Part(ERole::Head, FVector(0, 9.9f, 5.65f), HeadBoxes), Standing);
-				Add(Part(ERole::Static, FVector(0, 8.34f, -4.1f), { Rear }, Flat), Standing);
-				Add(Part(ERole::Static, FVector(0, 8.55f, 3.52f), { Chest }, Flat), Standing);
-				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 0.56f), Standing & Wild);
-				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 1.45f), Standing & Angry);
-				Add(Part(ERole::Static, FVector(0, 10.64f, -7.38f), { Tail }, 1.65f), Standing & Tame);
-				Add(Part(ERole::LegFrontRight, FVector(-1.25f, 8, 5.05f), { Leg }), Standing);
-				Add(Part(ERole::LegFrontLeft, FVector(1.25f, 8, 5.05f), { Leg }), Standing);
-				Add(Part(ERole::LegBackRight, FVector(-1.25f, 8, -5.96f), { Leg }), Standing);
-				Add(Part(ERole::LegBackLeft, FVector(1.25f, 8, -5.96f), { Leg }), Standing);
+				Add(Part(ERole::Head, FVector(-1, 10.5f, 7), { Box(0, 0, -2, -3, -2, 6, 6, 4), Box(16, 14, -2, 3, -1, 2, 2, 1), Box(16, 14, 2, 3, -1, 2, 2, 1), Box(0, 10, -0.5f, -3, 1, 3, 3, 4) }), Standing);
+				Add(Part(ERole::Static, FVector(0, 10, -2), { StandRear }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChest }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 0.56f), Standing & Wild);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.45f), Standing & Angry);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.65f), Standing & Tame);
+				Add(Part(ERole::LegFrontRight, FVector(-2.5f, 8, 4), { StandLeg }), Standing);
+				Add(Part(ERole::LegFrontLeft, FVector(0.5f, 8, 4), { StandLeg }), Standing);
+				Add(Part(ERole::LegBackRight, FVector(-2.5f, 8, -7), { StandLeg }), Standing);
+				Add(Part(ERole::LegBackLeft, FVector(0.5f, 8, -7), { StandLeg }), Standing);
 				// Sitting: the rear on its haunches, the chest raised, the hind legs folded forward and the front ones straight down.
 				Add(Part(ERole::Head, FVector(0, 10.12f, 6.26f), HeadBoxes), Sitting);
 				Add(Part(ERole::Static, FVector(0, 2.28f, -1.18f), { Rear }, 0.83f), Sitting);
@@ -523,7 +529,7 @@ namespace McEntityModel
 				Add(Part(ERole::Static, FVector(-1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
 				Add(Part(ERole::Static, FVector(1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
 				// The collar: the chest drawn again, a hair larger, in the collar's own picture.
-				Add(Part(ERole::Static, FVector(0, 8.55f, 3.52f), { ChestCollar }, Flat, 0.0f, 0.0f, 0, 1), Standing & Tame);
+				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChestCollar }, Flat, 0.0f, 0.0f, 0, 1), Standing & Tame);
 				Add(Part(ERole::Static, FVector(0, 6.77f, 3.12f), { ChestCollar }, 1.27f, 0.0f, 0.0f, 0, 1), Sitting & Tame);
 				Models.Add(Wolf.Kind, Wolf);
 			}
@@ -532,15 +538,19 @@ namespace McEntityModel
 				Goat.Kind = TEXT("minecraft:goat");
 				Goat.TextureSize = FIntPoint(64, 64);
 				Goat.Textures = { TEXT("goat/goat.png") };
-				Goat.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(1, 1, -4.5f, 6, -9, 9, 11, 16), Box(0, 28, -5.5f, 4, -3, 11, 14, 11) }));
-				Goat.Parts.Add(Part(ERole::Head, FVector(0, 15, 8),
-					{ Box(34, 46, -2.5f, -4, 0, 5, 7, 10), Box(12, 55, -3, 3, 2, 2, 7, 2), Box(12, 55, 1, 3, 2, 2, 7, 2, 0.0f, true) }));
-				const FBox FrontLeg = Box(49, 2, -1.5f, -10, -1.5f, 3, 10, 3);
-				const FBox BackLeg = Box(36, 29, -1.5f, -6, -1.5f, 3, 6, 3);
-				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 5), { FrontLeg }));
-				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 10, 5), { FrontLeg }));
-				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 6, -6), { BackLeg }));
-				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 6, -6), { BackLeg }));
+				// Placed from the logged model, which sits half a point to the right of centre (the head's pivot is at x 1 and the legs
+				// at -3 and 1). The head is a box tipped 55 degrees forward about a pivot of its own, with the horns on the head itself.
+				Goat.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(1, 1, -4, 6, -9, 9, 11, 16), Box(0, 28, -5, 4, -3, 11, 14, 11) }));
+				FBox GoatNose = Box(34, 46, -3, 5, 6, 5, 7, 10);
+				GoatNose.BoxPivot = FVector(0, 8, 8);
+				GoatNose.BoxRotation = FQuat(FVector::XAxisVector, 0.9599f);
+				Goat.Parts.Add(Part(ERole::Head, FVector(1, 10, 0), { GoatNose, Box(12, 55, -2.99f, 9, 8, 2, 7, 2), Box(12, 55, -0.01f, 9, 8, 2, 7, 2, 0.0f, true) }));
+				const FBox FrontLeg = Box(49, 2, 0, -10, -3, 3, 10, 3);
+				const FBox BackLeg = Box(36, 29, 0, -10, -3, 3, 6, 3);
+				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 6), { FrontLeg }));
+				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(1, 10, 6), { FrontLeg }));
+				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 10, -4), { BackLeg }));
+				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(1, 10, -4), { BackLeg }));
 				Models.Add(Goat.Kind, Goat);
 			}
 			{
@@ -549,12 +559,16 @@ namespace McEntityModel
 				Fox.TextureSize = FIntPoint(48, 32);
 				Fox.Textures = { TEXT("fox/fox.png") };
 				Fox.Variants = { { TEXT("fox/fox.png") }, { TEXT("fox/fox_snow.png") } };
-				Fox.Parts.Add(Part(ERole::Static, FVector(0, 9, 0.5f), { Box(24, 15, -3, -5.5f, -3, 6, 11, 6) }, Flat));
-				Fox.Parts.Add(Part(ERole::Head, FVector(0, 10.5f, 5.5f),
-					{ Box(1, 5, -4, -3, 0, 8, 6, 6), Box(8, 1, -3.5f, 3, 1, 2, 2, 1), Box(15, 1, 1.5f, 3, 1, 2, 2, 1), Box(6, 18, -2, -2.5f, 6, 4, 2, 3) }));
-				// The tail trails behind, a little drooped.
-				Fox.Parts.Add(Part(ERole::Static, FVector(0, 10, -5), { Box(30, 0, -2, 0, -2.5f, 4, 9, 5) }, -1.7f));
-				AddLegs(Fox, 4, 24, 2, 6, 2, 4, -3.5f, 6);
+				// Placed from the logged model: the head's pivot is at x -1, the body lies down about a pivot of its own, and the tail
+				// hangs from the body (its turn is the body's quarter turn less 0.0524).
+				Fox.Parts.Add(Part(ERole::Static, FVector(0, 8, 6), { Box(24, 15, -3, -14.999f, -2.5f, 6, 11, 6) }, Flat));
+				Fox.Parts.Add(Part(ERole::Head, FVector(-1, 7.5f, 3), { Box(1, 5, -3, -4, -1, 8, 6, 6), Box(8, 1, -3, 2, 3, 2, 2, 1), Box(15, 1, 3, 2, 3, 2, 2, 1), Box(6, 18, -1, -4.01f, 5, 4, 2, 3) }));
+				Fox.Parts.Add(Part(ERole::Static, FVector(-4, 7, -9), { Box(30, 0, 2, -9, -4, 4, 9, 5) }, Flat - 0.0524f));
+				const FBox FoxLeg = Box(4, 24, 2, -6.5f, -1, 2, 6, 2);
+				Fox.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 6.5f, 0), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegFrontLeft, FVector(-1, 6.5f, 0), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegBackRight, FVector(-5, 6.5f, -7), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegBackLeft, FVector(-1, 6.5f, -7), { FoxLeg }));
 				Models.Add(Fox.Kind, Fox);
 			}
 			for (const TCHAR* LlamaKind : { TEXT("minecraft:llama"), TEXT("minecraft:trader_llama") })
@@ -575,13 +589,13 @@ namespace McEntityModel
 				Bee.Kind = TEXT("minecraft:bee");
 				Bee.TextureSize = FIntPoint(64, 64);
 				Bee.Textures = { TEXT("bee/bee.png") };
-				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(0, 0, -3.5f, -3.5f, -5, 7, 7, 10), Box(26, 7, 0, -0.5f, -7, 0, 1, 2) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3.5f, -3, -5, 7, 7, 10), Box(26, 7, 0, 0, -7, 0, 1, 2) }));
 				// The antennae, and three legs that are flat planes (a box with no depth, drawn both sides).
-				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(2, 0, 1.5f, 2, 5, 1, 2, 3), Box(2, 3, -2.5f, 2, 5, 1, 2, 3) }));
-				Bee.Parts.Add(Part(ERole::Static, FVector(0, 6, 0), { Box(26, 1, -3.5f, -5.5f, 3, 7, 2, 0), Box(26, 3, -3.5f, -5.5f, 0, 7, 2, 0), Box(26, 5, -3.5f, -5.5f, -3, 7, 2, 0) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(2, 0, 1.5f, 2, 5, 1, 2, 3), Box(2, 3, -2.5f, 2, 5, 1, 2, 3) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(26, 1, -3.5f, -5, 2, 7, 2, 0), Box(26, 3, -3.5f, -5, 0, 7, 2, 0), Box(26, 5, -3.5f, -5, -2, 7, 2, 0) }));
 				// Two flat wings that beat.
-				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 10, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }, 0.0f, 0.0f, -0.6f));
-				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 10, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }, 0.0f, 0.0f, 0.6f));
+				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 9, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }, 0.0f, 0.0f, -0.6f));
+				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 9, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }, 0.0f, 0.0f, 0.6f));
 				Models.Add(Bee.Kind, Bee);
 			}
 			{
@@ -609,13 +623,13 @@ namespace McEntityModel
 				Turtle.Kind = TEXT("minecraft:turtle");
 				Turtle.TextureSize = FIntPoint(128, 64);
 				Turtle.Textures = { TEXT("turtle/turtle.png") };
-				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -1), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
-				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 3, -1), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
-				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 9), { Box(3, 0, -3, -2, 0, 6, 5, 6) }));
-				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
-				Turtle.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 2, -9), { Box(1, 23, -2, -1, -10, 4, 1, 10, 0.0f, true) }));
-				Turtle.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 2, 4), { Box(27, 30, -13, -1, -2, 13, 1, 5) }));
-				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 2, 4), { Box(27, 30, 0, -1, -2, 13, 1, 5, 0.0f, true) }));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 1.5f, -2), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
+				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 10), { Box(3, 0, -3, -4, -3, 6, 5, 6) }));
+				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
+				Turtle.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10, 0.0f, true) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 3, 4), { Box(27, 30, -13, -1, -3, 13, 1, 5) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 3, 4), { Box(27, 30, 0, -1, -3, 13, 1, 5, 0.0f, true) }));
 				Models.Add(Turtle.Kind, Turtle);
 			}
 			return Models;

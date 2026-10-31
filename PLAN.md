@@ -287,6 +287,19 @@ The wiki doesn't document the noise maths exactly, so noises are built to the do
 (normalized fBm whose expected amplitude is `base_amplitude`) and calibrated against world statistics. They
 are not seed-matched.
 
+**Known limitation: seed-exact noise.** The calibrated noises match the reference client's spread within 1 to 5%
+and its band spectra in shape (`McClient.McGen.NoiseSpectrum`, `McClient.McGen.BiomeMix`), but not value for value:
+`McClient.McGen.ClimatePoints` against the reference's logged climate line (save `terrain`, seed 4242424242) is off by
+0.2 to 0.6 on average. Provenance rule: only the wiki's Random sequence format page (Xoroshiro128++; seed halves
+`seed ^ 0x6a09e667f3bcc909` and that plus `0x9e3779b97f4a7c15`, Stafford 13 mix, XOR with the MD5 of the id), Blackman
+and Vigna's published algorithm and Perlin's published reference, tested black-box against the logged temperature line
+(`Saved/hyp/*.py`, scored by correlation of octave 0 over the 32 km line; a right answer would score above 0.95).
+Tried, all at chance (best 0.86 over 7,680 combinations): seed expansion mixed / unmixed / SplitMix-style; positional
+factory from the state halves or from two draws; noise fork by MD5 of the id with and without the namespace, both byte
+orders, either half first; octave stream forked by name (four spellings) or drawn in sequence; permutation by four
+shuffle orders with four integer-draw rules; origin drawn before or after the permutation. None landed, so the
+statistically matched construction stays. A hit needs the reference's exact seeding, which no permitted source gives.
+
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.
 2. **Density functions:** parse every type the data uses into a graph and evaluate it, with caches and cell

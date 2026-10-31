@@ -358,7 +358,7 @@ Textures
 - [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
 - [~] `.png.mcmeta` for textures (`blur`, `clamp`), villager (`hat`), GUI (`gui.scaling`: nine_slice borders, tile,
   stretch): partly. Nine-slice borders are fixed at the vanilla sizes; `blur`/`clamp`/`hat` are not read
-- [ ] `atlases/*.json` (sources, directories, filters, palettes): missing (the block array is built from the models)
+- [~] `atlases/*.json`: `unstitch` and `filter` sources on the block atlas done (test PackAtlas); `paletted_permutations` and the other atlases missing
 - [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
 - [ ] `font/*.json` providers (bitmap, ttf, unihex, space, reference): missing; only the two sheets above
 

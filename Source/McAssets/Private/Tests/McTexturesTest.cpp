@@ -1,4 +1,5 @@
 #include "McBiomeColors.h"
+#include "McBlockModels.h"
 #include "McBlockTextures.h"
 #include "McResourcePacks.h"
 #include "Engine/Texture2DArray.h"
@@ -191,6 +192,62 @@ bool FMcPackAnimationTest::RunTest(const FString& Parameters)
 
 	// Back to the plain game.
 	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Textures.Unload();
+	Textures.EnsureLoaded();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// A pack's atlases/blocks.json: an unstitch source cuts a sprite out of a sheet, and a model of the pack uses it. The
+// sheet is 32 x 16, red on the left and blue on the right; the sprite zz_cut is the right half (x 1 of 2).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAtlasTest, "McClient.McAssets.PackAtlas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackAtlasTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackAtlasTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Assets = Root / TEXT("assets/minecraft");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"atlas test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"sources\":[{\"type\":\"minecraft:unstitch\",\"resource\":\"minecraft:block/zz_sheet\",\"divisor_x\":2,\"divisor_y\":1,\"regions\":[{\"sprite\":\"minecraft:block/zz_cut\",\"x\":1,\"y\":0,\"width\":1,\"height\":1}]}]}"), *(Assets / TEXT("atlases/blocks.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"minecraft:block/zz_cut\"}}"), *(Assets / TEXT("models/block/stone.json")));
+
+	TArray<FColor> Pixels;
+	Pixels.SetNum(32 * 16);
+	for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+	{
+		Pixels[Index] = (Index % 32) < 16 ? FColor(200, 0, 0, 255) : FColor(0, 0, 200, 255);
+	}
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+	if (!TestTrue(TEXT("a picture to write"), Png.IsValid() && Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 32, 16, ERGBFormat::BGRA, 8)))
+	{
+		return false;
+	}
+	const TArray64<uint8> Bytes = Png->GetCompressed();
+	FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Assets / TEXT("textures/block/zz_sheet.png")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockModels::Get().Unload();
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	Textures.Unload();
+	if (TestTrue(TEXT("textures load with the pack"), Textures.EnsureLoaded()))
+	{
+		const int32 Cut = Textures.GetLayer(TEXT("minecraft:block/zz_cut"));
+		if (TestTrue(TEXT("the cut sprite has a layer"), Cut > 0))
+		{
+			TestEqual(TEXT("the sprite is the right half of the sheet"), Textures.GetPixels(Cut)[0], FColor(0, 0, 200, 255));
+		}
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	FMcBlockModels::Get().Unload();
 	Textures.Unload();
 	Textures.EnsureLoaded();
 	IFileManager::Get().DeleteDirectory(*Root, false, true);

@@ -227,7 +227,9 @@ namespace
 				return false;
 			}
 			static const FMcStateId Snow = StateOf(TEXT("minecraft:snow_block"));
-			const int32 Radius = 4 + Random.NextInt(7);
+			// Fitted: icebergs of radius 4 to 10 covered 4% of a frozen ocean's surface (168 columns each, one per 16 chunks) against
+			// the reference client's 14% packed ice, so radius 7 to 18 (about 3.2x the area).
+			const int32 Radius = 7 + Random.NextInt(12);
 			const int32 Above = 6 + Random.NextInt(Radius * 2 + 2);
 			const int32 Below = FMath::Max(3, Above * 2 / 3);
 			// Two lumps: the main one and a smaller one beside it.

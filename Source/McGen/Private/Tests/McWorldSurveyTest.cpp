@@ -7,6 +7,7 @@
 #include "McFeature.h"
 #include "McGenRegion.h"
 #include "McNoiseGenerator.h"
+#include "McStructures.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "Misc/AutomationTest.h"
@@ -431,6 +432,7 @@ namespace
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
 		TMap<FString, TArray<int64>> Bands;
+		TMap<FString, TArray<int64>> PerY;
 		TMap<FString, int64> Ground, Above, Columns;
 		// Per biome and log block: trunk bases (a log with no log below it) and logs.
 		TMap<FString, TPair<int64, int64>> Trees;
@@ -507,6 +509,11 @@ namespace
 									bLogBelow = bLog;
 									Bands.FindOrAdd(Name, TArray<int64>()).SetNumZeroed(24);
 									Bands[Name][(Y - Settings.MinY) >> 4]++;
+									if (Y < 64 && (Name.Contains(TEXT("copper_ore")) || Name.Contains(TEXT("iron_ore")) || Name.Contains(TEXT("raw_copper_block")) || Name.Contains(TEXT("raw_iron_block")) || Name == TEXT("minecraft:granite") || Name == TEXT("minecraft:tuff")))
+									{
+										PerY.FindOrAdd(Name, TArray<int64>()).SetNumZeroed(128);
+										PerY[Name][Y - Settings.MinY]++;
+									}
 									if (Y == GroundY)
 									{
 										Ground.FindOrAdd(Biome + TEXT(" ") + Name)++;
@@ -530,6 +537,15 @@ namespace
 				Row += FString::Printf(TEXT(" %lld"), Count);
 			}
 			Test.AddInfo(FString::Printf(TEXT("STATA %d %s%s"), SeedIndex, *Pair.Key, *Row));
+		}
+		for (const TPair<FString, TArray<int64>>& Pair : PerY)
+		{
+			FString Row;
+			for (const int64 Count : Pair.Value)
+			{
+				Row += FString::Printf(TEXT(" %lld"), Count);
+			}
+			Test.AddInfo(FString::Printf(TEXT("STATY %d %s%s"), SeedIndex, *Pair.Key, *Row));
 		}
 		for (const TPair<FString, int64>& Pair : Ground) { Test.AddInfo(FString::Printf(TEXT("STATG %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
 		for (const TPair<FString, int64>& Pair : Above) { Test.AddInfo(FString::Printf(TEXT("STATV %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
@@ -688,6 +704,58 @@ bool FMcFloorMixTest::RunTest(const FString& Parameters)
 			}
 		}
 		AddInfo(FString::Printf(TEXT("FLOORS %d %s"), SeedIndex, *Line));
+	}
+	return true;
+}
+
+// Structure starts over 256 x 256 chunks from (-128, -128), per seed: a chunk the structure set picks whose biome (at sea
+// level + 4, in the chunk's middle) the structure allows. "STARTS <seed> <structure> <count>"; the reference client's
+// "log starts" gives the same over the same chunks.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcStructureStartsTest, "McClient.McGen.StructureStarts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcStructureStartsTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	FMcStructureLibrary Structures(Settings.SeaLevel, Settings.MinY);
+	if (!TestTrue(TEXT("structure sets load"), Structures.Load()))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		const uint64 Seed = Seeds[SeedIndex];
+		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+		TMap<FName, int64> Counts;
+		for (int32 Z = -128; Z < 128; ++Z)
+		{
+			for (int32 X = -128; X < 128; ++X)
+			{
+				TArray<FName> Here;
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Here);
+				if (Here.IsEmpty())
+				{
+					continue;
+				}
+				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Settings.SeaLevel + 4, Z * 16 + 8);
+				for (const FName Name : Here)
+				{
+					if (Structures.BiomeAllows(Name, Biome))
+					{
+						Counts.FindOrAdd(Name)++;
+					}
+				}
+			}
+		}
+		for (const TPair<FName, int64>& Pair : Counts)
+		{
+			AddInfo(FString::Printf(TEXT("STARTS %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+		}
 	}
 	return true;
 }

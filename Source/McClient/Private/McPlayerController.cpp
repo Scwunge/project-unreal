@@ -890,8 +890,14 @@ void AMcPlayerController::StartDevScreenshot()
 	float Delay = 5.0f;
 	FParse::Value(FCommandLine::Get(), TEXT("-McShotDelay="), Delay);
 
-	FTimerHandle ShotTimer;
-	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, ShotPath]()
+	// After the delay, wait until the chunks round the camera are meshed (none waiting for a mesh, and the count
+	// steady for two checks), up to -McShotMaxWait= seconds (default 90): far chunks on a slow machine otherwise
+	// shoot as sky. -McShotNoWait shoots at the delay as before.
+	float MaxWait = 90.0f;
+	FParse::Value(FCommandLine::Get(), TEXT("-McShotMaxWait="), MaxWait);
+	const bool bWait = !FParse::Param(FCommandLine::Get(), TEXT("McShotNoWait"));
+
+	auto Save = [this, ShotPath]()
 	{
 		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
@@ -900,6 +906,36 @@ void AMcPlayerController::StartDevScreenshot()
 		{
 			FPlatformMisc::RequestExit(false, TEXT("McShot"));
 		}), 1.0f, false);
+	};
+
+	FTimerHandle ShotTimer;
+	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, Save, bWait, MaxWait]()
+	{
+		if (!bWait)
+		{
+			Save();
+			return;
+		}
+		struct FWaitState { int32 Last = -1; int32 Steady = 0; float Waited = 0.0f; };
+		TSharedRef<FWaitState> State = MakeShared<FWaitState>();
+		TSharedRef<FTimerHandle> Poll = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*Poll, FTimerDelegate::CreateWeakLambda(this, [this, Save, MaxWait, State, Poll]()
+		{
+			const UMcWorldRenderComponent* Drawer = Cast<UMcWorldRenderComponent>(Renderer.Get());
+			const int32 Meshed = Drawer ? Drawer->NumMeshedChunks() : 0;
+			const bool bIdle = Drawer && Drawer->NumPendingChunks() == 0 && Meshed > 0;
+			State->Steady = (bIdle && Meshed == State->Last) ? State->Steady + 1 : 0;
+			State->Last = Meshed;
+			State->Waited += 0.5f;
+			if (State->Steady >= 2 || State->Waited >= MaxWait)
+			{
+				UE_LOG(LogMcClient, Display, TEXT("McShot: %d chunks meshed after waiting %.1f s more"), Meshed, State->Waited);
+				// Clearing the timer frees this lambda's captures: run a copy of Save.
+				const TFunction<void()> Run = Save;
+				GetWorldTimerManager().ClearTimer(*Poll);
+				Run();
+			}
+		}), 0.5f, true);
 	}), Delay, false);
 #endif
 }

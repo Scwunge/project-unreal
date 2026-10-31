@@ -449,6 +449,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
     reference script, shoot vanilla at a matched camera, fit the pivots, tilts and constants to the shots (silhouette fit), recommit.
     Most visible first; tick one off when its commit lands.
     - [x] Wolf (standing, sitting, angry, tame): refitted to vanilla shots with `fov steady` at our FOV 70 (pivots, tilts, tail angles by mood). Left: sitting front legs a little short, a few px of framing, shadows (item 9).
+    - [ ] Mineshaft cave-crossing bridge reach (10 blocks) is UNFITTED, a guess: measure the longest bridged gap in a vanilla
+          mineshaft over a cave or ravine (`log states` or heights row along the corridor) and fit to it.
     - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
           Measure stride from a vanilla walking-loop filmed at a fixed camera.
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).

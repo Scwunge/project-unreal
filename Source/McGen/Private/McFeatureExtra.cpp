@@ -534,9 +534,9 @@ namespace
 			// Layer radii: the wiki's 1.7 / 2.2 / 3.2 / 4.2 gave 1/12 of the reference client's amethyst and 1/3 of its calcite
 			// per column, so the shells are widened to fit those counts (5 worlds, 25 patches each).
 			constexpr double FillingR = 1.3;
-			constexpr double InnerR = 3.8;
-			constexpr double MiddleR = 4.7;
-			constexpr double OuterR = 5.4;
+			constexpr double InnerR = 4.1;
+			constexpr double MiddleR = 5.2;
+			constexpr double OuterR = 5.9;
 			// The geode sits a random distance in from the edge of a box: check the box corners and middle.
 			const double Scale = Distance.Sample(Random) / 4.2;
 			const int32 Reach = FMath::CeilToInt32(OuterR * Scale) + 1;

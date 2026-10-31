@@ -127,20 +127,6 @@ int32 FMcDensityGraph::GetNoise(const FString& Id)
 		bErrors = true;
 		return INDEX_NONE;
 	}
-	// The wiki's reading (base_amplitude covers 99.7% of samples) is only approximate. The climate noises' real spread
-	// was measured on the reference client (5 seeds, 48 by 48 points 256 apart, the router's own functions) against
-	// ours over 12 seeds; these are vanilla's sd over ours: humidity 0.238/0.308, continentalness 0.358/0.289,
-	// erosion 0.31/0.347, weirdness 0.356/0.295. Temperature (0.36/0.387) is inside seed noise and is left alone.
-	static const TMap<FString, double> SpreadFactors = {
-		{ TEXT("minecraft:vegetation"), 0.77 },
-		{ TEXT("minecraft:continentalness"), 1.24 },
-		{ TEXT("minecraft:erosion"), 0.89 },
-		{ TEXT("minecraft:ridge"), 1.21 },
-	};
-	if (const double* Factor = SpreadFactors.Find(Key))
-	{
-		Params.BaseAmplitude *= *Factor;
-	}
 	FMcRandom Random = FMcRandom(Seed).Fork(Key);
 	const int32 Index = Noises.Emplace(Random, Params);
 	NoiseIds.Add(Key, Index);

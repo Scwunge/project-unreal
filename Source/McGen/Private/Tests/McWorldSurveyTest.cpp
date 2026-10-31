@@ -1,5 +1,6 @@
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
+#include "McDensityFunction.h"
 #include "McNoiseGenerator.h"
 #include "Misc/AutomationTest.h"
 
@@ -188,6 +189,130 @@ bool FMcHeightMixTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("HEIGHTS %d points: q5 %d q25 %d q50 %d q75 %d q95 %d max %d, at or under 63: %.2f, 100 up: %.2f, 150 up: %.2f"),
 		Count, Quantile(0.05), Quantile(0.25), Quantile(0.5), Quantile(0.75), Quantile(0.95), Heights.Last(),
 		double(AtSea) / Count, double(High100) / Count, double(High150) / Count));
+	return true;
+}
+
+// Where the variance of each climate function sits by wavelength, along the same lines the vanilla reference run
+// logs ("log lines": 6 lines of 4096 points 8 apart, 5000 apart in z, y 64): a Hann-windowed periodogram summed in
+// octave bands from 32768 down to 16 blocks, averaged over seeds. Printed as variance times 1000 per band.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNoiseSpectrumTest, "McClient.McGen.NoiseSpectrum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+namespace
+{
+	// In-place radix-2 FFT.
+	void Fft(TArray<TPair<double, double>>& Data)
+	{
+		const int32 Count = Data.Num();
+		for (int32 I = 1, J = 0; I < Count; ++I)
+		{
+			int32 Bit = Count >> 1;
+			for (; J & Bit; Bit >>= 1)
+			{
+				J ^= Bit;
+			}
+			J ^= Bit;
+			if (I < J)
+			{
+				Swap(Data[I], Data[J]);
+			}
+		}
+		for (int32 Length = 2; Length <= Count; Length <<= 1)
+		{
+			const double Angle = -2.0 * PI / Length;
+			for (int32 Start = 0; Start < Count; Start += Length)
+			{
+				for (int32 K = 0; K < Length / 2; ++K)
+				{
+					const double Cos = FMath::Cos(Angle * K);
+					const double Sin = FMath::Sin(Angle * K);
+					const TPair<double, double> Even = Data[Start + K];
+					const TPair<double, double> Odd = Data[Start + K + Length / 2];
+					const double Re = Odd.Key * Cos - Odd.Value * Sin;
+					const double Im = Odd.Key * Sin + Odd.Value * Cos;
+					Data[Start + K] = { Even.Key + Re, Even.Value + Im };
+					Data[Start + K + Length / 2] = { Even.Key - Re, Even.Value - Im };
+				}
+			}
+		}
+	}
+}
+
+bool FMcNoiseSpectrumTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const TCHAR* Names[6] = { TEXT("temperature"), TEXT("vegetation"), TEXT("continents"), TEXT("erosion"), TEXT("depth"), TEXT("ridges") };
+	constexpr int32 N = 4096;
+	constexpr int32 Step = 8;
+	constexpr int32 Seeds = 4;
+	constexpr int32 Lines = 6;
+	constexpr int32 Bands = 11;
+	TArray<double> Window;
+	double WindowSq = 0.0;
+	for (int32 Index = 0; Index < N; ++Index)
+	{
+		Window.Add(0.5 - 0.5 * FMath::Cos(2.0 * PI * Index / (N - 1)));
+		WindowSq += Window[Index] * Window[Index];
+	}
+	for (int32 Function = 0; Function < 6; ++Function)
+	{
+		double BandSum[Bands] = {};
+		double VarianceSum = 0.0;
+		for (int32 SeedIndex = 0; SeedIndex < Seeds; ++SeedIndex)
+		{
+			const FMcNoiseGenerator Generator(Settings, 777ull + SeedIndex * 15485863ull, TEXT("minecraft:overworld"));
+			const int32 Node = Generator.GetRouterFunction(Names[Function] == FString(TEXT("temperature")) ? TEXT("temperature") : Names[Function]);
+			if (Node == INDEX_NONE)
+			{
+				AddError(FString::Printf(TEXT("no router function %s"), Names[Function]));
+				return false;
+			}
+			FMcDensityContext Context(Generator.GetGraph());
+			for (int32 Line = 0; Line < Lines; ++Line)
+			{
+				TArray<double> Values;
+				double Mean = 0.0;
+				for (int32 Index = 0; Index < N; ++Index)
+				{
+					Context.SetPos(-16384 + Index * Step, 64, Line * 5000);
+					Values.Add(Generator.GetGraph().Evaluate(Node, Context));
+					Mean += Values.Last() / N;
+				}
+				double Variance = 0.0;
+				TArray<TPair<double, double>> Data;
+				for (int32 Index = 0; Index < N; ++Index)
+				{
+					Variance += FMath::Square(Values[Index] - Mean) / N;
+					Data.Add({ (Values[Index] - Mean) * Window[Index], 0.0 });
+				}
+				VarianceSum += Variance / (Seeds * Lines);
+				Fft(Data);
+				for (int32 Bin = 1; Bin <= N / 2; ++Bin)
+				{
+					const double Frequency = double(Bin) / (N * Step);
+					const double Power = 2.0 * (FMath::Square(Data[Bin].Key) + FMath::Square(Data[Bin].Value)) / (N * WindowSq);
+					for (int32 Band = 0; Band < Bands; ++Band)
+					{
+						const double Low = (1.0 / 32768.0) * FMath::Pow(2.0, Band);
+						if (Frequency >= Low && Frequency < Low * 2.0)
+						{
+							BandSum[Band] += Power / (Seeds * Lines);
+						}
+					}
+				}
+			}
+		}
+		FString Row;
+		for (int32 Band = 0; Band < Bands; ++Band)
+		{
+			Row += FString::Printf(TEXT("%.1f "), BandSum[Band] * 1000.0);
+		}
+		AddInfo(FString::Printf(TEXT("SPECTRUM %s var %.3f sd %.3f bands: %s"), Names[Function], VarianceSum, FMath::Sqrt(VarianceSum), *Row));
+	}
 	return true;
 }
 

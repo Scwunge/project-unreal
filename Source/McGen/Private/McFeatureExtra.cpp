@@ -364,7 +364,9 @@ namespace
 			{
 				const FIntVector Pos = Origin + FIntVector(Random.NextInt(8) - Random.NextInt(8), -Random.NextInt(3), Random.NextInt(8) - Random.NextInt(8));
 				const FName Name = FMcBlockRegistry::Get().GetBlockOf(Region.GetBlock(Pos)).Name;
-				if (Name == TEXT("minecraft:packed_ice") || Name == TEXT("minecraft:ice") || Name == TEXT("minecraft:snow_block") || IsWater(Region.GetBlock(Pos)))
+				// Only inside existing ice (icebergs): turning open water blue gave 39% of a frozen ocean's surface
+				// blue ice against none in the reference client.
+				if (Name == TEXT("minecraft:packed_ice") || Name == TEXT("minecraft:ice") || Name == TEXT("minecraft:snow_block"))
 				{
 					bPlaced |= Region.SetBlock(Pos, Blue);
 				}

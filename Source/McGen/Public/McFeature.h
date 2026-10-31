@@ -106,6 +106,8 @@ public:
 	bool BiomeHas(FMcBiomeId Biome, const FMcPlacedFeature* Feature) const;
 	// The biome's temperature at a height: it falls by 0.00125 a block above y 80 (minecraft.wiki, "Biome").
 	float GetTemperature(FMcBiomeId Biome, int32 Y) const;
+	// With the position: biomes with the frozen temperature modifier vary by patch.
+	float GetTemperature(FMcBiomeId Biome, int32 X, int32 Y, int32 Z) const;
 	// The 2D noise the count placements read (noise_threshold_count, noise_based_count).
 	const FMcNoise& GetInfoNoise() const { return *InfoNoise; }
 
@@ -132,6 +134,7 @@ private:
 	// Per placed feature, the biomes listing it (bit per biome id).
 	TMap<const FMcPlacedFeature*, TBitArray<>> Biomes;
 	TArray<float> Temperatures;
+	TBitArray<> FrozenTemperature;
 	TSharedPtr<FMcNoise> InfoNoise;
 	// The structures placed before the features of a chunk (loaded with the biomes).
 	TSharedPtr<FMcStructureLibrary> Structures;

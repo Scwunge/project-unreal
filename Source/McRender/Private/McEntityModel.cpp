@@ -160,7 +160,7 @@ namespace McEntityModel
 				Cow.Textures = { TEXT("cow/cow_temperate.png") };
 				Cow.Variants = { { TEXT("cow/cow_cold.png") }, { TEXT("cow/cow_temperate.png") }, { TEXT("cow/cow_warm.png") } };
 				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, -1), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
-				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true) }));
+				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true), Box(1, 33, -3, -4, 6, 6, 3, 1) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
 			}
@@ -389,7 +389,7 @@ namespace McEntityModel
 				Enderman.GlowLayers = 2;
 				Enderman.MaxLimbSwing = 0.4f;
 				Enderman.LegSwing = 0.7f;
-				Enderman.ArmSwing = 0.5f;
+				Enderman.ArmSwing = 0.56f;
 				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
 				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
 				Enderman.Parts.Add(Part(ERole::Static, FVector(0, 38, 0), { Box(32, 16, -4, -12, -2, 8, 12, 4) }));
@@ -489,17 +489,12 @@ namespace McEntityModel
 				constexpr uint32 Wild = 0x03u;
 				constexpr uint32 Angry = 0x0Cu;
 				constexpr uint32 Tame = 0xF0u;
-				const FBox Rear = Box(18, 14, -3, -4.5f, -3, 6, 9, 6);
-				const FBox Chest = Box(21, 0, -4, -3, -3.5f, 8, 6, 7);
-				const FBox ChestCollar = Box(21, 0, -4, -3, -3.5f, 8, 6, 7, 0.03f);
-				// Standing, from the logged model (pivots and every box's extent).
+				// From the logged model (pivots and every box's extent), standing and sitting.
 				const FBox StandRear = Box(18, 14, -3, -7, -3, 6, 9, 6);
 				const FBox StandChest = Box(21, 0, -3, -3, -4, 8, 6, 7);
 				const FBox StandChestCollar = Box(21, 0, -3, -3, -4, 8, 6, 7, 0.03f);
 				const FBox StandLeg = Box(0, 18, 0, -8, -1, 2, 8, 2);
 				const FBox StandTail = Box(9, 18, 0, -8, -1, 2, 8, 2);
-				const FBox Tail = Box(9, 18, -1, -8, -1, 2, 8, 2);
-				const FBox Leg = Box(0, 18, -1, -8, -1, 2, 8, 2);
 				const auto Add = [&Wolf](FPart Each, uint32 Poses)
 				{
 					Each.ShowPoses = Poses;
@@ -510,7 +505,7 @@ namespace McEntityModel
 				Add(Part(ERole::Head, FVector(-1, 10.5f, 7), { Box(0, 0, -2, -3, -2, 6, 6, 4), Box(16, 14, -2, 3, -1, 2, 2, 1), Box(16, 14, 2, 3, -1, 2, 2, 1), Box(0, 10, -0.5f, -3, 1, 3, 3, 4) }), Standing);
 				Add(Part(ERole::Static, FVector(0, 10, -2), { StandRear }, Flat), Standing);
 				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChest }, Flat), Standing);
-				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 0.56f), Standing & Wild);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 0.6283f), Standing & Wild);
 				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.45f), Standing & Angry);
 				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.65f), Standing & Tame);
 				Add(Part(ERole::LegFrontRight, FVector(-2.5f, 8, 4), { StandLeg }), Standing);
@@ -518,19 +513,19 @@ namespace McEntityModel
 				Add(Part(ERole::LegBackRight, FVector(-2.5f, 8, -7), { StandLeg }), Standing);
 				Add(Part(ERole::LegBackLeft, FVector(0.5f, 8, -7), { StandLeg }), Standing);
 				// Sitting: the rear on its haunches, the chest raised, the hind legs folded forward and the front ones straight down.
-				Add(Part(ERole::Head, FVector(0, 10.12f, 6.26f), HeadBoxes), Sitting);
-				Add(Part(ERole::Static, FVector(0, 2.28f, -1.18f), { Rear }, 0.83f), Sitting);
-				Add(Part(ERole::Static, FVector(0, 6.77f, 3.12f), { Chest }, 1.27f), Sitting);
-				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 0.82f), Sitting & Wild);
-				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 1.5f), Sitting & Angry);
-				Add(Part(ERole::Static, FVector(0, 1.85f, -4.95f), { Tail }, 1.64f), Sitting & Tame);
-				Add(Part(ERole::Static, FVector(-1.25f, -0.95f, -2.93f), { Leg }, 4.65f), Sitting);
-				Add(Part(ERole::Static, FVector(1.25f, -0.95f, -2.93f), { Leg }, 4.65f), Sitting);
-				Add(Part(ERole::Static, FVector(-1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
-				Add(Part(ERole::Static, FVector(1.25f, 6.73f, 4.4f), { Leg }, 5.83f), Sitting);
+				Add(Part(ERole::Head, FVector(-1, 10.5f, 7), { Box(0, 0, -2, -3, -2, 6, 6, 4), Box(16, 14, -2, 3, -1, 2, 2, 1), Box(16, 14, 2, 3, -1, 2, 2, 1), Box(0, 10, -0.5f, -3, 1, 3, 3, 4) }), Sitting);
+				Add(Part(ERole::Static, FVector(0, 6, 0), { StandRear }, 0.7854f), Sitting);
+				Add(Part(ERole::Static, FVector(-1, 8, 3), { StandChest }, 1.2566f), Sitting);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 0.6283f), Sitting & Wild);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 1.5f), Sitting & Angry);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 1.64f), Sitting & Tame);
+				Add(Part(ERole::Static, FVector(-2.5f, 1.3f, -2), { StandLeg }, 4.7124f), Sitting);
+				Add(Part(ERole::Static, FVector(0.5f, 1.3f, -2), { StandLeg }, 4.7124f), Sitting);
+				Add(Part(ERole::Static, FVector(-2.49f, 7, 4), { StandLeg }, 5.8119f), Sitting);
+				Add(Part(ERole::Static, FVector(0.49f, 7, 4), { StandLeg }, 5.8119f), Sitting);
 				// The collar: the chest drawn again, a hair larger, in the collar's own picture.
 				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChestCollar }, Flat, 0.0f, 0.0f, 0, 1), Standing & Tame);
-				Add(Part(ERole::Static, FVector(0, 6.77f, 3.12f), { ChestCollar }, 1.27f, 0.0f, 0.0f, 0, 1), Sitting & Tame);
+				Add(Part(ERole::Static, FVector(-1, 8, 3), { StandChestCollar }, 1.2566f, 0.0f, 0.0f, 0, 1), Sitting & Tame);
 				Models.Add(Wolf.Kind, Wolf);
 			}
 			{
@@ -544,13 +539,15 @@ namespace McEntityModel
 				FBox GoatNose = Box(34, 46, -3, 5, 6, 5, 7, 10);
 				GoatNose.BoxPivot = FVector(0, 8, 8);
 				GoatNose.BoxRotation = FQuat(FVector::XAxisVector, 0.9599f);
-				Goat.Parts.Add(Part(ERole::Head, FVector(1, 10, 0), { GoatNose, Box(12, 55, -2.99f, 9, 8, 2, 7, 2), Box(12, 55, -0.01f, 9, 8, 2, 7, 2, 0.0f, true) }));
-				const FBox FrontLeg = Box(49, 2, 0, -10, -3, 3, 10, 3);
-				const FBox BackLeg = Box(36, 29, 0, -10, -3, 3, 6, 3);
-				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 6), { FrontLeg }));
-				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(1, 10, 6), { FrontLeg }));
-				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 10, -4), { BackLeg }));
-				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(1, 10, -4), { BackLeg }));
+				Goat.Parts.Add(Part(ERole::Head, FVector(1, 10, 0), { GoatNose, Box(12, 55, -2.99f, 9, 8, 2, 7, 2), Box(12, 55, -0.01f, 9, 8, 2, 7, 2, 0.0f, true), Box(2, 61, -6, 9, 9, 3, 2, 1), Box(2, 61, 2, 9, 9, 3, 2, 1, 0.0f, true), Box(23, 52, -0.5f, -4, 9, 0, 7, 5) }));
+				const FBox FrontLegRight = Box(35, 2, 0, -10, -3, 3, 10, 3);
+				const FBox FrontLegLeft = Box(49, 2, 0, -10, -3, 3, 10, 3);
+				const FBox BackLegRight = Box(49, 29, 0, -10, -3, 3, 6, 3);
+				const FBox BackLegLeft = Box(36, 29, 0, -10, -3, 3, 6, 3);
+				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 6), { FrontLegRight }));
+				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(1, 10, 6), { FrontLegLeft }));
+				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 10, -4), { BackLegRight }));
+				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(1, 10, -4), { BackLegLeft }));
 				Models.Add(Goat.Kind, Goat);
 			}
 			{
@@ -608,13 +605,15 @@ namespace McEntityModel
 				{
 					Rabbit.Variants.Add({ FString::Printf(TEXT("rabbit/rabbit_%s.png"), Coat) });
 				}
-				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -4, -3, -5, 8, 6, 10) }));
-				Rabbit.Parts.Add(Part(ERole::Head, FVector(0, 7, 5), { Box(0, 16, -2.5f, 0, 0, 5, 5, 5), Box(26, 0, -2.5f, 5, 0, 2, 5, 1), Box(32, 0, 0.5f, 5, 0, 2, 5, 1) }));
-				const FBox Haunch = Box(20, 16, -2, -4, -2, 4, 4, 4);
-				const FBox Foot = Box(20, 24, -1, -4, -3, 2, 1, 6);
-				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 4, -3), { Haunch, Foot }));
-				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 4, -3), { Haunch, Foot }));
-				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 6, -5), { Box(24, 16, -1.5f, -1.5f, -1, 3, 3, 1) }));
+				// From the logged model: the body leans 0.3927 back about a pivot at its hind end, the head, ears and tail hang from it, the
+				// front legs turn back the lean (so they stand straight) and the hind feet are flat slabs turned 22.5 degrees out.
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 1, -4), { Box(0, 0, -4, 0, -1, 8, 6, 10) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 5.607f, -5.9216f), { Box(20, 16, -2, -0.992f, -2.987f, 4, 4, 4) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Head, FVector(0, 8.9983f, 1.4777f), { Box(0, 16, -2.5f, -2, -1, 5, 5, 5), Box(26, 0, -2.5f, 3, 0, 2, 5, 1), Box(32, 0, 0.5f, 3, 0, 2, 5, 1) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(-2, 2.9093f, 1.6259f), { Box(36, 18, -0.9f, -3, -1.1f, 2, 4, 2) }));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(2, 2.9093f, 1.5336f), { Box(44, 18, -1, -3, -1, 2, 4, 2) }));
+				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 1, -4), { Box(20, 24, -1, -1, -1, 2, 1, 6) }, 0, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 1, -4), { Box(36, 24, -1, -1, -1, 2, 1, 6) }, 0, 0.3927f));
 				Models.Add(Rabbit.Kind, Rabbit);
 			}
 			{
@@ -880,6 +879,12 @@ namespace McEntityModel
 					Pitch += -HALF_PI * 0.9f + FMath::Sin(Anim.Age * 2.0f) * 0.05f;
 					break;
 				}
+				if (Model.bFlutter)
+				{
+					// A vex's arms hang out to the sides at 0.6283, swaying 0.1 either way every 65 ticks (logged).
+					Roll += (bRight ? -1.0f : 1.0f) * (0.6283f - 0.1f * FMath::Sin(Anim.Age * 1.92f + 0.4988f));
+					break;
+				}
 				if (Model.bArmsForward)
 				{
 					// Out in front at 80 degrees, not swinging with the legs, only swaying a little (measured: 0.05 radians, the two arms
@@ -899,6 +904,15 @@ namespace McEntityModel
 			{
 				// Folded in, and beating when it runs.
 				const float Side = Part.Role == ERole::WingRight ? 1.0f : -1.0f;
+				if (Model.bFlutter)
+				{
+					// A vex's wings, from the logged model: tipped 0.4712 and 0.4712 about the length, turning 1.1 (and 0.28 either side of that,
+					// 0.8 radians a tick) about the up axis.
+					Pitch += 0.4712f;
+					Yaw += Side * (1.1008f + 0.2808f * FMath::Sin(Anim.Age * 16.0f - 0.037f));
+					Roll -= Side * 0.4712f;
+					break;
+				}
 				Roll += Side * (Model.bFlutter ? 0.7f + FMath::Sin(Anim.Age * 40.0f) * 0.5f : 0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
 				break;
 			}

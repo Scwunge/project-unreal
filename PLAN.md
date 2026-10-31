@@ -242,6 +242,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Conduit: the cage's turn and tilt, the eye's bob and the wind shells are still guesses; the logged rotation field
     goes 0.0375 a tick while awake and stops while asleep (conduit_log), but how the renderer turns that into the
     cage's angle needs frame shots (to batch with a later visual run).
+    Spawner: no mob turns inside it yet; vanilla's spin goes 1000/(wait+200) degrees a tick on the client, whose wait
+    starts again at 200 on each cycle and stands at 0 (5 degrees a tick) until the next (spawner_log). The
+    `spawnerBlocksEnabled` gamerule is listed but not yet read by the spawners.
     For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
     (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
   - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
@@ -258,7 +261,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     mobs are left alone.
   - **Ticking block entities start as their chunk loads** (2026-10-31): hoppers (found by their block, so empty ones
     too, which before only started when placed) and part-done furnaces and brewing stands (which waited for the next
-    5 second sweep) start when the chunk comes in. Mob spawners have no tick at all yet.
+    5 second sweep) start when the chunk comes in, and so do mob spawners (below).
+  - **Mob spawners tick** (2026-10-31): `FMcSpawners` in the entity host, fitted to vanilla's logged per-tick state
+    (mc-reference `spawner_log.txt`, zombie spawner): a first wait of 20 ticks, then a cycle the tick after the wait
+    reaches 0 and a new wait of 200 to 799; the wait stands still with no player within 16 blocks (it held at 347 with
+    the player 17.4 off). A cycle makes 4 tries, each at a random point within 4 blocks across and on the spawner's
+    layer or one above or below; a try that does not fit is lost (vanilla's cycles gave 2 to 4). 6 of the mob within
+    the 9x9x9 box stop a cycle; hostile mobs need their own dark rule, and none come on peaceful (wiki). Spawning goes
+    through the host's `SpawnMob`.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

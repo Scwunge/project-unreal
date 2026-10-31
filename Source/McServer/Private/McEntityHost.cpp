@@ -1,4 +1,5 @@
 #include "McEntityHost.h"
+#include "McSpawners.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBiomeRegistry.h"
@@ -99,6 +100,8 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Spawners = MakeUnique<FMcSpawners>(InWorld);
+	BlockEntityHandle = World.OnBlockEntityChanged.AddLambda([this](const FIntVector& Pos) { Spawners->OnBlockEntityChanged(Pos); });
 	// Bites, arrows and blasts all reach the player through here.
 	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
 	{
@@ -148,6 +151,7 @@ FMcEntityHost::~FMcEntityHost()
 	// Runs when the owning actor is destroyed by garbage collection, when other actors can't be destroyed safely;
 	// DestroyProxies has done that by now, at EndPlay. Only the bookkeeping is left.
 	Proxies.Empty();
+	World.OnBlockEntityChanged.Remove(BlockEntityHandle);
 }
 
 void FMcEntityHost::DestroyProxies()
@@ -321,6 +325,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 
 void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 {
+	Spawners->OnChunkAdded(Chunk);
 	if (Seeded.Contains(Chunk))
 	{
 		return;
@@ -619,6 +624,10 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 
 	Manager.PlayerPositions = Players;
+	if (!Players.IsEmpty())
+	{
+		Spawners->Tick(*this, Players, Random);
+	}
 
 	// A few chunks a tick get their animals.
 	for (int32 Budget = MaxChunkSeedsPerTick; Budget > 0 && !SeedQueue.IsEmpty(); --Budget)

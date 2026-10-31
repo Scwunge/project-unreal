@@ -657,6 +657,20 @@ namespace McPacks
 		FFileHelper::SaveStringToFile(Text, *GetSelectionFile());
 	}
 
+	void ReadAll(const FString& Relative, TArray<TArray<uint8>>& Out)
+	{
+		const TSharedRef<const FMcPackStack> Stack = GetStack();
+		const FString InPack = TEXT("assets/minecraft/") + Relative;
+		for (int32 Index = 0; Index < Stack->Num(); ++Index)
+		{
+			TArray<uint8> Bytes;
+			if (Stack->Get(Index).Has(InPack) && Stack->Get(Index).Read(InPack, Bytes))
+			{
+				Out.Add(MoveTemp(Bytes));
+			}
+		}
+	}
+
 	uint32 GetGeneration()
 	{
 		FScopeLock Lock(&GLock);
@@ -796,6 +810,20 @@ namespace McPacks
 	{
 		FScopeLock Lock(&GLock);
 		GUsePbr = bUse ? 1 : 0;
+	}
+
+	int32 GetCompatibility(const FMcPackInfo& Info)
+	{
+		if (Info.MinFormat > 0 || Info.MaxFormat > 0)
+		{
+			const int32 Max = Info.MaxFormat > 0 ? Info.MaxFormat : MAX_int32;
+			return GameFormat < Info.MinFormat ? 1 : GameFormat > Max ? -1 : 0;
+		}
+		if (Info.PackFormat <= 0)
+		{
+			return 2;
+		}
+		return Info.PackFormat == GameFormat ? 0 : Info.PackFormat < GameFormat ? -1 : 1;
 	}
 
 	int32 ChooseTextureSize(int32 Wanted, int32 NumLayers, int32 MaxSize, int64 BudgetBytes)

@@ -95,6 +95,20 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("max"), Info.MaxFormat, 28);
 		TestEqual(TEXT("colour codes removed"), Info.Description, FString(TEXT("Faithful 1024x")));
 
+		TestEqual(TEXT("the range 5 to 28 is older than the game"), McPacks::GetCompatibility(Info), -1);
+		FMcPackInfo Probe;
+		Probe.MinFormat = 90;
+		Probe.MaxFormat = 100;
+		TestEqual(TEXT("a range with the game in it"), McPacks::GetCompatibility(Probe), 0);
+		Probe.MinFormat = 98;
+		TestEqual(TEXT("a range above the game"), McPacks::GetCompatibility(Probe), 1);
+		Probe = FMcPackInfo();
+		TestEqual(TEXT("no format at all"), McPacks::GetCompatibility(Probe), 2);
+		Probe.PackFormat = 97;
+		TestEqual(TEXT("pack_format alone, equal"), McPacks::GetCompatibility(Probe), 0);
+		Probe.PackFormat = 15;
+		TestEqual(TEXT("pack_format alone, older"), McPacks::GetCompatibility(Probe), -1);
+
 		TestTrue(TEXT("array range"), FMcResourcePack::ParseMcmeta(TEXT("{\"pack\":{\"pack_format\":3,\"description\":\"\",\"supported_formats\":[4,9]}}"), Info));
 		TestEqual(TEXT("array min"), Info.MinFormat, 4);
 		TestEqual(TEXT("array max"), Info.MaxFormat, 9);
@@ -232,6 +246,16 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("IsFromPack"), McPacks::IsFromPack(StoneRelative) && !McPacks::IsFromPack(TEXT("textures/block/grass_block_top.png")));
 	TestFalse(TEXT("signature names the packs"), McPacks::GetSignature().IsEmpty());
 
+	// ReadAll gives every pack's copy, lowest first (for lang and sounds.json, which are merged).
+	{
+		TArray<TArray<uint8>> All;
+		McPacks::ReadAll(TEXT("textures/block/stone.png"), All);
+		if (TestEqual(TEXT("both packs have stone"), All.Num(), 2))
+		{
+			TestEqual(TEXT("the lower pack first"), ReadText(All[0]), FString(TEXT("stone from A")));
+		}
+	}
+
 	// No packs: the cache paths exactly.
 	McPacks::SetStack(MakeShared<FMcPackStack>());
 	TestEqual(TEXT("no packs, no change"), McCache::Asset(StoneRelative), McCache::Root() / TEXT("client/assets/minecraft/textures/block/stone.png"));
@@ -244,6 +268,8 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":1,\"description\":\"for the picker test\"}}"), *(PackDir / TEXT("pack.mcmeta")));
 		FFileHelper::SaveStringToFile(TEXT("not a pack"), *(McPacks::GetFolder() / TEXT("zz_mc_test_broken") / TEXT("readme.txt")));
 
+		// A zip that isn't one, a truncated zip: listed with the reason, no crash.
+		FFileHelper::SaveStringToFile(TEXT("PK this is not really a zip"), *(McPacks::GetFolder() / TEXT("zz_mc_test_garbage.zip")));
 		const TArray<McPacks::FFolderEntry> Entries = McPacks::ScanFolder();
 		const McPacks::FFolderEntry* Found = Entries.FindByPredicate([&Name](const McPacks::FFolderEntry& Entry) { return Entry.Name == Name; });
 		if (TestNotNull(TEXT("the folder pack is listed"), Found))
@@ -260,6 +286,17 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("with the reason it can't be used"), !Broken->Pack.IsValid() && !Broken->Error.IsEmpty());
 		}
 
+		{
+			const McPacks::FFolderEntry* Garbage = Entries.FindByPredicate([](const McPacks::FFolderEntry& Entry) { return Entry.Name == TEXT("zz_mc_test_garbage.zip"); });
+			if (TestNotNull(TEXT("a broken zip is listed"), Garbage))
+			{
+				TestTrue(TEXT("with its reason and no pack"), !Garbage->Pack.IsValid() && !Garbage->Error.IsEmpty());
+			}
+			McPacks::SetPacks({ TEXT("zz_mc_test_garbage.zip"), TEXT("zz_mc_missing_pack") });
+			TestFalse(TEXT("unusable packs are skipped"), McPacks::HasPacks());
+			TestEqual(TEXT("so vanilla's file is used"), McCache::Asset(TEXT("textures/block/stone.png")), McCache::Root() / TEXT("client/assets/minecraft/textures/block/stone.png"));
+		}
+
 		const TArray<FString> Before = McPacks::GetSelectedNames();
 		McPacks::ApplySelection({ Name });
 		TestTrue(TEXT("the choice is in use"), McPacks::GetSelectedNames() == TArray<FString>({ Name }));
@@ -269,6 +306,7 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		McPacks::ApplySelection(Before);
 		McPacks::SetStack(MakeShared<FMcPackStack>());
 
+		IFileManager::Get().Delete(*(McPacks::GetFolder() / TEXT("zz_mc_test_garbage.zip")));
 		IFileManager::Get().DeleteDirectory(*PackDir, false, true);
 		IFileManager::Get().DeleteDirectory(*(McPacks::GetFolder() / TEXT("zz_mc_test_broken")), false, true);
 	}

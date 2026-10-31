@@ -122,6 +122,9 @@ namespace McPacks
 	// pack's own file, or for a zip the file taken out into Saved/McPackCache, along with its .mcmeta); true with a
 	// path that doesn't exist when a pack's filter hides it. False when the vanilla copy applies.
 	MCCORE_API bool TryResolve(const FString& Relative, FString& OutPath);
+	// Every pack's copy of "assets/minecraft/<Relative>", lowest pack first, for the files the game merges rather than
+	// replaces (lang/*.json, sounds.json). Vanilla's own copy is not included.
+	MCCORE_API void ReadAll(const FString& Relative, TArray<TArray<uint8>>& Out);
 	// True if a pack provides the file.
 	MCCORE_API bool IsFromPack(const FString& Relative);
 
@@ -141,6 +144,13 @@ namespace McPacks
 	// Uses exactly these packs (lowest first) and remembers them in Saved/McResourcePacks.json for the next start. A
 	// -McPacks argument on the command line wins over the remembered list.
 	MCCORE_API void ApplySelection(const TArray<FString>& Names);
+
+	// The resource pack format of the game (manifest.json: resource_major 97). A pack made for another format still loads
+	// and its files are used where they match, as in the game, which only marks it.
+	constexpr int32 GameFormat = 97;
+	// Whether the pack says it supports GameFormat: 0 yes, -1 made for an older version, 1 for a newer one, 2 when it
+	// names no format at all. The supported range (supported_formats, or min_format and max_format) wins over pack_format.
+	MCCORE_API int32 GetCompatibility(const FMcPackInfo& Info);
 
 	// What the stack is, as text, to key caches: changes whenever a pack, its order or its files change.
 	MCCORE_API FString GetSignature();

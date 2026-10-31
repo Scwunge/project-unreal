@@ -64,7 +64,7 @@ void UMcAudioSubsystem::PlayMusic(FName Event)
 	MusicEvent = Event;
 	bMusicDecoding = true;
 	const int32 Request = ++MusicRequest;
-	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Variant.Name + TEXT(".ogg"));
+	const FString Path = FMcSoundRegistry::ResolveSoundFile(Variant.Name);
 	const McAudio::FMcSoundPlay Settings = McAudio::Resolve(FMcSoundEvent{ Event, FVector::ZeroVector, 1.0f, 1.0f }, Variant);
 	UE_LOG(LogMcAudio, Log, TEXT("Music: %s (%s)"), *Event.ToString(), *Variant.Name);
 	// A track is minutes long: decoded off the game thread, and not kept afterwards.
@@ -144,7 +144,7 @@ const McAudio::FDecodedSound* UMcAudioSubsystem::GetDecoded(const FString& Name)
 	}
 	TOptional<McAudio::FDecodedSound>& Slot = Decoded.Add(Name);
 	TArray<uint8> File;
-	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Name + TEXT(".ogg"));
+	const FString Path = FMcSoundRegistry::ResolveSoundFile(Name);
 	McAudio::FDecodedSound Sound;
 	if (!FFileHelper::LoadFileToArray(File, *Path))
 	{

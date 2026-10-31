@@ -756,6 +756,13 @@ void AMcHUD::OpenResourcePacks()
 		if (Pack.IsValid())
 		{
 			Row.Description = Pack->GetInfo().Description;
+			switch (McPacks::GetCompatibility(Pack->GetInfo()))
+			{
+			case -1: Row.Warning = TEXT("(Made for an older version of Minecraft)"); break;
+			case 1: Row.Warning = TEXT("(Made for a newer version of Minecraft)"); break;
+			case 2: Row.Warning = TEXT("(Broken or incompatible)"); break;
+			default: break;
+			}
 			TArray<uint8> Icon;
 			if (Pack->GetInfo().bHasIcon && Pack->Read(TEXT("pack.png"), Icon) && LoadPackIcon(TEXT("pack:") + Name, Icon))
 			{
@@ -811,6 +818,8 @@ void AMcHUD::ApplyResourcePacks()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
+	GlyphWidths.Reset();
+	GalacticWidths.Reset();
 	if (OptionsBack == EMenu::Pause)
 	{
 		// A world is using the models and the texture array.
@@ -928,7 +937,12 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 			const float TextX = IconX + 32.0f + 3.0f;
 			const float TextWidthMax = ListWidth - 32.0f - 12.0f;
 			DrawGuiText(Clip(Row.Title, TextWidthMax), TextX, Y + 1.0f, bUsable ? White : Red, true);
-			if (bUsable)
+			if (bUsable && !Row.Warning.IsEmpty())
+			{
+				DrawGuiText(TEXT("Incompatible"), TextX, Y + 12.0f, Red, true);
+				DrawGuiText(Clip(Row.Warning, TextWidthMax), TextX, Y + 22.0f, Red, true);
+			}
+			else if (bUsable)
 			{
 				const TArray<FString> Lines = WrapText(Row.Description.Replace(TEXT("\n"), TEXT(" ")), TextWidthMax);
 				for (int32 Line = 0; Line < 2 && Line < Lines.Num(); ++Line)

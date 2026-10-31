@@ -2,7 +2,13 @@
 #include "McBlockTextures.h"
 #include "McResourcePacks.h"
 #include "Engine/Texture2DArray.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
+#include "Modules/ModuleManager.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -122,6 +128,72 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 			TestNotEqual(TEXT("dark forest grass is darkened"), DarkForest->Grass, Grass.Sample(DarkForest->Temperature, DarkForest->Downfall));
 		}
 	}
+	return true;
+}
+
+// The wiki's animation rules, read from a pack's .png.mcmeta: a frames list with per-frame times, frametime, the
+// interpolation between frames. The pack overrides stone with two solid frames (frame 0 red, frame 1 blue) played as
+// blue for 4 ticks then red for 2, blended while it plays.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAnimationTest, "McClient.McAssets.PackAnimation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackAnimationTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackAnimationTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("assets/minecraft/textures/block");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"animation test\"}}"), *(Root / TEXT("pack.mcmeta")));
+
+	TArray<FColor> Pixels;
+	Pixels.SetNum(16 * 32);
+	for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+	{
+		Pixels[Index] = Index < 16 * 16 ? FColor(200, 0, 0, 255) : FColor(0, 0, 200, 255);
+	}
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+	if (!TestTrue(TEXT("a picture to write"), Png.IsValid() && Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 16, 32, ERGBFormat::BGRA, 8)))
+	{
+		return false;
+	}
+	const TArray64<uint8> Bytes = Png->GetCompressed();
+	FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Dir / TEXT("stone.png")));
+	FFileHelper::SaveStringToFile(TEXT("{\"animation\":{\"frametime\":2,\"interpolate\":true,\"frames\":[{\"index\":1,\"time\":4},0]}}"), *(Dir / TEXT("stone.png.mcmeta")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	Textures.Unload();
+	if (TestTrue(TEXT("textures load with the pack"), Textures.EnsureLoaded()))
+	{
+		const int32 Stone = Textures.GetLayer(TEXT("minecraft:block/stone"));
+		if (TestTrue(TEXT("stone is animated by the pack"), Stone > 0 && Textures.IsAnimated(Stone)))
+		{
+			Textures.Tick(0.0);
+			TestEqual(TEXT("the list starts with frame 1 (blue)"), Textures.GetPixels(Stone)[0], FColor(0, 0, 200, 255));
+			Textures.Tick(3.0);
+			TestEqual(TEXT("the first frame holds for its own time, 4 ticks, not frametime"), Textures.GetAnimationStep(Stone), 0);
+			Textures.Tick(4.0);
+			TestEqual(TEXT("then the second step"), Textures.GetAnimationStep(Stone), 1);
+			Textures.Tick(5.0);
+			// One tick into the 2 tick red step, blended towards the first listed frame (blue) again: halfway.
+			const FColor Mid = Textures.GetPixels(Stone)[0];
+			TestTrue(TEXT("interpolated halfway between red and blue"), FMath::Abs(Mid.R - 100) <= 2 && FMath::Abs(Mid.B - 100) <= 2);
+			Textures.Tick(6.0);
+			TestEqual(TEXT("the list repeats"), Textures.GetAnimationStep(Stone), 0);
+		}
+	}
+
+	// Back to the plain game.
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Textures.Unload();
+	Textures.EnsureLoaded();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

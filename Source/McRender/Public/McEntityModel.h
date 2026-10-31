@@ -114,6 +114,8 @@ namespace McEntityModel
 		bool bFlutter = false;
 		// The whole model drawn at this size about the feet (the villagers and illagers are 15/16: their root sits 1.5 pixels low in the game).
 		float Scale = 1.0f;
+		// This is a young one's own model (not the grown one's halved).
+		bool bBabyModel = false;
 		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
 		uint32 TintedLayers = 0;
 	};
@@ -210,7 +212,8 @@ public:
 	// other kinds.
 	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
 	void SetPose(int32 InPose);
-	void SetBaby(bool bInBaby) { if (bInBaby != bBabyLook) { bBabyLook = bInBaby; bDirty = true; } }
+	// A young one of a kind that has a model of its own (registered as "<kind>_baby") is drawn with that; the others are the grown one's halved.
+	void SetBaby(bool bInBaby);
 	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
 	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
 	void SetVariantSeed(int32 InSeed);

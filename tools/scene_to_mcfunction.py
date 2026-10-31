@@ -38,6 +38,13 @@ def commands(scene: dict, strict: bool) -> list[str]:
             sides.append(f"{key}:{{color:\"{color}\",has_glowing_text:{glowing},messages:[{messages}]}}")
         waxed = "1b" if sign.get("waxed", False) else "0b"
         out.append(f"data merge block {x} {y} {z} {{{','.join(sides)},is_waxed:{waxed}}}")
+    for item in scene.get("items", []):
+        # A dropped item that stays where it is put and is never picked up (a pot's sherds, back, left, right, front).
+        x, y, z = item["at"]
+        components = ""
+        if item.get("sides"):
+            components = ',components:{"minecraft:pot_decorations":[' + ",".join(f'"{s}"' for s in item["sides"]) + "]}"
+        out.append(f'summon item {x} {y} {z} {{Item:{{id:"{item["item"]}",count:1{components}}},PickupDelay:32767,NoGravity:1b,Motion:[0.0,0.0,0.0]}}')
     return out
 
 

@@ -419,9 +419,12 @@ namespace McEntityModel
 				Piglin.Textures = { TEXT("piglin/piglin.png") };
 				Piglin.Parts.Add(Part(ERole::Static, FVector::ZeroVector, {
 					Box(0, 0, -5, 0, -4, 10, 8, 8), Box(31, 1, -2, 0, 4, 4, 4, 1), Box(2, 0, 2, 0, 4, 1, 2, 1), Box(2, 4, -3, 0, 4, 1, 2, 1) }));
-				// The ears hang from the top of each side, leaning out.
-				Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, 6, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, 0.5f));
-				Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, 6, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -0.5f));
+				// The ears hang from the top of each side, leaning out 0.9 radians (vanilla wall heads, ref_scene_heads, against
+				// -McPiglinEar=0.5, 0.7 and 0.9 on -McScene=heads; -McPiglinEar=<radians> tries another lean).
+				float EarLean = 0.9f;
+				FParse::Value(FCommandLine::Get(), TEXT("-McPiglinEar="), EarLean);
+				Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, 6, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, EarLean));
+				Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, 6, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -EarLean));
 				Models.Add(Piglin.Kind, Piglin);
 				// The dragon's, cut from its 256 picture and drawn at three quarters: a 16 cube with two scales on top, and
 				// in front an upper jaw (12 by 5 by 16, two nostrils on it) over a lower one (12 by 4 by 16).
@@ -490,10 +493,27 @@ namespace McEntityModel
 				Cage.TextureSize = FIntPoint(32, 16);
 				// The eye is shut while the conduit is awake, and opens when it hunts, with the whole frame (vanilla's
 				// hunting flag comes on with the 42nd frame block, conduit_log; minecraft.wiki: "an orange iris").
-				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png") };
-				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16) };
+				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png"), TEXT("conduit/wind.png") };
+				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16), FIntPoint(64, 704) };
 				Cage.Parts.Add(Part(ERole::ConduitCage, FVector::ZeroVector, { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
-				Cage.Parts.Add(Part(ERole::ConduitEye, FVector::ZeroVector, { Box(0, 0, -4, -4, 0, 8, 8, 0) }, 0, 0, 0, 0, 1));
+				// The eye's picture is 8 pixels, drawn half that size (ref_scene_conduits: a quarter of a block across).
+				// (-McConduitLook=<eye scale>,<wind scale> tries others.)
+				float EyeScale = 0.5f, WindScale = 1.0f;
+				FString Look;
+				if (FParse::Value(FCommandLine::Get(), TEXT("-McConduitLook="), Look, false))
+				{
+					TArray<FString> Parts;
+					Look.ParseIntoArray(Parts, TEXT(","));
+					EyeScale = Parts.IsValidIndex(0) ? FCString::Atof(*Parts[0]) : EyeScale;
+					WindScale = Parts.IsValidIndex(1) ? FCString::Atof(*Parts[1]) : WindScale;
+				}
+				FPart Eye = Part(ERole::ConduitEye, FVector::ZeroVector, { Box(0, 0, -4, -4, 0, 8, 8, 0) }, 0, 0, 0, 0, 1);
+				Eye.Scale = EyeScale;
+				Cage.Parts.Add(Eye);
+				// The streaks round it, a 16 cube (the picture's 64 by 32 frames).
+				FPart Wind = Part(ERole::ConduitWind, FVector::ZeroVector, { Box(0, 0, -8, -8, -8, 16, 16, 16) }, 0, 0, 0, 0, 2);
+				Wind.Scale = WindScale;
+				Cage.Parts.Add(Wind);
 				Models.Add(Cage.Kind, Cage);
 				FModel Hunting = Cage;
 				Hunting.Kind = FName(TEXT("mc:conduit/hunting"));
@@ -712,6 +732,10 @@ namespace McEntityModel
 				Yaw += Anim.Age * 0.8f;
 				Pitch += 0.3f + FMath::Sin(Anim.Age * 0.6f) * 0.15f;
 				break;
+			case ERole::ConduitWind:
+				// Turns with the cage, upright.
+				Yaw += Anim.Age * 0.8f;
+				break;
 			case ERole::ConduitEye:
 				// The model is never turned (BodyYaw 0), so the eye turns by the whole look.
 				Yaw -= FMath::DegreesToRadians(Anim.HeadYaw);
@@ -768,6 +792,15 @@ namespace McEntityModel
 			const FIntPoint Size = Model.LayerTextureSizes.IsValidIndex(Layer) && Model.LayerTextureSizes[Layer].X > 0 ? Model.LayerTextureSizes[Layer] : Model.TextureSize;
 			for (const FBox& Box : Part.Boxes)
 			{
+				if (Part.Role == ERole::ConduitWind)
+				{
+					// The picture's frames go down the column, one each 3 ticks (wind.png.mcmeta).
+					FBox Frame = Box;
+					const int32 NumFrames = FMath::Max(1, Size.Y / 32);
+					Frame.UV.Y += (FMath::FloorToInt32(Anim.Age * 20.0f / 3.0f) % NumFrames) * 32;
+					AddBox(Frame, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
+					continue;
+				}
 				AddBox(Box, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
 			}
 		}
@@ -1044,6 +1077,17 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Item = InItem;
 	Count = InCount;
 	bIsItem = Kind == TEXT("minecraft:item");
+	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
+	PotSides = NAME_None;
+	if (bIsPotItem)
+	{
+		FString Sides;
+		if (Item.ToString().Split(TEXT("="), nullptr, &Sides))
+		{
+			PotSides = FName(*Sides);
+		}
+		bIsItem = false;
+	}
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsBanner = Kind == TEXT("mc:banner");
@@ -1051,7 +1095,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	{
 		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
 	}
-	Model = bIsItem || bIsArrow || bIsBobber || bIsBanner ? nullptr : McEntityModel::Find(Kind);
+	Model = bIsItem || bIsArrow || bIsBobber || bIsBanner ? nullptr : McEntityModel::Find(bIsPotItem ? FName(TEXT("mc:decorated_pot")) : Kind);
 	Materials.Reset();
 	BlockMaterial = nullptr;
 	FlashMaterial = nullptr;
@@ -1215,12 +1259,13 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		const bool bChest = Kind == TEXT("minecraft:chest_boat") || Kind == TEXT("minecraft:bamboo_chest_raft");
 		return McCache::Asset((bChest ? TEXT("textures/entity/chest_boat/") : TEXT("textures/entity/boat/")) + Wood + TEXT(".png"));
 	}
-	if (Kind == TEXT("mc:decorated_pot") && Layer >= 1 && !Item.IsNone())
+	const FName PotItem = bIsPotItem ? PotSides : Item;
+	if ((Kind == TEXT("mc:decorated_pot") || bIsPotItem) && Layer >= 1 && !PotItem.IsNone())
 	{
 		// The item names the sides back, left, right and front; the model's side layers go front, right, back, left.
 		static const int32 ItemSide[4] = { 3, 2, 0, 1 };
 		TArray<FString> Sides;
-		Item.ToString().ParseIntoArray(Sides, TEXT(","));
+		PotItem.ToString().ParseIntoArray(Sides, TEXT(","));
 		FString Side = Sides.IsValidIndex(ItemSide[(Layer - 1) & 3]) ? Sides[ItemSide[(Layer - 1) & 3]] : FString();
 		Side.RemoveFromStart(TEXT("minecraft:"));
 		if (Side.RemoveFromEnd(TEXT("_pottery_sherd")))
@@ -1368,6 +1413,27 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			Swell *= Squish.GetScale(TickAccumulator / 0.05f, Grow);
 		}
 		SetRelativeScale3D(FVector(Swell.X * Grow, Swell.X * Grow, Swell.Y * Grow) * ModelScale);
+	}
+	if (bIsPotItem)
+	{
+		// Floats and turns as a dropped item's picture does (BuildItemMesh), at a quarter of its size.
+		static float Scale = 0.25f, Lift = 0.0f;
+		static bool bParsed = false;
+		if (!bParsed)
+		{
+			bParsed = true;
+			FString Arg;
+			if (FParse::Value(FCommandLine::Get(), TEXT("-McPotDrop="), Arg, false))
+			{
+				TArray<FString> Parts;
+				Arg.ParseIntoArray(Parts, TEXT(","));
+				Scale = Parts.IsValidIndex(0) ? FCString::Atof(*Parts[0]) : Scale;
+				Lift = Parts.IsValidIndex(1) ? FCString::Atof(*Parts[1]) : Lift;
+			}
+		}
+		const double Height = (0.25 + FMath::Sin(Anim.Age * 2.0f) * 0.05 + Lift) * McCoords::UnitsPerBlock;
+		SetRelativeLocationAndRotation(FVector(0.0, 0.0, Height), FRotator(0.0, FMath::RadiansToDegrees(Anim.Age * FMath::DegreesToRadians(70.0f)), 0.0));
+		SetRelativeScale3D(FVector(Scale));
 	}
 
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))

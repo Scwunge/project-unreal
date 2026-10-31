@@ -20,6 +20,7 @@
 #include "McLaunch.h"
 #include "McCommands.h"
 #include "McItemRegistry.h"
+#include "McPot.h"
 #include "McLang.h"
 #include "McSurvival.h"
 #include "McEffects.h"
@@ -404,6 +405,36 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			FSceneSign& Pot = Signs->Emplace_GetRef();
 			Pot.Pos = ToBlock(*At);
 			Pot.Entity = FMcBlockEntity::MakePot(Sides);
+		}
+	}
+	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "sides": [pot sides] }.
+	const TArray<TSharedPtr<FJsonValue>>* ItemValues = nullptr;
+	FMcEntityHost* Host = WorldActor ? WorldActor->GetEntityHost() : nullptr;
+	if (Host && Scene->TryGetArrayField(TEXT("items"), ItemValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *ItemValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Id;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("item"), Id))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: an item needs \"at\": [x, y, z] and \"item\""), *Path);
+				continue;
+			}
+			FMcItemStack Stack{ FName(*Id) };
+			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("sides"), SideValues))
+			{
+				TArray<FName> Sides;
+				for (const TSharedPtr<FJsonValue>& Side : *SideValues)
+				{
+					Sides.Add(FName(*Side->AsString()));
+				}
+				McPot::SetSides(Stack, Sides);
+			}
+			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
+			Item.Body.Velocity = FVector::ZeroVector;
 		}
 	}
 	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.

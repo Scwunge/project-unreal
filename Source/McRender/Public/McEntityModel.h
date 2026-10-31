@@ -57,6 +57,8 @@ namespace McEntityModel
 		// HeadPitch, unclamped).
 		ConduitCage,
 		ConduitEye,
+		// The streaks round an awake conduit: a cube whose picture is a column of frames, one every 3 ticks.
+		ConduitWind,
 	};
 
 	struct FBox
@@ -266,6 +268,10 @@ private:
 	bool bItemFailed = false;
 	bool bIsItem = false;
 	bool bIsArrow = false;
+	// A dropped decorated pot ("minecraft:decorated_pot", or "=" and its sides after it): the pot's own model, small,
+	// bobbing and turning as a dropped item does.
+	bool bIsPotItem = false;
+	FName PotSides;
 	// A fishing bobber: its picture facing the camera, and the line from the rod tip, made again each frame.
 	bool bIsBobber = false;
 	TOptional<FVector> RodTip;

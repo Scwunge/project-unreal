@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerState.h"
 #include "EngineUtils.h"
 #include "McMob.h"
+#include "McPot.h"
 #include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
@@ -72,6 +73,16 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcItemEntity& Item = static_cast<const FMcItemEntity&>(Entity);
 		ItemId = Item.Stack.Item;
 		ItemCount = Item.Stack.Count;
+		// A pot shows its sides when dropped too.
+		static const FName Pot(TEXT("minecraft:decorated_pot"));
+		if (ItemId == Pot)
+		{
+			const TArray<FName> Sides = McPot::GetSides(Item.Stack);
+			if (Sides.ContainsByPredicate([](FName Side) { return Side != TEXT("minecraft:brick"); }))
+			{
+				ItemId = FName(Pot.ToString() + TEXT("=") + FString::JoinBy(Sides, TEXT(","), [](FName Side) { return Side.ToString(); }));
+			}
+		}
 	}
 	else if (Entity.GetType() == FMcBannerEntity::StaticType())
 	{

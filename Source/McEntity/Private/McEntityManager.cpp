@@ -108,7 +108,7 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 		for (FMcEntity* Other : Near)
 		{
 			FMcItemEntity* Item = Other == this || Other->bRemoved || Other->GetType() != StaticType() ? nullptr : static_cast<FMcItemEntity*>(Other);
-			if (!Item || Item->Stack.Item != Stack.Item || Item->Stack.Count + Stack.Count > MaxStack || Item->Age < Age)
+			if (!Item || !Item->Stack.IsSameItemSameComponents(Stack) || Item->Stack.Count + Stack.Count > MaxStack || Item->Age < Age)
 			{
 				continue;
 			}

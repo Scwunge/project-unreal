@@ -4,6 +4,18 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
 
 - **M2** draws the real block models and textures, with sky and block light, smooth lighting, AO, water and
   lava.
+- **Vehicles/block-entity session, paused 2026-10-31 (where I stopped, what's next):**
+  - Done in the WIP commit: dropped decorated pots drawn as the pot model (item merge keeps sides apart),
+    the `conduits` scene, conduit wind layer and smaller eye, and the piglin ear lean at 0.9.
+  - Verified: the McEntity.Manager and McRender tests pass, and the dropped pot matches ref_conduit_pots.
+  - Unverified: the conduit wind and eye sizes (`-McConduitLook=<eye>,<wind>`, defaults 0.5,1.0). The
+    remote conduit shot returned no image ("no shot came back"), cause not found yet.
+  - Next: get a conduit shot and fit it to ref_scene_conduits and ref_conduits_b/c. Then refit the
+    spawner pig (spin 256.26 logged, mob rotation 0) with the pig_run shots against ref_spawner_pig_*.
+    Then run the full McClient tests.
+  - Follow-ups for others: the held pot (McHand, main's branch), 3D dropped blocks in general, and the
+    water hole in a waterlogged conduit cell (mesher).
+
 - **M3** has Minecraft movement and collision (exact shapes, swimming, climbing, cobwebs), breaking and
   placing with the hotbar and crosshair, and a listen server that streams chunks and edits to clients.
 - **M3 leftovers:**
@@ -323,8 +335,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     plain side or its sherd's `<name>_pottery_pattern`: facing south, the front south, the right east, the back north,
     the left west (vanilla, mc-reference `scripts/heads_pots.txt`, `ref_pots_front`). In the inventory the pot is drawn
     in 3D with its sherds, by the item model's gui display (turned 45, tipped 30, at 0.6), as the heads are. Tests
-    `McItem` (crafting with sherds), `McRender.PotsAndConduits`; shot `-McScene=sherds`. Not done: the pot as a dropped
-    or held item is still flat.
+    `McItem` (crafting with sherds), `McRender.PotsAndConduits`; shot `-McScene=sherds`.
+    Dropped, a pot is its own model with its sherds at a quarter size, bobbing and turning as a dropped item's picture
+    does (the item entity's id carries the sides, `minecraft:decorated_pot=<back>,<left>,<right>,<front>`); size and
+    height match vanilla's (mc-reference `conduits.txt`, `ref_conduit_pots`, against `-McScene=conduits
+    -McCam=13.5,-59.2,5.0,180,25`; `-McPotDrop=<scale>,<lift>` tries others). Dropped stacks merge only with the same
+    components now (a sherd pot no longer joins a plain one). Scenes take `"items"` (dropped, never picked up), for
+    both sides (`tools/scene_to_mcfunction.py`). Not done: the held pot, which belongs to the held-item drawing
+    (`McHand`, on main's branch), and other blocks dropped in 3D (all dropped items here are flat pictures).
   - **Fishing** (2026-10-30): using a fishing rod casts a bobber (`FMcFishingBobber` in McEntity, `McFishing`) from the
     eyes along the look, at 1.1 blocks a tick looking level and harder the steeper (measured from vanilla casts at
     eight pitches, mc-reference `scripts/bobber_cast*.txt`); it flies under gravity 0.03 and drag 0.92 a tick (measured), hooks the first mob, player or item it touches,

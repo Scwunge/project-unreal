@@ -48,6 +48,9 @@ public:
 
 	// Releases the render-side helper resources; the module calls this on shutdown.
 	void Shutdown();
+	// Forgets the array and every layer, so the next EnsureLoaded reads the pictures again (a resource pack changed).
+	// Only while no world is using them.
+	void Unload();
 
 	// The layer for an id like "minecraft:block/stone". 0, the missing-texture layer, for unknown ids.
 	int32 GetLayer(FName TextureId) const;

@@ -125,6 +125,23 @@ namespace McPacks
 	// True if a pack provides the file.
 	MCCORE_API bool IsFromPack(const FString& Relative);
 
+	// ---- The picker's side ----
+	// A zip or folder in the resourcepacks folder. Pack is null (and Error says why) if it can't be used.
+	struct FFolderEntry
+	{
+		FString Name;  // the file or folder name, which is also what -McPacks and the saved selection call it
+		FString Path;
+		TSharedPtr<FMcResourcePack> Pack;
+		FString Error;
+	};
+	// Everything in the folder that is a zip or a directory, by name.
+	MCCORE_API TArray<FFolderEntry> ScanFolder();
+	// The names of the packs in use, lowest first.
+	MCCORE_API TArray<FString> GetSelectedNames();
+	// Uses exactly these packs (lowest first) and remembers them in Saved/McResourcePacks.json for the next start. A
+	// -McPacks argument on the command line wins over the remembered list.
+	MCCORE_API void ApplySelection(const TArray<FString>& Names);
+
 	// What the stack is, as text, to key caches: changes whenever a pack, its order or its files change.
 	MCCORE_API FString GetSignature();
 

@@ -58,6 +58,8 @@ public:
 	void RefreshLayer(int32 Layer);
 
 	void Shutdown();
+	// Forgets the arrays and the pictures, so the next EnsureBuilt makes them afresh (a resource pack changed).
+	void Unload();
 
 	// A texture array with mips from the base level of NumLayers pictures (Width x Height each, one after the other).
 	static UTexture2DArray* MakeArray(int32 Width, int32 Height, int32 NumLayers, bool bSrgb, TConstArrayView<FColor> Base);

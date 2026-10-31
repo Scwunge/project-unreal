@@ -779,6 +779,20 @@ void FMcBlockTextures::Tick(double GameTicks)
 		});
 }
 
+void FMcBlockTextures::Unload()
+{
+	check(IsInGameThread());
+	Shutdown();
+	OnLayerAnimated = nullptr;
+	TextureArray = nullptr;
+	Layers.Empty();
+	Animations.Empty();
+	LayersById.Empty();
+	Stats = FMcTextureStats();
+	ArraySize = TextureSize;
+	SourceKey.Empty();
+}
+
 void FMcBlockTextures::Shutdown()
 {
 	if (RenderState.IsValid())

@@ -84,6 +84,10 @@ public:
 
 	const FMcBakeStats& GetStats() const { return Stats; }
 
+	// Forgets the baked models, so the next EnsureBaked reads the files again (a resource pack changed). Only while no
+	// world is using them: nothing may be meshing.
+	void Unload() { Models.Empty(); Textures.Empty(); Stats = FMcBakeStats(); }
+
 private:
 	TArray<FMcBakedModel> Models;  // indexed by state id
 	TArray<FName> Textures;

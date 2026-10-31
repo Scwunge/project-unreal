@@ -559,6 +559,19 @@ UTexture2DArray* FMcHdBlocks::GetWhitePicture(const FString& TextureId, const FS
 	return Result;
 }
 
+void FMcHdBlocks::Unload()
+{
+	check(IsInGameThread());
+	Shutdown();
+	Albedo = nullptr;
+	Normal = nullptr;
+	Specular = nullptr;
+	Summary = FMcHdSummary();
+	LayerIds.Empty();
+	Pictures.Empty();
+	WhitePictures.Empty();
+}
+
 void FMcHdBlocks::Shutdown()
 {
 	FMcBlockTextures::Get().OnLayerAnimated = nullptr;

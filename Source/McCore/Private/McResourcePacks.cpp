@@ -13,7 +13,9 @@
 #include "Misc/ScopeLock.h"
 #include "Misc/SecureHash.h"
 #include "Serialization/JsonReader.h"
+#include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 namespace
 {
@@ -544,6 +546,32 @@ namespace McPacks
 		return MakeShared<FMcPackStack>(MoveTemp(Packs));
 	}
 
+	static FString GetSelectionFile()
+	{
+		return FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McResourcePacks.json"));
+	}
+
+	static TArray<FString> LoadSavedSelection()
+	{
+		TArray<FString> Names;
+		FString Text;
+		TSharedPtr<FJsonObject> Json;
+		const TArray<TSharedPtr<FJsonValue>>* Packs = nullptr;
+		if (FFileHelper::LoadFileToString(Text, *GetSelectionFile()) && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Json)
+			&& Json.IsValid() && Json->TryGetArrayField(TEXT("packs"), Packs))
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Packs)
+			{
+				FString Name;
+				if (Entry->TryGetString(Name))
+				{
+					Names.Add(Name);
+				}
+			}
+		}
+		return Names;
+	}
+
 	TSharedRef<const FMcPackStack> GetStack()
 	{
 		{
@@ -554,8 +582,16 @@ namespace McPacks
 			}
 		}
 		FString List;
-		FParse::Value(FCommandLine::Get(), TEXT("-McPacks="), List);
-		TSharedRef<const FMcPackStack> Made = OpenNames(ParseList(List));
+		TArray<FString> Names;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McPacks="), List))
+		{
+			Names = ParseList(List);
+		}
+		else
+		{
+			Names = LoadSavedSelection();
+		}
+		TSharedRef<const FMcPackStack> Made = OpenNames(Names);
 		FScopeLock Lock(&GLock);
 		if (!GStackRead)
 		{
@@ -576,6 +612,49 @@ namespace McPacks
 		GStack = Stack;
 		GStackRead = true;
 		++GGeneration;
+	}
+
+	TArray<FFolderEntry> ScanFolder()
+	{
+		TArray<FFolderEntry> Entries;
+		TArray<FString> Names;
+		IFileManager::Get().FindFiles(Names, *(GetFolder() / TEXT("*.zip")), true, false);
+		IFileManager::Get().FindFiles(Names, *(GetFolder() / TEXT("*")), false, true);
+		Names.Sort();
+		for (const FString& Name : Names)
+		{
+			FFolderEntry& Entry = Entries.AddDefaulted_GetRef();
+			Entry.Name = Name;
+			Entry.Path = GetFolder() / Name;
+			Entry.Pack = FMcResourcePack::Open(Entry.Path, &Entry.Error);
+		}
+		return Entries;
+	}
+
+	TArray<FString> GetSelectedNames()
+	{
+		const TSharedRef<const FMcPackStack> Stack = GetStack();
+		TArray<FString> Names;
+		for (int32 Index = 0; Index < Stack->Num(); ++Index)
+		{
+			Names.Add(Stack->Get(Index).GetInfo().Name);
+		}
+		return Names;
+	}
+
+	void ApplySelection(const TArray<FString>& Names)
+	{
+		SetPacks(Names);
+		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> Packs;
+		for (const FString& Name : Names)
+		{
+			Packs.Add(MakeShared<FJsonValueString>(Name));
+		}
+		Json->SetArrayField(TEXT("packs"), Packs);
+		FString Text;
+		FJsonSerializer::Serialize(Json, TJsonWriterFactory<>::Create(&Text));
+		FFileHelper::SaveStringToFile(Text, *GetSelectionFile());
 	}
 
 	uint32 GetGeneration()

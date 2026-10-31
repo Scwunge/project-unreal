@@ -237,6 +237,42 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no packs, no change"), McCache::Asset(StoneRelative), McCache::Root() / TEXT("client/assets/minecraft/textures/block/stone.png"));
 	TestFalse(TEXT("no packs, nothing from a pack"), McPacks::HasPacks());
 
+	// The picker's side: a folder in the packs folder is listed, and the chosen packs are remembered in order.
+	{
+		const FString Name = TEXT("zz_mc_test_pack");
+		const FString PackDir = McPacks::GetFolder() / Name;
+		FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":1,\"description\":\"for the picker test\"}}"), *(PackDir / TEXT("pack.mcmeta")));
+		FFileHelper::SaveStringToFile(TEXT("not a pack"), *(McPacks::GetFolder() / TEXT("zz_mc_test_broken") / TEXT("readme.txt")));
+
+		const TArray<McPacks::FFolderEntry> Entries = McPacks::ScanFolder();
+		const McPacks::FFolderEntry* Found = Entries.FindByPredicate([&Name](const McPacks::FFolderEntry& Entry) { return Entry.Name == Name; });
+		if (TestNotNull(TEXT("the folder pack is listed"), Found))
+		{
+			TestTrue(TEXT("it opens"), Found->Pack.IsValid() && Found->Error.IsEmpty());
+			if (Found->Pack.IsValid())
+			{
+				TestEqual(TEXT("its description"), Found->Pack->GetInfo().Description, FString(TEXT("for the picker test")));
+			}
+		}
+		const McPacks::FFolderEntry* Broken = Entries.FindByPredicate([](const McPacks::FFolderEntry& Entry) { return Entry.Name == TEXT("zz_mc_test_broken"); });
+		if (TestNotNull(TEXT("a folder without pack.mcmeta is listed too"), Broken))
+		{
+			TestTrue(TEXT("with the reason it can't be used"), !Broken->Pack.IsValid() && !Broken->Error.IsEmpty());
+		}
+
+		const TArray<FString> Before = McPacks::GetSelectedNames();
+		McPacks::ApplySelection({ Name });
+		TestTrue(TEXT("the choice is in use"), McPacks::GetSelectedNames() == TArray<FString>({ Name }));
+		TestTrue(TEXT("and has packs"), McPacks::HasPacks());
+		FString Saved;
+		TestTrue(TEXT("remembered in Saved"), FFileHelper::LoadFileToString(Saved, *(FPaths::ProjectSavedDir() / TEXT("McResourcePacks.json"))) && Saved.Contains(Name));
+		McPacks::ApplySelection(Before);
+		McPacks::SetStack(MakeShared<FMcPackStack>());
+
+		IFileManager::Get().DeleteDirectory(*PackDir, false, true);
+		IFileManager::Get().DeleteDirectory(*(McPacks::GetFolder() / TEXT("zz_mc_test_broken")), false, true);
+	}
+
 	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }

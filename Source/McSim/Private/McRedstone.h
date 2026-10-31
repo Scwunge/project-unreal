@@ -32,7 +32,9 @@ public:
 	bool Use(const FIntVector& Pos, float Yaw);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
-	void SetSunLight(int32 Level) { SunLight = Level; }
+	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; }
+	// What a plain detector reads (the sky level scaled by the sun's height) and the sky level an inverted one subtracts.
+	void SetDetector(int32 Plain, int32 Sky) { SunLight = Plain; SkyLevel = Sky; }
 
 	// The power of the dust at Pos, 0 if there is none.
 	int32 GetDustPower(const FIntVector& Pos) const;
@@ -112,6 +114,7 @@ private:
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
 	int32 SunLight = 15;
+	int32 SkyLevel = 15;
 	TMap<FIntVector, int32> ComparatorOutputs;
 	TMap<FIntVector, TArray<int64>> TorchToggles;
 	TMap<FIntVector, int32> Plates;

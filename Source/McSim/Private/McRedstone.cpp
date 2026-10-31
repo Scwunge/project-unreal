@@ -1366,12 +1366,13 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 
 void FMcRedstone::TickDaylight(const FIntVector& Pos, FMcStateId State)
 {
-	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - SunLight : SunLight;
+	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - SkyLevel : SunLight;
 	if (Power != Number(State, TEXT("power")))
 	{
 		Set(Pos, { FChange(TEXT("power"), Power) });
 	}
-	Sim.ScheduleTick(Pos, 20);
+	// It updates whenever the game time divides by 20 (minecraft.wiki, "Daylight Detector").
+	Sim.ScheduleTick(Pos, 20 - static_cast<int32>(Sim.GetGameTime() % 20));
 }
 
 // ---- Pistons ----

@@ -37,7 +37,6 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		FMcBlockWorld World{FMcDimensionType()};
 		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 1; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 		FMcSimulation Sim(World);
-		Sim.SetSunLight(15);
 		const FMcStateId Air = Registry.ParseState(TEXT("minecraft:air")).Get(0);
 		const auto Parse = [&](const FString& Text) { return Registry.ParseState(*(TEXT("minecraft:") + Text)).Get(Air); };
 		const auto Describe = [&](FMcStateId State)
@@ -71,6 +70,26 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		TMap<FString, FString> Previous;
 		TArray<FString> Changes;
 		int32 Sample = -1;
+		// Things that run when the game time divides by 20 (daylight detectors) need the same game time modulo 20 at the
+		// first sample as the vanilla run had; its expect file says so in a "#vt N" line.
+		TArray<FString> Expected;
+		const bool bHasExpected = FFileHelper::LoadFileToStringArray(Expected, *FPaths::Combine(Dir, TEXT("expect"), File));
+		for (const FString& Line : Expected)
+		{
+			if (Line.StartsWith(TEXT("#vt ")))
+			{
+				int32 Before = 0;
+				for (const FString& Raw : Lines)
+				{
+					TArray<FString> Q;
+					Raw.TrimStartAndEnd().ParseIntoArray(Q, TEXT(" "));
+					if (Q.Num() >= 2 && Q[0] == TEXT("log") && Q[1] == TEXT("states")) break;
+					if (Q.Num() >= 4 && Q[0] == TEXT("cmd") && Q[1] == TEXT("tick") && Q[2] == TEXT("step")) Before += FCString::Atoi(*Q[3]);
+				}
+				const int32 Pre = ((FCString::Atoi(*Line.Mid(4)) - Before) % 20 + 20) % 20;
+				for (int32 Index = 0; Index < Pre; ++Index) Sim.Tick();
+			}
+		}
 		for (const FString& Raw : Lines)
 		{
 			TArray<FString> P;
@@ -126,10 +145,9 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			}
 		}
 		// Held to the vanilla run, when one is stored.
-		TArray<FString> Expected;
-		if (FFileHelper::LoadFileToStringArray(Expected, *FPaths::Combine(Dir, TEXT("expect"), File)))
+		if (bHasExpected)
 		{
-			Expected.RemoveAll([](const FString& Line) { return Line.IsEmpty(); });
+			Expected.RemoveAll([](const FString& Line) { return Line.IsEmpty() || Line.StartsWith(TEXT("#")); });
 			Expected.Sort();
 			Changes.Sort();
 			TestEqual(*FString::Printf(TEXT("%s: number of changes"), *File), Changes.Num(), Expected.Num());

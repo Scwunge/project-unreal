@@ -134,3 +134,12 @@ L = cmd("setblock 0 -60 0 oak_log")
 for x in range(1, 9): L += cmd(f"setblock {x} -60 0 oak_leaves[persistent=false]")
 L += step(12) + cmd("setblock 0 -60 0 air") + step(12)
 write("leaves", L + cmd("tick unfreeze"))
+
+# Daylight detector high above the ground: nothing can shade it. Light at the player's feet is logged beside the states.
+setbox("-1 200 -1 3 203 1")
+L = cmd("tp @s 0.5 201 0.5") + ["wait 60"] + cmd("weather clear 1000000") + cmd("time set 6000") + cmd("fill -2 200 -2 4 319 2 air") + cmd("setblock 0 200 0 stone") + cmd("setblock 2 200 0 stone")
+L += cmd("setblock 0 201 0 daylight_detector[inverted=false,power=0]") + cmd("setblock 2 201 0 daylight_detector[inverted=true,power=0]") + cmd("tick step 1500") + ["wait 40"]
+for t in (6000, 0, 12500, 13500, 18000, 23000, 1000):
+    L += cmd(f"time set {t}") + ["wait 10", "log light 3", "wait 10"] + step(24)
+write("daylight_high", L + cmd("tick unfreeze"))
+setbox("-1 -60 -1 12 -58 6")

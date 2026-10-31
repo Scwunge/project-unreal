@@ -158,6 +158,10 @@ public:
 	// Every machine showing this dimension: the box at Pos is now open for Count.
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastShulkerOpeners(FIntVector Pos, int32 Count);
+	// Server: the boxes open in a chunk, for a player the chunk is going to. Client: a box already open when its chunk
+	// came, shown open at once.
+	void GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const;
+	void ShowShulkerOpen(const FIntVector& Pos, int32 Count);
 
 	// ---- Lightning (M8) ----
 	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on

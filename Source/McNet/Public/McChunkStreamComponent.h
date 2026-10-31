@@ -55,6 +55,10 @@ public:
 	// Client: runs when the server switched the stream, with the dimension the player is in now. The blocks sent before
 	// were the old dimension's; the ones after are the new one's.
 	TFunction<void(const FString& DimensionId)> OnWorldSwitched;
+	// Server: the shulker boxes in a chunk that anyone has open, and by how many, sent just after the chunk so a player
+	// whose chunk comes while a box is open sees it open. Client: each of those boxes.
+	TFunction<void(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers)> GetOpenBoxes;
+	TFunction<void(const FIntVector& Pos, int32 Openers)> OnBoxOpen;
 
 	// Server: what to do when the client asks for a block change (checks, then applies it).
 	FMcOnSetBlockRequest OnSetBlockRequest;
@@ -90,6 +94,9 @@ protected:
 	// A block entity a player sees changed (a sign's text): its bytes (FMcBlockEntity::Serialize), or none if it went.
 	UFUNCTION(Client, Reliable)
 	void ClientBlockEntity(FIntVector Pos, const TArray<uint8>& Bytes);
+
+	UFUNCTION(Client, Reliable)
+	void ClientOpenBoxes(const TArray<FIntVector>& Boxes, const TArray<int32>& Openers);
 
 	UFUNCTION(Server, Reliable)
 	void ServerAckPieces(int32 Count);

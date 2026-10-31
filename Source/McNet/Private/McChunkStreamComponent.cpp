@@ -252,6 +252,16 @@ void UMcChunkStreamComponent::SendChunks()
 		}
 		PiecesInFlight += NumPieces;
 		Sent.Add(Entry.Value);
+		if (GetOpenBoxes)
+		{
+			TArray<FIntVector> Boxes;
+			TArray<int32> Openers;
+			GetOpenBoxes(Entry.Value, Boxes, Openers);
+			if (!Boxes.IsEmpty())
+			{
+				ClientOpenBoxes(Boxes, Openers);
+			}
+		}
 	}
 }
 
@@ -348,6 +358,17 @@ void UMcChunkStreamComponent::ClientBlockChanges_Implementation(const TArray<FMc
 	for (const FMcNetBlockChange& Change : Changes)
 	{
 		BlockWorld->SetBlock(Change.Pos, Change.State);
+	}
+}
+
+void UMcChunkStreamComponent::ClientOpenBoxes_Implementation(const TArray<FIntVector>& Boxes, const TArray<int32>& Openers)
+{
+	for (int32 Index = 0; Index < Boxes.Num() && Index < Openers.Num(); ++Index)
+	{
+		if (OnBoxOpen)
+		{
+			OnBoxOpen(Boxes[Index], Openers[Index]);
+		}
 	}
 }
 

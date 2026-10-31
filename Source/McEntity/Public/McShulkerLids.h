@@ -23,6 +23,8 @@ public:
 	// How many have the box at Pos open now (from the server).
 	void SetOpeners(const FIntVector& Pos, int32 Count);
 	int32 GetOpeners(const FIntVector& Pos) const;
+	// A box already open when this machine first saw it: its lid starts all the way up.
+	void SetOpen(const FIntVector& Pos, int32 Count);
 
 	// One tick: each lid steps, the block's collision follows it, and this tick's pushes are worked out.
 	void Tick();

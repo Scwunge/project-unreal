@@ -175,8 +175,22 @@ void AMcPlayerController::ConnectToWorld()
 		{
 			WantedDimension = Dimension;
 		};
+		ChunkStream->OnBoxOpen = [this](const FIntVector& Pos, int32 Count)
+		{
+			if (WorldActor)
+			{
+				WorldActor->ShowShulkerOpen(Pos, Count);
+			}
+		};
 		if (HasAuthority())
 		{
+			ChunkStream->GetOpenBoxes = [this](const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers)
+			{
+				if (WorldActor)
+				{
+					WorldActor->GetShulkerOpeners(Chunk, Boxes, Openers);
+				}
+			};
 			ChunkStream->OnSetBlockRequest.BindUObject(this, &AMcPlayerController::HandleSetBlockRequest);
 			ChunkStream->OnAttackRequest = [this](const FVector& Look)
 			{

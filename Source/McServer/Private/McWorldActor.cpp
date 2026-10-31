@@ -583,6 +583,30 @@ void AMcWorldActor::MulticastShulkerOpeners_Implementation(FIntVector Pos, int32
 	}
 }
 
+void AMcWorldActor::GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const
+{
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (Pair.Value > 0 && McCoords::BlockToChunk(Pair.Key.X) == Chunk.X && McCoords::BlockToChunk(Pair.Key.Z) == Chunk.Y)
+		{
+			Boxes.Add(Pair.Key);
+			Openers.Add(Pair.Value);
+		}
+	}
+}
+
+void AMcWorldActor::ShowShulkerOpen(const FIntVector& Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpen(Pos, Count);
+	}
+}
+
 void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch)
 {
 	if (!bViewed)

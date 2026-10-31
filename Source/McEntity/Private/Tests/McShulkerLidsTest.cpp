@@ -76,6 +76,16 @@ bool FMcShulkerLidsTest::RunTest(const FString& Parameters)
 	Lids.Tick();
 	TestEqual(TEXT("and the lid is forgotten"), Lids.GetOpeners(East), 0);
 
+	// A box already open when its chunk came starts open, and its shell is there after the next tick.
+	World.SetBlock(East, State(TEXT("minecraft:shulker_box[facing=east]")));
+	Lids.SetOpen(East, 1);
+	TestTrue(TEXT("already open: up at once"), FMath::IsNearlyEqual(Lids.GetProgress(East), 1.0f) && Lids.GetOpeners(East) == 1);
+	Lids.Tick();
+	const TArray<FBox3f>* OpenShape = World.FindCollisionOverride(East);
+	TestTrue(TEXT("already open: grown east"), OpenShape && FMath::IsNearlyEqual((*OpenShape)[0].Max.X, 1.5f));
+	World.SetBlock(East, State(TEXT("minecraft:air")));
+	Lids.Tick();
+
 	// What above a box facing up stops it opening (vanilla's run).
 	const FIntVector Above = Up + FIntVector(0, 1, 0);
 	const TArray<TPair<const TCHAR*, bool>> Cases = {

@@ -195,7 +195,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     and a chest stopped it, a top slab and a torch did not. The server counts each box's openers every tick
     (`UMcBlockUseSubsystem::TickShulkers`) and multicasts changes; every machine steps the lids, the server pushes mobs
     and items, each player's machine its own player; others' open boxes now show their lids. Test
-    `McEntity.ShulkerLids`. Not done: a player joining while a box is open sees it shut until it next changes.
+    `McEntity.ShulkerLids`. A chunk going to a player is followed by the boxes open in it (the chunk stream's
+    `ClientOpenBoxes`), whose lids start all the way up (`FMcShulkerLids::SetOpen`), so a player joining while a box is
+    open sees it open. (Vanilla with two players wasn't measured; whether its joiner sees the lid up is assumed.)
   - **Bells** (2026-10-30): the block models are only the frame (bar, posts, chain), so the body is an entity model
     `mc:bell` from `entity/bell/bell_body.png` (a cup 6 across, a rim 8 across), stood in each bell by
     `UMcChestComponent`. Using a bell rings it (`block.bell.use`) when struck from a side it can swing away from: a

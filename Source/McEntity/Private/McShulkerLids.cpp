@@ -32,6 +32,16 @@ void FMcShulkerLids::SetOpeners(const FIntVector& Pos, int32 Count)
 	}
 }
 
+void FMcShulkerLids::SetOpen(const FIntVector& Pos, int32 Count)
+{
+	if (Count > 0)
+	{
+		FLid& Lid = Lids.FindOrAdd(Pos);
+		Lid.Openers = Count;
+		Lid.Progress = 1.0f;
+	}
+}
+
 int32 FMcShulkerLids::GetOpeners(const FIntVector& Pos) const
 {
 	const FLid* Lid = Lids.Find(Pos);

@@ -161,7 +161,8 @@ void AMcHUD::DrawFill(float X, float Y, float Width, float Height, const FLinear
 
 // ---- Text ----
 
-// How wide each glyph of a font sheet (16 by 16 cells of 8) is, by its rightmost pixel; 5 each if the sheet can't be read.
+// How wide each glyph of a font sheet (16 by 16 cells of 8, or a pack's sheet that many times larger) is, by its
+// rightmost pixel in vanilla pixels; 5 each if the sheet can't be read.
 static void ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& GlyphWidths)
 {
 	GlyphWidths.Init(0, 256);
@@ -170,27 +171,30 @@ static void ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& GlyphWidths)
 	const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
 	TArray64<uint8> Raw;
 	if (!FFileHelper::LoadFileToArray(File, *McCache::Asset(Asset)) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
-		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() != 128 || Wrapper->GetHeight() != 128)
+		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() < 128 || Wrapper->GetWidth() % 128 != 0 || Wrapper->GetHeight() != Wrapper->GetWidth())
 	{
 		UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), Asset);
 		GlyphWidths.Init(5, 256);
 		return;
 	}
+	const int32 Size = Wrapper->GetWidth();
+	const int32 Cell = Size / 16;
+	const int32 Scale = Size / 128;
 	for (int32 Code = 0; Code < 256; ++Code)
 	{
 		int32 Widest = 0;
-		for (int32 Column = 0; Column < 8; ++Column)
+		for (int32 Column = 0; Column < Cell; ++Column)
 		{
-			for (int32 Row = 0; Row < 8; ++Row)
+			for (int32 Row = 0; Row < Cell; ++Row)
 			{
-				const int64 Pixel = (static_cast<int64>((Code / 16) * 8 + Row) * 128 + (Code % 16) * 8 + Column) * 4;
+				const int64 Pixel = (static_cast<int64>((Code / 16) * Cell + Row) * Size + (Code % 16) * Cell + Column) * 4;
 				if (Raw[Pixel + 3] != 0)
 				{
 					Widest = Column + 1;
 				}
 			}
 		}
-		GlyphWidths[Code] = static_cast<uint8>(Widest);
+		GlyphWidths[Code] = static_cast<uint8>(FMath::DivideAndRoundUp(Widest, Scale));
 	}
 	GlyphWidths[' '] = 3;
 }
@@ -220,13 +224,15 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 {
 	LoadFont();
 	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii.png"));
+	// A pack's sheet may be larger than 128: a cell is then that much more texels.
+	const float Cell = Font ? Font->GetSizeX() / 16.0f : 8.0f;
 	const auto Draw = [&](float OffsetX, float OffsetY, const FLinearColor& Tint)
 	{
 		float At = X + OffsetX;
 		for (const TCHAR Char : Text)
 		{
 			const int32 Code = Char < 256 ? Char : '?';
-			DrawRegion(Font, At, Y + OffsetY, 8 * TextScale, 8 * TextScale, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Tint);
+			DrawRegion(Font, At, Y + OffsetY, 8 * TextScale, 8 * TextScale, (Code % 16) * Cell, (Code / 16) * Cell, Cell, Cell, Tint);
 			At += (GlyphWidths[Code] + 1) * TextScale;
 		}
 	};
@@ -894,6 +900,7 @@ void AMcHUD::DrawGalacticText(const FString& Text, float X, float Y, float Width
 {
 	LoadFont();
 	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii_sga.png"));
+	const float Cell = Font ? Font->GetSizeX() / 16.0f : 8.0f;
 	const auto WidthOf = [this](const FString& Piece)
 	{
 		float Total = 0.0f;
@@ -913,7 +920,7 @@ void AMcHUD::DrawGalacticText(const FString& Text, float X, float Y, float Width
 		for (const TCHAR Char : Line)
 		{
 			const int32 Code = Char < 256 ? Char : '?';
-			DrawRegion(Font, At, Y + Row * 9, 8, 8, (Code % 16) * 8, (Code / 16) * 8, 8, 8, FromRgb(Rgb));
+			DrawRegion(Font, At, Y + Row * 9, 8, 8, (Code % 16) * Cell, (Code / 16) * Cell, Cell, Cell, FromRgb(Rgb));
 			At += GalacticWidths[Code] + 1;
 		}
 		Line.Reset();

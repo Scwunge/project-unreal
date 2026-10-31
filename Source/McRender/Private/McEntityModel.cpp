@@ -452,14 +452,21 @@ namespace McEntityModel
 						Horse.Variants.Add({ FString::Printf(TEXT("horse/horse_%s.png"), Coat), FCString::Strlen(Marking) ? FString::Printf(TEXT("horse/horse_markings_%s.png"), Marking) : FString() });
 					}
 				}
-				Horse.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 32, -5, 11, -14, 10, 10, 24) }));
+				// Placed from the logged model (pivots and every box's extent, in vanilla's frame; ours is y = 24 - y, z = -z), which
+				// draws the whole horse 1.1 times its size about its feet.
+				Horse.Scale = 1.1f;
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));
 				// The tail hangs from the rump, leaning back.
-				Horse.Parts.Add(Part(ERole::Static, FVector(0, 21, -14), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.52f));
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f));
 				// The neck, head, mane, mouth and ears all lean forward from the withers together.
-				Horse.Parts.Add(Part(ERole::Head, FVector(0, 20, 10),
-					{ Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 0, -3, 6, -5, 6, 5, 7), Box(0, 25, -2, 6, 2, 4, 5, 5), Box(56, 36, -1, -5, -7, 2, 16, 2),
-					  Box(19, 16, -2.55f, 10, -5, 2, 3, 1), Box(19, 16, 0.55f, 10, -5, 2, 3, 1) }, 0.52f));
-				AddLegs(Horse, 48, 21, 4, 11, 3, 7, -11, 11);
+				Horse.Parts.Add(Part(ERole::Head, FVector(0, 20, 12),
+					{ Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 0, -3, 6, -5, 6, 5, 7), Box(0, 25, -2, 6, 2, 4, 5, 5), Box(56, 36, -1, -5, -7.01f, 2, 16, 2),
+					  Box(19, 16, -2.55f, 10, -5, 2, 3, 1), Box(19, 16, 0.55f, 10, -5, 2, 3, 1) }, 0.5236f));
+				// The legs are 4 wide, 11 tall (a hair short of the ground), their boxes set 1 in from the hip and the front ones 0.1 forward.
+				Horse.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4) }));
 				Models.Add(Horse.Kind, Horse);
 			}
 			{

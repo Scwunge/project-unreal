@@ -57,7 +57,7 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 				bStuck = true;
 				Body.Velocity = FVector::ZeroVector;
 				Body.Position = Next;
-				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, 1.0f /* TODO: pitch and its random range, measured from the reference client */);
+				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				return;
 			}
 		}
@@ -77,7 +77,7 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 				}
 				const FVector From = Next - Body.Velocity.GetSafeNormal() * 2.0;
 				static_cast<FMcMob*>(Other.Get())->Damage(Hit, &From);
-				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, 1.0f /* TODO: pitch and its random range, measured from the reference client */);
+				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				bRemoved = true;
 				return;
 			}
@@ -94,7 +94,7 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			if (PlayerBox.IsInside(Next))
 			{
 				// The arrow's hit sounds on a body as on a block; the player's own hurt sound comes with the damage.
-				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, 1.0f /* TODO: pitch and its random range, measured from the reference client */);
+				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				Manager.HurtPlayer(Player, Damage);
 				bRemoved = true;
 				return;

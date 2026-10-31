@@ -31,4 +31,9 @@ public:
 	static constexpr int32 LifeTicks = 1200;
 	static constexpr double Gravity = 0.05;
 	static constexpr double Drag = 0.99;
+
+	// The pitch of the sound of an arrow hitting something for a random U in 0 to 1 (volume 1): a plain range of 1.09 to 1.33.
+	// 70 hits of the reference client: min 1.0927, max 1.3300, mean 1.2003, consistent with a uniform range (KS p 0.33); the
+	// shape of the distribution is not fitted.
+	static float GetHitPitch(float U) { return 1.09f + 0.24f * U; }
 };

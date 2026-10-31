@@ -79,6 +79,11 @@ namespace McCombat
 		return 0.1;
 	}
 
+	float GetBowShootPitch(float U, float Power)
+	{
+		return 0.62f + 0.21f * U + 0.5f * Power;
+	}
+
 	float GetDamage(float BaseDamage, float Strength, bool bCritical)
 	{
 		float Damage = BaseDamage * (0.2f + Strength * Strength * 0.8f);

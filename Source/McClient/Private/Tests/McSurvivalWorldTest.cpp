@@ -10,6 +10,7 @@
 #include "McRails.h"
 #include "McChunk.h"
 #include "McCombat.h"
+#include "McArrow.h"
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McFurnace.h"
@@ -68,6 +69,11 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("with a spread of 0.0085"), FMath::Sqrt(SumSquares / Count - Mean * Mean), 0.0085, 0.0006);
 		TestEqual(TEXT("an arrow starts 0.1 under the eye"), McCombat::GetBowLaunchDrop(), 0.1, 1.0e-9);
 	}
+	TestEqual(TEXT("a full draw shoots from 1.12"), McCombat::GetBowShootPitch(0.0f, 1.0f), 1.12f, 0.001f);
+	TestEqual(TEXT("to 1.33"), McCombat::GetBowShootPitch(1.0f, 1.0f), 1.33f, 0.001f);
+	TestTrue(TEXT("a weaker draw sounds lower"), McCombat::GetBowShootPitch(0.5f, 0.3f) < McCombat::GetBowShootPitch(0.5f, 1.0f));
+	TestEqual(TEXT("a hit sounds between 1.09"), FMcArrowEntity::GetHitPitch(0.0f), 1.09f, 0.001f);
+	TestEqual(TEXT("and 1.33"), FMcArrowEntity::GetHitPitch(1.0f), 1.33f, 0.001f);
 	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
 	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
 	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);

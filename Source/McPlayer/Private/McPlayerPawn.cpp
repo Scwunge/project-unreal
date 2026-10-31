@@ -1662,7 +1662,7 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;
 	Entities->Add(MoveTemp(Arrow));
-	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f /* TODO: pitch and its dependence on power measured from the reference client */);
+	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, McCombat::GetBowShootPitch(DropRandom.FRand(), Power));
 	if (!Data->bCreative)
 	{
 		Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);

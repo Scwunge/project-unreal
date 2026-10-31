@@ -33,6 +33,11 @@ namespace McCombat
 	// under the eye, on the eye's line.
 	MCPLAYER_API FVector GetBowAim(const FVector& Look, FRandomStream& Random);
 	MCPLAYER_API double GetBowLaunchDrop();
+	// The pitch of the shot's sound for a random U in 0 to 1 and the draw's power (volume 1): 0.62 + 0.21 U + power / 2. 70 shots of
+	// the reference client: 40 full draws, pitch 1.126 to 1.327 (mean 1.212), and 30 draws held 8 ticks, 0.815 to 1.001 (mean
+	// 0.902), each consistent with a uniform range (KS p 0.23 and 0.53). Only two powers were measured, so the linear power
+	// term (0.5, from the 0.32 shift of the midrange between them) and the shape of the distribution are not fitted.
+	MCPLAYER_API float GetBowShootPitch(float U, float Power);
 	// Durability the swing costs the held item: a sword 1... tools 2, anything else 0 (they are not made to hit with).
 	MCPLAYER_API int32 GetWear(const FMcItemStack& Held);
 

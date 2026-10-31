@@ -1,0 +1,1696 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd gamerule fire_spread_radius_around_player 128
+cmd gamerule do_fire_tick true
+cmd tp @s 62 -50 6
+wait 60
+cmd tick freeze
+cmd weather clear 1000000
+cmd fill -2 -61 -2 128 -50 16 air
+cmd fill -2 -62 -2 128 -61 16 stone
+wait 60
+cmd setblock 0 -60 0 fire
+cmd setblock 0 -61 4 netherrack
+cmd setblock 0 -60 4 fire
+cmd setblock 1 -60 4 oak_planks
+cmd setblock 0 -61 8 netherrack
+cmd setblock 0 -60 8 fire
+cmd setblock 1 -60 8 white_wool
+cmd setblock 0 -61 12 netherrack
+cmd setblock 0 -60 12 fire
+cmd setblock 1 -60 12 oak_leaves[persistent=true]
+cmd setblock 4 -60 0 fire
+cmd setblock 4 -61 4 netherrack
+cmd setblock 4 -60 4 fire
+cmd setblock 5 -60 4 oak_planks
+cmd setblock 4 -61 8 netherrack
+cmd setblock 4 -60 8 fire
+cmd setblock 5 -60 8 white_wool
+cmd setblock 4 -61 12 netherrack
+cmd setblock 4 -60 12 fire
+cmd setblock 5 -60 12 oak_leaves[persistent=true]
+cmd setblock 8 -60 0 fire
+cmd setblock 8 -61 4 netherrack
+cmd setblock 8 -60 4 fire
+cmd setblock 9 -60 4 oak_planks
+cmd setblock 8 -61 8 netherrack
+cmd setblock 8 -60 8 fire
+cmd setblock 9 -60 8 white_wool
+cmd setblock 8 -61 12 netherrack
+cmd setblock 8 -60 12 fire
+cmd setblock 9 -60 12 oak_leaves[persistent=true]
+cmd setblock 12 -60 0 fire
+cmd setblock 12 -61 4 netherrack
+cmd setblock 12 -60 4 fire
+cmd setblock 13 -60 4 oak_planks
+cmd setblock 12 -61 8 netherrack
+cmd setblock 12 -60 8 fire
+cmd setblock 13 -60 8 white_wool
+cmd setblock 12 -61 12 netherrack
+cmd setblock 12 -60 12 fire
+cmd setblock 13 -60 12 oak_leaves[persistent=true]
+cmd setblock 16 -60 0 fire
+cmd setblock 16 -61 4 netherrack
+cmd setblock 16 -60 4 fire
+cmd setblock 17 -60 4 oak_planks
+cmd setblock 16 -61 8 netherrack
+cmd setblock 16 -60 8 fire
+cmd setblock 17 -60 8 white_wool
+cmd setblock 16 -61 12 netherrack
+cmd setblock 16 -60 12 fire
+cmd setblock 17 -60 12 oak_leaves[persistent=true]
+cmd setblock 20 -60 0 fire
+cmd setblock 20 -61 4 netherrack
+cmd setblock 20 -60 4 fire
+cmd setblock 21 -60 4 oak_planks
+cmd setblock 20 -61 8 netherrack
+cmd setblock 20 -60 8 fire
+cmd setblock 21 -60 8 white_wool
+cmd setblock 20 -61 12 netherrack
+cmd setblock 20 -60 12 fire
+cmd setblock 21 -60 12 oak_leaves[persistent=true]
+cmd setblock 24 -60 0 fire
+cmd setblock 24 -61 4 netherrack
+cmd setblock 24 -60 4 fire
+cmd setblock 25 -60 4 oak_planks
+cmd setblock 24 -61 8 netherrack
+cmd setblock 24 -60 8 fire
+cmd setblock 25 -60 8 white_wool
+cmd setblock 24 -61 12 netherrack
+cmd setblock 24 -60 12 fire
+cmd setblock 25 -60 12 oak_leaves[persistent=true]
+cmd setblock 28 -60 0 fire
+cmd setblock 28 -61 4 netherrack
+cmd setblock 28 -60 4 fire
+cmd setblock 29 -60 4 oak_planks
+cmd setblock 28 -61 8 netherrack
+cmd setblock 28 -60 8 fire
+cmd setblock 29 -60 8 white_wool
+cmd setblock 28 -61 12 netherrack
+cmd setblock 28 -60 12 fire
+cmd setblock 29 -60 12 oak_leaves[persistent=true]
+cmd setblock 32 -60 0 fire
+cmd setblock 32 -61 4 netherrack
+cmd setblock 32 -60 4 fire
+cmd setblock 33 -60 4 oak_planks
+cmd setblock 32 -61 8 netherrack
+cmd setblock 32 -60 8 fire
+cmd setblock 33 -60 8 white_wool
+cmd setblock 32 -61 12 netherrack
+cmd setblock 32 -60 12 fire
+cmd setblock 33 -60 12 oak_leaves[persistent=true]
+cmd setblock 36 -60 0 fire
+cmd setblock 36 -61 4 netherrack
+cmd setblock 36 -60 4 fire
+cmd setblock 37 -60 4 oak_planks
+cmd setblock 36 -61 8 netherrack
+cmd setblock 36 -60 8 fire
+cmd setblock 37 -60 8 white_wool
+cmd setblock 36 -61 12 netherrack
+cmd setblock 36 -60 12 fire
+cmd setblock 37 -60 12 oak_leaves[persistent=true]
+cmd setblock 40 -60 0 fire
+cmd setblock 40 -61 4 netherrack
+cmd setblock 40 -60 4 fire
+cmd setblock 41 -60 4 oak_planks
+cmd setblock 40 -61 8 netherrack
+cmd setblock 40 -60 8 fire
+cmd setblock 41 -60 8 white_wool
+cmd setblock 40 -61 12 netherrack
+cmd setblock 40 -60 12 fire
+cmd setblock 41 -60 12 oak_leaves[persistent=true]
+cmd setblock 44 -60 0 fire
+cmd setblock 44 -61 4 netherrack
+cmd setblock 44 -60 4 fire
+cmd setblock 45 -60 4 oak_planks
+cmd setblock 44 -61 8 netherrack
+cmd setblock 44 -60 8 fire
+cmd setblock 45 -60 8 white_wool
+cmd setblock 44 -61 12 netherrack
+cmd setblock 44 -60 12 fire
+cmd setblock 45 -60 12 oak_leaves[persistent=true]
+cmd setblock 48 -60 0 fire
+cmd setblock 48 -61 4 netherrack
+cmd setblock 48 -60 4 fire
+cmd setblock 49 -60 4 oak_planks
+cmd setblock 48 -61 8 netherrack
+cmd setblock 48 -60 8 fire
+cmd setblock 49 -60 8 white_wool
+cmd setblock 48 -61 12 netherrack
+cmd setblock 48 -60 12 fire
+cmd setblock 49 -60 12 oak_leaves[persistent=true]
+cmd setblock 52 -60 0 fire
+cmd setblock 52 -61 4 netherrack
+cmd setblock 52 -60 4 fire
+cmd setblock 53 -60 4 oak_planks
+cmd setblock 52 -61 8 netherrack
+cmd setblock 52 -60 8 fire
+cmd setblock 53 -60 8 white_wool
+cmd setblock 52 -61 12 netherrack
+cmd setblock 52 -60 12 fire
+cmd setblock 53 -60 12 oak_leaves[persistent=true]
+cmd setblock 56 -60 0 fire
+cmd setblock 56 -61 4 netherrack
+cmd setblock 56 -60 4 fire
+cmd setblock 57 -60 4 oak_planks
+cmd setblock 56 -61 8 netherrack
+cmd setblock 56 -60 8 fire
+cmd setblock 57 -60 8 white_wool
+cmd setblock 56 -61 12 netherrack
+cmd setblock 56 -60 12 fire
+cmd setblock 57 -60 12 oak_leaves[persistent=true]
+cmd setblock 60 -60 0 fire
+cmd setblock 60 -61 4 netherrack
+cmd setblock 60 -60 4 fire
+cmd setblock 61 -60 4 oak_planks
+cmd setblock 60 -61 8 netherrack
+cmd setblock 60 -60 8 fire
+cmd setblock 61 -60 8 white_wool
+cmd setblock 60 -61 12 netherrack
+cmd setblock 60 -60 12 fire
+cmd setblock 61 -60 12 oak_leaves[persistent=true]
+cmd setblock 64 -60 0 fire
+cmd setblock 64 -61 4 netherrack
+cmd setblock 64 -60 4 fire
+cmd setblock 65 -60 4 oak_planks
+cmd setblock 64 -61 8 netherrack
+cmd setblock 64 -60 8 fire
+cmd setblock 65 -60 8 white_wool
+cmd setblock 64 -61 12 netherrack
+cmd setblock 64 -60 12 fire
+cmd setblock 65 -60 12 oak_leaves[persistent=true]
+cmd setblock 68 -60 0 fire
+cmd setblock 68 -61 4 netherrack
+cmd setblock 68 -60 4 fire
+cmd setblock 69 -60 4 oak_planks
+cmd setblock 68 -61 8 netherrack
+cmd setblock 68 -60 8 fire
+cmd setblock 69 -60 8 white_wool
+cmd setblock 68 -61 12 netherrack
+cmd setblock 68 -60 12 fire
+cmd setblock 69 -60 12 oak_leaves[persistent=true]
+cmd setblock 72 -60 0 fire
+cmd setblock 72 -61 4 netherrack
+cmd setblock 72 -60 4 fire
+cmd setblock 73 -60 4 oak_planks
+cmd setblock 72 -61 8 netherrack
+cmd setblock 72 -60 8 fire
+cmd setblock 73 -60 8 white_wool
+cmd setblock 72 -61 12 netherrack
+cmd setblock 72 -60 12 fire
+cmd setblock 73 -60 12 oak_leaves[persistent=true]
+cmd setblock 76 -60 0 fire
+cmd setblock 76 -61 4 netherrack
+cmd setblock 76 -60 4 fire
+cmd setblock 77 -60 4 oak_planks
+cmd setblock 76 -61 8 netherrack
+cmd setblock 76 -60 8 fire
+cmd setblock 77 -60 8 white_wool
+cmd setblock 76 -61 12 netherrack
+cmd setblock 76 -60 12 fire
+cmd setblock 77 -60 12 oak_leaves[persistent=true]
+cmd setblock 80 -60 0 fire
+cmd setblock 80 -61 4 netherrack
+cmd setblock 80 -60 4 fire
+cmd setblock 81 -60 4 oak_planks
+cmd setblock 80 -61 8 netherrack
+cmd setblock 80 -60 8 fire
+cmd setblock 81 -60 8 white_wool
+cmd setblock 80 -61 12 netherrack
+cmd setblock 80 -60 12 fire
+cmd setblock 81 -60 12 oak_leaves[persistent=true]
+cmd setblock 84 -60 0 fire
+cmd setblock 84 -61 4 netherrack
+cmd setblock 84 -60 4 fire
+cmd setblock 85 -60 4 oak_planks
+cmd setblock 84 -61 8 netherrack
+cmd setblock 84 -60 8 fire
+cmd setblock 85 -60 8 white_wool
+cmd setblock 84 -61 12 netherrack
+cmd setblock 84 -60 12 fire
+cmd setblock 85 -60 12 oak_leaves[persistent=true]
+cmd setblock 88 -60 0 fire
+cmd setblock 88 -61 4 netherrack
+cmd setblock 88 -60 4 fire
+cmd setblock 89 -60 4 oak_planks
+cmd setblock 88 -61 8 netherrack
+cmd setblock 88 -60 8 fire
+cmd setblock 89 -60 8 white_wool
+cmd setblock 88 -61 12 netherrack
+cmd setblock 88 -60 12 fire
+cmd setblock 89 -60 12 oak_leaves[persistent=true]
+cmd setblock 92 -60 0 fire
+cmd setblock 92 -61 4 netherrack
+cmd setblock 92 -60 4 fire
+cmd setblock 93 -60 4 oak_planks
+cmd setblock 92 -61 8 netherrack
+cmd setblock 92 -60 8 fire
+cmd setblock 93 -60 8 white_wool
+cmd setblock 92 -61 12 netherrack
+cmd setblock 92 -60 12 fire
+cmd setblock 93 -60 12 oak_leaves[persistent=true]
+cmd setblock 96 -60 0 fire
+cmd setblock 96 -61 4 netherrack
+cmd setblock 96 -60 4 fire
+cmd setblock 97 -60 4 oak_planks
+cmd setblock 96 -61 8 netherrack
+cmd setblock 96 -60 8 fire
+cmd setblock 97 -60 8 white_wool
+cmd setblock 96 -61 12 netherrack
+cmd setblock 96 -60 12 fire
+cmd setblock 97 -60 12 oak_leaves[persistent=true]
+cmd setblock 100 -60 0 fire
+cmd setblock 100 -61 4 netherrack
+cmd setblock 100 -60 4 fire
+cmd setblock 101 -60 4 oak_planks
+cmd setblock 100 -61 8 netherrack
+cmd setblock 100 -60 8 fire
+cmd setblock 101 -60 8 white_wool
+cmd setblock 100 -61 12 netherrack
+cmd setblock 100 -60 12 fire
+cmd setblock 101 -60 12 oak_leaves[persistent=true]
+cmd setblock 104 -60 0 fire
+cmd setblock 104 -61 4 netherrack
+cmd setblock 104 -60 4 fire
+cmd setblock 105 -60 4 oak_planks
+cmd setblock 104 -61 8 netherrack
+cmd setblock 104 -60 8 fire
+cmd setblock 105 -60 8 white_wool
+cmd setblock 104 -61 12 netherrack
+cmd setblock 104 -60 12 fire
+cmd setblock 105 -60 12 oak_leaves[persistent=true]
+cmd setblock 108 -60 0 fire
+cmd setblock 108 -61 4 netherrack
+cmd setblock 108 -60 4 fire
+cmd setblock 109 -60 4 oak_planks
+cmd setblock 108 -61 8 netherrack
+cmd setblock 108 -60 8 fire
+cmd setblock 109 -60 8 white_wool
+cmd setblock 108 -61 12 netherrack
+cmd setblock 108 -60 12 fire
+cmd setblock 109 -60 12 oak_leaves[persistent=true]
+cmd setblock 112 -60 0 fire
+cmd setblock 112 -61 4 netherrack
+cmd setblock 112 -60 4 fire
+cmd setblock 113 -60 4 oak_planks
+cmd setblock 112 -61 8 netherrack
+cmd setblock 112 -60 8 fire
+cmd setblock 113 -60 8 white_wool
+cmd setblock 112 -61 12 netherrack
+cmd setblock 112 -60 12 fire
+cmd setblock 113 -60 12 oak_leaves[persistent=true]
+cmd setblock 116 -60 0 fire
+cmd setblock 116 -61 4 netherrack
+cmd setblock 116 -60 4 fire
+cmd setblock 117 -60 4 oak_planks
+cmd setblock 116 -61 8 netherrack
+cmd setblock 116 -60 8 fire
+cmd setblock 117 -60 8 white_wool
+cmd setblock 116 -61 12 netherrack
+cmd setblock 116 -60 12 fire
+cmd setblock 117 -60 12 oak_leaves[persistent=true]
+cmd setblock 120 -60 0 fire
+cmd setblock 120 -61 4 netherrack
+cmd setblock 120 -60 4 fire
+cmd setblock 121 -60 4 oak_planks
+cmd setblock 120 -61 8 netherrack
+cmd setblock 120 -60 8 fire
+cmd setblock 121 -60 8 white_wool
+cmd setblock 120 -61 12 netherrack
+cmd setblock 120 -60 12 fire
+cmd setblock 121 -60 12 oak_leaves[persistent=true]
+cmd setblock 124 -60 0 fire
+cmd setblock 124 -61 4 netherrack
+cmd setblock 124 -60 4 fire
+cmd setblock 125 -60 4 oak_planks
+cmd setblock 124 -61 8 netherrack
+cmd setblock 124 -60 8 fire
+cmd setblock 125 -60 8 white_wool
+cmd setblock 124 -61 12 netherrack
+cmd setblock 124 -60 12 fire
+cmd setblock 125 -60 12 oak_leaves[persistent=true]
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 1
+cmd tick step 1
+wait 4
+log box 0 -60 0 128 -60 0
+log box 0 -60 4 128 -60 4
+log box 0 -60 8 128 -60 8
+log box 0 -60 12 128 -60 12
+cmd tick unfreeze

@@ -38,6 +38,18 @@ namespace McCombat
 	// 0.902), each consistent with a uniform range (KS p 0.23 and 0.53). Only two powers were measured, so the linear power
 	// term (0.5, from the 0.32 shift of the midrange between them) and the shape of the distribution are not fitted.
 	MCPLAYER_API float GetBowShootPitch(float U, float Power);
+	// How far the view rolls after a hit, in degrees, for the hurt time left in ticks (counting down from 10, with the fraction of
+	// the tick): 41.1 * (t / 10)^4.08, with t at most 8 (the first hurt time the client ever shows is 8: 16.5 degrees). The shape (the
+	// power 4.08) is fitted to shots of the reference client at hurt times 8 to 1 (rms 0.15 degrees of the measure); the size is scaled
+	// so that our own shot at 7 reads the same roll by the same measure as the reference's (11.6 degrees from a hit at its side); the
+	// roll is that times the side the hit came from, +1
+	// for a hit from the player's left (+x when facing +z), -1 from the right, about 0 from the front or the back (measured at those
+	// four directions only; the sine of the angle between is assumed).
+	MCPLAYER_API float GetHurtTilt(float HurtTicks);
+	// The side of a hit, -1 to 1: the sine of the angle to the attacker's direction (positive on the player's left), for a Minecraft
+	// yaw in degrees and the attacker's offset in x and z. A hit without a place (a fall, fire) is +1, as the reference client's damage
+	// without a source.
+	MCPLAYER_API float GetHurtSide(float McYawDegrees, double OffsetX, double OffsetZ, bool bHasSource);
 	// Durability the swing costs the held item: a sword 1... tools 2, anything else 0 (they are not made to hit with).
 	MCPLAYER_API int32 GetWear(const FMcItemStack& Held);
 

@@ -140,14 +140,23 @@ namespace McHand
 		return MakeBasis(FVector(0, 1, 0), FVector(-R, 0, R), FVector(R, 0, R));
 	}
 
+	FVector GetBowTremble(float DrawSeconds)
+	{
+		if (DrawSeconds < 1.0f)
+		{
+			return FVector::ZeroVector;
+		}
+		const double Wave = FMath::Sin(2.0 * PI * static_cast<double>(DrawSeconds) * 20.0 / 7.78);
+		return FVector(0.0, 0.12, -0.20) * Wave;
+	}
+
 	FTransform GetDrawTransform(float Lift, float Seconds)
 	{
 		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
-		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
 		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
 		// moved toward the middle of the screen and up from where it rests, in the camera's space (forward, right, up), and turned a
 		// little about its own middle. It grows to 1.2 times the idle size (moving it nearer alone made the arrow shaft far too long).
-		const FVector Move = FVector(-2.0, -20.0, 20.0) * Eased;
+		const FVector Move = FVector(-2.0, -20.0, 20.0) * Eased + GetBowTremble(Seconds);
 		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 22.0f, 7.0f).Quaternion(), Eased);
 		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.2f, Eased)));
 	}

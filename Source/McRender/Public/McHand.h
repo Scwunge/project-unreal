@@ -88,6 +88,10 @@ namespace McHand
 	MCRENDER_API void BuildArmMesh(McPlayerModel::FMeshData& Out);
 	// How the held bow is turned while it is drawn, in the camera's space.
 	MCRENDER_API FQuat GetBowStandRotation();
+	// The bow's tremble at full draw, in the camera's space (forward, right, up), for this many seconds of draw: nothing before a
+	// second, then a sine of period 7.8 ticks moving it 0.12 right and 0.20 down at its peak (1.4 pixels up and down, 0.9 across, at
+	// 720p). Measured from 42 shots of a held full draw; the phase is not known, and whether it builds up before the full draw is not.
+	MCRENDER_API FVector GetBowTremble(float DrawSeconds);
 	MCRENDER_API void BuildFlatMesh(float VMax, McPlayerModel::FMeshData& Out);
 	// The picture's opaque pixels stood one pixel thick, as the game's generated item models are: a front and a back face and a narrow face on every edge between a pixel and a see-through one. Pixels are rows from the top, Width across, and the top Width rows are the picture.
 	MCRENDER_API void BuildExtrudedMesh(const TArray<FColor>& Pixels, int32 Width, float VMax, McPlayerModel::FMeshData& Out);

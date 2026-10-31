@@ -215,6 +215,9 @@ protected:
 	// The server hit the owner: a push for their own body, which they simulate.
 	UFUNCTION(Client, Reliable)
 	void ClientKnockback(FVector Velocity);
+	// The server hit the owner from this side (-1 to 1): the view rolls for it.
+	UFUNCTION(Client, Reliable)
+	void ClientHurtSide(float Side);
 	// The owner clicks on a vehicle along Look (Minecraft axes) to get in.
 	UFUNCTION(Server, Reliable)
 	void ServerTryRide(FVector Look);
@@ -374,6 +377,8 @@ private:
 	int32 BowSlot = -1;
 	float BowSecondsLocal = 0.0f;
 	bool bBowLocal = false;
+	// The side of the last hit on the owner, for the view's roll while the hurt time runs down.
+	float HurtSide = 0.0f;
 	float BowBaseFov = 0.0f;
 	// Lets the arrow go after DrawTicks of drawing.
 	void ServerShootBow(int32 DrawTicks);

@@ -74,6 +74,14 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a weaker draw sounds lower"), McCombat::GetBowShootPitch(0.5f, 0.3f) < McCombat::GetBowShootPitch(0.5f, 1.0f));
 	TestEqual(TEXT("a hit sounds between 1.09"), FMcArrowEntity::GetHitPitch(0.0f), 1.09f, 0.001f);
 	TestEqual(TEXT("and 1.33"), FMcArrowEntity::GetHitPitch(1.0f), 1.33f, 0.001f);
+	TestEqual(TEXT("the first hurt frame rolls 16.5 degrees"), McCombat::GetHurtTilt(10.0f), 16.5f, 0.3f);
+	TestEqual(TEXT("at 5 ticks 2.4"), McCombat::GetHurtTilt(5.0f), 41.1f * FMath::Pow(0.5f, 4.08f), 0.01f);
+	TestEqual(TEXT("and none at the end"), McCombat::GetHurtTilt(0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("a hit from the left (+x facing +z) is +1"), McCombat::GetHurtSide(0.0f, 5.0, 0.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("from the right -1"), McCombat::GetHurtSide(0.0f, -5.0, 0.0, true), -1.0f, 0.001f);
+	TestEqual(TEXT("from the front 0"), McCombat::GetHurtSide(0.0f, 0.0, 5.0, true), 0.0f, 0.001f);
+	TestEqual(TEXT("facing west (yaw 90), +z is the left"), McCombat::GetHurtSide(90.0f, 0.0, 5.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("no source is +1"), McCombat::GetHurtSide(0.0f, 0.0, 0.0, false), 1.0f, 0.001f);
 	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
 	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
 	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);

@@ -440,6 +440,27 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	SetActorLocation(LastLocation);
 	const float EyeHeight = FMath::Lerp(PreviousEyeHeight, GetEyeHeight(), Alpha);
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock));
+	// A hit rolls the view for the rest of its hurt time.
+	float HurtTicksShown = Data ? static_cast<float>(Data->Stats.HurtTime) - Alpha : 0.0f;
+	float HurtSideShown = HurtSide;
+#if !UE_BUILD_SHIPPING
+	// -McHurtHold=N shows the roll of N hurt ticks left from the left, for screenshots against the reference client's.
+	static const int32 HurtHold = [] { int32 Value = 0; FParse::Value(FCommandLine::Get(), TEXT("-McHurtHold="), Value); return Value; }();
+	if (HurtHold > 0)
+	{
+		HurtTicksShown = static_cast<float>(HurtHold);
+		HurtSideShown = 1.0f;
+	}
+#endif
+	if (HurtTicksShown > 0.0f && HurtSideShown != 0.0f)
+	{
+		Camera->ClearAdditiveOffset();	// the engine multiplies each add into the last
+		Camera->AddAdditiveOffset(FTransform(FRotator(0.0, 0.0, -HurtSideShown * McCombat::GetHurtTilt(HurtTicksShown))), 0.0f);
+	}
+	else
+	{
+		Camera->ClearAdditiveOffset();
+	}
 	// F5: from behind the player, or from the front looking back, four blocks off or as far as the blocks let it.
 	Camera->bUsePawnControlRotation = true;
 	if (ViewMode != 0 && BlockWorld)
@@ -942,6 +963,18 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 	{
 		ServerWakeUp();
 	}
+	if (Taken > 0.0f)
+	{
+		const float Side = From ? McCombat::GetHurtSide(McLookYaw, From->X - Body.Position.X, From->Z - Body.Position.Z, true) : McCombat::GetHurtSide(McLookYaw, 0.0, 0.0, false);
+		if (IsLocallyControlled())
+		{
+			HurtSide = Side;
+		}
+		else
+		{
+			ClientHurtSide(Side);
+		}
+	}
 	if (Taken > 0.0f && From && Data->Stats.Health > 0.0f)
 	{
 		const FVector Push = McCombat::GetKnockback(Body.Position, *From, FVector::ZeroVector);
@@ -967,6 +1000,11 @@ void AMcPlayerPawn::ApplyKnockback(const FVector& Velocity)
 	Body.Velocity.Y = Velocity.Y;
 	Body.Velocity.Z = Velocity.Z;
 	Body.bOnGround = false;
+}
+
+void AMcPlayerPawn::ClientHurtSide_Implementation(float Side)
+{
+	HurtSide = Side;
 }
 
 void AMcPlayerPawn::ClientKnockback_Implementation(FVector Velocity)

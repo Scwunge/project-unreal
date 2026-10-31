@@ -79,6 +79,28 @@ namespace McCombat
 		return 0.1;
 	}
 
+	float GetHurtTilt(float HurtTicks)
+	{
+		const float T = FMath::Clamp(HurtTicks, 0.0f, 8.0f);
+		return 41.1f * FMath::Pow(T / 10.0f, 4.08f);
+	}
+
+	float GetHurtSide(float McYawDegrees, double OffsetX, double OffsetZ, bool bHasSource)
+	{
+		if (!bHasSource)
+		{
+			return 1.0f;
+		}
+		const double Length = FMath::Sqrt(OffsetX * OffsetX + OffsetZ * OffsetZ);
+		if (Length < 1.0e-6)
+		{
+			return 0.0f;
+		}
+		const double Yaw = FMath::DegreesToRadians(static_cast<double>(McYawDegrees));
+		// Facing is (-sin, cos) in (x, z); the left of it is (cos, sin).
+		return static_cast<float>((OffsetX * FMath::Cos(Yaw) + OffsetZ * FMath::Sin(Yaw)) / Length);
+	}
+
 	float GetBowShootPitch(float U, float Power)
 	{
 		return 0.62f + 0.21f * U + 0.5f * Power;

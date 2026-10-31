@@ -45,10 +45,17 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     stay dark. Block light (torches, lava) is added as warm emissive.
   - **Not done:**
     - Nether and End mood (done, 2026-10-31): a shadowless fill light (the Nether's `ambient_light_color` warmed
-      towards lava, 3 lux; the End's `sky_light_color`, 1.2 lux), a warm or cool colour grade with more bloom and
-      vignette, and a faint tinted glow in the volumetric fog. Tuning args: `-McNetherFill=`, `-McEndFill=`,
-      `-McFogGlow=`. The End reads well; the Nether still shows faint box edges at the fog volume or Lumen probe
-      grid (not fixed; try a lower fill, or lighting through the material's sky ambient instead).
+      towards lava, 4 lux; the End's `sky_light_color`, 1.2 lux), a warm or cool colour grade with more bloom and
+      vignette. Tuning args: `-McNetherFill=`, `-McEndFill=`, `-McFogGlow=`. The faint box lines in the Nether
+      were the volumetric fog's own emissive (visible froxel edges), so the glow defaults to 0.
+    - Physical sky (done, 2026-10-31): the Overworld by day uses SkyAtmosphere (lit by the one directional light),
+      volumetric clouds (the engine's simple cloud material, 0.6 to 2.0 km up) and a reflection-only SkyLight (diffuse
+      off, so caves stay dark). The vanilla dome and sun/moon squares hide meanwhile. Not done: the sun disc and the
+      dark strip at the world edge on the horizon; stars and moon phase on the atmosphere sky.
+    - Water (done, 2026-10-31): the lit and HD translucent materials tint by depth (scene depth minus pixel depth)
+      and show a drifting foam line where the water is shallow.
+    - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
+      material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.
     - Clouds, rain and the sky stay unlit.
   - **Dev switches:**

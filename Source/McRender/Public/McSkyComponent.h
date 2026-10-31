@@ -13,6 +13,9 @@ struct FMcDimensionType;
 class UDirectionalLightComponent;
 class UExponentialHeightFogComponent;
 class UPostProcessComponent;
+class USkyAtmosphereComponent;
+class USkyLightComponent;
+class UVolumetricCloudComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -107,6 +110,14 @@ private:
 	TObjectPtr<UDirectionalLightComponent> SunLight;
 	UPROPERTY(Transient)
 	TObjectPtr<UPostProcessComponent> EnhancedPost;
+	UPROPERTY(Transient)
+	TObjectPtr<USkyAtmosphereComponent> Atmosphere;
+	UPROPERTY(Transient)
+	TObjectPtr<UVolumetricCloudComponent> Clouds;
+	UPROPERTY(Transient)
+	TObjectPtr<USkyLightComponent> SkyLight;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> CloudMaterial;
 	uint32 LookGeneration = 0;
 
 	UPROPERTY()

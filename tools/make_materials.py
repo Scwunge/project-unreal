@@ -201,6 +201,13 @@ float3 a = (k >= 9.0 && k < 10.5 ? 1.0 : Tex) * pow(saturate(Shade.rgb), 2.2);
 if (k == 1.0)
 {
     a *= 0.5;
+    // Deeper water takes the colour out of what lies in it and goes a dark teal; at the shore (the scene's depth a
+    // hand's breadth behind the surface) a ragged line of foam, drifting with the waves.
+    float deep = saturate(1.0 - exp(-max(Depth, 0.0) / 250.0));
+    a = lerp(a, a * float3(0.45, 0.8, 0.9) * 0.6, deep);
+    float foam = saturate(1.0 - max(Depth, 0.0) / 40.0);
+    foam *= 0.55 + 0.45 * sin(Time * 1.7 + Pos.x * 0.21 + Pos.y * 0.17 + sin(Pos.y * 0.31) * 2.0);
+    a = lerp(a, float3(0.8, 0.85, 0.85), saturate(foam * foam * 1.4));
 }
 else if (k == 2.0)
 {
@@ -255,7 +262,11 @@ LIT_OPACITY_HLSL = KIND_HLSL + """
 if (k == 1.0)
 {
     float f = pow(1.0 - saturate(abs(dot(normalize(VNormal), normalize(View)))), 5.0);
-    return saturate(lerp(0.55, 1.0, f) * max(A, 0.6));
+    float o = saturate(lerp(0.55, 1.0, f) * max(A, 0.6));
+    // Murkier with depth, solid where the foam is.
+    float foam = saturate(1.0 - max(Depth, 0.0) / 40.0);
+    o = max(o, 0.4 + 0.55 * saturate(1.0 - exp(-max(Depth, 0.0) / 300.0)));
+    return max(o, foam * 0.9);
 }
 return A;
 """
@@ -484,7 +495,17 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         camera = mel.create_material_expression(material, unreal.MaterialExpressionCameraVectorWS, -700, 1300)
         wetness = add_scalar(material, -700, 1400, "Wetness", 0.0)
         glass = add_scalar(material, -700, 1500, "Glass", 1.0 if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT else 0.0)
-        common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, "")}
+        # How far the scene is behind this surface (cm): only translucent surfaces can read it; the rest say "far".
+        if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
+            scene_depth = mel.create_material_expression(material, unreal.MaterialExpressionSceneDepth, -900, 1600)
+            pixel_depth = mel.create_material_expression(material, unreal.MaterialExpressionPixelDepth, -900, 1700)
+            behind = mel.create_material_expression(material, unreal.MaterialExpressionSubtract, -700, 1650)
+            mel.connect_material_expressions(scene_depth, "", behind, "A")
+            mel.connect_material_expressions(pixel_depth, "", behind, "B")
+        else:
+            behind = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -700, 1650)
+            behind.set_editor_property("r", 100000.0)
+        common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, ""), "Depth": (behind, "")}
         hd = hd_linear_array is not None
         if hd:
             # The HD twin reads its own arrays (albedo, normal, specular), with parallax on opaque blocks.
@@ -500,7 +521,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
             down = add_array_sample(material, -350, -450, add_offset(material, -500, -450, uvw, (0.0, 1.0 / 16.0, 0.0)), default_array)
 
         albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_KINDS_HLSL,
-                            dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, "")))
+                            dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, ""), Time=(time, ""), Pos=(absolute, "")))
         mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
         emissive_code = LIT_EMISSIVE_KINDS_HLSL
         emissive_extra = {}
@@ -554,7 +575,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
             mel.connect_material_property(offset, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
         if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
             fresnel = add_custom(material, -100, 300, "McLitOpacity", LIT_OPACITY_HLSL,
-                                 {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, "")},
+                                 {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, ""), "Depth": (behind, "")},
                                  scalar=True)
             opacity_source = (fresnel, "")
     else:

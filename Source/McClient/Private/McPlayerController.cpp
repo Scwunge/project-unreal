@@ -1,4 +1,5 @@
 #include "McPlayerController.h"
+#include "ShaderCompiler.h"
 #include "McLaunch.h"
 #include "McBed.h"
 #include "McBlockUse.h"
@@ -845,9 +846,17 @@ void AMcPlayerController::StartDevScreenshot()
 	float Delay = 5.0f;
 	FParse::Value(FCommandLine::Get(), TEXT("-McShotDelay="), Delay);
 
-	FTimerHandle ShotTimer;
-	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, ShotPath]()
+	// The shot waits for the shaders still compiling (a material that changed is compiled when first drawn, and a
+	// translucent surface is skipped until then), up to three minutes more.
+	const TSharedRef<TFunction<void(int32)>> TakeShot = MakeShared<TFunction<void(int32)>>();
+	*TakeShot = [this, ShotPath, TakeShot](int32 Waited)
 	{
+		if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling() && Waited < 180)
+		{
+			FTimerHandle WaitTimer;
+			GetWorldTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot, Waited]() { (*TakeShot)(Waited + 1); }), 1.0f, false);
+			return;
+		}
 		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
@@ -855,7 +864,9 @@ void AMcPlayerController::StartDevScreenshot()
 		{
 			FPlatformMisc::RequestExit(false, TEXT("McShot"));
 		}), 1.0f, false);
-	}), Delay, false);
+	};
+	FTimerHandle ShotTimer;
+	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot]() { (*TakeShot)(0); }), Delay, false);
 #endif
 }
 

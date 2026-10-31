@@ -10,6 +10,9 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
+#include "Components/SkyAtmosphereComponent.h"
+#include "Components/SkyLightComponent.h"
+#include "Components/VolumetricCloudComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/Texture2DArray.h"
 #include "Engine/World.h"
@@ -46,7 +49,7 @@ namespace
 	constexpr float SunLux = 7.0f;
 	constexpr float MoonLux = 0.6f;
 		// The Nether's and the End's fill lights, in lux: just enough that shapes read where no block light reaches.
-		constexpr float NetherFillLux = 3.0f;
+		constexpr float NetherFillLux = 4.0f;
 		constexpr float EndFillLux = 1.2f;
 	// How much of the fog's thickness the volumetric fog takes: a haze with light shafts, not a wall.
 	constexpr float VolumetricFogShare = 0.04f;
@@ -152,6 +155,9 @@ UMcSkyComponent::UMcSkyComponent(const FObjectInitializer& ObjectInitializer)
 	// Made by tools/make_materials.py.
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> DomeFinder(TEXT("/Game/Mc/Materials/M_McSkyDome.M_McSkyDome"));
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> AdditiveFinder(TEXT("/Game/Mc/Materials/M_McSkyAdditive.M_McSkyAdditive"));
+	// The engine's own cloud material (Unreal Mode's volumetric clouds); a hard reference so it is cooked with the game.
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> CloudFinder(TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst"));
+	CloudMaterial = CloudFinder.Object;
 	DomeMaterial = DomeFinder.Object;
 	AdditiveMaterial = AdditiveFinder.Object;
 }
@@ -376,7 +382,9 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		}
 	}
 	const bool bOverworld = Mode == EMode::Overworld;
-	Sun->SetVisibility(bOverworld && CelestialAlpha > 0.001f);
+	// With Unreal Mode on, the Overworld's sky is the atmosphere's: no dome, no sun square.
+	const bool bPhysicalSky = bOverworld && McRenderMode::IsEnhanced() && Atmosphere;
+	Sun->SetVisibility(bOverworld && CelestialAlpha > 0.001f && !bPhysicalSky);
 	Moon->SetVisibility(bOverworld && CelestialAlpha > 0.001f);
 	Stars->SetVisibility(bOverworld && StarBrightness > 0.001f);
 	if (EndSky)
@@ -384,7 +392,7 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 		EndSky->SetVisibility(Mode == EMode::End);
 	}
 	// The end sky is the whole sky, drawn on black rather than added to the dome's colour.
-	Dome->SetVisibility(Mode != EMode::End);
+	Dome->SetVisibility(Mode != EMode::End && !bPhysicalSky);
 
 	UpdateDome(Ticks);
 	if (bOverworld)
@@ -421,8 +429,42 @@ void UMcSkyComponent::BuildEnhanced()
 	SunLight->SetEnableLightShaftBloom(true);
 	SunLight->SetBloomScale(0.12f);
 	SunLight->SetBloomThreshold(4.0f);
+	// The sun is the atmosphere's: the sky's colours, the sun's own reddening at a low angle and the sun disc come from it.
+	SunLight->SetAtmosphereSunLight(true);
+	SunLight->SetAtmosphereSunLightIndex(0);
 	SunLight->SetVisibility(false);
 	SunLight->RegisterComponent();
+
+	// Physical sky: Rayleigh and Mie scattering round a planet whose top is the world's y = 0. Hidden outside the Overworld
+	// and with Unreal Mode off, where the dome stands in.
+	Atmosphere = NewObject<USkyAtmosphereComponent>(GetOwner(), TEXT("Atmosphere"));
+	Atmosphere->SetupAttachment(this);
+	Atmosphere->SetUsingAbsoluteLocation(true);
+	Atmosphere->SetVisibility(false);
+	Atmosphere->RegisterComponent();
+	// The sky captured live, for what reflects it (water, glass, wet stone). Its diffuse light is off: Lumen can't tell
+	// a cave's ceiling from open sky here, and the chunks' own sky light does the ambient.
+	SkyLight = NewObject<USkyLightComponent>(GetOwner(), TEXT("SkyLight"));
+	SkyLight->SetupAttachment(this);
+	SkyLight->SetMobility(EComponentMobility::Movable);
+	SkyLight->SetRealTimeCaptureEnabled(true);
+	SkyLight->SetIndirectLightingIntensity(0.0f);
+	SkyLight->SetVisibility(false);
+	SkyLight->RegisterComponent();
+	// Clouds above the world, lit by the sun and the sky and shadowing the ground. A few hundred metres up and a kilometre
+	// thick, much taller than the game's flat 4-block layer: a thin slab would look like cardboard at this scale.
+	if (CloudMaterial)
+	{
+		Clouds = NewObject<UVolumetricCloudComponent>(GetOwner(), TEXT("Clouds"));
+		Clouds->SetupAttachment(this);
+		Clouds->SetUsingAbsoluteLocation(true);
+		Clouds->SetMaterial(CloudMaterial);
+		Clouds->SetLayerBottomAltitude(0.6f);
+		Clouds->SetLayerHeight(1.4f);
+		Clouds->SetTracingStartMaxDistance(60.0f);
+		Clouds->SetVisibility(false);
+		Clouds->RegisterComponent();
+	}
 
 	// Over the controller's fixed-exposure volume (which stays for the vanilla look) while enhanced.
 	EnhancedPost = NewObject<UPostProcessComponent>(GetOwner(), TEXT("EnhancedPost"));
@@ -529,6 +571,23 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		// An unshadowed fill scattering in the volumetric fog draws the edges of its grid.
 		SunLight->SetVolumetricScatteringIntensity(Mode == EMode::Overworld ? 1.0f : 0.0f);
 	}
+	if (Atmosphere)
+	{
+		const bool bSky = Mode == EMode::Overworld;
+		Atmosphere->SetVisibility(bSky);
+		if (SkyLight)
+		{
+			SkyLight->SetVisibility(bSky);
+		}
+		// Rain is haze: a thicker, less forward-scattering Mie layer turns the sky grey and the sun dim.
+		Atmosphere->SetMieScatteringScale(FMath::Lerp(0.004f, 0.06f, Rain));
+		Atmosphere->SetMieAnisotropy(FMath::Lerp(0.8f, 0.5f, Rain));
+		if (Clouds)
+		{
+			Clouds->SetVisibility(bSky);
+		}
+		SunLight->SetAtmosphereSunLight(bSky);
+	}
 	if (Mode != EMode::Overworld)
 	{
 		// No sun in the Nether or the End. Their mood is a dim fill light from above with no shadows (so it reaches
@@ -538,7 +597,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		// The fills' colours are the dimension types' own: the Nether's ambient_light_color (#302821, scaled up to full
 		// brightness and warmed towards the lava) and the End's sky_light_color (#ac60cd).
 		float Fill = bNether ? NetherFillLux : EndFillLux;
-		float Glow = 0.12f;
+		float Glow = 0.0f;
 #if !UE_BUILD_SHIPPING
 		// For tuning: -McNetherFill=, -McEndFill= (lux) and -McFogGlow= (times the fog's emissive).
 		FParse::Value(FCommandLine::Get(), bNether ? TEXT("-McNetherFill=") : TEXT("-McEndFill="), Fill);
@@ -578,7 +637,8 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	{
 		// Low, the sun is orange; high, nearly white.
 		const float High = FMath::Clamp(static_cast<float>(ToSun.Z) * 3.0f, 0.0f, 1.0f);
-		SunLight->SetLightColor(FMath::Lerp(FLinearColor(1.0f, 0.55f, 0.3f), FLinearColor(1.0f, 0.96f, 0.9f), High));
+		// The atmosphere's own transmittance reddens the low sun; the light itself is white.
+			SunLight->SetLightColor(FLinearColor::White);
 		SunLight->SetIntensity(SunIntensity * Day * Clear);
 		// Looking towards the sun the haze glows its colour, most of all as it sets.
 		if (Fog)
@@ -733,7 +793,9 @@ void UMcSkyComponent::UpdateFog()
 	const float Start = bNether ? NetherFogStartBlocks * McCoords::UnitsPerBlock : End * 0.6f;
 	Fog->SetStartDistance(Start);
 	Fog->SetFogCutoffDistance(DomeRadius * 0.8f);
-	Fog->SetFogDensity(3.3f / FMath::Max(End - Start, 1.0f) * 1000.0f);
+	// Under the physical sky the atmosphere hazes the distance itself, so the distance fog is half as thick.
+	const float Thin = (Mode == EMode::Overworld && McRenderMode::IsEnhanced() && Atmosphere) ? 0.5f : 1.0f;
+	Fog->SetFogDensity(3.3f / FMath::Max(End - Start, 1.0f) * 1000.0f * Thin);
 	Fog->FogInscatteringLuminance = DisplayToLinear(FogColor);
 	Fog->MarkRenderStateDirty();
 }

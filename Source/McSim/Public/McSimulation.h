@@ -112,6 +112,8 @@ public:
 
 private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
+	// A chunk loaded (from disk, the generator or the network): its conduits start their round of checks.
+	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);
@@ -126,6 +128,7 @@ private:
 
 	FMcBlockWorld& World;
 	FDelegateHandle ChangedHandle;
+	FDelegateHandle AddedHandle;
 	int64 GameTime = 0;
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;

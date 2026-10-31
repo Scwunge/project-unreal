@@ -2,6 +2,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McChunk.h"
 #include "McConduit.h"
 #include "McDimensionType.h"
 #include "McSimulation.h"
@@ -96,6 +97,38 @@ bool FMcConduitTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("awake again"), Pulses.Num() >= 1);
 	TestEqual(TEXT("reach 96"), Range, 96);
 	TestTrue(TEXT("hunting with 42"), bHunting);
+
+	// A chunk that comes in whole (from disk or the network) with a conduit in it: its checks start as it loads.
+	{
+		FMcBlockWorld Loaded{FMcDimensionType()};
+		FMcSimulation LoadedSim(Loaded);
+		int32 Heard = 0;
+		LoadedSim.OnConduitPulse = [&](const FIntVector& At, int32, bool) { Heard += At == Pos ? 1 : 0; };
+		TUniquePtr<FMcChunk> Chunk = Loaded.MakeChunk(FIntPoint(0, 0));
+		for (int32 X = 4; X <= 12; ++X)
+		{
+			for (int32 Y = 6; Y <= 14; ++Y)
+			{
+				for (int32 Z = 4; Z <= 12; ++Z)
+				{
+					Chunk->SetBlock(X, Y, Z, Water);
+				}
+			}
+		}
+		for (const FIntVector& Place : McConduit::GetFramePlaces())
+		{
+			Chunk->SetBlock(Pos.X + Place.X, Pos.Y + Place.Y, Pos.Z + Place.Z, Prismarine);
+		}
+		Chunk->SetBlock(Pos.X, Pos.Y, Pos.Z, State(TEXT("minecraft:conduit[waterlogged=true]")));
+		Loaded.AddChunk(MoveTemp(Chunk));
+		LoadedSim.Tick();
+		TestEqual(TEXT("a loaded conduit checks the next tick"), Heard, 1);
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			LoadedSim.Tick();
+		}
+		TestEqual(TEXT("and keeps on"), Heard, 2);
+	}
 	return true;
 }
 

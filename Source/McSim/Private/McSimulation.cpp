@@ -4,6 +4,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McChunk.h"
 #include "McConduit.h"
 #include "McNature.h"
 #include "McRedstone.h"
@@ -68,11 +69,13 @@ FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
 	Redstone = MakeUnique<FMcRedstone>(World, *this);
 	Nature = MakeUnique<FMcNature>(World, *this);
 	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
+	AddedHandle = World.OnChunkAdded.AddRaw(this, &FMcSimulation::OnChunkAdded);
 }
 
 FMcSimulation::~FMcSimulation()
 {
 	World.OnBlockChanged.Remove(ChangedHandle);
+	World.OnChunkAdded.Remove(AddedHandle);
 }
 
 void FMcSimulation::ScheduleTick(const FIntVector& Pos, int32 Delay)
@@ -154,6 +157,33 @@ bool FMcSimulation::UseBlock(const FIntVector& Pos, float Yaw)
 int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
 {
 	return Redstone->GetDustPower(Pos);
+}
+
+void FMcSimulation::OnChunkAdded(FIntPoint ChunkPos)
+{
+	const FMcChunk* Chunk = World.FindChunk(ChunkPos);
+	if (!Chunk)
+	{
+		return;
+	}
+	TArray<FMcStateId> States;
+	for (int32 Section = 0; Section < Chunk->NumSections(); ++Section)
+	{
+		const FMcChunkSection& Blocks = Chunk->GetSection(Section);
+		if (Blocks.IsEmpty() || !Blocks.Blocks.MayContain([](FMcStateId State) { return McConduit::IsConduit(State); }))
+		{
+			continue;
+		}
+		States.SetNumUninitialized(FMcPalettedContainer::NumEntries);
+		Blocks.Blocks.CopyTo(States);
+		for (int32 Index = 0; Index < States.Num(); ++Index)
+		{
+			if (McConduit::IsConduit(States[Index]))
+			{
+				ScheduleTick(FIntVector(ChunkPos.X * 16 + (Index & 15), Chunk->SectionMinY(Section) + (Index >> 8), ChunkPos.Y * 16 + ((Index >> 4) & 15)), 1);
+			}
+		}
+	}
 }
 
 void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)

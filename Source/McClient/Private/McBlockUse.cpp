@@ -202,6 +202,14 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 				Hoppers.FindOrAdd(MakeKey(*Actor, Pos)).World = Actor;
 			}
 		});
+		// So do the hoppers and part-done furnaces of a chunk as it loads.
+		Blocks->OnChunkAdded.AddWeakLambda(this, [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](FIntPoint ChunkPos)
+		{
+			if (AMcWorldActor* Actor = Weak.Get(); Actor && Actor->HasAuthority())
+			{
+				StartChunk(*Actor, ChunkPos);
+			}
+		});
 		if (FMcSimulation* Sim = WorldActor.GetSimulation())
 		{
 			Sim->OnDispense = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](const FIntVector& Pos)
@@ -304,30 +312,59 @@ void UMcBlockUseSubsystem::Sweep()
 		{
 			continue;
 		}
-		TArray<FIntVector> ToLoad;
-		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& ChunkPair : Blocks->GetChunks())
+		TArray<FIntPoint> Loaded;
+		Blocks->GetChunks().GetKeys(Loaded);
+		for (const FIntPoint& ChunkPos : Loaded)
 		{
-			for (const TPair<FIntVector, FMcBlockEntity>& Entity : ChunkPair.Value->GetBlockEntities())
+			StartChunk(*World, ChunkPos);
+		}
+	}
+}
+
+void UMcBlockUseSubsystem::StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	const FMcChunk* Chunk = Blocks ? Blocks->FindChunk(ChunkPos) : nullptr;
+	if (!Chunk)
+	{
+		return;
+	}
+	// Hoppers by their block, whether or not they hold anything yet.
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto IsHopper = [&Registry](FMcStateId State) { return Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == TEXT("minecraft:hopper"); };
+	TArray<FMcStateId> States;
+	for (int32 Section = 0; Section < Chunk->NumSections(); ++Section)
+	{
+		const FMcChunkSection& Part = Chunk->GetSection(Section);
+		if (Part.IsEmpty() || !Part.Blocks.MayContain(IsHopper))
+		{
+			continue;
+		}
+		States.SetNumUninitialized(FMcPalettedContainer::NumEntries);
+		Part.Blocks.CopyTo(States);
+		for (int32 Index = 0; Index < States.Num(); ++Index)
+		{
+			if (IsHopper(States[Index]))
 			{
-				const FIntVector Pos(ChunkPair.Key.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPair.Key.Y * 16 + Entity.Key.Z);
-				if (Entity.Value.Kind == EMcBlockEntityKind::Container && !Hoppers.Contains(MakeKey(*World, Pos))
-					&& GetBlockName(*Blocks, Pos) == TEXT("minecraft:hopper"))
-				{
-					Hoppers.Add(MakeKey(*World, Pos), FHopperEntry{ World, 0 });
-				}
-				if (Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
-				{
-					if (!Machines.Contains(MakeKey(*World, Pos)))
-					{
-						ToLoad.Add(Pos);
-					}
-				}
+				const FIntVector Pos(ChunkPos.X * 16 + (Index & 15), Chunk->SectionMinY(Section) + (Index >> 8), ChunkPos.Y * 16 + ((Index >> 4) & 15));
+				Hoppers.FindOrAdd(MakeKey(WorldActor, Pos), FHopperEntry{ &WorldActor, 0 });
 			}
 		}
-		for (const FIntVector& Pos : ToLoad)
+	}
+	// Furnaces and brewing stands saved mid-work go on with it.
+	TArray<FIntVector> ToLoad;
+	for (const TPair<FIntVector, FMcBlockEntity>& Entity : Chunk->GetBlockEntities())
+	{
+		const FIntVector Pos(ChunkPos.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPos.Y * 16 + Entity.Key.Z);
+		if ((Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
+			&& !Machines.Contains(MakeKey(WorldActor, Pos)))
 		{
-			GetMachine(*World, Pos, false);
+			ToLoad.Add(Pos);
 		}
+	}
+	for (const FIntVector& Pos : ToLoad)
+	{
+		GetMachine(WorldActor, Pos, false);
 	}
 }
 

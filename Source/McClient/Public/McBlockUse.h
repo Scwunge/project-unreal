@@ -108,6 +108,8 @@ private:
 	void WriteMachine(const FKey& Key, FMachineEntry& Entry);
 	void Sweep();
 	void WatchWorld(AMcWorldActor& WorldActor);
+	// Starts the hoppers, furnaces and brewing stands in a chunk that has come in (and on each sweep, for the rest).
+	void StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos);
 	// One game tick of every hopper.
 	void TickHoppers();
 	// Moves an item into the block the hopper faces, then one in from above; true if either moved.

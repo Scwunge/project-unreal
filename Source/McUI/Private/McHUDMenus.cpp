@@ -723,17 +723,17 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Resource Packs..."), CentreX - 100.0f, Top + 150.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Resource Packs..."), CentreX - 100.0f, Top + 136.0f, 200.0f, 20.0f))
 	{
 		OpenResourcePacks();
 		return;
 	}
 	if (bPacksNeedRestart)
 	{
-		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 174.0f, Grey);
+		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 184.0f, Grey);
 	}
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 198.0f, 200.0f, 20.0f))
+	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 160.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}

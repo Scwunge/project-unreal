@@ -317,7 +317,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   `Saved/McResourcePacks.json`, which `-McPacks=` overrides. The topmost selected pack wins.
 - **HD plus PBR check (Faithful PBR 1024 on the packs scene):** 108 layers carry `_n`/`_s` maps, the HD arrays are
   256 px under the budget, and the normal array's alpha is the pack's height map, so parallax can read it from there.
+- **Gaps closed after the picker:** a pack's `sounds/*.ogg` replace the cache's and its `sounds.json` events are merged
+  (`"replace": true` swaps the list); `lang/en_us.json` is merged key by key; font sheets of any multiple of 128
+  work (glyph widths in vanilla pixels); a pack made for another resource format (game: 97) is marked Incompatible
+  in the picker and still loads, falling back to vanilla files; broken zips and missing packs are listed with the
+  reason and skipped. GUI sprites, HUD, mobs, items, particles, sky go through `McCache::Asset` and were checked with
+  a throwaway pack (red hotbar, blue cow, 4x font) shot on the 1070. The Faithful demo pack itself only has blocks.
 - **Not done / later:**
+  - Sounds already decoded and the language table are rebuilt when the pack choice changes, but a decoded-sound
+    cache entry made before the change stays until the next start.
   - Switching packs while a world is open: the world holds the models and the texture array, so the choice is saved
     and applies at the next start. From the title screen the caches are unloaded and rebuilt on the next world.
   - The picker doesn't take dropped files or show pack compatibility warnings (`pack_format` is not checked).

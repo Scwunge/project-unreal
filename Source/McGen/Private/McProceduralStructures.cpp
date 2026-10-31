@@ -196,13 +196,14 @@ namespace
 		FIntVector Centre;
 		TArray<FBounds> Boxes;
 		int32 Count = 0;
-		FMcStateId Planks, Fence, Rail, Powered, Web, Spawner, Air, Log;
+		FMcStateId Planks, Fence, Rail, Powered, Web, Spawner, Air, Log, Chain;
 
 		FMineshaft(FDraw& InD, FMcRandom& InR, bool bInMesa, const FIntVector& InCentre) : D(InD), R(InR), bMesa(bInMesa), Centre(InCentre)
 		{
 			Planks = D.S(bMesa ? TEXT("minecraft:dark_oak_planks") : TEXT("minecraft:oak_planks"));
 			Fence = D.S(bMesa ? TEXT("minecraft:dark_oak_fence") : TEXT("minecraft:oak_fence"));
 			Log = D.S(bMesa ? TEXT("minecraft:dark_oak_log") : TEXT("minecraft:oak_log"));
+			Chain = D.S(TEXT("minecraft:iron_chain"));
 			Rail = D.S(TEXT("minecraft:rail"));
 			Powered = D.S(TEXT("minecraft:powered_rail"));
 			Web = D.S(TEXT("minecraft:cobweb"));
@@ -238,6 +239,47 @@ namespace
 			if (!Exposed(P.X, P.Y, P.Z))
 			{
 				D.Put(F, U, Y, V, State);
+			}
+		}
+
+		// Open to build in: air or liquid, in this column of the chunk being drawn (anything else, or outside it, is not).
+		bool Open(const FIntVector& P) const
+		{
+			if (P.X < D.Env.ClipMin.X || P.X > D.Env.ClipMax.X || P.Z < D.Env.ClipMin.Y || P.Z > D.Env.ClipMax.Y || P.Y < D.Env.MinY || P.Y > D.Env.MaxY)
+			{
+				return false;
+			}
+			const FMcStateId State = D.Env.Region.GetBlock(P);
+			return D.Env.Region.IsAir(State) || D.IsLiquid(State);
+		}
+
+		// Where a corridor crosses empty space its floor of planks is held up from below by a pillar of logs down to the ground, or
+		// failing that hung from above on iron chains up to the rock (minecraft.wiki, "Mineshaft"; the longest either goes is not
+		// given there: ten blocks here).
+		void Bridge(const FFrame& F, int32 U, int32 V)
+		{
+			constexpr int32 Reach = 10;
+			int32 Down = 0;
+			while (Down < Reach && Open(F.W(U, -2 - Down, V)))
+			{
+				++Down;
+			}
+			if (Down < Reach && F.W(U, -2 - Down, V).Y >= D.Env.MinY)
+			{
+				if (Down > 0)
+				{
+					Fill(F, U, -1 - Down, V, U, -2, V, Log);
+				}
+				return;
+			}
+			int32 Up = 0;
+			while (Up < Reach && Open(F.W(U, 3 + Up, V)))
+			{
+				++Up;
+			}
+			if (Up > 0 && Up < Reach)
+			{
+				Fill(F, U, 3, V, U, 2 + Up, V, Chain);
 			}
 		}
 
@@ -307,12 +349,26 @@ namespace
 			++Count;
 			const uint32 Salt = Hash(F.Origin.X, F.Origin.Y, F.Origin.Z);
 			D.FillWith(F, -1, 0, 0, 1, 2, Length - 1, [&](int32 X, int32 Y, int32 Z) { return !Exposed(X, Y, Z) && Hash(X, Y, Z, Salt) % 100 < 4 ? Web : Air; }, EMode::Carve);
-			Fill(F, -1, -1, 0, 1, -1, Length - 1, Planks, EMode::IfOpen);
+			// Where the floor under a support is open (a cave, a ravine, the air), before the planks go in.
+			TArray<uint8> Gaps;
 			for (int32 V = 1; V < Length; V += 4)
+			{
+				Gaps.Add((Open(F.W(-1, -1, V)) ? 1 : 0) | (Open(F.W(1, -1, V)) ? 2 : 0));
+			}
+			Fill(F, -1, -1, 0, 1, -1, Length - 1, Planks, EMode::IfOpen);
+			for (int32 V = 1, Index = 0; V < Length; V += 4, ++Index)
 			{
 				Fill(F, -1, 0, V, -1, 1, V, Fence);
 				Fill(F, 1, 0, V, 1, 1, V, Fence);
 				Fill(F, -1, 2, V, 1, 2, V, Planks);
+				if (Gaps[Index] & 1)
+				{
+					Bridge(F, -1, V);
+				}
+				if (Gaps[Index] & 2)
+				{
+					Bridge(F, 1, V);
+				}
 			}
 			if (bRails)
 			{

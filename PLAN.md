@@ -469,6 +469,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
     - [ ] Pig, cow, sheep, chicken (wing flap rate 25, 0.08 rest roll), goat, fox, bee, rabbit, turtle, slime: boxes from the textures;
           pivots and animation constants as above.
    - **Horse DONE (2026-10-31):** placed from the logged pivots and cube extents (body 10x10x22, legs 4x11x4 with boxes set 1 in, front legs 0.1 forward, tail/neck at 0.5236, whole model 1.1 scale); side shot matches in shape and proportions, McRender tests pass (14/14). Not done for the horse: leg swing and head animations not re-logged (walk log needed), donkey/mule/llama/trader llama/baby horse not re-fitted. Still to audit: vex, golem, skeleton, spider, animals as listed above; witch nose shot-check (animation can't show in a still).
+   - **Animals/mobs refit from the log (2026-10-31):** pig, cow, sheep, chicken, iron golem, spider, vex placed from logged pivots and cube extents (skeleton already matched); rotation order is now x, then y, then z (spider outer legs need it). Pig/sheep heads and hind legs were 2 px off, cow horns and chicken head/legs/beak had moved, golem head 2 px back, spider leg spread was 7.5 px (is 3), vex gained its second body box and 0.1571 lean. Still to do: cow muzzle box and sheep wool boxes (not in this log: dump the other model fields), walk/attack animation refits (spider yaw 0.4/roll 0.4/rate 1.3324, chicken wing flap, golem arms) need a walking log, then creeper, enderman, goat, fox, bee, rabbit, turtle, slime, baby models.
 
 ## 7. Decisions
 

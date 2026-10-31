@@ -84,8 +84,11 @@ static void ApplyQuality()
 	if (!GEnhanced)
 	{
 		SetConsoleFloat(TEXT("r.ScreenPercentage"), 100.0f);
+		SetConsoleVariable(TEXT("r.AntiAliasingMethod"), 0);
 		return;
 	}
+	// TSR smooths the edges and fills out the lower render scales; vanilla keeps the crisp unfiltered pixels (none).
+	SetConsoleVariable(TEXT("r.AntiAliasingMethod"), 4);
 	SetConsoleFloat(TEXT("r.ScreenPercentage"), P.Scale);
 	SetConsoleVariable(TEXT("r.Lumen.ScreenProbeGather.DownsampleFactor"), P.Probe);
 	SetConsoleVariable(TEXT("r.Lumen.Reflections.Allow"), P.Reflections);

@@ -483,6 +483,10 @@ void UMcSkyComponent::BuildEnhanced()
 	Settings.AutoExposureApplyPhysicalCameraExposure = false;
 	Settings.bOverride_AutoExposureBias = true;
 	Settings.AutoExposureBias = 0.0f;
+	Settings.bOverride_MotionBlurAmount = true;
+	Settings.MotionBlurAmount = 0.25f;
+	Settings.bOverride_MotionBlurMax = true;
+	Settings.MotionBlurMax = 3.0f;
 	Settings.bOverride_BloomIntensity = true;
 	Settings.BloomIntensity = 0.35f;
 	Settings.bOverride_AmbientOcclusionIntensity = true;

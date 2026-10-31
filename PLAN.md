@@ -314,7 +314,7 @@ exact, so only shares and densities are compared.
 | Forest leaf litter per column | 0.114 | 0.092 | `place_on_ground` tree decorator added |
 | Cave air % at y -64 / -48 / -32 / -16 | 1.69 / 8.2 / 10.3 / 10.3 | 1.9 / 8.6 / 10.7 / 10.2 | inside the spread |
 | Cave lava % at y -64 / -48 / -32 | .67 / .047 / .08 | .72 / .051 / .13 | fitted: aquifer floodedness x0.5, dry cells below -54 hold lava |
-| Cave air % at y 0 / 16 / 32 | 8.3 / 8.3 / 5.2 | 6.2 / 6.1 / 3.0 | marginal: low edge of the per-world spread (6.3..9.7 / 6.6..10.2 / 3.5..8.0); carvers add about 1.5 points per band (`CaveBands`) |
+| Cave air / water % at y 0 / 16 / 32 | 8.3 / 8.3 / 5.2 and 3.4 / 3.4 / 6.6 | 8.6 / 7.5 / 3.5 and 3.2 / 3.2 / 12.6 (was air 6.2 / 6.1 / 3.0, water 5.6 / 4.4 / 13.3) | fitted: aquifer level base 20 -> 10 and sea margin 8 -> 28 (total open volume already matched; ours was over-flooded at y 0-16). y 32+ water stays high: it follows how much ocean the sampled patches hold (one seed), air 3.5 vs 5.2 is the low edge of the spread |
 | Ores (coal, iron, copper, gold, redstone, diamond, lapis, granite, diorite, andesite, tuff, gravel) | | 0.75..1.18 of vanilla | inside the spread |
 | Dripstone blocks | 6.2k per 100k columns | 7.2k (was 27k) | fitted: large cone radius and height x0.7, linear taper; cluster radius x0.85, layers halved |
 | Amethyst / calcite per 100k columns | 6.6k / 8.4k | 6.1k / 7.5k (was 4.9k / 5.3k) | fitted: geode shell radii 1.3 / 4.1 / 5.2 / 5.9 (the wiki's 1.7 / 2.2 / 3.2 / 4.2 gave a twelfth of the amethyst) |

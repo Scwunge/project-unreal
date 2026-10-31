@@ -15,8 +15,8 @@ namespace
 	// much underground: measured on the reference client (5 worlds, 25 patches each), water in caves at y -64 to -33
 	// is 0.01 to 0.13% of the volume and the deep lava 0.67%; at 1.0 we had 0.57% water, at 0.5 0.09%.
 	static float FloodScale = 0.5f;
-	static int32 SeaMargin = 8;
-	static int32 LevelBase = 20;
+	static int32 SeaMargin = 28;
+	static int32 LevelBase = 10;
 	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarSeaMargin(TEXT("mc.aq.seamargin"), SeaMargin, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarLevelBase(TEXT("mc.aq.levelbase"), LevelBase, TEXT("sweep"));

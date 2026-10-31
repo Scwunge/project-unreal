@@ -145,6 +145,11 @@ public:
 	void MulticastBellRung(FIntVector Pos, uint8 Side);
 	TFunction<void(const FIntVector& Pos, uint8 Side)> OnBellRung;
 
+	// Every machine showing this dimension: the spawner at Pos started a new wait (the view's spinning mob).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastSpawnerCycled(FIntVector Pos);
+	TFunction<void(const FIntVector& Pos)> OnSpawnerCycled;
+
 	// Shulker box lids, stepped 20 times a second on every machine: the boxes' collision while open, and the pushes
 	// of opening lids. Null until the first tick.
 	FMcShulkerLids* GetShulkerLids() const { return ShulkerLids.Get(); }

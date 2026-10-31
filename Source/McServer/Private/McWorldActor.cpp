@@ -14,6 +14,7 @@
 #include "McNoiseGenerator.h"
 #include "McPortal.h"
 #include "McSimulation.h"
+#include "McSpawners.h"
 #include "McPhysics.h"
 #include "McServer.h"
 #include "McWorldStorage.h"
@@ -291,6 +292,10 @@ void AMcWorldActor::BeginPlay()
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	Entities->GetSpawners().OnCycle = [this](const FIntVector& Pos)
+	{
+		MulticastSpawnerCycled(Pos);
+	};
 	// A minecart on a detector rail powers it.
 	Entities->GetManager().OnDetector = [this](const FIntVector& Pos, bool bOccupied)
 	{
@@ -536,6 +541,14 @@ void AMcWorldActor::MulticastBellRung_Implementation(FIntVector Pos, uint8 Side)
 	if (bViewed && OnBellRung)
 	{
 		OnBellRung(Pos, Side);
+	}
+}
+
+void AMcWorldActor::MulticastSpawnerCycled_Implementation(FIntVector Pos)
+{
+	if (bViewed && OnSpawnerCycled)
+	{
+		OnSpawnerCycled(Pos);
 	}
 }
 

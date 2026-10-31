@@ -251,9 +251,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Conduit: the cage's turn and tilt, the eye's bob and the wind shells are still guesses; the logged rotation field
     goes 0.0375 a tick while awake and stops while asleep (conduit_log), but how the renderer turns that into the
     cage's angle needs frame shots (to batch with a later visual run).
-    Spawner: no mob turns inside it yet; vanilla's spin goes 1000/(wait+200) degrees a tick on the client, whose wait
-    starts again at 200 on each cycle and stands at 0 (5 degrees a tick) until the next (spawner_log). The
-    `spawnerBlocksEnabled` gamerule is listed but not yet read by the spawners.
+    Spawner: vanilla's spawners don't count spectators as players near (spawner_mob.txt: with only a spectator about the
+    wait held at 20 and the spin at 0); we have no spectator mode yet.
     For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
     (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
   - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
@@ -278,6 +277,16 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     layer or one above or below; a try that does not fit is lost (vanilla's cycles gave 2 to 4). 6 of the mob within
     the 9x9x9 box stop a cycle; hostile mobs need their own dark rule, and none come on peaceful (wiki). Spawning goes
     through the host's `SpawnMob`.
+  - **Spawner polish** (2026-10-31): the mob turns inside the spawner (McChestComponent, its block entity's mob, sent to
+    clients with the chunk): 20 times a second while this machine's player is within 16 blocks, the client's wait
+    counts down to 0 and the mob turns 1000/(wait+200) degrees; each cycle (the server's `MulticastSpawnerCycled`) puts
+    the wait back to 200 (spawner_log.txt, every tick; it stood still with the player 17 off). The game rule
+    `spawnerBlocksWork` (vanilla's `spawner_blocks_work`; we had it listed as spawnerBlocksEnabled) off holds every
+    spawner's wait where it is, so nothing comes out, while the mob inside still turns (spawner_rule.txt: the server's
+    wait held at 20 for 700 ticks and went on when the rule came back). Scene `-McScene=spawners` (`-McSpawnerSpin=0`
+    holds the mobs still, `-McSpawnerPose` tries another pose) for vanilla's spawner_mob.txt shots.
+    The pose (size 0.6, nose up 30 degrees) is only roughly fitted to ref_spawner_mob_pig: vanilla's pig there looks
+    turned off straight-on, so its starting spin may not be 0; a cleaner fit wants a logged spin at that shot.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

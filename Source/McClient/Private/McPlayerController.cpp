@@ -1,4 +1,5 @@
 #include "McPlayerController.h"
+#include "McMob.h"
 #include "McLaunch.h"
 #include "McBlockUse.h"
 #include "McBuckets.h"
@@ -492,6 +493,11 @@ void AMcPlayerController::AttachView()
 	ChestModels->SetWorld(WorldActor->GetBlockWorld());
 	// A chest's lid is up while this player has it open, and a shulker box's while anyone does. (Others' open chests
 	// aren't told to this machine.)
+	ChestModels->GetMobSize = [](FName Type)
+	{
+		const FMcMobType* Mob = FMcMobType::Find(Type);
+		return Mob ? FVector2D(Mob->Width, Mob->Height) : FVector2D(1.0, 1.0);
+	};
 	ChestModels->IsOpen = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FIntVector& Pos)
 	{
 		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
@@ -509,6 +515,13 @@ void AMcPlayerController::AttachView()
 		if (UMcChestComponent* Live = WeakChests.Get())
 		{
 			Live->RingBell(Pos, Side);
+		}
+	};
+	WorldActor->OnSpawnerCycled = [WeakChests = TWeakObjectPtr<UMcChestComponent>(ChestModels)](const FIntVector& Pos)
+	{
+		if (UMcChestComponent* Live = WeakChests.Get())
+		{
+			Live->SpawnerCycled(Pos);
 		}
 	};
 	UMcSignComponent* SignText = NewObject<UMcSignComponent>(WorldActor);

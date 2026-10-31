@@ -224,6 +224,7 @@ public:
 	void SetFishingLine(const TOptional<FVector>& InTip) { RodTip = InTip; }
 	// Draws the model this many times its size (a head worn on a player's).
 	void SetModelScale(float InScale) { ModelScale = InScale; }
+	FName GetKind() const { return Kind; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 

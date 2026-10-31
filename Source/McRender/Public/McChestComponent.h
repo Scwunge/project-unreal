@@ -57,6 +57,13 @@ public:
 	// How the bell at Pos is swung now (McEntityModel::FAnim's pitch and roll), zero if it isn't swinging.
 	FVector2D GetBellSwing(const FIntVector& Pos) const;
 
+	// The spawner at Pos started a new wait: the mob inside slows down and speeds up again.
+	void SpawnerCycled(const FIntVector& Pos);
+	// A mob's hitbox width and height (by its type), for the size of the one turning in a spawner.
+	TFunction<FVector2D(FName)> GetMobSize;
+	// The spin (Minecraft degrees) of the mob in the spawner at Pos, and the client's wait, or -1 for no spawner.
+	float GetSpawnerSpin(const FIntVector& Pos) const { const FChest* Found = Chests.Find(Pos); return Found && Found->Shape == EShape::Spawner ? Found->Spin : -1.0f; }
+
 	// The model a chest state is drawn with ("mc:chest/normal_left"), the yaw it is turned by (Minecraft degrees) and
 	// where its other half is, if it is half of a double; None for a state that isn't a chest. On Christmas days the
 	// chest and trapped chest wear the Christmas picture.
@@ -86,6 +93,8 @@ private:
 	void EntityChanged(const FIntVector& Pos);
 	// A pot's sides as its model's item: the four side items, back, left, right and front, comma separated.
 	FName GetPotSides(const FIntVector& Pos) const;
+	// The mob a spawner shows (its block entity's), or None.
+	FName GetSpawnerMob(const FIntVector& Pos) const;
 	void Clear(FIntPoint ChunkPos);
 	void Unhook();
 
@@ -97,7 +106,7 @@ private:
 	// Whether a state is a chest, by state id.
 	TBitArray<> IsChest;
 
-	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head, Pot, Conduit };
+	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head, Pot, Conduit, Spawner };
 	struct FChest
 	{
 		FMcStateId State = 0;
@@ -114,8 +123,15 @@ private:
 		// A bell: the side it was last struck on, and seconds since (negative for never).
 		int32 StruckSide = 0;
 		float SinceStruck = -1.0f;
+		// A spawner: the client's wait, the mob's spin (and the last tick's) and how far into its next tick the frame is.
+		int32 SpawnerDelay = 0;
+		float Spin = 0.0f;
+		float OSpin = 0.0f;
+		float SpinTickPart = 0.0f;
 	};
 	TMap<FIntVector, FChest> Chests;
+	// Steps a spawner's spin and places its mob, for a frame DeltaTime long seen from Viewer's eyes.
+	void TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcEntityModelComponent& Model, const FVector& Viewer, float DeltaTime);
 	TMap<FIntPoint, TArray<FIntVector>> ChestsByChunk;
 
 	UPROPERTY(Transient)

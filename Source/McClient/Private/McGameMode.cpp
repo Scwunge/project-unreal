@@ -406,6 +406,34 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Pot.Entity = FMcBlockEntity::MakePot(Sides);
 		}
 	}
+	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
+	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
+	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
+	{
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*RuleValues)->Values)
+		{
+			WorldActor->SetGameRule(Rule.Key, Rule.Value->AsString());
+		}
+	}
+	// Spawners' mobs: { "at": [x, y, z], "mob": "minecraft:pig" }.
+	const TArray<TSharedPtr<FJsonValue>>* SpawnerValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("spawners"), SpawnerValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *SpawnerValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Mob;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("mob"), Mob))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a spawner needs \"at\": [x, y, z] and \"mob\""), *Path);
+				continue;
+			}
+			FSceneSign& Spawner = Signs->Emplace_GetRef();
+			Spawner.Pos = ToBlock(*At);
+			Spawner.Entity = FMcBlockEntity::MakeSpawner(FName(*Mob));
+		}
+	}
 	if (Signs->Num() > 0)
 	{
 		TSharedRef<FTimerHandle> SignTimer = MakeShared<FTimerHandle>();

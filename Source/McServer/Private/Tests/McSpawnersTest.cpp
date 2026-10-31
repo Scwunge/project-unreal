@@ -8,6 +8,7 @@
 #include "McChunk.h"
 #include "McDimensionType.h"
 #include "McEntityHost.h"
+#include "McGameRules.h"
 #include "McItemRegistry.h"
 #include "McMob.h"
 #include "McSpawners.h"
@@ -105,6 +106,28 @@ bool FMcSpawnersTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(TEXT("still six"), CountPigs(Host), 6);
 		TestTrue(TEXT("the wait started again"), Host.GetSpawners().GetDelay(Pos) >= 200);
+	}
+
+	// spawnerBlocksWork off: the wait holds at 20 and nothing comes (vanilla, spawner_rule.txt); on again, it goes on.
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcEntityHost Host(World, 4);
+		Host.OnChunkAdded(FIntPoint(0, 0));
+		FMcGameRules Rules;
+		Rules.bSpawnerBlocksWork = false;
+		Host.SetRules(Rules);
+		const TArray<FVector> Near = { FVector(8.5, 1.0, 14.5) };
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			Host.Tick(Near, 6000.0);
+		}
+		TestEqual(TEXT("the wait holds with the rule off"), Host.GetSpawners().GetDelay(Pos), 20);
+		TestEqual(TEXT("and nothing comes"), CountPigs(Host), 0);
+		Rules.bSpawnerBlocksWork = true;
+		Host.SetRules(Rules);
+		Host.Tick(Near, 6000.0);
+		TestEqual(TEXT("it counts again with the rule on"), Host.GetSpawners().GetDelay(Pos), 19);
 	}
 
 	// Broken: forgotten.

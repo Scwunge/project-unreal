@@ -298,7 +298,8 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 		IsChest[Id] = !GetChestModel(static_cast<FMcStateId>(Id), Yaw, Partner).IsNone() || !GetShulkerModel(static_cast<FMcStateId>(Id), Rotation).IsNone()
 			|| McBell::IsBell(static_cast<FMcStateId>(Id)) || IsEnchantingTable(static_cast<FMcStateId>(Id))
 			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation) || !GetHeadModel(static_cast<FMcStateId>(Id), Centre, Yaw).IsNone()
-			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:decorated_pot")) || McConduit::IsConduit(static_cast<FMcStateId>(Id));
+			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:decorated_pot")) || McConduit::IsConduit(static_cast<FMcStateId>(Id))
+			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:spawner"));
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -337,6 +338,13 @@ FName UMcChestComponent::GetPotSides(const FIntVector& Pos) const
 	return FName(FString::Join(Sides, TEXT(",")));
 }
 
+FName UMcChestComponent::GetSpawnerMob(const FIntVector& Pos) const
+{
+	const FMcChunk* Chunk = World ? World->FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) : nullptr;
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	return Entity && Entity->Kind == EMcBlockEntityKind::Spawner ? Entity->EntityId : NAME_None;
+}
+
 void UMcChestComponent::EntityChanged(const FIntVector& Pos)
 {
 	const FChest* Known = Chests.Find(Pos);
@@ -344,6 +352,18 @@ void UMcChestComponent::EntityChanged(const FIntVector& Pos)
 	if (Known && Known->Shape == EShape::Pot && Model && *Model)
 	{
 		(*Model)->SetKind(FName(TEXT("mc:decorated_pot")), GetPotSides(Pos), 0);
+	}
+	if (Known && Known->Shape == EShape::Spawner && Model && *Model)
+	{
+		(*Model)->SetKind(GetSpawnerMob(Pos), NAME_None, 0);
+	}
+}
+
+void UMcChestComponent::SpawnerCycled(const FIntVector& Pos)
+{
+	if (FChest* Spawner = Chests.Find(Pos); Spawner && Spawner->Shape == EShape::Spawner)
+	{
+		Spawner->SpawnerDelay = 200;
 	}
 }
 
@@ -459,6 +479,14 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 			const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(Pair.Value, TEXT("facing"));
 			Yaw = Facing == TEXT("west") ? 90.0f : Facing == TEXT("north") ? 180.0f : Facing == TEXT("east") ? 270.0f : 0.0f;
 		}
+		else if (IsNamed(Pair.Value, TEXT("minecraft:spawner")))
+		{
+			// The mob of its block entity (none until that comes), turning; a new spawner's wait is 20, as the server's.
+			Known->Shape = EShape::Spawner;
+			Known->SpawnerDelay = 20;
+			Kind = GetSpawnerMob(Pair.Key);
+			Centre = FVector(0.5);
+		}
 		else if (McConduit::IsConduit(Pair.Value))
 		{
 			// Looked at again straight away, in case it is awake.
@@ -497,6 +525,67 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 	{
 		ChestsByChunk.Remove(ChunkPos);
 	}
+}
+
+void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcEntityModelComponent& Model, const FVector& Viewer, float DeltaTime)
+{
+	// Development: -McSpawnerSpin=<degrees> holds every spawner's mob at that spin (for a -McShot of it);
+	// -McSpawnerPose=<size>,<nose up>,<pivot>,<drop> tries another pose (see below).
+	static float HeldSpin = -1.0f;
+	static const bool bHeld = FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerSpin="), HeldSpin);
+	static float Size = 0.6f, NoseUp = 30.0f, Pivot = 0.5f, Drop = 0.27f;
+	static const bool bPosed = [&]()
+	{
+		FString Text;
+		TArray<FString> Parts;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerPose="), Text, /*bShouldStopOnSeparator=*/ false) && Text.ParseIntoArray(Parts, TEXT(",")) == 4)
+		{
+			Size = FCString::Atof(*Parts[0]);
+			NoseUp = FCString::Atof(*Parts[1]);
+			Pivot = FCString::Atof(*Parts[2]);
+			Drop = FCString::Atof(*Parts[3]);
+		}
+		return true;
+	}();
+	(void)bPosed;
+
+	// 20 times a second, while this machine's player is within 16 blocks of its middle (vanilla stood still with the
+	// player 17 off), the client's wait counts down to 0 and the mob turns 1000 / (wait + 200) degrees: 2.5 a tick just
+	// after a cycle (the wait starts again at 200), 5 a tick once it is over (mc-reference spawner_log.txt, every tick
+	// of 3400; spawner_rule.txt: a new spawner's client wait starts at 20, as the server's).
+	const FVector Middle = FVector(Pos) + FVector(0.5);
+	const bool bNear = FVector::DistSquared(Viewer - FVector(0.0, 1.62, 0.0), Middle) <= 16.0 * 16.0;
+	for (Spawner.SpinTickPart = FMath::Min(Spawner.SpinTickPart + DeltaTime * 20.0f, 20.0f); Spawner.SpinTickPart >= 1.0f; Spawner.SpinTickPart -= 1.0f)
+	{
+		Spawner.OSpin = Spawner.Spin;
+		if (bNear)
+		{
+			Spawner.SpawnerDelay = FMath::Max(0, Spawner.SpawnerDelay - 1);
+			Spawner.Spin = FMath::Fmod(Spawner.Spin + 1000.0f / (Spawner.SpawnerDelay + 200.0f), 360.0f);
+		}
+	}
+	float Spin = Spawner.OSpin + FMath::FindDeltaAngleDegrees(Spawner.OSpin, Spawner.Spin) * FMath::Min(Spawner.SpinTickPart, 1.0f);
+	if (bHeld)
+	{
+		Spin = HeldSpin;
+	}
+
+	// The mob, shrunk so its bigger side is Size blocks, turned by the spin about the upright through the block's
+	// middle, tipped nose up, its feet Pivot over the block's floor (less Drop along its own up).
+	const FVector2D Hitbox = GetMobSize ? GetMobSize(Model.GetKind()) : FVector2D(1.0, 1.0);
+	const float Scale = Size / FMath::Max3(Hitbox.X, Hitbox.Y, 0.1);
+	const double Yaw = FMath::DegreesToRadians(Spin);
+	const double Tip = FMath::DegreesToRadians(NoseUp);
+	// The model's own z runs from its face to its tail, so it faces along -z: at spin 0, south.
+	const FVector Side(-FMath::Cos(Yaw), 0.0, -FMath::Sin(Yaw));
+	const FVector Facing(-FMath::Sin(Yaw), 0.0, FMath::Cos(Yaw));
+	const FVector Up(0.0, 1.0, 0.0);
+	const FVector Forward = Facing * FMath::Cos(Tip) + Up * FMath::Sin(Tip);
+	const FVector Over = Up * FMath::Cos(Tip) - Facing * FMath::Sin(Tip);
+	const FVector Feet = FVector(Pos) + FVector(0.5, Pivot, 0.5) - Over * Drop;
+	Model.SetWorldLocationAndRotation(McCoords::BlockToUnreal(Feet), RotationFromAxes(Side, Over, -Forward));
+	Model.SetModelScale(Scale);
+	Model.SetLook(0.0f, 0.0f, 0.0f);
 }
 
 void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -561,6 +650,11 @@ void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 			const float EyeYaw = FMath::RadiansToDegrees(FMath::Atan2(-Towards.X, Towards.Z));
 			const float EyePitch = -FMath::RadiansToDegrees(FMath::Atan2(Towards.Y, FVector2D(Towards.X, Towards.Z).Size()));
 			Pair.Value->SetLook(0.0f, EyeYaw, EyePitch);
+			continue;
+		}
+		if (FChest* Spawner = Chests.Find(Pair.Key); Spawner && Spawner->Shape == EShape::Spawner)
+		{
+			TickSpawner(Pair.Key, *Spawner, *Pair.Value, Viewer, DeltaTime);
 			continue;
 		}
 		if (FChest* Book = Chests.Find(Pair.Key); Book && (Book->Shape == EShape::TableBook || Book->Shape == EShape::LecternBook))

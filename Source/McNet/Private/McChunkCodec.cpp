@@ -42,12 +42,13 @@ TArray<uint8> McChunkCodec::Encode(const FMcChunk& Chunk)
 	// Then the biome cells, 64 per section.
 	TArray<FMcBiomeId> Biomes(Chunk.GetBiomes());
 	Writer.Serialize(Biomes.GetData(), Biomes.Num());
-	// Then the block entities a player sees (signs, for their text, and pots, for their sherds); what containers
-	// hold stays on the server.
+	// Then the block entities a player sees (signs, for their text, pots, for their sherds, and spawners, for the mob
+	// turning inside); what containers hold stays on the server.
 	TArray<TPair<FIntVector, FMcBlockEntity>> Shown;
 	for (const TPair<FIntVector, FMcBlockEntity>& Pair : Chunk.GetBlockEntities())
 	{
-		if (Pair.Value.Kind == EMcBlockEntityKind::Sign || Pair.Value.Kind == EMcBlockEntityKind::Pot)
+		if (Pair.Value.Kind == EMcBlockEntityKind::Sign || Pair.Value.Kind == EMcBlockEntityKind::Pot
+			|| Pair.Value.Kind == EMcBlockEntityKind::Spawner)
 		{
 			Shown.Add(Pair);
 		}

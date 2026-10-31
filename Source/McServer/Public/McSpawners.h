@@ -41,6 +41,9 @@ public:
 	// Ticks left before the spawner at Pos next tries, or -1 if there is none there.
 	int32 GetDelay(const FIntVector& Pos) const { const int32* Delay = Spawners.Find(Pos); return Delay ? *Delay : -1; }
 
+	// A spawner finished a cycle and started its next wait (the clients' spinning mob slows down again).
+	TFunction<void(const FIntVector& Pos)> OnCycle;
+
 private:
 	// Tries one cycle of the spawner at Pos; true if the next wait starts.
 	bool Spawn(FMcEntityHost& Host, const FIntVector& Pos, FName Kind, FRandomStream& Random);

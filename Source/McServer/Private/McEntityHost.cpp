@@ -624,7 +624,8 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 
 	Manager.PlayerPositions = Players;
-	if (!Players.IsEmpty())
+	// With spawnerBlocksWork off a spawner's wait holds where it is (vanilla, spawner_rule.txt: 20 for 700 ticks).
+	if (!Players.IsEmpty() && Rules.bSpawnerBlocksWork)
 	{
 		Spawners->Tick(*this, Players, Random);
 	}

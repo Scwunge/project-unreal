@@ -67,6 +67,10 @@ void FMcSpawners::Tick(FMcEntityHost& Host, const TArray<FVector>& Players, FRan
 		else if (Spawn(Host, Pos, Entity->EntityId, Random))
 		{
 			It.Value() = Random.RandRange(MinDelay, MaxDelay - 1);
+			if (OnCycle)
+			{
+				OnCycle(Pos);
+			}
 		}
 	}
 }

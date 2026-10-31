@@ -45,6 +45,8 @@ public:
 	void PlacedSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	// A shulker box at Pos is being broken: what it holds goes into the box item among Drops (and is forgotten there).
+	// A decorated pot's drop: the pot with its sides, or (cracked) the sides themselves.
+	void PackPotDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
 	void PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
 	// A shulker box item was placed at Pos: what it carried goes into the new box.
 	void FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box);

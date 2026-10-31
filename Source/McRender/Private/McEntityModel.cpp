@@ -455,17 +455,24 @@ namespace McEntityModel
 			{
 				// A decorated pot (McChestComponent), 14 across and 16 high with a neck 8 across and 4 high on top. The base
 				// picture has the neck's net at its top left and the body's top and bottom side by side under it; each side
-				// is the middle 14 columns of a side picture (all the plain one: a pot's sherds aren't kept yet).
+				// is the middle 14 columns of a side picture, the plain one or its sherd's pattern (the component's item):
+				// facing south, the front south, then the right east, the back north and the left west (vanilla's
+				// heads_pots.txt, ref_pots_front: the blade front faces the camera, the arms up right on its east).
 				FModel Pot;
 				Pot.Kind = FName(TEXT("mc:decorated_pot"));
 				Pot.TextureSize = FIntPoint(32, 32);
-				Pot.Textures = { TEXT("decorated_pot/decorated_pot_base.png"), TEXT("decorated_pot/decorated_pot_side.png") };
-				Pot.LayerTextureSizes = { FIntPoint(32, 32), FIntPoint(16, 16) };
+				Pot.Textures = { TEXT("decorated_pot/decorated_pot_base.png") };
+				Pot.LayerTextureSizes = { FIntPoint(32, 32) };
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					Pot.Textures.Add(TEXT("decorated_pot/decorated_pot_side.png"));
+					Pot.LayerTextureSizes.Add(FIntPoint(16, 16));
+				}
 				Pot.Parts.Add(Part(ERole::Static, FVector::ZeroVector, {
 					Box(0, 0, -4, 16, -4, 8, 4, 8), Box(-14, 13, -7, 16, -7, 14, 0, 14), Box(-14, 13, -7, 0, -7, 14, 0, 14) }));
 				for (int32 Side = 0; Side < 4; ++Side)
 				{
-					Pot.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(1, 0, -7, 0, 7, 14, 16, 0) }, 0, Side * HALF_PI, 0, 0, 1));
+					Pot.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(1, 0, -7, 0, 7, 14, 16, 0) }, 0, Side * HALF_PI, 0, 0, 1 + Side));
 				}
 				Models.Add(Pot.Kind, Pot);
 			}
@@ -1207,6 +1214,19 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		Wood.RemoveFromStart(TEXT("minecraft:"));
 		const bool bChest = Kind == TEXT("minecraft:chest_boat") || Kind == TEXT("minecraft:bamboo_chest_raft");
 		return McCache::Asset((bChest ? TEXT("textures/entity/chest_boat/") : TEXT("textures/entity/boat/")) + Wood + TEXT(".png"));
+	}
+	if (Kind == TEXT("mc:decorated_pot") && Layer >= 1 && !Item.IsNone())
+	{
+		// The item names the sides back, left, right and front; the model's side layers go front, right, back, left.
+		static const int32 ItemSide[4] = { 3, 2, 0, 1 };
+		TArray<FString> Sides;
+		Item.ToString().ParseIntoArray(Sides, TEXT(","));
+		FString Side = Sides.IsValidIndex(ItemSide[(Layer - 1) & 3]) ? Sides[ItemSide[(Layer - 1) & 3]] : FString();
+		Side.RemoveFromStart(TEXT("minecraft:"));
+		if (Side.RemoveFromEnd(TEXT("_pottery_sherd")))
+		{
+			return McCache::Asset(TEXT("textures/entity/decorated_pot/") + Side + TEXT("_pottery_pattern.png"));
+		}
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

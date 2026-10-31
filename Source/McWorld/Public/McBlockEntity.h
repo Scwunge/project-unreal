@@ -25,6 +25,8 @@ enum class EMcBlockEntityKind : uint8
 	Sign,
 	// A lectern: the book on it in Slots[0] (none without one) and the Page it lies open at, from 0.
 	Lectern,
+	// A decorated pot: its back, left, right and front (a sherd or a brick each, McPot) in Slots[0..3].
+	Pot,
 };
 
 // One side of a sign (minecraft.wiki, "Sign"): four lines of text, the dye they are written in, and whether glow ink
@@ -63,6 +65,7 @@ struct MCWORLD_API FMcBlockEntity
 	static FMcBlockEntity MakeSpawner(FName InEntityId);
 	static FMcBlockEntity MakeSign();
 	static FMcBlockEntity MakeLectern(const FMcItemStack& Book);
+	static FMcBlockEntity MakePot(const TArray<FName>& Sides);
 
 	// Reads or writes, by whether the archive is loading. Names are saved as text, so a save doesn't depend on
 	// the name table. False if a loading archive is malformed.

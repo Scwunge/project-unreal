@@ -50,6 +50,17 @@ FMcBlockEntity FMcBlockEntity::MakeLectern(const FMcItemStack& Book)
 	return Result;
 }
 
+FMcBlockEntity FMcBlockEntity::MakePot(const TArray<FName>& Sides)
+{
+	FMcBlockEntity Result;
+	Result.Kind = EMcBlockEntityKind::Pot;
+	for (const FName Side : Sides)
+	{
+		Result.Slots.Add(FMcItemStack(Side, 1));
+	}
+	return Result;
+}
+
 bool FMcSignSide::HasText() const
 {
 	for (const FString& Line : Lines)
@@ -80,7 +91,7 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << KindByte;
 	if (Ar.IsLoading())
 	{
-		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Lectern))
+		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Pot))
 		{
 			return false;
 		}

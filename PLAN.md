@@ -301,9 +301,19 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     turning slowly with the eye inside looking at the player (`mc:conduit/cage`). Awake is `McConduit::IsActive`:
     waterlogged, water in all 26 blocks round it, and at least 16 of the 42 frame places (three rings five across)
     holding prismarine, prismarine bricks, dark prismarine or sea lanterns; the view looks again twice a second. Test
-    `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: a pot's sherds (no block
-    entity yet: every side is plain), its wobble and what it holds; the conduit's wind, its closed eye when hunting,
-    Conduit Power and attacking hostile mobs (none of which the server does yet).
+    `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: its wobble and what it
+    holds; the conduit's wind, its closed eye when hunting, Conduit Power and attacking hostile mobs (none of which
+    the server does yet).
+  - **Pot sherds** (2026-10-31): a pot keeps its four sides, back, left, right and front (`McPot`, in McItem; the
+    item's `minecraft:pot_decorations`, left off when all are bricks). Crafting puts the diamond's top, left, right and
+    bottom on them; placing the pot gives the block a `Pot` block entity with them (sent to clients with the chunk, as
+    signs are), and breaking it drops the pot with them, or, hit with a tool of `minecraft:breaks_decorated_pots`, the
+    loot table's cracked case and the four sides as items. Each side of the model is its own layer, drawn with the
+    plain side or its sherd's `<name>_pottery_pattern`: facing south, the front south, the right east, the back north,
+    the left west (vanilla, mc-reference `scripts/heads_pots.txt`, `ref_pots_front`). In the inventory the pot is drawn
+    in 3D with its sherds, by the item model's gui display (turned 45, tipped 30, at 0.6), as the heads are. Tests
+    `McItem` (crafting with sherds), `McRender.PotsAndConduits`; shot `-McScene=sherds`. Not done: the pot as a dropped
+    or held item is still flat.
   - **Fishing** (2026-10-30): using a fishing rod casts a bobber (`FMcFishingBobber` in McEntity, `McFishing`) from the
     eyes along the look, at 1.1 blocks a tick looking level and harder the steeper (measured from vanilla casts at
     eight pitches, mc-reference `scripts/bobber_cast*.txt`); it flies under gravity 0.03 and drag 0.92 a tick (measured), hooks the first mob, player or item it touches,

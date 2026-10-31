@@ -9,6 +9,7 @@
 #include "McEntityModel.h"
 #include "McPlayerModel.h"
 #include "McPlayerPawn.h"
+#include "McPot.h"
 #include "McSectionMesher.h"
 #include "McUI.h"
 #include "Dom/JsonObject.h"
@@ -150,7 +151,8 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 	}
 	FIcon Icon;
 	const FString Name = McCache::PathOf(Item.ToString());
-	if (!BuildHeadIcon(Item, Icon) && !BuildFlatIcon(Name, Icon))
+	if (!BuildHeadIcon(Item, Icon, Item == TEXT("minecraft:decorated_pot") ? McPot::GetSides(FMcItemStack(Item)) : TArray<FName>())
+		&& !BuildFlatIcon(Name, Icon))
 	{
 		// A block's item is drawn as the block; anything else we can't read the model of falls back on the sprite
 		// of the same name, if the jar has one.
@@ -171,6 +173,24 @@ const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 		}
 	}
 	return ItemIcons.Add(Item, MoveTemp(Icon));
+}
+
+const AMcHUD::FIcon& AMcHUD::GetPotIcon(const FMcItemStack& Pot)
+{
+	const TArray<FName> Sides = McPot::GetSides(Pot);
+	TArray<FString> Names;
+	for (const FName Side : Sides)
+	{
+		Names.Add(Side.ToString());
+	}
+	const FString Key = FString::Join(Names, TEXT(","));
+	if (const FIcon* Found = PotIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	BuildHeadIcon(Pot.Item, Icon, Sides);
+	return PotIcons.Add(Key, MoveTemp(Icon));
 }
 
 const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
@@ -272,18 +292,33 @@ bool AMcHUD::BuildFlatIcon(const FString& Name, FIcon& Icon)
 	return true;
 }
 
-bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon)
+bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSides)
 {
 	float WornScale;
-	const FName Kind = McPlayerModel::GetWornHeadModel(Item, WornScale);
-	const McEntityModel::FModel* Model = Kind.ToString().StartsWith(TEXT("mc:head/")) ? McEntityModel::Find(Kind) : nullptr;
+	const bool bPot = Item == TEXT("minecraft:decorated_pot");
+	const FName Kind = bPot ? FName(TEXT("mc:decorated_pot")) : McPlayerModel::GetWornHeadModel(Item, WornScale);
+	const McEntityModel::FModel* Model = bPot || Kind.ToString().StartsWith(TEXT("mc:head/")) ? McEntityModel::Find(Kind) : nullptr;
 	if (!Model || Model->Textures.IsEmpty())
 	{
 		return false;
 	}
-	McPlayerModel::FMeshData Mesh;
-	McEntityModel::BuildMesh(*Model, McEntityModel::FAnim(), 0, Mesh);
-	UTexture2D* Texture = GetLayerTexture(FName(TEXT("minecraft:entity/") + FPaths::GetBaseFilename(Model->Textures[0], false)));
+	// Each layer of the model with its picture: a head has the one; a pot its body and then its sides front, right, back
+	// and left (McEntityModel), each the plain side or its sherd's pattern.
+	struct FLayerMesh
+	{
+		McPlayerModel::FMeshData Mesh;
+		UTexture2D* Texture = nullptr;
+	};
+	TArray<FLayerMesh> LayerMeshes;
+	for (int32 Layer = 0; Layer < (bPot ? Model->Textures.Num() : 1); ++Layer)
+	{
+		FLayerMesh& Built = LayerMeshes.AddDefaulted_GetRef();
+		McEntityModel::BuildMesh(*Model, McEntityModel::FAnim(), Layer, Built.Mesh);
+		static const int32 PotSide[4] = { 3, 2, 0, 1 };
+		const FString Picture = bPot && Layer >= 1 && PotSides.IsValidIndex(PotSide[(Layer - 1) & 3]) ? McPot::GetPattern(PotSides[PotSide[(Layer - 1) & 3]])
+			: TEXT("entity/") + FPaths::GetBaseFilename(Model->Textures[Layer], false);
+		Built.Texture = GetLayerTexture(FName(TEXT("minecraft:") + Picture));
+	}
 	// The item's base model's "gui" display (template_skull: turned 45 and tipped 30 about the block's middle, lifted 3
 	// pixels, at full size where a block's item is 0.625; the dragon's at 0.6, 2 pixels left), found up its parents. The
 	// head stands on the middle of the block's floor, its face south, which this turn puts on the right, as vanilla's
@@ -341,29 +376,34 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon)
 		FIconTriangle Triangle;
 	};
 	TArray<FProjected> Triangles;
-	for (int32 First = 0; First + 2 < Mesh.Triangles.Num(); First += 3)
+	for (const FLayerMesh& Built : LayerMeshes)
 	{
-		FVector3d P[3];
-		for (int32 I = 0; I < 3; ++I)
+		const McPlayerModel::FMeshData& Mesh = Built.Mesh;
+		UTexture2D* const Texture = Built.Texture;
+		for (int32 First = 0; First + 2 < Mesh.Triangles.Num(); First += 3)
 		{
-			P[I] = View(Mesh.Positions[Mesh.Triangles[First + I]]);
+			FVector3d P[3];
+			for (int32 I = 0; I < 3; ++I)
+			{
+				P[I] = View(Mesh.Positions[Mesh.Triangles[First + I]]);
+			}
+			// Faces towards the viewer only, by the mesh's own normals (turned as the points are, without the lift).
+			const FVector3d N = (View(Mesh.Normals[Mesh.Triangles[First]] * McCoords::UnitsPerBlock) - View(FVector::ZeroVector)).GetSafeNormal();
+			if (N.Z <= 1e-6)
+			{
+				continue;
+			}
+			const float Shade = N.Y > 0.7 ? 1.0f : N.Y < -0.7 ? 0.5f : (N.X < 0.0 ? 0.8f : 0.6f);
+			FProjected& Projected = Triangles.AddDefaulted_GetRef();
+			Projected.Depth = (P[0].Z + P[1].Z + P[2].Z) / 3.0;
+			for (int32 I = 0; I < 3; ++I)
+			{
+				Projected.Triangle.Positions[I] = FVector2D(8.0 + P[I].X * 16.0, 8.0 - P[I].Y * 16.0);
+				Projected.Triangle.UVs[I] = Mesh.UV0[Mesh.Triangles[First + I]];
+			}
+			Projected.Triangle.Color = FLinearColor(Shade, Shade, Shade);
+			Projected.Triangle.Texture = Texture;
 		}
-		// Faces towards the viewer only, by the mesh's own normals (turned as the points are, without the lift).
-		const FVector3d N = (View(Mesh.Normals[Mesh.Triangles[First]] * McCoords::UnitsPerBlock) - View(FVector::ZeroVector)).GetSafeNormal();
-		if (N.Z <= 1e-6)
-		{
-			continue;
-		}
-		const float Shade = N.Y > 0.7 ? 1.0f : N.Y < -0.7 ? 0.5f : (N.X < 0.0 ? 0.8f : 0.6f);
-		FProjected& Projected = Triangles.AddDefaulted_GetRef();
-		Projected.Depth = (P[0].Z + P[1].Z + P[2].Z) / 3.0;
-		for (int32 I = 0; I < 3; ++I)
-		{
-			Projected.Triangle.Positions[I] = FVector2D(8.0 + P[I].X * 16.0, 8.0 - P[I].Y * 16.0);
-			Projected.Triangle.UVs[I] = Mesh.UV0[Mesh.Triangles[First + I]];
-		}
-		Projected.Triangle.Color = FLinearColor(Shade, Shade, Shade);
-		Projected.Triangle.Texture = Texture;
 	}
 	if (Triangles.IsEmpty())
 	{

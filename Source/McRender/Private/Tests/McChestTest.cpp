@@ -386,13 +386,23 @@ bool FMcPotConduitTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("a pot has a model"), Pot))
 	{
 		FAnim Still;
-		McPlayerModel::FMeshData Body, Sides;
+		McPlayerModel::FMeshData Body;
 		BuildMesh(*Pot, Still, 0, Body);
-		BuildMesh(*Pot, Still, 1, Sides);
 		const ::FBox Top(Body.Positions);
 		// The neck stands 4 above the 16 high body, 8 across; the body is 14 across.
 		TestTrue(TEXT("the body and neck reach 20 up"), FMath::IsNearlyEqual(Top.Max.Z, 125.0, 0.1) && FMath::IsNearlyEqual(Top.Min.Z, 0.0, 0.1));
-		const ::FBox Round(Sides.Positions);
+		// Each side its own layer (for its sherd): facing south, the front south, the right east, the back north and the
+		// left west.
+		::FBox Round(ForceInit);
+		const FVector Middles[4] = { FVector(0, 43.75, 50), FVector(43.75, 0, 50), FVector(0, -43.75, 50), FVector(-43.75, 0, 50) };
+		for (int32 Side = 0; Side < 4; ++Side)
+		{
+			McPlayerModel::FMeshData Sides;
+			BuildMesh(*Pot, Still, 1 + Side, Sides);
+			const ::FBox Face(Sides.Positions);
+			Round += Face;
+			TestTrue(FString::Printf(TEXT("side %d where it belongs (%s)"), Side, *Face.GetCenter().ToString()), Face.GetCenter().Equals(Middles[Side], 0.1));
+		}
 		TestTrue(TEXT("its sides 14 across all round"), Round.Min.Equals(FVector(-43.75, -43.75, 0.0), 0.1) && Round.Max.Equals(FVector(43.75, 43.75, 100.0), 0.1));
 	}
 	TestNotNull(TEXT("a conduit's shell"), Find(TEXT("mc:conduit/shell")));

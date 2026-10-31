@@ -5,6 +5,7 @@
 #include "McBlockWorld.h"
 #include "McChestLink.h"
 #include "McChunk.h"
+#include "McBlockEntity.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/CommandLine.h"
@@ -302,6 +303,7 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
 	RemovedHandle = World->OnChunkRemoved.AddUObject(this, &UMcChestComponent::Clear);
+	EntityHandle = World->OnBlockEntityChanged.AddUObject(this, &UMcChestComponent::EntityChanged);
 	for (const auto& Pair : World->GetChunks())
 	{
 		Scan(Pair.Key);
@@ -315,6 +317,33 @@ void UMcChestComponent::Unhook()
 		World->OnChunkAdded.Remove(AddedHandle);
 		World->OnChunkChanged.Remove(ChangedHandle);
 		World->OnChunkRemoved.Remove(RemovedHandle);
+		World->OnBlockEntityChanged.Remove(EntityHandle);
+	}
+}
+
+FName UMcChestComponent::GetPotSides(const FIntVector& Pos) const
+{
+	const FMcChunk* Chunk = World ? World->FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) : nullptr;
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	if (!Entity || Entity->Kind != EMcBlockEntityKind::Pot)
+	{
+		return NAME_None;
+	}
+	TArray<FString> Sides;
+	for (int32 Side = 0; Side < 4; ++Side)
+	{
+		Sides.Add(Entity->Slots.IsValidIndex(Side) && !Entity->Slots[Side].IsEmpty() ? Entity->Slots[Side].Item.ToString() : FString(TEXT("minecraft:brick")));
+	}
+	return FName(FString::Join(Sides, TEXT(",")));
+}
+
+void UMcChestComponent::EntityChanged(const FIntVector& Pos)
+{
+	const FChest* Known = Chests.Find(Pos);
+	const TObjectPtr<UMcEntityModelComponent>* Model = Models.Find(Pos);
+	if (Known && Known->Shape == EShape::Pot && Model && *Model)
+	{
+		(*Model)->SetKind(FName(TEXT("mc:decorated_pot")), GetPotSides(Pos), 0);
 	}
 }
 
@@ -461,7 +490,7 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 			Model->RegisterComponent();
 		}
 		Model->SetWorldLocationAndRotation(McCoords::BlockToUnreal(FVector(Pair.Key) + Centre), Rotation);
-		Model->SetKind(Kind, NAME_None, 0);
+		Model->SetKind(Kind, Known->Shape == EShape::Pot ? GetPotSides(Pair.Key) : NAME_None, 0);
 		Model->SetLook(Yaw, Yaw, 0.0f);
 	}
 	if (Listed.IsEmpty())

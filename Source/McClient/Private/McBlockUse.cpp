@@ -20,6 +20,7 @@
 #include "McBuckets.h"
 #include "McShulker.h"
 #include "McShulkerLids.h"
+#include "McPot.h"
 #include "McFont.h"
 #include "McSign.h"
 #include "McSimulation.h"
@@ -906,8 +907,8 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 
 void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
-	// A shulker box keeps its things for the item it drops (PackBoxDrops).
-	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && McShulker::IsBox(GetBlockName(*Blocks, Pos)))
+	// A shulker box keeps its things for the item it drops, and a decorated pot its sides (PackBoxDrops).
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && (McShulker::IsBox(GetBlockName(*Blocks, Pos)) || GetBlockName(*Blocks, Pos) == TEXT("minecraft:decorated_pot")))
 	{
 		return;
 	}
@@ -941,6 +942,11 @@ void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVec
 void UMcBlockUseSubsystem::PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops)
 {
 	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (Blocks && GetBlockName(*Blocks, Pos) == TEXT("minecraft:decorated_pot"))
+	{
+		PackPotDrops(WorldActor, Pos, Drops);
+		return;
+	}
 	if (!Blocks || !McShulker::IsBox(GetBlockName(*Blocks, Pos)))
 	{
 		return;
@@ -976,8 +982,56 @@ void UMcBlockUseSubsystem::PackBoxDrops(AMcWorldActor& WorldActor, const FIntVec
 	DropAll(WorldActor, Pos, Contents);
 }
 
+void UMcBlockUseSubsystem::PackPotDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops)
+{
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	TArray<FName> Sides;
+	Sides.Init(FName(TEXT("minecraft:brick")), McPot::NumSides);
+	if (Entity && Entity->Kind == EMcBlockEntityKind::Pot)
+	{
+		for (int32 Side = 0; Side < McPot::NumSides && Side < Entity->Slots.Num(); ++Side)
+		{
+			Sides[Side] = Entity->Slots[Side].IsEmpty() ? Sides[Side] : Entity->Slots[Side].Item;
+		}
+	}
+	if (Chunk && Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15))
+	{
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	}
+	// The loot table copies the sides onto the pot it drops; a cracked pot (broken with a tool that breaks pots) drops
+	// nothing from the table, but its "sherds": each side's sherd or brick.
+	bool bWhole = false;
+	for (FMcItemStack& Drop : Drops)
+	{
+		if (Drop.Item == TEXT("minecraft:decorated_pot"))
+		{
+			McPot::SetSides(Drop, Sides);
+			bWhole = true;
+		}
+	}
+	if (!bWhole && Drops.IsEmpty())
+	{
+		for (const FName Side : Sides)
+		{
+			Drops.Add(FMcItemStack(Side, 1));
+		}
+	}
+}
+
 void UMcBlockUseSubsystem::FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box)
 {
+	if (Box.Item == TEXT("minecraft:decorated_pot"))
+	{
+		// A placed pot keeps the item's sides.
+		if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos); Chunk && WorldActor.GetBlockWorld() && GetBlockName(*WorldActor.GetBlockWorld(), Pos) == Box.Item)
+		{
+			Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakePot(McPot::GetSides(Box)));
+			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			WorldActor.GetBlockWorld()->OnBlockEntityChanged.Broadcast(Pos);
+		}
+		return;
+	}
 	if (!McShulker::IsBox(Box.Item) || !Box.Has(TEXT("minecraft:container")))
 	{
 		return;

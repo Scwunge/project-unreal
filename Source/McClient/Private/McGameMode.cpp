@@ -382,6 +382,30 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Object->TryGetNumberField(TEXT("page"), Lectern.Entity.Page);
 		}
 	}
+	// Decorated pots' sides: { "at": [x, y, z], "sides": [back, left, right, front] }, items (bricks or sherds).
+	const TArray<TSharedPtr<FJsonValue>>* PotValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("pots"), PotValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *PotValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetArrayField(TEXT("sides"), SideValues))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a pot needs \"at\": [x, y, z] and \"sides\""), *Path);
+				continue;
+			}
+			TArray<FName> Sides;
+			for (const TSharedPtr<FJsonValue>& Side : *SideValues)
+			{
+				Sides.Add(FName(*Side->AsString()));
+			}
+			FSceneSign& Pot = Signs->Emplace_GetRef();
+			Pot.Pos = ToBlock(*At);
+			Pot.Entity = FMcBlockEntity::MakePot(Sides);
+		}
+	}
 	if (Signs->Num() > 0)
 	{
 		TSharedRef<FTimerHandle> SignTimer = MakeShared<FTimerHandle>();

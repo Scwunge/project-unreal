@@ -1309,6 +1309,13 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 		Other = Pos;
 	}
 
+	// A decorated pot hit with a tool that breaks pots cracks, and drops its sherds instead of itself (OnBreakDrops).
+	if (Registry.GetBlockOf(State).Name == TEXT("minecraft:decorated_pot") && !Tool.IsEmpty()
+		&& FMcItemRegistry::Get().HasTag(Tool.Item, TEXT("minecraft:breaks_decorated_pots")))
+	{
+		LootState = Registry.FindState(TEXT("minecraft:decorated_pot"), {{TEXT("cracked"), TEXT("true")}}).Get(LootState);
+	}
+
 	TArray<FMcItemStack> Drops;
 	McBlockBreak::GetDrops(LootState, Tool, DropRandom, Drops);
 	if (OnBreakDrops)

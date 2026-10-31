@@ -215,7 +215,8 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Pictur
 	{
 		return;
 	}
-	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
+	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack)
+		: Stack.Item == TEXT("minecraft:decorated_pot") ? GetPotIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
 	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{

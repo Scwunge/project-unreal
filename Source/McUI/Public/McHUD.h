@@ -78,11 +78,14 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// A decorated pot in 3D, with its sherds.
+	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
 	// A mob head's item: its placed model, turned and lifted as the item's template_skull model shows it in a slot.
-	bool BuildHeadIcon(FName Item, FIcon& Icon);
+	// PotSides: a decorated pot's sides (back, left, right, front), drawn with their sherds' patterns.
+	bool BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSides = {});
 	void DrawSprite(UTexture2D* Texture, float X, float Y, float Width, float Height);
 	// A part of a picture: U, V, UW and VH are in pixels of the picture itself.
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
@@ -211,6 +214,7 @@ private:
 	TMap<FMcStateId, FIcon> Icons;
 	TMap<FName, FIcon> ItemIcons;
 	TMap<FString, FIcon> BannerIcons;
+	TMap<FString, FIcon> PotIcons;
 
 	TArray<uint8> GlyphWidths;
 	TArray<uint8> GalacticWidths;

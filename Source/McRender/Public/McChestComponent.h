@@ -82,11 +82,16 @@ protected:
 
 private:
 	void Scan(FIntPoint ChunkPos);
+	// A pot's sides came (or changed): its model is drawn with them.
+	void EntityChanged(const FIntVector& Pos);
+	// A pot's sides as its model's item: the four side items, back, left, right and front, comma separated.
+	FName GetPotSides(const FIntVector& Pos) const;
 	void Clear(FIntPoint ChunkPos);
 	void Unhook();
 
 	FMcBlockWorld* World = nullptr;
 	FDelegateHandle AddedHandle;
+	FDelegateHandle EntityHandle;
 	FDelegateHandle RemovedHandle;
 	FDelegateHandle ChangedHandle;
 	// Whether a state is a chest, by state id.

@@ -540,6 +540,11 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("it holds a few ticks after the thing leaves"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
 		Run(Sim, 4);
 		TestEqual(TEXT("and lets go after the 10"), HookValue(0, TEXT("powered")), FString(TEXT("false")));
+		// Breaking the string powers both hooks at once (reference client).
+		World.SetBlock(FIntVector(3, 1, 7), Air);
+		Run(Sim, 2);
+		TestEqual(TEXT("a broken string powers the near hook"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
+		TestEqual(TEXT("and the far one"), HookValue(4, TEXT("powered")), FString(TEXT("true")));
 			// A daylight detector reads the sun.
 		World.SetBlock(FIntVector(12, 1, 0), State(TEXT("minecraft:daylight_detector[inverted=false,power=0]")));
 		Sim.SetSunLight(11);

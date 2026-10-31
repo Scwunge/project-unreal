@@ -1400,7 +1400,10 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 // ---- Tripwire (minecraft.wiki, "Tripwire", "Tripwire Hook") ----
 // Two hooks facing each other 1 to 40 blocks apart with string between them. An entity touching the string powers it
 // (not once it is disarmed); the hooks are powered while any of the string is. The string looks again 10 ticks after
-// it was triggered and every 10 while something stays in it. Not measured against the reference client yet.
+// it was triggered and every 10 while something stays in it. Held to the reference client's rs_tripwire log: an entity
+// powers the string and both hooks the tick it enters, they let go at the first 10-tick look that finds it empty, a
+// disarmed string powers itself but not the hooks, and a broken string powers the hooks. Shears and hook placement are
+// not done.
 
 void FMcRedstone::UpdateTripwires(const FIntVector& Pos)
 {
@@ -1468,6 +1471,13 @@ void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
 			break;
 		}
 		bPowered |= Flag(State, TEXT("powered")) && !Flag(State, TEXT("disarmed"));
+	}
+	// String broken (not by shears) under a hook that was attached: both hooks stay attached and power on at once, and
+	// stay so until the string is mended or looked at again (reference client, rs_tripwire: 6 ticks seen).
+	if (!bAttached && Flag(HookState, TEXT("attached")) && Other == Hook)
+	{
+		bAttached = true;
+		bPowered = true;
 	}
 	bPowered &= bAttached;
 	const auto Apply = [&](const FIntVector& Pos)

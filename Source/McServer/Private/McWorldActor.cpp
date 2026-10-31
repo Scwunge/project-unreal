@@ -306,7 +306,8 @@ void AMcWorldActor::BeginPlay()
 		}
 	};
 	// An arrow in a target block gives it a signal for 20 ticks. Strength by where it hit: 15 in the middle of the face
-	// down to 1 at the edge. UNMEASURED: the wiki gives the range only and the reference tool cannot shoot yet.
+	// down to 1 at the edge. Measured: the reference client's rs_target (arrows summoned at a 7x7 grid of spots on the face): power =
+	// ceil(15 * (1 - 2 * d)), d the larger of the two offsets from the face centre, 1 at least; 20 ticks, then off.
 	Entities->GetManager().OnArrowHit = [this](const FIntVector& Cell, const FVector& Hit, const FVector& Velocity)
 	{
 		if (!Simulation)

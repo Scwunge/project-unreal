@@ -1,5 +1,6 @@
 #include "McBiomeColors.h"
 #include "McBlockTextures.h"
+#include "McResourcePacks.h"
 #include "Engine/Texture2DArray.h"
 #include "Misc/AutomationTest.h"
 
@@ -43,8 +44,14 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("the texture array exists"), Array))
 	{
 		TestEqual(TEXT("array slices"), Array->GetArraySize(), Textures.NumLayers());
-		TestEqual(TEXT("array width"), Array->GetSizeX(), 16);
-		TestEqual(TEXT("array mips"), Array->GetNumMips(), FMcBlockTextures::NumMips);
+		TestEqual(TEXT("array width is the texture size"), Array->GetSizeX(), Textures.GetSize());
+		TestEqual(TEXT("array mips are a full chain"), Array->GetNumMips(), Textures.GetNumMips());
+		if (!McPacks::HasPacks())
+		{
+			TestEqual(TEXT("vanilla array is 16 wide"), Textures.GetSize(), 16);
+			TestEqual(TEXT("vanilla array has 5 mips"), Array->GetNumMips(), FMcBlockTextures::NumMips);
+			TestEqual(TEXT("nothing from a pack"), Textures.GetStats().FromPacks, 0);
+		}
 	}
 
 	TestEqual(TEXT("missingno is layer 0"), Textures.GetLayer(TEXT("minecraft:missingno")), 0);

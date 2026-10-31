@@ -6,7 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
 
-bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight)
+bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, int32 MaxSide)
 {
 	TArray<uint8> File;
 	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
@@ -23,6 +23,40 @@ bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPix
 	// FColor is BGRA in memory, as the raw data is.
 	OutPixels.SetNumUninitialized(OutWidth * OutHeight);
 	FMemory::Memcpy(OutPixels.GetData(), Raw.GetData(), FMath::Min<int64>(Raw.Num(), OutPixels.Num() * sizeof(FColor)));
+
+	// A resource pack's picture can be far wider than the 16 pixels it replaces. Whole blocks of Factor x Factor pixels
+	// become one, so a thin line stays (its alpha is the largest of the block's) and the colours are averaged.
+	const int32 Factor = MaxSide > 0 ? OutWidth / MaxSide : 1;
+	if (Factor > 1 && OutWidth % Factor == 0 && OutHeight % Factor == 0)
+	{
+		const int32 NewWidth = OutWidth / Factor;
+		const int32 NewHeight = OutHeight / Factor;
+		TArray<FColor> Small;
+		Small.SetNumUninitialized(NewWidth * NewHeight);
+		for (int32 Y = 0; Y < NewHeight; ++Y)
+		{
+			for (int32 X = 0; X < NewWidth; ++X)
+			{
+				int32 R = 0, G = 0, B = 0, A = 0;
+				for (int32 Dy = 0; Dy < Factor; ++Dy)
+				{
+					for (int32 Dx = 0; Dx < Factor; ++Dx)
+					{
+						const FColor& Pixel = OutPixels[(Y * Factor + Dy) * OutWidth + X * Factor + Dx];
+						R += Pixel.R;
+						G += Pixel.G;
+						B += Pixel.B;
+						A = FMath::Max<int32>(A, Pixel.A);
+					}
+				}
+				const int32 Count = Factor * Factor;
+				Small[Y * NewWidth + X] = FColor(static_cast<uint8>(R / Count), static_cast<uint8>(G / Count), static_cast<uint8>(B / Count), static_cast<uint8>(A));
+			}
+		}
+		OutPixels = MoveTemp(Small);
+		OutWidth = NewWidth;
+		OutHeight = NewHeight;
+	}
 	return true;
 }
 

@@ -336,6 +336,51 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Pack `overlays`, `optifine/` and `mcpatcher/` data (CTM, custom colormaps), the `lang` and sounds from packs.
   - A pack's animated normal and specular maps use the first frame.
 
+**Resource pack feature checklist** (every item of minecraft.wiki "Resource pack"; [x] done = built and tested or shot, [~] partly,
+  [ ] missing = not read at all):
+
+Pack files
+- [x] Zip and folder packs, stacked in order, later wins per file (`resourcepacks/`, `-McPacks=`, the picker)
+- [x] `pack.mcmeta`: `pack_format`, `supported_formats`, `min_format`/`max_format`, text-component `description`
+- [x] `pack.png` icon (picker)
+- [x] `filter.block` rules hiding lower packs' files
+- [x] Pack compatibility with the game's resource format (97): marked Incompatible, still loads
+- [ ] `overlays` (format-dependent extra directories): missing
+- [x] Broken zip, missing pack, missing file: listed with the reason, skipped, vanilla's file used
+- [ ] Drag and drop of packs onto the window, server-sent packs, the "are you sure" confirm screen: missing
+
+Textures
+- [x] Block textures at any size (array side follows the widest pack texture, budgeted)
+- [x] `.png.mcmeta` animations: `frametime`, `frames` with per-frame `time`, `interpolate`, `width`/`height` (tested)
+- [x] Item, entity, environment (sky, clouds, weather), particle, painting, GUI sprite, HUD and map pictures:
+  read through `McCache::Asset`, so a pack's file replaces the game's
+- [x] Colormaps (`colormap/grass.png`, `foliage.png`, `dry_foliage.png`)
+- [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
+- [~] `.png.mcmeta` for textures (`blur`, `clamp`), villager (`hat`), GUI (`gui.scaling`: nine_slice borders, tile,
+  stretch): partly. Nine-slice borders are fixed at the vanilla sizes; `blur`/`clamp`/`hat` are not read
+- [ ] `atlases/*.json` (sources, directories, filters, palettes): missing (the block array is built from the models)
+- [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
+- [ ] `font/*.json` providers (bitmap, ttf, unihex, space, reference): missing; only the two sheets above
+
+Models and items
+- [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's (tested)
+- [~] Item models: held-item mesh and HUD icons read `models/item` and `items/*.json` from packs; custom
+  `items/*.json` conditions/selects are only as far as the game's own are
+- [ ] Entity models in `models/entity` format (Optifine CEM) and `optifine/`/`mcpatcher/` data (CTM, custom colormaps,
+  `texture.properties` formats): missing; LabPBR is detected through the maps, not the property file
+
+Other assets
+- [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`)
+- [x] `lang/*.json` merged key by key
+- [ ] `texts/` (splashes, credits, end poem), `particles/*.json` definitions, `shaders/` (post effects, core),
+  `waypoint_style`, `regional_compliance`: missing (shaders cannot apply: Unreal draws the world)
+
+PBR (LabPBR 1.3, an Optifine/shader-pack feature, not vanilla)
+- [x] `_n`/`_s` maps kept per layer with `-McPackPbr`; HD arrays use them (normal RG xy, B AO, A height; specular
+  R smoothness, G F0, A emissive)
+- [ ] `_e` and `_r` extra maps, porosity/subsurface channels in specular B, parallax from the height alpha: with the
+  unrealmode session's surface work
+
 ### M4 build order
 
 The 26.3 worldgen data (`cache/client/data/minecraft/worldgen`) is the source of truth. The overworld biome

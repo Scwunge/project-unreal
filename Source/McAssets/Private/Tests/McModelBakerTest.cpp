@@ -1,5 +1,9 @@
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
+#include "McResourcePacks.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -188,6 +192,71 @@ bool FMcModelBakerTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("piston body facing down is the top 12 pixels"), FMath::IsNearlyEqual(Down.X, 0.25) && FMath::IsNearlyEqual(Down.Y, 1.0));
 	}
 
+	return true;
+}
+
+// A pack's blockstates and models replace the game's: a blockstate that names a model of the pack's own (a half-height
+// box, written with elements) and one that names a child of block/cube_all with another texture. Both are read through
+// the pack stack, so the baker needs no pack code of its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackModelsTest, "McClient.McAssets.PackModels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackModelsTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackModelsTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Assets = Root / TEXT("assets/minecraft");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"models test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_half\"}}}"), *(Assets / TEXT("blockstates/stone.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_dirt_cube\"}}}"), *(Assets / TEXT("blockstates/sand.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"textures\":{\"all\":\"minecraft:block/cobblestone\",\"particle\":\"minecraft:block/cobblestone\"},"
+		"\"elements\":[{\"from\":[0,0,0],\"to\":[16,8,16],\"faces\":{\"up\":{\"texture\":\"#all\",\"cullface\":\"up\"},\"down\":{\"texture\":\"#all\"},"
+		"\"north\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"south\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"west\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"east\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]}}}]}"),
+		*(Assets / TEXT("models/block/zz_half.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"minecraft:block/dirt\"}}"), *(Assets / TEXT("models/block/zz_dirt_cube.json")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockModels& Models = FMcBlockModels::Get();
+	Models.Unload();
+	if (TestTrue(TEXT("models bake with the pack"), Models.EnsureBaked()))
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const TOptional<FMcStateId> Stone = Registry.FindDefaultState(FName("minecraft:stone"));
+		const TOptional<FMcStateId> Sand = Registry.FindDefaultState(FName("minecraft:sand"));
+		if (TestTrue(TEXT("stone and sand exist"), Stone.IsSet() && Sand.IsSet()))
+		{
+			const FMcBakedModel& Half = Models.GetModel(Stone.GetValue());
+			TestEqual(TEXT("the pack's own model has six faces"), Half.Quads.Num(), 6);
+			float MaxY = 0.0f;
+			for (const FMcBakedQuad& Quad : Half.Quads)
+			{
+				for (const FVector3f& P : Quad.Positions)
+				{
+					MaxY = FMath::Max(MaxY, P.Y);
+				}
+				TestEqual(TEXT("with the model's texture"), Quad.Texture, FName("minecraft:block/cobblestone"));
+			}
+			TestEqual(TEXT("and half the height"), MaxY, 0.5f);
+
+			const FMcBakedModel& Cube = Models.GetModel(Sand.GetValue());
+			TestEqual(TEXT("a child of cube_all has six faces"), Cube.Quads.Num(), 6);
+			for (const FMcBakedQuad& Quad : Cube.Quads)
+			{
+				TestEqual(TEXT("with the child's texture"), Quad.Texture, FName("minecraft:block/dirt"));
+			}
+		}
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Models.Unload();
+	Models.EnsureBaked();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

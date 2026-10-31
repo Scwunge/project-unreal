@@ -557,6 +557,11 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	{
 		return Supports(TEXT("minecraft:supports_azalea"));
 	}
+	if (Name == TEXT("minecraft:spore_blossom"))
+	{
+		// Hangs from a ceiling with a sturdy underside (it is in the flowers tag, which would ask for ground).
+		return HasSturdyFace(Region.GetBlock(Pos + FIntVector(0, 1, 0)), FIntVector(0, -1, 0));
+	}
 	if (Name == TEXT("minecraft:mangrove_propagule"))
 	{
 		return Supports(TEXT("minecraft:supports_mangrove_propagule"));

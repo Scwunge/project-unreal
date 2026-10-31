@@ -224,6 +224,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:basalt_pillar"), EScene::Nether, FIntPoint(0, 0), FIntVector(24, 60, 24), TEXT("minecraft:basalt"), 1 },
 		{ TEXT("minecraft:sculk_patch_deep_dark"), EScene::Cave, FIntPoint(0, 0), FIntVector(24, 45, 24), TEXT("minecraft:sculk"), 4 },
 		{ TEXT("minecraft:rooted_azalea_tree"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:azalea_leaves"), 6 },
+		{ TEXT("minecraft:spore_blossom"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:spore_blossom"), 4 },
 		{ TEXT("minecraft:warm_ocean_vegetation"), EScene::Sea, FIntPoint(0, 0), FIntVector(24, 46, 24), TEXT("coral_block"), 40 },
 	};
 	for (const FCase& Case : Cases)

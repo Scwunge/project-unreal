@@ -279,9 +279,11 @@ void FMcNoiseGenerator::LoadCarvers()
 	}
 }
 
+bool bMcCarversOff = false;
+
 void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const
 {
-	if (Carvers.IsEmpty())
+	if (Carvers.IsEmpty() || bMcCarversOff)
 	{
 		return;
 	}
@@ -510,6 +512,24 @@ int32 FMcNoiseGenerator::FindSurfaceY(int32 X, int32 Z) const
 		{
 			// Under the sea the surface is the water's.
 			return FMath::Max(Y, Settings.SeaLevel - 1);
+		}
+	}
+	return Settings.MinY;
+}
+
+int32 FMcNoiseGenerator::FindSolidTopY(int32 X, int32 Z) const
+{
+	if (!bValid)
+	{
+		return Settings.SeaLevel;
+	}
+	FMcDensityContext Context(Graph);
+	for (int32 Y = Settings.MinY + Settings.Height - 1; Y >= Settings.MinY; --Y)
+	{
+		Context.SetPos(X, Y, Z);
+		if (Graph.Evaluate(FinalDensity, Context) > 0.0)
+		{
+			return Y;
 		}
 	}
 	return Settings.MinY;

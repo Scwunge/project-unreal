@@ -67,6 +67,8 @@ MCGEN_API extern TMap<FString, TPair<int64, int64>> McFeatureStats;
 
 // Off unless a test turns it on.
 MCGEN_API extern bool bMcFeatureStatsOn;
+// Adds one use and Blocks blocks to the counter named Key (when stats are on).
+MCGEN_API void McCountBlocks(const TCHAR* Key, int64 Blocks);
 
 // Parses and keeps configured and placed features by id, and decorates chunks with the features their biomes
 // list. Load on the game thread (it reads files and the registries); after LoadBiomes it is read only, so

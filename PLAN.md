@@ -314,11 +314,13 @@ exact, so only shares and densities are compared.
 | Forest leaf litter per column | 0.114 | 0.092 | `place_on_ground` tree decorator added |
 | Cave air % at y -64 / -48 / -32 / -16 | 1.69 / 8.2 / 10.3 / 10.3 | 1.9 / 8.6 / 10.7 / 10.2 | inside the spread |
 | Cave lava % at y -64 / -48 / -32 | .67 / .047 / .08 | .72 / .051 / .13 | fitted: aquifer floodedness x0.5, dry cells below -54 hold lava |
-| Cave air % at y 0 / 16 / 32 | 8.3 / 8.3 / 5.2 | 6.0 / 6.0 / 2.9 | open: about 30% low |
-| Cave water % at y 32 | 6.6 | 13.3 | open: aquifer flooding too wide above y 16 |
+| Cave air % at y 0 / 16 / 32 | 8.3 / 8.3 / 5.2 | 6.2 / 6.1 / 3.0 | marginal: low edge of the per-world spread (6.3..9.7 / 6.6..10.2 / 3.5..8.0); carvers add about 1.5 points per band (`CaveBands`) |
 | Ores (coal, iron, copper, gold, redstone, diamond, lapis, granite, diorite, andesite, tuff, gravel) | | 0.75..1.18 of vanilla | inside the spread |
-| Dripstone blocks | 6.2k per 100k columns | 27k | open: x4.4 with the same cave biome share, so the clusters or the large cones are too big |
-| Amethyst / calcite / moss / raw copper blocks | 6.6k / 8.4k / 6.7k / 77 | 0.5k / 2.8k / 2.9k / 29 | open: geode and moss patch volumes too small (amethyst about 12x per geode); geode layer thickness is not in the data |
+| Dripstone blocks | 6.2k per 100k columns | 7.2k (was 27k) | fitted: large cone radius and height x0.7, linear taper; cluster radius x0.85, layers halved |
+| Amethyst / calcite per 100k columns | 6.6k / 8.4k | 4.9k / 5.3k (was 0.5k / 2.8k) | fitted: geode shell radii 1.3 / 3.8 / 4.7 / 5.4 (the wiki's 1.7 / 2.2 / 3.2 / 4.2 gave a twelfth of the amethyst) |
+| Moss blocks / raw copper blocks | 6.7k / 77 | 3.1k / 29 | open: patches are the right size (126 blocks each), too few of them in lush caves |
+| Spore blossom | | placed 0 of 39 tries before, 39 of 39 now | fixed: it is in the flowers tag, so the ground check rejected it; now needs a sturdy ceiling |
+| Cave water / air above y 0 | see rows above | | mostly world-to-world variance (per-world vanilla bands overlap ours); sea floor depth in `McClient.McGen.FloorMix` vs the reference's `log floors` agrees within the spread except one ocean-heavy seed |
 
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

@@ -3,6 +3,7 @@
 #include "McDensityFunction.h"
 #include "McGen.h"
 #include "McRandom.h"
+#include "HAL/IConsoleManager.h"
 
 namespace
 {
@@ -13,7 +14,12 @@ namespace
 	// Scale on the floodedness noise. The wiki's thresholds read against the noise's documented amplitude flood too
 	// much underground: measured on the reference client (5 worlds, 25 patches each), water in caves at y -64 to -33
 	// is 0.01 to 0.13% of the volume and the deep lava 0.67%; at 1.0 we had 0.57% water, at 0.5 0.09%.
-	constexpr double FloodScale = 0.5;
+	static float FloodScale = 0.5f;
+	static int32 SeaMargin = 8;
+	static int32 LevelBase = 20;
+	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarSeaMargin(TEXT("mc.aq.seamargin"), SeaMargin, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarLevelBase(TEXT("mc.aq.levelbase"), LevelBase, TEXT("sweep"));
 	// Squared distances closer than this to the nearest centre's count as a boundary.
 	constexpr int32 BoundaryDistance = 25;
 
@@ -110,7 +116,7 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 	{
 		const int32 Surface = SurfaceAt(ChunkX + Offset.X, ChunkZ + Offset.Y, Context, Cache);
 		LowestSurface = FMath::Min(LowestSurface, Surface);
-		bOpenToSea |= Surface < SeaLevel && Centre.Y + 12 > Surface + 8;
+		bOpenToSea |= Surface < SeaLevel && Centre.Y + 12 > Surface + SeaMargin;
 	}
 
 	if (Centre.Y - 12 > OwnSurface + 8 || bOpenToSea)
@@ -147,7 +153,7 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 			Context.SetPos(ChunkX * 16, RegionY * 40, ChunkZ * 16);
 			const double SpreadValue = Graph->Evaluate(Spread, Context) * 10.0;
 			const int32 Step = FMath::Clamp(FMath::FloorToInt32(SpreadValue / 3.0) * 3, -9, 9);
-			Result.Level = FMath::Min(RegionY * 40 + 20 + Step, LowestSurface);
+			Result.Level = FMath::Min(RegionY * 40 + LevelBase + Step, LowestSurface);
 			Result.Fluid = Water;
 			if (Result.Level <= LavaAquiferTop)
 			{

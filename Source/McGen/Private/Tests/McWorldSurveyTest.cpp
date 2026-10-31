@@ -548,3 +548,146 @@ MC_WORLD_STATS_TEST(3)
 MC_WORLD_STATS_TEST(4)
 
 #endif
+
+// Air, water and lava as a share of each 8-block band, over 25 patches of 4 by 4 undecorated chunks, with the carvers on
+// and off, to see how much of the caves comes from the carvers. "CAVEBANDS <carvers> <seed> <band start y> air water lava".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcCaveBandsTest, "McClient.McGen.CaveBands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcCaveBandsTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll) };
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	for (const bool bOff : { false, true })
+	{
+		bMcCarversOff = bOff;
+		TArray<int64> Air, Water, Lava, Total;
+		Air.SetNumZeroed(48);
+		Water.SetNumZeroed(48);
+		Lava.SetNumZeroed(48);
+		Total.SetNumZeroed(48);
+		for (const uint64 Seed : Seeds)
+		{
+			const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+			for (int32 Patch = 0; Patch < 25; ++Patch)
+			{
+				const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
+				for (int32 Index = 0; Index < 16; ++Index)
+				{
+					FMcChunk Chunk(FIntPoint(Corner.X + Index % 4, Corner.Y + Index / 4), Settings.MinY, Settings.Height / 16);
+					Generator.Generate(Chunk);
+					for (int32 Y = Settings.MinY; Y < Settings.MinY + 128 + 64; ++Y)
+					{
+						const int32 Band = (Y - Settings.MinY) >> 3;
+						for (int32 Z = 0; Z < 16; ++Z)
+						{
+							for (int32 X = 0; X < 16; ++X)
+							{
+								const FString Name = Blocks.GetBlockOf(Chunk.GetBlock(X, Y, Z)).Name.ToString();
+								Total[Band]++;
+								if (Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air")) Air[Band]++;
+								else if (Name == TEXT("minecraft:water")) Water[Band]++;
+								else if (Name == TEXT("minecraft:lava")) Lava[Band]++;
+							}
+						}
+					}
+				}
+			}
+		}
+		for (int32 Band = 0; Band < 24; ++Band)
+		{
+			AddInfo(FString::Printf(TEXT("CAVEBANDS %d %d air %.2f water %.2f lava %.3f"), bOff ? 0 : 1, Settings.MinY + Band * 8,
+				100.0 * Air[Band] / Total[Band], 100.0 * Water[Band] / Total[Band], 100.0 * Lava[Band] / Total[Band]));
+		}
+	}
+	bMcCarversOff = false;
+	return true;
+}
+
+// Sweeps aquifer parameters (console variables) and prints the bands y -8 to 47 for each: 1 seed, 25 patches.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcAquiferSweepTest, "McClient.McGen.AquiferSweep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcAquiferSweepTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	struct FConfig { double Flood; int32 Margin; int32 Base; };
+	const FConfig Configs[] = { { 0.5, 8, 20 }, { 0.5, 16, 20 }, { 0.5, 28, 20 }, { 0.5, 8, 0 }, { 0.5, 8, -20 }, { 0.3, 8, 20 }, { 0.5, 28, 0 } };
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	for (const FConfig& Config : Configs)
+	{
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.floodscale"))->Set(static_cast<float>(Config.Flood));
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.seamargin"))->Set(Config.Margin);
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.levelbase"))->Set(Config.Base);
+		const FMcNoiseGenerator Generator(Settings, 4242424242ull, TEXT("minecraft:overworld"));
+		int64 Air[7] = {}, Water[7] = {}, Total[7] = {};
+		for (int32 Patch = 0; Patch < 25; ++Patch)
+		{
+			const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				FMcChunk Chunk(FIntPoint(Corner.X + Index % 2, Corner.Y + Index / 2), Settings.MinY, Settings.Height / 16);
+				Generator.Generate(Chunk);
+				for (int32 Y = -8; Y < 48; ++Y)
+				{
+					const int32 Band = (Y + 8) >> 3;
+					for (int32 Z = 0; Z < 16; ++Z)
+					{
+						for (int32 X = 0; X < 16; ++X)
+						{
+							const FString Name = Blocks.GetBlockOf(Chunk.GetBlock(X, Y, Z)).Name.ToString();
+							Total[Band]++;
+							if (Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air")) Air[Band]++;
+							else if (Name == TEXT("minecraft:water")) Water[Band]++;
+						}
+					}
+				}
+			}
+		}
+		FString Line = FString::Printf(TEXT("AQSWEEP flood %.2f margin %d base %d |"), Config.Flood, Config.Margin, Config.Base);
+		for (int32 Band = 0; Band < 7; ++Band)
+		{
+			Line += FString::Printf(TEXT(" y%d a%.1f w%.1f"), Band * 8 - 8, 100.0 * Air[Band] / Total[Band], 100.0 * Water[Band] / Total[Band]);
+		}
+		AddInfo(Line);
+	}
+	return true;
+}
+
+// The top solid block over the grid of the reference's "log floors" (32 by 32 points 128 apart from -2048), per seed, one
+// "FLOORS <seed index> <values...>" line each, for comparing the sea-floor depth with the vanilla ocean-floor heightmap.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFloorMixTest, "McClient.McGen.FloorMix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcFloorMixTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		const FMcNoiseGenerator Generator(Settings, Seeds[SeedIndex], TEXT("minecraft:overworld"));
+		FString Line;
+		for (int32 Z = 0; Z < 32; ++Z)
+		{
+			for (int32 X = 0; X < 32; ++X)
+			{
+				Line += FString::Printf(TEXT("%d "), Generator.FindSolidTopY(-2048 + X * 128, -2048 + Z * 128) + 1);
+			}
+		}
+		AddInfo(FString::Printf(TEXT("FLOORS %d %s"), SeedIndex, *Line));
+	}
+	return true;
+}

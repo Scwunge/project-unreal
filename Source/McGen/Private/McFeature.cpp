@@ -717,6 +717,17 @@ FCriticalSection McFeatureStatsLock;
 TMap<FString, TPair<int64, int64>> McFeatureStats;
 bool bMcFeatureStatsOn = false;
 
+void McCountBlocks(const TCHAR* Key, int64 Blocks)
+{
+	if (bMcFeatureStatsOn)
+	{
+		FScopeLock Lock(&McFeatureStatsLock);
+		TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(FString(TEXT("BLOCKS ")) + Key, TPair<int64, int64>(0, 0));
+		Stat.Key++;
+		Stat.Value += Blocks;
+	}
+}
+
 void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 {
 	const FIntPoint Chunk = Region.GetCentre();

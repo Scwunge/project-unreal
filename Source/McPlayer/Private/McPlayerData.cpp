@@ -1,4 +1,6 @@
 #include "McPlayerData.h"
+#include "McSignMenu.h"
+#include "McLecternMenu.h"
 #include "McCraftingMenu.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
@@ -242,6 +244,12 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 	case EMcWindowKind::BrewingStand:
 		Made.Brewing = MakeShared<FMcBrewingStand>();
 		Made.Menu = MakeShared<FMcBrewingMenu>(Made.Brewing, Inventory);
+		break;
+	case EMcWindowKind::Sign:
+		Made.Menu = MakeShared<FMcSignMenu>();
+		break;
+	case EMcWindowKind::Lectern:
+		Made.Menu = MakeShared<FMcLecternMenu>();
 		break;
 	default:
 		break;
@@ -549,6 +557,56 @@ void UMcPlayerDataComponent::CreativeTake(FName Item, int32 Count, bool bToInven
 	}
 }
 
+void UMcPlayerDataComponent::OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Sign, ++NextWindowId, 0);
+	const TSharedPtr<FMcSignMenu> Menu = StaticCastSharedPtr<FMcSignMenu>(Made.Menu);
+	Menu->bBack = bBack;
+	Menu->SignKind = Kind;
+	Menu->Block = Block;
+	Menu->TextColour = Colour;
+	Menu->SetText(FMcSignMenu::Join(Lines));
+	Made.Pos = Pos;
+	// Called as the window closes, by then with what the player sent.
+	Made.OnChanged = [WeakMenu = TWeakPtr<FMcSignMenu>(Menu), OnDone = MoveTemp(OnDone)]()
+	{
+		if (const TSharedPtr<FMcSignMenu> Open = WeakMenu.Pin(); Open.IsValid() && OnDone)
+		{
+			OnDone(Open->Lines);
+		}
+	};
+	OpenServerWindow(MoveTemp(Made), 0);
+}
+
+void UMcPlayerDataComponent::OpenLectern(const FIntVector& Pos, const TArray<FString>& Pages, int32 Page, TFunction<void(FMcLecternMenu&)> OnButton)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Lectern, ++NextWindowId, 0);
+	const TSharedPtr<FMcLecternMenu> Menu = StaticCastSharedPtr<FMcLecternMenu>(Made.Menu);
+	Menu->Pages = Pages;
+	if (Menu->Pages.Num() > FMcLecternMenu::MaxPages)
+	{
+		Menu->Pages.SetNum(FMcLecternMenu::MaxPages);
+	}
+	Menu->Page = FMath::Clamp(Page, 0, FMath::Max(0, Menu->Pages.Num() - 1));
+	Made.Pos = Pos;
+	Made.OnChanged = [WeakMenu = TWeakPtr<FMcLecternMenu>(Menu), OnButton = MoveTemp(OnButton)]()
+	{
+		if (const TSharedPtr<FMcLecternMenu> Open = WeakMenu.Pin(); Open.IsValid() && OnButton)
+		{
+			OnButton(*Open);
+		}
+	};
+	OpenServerWindow(MoveTemp(Made), 0);
+}
+
 void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves)
 {
 	if (!IsServer() || Stats.Health <= 0.0f)
@@ -573,7 +631,10 @@ void UMcPlayerDataComponent::ClickMenuButton(int32 Id)
 	}
 	if (IsServer())
 	{
-		Window.Menu->ClickButton(Id);
+		if (Window.Menu->ClickButton(Id) && Window.OnChanged)
+		{
+			Window.OnChanged();
+		}
 		return;
 	}
 	// Shown at once; the server's answer follows with the window.
@@ -619,6 +680,10 @@ void UMcPlayerDataComponent::ServerMenuButton_Implementation(int32 WindowId, int
 	if (!Window.IsOpen() || WindowId != Window.Id || Stats.Health <= 0.0f || !Window.Menu->ClickButton(Id))
 	{
 		++NumRefused;
+	}
+	else if (Window.OnChanged)
+	{
+		Window.OnChanged();
 	}
 	LastSequence = Sequence;
 	SendWindowTo(Sequence);

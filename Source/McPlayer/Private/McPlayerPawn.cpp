@@ -60,6 +60,7 @@ namespace
 	}
 	constexpr float StandingEyeHeight = 1.62f;
 	constexpr float SneakingEyeHeight = 1.27f;
+	constexpr float GlidingEyeHeight = 0.4f;
 	constexpr float StandingHeight = 1.8f;
 	constexpr float SneakingHeight = 1.5f;
 	// A second press of Space within this many ticks toggles flying.
@@ -136,6 +137,10 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AMcPlayerPawn, DeathScore);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigStage, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigBlockPos, COND_OwnerOnly);
+	DOREPLIFETIME(AMcPlayerPawn, bRodCast);
+	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bGlidePose, COND_SkipOwner);
+	DOREPLIFETIME(AMcPlayerPawn, bWearsElytra);
+	DOREPLIFETIME(AMcPlayerPawn, WornHead);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -186,7 +191,7 @@ void AMcPlayerPawn::SetView(const FVector& EyePos, float McYaw, float McPitch)
 float AMcPlayerPawn::GetEyeHeight() const
 {
 	// Lying down, the eyes are just above the mattress.
-	return bSleeping ? 0.2f : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
+	return bSleeping ? 0.2f : bGliding ? GlidingEyeHeight : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
 }
 
 void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
@@ -244,7 +249,8 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	}
 
 	// Space tapped twice quickly starts or stops flying; landing stops it too.
-	if (Input.bJump && !bJumpWasDown && bMayFly)
+	const bool bJumpPressed = Input.bJump && !bJumpWasDown;
+	if (bJumpPressed && bMayFly)
 	{
 		if (FlyToggleTicks > 0)
 		{
@@ -261,7 +267,7 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 
 	// Sneaking shrinks the hitbox; standing up again needs the room.
 	const bool bWantSneak = Input.bSneak && !bFlying;
-	if (bWantSneak != bSneaking)
+	if (bWantSneak != bSneaking && !bGliding)
 	{
 		FMcBody Resized = Body;
 		Resized.Height = bWantSneak ? SneakingHeight : StandingHeight;
@@ -291,7 +297,20 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
 		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
 	}
-	McPhysics::TickPlayer(*BlockWorld, Body, Move);
+	// An opening shulker box's lid moves what is in its way.
+	if (LidPush)
+	{
+		const FVector Push = LidPush(Body.GetBox(), LastLidTick);
+		if (!Push.IsZero())
+		{
+			McPhysics::Move(*BlockWorld, Body, Push, false);
+		}
+	}
+	// Elytra glide in place of walking.
+	if (!TickGlide(Move, bJumpPressed))
+	{
+		McPhysics::TickPlayer(*BlockWorld, Body, Move);
+	}
 	if (bFlying && Body.bOnGround)
 	{
 		bFlying = false;
@@ -302,7 +321,11 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	bServerPositionKnown = true;
 	if (!HasAuthority())
 	{
-		ServerMove(Body.Position, Yaw, Pitch, (bSneaking ? 1 : 0) | (Body.bOnGround ? 2 : 0) | (bSprinting ? 4 : 0) | (bFlying ? 8 : 0));
+		ServerMove(Body.Position, Yaw, Pitch, (bSneaking ? 1 : 0) | (Body.bOnGround ? 2 : 0) | (bSprinting ? 4 : 0) | (bFlying ? 8 : 0) | (bGliding ? 16 : 0));
+	}
+	else
+	{
+		bServerGliding = bGliding;
 	}
 }
 
@@ -316,6 +339,7 @@ void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, flo
 	Body.bOnGround = (Flags & 2) != 0;
 	bServerSprint = (Flags & 4) != 0;
 	bServerFlying = (Flags & 8) != 0;
+	bServerGliding = (Flags & 16) != 0;
 	bServerPositionKnown = true;
 	LastLocation = McCoords::BlockToUnreal(FeetPos);
 	SetActorLocationAndRotation(LastLocation, FRotator(0.0f, NewYaw, 0.0f));
@@ -337,7 +361,9 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		bShowSelf = FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShotCheck);
 #endif
 		Figure->SetShown(!IsLocallyControlled() || bShowSelf || ViewMode != 0);
-		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose);
+		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
+		Figure->SetWings(bWearsElytra);
+		Figure->SetWornHead(WornHead);
 	}
 	if (UMcHandComponent* Arm = Hand.Get())
 	{
@@ -355,6 +381,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Arm->SetDrawing(bBowLocal && !Held.IsEmpty(), BowSecondsLocal);
 	}
 #endif
+	TickTotem(DeltaSeconds);
 
 	if (HasAuthority())
 	{
@@ -422,6 +449,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	McLookYaw = Yaw - 90.0f;
 	McLookPitch = -Pitch;
 	bSneakPose = bSneaking;
+	bGlidePose = bGliding;
 
 	TickAccumulator += DeltaSeconds;
 	int32 Ticks = 0;
@@ -479,15 +507,20 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	}
 #if !UE_BUILD_SHIPPING
 	// Development: -McSelfShot=<blocks> puts the camera that far in front of the player, looking back at the player
-	// model, for a picture of the skin.
+	// model, for a picture of the skin. -McSelfShotYaw=degrees swings the camera round the player from there (180 looks
+	// at their back), and -McSelfShotRise=blocks lifts it, looking down at them.
 	float SelfShot = 0.0f;
 	if (FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShot) && SelfShot > 0.0f)
 	{
+		float Around = 0.0f, Rise = 0.0f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McSelfShotYaw="), Around);
+		FParse::Value(FCommandLine::Get(), TEXT("-McSelfShotRise="), Rise);
 		Camera->bUsePawnControlRotation = false;
-		const FRotator Look(0.0f, Yaw, 0.0f);
+		const FRotator Look(0.0f, Yaw + Around, 0.0f);
 		const FVector Eye = GetActorLocation() + FVector(0.0, 0.0, EyeHeight * McCoords::UnitsPerBlock * 0.9);
-		Camera->SetWorldLocation(Eye + Look.Vector() * SelfShot * McCoords::UnitsPerBlock);
-		Camera->SetWorldRotation(FRotator(0.0, Yaw + 180.0, 0.0));
+		const FVector Offset = Look.Vector() * SelfShot * McCoords::UnitsPerBlock + FVector(0.0, 0.0, Rise * McCoords::UnitsPerBlock);
+		Camera->SetWorldLocation(Eye + Offset);
+		Camera->SetWorldRotation((-Offset).Rotation());
 	}
 #endif
 
@@ -740,7 +773,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : RideReach;
 		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
 		{
-			if (It->Kind != FMcMinecartEntity::StaticType() && It->Kind != FMcBoatEntity::StaticType())
+			if (!FMcVehicle::IsVehicleType(It->Kind))
 			{
 				continue;
 			}
@@ -782,8 +815,15 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// A fishing rod casts or reels in, and a firework rocket pulls a glider along: at nothing, or (below) at a block that
+	// doesn't open or move.
+	const bool bUsedInAir = Held.Item == TEXT("minecraft:fishing_rod") || (bGliding && Held.Item == TEXT("minecraft:firework_rocket"));
 	if (!Target.IsSet())
 	{
+		if (bUsedInAir && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
+		{
+			ServerUseItem();
+		}
 		StopDigging();
 		return;
 	}
@@ -865,14 +905,28 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		TEXT("minecraft:damaged_anvil"), TEXT("minecraft:brewing_stand"), TEXT("minecraft:hopper"), TEXT("minecraft:dispenser"), TEXT("minecraft:dropper") };
 	const FName Clicked = Registry.GetBlockOf(Hit.State).Name;
 	const FString ClickedName = Clicked.ToString();
-	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || McBed::IsBed(ClickedName)
-		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
+	// A sign opens its editor, or takes the dye, ink or wax in hand.
+	// A shulker box opens and a bell rings. A lectern with a book opens it, and an empty one takes a book and quill or
+	// written book held (anything else is placed against it).
+	const bool bLectern = Clicked == TEXT("minecraft:lectern") && (Registry.GetPropertyValue(Hit.State, TEXT("has_book")) == TEXT("true")
+		|| Held.Item == TEXT("minecraft:writable_book") || Held.Item == TEXT("minecraft:written_book"));
+	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || ClickedName.EndsWith(TEXT("_sign")) || McBed::IsBed(ClickedName)
+		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")))
+		|| ClickedName.EndsWith(TEXT("shulker_box")) || Clicked == TEXT("minecraft:bell") || bLectern;
 	// A jukebox takes a disc, or gives the one in it back; with anything else in hand and none in it, a block goes beside it.
 	const bool bJukebox = Clicked == TEXT("minecraft:jukebox")
 		&& (Registry.GetPropertyValue(Hit.State, TEXT("has_record")) == TEXT("true") || McJukebox::IsDisc(Held.Item));
 	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves || bJukebox) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);
+		return;
+	}
+	if (bUsedInAir)
+	{
+		if (bPlaceClick)
+		{
+			ServerUseItem();
+		}
 		return;
 	}
 	// A bucket of water or lava pours into the block clicked (if it can be replaced) or the one beside it.
@@ -882,7 +936,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		return;
 	}
 	// A boat goes on water (the fluid the crosshair would pass through), a minecart on a rail.
-	if (bPlaceClick && (Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft"))))
+	if (bPlaceClick && FMcVehicle::IsVehicleItem(Held.Item) && !FMcVehicle::CreateFromItem(Held.Item)->RunsOnRails())
 	{
 		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
 		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
@@ -896,7 +950,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 	// Flint and steel lights the block clicked; an eye of ender goes in an end portal frame.
-	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || Held.Item == TEXT("minecraft:minecart")
+	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || FMcVehicle::IsVehicleItem(Held.Item)
 		|| (Held.Item == TEXT("minecraft:ender_eye") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:end_portal_frame"))))
 	{
 		ServerUseItemOn(Hit.Block, Hit.Face);
@@ -1214,7 +1268,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
-		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || Held.Item == TEXT("minecraft:minecart") || Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft")))
+		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || FMcVehicle::IsVehicleItem(Held.Item))
 		{
 			if (--Held.Count <= 0)
 			{
@@ -1261,7 +1315,7 @@ void AMcPlayerPawn::ServerDismount()
 	{
 		return;
 	}
-	static_cast<FMcVehicle*>(Found)->ClearRider();
+	static_cast<FMcVehicle*>(Found)->ClearRider(GetUniqueID());
 	// Out beside it, on whichever side has room; failing that, on top.
 	const FVector Centre = Found->Body.Position;
 	const FVector Spots[] = { FVector(1.1, 0.0, 0.0), FVector(-1.1, 0.0, 0.0), FVector(0.0, 0.0, 1.1), FVector(0.0, 0.0, -1.1), FVector(0.0, 0.0, 0.0) };
@@ -1288,13 +1342,18 @@ void AMcPlayerPawn::ServerTickRiding()
 		return;
 	}
 	FMcVehicle* Vehicle = static_cast<FMcVehicle*>(Found);
-	if (Vehicle->ConsumeEject())
+	if (Vehicle->ConsumeEject(GetUniqueID()))
 	{
 		ServerDismount();
 		return;
 	}
-	Vehicle->SetRider(RideForward, RideStrafe, McLookYaw);
-	const FVector Seat = Vehicle->GetSeat();
+	if (!Vehicle->SetRider(RideForward, RideStrafe, McLookYaw, GetUniqueID()))
+	{
+		// Someone else took the last seat.
+		RidingId = 0;
+		return;
+	}
+	const FVector Seat = Vehicle->GetSeat(Vehicle->GetSeatIndex(GetUniqueID()));
 	Body.Position = Seat;
 	Body.Velocity = FVector::ZeroVector;
 	Body.bOnGround = true;
@@ -1317,7 +1376,28 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	if (const int32 Id = FindVehicle(Eye, Look.GetSafeNormal(), 3.5))
 	{
-		ServerRide(Id);
+		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+		FMcEntity* Found = Entities ? Entities->Find(Id) : nullptr;
+		FMcVehicle* Vehicle = Found && Found->IsVehicle() ? static_cast<FMcVehicle*>(Found) : nullptr;
+		if (Vehicle && Vehicle->OpensOnUse(bSneakPose))
+		{
+			// A chest cart or boat opens like a chest instead of taking a rider.
+			const FIntVector Where(FMath::FloorToInt32(Vehicle->Body.Position.X), FMath::FloorToInt32(Vehicle->Body.Position.Y), FMath::FloorToInt32(Vehicle->Body.Position.Z));
+			Data->OpenBlockWindow(Vehicle->GetInventorySlots() == 5 ? EMcWindowKind::Hopper : EMcWindowKind::Chest, Where, Vehicle->GetInventoryTitle(), Vehicle->GetInventory(), nullptr);
+		}
+		else if (Vehicle && !Vehicle->CanRide())
+		{
+			// Fuel for a furnace cart, a flame for a TNT cart.
+			FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+			if (!Held.IsEmpty() && Vehicle->UseItem(Held.Item, Body.Position) == FMcVehicle::EUse::Consumed && !Data->bCreative && --Held.Count <= 0)
+			{
+				Held.Clear();
+			}
+		}
+		else if (Vehicle && Vehicle->HasFreeSeat())
+		{
+			ServerRide(Id);
+		}
 	}
 }
 
@@ -1454,6 +1534,8 @@ void AMcPlayerPawn::ServerGameTick()
 	{
 		return;
 	}
+	// A blow that would kill may be cheated by a totem in hand.
+	ServerTryTotem();
 	ServerHurtSound();
 	if (bSleeping)
 	{
@@ -1503,7 +1585,9 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			else
 			{
-				const bool bBreaksFall = bFlyingNow || Environment.bFeetInWater || Environment.bClimbing || Environment.bInCobweb;
+				// A glide that isn't diving fast doesn't build up a fall.
+				const bool bGlideHolds = bServerGliding && Step.Y > -0.5;
+				const bool bBreaksFall = bFlyingNow || bGlideHolds || Environment.bFeetInWater || Environment.bClimbing || Environment.bInCobweb;
 				const int32 FallDamage = ServerFall.Update(ServerPreviousPosition.Y, Feet.Y, Body.bOnGround, bBreaksFall);
 				if (FallDamage > 0)
 				{
@@ -1537,6 +1621,11 @@ void AMcPlayerPawn::ServerGameTick()
 			McSurvival::Tick(Stats, Environment, Difficulty, Data->Armor.Get(), &GameRules);
 		}
 		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+		if (Entities)
+		{
+			ServerTickFishing(*Entities);
+		}
+		ServerTickElytra();
 
 		// Footsteps, on the ground and not sneaking (sneaking is quiet), at the step sound of the block underfoot.
 		const bool bSneakNow = bLocal ? bSneaking : bSneakPose;
@@ -1703,6 +1792,8 @@ void AMcPlayerPawn::ServerGameTick()
 	DigStage = DigPos.IsSet() ? FMath::Clamp(FMath::FloorToInt(DigProgress * 10.0f), 0, 9) : -1;
 	DigBlockPos = DigPos.IsSet() ? DigPos.GetValue() : FIntVector::ZeroValue;
 
+	// A blow that would kill may be cheated by a totem in hand.
+	ServerTryTotem();
 	ServerHurtSound();
 	if (Stats.Health <= 0.0f)
 	{
@@ -1767,7 +1858,7 @@ void AMcPlayerPawn::ServerHurtSound()
 		{
 			const float VoicePitch = McSound::GetVoicePitch(DropRandom.FRand(), DropRandom.FRand());
 			// What hurt picks the voice: drowning gasps, burning crackles, the rest is the plain grunt.
-			const McSurvival::EDamage Kind = static_cast<McSurvival::EDamage>(Data->Stats.LastDamageKind);
+			const McSurvival::EDamage Kind = static_cast<McSurvival::EDamage>(Data->Stats.LastHurtKind);
 			const bool bBurn = Kind == McSurvival::EDamage::InFire || Kind == McSurvival::EDamage::OnFire || Kind == McSurvival::EDamage::Lava;
 			Sounds->PlaySound(Health <= 0.0f ? FName(TEXT("entity.player.death"))
 				: Kind == McSurvival::EDamage::Drown ? FName(TEXT("entity.player.hurt_drown"))
@@ -1806,6 +1897,13 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	else
 	{
 		Other = Pos;
+	}
+
+	// A decorated pot hit with a tool that breaks pots cracks, and drops its sherds instead of itself (OnBreakDrops).
+	if (Registry.GetBlockOf(State).Name == TEXT("minecraft:decorated_pot") && !Tool.IsEmpty()
+		&& FMcItemRegistry::Get().HasTag(Tool.Item, TEXT("minecraft:breaks_decorated_pots")))
+	{
+		LootState = Registry.FindState(TEXT("minecraft:decorated_pot"), {{TEXT("cracked"), TEXT("true")}}).Get(LootState);
 	}
 
 	TArray<FMcItemStack> Drops;
@@ -1989,7 +2087,8 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 
 bool AMcPlayerPawn::CarriesPlacedData(FName Item)
 {
-	return Item.ToString().EndsWith(TEXT("_banner")) || McShulker::IsBox(Item);
+	// A sign carries nothing, but whoever places it is to write on it.
+	return Item.ToString().EndsWith(TEXT("_banner")) || McShulker::IsBox(Item) || Item.ToString().EndsWith(TEXT("_sign"));
 }
 
 void AMcPlayerPawn::PlaceHeldAt(const FIntVector& Pos)
@@ -2033,6 +2132,19 @@ bool AMcPlayerPawn::AttachBanner(const FIntVector& Pos, const FMcItemStack& Bann
 		if (OnPlacedStack)
 		{
 			OnPlacedStack(Pos, Banner);
+		}
+		return true;
+	}
+	if (Banner.Item.ToString().EndsWith(TEXT("_sign")))
+	{
+		// Once the sign is there: a standing or wall one for a sign, a hanging one for a hanging sign.
+		if (!BlockWorld || !McBlockBreak::IsBlockOfItem(BlockWorld->GetBlock(Pos), Banner.Item))
+		{
+			return false;
+		}
+		if (OnPlacedSign)
+		{
+			OnPlacedSign(*this, Pos);
 		}
 		return true;
 	}

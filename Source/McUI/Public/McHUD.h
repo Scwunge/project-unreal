@@ -79,9 +79,14 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// A decorated pot in 3D, with its sherds.
+	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
+	// A mob head's item: its placed model, turned and lifted as the item's template_skull model shows it in a slot.
+	// PotSides: a decorated pot's sides (back, left, right, front), drawn with their sherds' patterns.
+	bool BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSides = {});
 	void DrawSprite(UTexture2D* Texture, float X, float Y, float Width, float Height);
 	// A part of a picture: U, V, UW and VH are in pixels of the picture itself.
 	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
@@ -115,7 +120,8 @@ private:
 	float DebugDelta = 0.016f;
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
-	void DrawStack(const FMcItemStack& Stack, float X, float Y);
+	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
+	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);
@@ -123,6 +129,15 @@ private:
 	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
 	void DrawLoom(FIntPoint Origin, FIntPoint Local);
 	void DrawAnvil(FIntPoint Origin);
+	// The sign editor: the board large in the middle with the four lines on it, the cursor on the line being written,
+	// and Done. Its keys are taken by PollSign; Done and Esc send the lines and close it.
+	void DrawSign(int32 Width, int32 Height);
+	void PollSign(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
+	// A lectern's book (the game's book screen): the open page with "Page n of m" and the arrows to turn it, and under
+	// the book Done and Take Book. PollLectern turns the pages (the arrows, Page Up and Page Down) through the menu's
+	// buttons, which the server answers.
+	void DrawLectern(int32 Width, int32 Height);
+	void PollLectern(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it
 	// took this frame's click.
@@ -238,6 +253,7 @@ private:
 	TMap<FMcStateId, FIcon> Icons;
 	TMap<FName, FIcon> ItemIcons;
 	TMap<FString, FIcon> BannerIcons;
+	TMap<FString, FIcon> PotIcons;
 
 	TArray<uint8> GlyphWidths;
 	TArray<uint8> GalacticWidths;

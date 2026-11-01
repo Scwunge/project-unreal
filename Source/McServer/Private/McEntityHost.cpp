@@ -1,5 +1,6 @@
 #include "McEntityHost.h"
 #include "McTnt.h"
+#include "McSpawners.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBiomeRegistry.h"
@@ -111,6 +112,8 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			OnPlayerHit(PlayerPos, Damage);
 		}
 	};
+	Spawners = MakeUnique<FMcSpawners>(InWorld);
+	BlockEntityHandle = World.OnBlockEntityChanged.AddLambda([this](const FIntVector& Pos) { Spawners->OnBlockEntityChanged(Pos); });
 	// Bites, arrows and blasts all reach the player through here.
 	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
 	{
@@ -160,6 +163,7 @@ FMcEntityHost::~FMcEntityHost()
 	// Runs when the owning actor is destroyed by garbage collection, when other actors can't be destroyed safely;
 	// DestroyProxies has done that by now, at EndPlay. Only the bookkeeping is left.
 	Proxies.Empty();
+	World.OnBlockEntityChanged.Remove(BlockEntityHandle);
 }
 
 void FMcEntityHost::DestroyProxies()
@@ -333,6 +337,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 
 void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 {
+	Spawners->OnChunkAdded(Chunk);
 	if (Seeded.Contains(Chunk))
 	{
 		return;
@@ -432,17 +437,9 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
-		else if (Kind == FMcMinecartEntity::StaticType() || Kind == FMcBoatEntity::StaticType())
+		else if (FMcVehicle::IsVehicleType(Kind))
 		{
-			TUniquePtr<FMcVehicle> Vehicle;
-			if (Kind == FMcMinecartEntity::StaticType())
-			{
-				Vehicle = MakeUnique<FMcMinecartEntity>();
-			}
-			else
-			{
-				Vehicle = MakeUnique<FMcBoatEntity>();
-			}
+			TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 			if (Vehicle->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Vehicle));
@@ -648,6 +645,11 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 
 	Manager.PlayerPositions = Players;
+	// With spawnerBlocksWork off a spawner's wait holds where it is (vanilla, spawner_rule.txt: 20 for 700 ticks).
+	if (!Players.IsEmpty() && Rules.bSpawnerBlocksWork)
+	{
+		Spawners->Tick(*this, Players, Random);
+	}
 
 	// A few chunks a tick get their animals.
 	for (int32 Budget = MaxChunkSeedsPerTick; Budget > 0 && !SeedQueue.IsEmpty(); --Budget)

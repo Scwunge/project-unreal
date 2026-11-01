@@ -54,7 +54,13 @@ public:
 	// nothing for any other block.
 	void ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
+	// A sign was just placed at Pos by Player: it gets its block entity (no text yet) and the player the editor for its
+	// front (minecraft.wiki, "Sign").
+	void PlacedSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+
 	// A shulker box at Pos is being broken: what it holds goes into the box item among Drops (and is forgotten there).
+	// A decorated pot's drop: the pot with its sides, or (cracked) the sides themselves.
+	void PackPotDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
 	void PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
 	// A shulker box item was placed at Pos: what it carried goes into the new box.
 	void FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box);
@@ -123,14 +129,35 @@ private:
 	void WriteMachine(const FKey& Key, FMachineEntry& Entry);
 	void Sweep();
 	void WatchWorld(AMcWorldActor& WorldActor);
+	// Starts the hoppers, furnaces and brewing stands in a chunk that has come in (and on each sweep, for the rest).
+	void StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos);
 	// One game tick of every hopper.
 	void TickHoppers();
+	// Tells each world which shulker boxes are open, and for how many (their lids follow on every machine).
+	void TickShulkers();
 	// Moves an item into the block the hopper faces, then one in from above; true if either moved.
 	bool TickHopper(AMcWorldActor& WorldActor, const FIntVector& Pos, FMcStateId State);
 	// What a hopper at the given face of the block at Pos may reach of its slots (none if it isn't a container).
 	FMcSlotAccess GetAccess(AMcWorldActor& WorldActor, const FIntVector& Pos, McHopper::EFace Face);
 	// After items moved in or out of the block at Pos: a chest or hopper is written back to its block entity.
 	void ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A player used the sign at Pos: what they hold is put on the side they face (a dye, glow ink, an ink sac, or
+	// honeycomb on the whole sign), or else that side's editor opens. A waxed sign takes nothing.
+	bool UseSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// Opens the editor on one side of the sign at Pos, and writes what comes back to the sign.
+	void EditSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, bool bBack);
+	// The sign's block entity, made (with no text) if the chunk has none for it; null if Pos holds no sign.
+	static FMcBlockEntity* FindSign(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// After a sign's text, dye or wax changed: saved with its chunk, and the players who see it told.
+	static void SignChanged(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A player used the lectern at Pos (minecraft.wiki, "Lectern"): an empty one takes the book and quill or written
+	// book they hold; one with a book opens it to read. False for an empty lectern and anything else in hand.
+	static bool UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A reader of the lectern at Pos pressed a button: the book opens at the menu's page for everyone reading it, the
+	// lectern giving a 2-tick pulse, or the book is taken off into the reader's inventory.
+	static void LecternButton(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, class FMcLecternMenu& Menu);
+	// The lectern's block entity, if Pos holds a lectern with a book on it.
+	static FMcBlockEntity* FindLectern(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	TMap<FKey, FChestEntry> Chests;
 	TMap<FKey, FMachineEntry> Machines;

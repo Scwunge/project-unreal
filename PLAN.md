@@ -128,8 +128,342 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     one sits on them and an activator rail throws the rider off. A boat floats, glides with friction by the
     surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
-    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done: chests, hoppers,
-    furnaces and TNT on carts, boat paddles, more than one rider, carts pushing mobs.
+    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done:
+    carts pushing mobs.
+    Physics refitted 2026-11-01 from vanilla's server, logged each tick (`log sents`; vehicle_log.txt, powered_log.txt,
+    paddle_log.txt), and replayed number for number by the `McClient.McEntity.VehicleLog` test. A cart is braked by
+    an unpowered powered rail (half, or stopped under 0.03), moves (at most 0.4 a tick; its speed itself has no cap),
+    then keeps 0.96 of its speed plus 0.05 for each block dropped (less for each climbed); a powered rail adds 0.06
+    after that, or kicks a cart at rest off a block at 0.02. A boat keeps 0.9 on water, 0.98 on ice, 0.6 on stone
+    before it moves, falls with no drag, floats with vy' = 0.75 (vy - 0.04 + 0.04 depth / 0.65 height), and its turn
+    keeps 0.9. Second round (vehicle_log2/3/5.txt): a ridden cart keeps 0.997 and moves 0.75 of its speed; a fuelled
+    furnace cart nobody pushed coasts at 0.9408; one fed coal moves its full 0.2 a tick from the next tick (vanilla's
+    own speed reads up to 3.46 meanwhile, held back by the move cap); a boat dropped into water lands at the surface
+    less 0.3504 with its fall speed gone; a boat on land keeps the mean friction of the blocks under its hull (blue
+    ice 0.989, ice and packed ice 0.98, stone 0.6; a hull over one row of packed ice between stone 0.72667).
+    vehicle_log2-4.txt's air fill was over the 32768 block limit and failed (every boat there kept 0.45); clear air
+    in fills under it (Script.java now stops a run on one). vehicle_log6.txt: on slime a boat keeps 0.8 before the
+    move and 0.16 of that after; soul sand leaves 0.4 after the move (counted from half a block under the boat, so
+    while dropping onto it too); a furnace cart out of fuel is left going at 2, held to its 0.2 a tick cap until 0.9408
+    a tick wears it under. Not measured: honey and other blocks, empty cells under a hull.
+  - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
+    oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
+    variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
+    a vehicle from an entity name or an item; `/summon minecraft:cherry_boat` works too. A vehicle can carry an
+    inventory (`GetInventory`, saved with it, thrown out when it breaks): a chest boat has 27 slots and opens as a
+    chest when you click it sneaking (an ordinary click gets in). Shot: `Saved/Shots/boats.png`
+    (`-McScene=boats`, boats summoned with `-McChat`, see `tools/scenes/boats.json`). The bamboo raft has its own
+    flat deck model. Water inside a hull is not masked (the pond shows through the boat); that needs a depth
+    pass and is left.
+  - **Minecart variants** (2026-10-29): chest (27 slots), furnace, hopper (5 slots) and TNT carts
+    (`minecraft:chest_minecart` and so on, placed by item or `/summon`). A chest or hopper cart opens as its
+    window when clicked sneaking. A furnace cart burns coal or charcoal (3600 ticks an item) and drives itself at
+    0.2 blocks a tick, pushing in the direction it was last shoved. A TNT cart ignites on a powered activator rail
+    or from flint and steel, then blows after an 80 tick fuse (stronger when fast). A hopper cart picks up items
+    over it and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
+    `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
+    cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
+    primed TNT entity, so the cart keeps its own fuse.
+  - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
+    which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
+    other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:
+    `Saved/Shots/cart_mobs.png` (`-McScene=cart_mobs`, a cart rolled down a slope into a cow and a pig).
+  - **Water out of hulls** (2026-10-30): a boat (not a raft) has a mask over the space inside its sides up to their tops
+    (`FModel::MaskLayer`), drawn only into custom depth with **custom stencil 77** (`McEntityModel::HullStencil`; nothing
+    else may use 77). The translucent block materials (`tools/make_materials.py`, `HULL_STENCIL`) leave out water (kind 1)
+    farther than the mask where the stencil is 77, so water in front of the boat, and a waterfall pouring into it, still
+    show. Needs `r.CustomDepth=3` (`Config/DefaultEngine.ini`). Whoever changes the translucent materials re-runs the
+    generator rather than merging the .uassets. Shots: `Saved/Shots/hull_water_above.png` and `hull_water_side.png`
+    (`-McScene=hull_water_above` / `hull_water_side`: a boat with a pig, one half under a waterfall, one on land).
+    A boat under flowing water (a waterfall) is held down and sinks slowly instead of being lifted up the fall
+    (`ESurface::UnderFlowing`).
+  - **Flowing fluids' pictures** (2026-10-30, for main): falling water drew as a solid blue-violet box because
+    `water_flow` and `lava_flow` were never in the texture array (it held only what block models name, and the fluids'
+    models give only a particle), so the fluid mesher got layer 0, the missing texture, tinted. `FMcBlockTextures` now
+    always loads the four fluid pictures. A side shows the top left quarter of the 32-pixel flow frames, so that
+    quarter, unscaled, is a layer of its own (`water_flow#side`, `lava_flow#side`, animated with the frames) and
+    McFluidMesher's sides use it with UVs 0..1 (`FFluidPalette::WaterFlowSide`/`LavaFlowSide`): 16 texels a block, as in
+    vanilla. Limit: a flowing top still reads the whole frame scaled to 16 (8 texels a block), since its turned square
+    reaches outside any one quarter. Shot: `Saved/Shots/waterfall_close.png` (`-McScene=hull_water_side
+    -McCam=12.6,-58.0,6.5,90,-5`).
+  - **Beds** (2026-10-30): in 26.3 beds are ordinary block models (`template_bed_head`/`_foot`, a picture per colour and
+    face, and the new `straw_bed`), so the block baker draws them; no block entity. Checked in `Saved/Shots/beds.png`
+    (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). The 64-pixel `straw_bed` is drawn in tiles
+    (Big pictures in tiles, below).
+  - **Big pictures in tiles** (2026-10-30): the texture array is 16 pixels, so a block picture that is a whole number
+    of 16-pixel tiles and bigger than one (signs, hanging signs and shelves 32, `straw_bed` 64; not animated ones) is
+    cut into tiles, each a layer named `<picture>#tile:x,y:w,h` (`McTextureTiles`, which reads only the PNG's header).
+    The baker splits every quad drawn with such a picture along the tiles' edges, one quad a tile with UVs 0..1 over it,
+    so each pixel is kept; the HUD's block icons map tiles back onto the whole picture. Test `McAssets.TextureTiles`
+    checks the UVs carry on across a cut (a 32-pixel face split two and four ways, and turned) and that each loaded
+    tile has the PNG's pixels.
+  - **Shulker boxes** (2026-10-30): drawn by `UMcChestComponent` with entity models `mc:shulker_box/shulker[_colour]`
+    from the 64-pixel mob nets: a base (8 high) and a lid (12 high, over the base), centred in the block and turned by
+    `facing` (placement faces the clicked face, as vanilla). Opening raises the lid 8 pixels while turning it 270°,
+    eased like the chest's lid. Test `McRender.ShulkerBoxModels`; shot `Saved/Shots/shulkers.png`
+    (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles).
+  - **Shulker box lids and collision** (2026-10-31): `FMcShulkerLids` (McEntity), fitted to vanilla's logged per-tick
+    state (mc-reference `shulker_log.txt`, `log shulker`): progress goes 0.1 a tick to 1 while anyone has the box open
+    and back when no one does; the collision is the block grown by half the progress the way it faces (an override in
+    `FMcBlockWorld`, read by `McPhysics::GatherBoxes`); while opening, what overlaps the block shifted by the progress
+    (0.01 further) moves 0.11 a tick along the facing (a player on top rose 1.1, one in front of an east-facing box
+    went 0.88). A box stays shut when a block's collision is in the half block in front: stone, a bottom slab, carpet
+    and a chest stopped it, a top slab and a torch did not. The server counts each box's openers every tick
+    (`UMcBlockUseSubsystem::TickShulkers`) and multicasts changes; every machine steps the lids, the server pushes mobs
+    and items, each player's machine its own player; others' open boxes now show their lids. Test
+    `McEntity.ShulkerLids`. A chunk going to a player is followed by the boxes open in it (the chunk stream's
+    `ClientOpenBoxes`), whose lids start all the way up (`FMcShulkerLids::SetOpen`), so a player joining while a box is
+    open sees it open. (Vanilla with two players wasn't measured; whether its joiner sees the lid up is assumed.)
+  - **Bells** (2026-10-30): the block models are only the frame (bar, posts, chain), so the body is an entity model
+    `mc:bell` from `entity/bell/bell_body.png` (a cup 6 across, a rim 8 across), stood in each bell by
+    `UMcChestComponent`. Using a bell rings it (`block.bell.use`) when struck from a side it can swing away from: a
+    floor bell's front or back, a wall bell's sides along the wall, a ceiling bell's any side (`McBell::GetStruckSide`,
+    from where the player's eye is). The server tells every screen (`AMcWorldActor::MulticastBellRung`) and the body
+    swings away from the blow about its top for 50 ticks, dying away (`McBell::GetSwing`). Placement: floor and ceiling
+    bells face the player, wall bells face the wall, double wall with a block on the far side too. Test
+    `McRender.Bells`; shots `Saved/Shots/bells.png` and `bells_swung.png` (`-McScene=bells`, `-McBellsSwung`). Not
+    done: ringing by redstone, and villagers and raids hearing it.
+  - **Books on lecterns and enchanting tables** (2026-10-30): an entity model `mc:book` cut from
+    `entity/enchantment/enchanting_table_book.png` as the picture is laid out (two covers and a spine, a block of pages
+    in each half, two loose pages), posed by how far open it is and how far over each loose page is. `UMcChestComponent`
+    lays one open on the slanted top of each lectern with `has_book=true` (`GetLecternBook`: spine up the slope, facing
+    the reader), and floats one over each enchanting table: bobbing, turning slowly while nobody is near, and within 3
+    blocks of this machine's player turning to them and opening, its loose pages waving. Test `McRender.Books`; shots
+    `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`).
+  - **Lecterns** (2026-10-30): using an empty lectern with a book and quill or a written book puts one on (a `Lectern`
+    block entity: the book and the page it lies open at, saved after the existing data; `item.book.put`; creative keeps
+    its own). Using one with a book opens it to read (window kind `Lectern`, `FMcLecternMenu`: the pages as plain text,
+    `McBook::GetPages`, and the page). The screen (`AMcHUD::DrawLectern`/`PollLectern`) is the game's book: the page
+    picture from `gui/book.png`, "Page n of m", the text wrapped to 114 font pixels, 14 lines, the page arrows and Page
+    Up/Down, and Done and Take Book under it. A page turn is a menu button the server answers: everyone reading it turns
+    with it, `item.book.page_turn` sounds and the lectern gives a full pulse for 2 ticks (`powered`, strong into the
+    block below); Take Book puts the book in the reader's inventory (or at their feet) and leaves the lectern bare.
+    Breaking it drops the book. A comparator reads floor(1 + 14 (page - 1) / (pages - 1)), 15 for a one-page book
+    (`McBook::GetComparatorSignal`). Scenes put books on with `"lecterns"`. Test `McSim.Lectern`; shots
+    `Saved/Shots/lectern.png` and `lectern_book.png` (`-McScene=lectern`, `-McUse=2,-60,2`). Not done: reading a book
+    held in the hand, writing in a book and quill, the text's colours and formatting (pages are plain), and hoppers
+    taking the book.
+  - **Mob heads** (2026-10-30): skeleton, wither skeleton, zombie, creeper, piglin, player (Steve's picture) and dragon
+    heads and their wall forms are entity models `mc:head/...` cut from each mob's own picture (an 8 cube, with the hat
+    layer for the zombie and player; the piglin's 10 wide with snout, tusks and ears; the dragon's a 16 cube with
+    scales, nostrils and two jaws, at three quarters), stood by `UMcChestComponent` (`GetHeadModel`): on the floor in
+    sixteen steps of `rotation`, on a wall facing out with the back against it, half way up. Placement turns floor heads
+    to the player and puts heads on walls when a side is clicked (none under a block). Test `McRender.Heads`; shot
+    `Saved/Shots/heads.png` (`-McScene=heads`). Not done: player heads' owners' skins (all Steve), the dragon's and
+    piglin's moving jaw and ears when powered, wearing a head, and heads in the inventory drawn as models. Where the
+    dragon's scales and nostrils sit is read from their sizes, not checked against the game.
+  - **Re-shoots against vanilla** (2026-10-30): every block-entity scene (`tools/scenes/*.json`) is built in vanilla
+    26.3 from the same JSON (`tools/scene_to_mcfunction.py --script`, run with mc-reference's `ref.sh`) and shot from
+    the same camera: a spectator with FOV effects off (`fov steady`), or, with `"standing": true`, a creative player
+    on the floor with the HUD hidden (`hud off`), since an enchanting table's book ignores spectators. Side by sides in
+    `Saved/Pairs/`. Found and fixed: a floor head's `rotation` 0 faces north (half a turn from a sign's), the dragon
+    head's lower jaw hangs 0.2 radians open, the enchanting table's open book lies back with its spine 11 degrees over
+    level, covers 10 degrees short of flat and its middle 0.91 up, and a lectern's book folds 28 degrees a cover.
+    Pots, bells, signs, beds and shulker boxes matched. Differences left to others: vanilla's vignette (part of its HUD:
+    every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes).
+  - **Polish list** (block entities): the enchanting book's page blocks lie flatter than its covers in vanilla and
+    meet over the spine, where ours fold with the covers (measure from ref_book_level and ref_book_above).
+    A worn dragon head stands 5% narrower and 15% shorter (top to lip) than vanilla's from the front
+    (sc_wear_dragon_head against ref_wh_dragon), so not a plain scale: likely its snout's offset or pitch, to be
+    measured side on. Zombie, pumpkin and bare heads match to the pixel.
+    Conduit: the eye is drawn at 0.6 and the wind at 1.25 blocks, two-sided and unshaded, tumbling with the cage
+    (fitted to ref_scene_conduits and ref_conduits_b/c with `-McScene=conduits`). Still guesses: the cage's turn and
+    tilt and the eye's bob. The logged rotation field goes 0.0375 a tick while awake and stops while asleep
+    (conduit_log), but how the renderer turns that into the cage's angle needs frame shots. The wind takes turns,
+    22 frames of 3 ticks each: `wind.png` as rings, then `wind_vertical.png` on a box stood on end, a run of each,
+    `wind.png`'s starting 20 ticks into a 66-tick count (conduit_frames.txt: one shot each 3 ticks, rings in
+    ref_cf_07 to 23 and 50 to 59, upright streaks in 33 to 45). Our frame clock is the conduit's age, not vanilla's
+    tick count, so the phase only matches for a conduit placed at a run's start.
+    For whoever owns the water mesher: a waterlogged conduit's cell draws no water (in vanilla it's the purple
+    box), so the cell shows the floor through it.
+    Spawner: vanilla's spawners don't count spectators as players near (spawner_mob.txt: with only a spectator about the
+    wait held at 20 and the spin at 0); we have no spectator mode yet.
+    For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
+    (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
+  - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
+    McRedstone's `Bell` kind (below) are already in; further block-entity redstone input gets a hook here first.
+  - **Conduit Power, measured** (2026-10-30): mc-reference's `log conduit x y z ticks` prints the player's effect and
+    the conduit's state each tick (scripts `conduit_log.txt`, `conduit_rain.txt`). A conduit checks itself every 40
+    ticks (and just after it is set): awake, it gives Conduit Power for 260 ticks to players within 16 blocks per whole
+    7 of frame (given at 31 with 16 frame blocks, not at 33) who are in water or out in the rain; it wakes and sleeps
+    only on those checks, and hunts (the eye opens) with all 42. The effect keeps the player's breath full and digs as
+    Haste I (minecraft.wiki). Conduits in a chunk start their checks as it loads.
+    Hunting (`log mobs`, script `conduit_hunt.txt`): each check with a target hits it for 4, the picking check
+    included; with none it picks at random among wet hostile mobs whose box reaches the conduit's block grown by 8,
+    and keeps it while it lives, is wet and stands within 8 blocks of the middle (McConduitHunt). Dry and passive
+    mobs are left alone.
+  - **Ticking block entities start as their chunk loads** (2026-10-31): hoppers (found by their block, so empty ones
+    too, which before only started when placed) and part-done furnaces and brewing stands (which waited for the next
+    5 second sweep) start when the chunk comes in, and so do mob spawners (below).
+  - **Mob spawners tick** (2026-10-31): `FMcSpawners` in the entity host, fitted to vanilla's logged per-tick state
+    (mc-reference `spawner_log.txt`, zombie spawner): a first wait of 20 ticks, then a cycle the tick after the wait
+    reaches 0 and a new wait of 200 to 799; the wait stands still with no player within 16 blocks (it held at 347 with
+    the player 17.4 off). A cycle makes 4 tries, each at a random point within 4 blocks across and on the spawner's
+    layer or one above or below; a try that does not fit is lost (vanilla's cycles gave 2 to 4). 6 of the mob within
+    the 9x9x9 box stop a cycle; hostile mobs need their own dark rule, and none come on peaceful (wiki). Spawning goes
+    through the host's `SpawnMob`.
+  - **Spawner polish** (2026-10-31): the mob turns inside the spawner (McChestComponent, its block entity's mob, sent to
+    clients with the chunk): 20 times a second while this machine's player is within 16 blocks, the client's wait
+    counts down to 0 and the mob turns 1000/(wait+200) degrees; each cycle (the server's `MulticastSpawnerCycled`) puts
+    the wait back to 200 (spawner_log.txt, every tick; it stood still with the player 17 off). The game rule
+    `spawnerBlocksWork` (vanilla's `spawner_blocks_work`; we had it listed as spawnerBlocksEnabled) off holds every
+    spawner's wait where it is, so nothing comes out, while the mob inside still turns (spawner_rule.txt: the server's
+    wait held at 20 for 700 ticks and went on when the rule came back). Scene `-McScene=spawners` (`-McSpawnerSpin=0`
+    holds the mobs still, `-McSpawnerPose` tries another pose) for vanilla's spawner_mob.txt shots.
+    The mob faces east at spin 0 and turns 10 times the spin toward the south (logged spins 0 and 256.2643 against
+    ref_spawner_mob_pig and ref_spawner_pig_south/east/top), so it goes round about 1.7 times a second between cycles.
+    Pose: size 0.5, nose up 40 degrees, fitted on the pig only. At spin 0 vanilla's pig looks a little more compact
+    than ours from the south (a few degrees of heading, or the tilt's axis). Zombie and chicken, shot close at spin 0
+    (spawner_mob2.txt, ref_spawner_mob_zombie/chicken against ours from `-McCam=3.5|6.5,-59.5,62.5,180,0`): the zombie
+    agrees (both mostly behind the cage's middle, a little green at the top), the chicken doesn't: vanilla's shows only
+    a sliver of beak at the top middle, ours its wings out at 45 degrees and its wattle well left. Likely the size
+    should go by the mob's own size rather than a flat 0.5, or our display chicken flaps; it needs the displayed
+    entity's scale and pose logged (log model on the spawner's display mob) before changing it.
+    Logged (spawner_display.txt, mc-reference's new `log display`): the display chicken stands at rest (no flap, wings
+    at no roll, yaw 0), so our chicken's wings no longer rest folded 0.08 out (chicken_fall.txt agrees). Its scale
+    isn't a field; from ref_display_chicken it is about 0.55, the pig's, so a mob is no longer blown up to fill the
+    cage: 0.556 of its size, shrunk further only past a block. Ours at that size hides behind the cage's middle as
+    vanilla's does, but at the logged spin 110.5378 vanilla's faces the eye (beak top middle) and ours faces west:
+    the 10 times spin heading, fitted on the pig at two spins, doesn't hold there; it needs more spins logged.
+    Logged (vehicle_log6.txt, shots from straight above at four spins): vanilla's mob faces south at spin 0 and turns ten
+    times the spin toward the east (ours turned the other way; the spin-0 "head east" reading was wrong). A mob over a
+    block is drawn with its bigger side 0.62 of a block (the zombie at 0.318, by eye against 0.556 to 1.0); one up to a
+    block at 0.556 of its size, so the two rules jump at a block (not measured between).
+  - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
+    struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
+    mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
+    the simulation's `OnBellRung` goes to the world actor's `MulticastBellRung`. Ceiling bells assumed the same.
+  - **Enchanting book motion, measured** (2026-10-30): mc-reference's `log table x y z ticks` prints a table's book
+    state each tick (scripts `table_book_log.txt`, `table_book_run2.txt`: 2500 ticks), and frame runs shoot it every 2
+    (`table_book_frames.txt`) or 14 ticks (`table_book_bob.txt`). The state rules fit every logged tick:
+    `FMcTableBook` steps 20 times a second. Near (feet within 3 blocks of the table's middle: opens at 2.9 level, not
+    3.0) it aims at the player, opens 0.1 a tick and its page target jumps by -3..3 (measured counts) every tick while
+    under half open, else one tick in 45; away it shuts 0.1 a tick and its aim creeps 0.02 a tick. Its turn closes
+    0.4 of the gap a tick; the flip springs (0.4 of the gap, capped 0.2, nine tenths of the change taken). Each of the
+    two loose pages turns over in the second part of its half-offset flip (fitted to 11 mid-turn frames). Open, each
+    cover lies 37 degrees off flat and the spine's middle 0.735 up (our model's gold corners fitted to both vanilla
+    views together, to 2 pixels; the earlier 10 degrees and 0.91 drew them a fifth too wide). Left: vanilla's page
+    blocks lie flatter than its covers and meet over the spine, where ours fold with the covers; a book
+    opening part way folds its covers as our model's shut does (gold corner fits). The bob is two waves of the table's
+    age, 0.010 blocks at 0.1 a tick and 0.026 at 0.02 (fitted to 90 frames to 0.1 pixel).
+  - **Decorated pots and conduits** (2026-10-30): a pot is an entity model `mc:decorated_pot` (a 14 by 16 body with
+    an 8 by 4 neck: its top, bottom and neck from `decorated_pot_base.png`, each side the middle of a side picture),
+    turned by `facing`. A conduit is its 6 cube shell (`mc:conduit/shell`) while asleep and, awake, the 8 cube cage
+    turning slowly with the eye inside looking at the player (`mc:conduit/cage`). Awake is `McConduit::IsActive`:
+    waterlogged, water in all 26 blocks round it, and at least 16 of the 42 frame places (three rings five across)
+    holding prismarine, prismarine bricks, dark prismarine or sea lanterns; the view looks again twice a second. Test
+    `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: its wobble and what it
+    holds; the conduit's wind, its closed eye when hunting, Conduit Power and attacking hostile mobs (none of which
+    the server does yet).
+  - **Pot sherds** (2026-10-31): a pot keeps its four sides, back, left, right and front (`McPot`, in McItem; the
+    item's `minecraft:pot_decorations`, left off when all are bricks). Crafting puts the diamond's top, left, right and
+    bottom on them; placing the pot gives the block a `Pot` block entity with them (sent to clients with the chunk, as
+    signs are), and breaking it drops the pot with them, or, hit with a tool of `minecraft:breaks_decorated_pots`, the
+    loot table's cracked case and the four sides as items. Each side of the model is its own layer, drawn with the
+    plain side or its sherd's `<name>_pottery_pattern`: facing south, the front south, the right east, the back north,
+    the left west (vanilla, mc-reference `scripts/heads_pots.txt`, `ref_pots_front`). In the inventory the pot is drawn
+    in 3D with its sherds, by the item model's gui display (turned 45, tipped 30, at 0.6), as the heads are. Tests
+    `McItem` (crafting with sherds), `McRender.PotsAndConduits`; shot `-McScene=sherds`.
+    Dropped, a pot is its own model with its sherds at a quarter size, bobbing and turning as a dropped item's picture
+    does (the item entity's id carries the sides, `minecraft:decorated_pot=<back>,<left>,<right>,<front>`); size and
+    height match vanilla's (mc-reference `conduits.txt`, `ref_conduit_pots`, against `-McScene=conduits
+    -McCam=13.5,-59.2,5.0,180,25`; `-McPotDrop=<scale>,<lift>` tries others). Dropped stacks merge only with the same
+    components now (a sherd pot no longer joins a plain one). Scenes take `"items"` (dropped, never picked up), for
+    both sides (`tools/scene_to_mcfunction.py`). Not done: the held pot, which belongs to the held-item drawing
+    (`McHand`, on main's branch), and other blocks dropped in 3D (all dropped items here are flat pictures).
+  - **Fishing** (2026-10-30): using a fishing rod casts a bobber (`FMcFishingBobber` in McEntity, `McFishing`) from the
+    eyes along the look, at 1.1 blocks a tick looking level and harder the steeper (measured from vanilla casts at
+    eight pitches, mc-reference `scripts/bobber_cast*.txt`); it flies under gravity 0.03 and drag 0.92 a tick (measured), hooks the first mob, player or item it touches,
+    lies on ground or sticks to a wall, and in water floats on a spring at the surface. In water the wait for a bite is
+    100 to 600 ticks, 100 shorter at each end per level of Lure; under open sky in rain a tick in four counts double,
+    and without sky half the ticks don't count. Then a fish swims in for 20 to 80 ticks (its wake drawn on the water)
+    and bites for 20 to 40 (the bobber dips, a splash). Using the rod again reels in (`McPlayerFishing.cpp`): during a
+    bite the catch is rolled from the data's `gameplay/fishing` loot table (`McLoot::RollFishing`: luck of the sea
+    adds each entry's quality, the treasure needs open water, a 5 by 4 by 5 box of only water and air, and the jungle
+    bamboo needs a jungle) and flung to the angler with 1 to 6 experience; a hooked mob or item is pulled toward them.
+    The rod wears 1 for a catch, 2 on the ground, 3 for an item, 5 for a mob. The bobber goes when the rod is put away,
+    or is 32 blocks off; one lying on the ground stays (a vanilla bobber on stone was still there after 1600 ticks,
+    though the wiki says 1200). Drawn as the hook picture facing the camera, with a
+    black line hanging slack to the rod tip in the angler's hand (`UMcEntityModelComponent::SetFishingLine`); the hotbar shows
+    the cast rod. Sounds: `entity.fishing_bobber.throw`, `.splash`, `.retrieve`. Test `McPlayer.Fishing`; shot
+    `Saved/Shots/fishing.png` (`-McScene=fishing -McCast=6`). Not done: the rod and line in a third-person hand (the
+    player model holds nothing), Lure's and luck's effect on mobs' fishing, and fishing advancements; not yet measured: the
+    caught item's throw and the float's springiness and dip (set by eye).
+  - **Elytra** (2026-10-30): worn in the chest slot (the data's equippable slot), a jump in the air starts a glide
+    (`McPlayerElytra.cpp`), which ends on landing, in water or lava, on a ladder or vine, or when the wings are down to
+    their last point (they never break: 432 points, 1 a second while gliding, none from blows). Gliding the body is a
+    0.6 cube with the eyes 0.4 up, falls no further than a dive of 0.5 a tick allows for fall damage, and flying into a
+    wall hurts by 10 times the sideways speed lost less 3. The flight (`McElytra`) is this port's own model, its numbers
+    fitted to vanilla glides measured from positions (mc-reference `scripts/glide_steady.txt`, `glide_turn.txt`,
+    `glide_speed.txt`): level flight about 24 m/s after 10 s, sinking about 3 m/s and gliding about 10 to 1 (wiki), 20
+    down about 37 m/s, a vertical dive averaging 60 m/s over 10 s, a 90 degree turn shedding speed, and climbs that
+    stall (ours lose speed ahead faster than vanilla's in a steep climb). A firework rocket used while gliding is spent
+    and pulls toward 33.5 blocks a second along the look, halving the gap each tick (measured), for 10 (flight + 1)
+    ticks plus up to 11 (wiki; `entity.firework_rocket.launch`). Other players see wings on the back
+    (`McPlayerModel::BuildWings`: two 10 by 20 by 2 boxes from `equipment/wings/elytra.png`, hung from behind the
+    shoulders and fanned 15 degrees, matching the vanilla husk in `ref_elytra_back.png`), and a glider lying along the
+    look, head bent back, wings spread. Test `McPlayer.Elytra`; shots `Saved/Shots/elytra_back.png` and
+    `elytra_glide.png` (`-McGlide`, `-McSelfShot` with `-McSelfShotYaw` and `-McSelfShotRise`). Not done: the rocket
+    entity and its trail, rockets' explosion damage, the wind sound, the camera roll, wings on armour stands and mobs,
+    and the server checking the glide.
+  - **Totem of Undying** (2026-10-30): a blow that would kill (anything but the void, which `FMcPlayerStats::LastHurtKind`
+    tells) uses up a totem in the main hand, or else the off hand (vanilla measured with one in each: the main hand's
+    goes, `ref_totem_hands.png`; `McTotem::TryUse`, called from the server's tick just before the death check in
+    `McPlayerTotem.cpp`): the player lives on with 1 health, every effect taken away, then Regeneration II for 45
+    seconds, Fire Resistance for 40 and Absorption II for 5 (wiki), and `item.totem.use` plays. Every machine then shows
+    it (`MulticastTotem`): green and lime-yellow sparks thrown out from the body for 15 ticks, drawn with the
+    `glitter_7`..`glitter_0` sprites over their lives (`particles/totem_of_undying.json`; `UMcParticleComponent::TotemBurst`,
+    its own mesh section), and on the holder's screen the totem's picture grows in the middle from a tenth of the
+    screen's height to just over half in 4 ticks, turning half round, and hangs there until 20 ticks (`McTotem::GetFlight`,
+    drawn by the HUD under the hotbar). Every timing, size and colour is measured from vanilla shots 2 ticks apart
+    (mc-reference `scripts/totem_ticks.txt`, `ref_tk_*.png`). Test `McPlayer.Totem`; shot `Saved/Shots/totem.png`
+    (`-McTotem=seconds` puts one in the off hand and deals a killing blow). Not done: the totem drawn as a thick 3D item
+    and tilted as vanilla's, the effects' own particles (vanilla's coloured rings round the player from about tick 20),
+    the Postmortal advancement and the death message's statistic.
+  - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
+    lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
+    signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities
+    with their chunks (`McChunkCodec` version 3; containers' contents stay on the server) and each change after
+    (`ClientBlockEntity`, from `FMcBlockWorld::OnBlockEntityChanged`). Placing a sign opens the editor (`FMcSignMenu`,
+    the window kind `Sign`); right-clicking one opens the side the player is in front of, unless it is waxed. The screen
+    (`AMcHUD::DrawSign`/`PollSign`) shows the board with four lines, each stopped at the board's width in the font's
+    pixels (90, a hanging sign's 60: `McFont`, shared from McAssets), a cursor that moves with the arrows, Home and End,
+    and Done or Esc to send; the server cuts each line to the width again. A dye recolours text, a glow ink sac makes it
+    glow and an ink sac stops that, honeycomb waxes it (each used up outside creative, with its sound; a waxed sign
+    plays `block.sign.waxed_interact_fail`). `UMcSignComponent` draws the text on standing, wall, hanging and wall
+    hanging signs, both sides, at 1/96 of a block a font pixel (hanging 0.9/64): plain text at four tenths of its dye,
+    glowing text full bright with its eight-way outline (cream round black, seen from any distance; the others' only
+    within 16 blocks). Placement now turns signs: standing in sixteen steps towards the player, wall signs on side faces,
+    hanging signs under a block (or on top with something above) and wall hanging signs across the face clicked.
+    Scenes take a `signs` list (`tools/scenes/signs.json`, which `scene_to_mcfunction.py` turns into `data merge`).
+    Shot: `Saved/Shots/signs.png` (`-McScene=signs`). Limits: formatting codes and other fonts (unicode) are not drawn;
+    the text is lit as a block entity, not by the block's own light.
+  - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
+    on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward, the left turning right and the right turning left,
+    neither going back (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
+    Refitted 2026-11-01 from paddle_log.txt (mc-reference's new `hold <key> <ticks>` rows a boat; `log model` gives the
+    paddles' angles each tick): a 16-tick stroke, the pose and the hull's paddle mount ported from the logged angles
+    (`PaddleLeft` in McEntityModel). The raft's (vehicle_log3.txt, log model bamboo_raft) row the same stroke from a
+    pixel lower: 9 out, 10 up, 3 forward. The raft deck is two boxes, the lower one 28 by 16, from 8.1 up.
+  - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
+    steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
+    gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.
+  - **Boats take mobs** (2026-10-30): a boat takes in any mob narrower than itself that it touches while it has a free seat
+    (a plain boat two, a chest boat one: the chest has the back seat). The mob sits (`FMcMob::RidingId`, not saved) doing
+    nothing until the boat goes, sunk four tenths of its height into the hull; animals sit across it. Players count against the seats, so a boat with two pigs turns a
+    player away. Shot: `Saved/Shots/boat_mobs.png` (`-McScene=boat_mobs`, side-on: a boat with a pig and a chicken, a chest boat with
+    a sheep, summoned with `-McChat`).
+  - **Chests** (2026-10-30): placed chests are drawn from their entity pictures (`UMcChestComponent`, which finds them in the
+    loaded chunks and stands an `mc:chest/...` model in each): chest, trapped, ender and the four copper chests (waxed too),
+    single and double, turned to their facing, Christmas pictures on 24 to 26 December. The lid opens over ten ticks while
+    this player has the chest open, both halves of a double together. The chest picture's net is the other way up from a
+    mob's, so the boxes are turned half round (`AddChest`, which the chest minecart uses too). Shots: `-McScene=chests`
+    (`-McChestsOpen` opens every lid), `Saved/Shots/chests_shut.png`, `chests_open.png`. Limits: another player's open
+    chest doesn't open its lid here (who has a chest open isn't sent), and the chest is lit as an entity, not by the
+    block's light. A half's picture follows where its other half is: `_left` is the half whose other half is on its +x
+    (as turned), which `McChestLink` calls `right`. Not done: the other block entities whose block models are only a
+    particle (beds, shulker boxes, skulls and heads, decorated pots, conduits, copper golem statues, end portals and
+    gateways), a bell's body, and the books on lecterns and enchanting tables (sign text is done: see above).
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.

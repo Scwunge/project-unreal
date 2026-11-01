@@ -1,0 +1,28 @@
+{
+  "description": "Signs on classic_flat (surface y=-61, stone floor), facing south towards the camera from z=4: oak (black), spruce (red), birch (glowing light blue), dark oak (glowing black, cream outline), an oak wall sign on stone at x=8, a cherry hanging sign under stone at x=11, a bamboo wall hanging sign at x=13, and at x=16 an oak sign turned to face north, showing its back.",
+  "camera": [8.0, -57.5, 14.5, 180.0, 10.0],
+  "blocks": [
+    { "from": [-1, -61, -3], "to": [18, -61, 8], "state": "minecraft:stone" },
+    { "from": [0, -60, 4], "to": [0, -60, 4], "state": "minecraft:oak_sign[rotation=0]" },
+    { "from": [2, -60, 4], "to": [2, -60, 4], "state": "minecraft:spruce_sign[rotation=0]" },
+    { "from": [4, -60, 4], "to": [4, -60, 4], "state": "minecraft:birch_sign[rotation=0]" },
+    { "from": [6, -60, 4], "to": [6, -60, 4], "state": "minecraft:dark_oak_sign[rotation=0]" },
+    { "from": [8, -60, 3], "to": [9, -58, 3], "state": "minecraft:stone_bricks" },
+    { "from": [8, -59, 4], "to": [8, -59, 4], "state": "minecraft:oak_wall_sign[facing=south]" },
+    { "from": [11, -58, 4], "to": [11, -58, 4], "state": "minecraft:stone_bricks" },
+    { "from": [11, -59, 4], "to": [11, -59, 4], "state": "minecraft:cherry_hanging_sign[rotation=0,attached=false]" },
+    { "from": [14, -59, 4], "to": [14, -59, 4], "state": "minecraft:stone_bricks" },
+    { "from": [13, -59, 4], "to": [13, -59, 4], "state": "minecraft:bamboo_wall_hanging_sign[facing=south]" },
+    { "from": [16, -60, 4], "to": [16, -60, 4], "state": "minecraft:oak_sign[rotation=8]" }
+  ],
+  "signs": [
+    { "at": [0, -60, 4], "front": ["Hello", "world", "", "4 lines"] },
+    { "at": [2, -60, 4], "front": ["", "Red text"], "color": "red" },
+    { "at": [4, -60, 4], "front": ["Glowing", "light blue"], "color": "light_blue", "glowing": true },
+    { "at": [6, -60, 4], "front": ["Glowing", "black"], "glowing": true },
+    { "at": [8, -59, 4], "front": ["On the", "wall"], "color": "white", "waxed": true },
+    { "at": [11, -59, 4], "front": ["Hanging", "sign"], "color": "yellow", "glowing": true },
+    { "at": [13, -59, 4], "front": ["Bamboo"], "color": "lime" },
+    { "at": [16, -60, 4], "front": ["Front"], "back": ["The", "back"], "back_color": "blue" }
+  ]
+}

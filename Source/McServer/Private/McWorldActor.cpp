@@ -15,6 +15,8 @@
 #include "McNoiseGenerator.h"
 #include "McPortal.h"
 #include "McSimulation.h"
+#include "McSpawners.h"
+#include "McPhysics.h"
 #include "McServer.h"
 #include "McWorldStorage.h"
 #include "McLaunch.h"
@@ -299,8 +301,16 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastNote(FVector_NetQuantize10(Position), Note);
 	};
+	Simulation->OnBellRung = [this](const FIntVector& Pos, int32 Side)
+	{
+		MulticastBellRung(Pos, static_cast<uint8>(Side));
+	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	Entities->GetSpawners().OnCycle = [this](const FIntVector& Pos)
+	{
+		MulticastSpawnerCycled(Pos);
+	};
 	// TNT lit by fire or redstone becomes a primed block.
 	Simulation->OnLightTnt = [this](const FIntVector& Pos)
 	{
@@ -610,6 +620,77 @@ void AMcWorldActor::MulticastBlockBroken_Implementation(FIntVector Pos, int32 St
 	if (bViewed && OnBlockBroken)
 	{
 		OnBlockBroken(Pos, static_cast<FMcStateId>(State));
+	}
+}
+
+void AMcWorldActor::MulticastBellRung_Implementation(FIntVector Pos, uint8 Side)
+{
+	if (bViewed && OnBellRung)
+	{
+		OnBellRung(Pos, Side);
+	}
+}
+
+void AMcWorldActor::MulticastSpawnerCycled_Implementation(FIntVector Pos)
+{
+	if (bViewed && OnSpawnerCycled)
+	{
+		OnSpawnerCycled(Pos);
+	}
+}
+
+void AMcWorldActor::SetShulkerOpeners(const TMap<FIntVector, int32>& Openers)
+{
+	for (const TPair<FIntVector, int32>& Pair : Openers)
+	{
+		if (ShulkerOpeners.FindRef(Pair.Key) != Pair.Value)
+		{
+			MulticastShulkerOpeners(Pair.Key, Pair.Value);
+		}
+	}
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (!Openers.Contains(Pair.Key))
+		{
+			MulticastShulkerOpeners(Pair.Key, 0);
+		}
+	}
+	ShulkerOpeners = Openers;
+}
+
+void AMcWorldActor::MulticastShulkerOpeners_Implementation(FIntVector Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpeners(Pos, Count);
+	}
+}
+
+void AMcWorldActor::GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const
+{
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (Pair.Value > 0 && McCoords::BlockToChunk(Pair.Key.X) == Chunk.X && McCoords::BlockToChunk(Pair.Key.Z) == Chunk.Y)
+		{
+			Boxes.Add(Pair.Key);
+			Openers.Add(Pair.Value);
+		}
+	}
+}
+
+void AMcWorldActor::ShowShulkerOpen(const FIntVector& Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpen(Pos, Count);
 	}
 }
 
@@ -1036,6 +1117,27 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	{
 		StreamChunks();
 	}
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	LidRemainder = FMath::Min(LidRemainder + DeltaSeconds, 0.25);
+	for (; ShulkerLids && LidRemainder >= 0.05; LidRemainder -= 0.05)
+	{
+		ShulkerLids->Tick();
+		// The server moves the mobs and items in an opening lid's way; each player's own machine moves them.
+		if (HasAuthority() && Entities)
+		{
+			for (const TUniquePtr<FMcEntity>& Entity : Entities->GetManager().GetEntities())
+			{
+				const FVector Push = ShulkerLids->GetPush(Entity->Body.GetBox());
+				if (!Entity->bRemoved && !Push.IsZero())
+				{
+					McPhysics::Move(*BlockWorld, Entity->Body, Push, false);
+				}
+			}
+		}
+	}
 	if (Simulation)
 	{
 		// Fixed 20 ticks a second however the frames fall; after a long hitch, catch up at most a few ticks.
@@ -1078,6 +1180,8 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 					Spawned->SetOwner(this);
 				}
 			}));
+			// It rains, for the world's rules (a fishing bobber's bite comes sooner), once the rain is more than a fifth on.
+			Entities->GetManager().bRaining = RainLevel > 0.2f;
 			// Where the time never changes it is always night to the mobs (none burn).
 			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);

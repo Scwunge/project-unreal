@@ -1,5 +1,6 @@
 #include "McBlockTextures.h"
 #include "McBlockModels.h"
+#include "McTextureTiles.h"
 #include "McCache.h"
 #include "Async/ParallelFor.h"
 #include "Engine/Texture2DArray.h"
@@ -21,6 +22,7 @@ namespace
 	constexpr int32 LayerSize = FMcBlockTextures::TextureSize;
 	constexpr int32 LayerMips = FMcBlockTextures::NumMips;
 	const TCHAR* const MissingTexture = TEXT("minecraft:missingno");
+	const TCHAR* const FlowTextures[] = { TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_flow") };
 
 	int32 MipSize(int32 Mip)
 	{
@@ -133,20 +135,25 @@ namespace
 		return Image;
 	}
 
-	// One frame of a (possibly stacked) image, as 16x16 pixels. Frames of other sizes are scaled with nearest.
-	void ExtractFrame(const FLoadedImage& Image, int32 FrameWidth, int32 FrameHeight, int32 Frame, TArray<FColor>& Out)
+	// A Width by Height part of an image from (Left, Top), as 16x16 pixels: scaled with nearest if it isn't that size.
+	void ExtractRegion(const FLoadedImage& Image, int32 Left, int32 Top, int32 Width, int32 Height, TArray<FColor>& Out)
 	{
 		Out.SetNumUninitialized(LayerSize * LayerSize);
-		const int32 Top = Frame * FrameHeight;
 		for (int32 Y = 0; Y < LayerSize; ++Y)
 		{
-			const int32 SourceY = FMath::Min(Top + (Y * 2 + 1) * FrameHeight / (LayerSize * 2), Image.Height - 1);
+			const int32 SourceY = FMath::Min(Top + (Y * 2 + 1) * Height / (LayerSize * 2), Image.Height - 1);
 			for (int32 X = 0; X < LayerSize; ++X)
 			{
-				const int32 SourceX = FMath::Min((X * 2 + 1) * FrameWidth / (LayerSize * 2), Image.Width - 1);
+				const int32 SourceX = FMath::Min(Left + (X * 2 + 1) * Width / (LayerSize * 2), Image.Width - 1);
 				Out[Y * LayerSize + X] = Image.Pixels[SourceY * Image.Width + SourceX];
 			}
 		}
+	}
+
+	// One frame of a (possibly stacked) image.
+	void ExtractFrame(const FLoadedImage& Image, int32 FrameWidth, int32 FrameHeight, int32 Frame, TArray<FColor>& Out)
+	{
+		ExtractRegion(Image, 0, Frame * FrameHeight, FrameWidth, FrameHeight, Out);
 	}
 
 	void MeasureAlpha(const TArray<FColor>& Pixels, bool& bTranslucent, bool& bCutout)
@@ -234,13 +241,27 @@ bool FMcBlockTextures::EnsureLoaded()
 			Ids.Add(Id);
 		}
 	}
+	// The fluids' pictures, which no block model names (water's and lava's models give only a particle): the fluid mesher
+	// draws with them.
+	for (const TCHAR* Fluid : { TEXT("minecraft:block/water_still"), TEXT("minecraft:block/lava_still") })
+	{
+		Ids.AddUnique(FName(Fluid));
+	}
+	for (const TCHAR* Flow : FlowTextures)
+	{
+		Ids.AddUnique(FName(Flow));
+	}
 	NewStats.Ids = Ids.Num();
 
 	TArray<FLoadedImage> Images;
 	Images.SetNum(Ids.Num());
 	ParallelFor(Ids.Num(), [&](int32 Index)
 	{
-		Images[Index] = LoadImage(ImageModule, McCache::Asset(TEXT("textures/") + McCache::PathOf(Ids[Index].ToString()) + TEXT(".png")));
+		// A tile of a big picture loads the whole picture (see McTextureTiles.h).
+		FName Picture = Ids[Index];
+		FIntPoint Tile, Grid;
+		McTextureTiles::ParseTileId(Ids[Index], Picture, Tile, Grid);
+		Images[Index] = LoadImage(ImageModule, McCache::Asset(TEXT("textures/") + McCache::PathOf(Picture.ToString()) + TEXT(".png")));
 	});
 
 	TArray<FLayer> NewLayers;
@@ -267,8 +288,18 @@ bool FMcBlockTextures::EnsureLoaded()
 		Layer.Id = Ids[Index];
 		NewLayersById.Add(Layer.Id, LayerIndex);
 
+		FName Picture;
+		FIntPoint Tile, Grid;
 		const TSharedPtr<FJsonObject>* AnimationObject = nullptr;
-		if (Image.Meta.IsValid() && Image.Meta->TryGetObjectField(TEXT("animation"), AnimationObject))
+		if (McTextureTiles::ParseTileId(Ids[Index], Picture, Tile, Grid))
+		{
+			const int32 TileWidth = Image.Width / Grid.X;
+			const int32 TileHeight = Image.Height / Grid.Y;
+			ExtractRegion(Image, Tile.X * TileWidth, Tile.Y * TileHeight, TileWidth, TileHeight, Layer.Pixels);
+			MeasureAlpha(Layer.Pixels, Layer.bTranslucent, Layer.bCutout);
+			++NewStats.Tiles;
+		}
+		else if (Image.Meta.IsValid() && Image.Meta->TryGetObjectField(TEXT("animation"), AnimationObject))
 		{
 			FAnimation Animation;
 			Animation.Layer = LayerIndex;
@@ -347,6 +378,44 @@ bool FMcBlockTextures::EnsureLoaded()
 				NewStats.Resized.Add(FString::Printf(TEXT("%s %dx%d"), *Ids[Index].ToString(), Image.Width, Image.Height));
 			}
 		}
+	}
+
+	// A flowing fluid's side shows the top left quarter of its 32-pixel frames, 16 pixels to the block: that quarter,
+	// unscaled, is a layer of its own, "<id>#side", moving with the frames.
+	for (const TCHAR* Flow : FlowTextures)
+	{
+		const int32 Index = Ids.IndexOfByKey(FName(Flow));
+		const int32* Base = NewLayersById.Find(FName(Flow));
+		if (Index == INDEX_NONE || !Base || NewLayers[*Base].Animation == INDEX_NONE)
+		{
+			continue;
+		}
+		const FLoadedImage& Image = Images[Index];
+		FAnimation Animation = NewAnimations[NewLayers[*Base].Animation];
+		const int32 FrameSize = Image.Width;
+		const int32 LayerIndex = NewLayers.Num();
+		Animation.Layer = LayerIndex;
+		FLayer& Layer = NewLayers.AddDefaulted_GetRef();
+		Layer.Id = FName(FString(Flow) + TEXT("#side"));
+		for (int32 Frame = 0; Frame < Animation.Frames.Num(); ++Frame)
+		{
+			TArray<FColor>& Out = Animation.Frames[Frame];
+			for (int32 Y = 0; Y < LayerSize; ++Y)
+			{
+				for (int32 X = 0; X < LayerSize; ++X)
+				{
+					const int32 SourceX = FMath::Min(X, FrameSize - 1);
+					const int32 SourceY = FMath::Min(Frame * FrameSize + FMath::Min(Y, FrameSize - 1), Image.Height - 1);
+					Out[Y * LayerSize + X] = Image.Pixels[SourceY * Image.Width + SourceX];
+				}
+			}
+			MeasureAlpha(Out, Layer.bTranslucent, Layer.bCutout);
+		}
+		Layer.Pixels = Animation.Frames[Animation.Order[0]];
+		Layer.Animation = NewAnimations.Num();
+		NewLayersById.Add(Layer.Id, LayerIndex);
+		NewAnimations.Add(MoveTemp(Animation));
+		++NewStats.SideLayers;
 	}
 
 	// The array: mip m holds every layer's m-th mip one after the other.

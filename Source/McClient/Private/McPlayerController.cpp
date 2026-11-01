@@ -1,4 +1,5 @@
 #include "McPlayerController.h"
+#include "McMob.h"
 #include "McLaunch.h"
 #include "McBed.h"
 #include "McBlockUse.h"
@@ -44,6 +45,8 @@
 #include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
 #include "McBlockLightComponent.h"
+#include "McChestComponent.h"
+#include "McSignComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
 #endif
@@ -187,8 +190,22 @@ void AMcPlayerController::ConnectToWorld()
 		{
 			WantedDimension = Dimension;
 		};
+		ChunkStream->OnBoxOpen = [this](const FIntVector& Pos, int32 Count)
+		{
+			if (WorldActor)
+			{
+				WorldActor->ShowShulkerOpen(Pos, Count);
+			}
+		};
 		if (HasAuthority())
 		{
+			ChunkStream->GetOpenBoxes = [this](const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers)
+			{
+				if (WorldActor)
+				{
+					WorldActor->GetShulkerOpeners(Chunk, Boxes, Openers);
+				}
+			};
 			ChunkStream->OnSetBlockRequest.BindUObject(this, &AMcPlayerController::HandleSetBlockRequest);
 			ChunkStream->OnAttackRequest = [this](const FVector& Look)
 			{
@@ -229,6 +246,17 @@ void AMcPlayerController::ConnectToWorld()
 	if (MyPawn && !MyPawn->HasBlockWorld())
 	{
 		MyPawn->SetBlockWorld(BlockWorld);
+		MyPawn->LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
+		{
+			const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+			const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
+			if (!Lids || Lids->GetTicks() == LastLidTick)
+			{
+				return FVector::ZeroVector;
+			}
+			LastLidTick = Lids->GetTicks();
+			return Lids->GetPush(Box);
+		};
 		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
 		{
 			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
@@ -314,6 +342,14 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			Use->FillBox(*World, Pos, Placed);
 		}
 	};
+	Hooked.OnPlacedSign = [World](AMcPlayerPawn& User, const FIntVector& Pos)
+	{
+		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
+		if (Use)
+		{
+			Use->PlacedSign(User, *World, Pos);
+		}
+	};
 	Hooked.OnUseItemOn = [World](AMcPlayerPawn& User, const FIntVector& Pos, const FIntVector& Beside)
 	{
 		FMcBlockWorld* Blocks = World.IsValid() ? World->GetBlockWorld() : nullptr;
@@ -341,49 +377,37 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			McPortal::TryLight(*Blocks, Beside, Place);
 			return true;
 		}
-		const FString HeldName = Held.ToString();
-		const bool bBoat = (HeldName.EndsWith(TEXT("_boat")) || HeldName.EndsWith(TEXT("_raft"))) && !HeldName.Contains(TEXT("chest"));
-		if (Held == TEXT("minecraft:minecart") || bBoat)
+		if (TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::CreateFromItem(Held))
 		{
 			FMcEntityHost* Host = World->GetEntityHost();
 			if (!Host)
 			{
 				return false;
 			}
-			TUniquePtr<FMcVehicle> Vehicle;
-			if (bBoat)
-			{
-				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
-				FString Wood = HeldName;
-				Wood.RemoveFromStart(TEXT("minecraft:"));
-				Wood.RemoveFromEnd(TEXT("_boat"));
-				Wood.RemoveFromEnd(TEXT("_raft"));
-				Boat->WoodName = FName(*(TEXT("minecraft:") + Wood));
-				// On the water clicked (a little under its surface), or on the empty block beside the face.
-				const FName ClickedName = Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name;
-				if (ClickedName == TEXT("minecraft:water"))
-				{
-					Boat->Body.Position = FVector(Pos.X + 0.5, Pos.Y + 0.8, Pos.Z + 0.5);
-				}
-				else if (Registry.IsAir(Blocks->GetBlock(Beside)))
-				{
-					Boat->Body.Position = FVector(Beside.X + 0.5, Beside.Y, Beside.Z + 0.5);
-				}
-				else
-				{
-					return false;
-				}
-				Vehicle = MoveTemp(Boat);
-			}
-			else
+			if (Vehicle->RunsOnRails())
 			{
 				if (!McRails::IsRail(Blocks->GetBlock(Pos)))
 				{
 					return false;
 				}
-				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
-				Cart->Body.Position = FVector(Pos.X + 0.5, Pos.Y + FMcMinecartEntity::RailLift, Pos.Z + 0.5);
-				Vehicle = MoveTemp(Cart);
+				Vehicle->Body.Position = FVector(Pos.X + 0.5, Pos.Y + FMcMinecartEntity::RailLift, Pos.Z + 0.5);
+			}
+			else
+			{
+				// On the water clicked (a little under its surface), or on the empty block beside the face.
+				const FName ClickedName = Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name;
+				if (ClickedName == TEXT("minecraft:water"))
+				{
+					Vehicle->Body.Position = FVector(Pos.X + 0.5, Pos.Y + 0.8, Pos.Z + 0.5);
+				}
+				else if (Registry.IsAir(Blocks->GetBlock(Beside)))
+				{
+					Vehicle->Body.Position = FVector(Beside.X + 0.5, Beside.Y, Beside.Z + 0.5);
+				}
+				else
+				{
+					return false;
+				}
 			}
 			Vehicle->Yaw = User.GetLookYaw();
 			Host->GetManager().Add(MoveTemp(Vehicle));
@@ -534,6 +558,49 @@ void AMcPlayerController::AttachView()
 	Lamps->RegisterComponent();
 	Lamps->SetWorld(WorldActor->GetBlockWorld());
 	BlockLights = Lamps;
+
+	UMcChestComponent* ChestModels = NewObject<UMcChestComponent>(WorldActor);
+	ChestModels->SetupAttachment(WorldActor->GetRootComponent());
+	ChestModels->RegisterComponent();
+	ChestModels->SetWorld(WorldActor->GetBlockWorld());
+	// A chest's lid is up while this player has it open, and a shulker box's while anyone does. (Others' open chests
+	// aren't told to this machine.)
+	ChestModels->GetMobSize = [](FName Type)
+	{
+		const FMcMobType* Mob = FMcMobType::Find(Type);
+		return Mob ? FVector2D(Mob->Width, Mob->Height) : FVector2D(1.0, 1.0);
+	};
+	ChestModels->IsOpen = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FIntVector& Pos)
+	{
+		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+		if (const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr; Lids && Lids->GetOpeners(Pos) > 0)
+		{
+			return true;
+		}
+		const AMcPlayerPawn* Viewer = WeakSelf.IsValid() ? Cast<AMcPlayerPawn>(WeakSelf->GetPawn()) : nullptr;
+		const UMcPlayerDataComponent* Items = Viewer ? Viewer->Data.Get() : nullptr;
+		return Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && Items->GetWindow().Pos == Pos;
+	};
+	Chests = ChestModels;
+	WorldActor->OnBellRung = [WeakChests = TWeakObjectPtr<UMcChestComponent>(ChestModels)](const FIntVector& Pos, uint8 Side)
+	{
+		if (UMcChestComponent* Live = WeakChests.Get())
+		{
+			Live->RingBell(Pos, Side);
+		}
+	};
+	WorldActor->OnSpawnerCycled = [WeakChests = TWeakObjectPtr<UMcChestComponent>(ChestModels)](const FIntVector& Pos)
+	{
+		if (UMcChestComponent* Live = WeakChests.Get())
+		{
+			Live->SpawnerCycled(Pos);
+		}
+	};
+	UMcSignComponent* SignText = NewObject<UMcSignComponent>(WorldActor);
+	SignText->SetupAttachment(WorldActor->GetRootComponent());
+	SignText->RegisterComponent();
+	SignText->SetWorld(WorldActor->GetBlockWorld());
+	Signs = SignText;
 	WorldActor->OnBlockBroken = [WeakBits = TWeakObjectPtr<UMcParticleComponent>(Bits)](const FIntVector& Pos, FMcStateId State)
 	{
 		if (UMcParticleComponent* Live = WeakBits.Get())
@@ -572,6 +639,14 @@ void AMcPlayerController::DetachView()
 	if (UActorComponent* Lamps = BlockLights.Get())
 	{
 		Lamps->DestroyComponent();
+	}
+	if (UActorComponent* ChestModels = Chests.Get())
+	{
+		ChestModels->DestroyComponent();
+	}
+	if (UActorComponent* SignText = Signs.Get())
+	{
+		SignText->DestroyComponent();
 	}
 	if (UActorComponent* Precipitation = Weather.Get())
 	{
@@ -726,6 +801,58 @@ void AMcPlayerController::StartDevScreenshot()
 				}
 			}), UseDelay, false);
 		}
+	}
+	// -McCast=seconds: the host's player takes a fishing rod into the selected slot and casts it after that long.
+	float CastDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McCast="), CastDelay))
+	{
+		FTimerHandle CastTimer;
+		GetWorldTimerManager().SetTimer(CastTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Angler = Cast<AMcPlayerPawn>(GetPawn()); Angler && Angler->Data)
+			{
+				Angler->Data->Inventory->Set(Angler->Data->SelectedSlot, FMcItemStack(FName("minecraft:fishing_rod"), 1));
+				Angler->RequestUseItem();
+				UE_LOG(LogMcClient, Display, TEXT("Cast a fishing rod"));
+			}
+		}), FMath::Max(CastDelay, 0.1f), false);
+	}
+	// -McGlide=seconds: the host's player puts on elytra and, after that long, starts gliding where they are.
+	float GlideDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McGlide="), GlideDelay))
+	{
+		if (AMcPlayerPawn* Glider = Cast<AMcPlayerPawn>(GetPawn()); Glider && Glider->Data && Glider->Data->Armor)
+		{
+			Glider->Data->Armor->Set(1, FMcItemStack(FName("minecraft:elytra"), 1));
+		}
+		FTimerHandle GlideTimer;
+		GetWorldTimerManager().SetTimer(GlideTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Glider = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				Glider->StartGlide();
+				UE_LOG(LogMcClient, Display, TEXT("Gliding"));
+			}
+		}), FMath::Max(GlideDelay, 0.1f), false);
+	}
+	// -McTotem=seconds: the host's player holds a Totem of Undying in the off hand and, after that long, takes a blow
+	// that would kill them.
+	float TotemDelay = 0.0f;
+	if (HasAuthority() && FParse::Value(FCommandLine::Get(), TEXT("-McTotem="), TotemDelay))
+	{
+		if (AMcPlayerPawn* Holder = Cast<AMcPlayerPawn>(GetPawn()); Holder && Holder->Data && Holder->Data->Offhand)
+		{
+			Holder->Data->Offhand->Set(0, FMcItemStack(FName("minecraft:totem_of_undying"), 1));
+		}
+		FTimerHandle TotemTimer;
+		GetWorldTimerManager().SetTimer(TotemTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (AMcPlayerPawn* Holder = Cast<AMcPlayerPawn>(GetPawn()))
+			{
+				Holder->ServerHurt(100.0f, McSurvival::EDamage::Generic);
+				UE_LOG(LogMcClient, Display, TEXT("Dealt a killing blow"));
+			}
+		}), FMath::Max(TotemDelay, 0.1f), false);
 	}
 	// -McPlaceHeld=x,y,z,seconds: puts the held block at that spot after that long, as a placing hand would.
 	FString PlaceSpec;

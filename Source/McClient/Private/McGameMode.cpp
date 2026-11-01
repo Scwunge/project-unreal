@@ -3,6 +3,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "McBed.h"
+#include "McBlockEntity.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityActor.h"
@@ -21,9 +22,13 @@
 #include "McLaunch.h"
 #include "McCommands.h"
 #include "McItemRegistry.h"
+#include "McPot.h"
 #include "McLang.h"
 #include "McSurvival.h"
 #include "McEffects.h"
+#include "McSimulation.h"
+#include "McConduitHunt.h"
+#include "McEntityManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -158,6 +163,40 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 			}
 		};
 	}
+	if (FMcSimulation* Sim = World.GetSimulation())
+	{
+		// Each hunting conduit's target, by where it is.
+		TSharedRef<TMap<FIntVector, int32>> Targets = MakeShared<TMap<FIntVector, int32>>();
+		Sim->OnConduitPulse = [this, Targets, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FIntVector& Pos, int32 Range, bool bHunting)
+		{
+			AMcWorldActor* Here = Weak.Get();
+			if (!Here)
+			{
+				return;
+			}
+			GiveConduitPower(*Here, FVector(Pos) + FVector(0.5), Range);
+			FMcEntityHost* Host = Here->GetEntityHost();
+			const FMcSimulation* HereSim = Here->GetSimulation();
+			if (!bHunting || !Host || !HereSim)
+			{
+				Targets->Remove(Pos);
+				return;
+			}
+			const int32 Target = McConduitHunt::Pulse(Host->GetManager(), Pos, Targets->FindRef(Pos), [HereSim](const FMcEntity& Mob)
+			{
+				const FVector& Feet = Mob.Body.Position;
+				return Mob.Body.bInWater || HereSim->IsRainingAt(FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z)));
+			});
+			if (Target != 0)
+			{
+				Targets->Add(Pos, Target);
+			}
+			else
+			{
+				Targets->Remove(Pos);
+			}
+		};
+	}
 	// With more than one world each looks after the players who are in it.
 	if (Worlds.Num() > 1)
 	{
@@ -232,6 +271,10 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 	}
 
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	auto ToBlock = [](const TArray<TSharedPtr<FJsonValue>>& Values)
+	{
+		return FIntVector(FMath::RoundToInt32(Values[0]->AsNumber()), FMath::RoundToInt32(Values[1]->AsNumber()), FMath::RoundToInt32(Values[2]->AsNumber()));
+	};
 	int32 Placed = 0;
 	for (const TSharedPtr<FJsonValue>& BoxValue : Scene->GetArrayField(TEXT("blocks")))
 	{
@@ -246,10 +289,6 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			continue;
 		}
 
-		auto ToBlock = [](const TArray<TSharedPtr<FJsonValue>>& Values)
-		{
-			return FIntVector(FMath::RoundToInt32(Values[0]->AsNumber()), FMath::RoundToInt32(Values[1]->AsNumber()), FMath::RoundToInt32(Values[2]->AsNumber()));
-		};
 		const FIntVector A = ToBlock(From);
 		const FIntVector B = ToBlock(To);
 		for (int32 Y = FMath::Min(A.Y, B.Y); Y <= FMath::Max(A.Y, B.Y); ++Y)
@@ -263,6 +302,206 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 				}
 			}
 		}
+	}
+
+	// Signs' words: { "at": [x, y, z], "front": [up to four lines], "color": "red", "glowing": true, and "back",
+	// "back_color", "back_glowing" for the other side, "waxed" }. Written once the sign's chunk is there.
+	struct FSceneSign
+	{
+		FIntVector Pos;
+		FMcBlockEntity Entity;
+	};
+	TSharedRef<TArray<FSceneSign>> Signs = MakeShared<TArray<FSceneSign>>();
+	const TArray<TSharedPtr<FJsonValue>>* SignValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("signs"), SignValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *SignValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a sign needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			FSceneSign& Sign = Signs->Emplace_GetRef();
+			Sign.Pos = ToBlock(*At);
+			Sign.Entity = FMcBlockEntity::MakeSign();
+			for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+			{
+				FMcSignSide& Side = Sign.Entity.SignSides[SideIndex];
+				const FString Prefix = SideIndex == 0 ? FString() : FString(TEXT("back_"));
+				const TArray<TSharedPtr<FJsonValue>>* Lines = nullptr;
+				if (Object->TryGetArrayField(SideIndex == 0 ? TEXT("front") : TEXT("back"), Lines))
+				{
+					for (int32 Line = 0; Line < FMath::Min(Lines->Num(), FMcSignSide::NumLines); ++Line)
+					{
+						Side.Lines[Line] = (*Lines)[Line]->AsString();
+					}
+				}
+				FString Color;
+				if (Object->TryGetStringField(Prefix + TEXT("color"), Color))
+				{
+					Side.Color = FName(*Color);
+				}
+				Object->TryGetBoolField(Prefix + TEXT("glowing"), Side.bGlowing);
+			}
+			Object->TryGetBoolField(TEXT("waxed"), Sign.Entity.bWaxed);
+		}
+	}
+	// Lecterns' books: { "at": [x, y, z], "pages": ["text", ...], "page": 0, "title": ..., "author": ... }, a written
+	// book. Written the same way as the signs; the lectern (placed with has_book=false) then gets has_book=true, so
+	// that a comparator reading it reads the book.
+	const TArray<TSharedPtr<FJsonValue>>* LecternValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("lecterns"), LecternValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *LecternValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a lectern needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			const TSharedRef<FJsonObject> Content = MakeShared<FJsonObject>();
+			TArray<TSharedPtr<FJsonValue>> Pages;
+			const TArray<TSharedPtr<FJsonValue>>* PageValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("pages"), PageValues))
+			{
+				for (const TSharedPtr<FJsonValue>& Page : *PageValues)
+				{
+					const TSharedRef<FJsonObject> Raw = MakeShared<FJsonObject>();
+					Raw->SetStringField(TEXT("raw"), Page->AsString());
+					Pages.Add(MakeShared<FJsonValueObject>(Raw));
+				}
+			}
+			Content->SetArrayField(TEXT("pages"), Pages);
+			FString TitleText, Author;
+			Object->TryGetStringField(TEXT("title"), TitleText);
+			Object->TryGetStringField(TEXT("author"), Author);
+			const TSharedRef<FJsonObject> Title = MakeShared<FJsonObject>();
+			Title->SetStringField(TEXT("raw"), TitleText);
+			Content->SetObjectField(TEXT("title"), Title);
+			Content->SetStringField(TEXT("author"), Author);
+			FMcItemStack Book(TEXT("minecraft:written_book"));
+			Book.Set(TEXT("minecraft:written_book_content"), MakeShared<FJsonValueObject>(Content));
+			FSceneSign& Lectern = Signs->Emplace_GetRef();
+			Lectern.Pos = ToBlock(*At);
+			Lectern.Entity = FMcBlockEntity::MakeLectern(Book);
+			Object->TryGetNumberField(TEXT("page"), Lectern.Entity.Page);
+		}
+	}
+	// Decorated pots' sides: { "at": [x, y, z], "sides": [back, left, right, front] }, items (bricks or sherds).
+	const TArray<TSharedPtr<FJsonValue>>* PotValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("pots"), PotValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *PotValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetArrayField(TEXT("sides"), SideValues))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a pot needs \"at\": [x, y, z] and \"sides\""), *Path);
+				continue;
+			}
+			TArray<FName> Sides;
+			for (const TSharedPtr<FJsonValue>& Side : *SideValues)
+			{
+				Sides.Add(FName(*Side->AsString()));
+			}
+			FSceneSign& Pot = Signs->Emplace_GetRef();
+			Pot.Pos = ToBlock(*At);
+			Pot.Entity = FMcBlockEntity::MakePot(Sides);
+		}
+	}
+	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "sides": [pot sides] }.
+	const TArray<TSharedPtr<FJsonValue>>* ItemValues = nullptr;
+	FMcEntityHost* Host = WorldActor ? WorldActor->GetEntityHost() : nullptr;
+	if (Host && Scene->TryGetArrayField(TEXT("items"), ItemValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *ItemValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Id;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("item"), Id))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: an item needs \"at\": [x, y, z] and \"item\""), *Path);
+				continue;
+			}
+			FMcItemStack Stack{ FName(*Id) };
+			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("sides"), SideValues))
+			{
+				TArray<FName> Sides;
+				for (const TSharedPtr<FJsonValue>& Side : *SideValues)
+				{
+					Sides.Add(FName(*Side->AsString()));
+				}
+				McPot::SetSides(Stack, Sides);
+			}
+			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
+			Item.Body.Velocity = FVector::ZeroVector;
+		}
+	}
+	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
+	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
+	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
+	{
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*RuleValues)->Values)
+		{
+			WorldActor->SetGameRule(Rule.Key, Rule.Value->AsString());
+		}
+	}
+	// Spawners' mobs: { "at": [x, y, z], "mob": "minecraft:pig" }.
+	const TArray<TSharedPtr<FJsonValue>>* SpawnerValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("spawners"), SpawnerValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *SpawnerValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Mob;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("mob"), Mob))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a spawner needs \"at\": [x, y, z] and \"mob\""), *Path);
+				continue;
+			}
+			FSceneSign& Spawner = Signs->Emplace_GetRef();
+			Spawner.Pos = ToBlock(*At);
+			Spawner.Entity = FMcBlockEntity::MakeSpawner(FName(*Mob));
+		}
+	}
+	if (Signs->Num() > 0)
+	{
+		TSharedRef<FTimerHandle> SignTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*SignTimer, FTimerDelegate::CreateWeakLambda(this, [this, Signs, SignTimer]()
+		{
+			FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+			for (int32 Index = Signs->Num() - 1; Blocks && Index >= 0; --Index)
+			{
+				const FSceneSign& Sign = (*Signs)[Index];
+				if (FMcChunk* Chunk = Blocks->FindChunk(FIntPoint(Sign.Pos.X >> 4, Sign.Pos.Z >> 4)))
+				{
+					Chunk->SetBlockEntity(Sign.Pos.X & 15, Sign.Pos.Y, Sign.Pos.Z & 15, Sign.Entity);
+					WorldActor->MarkChunkDirty(FIntPoint(Sign.Pos.X >> 4, Sign.Pos.Z >> 4));
+					Blocks->OnBlockEntityChanged.Broadcast(Sign.Pos);
+					if (Sign.Entity.Kind == EMcBlockEntityKind::Lectern)
+					{
+						const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+						const FString Facing = Registry.GetPropertyValue(Blocks->GetBlock(Sign.Pos), TEXT("facing")).ToString();
+						WorldActor->SetBlock(Sign.Pos, Registry.ParseState(TEXT("minecraft:lectern[facing=") + Facing + TEXT(",has_book=true,powered=false]")).Get(0));
+					}
+					Signs->RemoveAt(Index);
+				}
+			}
+			if (Signs->Num() == 0)
+			{
+				GetWorldTimerManager().ClearTimer(*SignTimer);
+			}
+		}), 0.25f, true);
 	}
 
 	TArray<FString> CameraParts;
@@ -588,6 +827,31 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	{
 		// The mob that bit is at Position: the player is knocked away from it.
 		Nearest->ServerHurt(Damage, McSurvival::EDamage::Mob, &Position);
+	}
+}
+
+void AMcGameMode::GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range)
+{
+	const FMcSimulation* Sim = World.GetSimulation();
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (!McPawn || !McPawn->Data || FVector::DistSquared(McPawn->GetFeetPosition(), Middle) > FMath::Square(double(Range)))
+		{
+			continue;
+		}
+		// Only players in water or out in the rain (minecraft.wiki).
+		const FVector Feet = McPawn->GetFeetPosition();
+		const FIntVector Block(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+		if (McPawn->GetBody().bInWater || (Sim && Sim->IsRainingAt(Block)))
+		{
+			McEffects::Add(McPawn->Data->Stats, TEXT("conduit_power"), 0, FMcSimulation::ConduitPowerTicks);
+		}
 	}
 }
 
@@ -935,11 +1199,11 @@ namespace
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
 			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
-			if (Host && Kind == TEXT("minecraft:minecart"))
+			if (Host && FMcVehicle::IsVehicleType(Kind))
 			{
-				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
-				Cart->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Cart));
+				TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
+				Vehicle->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Vehicle));
 				return true;
 			}
 			if (Host && FMcPrimedTnt::IsTnt(Kind))
@@ -947,13 +1211,6 @@ namespace
 				TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
 				Tnt->Body.Position = Feet;
 				Host->GetManager().Add(MoveTemp(Tnt));
-				return true;
-			}
-			if (Host && Kind == TEXT("minecraft:boat"))
-			{
-				TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
-				Boat->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Boat));
 				return true;
 			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;

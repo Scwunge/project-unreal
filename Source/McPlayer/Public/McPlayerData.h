@@ -53,8 +53,9 @@ struct MCPLAYER_API FMcPlayerStats
 	// difference), and the damage of the hit that started it.
 	int32 InvulnTicks = 0;
 	float LastDamage = 0.0f;
-	// The McSurvival::EDamage of the last hit, for the sound of being hurt (not saved).
-	uint8 LastDamageKind = 0;
+	// The kind of the last damage that landed (McSurvival::EDamage): the sound of being hurt, and what a death was
+	// killed by (not saved).
+	uint8 LastHurtKind = 0;
 	// Ticks left burning.
 	int32 OnFireTicks = 0;
 	// Hunger's hidden bar: it fills as the player works, and a full 4 costs saturation, then food.
@@ -86,6 +87,10 @@ enum class EMcWindowKind : uint8
 	// A dispenser or dropper: nine slots in a square.
 	Dispenser,
 	Loom,
+	// The sign editor: the menu is an FMcSignMenu with the lines of the side being written.
+	Sign,
+	// A lectern's book being read: the menu is an FMcLecternMenu with its pages and the one it is open at.
+	Lectern,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -105,7 +110,7 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
-	// Server: told after clicks, to write a chest's items back to the world.
+	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
 	bool IsOpen() const { return Menu.IsValid(); }
@@ -164,6 +169,12 @@ public:
 	// the item list destroys what is dropped on it), or with bToInventory into the inventory instead. The server
 	// checks the player is in creative and that the item exists, and keeps the count to a stack.
 	void CreativeTake(FName Item, int32 Count, bool bToInventory);
+	// Server: opens the editor on one side of the sign at Pos (Block is the sign's block, Kind its McSign::EKind, Colour
+	// its dye's text colour), starting from Lines. OnDone gets what the player wrote when the window closes.
+	void OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone);
+	// Server: opens the book on the lectern at Pos, at Page of Pages. OnButton is told after each button the player
+	// presses (a page turned, or Take Book), with the menu as it is then.
+	void OpenLectern(const FIntVector& Pos, const TArray<FString>& Pages, int32 Page, TFunction<void(class FMcLecternMenu&)> OnButton);
 	// Server: opens an enchanting table at Pos with Bookshelves around it.
 	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
 	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.

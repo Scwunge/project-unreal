@@ -11,6 +11,7 @@
 #include "McChunkSave.h"
 #include "McEntityHost.h"
 #include "McSimulation.h"
+#include "McShulkerLids.h"
 #include "McWorldSave.h"
 #include "GameFramework/Controller.h"
 #include "McWorldActor.generated.h"
@@ -154,6 +155,30 @@ public:
 	void MulticastBlockBroken(FIntVector Pos, int32 State);
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> OnBlockBroken;
 
+	// Every machine showing this dimension: the bell at Pos was rung from its Side (0 north, 1 south, 2 west, 3 east),
+	// so it swings away from there (the view's OnBellRung).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBellRung(FIntVector Pos, uint8 Side);
+	TFunction<void(const FIntVector& Pos, uint8 Side)> OnBellRung;
+
+	// Every machine showing this dimension: the spawner at Pos started a new wait (the view's spinning mob).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastSpawnerCycled(FIntVector Pos);
+	TFunction<void(const FIntVector& Pos)> OnSpawnerCycled;
+
+	// Shulker box lids, stepped 20 times a second on every machine: the boxes' collision while open, and the pushes
+	// of opening lids. Null until the first tick.
+	FMcShulkerLids* GetShulkerLids() const { return ShulkerLids.Get(); }
+	// Server: how many have each shulker box open now (each tick, the boxes anyone has open); changes go to everyone.
+	void SetShulkerOpeners(const TMap<FIntVector, int32>& Openers);
+	// Every machine showing this dimension: the box at Pos is now open for Count.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastShulkerOpeners(FIntVector Pos, int32 Count);
+	// Server: the boxes open in a chunk, for a player the chunk is going to. Client: a box already open when its chunk
+	// came, shown open at once.
+	void GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const;
+	void ShowShulkerOpen(const FIntVector& Pos, int32 Count);
+
 	// ---- Lightning (M8) ----
 	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on
 	// a random column of it, on the block above the top one, where the sky is open and rain (not snow) falls. A strike
@@ -241,6 +266,9 @@ private:
 	// Mobs and dropped items. Server only.
 	TUniquePtr<FMcEntityHost> Entities;
 	double TickRemainder = 0.0;
+	TUniquePtr<FMcShulkerLids> ShulkerLids;
+	TMap<FIntVector, int32> ShulkerOpeners;
+	double LidRemainder = 0.0;
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;

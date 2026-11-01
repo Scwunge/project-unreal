@@ -254,7 +254,8 @@ void McPhysics::GatherBoxes(const FMcBlockWorld& World, const FBox& Area, TArray
 			for (int32 X = Min.X; X <= Max.X; ++X)
 			{
 				const FVector Corner(X, Y, Z);
-				for (const FBox3f& Local : Shapes.GetCollision(World.GetBlock(FIntVector(X, Y, Z))))
+				const TArray<FBox3f>* Override = World.FindCollisionOverride(FIntVector(X, Y, Z));
+				for (const FBox3f& Local : Override ? TConstArrayView<FBox3f>(*Override) : Shapes.GetCollision(World.GetBlock(FIntVector(X, Y, Z))))
 				{
 					const FBox Box(Corner + FVector(Local.Min), Corner + FVector(Local.Max));
 					if (Box.Max.X > Area.Min.X && Box.Min.X < Area.Max.X && Box.Max.Y > Area.Min.Y && Box.Min.Y < Area.Max.Y && Box.Max.Z > Area.Min.Z && Box.Min.Z < Area.Max.Z)

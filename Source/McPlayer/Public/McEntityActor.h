@@ -47,15 +47,26 @@ public:
 	// A creeper's fuse, 0 (not lit) to 1 (about to go): clients swell it and flash it white.
 	UPROPERTY(Replicated)
 	float Swelling = 0.0f;
+	// A fishing bobber: where the fish coming to it is, across the water (x and z, blocks), and y 1 while it floats.
+	UPROPERTY(Replicated)
+	FVector Wake = FVector::ZeroVector;
 
 protected:
 	UFUNCTION()
 	void OnRep_Look();
 	void ApplyLook();
+	// A fishing bobber's angler's rod tip (block coordinates), if they are here.
+	TOptional<FVector> GetRodTip() const;
+	// A fishing bobber's splash when a fish bites and the wake of one swimming in.
+	void TickBobberParticles(float DeltaSeconds);
+	int32 LastBites = -1;
+	float WakeAccumulator = 0.0f;
 
 private:
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Stand;
+	// Whether the stand-in box has been coloured and reported.
+	bool bStandInMarked = false;
 	// The mob or item as it looks; null on a server that draws nothing.
 	UPROPERTY()
 	TObjectPtr<UMcEntityModelComponent> Model;

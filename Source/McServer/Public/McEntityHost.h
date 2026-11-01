@@ -13,6 +13,7 @@ class AActor;
 class UWorld;
 class FMcBlockWorld;
 class FMcMob;
+class FMcSpawners;
 
 class MCSERVER_API FMcEntityHost
 {
@@ -81,6 +82,8 @@ public:
 
 	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
+	// The monster spawners of the loaded chunks (McSpawners), run each tick.
+	FMcSpawners& GetSpawners() { return *Spawners; }
 
 private:
 	void SpawnHostiles(const TArray<FVector>& Players);
@@ -104,6 +107,8 @@ private:
 	TArray<FIntPoint> SeedQueue;
 	bool bDevSpawnDone = false;
 	FMcGameRules Rules;
+	TUniquePtr<FMcSpawners> Spawners;
+	FDelegateHandle BlockEntityHandle;
 
 	TWeakObjectPtr<UWorld> GameWorld;
 	TSubclassOf<AActor> ProxyClass;

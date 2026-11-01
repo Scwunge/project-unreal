@@ -387,6 +387,17 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		--RepathCooldown;
 	}
+	if (RidingId != 0)
+	{
+		const FMcEntity* Vehicle = Manager.Find(RidingId);
+		if (Vehicle && !Vehicle->bRemoved)
+		{
+			Body.Velocity = FVector::ZeroVector;
+			Goal.Reset();
+			return;
+		}
+		RidingId = 0;
+	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{
 		return;

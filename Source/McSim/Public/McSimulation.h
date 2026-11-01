@@ -106,6 +106,15 @@ public:
 
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
+	// The bell at Pos was rung by redstone, as if struck on Side (McBell's numbering): it swings for every viewer.
+	TFunction<void(const FIntVector&, int32)> OnBellRung;
+	// An awake conduit at Pos looks round, every ConduitPeriod ticks: players within Range blocks of its middle who
+	// are in water or rain get Conduit Power for ConduitPowerTicks. Hunting: it has the whole frame of 42.
+	TFunction<void(const FIntVector&, int32 Range, bool bHunting)> OnConduitPulse;
+	// Measured in vanilla (conduit_log): the conduit wakes, sleeps and refreshes the effect only on a check every 40
+	// ticks, and the effect is seen at 259 the tick after it is given.
+	static constexpr int32 ConduitPeriod = 40;
+	static constexpr int32 ConduitPowerTicks = 260;
 
 	// A note block played: where its note particle rises (above the block) and which note it shows.
 	TFunction<void(const FVector&, int32)> OnNoteParticle;
@@ -148,10 +157,13 @@ private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
 	// Sets the instrument of the note block at Pos from what is below and above it (nothing if it is not one).
 	void RefreshNoteBlock(const FIntVector& Pos);
+	// A chunk loaded (from disk, the generator or the network): its conduits start their round of checks.
+	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
+	void TickConduit(const FIntVector& Pos);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
 	void StepFalling();
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
@@ -162,6 +174,7 @@ private:
 
 	FMcBlockWorld& World;
 	FDelegateHandle ChangedHandle;
+	FDelegateHandle AddedHandle;
 	int64 GameTime = 0;
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;

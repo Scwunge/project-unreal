@@ -2,6 +2,7 @@
 #include "McLang.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McVehicle.h"
 
 namespace
 {
@@ -619,7 +620,7 @@ namespace
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
 		// Minecarts and boats are entities without a mob type.
-		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat") && Kind != TEXT("minecraft:tnt"))
+		if (!Type && !FMcVehicle::IsVehicleType(Kind) && Kind != TEXT("minecraft:tnt"))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}
@@ -1322,7 +1323,7 @@ TConstArrayView<McCommands::FGameRule> McCommands::GetGameRules()
 		{ TEXT("showDeathMessages"), false, TEXT("true") },
 		{ TEXT("snowAccumulationHeight"), true, TEXT("1") },
 		{ TEXT("spawnChunkRadius"), true, TEXT("2") },
-		{ TEXT("spawnerBlocksEnabled"), false, TEXT("true") },
+		{ TEXT("spawnerBlocksWork"), false, TEXT("true") },
 		{ TEXT("spawnMonsters"), false, TEXT("true") },
 		{ TEXT("spawnRadius"), true, TEXT("10") },
 		{ TEXT("spectatorsGenerateChunks"), false, TEXT("true") },

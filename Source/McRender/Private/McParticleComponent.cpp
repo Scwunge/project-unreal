@@ -6,12 +6,19 @@
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McCache.h"
 #include "McChunk.h"
+#include "McRender.h"
 #include "McRenderMode.h"
 #include "McNoteBlock.h"
 #include "McRenderTextures.h"
 #include "McCache.h"
 #include "McSound.h"
+#include "McRenderTextures.h"
+#include "McSkyComponent.h"
+#include "Engine/Texture2DArray.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "UObject/ConstructorHelpers.h"
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.h"
 
@@ -54,6 +61,55 @@ UMcParticleComponent::UMcParticleComponent(const FObjectInitializer& ObjectIniti
 	SetCastShadow(false);
 	bUseAsyncCooking = false;
 	Random.Initialize(static_cast<int32>(FPlatformTime::Cycles()));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Cutout(TEXT("/Game/Mc/Materials/M_McBlockCutout.M_McBlockCutout"));
+	SpriteBase = Cutout.Object;
+}
+
+UMaterialInstanceDynamic* UMcParticleComponent::EnsureGlitter()
+{
+	if (GlitterMaterial && GlitterMaterial->Parent == McRenderMode::Pick(SpriteBase.Get()))
+	{
+		return GlitterMaterial;
+	}
+	if (bGlitterFailed || !SpriteBase)
+	{
+		return nullptr;
+	}
+	if (!Glitter)
+	{
+		// The frames, each 8 pixels square, put side by side.
+		constexpr int32 Frame = 8;
+		TArray<FColor> Strip;
+		Strip.Init(FColor(0, 0, 0, 0), Frame * GlitterFrames * Frame);
+		for (int32 Index = 0; Index < GlitterFrames; ++Index)
+		{
+			TArray<FColor> Pixels;
+			int32 Width = 0, Height = 0;
+			const FString Path = McCache::Asset(FString::Printf(TEXT("textures/particle/glitter_%d.png"), Index));
+			if (!McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width != Frame || Height != Frame)
+			{
+				UE_LOG(LogMcRender, Error, TEXT("Can't use %s (an 8x8 png); totem sparks stay hidden"), *Path);
+				bGlitterFailed = true;
+				return nullptr;
+			}
+			for (int32 Y = 0; Y < Frame; ++Y)
+			{
+				for (int32 X = 0; X < Frame; ++X)
+				{
+					Strip[Y * Frame * GlitterFrames + Index * Frame + X] = Pixels[Y * Frame + X];
+				}
+			}
+		}
+		Glitter = McRenderTextures::MakeArray(this, Strip, Frame * GlitterFrames, Frame);
+		if (!Glitter)
+		{
+			bGlitterFailed = true;
+			return nullptr;
+		}
+	}
+	GlitterMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(SpriteBase.Get()), this);
+	GlitterMaterial->SetTextureParameterValue(TEXT("Blocks"), Glitter);
+	return GlitterMaterial;
 }
 
 UMcParticleComponent* UMcParticleComponent::FindFor(const FMcBlockWorld* InWorld)
@@ -326,6 +382,62 @@ void UMcParticleComponent::ItemEaten(const FVector& Eye, const FVector& Forward,
 		Bit.Size = 0.012f * (Random.FRand() * 0.5f + 0.75f);
 		Bit.Colour = Colours[Random.RandRange(0, Colours.Num() - 1)];
 		Bit.Light = FVector2f(Sky, 0.0f);
+\t}\n}\n\nvoid UMcParticleComponent::FishingSplash(const FVector& Pos)
+{
+	const float Light = SkyLightAt(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y) + 1, FMath::FloorToInt32(Pos.Z)));
+	for (int32 Index = 0; Index < 12; ++Index)
+	{
+		const bool bBubble = Index % 2 == 0;
+		const FVector At = Pos + FVector(Random.FRandRange(-0.25f, 0.25f), 0.0, Random.FRandRange(-0.25f, 0.25f));
+		FParticle& Drop = Add(bBubble ? EStyle::Bubble : EStyle::Splash, At,
+			bBubble ? FVector(Random.FRandRange(-0.02f, 0.02f), Random.FRandRange(0.01f, 0.04f), Random.FRandRange(-0.02f, 0.02f))
+				: FVector(Random.FRandRange(-0.08f, 0.08f), Random.FRandRange(0.1f, 0.2f), Random.FRandRange(-0.08f, 0.08f)));
+		Drop.Gravity = bBubble ? 0.0f : 0.04f;
+		Drop.Life = bBubble ? Random.RandRange(4, 10) : Random.RandRange(8, 16);
+		Drop.Size = bBubble ? 0.03f : 0.025f;
+		Drop.Colour = bBubble ? FColor(200, 225, 255) : FColor(120, 160, 230);
+		Drop.Light = FVector2f(Light, 0.0f);
+	}
+}
+
+void UMcParticleComponent::FishingWake(const FVector& Pos)
+{
+	FParticle& Foam = Add(EStyle::Wake, Pos, FVector(0.0, 0.01, 0.0));
+	Foam.Life = Random.RandRange(6, 12);
+	Foam.Size = 0.03f;
+	Foam.Colour = FColor(235, 245, 255);
+	Foam.Light = FVector2f(SkyLightAt(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y) + 1, FMath::FloorToInt32(Pos.Z))), 0.0f);
+	if (Random.FRand() < 0.15f)
+	{
+		FParticle& Drop = Add(EStyle::Splash, Pos, FVector(Random.FRandRange(-0.03f, 0.03f), Random.FRandRange(0.05f, 0.1f), Random.FRandRange(-0.03f, 0.03f)));
+		Drop.Gravity = 0.04f;
+		Drop.Life = Random.RandRange(6, 10);
+		Drop.Size = 0.02f;
+		Drop.Colour = FColor(120, 160, 230);
+		Drop.Light = Foam.Light;
+	}
+}
+
+void UMcParticleComponent::TotemBurst(const FVector& Feet, float Height)
+{
+	const float Light = SkyLightAt(FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y + Height), FMath::FloorToInt32(Feet.Z)));
+	// Fitted to vanilla shots every 2 ticks (mc-reference scripts/totem_ticks.txt): a handful in view at a time, lying
+	// one to four blocks out once they slow, still drifting high a second later, the last gone about 40 ticks after the
+	// blow; about 0.2 blocks across at 2 blocks off; lime-yellow and greens (their pixels sampled, the sprite's shading
+	// taken off).
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const FVector Way = FVector(Random.FRandRange(-1.0f, 1.0f), Random.FRandRange(-0.5f, 1.0f), Random.FRandRange(-1.0f, 1.0f)).GetSafeNormal();
+		const FVector At = Feet + FVector(Random.FRandRange(-0.3f, 0.3f), Random.FRand() * Height, Random.FRandRange(-0.3f, 0.3f));
+		FParticle& Spark = Add(EStyle::Totem, At, Way * Random.FRandRange(0.1f, 0.4f));
+		Spark.Friction = 0.9f;
+		Spark.Gravity = 0.002f;
+		Spark.Life = Random.RandRange(10, 25);
+		Spark.Size = Random.FRandRange(0.08f, 0.12f);
+		Spark.Colour = Random.FRand() < 0.4f
+			? Mix(FColor(190, 205, 50), FColor(225, 240, 40), Random.FRand())
+			: Mix(FColor(40, 140, 0), FColor(90, 190, 20), Random.FRand());
+		Spark.Light = FVector2f(Light, 0.0f);
 	}
 }
 
@@ -576,6 +688,22 @@ void UMcParticleComponent::Draw(float Partial)
 	const FVector ViewFacing = bSkyLit ? (-View.Vector() + FVector(0.0, 0.0, 1.5)).GetSafeNormal() : -View.Vector();
 	const bool bUnreal = McRenderMode::IsEnhanced();
 
+	// The totem's sparks, on their own section with their own picture.
+	struct FSprites
+	{
+		TArray<FVector> Positions;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UV0, UV1, UV2;
+		TArray<FColor> Colours;
+		TArray<int32> Triangles;
+	} Sprites;
+	UMaterialInstanceDynamic* GlitterSprites = EnsureGlitter();
+	if (GlitterSprites)
+	{
+		GlitterSprites->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		GlitterSprites->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+	}
+
 	TArray<FVector> Positions;
 	TArray<FVector> Normals;
 	TArray<FVector2D> UV0, UV1, UV2;
@@ -638,6 +766,14 @@ void UMcParticleComponent::Draw(float Partial)
 			Colour = Mix(FColor(255, 230, 120), FColor(255, 90, 20), T);
 			Kind = McSurface::GlowParticle;
 			break;
+		case EStyle::Splash:
+		case EStyle::Bubble:
+		case EStyle::Wake:
+			Size *= FMath::Clamp((1.0f - T) * 3.0f, 0.0f, 1.0f);
+			break;
+		case EStyle::Totem:
+			Size *= FMath::Clamp((1.0f - T) * 2.0f, 0.0f, 1.0f);
+			break;
 		case EStyle::Smoke:
 			// Puffs thin out and take on the colour of the air as they rise, rather than staying flat grey squares.
 			Size *= (1.0f + T * 1.5f) * FMath::Clamp((1.0f - T) * 2.5f, 0.0f, 1.0f);
@@ -698,9 +834,30 @@ void UMcParticleComponent::Draw(float Partial)
 		}
 		const FVector Centre = McCoords::BlockToUnreal(FMath::Lerp(Particle.Prev, Particle.Pos, static_cast<double>(Partial)));
 		const double Half = Size * McCoords::UnitsPerBlock;
-		const int32 First = Positions.Num();
 		const FVector Corners[4] = { -Right + Up, -Right - Up, Right - Up, Right + Up };
 		const FVector2D CornerUV[4] = { FVector2D(0, 0), FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0) };
+		if (Particle.Style == EStyle::Totem)
+		{
+			if (!GlitterSprites)
+			{
+				continue;
+			}
+			// glitter_7 when new, down to glitter_0 as it dies.
+			const int32 Frame = GlitterFrames - 1 - FMath::Min(static_cast<int32>(T * GlitterFrames), GlitterFrames - 1);
+			const int32 SpriteFirst = Sprites.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Sprites.Positions.Add(Centre + Corners[Corner] * Half);
+				Sprites.Normals.Add(ViewFacing);
+				Sprites.UV0.Add(FVector2D((Frame + CornerUV[Corner].X) / GlitterFrames, CornerUV[Corner].Y));
+				Sprites.UV1.Add(FVector2D::ZeroVector);
+				Sprites.UV2.Add(FVector2D(Particle.Light));
+				Sprites.Colours.Add(Colour);
+			}
+			Sprites.Triangles.Append({ SpriteFirst, SpriteFirst + 1, SpriteFirst + 2, SpriteFirst, SpriteFirst + 2, SpriteFirst + 3 });
+			continue;
+		}
+		const int32 First = Positions.Num();
 		for (int32 Corner = 0; Corner < 4; ++Corner)
 		{
 			Positions.Add(Centre + Corners[Corner] * Half);
@@ -716,6 +873,11 @@ void UMcParticleComponent::Draw(float Partial)
 	if (GetMaterial(0) != Material)
 	{
 		SetMaterial(0, Material);
+	}
+	CreateMeshSection(1, Sprites.Positions, Sprites.Triangles, Sprites.Normals, Sprites.UV0, Sprites.UV1, Sprites.UV2, TArray<FVector2D>(), Sprites.Colours, TArray<FProcMeshTangent>(), false);
+	if (GlitterSprites && GetMaterial(1) != GlitterSprites)
+	{
+		SetMaterial(1, GlitterSprites);
 	}
 }
 

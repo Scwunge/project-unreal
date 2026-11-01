@@ -54,6 +54,7 @@ public:
 	// stays where it is.
 	void SetBlockWorld(const FMcBlockWorld* InWorld) { BlockWorld = InWorld; }
 	bool HasBlockWorld() const { return BlockWorld != nullptr; }
+	const FMcBlockWorld* GetBlockWorld() const { return BlockWorld; }
 
 	// Puts the eyes at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
@@ -64,6 +65,9 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> SetBlockHandler;
 	// Swings at a mob in front of the player: the look direction. Set by the controller.
 	TFunction<void(const FVector& Look)> AttackHandler;
+	// How far this tick's opening shulker lids move a body with this box (zero once a lid tick has been asked about,
+	// so a frame with two movement steps is not pushed twice): the view's world, set by the controller.
+	TFunction<FVector(const FBox& Box, int64& LastLidTick)> LidPush;
 
 	UPROPERTY(VisibleAnywhere, Category = "Mc")
 	TObjectPtr<UMcPlayerDataComponent> Data;
@@ -87,6 +91,8 @@ public:
 	TFunction<void(const FIntVector& Pos, TArray<FMcItemStack>& Drops)> OnBreakDrops;
 	// An item that carries what it holds was placed at Pos (a shulker box gives its things to the new block).
 	TFunction<void(const FIntVector& Pos, const FMcItemStack& Placed)> OnPlacedStack;
+	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
+	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
@@ -140,6 +146,8 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnSleptThrough;
 	// The entity id of the minecart or boat the player sits in, or 0.
 	int32 GetRidingId() const { return RidingId; }
+	// Whether the player's fishing bobber is out (their rod is drawn cast).
+	bool IsRodCast() const { return bRodCast; }
 	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
 	void ServerRide(int32 VehicleId);
 	void ServerDismount();
@@ -163,6 +171,11 @@ public:
 	float GetLookYaw() const { return McLookYaw; }
 	float GetLookPitch() const { return McLookPitch; }
 	bool IsSneakPosed() const { return bSneakPose; }
+	bool IsGlidePosed() const { return bGlidePose; }
+	// Owner: gliding on elytra.
+	bool IsGliding() const { return bGliding; }
+	// Owner, development (-McGlide): starts a glide on the spot, heading the way they look, if the wings are on.
+	void StartGlide();
 
 	// Server: how hard the world is (hunger's harm, and how much it hurts).
 	void SetDifficulty(McSurvival::EDifficulty InDifficulty) { Difficulty = InDifficulty; }
@@ -183,7 +196,7 @@ protected:
 	virtual void BeginPlay() override;
 
 	// Where the owning client's player is now, once a tick, in Minecraft block coordinates (feet), and where they look.
-	// Flags: 1 sneaking, 2 on the ground, 4 sprinting, 8 flying.
+	// Flags: 1 sneaking, 2 on the ground, 4 sprinting, 8 flying, 16 gliding.
 	UFUNCTION(Server, Unreliable)
 	void ServerMove(FVector FeetPos, float NewYaw, float NewPitch, uint8 Flags);
 
@@ -210,6 +223,9 @@ protected:
 	void ClientTeleport(FVector Feet, float McYaw);
 	UFUNCTION(Server, Reliable)
 	void ServerTeleported();
+	// The owner uses the held item on nothing in particular: a fishing rod casts, or reels in.
+	UFUNCTION(Server, Reliable)
+	void ServerUseItem();
 	// The owner holds the use button on a food (eating takes a while).
 	UFUNCTION(Server, Reliable)
 	void ServerSetUsing(bool bUsing);
@@ -251,6 +267,8 @@ public:
 	void RequestRespawn() { ServerRespawn(); }
 	// Right-clicks the block at Pos as the hand does (the -McUse development flag).
 	void RequestUseBlock(const FIntVector& Pos) { ServerUseBlock(Pos); }
+	// Uses the held item at nothing (the -McCast development flag casts a rod this way).
+	void RequestUseItem() { ServerUseItem(); }
 
 protected:
 
@@ -284,6 +302,7 @@ private:
 	void ShowPosition() const;
 
 	const FMcBlockWorld* BlockWorld = nullptr;
+	int64 LastLidTick = 0;
 	FMcBody Body;
 	FVector PreviousPosition = FVector::ZeroVector;
 	float PreviousEyeHeight = 1.62f;
@@ -328,6 +347,59 @@ private:
 	float RideForward = 0.0f;
 	float RideStrafe = 0.0f;
 	void ServerTickRiding();
+
+	// ---- Fishing (McPlayerFishing.cpp) ----
+	// Server: the player's bobber, if it is out, as an entity id (0 if none).
+	int32 BobberId = 0;
+	UPROPERTY(Replicated)
+	bool bRodCast = false;
+	// Server: keeps the bobber told where the angler is, and takes it away when the rod is put down or left too far behind.
+	void ServerTickFishing(FMcEntityManager& Entities);
+	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
+	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
+	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;
+
+	// ---- Elytra (McPlayerElytra.cpp) ----
+	// Owner: gliding, and the ticks a firework rocket still pulls.
+	bool bGliding = false;
+	int32 BoostTicks = 0;
+	// Owner: one tick of the glide in place of walking: starts it on a jump in the air, ends it on landing, in water or
+	// lava, on a ladder or vine, or with the wings worn out. True when the glide moved the body this tick.
+	bool TickGlide(const FMcMoveInput& Input, bool bJumpPressed);
+	// What everyone sees: the glider's pose, and elytra on the back.
+	UPROPERTY(Replicated)
+	bool bGlidePose = false;
+	UPROPERTY(Replicated)
+	bool bWearsElytra = false;
+	// The item in the head slot, for a head or carved pumpkin drawn on the head.
+	UPROPERTY(Replicated)
+	FName WornHead;
+	// Server: ticks of gliding, for the wings' wear.
+	int32 ServerGlideTicks = 0;
+	bool bServerGliding = false;
+	// Server: wears the wings while gliding.
+	void ServerTickElytra();
+	// Server: a rocket used while gliding: used up, and the pull starts on the owner's machine.
+	bool ServerBoost();
+	// The owner flew into a wall this hard.
+	UFUNCTION(Server, Reliable)
+	void ServerFlewIntoWall(float Damage);
+	UFUNCTION(Client, Reliable)
+	void ClientBoost(int32 Ticks);
+
+	// ---- Totem of Undying (McTotem.cpp) ----
+	// Server: a blow that would have killed: a totem in either hand is used up instead (McTotem::TryUse), with its
+	// sound and its show for everyone. True if it saved the player.
+	bool ServerTryTotem();
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastTotem();
+	// Every machine: ticks since the totem went off, -1 if not lately; the sparks fly for the first ParticleTicks.
+	float TotemAge = -1.0f;
+	void TickTotem(float DeltaSeconds);
+public:
+	// Ticks since this player's totem went off (its flight across their screen), or -1.
+	float GetTotemAge() const { return TotemAge; }
+private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;

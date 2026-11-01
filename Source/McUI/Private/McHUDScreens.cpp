@@ -1368,6 +1368,14 @@ void AMcHUD::DrawHUD()
 		bLookLoaded = true;
 		McRenderMode::SetEnhanced(FMcClientOptions::Load().bEnhancedGraphics || FParse::Param(FCommandLine::Get(), TEXT("McEnhanced")));
 		McRenderMode::SetHd(FMcClientOptions::Load().bHdTextures || FParse::Param(FCommandLine::Get(), TEXT("McHd")));
+		McRenderMode::SetRayTracing(FMcClientOptions::Load().bRayTracing || FParse::Param(FCommandLine::Get(), TEXT("McRayTracing")));
+		int32 Quality = FMcClientOptions::Load().Quality;
+		FParse::Value(FCommandLine::Get(), TEXT("-McQuality="), Quality);
+		McRenderMode::SetQuality(Quality);
+		if (FMcClientOptions::Load().bShowFps || FParse::Param(FCommandLine::Get(), TEXT("McFps")))
+		{
+			GetOwningPlayerController()->ConsoleCommand(TEXT("stat fps"));
+		}
 	}
 	++ShakeCounter;
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);

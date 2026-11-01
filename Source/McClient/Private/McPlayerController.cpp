@@ -1,4 +1,5 @@
 #include "McPlayerController.h"
+#include "ShaderCompiler.h"
 #include "McLaunch.h"
 #include "McBed.h"
 #include "McBlockUse.h"
@@ -866,9 +867,48 @@ void AMcPlayerController::StartDevScreenshot()
 	FParse::Value(FCommandLine::Get(), TEXT("-McShotMaxWait="), MaxWait);
 	const bool bWait = !FParse::Param(FCommandLine::Get(), TEXT("McShotNoWait"));
 
-	auto Save = [this, ShotPath]()
+	// The shot waits for the shaders still compiling (a material that changed is compiled when first drawn, and a
+	// translucent surface is skipped until then), up to three minutes more.
+	// Frames per second over the last three seconds, for the log line: one frame's rate is too noisy to compare looks by.
+	struct FFpsWindow
 	{
-		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
+		TArray<TPair<double, float>> Frames;
+		float Average() const
+		{
+			const double Now = FPlatformTime::Seconds();
+			double Sum = 0.0;
+			int32 Count = 0;
+			for (const TPair<double, float>& Frame : Frames)
+			{
+				if (Now - Frame.Key <= 3.0)
+				{
+					Sum += Frame.Value;
+					++Count;
+				}
+			}
+			return Count > 0 && Sum > 0.0 ? (float)(Count / Sum) : 0.0f;
+		}
+	};
+	const TSharedRef<FFpsWindow> FpsWindow = MakeShared<FFpsWindow>();
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([FpsWindow](float DeltaTime)
+	{
+		FpsWindow->Frames.Add({ FPlatformTime::Seconds(), DeltaTime });
+		if (FpsWindow->Frames.Num() > 1200)
+		{
+			FpsWindow->Frames.RemoveAt(0, 600, EAllowShrinking::No);
+		}
+		return true;
+	}));
+	const TSharedRef<TFunction<void(int32)>> TakeShot = MakeShared<TFunction<void(int32)>>();
+	*TakeShot = [this, ShotPath, TakeShot, FpsWindow](int32 Waited)
+	{
+		if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling() && Waited < 180)
+		{
+			FTimerHandle WaitTimer;
+			GetWorldTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot, Waited]() { (*TakeShot)(Waited + 1); }), 1.0f, false);
+			return;
+		}
+		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()
@@ -878,17 +918,17 @@ void AMcPlayerController::StartDevScreenshot()
 	};
 
 	FTimerHandle ShotTimer;
-	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, Save, bWait, MaxWait]()
+	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, TakeShot, bWait, MaxWait]()
 	{
 		if (!bWait)
 		{
-			Save();
+			(*TakeShot)(0);
 			return;
 		}
 		struct FWaitState { int32 Last = -1; int32 Steady = 0; float Waited = 0.0f; };
 		TSharedRef<FWaitState> State = MakeShared<FWaitState>();
 		TSharedRef<FTimerHandle> Poll = MakeShared<FTimerHandle>();
-		GetWorldTimerManager().SetTimer(*Poll, FTimerDelegate::CreateWeakLambda(this, [this, Save, MaxWait, State, Poll]()
+		GetWorldTimerManager().SetTimer(*Poll, FTimerDelegate::CreateWeakLambda(this, [this, TakeShot, MaxWait, State, Poll]()
 		{
 			const UMcWorldRenderComponent* Drawer = Cast<UMcWorldRenderComponent>(Renderer.Get());
 			const int32 Meshed = Drawer ? Drawer->NumMeshedChunks() : 0;
@@ -899,10 +939,10 @@ void AMcPlayerController::StartDevScreenshot()
 			if (State->Steady >= 2 || State->Waited >= MaxWait)
 			{
 				UE_LOG(LogMcClient, Display, TEXT("McShot: %d chunks meshed after waiting %.1f s more"), Meshed, State->Waited);
-				// Clearing the timer frees this lambda's captures: run a copy of Save.
-				const TFunction<void()> Run = Save;
+				// Clearing the timer frees this lambda's captures: keep the shot function alive.
+				const TSharedRef<TFunction<void(int32)>> Run = TakeShot;
 				GetWorldTimerManager().ClearTimer(*Poll);
-				Run();
+				(*Run)(0);
 			}
 		}), 0.5f, true);
 	}), Delay, false);

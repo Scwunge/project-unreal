@@ -1,0 +1,1325 @@
+{
+ "description": "A street of 40 lights (torches, lanterns, glowstone, sea lanterns, shroomlights, lava) on classic_flat: for the block light budget of Unreal Mode. Use -McTime=15000.",
+ "camera": [
+  0.5,
+  -59.4,
+  -6.0,
+  0.0,
+  2.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    -12,
+    -60,
+    6
+   ],
+   "to": [
+    -12,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -12,
+    -59,
+    6
+   ],
+   "to": [
+    -12,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    6
+   ],
+   "to": [
+    -9,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -9,
+    -59,
+    6
+   ],
+   "to": [
+    -9,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    6
+   ],
+   "to": [
+    -6,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -6,
+    -59,
+    6
+   ],
+   "to": [
+    -6,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    6
+   ],
+   "to": [
+    -3,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -3,
+    -59,
+    6
+   ],
+   "to": [
+    -3,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    6
+   ],
+   "to": [
+    0,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    6
+   ],
+   "to": [
+    0,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    6
+   ],
+   "to": [
+    3,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    6
+   ],
+   "to": [
+    3,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    6
+   ],
+   "to": [
+    6,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    6,
+    -59,
+    6
+   ],
+   "to": [
+    6,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    6
+   ],
+   "to": [
+    9,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    9,
+    -59,
+    6
+   ],
+   "to": [
+    9,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    6
+   ],
+   "to": [
+    12,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    6
+   ],
+   "to": [
+    12,
+    -59,
+    6
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    12
+   ],
+   "to": [
+    -12,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -12,
+    -59,
+    12
+   ],
+   "to": [
+    -12,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    12
+   ],
+   "to": [
+    -9,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -9,
+    -59,
+    12
+   ],
+   "to": [
+    -9,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    12
+   ],
+   "to": [
+    -6,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -6,
+    -59,
+    12
+   ],
+   "to": [
+    -6,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    12
+   ],
+   "to": [
+    -3,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -3,
+    -59,
+    12
+   ],
+   "to": [
+    -3,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    12
+   ],
+   "to": [
+    0,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    12
+   ],
+   "to": [
+    0,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    12
+   ],
+   "to": [
+    3,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    12
+   ],
+   "to": [
+    3,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    12
+   ],
+   "to": [
+    6,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    6,
+    -59,
+    12
+   ],
+   "to": [
+    6,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    12
+   ],
+   "to": [
+    9,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    9,
+    -59,
+    12
+   ],
+   "to": [
+    9,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    12
+   ],
+   "to": [
+    12,
+    -60,
+    12
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    12
+   ],
+   "to": [
+    12,
+    -59,
+    12
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    18
+   ],
+   "to": [
+    -12,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -12,
+    -59,
+    18
+   ],
+   "to": [
+    -12,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    18
+   ],
+   "to": [
+    -9,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -9,
+    -59,
+    18
+   ],
+   "to": [
+    -9,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    18
+   ],
+   "to": [
+    -6,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -6,
+    -59,
+    18
+   ],
+   "to": [
+    -6,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    18
+   ],
+   "to": [
+    -3,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -3,
+    -59,
+    18
+   ],
+   "to": [
+    -3,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    18
+   ],
+   "to": [
+    0,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    18
+   ],
+   "to": [
+    0,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    18
+   ],
+   "to": [
+    3,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    18
+   ],
+   "to": [
+    3,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    18
+   ],
+   "to": [
+    6,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    6,
+    -59,
+    18
+   ],
+   "to": [
+    6,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    18
+   ],
+   "to": [
+    9,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    9,
+    -59,
+    18
+   ],
+   "to": [
+    9,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    18
+   ],
+   "to": [
+    12,
+    -60,
+    18
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    18
+   ],
+   "to": [
+    12,
+    -59,
+    18
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    24
+   ],
+   "to": [
+    -12,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -12,
+    -59,
+    24
+   ],
+   "to": [
+    -12,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    24
+   ],
+   "to": [
+    -9,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -9,
+    -59,
+    24
+   ],
+   "to": [
+    -9,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    24
+   ],
+   "to": [
+    -6,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -6,
+    -59,
+    24
+   ],
+   "to": [
+    -6,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    24
+   ],
+   "to": [
+    -3,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    -3,
+    -59,
+    24
+   ],
+   "to": [
+    -3,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    24
+   ],
+   "to": [
+    0,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    24
+   ],
+   "to": [
+    0,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    24
+   ],
+   "to": [
+    3,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    24
+   ],
+   "to": [
+    3,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    24
+   ],
+   "to": [
+    6,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    6,
+    -59,
+    24
+   ],
+   "to": [
+    6,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    24
+   ],
+   "to": [
+    9,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    9,
+    -59,
+    24
+   ],
+   "to": [
+    9,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    24
+   ],
+   "to": [
+    12,
+    -60,
+    24
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    24
+   ],
+   "to": [
+    12,
+    -59,
+    24
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    30
+   ],
+   "to": [
+    -12,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    30
+   ],
+   "to": [
+    -11,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    -10,
+    -60,
+    30
+   ],
+   "to": [
+    -10,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    -12,
+    -59,
+    30
+   ],
+   "to": [
+    -12,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    -8,
+    -60,
+    30
+   ],
+   "to": [
+    -8,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    -7,
+    -60,
+    30
+   ],
+   "to": [
+    -7,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    30
+   ],
+   "to": [
+    -6,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    -8,
+    -59,
+    30
+   ],
+   "to": [
+    -8,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    -4,
+    -60,
+    30
+   ],
+   "to": [
+    -4,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    30
+   ],
+   "to": [
+    -3,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    -2,
+    -60,
+    30
+   ],
+   "to": [
+    -2,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    -4,
+    -59,
+    30
+   ],
+   "to": [
+    -4,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    30
+   ],
+   "to": [
+    0,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    1,
+    -60,
+    30
+   ],
+   "to": [
+    1,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    2,
+    -60,
+    30
+   ],
+   "to": [
+    2,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    30
+   ],
+   "to": [
+    0,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    30
+   ],
+   "to": [
+    4,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    5,
+    -60,
+    30
+   ],
+   "to": [
+    5,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    30
+   ],
+   "to": [
+    6,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    4,
+    -59,
+    30
+   ],
+   "to": [
+    4,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    30
+   ],
+   "to": [
+    8,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    30
+   ],
+   "to": [
+    9,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    30
+   ],
+   "to": [
+    10,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    8,
+    -59,
+    30
+   ],
+   "to": [
+    8,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    30
+   ],
+   "to": [
+    12,
+    -60,
+    30
+   ],
+   "state": "minecraft:glowstone"
+  },
+  {
+   "from": [
+    13,
+    -60,
+    30
+   ],
+   "to": [
+    13,
+    -60,
+    30
+   ],
+   "state": "minecraft:sea_lantern"
+  },
+  {
+   "from": [
+    14,
+    -60,
+    30
+   ],
+   "to": [
+    14,
+    -60,
+    30
+   ],
+   "state": "minecraft:shroomlight"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    30
+   ],
+   "to": [
+    12,
+    -59,
+    30
+   ],
+   "state": "minecraft:lantern[hanging=false]"
+  },
+  {
+   "from": [
+    -3,
+    -61,
+    34
+   ],
+   "to": [
+    3,
+    -61,
+    38
+   ],
+   "state": "minecraft:lava"
+  }
+ ]
+}

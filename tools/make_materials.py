@@ -1,4 +1,4 @@
-"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
+﻿"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
 
     "E:/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" McClient.uproject
         -run=pythonscript -script="<abs path>/tools/make_materials.py" -unattended -nopause -NullRHI
@@ -56,6 +56,17 @@ return Tex * pow(display, 2.2);
 # The surface kinds (UV1.y); see McSurface in McSectionMesher.h.
 KIND_HLSL = "float k = round(Kind);\n"
 
+# How wet the surface is: open to the sky (sky light near full) and facing up, as rain falls. Puddles gather on flat
+# faces: a world-space blotchy field (a few metres across) that rain fills from its lowest parts, more the longer and
+# harder it rains (Wet eases in over 5 s).
+PUDDLE_HLSL = """
+float open = saturate((Light.x - 0.9) * 10.0);
+float up = saturate(VNormal.z) * open;
+float pn = 0.5 + 0.3 * sin(Pos.x * 0.0123 + 1.3 * sin(Pos.y * 0.0191)) + 0.2 * sin(Pos.y * 0.0157 + 1.7 * sin(Pos.x * 0.0137 + Pos.y * 0.0071));
+float thr = lerp(1.05, 0.5, saturate(Wet * 1.3 - 0.15));
+float puddle = smoothstep(thr, thr + 0.07, pn) * open * saturate((VNormal.z - 0.9) * 10.0) * Puddles;
+"""
+
 # Moves the surface: leaves and plants in the wind (plants by how high up their texture the vertex is, so their roots
 # stay put), water in slow swells that keep below the block's top. In Unreal units, in world space.
 LIT_WPO_HLSL = KIND_HLSL + """
@@ -67,13 +78,16 @@ if (k == 3.0 || k == 4.0)
     float gust = 0.55 + 0.45 * sin(Time * 0.35 + p.x * 0.05 + p.y * 0.04);
     float s = sin(Time * 1.9 + p.x * 0.7 + p.y * 0.45 + Pos.z * 0.013);
     float c = cos(Time * 1.4 + p.x * 0.38 - p.y * 0.62);
-    float a = (k == 3.0 ? 2.0 : 5.5) * gust * w;
+    // In rain the wind picks up: stronger gusts, and the sway quickens.
+    float storm = 1.0 + 1.6 * Wet;
+    s = sin(Time * 1.9 * (1.0 + 0.6 * Wet) + p.x * 0.7 + p.y * 0.45 + Pos.z * 0.013);
+    float a = (k == 3.0 ? 2.0 : 5.5) * gust * w * storm;
     o = float3(s * a, c * a * 0.7, k == 3.0 ? s * c * 0.8 : 0.0);
 }
 else if (k == 1.0)
 {
     float h = sin(Time * 1.3 + p.x * 0.9 + p.y * 0.6) * 0.5 + sin(Time * 1.9 - p.x * 0.5 + p.y * 1.1) * 0.5;
-    o = float3(0.0, 0.0, -3.0 + 2.0 * h);
+    o = float3(0.0, 0.0, -3.0 + 2.0 * h * (1.0 + 0.8 * Wet));
 }
 return o;
 """
@@ -81,8 +95,24 @@ return o;
 # The normal, in world space. Water: the slope of a few sines travelling different ways. Blocks: bumps from the texture,
 # the brightness difference to the next texel across and down, put on the face with a frame made from the screen-space
 # derivatives of position and UV (so it needs no tangents).
-LIT_NORMAL_HLSL = KIND_HLSL + """
+LIT_NORMAL_HLSL = KIND_HLSL + PUDDLE_HLSL + """
 float3 N = normalize(VNormal);
+if (k != 1.0 && k < 9.0 && puddle > 0.01)
+{
+    // Rain rings on the puddles: in each 40 cm cell a drop lands every 1.1 s (out of step from cell to cell) and the ring
+    // spreads, thinning as it goes; the slope of its wave tilts the normal.
+    float2 cell = floor(Pos.xy / 40.0);
+    float h1 = frac(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
+    float h2 = frac(sin(dot(cell, float2(39.346, 11.135))) * 24634.6345);
+    float phase = frac(Time * 0.9 + h1);
+    float2 centre = (cell + 0.25 + 0.5 * float2(h1, h2)) * 40.0;
+    float2 dv = Pos.xy - centre;
+    float r = length(dv) / 18.0;
+    float wave = (r - phase) * 14.0;
+    float amp = (1.0 - phase) * exp(-wave * wave * 0.25) * step(r, 1.0);
+    float2 dir = dv / max(length(dv), 0.01);
+    N = normalize(N + float3(-dir * cos(wave) * amp * 0.35 * puddle * saturate(Wet * 2.0), 0.0));
+}
 if (k == 1.0)
 {
     float2 p = Pos.xy * 0.01;
@@ -193,20 +223,26 @@ if (S.w > 0.5)
 return float3(uv, Layer);
 """
 
-# How wet the surface is: open to the sky (sky light near full) and facing up, as rain falls.
-WET_HLSL = "float wet = Wet * saturate((Light.x - 0.9) * 10.0) * saturate(VNormal.z);\n"
+WET_HLSL = PUDDLE_HLSL + "float wet = max(Wet * up, puddle);\n"
 
 LIT_BASE_KINDS_HLSL = KIND_HLSL + WET_HLSL + """
 float3 a = (k >= 9.0 && k < 10.5 ? 1.0 : Tex) * pow(saturate(Shade.rgb), 2.2);
 if (k == 1.0)
 {
     a *= 0.5;
+    // Deeper water takes the colour out of what lies in it and goes a dark teal; at the shore (the scene's depth a
+    // hand's breadth behind the surface) a ragged line of foam, drifting with the waves.
+    float deep = saturate(1.0 - exp(-max(Depth, 0.0) / 250.0));
+    a = lerp(a, a * float3(0.45, 0.8, 0.9) * 0.6, deep);
+    float foam = saturate(1.0 - max(Depth, 0.0) / 40.0);
+    foam *= 0.55 + 0.45 * sin(Time * 1.7 + Pos.x * 0.21 + Pos.y * 0.17 + sin(Pos.y * 0.31) * 2.0);
+    a = lerp(a, float3(0.8, 0.85, 0.85), saturate(foam * foam * 1.4));
 }
 else if (k == 2.0)
 {
     a *= 0.3;
 }
-return a * lerp(1.0, 0.62, wet);
+return a * lerp(1.0, 0.62, wet) * lerp(1.0, 0.7, puddle);
 """
 
 LIT_ROUGHNESS_HLSL = KIND_HLSL + WET_HLSL + """
@@ -215,23 +251,44 @@ if (k == 1.0) r = 0.02;
 else if (k == 2.0) r = 0.5;
 else if (Glass > 0.5 && k == 0.0) r = 0.06;
 else if (k >= 9.0) r = 0.9;
-return lerp(r, 0.1, wet);
+return lerp(lerp(r, 0.1, wet), 0.02, puddle);
 """
 
 LIT_SPECULAR_HLSL = KIND_HLSL + WET_HLSL + """
 float s = 0.3;
 if (k == 1.0 || (Glass > 0.5 && k == 0.0)) s = 0.5;
-return lerp(s, 0.6, wet);
+return lerp(lerp(s, 0.6, wet), 0.9, puddle);
 """
 
 # What the lit twins add that Unreal's lights don't. Lava burns, flickering slowly; blocks that give light and glowing
 # particles glow, so they bloom.
-LIT_EMISSIVE_KINDS_HLSL = KIND_HLSL + """
+LIT_EMISSIVE_KINDS_HLSL = KIND_HLSL + PUDDLE_HLSL + """
 float2 l = saturate(Light.xy);
 float2 b = l / (4.0 - 3.0 * l);
 float3 sky = pow(b.x * SkyFactor, 2.2) * float3(0.55, 0.65, 0.85) * Ambient;
-float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow;
+// Torch light breathes a little, each place out of step with the next.
+float flick = 1.0 + 0.07 * sin(Time * 9.0 + Pos.x * 0.004 + Pos.y * 0.003) * sin(Time * 5.3 + Pos.y * 0.004 - Pos.x * 0.002);
+float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow * lerp(1.0, flick, saturate(b.y * 1.5 - b.x * 0.5));
 float3 e = Albedo * (sky + glow);
+if (k == 1.0)
+{
+    // The sky mirrored in the surface: weak looking down into it, strong at a grazing angle (Schlick's fresnel).
+    float3 n = normalize(VNormal);
+    float3 v = normalize(View);
+    float3 r = reflect(-v, n);
+    float fres = 0.04 + 0.96 * pow(1.0 - saturate(dot(n, v)), 5.0);
+    float3 horizon = float3(0.36, 0.52, 0.8);
+    float3 zenith = float3(0.12, 0.3, 0.75);
+    float3 skycol = lerp(horizon, zenith, saturate(r.z * 1.5)) * pow(b.x, 2.2) * SkyFactor;
+    e += skycol * fres * WaterSky;
+}
+if (puddle > 0.01 && k != 1.0 && k < 9.0)
+{
+    // A puddle mirrors the grey sky, strongest at a grazing angle.
+    float3 pv = normalize(View);
+    float pf = 0.1 + 0.9 * pow(1.0 - saturate(pv.z), 5.0);
+    e += float3(0.5, 0.56, 0.66) * pow(b.x, 2.2) * SkyFactor * pf * puddle * 0.7;
+}
 if (k == 2.0)
 {
     float2 p = Pos.xy * 0.01;
@@ -247,6 +304,16 @@ else if (k == 10.0)
 {
     e += Albedo * Glow * 3.0;
 }
+// Under water, light through the ripples lands on what the sky lights: a moving net of bright lines.
+if (Under > 0.01 && k != 1.0)
+{
+    float2 p = Pos.xy * 0.045 + Pos.z * 0.02;
+    float t = Time * 0.8;
+    float a = sin(p.x + sin(p.y * 1.3 + t) * 1.5 + t * 0.7);
+    float d = sin(p.y * 1.1 + sin(p.x * 0.9 - t) * 1.5 - t * 0.6);
+    float c = pow(saturate(1.0 - abs(a + d) * 0.6), 3.0);
+    e *= lerp(1.0, 0.45 + 2.2 * pow(c, 2.0), Under * saturate(b.x * SkyFactor * 2.0));
+}
 return e;
 """
 
@@ -255,7 +322,11 @@ LIT_OPACITY_HLSL = KIND_HLSL + """
 if (k == 1.0)
 {
     float f = pow(1.0 - saturate(abs(dot(normalize(VNormal), normalize(View)))), 5.0);
-    return saturate(lerp(0.55, 1.0, f) * max(A, 0.6));
+    float o = saturate(lerp(0.55, 1.0, f) * max(A, 0.6));
+    // Murkier with depth, solid where the foam is.
+    float foam = saturate(1.0 - max(Depth, 0.0) / 40.0);
+    o = max(o, 0.4 + 0.55 * saturate(1.0 - exp(-max(Depth, 0.0) / 300.0)));
+    return max(o, foam * 0.9);
 }
 return A;
 """
@@ -483,8 +554,20 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         vertex_normal = mel.create_material_expression(material, unreal.MaterialExpressionVertexNormalWS, -700, 1200)
         camera = mel.create_material_expression(material, unreal.MaterialExpressionCameraVectorWS, -700, 1300)
         wetness = add_scalar(material, -700, 1400, "Wetness", 0.0)
+        puddles = add_scalar(material, -700, 2100, "Puddles", 1.0)
         glass = add_scalar(material, -700, 1500, "Glass", 1.0 if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT else 0.0)
-        common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, "")}
+        # How far the scene is behind this surface (cm): only translucent surfaces can read it; the rest say "far".
+        if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
+            scene_depth = mel.create_material_expression(material, unreal.MaterialExpressionSceneDepth, -900, 1600)
+            pixel_depth = mel.create_material_expression(material, unreal.MaterialExpressionPixelDepth, -900, 1700)
+            behind = mel.create_material_expression(material, unreal.MaterialExpressionSubtract, -700, 1650)
+            mel.connect_material_expressions(scene_depth, "", behind, "A")
+            mel.connect_material_expressions(pixel_depth, "", behind, "B")
+        else:
+            behind = mel.create_material_expression(material, unreal.MaterialExpressionConstant, -700, 1650)
+            behind.set_editor_property("r", 100000.0)
+        common = {"Kind": (kind, ""), "Light": (uv2, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, ""), "Depth": (behind, ""),
+                  "Pos": (absolute, ""), "Puddles": (puddles, "")}
         hd = hd_linear_array is not None
         if hd:
             # The HD twin reads its own arrays (albedo, normal, specular), with parallax on opaque blocks.
@@ -500,7 +583,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
             down = add_array_sample(material, -350, -450, add_offset(material, -500, -450, uvw, (0.0, 1.0 / 16.0, 0.0)), default_array)
 
         albedo = add_custom(material, -100, -150, "McLitBase", LIT_BASE_KINDS_HLSL,
-                            dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, "")))
+                            dict(common, Tex=(texture, "RGB"), Shade=(vertex_color, ""), Time=(time, ""), Pos=(absolute, "")))
         mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
         emissive_code = LIT_EMISSIVE_KINDS_HLSL
         emissive_extra = {}
@@ -514,18 +597,22 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
-                           "Time": (time, ""), "Pos": (absolute, "")})
+                           "Time": (time, ""), "Pos": (absolute, ""),
+                           "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), ""),
+                           "View": (camera, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, ""), "Puddles": (puddles, ""),
+                           "WaterSky": (add_scalar(material, -350, 1900, "WaterSky", 1.0), "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
         if hd:
             normal = add_custom(material, -100, 150, "McHdNormal", LIT_NORMAL_HD_HLSL,
                                 {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "NMap": (normal_map, "RGB"), "Cam": (relative, ""),
-                                 "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, ""),
+                                 "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, ""), "Wet": (wetness, ""), "Light": (uv2, ""),
+                                 "Puddles": (puddles, ""),
                                  "Strength": (add_scalar(material, -350, 1800, "Bump", 1.0), "")})
             roughness = add_custom(material, -100, 450, "McHdRoughness",
-                                   KIND_HLSL + WET_HLSL + "float r = max(pow(1.0 - S.r, 2.0), 0.04);\nif (k == 1.0) r = 0.02;\nelse if (k >= 9.0) r = 0.9;\nreturn lerp(r, 0.1, wet);\n",
+                                   KIND_HLSL + WET_HLSL + "float r = max(pow(1.0 - S.r, 2.0), 0.04);\nif (k == 1.0) r = 0.02;\nelse if (k >= 9.0) r = 0.9;\nreturn lerp(lerp(r, 0.1, wet), 0.02, puddle);\n",
                                    dict(common, S=(spec_map, "RGB")), scalar=True)
             specular = add_custom(material, -100, 550, "McHdSpecular",
-                                  KIND_HLSL + WET_HLSL + "float s = (k == 1.0) ? 0.5 : saturate(S.g / 0.08);\nreturn lerp(s, 0.6, wet);\n",
+                                  KIND_HLSL + WET_HLSL + "float s = (k == 1.0) ? 0.5 : saturate(S.g / 0.08);\nreturn lerp(lerp(s, 0.6, wet), 0.9, puddle);\n",
                                   dict(common, S=(spec_map, "RGB")), scalar=True)
             metallic = add_custom(material, -100, 650, "McHdMetallic",
                                   KIND_HLSL + "return (k < 9.0 && k != 1.0 && S.g >= 0.9) ? 1.0 : 0.0;\n",
@@ -538,7 +625,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
             normal = add_custom(material, -100, 150, "McLitNormal", LIT_NORMAL_HLSL,
                                 {"Kind": (kind, ""), "VNormal": (vertex_normal, ""), "Tex": (texture, "RGB"),
                                  "TexX": (across, "RGB"), "TexY": (down, "RGB"), "Cam": (relative, ""), "UV": (uv0, ""),
-                                 "Pos": (absolute, ""), "Time": (time, ""),
+                                 "Pos": (absolute, ""), "Time": (time, ""), "Wet": (wetness, ""), "Light": (uv2, ""), "Puddles": (puddles, ""),
                                  "Strength": (add_scalar(material, -350, 1800, "Bump", 1.6), "")})
             roughness = add_custom(material, -100, 450, "McLitRoughness", LIT_ROUGHNESS_HLSL,
                                    dict(common, Tex=(texture, "RGB"), Glass=(glass, ""),
@@ -550,13 +637,18 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         mel.connect_material_property(specular, "", unreal.MaterialProperty.MP_SPECULAR)
         if blend_mode != unreal.BlendMode.BLEND_OPAQUE:
             offset = add_custom(material, -100, 700, "McLitOffset", LIT_WPO_HLSL,
-                                {"Kind": (kind, ""), "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, "")})
+                                {"Kind": (kind, ""), "UV": (uv0, ""), "Pos": (absolute, ""), "Time": (time, ""), "Wet": (wetness, "")})
             mel.connect_material_property(offset, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
         if blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT and not vertex_alpha:
             fresnel = add_custom(material, -100, 300, "McLitOpacity", LIT_OPACITY_HLSL,
-                                 {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, "")},
+                                 {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, ""), "Depth": (behind, "")},
                                  scalar=True)
             opacity_source = (fresnel, "")
+            # Water bends what lies under it (the ripples' normals do the distorting); the other blocks don't.
+            bend = add_custom(material, -100, 800, "McLitRefraction", KIND_HLSL + "return k == 1.0 ? Ior : 1.0;",
+                              {"Kind": (kind, ""), "Ior": (add_scalar(material, -350, 2000, "WaterIor", 1.2), "")}, scalar=True)
+            mel.connect_material_property(bend, "", unreal.MaterialProperty.MP_REFRACTION)
+            material.set_editor_property("refraction_method", unreal.RefractionMode.RM_INDEX_OF_REFRACTION)
     else:
         colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,
                             {"Tex": (texture, "RGB"), "Shade": (vertex_color, ""), "Light": (uv2, ""),
@@ -655,6 +747,95 @@ def make_sky_materials(default_array):
     unreal.log("McMaterials: made M_McSkyAdditive")
 
 
+def make_caustics_material():
+    # The sun's light function while the camera is under water: a moving net of bright lines over a dim base, as light
+    # through the surface's ripples lands on the sea floor.
+    name = "M_McCaustics"
+    if eal.does_asset_exist(f"{FOLDER}/{name}"):
+        eal.delete_asset(f"{FOLDER}/{name}")
+    material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("material_domain", unreal.MaterialDomain.MD_LIGHT_FUNCTION)
+    position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -600, 0)
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -600, 150)
+    code = """
+float2 q = Pos.xy * 0.011;
+float t = Time * 0.55;
+float2 i = q;
+float c = 0.0;
+for (int n = 0; n < 3; n++)
+{
+    t *= 1.25;
+    i = q + float2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
+    c += 1.0 / length(float2(q.x / (sin(i.x + t) / 0.006), q.y / (cos(i.y + t) / 0.006)));
+}
+c = saturate(1.17 - pow(c / 3.0, 1.4));
+float lines = pow(c, 8.0);
+return float3(1, 1, 1) * lerp(0.45, 2.2, saturate(lines));
+"""
+    node = add_custom(material, -300, 0, "McCaustics", code, {"Pos": (position, ""), "Time": (time, "")})
+    mel.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.recompile_material(material)
+    eal.save_loaded_asset(material)
+    unreal.log("McMaterials: made M_McCaustics")
+
+
+def make_volume_clouds_material():
+    # Unreal Mode's volumetric clouds (a Volume-domain material for the VolumetricCloud component): the jar's cloud
+    # pattern (the CloudMask texture, one texel per 12 by 12 block cell, set by the game from clouds.png) as the
+    # footprint, so they sit where the vanilla clouds do, only puffy and lit. DriftX (blocks) carries the pattern west,
+    # Storm (0 to 1) thickens and greys them, BottomZ and ThickZ (cm, world) place the layer.
+    name = "M_McVolumeClouds"
+    if eal.does_asset_exist(f"{FOLDER}/{name}"):
+        eal.delete_asset(f"{FOLDER}/{name}")
+    material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("material_domain", unreal.MaterialDomain.MD_VOLUME)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+    position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -900, 0)
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -900, 150)
+    bottom = add_scalar(material, -900, 300, "BottomZ", 19200.0)
+    height = add_scalar(material, -900, 360, "ThickZ", 2000.0)
+    drift = add_scalar(material, -900, 450, "DriftX", 0.0)
+    storm = add_scalar(material, -900, 600, "Storm", 0.0)
+    thick = add_scalar(material, -900, 750, "Density", 6.0)
+    # The texture goes to the Custom node as an object and is read with SampleLevel: a volume material has no screen
+    # derivatives to pick a mip with.
+    mask = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -600, 0)
+    mask.set_editor_property("parameter_name", "CloudMask")
+    mask.set_editor_property("texture", unreal.load_asset("/Engine/EngineResources/WhiteSquareTexture"))
+    mask.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    code = """
+float2 uv = float2((Pos.x / 100.0 + Drift) / 12.0 / 256.0, (Pos.y / 100.0) / 12.0 / 256.0);
+float M = saturate(MaskTex.SampleLevel(MaskTexSampler, uv, 0).r);
+float cover = smoothstep(0.35, 0.65, M);
+float h = saturate((Pos.z - Bottom) / Thick);
+// Rounded: full through the middle of the layer, thinning to the top and bottom, and the top lower at a cloud's edge.
+float profile = smoothstep(0.0, 0.22, h) * (1.0 - smoothstep(0.45 + 0.4 * cover, 1.0, h));
+// A cheap drifting wobble so the surface is not smooth.
+float n = 0.5 + 0.25 * sin(Pos.x * 0.0021 + Time * 0.03) * sin(Pos.y * 0.0027 - Time * 0.02)
+        + 0.25 * sin(Pos.z * 0.004 + Pos.x * 0.0043) * cos(Pos.y * 0.0051 + Time * 0.025);
+float d = saturate(cover * profile * (0.55 + 0.9 * n) - (1.0 - cover) * 0.5);
+return d * Dens * (1.0 + Storm);
+"""
+    density = add_custom(material, -150, 0, "McCloudDensity", code, {
+        "MaskTex": (mask, ""), "Drift": (drift, ""), "Bottom": (bottom, ""), "Thick": (height, ""), "Pos": (position, ""),
+        "Time": (time, ""), "Dens": (thick, ""), "Storm": (storm, "")}, scalar=True)
+    # Extinction is a float3: the density in all three.
+    spread = add_custom(material, 100, 0, "McCloudExtinction", "return float3(D, D, D);", {"D": (density, "")})
+    albedo = add_custom(material, 100, 200, "McCloudAlbedo", "return lerp(float3(1, 1, 1), float3(0.55, 0.57, 0.62), saturate(Storm));", {"Storm": (storm, "")})
+    mel.connect_material_property(spread, "", unreal.MaterialProperty.MP_SUBSURFACE_COLOR)
+    mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    # The pins the engine's own cloud material also fills: no emission, and the ambient occlusion fully open.
+    nothing = mel.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, 100, 400)
+    nothing.set_editor_property("constant", unreal.LinearColor(0, 0, 0, 1))
+    mel.connect_material_property(nothing, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    open_sky = mel.create_material_expression(material, unreal.MaterialExpressionConstant, 100, 500)
+    open_sky.set_editor_property("r", 1.0)
+    mel.connect_material_property(open_sky, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
+    mel.recompile_material(material)
+    eal.save_loaded_asset(material)
+    unreal.log("McMaterials: made M_McVolumeClouds")
+
+
 def make_linear_placeholder():
     """The default of the HD normal and specular arrays: like the placeholder but not sRGB, so a Linear Color sampler
     accepts it."""
@@ -696,6 +877,12 @@ def make_lit_materials(default_array):
 
 
 def main() -> None:
+    if os.environ.get("MC_ONLY_CAUSTICS"):
+        make_caustics_material()
+        return
+    if os.environ.get("MC_ONLY_CLOUDS"):
+        make_volume_clouds_material()
+        return
     if os.environ.get("MC_ONLY_SKY"):
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
@@ -730,6 +917,8 @@ def main() -> None:
     make_block_material("M_McWeather", unreal.BlendMode.BLEND_TRANSLUCENT, array, True, True)
     make_block_material("M_McClouds", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)
     make_sky_materials(array)
+    make_caustics_material()
+    make_volume_clouds_material()
 
 
 main()

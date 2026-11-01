@@ -4,7 +4,7 @@
 // as in the vanilla look; nothing changes there.
 //
 // The blocks within 16 of the camera are looked over a slice each frame, a full pass every eight frames, and the
-// nearest MaxLights get lights. Off (and the lights hidden) in the vanilla look.
+// nearest Budget() get lights (8, 16, 24, 32 at Low to Ultra; the nearest few cast shadows). Off (and the lights hidden) in the vanilla look.
 
 #pragma once
 
@@ -27,8 +27,11 @@ public:
 	// Null stops. The world must outlive the component or be unset first.
 	void SetWorld(const FMcBlockWorld* InWorld);
 
-	static constexpr int32 MaxLights = 24;
-	static constexpr int32 MaxShadowed = 6;
+	// The most lights ever made; how many are lit is the budget (Budget, by quality), and how many of them cast shadows
+	// is ShadowBudget. -McBlockLights=N sets the budget for tests (0 is no lamps).
+	static constexpr int32 MaxLights = 32;
+	static int32 Budget();
+	static int32 ShadowBudget();
 	static constexpr int32 Radius = 16;
 
 	int32 NumLit() const { return NumShown; }

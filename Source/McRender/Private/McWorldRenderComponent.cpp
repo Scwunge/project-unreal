@@ -255,6 +255,7 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Instance->SetScalarParameterValue(TEXT("Wetness"), Wetness);
+				Instance->SetScalarParameterValue(TEXT("Underwater"), Underwater);
 		}
 	}
 

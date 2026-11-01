@@ -1,4 +1,4 @@
-# Minecraft in Unreal: its own game, playing like Java Edition 26.3
+﻿# Minecraft in Unreal: its own game, playing like Java Edition 26.3
 
 Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/blocks-and-chunks`).
 
@@ -560,5 +560,6 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 ### Underwater look, vanilla check again (2026-10-31)
 - Thunder at night: `thunder_noflash` (-McTime=15000, no -McFlashHold) is dark, so the time flag works in storms; the bright `thunder_night` was the held flash lighting the sky.
 - Underwater (Unreal Mode only): `McSky::GetCameraUnderwater` (the world renderer sets it when the eye is in a water block, eased in 8/s) closes the fog to about 16 blocks in the sea's blue-green, dims the sun, and the grade goes blue-green and a stop darker. Scene `tools/scenes/underwater.json` (a raised sea; the world floor is y=-64, so a deep pool can't be dug). Shot `uw_day`.
-- Caustics: `M_McCaustics` (a light function made by `make_materials.py`, `MC_ONLY_CAUSTICS=1`) is set on the sun while under water. Compiled and applied, but the pattern is not visible in `uw_day`: the sun is dim there and the sand is washed. Open: brighten/scale the pattern or put it in the lit block material.
+- Caustics (updated): now in the lit block materials (scalar `Underwater`, set each tick by the world renderer): under water, sky-lit surfaces are modulated by a moving net of light, `e *= lerp(1, 0.45+2.2c^2...)`. Visible on the prismarine in `uw_day`; the sand is so bright it clips and shows little. Open: lower the exposure underwater or darken the sand so the net reads on it. The light-function version below stays but is weak.
+- Caustics, first try: `M_McCaustics` (a light function made by `make_materials.py`, `MC_ONLY_CAUSTICS=1`) is set on the sun while under water. Compiled and applied, but the pattern is not visible in `uw_day`: the sun is dim there and the sand is washed. Open: brighten/scale the pattern or put it in the lit block material.
 - Vanilla check against dfe04f8, Unreal Mode off: cave differs by 152 px (torch flame, x 633-645); village by mobs only (band y 259-363); terrain, sky and HUD identical.

@@ -259,6 +259,16 @@ else if (k == 10.0)
 {
     e += Albedo * Glow * 3.0;
 }
+// Under water, light through the ripples lands on what the sky lights: a moving net of bright lines.
+if (Under > 0.01 && k != 1.0)
+{
+    float2 p = Pos.xy * 0.045 + Pos.z * 0.02;
+    float t = Time * 0.8;
+    float a = sin(p.x + sin(p.y * 1.3 + t) * 1.5 + t * 0.7);
+    float d = sin(p.y * 1.1 + sin(p.x * 0.9 - t) * 1.5 - t * 0.6);
+    float c = pow(saturate(1.0 - abs(a + d) * 0.6), 3.0);
+    e *= lerp(1.0, 0.45 + 2.2 * pow(c, 2.0), Under * saturate(b.x * SkyFactor * 2.0));
+}
 return e;
 """
 
@@ -540,7 +550,8 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
-                           "Time": (time, ""), "Pos": (absolute, "")})
+                           "Time": (time, ""), "Pos": (absolute, ""),
+                           "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
         if hd:
             normal = add_custom(material, -100, 150, "McHdNormal", LIT_NORMAL_HD_HLSL,

@@ -881,6 +881,11 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			ArmPose = bChasing ? 1 : 0;
 		}
 	}
+	else if (Type.Name == FName(TEXT("minecraft:vex")))
+	{
+		// A vex with prey charges (the model's pose 1: sword arm thrown up, body upright).
+		ArmPose = bChasing ? 1 : 0;
+	}
 	if (Type.bShoots && bChasing && DrinkTicks == 0)
 	{
 		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.

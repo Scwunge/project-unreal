@@ -1152,6 +1152,11 @@ namespace McEntityModel
 			const bool bGlow = Part.bGlow || ((Model.GlowLayers >> Layer) & 1u) != 0 || Anim.bFlash;
 			const float Pos = Anim.WalkPos;
 			const float Amount = Anim.WalkAmount;
+			if (Model.bFlutter && Anim.Pose == 1 && Part.Role == ERole::Static)
+			{
+				// A charging vex's body stands upright (logged: 0 against its 0.1571 lean at rest).
+				Pitch = 0.0f;
+			}
 			switch (Model.bHops && Part.Hop >= 4 ? ERole::Static : Part.Role)
 			{
 			case ERole::Head:
@@ -1204,7 +1209,15 @@ namespace McEntityModel
 				}
 				if (Model.bFlutter)
 				{
-					// A vex's arms hang out to the sides at 0.6283, swaying 0.1 either way every 65 ticks (logged).
+					// A vex's arms hang out to the sides at 0.6283, swaying 0.1 either way every 65 ticks (logged). Charging (pose 1), the
+					// sword arm goes up and over (3.6652 forward, 15 degrees in) and sways half as far about 0.4205, the other arm unchanged.
+					if (Anim.Pose == 1 && bRight)
+					{
+						Pitch += 3.6652f;
+						Yaw -= 0.2618f;
+						Roll += 0.4205f - 0.05f * FMath::Sin(Anim.Age * 1.92f + 0.4988f);
+						break;
+					}
 					Roll += (bRight ? -1.0f : 1.0f) * (0.6283f - 0.1f * FMath::Sin(Anim.Age * 1.92f + 0.4988f));
 					break;
 				}

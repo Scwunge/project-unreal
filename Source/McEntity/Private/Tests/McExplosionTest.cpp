@@ -129,6 +129,23 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a player two blocks away is hurt, hard"), PlayerDamage > 20.0f);
 	}
 	{
+		// A mob a blast leaves standing is pushed along the line from the blast to its eye, by 1 - distance / 8 of an open
+		// view (the reference client's cow 3 blocks off a power 4 blast: 0.626, its eye 1.31 above its feet).
+		FMcBlockWorld Open{FMcDimensionType()};
+		AddChunks(Open);
+		FillBox(Open, -16, 0, -16, 31, 3, 31, Stone);
+		FMcEntityManager Manager(Open);
+		FMcMob* Cow = new FMcMob(*FMcMobType::Find(TEXT("minecraft:cow")));
+		Cow->Body.Position = FVector(11.5, 4.0, 8.5);
+		Cow->Health = 1000.0f;
+		Manager.Add(TUniquePtr<FMcEntity>(Cow));
+		Manager.Explode(FVector(8.5, 4.0625, 8.5), 4.0f);
+		const FVector CowPush = Cow->Body.Velocity;
+		TestTrue(*FString::Printf(TEXT("pushed about 0.6 (%.3f)"), CowPush.Size()), CowPush.Size() > 0.5 && CowPush.Size() < 0.63);
+		TestTrue(*FString::Printf(TEXT("away, and up along the line to its eye (%.3f)"), CowPush.Y / CowPush.Size()),
+			CowPush.X > 0.0 && FMath::Abs(CowPush.Y / CowPush.Size() - 1.25 / FMath::Sqrt(3.0 * 3.0 + 1.25 * 1.25)) < 0.03);
+	}
+	{
 		// Obsidian doesn't break; the stone under it is safe, too.
 		FMcBlockWorld Hard{FMcDimensionType()};
 		AddChunks(Hard);
@@ -166,8 +183,19 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 		Field.SetBlock(FIntVector(8, 4, 8), Tnt);
 		Field.SetBlock(FIntVector(12, 4, 8), Tnt);
 		FMcEntityManager Manager(Field);
+		TArray<FMcSoundEvent> Hisses;
+		Manager.OnSound = [&Hisses](const FMcSoundEvent& Event)
+		{
+			if (Event.Name == FName(TEXT("entity.tnt.primed")))
+			{
+				Hisses.Add(Event);
+			}
+		};
 		FMcPrimedTnt* Lit = FMcPrimedTnt::Ignite(Manager, FIntVector(8, 4, 8));
 		TestNotNull(TEXT("the block lit"), Lit);
+		TestEqual(TEXT("lighting it hisses once"), Hisses.Num(), 1);
+		TestTrue(TEXT("at the block's centre, its bottom, volume 1 pitch 1"), Hisses.Num() == 1 && Hisses[0].Position.Equals(FVector(8.5, 4.0, 8.5))
+			&& Hisses[0].Volume == 1.0f && Hisses[0].Pitch == 1.0f);
 		TestNull(TEXT("stone does not light"), FMcPrimedTnt::Ignite(Manager, FIntVector(8, 3, 8)));
 		TestEqual(TEXT("its block goes"), Field.GetBlock(FIntVector(8, 4, 8)), Air);
 		TestTrue(TEXT("a little hop"), Lit && Lit->Body.Velocity.Y > 0.19);
@@ -179,6 +207,7 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 		TestEqual(TEXT("the 80th digs the floor out"), Field.GetBlock(FIntVector(8, 3, 8)), Air);
 		TestEqual(TEXT("and the TNT beside it did not just vanish; it is lit"), Field.GetBlock(FIntVector(12, 4, 8)), Air);
+		TestEqual(TEXT("the one a blast lit does not hiss (the reference's did not)"), Hisses.Num(), 1);
 		TestEqual(TEXT("chain fuse least"), FMcPrimedTnt::GetChainFuse(0.0f), 10);
 		TestEqual(TEXT("chain fuse most"), FMcPrimedTnt::GetChainFuse(0.999f), 28);
 		TestTrue(TEXT("blast pitch: a triangle over 0.568 to 0.830, 0.699 in the middle"), FMath::IsNearlyEqual(McExplosion::GetBlastPitch(0.0f, 1.0f), 0.568f, 0.001f)

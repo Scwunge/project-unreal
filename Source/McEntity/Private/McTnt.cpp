@@ -41,7 +41,12 @@ void FMcPrimedTnt::Tick(FMcEntityManager& Manager)
 	}
 }
 
-FMcPrimedTnt* FMcPrimedTnt::Ignite(FMcEntityManager& Manager, const FIntVector& Cell, int32 InFuse)
+bool FMcPrimedTnt::Serialize(FArchive& Ar)
+{
+	return FMcEntity::Serialize(Ar) && (Ar << Fuse, !Ar.IsError()) && (Ar.IsSaving() || (Fuse >= 0 && Fuse <= 32767));
+}
+
+FMcPrimedTnt* FMcPrimedTnt::Ignite(FMcEntityManager& Manager, const FIntVector& Cell, int32 InFuse, bool bSound)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
@@ -55,5 +60,9 @@ FMcPrimedTnt* FMcPrimedTnt::Ignite(FMcEntityManager& Manager, const FIntVector& 
 	Tnt->Body.Position = FVector(Cell.X + 0.5, Cell.Y, Cell.Z + 0.5);
 	const double Angle = Manager.GetRandom().FRand() * 2.0 * PI;
 	Tnt->Body.Velocity = FVector(-FMath::Sin(Angle) * 0.02, 0.2, -FMath::Cos(Angle) * 0.02);
+	if (bSound)
+	{
+		Manager.PlaySound(FName(TEXT("entity.tnt.primed")), FVector(Cell.X + 0.5, Cell.Y, Cell.Z + 0.5));
+	}
 	return static_cast<FMcPrimedTnt*>(&Manager.Add(MoveTemp(Tnt)));
 }

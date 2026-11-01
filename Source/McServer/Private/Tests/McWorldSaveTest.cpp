@@ -6,6 +6,7 @@
 #include "McDimensionType.h"
 #include "McEntityHost.h"
 #include "McMob.h"
+#include "McTnt.h"
 #include "McRegionFile.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
@@ -421,6 +422,42 @@ bool FMcEntitySaveTest::RunTest(const FString& Parameters)
 	FMcItemEntity& Lost = Host.GetManager().DropItem(FVector(500.5, 70.0, 500.5), FMcItemStack(TEXT("minecraft:stick"), 1));
 	TestEqual(TEXT("one stray"), Host.RemoveStrays(), 1);
 	TestTrue(TEXT("and it's the one outside"), Lost.bRemoved);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPrimedTntSaveTest, "McClient.McServer.SavePrimedTnt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPrimedTntSaveTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	{
+		return false;
+	}
+	FMcBlockWorld World{FMcDimensionType()};
+	World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+	FMcEntityHost Host(World, 1);
+	// A TNT with 37 ticks of fuse left, a little way off the ground and moving, as a world saved mid-fuse holds it.
+	FMcPrimedTnt* Lit = new FMcPrimedTnt();
+	Lit->Fuse = 37;
+	Lit->Body.Position = FVector(4.5, 70.5, 9.5);
+	Lit->Body.Velocity = FVector(0.01, 0.1, -0.02);
+	Host.GetManager().Add(TUniquePtr<FMcEntity>(Lit));
+	const TArray<uint8> Bytes = Host.CaptureChunk(FIntPoint(0, 0));
+	TestFalse(TEXT("a lit TNT is saved"), Bytes.IsEmpty());
+
+	FMcEntityHost Fresh(World, 1);
+	TestEqual(TEXT("it comes back"), Fresh.RestoreChunk(Bytes), 1);
+	bool bSame = false;
+	for (const TUniquePtr<FMcEntity>& Entity : Fresh.GetManager().GetEntities())
+	{
+		if (Entity->GetType() == FMcPrimedTnt::StaticType())
+		{
+			const FMcPrimedTnt& Back = static_cast<const FMcPrimedTnt&>(*Entity);
+			bSame = Back.Fuse == 37 && Back.Body.Position.Equals(Lit->Body.Position) && Back.Body.Velocity.Equals(Lit->Body.Velocity);
+		}
+	}
+	TestTrue(TEXT("with the same fuse, place and motion"), bSame);
 	return true;
 }
 

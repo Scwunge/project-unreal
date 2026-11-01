@@ -224,6 +224,15 @@ float McExplosion::GetBlastPitch(float RollA, float RollB)
 	return 0.699f + 0.131f * (RollA - RollB);
 }
 
+float McExplosion::GetMobEyeHeight(FName Mob, float BodyHeight)
+{
+	static const TMap<FName, float> Measured = {
+		{ FName(TEXT("minecraft:pig")), 0.77f }, { FName(TEXT("minecraft:cow")), 1.31f },
+		{ FName(TEXT("minecraft:chicken")), 0.65f }, { FName(TEXT("minecraft:sheep")), 1.24f } };
+	const float* Found = Measured.Find(Mob);
+	return Found ? *Found : BodyHeight * 0.9f;
+}
+
 FVector McExplosion::GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure)
 {
 	const float Radius = Power * 2.0f;

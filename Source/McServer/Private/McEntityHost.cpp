@@ -1,4 +1,5 @@
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBiomeRegistry.h"
@@ -410,6 +411,15 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 			if (Item->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Item));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcPrimedTnt::StaticType())
+		{
+			TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
+			if (Tnt->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Tnt));
 				++Restored;
 			}
 		}

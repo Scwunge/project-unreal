@@ -356,13 +356,13 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		if (Damage > 0.0f)
 		{
 			Mob.HurtTime = 0;
-			Mob.Damage(Damage, &Center);
+			// No blow's knockback of its own: the reference mobs' push was exactly the blast's (1 - distance / 8), set below.
+			Mob.Damage(Damage, nullptr);
 			if (!Mob.bRemoved)
 			{
-				// Shoved away from the blast, harder the closer and more open to it.
-				const double Push = (1.0 - Distance / Radius) * Exposure;
-				const FVector Away = (Mob.Body.Position + FVector(0.0, Mob.Body.Height * 0.5, 0.0) - Center).GetSafeNormal();
-				Mob.Body.Velocity += Away * Push;
+				// Shoved away from the blast along the line to its eye, harder the closer and more open to it.
+				const FVector Eye = Mob.Body.Position + FVector(0.0, McExplosion::GetMobEyeHeight(Mob.GetType(), Mob.Body.Height), 0.0);
+				Mob.Body.Velocity += McExplosion::GetKnockback(Power, Center, Mob.Body.Position, Eye, Exposure);
 			}
 		}
 	}
@@ -392,7 +392,7 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		if (FMcPrimedTnt::IsTnt(Registry.GetBlockOf(World.GetBlock(Cell)).Name))
 		{
 			// TNT in the blast's way is lit, not destroyed, with a short fuse.
-			FMcPrimedTnt::Ignite(*this, Cell, FMcPrimedTnt::GetChainFuse(Random.FRand()));
+			FMcPrimedTnt::Ignite(*this, Cell, FMcPrimedTnt::GetChainFuse(Random.FRand()), false);
 			continue;
 		}
 		FMcDestroyedBlock Block;

@@ -50,5 +50,10 @@ namespace McExplosion
 	// the centre to the eye, as strong as the impact (1 - Distance / (2 * Power)) * Exposure, in blocks a tick before
 	// friction. The same five reference blasts read x speeds of 0.0666, 0.1149, 0.1498, 0.1752 and 0.1851 a tick later,
 	// which is this times the ground's friction (0.546).
+	// How high above its feet a mob's eye is, which the push points at. Read from the reference client's blasts (scripts
+	// tnt8.txt and tnt9.txt, `log ents`: each mob 2 to 3 blocks off a power 4 blast, the push's up-to-sideways ratio): a
+	// pig 0.77, a cow 1.31, a chicken 0.65, a sheep 1.24 (its push was exactly 1 - Distance / 8 along that line). Other
+	// mobs take 0.9 of their height, which is where those four average (0.85 to 0.95).
+	MCENTITY_API float GetMobEyeHeight(FName Mob, float BodyHeight);
 	MCENTITY_API FVector GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure);
 }

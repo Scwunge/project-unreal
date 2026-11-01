@@ -208,7 +208,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
 		case EMenu::ResourcePacks: ApplyResourcePacks(); OpenMenu(EMenu::Options); break;
-		case EMenu::ConfirmPacks: ActiveMenu = EMenu::ResourcePacks; break;
+		case EMenu::ConfirmPacks: case EMenu::ConfirmIncompatible: ActiveMenu = EMenu::ResourcePacks; break;
 		default: break;
 		}
 	}
@@ -226,6 +226,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Options: DrawOptions(Width, Height); break;
 	case EMenu::ResourcePacks: DrawResourcePacks(Width, Height); break;
 	case EMenu::ConfirmPacks: DrawConfirmPacks(Width, Height); break;
+	case EMenu::ConfirmIncompatible: DrawConfirmIncompatible(Width, Height); break;
 	default: break;
 	}
 	return !IsWorldMenu() && ActiveMenu != EMenu::None;
@@ -1023,6 +1024,7 @@ void AMcHUD::ReloadResources()
 	}
 #endif
 	McPacks::SetPacks(Names);
+	UE_LOG(LogMcUI, Display, TEXT("Reloading resource packs: %s"), *FString::Join(Names, TEXT(", ")));
 	ClearPackCaches();
 	FMcBlockModels::Get().Unload();
 	FMcBlockTextures::Get().Unload();
@@ -1289,6 +1291,12 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	switch (Op)
 	{
 	case EOp::Select:
+		if (!PacksAvailable[OpIndex].Warning.IsEmpty() || !PacksAvailable[OpIndex].Error.IsEmpty())
+		{
+			PendingSelect = OpIndex;
+			ActiveMenu = EMenu::ConfirmIncompatible;
+			break;
+		}
 		PacksSelected.Insert(PacksAvailable[OpIndex], 0);
 		PacksAvailable.RemoveAt(OpIndex);
 		break;
@@ -1325,6 +1333,50 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	{
 		ApplyResourcePacks();
 		OpenMenu(EMenu::Options);
+	}
+}
+
+void AMcHUD::DrawConfirmIncompatible(int32 Width, int32 Height)
+{
+	if (OptionsBack == EMenu::Pause)
+	{
+		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+	}
+	else
+	{
+		DrawMenuBackground(Width, Height, true);
+	}
+	LoadFont();
+	const float CentreX = Width / 2.0f;
+	if (!PacksAvailable.IsValidIndex(PendingSelect))
+	{
+		ActiveMenu = EMenu::ResourcePacks;
+		return;
+	}
+	// The game's lang strings, by how the pack is incompatible.
+	const FPackRow& Row = PacksAvailable[PendingSelect];
+	const bool bOld = Row.Warning.Contains(TEXT("older")), bNew = Row.Warning.Contains(TEXT("newer"));
+	DrawCentredText(TEXT("Are you sure you want to load this pack?"), CentreX, 70.0f, White);
+	const FString Message = bOld ? TEXT("This pack was made for an older version of Minecraft and may no longer work correctly.")
+		: bNew ? TEXT("This pack was made for a newer version of Minecraft and may not work correctly.")
+		: TEXT("This pack is broken or made for an unknown version of Minecraft and may not work correctly.");
+	const TArray<FString> Lines = WrapText(Message, 300.0f);
+	for (int32 Index = 0; Index < Lines.Num(); ++Index)
+	{
+		DrawCentredText(Lines[Index], CentreX, 90.0f + 9.0f * Index, Grey);
+	}
+	const float ButtonY = Height / 6.0f + 96.0f + 9.0f * Lines.Num();
+	if (MenuButton(TEXT("Yes"), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
+	{
+		PacksSelected.Insert(PacksAvailable[PendingSelect], 0);
+		PacksAvailable.RemoveAt(PendingSelect);
+		PendingSelect = INDEX_NONE;
+		ActiveMenu = EMenu::ResourcePacks;
+	}
+	else if (MenuButton(TEXT("No"), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
+	{
+		PendingSelect = INDEX_NONE;
+		ActiveMenu = EMenu::ResourcePacks;
 	}
 }
 

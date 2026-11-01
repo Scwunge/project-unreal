@@ -347,7 +347,8 @@ Pack files
 - [x] Pack compatibility with the game's resource format (97): marked Incompatible, still loads
 - [x] `overlays` (pack.mcmeta entries with formats or min/max_format and a directory; later entries win; test in McResourcePacks)
 - [x] Broken zip, missing pack, missing file: listed with the reason, skipped, vanilla's file used
-- [ ] Drag and drop of packs onto the window, server-sent packs, the "are you sure" confirm screen: missing
+- [x] Drag and drop of packs onto the window (confirm "Do you want to add the following packs", copied into the folder) and the "Are you sure you want to load this pack?" confirm when selecting an incompatible or broken pack (the game's lang strings by old, new or unknown; not shot against the reference, whose script cannot click)
+- [ ] Server-sent packs (a server offering a pack and the client downloading it): missing
 
 Textures
 - [x] Block textures at any size (array side follows the widest pack texture, budgeted)

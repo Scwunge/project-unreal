@@ -1,6 +1,7 @@
 #include "McWorldActor.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
+#include "McJavaImport.h"
 #include "McTnt.h"
 #include "McCache.h"
 #include "McRails.h"
@@ -687,6 +688,14 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 	if (Entities && !Arrived.Extras.Entities.IsEmpty())
 	{
 		Entities->RestoreChunk(Arrived.Extras.Entities);
+	}
+	// Banners that came from a Java world keep their patterns in a kept block entity; the flag is made from it once.
+	if (Entities)
+	{
+		if (const FMcChunk* Added = BlockWorld->FindChunk(Pos))
+		{
+			McJavaImport::StandBanners(*Added, Entities->GetManager());
+		}
 	}
 }
 

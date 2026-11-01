@@ -1,9 +1,12 @@
 #include "McJavaImport.h"
 #include "HAL/FileManager.h"
 #include "McBiomeRegistry.h"
+#include "McBannerEntity.h"
 #include "McBlockEntity.h"
 #include "McBlockRegistry.h"
+#include "McCache.h"
 #include "McChunk.h"
+#include "McEntityManager.h"
 #include "McChunkSave.h"
 #include "McDimensionType.h"
 #include "McItemStack.h"
@@ -846,6 +849,47 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 	}
 	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s': %s"), *Source, *Folder, *Describe(OutStats));
 	return Folder;
+}
+
+int32 McJavaImport::StandBanners(const FMcChunk& Chunk, FMcEntityManager& Manager)
+{
+	int32 Stood = 0;
+	for (const TPair<FIntVector, FMcBlockEntity>& Pair : Chunk.GetBlockEntities())
+	{
+		const FMcBlockEntity& Entity = Pair.Value;
+		if (Entity.Kind != EMcBlockEntityKind::Raw || Entity.EntityId != TEXT("minecraft:banner"))
+		{
+			continue;
+		}
+		const FIntVector Pos(Chunk.GetPos().X * McCoords::SectionSize + Pair.Key.X, Pair.Key.Y, Chunk.GetPos().Y * McCoords::SectionSize + Pair.Key.Z);
+		if (FMcBannerEntity::FindAt(Manager, Pos))
+		{
+			continue;
+		}
+		TArray<McBanner::FLayer> Layers;
+		FMcNbt Root;
+		if (FMcNbt::Parse(Entity.Data, Root))
+		{
+			if (const FMcNbt* Patterns = FindList(Root, TEXT("patterns")))
+			{
+				for (const FMcNbt& Entry : Patterns->Values)
+				{
+					// A pattern written out in full (a data-pack one) has no name here.
+					const FString Pattern = Entry.GetString(TEXT("pattern"));
+					const FString Colour = Entry.GetString(TEXT("color"));
+					if (!Pattern.IsEmpty() && !Colour.IsEmpty())
+					{
+						Layers.Add({ McCache::PathOf(Pattern), Colour });
+					}
+				}
+			}
+		}
+		if (FMcBannerEntity::Stand(Manager, Pos, Layers))
+		{
+			++Stood;
+		}
+	}
+	return Stood;
 }
 
 FString McJavaImport::Describe(const FStats& Stats)

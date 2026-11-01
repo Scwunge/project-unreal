@@ -13,6 +13,7 @@
 #include "McCore.h"
 
 class FMcChunk;
+class FMcEntityManager;
 class FMcNbt;
 struct FMcLevelData;
 
@@ -76,6 +77,10 @@ namespace McJavaImport
 	// Imports the world in Source into Saved/Worlds/<new folder>, named Name (the vanilla level name if empty). Returns
 	// the folder name made, or an empty string on failure.
 	MCSERVER_API FString ImportWorld(const FString& Source, const FString& Name, FStats& OutStats);
+	// ---- Using what was kept ----
+	// Stands a flag in every banner block of the chunk that has none yet, patterned as the imported banner was (the
+	// patterns of its kept block entity, which the game does not read otherwise). Returns how many it stood.
+	MCSERVER_API int32 StandBanners(const FMcChunk& Chunk, FMcEntityManager& Manager);
 	// A summary for the log.
 	MCSERVER_API FString Describe(const FStats& Stats);
 }

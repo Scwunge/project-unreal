@@ -2,7 +2,11 @@
 
 #include "McBiomeRegistry.h"
 #include "McBlockEntity.h"
+#include "McBannerEntity.h"
 #include "McBlockRegistry.h"
+#include "McBlockWorld.h"
+#include "McDimensionType.h"
+#include "McEntityManager.h"
 #include "McChunk.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
@@ -425,6 +429,46 @@ bool FMcJavaImportBlockEntityTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("with its damage"), Chest->Slots[2].GetDamage(), 5);
 	}
 	TestEqual(TEXT("one raw kind counted"), Stats.KeptRawBlockEntities.Num(), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportBannerTest, "McClient.McServer.JavaImport.Banner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportBannerTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	{
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcBlockWorld World{FMcDimensionType()};
+	World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+	World.SetBlock(FIntVector(3, 5, 4), Registry.ParseState(TEXT("minecraft:red_banner[rotation=4]")).Get(0));
+	FNbtWriter Writer;
+	Writer.Compound(TEXT(""));
+	Writer.List(TEXT("patterns"), 10, 2);
+	Writer.Str(TEXT("pattern"), TEXT("minecraft:stripe_downright"));
+	Writer.Str(TEXT("color"), TEXT("blue"));
+	Writer.End();
+	Writer.Str(TEXT("pattern"), TEXT("minecraft:border"));
+	Writer.Str(TEXT("color"), TEXT("white"));
+	Writer.End();
+	Writer.End();
+	FMcBlockEntity Raw;
+	Raw.Kind = EMcBlockEntityKind::Raw;
+	Raw.EntityId = TEXT("minecraft:banner");
+	Raw.Data = Writer.Bytes;
+	FMcChunk* Chunk = World.FindChunk(FIntPoint(0, 0));
+	Chunk->SetBlockEntity(3, 5, 4, Raw);
+	FMcEntityManager Manager(World);
+	TestEqual(TEXT("one flag stood"), McJavaImport::StandBanners(*Chunk, Manager), 1);
+	const FMcBannerEntity* Flag = FMcBannerEntity::FindAt(Manager, FIntVector(3, 5, 4));
+	if (TestNotNull(TEXT("the flag is there"), Flag))
+	{
+		TestEqual(TEXT("colour, standing, both patterns in order"), Flag->Layers, FString(TEXT("red;s;stripe_downright=blue,border=white")));
+	}
+	TestEqual(TEXT("a second pass adds nothing"), McJavaImport::StandBanners(*Chunk, Manager), 0);
 	return true;
 }
 

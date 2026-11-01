@@ -60,6 +60,7 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 		ConnectError.Reset();
 	}
 	ActiveMenu = NewMenu;
+	MenuOpenedFrame = GFrameCounter;
 	FocusedField = 0;
 	UMcGameViewportClient::TakeTyped();
 	if (NewMenu == EMenu::Worlds)
@@ -184,7 +185,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	bMenuEnter = Player && Player->WasInputKeyJustPressed(EKeys::Enter);
 	bMenuTab = Player && Player->WasInputKeyJustPressed(EKeys::Tab);
 	MenuTyped = UMcGameViewportClient::TakeTyped();
-	const bool bEscape = Player && Player->WasInputKeyJustPressed(EKeys::Escape);
+	const bool bEscape = Player && Player->WasInputKeyJustPressed(EKeys::Escape) && MenuOpenedFrame != GFrameCounter;
 	if (bMenuTab && FieldCount > 0)
 	{
 		FocusedField = (FocusedField + 1) % FieldCount;

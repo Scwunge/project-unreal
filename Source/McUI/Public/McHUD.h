@@ -205,6 +205,8 @@ private:
 	};
 
 	EMenu ActiveMenu = EMenu::None;
+	// The frame a menu last opened on: the Esc that opened the pause menu mustn't also close it in DrawMenus.
+	uint64 MenuOpenedFrame = 0;
 	// Where the options screen's Done goes back to.
 	EMenu OptionsBack = EMenu::Title;
 	bool bMenuInput = false;

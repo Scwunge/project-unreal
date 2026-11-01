@@ -67,6 +67,17 @@ void AMcGameMode::StartPlay()
 	}
 	if (McLaunch::IsServer(GetWorld()))
 	{
+		if (McLaunch::IsServerSwitch() && GetNetMode() == NM_Standalone)
+		{
+			// A shipping build ignores the map URL on the command line, so Server.bat's ?listen never arrives: open the
+			// listen socket here, as Open to LAN does, on the port McClientModule put on the command line.
+			FURL Url(nullptr, TEXT("?listen"), TRAVEL_Absolute);
+			Url.Port = GetWorld()->URL.Port;
+			if (!GetWorld()->Listen(Url))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("Server: could not listen on port %d"), Url.Port);
+			}
+		}
 		const FMcServerProperties& Properties = FMcServerProperties::Get();
 		if (GameSession)
 		{

@@ -43,8 +43,22 @@ namespace
 		{
 			return 0.98;
 		}
+		// Slime, from vehicle_log6.txt: a boat pushed at 0.5 moves 0.4, then 0.0512 from 0.064 (with SpeedFactor's 0.16).
+		if (Name == TEXT("minecraft:slime_block"))
+		{
+			return 0.8;
+		}
 		// Stone, from vanilla_log vehicle_log: a boat pushed at 0.3 goes 0.18, 0.108, 0.0648.
 		return 0.6;
+	}
+
+	// What is left of a boat's speed after it moves, from the block under it (vehicle_log6.txt, every tick): soul sand
+	// keeps 0.4 (0.45 moved leaves 0.18, 0.05832 leaves 0.023328), even with the boat still dropping onto it; slime 0.16
+	// (0.4 leaves 0.064, 0.0512 leaves 0.008192).
+	double SpeedFactor(FName Block)
+	{
+		const FString Name = Block.ToString();
+		return Name == TEXT("minecraft:soul_sand") ? 0.4 : Name == TEXT("minecraft:slime_block") ? 0.16 : 1.0;
 	}
 }
 
@@ -781,3 +795,7 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	bWasInAir = Where == ESurface::Air;
 	TickPassengers(Manager);
 }
+	const FIntVector Under(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.5), FMath::FloorToInt32(Body.Position.Z));
+	const double Factor = SpeedFactor(FMcBlockRegistry::Get().GetBlockOf(World.GetBlock(Under)).Name);
+	Body.Velocity.X *= Factor;
+	Body.Velocity.Z *= Factor;

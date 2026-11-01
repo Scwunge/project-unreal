@@ -53,6 +53,17 @@ namespace
 		constexpr float EndFillLux = 1.2f;
 	// How much of the fog's thickness the volumetric fog takes: a haze with light shafts, not a wall.
 	constexpr float VolumetricFogShare = 0.04f;
+	// Light shafts: the sun scattering in a thicker, forward-leaning volumetric fog where trees and roofs shadow it.
+	// -McShafts= scales them (0 is the old thin haze).
+	float GetShafts()
+	{
+		static const float Shafts = [] { float V = 1.8f; 
+#if !UE_BUILD_SHIPPING
+			FParse::Value(FCommandLine::Get(), TEXT("-McShafts="), V);
+#endif
+			return V; }();
+		return Shafts;
+	}
 
 	// The End has no day, so its blocks get a fixed share of their sky light, as at night; the Nether has none.
 	constexpr float EndSkyLightFactor = 0.24f;
@@ -594,7 +605,8 @@ void UMcSkyComponent::ApplyLook()
 	if (Fog)
 	{
 		Fog->SetVolumetricFog(bEnhanced);
-		Fog->SetVolumetricFogExtinctionScale(VolumetricFogShare);
+		Fog->SetVolumetricFogExtinctionScale(VolumetricFogShare + 0.03f * GetShafts());
+		Fog->SetVolumetricFogScatteringDistribution(FMath::Lerp(0.2f, 0.8f, FMath::Clamp(GetShafts(), 0.0f, 1.0f)));
 		Fog->SetVolumetricFogDistance(FogEndBlocks * McCoords::UnitsPerBlock * 0.5f);
 		if (!bEnhanced)
 		{
@@ -634,7 +646,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		SunLight->SetCastShadows(Mode == EMode::Overworld);
 		SunLight->SetCastRaytracedShadow(McRenderMode::IsRayTracing());
 		// An unshadowed fill scattering in the volumetric fog draws the edges of its grid.
-		SunLight->SetVolumetricScatteringIntensity(Mode == EMode::Overworld ? 1.0f : 0.0f);
+		SunLight->SetVolumetricScatteringIntensity(Mode == EMode::Overworld ? 1.0f + 2.0f * GetShafts() : 0.0f);
 	}
 	if (Atmosphere)
 	{

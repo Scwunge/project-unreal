@@ -25,6 +25,9 @@
 #include "McSurvival.h"
 #include "McEffects.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -62,7 +65,7 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
-	if (GetNetMode() == NM_DedicatedServer)
+	if (McLaunch::IsServer(GetWorld()))
 	{
 		const FMcServerProperties& Properties = FMcServerProperties::Get();
 		if (GameSession)
@@ -74,6 +77,43 @@ void AMcGameMode::StartPlay()
 		FMcServerAccess::Load();
 		UE_LOG(LogMcClient, Log, TEXT("Dedicated server \"%s\" on port %d: up to %d players, allowlist %s."), *Properties.GetString(TEXT("motd")),
 			GetWorld()->URL.Port, Properties.GetInt(TEXT("max-players"), 20), Properties.GetBool(TEXT("white-list")) ? TEXT("on") : TEXT("off"));
+		if (McLaunch::IsServerSwitch())
+		{
+			// A -McServer run has no window and a shipping build writes no log, so it speaks through two files in
+			// Saved/Server: status.txt (rewritten every 2 s: world, port, who is on) and stop, which Stop-Server.bat
+			// makes and which saves the world and quits.
+			FTimerHandle ServerFiles;
+			GetWorldTimerManager().SetTimer(ServerFiles, FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				const FString Dir = FMcServerProperties::GetDir();
+				IFileManager& Files = IFileManager::Get();
+				TArray<FString> Names;
+				for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+				{
+					if (APlayerController* Player = It->Get(); Player && !Player->IsLocalController())
+					{
+						Names.Add(GetPlayerName(Player));
+					}
+				}
+				const FMcServerProperties& Settings = FMcServerProperties::Get();
+				const FString Status = FString::Printf(TEXT("running %s
+world %s
+port %d
+players %d/%d: %s
+"),
+					*FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S")), *Settings.GetString(TEXT("level-name")), GetWorld()->URL.Port,
+					Names.Num(), Settings.GetInt(TEXT("max-players"), 20), *FString::Join(Names, TEXT(", ")));
+				FFileHelper::SaveStringToFile(Status, *(Dir / TEXT("status.txt")));
+				if (Files.FileExists(*(Dir / TEXT("stop"))))
+				{
+					Files.Delete(*(Dir / TEXT("stop")));
+					FFileHelper::SaveStringToFile(TEXT("stopped (world saved)
+"), *(Dir / TEXT("status.txt")));
+					// A normal exit ends play, and the world actor's EndPlay saves chunks, mobs and players.
+					FPlatformMisc::RequestExit(false);
+				}
+			}), 2.0f, true);
+		}
 	}
 
 	// Spawned after Super::StartPlay so the world has begun play and BeginPlay runs straight away.
@@ -370,8 +410,8 @@ void AMcGameMode::StartDevCapture()
 
 void AMcGameMode::RestartPlayer(AController* NewPlayer)
 {
-	// The title screen has no world to be in.
-	if (McLaunch::IsMenu(GetWorld()))
+	// The title screen has no world to be in, and a -McServer run's own (windowless) player is never spawned.
+	if (McLaunch::IsMenu(GetWorld()) || (McLaunch::IsServerSwitch() && NewPlayer && NewPlayer->IsLocalController()))
 	{
 		return;
 	}
@@ -611,7 +651,7 @@ void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 		return;
 	}
 	// A dedicated server's gamemode setting is for everyone new, whatever the world was made with.
-	const FString Mode = GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
+	const FString Mode = McLaunch::IsServer(GetWorld()) ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
 		: WorldActor ? WorldActor->GetLevel().GameMode : FString();
 	if (McLaunch::IsCreativeMode(Mode))
 	{
@@ -623,13 +663,13 @@ void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 void AMcGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
 {
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
-	if (!ErrorMessage.IsEmpty() || GetNetMode() != NM_DedicatedServer)
+	if (!ErrorMessage.IsEmpty() || !McLaunch::IsServer(GetWorld()))
 	{
 		return;
 	}
 	// Read afresh, so an edited allowlist or ops file applies to the next player to join.
 	const FString Name = UGameplayStatics::ParseOption(Options, TEXT("Name"));
-	ErrorMessage = FMcServerAccess::CheckJoin(FMcServerProperties::Get(), FMcServerAccess::Load(), Name, GetNumPlayers());
+	ErrorMessage = FMcServerAccess::CheckJoin(FMcServerProperties::Get(), FMcServerAccess::Load(), Name, GetNumPlayers() - (McLaunch::IsServerSwitch() ? 1 : 0));
 	if (!ErrorMessage.IsEmpty())
 	{
 		UE_LOG(LogMcClient, Log, TEXT("%s (%s) can't join: %s"), *Name, *Address, *ErrorMessage);
@@ -721,7 +761,7 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 	// A world played alone says nothing; anywhere others can join, everyone is told (in yellow, as in the game).
-	if (GetNetMode() != NM_Standalone)
+	if (GetNetMode() != NM_Standalone && !(McLaunch::IsServerSwitch() && NewPlayer && NewPlayer->IsLocalController()))
 	{
 		BroadcastChat(McLang::Format(TEXT("multiplayer.player.joined"), { GetPlayerName(NewPlayer) }), 0xFFFF55);
 	}
@@ -758,9 +798,9 @@ namespace
 		}
 		virtual int32 GetMaxPlayers() const override
 		{
-			return Mode.GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetInt(TEXT("max-players"), 20) : 8;
+			return McLaunch::IsServer(Mode.GetWorld()) ? FMcServerProperties::Get().GetInt(TEXT("max-players"), 20) : 8;
 		}
-		virtual bool IsDedicated() const override { return Mode.GetNetMode() == NM_DedicatedServer; }
+		virtual bool IsDedicated() const override { return McLaunch::IsServer(Mode.GetWorld()); }
 		virtual void SendTo(const FString& Player, const FMcCommandReply& Line) override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);
@@ -1138,7 +1178,7 @@ void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)
 	Sender.Name = GetPlayerName(From);
 	// The player playing a world of their own (or hosting it) can use every command, as with cheats on; on a dedicated
 	// server it is what ops.json says.
-	const bool bHost = GetNetMode() != NM_DedicatedServer && From && From->IsLocalController();
+	const bool bHost = !McLaunch::IsServer(GetWorld()) && From && From->IsLocalController();
 	Sender.PermissionLevel = McCommands::GetPermissionLevel(Sender.Name, bHost, bHost ? FMcServerAccess() : FMcServerAccess::Load());
 	if (Text.StartsWith(TEXT("/")))
 	{

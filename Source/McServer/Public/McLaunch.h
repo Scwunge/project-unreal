@@ -105,4 +105,10 @@ namespace McLaunch
 	MCSERVER_API FString DecodeOption(const FString& Text);
 	// "creative" for creative (or "1"), anything else survival.
 	MCSERVER_API bool IsCreativeMode(const FString& GameMode);
+	// -McServer: the packaged game run as a server (Server.bat), since the engine from the launcher can't build the
+	// McClientServer target. It runs without a window (-nullrhi) as a listen server whose own player is never spawned,
+	// and takes server.properties, the allowlist and ops like a dedicated server.
+	MCSERVER_API bool IsServerSwitch();
+	// A dedicated server, or the game run with -McServer: the world serves others and has no player of its own.
+	MCSERVER_API bool IsServer(const UWorld* World);
 }

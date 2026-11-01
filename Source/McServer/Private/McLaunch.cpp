@@ -83,7 +83,7 @@ namespace
 
 	bool IsDedicated(const UWorld* World)
 	{
-		return World ? World->GetNetMode() == NM_DedicatedServer : IsRunningDedicatedServer();
+		return McLaunch::IsServer(World);
 	}
 }
 
@@ -506,6 +506,21 @@ FString McLaunch::DecodeOption(const FString& Text)
 		Out.AppendChar(Text[Index]);
 	}
 	return Out;
+}
+
+bool McLaunch::IsServerSwitch()
+{
+	static const bool bServer = FParse::Param(FCommandLine::Get(), TEXT("McServer"));
+	return bServer;
+}
+
+bool McLaunch::IsServer(const UWorld* World)
+{
+	if (World ? World->GetNetMode() == NM_DedicatedServer : IsRunningDedicatedServer())
+	{
+		return true;
+	}
+	return IsServerSwitch() && (!World || World->GetNetMode() != NM_Client);
 }
 
 bool McLaunch::IsCreativeMode(const FString& GameMode)

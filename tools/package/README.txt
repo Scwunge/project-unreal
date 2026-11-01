@@ -57,6 +57,27 @@ Hosting a world for a friend
    The game uses port 25565 (the same number as Minecraft) but only talks to
    other copies of this game, not to real Minecraft.
 
+Running a server (no window, stays up while you play or not)
+-------------------------------------------------------------
+Double-click Server.bat. It starts the game without a window, serving a world
+that friends join by address exactly as above (port 25565, the same firewall
+and router steps). The server has no player of its own: whoever runs it joins
+it too, from a normal Play.bat, at 127.0.0.1.
+
+Settings are in %LOCALAPPDATA%\McClient\Saved\Server, made on the first start:
+  server.properties   level-name (the world's folder, default "world"),
+                      level-seed, gamemode (survival/creative), max-players,
+                      server-port, white-list (true/false), motd
+  allowlist.json      who may join while white-list=true: [{"name": "Alex"}]
+  ops.json            who may use commands: [{"name": "Alex", "level": 4}]
+Players are matched by the name they join with (there are no accounts).
+Edit the files with Notepad, then stop and start the server.
+status.txt next to them shows the world, the port and who is on.
+
+Double-click Stop-Server.bat to stop it; it saves the world first. The world
+also saves itself every 5 minutes. Its folder is
+%LOCALAPPDATA%\McClient\Saved\Worlds\<level-name>.
+
 Joining a friend
 ----------------
 Multiplayer on the title screen. Type your name and their address, then Join

@@ -53,6 +53,8 @@ if ($bad) {
 
 Copy-Item (Join-Path $PSScriptRoot 'package\README.txt') $Stage -Force
 Copy-Item (Join-Path $PSScriptRoot 'package\Play.bat') $Stage -Force
+Copy-Item (Join-Path $PSScriptRoot 'package\Server.bat') $Stage -Force
+Copy-Item (Join-Path $PSScriptRoot 'package\Stop-Server.bat') $Stage -Force
 
 $listing = Join-Path $OutDir "McUnreal-$Date-files.txt"
 Get-ChildItem -Recurse -File $Stage | ForEach-Object { '{0,14:N0}  {1}' -f $_.Length, $_.FullName.Substring($Stage.Length + 1) } | Set-Content $listing -Encoding utf8

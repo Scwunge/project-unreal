@@ -163,13 +163,18 @@ int32 FMcNature::GetSunLight() const
 	return 15 - static_cast<int32>((1.0 - Level) * 11.0);
 }
 
-int32 FMcNature::GetDetectorLevel() const
+double FMcNature::GetDetectorScale() const
 {
-	// The sky's light, scaled by how high the sun is: noon reads full, dusk and night nothing.
 	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
 	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
 	Angle += (Target - Angle) * 0.2;
-	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * FMath::Cos(Angle)), 0, 15);
+	return FMath::Cos(Angle);
+}
+
+int32 FMcNature::GetDetectorLevel() const
+{
+	// The sky's light, scaled by how high the sun is: noon reads full, dusk and night nothing.
+	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * GetDetectorScale()), 0, 15);
 }
 
 // ---- Biomes and light ----

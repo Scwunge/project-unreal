@@ -37,9 +37,10 @@ public:
 	bool Use(const FIntVector& Pos, float Yaw);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
-	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; }
+	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; SunScale = 1.0; }
 	// What a plain detector reads (the sky level scaled by the sun's height) and the sky level an inverted one subtracts.
-	void SetDetector(int32 Plain, int32 Sky) { SunLight = Plain; SkyLevel = Sky; }
+	// Scale is the factor Plain is the sky level times, for a detector that sees less than the open sky.
+	void SetDetector(int32 Plain, int32 Sky, double Scale) { SunLight = Plain; SkyLevel = Sky; SunScale = Scale; }
 
 	// The power of the dust at Pos, 0 if there is none.
 	int32 GetDustPower(const FIntVector& Pos) const;
@@ -86,6 +87,8 @@ private:
 	static constexpr int32 TripwireMaxLength = 40;
 	void TickTarget(const FIntVector& Pos, FMcStateId State);
 	void TickDaylight(const FIntVector& Pos, FMcStateId State);
+	// The sky light that reaches the cell at Pos, 0 to 15, from the light engine (15 where nothing above dims it).
+	int32 SkyLightAt(const FIntVector& Pos) const;
 	bool IsSupported(const FIntVector& Pos, FMcStateId State) const;
 	bool IsRailPowered(const FIntVector& Pos, FMcStateId State) const;
 	void TickDetector(const FIntVector& Pos, FMcStateId State);
@@ -131,6 +134,7 @@ private:
 	bool bIgnoreDust = false;
 	int32 SunLight = 15;
 	int32 SkyLevel = 15;
+	double SunScale = 1.0;
 	TMap<FIntVector, int32> ComparatorOutputs;
 	TMap<FIntVector, TArray<int64>> TorchToggles;
 	TMap<FIntVector, int32> Plates;

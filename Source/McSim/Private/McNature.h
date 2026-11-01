@@ -32,6 +32,8 @@ public:
 	int32 GetSunLight() const;
 	// What a daylight detector reads, 0 to 15: it follows the sun's height as well, so night reads 0.
 	int32 GetDetectorLevel() const;
+	// The factor GetDetectorLevel scales the sky's light by (the cosine of the sun's blended angle), for a detector that sees less than the open sky.
+	double GetDetectorScale() const;
 
 	// Biome the block at Pos is in, its temperature there and what falls from the sky.
 	enum class EPrecipitation : uint8 { None, Rain, Snow };

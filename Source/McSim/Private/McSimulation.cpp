@@ -229,7 +229,7 @@ void FMcSimulation::Tick()
 	Nature->Tick();
 	if (!bSunFixed)
 	{
-		Redstone->SetDetector(Nature->GetDetectorLevel(), Nature->GetSunLight());
+		Redstone->SetDetector(Nature->GetDetectorLevel(), Nature->GetSunLight(), Nature->GetDetectorScale());
 	}
 	// Ticks that run now may schedule more for later; those never come due in this same tick (delay 1 or more).
 	// Earliest due first, and within one tick in the order they were asked for.

@@ -6,6 +6,7 @@
 #include "McChestLink.h"
 #include "McBrewingStand.h"
 #include "McChunk.h"
+#include "McLightEngine.h"
 #include "McFurnace.h"
 #include "Serialization/MemoryReader.h"
 #include "McRails.h"
@@ -1592,9 +1593,41 @@ void FMcRedstone::TickTarget(const FIntVector& Pos, FMcStateId State)
 	}
 }
 
+int32 FMcRedstone::SkyLightAt(const FIntVector& Pos) const
+{
+	// Open above (full sky light passes straight down through everything over it): 15, without the light engine.
+	const FMcBlockLight& Light = FMcBlockLight::Get();
+	if (!Light.IsLoaded())
+	{
+		return 15;
+	}
+	bool bOpen = true;
+	for (int32 Y = Pos.Y + 1; Y <= World.GetDimension().MaxY() && bOpen; ++Y)
+	{
+		bOpen = Light.PropagatesSkylightDown(World.GetBlock(FIntVector(Pos.X, Y, Pos.Z)));
+	}
+	if (bOpen)
+	{
+		return 15;
+	}
+	static TSharedPtr<const FMcLightPalette> Palette;
+	if (!Palette.IsValid())
+	{
+		Palette = FMcLightPalette::Build();
+	}
+	const FIntPoint Chunk(Pos.X >> 4, Pos.Z >> 4);
+	FMcLightRegion Region = FMcLightRegion::Capture(World, Chunk);
+	Region.Compute(*Palette);
+	return Region.GetSkyLight(Pos.X - Chunk.X * 16 + FMcLightRegion::Border, Pos.Y, Pos.Z - Chunk.Y * 16 + FMcLightRegion::Border);
+}
+
 void FMcRedstone::TickDaylight(const FIntVector& Pos, FMcStateId State)
 {
-	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - SkyLevel : SunLight;
+	// The light that reaches the detector's own cell, less what the sun leaves off the sky (reference run rs_detcover: a
+	// detector under a block reads the light of its cell, 13 under the middle of a 3x3 roof at noon, and the inverted one
+	// 15 minus that; the plain one scales it by the sun's height as the open sky's is).
+	const int32 Cell = FMath::Max(0, SkyLightAt(Pos) - (15 - SkyLevel));
+	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - Cell : FMath::Clamp(FMath::RoundToInt(Cell * SunScale), 0, 15);
 	if (Power != Number(State, TEXT("power")))
 	{
 		Set(Pos, { FChange(TEXT("power"), Power) });

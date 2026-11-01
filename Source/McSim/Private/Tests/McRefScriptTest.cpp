@@ -35,7 +35,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		TArray<FString> Lines;
 		FFileHelper::LoadFileToStringArray(Lines, *FPaths::Combine(Dir, File));
 		FMcBlockWorld World{FMcDimensionType()};
-		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 9; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 13; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 		FMcSimulation Sim(World);
 		const FMcStateId Air = Registry.ParseState(TEXT("minecraft:air")).Get(0);
 		const auto Parse = [&](const FString& Text) { return Registry.ParseState(*(TEXT("minecraft:") + Text)).Get(Air); };

@@ -629,7 +629,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		// Under water the picture goes blue-green and a little darker, the red light being lost first.
 		const float Sea = McRenderMode::IsEnhanced() ? McSky::GetCameraUnderwater() : 0.0f;
 		Grade.ColorGain = FMath::Lerp(Grade.ColorGain, FVector4(0.3, 0.72, 0.95, 1.0), Sea);
-		Grade.AutoExposureBias = BaseExposure + CaveExposure - 1.1f * Sea;
+		Grade.AutoExposureBias = BaseExposure + CaveExposure - 1.8f * Sea;
 		Grade.VignetteIntensity = Mode == EMode::Overworld ? 0.35f : 0.5f;
 		SunLight->SetCastShadows(Mode == EMode::Overworld);
 		SunLight->SetCastRaytracedShadow(McRenderMode::IsRayTracing());

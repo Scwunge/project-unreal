@@ -31,6 +31,20 @@ namespace McCache
 	};
 	MCCORE_API FTextureMeta ReadTextureMeta(const FString& PngPath);
 
+	// How far a villager's profession or type picture hides the hat layer of the head, from the "villager" section of its
+	// .png.mcmeta: "hat": "none" (the default), "partial" (the hat is drawn, the hair is hidden under it) or "full" (the whole
+	// head is covered). The villager model reads this for the profession and the type and draws the head accordingly.
+	enum class EVillagerHat : uint8
+	{
+		None,
+		Partial,
+		Full
+	};
+	MCCORE_API EVillagerHat ReadVillagerHat(const FString& PngPath);
+	// The same for a picture of the villager folder: Category is "profession" or "type", Name e.g. "farmer" or "plains"
+	// (an id's namespace, if any, is ignored). Looks in the resource packs first, like Asset().
+	MCCORE_API EVillagerHat VillagerHat(const FString& Category, const FString& Name);
+
 	// Reads and parses a JSON file whose top level is an object. Logs and returns null on failure.
 	MCCORE_API TSharedPtr<FJsonObject> LoadJsonObject(const FString& Path);
 

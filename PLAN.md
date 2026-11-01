@@ -358,23 +358,24 @@ Textures
 - [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
 - [x] GUI `.png.mcmeta` scaling (`gui.scaling`: nine_slice with one border or per side, tile, stretch) for the widget
   sprites (button, slider and handle, text field), from the sprite's own pack
-- [~] Texture `.png.mcmeta` `blur`/`clamp` read for standalone textures (GUI pictures, block texture arrays; each texture asset carries its own sampler, so no second sampler was needed; atlas sprites ignore blur as in vanilla). Villager `hat` (the villagers session's model): not read
+- [~] Texture `.png.mcmeta` `blur`/`clamp` read for standalone textures (GUI pictures, block texture arrays; each texture asset carries its own sampler, so no second sampler was needed; atlas sprites ignore blur as in vanilla). Villager `hat`: read (see the note below), the model has to use it
 
 > Resource packs, fonts: glyphs are keyed by code point (astral characters in bitmap providers draw); the jar's empty include/unifont.json is replaced by the launcher's copy with the CJK/Hangul size overrides; ttf advances are whole oversampled pixels. Checked against the vanilla client's own per-glyph advance, shadow offset and whole-string width (reference script scripts/respack_metrics.txt, verb `log glyphs`; tests McUI.FontMetrics and FontMetricsTrueType, the latter needs the zz_test_ttf pack that only the 1070 has and skips elsewhere). Ink bounds (left/right/up/down) are logged by the verb but not yet compared.
+> **For the villagers session: villager `hat`.** A villager's profession and type pictures (`textures/entity/villager/profession/<name>.png`, `.../type/<name>.png`) may carry a `.png.mcmeta` with `{"villager":{"hat":"none"|"partial"|"full"}}`. `McCache::VillagerHat(Category, Name)` (McCache.h; Category is `"profession"` or `"type"`, Name `"farmer"` or `"minecraft:plains"`) returns `McCache::EVillagerHat::None/Partial/Full` from whichever pack gives the picture (zip packs too). The model should read the profession's value and the type's and decide which head layers (hat, hat rim, hair) to draw by the rule on minecraft.wiki "Resource pack" (villager `hat`) / vanilla's `VillagerProfessionLayer`; I only read the value and did not check that rule against the client. I have not touched the villager model.
 - [x] `atlases/*.json` for every atlas: unstitch, paletted_permutations and filter sources become pictures the game finds as a pack's own (McPackAtlas.cpp; tests PackAtlas, PackAtlasSprites); single and directory sources need nothing (textures are found by path)
 - [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
 - [x] `font/default.json` providers: bitmap, space, unihex (Unifont .hex zips, size_overrides; the game's own Unifont stands in where the jar's include/unifont.json is empty), legacy_unicode (glyph_sizes.bin and unicode_page_XX.png) and ttf (FreeType: size, oversample, shift, skip) in the packs' order; the last three draw a character into a small texture of its own on first use (McFontRaster.cpp, glyph textures in AMcHUD). Other font ids (alt, illageralt, uniform) are not read (only the enchanting table's galactic font has its own code)
 
 Models and items
-- [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's (tested)
+- [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's, the higher pack wins, parents may be in a lower pack (tests PackModels, PackModelStack)
 - [~] Item models: held-item mesh and HUD icons read `models/item` and `items/*.json` from packs; custom
   `items/*.json` conditions/selects are only as far as the game's own are
 - [ ] Entity models in `models/entity` format (Optifine CEM) and `optifine/`/`mcpatcher/` data (CTM, custom colormaps,
   `texture.properties` formats): missing; LabPBR is detected through the maps, not the property file
 
 Other assets
-- [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`)
-- [x] `lang/*.json` merged key by key
+- [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`); tested through the pack stack (McAudio.PackSounds)
+- [x] `lang/en_us.json` merged key by key, the higher pack winning (McCore.PackLang); other languages are not read (the game has no language option)
 - [ ] `texts/` (splashes, credits, end poem) and `particles/*.json`: nothing in the game reads them yet (no splash
   text on the title screen, no credits, particles are drawn from block pictures and colours, not the particle sheets),
   so a pack's copy has nothing to change until those features exist. `shaders/` (post effects, core) cannot apply:

@@ -1,5 +1,6 @@
 #include "McResourcePacks.h"
 #include "McCache.h"
+#include "McLang.h"
 #include "HAL/FileManager.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
@@ -464,6 +465,107 @@ bool FMcPackDropTest::RunTest(const FString& Parameters)
 	Copied = McPacks::CopyDropped(Drop, Failed, Target);
 	TestEqual(TEXT("a second drop copies nothing"), Copied.Num(), 0);
 	TestEqual(TEXT("and fails both"), Failed.Num(), 2);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// A villager picture's .png.mcmeta "villager" section: how far the profession or type hides the hat layer. The model reads
+// McCache::VillagerHat; here it is checked on loose files and through the pack stack, from a folder pack and a zip.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcVillagerHatTest, "McClient.McCore.VillagerHat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcVillagerHatTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McVillagerHatTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const auto Hat = [&](const TCHAR* Name, const TCHAR* Json)
+	{
+		if (Json)
+		{
+			FFileHelper::SaveStringToFile(Json, *(Root / Name + TEXT(".mcmeta")));
+		}
+		return McCache::ReadVillagerHat(Root / Name);
+	};
+	TestTrue(TEXT("partial"), Hat(TEXT("a.png"), TEXT("{\"villager\":{\"hat\":\"partial\"}}")) == McCache::EVillagerHat::Partial);
+	TestTrue(TEXT("full"), Hat(TEXT("b.png"), TEXT("{\"villager\":{\"hat\":\"full\"}}")) == McCache::EVillagerHat::Full);
+	TestTrue(TEXT("none, said"), Hat(TEXT("c.png"), TEXT("{\"villager\":{\"hat\":\"none\"}}")) == McCache::EVillagerHat::None);
+	TestTrue(TEXT("a value that isn't one"), Hat(TEXT("d.png"), TEXT("{\"villager\":{\"hat\":\"huge\"}}")) == McCache::EVillagerHat::None);
+	TestTrue(TEXT("no villager section"), Hat(TEXT("e.png"), TEXT("{\"texture\":{\"blur\":true}}")) == McCache::EVillagerHat::None);
+	TestTrue(TEXT("no mcmeta"), Hat(TEXT("f.png"), nullptr) == McCache::EVillagerHat::None);
+
+	// Through the stack: a profession from a folder pack, a type from a zip (its .mcmeta is taken out beside the picture).
+	const FString Profession = TEXT("assets/minecraft/textures/entity/villager/profession/zz_farmer.png");
+	const FString Type = TEXT("assets/minecraft/textures/entity/villager/type/zz_plains.png");
+	const FString FolderDir = Root / TEXT("folder");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(FolderDir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("png"), *(FolderDir / Profession));
+	FFileHelper::SaveStringToFile(TEXT("{\"villager\":{\"hat\":\"partial\"}}"), *(FolderDir / Profession + TEXT(".mcmeta")));
+	const FString ZipPath = Root / TEXT("types.zip");
+	FFileHelper::SaveArrayToFile(MakeZip({
+		{ TEXT("pack.mcmeta"), Bytes(TEXT("{\"pack\":{\"pack_format\":97}}")), false },
+		{ Type, Bytes(TEXT("png")), false },
+		{ Type + TEXT(".mcmeta"), Bytes(TEXT("{\"villager\":{\"hat\":\"full\"}}")), true } }), *ZipPath);
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Folder = FMcResourcePack::Open(FolderDir, &Error);
+	const TSharedPtr<FMcResourcePack> Zip = FMcResourcePack::Open(ZipPath, &Error);
+	if (!TestTrue(TEXT("the packs open: ") + Error, Folder.IsValid() && Zip.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Folder, Zip })));
+	TestTrue(TEXT("a profession's hat from a folder pack"), McCache::VillagerHat(TEXT("profession"), TEXT("minecraft:zz_farmer")) == McCache::EVillagerHat::Partial);
+	TestTrue(TEXT("a type's hat from a zip"), McCache::VillagerHat(TEXT("type"), TEXT("zz_plains")) == McCache::EVillagerHat::Full);
+	TestTrue(TEXT("a picture the packs lack: none"), McCache::VillagerHat(TEXT("profession"), TEXT("zz_nobody")) == McCache::EVillagerHat::None);
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestTrue(TEXT("without the packs: none"), McCache::VillagerHat(TEXT("profession"), TEXT("zz_farmer")) == McCache::EVillagerHat::None);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// lang/en_us.json of the packs is merged key by key over the game's, lowest pack first; a key no pack gives stays the game's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackLangTest, "McClient.McCore.PackLang",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackLangTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const FString Survival = McLang::Get(TEXT("gameMode.survival"));
+	const FString Creative = McLang::Get(TEXT("gameMode.creative"));
+	const FString Adventure = McLang::Get(TEXT("gameMode.adventure"));
+	if (!TestNotEqual(TEXT("the game has gameMode.survival"), Survival, FString(TEXT("gameMode.survival"))))
+	{
+		return true;
+	}
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackLangTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString LowDir = Root / TEXT("low");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(LowDir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"gameMode.survival\":\"Low Survival\",\"gameMode.creative\":\"Low Creative\",\"zz.lang.new\":\"from low\"}"),
+		*(LowDir / TEXT("assets/minecraft/lang/en_us.json")));
+	const FString ZipPath = Root / TEXT("high.zip");
+	FFileHelper::SaveArrayToFile(MakeZip({
+		{ TEXT("pack.mcmeta"), Bytes(TEXT("{\"pack\":{\"pack_format\":97}}")), false },
+		{ TEXT("assets/minecraft/lang/en_us.json"), Bytes(TEXT("{\"gameMode.creative\":\"High Creative \\u00e9\",\"zz.lang.new\":\"from high\",\"zz.lang.pattern\":\"%2$s then %1$s\"}")), true } }), *ZipPath);
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Low = FMcResourcePack::Open(LowDir, &Error);
+	const TSharedPtr<FMcResourcePack> High = FMcResourcePack::Open(ZipPath, &Error);
+	if (!TestTrue(TEXT("the packs open: ") + Error, Low.IsValid() && High.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Low, High })));
+	TestEqual(TEXT("a key only the lower pack gives"), McLang::Get(TEXT("gameMode.survival")), FString(TEXT("Low Survival")));
+	TestEqual(TEXT("a key both give: the higher pack's, escapes decoded"), McLang::Get(TEXT("gameMode.creative")), FString(TEXT("High Creative \u00e9")));
+	TestEqual(TEXT("a new key in both: the higher"), McLang::Get(TEXT("zz.lang.new")), FString(TEXT("from high")));
+	TestEqual(TEXT("a key no pack gives is the game's"), McLang::Get(TEXT("gameMode.adventure")), Adventure);
+	TestEqual(TEXT("a pack's pattern is formatted"), McLang::Format(TEXT("zz.lang.pattern"), { TEXT("a"), TEXT("b") }), FString(TEXT("b then a")));
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ High, Low })));
+	TestEqual(TEXT("the order decides"), McLang::Get(TEXT("gameMode.creative")), FString(TEXT("Low Creative")));
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestEqual(TEXT("without the packs the game's text is back"), McLang::Get(TEXT("gameMode.survival")), Survival);
+	TestEqual(TEXT("and the new key reads as itself"), McLang::Get(TEXT("zz.lang.new")), FString(TEXT("zz.lang.new")));
+	TestEqual(TEXT("creative"), McLang::Get(TEXT("gameMode.creative")), Creative);
 	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }

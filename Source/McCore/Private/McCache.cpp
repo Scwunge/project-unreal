@@ -79,6 +79,37 @@ namespace McCache
 		return Meta;
 	}
 
+	EVillagerHat ReadVillagerHat(const FString& PngPath)
+	{
+		FString Text;
+		const FString MetaPath = PngPath + TEXT(".mcmeta");
+		if (!FPaths::FileExists(MetaPath) || !FFileHelper::LoadFileToString(Text, *MetaPath))
+		{
+			return EVillagerHat::None;
+		}
+		TSharedPtr<FJsonObject> Root;
+		const TSharedPtr<FJsonObject>* Villager = nullptr;
+		FString Hat;
+		if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) && Root.IsValid() && Root->TryGetObjectField(TEXT("villager"), Villager)
+			&& (*Villager)->TryGetStringField(TEXT("hat"), Hat))
+		{
+			if (Hat == TEXT("partial"))
+			{
+				return EVillagerHat::Partial;
+			}
+			if (Hat == TEXT("full"))
+			{
+				return EVillagerHat::Full;
+			}
+		}
+		return EVillagerHat::None;
+	}
+
+	EVillagerHat VillagerHat(const FString& Category, const FString& Name)
+	{
+		return ReadVillagerHat(Asset(TEXT("textures/entity/villager/") + Category / PathOf(Name) + TEXT(".png")));
+	}
+
 	FString Namespaced(const FString& Id)
 	{
 		return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id;

@@ -251,11 +251,11 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 #if !UE_BUILD_SHIPPING
 	// For tuning: -McWaterIor= and -McWaterSky= (the water's index of refraction, and its mirrored-sky strength).
-	static const float WaterIor = [] { float V = 1.2f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
-	static const float WaterSky = [] { float V = 1.0f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
+	static const float WaterIor = [] { float V = 1.33f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
+	static const float WaterSky = [] { float V = 0.5f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
 #else
-	constexpr float WaterIor = 1.2f;
-	constexpr float WaterSky = 1.0f;
+	constexpr float WaterIor = 1.33f;
+	constexpr float WaterSky = 0.5f;
 #endif
 	for (UMaterialInterface* Material : PassMaterials)
 	{

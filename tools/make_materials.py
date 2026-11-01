@@ -251,8 +251,8 @@ if (k == 1.0)
     float3 v = normalize(View);
     float3 r = reflect(-v, n);
     float fres = 0.04 + 0.96 * pow(1.0 - saturate(dot(n, v)), 5.0);
-    float3 horizon = float3(0.62, 0.74, 0.92);
-    float3 zenith = float3(0.2, 0.4, 0.85);
+    float3 horizon = float3(0.36, 0.52, 0.8);
+    float3 zenith = float3(0.12, 0.3, 0.75);
     float3 skycol = lerp(horizon, zenith, saturate(r.z * 1.5)) * pow(b.x, 2.2) * SkyFactor;
     e += skycol * fres * WaterSky;
 }
@@ -612,6 +612,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
             bend = add_custom(material, -100, 800, "McLitRefraction", KIND_HLSL + "return k == 1.0 ? Ior : 1.0;",
                               {"Kind": (kind, ""), "Ior": (add_scalar(material, -350, 2000, "WaterIor", 1.2), "")}, scalar=True)
             mel.connect_material_property(bend, "", unreal.MaterialProperty.MP_REFRACTION)
+            material.set_editor_property("refraction_method", unreal.RefractionMode.RM_INDEX_OF_REFRACTION)
     else:
         colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,
                             {"Tex": (texture, "RGB"), "Shade": (vertex_color, ""), "Light": (uv2, ""),

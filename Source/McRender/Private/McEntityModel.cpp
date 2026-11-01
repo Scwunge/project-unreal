@@ -80,11 +80,12 @@ namespace McEntityModel
 
 	// A boat's two paddles: a shaft and a blade each, cut from the boat's picture (the left and right pictures are where the texture has them: stacked on a boat's, side by side on a raft's).
 	// They are mounted on the sides (HalfWidth from the middle, on a hull's gunwales or a raft's deck edges, clear of a
-	// chest) a little aft of the middle, and rest slanting out and back.
-	void AddPaddles(FModel& Model, float Height, float HalfWidth, FIntPoint Left, FIntPoint Right)
+	// chest), Forward of the middle. A hull's are where paddle_log.txt's log model put them: 9 out, 11 up, 3 forward. The
+	// boxes are vanilla's turned half round the shaft (x and y the other way), so the pose stays a turn (see PaddleLeft).
+	void AddPaddles(FModel& Model, float Height, float HalfWidth, float Forward, FIntPoint Left, FIntPoint Right)
 	{
-		Model.Parts.Add(Part(ERole::PaddleLeft, FVector(HalfWidth, Height, -2), { Box(Left.X, Left.Y, -1, -1, -5, 2, 2, 18), Box(Left.X, Left.Y, -1.001f, -3, 8, 1, 6, 7) }));
-		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-HalfWidth, Height, -2), { Box(Right.X, Right.Y, -1, -1, -5, 2, 2, 18), Box(Right.X, Right.Y, 0.001f, -3, 8, 1, 6, 7) }));
+		Model.Parts.Add(Part(ERole::PaddleLeft, FVector(HalfWidth, Height, Forward), { Box(Left.X, Left.Y, -1, -2, -5, 2, 2, 18), Box(Left.X, Left.Y, 0.001f, -3, 8, 1, 6, 7) }));
+		Model.Parts.Add(Part(ERole::PaddleRight, FVector(-HalfWidth, Height, Forward), { Box(Right.X, Right.Y, -1, -2, -5, 2, 2, 18), Box(Right.X, Right.Y, -1.001f, -3, 8, 1, 6, 7) }));
 	}
 
 	// A chest (minecraft.wiki: "Chest"): a base 10 high with a lid 5 high over it, 14 across and a pixel in from the
@@ -291,7 +292,7 @@ namespace McEntityModel
 					Boat.Parts.Add(Part(ERole::Static, FVector(0, 3, -15), { Box(0, 19, -9, 0, -1, 18, 6, 2) }));
 					Boat.Parts.Add(Part(ERole::Static, FVector(9, 3, 0), { Box(0, 35, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
 					Boat.Parts.Add(Part(ERole::Static, FVector(-9, 3, 0), { Box(0, 43, -14, 0, -1, 28, 6, 2) }, 0, HALF_PI));
-					AddPaddles(Boat, 9.0f, 8.0f, FIntPoint(62, 0), FIntPoint(62, 20));
+					AddPaddles(Boat, 11.0f, 9.0f, 3.0f, FIntPoint(62, 0), FIntPoint(62, 20));
 					// The space inside the sides, up to their tops: water is not drawn there.
 					Boat.MaskLayer = 1;
 					Boat.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -8, 3, -14, 16, 6, 28) }, 0, 0, 0, 0, 1));
@@ -311,7 +312,7 @@ namespace McEntityModel
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
 					// It floats higher than a hull, its deck clear of the water.
 					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
-					AddPaddles(Raft, 9.0f, 10.0f, FIntPoint(0, 24), FIntPoint(40, 24));
+					AddPaddles(Raft, 9.0f, 10.0f, -2.0f, FIntPoint(0, 24), FIntPoint(40, 24));
 					if (bChest)
 					{
 						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));
@@ -716,20 +717,28 @@ namespace McEntityModel
 			case ERole::PaddleLeft:
 			case ERole::PaddleRight:
 			{
-				// At rest the blade trails out over the side; rowing swings it fore and aft, dipping it on the pull.
+				// paddle_log.txt (log model, a player rowing): in vanilla's model the paddle turns about x by -5pi/24 - pi/8 sin(stroke),
+				// about y by pi/4 sin(1 - stroke) (pi less that on the right) and about z by pi/16, z then y then x; at rest the
+				// stroke is 0. Its model is ours with x and z swapped and y down (the hull's sides and ends say so), so the
+				// turn is that one seen through the swap, and through the boxes' half turn (AddPaddles).
 				const bool bLeft = Part.Role == ERole::PaddleLeft;
-				const float Side = bLeft ? 1.0f : -1.0f;
 				const float Stroke = bLeft ? Anim.PaddleLeft : Anim.PaddleRight;
-				const bool bRowing = bLeft ? Anim.bPaddleLeft : Anim.bPaddleRight;
-				float Swing = 0.0f;
-				float Dip = 0.0f;
-				if (bRowing)
+				const float TurnX = -5.0f * PI / 24.0f - PI / 8.0f * FMath::Sin(Stroke);
+				const float TurnY = bLeft ? PI / 4.0f * FMath::Sin(1.0f - Stroke) : PI - PI / 4.0f * FMath::Sin(1.0f - Stroke);
+				const FMatrix Vanilla = FRotationMatrix::Make(FQuat(FVector::ZAxisVector, PI / 16.0f) * FQuat(FVector::YAxisVector, TurnY) * FQuat(FVector::XAxisVector, TurnX));
+				const FVector Swap[3] = { FVector(0, 0, 1), FVector(0, -1, 0), FVector(1, 0, 0) };
+				const FVector Half[3] = { FVector(-1, 0, 0), FVector(0, -1, 0), FVector(0, 0, 1) };
+				// Column i of ours: Swap * Vanilla * Half applied to axis i.
+				FVector Column[3];
+				for (int32 Axis = 0; Axis < 3; ++Axis)
 				{
-					Swing = FMath::Sin(Stroke) * 0.55f;
-					Dip = (FMath::Cos(Stroke) * 0.5f + 0.5f) * 0.45f;
+					const FVector Turned = Vanilla.TransformVector(Half[Axis]);
+					Column[Axis] = Swap[0] * Turned.X + Swap[1] * Turned.Y + Swap[2] * Turned.Z;
 				}
-				Yaw += Side * (2.0f + Swing);
-				Pitch += 0.35f + Dip;
+				// As yaw (y), then roll (z), then pitch (x): row y of the matrix is (sin roll, cos roll cos pitch, -cos roll sin pitch).
+				Roll = FMath::Asin(FMath::Clamp(Column[0].Y, -1.0f, 1.0f));
+				Pitch = FMath::Atan2(-Column[2].Y, Column[1].Y);
+				Yaw = FMath::Atan2(-Column[0].Z, Column[0].X);
 				break;
 			}
 			case ERole::ShulkerLid:

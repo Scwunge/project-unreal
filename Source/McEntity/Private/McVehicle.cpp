@@ -43,7 +43,8 @@ namespace
 		{
 			return 0.98;
 		}
-		return 0.45;
+		// Stone, from vanilla_log vehicle_log: a boat pushed at 0.3 goes 0.18, 0.108, 0.0648.
+		return 0.6;
 	}
 }
 
@@ -282,38 +283,13 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		Velocity -= High * SlopePull;
 	}
 
-	// Rails that push or hold.
+	// An unpowered powered rail holds the cart back before it moves: half its speed, or all of it under 0.03
+	// (powered_log.txt: a cart at 0.156 moves 0.078, 0.037, 0.018 and stops).
 	const bool bPoweredRail = Block == TEXT("minecraft:powered_rail");
 	Speed = Velocity.Size();
-	if (bPoweredRail)
+	if (bPoweredRail && !bPowered)
 	{
-		if (bPowered)
-		{
-			if (Speed > 0.01)
-			{
-				Velocity += Velocity / Speed * PoweredBoost;
-			}
-			else
-			{
-				// Standing still against something at one end, it is pushed off from it.
-				const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
-				const bool bBlockedA = Shapes.HasCollision(World.GetBlock(Cell + Track.EndA));
-				const bool bBlockedB = Shapes.HasCollision(World.GetBlock(Cell + Track.EndB));
-				if (bBlockedA != bBlockedB)
-				{
-					const FVector2D Away = bBlockedA ? FVector2D(Track.EndB.X, Track.EndB.Z) : FVector2D(Track.EndA.X, Track.EndA.Z);
-					Velocity = Away.GetSafeNormal() * 0.02;
-				}
-			}
-		}
-		else if (Speed < 0.03)
-		{
-			Velocity = FVector2D::ZeroVector;
-		}
-		else
-		{
-			Velocity *= 0.5;
-		}
+		Velocity = Speed < 0.03 ? FVector2D::ZeroVector : Velocity * 0.5;
 	}
 	if (Block == TEXT("minecraft:activator_rail") && bPowered)
 	{
@@ -334,17 +310,14 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		Velocity += Along * (Heading >= 0.0 ? 0.04 : -0.04);
 	}
 
-	// Friction, and the speed limit.
-	Velocity *= HasRider() ? 0.997 : 0.96;
+	// The speed limit is on how far it moves in a tick, not on its speed: powered_log.txt's cart on powered rail moves
+	// 0.4 a tick while its speed goes on to 1.03.
 	const double Fast = Velocity.Size();
 	const double Cap = bDriving ? FurnaceSpeed : MaxSpeed;
-	if (Fast > Cap)
-	{
-		Velocity *= Cap / Fast;
-	}
+	const FVector2D Step = Fast > Cap ? Velocity * (Cap / Fast) : Velocity;
 
 	// Along the line to where it gets to, and if something is in the way, stop.
-	const double Reach = FVector2D::DotProduct(Velocity, Along);
+	const double Reach = FVector2D::DotProduct(Step, Along);
 	const double NextWhere = Where + Reach / Length;
 	const double NextT = FMath::Clamp(NextWhere, 0.0, 1.0);
 	const FVector Target(EndA.X + Line.X * NextWhere, FMath::Lerp(EndA.Y, EndB.Y, NextT), EndA.Z + Line.Y * NextWhere);
@@ -357,6 +330,38 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	}
 	else
 	{
+		// Friction comes after the move, and every block dropped adds a twentieth to the speed (a block climbed takes it
+		// away). Fitted from vehicle_log.txt: on flat rail a cart at 0.4 goes to 2.9 then 3.284 with speeds 0.384, 0.36864;
+		// down a slope from rest it moves 0.0078125, 0.0157, 0.0237 with speeds 1.01 times those; the tick it leaves the
+		// slope, 0.3936 across with 0.1756 of drop, it keeps 0.96 * 0.3936 + 0.05 * 0.1756 = 0.3866.
+		// Uphill it keeps 0.91 of its move (powered_log.txt: 0.0918 up the slope leaves 0.0836).
+		const double Kept = (HasRider() ? 0.997 : 0.96) * Fast + 0.05 * (Before.Y - Body.Position.Y);
+		Velocity = Fast > 1e-9 ? Velocity / Fast * Kept : FVector2D::ZeroVector;
+		// A powered rail adds to what is left (powered_log.txt: 0.0792 = 0.02 * 0.96 + 0.06, 0.13603, ...); a cart standing
+		// still against something at one end is pushed off from it at 0.02, and moves the tick after.
+		if (bPoweredRail && bPowered)
+		{
+			if (Kept > 0.01)
+			{
+				Velocity += Velocity / Kept * PoweredBoost;
+			}
+			else
+			{
+				const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+				const bool bBlockedA = Shapes.HasCollision(World.GetBlock(Cell + Track.EndA));
+				const bool bBlockedB = Shapes.HasCollision(World.GetBlock(Cell + Track.EndB));
+				if (bBlockedA != bBlockedB)
+				{
+					const FVector2D Away = bBlockedA ? FVector2D(Track.EndB.X, Track.EndB.Z) : FVector2D(Track.EndA.X, Track.EndA.Z);
+					Velocity = Away.GetSafeNormal() * 0.02;
+				}
+			}
+		}
+		// A furnace cart's own drive is held to its speed (not measured against vanilla yet).
+		if (bDriving && Velocity.Size() > FurnaceSpeed)
+		{
+			Velocity *= FurnaceSpeed / Velocity.Size();
+		}
 		Body.Velocity = FVector(Velocity.X, 0.0, Velocity.Y);
 	}
 	if (Velocity.SizeSquared() > 1e-4)
@@ -647,6 +652,17 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 		}
 		const double Surface = Top + WaterHeight(World.GetBlock(FIntVector(X, Top, Z)));
 		OutSurface = Surface;
+		// Over water but not yet down in it, it is still falling: vehicle_log's dropped boat falls on past -59.64, the
+		// water's surface at -60.11.
+		if (Body.Position.Y >= Surface)
+		{
+			if (!Body.bOnGround)
+			{
+				return ESurface::Air;
+			}
+			OutFriction = Friction(Registry.GetBlockOf(World.GetBlock(FIntVector(X, FMath::FloorToInt32(Body.Position.Y - 0.05), Z))).Name);
+			return ESurface::Ground;
+		}
 		// Water over its hull lifts it, unless it is flowing water (a waterfall), which holds it down; the top of the hull
 		// just in it floats.
 		if (Body.Position.Y + Body.Height >= Surface)
@@ -681,7 +697,9 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	// Steering: left and right turn it, forward and back push along where it faces.
 	const bool bRiding = HasRider();
 	const float Turn = bRiding ? -RiderStrafe : 0.0f;
-	TurnRate = TurnRate * 0.8f + Turn;
+	// A degree more each tick a key is held, and nine tenths of it kept (paddle_log.txt: the yaw goes -1, -1.9, -2.71,
+	// -3.439 a tick turning left, and 7.46, 6.72, 6.04 coasting after).
+	TurnRate = TurnRate * 0.9f + Turn;
 	Yaw += TurnRate;
 	double Push = 0.0;
 	if (bRiding)
@@ -703,7 +721,10 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	switch (Where)
 	{
 	case ESurface::Water:
-		Body.Velocity.Y = FMath::Clamp((Surface - 0.2 - Body.Position.Y) * 0.5, -0.1, 0.1);
+		// Weight against how deep it sits, the depth in from the surface counted in 0.65s of its height, damped by a
+		// quarter each tick. Fitted from vehicle_log.txt's boat on water (to 1e-6 over 120 ticks), which settles at
+		// 0.65 of its height under the surface.
+		Body.Velocity.Y = 0.75 * (Body.Velocity.Y - Gravity + Gravity * (Surface - Body.Position.Y) / (0.65 * Body.Height));
 		break;
 	case ESurface::Underwater:
 		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.04, 0.15);
@@ -712,10 +733,17 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y = FMath::Max(Body.Velocity.Y * 0.9 - 0.002, -0.05);
 		break;
 	default:
+		// No drag in the air: vehicle_log's dropped boat falls 0.04, 0.08, 0.12, ...
 		Body.Velocity.Y -= Gravity;
-		Body.Velocity.Y *= 0.98;
 		break;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
+	if (bWasInAir && Where == ESurface::Water)
+	{
+		// Coming down onto water it sinks in once and stops: vehicle_log's dropped boat, at -0.48 a tick, goes from -60.12
+		// to -60.46 and has no speed after (this moves it to -60.51).
+		Body.Velocity.Y = 0.0;
+	}
+	bWasInAir = Where == ESurface::Air;
 	TickPassengers(Manager);
 }

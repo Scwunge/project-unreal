@@ -129,6 +129,8 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("a rider doing nothing rows nothing"), Boat.GetPaddleBits(), 0);
 		Boat.SetRider(1.0f, 0.0f, 0.0f);
 		TestEqual(TEXT("forward rows both"), Boat.GetPaddleBits(), 3);
+		Boat.SetRider(-1.0f, 0.0f, 0.0f);
+		TestEqual(TEXT("back rows neither"), Boat.GetPaddleBits(), 0);
 		Boat.SetRider(0.0f, -1.0f, 0.0f);
 		TestEqual(TEXT("turning right rows the left paddle"), Boat.GetPaddleBits(), 1);
 		Boat.SetRider(0.0f, 1.0f, 0.0f);
@@ -596,6 +598,136 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 			Manager.Tick();
 		}
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcVehicleLogTest, "McClient.McEntity.VehicleLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// The numbers vanilla gave in vehicle_log.txt (log sents, one line a tick), its scene rebuilt 62 blocks higher.
+bool FMcVehicleLogTest::RunTest(const FString& Parameters)
+{
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	const auto State = [&](const TCHAR* Text) { return Registry.ParseState(Text).Get(0); };
+	FMcBlockWorld World{FMcDimensionType()};
+	for (int32 Z = -1; Z <= 1; ++Z)
+	{
+		for (int32 X = -1; X <= 1; ++X)
+		{
+			World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		}
+	}
+	for (int32 X = -16; X <= 31; ++X)
+	{
+		for (int32 Z = -16; Z <= 31; ++Z)
+		{
+			World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:stone")));
+		}
+	}
+	for (int32 X = 0; X <= 12; ++X)
+	{
+		World.SetBlock(FIntVector(X, 1, 0), State(TEXT("minecraft:rail[shape=east_west]")));
+	}
+	// powered_log.txt: powered rails against a block, and unpowered ones.
+	World.SetBlock(FIntVector(0, 1, 5), State(TEXT("minecraft:stone")));
+	for (int32 X = 1; X <= 10; ++X)
+	{
+		World.SetBlock(FIntVector(X, 1, 5), State(TEXT("minecraft:powered_rail[shape=east_west,powered=true]")));
+		World.SetBlock(FIntVector(X, 1, 8), State(TEXT("minecraft:powered_rail[shape=east_west,powered=false]")));
+	}
+	// A slope rising east, a block a block.
+	for (int32 X = 0; X <= 5; ++X)
+	{
+		World.SetBlock(FIntVector(X, 1 + X, 25), State(TEXT("minecraft:rail[shape=ascending_east]")));
+	}
+	for (int32 X = 14; X <= 22; ++X)
+	{
+		for (int32 Z = 22; Z <= 30; ++Z)
+		{
+			World.SetBlock(FIntVector(X, 1, Z), State(TEXT("minecraft:water")));
+		}
+	}
+	FMcEntityManager Manager(World);
+
+	FMcMinecartEntity* Flat = new FMcMinecartEntity();
+	Flat->Body.Position = FVector(2.5, 1.0625, 0.5);
+	Flat->Body.Velocity = FVector(0.4, 0.0, 0.0);
+	Manager.Add(TUniquePtr<FMcEntity>(Flat));
+	FMcMinecartEntity* Slope = new FMcMinecartEntity();
+	Slope->Body.Position = FVector(3.5, 4.5625, 25.5);
+	Manager.Add(TUniquePtr<FMcEntity>(Slope));
+	FMcMinecartEntity* Kicked = new FMcMinecartEntity();
+	Kicked->Body.Position = FVector(1.5, 1.0625, 5.5);
+	Manager.Add(TUniquePtr<FMcEntity>(Kicked));
+	FMcMinecartEntity* Braked = new FMcMinecartEntity();
+	Braked->Body.Position = FVector(5.5, 1.0625, 8.5);
+	Braked->Body.Velocity = FVector(0.15612, 0.0, 0.0);
+	Manager.Add(TUniquePtr<FMcEntity>(Braked));
+	FMcBoatEntity* Stone = new FMcBoatEntity();
+	Stone->Body.Position = FVector(2.5, 1.0, 28.5);
+	Stone->Body.Velocity = FVector(0.3, 0.0, 0.0);
+	Stone->Body.bOnGround = true;
+	Manager.Add(TUniquePtr<FMcEntity>(Stone));
+	// Vanilla's floating boat as its first logged tick left it.
+	FMcBoatEntity* Float = new FMcBoatEntity();
+	Float->Body.Position = FVector(14.95, -60.58989 + 62.0, 23.5);
+	Float->Body.Velocity = FVector(0.45, 0.010114, 0.0);
+	Manager.Add(TUniquePtr<FMcEntity>(Float));
+	FMcBoatEntity* Drop = new FMcBoatEntity();
+	Drop->Body.Position = FVector(21.5, 5.0, 29.5);
+	Manager.Add(TUniquePtr<FMcEntity>(Drop));
+
+	Manager.Tick();
+	TestNearlyEqual(TEXT("a cart at 0.4 on flat rail moves all of it first"), Flat->Body.Position.X, 2.9, 1e-4);
+	TestNearlyEqual(TEXT("then keeps 0.96 of it"), Flat->Body.Velocity.X, 0.384, 1e-4);
+	TestNearlyEqual(TEXT("a cart at rest on a slope moves 0.0078125 down it"), Slope->Body.Position.X, 3.5 - 0.0078125, 1e-5);
+	TestNearlyEqual(TEXT("and the same down"), Slope->Body.Position.Y, 4.5625 - 0.0078125, 1e-5);
+	TestNearlyEqual(TEXT("going 1.01 times that after"), Slope->Body.Velocity.X, -0.007891, 2e-6);
+	TestNearlyEqual(TEXT("a cart at rest on powered rail against a block is pushed off at 0.02"), Kicked->Body.Velocity.X, 0.02, 1e-6);
+	TestNearlyEqual(TEXT("not moving yet"), Kicked->Body.Position.X, 1.5, 1e-6);
+	TestNearlyEqual(TEXT("an unpowered powered rail halves the move"), Braked->Body.Position.X, 5.5 + 0.07806, 1e-5);
+	TestNearlyEqual(TEXT("and friction takes its share after"), Braked->Body.Velocity.X, 0.07494, 1e-5);
+	TestNearlyEqual(TEXT("a boat on stone keeps 0.6 of its speed"), Stone->Body.Velocity.X, 0.18, 1e-6);
+	TestNearlyEqual(TEXT("and moves by what it kept"), Stone->Body.Position.X, 2.68, 1e-6);
+	TestNearlyEqual(TEXT("a boat on water keeps 0.9"), Float->Body.Velocity.X, 0.405, 1e-6);
+	TestNearlyEqual(TEXT("and bobs up as vanilla's did"), Float->Body.Velocity.Y, 0.01687, 2e-6);
+	TestNearlyEqual(TEXT("moving by it"), Float->Body.Position.Y, -60.57302 + 62.0, 2e-5);
+	TestNearlyEqual(TEXT("a boat in the air falls 0.04 a tick"), Drop->Body.Position.Y, 4.96, 1e-6);
+
+	Manager.Tick();
+	TestNearlyEqual(TEXT("the flat cart's second tick"), Flat->Body.Position.X, 3.284, 1e-4);
+	TestNearlyEqual(TEXT("and speed"), Flat->Body.Velocity.X, 0.36864, 1e-4);
+	TestNearlyEqual(TEXT("the slope cart's second"), Slope->Body.Position.X, 3.5 - 0.0078125 - 0.0157035, 2e-5);
+	TestNearlyEqual(TEXT("and speed"), Slope->Body.Velocity.X, -0.01586, 2e-5);
+	TestNearlyEqual(TEXT("the kicked cart moves its 0.02"), Kicked->Body.Position.X, 1.52, 1e-6);
+	TestNearlyEqual(TEXT("and the rail adds 0.06 to what friction leaves"), Kicked->Body.Velocity.X, 0.0792, 1e-6);
+	TestNearlyEqual(TEXT("the stone boat's second"), Stone->Body.Velocity.X, 0.108, 1e-6);
+	TestNearlyEqual(TEXT("the floating boat's second"), Float->Body.Velocity.Y, 0.020552, 2e-6);
+	TestNearlyEqual(TEXT("the falling boat, with no drag"), Drop->Body.Position.Y, 4.88, 1e-6);
+
+	Manager.Tick();
+	TestNearlyEqual(TEXT("the kicked cart's third"), Kicked->Body.Velocity.X, 0.13603, 1e-5);
+	Manager.Tick();
+	TestNearlyEqual(TEXT("a cart braked under 0.03 stops dead"), Braked->Body.Velocity.X, 0.0, 1e-9);
+	TestNearlyEqual(TEXT("where vanilla's did"), Braked->Body.Position.X, 5.5 + 0.07806 + 0.03747 + 0.01798, 1e-4);
+	for (int32 Tick = 4; Tick < 12; ++Tick)
+	{
+		Manager.Tick();
+	}
+	TestNearlyEqual(TEXT("the dropped boat is just in the water after 12 ticks"), Drop->Body.Position.Y, -60.12 + 62.0, 1e-4);
+	TestNearlyEqual(TEXT("still falling"), Drop->Body.Velocity.Y, -0.48, 1e-6);
+	Manager.Tick();
+	TestNearlyEqual(TEXT("then sinks in and stops"), Drop->Body.Velocity.Y, 0.0, 1e-9);
+	TestNearlyEqual(TEXT("near where vanilla's did"), Drop->Body.Position.Y, -60.4615 + 62.0, 0.06);
+	for (int32 Tick = 13; Tick < 120; ++Tick)
+	{
+		Manager.Tick();
+	}
+	TestNearlyEqual(TEXT("a boat settles 0.65 of its height under the surface"), Float->Body.Position.Y, -60.47674 + 62.0, 1e-4);
 	return true;
 }
 

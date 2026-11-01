@@ -130,6 +130,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
     placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done:
     carts pushing mobs.
+    Physics refitted 2026-11-01 from vanilla's server, logged each tick (`log sents`; vehicle_log.txt, powered_log.txt,
+    paddle_log.txt), and replayed number for number by the `McClient.McEntity.VehicleLog` test. A cart is braked by
+    an unpowered powered rail (half, or stopped under 0.03), moves (at most 0.4 a tick; its speed itself has no cap),
+    then keeps 0.96 of its speed plus 0.05 for each block dropped (less for each climbed); a powered rail adds 0.06
+    after that, or kicks a cart at rest off a block at 0.02. A boat keeps 0.9 on water, 0.98 on ice, 0.6 on stone
+    before it moves, falls with no drag, floats with vy' = 0.75 (vy - 0.04 + 0.04 depth / 0.65 height), and its turn
+    keeps 0.9. Not measured: a ridden cart (0.997 is a guess), the furnace cart, a boat landing in water (it stops a
+    little deeper than vanilla's), blue ice, rafts.
   - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
     oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
     variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
@@ -253,9 +261,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Conduit: the eye is drawn at 0.6 and the wind at 1.25 blocks, two-sided and unshaded, tumbling with the cage
     (fitted to ref_scene_conduits and ref_conduits_b/c with `-McScene=conduits`). Still guesses: the cage's turn and
     tilt and the eye's bob. The logged rotation field goes 0.0375 a tick while awake and stops while asleep
-    (conduit_log), but how the renderer turns that into the cage's angle needs frame shots. Only `wind.png` is drawn;
-    `wind_vertical.png` (its streaks peak at frames 10 to 14, against 4 to 10 for `wind.png`) isn't, and no shot has
-    shown it yet. The frame each shot catches isn't controlled, so the streaks were never matched frame by frame.
+    (conduit_log), but how the renderer turns that into the cage's angle needs frame shots. The wind takes turns,
+    22 frames of 3 ticks each: `wind.png` as rings, then `wind_vertical.png` on a box stood on end, a run of each,
+    `wind.png`'s starting 20 ticks into a 66-tick count (conduit_frames.txt: one shot each 3 ticks, rings in
+    ref_cf_07 to 23 and 50 to 59, upright streaks in 33 to 45). Our frame clock is the conduit's age, not vanilla's
+    tick count, so the phase only matches for a conduit placed at a run's start.
     For whoever owns the water mesher: a waterlogged conduit's cell draws no water (in vanilla it's the purple
     box), so the cell shows the floor through it.
     Spawner: vanilla's spawners don't count spectators as players near (spawner_mob.txt: with only a spectator about the
@@ -295,7 +305,12 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     The mob faces east at spin 0 and turns 10 times the spin toward the south (logged spins 0 and 256.2643 against
     ref_spawner_mob_pig and ref_spawner_pig_south/east/top), so it goes round about 1.7 times a second between cycles.
     Pose: size 0.5, nose up 40 degrees, fitted on the pig only. At spin 0 vanilla's pig looks a little more compact
-    than ours from the south (a few degrees of heading, or the tilt's axis), and zombie and chicken weren't re-shot.
+    than ours from the south (a few degrees of heading, or the tilt's axis). Zombie and chicken, shot close at spin 0
+    (spawner_mob2.txt, ref_spawner_mob_zombie/chicken against ours from `-McCam=3.5|6.5,-59.5,62.5,180,0`): the zombie
+    agrees (both mostly behind the cage's middle, a little green at the top), the chicken doesn't: vanilla's shows only
+    a sliver of beak at the top middle, ours its wings out at 45 degrees and its wattle well left. Likely the size
+    should go by the mob's own size rather than a flat 0.5, or our display chicken flaps; it needs the displayed
+    entity's scale and pose logged (log model on the spawner's display mob) before changing it.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
@@ -406,8 +421,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Shot: `Saved/Shots/signs.png` (`-McScene=signs`). Limits: formatting codes and other fonts (unicode) are not drawn;
     the text is lit as a block entity, not by the block's own light.
   - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
-    on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward or back, the left turning right and the right turning left
-    (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
+    on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward, the left turning right and the right turning left,
+    neither going back (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
+    Refitted 2026-11-01 from paddle_log.txt (mc-reference's new `hold <key> <ticks>` rows a boat; `log model` gives the
+    paddles' angles each tick): a 16-tick stroke, the pose and the hull's paddle mount ported from the logged angles
+    (`PaddleLeft` in McEntityModel). The raft keeps its old mount; its paddles weren't logged.
   - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
     steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
     gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.

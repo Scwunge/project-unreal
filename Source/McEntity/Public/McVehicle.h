@@ -260,15 +260,16 @@ public:
 	// How much a key press pushes it a tick.
 	static constexpr double Thrust = 0.04;
 	static constexpr double ReverseThrust = 0.005;
-	// Which paddles row (bit 0 the left, bit 1 the right): both going forward or back, the left turning right and the
-	// right turning left. Nothing rows without a rider. (RiderStrafe is positive to the left, as Turn reads it.)
+	// Which paddles row (bit 0 the left, bit 1 the right): both going forward, the left turning right and the right
+	// turning left; going back rows neither (paddle_log.txt: 30 ticks of the back key, the paddles at rest). Nothing rows
+	// without a rider. (RiderStrafe is positive to the left, as Turn reads it.)
 	int32 GetPaddleBits() const
 	{
 		if (!HasRider())
 		{
 			return 0;
 		}
-		if (RiderForward != 0.0f)
+		if (RiderForward > 0.0f)
 		{
 			return 3;
 		}
@@ -280,6 +281,8 @@ public:
 private:
 	// UnderFlowing: under flowing water, a waterfall, which holds it down where still water would lift it.
 	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
-	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.45 land, more on ice).
+	// Falling last tick, so landing in water stops it.
+	bool bWasInAir = false;
+	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
 };

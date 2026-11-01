@@ -54,6 +54,8 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:rabbit"), 3.0f, { TEXT("minecraft:rabbit_hide"), TEXT("minecraft:rabbit"), TEXT("minecraft:rabbit_foot") } },
 		{ TEXT("minecraft:fox"), 10.0f, {} },
 		{ TEXT("minecraft:horse"), 22.5f, { TEXT("minecraft:leather") } },
+		{ TEXT("minecraft:donkey"), 22.5f, { TEXT("minecraft:leather") } },
+		{ TEXT("minecraft:mule"), 22.5f, { TEXT("minecraft:leather") } },
 		{ TEXT("minecraft:goat"), 10.0f, {} },
 		{ TEXT("minecraft:llama"), 22.5f, { TEXT("minecraft:leather") } },
 		{ TEXT("minecraft:turtle"), 30.0f, { TEXT("minecraft:seagrass"), TEXT("minecraft:bowl") } },

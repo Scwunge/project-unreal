@@ -81,6 +81,9 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:rabbit"), 0.4f, 0.5f, 3.f, 0.3f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:fox"), 0.6f, 0.7f, 10.f, 0.3f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:horse"), 1.3965f, 1.6f, 22.5f, 0.225f, 0.f, 0.f, true, false);
+		// Donkeys and mules (wiki): the horse's width, a donkey 1.5 tall; health 15 to 30 and speed 0.175 (the middle of its range).
+		Add(TEXT("minecraft:donkey"), 1.3965f, 1.5f, 22.5f, 0.175f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:mule"), 1.3965f, 1.6f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:goat"), 0.9f, 1.3f, 10.f, 0.2f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		// The wandering trader's llamas are a llama in all but their blanket.
@@ -214,7 +217,7 @@ void FMcMob::SetYoung(int32 Ticks)
 bool FMcMob::CanBeYoung(FName Kind)
 {
 	static const TSet<FName> Breeders = {
-		TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken"), TEXT("minecraft:horse"),
+		TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken"), TEXT("minecraft:horse"), TEXT("minecraft:donkey"), TEXT("minecraft:mule"),
 		TEXT("minecraft:wolf"), TEXT("minecraft:goat"), TEXT("minecraft:fox"), TEXT("minecraft:llama"), TEXT("minecraft:rabbit"),
 		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
 	};

@@ -185,6 +185,8 @@ namespace
 		// named for the land and a bee hums on a loop, so those are left off.
 		{ TEXT("wolf"), true, true, true, true }, { TEXT("rabbit"), true, true, true, false },
 		{ TEXT("fox"), true, true, true, false }, { TEXT("horse"), true, true, true, true },
+		// Donkeys and mules have the three but no step of their own.
+		{ TEXT("donkey"), true, true, true, false }, { TEXT("mule"), true, true, true, false },
 		{ TEXT("goat"), true, true, true, true }, { TEXT("llama"), true, true, true, true },
 		{ TEXT("turtle"), false, true, true, false }, { TEXT("frog"), true, true, true, true },
 		{ TEXT("bee"), false, true, true, false },

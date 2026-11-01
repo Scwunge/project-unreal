@@ -879,7 +879,7 @@ namespace McEntityModel
 					Beast.Kind = TEXT("minecraft:donkey");
 					Beast.TextureSize = FIntPoint(64, 64);
 					Beast.Textures = { TEXT("horse/donkey.png") };
-					Beast.Scale = 1.031f;
+					Beast.Scale = 0.87f;
 					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
 					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
 					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail
@@ -895,7 +895,7 @@ namespace McEntityModel
 					Beast.Kind = TEXT("minecraft:mule");
 					Beast.TextureSize = FIntPoint(64, 64);
 					Beast.Textures = { TEXT("horse/mule.png") };
-					Beast.Scale = 1.1f;
+					Beast.Scale = 0.92f;
 					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
 					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
 					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail

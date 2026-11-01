@@ -221,8 +221,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Comparator readings** (2026-10-29), following minecraft.wiki's "Redstone Comparator": besides containers (a double
     chest reads both halves as 54 slots) it reads a cake (2 per bite left), composter and cauldron level, an end
     portal frame with an eye (15), a respawn anchor (0, 4, 8, 12, 15), and a beehive or bee nest (3 per honey level).
-  - **Not done:** hopper minecarts, furnace, brewing stand, jukebox, lectern and item frame readings, and hoppers
-    seeing a double chest as one.
+  - Furnace, blast furnace, smoker and brewing stand readings measured in vanilla (16 cases, `lg_cmpread`) and held 79/79:
+    `floor(sum(count/maxstack)/slots*14) + (any ? 1 : 0)` over 3 slots (furnaces) or 5 (brewing stand), the same as chests.
+    A brewing stand's `has_bottle_N` block-state properties are not set from its bottles yet (vanilla sets them; the replay reads them as false).
+  - **Not done:** hopper minecarts, jukebox, lectern (main measured page 3 of 5 = 8) and item frame readings (none exist on this
+    branch), and hoppers seeing a double chest as one.
 - **Dispenser and dropper** (2026-10-28), following minecraft.wiki's "Dispenser" and "Dropper":
   - Nine slots. Powered (quasi-connectivity included, as for pistons), it is `triggered` and fires 4 ticks
     later, once a pulse, taking one item from a random slot.

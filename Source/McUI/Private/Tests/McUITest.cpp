@@ -501,7 +501,7 @@ bool FMcRasterFontsTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("A is cut to its columns"), Glyph.Width, 4);
 		TestEqual(TEXT("sixteen rows"), Glyph.Height, 16);
 		TestEqual(TEXT("half size"), Glyph.DrawWidth, 2.0f);
-		TestEqual(TEXT("starting at column 2, half as far"), Glyph.OffsetX, 1.0f);
+		TestEqual(TEXT("drawn from the pen, as the vanilla client logs its ink box"), Glyph.OffsetX, 0.0f);
 		TestEqual(TEXT("advance is half the columns and one"), Glyph.Advance, 3.0f);
 		TestEqual(TEXT("a pixel of the glyph"), static_cast<int32>(Glyph.Bgra[(4 * Glyph.Width) * 4 + 3]), 255);
 		TestEqual(TEXT("a pixel above it"), static_cast<int32>(Glyph.Bgra[3]), 0);
@@ -541,7 +541,7 @@ bool FMcRasterFontsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// The font against the vanilla client's own numbers: the advance and shadow offset of each character of a fixed string
+// The font against the vanilla client's own numbers: the advance, shadow offset and ink box of each character of a fixed string
 // (ASCII, the accented and symbol sheets, Cyrillic, Greek, Unifont CJK and Hangul), read with the reference's
 // "log glyphs" verb (scripts/respack_metrics.txt), and the width of the whole string.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFontMetricsTest, "McClient.McUI.FontMetrics",
@@ -612,6 +612,63 @@ bool FMcFontMetricsTest::RunTest(const FString& Parameters)
 		Text.AppendChar(static_cast<TCHAR>(Row.Char));
 		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
 		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	struct FInk { int32 Char; float Left; float Right; float Up; float Down; };
+	static const FInk DefaultInk[] = {
+		{ 0x0041, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0062, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0057, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0069, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0030, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x002E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x002C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00DC, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x006E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00EF, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x0063, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00F6, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x0064, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00E9, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00F1, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00DF, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00E6, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00F8, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x20AC, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00A3, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00A9, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00B1, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00D7, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2026, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x041F, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0440, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0438, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0432, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0435, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0442, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B1, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B2, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B3, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x65E5, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x672C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x8A9E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0xD55C, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xAD6D, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xC5B4, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0x2603, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2605, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2665, 0.0f, 8.0f, 0.0f, 8.0f }
+	};
+	AMcHUD* InkHud = Hud;
+	for (const FInk& Ink : DefaultInk)
+	{
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		const bool bInk = InkHud->GetGlyphInk(Ink.Char, Left, Right, Up, Down);
+		TestTrue(*FString::Printf(TEXT("U+%04X has a picture"), Ink.Char), bInk);
+		const FString Name = FString::Printf(TEXT("U+%04X"), Ink.Char);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, Ink.Left, 0.01f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Ink.Right, 0.01f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, Ink.Up, 0.01f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, Ink.Down, 0.01f));
 	}
 	TestTrue(TEXT("the whole string is 308 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 308.0f, 1.0f));
 	return true;
@@ -699,6 +756,63 @@ bool FMcFontMetricsTrueTypeTest::RunTest(const FString& Parameters)
 		Text.AppendChar(static_cast<TCHAR>(Row.Char));
 		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
 		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	struct FInk { int32 Char; float Left; float Right; float Up; float Down; };
+	static const FInk TrueTypeInk[] = {
+		{ 0x0041, 0.0f, 5.75f, 0.0f, 7.0f },
+		{ 0x0062, 0.75f, 5.5f, -0.25f, 7.0f },
+		{ 0x0057, 0.0f, 6.0f, 0.0f, 7.0f },
+		{ 0x0069, 0.75f, 5.5f, -0.5f, 7.0f },
+		{ 0x0030, 0.5f, 5.5f, 0.0f, 7.0f },
+		{ 0x002E, 2.0f, 3.75f, 5.5f, 7.0f },
+		{ 0x002C, 2.0f, 3.75f, 5.75f, 9.25f },
+		{ 0x00DC, 0.5f, 5.25f, -2.25f, 7.0f },
+		{ 0x006E, 0.75f, 5.25f, 1.75f, 7.0f },
+		{ 0x00EF, 0.75f, 5.5f, -0.5f, 7.0f },
+		{ 0x0063, 0.5f, 5.5f, 1.75f, 7.0f },
+		{ 0x00F6, 0.5f, 5.25f, -0.5f, 7.0f },
+		{ 0x0064, 0.25f, 5.25f, -0.25f, 7.25f },
+		{ 0x00E9, 0.5f, 5.25f, -1.0f, 7.0f },
+		{ 0x00F1, 0.75f, 5.25f, -1.0f, 7.0f },
+		{ 0x00DF, 0.25f, 5.75f, -0.25f, 7.0f },
+		{ 0x00E6, 0.0f, 5.75f, 1.75f, 7.0f },
+		{ 0x00F8, 0.5f, 5.25f, 1.25f, 7.5f },
+		{ 0x20AC, 0.25f, 5.75f, 0.0f, 7.0f },
+		{ 0x00A3, 0.5f, 5.5f, 0.0f, 7.0f },
+		{ 0x00A9, 0.0f, 5.75f, 0.25f, 7.25f },
+		{ 0x00B1, 0.25f, 5.5f, 1.0f, 6.25f },
+		{ 0x00D7, 0.5f, 5.5f, 1.25f, 6.25f },
+		{ 0x2026, 0.0f, 5.75f, 5.5f, 7.0f },
+		{ 0x041F, 0.5f, 5.25f, 0.0f, 7.0f },
+		{ 0x0440, 0.75f, 5.5f, 1.75f, 9.25f },
+		{ 0x0438, 0.75f, 5.25f, 1.75f, 7.0f },
+		{ 0x0432, 0.75f, 5.5f, 1.75f, 7.0f },
+		{ 0x0435, 0.5f, 5.25f, 1.75f, 7.0f },
+		{ 0x0442, 0.25f, 5.5f, 1.75f, 7.0f },
+		{ 0x03B1, 0.25f, 5.75f, 1.75f, 7.25f },
+		{ 0x03B2, 0.75f, 5.25f, 0.0f, 9.25f },
+		{ 0x03B3, 0.0f, 5.75f, 1.75f, 9.25f },
+		{ 0x65E5, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x672C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x8A9E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0xD55C, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xAD6D, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xC5B4, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0x2603, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2605, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2665, 0.25f, 5.75f, 0.75f, 6.75f }
+	};
+	AMcHUD* InkHud = Hud;
+	for (const FInk& Ink : TrueTypeInk)
+	{
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		const bool bInk = InkHud->GetGlyphInk(Ink.Char, Left, Right, Up, Down);
+		TestTrue(*FString::Printf(TEXT("U+%04X has a picture"), Ink.Char), bInk);
+		const FString Name = FString::Printf(TEXT("U+%04X"), Ink.Char);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, Ink.Left, 0.3f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Ink.Right, 0.3f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, Ink.Up, 0.3f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, Ink.Down, 0.3f));
 	}
 	TestTrue(TEXT("the whole string is 326 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 326.0f, 1.0f));
 	McPacks::ApplySelection(Before);

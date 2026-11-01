@@ -66,6 +66,8 @@ public:
 	// the width of a whole string. The glyphs are read (and drawn into their textures) as in the game.
 	float GetGlyphAdvance(int32 Char);
 	float GetGlyphShadowOffset(int32 Char);
+	// The box a glyph's picture covers, in pixels from the pen and the top of the line (the reference's left, right, up and down).
+	bool GetGlyphInk(int32 Char, float& Left, float& Right, float& Up, float& Down);
 	float GetTextWidth(const FString& Text);
 
 private:

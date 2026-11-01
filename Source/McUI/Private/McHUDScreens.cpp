@@ -605,6 +605,21 @@ float AMcHUD::GetGlyphShadowOffset(int32 Char)
 	return Glyph ? Glyph->ShadowOffset : 1.0f;
 }
 
+bool AMcHUD::GetGlyphInk(int32 Char, float& Left, float& Right, float& Up, float& Down)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	if (!Glyph || Glyph->DrawWidth <= 0.0f)
+	{
+		return false;
+	}
+	Left = Glyph->OffsetX;
+	Right = Glyph->OffsetX + Glyph->DrawWidth;
+	Up = Glyph->OffsetY;
+	Down = Glyph->OffsetY + Glyph->DrawHeight;
+	return true;
+}
+
 float AMcHUD::GetTextWidth(const FString& Text)
 {
 	LoadFont();

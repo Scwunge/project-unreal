@@ -148,6 +148,9 @@ namespace
 				}
 			}
 			FinishHalfSize(Out, Left, Right);
+			// The vanilla client draws the picture cut to its columns from the pen, not from its first column: the ink box it
+			// logs for a Hangul syllable (columns 1 to 15) is 0 to 7.5, not 0.5 to 8.
+			Out.OffsetX = 0.0f;
 			return true;
 		}
 	};

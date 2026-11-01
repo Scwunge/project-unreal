@@ -848,8 +848,38 @@ void AMcPlayerController::StartDevScreenshot()
 
 	// The shot waits for the shaders still compiling (a material that changed is compiled when first drawn, and a
 	// translucent surface is skipped until then), up to three minutes more.
+	// Frames per second over the last three seconds, for the log line: one frame's rate is too noisy to compare looks by.
+	struct FFpsWindow
+	{
+		TArray<TPair<double, float>> Frames;
+		float Average() const
+		{
+			const double Now = FPlatformTime::Seconds();
+			double Sum = 0.0;
+			int32 Count = 0;
+			for (const TPair<double, float>& Frame : Frames)
+			{
+				if (Now - Frame.Key <= 3.0)
+				{
+					Sum += Frame.Value;
+					++Count;
+				}
+			}
+			return Count > 0 && Sum > 0.0 ? (float)(Count / Sum) : 0.0f;
+		}
+	};
+	const TSharedRef<FFpsWindow> FpsWindow = MakeShared<FFpsWindow>();
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([FpsWindow](float DeltaTime)
+	{
+		FpsWindow->Frames.Add({ FPlatformTime::Seconds(), DeltaTime });
+		if (FpsWindow->Frames.Num() > 1200)
+		{
+			FpsWindow->Frames.RemoveAt(0, 600, EAllowShrinking::No);
+		}
+		return true;
+	}));
 	const TSharedRef<TFunction<void(int32)>> TakeShot = MakeShared<TFunction<void(int32)>>();
-	*TakeShot = [this, ShotPath, TakeShot](int32 Waited)
+	*TakeShot = [this, ShotPath, TakeShot, FpsWindow](int32 Waited)
 	{
 		if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling() && Waited < 180)
 		{
@@ -857,7 +887,7 @@ void AMcPlayerController::StartDevScreenshot()
 			GetWorldTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot, Waited]() { (*TakeShot)(Waited + 1); }), 1.0f, false);
 			return;
 		}
-		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001));
+		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()

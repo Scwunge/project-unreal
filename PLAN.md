@@ -573,3 +573,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 ### Light shafts into caves + Unreal-off check (2026-11-01)
 - Cave scene, -McShafts=0 vs default: identical look (enclosed room, no sun path, not milky). Shafts only show with an open sky path (forest_sun).
 - Vanilla (Unreal off) pixel check vs dfe04f8 after the shafts change: cave 98 px (torch flame, x 629-646 y 150-175); village 3463 px confined to rows 229-343 (wandering mobs); terrain, sky, HUD identical.
+
+### Block lights budget (2026-11-01)
+- `UMcBlockLightComponent` existed (nearest light-giving blocks get point lights); the budget now follows the quality preset: 8 / 16 / 24 / 32 lights and 0 / 3 / 6 / 8 shadowed at Low to Ultra. `-McBlockLights=N` sets it for tests (0 = no lamps). Unreal off: the component hides all lights, unchanged.
+- Shots: `bl_off` / `bl_on` (village, night): the lamps add a warm pool on walls and path. `ls_off` / `ls_8` / `ls_24` (`tools/scenes/lamp_street.json`, 40 lights, Quality 2).
+- 1070 fps over the last 3 s before the shot (new `-McShot` log line; read from `C:/mc-runs/<name>/Saved/Logs/McClient.log`): lamps off 75.6, 8 lights 80.7, 24 lights 84.2: within noise (other sessions share the machine), so the budget costs no visible frames at this scale.

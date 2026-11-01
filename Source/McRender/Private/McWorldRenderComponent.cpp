@@ -253,9 +253,11 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// For tuning: -McWaterIor= and -McWaterSky= (the water's index of refraction, and its mirrored-sky strength).
 	static const float WaterIor = [] { float V = 1.33f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
 	static const float WaterSky = [] { float V = 0.5f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
+	static const float Puddles = [] { float V = 1.0f; FParse::Value(FCommandLine::Get(), TEXT("-McPuddles="), V); return V; }();  // 0 is none
 #else
 	constexpr float WaterIor = 1.33f;
 	constexpr float WaterSky = 0.5f;
+	constexpr float Puddles = 1.0f;
 #endif
 	for (UMaterialInterface* Material : PassMaterials)
 	{
@@ -266,6 +268,7 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 				Instance->SetScalarParameterValue(TEXT("Underwater"), Underwater);
 				Instance->SetScalarParameterValue(TEXT("WaterIor"), WaterIor);
 				Instance->SetScalarParameterValue(TEXT("WaterSky"), WaterSky);
+				Instance->SetScalarParameterValue(TEXT("Puddles"), Puddles);
 		}
 	}
 

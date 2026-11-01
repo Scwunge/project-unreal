@@ -77,6 +77,8 @@ namespace McEntityModel
 		TArray<FBox> Boxes;
 		// The poses (bit per FAnim::Pose) it is drawn in.
 		uint32 ShowPoses = 0xFFFFFFFFu;
+		// A rabbit's part in its hop: 1 body, 2 head, 3 tail, 4 front legs, 5 hind legs (0 none).
+		uint8 Hop = 0;
 	};
 
 	struct FModel
@@ -114,6 +116,11 @@ namespace McEntityModel
 		bool bFlutter = false;
 		// The whole model drawn at this size about the feet (the villagers and illagers are 15/16: their root sits 1.5 pixels low in the game).
 		float Scale = 1.0f;
+		// Wings that beat all the time (a bee's), and how far out a bird's rest when they are not beating (radians).
+		bool bBeatWings = false;
+		// Hops (a rabbit): its parts follow the logged hop curve (Anim.HopPos) when it leaves the ground.
+		bool bHops = false;
+		float WingRest = 0.1203f;
 		// This is a young one's own model (not the grown one's halved).
 		bool bBabyModel = false;
 		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
@@ -134,6 +141,10 @@ namespace McEntityModel
 		float Hurt = 0.0f;      // 1 just hurt, down to 0
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
+		// Off the ground and moving up or down (a chicken beats its wings).
+		bool bAirborne = false;
+		// Ticks into a hop (with the fraction of the tick), or -1 when not hopping.
+		float HopPos = -1.0f;
 		// A young one: half the size about its feet, the head half as big again.
 		bool bBaby = false;
 		// A golem holding out its poppy: the right arm is raised.
@@ -264,6 +275,8 @@ private:
 	McEntityModel::FSquish Squish;
 	double LastY = 0.0;
 	bool bHasY = false;
+	int32 AirTicks = 0;
+	int32 HopTicks = -1;
 
 	McEntityModel::FAnim Anim;
 	float TargetBodyYaw = 0.0f;

@@ -42,6 +42,74 @@ namespace McEntityModel
 			return Result;
 		}
 
+		// A rabbit's hop, from the logged model (13 ticks from the first move of the hind legs; the logged curves are all turns about
+		// the sideways axis, so they compose as sums): the body's pitch, the head's, the tail's and the front legs' (those two
+		// also move: the front legs' pivot (y, z) in the body's frame) and the hind legs'.
+		constexpr int32 HopSteps = 14;
+		constexpr float HopBody[HopSteps] = { -0.390f, -0.371f, -0.146f, 0.152f, 0.225f, 0.210f, 0.163f, 0.093f, 0.004f, -0.087f, -0.182f, -0.276f, -0.370f, -0.3927f };
+		constexpr float HopHead[HopSteps] = { -0.011f, -0.053f, -0.245f, -0.540f, -0.585f, -0.588f, -0.527f, -0.466f, -0.404f, -0.339f, -0.234f, -0.130f, -0.025f, 0.0f };
+		constexpr float HopTail[HopSteps] = { -0.393f, -0.225f, -0.058f, 0.110f, 0.286f, 0.463f, 0.399f, 0.335f, 0.271f, 0.207f, 0.143f, 0.079f, 0.015f, 0.0f };
+		constexpr float HopFront[HopSteps] = { 0.066f, 0.333f, -0.034f, -1.094f, -1.291f, -1.323f, -1.239f, -0.972f, -0.625f, -0.278f, -0.022f, -0.022f, -0.022f, 0.0f };
+		constexpr float HopFrontY[HopSteps] = { -1.57f, -1.69f, -1.81f, -1.93f, -2.06f, -2.30f, -2.38f, -2.24f, -2.11f, -1.97f, -1.84f, -1.70f, -1.57f, -1.53f };
+		constexpr float HopFrontZ[HopSteps] = { -6.27f, -6.13f, -5.99f, -5.84f, -5.72f, -5.84f, -5.94f, -6.00f, -6.06f, -6.12f, -6.18f, -6.24f, -6.30f, -6.31f };
+		constexpr float HopBack[HopSteps] = { 0.227f, 1.100f, 1.972f, 2.182f, 2.133f, 2.026f, 1.764f, 1.329f, 0.774f, 0.462f, 0.168f, 0.0f, 0.0f, 0.0f };
+		constexpr float HopHind[HopSteps] = { 0.0f, 0.427f, 0.880f, 0.927f, 0.926f, 0.878f, 0.405f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+
+		float HopAt(const float (&Table)[HopSteps], float Pos)
+		{
+			const int32 Low = FMath::Clamp(FMath::FloorToInt(Pos), 0, HopSteps - 2);
+			return FMath::Lerp(Table[Low], Table[Low + 1], FMath::Clamp(Pos - Low, 0.0f, 1.0f));
+		}
+
+		FVector TurnAbout(const FVector& Centre, float Pitch, const FVector& Point)
+		{
+			return Centre + FQuat(FVector::XAxisVector, Pitch).RotateVector(Point - Centre);
+		}
+
+		// Moves a rabbit's part (its pivot and turn) to where the hop has it.
+		void ApplyHop(float Pos, int32 Group, FVector& Pivot, FQuat& Rotation)
+		{
+			constexpr float RestBody = -0.3927f;
+			const FVector Hips(0.0f, 1.0f, -4.0f);
+			const float Body = HopAt(HopBody, Pos);
+			// Where a part that hangs from the body is: its place in the body's own frame, turned by the body's pitch.
+			const auto Hung = [&](const FVector& RestPivot)
+			{
+				return TurnAbout(Hips, Body, TurnAbout(Hips, -RestBody, RestPivot));
+			};
+			float Turn = 0.0f;
+			switch (Group)
+			{
+			case 1:
+				Turn = Body - RestBody;
+				break;
+			case 2:
+				Turn = Body - RestBody + HopAt(HopHead, Pos);
+				Pivot = Hung(Pivot);
+				break;
+			case 3:
+				Turn = Body - RestBody + HopAt(HopTail, Pos);
+				Pivot = Hung(Pivot);
+				break;
+			case 4:
+			{
+				Turn = Body - RestBody + HopAt(HopFront, Pos);
+				const FVector Rest = Hung(Pivot);
+				// The group's pivot moves in the body's frame (ours: y and z the other way round from the log's).
+				const FVector Shift(0.0f, -(HopAt(HopFrontY, Pos) - HopFrontY[HopSteps - 1]), -(HopAt(HopFrontZ, Pos) - HopFrontZ[HopSteps - 1]));
+				Pivot = Rest + FQuat(FVector::XAxisVector, Body).RotateVector(Shift);
+				break;
+			}
+			case 5:
+				Turn = HopAt(HopBack, Pos);
+				Pivot = TurnAbout(Hips, Turn, Pivot);
+				break;
+			default:
+				return;
+			}
+			Rotation = FQuat(FVector::XAxisVector, Turn) * Rotation;
+		}
+
 		// A box tilted about a point of its own (in the part's frame).
 		FBox Posed(FBox Each, FVector Pivot, float Pitch, float Yaw, float Roll)
 		{
@@ -583,10 +651,13 @@ namespace McEntityModel
 				Llama.TextureSize = FIntPoint(128, 64);
 				Llama.Textures = { TEXT("llama/llama_brown.png") };
 				Llama.Variants = { { TEXT("llama/llama_creamy.png") }, { TEXT("llama/llama_white.png") }, { TEXT("llama/llama_brown.png") }, { TEXT("llama/llama_gray.png") } };
-				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, 0), { Box(29, 0, -6, -9, -5, 12, 18, 10) }, Flat));
-				Llama.Parts.Add(Part(ERole::Static, FVector(0, 14, 8), { Box(0, 14, -4, 0, -3, 8, 18, 6) }));
-				Llama.Parts.Add(Part(ERole::Head, FVector(0, 28, 9), { Box(0, 0, -2, 0, -1, 4, 4, 9), Box(17, 0, -3, 4, 3, 3, 3, 1), Box(17, 0, 0, 4, 3, 3, 3, 1) }));
-				AddLegs(Llama, 29, 29, 4, 14, 4, 6.5f, -6.5f, 14);
+				// From the logged model (the same shape for the trader llama).
+				Llama.Parts.Add(Part(ERole::Head, FVector(0, 17, 6), { Box(0, 0, -2, 10, 1, 4, 4, 9), Box(0, 14, -4, -2, 0, 8, 18, 6), Box(17, 0, -4, 16, 2, 3, 3, 2), Box(17, 0, 1, 16, 2, 3, 3, 2, 0.0f, true) }));  // head
+				Llama.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 14, -6), { Box(29, 29, -2, -14, -2, 4, 14, 4) }));  // rightHindLeg
+				Llama.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 14, -6), { Box(29, 29, -2, -14, -2, 4, 14, 4, 0.0f, true) }));  // leftHindLeg
+				Llama.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4) }));  // rightFrontLeg
+				Llama.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4, 0.0f, true) }));  // leftFrontLeg
+				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, -2), { Box(29, 0, -6, -8, -3, 12, 18, 10) }, 1.5708f, 0, 0));  // root/body
 				Models.Add(Llama.Kind, Llama);
 			}
 			{
@@ -599,8 +670,9 @@ namespace McEntityModel
 				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(2, 0, 1.5f, 2, 5, 1, 2, 3), Box(2, 3, -2.5f, 2, 5, 1, 2, 3) }));
 				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(26, 1, -3.5f, -5, 2, 7, 2, 0), Box(26, 3, -3.5f, -5, 0, 7, 2, 0), Box(26, 5, -3.5f, -5, -2, 7, 2, 0) }));
 				// Two flat wings that beat.
-				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 9, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }, 0.0f, 0.0f, -0.6f));
-				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 9, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }, 0.0f, 0.0f, 0.6f));
+				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 9, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }));
+				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 9, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }));
+				Bee.bBeatWings = true;
 				Models.Add(Bee.Kind, Bee);
 			}
 			{
@@ -622,6 +694,13 @@ namespace McEntityModel
 				Rabbit.Parts.Add(Part(ERole::Static, FVector(2, 2.9093f, 1.5336f), { Box(44, 18, -1, -3, -1, 2, 4, 2) }));
 				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 1, -4), { Box(20, 24, -1, -1, -1, 2, 1, 6) }, 0, -0.3927f));
 				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 1, -4), { Box(36, 24, -1, -1, -1, 2, 1, 6) }, 0, 0.3927f));
+				Rabbit.bHops = true;
+				for (int32 Index = 0; Index < Rabbit.Parts.Num(); ++Index)
+				{
+					// body, tail, head, the two front legs, the two hind feet
+					static constexpr uint8 Groups[] = { 1, 3, 2, 4, 4, 5, 5 };
+					Rabbit.Parts[Index].Hop = Groups[Index];
+				}
 				Models.Add(Rabbit.Kind, Rabbit);
 			}
 			{
@@ -786,11 +865,92 @@ namespace McEntityModel
 				}
 				{
 					FModel Baby = Young(TEXT("minecraft:chicken"), 16, 16);
+					Baby.WingRest = 0.0611f;
 					Baby.Parts.Add(Part(ERole::LegRight, FVector(-1, 2, -0.5f), { Box(0, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 0, -0.5f, -2, 0, 1, 0, 1) }));  // rightLeg
 					Baby.Parts.Add(Part(ERole::LegLeft, FVector(1, 2, -0.5f), { Box(2, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 1, -0.5f, -2, 0, 1, 0, 1) }));  // leftLeg
-					Baby.Parts.Add(Part(ERole::WingLeft, FVector(2, 4, 0), { Box(6, 8, 0, 0, -1, 1, 0, 2) }, 0, 0, -0.0611f));  // rightWing
-					Baby.Parts.Add(Part(ERole::WingRight, FVector(-2, 4, 0), { Box(4, 8, -1, 0, -1, 1, 0, 2) }, 0, 0, 0.0611f));  // leftWing
+					Baby.Parts.Add(Part(ERole::WingLeft, FVector(2, 4, 0), { Box(6, 8, 0, 0, -1, 1, 0, 2) }));  // rightWing
+					Baby.Parts.Add(Part(ERole::WingRight, FVector(-2, 4, 0), { Box(4, 8, -1, 0, -1, 1, 0, 2) }));  // leftWing
 					Baby.Parts.Add(Part(ERole::Static, FVector(0, 3.75f, 1.25f), { Box(0, 0, -2, -1.75f, -3.25f, 4, 4, 4), Box(10, 8, -1, -0.75f, 0.75f, 2, 1, 1) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					// A donkey: the horse's shape, from its own logged model (the chests are only drawn when carried).
+					FModel Beast;
+					Beast.Kind = TEXT("minecraft:donkey");
+					Beast.TextureSize = FIntPoint(64, 64);
+					Beast.Textures = { TEXT("horse/donkey.png") };
+					Beast.Scale = 1.031f;
+					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail
+					Beast.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));  // rightHindLeg
+					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
+					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
+					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					Models.Add(Beast.Kind, Beast);
+				}
+				{
+					// A mule: the horse's shape, from its own logged model (the chests are only drawn when carried).
+					FModel Beast;
+					Beast.Kind = TEXT("minecraft:mule");
+					Beast.TextureSize = FIntPoint(64, 64);
+					Beast.Textures = { TEXT("horse/mule.png") };
+					Beast.Scale = 1.1f;
+					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail
+					Beast.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));  // rightHindLeg
+					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
+					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
+					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					Models.Add(Beast.Kind, Beast);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:llama"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 12, 4), { Box(0, 0, -3, -2, 0, 6, 11, 4), Box(0, 15, -1.5f, 4, 4, 3, 3, 3), Box(20, 4, 0.5f, 9, 1, 2, 2, 2), Box(20, 0, -2.5f, 9, 1, 2, 2, 2) }));  // head
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 7.5f, -4.5f), { Box(0, 45, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 7.5f, -4.5f), { Box(12, 45, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 7.5f, 3.5f), { Box(0, 34, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 7.5f, 3.5f), { Box(12, 34, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftFrontLeg
+					Baby.Parts.Add(Part(ERole::Static, FVector(-8.5f, 20, -3), { Box(45, 28, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // rightChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(5.5f, 20, -3), { Box(45, 41, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // leftChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 10, -2.5f), { Box(0, 15, -4, -3, -4.5f, 8, 6, 13) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:trader_llama"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 12, 4), { Box(0, 0, -3, -2, 0, 6, 11, 4), Box(0, 15, -1.5f, 4, 4, 3, 3, 3), Box(20, 4, 0.5f, 9, 1, 2, 2, 2), Box(20, 0, -2.5f, 9, 1, 2, 2, 2) }));  // head
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 7.5f, -4.5f), { Box(0, 45, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 7.5f, -4.5f), { Box(12, 45, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 7.5f, 3.5f), { Box(0, 34, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 7.5f, 3.5f), { Box(12, 34, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftFrontLeg
+					Baby.Parts.Add(Part(ERole::Static, FVector(-8.5f, 20, -3), { Box(45, 28, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // rightChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(5.5f, 20, -3), { Box(45, 41, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // leftChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 10, -2.5f), { Box(0, 15, -4, -3, -4.5f, 8, 6, 13) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:donkey"), 64, 64);
+					Baby.Scale = 1.0f;
+					Baby.Parts.Add(Part(ERole::Head, FVector(1, 13, 5), { Posed(Box(0, 0, -4, 5.6f, 1.4f, 6, 4, 9), FVector(0, 6, 2), 0.3927f, 0, 0), Posed(Box(22, 0, -4, 8, 3.3f, 2, 7, 1), FVector(-2, 8.5f, 4), 0.48f, 0, 0.48f), Posed(Box(0, 0, 0, 8, 3.3f, 2, 7, 1), FVector(2, 8.5f, 4), 0.48f, 0, -0.48f), Posed(Box(30, 9, -3, -2, -1, 4, 8, 4), FVector(0, 0, 0), 0.3927f, 0, 0) }));  // body/head_parts
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 10, 0), { Box(0, 13, -5, -3, -7, 8, 6, 14) }));  // body
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.4f, 6.5f, 5.4f), { Box(0, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_front_leg
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.4f, 6.5f, -5.4f), { Box(0, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_hind_leg
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 11.5f, -6.5f), { Box(24, 33, -2.5f, -2, -7.5f, 3, 3, 8) }, -0.7418f, 0, 0));  // body/tail/tail_r1
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3.25f, 6.5f, -5.25f), { Box(12, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_hind_leg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:mule"), 64, 64);
+					Baby.Scale = 1.0f;
+					Baby.Parts.Add(Part(ERole::Head, FVector(1, 13, 5), { Posed(Box(0, 0, -4, 5.6f, 1.4f, 6, 4, 9), FVector(0, 6, 2), 0.3927f, 0, 0), Posed(Box(22, 0, -4, 8, 3.3f, 2, 7, 1), FVector(-2, 8.5f, 4), 0.48f, 0, 0.48f), Posed(Box(0, 0, 0, 8, 3.3f, 2, 7, 1), FVector(2, 8.5f, 4), 0.48f, 0, -0.48f), Posed(Box(30, 9, -3, -2, -1, 4, 8, 4), FVector(0, 0, 0), 0.3927f, 0, 0) }));  // body/head_parts
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 10, 0), { Box(0, 13, -5, -3, -7, 8, 6, 14) }));  // body
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.4f, 6.5f, 5.4f), { Box(0, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_front_leg
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.4f, 6.5f, -5.4f), { Box(0, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_hind_leg
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 11.5f, -6.5f), { Box(24, 33, -2.5f, -2, -7.5f, 3, 3, 8) }, -0.7418f, 0, 0));  // body/tail/tail_r1
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3.25f, 6.5f, -5.25f), { Box(12, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_hind_leg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
 					Models.Add(Baby.Kind, Baby);
 				}
 			}
@@ -992,7 +1152,7 @@ namespace McEntityModel
 			const bool bGlow = Part.bGlow || ((Model.GlowLayers >> Layer) & 1u) != 0 || Anim.bFlash;
 			const float Pos = Anim.WalkPos;
 			const float Amount = Anim.WalkAmount;
-			switch (Part.Role)
+			switch (Model.bHops && Part.Hop >= 4 ? ERole::Static : Part.Role)
 			{
 			case ERole::Head:
 				Pitch += FMath::DegreesToRadians(Anim.HeadPitch);
@@ -1076,7 +1236,15 @@ namespace McEntityModel
 					Roll -= Side * 0.4712f;
 					break;
 				}
-				Roll += Side * (Model.bFlutter ? 0.7f + FMath::Sin(Anim.Age * 40.0f) * 0.5f : 0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
+				if (Model.bBeatWings)
+				{
+					// A bee's wings beat all the time: 0.4712 either side of flat, 2.1 radians a tick (logged).
+					Roll -= Side * 0.4712f * FMath::Cos(Anim.Age * 42.0f);
+					break;
+				}
+				// A bird's wings, as logged: a little out at rest, and in the air (a chicken falling) swinging between 0.06 and 2.0
+				// about 1.02 at 1.8 radians a tick.
+				Roll -= Side * (Anim.bAirborne ? 1.0205f + 0.9606f * FMath::Sin(Anim.Age * 35.96f - 0.3076f) : Model.WingRest);
 				break;
 			}
 			case ERole::SpiderLeg:
@@ -1098,12 +1266,17 @@ namespace McEntityModel
 			}
 			// Lean (x) first, then turn (y), then tip (z): the order the logged spider legs and vex wings are drawn in (a spider's
 			// outer legs, 0.7854 turned and 0.7854 tipped, only come to rest on the ground that way round).
-			const FQuat Rotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
+			FQuat Rotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
+			FVector Pivot = Part.Pivot;
+			if (Model.bHops && Part.Hop != 0 && Anim.HopPos >= 0.0f)
+			{
+				ApplyHop(Anim.HopPos, Part.Hop, Pivot, Rotation);
+			}
 			for (const FBox& Box : Part.Boxes)
 			{
 				if (Box.bFlat)
 				{
-					AddFlat(Box, Rotation, Part.Pivot, Anim.BodyYaw, Anim.Hurt, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
+					AddFlat(Box, Rotation, Pivot, Anim.BodyYaw, Anim.Hurt, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 					continue;
 				}
 				FBox Drawn = Box;
@@ -1114,7 +1287,7 @@ namespace McEntityModel
 					const float Angle = Anim.Age * 20.0f * 0.0898f; // Age is in seconds
 					Drawn.BoxRotation = FQuat(FVector::ZAxisVector, -0.0436f * FMath::Cos(Angle)) * FQuat(FVector::XAxisVector, 0.0785f * FMath::Sin(Angle));
 				}
-				AddBox(Drawn, Part, Rotation, Part.Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
+				AddBox(Drawn, Part, Rotation, Pivot, Anim.BodyYaw, Model.TextureSize, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 			}
 		}
 		if (((Model.TintedLayers >> Layer) & 1u) != 0)
@@ -1635,13 +1808,26 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		// The distance was over every tick since last time: spread it.
 		LastPosition = Position;
-		Squish.Tick(bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f);
+		const float Dropped = bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f;
+		Squish.Tick(Dropped);
+		const int32 WasAir = AirTicks;
+		AirTicks = FMath::Abs(Dropped) > 0.03f ? 6 : FMath::Max(0, AirTicks - 1);
+		if (HopTicks >= 0 && ++HopTicks >= McEntityModel::HopSteps - 1)
+		{
+			HopTicks = -1;
+		}
+		if (HopTicks < 0 && WasAir == 0 && AirTicks > 0)
+		{
+			HopTicks = 0;
+		}
 		LastY = Feet.Y;
 		bHasY = true;
 		Walking +=(FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
 		Anim.WalkAmount = Walking;
+		Anim.bAirborne = AirTicks > 0;
 		Anim.WalkPos += Walking;
 	}
+	Anim.HopPos = HopTicks >= 0 ? HopTicks + FMath::Clamp(TickAccumulator / 0.05f, 0.0f, 1.0f) : -1.0f;
 	Anim.Hurt = FMath::Max(0.0f, Anim.Hurt - DeltaTime * 2.5f);
 
 	// Turn towards where the entity is told to face.

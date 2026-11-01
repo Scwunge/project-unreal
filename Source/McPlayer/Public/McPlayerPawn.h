@@ -75,6 +75,8 @@ public:
 	TFunction<FMcEntityManager*()> GetEntities;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
+	// A survival player started to dig at Pos (a click on it): a note block sounds.
+	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPunchBlock;
 	// The player died and their things are on the ground: put them back at the spawn.
 	TFunction<void(AMcPlayerPawn& Player)> OnDied;
 	// The dead player asked to start again (the death screen's button): the game mode makes a new body.

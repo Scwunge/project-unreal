@@ -123,6 +123,10 @@ public:
 	// or fence gate (see FMcSimulation::UseBlock). Yaw is where they look. True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// Server: a note block at Pos is struck (a punch) or tuned and played (a use); see FMcSimulation::PlayNote, TuneNote.
+	bool PlayNote(const FIntVector& Pos);
+	bool TuneNote(const FIntVector& Pos);
+
 	// Whether this machine is showing this dimension to its player; sounds made in a dimension are only played where it is.
 	void SetViewed(bool bInViewed) { bViewed = bInViewed; }
 

@@ -93,6 +93,13 @@ public:
 		}
 	}
 
+	// Note blocks (McNoteBlock.h). PlayNote sounds the note block at Pos (the redstone side calls it when power on a
+	// note block rises, setting `powered` itself; a punch in survival calls it too): false if there is no note block
+	// or the space above it is not air or a head. TuneNote is a player's use: steps the note on (25 back to 0) and
+	// plays it (a silenced block still steps). Both only on the server.
+	bool PlayNote(const FIntVector& Pos);
+	bool TuneNote(const FIntVector& Pos);
+
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 
@@ -114,6 +121,8 @@ public:
 
 private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
+	// Sets the instrument of the note block at Pos from what is below and above it (nothing if it is not one).
+	void RefreshNoteBlock(const FIntVector& Pos);
 	// Schedules the tick a block needs after something beside it changed.
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);

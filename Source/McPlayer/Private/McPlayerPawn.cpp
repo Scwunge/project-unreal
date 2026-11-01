@@ -1924,6 +1924,10 @@ void AMcPlayerPawn::ServerDig_Implementation(FIntVector Pos, bool bStart)
 	}
 	if (!DigPos.IsSet() || DigPos.GetValue() != Pos)
 	{
+		if (OnPunchBlock)
+		{
+			OnPunchBlock(*this, Pos);
+		}
 		DigPos = Pos;
 		DigProgress = 0.0f;
 		DigTicks = 0;

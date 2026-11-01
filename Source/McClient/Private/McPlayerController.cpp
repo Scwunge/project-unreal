@@ -275,6 +275,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
 		return Use && World.IsValid() && Use->Use(User, *World, Pos);
 	};
+	Hooked.OnPunchBlock = [World](AMcPlayerPawn&, const FIntVector& Pos)
+	{
+		if (World.IsValid())
+		{
+			World->PlayNote(Pos);
+		}
+	};
 	Hooked.FindVehicle = [World](const FVector& Eye, const FVector& Look, double Reach)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;

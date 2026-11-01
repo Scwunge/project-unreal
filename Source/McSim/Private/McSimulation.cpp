@@ -158,6 +158,9 @@ int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
 void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
 	Redstone->OnBlockChanged(Pos, State);
+	RefreshNoteBlock(Pos);
+	RefreshNoteBlock(Pos + FIntVector(0, 1, 0));
+	RefreshNoteBlock(Pos - FIntVector(0, 1, 0));
 	Notify(Pos);
 	for (const FIntVector& Offset : Around)
 	{

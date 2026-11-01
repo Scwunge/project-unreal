@@ -989,6 +989,10 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	{
 		return false;
 	}
+	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
+	{
+		return WorldActor.TuneNote(Pos);
+	}
 	// Levers, buttons, doors, trapdoors and gates move rather than open a window.
 	if (WorldActor.UseBlock(Pos, Player.GetLookYaw()))
 	{

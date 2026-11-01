@@ -598,6 +598,16 @@ bool AMcWorldActor::UseBlock(const FIntVector& Pos, float Yaw)
 	return HasAuthority() && Simulation && Simulation->UseBlock(Pos, Yaw);
 }
 
+bool AMcWorldActor::PlayNote(const FIntVector& Pos)
+{
+	return HasAuthority() && Simulation && Simulation->PlayNote(Pos);
+}
+
+bool AMcWorldActor::TuneNote(const FIntVector& Pos)
+{
+	return HasAuthority() && Simulation && Simulation->TuneNote(Pos);
+}
+
 void AMcWorldActor::SetWeather(EMcWeather NewWeather, int32 Duration)
 {
 	if (HasAuthority() && Simulation)

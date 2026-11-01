@@ -1,3 +1,4 @@
+#include "McBiomeSource.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McDensityFunction.h"
@@ -761,6 +762,99 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 		{
 			AddInfo(FString::Printf(TEXT("STARTS %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
 			AddInfo(FString::Printf(TEXT("STARTSPRE %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pre.FindRef(Pair.Key)));
+		}
+	}
+	return true;
+}
+
+// The climate and biome stages against the reference client's `log cbiomes` grid (x and z from -8192, 256 apart, 64 by 64,
+// y 64; Content/Tests/vanilla_cb_<n>.txt, "x z t h c e d w biome" in 1/10000). Two checks: our biome lookup fed the
+// reference's own climate values (no seed involved, so every mismatch is the lookup), and our noise's climate values and
+// biomes on the same grid for the five seeds (CB lines, for comparing the value distributions).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcClimateGridTest, "McClient.McGen.ClimateGrid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcClimateGridTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const FMcBiomeRegistry& Registry = FMcBiomeRegistry::Get();
+	FMcBiomeSource Source;
+	if (!TestTrue(TEXT("biome source"), Source.Load(TEXT("minecraft:overworld"))))
+	{
+		return false;
+	}
+	for (int32 World = 1; World <= 5; ++World)
+	{
+		FString Text;
+		if (!FFileHelper::LoadFileToString(Text, *(FPaths::ProjectContentDir() / FString::Printf(TEXT("Tests/vanilla_cb_%d.txt"), World))))
+		{
+			continue;
+		}
+		TArray<FString> Rows;
+		Text.ParseIntoArrayLines(Rows);
+		int32 Total = 0;
+		int32 Same = 0;
+		TMap<FString, int32> Swaps;
+		for (const FString& Row : Rows)
+		{
+			TArray<FString> Parts;
+			Row.ParseIntoArrayWS(Parts);
+			if (Parts.Num() < 9)
+			{
+				continue;
+			}
+			FMcClimate Climate;
+			for (int32 Index = 0; Index < 6; ++Index)
+			{
+				Climate.Values[Index] = FCString::Atod(*Parts[2 + Index]) / 10000.0;
+			}
+			FString Vanilla = Parts[8];
+			Vanilla.RemoveFromStart(TEXT("ResourceKey[minecraft:worldgen/biome / "));
+			Vanilla.RemoveFromEnd(TEXT("]"));
+			const FString Ours = Registry.GetName(Source.FindSlow(Climate)).ToString();
+			++Total;
+			if (Ours == Vanilla)
+			{
+				++Same;
+			}
+			else
+			{
+				Swaps.FindOrAdd(Vanilla + TEXT(" -> ") + Ours)++;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("LOOKUP world %d: %d of %d points the same"), World, Same, Total));
+		Swaps.ValueSort([](int32 A, int32 B) { return A > B; });
+		int32 Shown = 0;
+		for (const TPair<FString, int32>& Pair : Swaps)
+		{
+			AddInfo(FString::Printf(TEXT("LOOKUPSWAP %d %s %d"), World, *Pair.Key, Pair.Value));
+			if (++Shown >= 12)
+			{
+				break;
+			}
+		}
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		const FMcNoiseGenerator Generator(Settings, Seeds[SeedIndex], TEXT("minecraft:overworld"));
+		for (int32 J = 0; J < 64; ++J)
+		{
+			for (int32 I = 0; I < 64; ++I)
+			{
+				const int32 X = -8192 + I * 256;
+				const int32 Z = -8192 + J * 256;
+				const FMcClimate Climate = Generator.SampleClimate(X, 64, Z);
+				int32 Hint = INDEX_NONE;
+				AddInfo(FString::Printf(TEXT("CB %d %d %d %lld %lld %lld %lld %lld %lld %s"), SeedIndex, X, Z,
+					FMath::RoundToInt64(Climate.Values[0] * 10000), FMath::RoundToInt64(Climate.Values[1] * 10000), FMath::RoundToInt64(Climate.Values[2] * 10000),
+					FMath::RoundToInt64(Climate.Values[3] * 10000), FMath::RoundToInt64(Climate.Values[4] * 10000), FMath::RoundToInt64(Climate.Values[5] * 10000),
+					*Registry.GetName(Source.Find(Climate, Hint)).ToString()));
+			}
 		}
 	}
 	return true;

@@ -1452,6 +1452,7 @@ void AMcHUD::DrawHUD()
 		{
 			DrawStack(Data->Inventory->Get(Slot), static_cast<float>(Layout.HotbarSlots[Slot].X), static_cast<float>(Layout.HotbarSlots[Slot].Y));
 		}
+		DrawHeldName(Width, Height, Data->Inventory->Get(Selected), !Data->bCreative);
 		if (!Data->Offhand->Get(0).IsEmpty())
 		{
 			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/hud/hotbar_offhand_left.png")), Layout.Hotbar.X - 29, Layout.Hotbar.Y - 1, 29, 24);
@@ -1560,6 +1561,44 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 	}
 }
 
+void AMcHUD::DrawHeldName(int32 Width, int32 Height, const FMcItemStack& Held, bool bBars)
+{
+	const double Now = FPlatformTime::Seconds();
+	if (Held.IsEmpty())
+	{
+		HeldNameItem = NAME_None;
+		HeldNameText.Reset();
+		return;
+	}
+	const FString Name = GetItemName(Held);
+	if (Held.Item != HeldNameItem || Name != HeldNameText)
+	{
+		HeldNameItem = Held.Item;
+		HeldNameText = Name;
+		HeldNameTime = Now;
+	}
+	// Measured against the reference client (helditem runs: single shots a tick after a slot change, creative and
+	// survival; a run of shots every two ticks): the label shows for 40 ticks, full for the first 30 and fading in a
+	// straight line over the last ten (strength 0.8, 0.6, 0.4, 0.2 at ticks 32 to 38); its text top is 45 GUI pixels
+	// above the bottom with no bars over the hotbar and 59 with them; its colour is the item's rarity (rare aqua
+	// 55FFFF, epic magenta FF55FF, uncommon yellow FFFF55, else white).
+	const double Age = Now - HeldNameTime;
+	if (Age >= 2.0)
+	{
+		return;
+	}
+	const float Alpha = static_cast<float>(FMath::Clamp((2.0 - Age) / 0.5, 0.0, 1.0));
+	uint32 Rgb = 0xFFFFFF;
+	const TSharedPtr<FJsonValue> Rarity = FMcItemRegistry::Get().GetDefault(Held.Item, TEXT("minecraft:rarity"));
+	if (Rarity.IsValid() && Rarity->Type == EJson::String)
+	{
+		const FString Kind = Rarity->AsString();
+		Rgb = Kind == TEXT("rare") ? 0x55FFFF : Kind == TEXT("epic") ? 0xFF55FF : Kind == TEXT("uncommon") ? 0xFFFF55 : 0xFFFFFF;
+	}
+	LoadFont();
+	DrawGuiText(Name, FMath::RoundToFloat(Width / 2.0f - TextWidth(Name) / 2.0f), Height - (bBars ? 59.0f : 45.0f), Rgb, true, Alpha);
+}
+
 void AMcHUD::DrawOverlay(int32 Width, int32 Height)
 {
 	const UMcPlayerDataComponent::FOverlay& Overlay = UMcPlayerDataComponent::GetOverlay();
@@ -1569,9 +1608,12 @@ void AMcHUD::DrawOverlay(int32 Width, int32 Height)
 		return;
 	}
 	LoadFont();
-	// Measured against the reference client (jukebox runs 4 and 6, shots a tick apart): a record's title is lime
-	// (153, 255, 45) for its first ten ticks, then runs round the rainbow, hue falling by 1/50 a tick from 1.2 at the
-	// start (saturation 0.7, value 0.6), until the last second of its three, which fades it out.
+	// Measured against the reference client (jukebox run 8: 90 shots two ticks apart, game tick logged, chat cleared): a
+	// record's title is lime (153, 255, 45) for its first ten ticks (the last lime shot at tick 2, the first hue at 4,
+	// with the first shot 6.7 ticks after the disc went in), then runs round the rainbow, hue falling 0.0201 a tick
+	// (1/50) from 1.0 at tick ten (saturation 0.7, value 0.6). Its last twenty ticks fade it out in a straight line
+	// (strength 0.9, 0.8, 0.68, 0.57, 0.46, 0.36, 0.28, 0.21 at ticks 36 to 50 against the 1/20 a tick of
+	// remaining / 20); it is gone at tick 52 and the text lasts 60 ticks.
 	uint32 Rgb = 0xFFFFFF;
 	if (Overlay.bRainbow)
 	{

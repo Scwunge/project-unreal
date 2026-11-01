@@ -155,6 +155,11 @@ private:
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
+	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
+	void DrawHeldName(int32 Width, int32 Height, const FMcItemStack& Held, bool bBars);
+	FName HeldNameItem;
+	FString HeldNameText;
+	double HeldNameTime = -100.0;
 	void DrawChatInput(int32 Width, int32 Height);
 	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is

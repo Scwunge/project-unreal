@@ -205,12 +205,13 @@ UMcParticleComponent::FParticle& UMcParticleComponent::Add(EStyle Style, const F
 
 void UMcParticleComponent::OnNote(const FVector& Pos, int32 Note)
 {
-	// Measured against the reference client (jukebox runs 4 and 6, one game tick a shot): the note shows for 7 ticks, goes
-	// straight up 0.19 a tick slowing by a third each tick (rising about 0.55 in all), and keeps its size.
-	FParticle& Mote = Add(EStyle::Note, Pos, FVector(0.0, 0.19, 0.0));
+	// Measured against the reference client (jukebox run 7: 70 shots a tick apart, chat cleared, glyph 5 by 8 texels
+	// 30 by 48 px at 3 blocks, the jukebox face 181 px at 2.5): shown for 7 ticks, rising 30, 20, 13, 9, 6, 4 px a tick
+	// (0.2, 0.133, ... blocks: 0.2 a tick, slowing by a third each tick, 0.54 in all), at the same size throughout.
+	FParticle& Mote = Add(EStyle::Note, Pos, FVector(0.0, 0.2, 0.0));
 	Mote.Life = 7.0f;
 	Mote.Friction = 0.66f;
-	Mote.Size = 0.215f;
+	Mote.Size = 0.1375f;
 	Mote.Colour = McNoteBlock::GetNoteColour(Note);
 	Mote.Light = FVector2f(1.0f, 1.0f);
 }

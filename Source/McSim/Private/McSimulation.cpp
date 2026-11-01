@@ -352,12 +352,14 @@ void FMcSimulation::StepFalling()
 		}
 		if (Registry.IsAir(Cell) || FluidOf(Cell) != EMcFluid::None || FMcBlockTags::Get().Has(TEXT("minecraft:replaceable"), Cell))
 		{
-			// An anvil that falls more than a block may wear as it lands: chipped, then damaged, then gone (reference
-			// client, anvil_wear: 100 anvils dropped 1, 3, 10 and 20 blocks came out 0, 15, 58 and 100 chipped; taken as
-			// 0.05 a block fallen, which fits 3 and 20 and is a little under the 10).
+			// An anvil that falls more than a block may wear as it lands: chipped, then damaged, then gone, each with the
+			// same chance 0.05 + 0.05 a block fallen. Fitted to the reference client (anvil_wear, anvil_wear2: 100 anvils
+			// each, spaced apart): plain anvils chipped 0, 15, 15, 22, 36, 58, 74, 100, 100 of 100 after 1, 2, 3, 5, 6,
+			// 10, 15, 20, 25 blocks (rule: 0, 15, 20, 30, 35, 55, 80, 100, 100); chipped became damaged 20, 50, 100 after
+			// 3, 10, 20 (rule 20, 55, 100); damaged ones were gone 18, 51, 100 (same). No wear at a fall of 1.
 			FMcStateId Landed = State;
 			const FString Name = Registry.GetBlockOf(State).Name.ToString();
-			if (Name.EndsWith(TEXT("anvil")) && Fallen > 1.0 && Random.FRand() < 0.05 * Fallen)
+			if (Name.EndsWith(TEXT("anvil")) && Fallen > 1.0 && Random.FRand() < 0.05 + 0.05 * Fallen)
 			{
 				const FString Facing = Registry.GetPropertyValue(State, TEXT("facing")).ToString();
 				const bool bPlain = Name == TEXT("minecraft:anvil");

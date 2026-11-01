@@ -1,5 +1,5 @@
 # Writes lg_logi.txt: a hopper clock and a dropper elevator, one block-state log per tick. Container contents are not in a
-# block state, so comparators beside the containers show them (powered while the container holds anything). Replayed by
+# block state, so comparators beside the containers show them (powered while the container holds anything; a comparator takes its input from the side it faces). Replayed by
 # McClient.McSim.RefScriptsLogistics (McLogisticsReplayTest.cpp), since hoppers and droppers live in the block-use subsystem.
 BOX = "-1 -60 -3 10 -57 12"
 Y = -60
@@ -11,17 +11,17 @@ def c(s): L.append("cmd " + s)
 # hopper clock: two hoppers pointing at each other, one item; a comparator and lamp read each
 c(f'setblock 1 {Y} 0 hopper[facing=east]{{Items:[{{Slot:0,id:"minecraft:cobblestone",count:1}}]}}')
 c(f"setblock 2 {Y} 0 hopper[facing=west]")
-c(f"setblock 1 {Y} -1 comparator[facing=north]"); c(f"setblock 2 {Y} -1 comparator[facing=north]")
+c(f"setblock 1 {Y} -1 comparator[facing=south]"); c(f"setblock 2 {Y} -1 comparator[facing=south]")
 c(f"setblock 1 {Y} -2 redstone_lamp"); c(f"setblock 2 {Y} -2 redstone_lamp")
 # a hopper clock that is also locked by a redstone block part of the way
 c(f'setblock 5 {Y} 0 hopper[facing=east]{{Items:[{{Slot:0,id:"minecraft:cobblestone",count:1}}]}}')
 c(f"setblock 6 {Y} 0 hopper[facing=west]")
-c(f"setblock 5 {Y} -1 comparator[facing=north]"); c(f"setblock 6 {Y} -1 comparator[facing=north]")
+c(f"setblock 5 {Y} -1 comparator[facing=south]"); c(f"setblock 6 {Y} -1 comparator[facing=south]")
 # dropper elevator: three droppers facing up and a chest on top, each beside a comparator, a redstone block on each one's west side pulsed
 for i in range(3):
     it = '{Items:[{Slot:0,id:"minecraft:cobblestone",count:3}]}' if i == 0 else ""
     c(f"setblock 8 {Y+i} 6 dropper[facing=up]{it}")
-    c(f"setblock 9 {Y+i} 6 comparator[facing=east]")
+    c(f"setblock 9 {Y+i} 6 comparator[facing=west]")
 c(f"setblock 8 {Y+3} 6 chest")
 L.append("wait 10")
 L.append(f"log states {BOX}"); L.append(f"log items {BOX}")

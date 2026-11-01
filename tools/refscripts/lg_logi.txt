@@ -14,20 +14,20 @@ cmd fill -2 -61 -2 11 -61 13 stone
 wait 10
 cmd setblock 1 -60 0 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:cobblestone",count:1}]}
 cmd setblock 2 -60 0 hopper[facing=west]
-cmd setblock 1 -60 -1 comparator[facing=north]
-cmd setblock 2 -60 -1 comparator[facing=north]
+cmd setblock 1 -60 -1 comparator[facing=south]
+cmd setblock 2 -60 -1 comparator[facing=south]
 cmd setblock 1 -60 -2 redstone_lamp
 cmd setblock 2 -60 -2 redstone_lamp
 cmd setblock 5 -60 0 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:cobblestone",count:1}]}
 cmd setblock 6 -60 0 hopper[facing=west]
-cmd setblock 5 -60 -1 comparator[facing=north]
-cmd setblock 6 -60 -1 comparator[facing=north]
+cmd setblock 5 -60 -1 comparator[facing=south]
+cmd setblock 6 -60 -1 comparator[facing=south]
 cmd setblock 8 -60 6 dropper[facing=up]{Items:[{Slot:0,id:"minecraft:cobblestone",count:3}]}
-cmd setblock 9 -60 6 comparator[facing=east]
+cmd setblock 9 -60 6 comparator[facing=west]
 cmd setblock 8 -59 6 dropper[facing=up]
-cmd setblock 9 -59 6 comparator[facing=east]
+cmd setblock 9 -59 6 comparator[facing=west]
 cmd setblock 8 -58 6 dropper[facing=up]
-cmd setblock 9 -58 6 comparator[facing=east]
+cmd setblock 9 -58 6 comparator[facing=west]
 cmd setblock 8 -57 6 chest
 wait 10
 log states -1 -60 -3 10 -57 12

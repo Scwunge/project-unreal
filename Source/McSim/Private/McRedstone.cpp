@@ -682,6 +682,28 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 	}
 }
 
+void FMcRedstone::NotifyContainerChanged(const FIntVector& Pos)
+{
+	// The comparators beside it, and beyond a solid block the comparator that reads through it (minecraft.wiki, "Redstone
+	// Comparator"). Only comparators are told: a dropper beside a changed container keeps its triggered flag (reference run lg_logi).
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		if (Dir == Up || Dir == Down)
+		{
+			continue;
+		}
+		const FIntVector Next = Pos + Vec[Dir];
+		if (KindOf(World.GetBlock(Next)) == Comparator)
+		{
+			Notify(Next);
+		}
+		else if (IsConductor(World.GetBlock(Next)) && KindOf(World.GetBlock(Next + Vec[Dir])) == Comparator)
+		{
+			Notify(Next + Vec[Dir]);
+		}
+	}
+}
+
 void FMcRedstone::Notify(const FIntVector& Pos)
 {
 	const FMcStateId State = World.GetBlock(Pos);

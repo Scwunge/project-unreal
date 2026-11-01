@@ -395,6 +395,7 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
 		if (McHopper::MoveOne(Self, Into))
 		{
+			ContentsChanged(WorldActor, Pos);
 			ContentsChanged(WorldActor, Target);
 			if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Target)))
 			{
@@ -716,7 +717,13 @@ void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FInt
 			}
 		}
 	}
+	// Comparators that read it look again (after the write-back above).
+	if (FMcSimulation* Sim = WorldActor.GetSimulation())
+	{
+		Sim->NotifyContainerChanged(Pos);
+	}
 }
+
 
 TSharedPtr<FMcContainer> UMcBlockUseSubsystem::GetChest(AMcWorldActor& WorldActor, const FIntVector& Pos, int32 NumSlots)
 {

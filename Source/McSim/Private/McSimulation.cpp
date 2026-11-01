@@ -94,6 +94,11 @@ void FMcSimulation::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration
 	Redstone->HitTarget(Pos, Power, Duration);
 }
 
+void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)
+{
+	Redstone->NotifyContainerChanged(Pos);
+}
+
 void FMcSimulation::SetDetectorRail(const FIntVector& Pos, bool bOccupied)
 {
 	Redstone->SetDetector(Pos, bOccupied);

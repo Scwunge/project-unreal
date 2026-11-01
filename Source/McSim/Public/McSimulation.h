@@ -51,6 +51,8 @@ public:
 	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
+	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.
+	void NotifyContainerChanged(const FIntVector& Pos);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.

@@ -322,12 +322,12 @@ FMcStateId McJavaImport::MapState(const FString& Name, const TMap<FString, FStri
 	if (Registry.FindBlock(Block))
 	{
 		// Only properties the block has: FindState does not look past one it does not know.
-		const FMcStateId BlockDefault = Registry.FindDefaultState(Block).Get(0);
+		const FMcBlock& BlockInfo = *Registry.FindBlock(Block);
 		TMap<FName, FName> Wanted, Fitting;
 		for (const TPair<FString, FString>& Pair : Properties)
 		{
 			Wanted.Add(FName(*Pair.Key), FName(*Pair.Value));
-			if (!Registry.GetPropertyValue(BlockDefault, FName(*Pair.Key)).IsNone())
+			if (BlockInfo.FindProperty(FName(*Pair.Key)) != INDEX_NONE)
 			{
 				Fitting.Add(FName(*Pair.Key), FName(*Pair.Value));
 			}

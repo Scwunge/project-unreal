@@ -6,6 +6,7 @@
 #include "McChunk.h"
 #include "McJavaImport.h"
 #include "McNbt.h"
+#include "McWorldSave.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
@@ -200,6 +201,21 @@ bool FMcJavaImportMapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("still stairs"), Registry.GetBlockOf(Odd).Name, FName(TEXT("minecraft:oak_stairs")));
 	TestEqual(TEXT("still facing east"), Registry.GetPropertyValue(Odd, TEXT("facing")), FName(TEXT("east")));
 	TestEqual(TEXT("two kinds unknown now"), Stats.UnknownStates.Num(), 2);
+
+	// Values that are not the first of their property (low and tall, small and large, 1) are kept as written.
+	McJavaImport::FStats Exact;
+	const FMcStateId Wall = McJavaImport::MapState(TEXT("minecraft:cobblestone_wall"),
+		{ { TEXT("east"), TEXT("low") }, { TEXT("north"), TEXT("tall") }, { TEXT("south"), TEXT("none") }, { TEXT("west"), TEXT("none") }, { TEXT("up"), TEXT("true") }, { TEXT("waterlogged"), TEXT("false") } }, Exact, 1);
+	TestEqual(TEXT("wall east"), Registry.GetPropertyValue(Wall, TEXT("east")), FName(TEXT("low")));
+	TestEqual(TEXT("wall north"), Registry.GetPropertyValue(Wall, TEXT("north")), FName(TEXT("tall")));
+	const FMcStateId Bamboo = McJavaImport::MapState(TEXT("minecraft:bamboo"), { { TEXT("age"), TEXT("1") }, { TEXT("leaves"), TEXT("small") }, { TEXT("stage"), TEXT("0") } }, Exact, 1);
+	TestEqual(TEXT("bamboo leaves"), Registry.GetPropertyValue(Bamboo, TEXT("leaves")), FName(TEXT("small")));
+	TestEqual(TEXT("bamboo age"), Registry.GetPropertyValue(Bamboo, TEXT("age")), FName(TEXT("1")));
+	TestEqual(TEXT("these are all known"), Exact.UnknownStates.Num(), 0);
+	if (Exact.UnknownStates.Num() > 0)
+	{
+		AddInfo(Registry.Describe(Wall) + TEXT(" / ") + Registry.Describe(Bamboo));
+	}
 	return true;
 }
 
@@ -304,6 +320,43 @@ bool FMcJavaImportChunkTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("item in slot 13"), Chest->Slots[13].Item, FName(TEXT("minecraft:diamond")));
 		TestEqual(TEXT("and its count"), Chest->Slots[13].Count, 5);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportRealWorldTest, "McClient.McServer.JavaImport.RealWorld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// Imports a world the reference client generated, if this machine has one (E:\mc-reference or C:\mc-reference).
+bool FMcJavaImportRealWorldTest::RunTest(const FString& Parameters)
+{
+	FString Source;
+	for (const TCHAR* Candidate : { TEXT("E:/mc-reference/run/saves/terrain3"), TEXT("C:/mc-reference/run/saves/terrain3") })
+	{
+		if (McJavaImport::IsJavaWorld(Candidate))
+		{
+			Source = Candidate;
+			break;
+		}
+	}
+	if (Source.IsEmpty())
+	{
+		AddInfo(TEXT("no reference world on this machine; skipped"));
+		return true;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportTest"), Stats);
+	AddInfo(McJavaImport::Describe(Stats));
+	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("chunks were imported"), Stats.Chunks > 0);
+	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
+	TestEqual(TEXT("no unknown block states"), Stats.UnknownStates.Num(), 0);
+	FMcLevelData Level;
+	TestTrue(TEXT("the level reads back"), McWorldSave::LoadLevel(McWorldSave::GetWorldDir(Folder), Level));
+	TestEqual(TEXT("seed from world_gen_settings.dat"), Level.Seed, int64(-77777));
+	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
 

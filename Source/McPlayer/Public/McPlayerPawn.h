@@ -308,6 +308,7 @@ private:
 	bool bSleptThroughSent = false;
 	bool bHudHidden = false;
 	bool bDebugShown = false;
+	bool bF3Combo = false;
 	int32 ViewMode = 0;
 	void HandleFunctionKeys(APlayerController& Player);
 	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.

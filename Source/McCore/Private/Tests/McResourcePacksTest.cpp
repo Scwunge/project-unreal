@@ -109,7 +109,7 @@ bool FMcResourcePacksTest::RunTest(const FString& Parameters)
 		Probe = FMcPackInfo();
 		TestEqual(TEXT("no format at all"), McPacks::GetCompatibility(Probe), 2);
 		Probe.PackFormat = 97;
-		TestEqual(TEXT("pack_format alone, equal"), McPacks::GetCompatibility(Probe), 0);
+		TestEqual(TEXT("pack_format above 64 without min_format and max_format is unknown to the game"), McPacks::GetCompatibility(Probe), 2);
 		Probe.PackFormat = 15;
 		TestEqual(TEXT("pack_format alone, older"), McPacks::GetCompatibility(Probe), -1);
 

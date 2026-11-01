@@ -165,6 +165,11 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 			{
 				OpenOptions(EMenu::Title);
 			}
+			else if (DevMenu == TEXT("packs"))
+			{
+				OpenOptions(EMenu::Title);
+				OpenResourcePacks();
+			}
 		}
 #endif
 	}
@@ -989,6 +994,61 @@ void AMcHUD::OpenResourcePacks()
 	OpenMenu(EMenu::ResourcePacks);
 }
 
+void AMcHUD::ClearPackCaches()
+{
+	// The menu pictures come from the packs too.
+	Sprites.Empty();
+	LayerTextures.Empty();
+	GuiScalings.Empty();
+	Glyphs.Reset();
+	RasterFonts.Reset();
+	RasterAsked.Reset();
+	GlyphTextures.Reset();
+	GalacticWidths.Reset();
+	bSplashChosen = false;
+}
+
+// F3+T: the packs are read again from disk, as the game's reload does; the pictures, models and sounds follow the new
+// generation. A world holds baked models and a texture array, so a world is opened again from its save (the player and
+// the chunks are saved on leaving the map); a game joined to a server has to be joined again.
+void AMcHUD::ReloadResources()
+{
+	TArray<FString> Names = McPacks::GetSelectedNames();
+#if !UE_BUILD_SHIPPING
+	// Development: -McReloadPacks=a,b makes the reload pick these packs (a pack folder edited between runs, in a script).
+	FString DevList;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McReloadPacks="), DevList, /*bShouldStopOnSeparator=*/false))
+	{
+		Names = McPacks::ParseList(DevList);
+	}
+#endif
+	McPacks::SetPacks(Names);
+	ClearPackCaches();
+	FMcBlockModels::Get().Unload();
+	FMcBlockTextures::Get().Unload();
+	FMcHdBlocks::Get().Unload();
+	UWorld* World = GetWorld();
+	if (!World || McLaunch::IsMenu(World))
+	{
+		return;
+	}
+	if (World->GetNetMode() == NM_Standalone)
+	{
+		// The options of this run: the URL's, or none where the world came from the command line, which is read again.
+		FString Options;
+		for (const FString& Option : World->URL.Op)
+		{
+			Options += TEXT("?") + Option;
+		}
+		OpenMenu(EMenu::None);
+		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, Options.RightChop(1));
+	}
+	else
+	{
+		bPacksNeedRestart = true;
+	}
+}
+
 void AMcHUD::ApplyResourcePacks()
 {
 	TArray<FString> Names;
@@ -1001,15 +1061,7 @@ void AMcHUD::ApplyResourcePacks()
 		return;
 	}
 	McPacks::ApplySelection(Names);
-	// The menu pictures come from the packs too.
-	Sprites.Empty();
-	LayerTextures.Empty();
-	GuiScalings.Empty();
-	Glyphs.Reset();
-	RasterFonts.Reset();
-	RasterAsked.Reset();
-	GlyphTextures.Reset();
-	GalacticWidths.Reset();
+	ClearPackCaches();
 	if (OptionsBack == EMenu::Pause)
 	{
 		// A world is using the models and the texture array.
@@ -1040,10 +1092,12 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	// Two lists as wide as half the screen less a gap, between a header and a footer line.
 	const float ListWidth = CentreX - 15.0f;
 	constexpr float RowHeight = 36.0f;
-	const float ListTop = 48.0f;
-	const float ListBottom = Height - 31.0f;
+		// Fitted from the reference's screen at 1280 x 720 (GUI scale 3): list top 49 and bottom 208 of 240, header text at +4,
+	// first row's box at +16 (34 high, pitch 36), a 6 wide scroll bar on the list's right edge where the rows overflow.
+	const float ListTop = 49.0f;
+	const float ListBottom = Height - 32.0f;
 	const bool bInWorld = OptionsBack == EMenu::Pause;
-	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop - 18.0f) / RowHeight));
+	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop - 16.0f - 34.0f) / RowHeight) + 1);
 
 	enum class EOp : uint8 { None, Select, Unselect, Up, Down };
 	EOp Op = EOp::None;
@@ -1085,9 +1139,9 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 		}
 		const FString Header = bSelected ? TEXT("Selected") : TEXT("Available");
 		const float HeaderX = FMath::RoundToFloat(X + ListWidth / 2.0f - TextWidth(Header) / 2.0f);
-		DrawGuiText(Header, HeaderX, ListTop + 5.0f, White, true);
-		DrawGuiText(Header, HeaderX + 1.0f, ListTop + 5.0f, White, false);
-		DrawFill(HeaderX, ListTop + 14.0f, TextWidth(Header) + 1.0f, 1.0f, FLinearColor::White);
+		DrawGuiText(Header, HeaderX, ListTop + 4.0f, White, true);
+		DrawGuiText(Header, HeaderX + 1.0f, ListTop + 4.0f, White, false);
+		DrawFill(HeaderX, ListTop + 13.0f, TextWidth(Header) + 1.0f, 1.0f, FLinearColor::White);
 		TArray<int32> Shown;
 		for (int32 Index = 0; Index < Rows.Num(); ++Index)
 		{
@@ -1096,6 +1150,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 				Shown.Add(Index);
 			}
 		}
+		const bool bScrollBar = Shown.Num() > Visible;
 		const bool bInList = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom;
 		if (bInList)
 		{
@@ -1107,27 +1162,45 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 			DrawCentredText(TEXT("Put pack zips or folders in:"), X + ListWidth / 2.0f, ListTop + 24.0f, Grey);
 			DrawCentredText(Clip(McPacks::GetFolder(), ListWidth - 8.0f), X + ListWidth / 2.0f, ListTop + 36.0f, DarkGrey);
 		}
+		if (bScrollBar)
+		{
+			// A black track, the thumb light grey with a darker bottom and right edge.
+			const float TrackH = ListBottom - ListTop;
+			const float ThumbH = FMath::Clamp(TrackH * TrackH / (Shown.Num() * RowHeight + 16.0f), 32.0f, TrackH - 8.0f);
+			const float MaxScroll = static_cast<float>(FMath::Max(1, Shown.Num() - Visible));
+			const float ThumbY = ListTop + (TrackH - ThumbH) * Scroll / MaxScroll;
+			const float BarX = X + ListWidth - 6.0f;
+			DrawFill(BarX, ListTop, 6.0f, TrackH, FLinearColor::Black);
+			DrawFill(BarX, ThumbY, 6.0f, ThumbH, FLinearColor::FromSRGBColor(FColor(128, 128, 128)));
+			DrawFill(BarX, ThumbY, 5.0f, ThumbH - 1.0f, FLinearColor::FromSRGBColor(FColor(192, 192, 192)));
+		}
 		for (int32 Slot = Scroll; Slot < Shown.Num() && Slot < Scroll + Visible; ++Slot)
 		{
 			const int32 Index = Shown[Slot];
 			const FPackRow& Row = Rows[Index];
-			const float Y = ListTop + 18.0f + (Slot - Scroll) * RowHeight;
+			const float Y = ListTop + 17.0f + (Slot - Scroll) * RowHeight;
 			const bool bOver = GuiMouse.X >= X && GuiMouse.X < X + ListWidth && GuiMouse.Y >= Y - 2.0f && GuiMouse.Y < Y + RowHeight - 2.0f;
 			UTexture2D* Icon = Row.IconKey.IsEmpty() ? nullptr : Sprites.FindRef(Row.IconKey).Get();
 			if (!Icon)
 			{
 				Icon = LoadSprite(TEXT("textures/misc/unknown_pack.png"));
 			}
-			const float IconX = X + 2.0f;
+			const float BoxX = X + (bScrollBar ? 1.0f : 2.5f);
+			const float IconX = BoxX + 1.0f;
+			if (!Row.Warning.IsEmpty() || !Row.Error.IsEmpty())
+			{
+				// Packs the game calls incompatible or broken have a dark red box.
+				DrawFill(BoxX, Y - 1.0f, ListWidth - 4.0f - (bScrollBar ? 6.0f : 0.0f), 34.0f, FLinearColor::FromSRGBColor(FColor(119, 0, 0)));
+			}
 			if (Icon)
 			{
 				DrawRegion(Icon, IconX, Y, 32.0f, 32.0f, 0.0f, 0.0f, static_cast<float>(Icon->GetSizeX()), static_cast<float>(Icon->GetSizeY()));
 			}
 			const bool bUsable = Row.Error.IsEmpty();
-			const float TextX = IconX + 32.0f + 3.0f;
-			const float TextWidthMax = ListWidth - 32.0f - 12.0f;
+			const float TextX = IconX + 34.0f;
+			const float TextWidthMax = ListWidth - 32.0f - 12.0f - (bScrollBar ? 6.0f : 0.0f);
 			DrawGuiText(Clip(Row.Title, TextWidthMax), TextX, Y + 1.0f, bUsable ? White : Red, true);
-			if (bUsable && !Row.Warning.IsEmpty())
+			if (bUsable && !Row.Warning.IsEmpty() && bOver)
 			{
 				DrawGuiText(TEXT("Incompatible"), TextX, Y + 12.0f, Red, true);
 				DrawGuiText(Clip(Row.Warning, TextWidthMax), TextX, Y + 22.0f, Red, true);
@@ -1138,7 +1211,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 				for (int32 Line = 0; Line < 2 && Line < Lines.Num(); ++Line)
 				{
 					const FString Text = (Line == 1 && Lines.Num() > 2) ? Clip(Lines[Line] + TEXT("..."), TextWidthMax) : Lines[Line];
-					DrawGuiText(Text, TextX, Y + 12.0f + Line * 10.0f, DarkGrey, true);
+					DrawGuiText(Text, TextX, Y + 12.0f + Line * 9.0f, DarkGrey, true);
 				}
 			}
 			else
@@ -1194,7 +1267,8 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	};
 
 	DrawList(PacksAvailable, false, 0.0f, PacksScrollAvailable);
-	DrawList(PacksSelected, true, CentreX + 15.0f, PacksScrollSelected);
+	// The game centres on a whole GUI width (427 here, not 426.67): the right list is 0.67 further right in the reference.
+	DrawList(PacksSelected, true, CentreX + 15.67f, PacksScrollSelected);
 	// The lines above and below the lists.
 	for (const bool bHeader : { true, false })
 	{

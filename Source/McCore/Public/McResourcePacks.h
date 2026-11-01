@@ -132,6 +132,10 @@ namespace McPacks
 	// Replaces the stack itself (tests).
 	MCCORE_API void SetStack(TSharedRef<const FMcPackStack> Stack);
 	MCCORE_API uint32 GetGeneration();
+	// F3+T: asks for the packs to be read again from disk and the game's pictures, models and sounds rebuilt. The HUD takes
+	// the request (true once per ask) and does the reloading, which needs the screen and the world.
+	MCCORE_API void RequestReload();
+	MCCORE_API bool TakeReloadRequest();
 	MCCORE_API bool HasPacks();
 
 	// Looks for the file "assets/minecraft/<Relative>" in the packs. True with a path on disk when a pack has it (a folder

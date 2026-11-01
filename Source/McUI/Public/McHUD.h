@@ -186,6 +186,8 @@ private:
 	void DrawConfirmPacks(int32 Width, int32 Height);
 	void DrawResourcePacks(int32 Width, int32 Height);
 	void ApplyResourcePacks();
+	void ClearPackCaches();
+	void ReloadResources();
 	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).

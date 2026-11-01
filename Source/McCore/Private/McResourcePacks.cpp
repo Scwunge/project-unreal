@@ -90,6 +90,7 @@ namespace
 	TSharedPtr<const FMcPackStack> GStack;
 	bool GStackRead = false;
 	uint32 GGeneration = 1;
+	bool GReloadRequested = false;
 	int32 GMaxSize = 0;
 	int64 GBudget = 0;
 	int32 GUsePbr = -1;
@@ -805,6 +806,20 @@ namespace McPacks
 		}
 	}
 
+	void RequestReload()
+	{
+		FScopeLock Lock(&GLock);
+		GReloadRequested = true;
+	}
+
+	bool TakeReloadRequest()
+	{
+		FScopeLock Lock(&GLock);
+		const bool bAsked = GReloadRequested;
+		GReloadRequested = false;
+		return bAsked;
+	}
+
 	uint32 GetGeneration()
 	{
 		FScopeLock Lock(&GLock);
@@ -964,7 +979,9 @@ namespace McPacks
 			const int32 Max = Info.MaxFormat > 0 ? Info.MaxFormat : MAX_int32;
 			return GameFormat < Info.MinFormat ? 1 : GameFormat > Max ? -1 : 0;
 		}
-		if (Info.PackFormat <= 0)
+		// A pack_format over 64 with no min_format and max_format does not parse in the game (measured: reference verb "log packs"
+		// says UNKNOWN for such packs, TOO_OLD for pack_format 3 and for the Faithful PBR demo).
+		if (Info.PackFormat <= 0 || Info.PackFormat > 64)
 		{
 			return 2;
 		}

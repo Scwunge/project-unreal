@@ -1041,12 +1041,13 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
 		FString DevMenu;
-		bool bDevOptions = false;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options")))
+		bool bDevOptions = false, bDevPacks = false;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
-			bDevOptions = DevMenu == TEXT("options");
+			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs");
+			bDevPacks = DevMenu == TEXT("packs");
 		}
 #endif
 		if (bPause)
@@ -1056,6 +1057,10 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			if (bDevOptions)
 			{
 				OpenOptions(EMenu::Pause);
+			}
+			if (bDevPacks)
+			{
+				OpenResourcePacks();
 			}
 #endif
 		}
@@ -1795,6 +1800,30 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 void AMcHUD::DrawHUD()
 {
 	Super::DrawHUD();
+#if !UE_BUILD_SHIPPING
+	// Development: -McReload=<seconds> asks for the reload (F3+T) that long into the run, once.
+	static double DevReloadAt = -1.0;
+	static bool bDevReloadRead = false;
+	if (!bDevReloadRead)
+	{
+		bDevReloadRead = true;
+		double Seconds = 0.0;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McReload="), Seconds))
+		{
+			DevReloadAt = FPlatformTime::Seconds() + Seconds;
+		}
+	}
+	if (DevReloadAt > 0.0 && FPlatformTime::Seconds() >= DevReloadAt)
+	{
+		DevReloadAt = -1.0;
+		McPacks::RequestReload();
+	}
+#endif
+	if (McPacks::TakeReloadRequest())
+	{
+		ReloadResources();
+		return;
+	}
 	if (!DropTarget.IsValid() && GEngine && GEngine->GameViewport)
 	{
 		DropTarget = SNew(SMcDropTarget).OnFiles(FMcOnFilesDropped::CreateUObject(this, &AMcHUD::OnFilesDropped));

@@ -316,6 +316,14 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
+	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FMcZombieVillager::StaticType())
+	{
+		// Armed at spawn at the logged rate (1% of 400 on Normal, 19 of 200 on Hard, a third of them swords, the rest shovels).
+		if (Random.FRand() < (Rules.Difficulty >= 3 ? 0.1f : 0.01f))
+		{
+			Mob->HeldItem = Random.RandHelper(3) == 0 ? FName(TEXT("minecraft:iron_sword")) : FName(TEXT("minecraft:iron_shovel"));
+		}
+	}
 	if (McMobLook::GetCount(Kind) > 0)
 	{
 		Mob->LookSeed = McMobLook::Pick(Kind, GetBiomeName(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))), Random);

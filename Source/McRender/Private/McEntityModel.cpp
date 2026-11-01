@@ -562,7 +562,7 @@ namespace McEntityModel
 		}
 	}
 
-	void BuildBlockMesh(McPlayerModel::FMeshData& Out)
+	void BuildBlockMesh(bool bTopPicture, int32 Layer, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
 		Out.Normals.Reset();
@@ -575,6 +575,10 @@ namespace McEntityModel
 		};
 		for (const FVector& Normal : Faces)
 		{
+			if (bTopPicture && (Normal.Z > 0.5) != (Layer == 1))
+			{
+				continue;
+			}
 			// Across runs along the face and Up the other way, so that Across x Up = -Normal, the winding the item picture uses.
 			const FVector Across = FMath::Abs(Normal.Z) > 0.5 ? FVector(1, 0, 0) : FVector::CrossProduct(Normal, FVector(0, 0, 1));
 			const FVector Up = FVector::CrossProduct(Across, Normal);
@@ -700,6 +704,13 @@ namespace
 		}
 		return FString();
 	}
+
+	// The picture on top of an item's block where it has one of its own (an anvil), else empty.
+	FString FindTopTexture(FName Item)
+	{
+		const FString Path = McCache::Asset(TEXT("textures/block/") + McCache::PathOf(Item.ToString()) + TEXT("_top.png"));
+		return Item.IsNone() || !IFileManager::Get().FileExists(*Path) || Path == FindItemTexture(Item) ? FString() : Path;
+	}
 }
 
 UMcEntityModelComponent::UMcEntityModelComponent(const FObjectInitializer& ObjectInitializer)
@@ -784,6 +795,10 @@ void UMcEntityModelComponent::SetHurtCount(int32 InHurtCount)
 
 FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 {
+	if (bIsFalling && Layer == 1)
+	{
+		return FindTopTexture(Item);
+	}
 	if (bIsItem || bIsFalling)
 	{
 		return FindItemTexture(Item);
@@ -954,7 +969,40 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		McPlayerModel::FMeshData Data;
 		if (bIsFalling)
 		{
-			McEntityModel::BuildBlockMesh(Data);
+			// A block with a picture of its own on top (an anvil) is two sections: the sides, then the top.
+			const bool bTopPicture = !FindTopTexture(Item).IsEmpty();
+			if (bTopPicture)
+			{
+				if (UMaterialInstanceDynamic* Top = GetMaterial(1))
+				{
+					Top->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+					Top->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+					McPlayerModel::FMeshData TopData;
+					McEntityModel::BuildBlockMesh(true, 1, TopData);
+					TArray<FVector2D> TopUV1, TopUV2;
+					TopUV1.Init(FVector2D::ZeroVector, TopData.Positions.Num());
+					TopUV2.Init(FVector2D(1.0, 0.0), TopData.Positions.Num());
+					if (NumSections < 2)
+					{
+						if (NumSections == 0)
+						{
+							// (the sides come first; the code below makes them)
+							McPlayerModel::FMeshData SideData;
+							McEntityModel::BuildBlockMesh(true, 0, SideData);
+							TArray<FVector2D> SideUV1, SideUV2;
+							SideUV1.Init(FVector2D::ZeroVector, SideData.Positions.Num());
+							SideUV2.Init(FVector2D(1.0, 0.0), SideData.Positions.Num());
+							CreateMeshSection(0, SideData.Positions, SideData.Triangles, SideData.Normals, SideData.UV0, SideUV1, SideUV2, TArray<FVector2D>(), SideData.Colors, TArray<FProcMeshTangent>(), false);
+							SetMaterial(0, Materials[0]);
+						}
+						CreateMeshSection(1, TopData.Positions, TopData.Triangles, TopData.Normals, TopData.UV0, TopUV1, TopUV2, TArray<FVector2D>(), TopData.Colors, TArray<FProcMeshTangent>(), false);
+						SetMaterial(1, Top);
+						NumSections = 2;
+					}
+				}
+				return;
+			}
+			McEntityModel::BuildBlockMesh(false, 0, Data);
 		}
 		else if (bIsArrow)
 		{

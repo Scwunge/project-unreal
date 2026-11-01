@@ -79,7 +79,8 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			if (Line.StartsWith(TEXT("#vt ")))
 			{
 				int32 Before = 0;
-				for (const FString& Raw : Lines)
+				TMap<FIntVector, int32> Lying;
+		for (const FString& Raw : Lines)
 				{
 					TArray<FString> Q;
 					Raw.TrimStartAndEnd().ParseIntoArray(Q, TEXT(" "));
@@ -130,6 +131,17 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			else if (P.Num() >= 9 && P[0] == TEXT("cmd") && P[1] == TEXT("fill"))
 			{
 				Fill(P, 2, P[8]);
+			}
+			else if (P.Num() >= 6 && P[0] == TEXT("cmd") && P[1] == TEXT("summon") && P[2] == TEXT("item"))
+			{
+				// An item lying in a cell is one thing pressing it (a tripwire, a plate).
+				const FIntVector Cell(FMath::FloorToInt32(FCString::Atod(*P[3])), FMath::FloorToInt32(FCString::Atod(*P[4])) + Lift, FMath::FloorToInt32(FCString::Atod(*P[5])));
+				Sim.SetPressurePlate(Cell, ++Lying.FindOrAdd(Cell));
+			}
+			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && P[1] == TEXT("kill") && P[2].StartsWith(TEXT("@e[type=item")))
+			{
+				for (const TPair<FIntVector, int32>& Item : Lying) Sim.SetPressurePlate(Item.Key, 0);
+				Lying.Reset();
 			}
 			else if (P.Num() == 4 && P[0] == TEXT("press"))
 			{

@@ -459,6 +459,7 @@ namespace
 			{
 				const FIntPoint Corner = CornerList[PatchIndex];
 				constexpr int32 Side = 6;
+				TMap<FString, FString> MangroveBlocks;
 				TArray<TUniquePtr<FMcChunk>> Chunks;
 				for (int32 Index = 0; Index < Side * Side; ++Index)
 				{
@@ -524,6 +525,10 @@ namespace
 										Tree.Value++;
 									}
 									bLogBelow = bLog;
+									if (Listed && Name.Contains(TEXT("mangrove")))
+									{
+										MangroveBlocks.FindOrAdd(Name) += FString::Printf(TEXT(" %d,%d,%d"), X, Y, Z);
+									}
 									Bands.FindOrAdd(Name, TArray<int64>()).SetNumZeroed(24);
 									Bands[Name][(Y - Settings.MinY) >> 4]++;
 									if (Y < 64 && (Name.Contains(TEXT("copper_ore")) || Name.Contains(TEXT("iron_ore")) || Name.Contains(TEXT("raw_copper_block")) || Name.Contains(TEXT("raw_iron_block")) || Name == TEXT("minecraft:granite") || Name == TEXT("minecraft:tuff")))
@@ -553,6 +558,11 @@ namespace
 							}
 						}
 					}
+				}
+				// Mangrove blocks of the patch, for fitting single trees: MTREE <seed> <patch corner chunk> <block> <x,y,z ...>
+				for (const TPair<FString, FString>& Pair : MangroveBlocks)
+				{
+					Test.AddInfo(FString::Printf(TEXT("MTREE %d %d %d %s%s"), SeedIndex, Corner.X, Corner.Y, *Pair.Key, *Pair.Value));
 				}
 			}
 		}

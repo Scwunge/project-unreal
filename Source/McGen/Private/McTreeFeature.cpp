@@ -289,7 +289,7 @@ namespace
 			}
 			case ETrunk::UpwardsBranching:
 			{
-				// A straight trunk; from the logs above the first, a branch may leave sideways and climb as it goes, and
+				// A straight trunk; from the logs of its upper half, a branch may leave sideways and climb as it goes, and
 				// its tip carries leaves of its own. Our shape; the numbers come from the placer's JSON.
 				// With roots the trunk stands on them: it starts one to three blocks above the foot.
 				B.RootRise = bRoots ? 1 + Random.NextInt(3) : 0;
@@ -300,7 +300,7 @@ namespace
 					AddLog(Plan, Base + FIntVector(0, Y, 0));
 				}
 				Plan.Attach.Add({ Base + FIntVector(0, Height, 0), 0, false });
-				for (int32 Y = 0; Y < Height; ++Y)
+				for (int32 Y = Height / 2; Y < Height; ++Y)
 				{
 					if (Random.NextFloat() >= BranchChance)
 					{
@@ -309,6 +309,9 @@ namespace
 					const FIntVector Dir = Sides[Random.NextInt(4)];
 					const int32 Steps = ExtraSteps.Sample(Random);
 					FIntVector Tip = Base + FIntVector(0, Y, 0);
+					// Leaves at the branch's foot and midway as well as at its tip (the reference trees carry about
+					// 350 leaves each, all within 3 blocks of a log).
+					Plan.Attach.Add({ Tip + Up, 0, false });
 					for (int32 Step = 1; Step <= Steps; ++Step)
 					{
 						Tip += Dir;
@@ -317,6 +320,10 @@ namespace
 							++Tip.Y;
 						}
 						AddLog(Plan, Tip, AxisOf(Dir));
+						if (Step == (Steps + 1) / 2 && Step < Steps)
+						{
+							Plan.Attach.Add({ Tip + Up, 0, false });
+						}
 					}
 					Plan.Attach.Add({ Tip + Up, 0, false });
 				}
@@ -518,30 +525,45 @@ namespace
 			}
 		}
 
-		// Mangrove roots: a handful of root columns round the trunk's foot, each running down from the foot's level
-		// through water or air until it meets something solid (at most RootLength). Our shape; the count is a
-		// guess scaled by the placer's width, to be fitted to the reference's root density.
+		// Mangrove roots, fitted to single vanilla mangroves dumped block by block (about 51 root blocks a tree, a third
+		// of them muddy, a root entering the mud one block at most, reaching about 8 blocks below the trunk's foot and up to 5 sideways at the farthest): a column under the trunk,
+		// and about eighteen more at a distance of 1 to 5 blocks in random directions. Each runs down from the foot's level
+		// through air, water and mud (mud becomes muddy roots) until something else stops it, at most RootLength.
 		void PlaceRoots(FBuild& B) const
 		{
 			static const FMcStateId Roots = DefaultState(TEXT("minecraft:mangrove_roots"));
+			static const FMcStateId MuddyRoots = McWithProperty(DefaultState(TEXT("minecraft:muddy_mangrove_roots")), TEXT("axis"), TEXT("y"));
+			static const FMcStateId Mud = DefaultState(TEXT("minecraft:mud"));
 			const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
-			const int32 Reach = FMath::Max(1, RootWidth / 4);
-			const int32 Count = 3 + B.Random.NextInt(RootWidth / 2 + 1);
-			for (int32 Index = 0; Index < Count; ++Index)
+			const int32 Count = 17 + B.Random.NextInt(3);
+			for (int32 Index = 0; Index <= Count; ++Index)
 			{
-				const int32 DX = B.Random.NextInt(2 * Reach + 1) - Reach;
-				const int32 DZ = B.Random.NextInt(2 * Reach + 1) - Reach;
-				const int32 Top = Index == 0 ? B.RootRise - 1 : B.Random.NextInt(B.RootRise);
-				for (int32 Drop = 0; Drop < FMath::Min(RootLength, 8); ++Drop)
+				int32 DX = 0, DZ = 0;
+				if (Index > 0)
 				{
-					const FIntVector At = B.Origin + FIntVector(Index == 0 ? 0 : DX, Top - Drop, Index == 0 ? 0 : DZ);
+					const FIntVector Dir = Sides[B.Random.NextInt(4)];
+					const int32 Distance = 1 + B.Random.NextInt(FMath::Max(RootWidth * 5 / 8, 1));
+					const int32 Side = B.Random.NextInt(3) - 1;
+					DX = Dir.X * Distance + Dir.Z * Side;
+					DZ = Dir.Z * Distance + Dir.X * Side;
+				}
+				const int32 Top = Index == 0 ? B.RootRise - 1 : B.Random.NextInt(B.RootRise + 1) - 1;
+				int32 MudLeft = 1;
+				for (int32 Drop = 0; Drop < RootLength; ++Drop)
+				{
+					const FIntVector At = B.Origin + FIntVector(DX, Top - Drop, DZ);
 					const FMcStateId Here = B.Region.GetBlock(At);
 					const bool bWater = Shapes.GetFluid(Here) == EMcFluid::Water;
-					if (!B.Region.IsAir(Here) && !bWater && !IsFree(B.Region, Here))
+					const bool bMud = Here == Mud;
+					if (!B.Region.IsAir(Here) && !bWater && !bMud && !IsFree(B.Region, Here))
 					{
 						break;
 					}
-					B.Region.SetBlock(At, bWater ? McWithProperty(Roots, TEXT("waterlogged"), TEXT("true")) : Roots);
+					if (bMud && --MudLeft < 0)
+					{
+						break;
+					}
+					B.Region.SetBlock(At, bMud ? MuddyRoots : bWater ? McWithProperty(Roots, TEXT("waterlogged"), TEXT("true")) : Roots);
 				}
 			}
 		}

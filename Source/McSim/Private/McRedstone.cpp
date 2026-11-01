@@ -579,6 +579,10 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 
 void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
+	if (bQuietChange)
+	{
+		return;
+	}
 	// Kelp with kelp growing above it is the stem block, kelp_plant (reference run rs_world: the lower kelp changes the
 	// moment one is put above it).
 	static const FName KelpName(TEXT("minecraft:kelp")), KelpPlantName(TEXT("minecraft:kelp_plant"));
@@ -610,7 +614,9 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
 		const FIntVector Next = Pos + Vec[Dir];
-		if (bFull || IsConductor(World.GetBlock(Next)))
+		// (Nor through a conductor: a removed block with a dropper beside it does not reach the dropper's other neighbours,
+		// so a dropper under a quasi-powered dropper keeps triggered=true, reference run lg_logi.)
+		if (bFull || (KindOf(State) != None && KindOf(State) != RedstoneBlock && IsConductor(World.GetBlock(Next))))
 		{
 			for (int32 Other = 0; Other < 6; ++Other)
 			{
@@ -774,12 +780,18 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		const bool bPowered = ShouldExtend(Pos, -1);
 		if (bPowered && !Flag(State, TEXT("triggered")))
 		{
+			// The flag is set without a neighbour update: after a pulse through quasi-connectivity, a dropper under a
+			// dropper keeps triggered=true when the blocks go (reference run lg_logi).
+			bQuietChange = true;
 			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("true")) }));
+			bQuietChange = false;
 			Sim.ScheduleTick(Pos, 4);
 		}
 		else if (!bPowered && Flag(State, TEXT("triggered")))
 		{
+			bQuietChange = true;
 			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("false")) }));
+			bQuietChange = false;
 		}
 		break;
 	}

@@ -398,7 +398,11 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 			ContentsChanged(WorldActor, Target);
 			if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Target)))
 			{
-				Receiver->Cooldown = McHopper::Cooldown;
+				// A receiver that has already had its turn this tick (earlier in Order) misses the decrement a later one gets in
+				// this same pass, so it is given one less: a hopper pair passes an item on every 7 ticks both ways (reference run
+				// log_lg_logi: moves at ticks 1, 8, 15, 22, ...).
+				const FHopperEntry* Sender = Hoppers.Find(MakeKey(WorldActor, Pos));
+				Receiver->Cooldown = McHopper::Cooldown - (Sender && Receiver->Order < Sender->Order ? 1 : 0);
 			}
 			bMoved = true;
 		}

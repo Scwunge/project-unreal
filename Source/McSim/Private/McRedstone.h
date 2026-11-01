@@ -125,6 +125,8 @@ private:
 	TArray<FIntVector> PistonEvents;
 	// Set while an observer changes its own state, which is not a new observer.
 	bool bObserverSelf = false;
+	// Set while a block's state is changed without telling its neighbours (a dispenser's triggered flag).
+	bool bQuietChange = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
 	int32 SunLight = 15;

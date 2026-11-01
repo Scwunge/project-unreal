@@ -42,6 +42,7 @@
 #include "McCloudComponent.h"
 #include "McLightningComponent.h"
 #include "McWorldRenderComponent.h"
+#include "McRenderMode.h"
 #include "McBlockLightComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
@@ -56,6 +57,10 @@ AMcPlayerController::AMcPlayerController()
 void AMcPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (VanillaGrade.IsValid())
+	{
+		VanillaGrade->bEnabled = !McRenderMode::IsEnhanced();
+	}
 	ConnectToWorld();
 	ResolveWantedDimension();
 	if (!bMenuShotStarted && IsLocalController() && McLaunch::IsMenu(GetWorld()))
@@ -879,6 +884,32 @@ void AMcPlayerController::SpawnEnvironment()
 		Settings.bOverride_AutoExposureBias = true;
 		Settings.AutoExposureBias = 0.0f;
 		FParse::Value(FCommandLine::Get(), TEXT("-McExposureBias="), Settings.AutoExposureBias);
+	}
+
+	// Unreal's own defaults (vignette 0.4, bloom, SSAO, lens flare, grain) darken the screen's edges and soften
+	// highlights; the vanilla look is the texture's colour as it is. A volume of its own so Unreal Mode's grade
+	// (UMcSkyComponent) is untouched: Tick switches it off while that mode is on.
+	if (!VanillaGrade.IsValid())
+	{
+		APostProcessVolume* Grade = World->SpawnActor<APostProcessVolume>();
+		Grade->bUnbound = true;
+		FPostProcessSettings& GradeSettings = Grade->Settings;
+		GradeSettings.bOverride_VignetteIntensity = true;
+		GradeSettings.VignetteIntensity = 0.0f;
+		GradeSettings.bOverride_BloomIntensity = true;
+		GradeSettings.BloomIntensity = 0.0f;
+		GradeSettings.bOverride_AmbientOcclusionIntensity = true;
+		GradeSettings.AmbientOcclusionIntensity = 0.0f;
+		GradeSettings.bOverride_LensFlareIntensity = true;
+		GradeSettings.LensFlareIntensity = 0.0f;
+		GradeSettings.bOverride_GrainIntensity = true;
+		GradeSettings.GrainIntensity = 0.0f;
+		GradeSettings.bOverride_SceneFringeIntensity = true;
+		GradeSettings.SceneFringeIntensity = 0.0f;
+		GradeSettings.bOverride_MotionBlurAmount = true;
+		GradeSettings.MotionBlurAmount = 0.0f;
+		Grade->bEnabled = !McRenderMode::IsEnhanced();
+		VanillaGrade = Grade;
 	}
 
 	// The sky, sun, moon, stars and fog follow the world's time of day, which the server sets and replicates.

@@ -67,6 +67,7 @@ private:
 	// Development: the -McInput script being played (null otherwise).
 	TSharedPtr<FMcDevInput> DevInput;
 	bool bEnvironmentSpawned = false;
+	TWeakObjectPtr<class APostProcessVolume> VanillaGrade;
 	FString WantedDimension;
 	float ViewSyncTimer = 0.0f;
 	TWeakObjectPtr<UActorComponent> Renderer;

@@ -333,9 +333,12 @@ biome allows (it used to pick one and reject it, which left villages at 2.5% of 
 also wants ocean or river biomes within 29 blocks. Ours is `McClient.McGen.StructureStarts` (`STARTS <seed> <structure> <count>`,
 256 x 256 chunks from -128, 5 seeds); the reference side is the `log starts` verb with `scripts/terrain_starts.txt` (`wait` is in
 ticks: 6000 = 5 min; logged for `terrain`, `terrain2`, `terrain3`, `terrain4`; `terrain5` pending). Every count is inside the
-vanilla spread of those five worlds; monument (mean 9.6 against 3.8) and desert villages (1.6 against 4.0) sit at the edge, and
-are biome-area effects: deep ocean covers 13.7% of our sampled columns against 5.1%, the surround check removes almost nothing
-(8 to 8, 20 to 19, 10 to 10 candidates), and vanilla desert area runs 2.6% to 19% from world to world.
+vanilla spread of those five worlds; monument (mean 9.6 against 3.8) and desert villages (1.6 against 4.0) sit at the edge. Checked
+per candidate cell (`CANDCELL` lines of `StructureStarts`): our monument cells that land in deep ocean are 8, 20, 10, 6, 5 per seed and
+our monuments 8, 19, 10, 6, 5, so the rule gives one at nearly every deep-ocean cell, as in vanilla (monuments 3, 4, 10, 1, 1 for
+9, 10, 32, 11, 2 deep-ocean grid points in the middle 4 km). The difference is how oceanic the middle 4 km is: ours 14.5% of grid
+points, vanilla 5.0%, against 9.3% and 9.1% over the whole 16 km. Over 60 of our seeds the middle 4 km is deep ocean at a median 8.6%
+(2.0 to 24.2%), so both sets of five are draws from that spread, not a bias.
 
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

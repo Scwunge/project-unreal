@@ -734,6 +734,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
 		TMap<FName, int64> Counts;
 		TMap<FName, int64> Pre;
+		TMap<FName, int64> AllCandidates;
 		for (int32 Z = -128; Z < 128; ++Z)
 		{
 			for (int32 X = -128; X < 128; ++X)
@@ -745,6 +746,14 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 					continue;
 				}
 				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Settings.SeaLevel + 4, Z * 16 + 8);
+				for (const FName Name : Here)
+				{
+					AllCandidates.FindOrAdd(Name)++;
+					if (Name.ToString().Contains(TEXT("monument")) || Name.ToString().Contains(TEXT("village_plains")))
+					{
+						AddInfo(FString::Printf(TEXT("CANDCELL %d %s %d %d %s"), SeedIndex, *Name.ToString(), X, Z, *FMcBiomeRegistry::Get().GetName(Biome).ToString()));
+					}
+				}
 				Here.Reset();
 				Structures.GetCandidates(Seed, FIntPoint(X, Z), Biome, Here);
 				for (const FName Name : Here)
@@ -757,6 +766,10 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 					Counts.FindOrAdd(Name)++;
 				}
 			}
+		}
+		for (const TPair<FName, int64>& Pair : AllCandidates)
+		{
+			AddInfo(FString::Printf(TEXT("STARTSALL %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
 		}
 		for (const TPair<FName, int64>& Pair : Counts)
 		{
@@ -857,5 +870,25 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	// Is the middle 4 km (where the structure starts are counted) as oceanic as the rest? Many seeds, deep ocean shares.
+	TArray<double> Shares;
+	for (int32 K = 0; K < 60; ++K)
+	{
+		const FMcNoiseGenerator Generator(Settings, 7919ull * K + 13ull, TEXT("minecraft:overworld"));
+		int32 Deep = 0;
+		for (int32 J = 0; J < 16; ++J)
+		{
+			for (int32 I = 0; I < 16; ++I)
+			{
+				int32 Hint = INDEX_NONE;
+				const FString Name = Registry.GetName(Source.Find(Generator.SampleClimate(-2048 + I * 256, 64, -2048 + J * 256), Hint)).ToString();
+				Deep += Name.StartsWith(TEXT("deep_")) || Name.Contains(TEXT("deep_")) ? 1 : 0;
+			}
+		}
+		Shares.Add(Deep / 256.0 * 100.0);
+	}
+	Shares.Sort();
+	AddInfo(FString::Printf(TEXT("CENTRE deep ocean share over 60 seeds: min %.1f p10 %.1f p25 %.1f median %.1f p75 %.1f p90 %.1f max %.1f"),
+		Shares[0], Shares[6], Shares[15], Shares[30], Shares[45], Shares[54], Shares[59]));
 	return true;
 }

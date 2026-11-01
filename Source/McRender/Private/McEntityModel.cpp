@@ -791,17 +791,35 @@ namespace McEntityModel
 				}
 				{
 					FModel Baby = Young(TEXT("minecraft:wolf"), 32, 32);
-					Baby.Parts.Add(Part(ERole::Head, FVector(0, 5.75f, 4), { Box(0, 12, -2.99f, -1.75f, -2, 6, 5, 5), Box(17, 12, -1.5f, -1.76f, 3, 3, 2, 2), Box(0, 5, -3, 3.25f, 0, 2, 2, 1), Box(20, 5, 1, 3.25f, 0, 2, 2, 1) }));  // head
-					Baby.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8) }));  // body
-					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.5f, 3, -3), { Box(0, 22, -1, -3, -1, 2, 3, 2) }));  // rightHindLeg
-					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(1.5f, 3, -3), { Box(8, 22, -1, -3, -1, 2, 3, 2) }));  // leftHindLeg
-					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.5f, 3, 3), { Box(0, 0, -1, -3, -1, 2, 3, 2) }));  // rightFrontLeg
-					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.5f, 3, 3), { Box(20, 0, -1, -3, -1, 2, 3, 2) }));  // leftFrontLeg
-					Baby.Parts.Add(Part(ERole::Static, FVector(0, 5.4196f, -3.4732f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, 2.6596f, 0, 0));  // tail/tail_r1
-					// The collar: the body drawn again, a hair larger, in the collar's picture, for tame ones.
-					FPart Collar = Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8, 0.03f) }, 0, 0, 0, 0, 1);
-					Collar.ShowPoses = 0xF0u;
-					Baby.Parts.Add(Collar);
+					// From the logged baby wolf: standing, and sitting (tame ones only), the tail by mood (wild, angry, tame; the log showed no change with health).
+					constexpr uint32 Standing = 0x55u;
+					constexpr uint32 Sitting = 0xAAu;
+					constexpr uint32 Wild = 0x03u;
+					constexpr uint32 Angry = 0x0Cu;
+					constexpr uint32 Tame = 0xF0u;
+					const auto Add = [&Baby](FPart Each, uint32 Poses)
+					{
+						Each.ShowPoses = Poses;
+						Baby.Parts.Add(Each);
+					};
+					Add(Part(ERole::Head, FVector(0, 5.75f, 4), { Box(0, 12, -2.99f, -1.75f, -2, 6, 5, 5), Box(17, 12, -1.5f, -1.76f, 3, 3, 2, 2), Box(0, 5, -3, 3.25f, 0, 2, 2, 1), Box(20, 5, 1, 3.25f, 0, 2, 2, 1) }), 0xFFFFFFFFu);  // head
+					Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8) }), Standing);  // body
+					Add(Part(ERole::LegBackRight, FVector(-1.5f, 3, -3), { Box(0, 22, -1, -3, -1, 2, 3, 2) }), Standing);  // rightHindLeg
+					Add(Part(ERole::LegBackLeft, FVector(1.5f, 3, -3), { Box(8, 22, -1, -3, -1, 2, 3, 2) }), Standing);  // leftHindLeg
+					Add(Part(ERole::LegFrontRight, FVector(-1.5f, 3, 3), { Box(0, 0, -1, -3, -1, 2, 3, 2) }), Standing);  // rightFrontLeg
+					Add(Part(ERole::LegFrontLeft, FVector(1.5f, 3, 3), { Box(20, 0, -1, -3, -1, 2, 3, 2) }), Standing);  // leftFrontLeg
+					Add(Part(ERole::Static, FVector(0, 5.603f, -2.8091f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -2.4717f, 0, 0), Standing & Wild);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 5.2187f, -2.4066f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.5606f, 0, 0), Standing & Angry);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 5.1037f, -2.3761f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.3721f, 0, 0), Standing & Tame);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 3, 1), { Box(0, 0, -3, -2, -4, 6, 4, 8) }, -0.7854f, 0, 0), Sitting);  // body sitting
+					Add(Part(ERole::Static, FVector(-1.5f, -0.35f, -0.5f), { Box(0, 22, -1, -3, -1, 2, 3, 2) }, -1.5708f, 0, 0), Sitting);  // rightHindLeg sitting
+					Add(Part(ERole::Static, FVector(1.5f, -0.35f, -0.5f), { Box(8, 22, -1, -3, -1, 2, 3, 2) }, -1.5708f, 0, 0), Sitting);  // leftHindLeg sitting
+					Add(Part(ERole::Static, FVector(-1.495f, 2.5f, 3), { Box(0, 0, -1, -3, -1, 2, 3, 2) }, -0.4713f, 0, 0), Sitting);  // rightFrontLeg sitting
+					Add(Part(ERole::Static, FVector(1.495f, 2.5f, 3), { Box(20, 0, -1, -3, -1, 2, 3, 2) }, -0.4713f, 0, 0), Sitting);  // leftFrontLeg sitting
+					Add(Part(ERole::Static, FVector(0, 0.6037f, -1.3761f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.3721f, 0, 0), Sitting);  // tail/tail_r1 sitting
+					// The collar: the body drawn again, a hair larger, in the collar picture, for tame ones.
+					Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8, 0.03f) }, 0, 0, 0, 0, 1), Standing & Tame);
+					Add(Part(ERole::Static, FVector(0, 3, 1), { Box(0, 0, -3, -2, -4, 6, 4, 8, 0.03f) }, -0.7854f, 0, 0, 0, 1), Sitting & Tame);
 					Models.Add(Baby.Kind, Baby);
 				}
 				{

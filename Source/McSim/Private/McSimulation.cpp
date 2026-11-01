@@ -374,10 +374,23 @@ void FMcSimulation::StepFalling()
 				Landed = bPlain || bChipped ? Registry.ParseState(FString::Printf(TEXT("minecraft:%s_anvil[facing=%s]"), bPlain ? TEXT("chipped") : TEXT("damaged"), *Facing)).Get(State) : StateOf(TEXT("minecraft:air"));
 			}
 			World.SetBlock(At, Landed);
+			// Sounds measured in the reference client (log sounds, anvilsnd.txt): block.anvil.land at volume 0.15, pitch 0.91 to 0.97.
+			if (Name.EndsWith(TEXT("anvil")) && !Registry.IsAir(Landed))
+			{
+				PlaySound({ FName("block.anvil.land"), FVector(At) + FVector(0.5), 0.15f, 0.91f + 0.06f * Random.FRand() });
+			}
 		}
-		else if (OnFallingBlockDropped)
+		else
 		{
-			OnFallingBlockDropped(At, State);
+			// An anvil that comes down on a slab or a torch breaks: block.anvil.destroy at volume 0.5, pitch 0.93 to 0.96 (same runs).
+			if (Registry.GetBlockOf(State).Name.ToString().EndsWith(TEXT("anvil")))
+			{
+				PlaySound({ FName("block.anvil.destroy"), FVector(At) + FVector(0.5), 0.5f, 0.93f + 0.03f * Random.FRand() });
+			}
+			if (OnFallingBlockDropped)
+			{
+				OnFallingBlockDropped(At, State);
+			}
 		}
 	}
 }

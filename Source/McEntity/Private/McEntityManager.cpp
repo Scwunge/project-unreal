@@ -4,6 +4,7 @@
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McMob.h"
+#include "McTnt.h"
 #include "Serialization/Archive.h"
 
 bool FMcEntity::Serialize(FArchive& Ar)
@@ -301,7 +302,7 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 	TArray<FIntVector> Cells;
 	McExplosion::Collect(World, Center, Power, Random, Cells);
 	// Loud (carries 64 blocks) and low, a little different each time.
-	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McSound::GetVoicePitch(Random.FRand(), Random.FRand()) * 0.7f);
+	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McExplosion::GetBlastPitch(Random.FRand()));
 
 	// Everything standing near is hurt first, by the blocks as they were: the ones about to go still shield.
 	const double Radius = Power * 2.0;
@@ -337,6 +338,13 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 			}
 			continue;
 		}
+		if (Entity->GetType() == FMcPrimedTnt::StaticType())
+		{
+			// Lit TNT is pushed like anything loose, from the middle of it.
+			const FVector Middle = Entity->Body.Position + FVector(0.0, Entity->Body.Height * 0.5, 0.0);
+			Entity->Body.Velocity += McExplosion::GetKnockback(Power, Center, Entity->Body.Position, Middle, McExplosion::GetExposure(World, Center, Entity->Body.GetBox()));
+			continue;
+		}
 		if (!Entity->IsLiving())
 		{
 			continue;
@@ -361,10 +369,18 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 	for (const FVector& Player : PlayerPositions)
 	{
 		const FBox Box(Player + FVector(-0.3, 0.0, -0.3), Player + FVector(0.3, 1.8, 0.3));
-		const float Damage = McExplosion::GetDamage(Power, FVector::Dist(Player, Center), McExplosion::GetExposure(World, Center, Box));
+		const float Exposure = McExplosion::GetExposure(World, Center, Box);
+		const float Damage = McExplosion::GetDamage(Power, FVector::Dist(Player, Center), Exposure);
 		if (Damage > 0.0f)
 		{
-			HurtPlayer(Player, Damage);
+			if (OnPlayerBlasted)
+			{
+				OnPlayerBlasted(Player, Damage, McExplosion::GetKnockback(Power, Center, Player, Player + FVector(0.0, 1.62, 0.0), Exposure), Center);
+			}
+			else
+			{
+				HurtPlayer(Player, Damage);
+			}
 		}
 	}
 
@@ -373,6 +389,12 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 	Destroyed.Reserve(Cells.Num());
 	for (const FIntVector& Cell : Cells)
 	{
+		if (FMcPrimedTnt::IsTnt(Registry.GetBlockOf(World.GetBlock(Cell)).Name))
+		{
+			// TNT in the blast's way is lit, not destroyed, with a short fuse.
+			FMcPrimedTnt::Ignite(*this, Cell, FMcPrimedTnt::GetChainFuse(Random.FRand()));
+			continue;
+		}
 		FMcDestroyedBlock Block;
 		Block.Pos = Cell;
 		Block.State = World.SetBlock(Cell, Air);

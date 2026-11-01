@@ -1,6 +1,7 @@
 #include "McWorldActor.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
+#include "McTnt.h"
 #include "McCache.h"
 #include "McRails.h"
 #include "McBiomeRegistry.h"
@@ -286,6 +287,14 @@ void AMcWorldActor::BeginPlay()
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	// TNT lit by fire or redstone becomes a primed block.
+	Simulation->OnLightTnt = [this](const FIntVector& Pos)
+	{
+		if (Entities)
+		{
+			FMcPrimedTnt::Ignite(Entities->GetManager(), Pos);
+		}
+	};
 	// A minecart on a detector rail powers it.
 	Entities->GetManager().OnDetector = [this](const FIntVector& Pos, bool bOccupied)
 	{

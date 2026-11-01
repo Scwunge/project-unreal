@@ -131,6 +131,7 @@ namespace McSurvival
 		case EDamage::InFire:
 		case EDamage::Lava:
 		case EDamage::Mob:
+		case EDamage::Explosion:
 			return 0.1f;
 		default:
 			return 0.0f;

@@ -531,6 +531,51 @@ namespace McEntityModel
 	}
 
 	// A thrown item: its picture 0.25 across on two squares crossed at the middle of the 0.25 body, seen from any side.
+	void BuildTntMesh(int32 Layer, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Half = 0.49 * McCoords::UnitsPerBlock;
+		const double Tall = 0.98 * McCoords::UnitsPerBlock;
+		// Faces as (normal, right, up) with the cube centred over the feet; both sides of each are drawn so the winding is moot.
+		struct FFace { FVector Normal, Right, Up; double Lift; };
+		TArray<FFace> Faces;
+		if (Layer == 0)
+		{
+			Faces = { { FVector(1, 0, 0), FVector(0, 1, 0), FVector(0, 0, 1), 0.0 }, { FVector(-1, 0, 0), FVector(0, -1, 0), FVector(0, 0, 1), 0.0 },
+				{ FVector(0, 1, 0), FVector(-1, 0, 0), FVector(0, 0, 1), 0.0 }, { FVector(0, -1, 0), FVector(1, 0, 0), FVector(0, 0, 1), 0.0 } };
+		}
+		else
+		{
+			Faces = { { FVector(0, 0, Layer == 1 ? 1 : -1), FVector(1, 0, 0), FVector(0, 1, 0), 0.0 } };
+		}
+		const FVector2D UVs[4] = { FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0), FVector2D(0, 0) };
+		for (const FFace& Face : Faces)
+		{
+			const bool bSide = Layer == 0;
+			const FVector Centre = Face.Normal * Half + FVector(0, 0, Tall * 0.5) + (bSide ? FVector::ZeroVector : Face.Normal * (Tall * 0.5 - Half));
+			const double Across = Half, Up = bSide ? Tall * 0.5 : Half;
+			const FVector Corners[4] = { Centre - Face.Right * Across - Face.Up * Up, Centre + Face.Right * Across - Face.Up * Up,
+				Centre + Face.Right * Across + Face.Up * Up, Centre - Face.Right * Across + Face.Up * Up };
+			for (const bool bBack : { false, true })
+			{
+				const int32 First = Out.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const int32 Index = bBack ? 3 - Corner : Corner;
+					Out.Positions.Add(Corners[Index]);
+					Out.Normals.Add(bBack ? -Face.Normal : Face.Normal);
+					Out.UV0.Add(UVs[Index]);
+					Out.Colors.Add(FColor::White);
+				}
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+		}
+	}
+
 	void BuildThrownMesh(float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -695,11 +740,12 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsBanner = Kind == TEXT("mc:banner");
+	bIsTnt = Kind == TEXT("minecraft:tnt");
 	if (bIsBanner)
 	{
 		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
 	}
-	Model = bIsItem || bIsArrow || bIsBanner ? nullptr : McEntityModel::Find(Kind);
+	Model = bIsItem || bIsArrow || bIsBanner || bIsTnt ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
@@ -710,7 +756,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || bIsArrow || bIsBanner || Model != nullptr;
+	return bIsItem || bIsArrow || bIsBanner || bIsTnt || Model != nullptr;
 }
 
 void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
@@ -756,6 +802,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (bIsTnt)
+	{
+		static const TCHAR* Names[3] = { TEXT("tnt_side"), TEXT("tnt_top"), TEXT("tnt_bottom") };
+		return McCache::Asset(FString(TEXT("textures/block/")) + Names[FMath::Clamp(Layer, 0, 2)] + TEXT(".png"));
 	}
 	if (bIsBanner)
 	{
@@ -883,7 +934,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		Swelling = 0.0f;
 	}
 	{
-		FVector2D Swell = McEntityModel::GetSwellScale(Swelling);
+		FVector2D Swell = bIsTnt ? FVector2D(1.0, 1.0) : McEntityModel::GetSwellScale(Swelling);
 		const bool bGrows = Model && Model->BaseWidth > 0.0f && HitboxWidth > 0.0f;
 		const float Grow = bGrows ? HitboxWidth / Model->BaseWidth : 1.0f;
 		if (bGrows)
@@ -934,6 +985,44 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		{
 			UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
+		return;
+	}
+	if (bIsTnt)
+	{
+		// Flashes white every other five ticks of the fuse.
+		const int32 Fuse = FMath::RoundToInt32(TargetSwelling * 80.0f);
+		const bool bFlash = (Fuse / 5) % 2 == 0;
+		for (int32 Layer = 0; Layer < 3; ++Layer)
+		{
+			UMaterialInstanceDynamic* Material = GetMaterial(Layer);
+			if (!Material)
+			{
+				continue;
+			}
+			Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+			if (bFlash != bFlashing || NumSections <= Layer)
+			{
+				FIntPoint Size;
+				if (UTexture2DArray* Texture = LoadCached(GetTexturePath(Layer), Size, bFlash))
+				{
+					Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
+					McRenderMode::ApplyHdPicture(Material, GetTexturePath(Layer), bFlash);
+				}
+			}
+			if (NumSections <= Layer)
+			{
+				McPlayerModel::FMeshData Data;
+				McEntityModel::BuildTntMesh(Layer, Data);
+				TArray<FVector2D> UV1, UV2;
+				UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+				UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+				CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+				SetMaterial(Layer, Material);
+				NumSections = Layer + 1;
+			}
+		}
+		bFlashing = bFlash;
 		return;
 	}
 	if (bIsBanner)

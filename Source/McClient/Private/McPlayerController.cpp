@@ -7,6 +7,7 @@
 #include "McBuckets.h"
 #include "McEntityActor.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McGameMode.h"
 #include "McPlayerData.h"
 #include "McPortal.h"
@@ -317,6 +318,12 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		const FName Held = User.Data->Inventory->Get(User.Data->SelectedSlot).Item;
 		// The builders of portals change blocks in pieces, so the world is not to look for broken frames in between.
 		const McPortal::FSetBlock Place = [World](const FIntVector& At, FMcStateId State) { World->SetBlock(At, State, false); };
+		if ((Held == TEXT("minecraft:flint_and_steel") || Held == TEXT("minecraft:fire_charge")) && FMcPrimedTnt::IsTnt(Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name))
+		{
+			// Lights the TNT it is used on.
+			FMcEntityHost* Host = World->GetEntityHost();
+			return Host && FMcPrimedTnt::Ignite(Host->GetManager(), Pos) != nullptr;
+		}
 		if (Held == TEXT("minecraft:flint_and_steel"))
 		{
 			if (!Registry.IsAir(Blocks->GetBlock(Beside)))

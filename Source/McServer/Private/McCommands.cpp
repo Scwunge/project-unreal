@@ -619,7 +619,7 @@ namespace
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
 		// Minecarts and boats are entities without a mob type.
-		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat"))
+		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat") && Kind != TEXT("minecraft:tnt"))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}

@@ -93,6 +93,7 @@ public:
 
 	const TArray<TUniquePtr<FMcEntity>>& GetEntities() const { return Entities; }
 	FMcBlockWorld& GetWorld() { return World; }
+	FRandomStream& GetRandom() { return Random; }
 	const FMcBlockWorld& GetWorld() const { return World; }
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
@@ -126,6 +127,9 @@ public:
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
+	// Called instead of OnPlayerHurt for a player a blast reaches: the feet position, the damage, the push to add to
+	// their velocity (blocks a tick) and the centre of the blast. Left unset, the damage goes to OnPlayerHurt.
+	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlasted;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;
@@ -164,8 +168,6 @@ public:
 			OnDetector(Pos, bOccupied);
 		}
 	}
-
-	FRandomStream& GetRandom() { return Random; }
 
 private:
 	FMcBlockWorld& World;

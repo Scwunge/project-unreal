@@ -34,6 +34,19 @@ namespace McExplosion
 	MCENTITY_API float GetExposure(const FMcBlockWorld& World, const FVector& Center, const FBox& Box);
 
 	// The damage to something Distance blocks from a blast of this power (0 beyond twice the power) of which
-	// Exposure is open to it: 43 for a creeper's blast point blank (power 3).
+	// Exposure is open to it: 43 for a creeper's blast point blank (power 3). Not rounded: a player 7 blocks from a
+	// power 4 blast at normal difficulty lost 4.94 health, 6.265 blocks 8.39, 5.725 blocks 11.23, 5.324 blocks 13.5 and 5.167 blocks
+	// 14.43 in the reference client (the five fit 1 + 56 * (I*I + I) / 2, I = 1 - Distance / 8, to 0.001).
 	MCENTITY_API float GetDamage(float Power, float Distance, float Exposure);
+
+	// The pitch of the blast's sound from a roll in [0, 1): 17 blasts of the reference client ran 0.572 to 0.783 (mean 0.68),
+	// all at volume 4. A flat spread over 0.56 to 0.80 (the sample's width stretched for its size); the shape is not
+	// fitted, 17 samples cannot tell a flat spread from a bell.
+	MCENTITY_API float GetBlastPitch(float Roll);
+
+	// The push on something at Position whose eye (or the point the blast pushes from) is at Eye: along the line from
+	// the centre to the eye, as strong as the impact (1 - Distance / (2 * Power)) * Exposure, in blocks a tick before
+	// friction. The same five reference blasts read x speeds of 0.0666, 0.1149, 0.1498, 0.1752 and 0.1851 a tick later,
+	// which is this times the ground's friction (0.546).
+	MCENTITY_API FVector GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure);
 }

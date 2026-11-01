@@ -5,6 +5,7 @@
 #include "McEntityManager.h"
 #include "McExplosion.h"
 #include "McMob.h"
+#include "McTnt.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -63,6 +64,15 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a creeper's blast point blank does 43"), FMath::IsNearlyEqual(McExplosion::GetDamage(3.0f, 0.0f, 1.0f), 43.0f));
 	TestTrue(TEXT("and nothing past twice its power"), FMath::IsNearlyEqual(McExplosion::GetDamage(3.0f, 6.0f, 1.0f), 0.0f));
 	TestTrue(TEXT("or behind a wall"), FMath::IsNearlyEqual(McExplosion::GetDamage(3.0f, 1.0f, 0.0f), 0.0f));
+	// The reference client's player at normal difficulty, a power 4 blast (not rounded).
+	TestEqual(TEXT("7 blocks: 4.94"), McExplosion::GetDamage(4.0f, 7.0f, 1.0f), 4.94f, 0.01f);
+	TestEqual(TEXT("6.265 blocks: 8.39"), McExplosion::GetDamage(4.0f, 6.265f, 1.0f), 8.39f, 0.02f);
+	TestEqual(TEXT("5.167 blocks: 14.43"), McExplosion::GetDamage(4.0f, 5.1665f, 1.0f), 14.43f, 0.02f);
+	// Pushed from the centre at y 230.0625 to the eye 1.62 above the feet: 0.0666 / 0.546 along x at 7 blocks.
+	const FVector Push = McExplosion::GetKnockback(4.0f, FVector(7.5, 230.0625, 0.5), FVector(0.5, 230.0, 0.5), FVector(0.5, 231.62, 0.5), 1.0f);
+	TestEqual(TEXT("push x"), (float)Push.X, -0.0666f / 0.546f, 0.003f);
+	TestTrue(TEXT("up a little"), Push.Y > 0.0 && Push.Z == 0.0);
+	TestTrue(TEXT("none past the radius"), McExplosion::GetKnockback(4.0f, FVector(9.5, 230.0625, 0.5), FVector(0.5, 230.0, 0.5), FVector(0.5, 231.62, 0.5), 1.0f).IsZero());
 
 	// A floor of stone four deep, open air above it.
 	FMcBlockWorld World{FMcDimensionType()};
@@ -146,6 +156,32 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("in the open, all of it is exposed"), McExplosion::GetExposure(Walled, Blast, Target) > 0.95f);
 		FillBox(Walled, 10, 1, 5, 10, 4, 12, Stone);
 		TestTrue(TEXT("behind a wall, none"), McExplosion::GetExposure(Walled, Blast, Target) < 0.05f);
+	}
+	{
+		// Primed TNT: lit from its block, it burns 80 ticks, then blows a hole where it lay.
+		FMcBlockWorld Field{FMcDimensionType()};
+		AddChunks(Field);
+		FillBox(Field, -16, 0, -16, 31, 3, 31, Stone);
+		const FMcStateId Tnt = State(TEXT("minecraft:tnt"));
+		Field.SetBlock(FIntVector(8, 4, 8), Tnt);
+		Field.SetBlock(FIntVector(12, 4, 8), Tnt);
+		FMcEntityManager Manager(Field);
+		FMcPrimedTnt* Lit = FMcPrimedTnt::Ignite(Manager, FIntVector(8, 4, 8));
+		TestNotNull(TEXT("the block lit"), Lit);
+		TestNull(TEXT("stone does not light"), FMcPrimedTnt::Ignite(Manager, FIntVector(8, 3, 8)));
+		TestEqual(TEXT("its block goes"), Field.GetBlock(FIntVector(8, 4, 8)), Air);
+		TestTrue(TEXT("a little hop"), Lit && Lit->Body.Velocity.Y > 0.19);
+		for (int32 Tick = 0; Tick < 79; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("still lying there at 79"), Field.GetBlock(FIntVector(8, 3, 8)), Stone);
+		Manager.Tick();
+		TestEqual(TEXT("the 80th digs the floor out"), Field.GetBlock(FIntVector(8, 3, 8)), Air);
+		TestEqual(TEXT("and the TNT beside it did not just vanish; it is lit"), Field.GetBlock(FIntVector(12, 4, 8)), Air);
+		TestEqual(TEXT("chain fuse least"), FMcPrimedTnt::GetChainFuse(0.0f), 10);
+		TestEqual(TEXT("chain fuse most"), FMcPrimedTnt::GetChainFuse(0.999f), 29);
+		TestTrue(TEXT("blast pitch 0.56 to 0.80"), FMath::IsNearlyEqual(McExplosion::GetBlastPitch(0.0f), 0.56f) && FMath::IsNearlyEqual(McExplosion::GetBlastPitch(1.0f), 0.80f));
 	}
 	return true;
 }

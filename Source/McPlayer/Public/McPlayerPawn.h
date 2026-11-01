@@ -96,11 +96,16 @@ public:
 
 	// Server: hurts the player (a mob's bite, a blast). Does nothing in creative. Returns the health lost.
 	// From is where the blow came from (for the knockback), if it came from somewhere.
-	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr);
+	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true);
+	// A blast reaches the player: the damage (armour turns some aside), a push added to the velocity (blocks a tick),
+	// and the centre it came from for the side the view rolls to.
+	void ServerBlast(float Amount, const FVector& Push, const FVector& Center);
 	// Server: the owner's swing along Look (Minecraft axes): damage by the held item and how charged the attack is.
 	void ServerSwing(const FVector& Look);
 	// Pushes the player: the velocity is added to the body's (blocks a tick).
 	void ApplyKnockback(const FVector& Velocity);
+	// Adds to the velocity (a blast's push), where ApplyKnockback sets it.
+	void AddVelocity(const FVector& Push);
 	// Server: the points of experience as orbs at the player (a death drops them).
 	void ServerDropXp(int32 Points);
 	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
@@ -215,6 +220,8 @@ protected:
 	// The server hit the owner: a push for their own body, which they simulate.
 	UFUNCTION(Client, Reliable)
 	void ClientKnockback(FVector Velocity);
+	UFUNCTION(Client, Reliable)
+	void ClientAddVelocity(FVector Push);
 	// The server hit the owner from this side (-1 to 1): the view rolls for it.
 	UFUNCTION(Client, Reliable)
 	void ClientHurtSide(float Side);

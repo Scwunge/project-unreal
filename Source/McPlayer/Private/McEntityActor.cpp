@@ -3,6 +3,7 @@
 #include "McEntityManager.h"
 #include "McBannerEntity.h"
 #include "McMob.h"
+#include "McTnt.h"
 #include "McVehicle.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
@@ -74,6 +75,11 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	else if (Entity.GetType() == FMcBannerEntity::StaticType())
 	{
 		ItemId = FName(*static_cast<const FMcBannerEntity&>(Entity).Layers);
+	}
+	else if (Entity.GetType() == FMcPrimedTnt::StaticType())
+	{
+		// The model flashes by the fuse left.
+		Swelling = static_cast<const FMcPrimedTnt&>(Entity).Fuse / static_cast<float>(FMcPrimedTnt::FullFuse);
 	}
 	else if (Entity.GetType() == FMcBoatEntity::StaticType())
 	{

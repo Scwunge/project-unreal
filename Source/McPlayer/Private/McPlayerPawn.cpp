@@ -952,7 +952,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 
 // ---- The server's side ----
 
-float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From)
+float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From, bool bKnock)
 {
 	if (!HasAuthority() || !Data || Data->bCreative || bServerDead)
 	{
@@ -975,7 +975,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 			ClientHurtSide(Side);
 		}
 	}
-	if (Taken > 0.0f && From && Data->Stats.Health > 0.0f)
+	if (Taken > 0.0f && From && bKnock && Data->Stats.Health > 0.0f)
 	{
 		const FVector Push = McCombat::GetKnockback(Body.Position, *From, FVector::ZeroVector);
 		if (IsLocallyControlled())
@@ -988,6 +988,38 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		}
 	}
 	return Taken;
+}
+
+void AMcPlayerPawn::ServerBlast(float Amount, const FVector& Push, const FVector& Center)
+{
+	if (!HasAuthority() || !Data || Push.ContainsNaN())
+	{
+		return;
+	}
+	// ServerHurt leaves creative players alone; they are not pushed either.
+	if (Data->bCreative)
+	{
+		return;
+	}
+	ServerHurt(Amount, McSurvival::EDamage::Explosion, &Center, false);
+	if (IsLocallyControlled())
+	{
+		AddVelocity(Push);
+	}
+	else
+	{
+		ClientAddVelocity(Push);
+	}
+}
+
+void AMcPlayerPawn::AddVelocity(const FVector& Push)
+{
+	Body.Velocity += Push;
+}
+
+void AMcPlayerPawn::ClientAddVelocity_Implementation(FVector Push)
+{
+	AddVelocity(Push);
 }
 
 void AMcPlayerPawn::ApplyKnockback(const FVector& Velocity)
@@ -1178,7 +1210,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
-		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:minecart") || Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft")))
+		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || Held.Item == TEXT("minecraft:minecart") || Held.Item.ToString().EndsWith(TEXT("_boat")) || Held.Item.ToString().EndsWith(TEXT("_raft")))
 		{
 			if (--Held.Count <= 0)
 			{

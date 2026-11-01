@@ -82,6 +82,17 @@ public:
 	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// The TNT block at Pos is lit (by fire, flint and steel or redstone): the server turns it into primed TNT
+	// (FMcPrimedTnt::Ignite). Redstone calls LightTnt when the power on a TNT block rises.
+	TFunction<void(const FIntVector&)> OnLightTnt;
+	void LightTnt(const FIntVector& Pos) const
+	{
+		if (OnLightTnt)
+		{
+			OnLightTnt(Pos);
+		}
+	}
+
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 

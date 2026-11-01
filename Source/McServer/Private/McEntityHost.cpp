@@ -99,6 +99,17 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
+	{
+		if (OnPlayerBlast)
+		{
+			OnPlayerBlast(PlayerPos, Damage, Push, Center);
+		}
+		else if (OnPlayerHit)
+		{
+			OnPlayerHit(PlayerPos, Damage);
+		}
+	};
 	// Bites, arrows and blasts all reach the player through here.
 	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
 	{

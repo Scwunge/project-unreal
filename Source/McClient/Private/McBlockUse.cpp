@@ -10,6 +10,7 @@
 #include "McChestLink.h"
 #include "McEnchanting.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
 #include "McAnvilMenu.h"
@@ -586,9 +587,14 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			&& Registry.GetPropertyValue(FrontState, TEXT("lit")) == TEXT("false")
 			&& Registry.GetPropertyValue(FrontState, TEXT("waterlogged")) != TEXT("true");
 		const bool bFire = Registry.IsAir(FrontState) && CanFireStay(*Blocks, Front);
-		if (bLightable || bFire)
+		const bool bTnt = FMcPrimedTnt::IsTnt(Registry.GetBlockOf(FrontState).Name);
+		if (bLightable || bFire || bTnt)
 		{
-			if (bLightable)
+			if (bTnt)
+			{
+				FMcPrimedTnt::Ignite(Manager, Front);
+			}
+			else if (bLightable)
 			{
 				TMap<FName, FName> Lit;
 				for (const TCHAR* Kept : { TEXT("facing"), TEXT("signal_fire"), TEXT("waterlogged"), TEXT("candles") })

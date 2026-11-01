@@ -9,6 +9,7 @@
 #include "McClient.h"
 #include "McBlockShapes.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McVehicle.h"
 #include "McPlayerController.h"
 #include "McPlayerData.h"
@@ -147,6 +148,13 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 			if (const AMcWorldActor* Here = Weak.Get())
 			{
 				HurtPlayerNear(*Here, Position, Damage);
+			}
+		};
+		Host->OnPlayerBlast = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				BlastPlayerNear(*Here, Position, Damage, Push, Center);
 			}
 		};
 	}
@@ -531,6 +539,31 @@ void AMcGameMode::ApplyGameRules()
 	}
 }
 
+void AMcGameMode::BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
+{
+	AMcPlayerPawn* Nearest = nullptr;
+	double NearestDistance = 0.5;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		const double Distance = McPawn ? FVector::Dist(McPawn->GetFeetPosition(), Position) : NearestDistance;
+		if (McPawn && Distance < NearestDistance)
+		{
+			Nearest = McPawn;
+			NearestDistance = Distance;
+		}
+	}
+	if (Nearest)
+	{
+		Nearest->ServerBlast(Damage, Push, Center);
+	}
+}
+
 void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage)
 {
 	AMcPlayerPawn* Nearest = nullptr;
@@ -907,6 +940,13 @@ namespace
 				TUniquePtr<FMcMinecartEntity> Cart = MakeUnique<FMcMinecartEntity>();
 				Cart->Body.Position = Feet;
 				Host->GetManager().Add(MoveTemp(Cart));
+				return true;
+			}
+			if (Host && FMcPrimedTnt::IsTnt(Kind))
+			{
+				TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
+				Tnt->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Tnt));
 				return true;
 			}
 			if (Host && Kind == TEXT("minecraft:boat"))

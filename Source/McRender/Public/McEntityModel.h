@@ -124,6 +124,8 @@ namespace McEntityModel
 	MCRENDER_API FVector2D GetSwellScale(float Swelling);
 	// Whether a swelling creeper is flashing white now: every other tenth of the fuse.
 	MCRENDER_API bool IsSwellFlash(float Swelling);
+	// The cube of a primed TNT, one third of it per picture: 0 the sides, 1 the top, 2 the bottom.
+	MCRENDER_API void BuildTntMesh(int32 Layer, McPlayerModel::FMeshData& Out);
 
 	// A slime's squish (minecraft.wiki: "Slime"): it stretches up as it jumps and flattens as it lands, easing back
 	// between. Fed how far the slime rose (blocks) each tick, since that is all a client sees of its hops.
@@ -192,6 +194,7 @@ private:
 	bool bIsThrown = false;
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
 	bool bIsBanner = false;
+	bool bIsTnt = false;
 	bool bBannerWall = false;
 	FString BannerBase;
 	TArray<McBanner::FLayer> BannerLayers;

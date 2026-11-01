@@ -216,5 +216,21 @@ float McExplosion::GetDamage(float Power, float Distance, float Exposure)
 		return 0.0f;
 	}
 	const float Impact = (1.0f - Distance / Radius) * Exposure;
-	return FMath::FloorToFloat((Impact * Impact + Impact) * 0.5f * 7.0f * Radius + 1.0f);
+	return (Impact * Impact + Impact) * 0.5f * 7.0f * Radius + 1.0f;
+}
+
+float McExplosion::GetBlastPitch(float Roll)
+{
+	return 0.56f + 0.24f * Roll;
+}
+
+FVector McExplosion::GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure)
+{
+	const float Radius = Power * 2.0f;
+	const float Distance = static_cast<float>(FVector::Dist(Position, Center));
+	if (Radius <= 0.0f || Distance >= Radius || Exposure <= 0.0f)
+	{
+		return FVector::ZeroVector;
+	}
+	return (Eye - Center).GetSafeNormal() * ((1.0f - Distance / Radius) * Exposure);
 }

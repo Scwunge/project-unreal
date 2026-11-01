@@ -92,7 +92,11 @@ void FMcSimulation::TickFire(const FIntVector& Pos, FMcStateId State)
 		const int32 Odds = BurnOdds(World.GetBlock(At));
 		if (Odds > 0 && Random.RandHelper(100) < Odds)
 		{
-			// The block burns up; fire takes its place if something can still hold it, otherwise it is just gone.
+			// The block burns up; fire takes its place if something can still hold it, otherwise it is just gone. TNT is lit first.
+			if (Registry.GetBlockOf(World.GetBlock(At)).Name == TEXT("minecraft:tnt"))
+			{
+				LightTnt(At);
+			}
 			World.SetBlock(At, Registry.IsAir(World.GetBlock(At + FIntVector(0, 1, 0))) ? Fire : Air);
 		}
 	}

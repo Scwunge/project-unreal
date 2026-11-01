@@ -52,6 +52,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// Called with the player's feet, the damage, the push and the centre when a blast reaches a player.
+	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 
 	// The game rules and difficulty the host obeys: peaceful removes the hostile mobs and stops them spawning,
 	// doMobSpawning off stops every natural spawn, doMobLoot off makes mobs drop nothing and doTileDrops off makes

@@ -54,11 +54,12 @@ namespace
 
 	// What is left of a boat's speed after it moves, from the block under it (vehicle_log6.txt, every tick): soul sand
 	// keeps 0.4 (0.45 moved leaves 0.18, 0.05832 leaves 0.023328), even with the boat still dropping onto it; slime 0.16
-	// (0.4 leaves 0.064, 0.0512 leaves 0.008192).
+	// (0.4 leaves 0.064, 0.0512 leaves 0.008192); honey 0.4 too, on stone's 0.6 friction (vehicle_log9.txt: 0.45 moved
+	// leaves 0.18, 0.03888 leaves 0.015552). Frosted ice, mud and soul soil change nothing (vehicle_log9.txt).
 	double SpeedFactor(FName Block)
 	{
 		const FString Name = Block.ToString();
-		return Name == TEXT("minecraft:soul_sand") ? 0.4 : Name == TEXT("minecraft:slime_block") ? 0.16 : 1.0;
+		return Name == TEXT("minecraft:soul_sand") || Name == TEXT("minecraft:honey_block") ? 0.4 : Name == TEXT("minecraft:slime_block") ? 0.16 : 1.0;
 	}
 }
 
@@ -66,7 +67,7 @@ double FMcBoatEntity::GroundFriction(FMcBlockWorld& World) const
 {
 	// The mean over the blocks under the hull (vehicle_log5.txt: whole hulls on blue ice keep 0.989, on ice and packed
 	// ice 0.98; one over a row of packed ice between stone keeps 0.72667 = (0.6 + 0.98 + 0.6) / 3). Cells with nothing
-	// in them are left out (not measured).
+	// in them are left out (vehicle_log9.txt: one over ice, an empty row and ice keeps 0.98).
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	const double Half = Body.Width * 0.5;
 	const int32 Y = FMath::FloorToInt32(Body.Position.Y - 0.05);
@@ -271,6 +272,12 @@ FMcVehicle::EUse FMcMinecartEntity::UseItem(FName Item, const FVector& From)
 	return EUse::None;
 }
 
+// Whether two boxes share some volume; touching faces don't count.
+static bool Overlaps(const FBox& A, const FBox& B)
+{
+	return A.Min.X < B.Max.X && B.Min.X < A.Max.X && A.Min.Y < B.Max.Y && B.Min.Y < A.Max.Y && A.Min.Z < B.Max.Z && B.Min.Z < A.Max.Z;
+}
+
 bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World)
 {
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
@@ -308,8 +315,10 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	Body.Velocity.Y = 0.0;
 	Body.bOnGround = true;
 
-	// The speed along the track, signed by the way it is going.
-	FVector2D Move(Body.Velocity.X, Body.Velocity.Z);
+	RailAlong = Along;
+	// The speed along the track, signed by the way it is going. No more than 2 either way: a cart a driving furnace cart
+	// threw at 3.5056 moves 0.4 and is left at 1.92 = 2 * 0.96 (vehicle_log7.txt).
+	FVector2D Move(FMath::Clamp(Body.Velocity.X, -2.0, 2.0), FMath::Clamp(Body.Velocity.Z, -2.0, 2.0));
 	double Speed = Move.Size();
 	const double Sign = FVector2D::DotProduct(Move, Along) >= 0.0 ? 1.0 : -1.0;
 	FVector2D Velocity = Along * Sign * Speed;
@@ -377,8 +386,62 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	const FVector Target(EndA.X + Line.X * NextWhere, FMath::Lerp(EndA.Y, EndB.Y, NextT), EndA.Z + Line.Y * NextWhere);
 	const FVector Before = Body.Position;
 	Body.Velocity = FVector(Velocity.X, 0.0, Velocity.Y);
-	McPhysics::Move(World, Body, Target - Before, false);
-	if (Body.bHorizontalCollision)
+	// A mob it can't take in stops it dead where their boxes meet (vehicle_log8.txt: a cart at 0.158 stops at 7.31 against
+	// an iron golem at 8.5, a cart with a pig in it at 7.56 against a cow, both left at speed 0).
+	FVector Motion = Target - Before;
+	bool bHitMob = false;
+	{
+		const FBox Box = Body.GetBox();
+		TArray<FMcEntity*> Near;
+		Manager.FindInBox(Box.ExpandBy(FVector(FMath::Abs(Motion.X), FMath::Abs(Motion.Y), FMath::Abs(Motion.Z))), Near);
+		for (FMcEntity* Entity : Near)
+		{
+			if (!Entity->IsLiving() || Entity->bRemoved || static_cast<FMcMob*>(Entity)->RidingId != 0
+				|| (HasFreeSeat() && CanCarryMob(*static_cast<FMcMob*>(Entity))))
+			{
+				continue;
+			}
+			// How far along the move the cart's box first touches the mob's: the slab test against the mob's box grown by
+			// the cart's.
+			const FBox Other = Entity->Body.GetBox();
+			if (Overlaps(Box, Other))
+			{
+				continue;
+			}
+			const FVector Half = Box.GetExtent();
+			const FVector Lo = Other.Min - Half;
+			const FVector Hi = Other.Max + Half;
+			const FVector From = Box.GetCenter();
+			double Enter = 0.0;
+			double Leave = 1.0;
+			for (int32 Axis = 0; Axis < 3 && Enter <= Leave; ++Axis)
+			{
+				if (FMath::Abs(Motion[Axis]) < 1e-12)
+				{
+					if (From[Axis] <= Lo[Axis] || From[Axis] >= Hi[Axis])
+					{
+						Leave = -1.0;
+					}
+					continue;
+				}
+				double A = (Lo[Axis] - From[Axis]) / Motion[Axis];
+				double B = (Hi[Axis] - From[Axis]) / Motion[Axis];
+				if (A > B)
+				{
+					Swap(A, B);
+				}
+				Enter = FMath::Max(Enter, A);
+				Leave = FMath::Min(Leave, B);
+			}
+			if (Enter < Leave && Enter < 1.0)
+			{
+				Motion *= Enter;
+				bHitMob = true;
+			}
+		}
+	}
+	McPhysics::Move(World, Body, Motion, false);
+	if (Body.bHorizontalCollision || bHitMob)
 	{
 		Body.Velocity = FVector::ZeroVector;
 	}
@@ -391,7 +454,7 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		// Uphill it keeps 0.91 of its move (powered_log.txt: 0.0918 up the slope leaves 0.0836).
 		// A ridden cart keeps 0.997 (vehicle_log2.txt, 50 ticks), a furnace cart not driving 0.96 * 0.98 (0.9408 there,
 		// fuelled but never pushed).
-		const double Friction = HasRider() ? 0.997 : Variant == EVariant::Furnace && !bDriving ? 0.96 * 0.98 : 0.96;
+		const double Friction = HasRider() ? 0.997 : Variant == EVariant::Furnace && !bDriving ? 0.96 * 0.98 : GetFriction();
 		const double Kept = Friction * Fast + 0.05 * (Before.Y - Body.Position.Y);
 		Velocity = Fast > 1e-9 ? Velocity / Fast * Kept : FVector2D::ZeroVector;
 		// A powered rail adds to what is left (powered_log.txt: 0.0792 = 0.02 * 0.96 + 0.06, 0.13603, ...); a cart standing
@@ -468,28 +531,145 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 
 bool FMcMinecartEntity::CanCarryMob(const FMcMob& Mob) const
 {
-	return Variant == EVariant::Plain && FVector2D(Body.Velocity.X, Body.Velocity.Z).SizeSquared() > 0.01 * 0.01
+	return Variant == EVariant::Plain && FVector2D(Body.Velocity.X, Body.Velocity.Z).SizeSquared() > 0.1 * 0.1
 		&& Mob.Type.Name != TEXT("minecraft:iron_golem");
+}
+
+double FMcMinecartEntity::GetFriction()
+{
+	if (Variant != EVariant::Chest && Variant != EVariant::Hopper)
+	{
+		return 0.96;
+	}
+	// A thousandth less for each step of the signal a comparator would read off it (vehicle_log7.txt: chest carts from 0.4
+	// keep 0.995 empty, 0.994 with one stack of 64 stone, 0.98 full; vehicle_log8.txt: an empty hopper cart 0.995).
+	double Fullness = 0.0;
+	bool bAny = false;
+	const TSharedPtr<FMcContainer>& Items = GetInventory();
+	for (const FMcItemStack& Stack : Items->GetAll())
+	{
+		if (!Stack.IsEmpty())
+		{
+			Fullness += static_cast<double>(Stack.Count) / Stack.GetMaxStackSize();
+			bAny = true;
+		}
+	}
+	const int32 Signal = bAny ? FMath::FloorToInt32(1.0 + Fullness / Items->Num() * 14.0) : 0;
+	return 0.98 + (15 - Signal) * 0.001;
+}
+
+FVector2D FMcMinecartEntity::GetPushVelocity() const
+{
+	const FVector2D Velocity(Body.Velocity.X, Body.Velocity.Z);
+	return IsDriving() ? Velocity.GetSafeNormal() * FurnaceDriveSpeed : Velocity;
+}
+
+void FMcMinecartEntity::SetPushVelocity(const FVector2D& Velocity)
+{
+	// A driving furnace cart sets its own speed again next tick.
+	if (!IsDriving())
+	{
+		Body.Velocity = FVector(Velocity.X, Body.Velocity.Y, Velocity.Y);
+	}
+}
+
+void FMcMinecartEntity::PushedBy(FMcMinecartEntity& Pusher)
+{
+	FVector2D Away(Body.Position.X - Pusher.Body.Position.X, Body.Position.Z - Pusher.Body.Position.Z);
+	const double Distance = Away.Size();
+	if (Distance < 0.01)
+	{
+		return;
+	}
+	Away /= Distance;
+	// Only along its own rail (or the pusher's, if this one hasn't been on one yet): one passing on the next rail over
+	// leaves it be (vehicle_log8.txt).
+	const FVector2D& Rail = RailAlong.IsZero() ? Pusher.RailAlong : RailAlong;
+	if (!Rail.IsZero() && FMath::Abs(FVector2D::DotProduct(Away, Rail)) < 0.8)
+	{
+		return;
+	}
+	// Each keeps a fifth of its own speed and takes half of the two together, and they are shoved 0.05 apart, less past a
+	// block (vehicle_log7.txt: a cart at 0.199835 into one at rest leaves 0.089884 and 0.149917; head on at 0.081 and
+	// -0.085, 1.147 apart, they leave -0.029 and 0.025). A furnace cart, fuelled or not, isn't slowed so: the other keeps
+	// its fifth and takes all of the furnace cart's speed, and the furnace cart keeps 0.95 (vehicle_log7.txt: a driving one
+	// throws the cart ahead at 3.455616 + 0.05 and reads 3.282835; vehicle_log8.txt: a cart at 0.2 into an unfuelled one at
+	// rest bounces back at -0.052, the furnace cart unmoved).
+	const FVector2D Shove = Away * FMath::Min(1.0 / Distance, 1.0) * 0.05;
+	FVector2D Mine = GetPushVelocity();
+	FVector2D Theirs = Pusher.GetPushVelocity();
+	const bool bMineFurnace = Variant == EVariant::Furnace;
+	const bool bTheirsFurnace = Pusher.Variant == EVariant::Furnace;
+	if (bTheirsFurnace && !bMineFurnace)
+	{
+		Mine = Mine * 0.2 + Theirs + Shove;
+		Theirs *= 0.95;
+	}
+	else if (bMineFurnace && !bTheirsFurnace)
+	{
+		Theirs = Theirs * 0.2 + Mine - Shove;
+		Mine *= 0.95;
+	}
+	else
+	{
+		const FVector2D Half = (Mine + Theirs) * 0.5;
+		Mine = Mine * 0.2 + Half + Shove;
+		Theirs = Theirs * 0.2 + Half - Shove;
+	}
+	SetPushVelocity(Mine);
+	Pusher.SetPushVelocity(Theirs);
 }
 
 void FMcMinecartEntity::PushMobs(FMcEntityManager& Manager)
 {
+	// After it has moved, everything within 0.2 of it. Fitted from vehicle_log7.txt and vehicle_log8.txt:
+	// - it shoves every cart it reaches, moving or not (PushedBy);
+	// - going faster than 0.1, it and a mob it can't take in are shoved 0.05 apart, it not at all with someone in it (an
+	//   iron golem it reaches at 0.208 gets 0.05 and it keeps 0.158; a cow a cart with a pig in it reaches gets 0.05);
+	// - a mob standing in it (their boxes overlapping) shoves it off at 0.05 and itself a quarter of that, every tick (a cow
+	//   0.7 into a cart at rest: the cart goes -0.05, -0.098, -0.144, the cow 0.0125, 0.025, 0.0375).
 	TArray<FMcEntity*> Near;
-	Manager.FindInBox(Body.GetBox().ExpandBy(FVector(0.2, 0.0, 0.2)), Near);
-	const FVector2D Moving(Body.Velocity.X, Body.Velocity.Z);
+	const FBox Box = Body.GetBox();
+	Manager.FindInBox(Box.ExpandBy(FVector(0.2, 0.0, 0.2)), Near);
+	const bool bFast = FVector2D(Body.Velocity.X, Body.Velocity.Z).SizeSquared() > 0.01;
 	for (FMcEntity* Entity : Near)
 	{
-		if (!Entity->IsLiving() || Entity->bRemoved || static_cast<FMcMob*>(Entity)->RidingId != 0)
+		if (Entity == this || Entity->bRemoved)
 		{
 			continue;
 		}
-		// Away from the cart's middle, or the way it goes when they are on top of each other.
-		FVector2D Away(Entity->Body.Position.X - Body.Position.X, Entity->Body.Position.Z - Body.Position.Z);
-		const double Distance = Away.Size();
-		Away = Distance > 0.01 ? Away / Distance : (Moving.SizeSquared() > 1e-6 ? Moving.GetSafeNormal() : FVector2D(1.0, 0.0));
-		const double Push = 0.05 + Moving.Size() * 0.5;
-		Entity->Body.Velocity.X += Away.X * Push;
-		Entity->Body.Velocity.Z += Away.Y * Push;
+		if (ParseType(Entity->GetType()).IsSet())
+		{
+			static_cast<FMcMinecartEntity*>(Entity)->PushedBy(*this);
+			continue;
+		}
+		if (!Entity->IsLiving() || static_cast<FMcMob*>(Entity)->RidingId != 0)
+		{
+			continue;
+		}
+		const FVector2D Between(Entity->Body.Position.X - Body.Position.X, Entity->Body.Position.Z - Body.Position.Z);
+		if (bFast)
+		{
+			// The way any two things are shoved: by the bigger of the two gaps, 0.05 at a block or more.
+			const double Gap = FMath::Max(FMath::Abs(Between.X), FMath::Abs(Between.Y));
+			if (Gap >= 0.01)
+			{
+				const double Root = FMath::Sqrt(Gap);
+				const FVector2D Shove = Between / Root * FMath::Min(1.0 / Root, 1.0) * 0.05;
+				Entity->Body.Velocity += FVector(Shove.X, 0.0, Shove.Y);
+				if (GetPassengerCount() == 0)
+				{
+					Body.Velocity -= FVector(Shove.X, 0.0, Shove.Y);
+				}
+			}
+		}
+		const double Distance = Between.Size();
+		if (Distance >= 0.01 && Overlaps(Box, Entity->Body.GetBox()))
+		{
+			const FVector2D Shove = Between / Distance * FMath::Min(1.0 / Distance, 1.0) * 0.05;
+			Body.Velocity -= FVector(Shove.X, 0.0, Shove.Y);
+			Entity->Body.Velocity += FVector(Shove.X, 0.0, Shove.Y) * 0.25;
+		}
 	}
 }
 
@@ -510,11 +690,14 @@ void FMcMinecartEntity::TickVariant(FMcEntityManager& Manager)
 		}
 		break;
 	case EVariant::Hopper:
-		if (!bHopperLocked && Age % 4 == 0)
+		if (!bHopperLocked)
 		{
-			// It takes in the items lying in it or just over it.
+			// Every tick it takes in the items lying in it or over it, up to a little under two blocks above it
+			// (vehicle_log8.txt: items floating 0.8, 1.2 and 1.6 up are taken the tick after they appear, 2.0 up and more not;
+			// 0.6 to the side taken, 0.8 not; vehicle_log7.txt: a stack 1.94 up taken; five items five ticks apart each taken
+			// the tick after it appears).
 			TArray<FMcEntity*> Near;
-			Manager.FindInBox(FBox(Body.Position + FVector(-0.49, 0.0, -0.49), Body.Position + FVector(0.49, 1.2, 0.49)), Near);
+			Manager.FindInBox(FBox(Body.Position + FVector(-0.49, 0.0, -0.49), Body.Position + FVector(0.49, 1.96875, 0.49)), Near);
 			for (FMcEntity* Other : Near)
 			{
 				if (Other->bRemoved || Other->GetType() != FMcItemEntity::StaticType())

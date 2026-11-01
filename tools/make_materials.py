@@ -594,6 +594,10 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                                  {"Kind": (kind, ""), "A": (texture, "A"), "VNormal": (vertex_normal, ""), "View": (camera, ""), "Depth": (behind, "")},
                                  scalar=True)
             opacity_source = (fresnel, "")
+            # Water bends what lies under it (the ripples' normals do the distorting); the other blocks don't.
+            bend = add_custom(material, -100, 800, "McLitRefraction", KIND_HLSL + "return k == 1.0 ? 1.2 : 1.0;",
+                              {"Kind": (kind, "")}, scalar=True)
+            mel.connect_material_property(bend, "", unreal.MaterialProperty.MP_REFRACTION)
     else:
         colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,
                             {"Tex": (texture, "RGB"), "Shade": (vertex_color, ""), "Light": (uv2, ""),

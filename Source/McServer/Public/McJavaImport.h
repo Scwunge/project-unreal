@@ -28,6 +28,8 @@ namespace McJavaImport
 		int64 Blocks = 0;
 		// Of those, blocks that are not air (a check that nothing was read as air by mistake).
 		int64 NonAirBlocks = 0;
+		// Entities made into scenery in their chunk (item frames, glow item frames, paintings, armor stands: McDecor).
+		int32 Scenery = 0;
 		// Palette entries the registry does not know (name and properties as written), with how many blocks used them.
 		TMap<FString, int64> UnknownStates;
 		// Block entities that were too big to keep, by id.
@@ -81,6 +83,9 @@ namespace McJavaImport
 	// Stands a flag in every banner block of the chunk that has none yet, patterned as the imported banner was (the
 	// patterns of its kept block entity, which the game does not read otherwise). Returns how many it stood.
 	MCSERVER_API int32 StandBanners(const FMcChunk& Chunk, FMcEntityManager& Manager);
+	// What an entity of the game's NBT is as scenery: the McDecor line for an item frame, glow item frame, painting or armor
+	// stand, where it stands and its yaw. False for any other entity.
+	MCSERVER_API bool GetSceneryLine(const FMcNbt& Entity, FString& OutLine, FVector& OutPos, float& OutYaw);
 	// A summary for the log.
 	MCSERVER_API FString Describe(const FStats& Stats);
 }

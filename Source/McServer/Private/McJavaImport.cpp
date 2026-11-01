@@ -8,6 +8,8 @@
 #include "McChunk.h"
 #include "McEntityManager.h"
 #include "McChunkSave.h"
+#include "McDecor.h"
+#include "McDecorEntity.h"
 #include "McDimensionType.h"
 #include "McItemStack.h"
 #include "McNbt.h"
@@ -250,10 +252,113 @@ namespace
 		return Tag;
 	}
 
+	// The decor (item frame, glow item frame, painting, armor stand) an entity of the game's NBT is, with where it stands
+	// and which way it turns. False for any other entity, or one without what it needs.
+	bool MakeDecor(const FMcNbt& Entity, McDecor::FDecor& Out, FVector& OutPos, float& OutYaw)
+	{
+		const FString Id = Entity.GetString(TEXT("id"));
+		Out = McDecor::FDecor();
+		const FMcNbt* Pos = FindList(Entity, TEXT("Pos"));
+		if (!Pos || Pos->Num() != 3)
+		{
+			return false;
+		}
+		OutPos = FVector(Pos->Values[0].GetReal(), Pos->Values[1].GetReal(), Pos->Values[2].GetReal());
+		OutYaw = 0.0f;
+		if (const FMcNbt* Rotation = FindList(Entity, TEXT("Rotation")))
+		{
+			OutYaw = Rotation->Num() > 0 ? static_cast<float>(Rotation->Values[0].GetReal()) : 0.0f;
+		}
+		Out.bInvisible = Entity.GetInt(TEXT("Invisible")) != 0;
+		// A direction is a byte in the game's order (0 down, 1 up, 2 north, 3 south, 4 west, 5 east), or its name.
+		const auto GetFacing = [&Entity](const TCHAR* Key, int32 Default)
+		{
+			const FMcNbt* Tag = Entity.Find(Key);
+			if (!Tag)
+			{
+				return Default;
+			}
+			if (Tag->Type == FMcNbt::EType::String)
+			{
+				static const TCHAR* Names[] = { TEXT("down"), TEXT("up"), TEXT("north"), TEXT("south"), TEXT("west"), TEXT("east") };
+				for (int32 Index = 0; Index < 6; ++Index)
+				{
+					if (Tag->String == Names[Index])
+					{
+						return Index;
+					}
+				}
+				return Default;
+			}
+			return static_cast<int32>(Tag->Integer);
+		};
+		if (Id == TEXT("minecraft:item_frame") || Id == TEXT("minecraft:glow_item_frame"))
+		{
+			Out.Kind = Id == TEXT("minecraft:item_frame") ? McDecor::EKind::ItemFrame : McDecor::EKind::GlowItemFrame;
+			Out.Facing = GetFacing(TEXT("Facing"), 3);
+			Out.ItemRotation = static_cast<int32>(Entity.GetInt(TEXT("ItemRotation")));
+			if (const FMcNbt* Item = Entity.Find(TEXT("Item")))
+			{
+				Out.Item = Item->GetString(TEXT("id"));
+			}
+			return true;
+		}
+		if (Id == TEXT("minecraft:painting"))
+		{
+			Out.Kind = McDecor::EKind::Painting;
+			// A painting's facing byte counts the horizontal ways only (wiki, "Painting": 0 south, 1 west, 2 north, 3 east).
+			static const int32 FromPainting[4] = { 3, 4, 2, 5 };
+			const int32 Facing = GetFacing(TEXT("facing"), 0);
+			Out.Facing = Entity.Find(TEXT("facing")) && Entity.Find(TEXT("facing"))->Type == FMcNbt::EType::String ? Facing : FromPainting[Facing & 3];
+			Out.Variant = McCache::PathOf(Entity.GetString(TEXT("variant")));
+			return !Out.Variant.IsEmpty();
+		}
+		if (Id == TEXT("minecraft:armor_stand"))
+		{
+			Out.Kind = McDecor::EKind::ArmorStand;
+			Out.Yaw = OutYaw;
+			Out.bSmall = Entity.GetInt(TEXT("Small")) != 0;
+			Out.bArms = Entity.GetInt(TEXT("ShowArms")) != 0;
+			Out.bBasePlate = Entity.GetInt(TEXT("NoBasePlate")) == 0;
+			if (const FMcNbt* Pose = Entity.Find(TEXT("Pose")))
+			{
+				static const TCHAR* Keys[] = { TEXT("Head"), TEXT("Body"), TEXT("LeftArm"), TEXT("RightArm"), TEXT("LeftLeg"), TEXT("RightLeg") };
+				for (int32 Part = 0; Part < 6; ++Part)
+				{
+					const FMcNbt* Angles = FindList(*Pose, Keys[Part]);
+					if (Angles && Angles->Num() == 3)
+					{
+						Out.Pose[Part] = FVector3f(Angles->Values[0].GetReal(), Angles->Values[1].GetReal(), Angles->Values[2].GetReal());
+					}
+				}
+			}
+			if (const FMcNbt* Equipment = Entity.Find(TEXT("equipment")))
+			{
+				static const TCHAR* Keys[] = { TEXT("head"), TEXT("chest"), TEXT("legs"), TEXT("feet"), TEXT("mainhand"), TEXT("offhand") };
+				for (int32 Slot = 0; Slot < 6; ++Slot)
+				{
+					if (const FMcNbt* Stack = Equipment->Find(Keys[Slot]))
+					{
+						Out.Equipment[Slot] = Stack->GetString(TEXT("id"));
+					}
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	// What an entity file turned into scenery, by chunk: the entities' count and bytes as a chunk's save keeps them.
+	struct FSceneryChunk
+	{
+		int32 Count = 0;
+		TArray<uint8> Body;
+	};
+
 	// The entities of one region file of entities/ (the game keeps them apart from the blocks) as one NBT file under
 	// <dimension>/javaentities: Chunks, a list of { xPos, zPos, entities }. Nothing reads it yet; item frames, paintings,
 	// armor stands, villagers and the rest are kept as they were.
-	void SaveEntities(const FString& RegionFile, const FString& RegionFolder, int32 RegionX, int32 RegionZ, const FString& OutFolder, McJavaImport::FStats& Stats)
+	void SaveEntities(const FString& RegionFile, const FString& RegionFolder, int32 RegionX, int32 RegionZ, const FString& OutFolder, McJavaImport::FStats& Stats, TMap<FIntPoint, FSceneryChunk>& Scenery)
 	{
 		TArray<uint8> Bytes;
 		if (!FFileHelper::LoadFileToArray(Bytes, *RegionFile))
@@ -282,6 +387,25 @@ namespace
 				for (const FMcNbt& Entity : Entities->Values)
 				{
 					++Stats.Entities.FindOrAdd(Entity.GetString(TEXT("id")));
+					McDecor::FDecor Decor;
+					FVector Position;
+					float Yaw = 0.0f;
+					if (MakeDecor(Entity, Decor, Position, Yaw))
+					{
+						FMcDecorEntity Scenic;
+						Scenic.Body.Position = Position;
+						Scenic.Yaw = Yaw;
+						Scenic.Look = McDecor::Encode(Decor);
+						FString Type = FMcDecorEntity::StaticType().ToString();
+						TArray<uint8> Data;
+						FMemoryWriter DataWriter(Data);
+						Scenic.Serialize(DataWriter);
+						FSceneryChunk& Chunk = Scenery.FindOrAdd(FIntPoint(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ));
+						FMemoryWriter BodyWriter(Chunk.Body);
+						BodyWriter << Type << Data;
+						++Chunk.Count;
+						++Stats.Scenery;
+					}
 				}
 				FMcNbt Entry;
 				Entry.Type = FMcNbt::EType::Compound;
@@ -779,6 +903,22 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 			continue;
 		}
 		FMcWorldStorage Storage(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
+		// entities/ is next to region/ (in both layouts).
+		TMap<FIntPoint, FSceneryChunk> Scenery;
+		const FString EntityFolder = FPaths::GetPath(RegionFolder) / TEXT("entities");
+		TArray<FString> EntityFiles;
+		Files.FindFiles(EntityFiles, *(EntityFolder / TEXT("*.mca")), true, false);
+		for (const FString& File : EntityFiles)
+		{
+			TArray<FString> Parts;
+			File.ParseIntoArray(Parts, TEXT("."));
+			if (Parts.Num() == 4 && Parts[0] == TEXT("r"))
+			{
+				SaveEntities(EntityFolder / File, EntityFolder, FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2]),
+					WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats, Scenery);
+			}
+		}
+
 		TArray<FString> Names;
 		Files.FindFiles(Names, *(RegionFolder / TEXT("*.mca")), true, false);
 		for (const FString& File : Names)
@@ -820,6 +960,13 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 					}
 					FMcChunkSaveExtras Extras;
 					Extras.bPopulated = true;
+					if (const FSceneryChunk* Here = Scenery.Find(Pos))
+					{
+						FMemoryWriter CountWriter(Extras.Entities);
+						int32 Count = Here->Count;
+						CountWriter << Count;
+						Extras.Entities.Append(Here->Body);
+					}
 					Storage.QueueSave(Pos, McChunkSave::Encode(Chunk, Extras));
 					++OutStats.Chunks;
 				}
@@ -827,20 +974,6 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 		}
 		Storage.Flush();
 
-		// entities/ is next to region/ (in both layouts).
-		const FString EntityFolder = FPaths::GetPath(RegionFolder) / TEXT("entities");
-		TArray<FString> EntityFiles;
-		Files.FindFiles(EntityFiles, *(EntityFolder / TEXT("*.mca")), true, false);
-		for (const FString& File : EntityFiles)
-		{
-			TArray<FString> Parts;
-			File.ParseIntoArray(Parts, TEXT("."));
-			if (Parts.Num() == 4 && Parts[0] == TEXT("r"))
-			{
-				SaveEntities(EntityFolder / File, EntityFolder, FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2]),
-					WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats);
-			}
-		}
 	}
 	if (!McWorldSave::SaveLevel(WorldDir, Level))
 	{
@@ -849,6 +982,17 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 	}
 	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s': %s"), *Source, *Folder, *Describe(OutStats));
 	return Folder;
+}
+
+bool McJavaImport::GetSceneryLine(const FMcNbt& Entity, FString& OutLine, FVector& OutPos, float& OutYaw)
+{
+	McDecor::FDecor Decor;
+	if (!MakeDecor(Entity, Decor, OutPos, OutYaw))
+	{
+		return false;
+	}
+	OutLine = McDecor::Encode(Decor);
+	return true;
 }
 
 int32 McJavaImport::StandBanners(const FMcChunk& Chunk, FMcEntityManager& Manager)
@@ -903,6 +1047,10 @@ FString McJavaImport::Describe(const FStats& Stats)
 	for (const TPair<FString, int32>& Kept : Stats.KeptRawBlockEntities)
 	{
 		Out += FString::Printf(TEXT("; kept raw %s x%d"), *Kept.Key, Kept.Value);
+	}
+	if (Stats.Scenery > 0)
+	{
+		Out += FString::Printf(TEXT("; %d frames, paintings and armor stands drawn"), Stats.Scenery);
 	}
 	for (const TPair<FString, int32>& Entity : Stats.Entities)
 	{

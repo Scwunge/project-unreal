@@ -1,6 +1,7 @@
 #include "McEntityModel.h"
 #include "McRenderMode.h"
 #include "McCache.h"
+#include "McDecor.h"
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderTextures.h"
@@ -346,6 +347,185 @@ namespace McEntityModel
 		for (FVector& Position : Out.Positions)
 		{
 			Position *= 2.0 / 3.0;
+		}
+	}
+
+	namespace
+	{
+		// The way an item frame or painting faces (the game's directions: 0 down, 1 up, 2 north, 3 south, 4 west, 5 east):
+		// U runs to the right of a viewer in front of it, V up its face, N out of it, all in Minecraft's axes.
+		void GetDecorBasis(int32 Facing, FVector& U, FVector& V, FVector& N)
+		{
+			V = FVector(0, 1, 0);
+			switch (Facing)
+			{
+			case 0: N = FVector(0, -1, 0); U = FVector(1, 0, 0); V = FVector(0, 0, 1); break;
+			case 1: N = FVector(0, 1, 0); U = FVector(1, 0, 0); V = FVector(0, 0, -1); break;
+			case 2: N = FVector(0, 0, -1); U = FVector(-1, 0, 0); break;
+			case 4: N = FVector(-1, 0, 0); U = FVector(0, 0, 1); break;
+			case 5: N = FVector(1, 0, 0); U = FVector(0, 0, -1); break;
+			default: N = FVector(0, 0, 1); U = FVector(1, 0, 0); break;
+			}
+		}
+
+		// One quad, its corners bottom-left, bottom-right, top-right, top-left seen from outside, in blocks about the entity.
+		void AddDecorQuad(const FVector (&Corners)[4], const FVector2D (&UVs)[4], bool bGlow, McPlayerModel::FMeshData& Out)
+		{
+			const FVector Normal = FVector::CrossProduct(Corners[1] - Corners[0], Corners[3] - Corners[0]).GetSafeNormal();
+			const FColor Color = bGlow ? FColor::White : Shade(Normal, 0.0f);
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(FVector(Corners[Corner].X, Corners[Corner].Z, Corners[Corner].Y) * McCoords::UnitsPerBlock);
+				Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(Color);
+			}
+			Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		}
+
+		// A flat picture in the plane spanned by U (right) and V (up), centred at Centre, Width by Height blocks, showing
+		// the rectangle of the texture Rect = [U0, V0, U1, V1]. Seen from behind (bBack) the right-hand side is the other one.
+		void AddDecorPicture(const FVector& Centre, const FVector& U, const FVector& V, double Width, double Height, const FVector4& Rect, bool bBack, bool bGlow, McPlayerModel::FMeshData& Out)
+		{
+			const FVector Right = U * (Width * 0.5);
+			const FVector Up = V * (Height * 0.5);
+			FVector Corners[4] = { Centre - Right - Up, Centre + Right - Up, Centre + Right + Up, Centre - Right + Up };
+			FVector2D UVs[4] = { FVector2D(Rect.X, Rect.W), FVector2D(Rect.Z, Rect.W), FVector2D(Rect.Z, Rect.Y), FVector2D(Rect.X, Rect.Y) };
+			if (bBack)
+			{
+				Swap(Corners[0], Corners[1]);
+				Swap(Corners[2], Corners[3]);
+				Swap(UVs[0], UVs[1]);
+				Swap(UVs[2], UVs[3]);
+			}
+			AddDecorQuad(Corners, UVs, bGlow, Out);
+		}
+
+		// A box of the item frame's model, in pixels of a block, for a frame hung on a wall to the south
+		// (assets: models/block/template_item_frame.json), with each face's picture rectangle in sixteenths of its texture;
+		// a face with no rectangle (-1) is not drawn. Faces in the order down, up, north, south, west, east.
+		struct FFrameElement
+		{
+			FVector From;
+			FVector To;
+			bool bBack;
+			int32 Faces[6][4];
+		};
+
+		const FFrameElement* GetFrameElements(int32& OutNum)
+		{
+			static const FFrameElement Elements[] = {
+				// The back plate, a picture of its own.
+				{ FVector(3, 3, 15.5), FVector(13, 13, 16), true, {
+					{ -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { 3, 3, 13, 13 }, { 3, 3, 13, 13 }, { -1, -1, -1, -1 }, { -1, -1, -1, -1 } } },
+				// The wood: bottom, top, left, right.
+				{ FVector(2, 2, 15), FVector(14, 3, 16), false, {
+					{ 2, 0, 14, 1 }, { 2, 15, 14, 16 }, { 2, 13, 14, 14 }, { 2, 13, 14, 14 }, { 15, 13, 16, 14 }, { 0, 13, 1, 14 } } },
+				{ FVector(2, 13, 15), FVector(14, 14, 16), false, {
+					{ 2, 0, 14, 1 }, { 2, 15, 14, 16 }, { 2, 2, 14, 3 }, { 2, 2, 14, 3 }, { 15, 2, 16, 3 }, { 0, 2, 1, 3 } } },
+				{ FVector(2, 3, 15), FVector(3, 13, 16), false, {
+					{ -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { 13, 3, 14, 13 }, { 2, 3, 3, 13 }, { 15, 3, 16, 13 }, { 0, 3, 1, 13 } } },
+				{ FVector(13, 3, 15), FVector(14, 13, 16), false, {
+					{ -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { 2, 3, 3, 13 }, { 13, 3, 14, 13 }, { 15, 3, 16, 13 }, { 0, 3, 1, 13 } } },
+			};
+			OutNum = UE_ARRAY_COUNT(Elements);
+			return Elements;
+		}
+	}
+
+	int32 GetDecorLayers(const McDecor::FDecor& Decor)
+	{
+		switch (Decor.Kind)
+		{
+		case McDecor::EKind::Painting: return 2;
+		case McDecor::EKind::ArmorStand: return 1;
+		default: return Decor.Item.IsEmpty() ? 2 : 3;
+		}
+	}
+
+	void BuildDecorMesh(const McDecor::FDecor& Decor, int32 Layer, FVector2D PictureBlocks, float ItemVMax, McPlayerModel::FMeshData& Out)
+	{
+		FVector U, V, N;
+		GetDecorBasis(Decor.Facing, U, V, N);
+		const bool bGlow = Decor.Kind == McDecor::EKind::GlowItemFrame;
+		if (Decor.Kind == McDecor::EKind::Painting)
+		{
+			// A thin slab about the entity: its picture on the front (layer 0), its back and edges plain (layer 1).
+			const double Thickness = 1.0 / 16.0;
+			const FVector Front = N * (Thickness * 0.5);
+			const FVector4 Whole(0, 0, 1, 1);
+			if (Layer == 0)
+			{
+				AddDecorPicture(Front, U, V, PictureBlocks.X, PictureBlocks.Y, Whole, false, false, Out);
+			}
+			else
+			{
+				AddDecorPicture(-Front, U, V, PictureBlocks.X, PictureBlocks.Y, Whole, true, false, Out);
+				AddDecorPicture(U * (PictureBlocks.X * 0.5), N, V, Thickness, PictureBlocks.Y, Whole, false, false, Out);
+				AddDecorPicture(-U * (PictureBlocks.X * 0.5), N, V, Thickness, PictureBlocks.Y, Whole, true, false, Out);
+				AddDecorPicture(V * (PictureBlocks.Y * 0.5), U, N, PictureBlocks.X, Thickness, Whole, false, false, Out);
+				AddDecorPicture(-V * (PictureBlocks.Y * 0.5), U, N, PictureBlocks.X, Thickness, Whole, true, false, Out);
+			}
+			return;
+		}
+		if (Decor.Kind != McDecor::EKind::ItemFrame && Decor.Kind != McDecor::EKind::GlowItemFrame)
+		{
+			return;
+		}
+		if (Layer == 2)
+		{
+			// The item stands flat in the frame, half a block across, turned by eighths of a turn.
+			const double Angle = FMath::DegreesToRadians(-45.0 * (Decor.ItemRotation & 7));
+			const FVector RotU = U * FMath::Cos(Angle) + V * FMath::Sin(Angle);
+			const FVector RotV = V * FMath::Cos(Angle) - U * FMath::Sin(Angle);
+			const FVector4 Rect(0, 0, 1, ItemVMax);
+			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
+			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
+			return;
+		}
+		if (Decor.bInvisible)
+		{
+			return;
+		}
+		int32 NumElements = 0;
+		const FFrameElement* Elements = GetFrameElements(NumElements);
+		// The model hangs on a wall to the south and the plate's centre is the entity: block pixels (x, y, z) become
+		// U to the viewer's right, V up and N out of the wall.
+		const auto Place = [&](double X, double Y, double Z)
+		{
+			return U * ((8.0 - X) / 16.0) + V * ((Y - 8.0) / 16.0) - N * ((Z - 15.5) / 16.0);
+		};
+		for (int32 Index = 0; Index < NumElements; ++Index)
+		{
+			const FFrameElement& Element = Elements[Index];
+			if (Element.bBack != (Layer == 1))
+			{
+				continue;
+			}
+			const double MinX = Element.From.X, MinY = Element.From.Y, MinZ = Element.From.Z;
+			const double MaxX = Element.To.X, MaxY = Element.To.Y, MaxZ = Element.To.Z;
+			const FVector Corners[6][4] = {
+				{ Place(MinX, MinY, MinZ), Place(MaxX, MinY, MinZ), Place(MaxX, MinY, MaxZ), Place(MinX, MinY, MaxZ) },  // down
+				{ Place(MinX, MaxY, MaxZ), Place(MaxX, MaxY, MaxZ), Place(MaxX, MaxY, MinZ), Place(MinX, MaxY, MinZ) },  // up
+				{ Place(MaxX, MinY, MinZ), Place(MinX, MinY, MinZ), Place(MinX, MaxY, MinZ), Place(MaxX, MaxY, MinZ) },  // north
+				{ Place(MinX, MinY, MaxZ), Place(MaxX, MinY, MaxZ), Place(MaxX, MaxY, MaxZ), Place(MinX, MaxY, MaxZ) },  // south
+				{ Place(MinX, MinY, MinZ), Place(MinX, MinY, MaxZ), Place(MinX, MaxY, MaxZ), Place(MinX, MaxY, MinZ) },  // west
+				{ Place(MaxX, MinY, MaxZ), Place(MaxX, MinY, MinZ), Place(MaxX, MaxY, MinZ), Place(MaxX, MaxY, MaxZ) },  // east
+			};
+			for (int32 Face = 0; Face < 6; ++Face)
+			{
+				const int32* Rect = Element.Faces[Face];
+				if (Rect[0] < 0)
+				{
+					continue;
+				}
+				const FVector2D UVs[4] = {
+					FVector2D(Rect[0] / 16.0, Rect[3] / 16.0), FVector2D(Rect[2] / 16.0, Rect[3] / 16.0),
+					FVector2D(Rect[2] / 16.0, Rect[1] / 16.0), FVector2D(Rect[0] / 16.0, Rect[1] / 16.0),
+				};
+				AddDecorQuad(Corners[Face], UVs, false, Out);
+			}
 		}
 	}
 
@@ -741,11 +921,12 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
+	bIsDecor = Kind == TEXT("mc:decor") && McDecor::Decode(Item.ToString(), Decor);
 	if (bIsBanner)
 	{
 		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
 	}
-	Model = bIsItem || bIsArrow || bIsBanner || bIsTnt ? nullptr : McEntityModel::Find(Kind);
+	Model = bIsItem || bIsArrow || bIsBanner || bIsTnt || bIsDecor ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
@@ -756,7 +937,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || bIsArrow || bIsBanner || bIsTnt || Model != nullptr;
+	return bIsItem || bIsArrow || bIsBanner || bIsTnt || bIsDecor || Model != nullptr;
 }
 
 void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
@@ -808,6 +989,23 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		static const TCHAR* Names[3] = { TEXT("tnt_side"), TEXT("tnt_top"), TEXT("tnt_bottom") };
 		return McCache::Asset(FString(TEXT("textures/block/")) + Names[FMath::Clamp(Layer, 0, 2)] + TEXT(".png"));
 	}
+	if (bIsDecor)
+	{
+		switch (Decor.Kind)
+		{
+		case McDecor::EKind::Painting:
+			return McCache::Asset(TEXT("textures/painting/") + (Layer == 0 ? Decor.Variant : FString(TEXT("back"))) + TEXT(".png"));
+		case McDecor::EKind::ArmorStand:
+			return McCache::Asset(TEXT("textures/entity/armorstand/armorstand.png"));
+		default:
+			if (Layer == 2)
+			{
+				return FindItemTexture(FName(*Decor.Item));
+			}
+			return McCache::Asset(Layer == 0 ? FString(TEXT("textures/block/birch_planks.png"))
+				: FString(Decor.Kind == McDecor::EKind::GlowItemFrame ? TEXT("textures/block/glow_item_frame.png") : TEXT("textures/block/item_frame.png")));
+		}
+	}
 	if (bIsBanner)
 	{
 		// The pole and bar have a picture of their own; the flag has the base and then one for each pattern.
@@ -853,7 +1051,7 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	{
 		return nullptr;
 	}
-	if (bIsItem)
+	if (bIsItem || (bIsDecor && Layer == 2 && Decor.Kind != McDecor::EKind::Painting))
 	{
 		// An animated item is a column of frames; the first one is the square on top.
 		ItemVMax = Size.Y > Size.X && Size.X > 0 ? static_cast<float>(Size.X) / Size.Y : 1.0f;
@@ -1023,6 +1221,49 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 		}
 		bFlashing = bFlash;
+		return;
+	}
+	if (bIsDecor)
+	{
+		const int32 NumDecorLayers = McEntityModel::GetDecorLayers(Decor);
+		FVector2D Picture(1.0, 1.0);
+		if (Decor.Kind == McDecor::EKind::Painting)
+		{
+			// A painting is as many blocks across as its picture has sixteenths.
+			FIntPoint Size;
+			if (!LoadCached(GetTexturePath(0), Size))
+			{
+				return;
+			}
+			Picture = FVector2D(Size.X / 16.0, Size.Y / 16.0);
+		}
+		for (int32 Layer = 0; Layer < NumDecorLayers; ++Layer)
+		{
+			UMaterialInstanceDynamic* Material = GetMaterial(Layer);
+			if (!Material)
+			{
+				continue;
+			}
+			const bool bGlow = Decor.Kind == McDecor::EKind::GlowItemFrame && Layer == 2;
+			Material->SetScalarParameterValue(TEXT("SkyFactor"), bGlow ? 1.0f : McSky::GetSkyLightFactor());
+			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+			if (NumSections > Layer)
+			{
+				continue;
+			}
+			McPlayerModel::FMeshData Data;
+			McEntityModel::BuildDecorMesh(Decor, Layer, Picture, ItemVMax, Data);
+			if (Data.Positions.IsEmpty())
+			{
+				continue;
+			}
+			TArray<FVector2D> UV1, UV2;
+			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
+			SetMaterial(Layer, Material);
+			NumSections = Layer + 1;
+		}
 		return;
 	}
 	if (bIsBanner)

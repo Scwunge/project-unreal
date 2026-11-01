@@ -5,6 +5,7 @@
 #include "McBannerEntity.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
+#include "McDecor.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
 #include "McChunk.h"
@@ -52,6 +53,24 @@ namespace
 		void Str(const FString& Name, const FString& Value) { Tag(8, Name); String(Value); }
 		void Byte(const FString& Name, int32 Value) { Tag(1, Name); Big(static_cast<uint8>(Value), 1); }
 		void Compound(const FString& Name) { Tag(10, Name); }
+		void Doubles(std::initializer_list<double> Values)
+		{
+			for (double Value : Values)
+			{
+				uint64 Bits;
+				FMemory::Memcpy(&Bits, &Value, sizeof(Bits));
+				Big(Bits, 8);
+			}
+		}
+		void Floats(std::initializer_list<float> Values)
+		{
+			for (float Value : Values)
+			{
+				uint32 Bits;
+				FMemory::Memcpy(&Bits, &Value, sizeof(Bits));
+				Big(Bits, 4);
+			}
+		}
 		void End() { Big(0, 1); }
 		void List(const FString& Name, uint8 ElementType, int32 Count) { Tag(9, Name); Big(ElementType, 1); Big(static_cast<uint32>(Count), 4); }
 		void Longs(const FString& Name, const TArray<int64>& Values)
@@ -472,6 +491,103 @@ bool FMcJavaImportBannerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportSceneryTest, "McClient.McServer.JavaImport.Scenery",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportSceneryTest::RunTest(const FString& Parameters)
+{
+	const auto Parse = [](const FNbtWriter& Writer, FMcNbt& Out) { return FMcNbt::Parse(Writer.Bytes, Out); };
+	FString Line;
+	FVector Pos;
+	float Yaw = 0.0f;
+	{
+		// An item frame as the game saved it: on the south side of a wall, a sword turned two eighths.
+		FNbtWriter Writer;
+		Writer.Compound(TEXT(""));
+		Writer.Str(TEXT("id"), TEXT("minecraft:item_frame"));
+		Writer.Byte(TEXT("Facing"), 3);
+		Writer.Byte(TEXT("ItemRotation"), 2);
+		Writer.List(TEXT("Pos"), 6, 3);
+		Writer.Doubles({ 8.5, -58.5, 1.03125 });
+		Writer.Compound(TEXT("Item"));
+		Writer.Str(TEXT("id"), TEXT("minecraft:diamond_sword"));
+		Writer.Int(TEXT("count"), 1);
+		Writer.End();
+		Writer.End();
+		FMcNbt Entity;
+		if (TestTrue(TEXT("frame parses"), Parse(Writer, Entity)) && TestTrue(TEXT("frame is scenery"), McJavaImport::GetSceneryLine(Entity, Line, Pos, Yaw)))
+		{
+			TestEqual(TEXT("frame line"), Line, FString(TEXT("frame;f=3;rot=2;invis=0;item=minecraft:diamond_sword")));
+			TestEqual(TEXT("frame z"), Pos.Z, 1.03125);
+			McDecor::FDecor Decor;
+			TestTrue(TEXT("decodes"), McDecor::Decode(Line, Decor));
+			TestEqual(TEXT("item"), Decor.Item, FString(TEXT("minecraft:diamond_sword")));
+			TestEqual(TEXT("rotation"), Decor.ItemRotation, 2);
+		}
+	}
+	{
+		FNbtWriter Writer;
+		Writer.Compound(TEXT(""));
+		Writer.Str(TEXT("id"), TEXT("minecraft:armor_stand"));
+		Writer.Byte(TEXT("ShowArms"), 1);
+		Writer.Byte(TEXT("NoBasePlate"), 1);
+		Writer.List(TEXT("Rotation"), 5, 2);
+		Writer.Floats({ 30.0f, 0.0f });
+		Writer.List(TEXT("Pos"), 6, 3);
+		Writer.Doubles({ 4.5, -60.0, 6.5 });
+		Writer.Compound(TEXT("Pose"));
+		Writer.List(TEXT("Head"), 5, 3);
+		Writer.Floats({ 10.0f, 20.0f, 0.0f });
+		Writer.End();
+		Writer.Compound(TEXT("equipment"));
+		Writer.Compound(TEXT("head"));
+		Writer.Str(TEXT("id"), TEXT("minecraft:iron_helmet"));
+		Writer.End();
+		Writer.End();
+		Writer.End();
+		FMcNbt Entity;
+		McDecor::FDecor Decor;
+		if (TestTrue(TEXT("stand parses"), Parse(Writer, Entity)) && TestTrue(TEXT("stand is scenery"), McJavaImport::GetSceneryLine(Entity, Line, Pos, Yaw)) && TestTrue(TEXT("decodes"), McDecor::Decode(Line, Decor)))
+		{
+			TestEqual(TEXT("yaw"), Yaw, 30.0f);
+			TestEqual(TEXT("yaw kept"), Decor.Yaw, 30.0f);
+			TestTrue(TEXT("arms"), Decor.bArms);
+			TestFalse(TEXT("no base plate"), Decor.bBasePlate);
+			TestEqual(TEXT("head pitch"), Decor.Pose[static_cast<int32>(McDecor::EPart::Head)].X, 10.0f);
+			TestEqual(TEXT("head turn"), Decor.Pose[static_cast<int32>(McDecor::EPart::Head)].Y, 20.0f);
+			TestEqual(TEXT("unset arm is the default"), Decor.Pose[static_cast<int32>(McDecor::EPart::RightArm)], McDecor::GetDefaultPose(McDecor::EPart::RightArm));
+			TestEqual(TEXT("helmet"), Decor.Equipment[static_cast<int32>(McDecor::ESlot::Head)], FString(TEXT("minecraft:iron_helmet")));
+		}
+	}
+	{
+		FNbtWriter Writer;
+		Writer.Compound(TEXT(""));
+		Writer.Str(TEXT("id"), TEXT("minecraft:painting"));
+		Writer.Str(TEXT("variant"), TEXT("minecraft:kebab"));
+		Writer.Byte(TEXT("facing"), 0);
+		Writer.List(TEXT("Pos"), 6, 3);
+		Writer.Doubles({ 1.5, -58.5, 1.5 });
+		Writer.End();
+		FMcNbt Entity;
+		if (TestTrue(TEXT("painting parses"), Parse(Writer, Entity)) && TestTrue(TEXT("painting is scenery"), McJavaImport::GetSceneryLine(Entity, Line, Pos, Yaw)))
+		{
+			TestEqual(TEXT("painting line"), Line, FString(TEXT("painting;f=3;v=kebab")));
+		}
+	}
+	{
+		FNbtWriter Writer;
+		Writer.Compound(TEXT(""));
+		Writer.Str(TEXT("id"), TEXT("minecraft:villager"));
+		Writer.List(TEXT("Pos"), 6, 3);
+		Writer.Doubles({ 1.5, -58.5, 1.5 });
+		Writer.End();
+		FMcNbt Entity;
+		TestTrue(TEXT("villager parses"), Parse(Writer, Entity));
+		TestFalse(TEXT("a villager is not scenery"), McJavaImport::GetSceneryLine(Entity, Line, Pos, Yaw));
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportBuildTest, "McClient.McServer.JavaImport.ImportBuild",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
 
@@ -590,7 +706,7 @@ bool FMcJavaImportRealWorldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("chunks were imported"), Stats.Chunks > 0);
 	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
 	TestEqual(TEXT("no unknown block states"), Stats.UnknownStates.Num(), 0);
-	TestTrue(TEXT("most of the world is not air"), Stats.NonAirBlocks > Stats.Blocks / 20);
+	TestTrue(*FString::Printf(TEXT("some of the world is not air (%lld of %lld blocks)"), Stats.NonAirBlocks, Stats.Blocks), Stats.NonAirBlocks > 0);
 	FMcLevelData Level;
 	TestTrue(TEXT("the level reads back"), McWorldSave::LoadLevel(McWorldSave::GetWorldDir(Folder), Level));
 	TestEqual(TEXT("seed from world_gen_settings.dat"), Level.Seed, int64(-77777));

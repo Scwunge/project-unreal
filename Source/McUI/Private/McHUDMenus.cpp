@@ -558,6 +558,8 @@ TArray<FString> AMcHUD::LoadSplashTexts()
 	return Lines;
 }
 
+// The three dates and their texts are from minecraft.wiki's "Splash" page (Special splashes: Merry X-mas! on December 24, Happy new
+// year! on January 1, OOoooOOOoooo! Spooky! on October 31).
 FString AMcHUD::PickSplash(const TArray<FString>& Lines, int32 Month, int32 Day, float Roll)
 {
 	if (Month == 12 && Day == 24)
@@ -575,8 +577,19 @@ FString AMcHUD::PickSplash(const TArray<FString>& Lines, int32 Month, int32 Day,
 	return Lines.IsEmpty() ? FString() : Lines[FMath::Clamp(FMath::FloorToInt(Roll * Lines.Num()), 0, Lines.Num() - 1)];
 }
 
-// The splash sits at the right of the logo, turned 20 degrees up, and pulses once a second: 1.8 times the text's size,
-// shrunk to fit (100 over its width and 32), by up to a tenth of that.
+// The splash text. Every number below was measured from the vanilla client's own title screens, not taken from its code:
+// 48 shots of it (scripts/respack_splash_pulse.txt in the reference, fitted by pixel analysis) of three splashes of 10, 90 and
+// 222 pixels, with the wall clock logged before each.
+//  - It is turned 20.0 degrees upward: the text rows are sharpest in a rotated frame at -20.0 (tried 0.02 degrees apart).
+//  - Its scale at the biggest of a pulse is 179.3 / (width + 31.1) (least squares over the three widths; the fit is exact to
+//    within 0.1% of the scale), and the scale dips by 5.5% of that when the pulse is at its lowest.
+//  - The pulse repeats every 999 to 1002 ms (|sine| shape: the dips come every 500 ms, fitted at 0.13 to 0.25 px rms), and
+//    it is tied to the clock, not to the screen opening; the phase measured is within the shots' own timing (0 to 135 ms)
+//    of the clock's whole seconds, so it is taken as zero there.
+//  - It is anchored 123.95 GUI pixels right of the screen's middle and 68.38 down (centroid of its ink against the anchor,
+//    over all shots, 0.56 GUI pixels rms), and its first row of text is 7.39 pixels above that point, text and rows
+//    turned and scaled about it, with the text centred on it.
+// Colour: it is drawn in yellow (255, 255, 0) with the usual shadow, as the pixels show.
 void AMcHUD::DrawSplash(float CentreX)
 {
 	if (!bSplashChosen)
@@ -589,11 +602,12 @@ void AMcHUD::DrawSplash(float CentreX)
 	{
 		return;
 	}
-	const double Seconds = FMath::Fmod(FPlatformTime::Seconds(), 1.0);
-	const float Pulse = 1.8f - FMath::Abs(FMath::Sin(static_cast<float>(Seconds * 2.0 * UE_DOUBLE_PI)) * 0.1f);
-	const float Size = Pulse * 100.0f / (TextWidth(Splash) + 32.0f);
-	Canvas->Canvas->PushRelativeTransform(FRotationMatrix(FRotator(0.0f, -20.0f, 0.0f)) * FTranslationMatrix(FVector((CentreX + 123.0f) * Scale, 69.0f * Scale, 0.0f)));
-	DrawGuiText(Splash, -TextWidth(Splash) * Size / 2.0f, -8.0f * Size, 0xFFFF00, true, 1.0f, Size);
+	const int64 Millis = (FDateTime::UtcNow() - FDateTime::FromUnixTimestamp(0)).GetTotalMilliseconds();
+	const float Pulse = FMath::Abs(FMath::Sin(static_cast<float>((Millis % 1000) / 1000.0 * 2.0 * UE_DOUBLE_PI)));
+	const float Width = TextWidth(Splash);
+	const float Size = 179.3f * (1.0f - 0.055f * Pulse) / (Width + 31.1f);
+	Canvas->Canvas->PushRelativeTransform(FRotationMatrix(FRotator(0.0f, -20.0f, 0.0f)) * FTranslationMatrix(FVector((CentreX + 123.95f) * Scale, 68.38f * Scale, 0.0f)));
+	DrawGuiText(Splash, -Width * Size / 2.0f, -7.39f * Size, 0xFFFF00, true, 1.0f, Size);
 	Canvas->Canvas->PopTransform();
 }
 

@@ -13,6 +13,7 @@
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "zlib.h"
 
 namespace
 {
@@ -221,18 +222,31 @@ bool McJavaImport::Decompress(uint8 Compression, TConstArrayView<uint8> Data, TA
 		Out.SetNumUninitialized(Size);
 		return FCompression::UncompressMemory(NAME_Gzip, Out.GetData(), Size, Data.GetData(), Data.Num());
 	}
-	// Zlib does not say its size: try a guess and double it until the stream fits. The NBT reader stops at the end of the
-	// root compound, so a tail of unused bytes after it does no harm.
-	for (int64 Size = FMath::Max<int64>(Data.Num() * 8, 64 * 1024); Size <= MaxInflated; Size *= 2)
+	// Zlib does not say its size, so inflate in pieces until the stream ends.
+	z_stream Stream = {};
+	if (inflateInit(&Stream) != Z_OK)
 	{
-		Out.SetNumUninitialized(static_cast<int32>(Size));
-		if (FCompression::UncompressMemory(NAME_Zlib, Out.GetData(), static_cast<int32>(Size), Data.GetData(), Data.Num()))
-		{
-			return true;
-		}
+		return false;
 	}
-	Out.Reset();
-	return false;
+	Stream.next_in = const_cast<Bytef*>(Data.GetData());
+	Stream.avail_in = static_cast<uInt>(Data.Num());
+	TArray<uint8> Chunk;
+	Chunk.SetNumUninitialized(64 * 1024);
+	int Result = Z_OK;
+	while (Result == Z_OK && Out.Num() < MaxInflated)
+	{
+		Stream.next_out = Chunk.GetData();
+		Stream.avail_out = Chunk.Num();
+		Result = inflate(&Stream, Z_NO_FLUSH);
+		Out.Append(Chunk.GetData(), Chunk.Num() - static_cast<int32>(Stream.avail_out));
+	}
+	inflateEnd(&Stream);
+	if (Result != Z_STREAM_END)
+	{
+		Out.Reset();
+		return false;
+	}
+	return true;
 }
 
 bool McJavaImport::ReadChunkBytes(TConstArrayView<uint8> RegionFile, int32 LocalX, int32 LocalZ, const FString& RegionFolder,
@@ -307,12 +321,18 @@ FMcStateId McJavaImport::MapState(const FString& Name, const TMap<FString, FStri
 	const FName Block(*(Name.Contains(TEXT(":")) ? Name : TEXT("minecraft:") + Name));
 	if (Registry.FindBlock(Block))
 	{
-		TMap<FName, FName> Wanted;
+		// Only properties the block has: FindState does not look past one it does not know.
+		const FMcStateId BlockDefault = Registry.FindDefaultState(Block).Get(0);
+		TMap<FName, FName> Wanted, Fitting;
 		for (const TPair<FString, FString>& Pair : Properties)
 		{
 			Wanted.Add(FName(*Pair.Key), FName(*Pair.Value));
+			if (!Registry.GetPropertyValue(BlockDefault, FName(*Pair.Key)).IsNone())
+			{
+				Fitting.Add(FName(*Pair.Key), FName(*Pair.Value));
+			}
 		}
-		if (const TOptional<FMcStateId> State = Registry.FindState(Block, Wanted))
+		if (const TOptional<FMcStateId> State = Registry.FindState(Block, Fitting))
 		{
 			// Properties the block does not have (or values it does not allow) are left out by FindState, so check that
 			// every property asked for was kept; if not it still is the block, which beats the placeholder.

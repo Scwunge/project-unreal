@@ -500,8 +500,8 @@ namespace McEntityModel
 				Cage.TextureSize = FIntPoint(32, 16);
 				// The eye is shut while the conduit is awake, and opens when it hunts, with the whole frame (vanilla's
 				// hunting flag comes on with the 42nd frame block, conduit_log; minecraft.wiki: "an orange iris").
-				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png"), TEXT("conduit/wind.png") };
-				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16), FIntPoint(64, 704) };
+				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png"), TEXT("conduit/wind.png"), TEXT("conduit/wind_vertical.png") };
+				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16), FIntPoint(64, 704), FIntPoint(64, 704) };
 				Cage.Parts.Add(Part(ERole::ConduitCage, FVector::ZeroVector, { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
 				// The eye's picture is 8 pixels, drawn at 0.6 (about 37 pixels across in ref_scene_conduits and
 				// ref_conduits_b/c, against 0.5 and 0.6 on -McScene=conduits). The wind is 1.25 times a block: the ring in
@@ -525,6 +525,12 @@ namespace McEntityModel
 				Cage.GlowLayers |= 1u << 2;
 				Wind.Scale = WindScale;
 				Cage.Parts.Add(Wind);
+				// Every other run of the 22 frames it is wind_vertical.png on the box stood on end, its streaks upright
+				// (conduit_frames.txt: rings in ref_cf_07 to 23 and 50 to 59, upright frames in ref_cf_33 to 45).
+				FPart WindVertical = Part(ERole::ConduitWind, FVector::ZeroVector, { Box(0, 0, -8, -8, -8, 16, 16, 16) }, HALF_PI, 0, 0, 0, 3);
+				WindVertical.Scale = WindScale;
+				Cage.Parts.Add(WindVertical);
+				Cage.GlowLayers |= 1u << 3;
 				Models.Add(Cage.Kind, Cage);
 				FModel Hunting = Cage;
 				Hunting.Kind = FName(TEXT("mc:conduit/hunting"));
@@ -806,10 +812,17 @@ namespace McEntityModel
 			{
 				if (Part.Role == ERole::ConduitWind)
 				{
-					// The picture's frames go down the column, one each 3 ticks (wind.png.mcmeta).
-					FBox Frame = Box;
+					// The picture's frames go down the column, one each 3 ticks (wind.png.mcmeta), and the two pictures take
+					// turns, a run of all 22 frames each: in conduit_frames.txt a run of wind.png starts 20 ticks into a
+					// 66-tick run of the conduit's tick count (its first streak in ref_cf_07, count 221, is frame 1).
 					const int32 NumFrames = FMath::Max(1, Size.Y / 32);
-					Frame.UV.Y += (FMath::FloorToInt32(Anim.Age * 20.0f / 3.0f) % NumFrames) * 32;
+					const int32 Ticks = FMath::Max(0, FMath::FloorToInt32(Anim.Age * 20.0f) - 20 + 66 * 2);
+					if ((Ticks / (NumFrames * 3)) % 2 != Part.Layer - 2)
+					{
+						continue;
+					}
+					FBox Frame = Box;
+					Frame.UV.Y += ((Ticks / 3) % NumFrames) * 32;
 					const int32 FirstTriangle = Out.Triangles.Num();
 					AddBox(Frame, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
 					for (int32 Index = Out.Triangles.Num() - 3; Index >= FirstTriangle; Index -= 3)

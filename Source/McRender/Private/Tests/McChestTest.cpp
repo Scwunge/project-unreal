@@ -406,7 +406,23 @@ bool FMcPotConduitTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("its sides 14 across all round"), Round.Min.Equals(FVector(-43.75, -43.75, 0.0), 0.1) && Round.Max.Equals(FVector(43.75, 43.75, 100.0), 0.1));
 	}
 	TestNotNull(TEXT("a conduit's shell"), Find(TEXT("mc:conduit/shell")));
-	TestNotNull(TEXT("and its cage"), Find(TEXT("mc:conduit/cage")));
+	const FModel* Cage = Find(TEXT("mc:conduit/cage"));
+	if (TestNotNull(TEXT("and its cage"), Cage))
+	{
+		// The wind takes turns with its upright twin, 66 ticks each, a run of wind.png starting at 20 ticks: wind.png
+		// at 30 and 160 ticks, wind_vertical.png at 90.
+		const auto Triangles = [&](float Ticks, int32 Layer)
+		{
+			FAnim Anim;
+			Anim.Age = Ticks / 20.0f;
+			McPlayerModel::FMeshData Mesh;
+			BuildMesh(*Cage, Anim, Layer, Mesh);
+			return Mesh.Triangles.Num();
+		};
+		TestTrue(TEXT("rings at 30 ticks"), Triangles(30.5f, 2) > 0 && Triangles(30.5f, 3) == 0);
+		TestTrue(TEXT("upright streaks at 90 ticks"), Triangles(90.5f, 3) > 0 && Triangles(90.5f, 2) == 0);
+		TestTrue(TEXT("rings again at 160 ticks"), Triangles(160.5f, 2) > 0 && Triangles(160.5f, 3) == 0);
+	}
 
 	TestEqual(TEXT("42 frame places"), McConduit::GetFramePlaces().Num(), 42);
 	FMcBlockWorld World{FMcDimensionType()};

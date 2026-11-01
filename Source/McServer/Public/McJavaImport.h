@@ -25,6 +25,8 @@ namespace McJavaImport
 		// Chunks that could not be read (damaged, or compressed in a way we don't read), and why, by compression byte.
 		int32 ChunksFailed = 0;
 		int64 Blocks = 0;
+		// Of those, blocks that are not air (a check that nothing was read as air by mistake).
+		int64 NonAirBlocks = 0;
 		// Palette entries the registry does not know (name and properties as written), with how many blocks used them.
 		TMap<FString, int64> UnknownStates;
 		// Block entities that were too big to keep, by id.

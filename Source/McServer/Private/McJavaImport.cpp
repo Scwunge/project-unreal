@@ -51,6 +51,16 @@ namespace
 			OutName = Entry.String;
 			return true;
 		}
+		// A list of mixed entries holds the plain ones as a compound with the one key "" (a block with all-default
+		// properties is just its name; the others are { id, properties }).
+		if (const FMcNbt* Plain = Entry.Find(TEXT("")))
+		{
+			if (Plain->Type == FMcNbt::EType::String)
+			{
+				OutName = Plain->String;
+				return true;
+			}
+		}
 		const FMcNbt* Name = Entry.Find(TEXT("Name"));
 		if (!Name)
 		{
@@ -596,7 +606,8 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 					TMap<FString, FString> Properties;
 					if (!GetPaletteEntry(Palette->Values[Entry], Name, Properties))
 					{
-						Name = TEXT("minecraft:air");
+						// Counted, not turned into air without a word.
+						Name = TEXT("<unreadable palette entry>");
 					}
 					Mapped.Add(MapState(Name, Properties, Stats, Uses[Entry]));
 				}
@@ -607,6 +618,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 				}
 				Chunk.LoadSection(Index, States);
 				Stats.Blocks += SectionVolume;
+				Stats.NonAirBlocks += Chunk.GetSection(Index).NonAirCount;
 			}
 		}
 		if (const FMcNbt* BiomeTag = Section.Find(TEXT("biomes")))

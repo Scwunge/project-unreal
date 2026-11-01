@@ -10,6 +10,7 @@
 #include "McNbt.h"
 #include "McWorldSave.h"
 #include "Misc/AutomationTest.h"
+#include "HAL/FileManager.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -427,6 +428,94 @@ bool FMcJavaImportBlockEntityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportBuildTest, "McClient.McServer.JavaImport.ImportBuild",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// The build of E:\mc-reference\scripts\import_build.txt, as the reference client saved it (save importtest2), read back
+// through the importer: every block of the script where the script put it.
+bool FMcJavaImportBuildTest::RunTest(const FString& Parameters)
+{
+	FString Folder;
+	for (const TCHAR* Candidate : { TEXT("E:/mc-reference/run/saves/importtest2"), TEXT("C:/mc-reference/run/saves/importtest2") })
+	{
+		if (McJavaImport::IsJavaWorld(Candidate) && IFileManager::Get().FileExists(*(FString(Candidate) / TEXT("dimensions/minecraft/overworld/region/r.0.0.mca"))))
+		{
+			Folder = Candidate;
+			break;
+		}
+	}
+	if (Folder.IsEmpty() || !LoadRegistries())
+	{
+		AddInfo(TEXT("no import_build save on this machine; skipped"));
+		return true;
+	}
+	TArray<uint8> File, Raw;
+	const FString RegionFolder = Folder / TEXT("dimensions/minecraft/overworld/region");
+	TestTrue(TEXT("region reads"), FFileHelper::LoadFileToArray(File, *(RegionFolder / TEXT("r.0.0.mca"))));
+	bool bMissing = false;
+	FMcNbt Root;
+	if (!TestTrue(TEXT("chunk 0,0 reads"), McJavaImport::ReadChunkBytes(File, 0, 0, RegionFolder, 0, 0, Raw, bMissing) && FMcNbt::Parse(Raw, Root)))
+	{
+		return false;
+	}
+	FMcChunk Chunk(FIntPoint(0, 0), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("converts"), McJavaImport::ConvertChunk(Root, Chunk, Stats));
+	TestEqual(TEXT("no unknown block states"), Stats.UnknownStates.Num(), 0);
+
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto Check = [&](int32 X, int32 Y, int32 Z, const TCHAR* Expected)
+	{
+		const TOptional<FMcStateId> State = Registry.ParseState(Expected);
+		const FMcStateId Actual = Chunk.GetBlock(X, Y, Z);
+		TestTrue(*FString::Printf(TEXT("(%d,%d,%d) is %s, was %s"), X, Y, Z, Expected, *Registry.Describe(Actual)), State && *State == Actual);
+	};
+	Check(2, -61, 2, TEXT("minecraft:stone"));
+	Check(0, -60, 0, TEXT("minecraft:oak_log[axis=y]"));
+	Check(0, -58, 0, TEXT("minecraft:oak_log[axis=y]"));
+	Check(2, -60, 0, TEXT("minecraft:oak_stairs[facing=east,half=top,shape=straight]"));
+	Check(3, -60, 0, TEXT("minecraft:stone_brick_slab[type=top]"));
+	Check(4, -60, 0, TEXT("minecraft:oak_door[facing=north,half=lower,hinge=left,open=false]"));
+	Check(4, -59, 0, TEXT("minecraft:oak_door[facing=north,half=upper,hinge=left,open=false]"));
+	Check(6, -60, 0, TEXT("minecraft:red_bed[facing=south,part=foot]"));
+	Check(6, -60, 1, TEXT("minecraft:red_bed[facing=south,part=head]"));
+	Check(8, -60, 0, TEXT("minecraft:chest[facing=south,type=single]"));
+	Check(10, -60, 0, TEXT("minecraft:barrel[facing=up]"));
+	Check(12, -60, 0, TEXT("minecraft:oak_sign[rotation=4]"));
+	Check(14, -60, 0, TEXT("minecraft:white_banner[rotation=0]"));
+	Check(7, -60, 4, TEXT("minecraft:lever[face=floor,facing=north,powered=true]"));
+	Check(9, -60, 4, TEXT("minecraft:furnace[facing=west,lit=false]"));
+	for (int32 X = 0; X <= 5; ++X)
+	{
+		TestEqual(*FString::Printf(TEXT("wall at %d"), X), Registry.GetBlockOf(Chunk.GetBlock(X, -60, 4)).Name, FName(TEXT("minecraft:cobblestone_wall")));
+	}
+
+	const FMcBlockEntity* Chest = Chunk.FindBlockEntity(8, -60, 0);
+	if (TestNotNull(TEXT("the chest keeps its items"), Chest) && Chest->Slots.Num() == 27)
+	{
+		TestEqual(TEXT("diamonds in slot 0"), Chest->Slots[0].Item, FName(TEXT("minecraft:diamond")));
+		TestEqual(TEXT("five of them"), Chest->Slots[0].Count, 5);
+		TestEqual(TEXT("planks in slot 13"), Chest->Slots[13].Item, FName(TEXT("minecraft:oak_planks")));
+		TestEqual(TEXT("a stack of them"), Chest->Slots[13].Count, 64);
+	}
+	const FMcBlockEntity* Barrel = Chunk.FindBlockEntity(10, -60, 0);
+	if (TestNotNull(TEXT("the barrel keeps its items"), Barrel) && Barrel->Slots.Num() == 27)
+	{
+		TestEqual(TEXT("iron in slot 3"), Barrel->Slots[3].Item, FName(TEXT("minecraft:iron_ingot")));
+		TestEqual(TEXT("seventeen"), Barrel->Slots[3].Count, 17);
+	}
+	const FMcBlockEntity* Sign = Chunk.FindBlockEntity(12, -60, 0);
+	if (TestNotNull(TEXT("the sign is kept"), Sign))
+	{
+		FMcNbt Back;
+		TestTrue(TEXT("its NBT reads"), FMcNbt::Parse(Sign->Data, Back));
+		const FMcNbt* Front = Back.Find(TEXT("front_text"));
+		const FMcNbt* Messages = Front ? Front->Find(TEXT("messages")) : nullptr;
+		TestTrue(TEXT("its first line is the text that was set"), Messages && Messages->Num() == 4 && Messages->Values[0].String.Contains(TEXT("Imported")));
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportRealWorldTest, "McClient.McServer.JavaImport.RealWorld",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
 
@@ -457,6 +546,7 @@ bool FMcJavaImportRealWorldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("chunks were imported"), Stats.Chunks > 0);
 	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
 	TestEqual(TEXT("no unknown block states"), Stats.UnknownStates.Num(), 0);
+	TestTrue(TEXT("most of the world is not air"), Stats.NonAirBlocks > Stats.Blocks / 20);
 	FMcLevelData Level;
 	TestTrue(TEXT("the level reads back"), McWorldSave::LoadLevel(McWorldSave::GetWorldDir(Folder), Level));
 	TestEqual(TEXT("seed from world_gen_settings.dat"), Level.Seed, int64(-77777));

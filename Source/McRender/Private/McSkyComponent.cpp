@@ -14,6 +14,7 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/VolumetricCloudComponent.h"
 #include "Engine/GameViewportClient.h"
+#include "Engine/Texture2D.h"
 #include "Engine/Texture2DArray.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -135,6 +136,17 @@ void McSky::SetCameraUnderwater(float Under)
 	GCameraUnderwater = Under;
 }
 
+static TWeakObjectPtr<UTexture2D> GCloudMask;
+static float GCloudDrift = 0.0f;
+static float GCloudHeight = 192.0f;
+
+void McSky::SetCloudLayer(UTexture2D* Mask, float DriftBlocks, float HeightBlocks)
+{
+	GCloudMask = Mask;
+	GCloudDrift = DriftBlocks;
+	GCloudHeight = HeightBlocks;
+}
+
 float McSky::GetSkyLightFactor()
 {
 	return GSkyLightFactor;
@@ -200,6 +212,8 @@ UMcSkyComponent::UMcSkyComponent(const FObjectInitializer& ObjectInitializer)
 	// The engine's own cloud material (Unreal Mode's volumetric clouds); a hard reference so it is cooked with the game.
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> CloudFinder(TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst"));
 	CloudMaterial = CloudFinder.Object;
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> McCloudFinder(TEXT("/Game/Mc/Materials/M_McVolumeClouds.M_McVolumeClouds"));
+	McCloudMaterial = McCloudFinder.Object;
 	DomeMaterial = DomeFinder.Object;
 	AdditiveMaterial = AdditiveFinder.Object;
 }
@@ -662,6 +676,46 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		if (Clouds)
 		{
 			Clouds->SetVisibility(bSky);
+			// The vanilla layout once the cloud component has the pattern: the layer sits at the vanilla cloud height, a
+			// few tens of blocks thick (a 4 block slab would look like cardboard at this scale), the pattern carried west.
+			// Parked: the vanilla-layout cloud material renders the sky black on the 1070 (PLAN.md, volumetric clouds), so it
+			// is only used with -McVolumeClouds until that is found; the engine's own clouds are the default.
+			static const bool bVolume = FParse::Param(FCommandLine::Get(), TEXT("McVolumeClouds"));
+			if (UTexture2D* Mask = GCloudMask.Get(); Mask && McCloudMaterial && bSky && bVolume)
+			{
+				if (!McCloudInstance)
+				{
+					McCloudInstance = UMaterialInstanceDynamic::Create(McCloudMaterial, this);
+				}
+				const float BottomZ = GCloudHeight * McCoords::UnitsPerBlock;
+				const float ThickZ = 28.0f * McCoords::UnitsPerBlock;
+				const float GroundZ = Atmosphere->GetComponentLocation().Z;
+				McCloudInstance->SetTextureParameterValue(TEXT("CloudMask"), Mask);
+				McCloudInstance->SetScalarParameterValue(TEXT("DriftX"), GCloudDrift);
+				static float DensityScale = []()
+				{
+					float Value = 1.0f;
+					FParse::Value(FCommandLine::Get(), TEXT("-McCloudDensity="), Value);  // development: times the material's density
+					return Value;
+				}();
+				McCloudInstance->SetScalarParameterValue(TEXT("Density"), 6.0f * DensityScale);
+				McCloudInstance->SetScalarParameterValue(TEXT("Storm"), FMath::Clamp(Rain + Thunder, 0.0f, 1.0f));
+				McCloudInstance->SetScalarParameterValue(TEXT("BottomZ"), BottomZ);
+				McCloudInstance->SetScalarParameterValue(TEXT("ThickZ"), ThickZ);
+				// The component's layer is in km above the planet's ground (at the sky's own height); a little room round
+				// the band so the layer's edges never cut it. Set only when it changes: each set rebuilds the cloud's
+				// render state.
+				const float LayerBottom = FMath::Max((BottomZ - GroundZ) / 100000.0f - 0.01f, 0.01f);
+				if (Clouds->GetMaterial() != McCloudInstance)
+				{
+					Clouds->SetMaterial(McCloudInstance);
+				}
+				if (!FMath::IsNearlyEqual(Clouds->LayerBottomAltitude, LayerBottom))
+				{
+					Clouds->SetLayerBottomAltitude(LayerBottom);
+					Clouds->SetLayerHeight((ThickZ + 2.0f * 1000.0f) / 100000.0f);
+				}
+			}
 		}
 		SunLight->SetAtmosphereSunLight(bSky);
 #if !UE_BUILD_SHIPPING

@@ -743,6 +743,63 @@ return float3(1, 1, 1) * lerp(0.45, 2.2, saturate(lines));
     unreal.log("McMaterials: made M_McCaustics")
 
 
+def make_volume_clouds_material():
+    # Unreal Mode's volumetric clouds (a Volume-domain material for the VolumetricCloud component): the jar's cloud
+    # pattern (the CloudMask texture, one texel per 12 by 12 block cell, set by the game from clouds.png) as the
+    # footprint, so they sit where the vanilla clouds do, only puffy and lit. DriftX (blocks) carries the pattern west,
+    # Storm (0 to 1) thickens and greys them, BottomZ and ThickZ (cm, world) place the layer.
+    name = "M_McVolumeClouds"
+    if eal.does_asset_exist(f"{FOLDER}/{name}"):
+        eal.delete_asset(f"{FOLDER}/{name}")
+    material = asset_tools.create_asset(name, FOLDER, unreal.Material, unreal.MaterialFactoryNew())
+    material.set_editor_property("material_domain", unreal.MaterialDomain.MD_VOLUME)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+    position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -900, 0)
+    time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -900, 150)
+    bottom = add_scalar(material, -900, 300, "BottomZ", 19200.0)
+    height = add_scalar(material, -900, 360, "ThickZ", 2000.0)
+    drift = add_scalar(material, -900, 450, "DriftX", 0.0)
+    storm = add_scalar(material, -900, 600, "Storm", 0.0)
+    thick = add_scalar(material, -900, 750, "Density", 6.0)
+    # The texture goes to the Custom node as an object and is read with SampleLevel: a volume material has no screen
+    # derivatives to pick a mip with.
+    mask = mel.create_material_expression(material, unreal.MaterialExpressionTextureObjectParameter, -600, 0)
+    mask.set_editor_property("parameter_name", "CloudMask")
+    mask.set_editor_property("texture", unreal.load_asset("/Engine/EngineResources/WhiteSquareTexture"))
+    mask.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    code = """
+float2 uv = float2((Pos.x / 100.0 + Drift) / 12.0 / 256.0, (Pos.y / 100.0) / 12.0 / 256.0);
+float M = saturate(MaskTex.SampleLevel(MaskTexSampler, uv, 0).r);
+float cover = smoothstep(0.35, 0.65, M);
+float h = saturate((Pos.z - Bottom) / Thick);
+// Rounded: full through the middle of the layer, thinning to the top and bottom, and the top lower at a cloud's edge.
+float profile = smoothstep(0.0, 0.22, h) * (1.0 - smoothstep(0.45 + 0.4 * cover, 1.0, h));
+// A cheap drifting wobble so the surface is not smooth.
+float n = 0.5 + 0.25 * sin(Pos.x * 0.0021 + Time * 0.03) * sin(Pos.y * 0.0027 - Time * 0.02)
+        + 0.25 * sin(Pos.z * 0.004 + Pos.x * 0.0043) * cos(Pos.y * 0.0051 + Time * 0.025);
+float d = saturate(cover * profile * (0.55 + 0.9 * n) - (1.0 - cover) * 0.5);
+return d * Dens * (1.0 + Storm);
+"""
+    density = add_custom(material, -150, 0, "McCloudDensity", code, {
+        "MaskTex": (mask, ""), "Drift": (drift, ""), "Bottom": (bottom, ""), "Thick": (height, ""), "Pos": (position, ""),
+        "Time": (time, ""), "Dens": (thick, ""), "Storm": (storm, "")}, scalar=True)
+    # Extinction is a float3: the density in all three.
+    spread = add_custom(material, 100, 0, "McCloudExtinction", "return float3(D, D, D);", {"D": (density, "")})
+    albedo = add_custom(material, 100, 200, "McCloudAlbedo", "return lerp(float3(1, 1, 1), float3(0.55, 0.57, 0.62), saturate(Storm));", {"Storm": (storm, "")})
+    mel.connect_material_property(spread, "", unreal.MaterialProperty.MP_SUBSURFACE_COLOR)
+    mel.connect_material_property(albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    # The pins the engine's own cloud material also fills: no emission, and the ambient occlusion fully open.
+    nothing = mel.create_material_expression(material, unreal.MaterialExpressionConstant3Vector, 100, 400)
+    nothing.set_editor_property("constant", unreal.LinearColor(0, 0, 0, 1))
+    mel.connect_material_property(nothing, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    open_sky = mel.create_material_expression(material, unreal.MaterialExpressionConstant, 100, 500)
+    open_sky.set_editor_property("r", 1.0)
+    mel.connect_material_property(open_sky, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
+    mel.recompile_material(material)
+    eal.save_loaded_asset(material)
+    unreal.log("McMaterials: made M_McVolumeClouds")
+
+
 def make_linear_placeholder():
     """The default of the HD normal and specular arrays: like the placeholder but not sRGB, so a Linear Color sampler
     accepts it."""
@@ -787,6 +844,9 @@ def main() -> None:
     if os.environ.get("MC_ONLY_CAUSTICS"):
         make_caustics_material()
         return
+    if os.environ.get("MC_ONLY_CLOUDS"):
+        make_volume_clouds_material()
+        return
     if os.environ.get("MC_ONLY_SKY"):
         # Leaves the block materials (and the placeholder they hold) as they are.
         make_sky_materials(unreal.load_asset(f"{FOLDER}/TA_McPlaceholder"))
@@ -822,6 +882,7 @@ def main() -> None:
     make_block_material("M_McClouds", unreal.BlendMode.BLEND_TRANSLUCENT, array, True)
     make_sky_materials(array)
     make_caustics_material()
+    make_volume_clouds_material()
 
 
 main()

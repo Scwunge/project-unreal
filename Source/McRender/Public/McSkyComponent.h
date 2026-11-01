@@ -17,6 +17,8 @@ class USkyAtmosphereComponent;
 class USkyLightComponent;
 class UVolumetricCloudComponent;
 class UMaterialInstanceDynamic;
+class UTexture2D;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UProceduralMeshComponent;
 class UTexture2DArray;
@@ -37,6 +39,11 @@ namespace McSky
 	// sea's blue-green, dims the sun and lets its light dance as caustics.
 	MCRENDER_API float GetCameraUnderwater();
 	MCRENDER_API void SetCameraUnderwater(float Under);
+
+	// The vanilla cloud layer for Unreal Mode's volumetric clouds, from the cloud component: the pattern as a texture
+	// (one texel per 12 block cell, alpha 255 where there is cloud), how far (blocks) it has drifted west, and the layer's
+	// height in blocks. A null mask (no clouds in this dimension, or no pattern) leaves the engine's own clouds.
+	MCRENDER_API void SetCloudLayer(UTexture2D* Mask, float DriftBlocks, float HeightBlocks);
 
 	// A sky or fog colour (display values) under rain and thunder (0 to 1 each; thunder as heavy as the rain is):
 	// greyed and darkened towards its own brightness, as the sky goes grey in a storm (minecraft.wiki: "Rain").
@@ -130,6 +137,10 @@ private:
 	TObjectPtr<USkyLightComponent> SkyLight;
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> CloudMaterial;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> McCloudMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> McCloudInstance;
 	uint32 LookGeneration = 0;
 	float BaseExposure = 0.0f;
 	float CaveExposure = 0.0f;

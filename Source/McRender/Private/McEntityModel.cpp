@@ -304,7 +304,9 @@ namespace McEntityModel
 					}
 					Models.Add(Boat.Kind, Boat);
 				}
-				// The bamboo raft is one flat deck (28 by 20, 4 thick), with the chest on it for the chest raft.
+				// The bamboo raft is a flat deck (28 by 20, 4 thick) over a narrower one (28 by 16, 4 thick), both cut from the
+				// picture's corner, with the chest on it for the chest raft (vehicle_log3.txt's log model: bottom at (0, -2.1, 1)
+				// turned a quarter about x, boxes y -11 to 9, z -4 to 0 and y -9 to 7, z -8 to -4, both from u 0, v 0).
 				for (const bool bChest : { false, true })
 				{
 					FModel Raft;
@@ -312,7 +314,7 @@ namespace McEntityModel
 					Raft.TextureSize = FIntPoint(128, bChest ? 128 : 64);
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
 					// It floats higher than a hull, its deck clear of the water.
-					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
+					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8.1f, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4), Box(0, 0, -14, -8, -8, 28, 16, 4) }, Flat, HALF_PI));
 					AddPaddles(Raft, 10.0f, 9.0f, 3.0f, FIntPoint(0, 24), FIntPoint(40, 24));
 					if (bChest)
 					{

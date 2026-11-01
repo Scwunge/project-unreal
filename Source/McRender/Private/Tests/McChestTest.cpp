@@ -477,6 +477,9 @@ bool FMcHullMaskTest::RunTest(const FString& Parameters)
 	// Inside the sides (16 across, 28 long) from the floor up to their tops, 9 pixels up.
 	TestTrue(TEXT("between the sides"), FMath::IsNearlyEqual(Mask.Max.X - Mask.Min.X, 100.0, 0.1) && FMath::IsNearlyEqual(Mask.Max.Y - Mask.Min.Y, 175.0, 0.1));
 	TestTrue(TEXT("up to the gunwales"), FMath::IsNearlyEqual(Mask.Max.Z, 56.25, 0.1));
+	// The raft's deck is two boxes, the lower one narrower, hung from 8.1 pixels up (vehicle_log3.txt's log model).
+	TestEqual(TEXT("a raft's deck is two boxes"), Raft->Parts[0].Boxes.Num(), 2);
+	TestEqual(TEXT("hung 8.1 up"), Raft->Parts[0].Pivot, FVector(0.0, 8.1, 0.0), 1e-4);
 	// The paddles' mounts (paddle_log.txt and vehicle_log3.txt's log model): a raft's are a pixel lower than a hull's.
 	for (const FPart& Part : Raft->Parts)
 	{

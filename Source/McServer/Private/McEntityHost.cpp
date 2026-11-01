@@ -318,10 +318,14 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
 	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FMcZombieVillager::StaticType())
 	{
-		// Armed at spawn at the logged rate (1% of 400 on Normal, 19 of 200 on Hard, a third of them swords, the rest shovels).
-		if (Random.FRand() < (Rules.Difficulty >= 3 ? 0.1f : 0.01f))
+		// Armed at spawn, from counts of 2000 spawned zombies per difficulty on the reference (night, drops cleared between batches):
+		//   Easy 19 armed (0.95%), Normal 20 (1.0%), Hard 108 (5.4%); every armed one held an iron sword, shovel or spear.
+		//   Over all 147 armed: 29 swords, 94 shovels, 24 spears. Rates are good to about a quarter of their size (Easy and Normal
+		//   to about a third); the item mix to a few points either way. Easy and Normal read the same, so they share one rate.
+		if (Random.FRand() < (Rules.Difficulty >= 3 ? 0.054f : 0.01f))
 		{
-			Mob->HeldItem = Random.RandHelper(3) == 0 ? FName(TEXT("minecraft:iron_sword")) : FName(TEXT("minecraft:iron_shovel"));
+			const int32 Pick = Random.RandHelper(147);
+			Mob->HeldItem = Pick < 29 ? FName(TEXT("minecraft:iron_sword")) : Pick < 29 + 94 ? FName(TEXT("minecraft:iron_shovel")) : FName(TEXT("minecraft:iron_spear"));
 		}
 	}
 	if (McMobLook::GetCount(Kind) > 0)

@@ -571,13 +571,17 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 	}
 
 	// The mob drawn at Size (0.556 of its own size, nose up 40: ref_spawner_pig_south/top, the pig's bigger side 0.5 of
-	// a block against 0.5 to 0.56 and noses 30 to 50 at the logged spin), and shrunk further only when its bigger
-	// side is over a block: a small mob isn't blown up to fill the cage (ref_display_chicken: the chicken's beak,
+	// a block against 0.5 to 0.56 and noses 30 to 50 at the logged spin), and shrunk only when its bigger side is over
+	// a block (below): a small mob isn't blown up to fill the cage (ref_display_chicken: the chicken's beak,
 	// 4 pixels, is 9.6 px across about 2 blocks from the eye, about 0.55 of its size, not the 0.71 that a bigger
 	// side of 0.5 would make it). Turned by the spin about the upright through the block's middle, tipped nose up,
 	// its feet Pivot over the block's floor (less Drop along its own up).
+	// A mob over a block is shrunk to make its bigger side 0.62 of a block (the zombie, 1.95 tall, at a scale of 0.318:
+	// from straight above at spins 140.5378 and 246.0756 its head and arm stick out past the cage's middle as vanilla's
+	// do, against 0.556, 0.7, 0.85 and 1.0; vehicle_log6.txt, ref_spin_a/c_zombie_top and ref_spin_d_zombie_south).
 	const FVector2D Hitbox = GetMobSize ? GetMobSize(Model.GetKind()) : FVector2D(1.0, 1.0);
-	const float Scale = Size / FMath::Max3(Hitbox.X, Hitbox.Y, 1.0);
+	const double Biggest = FMath::Max(Hitbox.X, Hitbox.Y);
+	const float Scale = Biggest > 1.0 ? 0.62 / Biggest : Size;
 	// The mob faces south at spin 0 and turns ten times the spin from the south toward the east: vanilla's pig faces
 	// the eye from the south at the logged spin 0 (spawner_mob.txt, ref_spawner_mob_pig), south-east at 256.2643
 	// (spawner_pig.txt), and from straight above at 140.5378, 206.4439, 246.0756 and 346.0756 lies 90 less ten times the

@@ -142,8 +142,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     less 0.3504 with its fall speed gone; a boat on land keeps the mean friction of the blocks under its hull (blue
     ice 0.989, ice and packed ice 0.98, stone 0.6; a hull over one row of packed ice between stone 0.72667).
     vehicle_log2-4.txt's air fill was over the 32768 block limit and failed (every boat there kept 0.45); clear air
-    in fills under it. Not measured: friction of other blocks (slime, soul sand), empty cells under a hull, the furnace
-    cart once its fuel runs out from vanilla's big internal speed.
+    in fills under it (Script.java now stops a run on one). vehicle_log6.txt: on slime a boat keeps 0.8 before the
+    move and 0.16 of that after; soul sand leaves 0.4 after the move (counted from half a block under the boat, so
+    while dropping onto it too); a furnace cart out of fuel is left going at 2, held to its 0.2 a tick cap until 0.9408
+    a tick wears it under. Not measured: honey and other blocks, empty cells under a hull.
   - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
     oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
     variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
@@ -323,6 +325,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     cage: 0.556 of its size, shrunk further only past a block. Ours at that size hides behind the cage's middle as
     vanilla's does, but at the logged spin 110.5378 vanilla's faces the eye (beak top middle) and ours faces west:
     the 10 times spin heading, fitted on the pig at two spins, doesn't hold there; it needs more spins logged.
+    Logged (vehicle_log6.txt, shots from straight above at four spins): vanilla's mob faces south at spin 0 and turns ten
+    times the spin toward the east (ours turned the other way; the spin-0 "head east" reading was wrong). A mob over a
+    block is drawn with its bigger side 0.62 of a block (the zombie at 0.318, by eye against 0.556 to 1.0); one up to a
+    block at 0.556 of its size, so the two rules jump at a block (not measured between).
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
@@ -438,7 +444,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Refitted 2026-11-01 from paddle_log.txt (mc-reference's new `hold <key> <ticks>` rows a boat; `log model` gives the
     paddles' angles each tick): a 16-tick stroke, the pose and the hull's paddle mount ported from the logged angles
     (`PaddleLeft` in McEntityModel). The raft's (vehicle_log3.txt, log model bamboo_raft) row the same stroke from a
-    pixel lower: 9 out, 10 up, 3 forward. Vanilla's raft deck has a second, lower box (28 by 16, 4 thick) ours lacks.
+    pixel lower: 9 out, 10 up, 3 forward. The raft deck is two boxes, the lower one 28 by 16, from 8.1 up.
   - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
     steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
     gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.

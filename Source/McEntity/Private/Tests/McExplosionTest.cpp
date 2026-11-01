@@ -180,8 +180,9 @@ bool FMcExplosionTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the 80th digs the floor out"), Field.GetBlock(FIntVector(8, 3, 8)), Air);
 		TestEqual(TEXT("and the TNT beside it did not just vanish; it is lit"), Field.GetBlock(FIntVector(12, 4, 8)), Air);
 		TestEqual(TEXT("chain fuse least"), FMcPrimedTnt::GetChainFuse(0.0f), 10);
-		TestEqual(TEXT("chain fuse most"), FMcPrimedTnt::GetChainFuse(0.999f), 29);
-		TestTrue(TEXT("blast pitch 0.56 to 0.80"), FMath::IsNearlyEqual(McExplosion::GetBlastPitch(0.0f), 0.56f) && FMath::IsNearlyEqual(McExplosion::GetBlastPitch(1.0f), 0.80f));
+		TestEqual(TEXT("chain fuse most"), FMcPrimedTnt::GetChainFuse(0.999f), 28);
+		TestTrue(TEXT("blast pitch: a triangle over 0.568 to 0.830, 0.699 in the middle"), FMath::IsNearlyEqual(McExplosion::GetBlastPitch(0.0f, 1.0f), 0.568f, 0.001f)
+			&& FMath::IsNearlyEqual(McExplosion::GetBlastPitch(1.0f, 0.0f), 0.830f, 0.001f) && FMath::IsNearlyEqual(McExplosion::GetBlastPitch(0.3f, 0.3f), 0.699f, 0.001f));
 	}
 	return true;
 }

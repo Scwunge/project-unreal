@@ -219,9 +219,9 @@ float McExplosion::GetDamage(float Power, float Distance, float Exposure)
 	return (Impact * Impact + Impact) * 0.5f * 7.0f * Radius + 1.0f;
 }
 
-float McExplosion::GetBlastPitch(float Roll)
+float McExplosion::GetBlastPitch(float RollA, float RollB)
 {
-	return 0.56f + 0.24f * Roll;
+	return 0.699f + 0.131f * (RollA - RollB);
 }
 
 FVector McExplosion::GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure)

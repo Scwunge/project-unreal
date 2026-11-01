@@ -2,7 +2,7 @@
 // falls under gravity 0.04 (added, then the move, then drag 0.98; on the ground 0.7 on the sides and -0.5 up and down
 // on top of that), burns a fuse of 80 ticks and blows up with power 4, 0.06 above its feet. One lit from a block starts
 // at the block's centre moving 0.02 sideways in a random direction and 0.2 up. One a blast sets off starts with a
-// shorter fuse (13 to 29 ticks in ten samples).
+// shorter fuse (10 to 28 ticks in 47 samples).
 
 #pragma once
 
@@ -29,8 +29,10 @@ public:
 	static constexpr double Drag = 0.98;
 	static constexpr double GroundFriction = 0.7;
 
-	// The fuse of one a blast lit, from a roll in [0, 1): 10 to 29, evenly (the ten the reference showed ran 13 to 29;
-	// a spread that wide from ten samples means about 20 values ending at the largest seen).
+	// The fuse of one a blast lit, from a roll in [0, 1): 10 to 28, evenly. Measured in the reference client with pairs
+	// of TNT, one lit by a redstone block and its neighbour by that blast (scripts tnt5.txt, `log ents tnt`): 47 chained
+	// ones ran 10 to 28 ticks, spread flat (the one lit by redstone, fuse 80, shows 79; a chained one shows its fuse).
+	// The ends are the sample's; with 47 over 19 values an end may lie one value further out.
 	static int32 GetChainFuse(float Roll);
 
 	// Whether a block of this name is TNT.

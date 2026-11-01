@@ -17,7 +17,7 @@ const FName& FMcPrimedTnt::StaticType()
 
 int32 FMcPrimedTnt::GetChainFuse(float Roll)
 {
-	return FMath::Clamp(10 + FMath::FloorToInt32(Roll * 20.0f), 10, 29);
+	return FMath::Clamp(10 + FMath::FloorToInt32(Roll * 19.0f), 10, 28);
 }
 
 void FMcPrimedTnt::Tick(FMcEntityManager& Manager)

@@ -302,7 +302,7 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 	TArray<FIntVector> Cells;
 	McExplosion::Collect(World, Center, Power, Random, Cells);
 	// Loud (carries 64 blocks) and low, a little different each time.
-	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McExplosion::GetBlastPitch(Random.FRand()));
+	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McExplosion::GetBlastPitch(Random.FRand(), Random.FRand()));
 
 	// Everything standing near is hurt first, by the blocks as they were: the ones about to go still shield.
 	const double Radius = Power * 2.0;

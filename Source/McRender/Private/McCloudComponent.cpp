@@ -89,7 +89,7 @@ void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	// under a fixed point counts up.
 	const double Drift = McClouds::GetDrift(GetTime ? GetTime() : 0.0, PatternWidth);
 	const FVector Eye = McCoords::UnrealToBlock(Controller->PlayerCameraManager->GetCameraLocation());
-	const FIntPoint Centre(FMath::FloorToInt32((Eye.X + Drift) / McClouds::CellSize), FMath::FloorToInt32(Eye.Z / McClouds::CellSize));
+	const FIntPoint Centre(FMath::FloorToInt32((Eye.X + Drift) / McClouds::CellSize), FMath::FloorToInt32((Eye.Z + McClouds::ZOffset) / McClouds::CellSize));
 
 	// Rain greys them as it does the sky.
 	const FVector2D Weather = GetWeather ? GetWeather() : FVector2D::ZeroVector;
@@ -102,7 +102,7 @@ void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		Rebuild(Centre, Rounded);
 	}
 	// The mesh is built with the centre cell at the origin; this puts it where the drift has carried it.
-	SetWorldLocation(McCoords::BlockToUnreal(FVector(Centre.X * McClouds::CellSize - Drift, *Height, Centre.Y * McClouds::CellSize)));
+	SetWorldLocation(McCoords::BlockToUnreal(FVector(Centre.X * McClouds::CellSize - Drift, *Height, Centre.Y * McClouds::CellSize - McClouds::ZOffset)));
 }
 
 void UMcCloudComponent::Rebuild(FIntPoint Centre, const FLinearColor& Colour)

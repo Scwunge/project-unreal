@@ -88,6 +88,9 @@ public:
 	// clients once a second, as the game's time packet does; clients run their own clock in between. Fractional,
 	// so the sky moves smoothly between ticks.
 	double GetDayTime() const { return DayTicks; }
+	// Ticks since the world began, which /time set and the daylight rule don't touch (the clouds drift by it). Counted
+	// on every machine and corrected from the server's once a second.
+	double GetGameTicks() const { return GameTicks; }
 	// -McTime=<ticks> sets where a new world starts (default 1000, the start of the day); -McTimeFreeze stops time.
 	void SetDayTime(double Ticks);
 	bool IsTimeFrozen() const { return bTimeFrozen; }
@@ -202,6 +205,8 @@ protected:
 
 	UFUNCTION()
 	void OnRep_SyncedDayTime();
+	UFUNCTION()
+	void OnRep_SyncedGameTime();
 
 private:
 	void StreamChunks();
@@ -246,6 +251,9 @@ private:
 	double TicksSinceSync = 0.0;
 	UPROPERTY(ReplicatedUsing = OnRep_SyncedDayTime)
 	int64 SyncedDayTime = 1000;
+	double GameTicks = 0.0;
+	UPROPERTY(ReplicatedUsing = OnRep_SyncedGameTime)
+	int64 SyncedGameTime = 0;
 	UPROPERTY(Replicated)
 	bool bTimeFrozen = false;
 	// The server's weather (EMcWeather), and the levels easing towards it.

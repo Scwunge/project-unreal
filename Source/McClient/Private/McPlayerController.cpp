@@ -963,7 +963,11 @@ void AMcPlayerController::SpawnEnvironment()
 	// The clouds, drifting with the world's time.
 	UMcCloudComponent* Cover = NewObject<UMcCloudComponent>(WorldActor);
 	Cover->SetupAttachment(WorldActor->GetRootComponent());
-	Cover->GetTime = Heavens->GetTime;
+	// The clouds drift with the game's own count, not the sky's: /time set moves the sun and leaves them be.
+	Cover->GetTime = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	{
+		return Actor.IsValid() ? Actor->GetGameTicks() : 0.0;
+	};
 	Cover->GetWeather = Heavens->GetWeather;
 	if (const FMcBlockWorld* Blocks = WorldActor->GetBlockWorld())
 	{

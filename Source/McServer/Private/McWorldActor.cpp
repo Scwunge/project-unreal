@@ -41,6 +41,7 @@ void AMcWorldActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AMcWorldActor, SyncedDayTime);
+	DOREPLIFETIME(AMcWorldActor, SyncedGameTime);
 	DOREPLIFETIME(AMcWorldActor, bTimeFrozen);
 	DOREPLIFETIME(AMcWorldActor, Weather);
 	DOREPLIFETIME_CONDITION(AMcWorldActor, Dimension, COND_InitialOnly);
@@ -115,6 +116,15 @@ void AMcWorldActor::OnRep_SyncedDayTime()
 	if (FMath::Abs(DayTicks - ServerTicks) > 4.0)
 	{
 		DayTicks = ServerTicks;
+	}
+}
+
+void AMcWorldActor::OnRep_SyncedGameTime()
+{
+	const double ServerTicks = static_cast<double>(SyncedGameTime);
+	if (FMath::Abs(GameTicks - ServerTicks) > 4.0)
+	{
+		GameTicks = ServerTicks;
 	}
 }
 
@@ -819,6 +829,15 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 
 	// Both sides count: the server for everyone, a client between syncs. The server publishes whole ticks once a
 	// second.
+	GameTicks += DeltaSeconds * 20.0;
+	if (HasAuthority() && Simulation && FMath::Abs(GameTicks - static_cast<double>(Simulation->GetGameTime())) > 4.0)
+	{
+		GameTicks = static_cast<double>(Simulation->GetGameTime());
+	}
+	if (HasAuthority() && FMath::FloorToDouble(GameTicks) > static_cast<double>(SyncedGameTime) + 19.0)
+	{
+		SyncedGameTime = static_cast<int64>(FMath::FloorToDouble(GameTicks));
+	}
 	if (!bTimeFrozen)
 	{
 		const double Ticks = DeltaSeconds * 20.0;

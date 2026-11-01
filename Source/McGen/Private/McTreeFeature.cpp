@@ -187,19 +187,28 @@ namespace
 			}
 			// Trees with a wider trunk (several feet) skip the ring: dark forest measured 61..112 per 1000 columns, and
 			// the ring held it to 35..73.
+			// Mangroves stand packed, their roots and branches interleaving. Measured on 241 single vanilla mangroves, the
+			// nearest trunk foot is never closer than 3 columns (0.8% at 2, 18% at 3, 29% at 4, 24% at 5); so for them
+			// the rule is that spacing, not a free ring: no log within 2 columns of the foot, from the ground up to
+			// the trunk's first layer.
+			static const int32 Logs = FMcBlockTags::Get().Find(TEXT("minecraft:logs"));
 			for (const FIntVector& Foot : Plan.Foot)
 			{
 				if (Plan.Foot.Num() > 1)
 				{
 					break;
 				}
-				for (int32 Y = Foot.Y; Y <= TopY; ++Y)
+				const int32 Reach = bRoots ? 2 : 1;
+				for (int32 Y = Foot.Y; Y <= (bRoots ? Foot.Y + B.RootRise + 1 : TopY); ++Y)
 				{
-					for (int32 DZ = -1; DZ <= 1; ++DZ)
+					for (int32 DZ = -Reach; DZ <= Reach; ++DZ)
 					{
-						for (int32 DX = -1; DX <= 1; ++DX)
+						for (int32 DX = -Reach; DX <= Reach; ++DX)
 						{
-							if (!IsFree(B.Region, B.Region.GetBlock(FIntVector(Foot.X + DX, Y, Foot.Z + DZ))))
+							const FMcStateId Cell = B.Region.GetBlock(FIntVector(Foot.X + DX, Y, Foot.Z + DZ));
+							// Mangroves: no log within 2; the one-block ring also has to be free of roots up to the trunk's foot.
+							const bool bRing = FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1 && Y <= Foot.Y + B.RootRise;
+							if (bRoots ? (FMcBlockTags::Get().Has(Logs, Cell) || (bRing && !IsFree(B.Region, Cell))) : !IsFree(B.Region, Cell))
 							{
 								return false;
 							}

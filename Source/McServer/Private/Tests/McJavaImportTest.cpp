@@ -5,12 +5,16 @@
 #include "McBlockRegistry.h"
 #include "McChunk.h"
 #include "McJavaImport.h"
+#include "McFurnace.h"
+#include "McItemRegistry.h"
 #include "McNbt.h"
 #include "McWorldSave.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -320,6 +324,106 @@ bool FMcJavaImportChunkTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("item in slot 13"), Chest->Slots[13].Item, FName(TEXT("minecraft:diamond")));
 		TestEqual(TEXT("and its count"), Chest->Slots[13].Count, 5);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportBlockEntityTest, "McClient.McServer.JavaImport.BlockEntities",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportBlockEntityTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), LoadRegistries() && FMcItemRegistry::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FNbtWriter Writer;
+	Writer.Compound(TEXT(""));
+	Writer.List(TEXT("sections"), 10, 0);
+	Writer.List(TEXT("block_entities"), 10, 3);
+	{
+		// A sign: kept whole.
+		Writer.Str(TEXT("id"), TEXT("minecraft:sign"));
+		Writer.Int(TEXT("x"), 1); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 2);
+		Writer.Compound(TEXT("front_text"));
+		Writer.List(TEXT("messages"), 8, 2);
+		Writer.String(TEXT("Imported"));
+		Writer.String(TEXT("sign"));
+		Writer.Str(TEXT("color"), TEXT("red"));
+		Writer.End();
+		Writer.End();
+		// A furnace with iron ore in the input slot.
+		Writer.Str(TEXT("id"), TEXT("minecraft:furnace"));
+		Writer.Int(TEXT("x"), 3); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 3);
+		Writer.List(TEXT("Items"), 10, 1);
+		Writer.Byte(TEXT("Slot"), 0);
+		Writer.Str(TEXT("id"), TEXT("minecraft:iron_ore"));
+		Writer.Int(TEXT("count"), 7);
+		Writer.End();
+		Writer.End();
+		// A chest with a damaged sword in slot 2.
+		Writer.Str(TEXT("id"), TEXT("minecraft:chest"));
+		Writer.Int(TEXT("x"), 5); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 5);
+		Writer.List(TEXT("Items"), 10, 1);
+		Writer.Byte(TEXT("Slot"), 2);
+		Writer.Str(TEXT("id"), TEXT("minecraft:diamond_sword"));
+		Writer.Int(TEXT("count"), 1);
+		Writer.Compound(TEXT("components"));
+		Writer.Int(TEXT("minecraft:damage"), 5);
+		Writer.End();
+		Writer.End();
+		Writer.End();
+	}
+	Writer.End();
+	FMcNbt Root;
+	if (!TestTrue(TEXT("the NBT parses"), FMcNbt::Parse(Writer.Bytes, Root)))
+	{
+		return false;
+	}
+	FMcChunk Chunk(FIntPoint(0, 0), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("converts"), McJavaImport::ConvertChunk(Root, Chunk, Stats));
+
+	const FMcBlockEntity* Sign = Chunk.FindBlockEntity(1, -60, 2);
+	if (TestNotNull(TEXT("the sign is kept"), Sign) && TestTrue(TEXT("as raw"), Sign->Kind == EMcBlockEntityKind::Raw))
+	{
+		TestEqual(TEXT("with its id"), Sign->EntityId, FName(TEXT("minecraft:sign")));
+		FMcNbt Back;
+		TestTrue(TEXT("its NBT reads back"), FMcNbt::Parse(Sign->Data, Back));
+		const FMcNbt* Front = Back.Find(TEXT("front_text"));
+		if (TestNotNull(TEXT("front_text"), Front))
+		{
+			TestEqual(TEXT("colour"), Front->GetString(TEXT("color")), FString(TEXT("red")));
+			const FMcNbt* Messages = Front->Find(TEXT("messages"));
+			TestTrue(TEXT("two lines"), Messages && Messages->Num() == 2 && Messages->Values[0].String == TEXT("Imported"));
+		}
+		// And it survives the save format.
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer2(Bytes);
+		FMcBlockEntity Copy = *Sign;
+		Copy.Serialize(Writer2);
+		FMcBlockEntity Loaded;
+		FMemoryReader Reader(Bytes);
+		TestTrue(TEXT("loads"), Loaded.Serialize(Reader));
+		TestTrue(TEXT("round trips"), Loaded == *Sign);
+	}
+
+	const FMcBlockEntity* Furnace = Chunk.FindBlockEntity(3, -60, 3);
+	if (TestNotNull(TEXT("the furnace is kept"), Furnace) && TestTrue(TEXT("as a furnace"), Furnace->Kind == EMcBlockEntityKind::Furnace))
+	{
+		FMcFurnace Machine;
+		FMemoryReader Reader(Furnace->Data);
+		TestTrue(TEXT("the machine reads it"), Machine.Serialize(Reader));
+		TestEqual(TEXT("iron ore in the input"), Machine.GetItems()->Get(FMcFurnace::InputSlot).Item, FName(TEXT("minecraft:iron_ore")));
+		TestEqual(TEXT("seven of them"), Machine.GetItems()->Get(FMcFurnace::InputSlot).Count, 7);
+	}
+
+	const FMcBlockEntity* Chest = Chunk.FindBlockEntity(5, -60, 5);
+	if (TestNotNull(TEXT("the chest is kept"), Chest) && TestEqual(TEXT("27 slots"), Chest->Slots.Num(), 27))
+	{
+		TestEqual(TEXT("the sword"), Chest->Slots[2].Item, FName(TEXT("minecraft:diamond_sword")));
+		TestEqual(TEXT("with its damage"), Chest->Slots[2].GetDamage(), 5);
+	}
+	TestEqual(TEXT("one raw kind counted"), Stats.KeptRawBlockEntities.Num(), 1);
 	return true;
 }
 

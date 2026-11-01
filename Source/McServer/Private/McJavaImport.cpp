@@ -6,13 +6,16 @@
 #include "McChunk.h"
 #include "McChunkSave.h"
 #include "McDimensionType.h"
+#include "McItemStack.h"
 #include "McNbt.h"
 #include "McServer.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
+#include "Dom/JsonObject.h"
 #include "Misc/Paths.h"
+#include "Serialization/MemoryWriter.h"
 #include "zlib.h"
 
 namespace
@@ -123,6 +126,170 @@ namespace
 		return !Legacy.IsEmpty() && Files.DirectoryExists(*Legacy) ? Legacy : FString();
 	}
 
+	TSharedPtr<FJsonValue> ToJson(const FMcNbt& Tag)
+	{
+		using EType = FMcNbt::EType;
+		switch (Tag.Type)
+		{
+		case EType::Byte: case EType::Short: case EType::Int: case EType::Long:
+			return MakeShared<FJsonValueNumber>(static_cast<double>(Tag.Integer));
+		case EType::Float: case EType::Double:
+			return MakeShared<FJsonValueNumber>(Tag.Real);
+		case EType::String:
+			return MakeShared<FJsonValueString>(Tag.String);
+		case EType::Compound:
+		{
+			const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+			for (int32 Index = 0; Index < Tag.Num(); ++Index)
+			{
+				Object->SetField(Tag.Keys[Index], ToJson(Tag.Values[Index]));
+			}
+			return MakeShared<FJsonValueObject>(Object);
+		}
+		default:
+		{
+			// Lists and the three kinds of array.
+			TArray<TSharedPtr<FJsonValue>> Array;
+			for (const FMcNbt& Value : Tag.Values)
+			{
+				Array.Add(ToJson(Value));
+			}
+			return MakeShared<FJsonValueArray>(Array);
+		}
+		}
+	}
+
+	// An item as the game saves one: id, count and a compound of components (as data packs write them).
+	FMcItemStack MakeStack(const FMcNbt& Item)
+	{
+		const FString ItemId = Item.GetString(TEXT("id"));
+		const int32 Count = static_cast<int32>(Item.GetInt(TEXT("count"), Item.GetInt(TEXT("Count"), 1)));
+		if (ItemId.IsEmpty() || Count <= 0)
+		{
+			return FMcItemStack();
+		}
+		FMcItemStack Stack(FName(*ItemId), Count);
+		if (const FMcNbt* Components = Item.Find(TEXT("components")))
+		{
+			for (int32 Index = 0; Index < Components->Num(); ++Index)
+			{
+				Stack.Set(FName(*Components->Keys[Index]), ToJson(Components->Values[Index]));
+			}
+		}
+		return Stack;
+	}
+
+	// The items of a block entity by slot.
+	TArray<FMcItemStack> ReadItems(const FMcNbt& Entity, int32 NumSlots)
+	{
+		TArray<FMcItemStack> Slots;
+		Slots.SetNum(NumSlots);
+		if (const FMcNbt* Items = FindList(Entity, TEXT("Items")))
+		{
+			for (const FMcNbt& Item : Items->Values)
+			{
+				const int32 Slot = static_cast<int32>(Item.GetInt(TEXT("Slot"))) & 0xff;
+				if (Slot < NumSlots)
+				{
+					Slots[Slot] = MakeStack(Item);
+				}
+			}
+		}
+		return Slots;
+	}
+
+	// What FMcFurnace::Serialize and FMcBrewingStand::Serialize read: the stacks, then counters that start at rest (a
+	// furnace's burn and cook time are not carried over).
+	TArray<uint8> MakeMachineBytes(TArray<FMcItemStack> Slots, bool bFurnace)
+	{
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		for (FMcItemStack& Slot : Slots)
+		{
+			Slot.Serialize(Writer);
+		}
+		if (bFurnace)
+		{
+			int32 LitTimeRemaining = 0, LitTotalTime = 0, CookingTotalTime = 0, NumRecipes = 0;
+			float LitSpeed = 1.0f, CookingProgress = 0.0f;
+			Writer << LitTimeRemaining << LitTotalTime << LitSpeed << CookingProgress << CookingTotalTime << NumRecipes;
+		}
+		else
+		{
+			int32 BrewTimeLeft = 0, Fuel = 0;
+			FString Brewing;
+			Writer << BrewTimeLeft << Fuel << Brewing;
+		}
+		return Bytes;
+	}
+
+	void AddField(FMcNbt& Compound, const TCHAR* Key, FMcNbt Value)
+	{
+		Compound.Keys.Add(Key);
+		Compound.Values.Add(MoveTemp(Value));
+	}
+
+	FMcNbt MakeInt(int32 Value)
+	{
+		FMcNbt Tag;
+		Tag.Type = FMcNbt::EType::Int;
+		Tag.Integer = Value;
+		return Tag;
+	}
+
+	// The entities of one region file of entities/ (the game keeps them apart from the blocks) as one NBT file under
+	// <dimension>/javaentities: Chunks, a list of { xPos, zPos, entities }. Nothing reads it yet; item frames, paintings,
+	// armor stands, villagers and the rest are kept as they were.
+	void SaveEntities(const FString& RegionFile, const FString& RegionFolder, int32 RegionX, int32 RegionZ, const FString& OutFolder, McJavaImport::FStats& Stats)
+	{
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *RegionFile))
+		{
+			return;
+		}
+		FMcNbt Chunks;
+		Chunks.Type = FMcNbt::EType::List;
+		for (int32 LocalZ = 0; LocalZ < 32; ++LocalZ)
+		{
+			for (int32 LocalX = 0; LocalX < 32; ++LocalX)
+			{
+				TArray<uint8> Raw;
+				bool bMissing = false;
+				FMcNbt Root;
+				if (!McJavaImport::ReadChunkBytes(Bytes, LocalX, LocalZ, RegionFolder, RegionX * 32 + LocalX, RegionZ * 32 + LocalZ, Raw, bMissing)
+					|| !FMcNbt::Parse(Raw, Root))
+				{
+					continue;
+				}
+				const FMcNbt* Entities = FindList(Root, TEXT("entities"));
+				if (!Entities || Entities->Num() == 0)
+				{
+					continue;
+				}
+				for (const FMcNbt& Entity : Entities->Values)
+				{
+					++Stats.Entities.FindOrAdd(Entity.GetString(TEXT("id")));
+				}
+				FMcNbt Entry;
+				Entry.Type = FMcNbt::EType::Compound;
+				AddField(Entry, TEXT("xPos"), MakeInt(RegionX * 32 + LocalX));
+				AddField(Entry, TEXT("zPos"), MakeInt(RegionZ * 32 + LocalZ));
+				AddField(Entry, TEXT("entities"), *Entities);
+				Chunks.Values.Add(MoveTemp(Entry));
+			}
+		}
+		if (Chunks.Num() == 0)
+		{
+			return;
+		}
+		FMcNbt File;
+		File.Type = FMcNbt::EType::Compound;
+		AddField(File, TEXT("Chunks"), MoveTemp(Chunks));
+		TArray<uint8> Out;
+		File.WriteRoot(Out);
+		FFileHelper::SaveArrayToFile(Out, *(OutFolder / FString::Printf(TEXT("r.%d.%d.nbt"), RegionX, RegionZ)));
+	}
+
 	void AddBlockEntities(const FMcNbt& Root, FMcChunk& Chunk, McJavaImport::FStats& Stats)
 	{
 		const FMcNbt* List = FindList(Root, TEXT("block_entities"));
@@ -143,19 +310,7 @@ namespace
 			if (const int32 NumSlots = GetContainerSlots(Id))
 			{
 				FMcBlockEntity Container = FMcBlockEntity::MakeContainer(NumSlots);
-				if (const FMcNbt* Items = FindList(Entity, TEXT("Items")))
-				{
-					for (const FMcNbt& Item : Items->Values)
-					{
-						const int32 Slot = static_cast<int32>(Item.GetInt(TEXT("Slot"))) & 0xff;
-						const FString ItemId = Item.GetString(TEXT("id"));
-						const int32 Count = static_cast<int32>(Item.GetInt(TEXT("count"), Item.GetInt(TEXT("Count"), 1)));
-						if (Slot < NumSlots && !ItemId.IsEmpty() && Count > 0)
-						{
-							Container.Slots[Slot] = FMcItemStack(FName(*ItemId), Count);
-						}
-					}
-				}
+				Container.Slots = ReadItems(Entity, NumSlots);
 				const FString Loot = Entity.GetString(TEXT("LootTable"));
 				if (!Loot.IsEmpty())
 				{
@@ -163,7 +318,6 @@ namespace
 					Container.LootSeed = Entity.GetInt(TEXT("LootTableSeed"));
 				}
 				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Container));
-				++Stats.BlockEntities;
 			}
 			else if (Id == TEXT("minecraft:mob_spawner"))
 			{
@@ -180,12 +334,33 @@ namespace
 					}
 				}
 				Chunk.SetBlockEntity(X, Y, Z, FMcBlockEntity::MakeSpawner(FName(*Mob)));
-				++Stats.BlockEntities;
+			}
+			else if (Id == TEXT("minecraft:furnace") || Id == TEXT("minecraft:blast_furnace") || Id == TEXT("minecraft:smoker")
+				|| Id == TEXT("minecraft:brewing_stand"))
+			{
+				const bool bFurnace = Id != TEXT("minecraft:brewing_stand");
+				FMcBlockEntity Machine;
+				Machine.Kind = bFurnace ? EMcBlockEntityKind::Furnace : EMcBlockEntityKind::BrewingStand;
+				Machine.Data = MakeMachineBytes(ReadItems(Entity, bFurnace ? 3 : 5), bFurnace);
+				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Machine));
 			}
 			else
 			{
-				++Stats.DroppedBlockEntities.FindOrAdd(Id);
+				// Signs, banners, skulls, lecterns, decorated pots and the rest: kept whole for when something reads them.
+				FMcBlockEntity Raw;
+				Raw.Kind = EMcBlockEntityKind::Raw;
+				Raw.EntityId = FName(*Id);
+				Entity.WriteRoot(Raw.Data);
+				if (Raw.Data.Num() > (1 << 20))
+				{
+					++Stats.DroppedBlockEntities.FindOrAdd(Id);
+					continue;
+				}
+				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Raw));
+				++Stats.KeptRawBlockEntities.FindOrAdd(Id);
+				continue;
 			}
+			++Stats.BlockEntities;
 		}
 	}
 }
@@ -636,6 +811,21 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 			}
 		}
 		Storage.Flush();
+
+		// entities/ is next to region/ (in both layouts).
+		const FString EntityFolder = FPaths::GetPath(RegionFolder) / TEXT("entities");
+		TArray<FString> EntityFiles;
+		Files.FindFiles(EntityFiles, *(EntityFolder / TEXT("*.mca")), true, false);
+		for (const FString& File : EntityFiles)
+		{
+			TArray<FString> Parts;
+			File.ParseIntoArray(Parts, TEXT("."));
+			if (Parts.Num() == 4 && Parts[0] == TEXT("r"))
+			{
+				SaveEntities(EntityFolder / File, EntityFolder, FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2]),
+					WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats);
+			}
+		}
 	}
 	if (!McWorldSave::SaveLevel(WorldDir, Level))
 	{
@@ -653,6 +843,14 @@ FString McJavaImport::Describe(const FStats& Stats)
 	for (const TPair<FString, int64>& Unknown : Stats.UnknownStates)
 	{
 		Out += FString::Printf(TEXT("; unknown %s x%lld"), *Unknown.Key, Unknown.Value);
+	}
+	for (const TPair<FString, int32>& Kept : Stats.KeptRawBlockEntities)
+	{
+		Out += FString::Printf(TEXT("; kept raw %s x%d"), *Kept.Key, Kept.Value);
+	}
+	for (const TPair<FString, int32>& Entity : Stats.Entities)
+	{
+		Out += FString::Printf(TEXT("; saved entity %s x%d"), *Entity.Key, Entity.Value);
 	}
 	for (const TPair<FString, int32>& Dropped : Stats.DroppedBlockEntities)
 	{

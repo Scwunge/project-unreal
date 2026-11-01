@@ -27,9 +27,13 @@ namespace McJavaImport
 		int64 Blocks = 0;
 		// Palette entries the registry does not know (name and properties as written), with how many blocks used them.
 		TMap<FString, int64> UnknownStates;
-		// Block entities that were not kept, by id (signs, banners and the like have no home yet).
+		// Block entities that were too big to keep, by id.
 		TMap<FString, int32> DroppedBlockEntities;
 		int32 BlockEntities = 0;
+		// Block entities kept whole as FMcBlockEntity::Raw, by id (signs, banners...), and entities of entities/*.mca
+		// saved to <dimension>/javaentities, by id.
+		TMap<FString, int32> KeptRawBlockEntities;
+		TMap<FString, int32> Entities;
 	};
 
 	// The block that shows where something unknown was.

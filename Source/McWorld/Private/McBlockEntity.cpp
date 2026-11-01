@@ -39,7 +39,7 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << KindByte;
 	if (Ar.IsLoading())
 	{
-		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::BrewingStand))
+		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Raw))
 		{
 			return false;
 		}
@@ -66,13 +66,13 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << LootSeed;
 	SerializeName(Ar, EntityId);
 	// Only furnaces and brewing stands carry data, and it comes last, so saves from before it read the same.
-	if (Kind == EMcBlockEntityKind::Furnace || Kind == EMcBlockEntityKind::BrewingStand)
+	if (Kind == EMcBlockEntityKind::Furnace || Kind == EMcBlockEntityKind::BrewingStand || Kind == EMcBlockEntityKind::Raw)
 	{
 		int32 NumBytes = Data.Num();
 		Ar << NumBytes;
 		if (Ar.IsLoading())
 		{
-			if (NumBytes < 0 || NumBytes > 65536)
+			if (NumBytes < 0 || NumBytes > (Kind == EMcBlockEntityKind::Raw ? 1 << 20 : 65536))
 			{
 				return false;
 			}

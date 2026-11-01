@@ -21,6 +21,10 @@ enum class EMcBlockEntityKind : uint8
 	Furnace,
 	// A brewing stand: Data is FMcBrewingStand::Serialize's bytes.
 	BrewingStand,
+	// Anything else that came from another world (a sign, banner, skull, lectern, decorated pot...): EntityId is the
+	// block entity's id ("minecraft:sign") and Data its NBT, written by FMcNbt::WriteRoot, kept as it was read so
+	// that nothing is lost until the feature that uses it exists. Nothing in the game reads it yet.
+	Raw,
 };
 
 struct MCWORLD_API FMcBlockEntity

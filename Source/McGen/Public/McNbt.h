@@ -38,6 +38,9 @@ public:
 	// Reads a gzip (or, if it isn't gzip, raw) NBT file; false if it can't be read or is malformed.
 	static bool LoadFile(const FString& Path, FMcNbt& Out);
 	static bool Parse(TArrayView<const uint8> Bytes, FMcNbt& Out);
+	// Writes a compound as an uncompressed NBT file (an unnamed root), so what was read can be kept as it was. An empty
+	// list has lost its element type (written as end).
+	void WriteRoot(TArray<uint8>& Out) const;
 
 	bool IsNumber() const { return Type >= EType::Byte && Type <= EType::Double; }
 	bool IsList() const { return Type == EType::List || Type == EType::IntArray || Type == EType::LongArray || Type == EType::ByteArray; }

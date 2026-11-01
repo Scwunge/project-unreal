@@ -513,3 +513,19 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - Open: daylight detector under weather matches vanilla within one 20-tick step except the thunder onset and the recovery after `weather clear`; script and vanilla log kept (tools/refscripts/rs_daylight_weather.txt), baked expect parked as tools/refscripts/expect_pending_rs_daylight_weather.txt. Falling-block entity and entity-fed plates/tripwire never seen in a game.
 - Bell: not done here; 9f78f77 (vehicles branch) already rings bells from McRedstone with `OnBellRung`, so take it at merge.
 - Build note: `E:\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat McClientEditor Win64 Development -Project=<worktree>\McClient.uproject` from PowerShell; it fails (exit 6) while an editor holds Live Coding.
+
+### Update (2026-11-01): the M5 exit scene
+- `tools/refscripts/gen_world.py` writes `rs_world.txt`: one world of 8 regions 16 blocks apart (repeater ring + delay-1/4 repeaters, comparator
+  compare/subtract, 6-observer chain, sticky pistons on 1/2/3/16-tick pulses, plain pistons on 1-tick pulses at even/odd ticks + same-tick
+  place/remove + 2-tick pulse, quasi-connectivity, daylight detectors high up, cane harvester with observer, kelp in a walled water column with an
+  observer), 600 ticks plus 17 settling ticks, every block state logged per tick. Vanilla's log is `expect/rs_world.txt`; `McClient.McSim.RefScripts`
+  holds our tick-by-tick states to it (760 changes, all equal).
+- Rules fitted from it: observers are not redstone conductors; a piston told of a change while scheduled ticks run acts at the end of that same
+  tick (was a tick late behind an observer pulse); a piston let go during its extension never places its head, and a sticky one's pushed block
+  lands at once; kelp with kelp above is `kelp_plant`; sky-darkness constant 0.53 (any value 0.516 to 0.555 fits the 25 vanilla inverted-detector
+  readings).
+- Unexplained, left out of the baked file (`tools/refscripts/ignore/rs_world.txt`): the observer at x=33 fires 1 to 2 ticks into sampling in vanilla only.
+- Not in the scene: hopper clock and dropper elevator (the headless replay has no container contents; hoppers and droppers live in McClient),
+  random-tick growth of cane and kelp (done by command instead), a detector with a block over it (vanilla reads the light reaching its cell, 14 beside
+  open sky; ours reads the global level). Falling-block entity shot still not taken.
+- Main's note-block hook (`PlayNote`, 074d37b) to be wired in McRedstone.cpp at merge.

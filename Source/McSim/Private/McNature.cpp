@@ -155,8 +155,8 @@ void FMcNature::SetWeather(EMcWeather Weather, int32 Duration)
 
 int32 FMcNature::GetSunLight() const
 {
-	// 0.505 is a fit: it keeps the wiki's daylight detector table within a tick at its steps and the reference client's inverted detector right at 7 times of day (0.5 is 1 off at tick 13500).
-	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.505);
+	// 0.53 is a fit: the reference client's inverted detector over 25 readings at 7 times of day (rs_world) is right for any value from 0.516 to 0.555, and the wiki's daylight detector table stays within a tick of it (0.505 was 1 off at tick 13535).
+	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.53);
 	Level = 1.0 - FMath::Clamp(Level, 0.0, 1.0);
 	Level *= 1.0 - RainLevel * 5.0 / 16.0;
 	Level *= 1.0 - ThunderLevel * RainLevel * 5.0 / 16.0;

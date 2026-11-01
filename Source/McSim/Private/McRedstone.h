@@ -23,6 +23,10 @@ public:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
 	// A scheduled tick came due. False if the block isn't a redstone block, so the caller carries on with it.
 	bool RunTick(const FIntVector& Pos, FMcStateId State);
+	// Pistons told of a change while a game tick's scheduled ticks run act at the end of that same tick (block events),
+	// not the next one (reference run rs_world, an observer pulse driving a piston).
+	void BeginTick() { bInTick = true; }
+	void EndTick();
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
 	void SetPlate(const FIntVector& Pos, int32 NumEntities);
@@ -117,6 +121,8 @@ private:
 	FMcSimulation& Sim;
 	TSet<FIntVector> DirtyDust;
 	bool bFlushing = false;
+	bool bInTick = false;
+	TArray<FIntVector> PistonEvents;
 	// Set while an observer changes its own state, which is not a new observer.
 	bool bObserverSelf = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.

@@ -249,11 +249,13 @@ void FMcSimulation::Tick()
 		Due.Remove(Time);
 	}
 	// A tick stays pending until its own turn, so an update arriving earlier in this same game tick cannot queue it twice.
+	Redstone->BeginTick();
 	for (const FIntVector& Pos : Now)
 	{
 		Pending.Remove(Pos);
 		RunTick(Pos);
 	}
+	Redstone->EndTick();
 	StepFalling();
 	RandomTicks();
 }

@@ -35,7 +35,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		TArray<FString> Lines;
 		FFileHelper::LoadFileToStringArray(Lines, *FPaths::Combine(Dir, File));
 		FMcBlockWorld World{FMcDimensionType()};
-		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 1; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 9; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 		FMcSimulation Sim(World);
 		const FMcStateId Air = Registry.ParseState(TEXT("minecraft:air")).Get(0);
 		const auto Parse = [&](const FString& Text) { return Registry.ParseState(*(TEXT("minecraft:") + Text)).Get(Air); };
@@ -63,7 +63,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 					for (int32 Z = FMath::Min(A.Z, B.Z); Z <= FMath::Max(A.Z, B.Z); ++Z)
 						World.SetBlock(FIntVector(X, Y, Z), State);
 		};
-		for (int32 X = -16; X < 32; ++X) for (int32 Z = -16; Z < 32; ++Z) World.SetBlock(FIntVector(X, 0, Z), Parse(TEXT("stone")));
+		for (int32 X = -16; X < 144; ++X) for (int32 Z = -16; Z < 32; ++Z) World.SetBlock(FIntVector(X, 0, Z), Parse(TEXT("stone")));
 		UE_LOG(LogTemp, Display, TEXT("mcours script %s"), *File);
 		// The changes between one "log states" and the next, as "sample|x,y,z|from|to": what the vanilla run's
 		// expect/ file holds, and what ours must equal.
@@ -90,6 +90,35 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 				for (int32 Index = 0; Index < Pre; ++Index) Sim.Tick();
 			}
 		}
+		FString Out;
+		TMap<FString, FString> Current;
+		bool bOpen = false;
+		TSet<FString> GroupBoxes;
+		const auto Finish = [&]()
+		{
+			if (!bOpen) return;
+			bOpen = false;
+			GroupBoxes.Reset();
+			if (++Sample > 0)
+			{
+				TSet<FString> Keys;
+				for (const TPair<FString, FString>& Pair : Previous) Keys.Add(Pair.Key);
+				for (const TPair<FString, FString>& Pair : Current) Keys.Add(Pair.Key);
+				for (const FString& Key : Keys)
+				{
+					const FString* Old = Previous.Find(Key);
+					const FString* New = Current.Find(Key);
+					if ((Old ? *Old : FString()) != (New ? *New : FString()))
+					{
+						Changes.Add(FString::Printf(TEXT("%d|%s|%s|%s"), Sample, *Key, Old ? **Old : TEXT("-"), New ? **New : TEXT("-")));
+					}
+				}
+			}
+			Previous = Current;
+			UE_LOG(LogTemp, Display, TEXT("mcours states: %s"), *Out);
+			Current.Reset();
+			Out.Reset();
+		};
 		for (const FString& Raw : Lines)
 		{
 			TArray<FString> P;
@@ -116,12 +145,16 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			}
 			else if (P.Num() >= 4 && P[0] == TEXT("cmd") && P[1] == TEXT("tick") && P[2] == TEXT("step"))
 			{
+				Finish();
 				for (int32 Index = 0; Index < FCString::Atoi(*P[3]); ++Index) Sim.Tick();
 			}
 			else if (P.Num() == 8 && P[0] == TEXT("log") && P[1] == TEXT("states"))
 			{
-				FString Out;
-				TMap<FString, FString> Current;
+				// Several different boxes logged without a tick between them are one sample; the same box twice is two.
+				const FString Box = FString::Join(P, TEXT(" "));
+				if (GroupBoxes.Contains(Box)) Finish();
+				GroupBoxes.Add(Box);
+				bOpen = true;
 				for (int32 Z = FCString::Atoi(*P[4]); Z <= FCString::Atoi(*P[7]); ++Z)
 					for (int32 Y = FCString::Atoi(*P[3]); Y <= FCString::Atoi(*P[6]); ++Y)
 						for (int32 X = FCString::Atoi(*P[2]); X <= FCString::Atoi(*P[5]); ++X)
@@ -129,25 +162,9 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 							const FMcStateId State = World.GetBlock(FIntVector(X, Y + Lift, Z));
 							if (!Registry.IsAir(State)) { Out += FString::Printf(TEXT("%d,%d,%d=%s;"), X, Y, Z, *Describe(State)); Current.Add(FString::Printf(TEXT("%d,%d,%d"), X, Y, Z), Describe(State)); }
 						}
-				if (++Sample > 0)
-				{
-					TSet<FString> Keys;
-					for (const TPair<FString, FString>& Pair : Previous) Keys.Add(Pair.Key);
-					for (const TPair<FString, FString>& Pair : Current) Keys.Add(Pair.Key);
-					for (const FString& Key : Keys)
-					{
-						const FString* Old = Previous.Find(Key);
-						const FString* New = Current.Find(Key);
-						if ((Old ? *Old : FString()) != (New ? *New : FString()))
-						{
-							Changes.Add(FString::Printf(TEXT("%d|%s|%s|%s"), Sample, *Key, Old ? **Old : TEXT("-"), New ? **New : TEXT("-")));
-						}
-					}
-				}
-				Previous = Current;
-				UE_LOG(LogTemp, Display, TEXT("mcours states: %s"), *Out);
 			}
 		}
+		Finish();
 		// Held to the vanilla run, when one is stored.
 		if (bHasExpected)
 		{

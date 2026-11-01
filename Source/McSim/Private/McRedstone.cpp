@@ -332,8 +332,9 @@ bool FMcRedstone::IsKind(const FIntVector& Pos, int32 Kind) const
 
 bool FMcRedstone::IsConductor(FMcStateId State) const
 {
-	// A full, opaque block takes power and gives it on; a redstone block gives power but doesn't take it.
-	return FMcBlockLight::Get().GetDampening(State) >= 15 && FMcBlockShapes::Get().HasCollision(State) && KindOf(State) != RedstoneBlock;
+	// A full, opaque block takes power and gives it on; a redstone block gives power but doesn't take it, and neither does an
+	// observer: a lamp behind a chain of them lights as the last one fires, not two ticks earlier (reference run rs_world).
+	return FMcBlockLight::Get().GetDampening(State) >= 15 && FMcBlockShapes::Get().HasCollision(State) && KindOf(State) != RedstoneBlock && KindOf(State) != Observer;
 }
 
 int32 FMcRedstone::GetDustPower(const FIntVector& Pos) const
@@ -578,6 +579,25 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 
 void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
+	// Kelp with kelp growing above it is the stem block, kelp_plant (reference run rs_world: the lower kelp changes the
+	// moment one is put above it).
+	static const FName KelpName(TEXT("minecraft:kelp")), KelpPlantName(TEXT("minecraft:kelp_plant"));
+	const auto IsKelpName = [&](FMcStateId Block) { const FName Name = Reg().GetBlockOf(Block).Name; return Name == KelpName || Name == KelpPlantName; };
+	if (Reg().IsValidState(State) && IsKelpName(State))
+	{
+		const FMcStateId Plant = Reg().FindState(KelpPlantName, TMap<FName, FName>()).Get(0);
+		const FIntVector Above = Pos + Vec[Up], Below = Pos + Vec[Down];
+		const FMcStateId AboveState = World.GetBlock(Above), BelowState = World.GetBlock(Below);
+		if (Plant != State && Reg().IsValidState(AboveState) && IsKelpName(AboveState))
+		{
+			World.SetBlock(Pos, Plant);
+			return;
+		}
+		if (Reg().IsValidState(BelowState) && Reg().GetBlockOf(BelowState).Name == KelpName)
+		{
+			World.SetBlock(Below, Plant);
+		}
+	}
 	Notify(Pos);
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
@@ -731,6 +751,13 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		break;
 	case Piston:
 	case StickyPiston:
+		if (bInTick)
+		{
+			PistonEvents.AddUnique(Pos);
+			break;
+		}
+		Sim.ScheduleTick(Pos, 1);
+		break;
 	case PistonHead:
 	case Door:
 	case Trapdoor:
@@ -1775,6 +1802,23 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 	{
 		World.SetBlock(HeadPos, Air());
 	}
+	// Let go while the extension is still under way (a 1-tick pulse): the head never lands, it is gone the same tick, and a
+	// sticky piston's pushed block lands at once instead of a tick later (reference run rs_world, rows of 1-tick pulses).
+	else if (const TPair<FMcStateId, int64>* Head = MovingBlocks.Find(HeadPos); Head && KindOf(Head->Key) == PistonHead)
+	{
+		MovingBlocks.Remove(HeadPos);
+		World.SetBlock(HeadPos, Air());
+		const FIntVector Pushed = HeadPos + Vec[Facing];
+		if (bSticky)
+		{
+			if (const TPair<FMcStateId, int64>* Carried = MovingBlocks.Find(Pushed))
+			{
+				const FMcStateId Landed = Carried->Key;
+				MovingBlocks.Remove(Pushed);
+				World.SetBlock(Pushed, Landed);
+			}
+		}
+	}
 	if (bSticky && !bShortPulse)
 	{
 		TArray<FIntVector> Move, Destroy;
@@ -1786,6 +1830,21 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 			MoveBlocks(Move, Destroy, Opposite(Facing), Facing);
 		}
 	}
+}
+
+void FMcRedstone::EndTick()
+{
+	bInTick = false;
+	for (int32 Index = 0; Index < PistonEvents.Num(); ++Index)
+	{
+		const FIntVector Pos = PistonEvents[Index];
+		const FMcStateId State = World.GetBlock(Pos);
+		if (KindOf(State) == Piston || KindOf(State) == StickyPiston)
+		{
+			TickPiston(Pos, State);
+		}
+	}
+	PistonEvents.Reset();
 }
 
 void FMcRedstone::TickPiston(const FIntVector& Pos, FMcStateId State)

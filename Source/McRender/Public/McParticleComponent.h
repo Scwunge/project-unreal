@@ -72,6 +72,7 @@ private:
 		Spark,     // a tiny glowing fleck off lava (Unreal Mode)
 		Leaf,
 		Crumb,     // a bit of eaten food: one colour, falls and lands
+		Note,      // a music note rising off a note block or jukebox, in the colour of its note
 	};
 
 	struct FParticle
@@ -100,6 +101,8 @@ private:
 	void Ambient();
 	void AmbientAt(const FIntVector& Pos);
 	void Draw(float Partial);
+	// A music note rises at Pos (the bus's OnNote); Note is 0 to 24.
+	void OnNote(const FVector& Pos, int32 Note);
 
 	// The texture layer and tint bits of State are drawn with.
 	bool GetTexture(FMcStateId State, uint16& Layer, FColor& Tint) const;
@@ -119,4 +122,5 @@ private:
 	double TickTime = 0.0;  // ticks run, and the part of one since
 	FVector CameraBlock = FVector::ZeroVector;
 	uint32 MaterialGeneration = 0;
+	FDelegateHandle NoteHandle;
 };

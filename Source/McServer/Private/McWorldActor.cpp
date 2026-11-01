@@ -285,6 +285,10 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Simulation->OnNoteParticle = [this](const FVector& Position, int32 Note)
+	{
+		MulticastNote(FVector_NetQuantize10(Position), Note);
+	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
 	// TNT lit by fire or redstone becomes a primed block.
@@ -542,6 +546,25 @@ void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantiz
 		return;
 	}
 	FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ Name, FVector(Position), Volume, Pitch });
+}
+
+void AMcWorldActor::MulticastNote_Implementation(FVector_NetQuantize10 Position, int32 Note)
+{
+	if (bViewed)
+	{
+		FMcSoundBus::Get().OnNote.Broadcast(FVector(Position), Note);
+	}
+}
+
+void AMcWorldActor::MulticastRecord_Implementation(FName Name, FVector_NetQuantize10 Position, bool bPlay)
+{
+	if (!bViewed)
+	{
+		return;
+	}
+	FMcSoundEvent Event{ Name, FVector(Position), 4.0f, 1.0f };
+	Event.bStop = !bPlay;
+	FMcSoundBus::Get().OnSound.Broadcast(Event);
 }
 
 void AMcWorldActor::MulticastLightning_Implementation(FVector_NetQuantize10 Position, int32 BoltSeed)

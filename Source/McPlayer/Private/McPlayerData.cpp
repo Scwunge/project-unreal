@@ -797,6 +797,38 @@ void UMcPlayerDataComponent::TellOwner(const FString& Text, uint32 Rgb)
 	}
 }
 
+UMcPlayerDataComponent::FOverlay& UMcPlayerDataComponent::GetOverlay()
+{
+	static FOverlay Overlay;
+	return Overlay;
+}
+
+void UMcPlayerDataComponent::ShowOverlay(const FString& Text, bool bRainbow)
+{
+	UE_LOG(LogMcPlayerData, Display, TEXT("Overlay: %s"), *Text);
+	FOverlay& Overlay = GetOverlay();
+	Overlay.Text = Text;
+	Overlay.bRainbow = bRainbow;
+	Overlay.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ServerOverlay(const FString& Text, bool bRainbow)
+{
+	if (IsOwnerRemote())
+	{
+		ClientOverlay(Text, bRainbow);
+	}
+	else if (IsServer())
+	{
+		ShowOverlay(Text, bRainbow);
+	}
+}
+
+void UMcPlayerDataComponent::ClientOverlay_Implementation(const FString& Text, bool bRainbow)
+{
+	ShowOverlay(Text, bRainbow);
+}
+
 void UMcPlayerDataComponent::ClientChat_Implementation(const FString& Text, int32 Rgb)
 {
 	AddChatLine(Text, static_cast<uint32>(Rgb));

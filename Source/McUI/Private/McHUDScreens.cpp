@@ -1474,6 +1474,10 @@ void AMcHUD::DrawHUD()
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}
+	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	{
+		DrawOverlay(Width, Height);
+	}
 	if (Screen.IsValid() && !bDead)
 	{
 		DrawScreen(Width, Height);
@@ -1554,6 +1558,51 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 			DrawGuiText(Wrapped[Part], 4.0f, Y + 1.0f, Entry.Rgb, true, Alpha);
 		}
 	}
+}
+
+void AMcHUD::DrawOverlay(int32 Width, int32 Height)
+{
+	const UMcPlayerDataComponent::FOverlay& Overlay = UMcPlayerDataComponent::GetOverlay();
+	const double Age = FPlatformTime::Seconds() - Overlay.Time;
+	if (Overlay.Text.IsEmpty() || Age < 0.0 || Age >= UMcPlayerDataComponent::OverlaySeconds)
+	{
+		return;
+	}
+	LoadFont();
+	// Measured against the reference client (jukebox runs 4 and 6, shots a tick apart): a record's title is lime
+	// (153, 255, 45) for its first ten ticks, then runs round the rainbow, hue falling by 1/50 a tick from 1.2 at the
+	// start (saturation 0.7, value 0.6), until the last second of its three, which fades it out.
+	uint32 Rgb = 0xFFFFFF;
+	if (Overlay.bRainbow)
+	{
+		const double Ticks = Age * 20.0;
+		if (Ticks < 10.0)
+		{
+			Rgb = 0x99FF2D;
+		}
+		else
+		{
+			const float Hue = static_cast<float>(FMath::Frac((60.0 - Ticks) / 50.0)) * 6.0f;
+			const float Value = 0.6f;
+			const float Chroma = Value * 0.7f;
+			const float X = Chroma * (1.0f - FMath::Abs(FMath::Fmod(Hue, 2.0f) - 1.0f));
+			const float Low = Value - Chroma;
+			float R = Chroma, G = 0.0f, B = X;
+			const int32 Sector = FMath::Clamp(FMath::FloorToInt(Hue), 0, 5);
+			switch (Sector)
+			{
+			case 0: R = Chroma; G = X; B = 0.0f; break;
+			case 1: R = X; G = Chroma; B = 0.0f; break;
+			case 2: R = 0.0f; G = Chroma; B = X; break;
+			case 3: R = 0.0f; G = X; B = Chroma; break;
+			case 4: R = X; G = 0.0f; B = Chroma; break;
+			default: R = Chroma; G = 0.0f; B = X; break;
+			}
+			Rgb = (FMath::RoundToInt((R + Low) * 255.0f) << 16) | (FMath::RoundToInt((G + Low) * 255.0f) << 8) | FMath::RoundToInt((B + Low) * 255.0f);
+		}
+	}
+	const float Alpha = static_cast<float>(FMath::Clamp(UMcPlayerDataComponent::OverlaySeconds - Age, 0.0, 1.0));
+	DrawGuiText(Overlay.Text, FMath::RoundToFloat(Width / 2.0f - TextWidth(Overlay.Text) / 2.0f), Height - 72.0f, Rgb, true, Alpha);
 }
 
 void AMcHUD::DrawChatInput(int32 Width, int32 Height)

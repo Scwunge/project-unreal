@@ -153,6 +153,8 @@ private:
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	// The overlay line over the hotbar (a jukebox's "Now Playing").
+	void DrawOverlay(int32 Width, int32 Height);
 	void DrawChatInput(int32 Width, int32 Height);
 	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is

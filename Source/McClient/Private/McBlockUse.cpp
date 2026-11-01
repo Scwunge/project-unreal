@@ -16,6 +16,9 @@
 #include "McAnvilMenu.h"
 #include "McArrow.h"
 #include "McBuckets.h"
+#include "McJukebox.h"
+#include "McSound.h"
+
 #include "McShulker.h"
 #include "McSimulation.h"
 #include "McPlayerData.h"
@@ -83,6 +86,10 @@ namespace
 		if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper"))
 		{
 			return 9;
+		}
+		if (Name == TEXT("minecraft:jukebox"))
+		{
+			return 1;
 		}
 		return IsChestName(Name) ? ChestSlots : Name == TEXT("minecraft:hopper") ? McHopper::NumSlots : 0;
 	}
@@ -181,6 +188,7 @@ void UMcBlockUseSubsystem::ForgetAll()
 	Chests.Reset();
 	Machines.Reset();
 	Hoppers.Reset();
+	Jukeboxes.Reset();
 }
 
 void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
@@ -240,6 +248,7 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 			Pair.Value.Machine->Tick();
 		}
 		TickHoppers();
+		TickJukeboxes();
 		if (++CleanTimer >= 100)
 		{
 			CleanTimer = 0;
@@ -451,7 +460,14 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 				}
 			}
 		}
-		return McHopper::ForContainer(Container);
+		FMcSlotAccess Access = McHopper::ForContainer(Container);
+		if (Name == TEXT("minecraft:jukebox"))
+		{
+			// One music disc and nothing else.
+			Access.CanInsert = [](int32, const FMcItemStack& Stack) { return McJukebox::IsDisc(Stack.Item); };
+			Access.SlotLimit = [](int32) { return 1; };
+		}
+		return Access;
 	}
 	if (Name == TEXT("minecraft:brewing_stand"))
 	{
@@ -679,6 +695,10 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 
 void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && GetBlockName(*Blocks, Pos) == TEXT("minecraft:jukebox"))
+	{
+		SyncJukebox(WorldActor, Pos);
+	}
 	// Furnaces and brewing stands are written back at each sweep and save.
 	if (Chests.Contains(MakeKey(WorldActor, Pos)))
 	{
@@ -858,6 +878,7 @@ void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVec
 	{
 		return;
 	}
+	StopJukebox(WorldActor, Pos);
 	const FKey Key = MakeKey(WorldActor, Pos);
 	TArray<FMcItemStack> Contents;
 	if (const FChestEntry* Chest = Chests.Find(Key))
@@ -992,6 +1013,10 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
 	{
 		return WorldActor.TuneNote(Pos);
+	}
+	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:jukebox"))
+	{
+		return UseJukebox(Player, WorldActor, Pos);
 	}
 	// Levers, buttons, doors, trapdoors and gates move rather than open a window.
 	if (WorldActor.UseBlock(Pos, Player.GetLookYaw()))
@@ -1235,5 +1260,142 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper");
 	default:
 		return false;
+	}
+}
+
+// ---- Jukebox ----
+
+namespace
+{
+	FVector JukeboxCentre(const FIntVector& Pos)
+	{
+		return FVector(Pos) + FVector(0.5);
+	}
+}
+
+bool UMcBlockUseSubsystem::IsJukeboxPlaying(const AMcWorldActor& WorldActor, const FIntVector& Pos) const
+{
+	return Jukeboxes.Contains(MakeKey(WorldActor, Pos));
+}
+
+bool UMcBlockUseSubsystem::UseJukebox(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, 1);
+	UMcPlayerDataComponent* Data = Player.Data;
+	if (!Container.IsValid() || !Data)
+	{
+		return false;
+	}
+	if (!Container->Get(0).IsEmpty())
+	{
+		// Any hand takes the disc out; it pops up out of the top.
+		const FMcItemStack Disc = Container->Get(0);
+		Container->Set(0, FMcItemStack());
+		SyncJukebox(WorldActor, Pos);
+		ContentsChanged(WorldActor, Pos);
+		DropAll(WorldActor, Pos, { Disc });
+		return true;
+	}
+	FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+	if (!McJukebox::IsDisc(Held.Item))
+	{
+		return false;
+	}
+	FMcItemStack One = Held;
+	One.Count = 1;
+	Container->Set(0, One);
+	if (!Data->bCreative && --Held.Count <= 0)
+	{
+		Held.Clear();
+	}
+	SyncJukebox(WorldActor, Pos);
+	ContentsChanged(WorldActor, Pos);
+	return true;
+}
+
+void UMcBlockUseSubsystem::SyncJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, 1);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Container.IsValid() || !Blocks)
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	const bool bHad = Registry.GetPropertyValue(State, TEXT("has_record")) == TEXT("true");
+	const bool bHas = !Container->Get(0).IsEmpty();
+	if (bHas != bHad)
+	{
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("has_record"), bHas ? FName(TEXT("true")) : FName(TEXT("false")));
+		if (const TOptional<FMcStateId> Next = Registry.FindState(Registry.GetBlockOf(State).Name, Properties))
+		{
+			WorldActor.SetBlock(Pos, Next.GetValue());
+		}
+	}
+	if (!bHas)
+	{
+		StopJukebox(WorldActor, Pos);
+		return;
+	}
+	FMcSong Song;
+	if (!bHad && McJukebox::FindSong(Container->Get(0).Item, Song))
+	{
+		// A disc put in starts at once, and its title shows to those who can hear it.
+		const FName Event = McJukebox::GetSoundEvent(Song);
+		Jukeboxes.Add(MakeKey(WorldActor, Pos), FJukeboxPlay{ &WorldActor, Song.LengthTicks, 0, Event });
+		WorldActor.MulticastRecord(Event, FVector_NetQuantize10(JukeboxCentre(Pos)), true);
+		WorldActor.MulticastNote(FVector_NetQuantize10(FVector(Pos) + FVector(0.5, 1.2, 0.5)), FMath::RandRange(0, 24));
+		const FString Text = McJukebox::GetNowPlaying(Song);
+		const double Range = McSound::GetAudibleRange(McJukebox::Volume);
+		for (TActorIterator<AMcPlayerPawn> It(GetWorld()); It; ++It)
+		{
+			if (It->Data && FVector::Dist(McCoords::UnrealToBlock(It->GetActorLocation()), JukeboxCentre(Pos)) <= Range)
+			{
+				It->Data->ServerOverlay(Text, true);
+			}
+		}
+	}
+}
+
+void UMcBlockUseSubsystem::StopJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	FJukeboxPlay Play;
+	if (Jukeboxes.RemoveAndCopyValue(MakeKey(WorldActor, Pos), Play))
+	{
+		WorldActor.MulticastRecord(Play.Sound, FVector_NetQuantize10(JukeboxCentre(Pos)), false);
+	}
+}
+
+void UMcBlockUseSubsystem::TickJukeboxes()
+{
+	for (auto It = Jukeboxes.CreateIterator(); It; ++It)
+	{
+		AMcWorldActor* World = It.Value().World.Get();
+		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+		const FIntVector Pos = It.Key().Pos;
+		if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) || GetBlockName(*Blocks, Pos) != TEXT("minecraft:jukebox"))
+		{
+			// Blown up or replaced: the sound goes with it.
+			if (World)
+			{
+				World->MulticastRecord(It.Value().Sound, FVector_NetQuantize10(JukeboxCentre(Pos)), false);
+			}
+			It.RemoveCurrent();
+		}
+		else
+		{
+			if (++It.Value().Elapsed % 20 == 0 && It.Value().TicksLeft > 1)
+			{
+				// A note rises off the top every second of the song.
+				World->MulticastNote(FVector_NetQuantize10(FVector(Pos) + FVector(0.5, 1.2, 0.5)), FMath::RandRange(0, 24));
+			}
+			if (--It.Value().TicksLeft <= 0)
+			{
+				// The song is over; the disc stays in.
+				It.RemoveCurrent();
+			}
+		}
 	}
 }

@@ -20,6 +20,7 @@
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "McItemRegistry.h"
+#include "McJukebox.h"
 #include "McPlayerData.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -866,7 +867,10 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	const FString ClickedName = Clicked.ToString();
 	const bool bMoves = ClickedName.EndsWith(TEXT("_button")) || ClickedName.EndsWith(TEXT("_fence_gate")) || McBed::IsBed(ClickedName)
 		|| ((ClickedName.EndsWith(TEXT("_door")) || ClickedName.EndsWith(TEXT("_trapdoor"))) && !ClickedName.Contains(TEXT("iron")));
-	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves) && !(bSneaking && !Held.IsEmpty()))
+	// A jukebox takes a disc, or gives the one in it back; with anything else in hand and none in it, a block goes beside it.
+	const bool bJukebox = Clicked == TEXT("minecraft:jukebox")
+		&& (Registry.GetPropertyValue(Hit.State, TEXT("has_record")) == TEXT("true") || McJukebox::IsDisc(Held.Item));
+	if (bPlaceClick && (Usable.Contains(Clicked) || bMoves || bJukebox) && !(bSneaking && !Held.IsEmpty()))
 	{
 		ServerUseBlock(Hit.Block);
 		return;

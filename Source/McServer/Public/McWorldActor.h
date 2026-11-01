@@ -137,6 +137,15 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastSound(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch);
 
+	// A jukebox at Position starts its record (bPlay) or has it taken out, which silences it. Reliable: a record is
+	// minutes long, and one that never started or never stopped is noticed.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRecord(FName Name, FVector_NetQuantize10 Position, bool bPlay);
+
+	// A music note rises at Position, in the colour of Note (0 to 24).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastNote(FVector_NetQuantize10 Position, int32 Note);
+
 	// Every machine showing this dimension: the block State at Pos was broken (its bits fly; the view's OnBlockBroken).
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastBlockBroken(FIntVector Pos, int32 State);

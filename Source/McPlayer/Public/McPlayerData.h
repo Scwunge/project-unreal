@@ -205,6 +205,20 @@ public:
 	// respawns and worlds), as the game's chat is.
 	static TArray<FChatLine>& GetChatLog();
 	static void AddChatLine(const FString& Text, uint32 Rgb);
+	// The line above the hotbar (the game's overlay message, the action bar): "Now Playing: ..." from a jukebox. Replaced
+	// by the next, and shown for Seconds.
+	struct FOverlay
+	{
+		FString Text;
+		// Drawn in colours that run round the rainbow, as a record's title is.
+		bool bRainbow = false;
+		double Time = -1000.0;  // FPlatformTime::Seconds when it arrived
+	};
+	static FOverlay& GetOverlay();
+	static void ShowOverlay(const FString& Text, bool bRainbow);
+	static constexpr double OverlaySeconds = 3.0;
+	// Server: shows this player the overlay message.
+	void ServerOverlay(const FString& Text, bool bRainbow);
 	// The owner typed a line (text or a command); it goes to the server.
 	void SendChat(const FString& Text);
 	// Server: shows a line to this player.
@@ -234,6 +248,8 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientChat(const FString& Text, int32 Rgb);
+	UFUNCTION(Client, Reliable)
+	void ClientOverlay(const FString& Text, bool bRainbow);
 	UFUNCTION(Server, Reliable)
 	void ServerChat(const FString& Text);
 

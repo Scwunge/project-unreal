@@ -34,6 +34,14 @@ public:
 	bool Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 private:
+	// A click on a jukebox: puts the held disc in, or takes the one in it out. True if it did either.
+	bool UseJukebox(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// Brings a jukebox's block state and music in line with its slot, after a hand or a hopper changed it: a disc newly
+	// in starts its song, one taken out silences it.
+	void SyncJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	void StopJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	void TickJukeboxes();
+
 	// A click on a bed: sets the respawn point, and puts the player to sleep if it is night and no monsters are near.
 	void UseBed(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
@@ -50,6 +58,9 @@ public:
 	void PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops);
 	// A shulker box item was placed at Pos: what it carried goes into the new box.
 	void FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box);
+
+	// A jukebox at Pos: whether its record is playing (it plays for the song's length once put in, then keeps the disc).
+	bool IsJukeboxPlaying(const AMcWorldActor& WorldActor, const FIntVector& Pos) const;
 
 	// How many furnaces and brewing stands are being kept (for tests and logs).
 	int32 NumFurnaces() const { return Machines.Num(); }
@@ -122,6 +133,15 @@ private:
 	TMap<FKey, FChestEntry> Chests;
 	TMap<FKey, FMachineEntry> Machines;
 	TMap<FKey, FHopperEntry> Hoppers;
+	// A record playing, until its song ends.
+	struct FJukeboxPlay
+	{
+		TWeakObjectPtr<AMcWorldActor> World;
+		int32 TicksLeft = 0;
+		int32 Elapsed = 0;
+		FName Sound;
+	};
+	TMap<FKey, FJukeboxPlay> Jukeboxes;
 	TSet<TWeakObjectPtr<AMcWorldActor>> Watched;
 	float Accumulator = 0.0f;
 	int32 CleanTimer = 0;

@@ -188,6 +188,10 @@ bool FMcSimulation::PlayNote(const FIntVector& Pos)
 	const int32 Note = FCString::Atoi(*Registry.GetPropertyValue(State, TEXT("note")).ToString());
 	const FMcSoundEvent Event = McNoteBlock::GetSound(Registry.GetPropertyValue(State, TEXT("instrument")), Note, FVector(Pos) + FVector(0.5));
 	PlaySound(Event);
+	if (OnNoteParticle && !McNoteBlock::IsHeadInstrument(Registry.GetPropertyValue(State, TEXT("instrument"))))
+	{
+		OnNoteParticle(FVector(Pos) + FVector(0.5, 1.2, 0.5), Note);
+	}
 	return true;
 }
 

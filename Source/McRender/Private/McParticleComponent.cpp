@@ -8,6 +8,9 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McRenderMode.h"
+#include "McNoteBlock.h"
+#include "McRenderTextures.h"
+#include "McCache.h"
 #include "McSound.h"
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.h"
@@ -67,6 +70,8 @@ UMcParticleComponent* UMcParticleComponent::FindFor(const FMcBlockWorld* InWorld
 
 void UMcParticleComponent::OnUnregister()
 {
+	FMcSoundBus::Get().OnNote.Remove(NoteHandle);
+	NoteHandle.Reset();
 	GetLive().RemoveAll([this](const TWeakObjectPtr<UMcParticleComponent>& Live) { return !Live.IsValid() || Live.Get() == this; });
 	Super::OnUnregister();
 }
@@ -74,6 +79,10 @@ void UMcParticleComponent::OnUnregister()
 void UMcParticleComponent::SetWorld(const FMcBlockWorld* InWorld, UMcWorldRenderComponent* InRenderer)
 {
 	GetLive().AddUnique(this);
+	if (!NoteHandle.IsValid())
+	{
+		NoteHandle = FMcSoundBus::Get().OnNote.AddUObject(this, &UMcParticleComponent::OnNote);
+	}
 	World = InWorld;
 	Renderer = InRenderer;
 	Particles.Reset();
@@ -192,6 +201,18 @@ UMcParticleComponent::FParticle& UMcParticleComponent::Add(EStyle Style, const F
 	Particle.Prev = Pos;
 	Particle.Velocity = Velocity;
 	return Particle;
+}
+
+void UMcParticleComponent::OnNote(const FVector& Pos, int32 Note)
+{
+	// Measured against the reference client (jukebox runs 4 and 6, one game tick a shot): the note shows for 7 ticks, goes
+	// straight up 0.19 a tick slowing by a third each tick (rising about 0.55 in all), and keeps its size.
+	FParticle& Mote = Add(EStyle::Note, Pos, FVector(0.0, 0.19, 0.0));
+	Mote.Life = 7.0f;
+	Mote.Friction = 0.66f;
+	Mote.Size = 0.215f;
+	Mote.Colour = McNoteBlock::GetNoteColour(Note);
+	Mote.Light = FVector2f(1.0f, 1.0f);
 }
 
 void UMcParticleComponent::BlockBroken(const FIntVector& Pos, FMcStateId State)
@@ -628,6 +649,50 @@ void UMcParticleComponent::Draw(float Partial)
 		}
 		if (Size <= 0.001f)
 		{
+			continue;
+		}
+		if (Particle.Style == EStyle::Note)
+		{
+			// The game's note.png, a pixel at a time: its grey shades take the note's colour.
+			static TArray<FIntPoint> Pixels;
+			static TArray<uint8> Greys;
+			static bool bRead = false;
+			if (!bRead)
+			{
+				bRead = true;
+				TArray<FColor> Texels;
+				int32 Width = 0, Height = 0;
+				if (McRenderTextures::LoadPngPixels(McCache::Asset(TEXT("textures/particle/note.png")), Texels, Width, Height) && Width == 8 && Height == 8)
+				{
+					for (int32 Index = 0; Index < Texels.Num(); ++Index)
+					{
+						if (Texels[Index].A > 0)
+						{
+							Pixels.Add(FIntPoint(Index % 8, Index / 8));
+							Greys.Add(Texels[Index].R);
+						}
+					}
+				}
+			}
+			const FVector Middle = McCoords::BlockToUnreal(FMath::Lerp(Particle.Prev, Particle.Pos, static_cast<double>(Partial)));
+			const double PixelHalf = Size * McCoords::UnitsPerBlock / 8.0;
+			for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+			{
+				const FVector At = Middle + Right * ((Pixels[Index].X - 3.5) * 2.0 * PixelHalf) - Up * ((Pixels[Index].Y - 3.5) * 2.0 * PixelHalf);
+				const FColor Shade(static_cast<uint8>(Colour.R * Greys[Index] / 255), static_cast<uint8>(Colour.G * Greys[Index] / 255), static_cast<uint8>(Colour.B * Greys[Index] / 255));
+				const int32 Base = Positions.Num();
+				const FVector Pixel[4] = { -Right + Up, -Right - Up, Right - Up, Right + Up };
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					Positions.Add(At + Pixel[Corner] * PixelHalf);
+					Normals.Add(ViewFacing);
+					UV0.Add(FVector2D(0.5, 0.5));
+					UV1.Add(FVector2D(Particle.Layer, McSurface::Particle));
+					UV2.Add(FVector2D(Particle.Light));
+					Colours.Add(Shade);
+				}
+				Triangles.Append({ Base, Base + 1, Base + 2, Base, Base + 2, Base + 3 });
+			}
 			continue;
 		}
 		const FVector Centre = McCoords::BlockToUnreal(FMath::Lerp(Particle.Prev, Particle.Pos, static_cast<double>(Partial)));

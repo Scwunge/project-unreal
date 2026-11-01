@@ -103,6 +103,9 @@ public:
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 
+	// A note block played: where its note particle rises (above the block) and which note it shows.
+	TFunction<void(const FVector&, int32)> OnNoteParticle;
+
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
 	void PlaySound(const FMcSoundEvent& Event) const

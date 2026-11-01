@@ -650,6 +650,15 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(X, 1, 12), State(TEXT("minecraft:rail[shape=east_west]")));
 		World.SetBlock(FIntVector(X, 1, 14), State(TEXT("minecraft:rail[shape=east_west]")));
 	}
+	// vehicle_log5.txt: a floor of blue ice three wide, and one row of packed ice between stone.
+	for (int32 X = 0; X <= 12; ++X)
+	{
+		for (int32 Z = 16; Z <= 18; ++Z)
+		{
+			World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:blue_ice")));
+		}
+		World.SetBlock(FIntVector(X, 0, 20), State(TEXT("minecraft:packed_ice")));
+	}
 	// A slope rising east, a block a block.
 	for (int32 X = 0; X <= 5; ++X)
 	{
@@ -693,6 +702,16 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	Stone->Body.Velocity = FVector(0.3, 0.0, 0.0);
 	Stone->Body.bOnGround = true;
 	Manager.Add(TUniquePtr<FMcEntity>(Stone));
+	FMcBoatEntity* BlueIce = new FMcBoatEntity();
+	BlueIce->Body.Position = FVector(2.5, 1.0, 17.5);
+	BlueIce->Body.Velocity = FVector(0.5, 0.0, 0.0);
+	BlueIce->Body.bOnGround = true;
+	Manager.Add(TUniquePtr<FMcEntity>(BlueIce));
+	FMcBoatEntity* Mixed = new FMcBoatEntity();
+	Mixed->Body.Position = FVector(2.5, 1.0, 20.5);
+	Mixed->Body.Velocity = FVector(0.5, 0.0, 0.0);
+	Mixed->Body.bOnGround = true;
+	Manager.Add(TUniquePtr<FMcEntity>(Mixed));
 	// Vanilla's floating boat as its first logged tick left it.
 	FMcBoatEntity* Float = new FMcBoatEntity();
 	Float->Body.Position = FVector(14.95, -60.58989 + 62.0, 23.5);
@@ -718,6 +737,8 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("keeping 0.9408"), Furnace->Body.Velocity.X, 0.09408, 1e-5);
 	TestNearlyEqual(TEXT("a boat on stone keeps 0.6 of its speed"), Stone->Body.Velocity.X, 0.18, 1e-6);
 	TestNearlyEqual(TEXT("and moves by what it kept"), Stone->Body.Position.X, 2.68, 1e-6);
+	TestNearlyEqual(TEXT("a boat on blue ice keeps 0.989"), BlueIce->Body.Position.X, 2.9945, 1e-5);
+	TestNearlyEqual(TEXT("one over a row of packed ice between stone keeps the mean of the three"), Mixed->Body.Position.X, 2.86333, 1e-5);
 	TestNearlyEqual(TEXT("a boat on water keeps 0.9"), Float->Body.Velocity.X, 0.405, 1e-6);
 	TestNearlyEqual(TEXT("and bobs up as vanilla's did"), Float->Body.Velocity.Y, 0.01687, 2e-6);
 	TestNearlyEqual(TEXT("moving by it"), Float->Body.Position.Y, -60.57302 + 62.0, 2e-5);

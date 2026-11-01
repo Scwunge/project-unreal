@@ -48,6 +48,31 @@ namespace
 	}
 }
 
+double FMcBoatEntity::GroundFriction(FMcBlockWorld& World) const
+{
+	// The mean over the blocks under the hull (vehicle_log5.txt: whole hulls on blue ice keep 0.989, on ice and packed
+	// ice 0.98; one over a row of packed ice between stone keeps 0.72667 = (0.6 + 0.98 + 0.6) / 3). Cells with nothing
+	// in them are left out (not measured).
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const double Half = Body.Width * 0.5;
+	const int32 Y = FMath::FloorToInt32(Body.Position.Y - 0.05);
+	double Sum = 0.0;
+	int32 Count = 0;
+	for (int32 X = FMath::FloorToInt32(Body.Position.X - Half); X <= FMath::FloorToInt32(Body.Position.X + Half); ++X)
+	{
+		for (int32 Z = FMath::FloorToInt32(Body.Position.Z - Half); Z <= FMath::FloorToInt32(Body.Position.Z + Half); ++Z)
+		{
+			const FMcStateId Block = World.GetBlock(FIntVector(X, Y, Z));
+			if (Registry.GetBlockOf(Block).Name != FName(TEXT("minecraft:air")))
+			{
+				Sum += Friction(Registry.GetBlockOf(Block).Name);
+				++Count;
+			}
+		}
+	}
+	return Count > 0 ? Sum / Count : 0.6;
+}
+
 // ---- Any vehicle ----
 
 bool FMcVehicle::OnAttacked(float Damage, bool bCreative)
@@ -668,7 +693,7 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 			{
 				return ESurface::Air;
 			}
-			OutFriction = Friction(Registry.GetBlockOf(World.GetBlock(FIntVector(X, FMath::FloorToInt32(Body.Position.Y - 0.05), Z))).Name);
+			OutFriction = GroundFriction(World);
 			return ESurface::Ground;
 		}
 		// Water over its hull lifts it, unless it is flowing water (a waterfall), which holds it down; the top of the hull
@@ -681,10 +706,9 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 		const FName Level = Registry.GetPropertyValue(Over, TEXT("level"));
 		return HasWater(Over) && !Level.IsNone() && Level != FName(TEXT("0")) ? ESurface::UnderFlowing : ESurface::Underwater;
 	}
-	const FIntVector Below(X, FMath::FloorToInt32(Body.Position.Y - 0.05), Z);
 	if (Body.bOnGround)
 	{
-		OutFriction = Friction(Registry.GetBlockOf(World.GetBlock(Below)).Name);
+		OutFriction = GroundFriction(World);
 		return ESurface::Ground;
 	}
 	return ESurface::Air;

@@ -285,4 +285,6 @@ private:
 	bool bWasInAir = false;
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
+	// How much of its speed a boat on land keeps a tick, from the blocks under its hull.
+	double GroundFriction(FMcBlockWorld& World) const;
 };

@@ -165,7 +165,7 @@ bool FMcPlayedEventsExistTest::RunTest(const FString& Parameters)
 		TEXT("entity.generic.eat"), TEXT("entity.player.burp"), TEXT("entity.item.pickup"), TEXT("entity.experience_orb.pickup"),
 		TEXT("entity.player.levelup"), TEXT("entity.player.attack.strong"), TEXT("entity.player.attack.weak"), TEXT("entity.player.attack.crit"),
 		TEXT("block.chest.open"), TEXT("block.chest.close"), TEXT("block.barrel.open"), TEXT("block.barrel.close"),
-		TEXT("block.shulker_box.open"), TEXT("block.shulker_box.close"), TEXT("ui.button.click"),
+		TEXT("block.shulker_box.open"), TEXT("block.shulker_box.close"), TEXT("block.ender_chest.open"), TEXT("block.ender_chest.close"), TEXT("ui.button.click"),
 		TEXT("entity.player.splash"), TEXT("entity.player.splash.high_speed"), TEXT("entity.player.swim"), TEXT("entity.generic.extinguish_fire"),
 		TEXT("entity.player.hurt_drown"), TEXT("entity.player.hurt_on_fire"), TEXT("entity.item.break"), TEXT("block.enchantment_table.use"),
 		TEXT("block.portal.trigger"), TEXT("block.portal.travel"), TEXT("block.portal.ambient"), TEXT("block.fire.ambient"), TEXT("block.lava.pop"),

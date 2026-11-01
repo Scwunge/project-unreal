@@ -6,6 +6,8 @@ namespace
 {
 	constexpr int32 ArmorFirstSlot = 100;
 	constexpr int32 OffhandSlot = 150;
+	// The ender chest's slots, after everything the game numbers itself (it keeps them in a list of their own).
+	constexpr int32 EnderFirstSlot = 200;
 
 	// The armour container runs head to feet; the game's numbers run feet to head.
 	int32 ArmorIndexToSlot(int32 Index) { return ArmorFirstSlot + (UMcPlayerDataComponent::NumArmorSlots - 1 - Index); }
@@ -60,6 +62,13 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	{
 		Out.Slots.Add({ OffhandSlot, Data.Offhand->Get(0) });
 	}
+	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::EnderChestSize; ++Slot)
+	{
+		if (!Data.EnderChest->Get(Slot).IsEmpty())
+		{
+			Out.Slots.Add({ EnderFirstSlot + Slot, Data.EnderChest->Get(Slot) });
+		}
+	}
 }
 
 bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Data)
@@ -88,6 +97,7 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	Data.Inventory->Clear();
 	Data.Armor->Clear();
 	Data.Offhand->Clear();
+	Data.EnderChest->Clear();
 	for (const FMcSavedSlot& Slot : Saved.Slots)
 	{
 		if (Slot.Slot >= 0 && Slot.Slot < UMcPlayerDataComponent::InventorySize)
@@ -101,6 +111,10 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		else if (Slot.Slot == OffhandSlot)
 		{
 			Data.Offhand->Set(0, Slot.Stack);
+		}
+		else if (Slot.Slot >= EnderFirstSlot && Slot.Slot < EnderFirstSlot + UMcPlayerDataComponent::EnderChestSize)
+		{
+			Data.EnderChest->Set(Slot.Slot - EnderFirstSlot, Slot.Stack);
 		}
 	}
 	Data.Stats = Stats;

@@ -128,6 +128,9 @@ public:
 	TSharedPtr<FMcContainer> Inventory;
 	TSharedPtr<FMcContainer> Armor;
 	TSharedPtr<FMcContainer> Offhand;
+	// What every ender chest the player opens shows: 3 rows, kept with the player (and across deaths), not with a block.
+	static constexpr int32 EnderChestSize = 27;
+	TSharedPtr<FMcContainer> EnderChest;
 	int32 SelectedSlot = 0;
 	// Creative: unlimited blocks, instant breaking, flying, no damage. The server decides; the client is told.
 	bool bCreative = false;

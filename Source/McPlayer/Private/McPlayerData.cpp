@@ -38,6 +38,7 @@ UMcPlayerDataComponent::UMcPlayerDataComponent()
 	: Inventory(MakeShared<FMcContainer>(InventorySize))
 	, Armor(MakeShared<FMcContainer>(NumArmorSlots))
 	, Offhand(MakeShared<FMcContainer>(1))
+	, EnderChest(MakeShared<FMcContainer>(EnderChestSize))
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);

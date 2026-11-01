@@ -80,7 +80,8 @@ namespace McEntityModel
 
 	// A boat's two paddles: a shaft and a blade each, cut from the boat's picture (the left and right pictures are where the texture has them: stacked on a boat's, side by side on a raft's).
 	// They are mounted on the sides (HalfWidth from the middle, on a hull's gunwales or a raft's deck edges, clear of a
-	// chest), Forward of the middle. A hull's are where paddle_log.txt's log model put them: 9 out, 11 up, 3 forward. The
+	// chest), Forward of the middle. A hull's are where paddle_log.txt's log model put them: 9 out, 11 up, 3 forward; a raft's
+	// a pixel lower (vehicle_log3.txt: 9 out, 10 up, 3 forward), with the same stroke. The
 	// boxes are vanilla's turned half round the shaft (x and y the other way), so the pose stays a turn (see PaddleLeft).
 	void AddPaddles(FModel& Model, float Height, float HalfWidth, float Forward, FIntPoint Left, FIntPoint Right)
 	{
@@ -312,7 +313,7 @@ namespace McEntityModel
 					Raft.Textures = { bChest ? TEXT("chest_boat/bamboo.png") : TEXT("boat/bamboo.png") };
 					// It floats higher than a hull, its deck clear of the water.
 					Raft.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 0, -14, -10, -4, 28, 20, 4) }, Flat, HALF_PI));
-					AddPaddles(Raft, 9.0f, 10.0f, -2.0f, FIntPoint(0, 24), FIntPoint(40, 24));
+					AddPaddles(Raft, 10.0f, 9.0f, 3.0f, FIntPoint(0, 24), FIntPoint(40, 24));
 					if (bChest)
 					{
 						Raft.Parts.Add(Part(ERole::Static, FVector(0, 11, -4), { Box(0, 76, -6, 0, -6, 12, 8, 12), Box(0, 59, -6, 8, -6, 12, 4, 12), Box(0, 59, -1, 6, 6, 2, 4, 1) }));

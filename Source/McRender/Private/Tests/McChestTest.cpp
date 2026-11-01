@@ -477,6 +477,21 @@ bool FMcHullMaskTest::RunTest(const FString& Parameters)
 	// Inside the sides (16 across, 28 long) from the floor up to their tops, 9 pixels up.
 	TestTrue(TEXT("between the sides"), FMath::IsNearlyEqual(Mask.Max.X - Mask.Min.X, 100.0, 0.1) && FMath::IsNearlyEqual(Mask.Max.Y - Mask.Min.Y, 175.0, 0.1));
 	TestTrue(TEXT("up to the gunwales"), FMath::IsNearlyEqual(Mask.Max.Z, 56.25, 0.1));
+	// The paddles' mounts (paddle_log.txt and vehicle_log3.txt's log model): a raft's are a pixel lower than a hull's.
+	for (const FPart& Part : Raft->Parts)
+	{
+		if (Part.Role == ERole::PaddleLeft || Part.Role == ERole::PaddleRight)
+		{
+			TestEqual(TEXT("a raft's paddle mount"), Part.Pivot, FVector(Part.Role == ERole::PaddleLeft ? 9.0 : -9.0, 10.0, 3.0));
+		}
+	}
+	for (const FPart& Part : Boat->Parts)
+	{
+		if (Part.Role == ERole::PaddleLeft)
+		{
+			TestEqual(TEXT("a hull's paddle mount"), Part.Pivot, FVector(9.0, 11.0, 3.0));
+		}
+	}
 	return true;
 }
 

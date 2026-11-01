@@ -4,18 +4,6 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
 
 - **M2** draws the real block models and textures, with sky and block light, smooth lighting, AO, water and
   lava.
-- **Vehicles/block-entity session, paused 2026-10-31 (where I stopped, what's next):**
-  - Done in the WIP commit: dropped decorated pots drawn as the pot model (item merge keeps sides apart),
-    the `conduits` scene, conduit wind layer and smaller eye, and the piglin ear lean at 0.9.
-  - Verified: the McEntity.Manager and McRender tests pass, and the dropped pot matches ref_conduit_pots.
-  - Unverified: the conduit wind and eye sizes (`-McConduitLook=<eye>,<wind>`, defaults 0.5,1.0). The
-    remote conduit shot returned no image ("no shot came back"), cause not found yet.
-  - Next: get a conduit shot and fit it to ref_scene_conduits and ref_conduits_b/c. Then refit the
-    spawner pig (spin 256.26 logged, mob rotation 0) with the pig_run shots against ref_spawner_pig_*.
-    Then run the full McClient tests.
-  - Follow-ups for others: the held pot (McHand, main's branch), 3D dropped blocks in general, and the
-    water hole in a waterlogged conduit cell (mesher).
-
 - **M3** has Minecraft movement and collision (exact shapes, swimming, climbing, cobwebs), breaking and
   placing with the hotbar and crosshair, and a listen server that streams chunks and edits to clients.
 - **M3 leftovers:**
@@ -304,8 +292,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     spawner's wait where it is, so nothing comes out, while the mob inside still turns (spawner_rule.txt: the server's
     wait held at 20 for 700 ticks and went on when the rule came back). Scene `-McScene=spawners` (`-McSpawnerSpin=0`
     holds the mobs still, `-McSpawnerPose` tries another pose) for vanilla's spawner_mob.txt shots.
-    The pose (size 0.6, nose up 30 degrees) is only roughly fitted to ref_spawner_mob_pig: vanilla's pig there looks
-    turned off straight-on, so its starting spin may not be 0; a cleaner fit wants a logged spin at that shot.
+    The mob faces east at spin 0 and turns 10 times the spin toward the south (logged spins 0 and 256.2643 against
+    ref_spawner_mob_pig and ref_spawner_pig_south/east/top), so it goes round about 1.7 times a second between cycles.
+    Pose: size 0.5, nose up 40 degrees, fitted on the pig only. At spin 0 vanilla's pig looks a little more compact
+    than ours from the south (a few degrees of heading, or the tilt's axis), and zombie and chicken weren't re-shot.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

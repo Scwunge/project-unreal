@@ -533,7 +533,7 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 	// -McSpawnerPose=<size>,<nose up>,<pivot>,<drop> tries another pose (see below).
 	static float HeldSpin = -1.0f;
 	static const bool bHeld = FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerSpin="), HeldSpin);
-	static float Size = 0.6f, NoseUp = 30.0f, Pivot = 0.5f, Drop = 0.27f;
+	static float Size = 0.5f, NoseUp = 40.0f, Pivot = 0.5f, Drop = 0.27f;
 	static const bool bPosed = [&]()
 	{
 		FString Text;
@@ -570,11 +570,16 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 		Spin = HeldSpin;
 	}
 
-	// The mob, shrunk so its bigger side is Size blocks, turned by the spin about the upright through the block's
+	// The mob, shrunk so its bigger side is Size blocks (0.5, nose up 40: ref_spawner_pig_south/top against sizes 0.5 to
+	// 0.56 and noses 30 to 50 at the logged spin), turned by the spin about the upright through the block's
 	// middle, tipped nose up, its feet Pivot over the block's floor (less Drop along its own up).
 	const FVector2D Hitbox = GetMobSize ? GetMobSize(Model.GetKind()) : FVector2D(1.0, 1.0);
 	const float Scale = Size / FMath::Max3(Hitbox.X, Hitbox.Y, 0.1);
-	const double Yaw = FMath::DegreesToRadians(Spin);
+	// The mob faces east at spin 0 and turns ten times the spin toward the south: at the logged spin 0
+	// (spawner_mob.txt, ref_spawner_mob_pig) vanilla's pig is side on from the south, head to the east; at 256.2643
+	// (spawner_pig.txt, mob yrot, xrot, headrot and bodyrot all 0) it faces south-east, mirror alike from the south and
+	// the east (ref_spawner_pig_south/east/top), which neither 256.26 nor -256.26 degrees gives.
+	const double Yaw = FMath::DegreesToRadians(10.0 * Spin - 90.0);
 	const double Tip = FMath::DegreesToRadians(NoseUp);
 	// The model's own z runs from its face to its tail, so it faces along -z: at spin 0, south.
 	const FVector Side(-FMath::Cos(Yaw), 0.0, -FMath::Sin(Yaw));

@@ -6,7 +6,9 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McDecor.h"
+#include "McDecorEntity.h"
 #include "McDimensionType.h"
+#include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McChunk.h"
 #include "McJavaImport.h"
@@ -584,6 +586,23 @@ bool FMcJavaImportSceneryTest::RunTest(const FString& Parameters)
 		FMcNbt Entity;
 		TestTrue(TEXT("villager parses"), Parse(Writer, Entity));
 		TestFalse(TEXT("a villager is not scenery"), McJavaImport::GetSceneryLine(Entity, Line, Pos, Yaw));
+	}
+	{
+		// Written the way the importer writes a chunk's scenery, a host restores it.
+		FMcDecorEntity Scenic;
+		Scenic.Body.Position = FVector(4.5, 260.0, 6.5);
+		Scenic.Look = TEXT("armorstand;arms=1");
+		FString Type = FMcDecorEntity::StaticType().ToString();
+		TArray<uint8> Data;
+		FMemoryWriter DataWriter(Data);
+		Scenic.Serialize(DataWriter);
+		TArray<uint8> Bytes;
+		FMemoryWriter BodyWriter(Bytes);
+		int32 Count = 1;
+		BodyWriter << Count << Type << Data;
+		FMcBlockWorld World{FMcDimensionType()};
+		FMcEntityHost Host(World, 1);
+		TestEqual(TEXT("the scenery comes back from a chunk save"), Host.RestoreChunk(Bytes), 1);
 	}
 	return true;
 }

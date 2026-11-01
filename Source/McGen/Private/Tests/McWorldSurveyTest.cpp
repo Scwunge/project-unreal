@@ -416,7 +416,7 @@ bool FMcClimatePointTest::RunTest(const FString& Parameters)
 //   STATC <seed> <biome> <columns>
 namespace
 {
-	bool RunWorldStats(FAutomationTestBase& Test, int32 SeedIndex)
+	bool RunWorldStats(FAutomationTestBase& Test, int32 SeedIndex, const TArray<FIntPoint>* Listed = nullptr)
 	{
 		FMcNoiseSettings Settings;
 		if (!Test.TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
@@ -437,12 +437,27 @@ namespace
 		TMap<FString, int64> Ground, Above, Columns;
 		// Per biome and log block: trunk bases (a log with no log below it) and logs.
 		TMap<FString, TPair<int64, int64>> Trees;
+		TMap<FString, TPair<int64, int64>> Depth;  // biome and water depth bucket: columns, columns with kelp
 		auto NameOf = [&Blocks](FMcStateId State) { return Blocks.GetBlockOf(State).Name.ToString(); };
-		for (int32 PatchZ = 0; PatchZ < 5; ++PatchZ)
+		TArray<FIntPoint> CornerList;
+		if (Listed)
 		{
-			for (int32 PatchX = 0; PatchX < 5; ++PatchX)
+			CornerList = *Listed;
+		}
+		else
+		{
+			for (int32 PatchZ = 0; PatchZ < 5; ++PatchZ)
 			{
-				const FIntPoint Corner(-64 + PatchX * 32, -64 + PatchZ * 32);
+				for (int32 PatchX = 0; PatchX < 5; ++PatchX)
+				{
+					CornerList.Add(FIntPoint(-64 + PatchX * 32, -64 + PatchZ * 32));
+				}
+			}
+		}
+		for (int32 PatchIndex = 0; PatchIndex < CornerList.Num(); ++PatchIndex)
+		{
+			{
+				const FIntPoint Corner = CornerList[PatchIndex];
 				constexpr int32 Side = 6;
 				TArray<TUniquePtr<FMcChunk>> Chunks;
 				for (int32 Index = 0; Index < Side * Side; ++Index)
@@ -496,6 +511,7 @@ namespace
 								}
 								const FString Biome = FMcBiomeRegistry::Get().GetName(Chunk.GetBiome(LX, GroundY, LZ)).ToString();
 								Columns.FindOrAdd(Biome)++;
+								bool bKelpColumn = false;
 								bool bLogBelow = false;
 								for (int32 Y = Settings.MinY; Y < Settings.MinY + Settings.Height; ++Y)
 								{
@@ -515,6 +531,10 @@ namespace
 										PerY.FindOrAdd(Name, TArray<int64>()).SetNumZeroed(128);
 										PerY[Name][Y - Settings.MinY]++;
 									}
+									if (Y > GroundY && (Name == TEXT("minecraft:kelp") || Name == TEXT("minecraft:kelp_plant")))
+									{
+										bKelpColumn = true;
+									}
 									if (Y == GroundY)
 									{
 										Ground.FindOrAdd(Biome + TEXT(" ") + Name)++;
@@ -523,6 +543,12 @@ namespace
 									{
 										Above.FindOrAdd(Biome + TEXT(" ") + Name)++;
 									}
+								}
+								if (GroundY < Settings.SeaLevel - 1 && Biome.Contains(TEXT("ocean")))
+								{
+									TPair<int64, int64>& Bucket = Depth.FindOrAdd(FString::Printf(TEXT("%s %d"), *Biome, (Settings.SeaLevel - GroundY) / 4 * 4), TPair<int64, int64>(0, 0));
+									Bucket.Key++;
+									Bucket.Value += bKelpColumn ? 1 : 0;
 								}
 							}
 						}
@@ -548,6 +574,7 @@ namespace
 			}
 			Test.AddInfo(FString::Printf(TEXT("STATY %d %s%s"), SeedIndex, *Pair.Key, *Row));
 		}
+		for (const TPair<FString, TPair<int64, int64>>& Pair : Depth) { Test.AddInfo(FString::Printf(TEXT("STATD %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
 		for (const TPair<FString, int64>& Pair : Ground) { Test.AddInfo(FString::Printf(TEXT("STATG %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
 		for (const TPair<FString, int64>& Pair : Above) { Test.AddInfo(FString::Printf(TEXT("STATV %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
 		for (const TPair<FString, TPair<int64, int64>>& Pair : Trees) { Test.AddInfo(FString::Printf(TEXT("STATT %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
@@ -890,5 +917,39 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 	Shares.Sort();
 	AddInfo(FString::Printf(TEXT("CENTRE deep ocean share over 60 seeds: min %.1f p10 %.1f p25 %.1f median %.1f p75 %.1f p90 %.1f max %.1f"),
 		Shares[0], Shares[6], Shares[15], Shares[30], Shares[45], Shares[54], Shares[59]));
+	return true;
+}
+
+// The same statistics for the patches listed in Content/Tests/statsat_ours.txt ("seed first-chunk-x first-chunk-z" per
+// line): patches picked where this world has mangrove swamp or frozen river, to compare with the reference's `log statslist`.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcWorldStatsAtTest, "McClient.McGen.WorldStatsAt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcWorldStatsAtTest::RunTest(const FString& Parameters)
+{
+	FString Text;
+	if (!TestTrue(TEXT("patch list"), FFileHelper::LoadFileToString(Text, *(FPaths::ProjectContentDir() / TEXT("Tests/statsat_ours.txt")))))
+	{
+		return false;
+	}
+	TArray<FString> Rows;
+	Text.ParseIntoArrayLines(Rows);
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		TArray<FIntPoint> Corners;
+		for (const FString& Row : Rows)
+		{
+			TArray<FString> Parts;
+			Row.ParseIntoArrayWS(Parts);
+			if (Parts.Num() >= 3 && FCString::Atoi(*Parts[0]) == SeedIndex)
+			{
+				Corners.Add(FIntPoint(FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2])));
+			}
+		}
+		if (!Corners.IsEmpty() && !RunWorldStats(*this, SeedIndex, &Corners))
+		{
+			return false;
+		}
+	}
 	return true;
 }

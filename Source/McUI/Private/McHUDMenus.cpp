@@ -80,7 +80,11 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 	else if (NewMenu == EMenu::ImportJava)
 	{
 		JavaRows.Reset();
-		const FString Saves = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA")) / TEXT(".minecraft") / TEXT("saves");
+		FString Saves = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA")) / TEXT(".minecraft") / TEXT("saves");
+#if !UE_BUILD_SHIPPING
+		// Development: -McJavaSaves=<folder> lists the worlds of another folder (for a -McShot of the screen).
+		FParse::Value(FCommandLine::Get(), TEXT("-McJavaSaves="), Saves);
+#endif
 		TArray<FString> Folders;
 		IFileManager::Get().FindFiles(Folders, *(Saves / TEXT("*")), false, true);
 		for (const FString& Folder : Folders)
@@ -161,13 +165,13 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	{
 		OpenMenu(EMenu::Title);
 #if !UE_BUILD_SHIPPING
-		// Development: -McMenu=worlds, newworld or join opens that screen first (for a -McShot of it).
+		// Development: -McMenu=worlds, newworld, join or importjava opens that screen first (for a -McShot of it).
 		static bool bDevMenuDone = false;
 		FString DevMenu;
 		if (!bDevMenuDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu))
 		{
 			bDevMenuDone = true;
-			OpenMenu(DevMenu == TEXT("worlds") ? EMenu::Worlds : DevMenu == TEXT("newworld") ? EMenu::NewWorld : DevMenu == TEXT("join") ? EMenu::Join : EMenu::Title);
+			OpenMenu(DevMenu == TEXT("worlds") ? EMenu::Worlds : DevMenu == TEXT("newworld") ? EMenu::NewWorld : DevMenu == TEXT("join") ? EMenu::Join : DevMenu == TEXT("importjava") ? EMenu::ImportJava : EMenu::Title);
 			if (DevMenu == TEXT("options"))
 			{
 				OpenOptions(EMenu::Title);

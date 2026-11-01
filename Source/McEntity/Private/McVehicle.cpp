@@ -303,18 +303,23 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	}
 
 	// A furnace cart with fuel drives itself the way it was pushed.
-	const bool bDriving = Variant == EVariant::Furnace && Fuel > 0;
+	// Fuel alone doesn't drive it: it needs a push from whoever fed it (vehicle_log2.txt: summoned with fuel and moving,
+	// it only coasts). Fed from rest it goes at its full 0.2 a tick from the next tick on, with no run-up
+	// (vehicle_log3.txt: 3.5, 3.7, 3.9, ... while vanilla's own speed reads 1.92, 3.39, then 3.46, which only the move cap
+	// holds back; ours is kept at the 0.2 it moves).
+	const bool bDriving = Variant == EVariant::Furnace && Fuel > 0 && !PushDirection.IsNearlyZero();
 	if (bDriving)
 	{
 		const double Heading = Velocity.SizeSquared() > 1e-4 ? FVector2D::DotProduct(Velocity, Along) : FVector2D::DotProduct(PushDirection, Along);
-		Velocity += Along * (Heading >= 0.0 ? 0.04 : -0.04);
+		Velocity = Along * (Heading >= 0.0 ? FurnaceSpeed : -FurnaceSpeed);
 	}
 
 	// The speed limit is on how far it moves in a tick, not on its speed: powered_log.txt's cart on powered rail moves
 	// 0.4 a tick while its speed goes on to 1.03.
 	const double Fast = Velocity.Size();
 	const double Cap = bDriving ? FurnaceSpeed : MaxSpeed;
-	const FVector2D Step = Fast > Cap ? Velocity * (Cap / Fast) : Velocity;
+	// With a rider it goes three quarters of that (vehicle_log2.txt: a ridden cart at 0.4 moves 0.3, at 0.3988 0.2991).
+	const FVector2D Step = (Fast > Cap ? Velocity * (Cap / Fast) : Velocity) * (HasRider() ? 0.75 : 1.0);
 
 	// Along the line to where it gets to, and if something is in the way, stop.
 	const double Reach = FVector2D::DotProduct(Step, Along);
@@ -335,7 +340,10 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		// down a slope from rest it moves 0.0078125, 0.0157, 0.0237 with speeds 1.01 times those; the tick it leaves the
 		// slope, 0.3936 across with 0.1756 of drop, it keeps 0.96 * 0.3936 + 0.05 * 0.1756 = 0.3866.
 		// Uphill it keeps 0.91 of its move (powered_log.txt: 0.0918 up the slope leaves 0.0836).
-		const double Kept = (HasRider() ? 0.997 : 0.96) * Fast + 0.05 * (Before.Y - Body.Position.Y);
+		// A ridden cart keeps 0.997 (vehicle_log2.txt, 50 ticks), a furnace cart not driving 0.96 * 0.98 (0.9408 there,
+		// fuelled but never pushed).
+		const double Friction = HasRider() ? 0.997 : Variant == EVariant::Furnace && !bDriving ? 0.96 * 0.98 : 0.96;
+		const double Kept = Friction * Fast + 0.05 * (Before.Y - Body.Position.Y);
 		Velocity = Fast > 1e-9 ? Velocity / Fast * Kept : FVector2D::ZeroVector;
 		// A powered rail adds to what is left (powered_log.txt: 0.0792 = 0.02 * 0.96 + 0.06, 0.13603, ...); a cart standing
 		// still against something at one end is pushed off from it at 0.02, and moves the tick after.
@@ -357,7 +365,7 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 				}
 			}
 		}
-		// A furnace cart's own drive is held to its speed (not measured against vanilla yet).
+		// A furnace cart's own drive is held to its speed.
 		if (bDriving && Velocity.Size() > FurnaceSpeed)
 		{
 			Velocity *= FurnaceSpeed / Velocity.Size();
@@ -721,6 +729,14 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	switch (Where)
 	{
 	case ESurface::Water:
+		if (bWasInAir)
+		{
+			// Coming down onto water it is set 0.3504 under the surface, still: vehicle_log.txt and vehicle_log2.txt's four
+			// dropped boats, falling in at 0.28 to 0.88 a tick, all sit at -60.4615 the tick after, the surface at -60.1111.
+			Body.Position.Y = Surface - 0.3504;
+			Body.Velocity.Y = 0.0;
+			break;
+		}
 		// Weight against how deep it sits, the depth in from the surface counted in 0.65s of its height, damped by a
 		// quarter each tick. Fitted from vehicle_log.txt's boat on water (to 1e-6 over 120 ticks), which settles at
 		// 0.65 of its height under the surface.
@@ -738,12 +754,6 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		break;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
-	if (bWasInAir && Where == ESurface::Water)
-	{
-		// Coming down onto water it sinks in once and stops: vehicle_log's dropped boat, at -0.48 a tick, goes from -60.12
-		// to -60.46 and has no speed after (this moves it to -60.51).
-		Body.Velocity.Y = 0.0;
-	}
 	bWasInAir = Where == ESurface::Air;
 	TickPassengers(Manager);
 }

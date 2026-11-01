@@ -522,7 +522,12 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("unfuelled, it stays put"), FMath::Abs(Furnace->Body.Position.X - 4.5) < 0.01);
 			TestTrue(TEXT("coal is used up"), Furnace->UseItem(TEXT("minecraft:coal"), FVector(2.5, 1.0, 26.5)) == FMcVehicle::EUse::Consumed);
 			TestEqual(TEXT("for three minutes"), Furnace->Fuel, FMcMinecartEntity::FuelPerItem);
-			for (int32 Tick = 0; Tick < 40; ++Tick)
+			// Full speed from the first tick (vehicle_log3.txt: 3.5, 3.7, 3.9).
+			Manager.Tick();
+			TestEqual(TEXT("fed, it moves 0.2 straight away"), Furnace->Body.Position.X, 4.7, 1e-6);
+			Manager.Tick();
+			TestEqual(TEXT("and 0.2 the next tick"), Furnace->Body.Position.X, 4.9, 1e-6);
+			for (int32 Tick = 0; Tick < 38; ++Tick)
 			{
 				Manager.Tick();
 			}
@@ -639,6 +644,12 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(X, 1, 5), State(TEXT("minecraft:powered_rail[shape=east_west,powered=true]")));
 		World.SetBlock(FIntVector(X, 1, 8), State(TEXT("minecraft:powered_rail[shape=east_west,powered=false]")));
 	}
+	// vehicle_log2.txt: a ridden cart and a fuelled furnace cart nobody pushed.
+	for (int32 X = 0; X <= 12; ++X)
+	{
+		World.SetBlock(FIntVector(X, 1, 12), State(TEXT("minecraft:rail[shape=east_west]")));
+		World.SetBlock(FIntVector(X, 1, 14), State(TEXT("minecraft:rail[shape=east_west]")));
+	}
 	// A slope rising east, a block a block.
 	for (int32 X = 0; X <= 5; ++X)
 	{
@@ -667,6 +678,16 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	Braked->Body.Position = FVector(5.5, 1.0625, 8.5);
 	Braked->Body.Velocity = FVector(0.15612, 0.0, 0.0);
 	Manager.Add(TUniquePtr<FMcEntity>(Braked));
+	FMcMinecartEntity* Ridden = new FMcMinecartEntity();
+	Ridden->Body.Position = FVector(2.5, 1.0625, 12.5);
+	Ridden->Body.Velocity = FVector(0.4, 0.0, 0.0);
+	Ridden->SetRider(0.0f, 0.0f, 0.0f);
+	Manager.Add(TUniquePtr<FMcEntity>(Ridden));
+	FMcMinecartEntity* Furnace = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Furnace);
+	Furnace->Body.Position = FVector(2.5, 1.0625, 14.5);
+	Furnace->Body.Velocity = FVector(0.1, 0.0, 0.0);
+	Furnace->Fuel = 300;
+	Manager.Add(TUniquePtr<FMcEntity>(Furnace));
 	FMcBoatEntity* Stone = new FMcBoatEntity();
 	Stone->Body.Position = FVector(2.5, 1.0, 28.5);
 	Stone->Body.Velocity = FVector(0.3, 0.0, 0.0);
@@ -691,6 +712,10 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("not moving yet"), Kicked->Body.Position.X, 1.5, 1e-6);
 	TestNearlyEqual(TEXT("an unpowered powered rail halves the move"), Braked->Body.Position.X, 5.5 + 0.07806, 1e-5);
 	TestNearlyEqual(TEXT("and friction takes its share after"), Braked->Body.Velocity.X, 0.07494, 1e-5);
+	TestNearlyEqual(TEXT("a ridden cart at 0.4 moves 0.3"), Ridden->Body.Position.X, 2.8, 1e-5);
+	TestNearlyEqual(TEXT("and keeps 0.997"), Ridden->Body.Velocity.X, 0.3988, 1e-5);
+	TestNearlyEqual(TEXT("a furnace cart with fuel and no push only coasts"), Furnace->Body.Position.X, 2.6, 1e-5);
+	TestNearlyEqual(TEXT("keeping 0.9408"), Furnace->Body.Velocity.X, 0.09408, 1e-5);
 	TestNearlyEqual(TEXT("a boat on stone keeps 0.6 of its speed"), Stone->Body.Velocity.X, 0.18, 1e-6);
 	TestNearlyEqual(TEXT("and moves by what it kept"), Stone->Body.Position.X, 2.68, 1e-6);
 	TestNearlyEqual(TEXT("a boat on water keeps 0.9"), Float->Body.Velocity.X, 0.405, 1e-6);
@@ -705,6 +730,8 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("and speed"), Slope->Body.Velocity.X, -0.01586, 2e-5);
 	TestNearlyEqual(TEXT("the kicked cart moves its 0.02"), Kicked->Body.Position.X, 1.52, 1e-6);
 	TestNearlyEqual(TEXT("and the rail adds 0.06 to what friction leaves"), Kicked->Body.Velocity.X, 0.0792, 1e-6);
+	TestNearlyEqual(TEXT("the ridden cart's second"), Ridden->Body.Position.X, 3.0991, 1e-4);
+	TestNearlyEqual(TEXT("the furnace cart's second"), Furnace->Body.Velocity.X, 0.08851, 1e-5);
 	TestNearlyEqual(TEXT("the stone boat's second"), Stone->Body.Velocity.X, 0.108, 1e-6);
 	TestNearlyEqual(TEXT("the floating boat's second"), Float->Body.Velocity.Y, 0.020552, 2e-6);
 	TestNearlyEqual(TEXT("the falling boat, with no drag"), Drop->Body.Position.Y, 4.88, 1e-6);
@@ -722,7 +749,7 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("still falling"), Drop->Body.Velocity.Y, -0.48, 1e-6);
 	Manager.Tick();
 	TestNearlyEqual(TEXT("then sinks in and stops"), Drop->Body.Velocity.Y, 0.0, 1e-9);
-	TestNearlyEqual(TEXT("near where vanilla's did"), Drop->Body.Position.Y, -60.4615 + 62.0, 0.06);
+	TestNearlyEqual(TEXT("where vanilla's did, whatever the fall"), Drop->Body.Position.Y, -60.4615 + 62.0, 1e-4);
 	for (int32 Tick = 13; Tick < 120; ++Tick)
 	{
 		Manager.Tick();

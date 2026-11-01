@@ -96,6 +96,8 @@ namespace McEntityModel
 		TArray<TArray<FString>> Variants;
 		// Zombies hold their arms out in front.
 		bool bArmsForward = false;
+		// A bowman's arms: raised straight out at its target (pose 1) with a bow.
+		bool bBowAim = false;
 		// Layers (bit per layer) drawn see-through, so a slime's outer shell shows what is inside.
 		uint32 TranslucentLayers = 0;
 		// Layers drawn at full brightness (the eyes).

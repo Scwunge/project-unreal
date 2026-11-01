@@ -433,6 +433,7 @@ namespace McEntityModel
 				Skeleton.Textures = { TEXT("skeleton/skeleton.png") };
 				AddPerson(Skeleton, true, false);
 				AddHeldItem(Skeleton, FVector(-5, 22, 0), 0.0f, -10.0f);
+				Skeleton.bBowAim = true;
 				Models.Add(Skeleton.Kind, Skeleton);
 			}
 			{
@@ -1232,6 +1233,17 @@ namespace McEntityModel
 					{
 						Pitch += (bRight ? -2.3f : -1.0f) + Wave * 0.35f * Amount + Wave * 0.15f;
 					}
+					break;
+				}
+				if (Model.bBowAim && Anim.Pose == 1)
+				{
+					// Aiming (logged, 3 samples a skeleton): both arms straight out at -pi/2 with the hands turned 0.1 in, the pair swaying
+					// 0.05 opposite each other forward and back, and the roll easing between 0 and 0.1 (the same sway the zombie's arms have;
+					// the phase is not pinned by the samples, so each mob starts where its age puts it).
+					const float Side = bRight ? 1.0f : -1.0f;
+					Pitch += -HALF_PI + Side * FMath::Sin(Anim.Age * 1.34f) * 0.05f;
+					Yaw += Side * 0.1f;
+					Roll -= Side * (0.05f + FMath::Cos(Anim.Age * 1.8f) * 0.05f);
 					break;
 				}
 				if (Anim.bOffering && bRight)

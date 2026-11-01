@@ -96,19 +96,14 @@ void AMcGameMode::StartPlay()
 					}
 				}
 				const FMcServerProperties& Settings = FMcServerProperties::Get();
-				const FString Status = FString::Printf(TEXT("running %s
-world %s
-port %d
-players %d/%d: %s
-"),
+				const FString Status = FString::Printf(TEXT("running %s\r\nworld %s\r\nport %d\r\nplayers %d/%d: %s\r\n"),
 					*FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S")), *Settings.GetString(TEXT("level-name")), GetWorld()->URL.Port,
 					Names.Num(), Settings.GetInt(TEXT("max-players"), 20), *FString::Join(Names, TEXT(", ")));
 				FFileHelper::SaveStringToFile(Status, *(Dir / TEXT("status.txt")));
 				if (Files.FileExists(*(Dir / TEXT("stop"))))
 				{
 					Files.Delete(*(Dir / TEXT("stop")));
-					FFileHelper::SaveStringToFile(TEXT("stopped (world saved)
-"), *(Dir / TEXT("status.txt")));
+					FFileHelper::SaveStringToFile(TEXT("stopped (world saved)\r\n"), *(Dir / TEXT("status.txt")));
 					// A normal exit ends play, and the world actor's EndPlay saves chunks, mobs and players.
 					FPlatformMisc::RequestExit(false);
 				}

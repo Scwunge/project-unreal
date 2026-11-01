@@ -607,6 +607,40 @@ namespace McEntityModel
 		}
 	}
 
+	void BuildBlockMesh(McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Half = 0.5 * McCoords::UnitsPerBlock;
+		const FVector Faces[6] = {
+			FVector(1, 0, 0), FVector(-1, 0, 0), FVector(0, 1, 0), FVector(0, -1, 0), FVector(0, 0, 1), FVector(0, 0, -1),
+		};
+		for (const FVector& Normal : Faces)
+		{
+			// Across runs along the face and Up the other way, so that Across x Up = -Normal, the winding the item picture uses.
+			const FVector Across = FMath::Abs(Normal.Z) > 0.5 ? FVector(1, 0, 0) : FVector::CrossProduct(Normal, FVector(0, 0, 1));
+			const FVector Up = FVector::CrossProduct(Across, Normal);
+			const FVector Centre = FVector(0.0, 0.0, Half) + Normal * Half;
+			const FVector Corners[4] = {
+				Centre - Across * Half - Up * Half, Centre + Across * Half - Up * Half,
+				Centre + Across * Half + Up * Half, Centre - Across * Half + Up * Half,
+			};
+			const FVector2D UVs[4] = { FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0), FVector2D(0, 0) };
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(Corners[Corner]);
+				Out.Normals.Add(Normal);
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(FColor::White);
+			}
+			Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -738,6 +772,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Count = InCount;
 	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsArrow = Kind == TEXT("minecraft:arrow");
+	bIsFalling = Kind == TEXT("minecraft:falling_block");
 	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
@@ -745,7 +780,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	{
 		McBanner::Decode(Item.ToString(), BannerBase, bBannerWall, BannerLayers);
 	}
-	Model = bIsItem || bIsArrow || bIsBanner || bIsTnt ? nullptr : McEntityModel::Find(Kind);
+	Model = bIsItem || bIsArrow || bIsBanner || bIsTnt || bIsFalling ? nullptr : McEntityModel::Find(Kind);
 	Materials.Reset();
 	ClearAllMeshSections();
 	NumSections = 0;
@@ -756,7 +791,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 
 bool UMcEntityModelComponent::HasModel() const
 {
-	return bIsItem || bIsArrow || bIsBanner || bIsTnt || Model != nullptr;
+	return bIsItem || bIsArrow || bIsBanner || bIsTnt || bIsFalling || Model != nullptr;
 }
 
 void UMcEntityModelComponent::SetHitboxWidth(float InWidth)
@@ -795,7 +830,7 @@ void UMcEntityModelComponent::SetHurtCount(int32 InHurtCount)
 
 FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 {
-	if (bIsItem)
+	if (bIsItem || bIsFalling)
 	{
 		return FindItemTexture(Item);
 	}
@@ -874,9 +909,17 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
-	if (!Owner || !HasModel() || ((bIsItem || bIsArrow) && bItemFailed))
+	if (!Owner || !HasModel() || ((bIsItem || bIsArrow || bIsFalling) && bItemFailed))
 	{
 		return;
+	}
+	if (bIsFalling)
+	{
+		// The position comes 20 times a second; ease the picture along between, a tick behind at most.
+		const FVector Target = Owner->GetActorLocation();
+		FallingAt = bHasFallingAt ? FMath::VInterpTo(FallingAt, Target, DeltaTime, 30.0f) : Target;
+		bHasFallingAt = true;
+		SetWorldLocation(FallingAt);
 	}
 	Anim.Age += DeltaTime;
 	if (Materials.Num() > 0 && MaterialGeneration != McRenderMode::GetGeneration())
@@ -951,16 +994,20 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	else
 	{
-		if (bIsItem || bIsArrow)
+		if (bIsItem || bIsArrow || bIsFalling)
 		{
 			bItemFailed = true;
 		}
 		return;
 	}
-	if (bIsItem || bIsArrow)
+	if (bIsItem || bIsArrow || bIsFalling)
 	{
 		McPlayerModel::FMeshData Data;
-		if (bIsArrow)
+		if (bIsFalling)
+		{
+			McEntityModel::BuildBlockMesh(Data);
+		}
+		else if (bIsArrow)
 		{
 			McEntityModel::BuildArrowMesh(TargetBodyYaw, TargetHeadPitch, Data);
 		}

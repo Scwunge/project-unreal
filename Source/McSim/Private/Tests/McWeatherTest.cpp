@@ -77,15 +77,21 @@ bool FMcWeatherTest::RunTest(const FString& Parameters)
 		Run(Sim, 50);
 		TestTrue(TEXT("and it ends"), Sim.GetWeather() == EMcWeather::Clear);
 
+		// Rain and thunder build and fade over 100 ticks, so each is given 110 before the sun is read.
 		Sim.SetWeather(EMcWeather::Clear, 100000);
+		Run(Sim, 110);
 		Sim.SetDayTime(6000);
 		TestEqual(TEXT("noon, full sun"), Sim.GetSunLevel(), 15);
 		Sim.SetDayTime(18000);
 		TestEqual(TEXT("midnight, 4"), Sim.GetSunLevel(), 4);
 		Sim.SetDayTime(6000);
 		Sim.SetWeather(EMcWeather::Rain, 100000);
+		Run(Sim, 110);
+		Sim.SetDayTime(6000);
 		TestEqual(TEXT("rain dims the noon sun"), Sim.GetSunLevel(), 12);
 		Sim.SetWeather(EMcWeather::Thunder, 100000);
+		Run(Sim, 110);
+		Sim.SetDayTime(6000);
 		TestEqual(TEXT("thunder dims it more"), Sim.GetSunLevel(), 10);
 		Sim.SetDayTime(23999);
 		Run(Sim, 2);
@@ -106,8 +112,8 @@ bool FMcWeatherTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("midnight reads 0"), Property(World, FIntVector(0, 1, 0), TEXT("power")), FString(TEXT("0")));
 		Sim.SetDayTime(6000);
 		Sim.SetWeather(EMcWeather::Thunder, 1000000);
-		Run(Sim, 25);
-		TestEqual(TEXT("a storm at noon reads less"), Property(World, FIntVector(0, 1, 0), TEXT("power")), FString(TEXT("10")));
+		Run(Sim, 140);
+		TestEqual(TEXT("a storm at noon reads less once it has built up (100 ticks)"), Property(World, FIntVector(0, 1, 0), TEXT("power")), FString(TEXT("10")));
 	}
 	{
 		// Rain fills a cauldron in the open, a roof keeps it dry, and fair weather leaves it empty.

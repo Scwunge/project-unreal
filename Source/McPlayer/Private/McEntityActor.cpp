@@ -67,6 +67,11 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		ItemId = Item.Stack.Item;
 		ItemCount = Item.Stack.Count;
 	}
+	else if (Entity.GetType() == FMcFallingBlockEntity::StaticType())
+	{
+		// The falling block's picture is its block's.
+		ItemId = static_cast<const FMcFallingBlockEntity&>(Entity).Block;
+	}
 	else if (Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl"))
 	{
 		// A thrown item's picture is its item's.

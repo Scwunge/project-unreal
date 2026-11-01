@@ -112,6 +112,9 @@ namespace McEntityModel
 	// Width is in blocks. The picture's V runs 0..VMax (an animated item's strip is cut to its first frame).
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
 
+	// A block of picture on every side, one block big, standing on the feet (a falling block).
+	MCRENDER_API void BuildBlockMesh(McPlayerModel::FMeshData& Out);
+
 	// How many pictures an item entity shows for a count: 1, 2 above one, 3 above 16, 4 above 32, 5 above 48.
 	MCRENDER_API int32 GetItemCopies(int32 Count);
 
@@ -190,6 +193,10 @@ private:
 	bool bItemFailed = false;
 	bool bIsItem = false;
 	bool bIsArrow = false;
+	// A falling block: a cube with the block's picture, drawn smoothly between the 20 positions a second it is sent.
+	bool bIsFalling = false;
+	FVector FallingAt = FVector::ZeroVector;
+	bool bHasFallingAt = false;
 	// A snowball, egg or ender pearl in flight: its item's picture on two crossed squares.
 	bool bIsThrown = false;
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.

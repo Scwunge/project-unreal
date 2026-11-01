@@ -47,8 +47,12 @@ public:
 	// lamps, doors and pistons run off block changes and scheduled ticks like the rest. What stands on a pressure
 	// plate is told to the simulation, and daylight detectors read the sun level (0 to 15) it is given.
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
+	// A projectile hit the target block at Pos: it gives Power (1 to 15) for Duration ticks.
+	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
+	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.
+	void NotifyContainerChanged(const FIntVector& Pos);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.
@@ -106,6 +110,24 @@ public:
 	// A note block played: where its note particle rises (above the block) and which note it shows.
 	TFunction<void(const FVector&, int32)> OnNoteParticle;
 
+	// Sand, gravel and the like in the air: a falling block is not a block until it lands. Position is the bottom of the block.
+	struct FFallingBlock
+	{
+		// Unique among the falling blocks, for whoever mirrors them as entities.
+		int32 Id = 0;
+		FIntVector Column;
+		double Y = 0.0;
+		// The distance fallen, summed in a float tick by tick as the game does (an anvil hurts and wears by it).
+		float FallDistance = 0.0f;
+		double Velocity = 0.0;
+		FMcStateId State = 0;
+	};
+	const TArray<FFallingBlock>& GetFallingBlocks() const { return Falling; }
+	// A falling block lands somewhere it can't be placed (a torch, a slab): it breaks and drops as an item.
+	TFunction<void(const FIntVector&, FMcStateId)> OnFallingBlockDropped;
+	// A falling block came to rest at the cell, having fallen the distance: for whoever hurts what is under an anvil.
+	TFunction<void(const FIntVector&, FMcStateId, double)> OnFallingBlockLanded;
+
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
 	void PlaySound(const FMcSoundEvent& Event) const
@@ -131,6 +153,7 @@ private:
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
+	void StepFalling();
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);
 	void TickFire(const FIntVector& Pos, FMcStateId State);
@@ -143,6 +166,8 @@ private:
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;
 	TSet<FIntVector> Pending;
+	TArray<FFallingBlock> Falling;
+	int32 NextFallingId = 1;
 	TArray<FIntPoint> TickingChunks;
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };

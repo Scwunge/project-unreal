@@ -55,6 +55,10 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			if (Box.IsInside(Local))
 			{
 				bStuck = true;
+				if (Manager.OnArrowHit)
+				{
+					Manager.OnArrowHit(Cell, Next, Body.Velocity);
+				}
 				Body.Velocity = FVector::ZeroVector;
 				Body.Position = Next;
 				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));

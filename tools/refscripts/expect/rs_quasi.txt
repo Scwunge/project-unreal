@@ -1,0 +1,12 @@
+13|1,-60,-1|-|stone
+13|1,-60,0|piston[extended=false,facing=east]|piston[extended=true,facing=east]
+13|2,-60,0|cobblestone|moving_piston[facing=east,type=normal]
+13|3,-60,0|-|moving_piston[facing=east,type=normal]
+15|2,-60,0|moving_piston[facing=east,type=normal]|piston_head[facing=east,short=false,type=normal]
+15|3,-60,0|moving_piston[facing=east,type=normal]|cobblestone
+25|1,-59,1|redstone_block|-
+31|1,-60,-1|stone|-
+31|1,-60,0|piston[extended=true,facing=east]|moving_piston[facing=east,type=normal]
+31|2,-60,0|piston_head[facing=east,short=false,type=normal]|-
+33|1,-60,0|moving_piston[facing=east,type=normal]|piston[extended=false,facing=east]
+5|1,-59,1|-|redstone_block

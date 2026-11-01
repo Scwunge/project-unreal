@@ -23,16 +23,26 @@ public:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
 	// A scheduled tick came due. False if the block isn't a redstone block, so the caller carries on with it.
 	bool RunTick(const FIntVector& Pos, FMcStateId State);
+	// Pistons told of a change while a game tick's scheduled ticks run act at the end of that same tick (block events),
+	// not the next one (reference run rs_world, an observer pulse driving a piston).
+	void BeginTick() { bInTick = true; }
+	void EndTick();
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
 	void SetPlate(const FIntVector& Pos, int32 NumEntities);
+	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
 	void SetDetector(const FIntVector& Pos, bool bOccupied);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
 	bool Use(const FIntVector& Pos, float Yaw);
+	// A container at Pos changed what it holds: the comparators that read it look again.
+	void NotifyContainerChanged(const FIntVector& Pos);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
-	void SetSunLight(int32 Level) { SunLight = Level; }
+	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; SunScale = 1.0; }
+	// What a plain detector reads (the sky level scaled by the sun's height) and the sky level an inverted one subtracts.
+	// Scale is the factor Plain is the sky level times, for a detector that sees less than the open sky.
+	void SetDetector(int32 Plain, int32 Sky, double Scale) { SunLight = Plain; SkyLevel = Sky; SunScale = Scale; }
 
 	// The power of the dust at Pos, 0 if there is none.
 	int32 GetDustPower(const FIntVector& Pos) const;
@@ -71,7 +81,16 @@ private:
 	void TickOpening(const FIntVector& Pos, FMcStateId State);
 	void TickButton(const FIntVector& Pos, FMcStateId State);
 	void TickPlate(const FIntVector& Pos, FMcStateId State);
+	void TickTripwire(const FIntVector& Pos, FMcStateId State);
+	// Recomputes every hook whose line passes through Pos (or is Pos), and those hooks' ends.
+	void UpdateTripwires(const FIntVector& Pos);
+	void UpdateHookLine(const FIntVector& Hook);
+	static constexpr int32 TripwireDelay = 10;
+	static constexpr int32 TripwireMaxLength = 40;
+	void TickTarget(const FIntVector& Pos, FMcStateId State);
 	void TickDaylight(const FIntVector& Pos, FMcStateId State);
+	// The sky light that reaches the cell at Pos, 0 to 15, from the light engine (15 where nothing above dims it).
+	int32 SkyLightAt(const FIntVector& Pos) const;
 	bool IsSupported(const FIntVector& Pos, FMcStateId State) const;
 	bool IsRailPowered(const FIntVector& Pos, FMcStateId State) const;
 	void TickDetector(const FIntVector& Pos, FMcStateId State);
@@ -85,7 +104,7 @@ private:
 	bool Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky);
 	void Retract(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky);
 	bool ResolvePush(const FIntVector& PistonPos, const FIntVector& Start, int32 Toward, TArray<FIntVector>& Move, TArray<FIntVector>& Destroy) const;
-	void MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, bool bSticky);
+	void MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, int32 PistonFacing);
 	bool IsPushable(const FIntVector& Pos, FMcStateId State) const;
 	bool IsBreakable(FMcStateId State) const;
 
@@ -107,12 +126,21 @@ private:
 	FMcSimulation& Sim;
 	TSet<FIntVector> DirtyDust;
 	bool bFlushing = false;
+	bool bInTick = false;
+	TArray<FIntVector> PistonEvents;
+	// Set while an observer changes its own state, which is not a new observer.
+	bool bObserverSelf = false;
+	// Set while a block's state is changed without telling its neighbours (a dispenser's triggered flag).
+	bool bQuietChange = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
 	int32 SunLight = 15;
+	int32 SkyLevel = 15;
+	double SunScale = 1.0;
 	TMap<FIntVector, int32> ComparatorOutputs;
 	TMap<FIntVector, TArray<int64>> TorchToggles;
 	TMap<FIntVector, int32> Plates;
+	TMap<FIntVector, int64> TargetUntil;
 	TSet<FIntVector> Detectors;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;

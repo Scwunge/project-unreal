@@ -518,3 +518,30 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 
 - **Cloud phase** (2026-11-01; reference run cloudph, three straight-up shots 200 ticks apart): the pattern's column is floor((x + 0.03*gameTick)/12), sub-cell phase matched exactly in all three; rows are floor((z + 3.9)/12) (+-0.3), texture rows along z, columns along x, no flips. Ours drifted by the day time (jumped on `/time set`) and had no z offset. Now `AMcWorldActor` keeps a game clock (`GetGameTicks`, replicated once a second like the day time, never touched by `/time` or the daylight rule) and `McClouds::ZOffset` = 3.9 shifts the rows. The pattern's absolute phase still depends on how long the world has run, as in vanilla.
 - **Clouds follow game time, not day time** (2026-11-01; reference run cloudtime: same camera, shots at game ticks 536111, 536158, 536205 with `time set 3000` and `time set 9000` in between): the white-pixel masks of the three shots agree to 98% after a sideways shift of 2-3 px per 47 ticks (0.03 blocks a tick at the cloud height predicts 2.9), in spite of the time of day jumping by 3000 and 6000 ticks. A day-time drift would have moved the pattern by 90 and 180 blocks.
+
+## M5 redstone session: where I stopped (2026-10-31)
+- Done and held to vanilla traces: hoppers, droppers, falling blocks, water, lava, fire (see commits up to 872262b).
+- WIP, built but not tested or seen: falling-block entity. `FMcFallingBlockEntity` (McEntityManager.h) is mirrored from `FMcSimulation::GetFallingBlocks` by `AMcWorldActor::SyncFallingBlocks`; `UMcEntityModelComponent` draws a cube with the block's side texture (`BuildBlockMesh`), eased between ticks. Landing-unplaced blocks drop as items (`OnFallingBlockDropped`). A shot (`-McChat="/setblock 1 -30 3 minecraft:sand"`) was queued and stopped before it ran. Cube uses one texture on all faces (no separate top).
+- Next, in order: check the shot and run McSim/McServer suites; pressure plates, tripwire, target blocks (entities; no reference verb yet); crops/melon edge rows; detector rain/thunder values; Bell hook (`git show 9f78f77 -- Source/McSim`, `OnBellRung`).
+
+### Update (2026-10-31 night)
+- Done: pressure plates and target blocks (8c544d5; target strength by hit spot is a guess, no vanilla verb shoots), crop growth fields (a90c261, rule matches vanilla within noise), rain/thunder ramp 0.01 a tick (708cd7a), tripwire and hooks (7aaf2fa, wiki numbers only, shears/disarm and placement rules not done).
+- Open: daylight detector under weather matches vanilla within one 20-tick step except the thunder onset and the recovery after `weather clear`; script and vanilla log kept (tools/refscripts/rs_daylight_weather.txt), baked expect parked as tools/refscripts/expect_pending_rs_daylight_weather.txt. Falling-block entity and entity-fed plates/tripwire never seen in a game.
+- Bell: not done here; 9f78f77 (vehicles branch) already rings bells from McRedstone with `OnBellRung`, so take it at merge.
+- Build note: `E:\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat McClientEditor Win64 Development -Project=<worktree>\McClient.uproject` from PowerShell; it fails (exit 6) while an editor holds Live Coding.
+
+### Update (2026-11-01): the M5 exit scene
+- `tools/refscripts/gen_world.py` writes `rs_world.txt`: one world of 8 regions 16 blocks apart (repeater ring + delay-1/4 repeaters, comparator
+  compare/subtract, 6-observer chain, sticky pistons on 1/2/3/16-tick pulses, plain pistons on 1-tick pulses at even/odd ticks + same-tick
+  place/remove + 2-tick pulse, quasi-connectivity, daylight detectors high up, cane harvester with observer, kelp in a walled water column with an
+  observer), 600 ticks plus 17 settling ticks, every block state logged per tick. Vanilla's log is `expect/rs_world.txt`; `McClient.McSim.RefScripts`
+  holds our tick-by-tick states to it (760 changes, all equal).
+- Rules fitted from it: observers are not redstone conductors; a piston told of a change while scheduled ticks run acts at the end of that same
+  tick (was a tick late behind an observer pulse); a piston let go during its extension never places its head, and a sticky one's pushed block
+  lands at once; kelp with kelp above is `kelp_plant`; sky-darkness constant 0.53 (any value 0.516 to 0.555 fits the 25 vanilla inverted-detector
+  readings).
+- Unexplained, left out of the baked file (`tools/refscripts/ignore/rs_world.txt`): the observer at x=33 fires 1 to 2 ticks into sampling in vanilla only.
+- Not in the scene: hopper clock and dropper elevator (the headless replay has no container contents; hoppers and droppers live in McClient),
+  random-tick growth of cane and kelp (done by command instead), a detector with a block over it (vanilla reads the light reaching its cell, 14 beside
+  open sky; ours reads the global level). Falling-block entity shot still not taken.
+- Main's note-block hook (`PlayNote`, 074d37b) to be wired in McRedstone.cpp at merge.

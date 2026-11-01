@@ -204,7 +204,12 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 			const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 			if (Actor && Actor->HasAuthority() && Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == TEXT("minecraft:hopper"))
 			{
-				Hoppers.FindOrAdd(MakeKey(*Actor, Pos)).World = Actor;
+				FHopperEntry& Entry = Hoppers.FindOrAdd(MakeKey(*Actor, Pos));
+				if (!Entry.World.IsValid())
+				{
+					Entry.Order = NextHopperOrder++;
+				}
+				Entry.World = Actor;
 			}
 		});
 		if (FMcSimulation* Sim = WorldActor.GetSimulation())
@@ -319,7 +324,7 @@ void UMcBlockUseSubsystem::Sweep()
 				if (Entity.Value.Kind == EMcBlockEntityKind::Container && !Hoppers.Contains(MakeKey(*World, Pos))
 					&& GetBlockName(*Blocks, Pos) == TEXT("minecraft:hopper"))
 				{
-					Hoppers.Add(MakeKey(*World, Pos), FHopperEntry{ World, 0 });
+					Hoppers.Add(MakeKey(*World, Pos), FHopperEntry{ World, 0, NextHopperOrder++ });
 				}
 				if (Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
 				{
@@ -340,32 +345,43 @@ void UMcBlockUseSubsystem::Sweep()
 void UMcBlockUseSubsystem::TickHoppers()
 {
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	for (auto It = Hoppers.CreateIterator(); It; ++It)
+	// In the order they were set down (the reference client's: a hopper handed an item before its own turn counts its wait
+	// from 8 down at once, so the next hop is 7 ticks on, and one handed it after its turn waits the full 8).
+	TArray<FKey> Keys;
+	Hoppers.GenerateKeyArray(Keys);
+	Keys.Sort([this](const FKey& A, const FKey& B) { return Hoppers[A].Order < Hoppers[B].Order; });
+	for (const FKey& Key : Keys)
 	{
-		AMcWorldActor* World = It.Value().World.Get();
+		FHopperEntry* Entry = Hoppers.Find(Key);
+		if (!Entry)
+		{
+			continue;
+		}
+		AMcWorldActor* World = Entry->World.Get();
 		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
-		const FIntVector Pos = It.Key().Pos;
+		const FIntVector Pos = Key.Pos;
 		if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
 		{
-			It.RemoveCurrent();
+			Hoppers.Remove(Key);
 			continue;
 		}
 		const FMcStateId State = Blocks->GetBlock(Pos);
 		if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:hopper"))
 		{
 			// Breaking it drops its items (ReleaseBlock, or the chest sweep).
-			It.RemoveCurrent();
+			Hoppers.Remove(Key);
 			continue;
 		}
-		if (--It.Value().Cooldown > 0)
+		if (--Entry->Cooldown > 0)
 		{
 			continue;
 		}
-		It.Value().Cooldown = 0;
+		Entry->Cooldown = 0;
 		// A powered hopper (enabled=false) holds still.
 		if (Registry.GetPropertyValue(State, TEXT("enabled")) != TEXT("false") && TickHopper(*World, Pos, State))
 		{
-			It.Value().Cooldown = McHopper::Cooldown;
+			// TickHopper may have handed items to other hoppers; the entry is still ours.
+			Hoppers[Key].Cooldown = McHopper::Cooldown;
 		}
 	}
 }
@@ -389,7 +405,16 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
 		if (McHopper::MoveOne(Self, Into))
 		{
+			ContentsChanged(WorldActor, Pos);
 			ContentsChanged(WorldActor, Target);
+			if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Target)))
+			{
+				// A receiver that has already had its turn this tick (earlier in Order) misses the decrement a later one gets in
+				// this same pass, so it is given one less: a hopper pair passes an item on every 7 ticks both ways (reference run
+				// log_lg_logi: moves at ticks 1, 8, 15, 22, ...).
+				const FHopperEntry* Sender = Hoppers.Find(MakeKey(WorldActor, Pos));
+				Receiver->Cooldown = McHopper::Cooldown - (Sender && Receiver->Order < Sender->Order ? 1 : 0);
+			}
 			bMoved = true;
 		}
 	}
@@ -543,6 +568,11 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			{
 				TakeOne();
 				ContentsChanged(WorldActor, Pos + Step);
+				// A hopper handed an item starts its wait (reference run log_dropper1: a dropper into a hopper, the hopper sends 7 on).
+				if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Pos + Step)))
+				{
+					Receiver->Cooldown = McHopper::Cooldown;
+				}
 			}
 			return;
 		}
@@ -713,7 +743,13 @@ void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FInt
 			}
 		}
 	}
+	// Comparators that read it look again (after the write-back above).
+	if (FMcSimulation* Sim = WorldActor.GetSimulation())
+	{
+		Sim->NotifyContainerChanged(Pos);
+	}
 }
+
 
 TSharedPtr<FMcContainer> UMcBlockUseSubsystem::GetChest(AMcWorldActor& WorldActor, const FIntVector& Pos, int32 NumSlots)
 {

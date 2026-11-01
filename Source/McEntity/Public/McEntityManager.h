@@ -72,6 +72,21 @@ public:
 	static constexpr int32 MergeIntervalTicks = 10;
 };
 
+// A sand, gravel or other block in the air. The block simulation moves it (FMcSimulation::GetFallingBlocks) and whoever
+// owns both mirrors it here so clients are sent and draw it like any other entity. Not kept in a save: the simulation
+// owns the falling block, and it lands (or is lost) when the world closes.
+class MCENTITY_API FMcFallingBlockEntity final : public FMcEntity
+{
+public:
+	FMcFallingBlockEntity();
+	static const FName& StaticType();
+	virtual FName GetType() const override { return StaticType(); }
+	virtual bool IsPersistent() const override { return false; }
+
+	// The block's registry name, e.g. "minecraft:sand": its picture is the block's.
+	FName Block;
+};
+
 class MCENTITY_API FMcEntityManager
 {
 public:
@@ -168,6 +183,11 @@ public:
 			OnDetector(Pos, bOccupied);
 		}
 	}
+
+	// ---- Target blocks ----
+	// Called when an arrow sticks in a block: the cell, where it hit (block coordinates) and which way it was flying, for
+	// whoever runs the redstone. Left unset, targets don't hear.
+	TFunction<void(const FIntVector&, const FVector&, const FVector&)> OnArrowHit;
 
 private:
 	FMcBlockWorld& World;

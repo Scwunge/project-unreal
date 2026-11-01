@@ -39,6 +39,20 @@ const FName& FMcItemEntity::StaticType()
 	return Name;
 }
 
+const FName& FMcFallingBlockEntity::StaticType()
+{
+	static const FName Name(TEXT("minecraft:falling_block"));
+	return Name;
+}
+
+FMcFallingBlockEntity::FMcFallingBlockEntity()
+{
+	// A block 0.98 wide and tall (minecraft.wiki, "Falling Block").
+	Body.Width = 0.98f;
+	Body.Height = 0.98f;
+	Body.StepHeight = 0.0f;
+}
+
 FMcItemEntity::FMcItemEntity()
 {
 	Body.Width = 0.25f;

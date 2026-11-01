@@ -244,6 +244,18 @@ float3 sky = pow(b.x * SkyFactor, 2.2) * float3(0.55, 0.65, 0.85) * Ambient;
 float flick = 1.0 + 0.07 * sin(Time * 9.0 + Pos.x * 0.004 + Pos.y * 0.003) * sin(Time * 5.3 + Pos.y * 0.004 - Pos.x * 0.002);
 float3 glow = pow(b.y, 2.2) * float3(1.0, 0.85, 0.65) * BlockGlow * lerp(1.0, flick, saturate(b.y * 1.5 - b.x * 0.5));
 float3 e = Albedo * (sky + glow);
+if (k == 1.0)
+{
+    // The sky mirrored in the surface: weak looking down into it, strong at a grazing angle (Schlick's fresnel).
+    float3 n = normalize(VNormal);
+    float3 v = normalize(View);
+    float3 r = reflect(-v, n);
+    float fres = 0.04 + 0.96 * pow(1.0 - saturate(dot(n, v)), 5.0);
+    float3 horizon = float3(0.62, 0.74, 0.92);
+    float3 zenith = float3(0.2, 0.4, 0.85);
+    float3 skycol = lerp(horizon, zenith, saturate(r.z * 1.5)) * pow(b.x, 2.2) * SkyFactor;
+    e += skycol * fres * WaterSky;
+}
 if (k == 2.0)
 {
     float2 p = Pos.xy * 0.01;
@@ -551,7 +563,9 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
                            "Time": (time, ""), "Pos": (absolute, ""),
-                           "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), "")})
+                           "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), ""),
+                           "View": (camera, ""), "VNormal": (vertex_normal, ""),
+                           "WaterSky": (add_scalar(material, -350, 1900, "WaterSky", 1.0), "")})
         mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
         if hd:
             normal = add_custom(material, -100, 150, "McHdNormal", LIT_NORMAL_HD_HLSL,
@@ -595,8 +609,8 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                                  scalar=True)
             opacity_source = (fresnel, "")
             # Water bends what lies under it (the ripples' normals do the distorting); the other blocks don't.
-            bend = add_custom(material, -100, 800, "McLitRefraction", KIND_HLSL + "return k == 1.0 ? 1.2 : 1.0;",
-                              {"Kind": (kind, "")}, scalar=True)
+            bend = add_custom(material, -100, 800, "McLitRefraction", KIND_HLSL + "return k == 1.0 ? Ior : 1.0;",
+                              {"Kind": (kind, ""), "Ior": (add_scalar(material, -350, 2000, "WaterIor", 1.2), "")}, scalar=True)
             mel.connect_material_property(bend, "", unreal.MaterialProperty.MP_REFRACTION)
     else:
         colour = add_custom(material, -100, 0, "McLightmap", LIGHTMAP_HLSL,

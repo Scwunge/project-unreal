@@ -249,6 +249,14 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		Underwater = FMath::FInterpTo(Underwater, bWet ? 1.0f : 0.0f, DeltaTime, 8.0f);
 		McSky::SetCameraUnderwater(Underwater);
 	}
+#if !UE_BUILD_SHIPPING
+	// For tuning: -McWaterIor= and -McWaterSky= (the water's index of refraction, and its mirrored-sky strength).
+	static const float WaterIor = [] { float V = 1.2f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
+	static const float WaterSky = [] { float V = 1.0f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
+#else
+	constexpr float WaterIor = 1.2f;
+	constexpr float WaterSky = 1.0f;
+#endif
 	for (UMaterialInterface* Material : PassMaterials)
 	{
 		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))
@@ -256,6 +264,8 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Instance->SetScalarParameterValue(TEXT("Wetness"), Wetness);
 				Instance->SetScalarParameterValue(TEXT("Underwater"), Underwater);
+				Instance->SetScalarParameterValue(TEXT("WaterIor"), WaterIor);
+				Instance->SetScalarParameterValue(TEXT("WaterSky"), WaterSky);
 		}
 	}
 

@@ -540,6 +540,17 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("it holds a few ticks after the thing leaves"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
 		Run(Sim, 4);
 		TestEqual(TEXT("and lets go after the 10"), HookValue(0, TEXT("powered")), FString(TEXT("false")));
+		// Power on a TNT block lights it: the simulation calls LightTnt, and the server makes primed TNT of it.
+		{
+			TArray<FIntVector> Lit;
+			Sim.OnLightTnt = [&Lit](const FIntVector& Pos) { Lit.Add(Pos); };
+			World.SetBlock(FIntVector(12, 1, 7), State(TEXT("minecraft:tnt")));
+			Run(Sim, 3);
+			TestEqual(TEXT("unpowered TNT stays"), Lit.Num(), 0);
+			World.SetBlock(FIntVector(11, 1, 7), State(TEXT("minecraft:redstone_block")));
+			Run(Sim, 1);
+			TestEqual(TEXT("TNT beside a redstone block is lit"), Lit.Num(), 1);
+		}
 		// Breaking the string powers both hooks at once (reference client).
 		World.SetBlock(FIntVector(3, 1, 7), Air);
 		Run(Sim, 2);

@@ -34,6 +34,7 @@ namespace
 		PlateHeavy,
 		Tripwire,
 		TripwireHook,
+		Tnt,
 		Daylight,
 		RedstoneBlock,
 		Door,
@@ -106,6 +107,7 @@ namespace
 				else if (Name == TEXT("minecraft:light_weighted_pressure_plate")) Kind = PlateLight;
 				else if (Name == TEXT("minecraft:heavy_weighted_pressure_plate")) Kind = PlateHeavy;
 				else if (Name.EndsWith(TEXT("_pressure_plate"))) Kind = Plate;
+				else if (Name == TEXT("minecraft:tnt")) Kind = Tnt;
 				else if (Name == TEXT("minecraft:tripwire")) Kind = Tripwire;
 				else if (Name == TEXT("minecraft:tripwire_hook")) Kind = TripwireHook;
 				else if (Name == TEXT("minecraft:daylight_detector")) Kind = Daylight;
@@ -681,6 +683,13 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	case Tripwire:
 	case TripwireHook:
 		UpdateTripwires(Pos);
+		break;
+	// Power on TNT lights it (the server makes it primed TNT and takes the block away).
+	case Tnt:
+		if (HasPower(Pos))
+		{
+			Sim.LightTnt(Pos);
+		}
 		break;
 	case Repeater:
 	{

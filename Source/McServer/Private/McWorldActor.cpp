@@ -297,6 +297,35 @@ void AMcWorldActor::BeginPlay()
 			Entities->GetManager().DropItem(FVector(Pos) + FVector(0.5), Stack);
 		}
 	};
+	// An anvil that lands hurts what is in its cell: 2 a block fallen beyond the first, 40 at most (reference client,
+	// rs anvil_damage: iron golems under anvils dropped 4 to 19 blocks took 8, 8, 10, 12, 16, 20, 28, 36). Whole
+	// distances sit on the edge of the rounding, so the 4-block drop (6 by the rule) read 8 in the reference.
+	Simulation->OnFallingBlockLanded = [this](const FIntVector& Pos, FMcStateId State, double Fallen)
+	{
+		const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
+		if (!Entities || !Name.EndsWith(TEXT("anvil")) || Fallen <= 1.0)
+		{
+			return;
+		}
+		const float Damage = static_cast<float>(FMath::Min(2 * FMath::CeilToInt(Fallen - 1.0 - 1e-6), 40));
+		const FBox Cell(FVector(Pos), FVector(Pos) + FVector(1.0));
+		TArray<FMcEntity*> Hit;
+		Entities->GetManager().FindInBox(Cell, Hit);
+		for (FMcEntity* Entity : Hit)
+		{
+			if (Entity->IsLiving() && !Entity->bRemoved)
+			{
+				static_cast<FMcMob&>(*Entity).Damage(Damage, nullptr);
+			}
+		}
+		for (const FVector& Player : Entities->GetManager().PlayerPositions)
+		{
+			if (Cell.IsInside(Player + FVector(0.0, 0.5, 0.0)))
+			{
+				Entities->GetManager().HurtPlayer(Player, Damage);
+			}
+		}
+	};
 	// A minecart on a detector rail powers it.
 	Entities->GetManager().OnDetector = [this](const FIntVector& Pos, bool bOccupied)
 	{

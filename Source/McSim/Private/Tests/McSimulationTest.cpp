@@ -157,6 +157,17 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and landed"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
 	}
 	{
+		// An anvil that lands says how far it fell, for the server to hurt what is under it.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		double Fallen = 0.0;
+		Sim.OnFallingBlockLanded = [&Fallen](const FIntVector&, FMcStateId, double Distance) { Fallen = Distance; };
+		World.SetBlock(FIntVector(0, 9, 0), State(TEXT("minecraft:anvil[facing=north]")));
+		Run(Sim, 40);
+		TestEqual(TEXT("it reports 8 blocks fallen"), Fallen, 8.0, 0.001);
+	}
+	{
 		// Random tick rules, run on single blocks.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);

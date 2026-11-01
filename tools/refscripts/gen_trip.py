@@ -36,3 +36,13 @@ for i in range(7):
         L += cmd(f"summon arrow {2*i+vals[i]} {-60+2*j+vals[j]} 1.6 {{Motion:[0.0,0.0,-3.0]}}")
 L += step(B, 30)
 open(OUT + "rs_target.txt", "w").write("\n".join(PRE + L + cmd("kill @e[type=arrow]") + cmd("tick unfreeze")) + "\n")
+
+# TNT lit by power: a redstone block, a powered lever and a powered button set against TNT (their neighbour update
+# reaches it), and an observer whose pulse is started by a placed stone. The block going away is the prime tick.
+B = "-3 -60 -1 3 -60 8"
+L = cmd("setblock 0 -60 0 tnt") + cmd("setblock 0 -60 3 tnt") + cmd("setblock 0 -60 6 tnt") + cmd("setblock 0 -60 9 tnt")
+L += cmd("setblock -1 -60 6 observer[facing=west]")
+L += step(B, 4)
+L += cmd("setblock -1 -60 0 redstone_block") + cmd("setblock -1 -60 3 lever[face=wall,facing=west,powered=true]") + cmd("setblock -2 -60 6 stone") + cmd("setblock -1 -60 9 stone_button[face=wall,facing=west,powered=true]")
+L += step(B, 14)
+open(OUT + "rs_tnt_power.txt", "w").write("\n".join(PRE + L + cmd("kill @e[type=tnt]") + cmd("tick unfreeze")) + "\n")

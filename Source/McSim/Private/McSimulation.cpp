@@ -308,6 +308,7 @@ void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
 	Block.Id = NextFallingId++;
 	Block.Column = Pos;
 	Block.Y = Pos.Y;
+	Block.StartY = Pos.Y;
 	Block.State = State;
 	Falling.Add(Block);
 }
@@ -341,7 +342,12 @@ void FMcSimulation::StepFalling()
 		const FMcStateId Cell = World.GetBlock(At);
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 		const FMcStateId State = Block.State;
+		const double Fallen = Block.StartY - Rest;
 		Falling.RemoveAt(Index);
+		if (OnFallingBlockLanded)
+		{
+			OnFallingBlockLanded(At, State, Fallen);
+		}
 		if (Registry.IsAir(Cell) || FluidOf(Cell) != EMcFluid::None || FMcBlockTags::Get().Has(TEXT("minecraft:replaceable"), Cell))
 		{
 			World.SetBlock(At, State);

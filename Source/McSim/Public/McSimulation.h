@@ -84,6 +84,17 @@ public:
 	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// The TNT block at Pos is lit (by fire, flint and steel or redstone): the server turns it into primed TNT
+	// (FMcPrimedTnt::Ignite). Redstone calls LightTnt when the power on a TNT block rises.
+	TFunction<void(const FIntVector&)> OnLightTnt;
+	void LightTnt(const FIntVector& Pos) const
+	{
+		if (OnLightTnt)
+		{
+			OnLightTnt(Pos);
+		}
+	}
+
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 
@@ -94,12 +105,16 @@ public:
 		int32 Id = 0;
 		FIntVector Column;
 		double Y = 0.0;
+		// Where it started, for the distance it fell (an anvil hurts by it).
+		double StartY = 0.0;
 		double Velocity = 0.0;
 		FMcStateId State = 0;
 	};
 	const TArray<FFallingBlock>& GetFallingBlocks() const { return Falling; }
 	// A falling block lands somewhere it can't be placed (a torch, a slab): it breaks and drops as an item.
 	TFunction<void(const FIntVector&, FMcStateId)> OnFallingBlockDropped;
+	// A falling block came to rest at the cell, having fallen the distance: for whoever hurts what is under an anvil.
+	TFunction<void(const FIntVector&, FMcStateId, double)> OnFallingBlockLanded;
 
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;

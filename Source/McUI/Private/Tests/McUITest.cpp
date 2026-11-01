@@ -10,6 +10,7 @@
 #include "McResourcePacks.h"
 #include "McRecipe.h"
 #include "McScreenLayout.h"
+#include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -671,6 +672,34 @@ bool FMcFontMetricsTest::RunTest(const FString& Parameters)
 		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, Ink.Down, 0.01f));
 	}
 	TestTrue(TEXT("the whole string is 308 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 308.0f, 1.0f));
+
+	// More characters the vanilla client was asked about (scripts/respack_unihex.txt): some come from Unifont and are cut to
+	// their columns (Thai, braille), the rest from the sheets. Every picture is drawn from the pen, and its left is 0.
+	struct FMore { int32 Char; float Advance; float Shadow; float Right; };
+	static const FMore More[] = {
+		{ 0x0250, 6.0f, 1.0f, 8.0f },
+		{ 0x2200, 8.0f, 1.0f, 8.0f },
+		{ 0x0E01, 4.0f, 0.5f, 3.0f },
+		{ 0x0561, 6.0f, 1.0f, 8.0f },
+		{ 0x283F, 3.0f, 0.5f, 2.5f },
+		{ 0x10D0, 6.0f, 1.0f, 8.0f },
+		{ 0x0500, 6.0f, 1.0f, 8.0f },
+		{ 0x4E00, 9.0f, 0.5f, 8.0f },
+		{ 0x3042, 9.0f, 0.5f, 8.0f },
+		{ 0x0928, 9.0f, 0.5f, 8.0f }
+	};
+	for (const FMore& Row : More)
+	{
+		const FString Name = FString::Printf(TEXT("U+%04X"), Row.Char);
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		TestTrue(*(Name + TEXT(" has a picture")), Hud->GetGlyphInk(Row.Char, Left, Right, Up, Down));
+		TestEqual(*(Name + TEXT(" advance")), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*(Name + TEXT(" shadow")), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, 0.0f, 0.01f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Row.Right, 0.01f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, 0.0f, 0.01f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, 8.0f, 0.01f));
+	}
 	return true;
 }
 
@@ -816,6 +845,50 @@ bool FMcFontMetricsTrueTypeTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("the whole string is 326 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 326.0f, 1.0f));
 	McPacks::ApplySelection(Before);
+	return true;
+}
+
+// The title screen's splash text comes from texts/splashes.txt, and a pack's copy replaces the game's; three days have a
+// splash of their own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcSplashTest, "McClient.McUI.Splash",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcSplashTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const TArray<FString> Vanilla = AMcHUD::LoadSplashTexts();
+	if (TestTrue(TEXT("the game has splashes"), Vanilla.Num() > 100))
+	{
+		TestFalse(TEXT("none of them empty"), Vanilla.ContainsByPredicate([](const FString& Line) { return Line.IsEmpty(); }));
+	}
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McSplashTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("First splash \r\n\r\n  Second one\r\nThird!\r\n"), *(Root / TEXT("assets/minecraft/texts/splashes.txt")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	const TArray<FString> FromPack = AMcHUD::LoadSplashTexts();
+	if (TestEqual(TEXT("the pack's file replaces the game's"), FromPack.Num(), 3))
+	{
+		TestEqual(TEXT("lines are trimmed"), FromPack[0], FString(TEXT("First splash")));
+		TestEqual(TEXT("empty lines are dropped"), FromPack[1], FString(TEXT("Second one")));
+		TestEqual(TEXT("first by a low roll"), AMcHUD::PickSplash(FromPack, 6, 15, 0.0f), FString(TEXT("First splash")));
+		TestEqual(TEXT("last by a high roll"), AMcHUD::PickSplash(FromPack, 6, 15, 0.999f), FString(TEXT("Third!")));
+		TestEqual(TEXT("a roll of 1 stays in the list"), AMcHUD::PickSplash(FromPack, 6, 15, 1.0f), FString(TEXT("Third!")));
+		TestEqual(TEXT("Christmas Eve"), AMcHUD::PickSplash(FromPack, 12, 24, 0.0f), FString(TEXT("Merry X-mas!")));
+		TestEqual(TEXT("New Year's Day"), AMcHUD::PickSplash(FromPack, 1, 1, 0.0f), FString(TEXT("Happy new year!")));
+		TestEqual(TEXT("Halloween"), AMcHUD::PickSplash(FromPack, 10, 31, 0.0f), FString(TEXT("OOoooOOOoooo! Spooky!")));
+	}
+	TestEqual(TEXT("no lines, no splash"), AMcHUD::PickSplash(TArray<FString>(), 6, 15, 0.5f), FString());
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestEqual(TEXT("without the pack the game's again"), AMcHUD::LoadSplashTexts().Num(), Vanilla.Num());
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

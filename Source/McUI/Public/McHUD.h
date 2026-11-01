@@ -70,7 +70,17 @@ public:
 	bool GetGlyphInk(int32 Char, float& Left, float& Right, float& Up, float& Down);
 	float GetTextWidth(const FString& Text);
 
+	// The title screen's yellow splash: the lines of texts/splashes.txt (the top pack's copy replaces the game's), trimmed and
+	// without empty ones; and the one shown on a day, Roll in 0..1 choosing among the lines. Christmas Eve, New Year's Day and
+	// Halloween have a fixed splash of their own.
+	static TArray<FString> LoadSplashTexts();
+	static FString PickSplash(const TArray<FString>& Lines, int32 Month, int32 Day, float Roll);
+
 private:
+	// The splash shown on the title screen, chosen when the screen is opened.
+	FString Splash;
+	bool bSplashChosen = false;
+	void DrawSplash(float CentreX);
 	struct FIconTriangle
 	{
 		FVector2D Positions[3];  // in GUI pixels, within the 16 x 16 slot

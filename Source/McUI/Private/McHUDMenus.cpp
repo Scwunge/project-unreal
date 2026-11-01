@@ -25,6 +25,7 @@
 #include "AudioDevice.h"
 #include "Camera/CameraComponent.h"
 #include "EngineUtils.h"
+#include "CanvasTypes.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
@@ -70,6 +71,7 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 		ConnectError.Reset();
 	}
 	ActiveMenu = NewMenu;
+	bSplashChosen = false;
 	FocusedField = 0;
 	UMcGameViewportClient::TakeTyped();
 	if (NewMenu == EMenu::Worlds)
@@ -536,7 +538,63 @@ void AMcHUD::DrawTitle(int32 Width, int32 Height)
 			Player->ConsoleCommand(TEXT("quit"));
 		}
 	}
+	DrawSplash(CentreX);
 	DrawGuiText(TEXT("Minecraft 26.3 (Unreal port)"), 2.0f, Height - 10.0f, White, true);
+}
+
+TArray<FString> AMcHUD::LoadSplashTexts()
+{
+	TArray<FString> Lines;
+	FString Text;
+	if (FFileHelper::LoadFileToString(Text, *McCache::Asset(TEXT("texts/splashes.txt"))))
+	{
+		Text.ParseIntoArrayLines(Lines, true);
+		for (FString& Line : Lines)
+		{
+			Line.TrimStartAndEndInline();
+		}
+		Lines.RemoveAll([](const FString& Line) { return Line.IsEmpty(); });
+	}
+	return Lines;
+}
+
+FString AMcHUD::PickSplash(const TArray<FString>& Lines, int32 Month, int32 Day, float Roll)
+{
+	if (Month == 12 && Day == 24)
+	{
+		return TEXT("Merry X-mas!");
+	}
+	if (Month == 1 && Day == 1)
+	{
+		return TEXT("Happy new year!");
+	}
+	if (Month == 10 && Day == 31)
+	{
+		return TEXT("OOoooOOOoooo! Spooky!");
+	}
+	return Lines.IsEmpty() ? FString() : Lines[FMath::Clamp(FMath::FloorToInt(Roll * Lines.Num()), 0, Lines.Num() - 1)];
+}
+
+// The splash sits at the right of the logo, turned 20 degrees up, and pulses once a second: 1.8 times the text's size,
+// shrunk to fit (100 over its width and 32), by up to a tenth of that.
+void AMcHUD::DrawSplash(float CentreX)
+{
+	if (!bSplashChosen)
+	{
+		bSplashChosen = true;
+		const FDateTime Now = FDateTime::Now();
+		Splash = PickSplash(LoadSplashTexts(), Now.GetMonth(), Now.GetDay(), FMath::FRand());
+	}
+	if (Splash.IsEmpty() || !Canvas || !Canvas->Canvas)
+	{
+		return;
+	}
+	const double Seconds = FMath::Fmod(FPlatformTime::Seconds(), 1.0);
+	const float Pulse = 1.8f - FMath::Abs(FMath::Sin(static_cast<float>(Seconds * 2.0 * UE_DOUBLE_PI)) * 0.1f);
+	const float Size = Pulse * 100.0f / (TextWidth(Splash) + 32.0f);
+	Canvas->Canvas->PushRelativeTransform(FRotationMatrix(FRotator(0.0f, -20.0f, 0.0f)) * FTranslationMatrix(FVector((CentreX + 123.0f) * Scale, 69.0f * Scale, 0.0f)));
+	DrawGuiText(Splash, -TextWidth(Splash) * Size / 2.0f, -8.0f * Size, 0xFFFF00, true, 1.0f, Size);
+	Canvas->Canvas->PopTransform();
 }
 
 void AMcHUD::DrawWorlds(int32 Width, int32 Height)

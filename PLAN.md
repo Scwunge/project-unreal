@@ -376,8 +376,7 @@ Models and items
 Other assets
 - [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`); tested through the pack stack (McAudio.PackSounds)
 - [x] `lang/en_us.json` merged key by key, the higher pack winning (McCore.PackLang); other languages are not read (the game has no language option)
-- [ ] `texts/` (splashes, credits, end poem) and `particles/*.json`: nothing in the game reads them yet (no splash
-  text on the title screen, no credits, particles are drawn from block pictures and colours, not the particle sheets),
+- [~] `texts/splashes.txt`: the title screen's yellow splash is drawn from the top pack's copy (else the game's): 1.8 times size shrunk to fit 100/(width+32), pulsing once a second, turned 20 degrees up at (centre+123, 69); position, tilt and size match a vanilla shot by eye (scripts/respack_splash.txt, ref verb `screen title`; ours `-McTitle -McPacks=zz_test_splash`); the date splashes (24 Dec, 1 Jan, 31 Oct) are from memory of the client, not checked against it; test McUI.Splash. Credits and the end poem (`texts/`) and `particles/*.json`: nothing in the game reads them yet (no credits, particles are drawn from block pictures and colours, not the particle sheets),
   so a pack's copy has nothing to change until those features exist. `shaders/` (post effects, core) cannot apply:
   Unreal draws the world. `waypoint_style`, `regional_compliance`: missing
 

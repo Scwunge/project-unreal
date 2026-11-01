@@ -3,20 +3,62 @@
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
 namespace McCache
 {
+	bool IsCompleteAt(const FString& Folder)
+	{
+		FString Text;
+		TSharedPtr<FJsonObject> Manifest;
+		if (!FFileHelper::LoadFileToString(Text, *(Folder / TEXT("manifest.json")))
+			|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Manifest) || !Manifest.IsValid())
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Steps;
+		if (!Manifest->TryGetObjectField(TEXT("steps"), Steps))
+		{
+			return false;
+		}
+		// The steps tools/fetch_cache.py and the game's own setup both write.
+		for (const TCHAR* Step : { TEXT("client_jar"), TEXT("assets"), TEXT("reports") })
+		{
+			bool bDone = false;
+			if (!(*Steps)->TryGetBoolField(Step, bDone) || !bDone)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	FString UserRoot()
+	{
+		return FPaths::ConvertRelativePathToFull(FPlatformProcess::UserSettingsDir()) / TEXT("McUnreal/cache");
+	}
+
+	bool IsComplete()
+	{
+		return IsCompleteAt(Root());
+	}
+
 	FString Root()
 	{
-		FString Override;
-		if (FParse::Value(FCommandLine::Get(), TEXT("-McCache="), Override))
+		static const FString Folder = []
 		{
-			return FPaths::ConvertRelativePathToFull(Override);
-		}
-		return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("cache"));
+			FString Override;
+			if (FParse::Value(FCommandLine::Get(), TEXT("-McCache="), Override))
+			{
+				return FPaths::ConvertRelativePathToFull(Override);
+			}
+			const FString Project = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("cache"));
+			return IsCompleteAt(Project) ? Project : UserRoot();
+		}();
+		return Folder;
 	}
 
 	FString Report(const FString& RelativePath)

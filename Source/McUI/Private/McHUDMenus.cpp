@@ -3,6 +3,7 @@
 // rows 36 high.
 
 #include "McHUD.h"
+#include "McCache.h"
 #include "McGameViewportClient.h"
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
@@ -129,6 +130,16 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		GEngine->OnNetworkFailure().AddLambda([](UWorld*, UNetDriver*, ENetworkFailure::Type, const FString& Error) { SetConnectError(Error); });
 		GEngine->OnTravelFailure().AddLambda([](UWorld*, ETravelFailure::Type, const FString& Error) { SetConnectError(Error); });
 	}
+	if (bTitle && !bCacheChecked)
+	{
+		bCacheChecked = true;
+		bCacheReady = McCache::IsComplete();
+	}
+	if (bTitle && !bCacheReady && ActiveMenu != EMenu::Setup)
+	{
+		// A packaged game on its first run has no cache yet: set it up from the player's own install first.
+		OpenMenu(EMenu::Setup);
+	}
 	if (bTitle && !ConnectError.IsEmpty() && (ActiveMenu != EMenu::Message || MessageText != ConnectError))
 	{
 		// The failure comes while the title is still up, which the engine then loads afresh, so it stays to be shown
@@ -195,6 +206,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 
 	switch (ActiveMenu)
 	{
+	case EMenu::Setup: DrawSetup(Width, Height); break;
 	case EMenu::Title: DrawTitle(Width, Height); break;
 	case EMenu::Worlds: DrawWorlds(Width, Height); break;
 	case EMenu::ConfirmDelete: DrawConfirmDelete(Width, Height); break;
@@ -254,9 +266,8 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 		: bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png");
 	DrawNineSlice(LoadSprite(Sprite), X, Y, W, H, 200.0f, 20.0f, 3.0f);
 	DrawCentredText(Label, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, bEnabled ? White : Grey);
-#if !UE_BUILD_SHIPPING
-	// Development: -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a
-	// space), to run the menus without a hand on the mouse.
+	// -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a space), to run
+	// the menus without a hand on the mouse. Also in a packaged game, to test it.
 	static TArray<FString> Presses;
 	static bool bPressesRead = false;
 	static double NextPress = 0.0;
@@ -278,7 +289,6 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 		NextPress = FPlatformTime::Seconds() + 1.0;
 		return true;
 	}
-#endif
 	if (bOver && bMenuClick)
 	{
 		// The click is heard where the player is: on the listener, not in the world.
@@ -470,6 +480,10 @@ void AMcHUD::DrawWorlds(int32 Width, int32 Height)
 		DrawGuiText(McLaunch::IsCreativeMode(Row.GameMode) ? TEXT("Creative Mode") : TEXT("Survival Mode"), RowX + 3.0f, Y + 23.0f, DarkGrey, true);
 	}
 
+	if (MenuButton(bHostWorld ? TEXT("Friends can join: On") : TEXT("Friends can join: Off"), Width - 162.0f, 6.0f, 156.0f, 20.0f))
+	{
+		bHostWorld = !bHostWorld;
+	}
 	const bool bSelected = WorldRows.IsValidIndex(SelectedWorld);
 	if (MenuButton(TEXT("Play Selected World"), CentreX - 154.0f, Height - 52.0f, 150.0f, 20.0f, bSelected) || (bSelected && (bPlay || bMenuEnter)))
 	{
@@ -532,6 +546,10 @@ void AMcHUD::DrawNewWorld(int32 Width, int32 Height)
 	const float CentreX = Width / 2.0f;
 	const float Left = CentreX - 100.0f;
 	DrawCentredText(TEXT("Create New World"), CentreX, 20.0f, White);
+	if (MenuButton(bHostWorld ? TEXT("Friends can join: On") : TEXT("Friends can join: Off"), Width - 162.0f, 6.0f, 156.0f, 20.0f))
+	{
+		bHostWorld = !bHostWorld;
+	}
 
 	DrawGuiText(TEXT("World Name"), Left, 47.0f, Grey, true);
 	MenuTextField(NewWorldName, FieldWorldName, Left, 60.0f, 200.0f, 20.0f, 32);
@@ -805,7 +823,8 @@ void AMcHUD::PlayWorld(const FString& Folder, const FString& ExtraOptions)
 	SaveClientOptions();
 	OpenMenu(EMenu::None);
 	// The world actor reads McWorld (and, for a new world, the rest) from the URL.
-	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, FString::Printf(TEXT("McWorld=%s%s"), *Folder, *ExtraOptions));
+	// ?listen opens the world on the game's port (25565) to friends joining by address.
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, FString::Printf(TEXT("McWorld=%s%s%s"), *Folder, *ExtraOptions, bHostWorld ? TEXT("?listen") : TEXT("")));
 }
 
 void AMcHUD::JoinServer()

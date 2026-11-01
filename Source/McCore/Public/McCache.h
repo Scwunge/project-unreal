@@ -7,8 +7,16 @@
 
 namespace McCache
 {
-	// The cache folder: <project>/cache, or the folder given with -McCache=<path> on the command line.
+	// The cache folder: the folder given with -McCache=<path> on the command line, else <project>/cache when that holds a
+	// finished cache (the editor and a checkout), else McUnreal/cache in the user's local app data (a packaged game, whose
+	// first run builds it, see McCacheSetup.h). Worked out once.
 	MCCORE_API FString Root();
+
+	// The local app data folder's cache: where a packaged game builds its own.
+	MCCORE_API FString UserRoot();
+
+	// True when the cache at Root() was finished: its manifest.json lists every step as done.
+	MCCORE_API bool IsComplete();
 
 	// A data generator report, e.g. Report("blocks.json") -> cache/data/reports/blocks.json.
 	MCCORE_API FString Report(const FString& RelativePath);

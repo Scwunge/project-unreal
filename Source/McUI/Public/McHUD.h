@@ -16,6 +16,7 @@
 #include "McLocalPlayer.h"
 #include "McHUD.generated.h"
 
+class FMcCacheBuilder;
 class FMcContainer;
 class FMcFurnace;
 class FMcMenuInput;
@@ -52,7 +53,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options };
+	enum class EMenu : uint8 { None, Setup, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -138,6 +139,10 @@ private:
 	bool DrawMenus(int32 Width, int32 Height, bool bTitle);
 	void DrawMenuBackground(int32 Width, int32 Height, bool bDim);
 	void DrawTitle(int32 Width, int32 Height);
+	// First run, before the cache exists (McCacheSetup.h): none of the game's pictures or font are there to draw with, so
+	// this screen uses the engine's font and plain rectangles. Sizes are in screen pixels.
+	void DrawSetup(int32 Width, int32 Height);
+	void FinishSetup();
 	void DrawWorlds(int32 Width, int32 Height);
 	void DrawConfirmDelete(int32 Width, int32 Height);
 	void DrawNewWorld(int32 Width, int32 Height);
@@ -222,6 +227,15 @@ private:
 	FString PlayerName;
 	FString ServerAddress;
 	FString MessageTitle;
+	// First-run setup: whether the cache was found complete (looked at once), the folder typed in, what went wrong, and
+	// the build once it is started.
+	// The world list's switch: play the world as a listen server on the game's port, so friends can join by address.
+	bool bHostWorld = false;
+	bool bCacheChecked = false;
+	bool bCacheReady = false;
+	FString SetupFolder;
+	FString SetupError;
+	TSharedPtr<FMcCacheBuilder> CacheBuild;
 	FString MessageText;
 	FString ChatDraft;
 	TArray<FString> SentChat;

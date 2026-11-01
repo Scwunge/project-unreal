@@ -35,7 +35,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 	const FExpectation Expectations[] = {
 		{ TEXT("minecraft:creeper"), 1, 0.8, 1.7 },
 		{ TEXT("minecraft:spider"), 2, 2.5, 0.9 },
-		{ TEXT("minecraft:skeleton"), 2, 0.8, 1.99 },  // its picture and the one for what it holds
+		{ TEXT("minecraft:skeleton"), 2, 1.2, 1.99 },  // its picture and the one for what it holds (a held item is 0.85 across, tilted 35 degrees up to 1.17)
 		{ TEXT("minecraft:enderman"), 2, 0.8, 2.9 },
 		{ TEXT("minecraft:slime"), 2, 0.55, 0.52 },
 	};
@@ -52,7 +52,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 			const ::FBox Bounds = LayerBounds(*Model, Layer);
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
-			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide"), Expect.Kind, Layer), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
+			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide (%.3f by %.3f)"), Expect.Kind, Layer, Bounds.GetSize().X, Bounds.GetSize().Y), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
 			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height"), Expect.Kind, Layer), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -0.07);
 			// UVs stay on the picture.
 			McPlayerModel::FMeshData Data;

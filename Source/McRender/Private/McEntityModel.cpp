@@ -178,20 +178,31 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
 
+		// The right hand's item of a humanoid arm, placed as the game does: the arm's hand frame (turned -90 about x and 180 about y,
+		// moved 1/16, 0.125, -0.625 blocks) then the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
+		// pixels), both read from the item model data. That leaves the sprite in the arm's y-z plane 1 pixel out from the shoulder,
+		// 13.6 pixels square about 9.5 down and 6 forward, with its handle-to-tip diagonal 10 degrees below the arm's forward line:
+		// our axis-aligned flat turned -35 degrees about x (the box is placed so it lands there). The vex's hand frame is the arm's
+		// with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes: -0.91, -3.47, 1.08).
+		void AddHeldItemInHand(FModel& Model, const FVector& Pivot, float HandScale = 1.0f, const FVector& HandShift = FVector::ZeroVector)
+		{
+			constexpr float Tilt = -0.6109f;
+			Model.HeldLayer = Model.Textures.Num();
+			Model.Textures.Add(FString());
+			// The sprite's centre in the arm's frame (vanilla's axes, y down and z back), then ours (y up, z forward).
+			const FVector Vanilla = FVector(-1.0f, 9.5f, -6.0f) * HandScale + HandShift;
+			const FVector Centre(Vanilla.X, -Vanilla.Y, -Vanilla.Z);
+			const float Size = 13.6f * HandScale;
+			// The box sits where the tilt about x lands its centre on Centre.
+			const FVector Placed = FQuat(FVector::XAxisVector, -Tilt).RotateVector(Centre);
+			FBox Picture = Box(0, 0, Centre.X, Placed.Y - Size * 0.5f, Placed.Z - Size * 0.5f, 0, Size, Size);
+			Picture.bFlat = true;
+			Model.Parts.Add(Part(ERole::ArmRight, Pivot, { Picture }, Tilt, 0, 0, 0, Model.HeldLayer));
+		}
+
 		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. Idle it
 		// folds its arms like the villager; armed it has two arms of its own, held out with the weapon of its Style (1 a crossbow,
 		// 2 an axe, 3 none: it casts), and Held is the item picture drawn in the right hand.
-		// The right hand's item, drawn from the picture of whatever the mob holds (a flat picture on the arm, as the illagers' axes are).
-		// Pivot is the right shoulder; ArmCentreX and HandY (below the shoulder, pixels) say where the arm's end is.
-		void AddHeldItem(FModel& Model, const FVector& Pivot, float ArmCentreX, float HandY)
-		{
-			Model.HeldLayer = Model.Textures.Num();
-			Model.Textures.Add(FString());
-			FBox Picture = Box(0, 0, ArmCentreX, HandY - 12.0f, -1, 0, 12, 12);
-			Picture.bFlat = true;
-			Model.Parts.Add(Part(ERole::ArmRight, Pivot, { Picture }, 0.0f, 0, 0, 0, Model.HeldLayer));
-		}
-
 		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
 		{
 			Model.Scale = 15.0f / 16.0f;
@@ -289,7 +300,7 @@ namespace McEntityModel
 				Zombie.Textures = { TEXT("zombie/zombie.png") };
 				Zombie.bArmsForward = true;
 				AddPerson(Zombie, false, true);
-				AddHeldItem(Zombie, FVector(-5, 22, 0), -1.0f, -10.0f);
+				AddHeldItemInHand(Zombie, FVector(-5, 22, 0));
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
@@ -375,7 +386,7 @@ namespace McEntityModel
 				Vex.bFlutter = true;
 				Vex.Parts.Add(Part(ERole::WingRight, FVector(-0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8) }));
 				Vex.Parts.Add(Part(ERole::WingLeft, FVector(0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8, 0.0f, true) }));
-				AddHeldItem(Vex, FVector(-1.75f, 6.25f, 0), -0.25f, -3.5f);
+				AddHeldItemInHand(Vex, FVector(-1.75f, 6.25f, 0), 0.55f, FVector(-0.91f, -3.47f, 1.08f));
 				Models.Add(Vex.Kind, Vex);
 			}
 			{
@@ -432,7 +443,7 @@ namespace McEntityModel
 				Skeleton.Kind = TEXT("minecraft:skeleton");
 				Skeleton.Textures = { TEXT("skeleton/skeleton.png") };
 				AddPerson(Skeleton, true, false);
-				AddHeldItem(Skeleton, FVector(-5, 22, 0), 0.0f, -10.0f);
+				AddHeldItemInHand(Skeleton, FVector(-5, 22, 0));
 				Skeleton.bBowAim = true;
 				Models.Add(Skeleton.Kind, Skeleton);
 			}

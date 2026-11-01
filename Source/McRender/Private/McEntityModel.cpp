@@ -710,9 +710,10 @@ namespace McEntityModel
 			case ERole::WingRight:
 			case ERole::WingLeft:
 			{
-				// Folded in, and beating when it runs.
+				// Flat against the sides at rest (chicken_fall.txt and spawner_display.txt's log model: no roll at all), and
+				// beating when it runs.
 				const float Side = Part.Role == ERole::WingRight ? 1.0f : -1.0f;
-				Roll += Side * (0.08f + (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f));
+				Roll += Side * (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f);
 				break;
 			}
 			case ERole::PaddleLeft:

@@ -136,8 +136,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     then keeps 0.96 of its speed plus 0.05 for each block dropped (less for each climbed); a powered rail adds 0.06
     after that, or kicks a cart at rest off a block at 0.02. A boat keeps 0.9 on water, 0.98 on ice, 0.6 on stone
     before it moves, falls with no drag, floats with vy' = 0.75 (vy - 0.04 + 0.04 depth / 0.65 height), and its turn
-    keeps 0.9. Not measured: a ridden cart (0.997 is a guess), the furnace cart, a boat landing in water (it stops a
-    little deeper than vanilla's), blue ice, rafts.
+    keeps 0.9. Second round (vehicle_log2/3/5.txt): a ridden cart keeps 0.997 and moves 0.75 of its speed; a fuelled
+    furnace cart nobody pushed coasts at 0.9408; one fed coal moves its full 0.2 a tick from the next tick (vanilla's
+    own speed reads up to 3.46 meanwhile, held back by the move cap); a boat dropped into water lands at the surface
+    less 0.3504 with its fall speed gone; a boat on land keeps the mean friction of the blocks under its hull (blue
+    ice 0.989, ice and packed ice 0.98, stone 0.6; a hull over one row of packed ice between stone 0.72667).
+    vehicle_log2-4.txt's air fill was over the 32768 block limit and failed (every boat there kept 0.45); clear air
+    in fills under it. Not measured: friction of other blocks (slime, soul sand), empty cells under a hull, the furnace
+    cart once its fuel runs out from vanilla's big internal speed.
   - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
     oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
     variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
@@ -311,6 +317,12 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     a sliver of beak at the top middle, ours its wings out at 45 degrees and its wattle well left. Likely the size
     should go by the mob's own size rather than a flat 0.5, or our display chicken flaps; it needs the displayed
     entity's scale and pose logged (log model on the spawner's display mob) before changing it.
+    Logged (spawner_display.txt, mc-reference's new `log display`): the display chicken stands at rest (no flap, wings
+    at no roll, yaw 0), so our chicken's wings no longer rest folded 0.08 out (chicken_fall.txt agrees). Its scale
+    isn't a field; from ref_display_chicken it is about 0.55, the pig's, so a mob is no longer blown up to fill the
+    cage: 0.556 of its size, shrunk further only past a block. Ours at that size hides behind the cage's middle as
+    vanilla's does, but at the logged spin 110.5378 vanilla's faces the eye (beak top middle) and ours faces west:
+    the 10 times spin heading, fitted on the pig at two spins, doesn't hold there; it needs more spins logged.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
@@ -425,7 +437,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     neither going back (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
     Refitted 2026-11-01 from paddle_log.txt (mc-reference's new `hold <key> <ticks>` rows a boat; `log model` gives the
     paddles' angles each tick): a 16-tick stroke, the pose and the hull's paddle mount ported from the logged angles
-    (`PaddleLeft` in McEntityModel). The raft keeps its old mount; its paddles weren't logged.
+    (`PaddleLeft` in McEntityModel). The raft's (vehicle_log3.txt, log model bamboo_raft) row the same stroke from a
+    pixel lower: 9 out, 10 up, 3 forward. Vanilla's raft deck has a second, lower box (28 by 16, 4 thick) ours lacks.
   - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
     steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
     gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.

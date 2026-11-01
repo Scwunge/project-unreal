@@ -533,7 +533,7 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 	// -McSpawnerPose=<size>,<nose up>,<pivot>,<drop> tries another pose (see below).
 	static float HeldSpin = -1.0f;
 	static const bool bHeld = FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerSpin="), HeldSpin);
-	static float Size = 0.5f, NoseUp = 40.0f, Pivot = 0.5f, Drop = 0.27f;
+	static float Size = 0.5f / 0.9f, NoseUp = 40.0f, Pivot = 0.5f, Drop = 0.27f;
 	static const bool bPosed = [&]()
 	{
 		FString Text;
@@ -570,11 +570,14 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 		Spin = HeldSpin;
 	}
 
-	// The mob, shrunk so its bigger side is Size blocks (0.5, nose up 40: ref_spawner_pig_south/top against sizes 0.5 to
-	// 0.56 and noses 30 to 50 at the logged spin), turned by the spin about the upright through the block's
-	// middle, tipped nose up, its feet Pivot over the block's floor (less Drop along its own up).
+	// The mob drawn at Size (0.556 of its own size, nose up 40: ref_spawner_pig_south/top, the pig's bigger side 0.5 of
+	// a block against 0.5 to 0.56 and noses 30 to 50 at the logged spin), and shrunk further only when its bigger
+	// side is over a block: a small mob isn't blown up to fill the cage (ref_display_chicken: the chicken's beak,
+	// 4 pixels, is 9.6 px across about 2 blocks from the eye, about 0.55 of its size, not the 0.71 that a bigger
+	// side of 0.5 would make it). Turned by the spin about the upright through the block's middle, tipped nose up,
+	// its feet Pivot over the block's floor (less Drop along its own up).
 	const FVector2D Hitbox = GetMobSize ? GetMobSize(Model.GetKind()) : FVector2D(1.0, 1.0);
-	const float Scale = Size / FMath::Max3(Hitbox.X, Hitbox.Y, 0.1);
+	const float Scale = Size / FMath::Max3(Hitbox.X, Hitbox.Y, 1.0);
 	// The mob faces east at spin 0 and turns ten times the spin toward the south: at the logged spin 0
 	// (spawner_mob.txt, ref_spawner_mob_pig) vanilla's pig is side on from the south, head to the east; at 256.2643
 	// (spawner_pig.txt, mob yrot, xrot, headrot and bodyrot all 0) it faces south-east, mirror alike from the south and

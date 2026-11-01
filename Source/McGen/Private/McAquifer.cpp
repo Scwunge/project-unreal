@@ -17,8 +17,15 @@ namespace
 	static float FloodScale = 0.5f;
 	static int32 SeaMargin = 28;
 	static int32 LevelBase = 10;
+	// Under the sea floor: the thresholds at the floor and the depth below it at which they reach the land's.
+	static float SeaFull0 = -0.3f;
+	static float SeaPartial0 = -0.8f;
+	static float SeaDepth = 64.0f;
 	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarSeaMargin(TEXT("mc.aq.seamargin"), SeaMargin, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarSeaFull0(TEXT("mc.aq.seafull0"), SeaFull0, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarSeaPartial0(TEXT("mc.aq.seapartial0"), SeaPartial0, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarSeaDepth(TEXT("mc.aq.seadepth"), SeaDepth, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarLevelBase(TEXT("mc.aq.levelbase"), LevelBase, TEXT("sweep"));
 	// Squared distances closer than this to the nearest centre's count as a boundary.
 	constexpr int32 BoundaryDistance = 25;
@@ -134,9 +141,9 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 		if (OwnSurface < SeaLevel)
 		{
 			// Under the sea floor, cells near the floor flood easily; 64 blocks down they flood as on land.
-			const double Depth = FMath::Clamp((OwnSurface - Centre.Y) / 64.0, 0.0, 1.0);
-			Full = FMath::Lerp(-0.3, 0.8, Depth);
-			Partial = FMath::Lerp(-0.8, 0.4, Depth);
+			const double Depth = FMath::Clamp((OwnSurface - Centre.Y) / static_cast<double>(SeaDepth), 0.0, 1.0);
+			Full = FMath::Lerp(static_cast<double>(SeaFull0), 0.8, Depth);
+			Partial = FMath::Lerp(static_cast<double>(SeaPartial0), 0.4, Depth);
 		}
 		if (bExcluded)
 		{

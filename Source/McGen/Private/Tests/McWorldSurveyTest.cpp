@@ -438,6 +438,7 @@ namespace
 		// Per biome and log block: trunk bases (a log with no log below it) and logs.
 		TMap<FString, TPair<int64, int64>> Trees;
 		TMap<FString, TPair<int64, int64>> Depth;  // biome and water depth bucket: columns, columns with kelp
+		TMap<FString, TTuple<int64, int64, int64>> OpenCells;  // sea or land column and 8-block band: air, water, lava below the ground
 		auto NameOf = [&Blocks](FMcStateId State) { return Blocks.GetBlockOf(State).Name.ToString(); };
 		TArray<FIntPoint> CornerList;
 		if (Listed)
@@ -549,6 +550,18 @@ namespace
 										Above.FindOrAdd(Biome + TEXT(" ") + Name)++;
 									}
 								}
+								// Open cells below the ground, by whether the column's ground is under the sea (the reference's stat W).
+								for (int32 Y = Settings.MinY; Y < FMath::Min(GroundY, 64); ++Y)
+								{
+									const FMcStateId Cell = Chunk.GetBlock(LX, Y, LZ);
+									const bool bAir = Region.IsAir(Cell);
+									const EMcFluid Fluid = FMcBlockShapes::Get().GetFluid(Cell);
+									if (bAir || Fluid != EMcFluid::None)
+									{
+										TTuple<int64, int64, int64>& Open = OpenCells.FindOrAdd(FString::Printf(TEXT("%s %d"), GroundY < 62 ? TEXT("sea") : TEXT("land"), (Y - Settings.MinY) >> 3), MakeTuple<int64, int64, int64>(0, 0, 0));
+										(bAir ? Open.Get<0>() : Fluid == EMcFluid::Water ? Open.Get<1>() : Open.Get<2>())++;
+									}
+								}
 								if (GroundY < Settings.SeaLevel - 1 && Biome.Contains(TEXT("ocean")))
 								{
 									TPair<int64, int64>& Bucket = Depth.FindOrAdd(FString::Printf(TEXT("%s %d"), *Biome, (Settings.SeaLevel - GroundY) / 4 * 4), TPair<int64, int64>(0, 0));
@@ -584,6 +597,7 @@ namespace
 			}
 			Test.AddInfo(FString::Printf(TEXT("STATY %d %s%s"), SeedIndex, *Pair.Key, *Row));
 		}
+		for (const TPair<FString, TTuple<int64, int64, int64>>& Pair : OpenCells) { Test.AddInfo(FString::Printf(TEXT("STATW %d %s %lld %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Get<0>(), Pair.Value.Get<1>(), Pair.Value.Get<2>())); }
 		for (const TPair<FString, TPair<int64, int64>>& Pair : Depth) { Test.AddInfo(FString::Printf(TEXT("STATD %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
 		for (const TPair<FString, int64>& Pair : Ground) { Test.AddInfo(FString::Printf(TEXT("STATG %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
 		for (const TPair<FString, int64>& Pair : Above) { Test.AddInfo(FString::Printf(TEXT("STATV %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
@@ -674,45 +688,72 @@ bool FMcAquiferSweepTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	struct FConfig { double Flood; int32 Margin; int32 Base; };
-	const FConfig Configs[] = { { 0.5, 8, 20 }, { 0.5, 16, 20 }, { 0.5, 28, 20 }, { 0.5, 8, 0 }, { 0.5, 8, -20 }, { 0.3, 8, 20 }, { 0.5, 28, 0 } };
+	// The sea-floor clause's three numbers; each line is the water share of the open cells below the ground, by 8-block
+	// band from y -8 to 39, for columns whose ground is under the sea and for land columns, over 5 seeds.
+	struct FConfig { double Full0; double Partial0; double Depth; int32 Base; double Flood; };
+	const FConfig Configs[] = { { -0.3, -0.8, 64, 10, 0.35 }, { -0.3, -0.8, 64, 10, 0.25 }, { -0.3, -0.8, 64, 10, 0.1 } };
 	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, 909090909ull };
 	for (const FConfig& Config : Configs)
 	{
-		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.floodscale"))->Set(static_cast<float>(Config.Flood));
-		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.seamargin"))->Set(Config.Margin);
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.seafull0"))->Set(static_cast<float>(Config.Full0));
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.seapartial0"))->Set(static_cast<float>(Config.Partial0));
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.seadepth"))->Set(static_cast<float>(Config.Depth));
 		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.levelbase"))->Set(Config.Base);
-		const FMcNoiseGenerator Generator(Settings, 4242424242ull, TEXT("minecraft:overworld"));
-		int64 Air[7] = {}, Water[7] = {}, Total[7] = {};
-		for (int32 Patch = 0; Patch < 25; ++Patch)
+		IConsoleManager::Get().FindConsoleVariable(TEXT("mc.aq.floodscale"))->Set(static_cast<float>(Config.Flood));
+		int64 Open[2][6] = {}, Water[2][6] = {};
+		for (const uint64 Seed : Seeds)
 		{
-			const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
-			for (int32 Index = 0; Index < 4; ++Index)
+			const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+			for (int32 Patch = 0; Patch < 25; ++Patch)
 			{
-				FMcChunk Chunk(FIntPoint(Corner.X + Index % 2, Corner.Y + Index / 2), Settings.MinY, Settings.Height / 16);
-				Generator.Generate(Chunk);
-				for (int32 Y = -8; Y < 48; ++Y)
+				const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
+				for (int32 Index = 0; Index < 4; ++Index)
 				{
-					const int32 Band = (Y + 8) >> 3;
+					FMcChunk Chunk(FIntPoint(Corner.X + Index % 2, Corner.Y + Index / 2), Settings.MinY, Settings.Height / 16);
+					Generator.Generate(Chunk);
 					for (int32 Z = 0; Z < 16; ++Z)
 					{
 						for (int32 X = 0; X < 16; ++X)
 						{
-							const FString Name = Blocks.GetBlockOf(Chunk.GetBlock(X, Y, Z)).Name.ToString();
-							Total[Band]++;
-							if (Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air")) Air[Band]++;
-							else if (Name == TEXT("minecraft:water")) Water[Band]++;
+							// The ground: the highest block that is neither air nor water.
+							int32 Ground = 100;
+							while (Ground > Settings.MinY)
+							{
+								const FString Top = Blocks.GetBlockOf(Chunk.GetBlock(X, Ground, Z)).Name.ToString();
+								if (Top != TEXT("minecraft:air") && Top != TEXT("minecraft:cave_air") && Top != TEXT("minecraft:water"))
+								{
+									break;
+								}
+								--Ground;
+							}
+							const int32 Class = Ground < 62 ? 1 : 0;
+							for (int32 Y = -8; Y < FMath::Min(Ground, 40); ++Y)
+							{
+								const FMcStateId Cell = Chunk.GetBlock(X, Y, Z);
+								const FString Name = Blocks.GetBlockOf(Cell).Name.ToString();
+								const bool bWater = Name == TEXT("minecraft:water");
+								if (bWater || Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air"))
+								{
+									const int32 Band = (Y + 8) >> 3;
+									Open[Class][Band]++;
+									Water[Class][Band] += bWater ? 1 : 0;
+								}
+							}
 						}
 					}
 				}
 			}
 		}
-		FString Line = FString::Printf(TEXT("AQSWEEP flood %.2f margin %d base %d |"), Config.Flood, Config.Margin, Config.Base);
-		for (int32 Band = 0; Band < 7; ++Band)
+		for (int32 Class = 0; Class < 2; ++Class)
 		{
-			Line += FString::Printf(TEXT(" y%d a%.1f w%.1f"), Band * 8 - 8, 100.0 * Air[Band] / Total[Band], 100.0 * Water[Band] / Total[Band]);
+			FString Line = FString::Printf(TEXT("AQSWEEP full0 %.2f partial0 %.2f depth %.0f base %d flood %.2f %s |"), Config.Full0, Config.Partial0, Config.Depth, Config.Base, Config.Flood, Class ? TEXT("sea") : TEXT("land"));
+			for (int32 Band = 0; Band < 6; ++Band)
+			{
+				Line += FString::Printf(TEXT(" y%d %.1f(%lld)"), Band * 8 - 8, 100.0 * Water[Class][Band] / FMath::Max<int64>(Open[Class][Band], 1), Open[Class][Band]);
+			}
+			AddInfo(Line);
 		}
-		AddInfo(Line);
 	}
 	return true;
 }

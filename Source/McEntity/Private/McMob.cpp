@@ -146,6 +146,15 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.Width = InType.Width;
 	Body.Height = InType.Height;
 	Body.StepHeight = 0.6f;
+	// What they carry when they spawn: a skeleton its bow, a vex its iron sword.
+	if (InType.Name == FName(TEXT("minecraft:skeleton")))
+	{
+		HeldItem = TEXT("minecraft:bow");
+	}
+	else if (InType.Name == FName(TEXT("minecraft:vex")))
+	{
+		HeldItem = TEXT("minecraft:iron_sword");
+	}
 }
 
 void FMcMob::SetSize(int32 InSize, bool bHeal)

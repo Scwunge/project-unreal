@@ -55,6 +55,7 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
 	DOREPLIFETIME(AMcEntityActor, bBaby);
 	DOREPLIFETIME(AMcEntityActor, bOffering);
+	DOREPLIFETIME(AMcEntityActor, HeldItem);
 	DOREPLIFETIME(AMcEntityActor, ArmPose);
 	DOREPLIFETIME(AMcEntityActor, LookSeed);
 }
@@ -87,6 +88,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
 		bOffering = Mob.OfferTicks > 0;
+		HeldItem = Mob.HeldItem;
 		ArmPose = Mob.ArmPose;
 		if (Kind != FMcVillager::StaticType())
 		{
@@ -128,6 +130,7 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 		Model->SetVariantSeed(LookSeed);
 		Model->SetBaby(bBaby);
 		Model->SetOffering(bOffering);
+		Model->SetHeldItem(HeldItem);
 		Model->SetPose(ArmPose);
 		if (Stand)
 		{

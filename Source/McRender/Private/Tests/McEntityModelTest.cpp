@@ -35,7 +35,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 	const FExpectation Expectations[] = {
 		{ TEXT("minecraft:creeper"), 1, 0.8, 1.7 },
 		{ TEXT("minecraft:spider"), 2, 2.5, 0.9 },
-		{ TEXT("minecraft:skeleton"), 1, 0.8, 1.99 },
+		{ TEXT("minecraft:skeleton"), 2, 0.8, 1.99 },  // its picture and the one for what it holds
 		{ TEXT("minecraft:enderman"), 2, 0.8, 2.9 },
 		{ TEXT("minecraft:slime"), 2, 0.55, 0.52 },
 	};

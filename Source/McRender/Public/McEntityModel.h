@@ -118,6 +118,8 @@ namespace McEntityModel
 		float Scale = 1.0f;
 		// Wings that beat all the time (a bee's), and how far out a bird's rest when they are not beating (radians).
 		bool bBeatWings = false;
+		// The layer that draws the item in the right hand (the item's own picture, per mob), or -1 for a model that holds nothing.
+		int32 HeldLayer = -1;
 		// Hops (a rabbit): its parts follow the logged hop curve (Anim.HopPos) when it leaves the ground.
 		bool bHops = false;
 		float WingRest = 0.1203f;
@@ -222,6 +224,8 @@ public:
 	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
 	// other kinds.
 	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
+	// The item in the mob's right hand (None for nothing).
+	void SetHeldItem(FName InItem);
 	void SetPose(int32 InPose);
 	// A young one of a kind that has a model of its own (registered as "<kind>_baby") is drawn with that; the others are the grown one's halved.
 	void SetBaby(bool bInBaby);
@@ -264,6 +268,7 @@ private:
 	float HitboxWidth = 0.0f;
 	bool bBabyLook = false;
 	bool bOfferingLook = false;
+	FName HeldLook;
 	int32 PoseLook = 0;
 	// A wolf's look as the textures were last chosen: 0 wild, 1 angry, 2 tame.
 	int32 WolfTextureState = 0;

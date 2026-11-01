@@ -181,6 +181,17 @@ namespace McEntityModel
 		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. Idle it
 		// folds its arms like the villager; armed it has two arms of its own, held out with the weapon of its Style (1 a crossbow,
 		// 2 an axe, 3 none: it casts), and Held is the item picture drawn in the right hand.
+		// The right hand's item, drawn from the picture of whatever the mob holds (a flat picture on the arm, as the illagers' axes are).
+		// Pivot is the right shoulder; ArmCentreX and HandY (below the shoulder, pixels) say where the arm's end is.
+		void AddHeldItem(FModel& Model, const FVector& Pivot, float ArmCentreX, float HandY)
+		{
+			Model.HeldLayer = Model.Textures.Num();
+			Model.Textures.Add(FString());
+			FBox Picture = Box(0, 0, ArmCentreX, HandY - 12.0f, -1, 0, 12, 12);
+			Picture.bFlat = true;
+			Model.Parts.Add(Part(ERole::ArmRight, Pivot, { Picture }, 0.0f, 0, 0, 0, Model.HeldLayer));
+		}
+
 		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
 		{
 			Model.Scale = 15.0f / 16.0f;
@@ -278,6 +289,7 @@ namespace McEntityModel
 				Zombie.Textures = { TEXT("zombie/zombie.png") };
 				Zombie.bArmsForward = true;
 				AddPerson(Zombie, false, true);
+				AddHeldItem(Zombie, FVector(-5, 22, 0), -1.0f, -10.0f);
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
@@ -363,6 +375,7 @@ namespace McEntityModel
 				Vex.bFlutter = true;
 				Vex.Parts.Add(Part(ERole::WingRight, FVector(-0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8) }));
 				Vex.Parts.Add(Part(ERole::WingLeft, FVector(0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8, 0.0f, true) }));
+				AddHeldItem(Vex, FVector(-1.75f, 6.25f, 0), -0.25f, -3.5f);
 				Models.Add(Vex.Kind, Vex);
 			}
 			{
@@ -419,6 +432,7 @@ namespace McEntityModel
 				Skeleton.Kind = TEXT("minecraft:skeleton");
 				Skeleton.Textures = { TEXT("skeleton/skeleton.png") };
 				AddPerson(Skeleton, true, false);
+				AddHeldItem(Skeleton, FVector(-5, 22, 0), 0.0f, -10.0f);
 				Models.Add(Skeleton.Kind, Skeleton);
 			}
 			{
@@ -1649,6 +1663,23 @@ void UMcEntityModelComponent::ApplyVariant()
 	bFlashing = false;
 }
 
+void UMcEntityModelComponent::SetHeldItem(FName InItem)
+{
+	if (InItem == HeldLook)
+	{
+		return;
+	}
+	HeldLook = InItem;
+	if (Model && Model->HeldLayer >= 0)
+	{
+		// The picture in the hand changed: the materials are made again, and the mesh with them.
+		Materials.Reset();
+		ClearAllMeshSections();
+		NumSections = 0;
+		bFlashing = false;
+	}
+}
+
 void UMcEntityModelComponent::SetPose(int32 InPose)
 {
 	PoseLook = InPose;
@@ -1715,6 +1746,10 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	if (bIsArrow)
 	{
 		return McCache::Asset(TEXT("textures/entity/projectiles/arrow.png"));
+	}
+	if (Model && Layer == Model->HeldLayer)
+	{
+		return HeldLook.IsNone() ? FString() : FindItemTexture(HeldLook);
 	}
 	if (TextureOverrides.IsValidIndex(Layer))
 	{

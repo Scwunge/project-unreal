@@ -59,6 +59,9 @@ public:
 	// A golem holding out a poppy.
 	UPROPERTY(Replicated)
 	bool bOffering = false;
+	// The item in a mob's right hand.
+	UPROPERTY(Replicated)
+	FName HeldItem;
 	// What a raider's arms are doing (McMob ArmPose).
 	UPROPERTY(Replicated)
 	int32 ArmPose = 0;

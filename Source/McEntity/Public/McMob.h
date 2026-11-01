@@ -97,6 +97,8 @@ public:
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
 	int32 OfferTicks = 0;
+	// The item in its right hand (drawn on the model), None for nothing.
+	FName HeldItem;
 	// Fangs: ticks before they bite. A vex: ticks of life left (it starts to waste away when they run out), 0 for no limit.
 	int32 SpellDelay = 0;
 	int32 SpellCooldown = 0;

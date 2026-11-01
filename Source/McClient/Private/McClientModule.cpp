@@ -1,4 +1,5 @@
 #include "McClient.h"
+#include "McJavaImport.h"
 #include "McLaunch.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -18,6 +19,22 @@ public:
 		{
 			const int32 ServerPort = FMcServerProperties::Get().GetInt(TEXT("server-port"), 25565);
 			FCommandLine::Append(*FString::Printf(TEXT(" -Port=%d"), ServerPort));
+		}
+
+		// -McImportWorld=<folder of a Minecraft Java world> [-McImportName=<name>]: copies the world into Saved/Worlds
+		// (the folder itself is only read) and opens the copy, unless -McWorld names another.
+		FString ImportFrom;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McImportWorld="), ImportFrom))
+		{
+			FString ImportName;
+			FParse::Value(FCommandLine::Get(), TEXT("-McImportName="), ImportName);
+			McJavaImport::FStats Stats;
+			const FString Folder = McJavaImport::ImportWorld(ImportFrom, ImportName, Stats);
+			FString Existing;
+			if (!Folder.IsEmpty() && !FParse::Value(FCommandLine::Get(), TEXT("-McWorld="), Existing))
+			{
+				FCommandLine::Append(*FString::Printf(TEXT(" -McWorld=%s"), *Folder));
+			}
 		}
 	}
 };

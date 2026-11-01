@@ -765,13 +765,14 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 5, -3), { Box(24, 12, -1, -5, -1, 2, 5, 2) }));  // leftHindLeg
 					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 5, 2), { Box(8, 23, -1, -5, -1, 2, 5, 2) }));  // rightFrontLeg
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 5, 2), { Box(24, 5, -1, -5, -1, 2, 5, 2) }));  // leftFrontLeg
-					// The wool is not in the log: the same boxes puffed out (a guess, see PLAN).
-					Baby.Parts.Add(Part(ERole::Static, FVector(0, 7, -0.5f), { Box(0, 10, -3, -2, -4.5f, 6, 4, 9, 1.0f) }, 0, 0, 0, 0, 1));
-					Baby.Parts.Add(Part(ERole::Head, FVector(0, 8.5f, 2.5f), { Box(0, 0, -2.5f, -0.5f, -1.5f, 5, 5, 5, 0.5f) }, 0, 0, 0, 0, 1));
-					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 5, 2), { Box(8, 23, -1, -5, -1, 2, 5, 2, 0.3f) }, 0, 0, 0, 0, 1));
-					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 5, 2), { Box(24, 5, -1, -5, -1, 2, 5, 2, 0.3f) }, 0, 0, 0, 0, 1));
-					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2, 5, -3), { Box(0, 23, -1, -5, -1, 2, 5, 2, 0.3f) }, 0, 0, 0, 0, 1));
-					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 5, -3), { Box(24, 12, -1, -5, -1, 2, 5, 2, 0.3f) }, 0, 0, 0, 0, 1));
+					// The wool layer's logged model is the baby's own boxes again (same pivots and picture offsets, no inflation), on the wool picture.
+					const int32 Skin = Baby.Parts.Num();
+					for (int32 Index = 0; Index < Skin; ++Index)
+					{
+						FPart Wool = Baby.Parts[Index];
+						Wool.Layer = 1;
+						Baby.Parts.Add(Wool);
+					}
 					Models.Add(Baby.Kind, Baby);
 				}
 				{

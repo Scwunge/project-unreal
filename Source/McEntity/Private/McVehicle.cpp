@@ -352,11 +352,21 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		const double Heading = Velocity.SizeSquared() > 1e-4 ? FVector2D::DotProduct(Velocity, Along) : FVector2D::DotProduct(PushDirection, Along);
 		Velocity = Along * (Heading >= 0.0 ? FurnaceSpeed : -FurnaceSpeed);
 	}
+	// The tick its fuel runs out it is left going at 2, which the cap holds to 0.2 a tick until coasting wears it below
+	// (vehicle_log6.txt: fuel cut to 40 ticks, its speed drops from 3.455 to 1.8816 = 2 * 0.9408 as the fuel ends, it
+	// moves 0.2 for 38 ticks, then 0.19676, and keeps 0.9408 a tick).
+	else if (Variant == EVariant::Furnace && !PushDirection.IsNearlyZero())
+	{
+		const FVector2D Heading = Velocity.SizeSquared() > 1e-8 ? Velocity.GetSafeNormal() : Along * (FVector2D::DotProduct(PushDirection, Along) >= 0.0 ? 1.0 : -1.0);
+		Velocity = Heading * 2.0;
+		PushDirection = FVector2D::ZeroVector;
+	}
 
 	// The speed limit is on how far it moves in a tick, not on its speed: powered_log.txt's cart on powered rail moves
 	// 0.4 a tick while its speed goes on to 1.03.
 	const double Fast = Velocity.Size();
-	const double Cap = bDriving ? FurnaceSpeed : MaxSpeed;
+	// A furnace cart's is 0.2, driving or not.
+	const double Cap = Variant == EVariant::Furnace ? FurnaceSpeed : MaxSpeed;
 	// With a rider it goes three quarters of that (vehicle_log2.txt: a ridden cart at 0.4 moves 0.3, at 0.3988 0.2991).
 	const FVector2D Step = (Fast > Cap ? Velocity * (Cap / Fast) : Velocity) * (HasRider() ? 0.75 : 1.0);
 
@@ -792,10 +802,10 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		break;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
-	bWasInAir = Where == ESurface::Air;
-	TickPassengers(Manager);
-}
 	const FIntVector Under(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.5), FMath::FloorToInt32(Body.Position.Z));
 	const double Factor = SpeedFactor(FMcBlockRegistry::Get().GetBlockOf(World.GetBlock(Under)).Name);
 	Body.Velocity.X *= Factor;
 	Body.Velocity.Z *= Factor;
+	bWasInAir = Where == ESurface::Air;
+	TickPassengers(Manager);
+}

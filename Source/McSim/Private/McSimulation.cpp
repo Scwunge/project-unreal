@@ -308,7 +308,6 @@ void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
 	Block.Id = NextFallingId++;
 	Block.Column = Pos;
 	Block.Y = Pos.Y;
-	Block.StartY = Pos.Y;
 	Block.State = State;
 	Falling.Add(Block);
 }
@@ -331,8 +330,11 @@ void FMcSimulation::StepFalling()
 			--Rest;
 		}
 		Block.Velocity -= 0.04;
+		const double PreviousY = Block.Y;
 		Block.Y += Block.Velocity;
 		Block.Velocity *= 0.98;
+		// What it moved counts, stopped at the cell it comes to rest in.
+		Block.FallDistance += static_cast<float>(PreviousY - FMath::Max(Block.Y, static_cast<double>(Rest)));
 		if (Block.Y > Rest)
 		{
 			++Index;
@@ -342,7 +344,7 @@ void FMcSimulation::StepFalling()
 		const FMcStateId Cell = World.GetBlock(At);
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 		const FMcStateId State = Block.State;
-		const double Fallen = Block.StartY - Rest;
+		const double Fallen = Block.FallDistance;
 		Falling.RemoveAt(Index);
 		if (OnFallingBlockLanded)
 		{
@@ -350,7 +352,19 @@ void FMcSimulation::StepFalling()
 		}
 		if (Registry.IsAir(Cell) || FluidOf(Cell) != EMcFluid::None || FMcBlockTags::Get().Has(TEXT("minecraft:replaceable"), Cell))
 		{
-			World.SetBlock(At, State);
+			// An anvil that falls more than a block may wear as it lands: chipped, then damaged, then gone (reference
+			// client, anvil_wear: 100 anvils dropped 1, 3, 10 and 20 blocks came out 0, 15, 58 and 100 chipped; taken as
+			// 0.05 a block fallen, which fits 3 and 20 and is a little under the 10).
+			FMcStateId Landed = State;
+			const FString Name = Registry.GetBlockOf(State).Name.ToString();
+			if (Name.EndsWith(TEXT("anvil")) && Fallen > 1.0 && Random.FRand() < 0.05 * Fallen)
+			{
+				const FString Facing = Registry.GetPropertyValue(State, TEXT("facing")).ToString();
+				const bool bPlain = Name == TEXT("minecraft:anvil");
+				const bool bChipped = Name == TEXT("minecraft:chipped_anvil");
+				Landed = bPlain || bChipped ? Registry.ParseState(FString::Printf(TEXT("minecraft:%s_anvil[facing=%s]"), bPlain ? TEXT("chipped") : TEXT("damaged"), *Facing)).Get(State) : StateOf(TEXT("minecraft:air"));
+			}
+			World.SetBlock(At, Landed);
 		}
 		else if (OnFallingBlockDropped)
 		{

@@ -299,7 +299,8 @@ void AMcWorldActor::BeginPlay()
 	};
 	// An anvil that lands hurts what is in its cell: 2 a block fallen beyond the first, 40 at most (reference client,
 	// rs anvil_damage: iron golems under anvils dropped 4 to 19 blocks took 8, 8, 10, 12, 16, 20, 28, 36). Whole
-	// distances sit on the edge of the rounding, so the 4-block drop (6 by the rule) read 8 in the reference.
+	// The distance is summed in a float tick by tick, so whole-block falls land on or just under the integer (the rule fits
+	// 5 to 19 blocks fallen; the 4-block fall read 8, not the 6 it gives, 4 golems out of 4: unexplained).
 	Simulation->OnFallingBlockLanded = [this](const FIntVector& Pos, FMcStateId State, double Fallen)
 	{
 		const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
@@ -307,7 +308,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			return;
 		}
-		const float Damage = static_cast<float>(FMath::Min(2 * FMath::CeilToInt(Fallen - 1.0 - 1e-6), 40));
+		const float Damage = static_cast<float>(FMath::Min(2 * FMath::CeilToInt(static_cast<float>(Fallen) - 1.0f), 40));
 		const FBox Cell(FVector(Pos), FVector(Pos) + FVector(1.0));
 		TArray<FMcEntity*> Hit;
 		Entities->GetManager().FindInBox(Cell, Hit);

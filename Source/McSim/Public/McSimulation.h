@@ -105,8 +105,8 @@ public:
 		int32 Id = 0;
 		FIntVector Column;
 		double Y = 0.0;
-		// Where it started, for the distance it fell (an anvil hurts by it).
-		double StartY = 0.0;
+		// The distance fallen, summed in a float tick by tick as the game does (an anvil hurts and wears by it).
+		float FallDistance = 0.0f;
 		double Velocity = 0.0;
 		FMcStateId State = 0;
 	};

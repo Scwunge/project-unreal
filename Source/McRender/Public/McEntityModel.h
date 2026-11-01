@@ -60,6 +60,8 @@ namespace McEntityModel
 		// Drawn at full brightness whatever the light (a spider's or an enderman's eyes).
 		bool bGlow = false;
 		FVector Pivot = FVector::ZeroVector;
+		// How much its boxes are scaled about the pivot (a small armor stand's parts).
+		float Scale = 1.0f;
 		// The rest pose, radians: tip forward, turn, lean sideways.
 		float RestPitch = 0.0f;
 		float RestYaw = 0.0f;

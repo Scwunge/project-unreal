@@ -250,8 +250,8 @@ namespace McEntityModel
 
 		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, McPlayerModel::FMeshData& Out)
 		{
-			const FVector Min = Box.Min - FVector(Box.Inflate);
-			const FVector Max = Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate);
+			const FVector Min = Box.Min * Part.Scale - FVector(Box.Inflate);
+			const FVector Max = (Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z)) * Part.Scale + FVector(Box.Inflate);
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
 			const auto Place = [&](const FVector& Local)
 			{
@@ -467,6 +467,55 @@ namespace McEntityModel
 				AddDecorPicture(V * (PictureBlocks.Y * 0.5), U, N, PictureBlocks.X, Thickness, Whole, false, false, Out);
 				AddDecorPicture(-V * (PictureBlocks.Y * 0.5), U, N, PictureBlocks.X, Thickness, Whole, true, false, Out);
 			}
+			return;
+		}
+		if (Decor.Kind == McDecor::EKind::ArmorStand)
+		{
+			// The stand's parts as the game's model measured them (pivot and cubes in its y-down, z-back axes; here y up and
+			// z forward), a small stand's parts scaled about their own pivots. Poses turn a part by the game's angles.
+			const float Scale = Decor.bSmall ? 0.5f : 1.0f;
+			const float HeadScale = Decor.bSmall ? 0.75f : 1.0f;
+			const auto Make = [&](McDecor::EPart Pose, bool bHasPose, FVector Pivot, float PartScale, std::initializer_list<FBox> Boxes) -> FPart
+			{
+				FPart Result;
+				Result.Pivot = FVector(Pivot.X, 24.0 - Pivot.Y, -Pivot.Z);
+				Result.Scale = PartScale;
+				Result.Boxes = Boxes;
+				if (bHasPose)
+				{
+					const FVector3f Angles = Decor.Pose[static_cast<int32>(Pose)];
+					Result.RestPitch = -FMath::DegreesToRadians(Angles.X);
+					Result.RestYaw = FMath::DegreesToRadians(Angles.Y);
+					Result.RestRoll = FMath::DegreesToRadians(Angles.Z);
+				}
+				return Result;
+			};
+			static const McDecor::EPart None = McDecor::EPart::Head;
+			FModel Stand;
+			Stand.TextureSize = FIntPoint(64, 64);
+			const auto Rest = [&](float Big, float Small) { return Decor.bSmall ? Small : Big; };
+			// Box(U, V, minX, -maxY, -maxZ, W, H, D) from the cubes' x, y and z extents.
+			Stand.Parts.Add(Make(None, false, FVector(0, Rest(0, 12), 0), Scale, { Box(16, 0, -3, -10, -1, 2, 7, 2), Box(48, 16, 1, -10, -1, 2, 7, 2), Box(0, 48, -4, -12, -1, 8, 2, 2) }));
+			if (!Decor.bInvisible)
+			{
+				Stand.Parts.Add(Make(None, false, FVector(0, Rest(0, 12), 0), Scale, { Box(0, 26, -6, -3, -1.5f, 12, 3, 3) }));
+				Stand.Parts.Add(Make(McDecor::EPart::RightLeg, true, FVector(-1.9f * Scale, Rest(12, 18), 0), Scale, { Box(8, 0, -1, -11, -1, 2, 11, 2) }));
+				Stand.Parts.Add(Make(McDecor::EPart::LeftLeg, true, FVector(1.9f * Scale, Rest(12, 18), 0), Scale, { Box(40, 16, -1, -11, -1, 2, 11, 2) }));
+				if (Decor.bArms)
+				{
+					Stand.Parts.Add(Make(McDecor::EPart::RightArm, true, FVector(-5.0f * Scale, Rest(2, 13), 0), Scale, { Box(24, 0, -2, -10, -1, 2, 12, 2) }));
+					Stand.Parts.Add(Make(McDecor::EPart::LeftArm, true, FVector(5.0f * Scale, Rest(2, 13), 0), Scale, { Box(32, 16, 0, -10, -1, 2, 12, 2) }));
+				}
+			}
+			Stand.Parts.Add(Make(McDecor::EPart::Head, true, FVector(0, Decor.bSmall ? 12.75f : 1.0f, 0), HeadScale, { Box(0, 0, -1, 0, -1, 2, 7, 2) }));
+			if (Decor.bBasePlate)
+			{
+				Stand.Parts.Add(Make(None, false, FVector(0, Decor.bSmall ? 18.0f : 12.0f, 0), Scale, { Box(0, 32, -6, -12, -6, 12, 1, 12) }));
+			}
+			FAnim Anim;
+			Anim.BodyYaw = Decor.Yaw;
+			Anim.HeadYaw = Decor.Yaw;
+			BuildMesh(Stand, Anim, 0, Out);
 			return;
 		}
 		if (Decor.Kind != McDecor::EKind::ItemFrame && Decor.Kind != McDecor::EKind::GlowItemFrame)

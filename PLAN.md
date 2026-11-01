@@ -262,9 +262,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     A worn dragon head stands 5% narrower and 15% shorter (top to lip) than vanilla's from the front
     (sc_wear_dragon_head against ref_wh_dragon), so not a plain scale: likely its snout's offset or pitch, to be
     measured side on. Zombie, pumpkin and bare heads match to the pixel.
-    Conduit: the cage's turn and tilt, the eye's bob and the wind shells are still guesses; the logged rotation field
-    goes 0.0375 a tick while awake and stops while asleep (conduit_log), but how the renderer turns that into the
-    cage's angle needs frame shots (to batch with a later visual run).
+    Conduit: the eye is drawn at 0.6 and the wind at 1.25 blocks, two-sided and unshaded, tumbling with the cage
+    (fitted to ref_scene_conduits and ref_conduits_b/c with `-McScene=conduits`). Still guesses: the cage's turn and
+    tilt and the eye's bob. The logged rotation field goes 0.0375 a tick while awake and stops while asleep
+    (conduit_log), but how the renderer turns that into the cage's angle needs frame shots. Only `wind.png` is drawn;
+    `wind_vertical.png` (its streaks peak at frames 10 to 14, against 4 to 10 for `wind.png`) isn't, and no shot has
+    shown it yet. The frame each shot catches isn't controlled, so the streaks were never matched frame by frame.
+    For whoever owns the water mesher: a waterlogged conduit's cell draws no water (in vanilla it's the purple
+    box), so the cell shows the floor through it.
     Spawner: vanilla's spawners don't count spectators as players near (spawner_mob.txt: with only a spectator about the
     wait held at 20 and the spin at 0); we have no spectator mode yet.
     For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`

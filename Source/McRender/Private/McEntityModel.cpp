@@ -503,9 +503,11 @@ namespace McEntityModel
 				Cage.Textures = { TEXT("conduit/cage.png"), TEXT("conduit/closed_eye.png"), TEXT("conduit/wind.png") };
 				Cage.LayerTextureSizes = { FIntPoint(32, 16), FIntPoint(16, 16), FIntPoint(64, 704) };
 				Cage.Parts.Add(Part(ERole::ConduitCage, FVector::ZeroVector, { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
-				// The eye's picture is 8 pixels, drawn half that size (ref_scene_conduits: a quarter of a block across).
+				// The eye's picture is 8 pixels, drawn at 0.6 (about 37 pixels across in ref_scene_conduits and
+				// ref_conduits_b/c, against 0.5 and 0.6 on -McScene=conduits). The wind is 1.25 times a block: the ring in
+				// ref_conduits_c is 1.33 times the block wide, and its two streaks, 3 texels apart, say 1.2.
 				// (-McConduitLook=<eye scale>,<wind scale> tries others.)
-				float EyeScale = 0.5f, WindScale = 1.0f;
+				float EyeScale = 0.6f, WindScale = 1.25f;
 				FString Look;
 				if (FParse::Value(FCommandLine::Get(), TEXT("-McConduitLook="), Look, false))
 				{
@@ -517,8 +519,10 @@ namespace McEntityModel
 				FPart Eye = Part(ERole::ConduitEye, FVector::ZeroVector, { Box(0, 0, -4, -4, 0, 8, 8, 0) }, 0, 0, 0, 0, 1);
 				Eye.Scale = EyeScale;
 				Cage.Parts.Add(Eye);
-				// The streaks round it, a 16 cube (the picture's 64 by 32 frames).
+				// The streaks round it, a 16 cube (the picture's 64 by 32 frames), seen from both sides and unshaded: in
+				// ref_conduits_c the ring's far sides show, and every streak is the one colour, (103,153,191) under water.
 				FPart Wind = Part(ERole::ConduitWind, FVector::ZeroVector, { Box(0, 0, -8, -8, -8, 16, 16, 16) }, 0, 0, 0, 0, 2);
+				Cage.GlowLayers |= 1u << 2;
 				Wind.Scale = WindScale;
 				Cage.Parts.Add(Wind);
 				Models.Add(Cage.Kind, Cage);
@@ -740,8 +744,9 @@ namespace McEntityModel
 				Pitch += 0.3f + FMath::Sin(Anim.Age * 0.6f) * 0.15f;
 				break;
 			case ERole::ConduitWind:
-				// Turns with the cage, upright.
+				// Tumbles with the cage: the ring tips as the cage does across ref_scene_conduits and ref_conduits_b/c.
 				Yaw += Anim.Age * 0.8f;
+				Pitch += 0.3f + FMath::Sin(Anim.Age * 0.6f) * 0.15f;
 				break;
 			case ERole::ConduitEye:
 				// The model is never turned (BodyYaw 0), so the eye turns by the whole look.
@@ -805,7 +810,12 @@ namespace McEntityModel
 					FBox Frame = Box;
 					const int32 NumFrames = FMath::Max(1, Size.Y / 32);
 					Frame.UV.Y += (FMath::FloorToInt32(Anim.Age * 20.0f / 3.0f) % NumFrames) * 32;
+					const int32 FirstTriangle = Out.Triangles.Num();
 					AddBox(Frame, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
+					for (int32 Index = Out.Triangles.Num() - 3; Index >= FirstTriangle; Index -= 3)
+					{
+						Out.Triangles.Append({ Out.Triangles[Index], Out.Triangles[Index + 2], Out.Triangles[Index + 1] });
+					}
 					continue;
 				}
 				AddBox(Box, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);

@@ -131,6 +131,32 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("and leaves its place"), Registry.IsAir(World.GetBlock(FIntVector(0, 6, 0))));
 	}
 	{
+		// A sand block falling 8 blocks moves as the reference client's falling_block entity does (rs log falling_ents):
+		// down 0.04 and then times 0.98 a tick, so after 20 ticks it has dropped 7.4256, and it lands on the next.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		World.SetBlock(FIntVector(0, 9, 0), State(TEXT("minecraft:sand")));
+		double LastY = 0.0;
+		int32 Observed = 0;
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			Sim.Tick();
+			if (Sim.GetFallingBlocks().IsEmpty())
+			{
+				if (Observed > 0)
+				{
+					break;
+				}
+				continue;
+			}
+			LastY = Sim.GetFallingBlocks()[0].Y;
+			++Observed;
+		}
+		TestEqual(TEXT("it fell 7.4256 before the tick it landed"), 9.0 - LastY, 7.4256, 0.001);
+		TestEqual(TEXT("and landed"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
+	}
+	{
 		// Random tick rules, run on single blocks.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);

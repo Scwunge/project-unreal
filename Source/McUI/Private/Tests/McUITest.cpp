@@ -892,4 +892,55 @@ bool FMcSplashTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A sprite's .png.mcmeta "gui.scaling": stretch (the default), tile, and nine_slice with one border or four. And the title
+// panorama, which the game reads from the asset index, is replaced by a pack's copy of the same path.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackGuiTest, "McClient.McUI.PackGui",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackGuiTest::RunTest(const FString& Parameters)
+{
+	using FScaling = AMcHUD::FGuiScaling;
+	const FScaling None = AMcHUD::ParseGuiScaling(TEXT("{}"), 200.0f, 20.0f);
+	TestTrue(TEXT("no gui section stretches"), None.Type == FScaling::EType::Stretch);
+	const FScaling Plain = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"stretch\"}}}"), 200.0f, 20.0f);
+	TestTrue(TEXT("stretch"), Plain.Type == FScaling::EType::Stretch);
+	const FScaling Tile = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"tile\",\"width\":16,\"height\":8}}}"), 64.0f, 64.0f);
+	TestTrue(TEXT("tile"), Tile.Type == FScaling::EType::Tile);
+	TestEqual(TEXT("tile width"), Tile.Width, 16.0f);
+	TestEqual(TEXT("tile height"), Tile.Height, 8.0f);
+	const FScaling One = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"minecraft:nine_slice\",\"width\":200,\"height\":20,\"border\":3}}}"), 400.0f, 40.0f);
+	TestTrue(TEXT("nine slice, namespaced type"), One.Type == FScaling::EType::NineSlice);
+	TestEqual(TEXT("declared size, not the picture's"), One.Width, 200.0f);
+	TestEqual(TEXT("the one border is all four"), One.Left + One.Top + One.Right + One.Bottom, 12.0f);
+	const FScaling Four = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"nine_slice\",\"border\":{\"left\":1,\"top\":2,\"right\":3,\"bottom\":4}}}}"), 32.0f, 24.0f);
+	TestEqual(TEXT("border left"), Four.Left, 1.0f);
+	TestEqual(TEXT("border top"), Four.Top, 2.0f);
+	TestEqual(TEXT("border right"), Four.Right, 3.0f);
+	TestEqual(TEXT("border bottom"), Four.Bottom, 4.0f);
+	TestEqual(TEXT("size defaults to the picture's"), Four.Width, 32.0f);
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const FString Panorama = TEXT("resources:textures/gui/title/background/panorama_0.png");
+	const FString GamePath = AMcHUD::SpritePath(Panorama);
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackGuiTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Root / TEXT("pack.mcmeta")));
+	const TArray<uint8> Bytes = { 0x89, 'P', 'N', 'G' };
+	FFileHelper::SaveArrayToFile(Bytes, *(Root / TEXT("assets/minecraft/textures/gui/title/background/panorama_0.png")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	const FString PackPath = AMcHUD::SpritePath(Panorama);
+	TestNotEqual(TEXT("the pack's panorama replaces the game's"), PackPath, GamePath);
+	TestTrue(TEXT("and is read from the pack"), PackPath.Contains(TEXT("McPackGuiTest")));
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestEqual(TEXT("without the pack the game's again"), AMcHUD::SpritePath(Panorama), GamePath);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 #endif

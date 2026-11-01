@@ -116,16 +116,26 @@ int32 AMcHUD::GetGuiScale(int32 Width, int32 Height)
 	return McGui::GetGuiScale(Width, Height);
 }
 
+FString AMcHUD::SpritePath(const FString& RelativeAssetPath)
+{
+	// "resources:" pictures come with the sounds, from the launcher's asset index, rather than in the jar (the title
+	// panorama: the jar's is a 1 by 1 stand-in). A pack that has the same picture still replaces it.
+	if (RelativeAssetPath.StartsWith(TEXT("resources:")))
+	{
+		const FString Relative = RelativeAssetPath.Mid(10);
+		return McPacks::IsFromPack(Relative) ? McCache::Asset(Relative)
+			: FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative);
+	}
+	return McCache::Asset(RelativeAssetPath);
+}
+
 UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
 {
 	if (TObjectPtr<UTexture2D>* Found = Sprites.Find(RelativeAssetPath))
 	{
 		return *Found;
 	}
-	// "resources:" pictures come with the sounds, from the launcher's asset index, rather than in the jar (the title
-	// panorama: the jar's is a 1 by 1 stand-in).
-	const FString Path = RelativeAssetPath.StartsWith(TEXT("resources:"))
-		? FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), RelativeAssetPath.Mid(10)) : McCache::Asset(RelativeAssetPath);
+	const FString Path = SpritePath(RelativeAssetPath);
 	UTexture2D* Texture = LoadPng(Path, false);
 	Sprites.Add(RelativeAssetPath, Texture);
 	return Texture;

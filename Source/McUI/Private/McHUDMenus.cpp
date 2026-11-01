@@ -273,55 +273,61 @@ AMcHUD::FGuiScaling AMcHUD::GetGuiScaling(const FString& Sprite, UTexture2D* Tex
 		return *Found;
 	}
 	FGuiScaling Scaling;
-	const FString Relative = Sprite;
 	FString Meta;
-	const bool bPackPicture = McPacks::IsFromPack(Relative);
-	const FString MetaPath = McCache::Asset(Relative + TEXT(".mcmeta"));
-	if ((!bPackPicture || McPacks::IsFromPack(Relative + TEXT(".mcmeta"))) && FFileHelper::LoadFileToString(Meta, *MetaPath))
+	const bool bPackPicture = McPacks::IsFromPack(Sprite);
+	const FString MetaPath = McCache::Asset(Sprite + TEXT(".mcmeta"));
+	if ((!bPackPicture || McPacks::IsFromPack(Sprite + TEXT(".mcmeta"))) && FFileHelper::LoadFileToString(Meta, *MetaPath))
 	{
-		TSharedPtr<FJsonObject> Root;
-		const TSharedPtr<FJsonObject>* Gui = nullptr;
-		const TSharedPtr<FJsonObject>* Object = nullptr;
-		if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Meta), Root) && Root.IsValid() && Root->TryGetObjectField(TEXT("gui"), Gui)
-			&& (*Gui)->TryGetObjectField(TEXT("scaling"), Object))
+		Scaling = ParseGuiScaling(Meta, Texture ? Texture->GetSizeX() : 0.0f, Texture ? Texture->GetSizeY() : 0.0f);
+	}
+	GuiScalings.Add(Sprite, Scaling);
+	return Scaling;
+}
+
+AMcHUD::FGuiScaling AMcHUD::ParseGuiScaling(const FString& Meta, float TexW, float TexH)
+{
+	FGuiScaling Scaling;
+	TSharedPtr<FJsonObject> Root;
+	const TSharedPtr<FJsonObject>* Gui = nullptr;
+	const TSharedPtr<FJsonObject>* Object = nullptr;
+	if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Meta), Root) && Root.IsValid() && Root->TryGetObjectField(TEXT("gui"), Gui)
+		&& (*Gui)->TryGetObjectField(TEXT("scaling"), Object))
+	{
+		FString Type;
+		(*Object)->TryGetStringField(TEXT("type"), Type);
+		Type.RemoveFromStart(TEXT("minecraft:"));
+		double Width = TexW, Height = TexH;
+		(*Object)->TryGetNumberField(TEXT("width"), Width);
+		(*Object)->TryGetNumberField(TEXT("height"), Height);
+		Scaling.Width = static_cast<float>(Width);
+		Scaling.Height = static_cast<float>(Height);
+		if (Type == TEXT("tile"))
 		{
-			FString Type;
-			(*Object)->TryGetStringField(TEXT("type"), Type);
-			Type.RemoveFromStart(TEXT("minecraft:"));
-			double Width = Texture ? Texture->GetSizeX() : 0.0, Height = Texture ? Texture->GetSizeY() : 0.0;
-			(*Object)->TryGetNumberField(TEXT("width"), Width);
-			(*Object)->TryGetNumberField(TEXT("height"), Height);
-			Scaling.Width = static_cast<float>(Width);
-			Scaling.Height = static_cast<float>(Height);
-			if (Type == TEXT("tile"))
+			Scaling.Type = FGuiScaling::EType::Tile;
+		}
+		else if (Type == TEXT("nine_slice"))
+		{
+			Scaling.Type = FGuiScaling::EType::NineSlice;
+			double Border = 0.0;
+			const TSharedPtr<FJsonObject>* Sides;
+			if ((*Object)->TryGetNumberField(TEXT("border"), Border))
 			{
-				Scaling.Type = FGuiScaling::EType::Tile;
+				Scaling.Left = Scaling.Top = Scaling.Right = Scaling.Bottom = static_cast<float>(Border);
 			}
-			else if (Type == TEXT("nine_slice"))
+			else if ((*Object)->TryGetObjectField(TEXT("border"), Sides))
 			{
-				Scaling.Type = FGuiScaling::EType::NineSlice;
-				double Border = 0.0;
-				const TSharedPtr<FJsonObject>* Sides;
-				if ((*Object)->TryGetNumberField(TEXT("border"), Border))
-				{
-					Scaling.Left = Scaling.Top = Scaling.Right = Scaling.Bottom = static_cast<float>(Border);
-				}
-				else if ((*Object)->TryGetObjectField(TEXT("border"), Sides))
-				{
-					double Left = 0, Top = 0, Right = 0, Bottom = 0;
-					(*Sides)->TryGetNumberField(TEXT("left"), Left);
-					(*Sides)->TryGetNumberField(TEXT("top"), Top);
-					(*Sides)->TryGetNumberField(TEXT("right"), Right);
-					(*Sides)->TryGetNumberField(TEXT("bottom"), Bottom);
-					Scaling.Left = static_cast<float>(Left);
-					Scaling.Top = static_cast<float>(Top);
-					Scaling.Right = static_cast<float>(Right);
-					Scaling.Bottom = static_cast<float>(Bottom);
-				}
+				double Left = 0, Top = 0, Right = 0, Bottom = 0;
+				(*Sides)->TryGetNumberField(TEXT("left"), Left);
+				(*Sides)->TryGetNumberField(TEXT("top"), Top);
+				(*Sides)->TryGetNumberField(TEXT("right"), Right);
+				(*Sides)->TryGetNumberField(TEXT("bottom"), Bottom);
+				Scaling.Left = static_cast<float>(Left);
+				Scaling.Top = static_cast<float>(Top);
+				Scaling.Right = static_cast<float>(Right);
+				Scaling.Bottom = static_cast<float>(Bottom);
 			}
 		}
 	}
-	GuiScalings.Add(Sprite, Scaling);
 	return Scaling;
 }
 

@@ -76,6 +76,19 @@ public:
 	static TArray<FString> LoadSplashTexts();
 	static FString PickSplash(const TArray<FString>& Lines, int32 Month, int32 Day, float Roll);
 
+	// The "gui" section of a sprite's .png.mcmeta: how the sprite scales. A picture without one is stretched.
+	struct FGuiScaling
+	{
+		enum class EType : uint8 { Stretch, Tile, NineSlice };
+		EType Type = EType::Stretch;
+		float Width = 0, Height = 0;
+		float Left = 0, Top = 0, Right = 0, Bottom = 0;
+	};
+	static FGuiScaling ParseGuiScaling(const FString& MetaJson, float TexW, float TexH);
+	// The file a sprite is read from: a pack's picture where a pack has it, else the game's. "resources:" pictures come
+	// from the launcher's asset index (the title panorama), which a pack's copy of the same path still replaces.
+	static FString SpritePath(const FString& RelativeAssetPath);
+
 private:
 	// The splash shown on the title screen, chosen when the screen is opened.
 	FString Splash;
@@ -190,13 +203,6 @@ private:
 	void DrawNineSlice(UTexture2D* Texture, float X, float Y, float W, float H, float TexW, float TexH, float Left, float Top, float Right, float Bottom);
 	// A GUI sprite (textures/gui/sprites/...) in the box, scaled the way its .png.mcmeta says: stretched (the default),
 	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
-	struct FGuiScaling
-	{
-		enum class EType : uint8 { Stretch, Tile, NineSlice };
-		EType Type = EType::Stretch;
-		float Width = 0, Height = 0;
-		float Left = 0, Top = 0, Right = 0, Bottom = 0;
-	};
 	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
 	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
 	TMap<FString, FGuiScaling> GuiScalings;

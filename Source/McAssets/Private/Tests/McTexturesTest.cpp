@@ -198,6 +198,70 @@ bool FMcPackAnimationTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A pack's textures/colormap/grass.png and foliage.png replace the game's, and the biome colours worked out from them
+// follow (plains has no colour of its own). The pack's colormaps are solid, so every lookup gives their colour.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackColormapTest, "McClient.McAssets.PackColormap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackColormapTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	FMcBiomeColorTable& Biomes = FMcBiomeColorTable::Get();
+	if (!TestTrue(TEXT("biome colours load"), Biomes.EnsureLoaded()))
+	{
+		return false;
+	}
+	const FColor GameGrass = Biomes.Get(TEXT("plains")).Grass;
+	const FColor GameDryFoliage = Biomes.GetDryFoliageColormap().Sample(0.8f, 0.4f);
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackColormapTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("assets/minecraft/textures/colormap");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"colormap test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const auto WriteSolid = [&](const TCHAR* Name, const FColor& Colour)
+	{
+		TArray<FColor> Pixels;
+		Pixels.Init(Colour, 256 * 256);
+		const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+		if (!Png.IsValid() || !Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 256, 256, ERGBFormat::BGRA, 8))
+		{
+			return false;
+		}
+		const TArray64<uint8> Bytes = Png->GetCompressed();
+		return FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Dir / Name));
+	};
+	const FColor PackGrass(10, 200, 30, 255), PackFoliage(200, 20, 60, 255);
+	if (!TestTrue(TEXT("the colormaps are written"), WriteSolid(TEXT("grass.png"), PackGrass) && WriteSolid(TEXT("foliage.png"), PackFoliage)))
+	{
+		return false;
+	}
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	if (TestTrue(TEXT("reloaded with the pack"), Biomes.EnsureLoaded()))
+	{
+		TestEqual(TEXT("the grass colormap is the pack's"), Biomes.GetGrassColormap().Sample(0.1f, 0.9f), PackGrass);
+		TestEqual(TEXT("the foliage colormap is the pack's"), Biomes.GetFoliageColormap().Sample(0.9f, 0.1f), PackFoliage);
+		TestEqual(TEXT("plains grass follows the pack"), Biomes.Get(TEXT("plains")).Grass, PackGrass);
+		TestEqual(TEXT("plains foliage follows the pack"), Biomes.Get(TEXT("plains")).Foliage, PackFoliage);
+		TestEqual(TEXT("the dry foliage map the pack lacks stays the game's"), Biomes.GetDryFoliageColormap().Sample(0.8f, 0.4f), GameDryFoliage);
+		TestNotEqual(TEXT("it differs from the game's"), PackGrass, GameGrass);
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	if (TestTrue(TEXT("reloaded without it"), Biomes.EnsureLoaded()))
+	{
+		TestEqual(TEXT("plains grass is the game's again"), Biomes.Get(TEXT("plains")).Grass, GameGrass);
+	}
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 // A pack's atlases/blocks.json: an unstitch source cuts a sprite out of a sheet, and a model of the pack uses it. The
 // sheet is 32 x 16, red on the left and blue on the right; the sprite zz_cut is the right half (x 1 of 2).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAtlasTest, "McClient.McAssets.PackAtlas",

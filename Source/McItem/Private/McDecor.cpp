@@ -19,6 +19,10 @@ McDecor::FDecor::FDecor()
 	{
 		Pose[Part] = GetDefaultPose(static_cast<EPart>(Part));
 	}
+	for (int32& Colour : Dye)
+	{
+		Colour = -1;
+	}
 }
 
 FVector3f McDecor::GetDefaultPose(EPart Part)
@@ -54,6 +58,10 @@ FString McDecor::Encode(const FDecor& Decor)
 			if (!Decor.Equipment[Slot].IsEmpty())
 			{
 				Line += FString::Printf(TEXT(";%s=%s"), SlotKeys[Slot], *Decor.Equipment[Slot]);
+				if (Decor.Dye[Slot] >= 0)
+				{
+					Line += FString::Printf(TEXT(";dye%s=%d"), SlotKeys[Slot], Decor.Dye[Slot]);
+				}
 			}
 		}
 	}
@@ -121,6 +129,10 @@ bool McDecor::Decode(const FString& Line, FDecor& Out)
 				if (Key == SlotKeys[Slot])
 				{
 					Out.Equipment[Slot] = Value;
+				}
+				else if (Key == FString(TEXT("dye")) + SlotKeys[Slot])
+				{
+					Out.Dye[Slot] = FCString::Atoi(*Value);
 				}
 			}
 		}

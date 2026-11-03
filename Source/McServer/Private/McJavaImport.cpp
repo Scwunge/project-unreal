@@ -343,6 +343,15 @@ namespace
 					if (const FMcNbt* Stack = Equipment->Find(Keys[Slot]))
 					{
 						Out.Equipment[Slot] = Stack->GetString(TEXT("id"));
+						// Dye is a component: a bare colour, or a compound holding it as "rgb".
+						if (const FMcNbt* Components = Stack->Find(TEXT("components")))
+						{
+							if (const FMcNbt* Dye = Components->Find(TEXT("minecraft:dyed_color")))
+							{
+								const int64 Rgb = Dye->Type == FMcNbt::EType::Compound ? Dye->GetInt(TEXT("rgb")) : Dye->Integer;
+								Out.Dye[Slot] = static_cast<int32>(Rgb & 0xFFFFFF);
+							}
+						}
 					}
 				}
 			}

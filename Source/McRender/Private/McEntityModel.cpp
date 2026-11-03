@@ -5,6 +5,7 @@
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderTextures.h"
+#include "McHand.h"
 #include "McSkyComponent.h"
 #include "Engine/Texture2DArray.h"
 #include "GameFramework/Actor.h"
@@ -439,7 +440,7 @@ namespace McEntityModel
 		switch (Decor.Kind)
 		{
 		case McDecor::EKind::Painting: return 2;
-		case McDecor::EKind::ArmorStand: return 5;
+		case McDecor::EKind::ArmorStand: return 11;
 		default: return Decor.Item.IsEmpty() ? 2 : 3;
 		}
 	}
@@ -449,6 +450,9 @@ namespace McEntityModel
 	// them at half size.
 	void BuildStandArmor(const McDecor::FDecor& Decor, int32 Layer, McPlayerModel::FMeshData& Out)
 	{
+		// Layers 5 to 8 are the leather overlay of slots 1 to 4: the same cubes, a hair larger.
+		const float Over = Layer > 4 ? 0.02f : 0.0f;
+		Layer = Layer > 4 ? Layer - 4 : Layer;
 		const float Scale = Decor.bSmall ? 0.5f : 1.0f;
 		const auto Make = [&](McDecor::EPart Pose, FVector Pivot, std::initializer_list<FBox> Boxes) -> FPart
 		{
@@ -457,6 +461,10 @@ namespace McEntityModel
 			Result.Pivot = FVector(Pivot.X * Scale, 24.0 - Down, -Pivot.Z);
 			Result.Scale = Scale;
 			Result.Boxes = Boxes;
+			for (FBox& Box : Result.Boxes)
+			{
+				Box.Inflate += Over;
+			}
 			const FVector3f Angles = Decor.Pose[static_cast<int32>(Pose)];
 			Result.RestPitch = FMath::DegreesToRadians(Angles.X);
 			Result.RestYaw = -FMath::DegreesToRadians(Angles.Y);
@@ -491,6 +499,84 @@ namespace McEntityModel
 		BuildMesh(Armor, Anim, 0, Out);
 	}
 
+	// What a stand holds (layer 9 the main hand, 10 the off hand): a flat item's picture stood one pixel thick, placed from its
+	// model's thirdperson display at the end of the arm that holds it, and turned with that arm's pose. The fit of the hold
+	// (offset from the arm's tip in pixels, turn in degrees) is -McStandHeld=hx,hy,hz,ex,ey,ez while it is being measured.
+	void BuildStandHeld(const McDecor::FDecor& Decor, int32 Layer, McPlayerModel::FMeshData& Out)
+	{
+		const bool bMain = Layer == 9;
+		const FString& Item = Decor.Equipment[bMain ? 4 : 5];
+		if (Item.IsEmpty())
+		{
+			return;
+		}
+		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(FName(*Item));
+		TArray<FColor> Pixels;
+		int32 Width = 0, Height = 0;
+		if (Pictures.Kind != McHand::EHeld::Flat || !McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, Width, Height) || Width <= 0 || Height < Width)
+		{
+			return;
+		}
+		McPlayerModel::FMeshData Flat;
+		McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Flat);
+		McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(FName(*Item), bMain ? TEXT("thirdperson_righthand") : TEXT("thirdperson_lefthand"));
+		// A model with no left hand display has the right one turned over (the left hand mirrors the right).
+		static FString ModeText;
+		static bool bModeRead = FParse::Value(FCommandLine::Get(), TEXT("-McStandLeft="), ModeText);
+		const int32 LeftMode = ModeText.IsEmpty() ? 1 : FCString::Atoi(*ModeText);
+		const bool bMirror = !bMain && (LeftMode == 1 || (LeftMode == 0 && !Display.bFound));
+		if (!bMain && LeftMode > 0)
+		{
+			Display = McHand::ReadHeldDisplay(FName(*Item), TEXT("thirdperson_righthand"));
+		}
+
+		static FString FitText;
+		static bool bFitRead = FParse::Value(FCommandLine::Get(), TEXT("-McStandHeld="), FitText, false);
+		TArray<FString> FitParts;
+		FitText.ParseIntoArray(FitParts, TEXT(","));
+		const auto Fit = [&](int32 Index, float Default) { return FitParts.IsValidIndex(Index) ? FCString::Atof(*FitParts[Index]) : Default; };
+		const FVector Hand(Fit(0, 0.0f), -10.0f + Fit(1, -2.5f), Fit(2, -1.6f));
+		const FQuat Hold = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(Fit(4, 180.0f))) * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(Fit(5, 0.0f)))
+			* FQuat(FVector::XAxisVector, FMath::DegreesToRadians(Fit(3, -90.0f)));
+		// A model's display turn, as the first-person hand applies it (matched to the game there): about z, then y, then x, in the
+		// item model's frame (x right, y up, z toward the viewer).
+		const double XSign = Fit(6, -1.0f);
+		const auto Turn = [&Display, XSign](const FVector& V)
+		{
+			const auto Rad = [](double Degrees) { return FMath::DegreesToRadians(Degrees); };
+			const FVector AfterZ(V.X * FMath::Cos(Rad(Display.Rotation.Z)) - V.Y * FMath::Sin(Rad(Display.Rotation.Z)), V.X * FMath::Sin(Rad(Display.Rotation.Z)) + V.Y * FMath::Cos(Rad(Display.Rotation.Z)), V.Z);
+			const FVector AfterY(AfterZ.X * FMath::Cos(Rad(Display.Rotation.Y)) + AfterZ.Z * FMath::Sin(Rad(Display.Rotation.Y)), AfterZ.Y, -AfterZ.X * FMath::Sin(Rad(Display.Rotation.Y)) + AfterZ.Z * FMath::Cos(Rad(Display.Rotation.Y)));
+			const double X = Rad(Display.Rotation.X) * XSign;
+			return FVector(AfterY.X, AfterY.Y * FMath::Cos(X) - AfterY.Z * FMath::Sin(X), AfterY.Y * FMath::Sin(X) + AfterY.Z * FMath::Cos(X));
+		};
+
+		const McDecor::EPart Arm = bMain ? McDecor::EPart::RightArm : McDecor::EPart::LeftArm;
+		const float Scale = Decor.bSmall ? 0.5f : 1.0f;
+		const FVector3f Angles = Decor.Pose[static_cast<int32>(Arm)];
+		const FQuat PartRotation = FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(Angles.Y)) * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(Angles.Z))
+			* FQuat(FVector::XAxisVector, FMath::DegreesToRadians(Angles.X));
+		const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(Decor.Yaw));
+		const float Down = Decor.bSmall ? 13.0f : 2.0f;
+		const FVector Pivot((bMain ? -5.0f : 5.0f) * Scale, 24.0f - Down, 0.0f);
+
+		Out = Flat;
+		for (int32 Index = 0; Index < Flat.Positions.Num(); ++Index)
+		{
+			// The mesh (x away, y right, z up, in blocks) into the item model's frame (x right, y up, z toward the viewer), in pixels.
+			const FVector Mesh = Flat.Positions[Index] / McCoords::UnitsPerBlock;
+			const FVector Model = FVector(Mesh.Y, Mesh.Z, -Mesh.X) * 16.0 * Display.Scale;
+			FVector InArm = Hand + Hold.RotateVector(Turn(Model) + Display.Translation);
+			if (bMirror)
+			{
+				InArm.X = -InArm.X;
+			}
+			const FVector Placed = ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(InArm * Scale));
+			Out.Positions[Index] = FVector(Placed.X, Placed.Z, Placed.Y) * (McCoords::UnitsPerBlock / 16.0);
+			const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Hold.RotateVector(Turn(FVector(Flat.Normals[Index].Y, Flat.Normals[Index].Z, -Flat.Normals[Index].X)))));
+			Out.Normals[Index] = FVector(Normal.X, Normal.Z, Normal.Y);
+		}
+	}
+
 	void BuildDecorMesh(const McDecor::FDecor& Decor, int32 Layer, FVector2D PictureBlocks, float ItemVMax, McPlayerModel::FMeshData& Out)
 	{
 		FVector U, V, N;
@@ -520,6 +606,11 @@ namespace McEntityModel
 		{
 			// The stand's parts as the game's model measured them (pivot and cubes in its y-down, z-back axes; here y up and
 			// z forward), a small stand's parts scaled about their own pivots. Poses turn a part by the game's angles.
+			if (Layer > 8)
+			{
+				BuildStandHeld(Decor, Layer, Out);
+				return;
+			}
 			if (Layer > 0)
 			{
 				BuildStandArmor(Decor, Layer, Out);
@@ -1097,10 +1188,18 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		case McDecor::EKind::Painting:
 			return McCache::Asset(TEXT("textures/painting/") + (Layer == 0 ? Decor.Variant : FString(TEXT("back"))) + TEXT(".png"));
 		case McDecor::EKind::ArmorStand:
+			if (Layer > 8)
+			{
+				// What is held: the picture of its item, flat.
+				const FString& Held = Decor.Equipment[Layer - 5];
+				return Held.IsEmpty() ? FString() : McHand::FindHeldPictures(FName(*Held)).Side;
+			}
 			if (Layer > 0)
 			{
 				// The worn piece's material names its picture; leggings have a sheet of their own.
-				FString Name = Decor.Equipment[Layer - 1];
+				const bool bOverlay = Layer > 4;
+				const int32 Slot = bOverlay ? Layer - 5 : Layer - 1;
+				FString Name = Decor.Equipment[Slot];
 				if (Name.IsEmpty())
 				{
 					return FString();
@@ -1111,7 +1210,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 					Name.RemoveFromEnd(Suffix);
 				}
 				Name = Name == TEXT("golden") ? FString(TEXT("gold")) : Name == TEXT("turtle") ? FString(TEXT("turtle_scute")) : Name;
-				return McCache::Asset(FString(TEXT("textures/entity/equipment/")) + (Layer == 3 ? TEXT("humanoid_leggings/") : TEXT("humanoid/")) + Name + TEXT(".png"));
+				if (bOverlay && Name != TEXT("leather"))
+				{
+					return FString();
+				}
+				return McCache::Asset(FString(TEXT("textures/entity/equipment/")) + (Slot == 2 ? TEXT("humanoid_leggings/") : TEXT("humanoid/")) + Name + (bOverlay ? TEXT("_overlay") : TEXT("")) + TEXT(".png"));
 			}
 			return McCache::Asset(TEXT("textures/entity/armorstand/armorstand.png"));
 		default:
@@ -1370,6 +1473,15 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 			McPlayerModel::FMeshData Data;
 			McEntityModel::BuildDecorMesh(Decor, Layer, Picture, ItemVMax, Data);
+			if (Decor.Kind == McDecor::EKind::ArmorStand && Layer > 0 && Layer < 5 && Decor.Equipment[Layer - 1].Contains(TEXT("leather")))
+			{
+				// Leather takes its dye (the game's brown when it has none) on the base picture; the overlay stays as drawn.
+				const int32 Rgb = Decor.Dye[Layer - 1] >= 0 ? Decor.Dye[Layer - 1] : 0xA06540;
+				for (FColor& Color : Data.Colors)
+				{
+					Color = FColor(static_cast<uint8>(Color.R * ((Rgb >> 16) & 255) / 255), static_cast<uint8>(Color.G * ((Rgb >> 8) & 255) / 255), static_cast<uint8>(Color.B * (Rgb & 255) / 255), 255);
+				}
+			}
 			if (Data.Positions.IsEmpty())
 			{
 				continue;

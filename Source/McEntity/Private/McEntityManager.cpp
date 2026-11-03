@@ -143,6 +143,31 @@ FMcItemEntity& FMcEntityManager::DropItem(const FVector& Pos, const FMcItemStack
 
 void FMcEntityManager::Tick()
 {
+	++TickNow;
+	// A powered detector rail looks again every 20 ticks, before the entities move, so at where they ended the tick before
+	// (vehicle_log12.txt: a cart whose box has just left the sensor at its 20th tick is still found there, and the rail is on
+	// 40 ticks in all), and goes off when nothing touches it then.
+	TArray<FIntVector> Off;
+	for (TPair<FIntVector, int32>& Detector : Detectors)
+	{
+		if (Detector.Value <= TickNow)
+		{
+			if (Touched.Contains(Detector.Key))
+			{
+				Detector.Value += 20;
+			}
+			else
+			{
+				Off.Add(Detector.Key);
+			}
+		}
+	}
+	for (const FIntVector& Pos : Off)
+	{
+		Detectors.Remove(Pos);
+		SetDetector(Pos, false);
+	}
+	Touched.Reset();
 	// Entities added while ticking (a mob dropping an item) join the next tick.
 	const int32 Count = Entities.Num();
 	for (int32 Index = 0; Index < Count; ++Index)

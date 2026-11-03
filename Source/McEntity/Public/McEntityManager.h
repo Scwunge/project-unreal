@@ -159,11 +159,29 @@ public:
 	// Called when a minecart is on a detector rail (true, every tick) or has left it (false), for whoever runs the
 	// redstone. Left unset, rails don't hear.
 	TFunction<void(const FIntVector&, bool)> OnDetector;
+	// Detector rails now powered (the tick of their next look) and those touched this tick.
+	TMap<FIntVector, int32> Detectors;
+	TSet<FIntVector> Touched;
+	int32 TickNow = 0;
 	void SetDetector(const FIntVector& Pos, bool bOccupied) const
 	{
 		if (OnDetector)
 		{
 			OnDetector(Pos, bOccupied);
+		}
+	}
+
+	// A minecart touching a detector rail's sensor (the rail's middle three fifths, up to half a block) powers it at once and
+	// again every tick it touches; once on, the rail looks again 20 ticks on and every 20 after, and goes off at the first look
+	// with no cart on it (vehicle_log12.txt: on at tick 557000 with the cart's box 0.01 over the sensor, still on at 557039
+	// with the cart's box 0.5 past it, off at 557040).
+	void TouchDetector(const FIntVector& Pos)
+	{
+		Touched.Add(Pos);
+		if (!Detectors.Contains(Pos))
+		{
+			Detectors.Add(Pos, TickNow + 20);
+			SetDetector(Pos, true);
 		}
 	}
 

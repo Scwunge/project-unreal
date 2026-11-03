@@ -530,10 +530,13 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcEntityModelComponent& Model, const FVector& Viewer, float DeltaTime)
 {
 	// Development: -McSpawnerSpin=<degrees> holds every spawner's mob at that spin (for a -McShot of it);
-	// -McSpawnerPose=<size>,<nose up>,<pivot>,<drop> tries another pose (see below).
+	// -McSpawnerPose=<size>,<nose up>,<pivot>,<drop> tries another pose and -McSpawnerBig=<size> another size for a mob
+	// over a block (see below).
 	static float HeldSpin = -1.0f;
 	static const bool bHeld = FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerSpin="), HeldSpin);
-	static float Size = 0.5f / 0.9f, NoseUp = 40.0f, Pivot = 0.5f, Drop = 0.27f;
+	static float Size = 0.5f / 0.9f, NoseUp = 40.0f, Pivot = 0.5f, Drop = 0.27f, BigSize = 0.62f;
+	static const bool bBig = FParse::Value(FCommandLine::Get(), TEXT("-McSpawnerBig="), BigSize);
+	(void)bBig;
 	static const bool bPosed = [&]()
 	{
 		FString Text;
@@ -579,23 +582,28 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 	// A mob over a block is shrunk to make its bigger side 0.62 of a block (the zombie, 1.95 tall, at a scale of 0.318:
 	// from straight above at spins 140.5378 and 246.0756 its head and arm stick out past the cage's middle as vanilla's
 	// do, against 0.556, 0.7, 0.85 and 1.0; vehicle_log6.txt, ref_spin_a/c_zombie_top and ref_spin_d_zombie_south).
+	// Rechecked at 0.45 and 0.5 (vehicle_log9.txt): the zombie's head and arm, and the creeper's head from straight above
+	// (ref_big_creeper_top), only match at 0.62; the spider's legs look shorter in vanilla's even at 0.45, which is their
+	// pose, not the size (its body matches).
 	const FVector2D Hitbox = GetMobSize ? GetMobSize(Model.GetKind()) : FVector2D(1.0, 1.0);
 	const double Biggest = FMath::Max(Hitbox.X, Hitbox.Y);
-	const float Scale = Biggest > 1.0 ? 0.62 / Biggest : Size;
+	const float Scale = Biggest > 1.0 ? BigSize / Biggest : Size;
 	// The mob faces south at spin 0 and turns ten times the spin from the south toward the east: vanilla's pig faces
 	// the eye from the south at the logged spin 0 (spawner_mob.txt, ref_spawner_mob_pig), south-east at 256.2643
 	// (spawner_pig.txt), and from straight above at 140.5378, 206.4439, 246.0756 and 346.0756 lies 90 less ten times the
 	// spin round from the east (vehicle_log6.txt, ref_spin_*_pig_top); its chicken at 110.5378 faces the eye too.
 	const double Yaw = FMath::DegreesToRadians(-10.0 * Spin);
 	const double Tip = FMath::DegreesToRadians(NoseUp);
-	// The model's own z runs from its face to its tail, so it faces along -z: at spin 0, south.
+	// The model's face is at its own +z (the pig's snout and the cow's head sit forward along +z), so +z goes along
+	// Forward: at spin 0, south. (The model's z was put along -Forward before, which faced it north: ours showed the
+	// back of the cow's and sheep's heads from the south where vanilla's show their faces, ref_big_cow/sheep_south.)
 	const FVector Side(-FMath::Cos(Yaw), 0.0, -FMath::Sin(Yaw));
 	const FVector Facing(-FMath::Sin(Yaw), 0.0, FMath::Cos(Yaw));
 	const FVector Up(0.0, 1.0, 0.0);
 	const FVector Forward = Facing * FMath::Cos(Tip) + Up * FMath::Sin(Tip);
 	const FVector Over = Up * FMath::Cos(Tip) - Facing * FMath::Sin(Tip);
 	const FVector Feet = FVector(Pos) + FVector(0.5, Pivot, 0.5) - Over * Drop;
-	Model.SetWorldLocationAndRotation(McCoords::BlockToUnreal(Feet), RotationFromAxes(Side, Over, -Forward));
+	Model.SetWorldLocationAndRotation(McCoords::BlockToUnreal(Feet), RotationFromAxes(-Side, Over, Forward));
 	Model.SetModelScale(Scale);
 	Model.SetLook(0.0f, 0.0f, 0.0f);
 }

@@ -335,7 +335,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Logged (vehicle_log6.txt, shots from straight above at four spins): vanilla's mob faces south at spin 0 and turns ten
     times the spin toward the east (ours turned the other way; the spin-0 "head east" reading was wrong). A mob over a
     block is drawn with its bigger side 0.62 of a block (the zombie at 0.318, by eye against 0.556 to 1.0); one up to a
-    block at 0.556 of its size, so the two rules jump at a block (not measured between).
+    block at 0.556 of its size, so the two rules jump at a block. vehicle_log9.txt (cow, sheep, spider and creeper at spin 0):
+    0.62 still fits the creeper and zombie, not 0.45 or 0.5; the mob had been drawn facing north at spin 0, the back of
+    the cow's and sheep's heads to the south where vanilla's show their faces, and is turned round. Left: vanilla's
+    cow and sheep faces look upright where ours are tipped nose up 40, and its spider's legs reach less far.
   - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
     struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
     mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;

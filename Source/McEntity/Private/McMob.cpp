@@ -100,6 +100,10 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Blaze.bFlies = true;
 		Blaze.FireballKind = 2;
 		Blaze.HoverRange = 16.0;
+		// Measured 2026-11-03 (endmobs1.txt, enddims1.txt): endermite 8 hp, speed 0.25, attack 2, follow 16, box 0.4 x 0.3; shulker 30 hp, speed 0.7 but it never walks,
+		// follow 16, box 1 x 1. The shulker's bullets, its peeking lid and the endermite's pearl spawn are not built, so the shulker only stands.
+		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
+		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
 		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;

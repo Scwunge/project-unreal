@@ -665,6 +665,31 @@ namespace McEntityModel
 				Models.Add(Blaze.Kind, Blaze);
 			}
 			{
+				// An endermite, from the logged model (`endmobs1.txt`): four stacked segments on a 64 x 32 picture, front to back
+				// 4 x 3 x 2, 6 x 4 x 5, 3 x 3 x 1 and 1 x 2 x 1. The wriggle (each segment swings sideways) is not fitted.
+				FModel Endermite;
+				Endermite.Kind = TEXT("minecraft:endermite");
+				Endermite.TextureSize = FIntPoint(64, 32);
+				Endermite.Textures = { TEXT("endermite/endermite.png") };
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, 3.5f), { Box(0, 0, -2, -3, -1, 4, 3, 2) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 4, 0), { Box(0, 5, -3, -4, -2.5f, 6, 4, 5) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, -3), { Box(0, 14, -1.5f, -3, -0.5f, 3, 3, 1) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 2, -4), { Box(0, 18, -0.5f, -2, -0.5f, 1, 2, 1) }));
+				Models.Add(Endermite.Kind, Endermite);
+			}
+			{
+				// A shulker, from the logged model (`endmobs1.txt`, closed): a 16 x 8 x 16 base, a 16 x 12 x 16 lid overlapping it, and
+				// a 6 cube head standing 12 up, on a 64 x 64 picture. The lid's opening and the head's turn are not built.
+				FModel Shulker;
+				Shulker.Kind = TEXT("minecraft:shulker");
+				Shulker.TextureSize = FIntPoint(64, 64);
+				Shulker.Textures = { TEXT("shulker/shulker.png") };
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 28, -8, 0, -8, 16, 8, 16) }));
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -8, 4, -8, 16, 12, 16) }));
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 52, -3, -6, -3, 6, 6, 6) }));
+				Models.Add(Shulker.Kind, Shulker);
+			}
+			{
 				// A strider, from the logged model (`stridermodel1.txt`; the adult): a 16 x 14 x 16 body 1 above the middle, two 4 x 16 x 4 legs,
 				// and three bristles each side (flat 12 x 16 fins, children of the body, at their rest rolls). 64 x 128 picture. The legs' swing
 				// and the bristles' sway are not fitted.

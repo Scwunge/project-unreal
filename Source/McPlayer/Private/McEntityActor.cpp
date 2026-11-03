@@ -7,6 +7,7 @@
 #include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerState.h"
 #include "EngineUtils.h"
+#include "McDecorEntity.h"
 #include "McMob.h"
 #include "McTnt.h"
 #include "McPot.h"
@@ -116,6 +117,10 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	else if (Entity.GetType() == FMcBannerEntity::StaticType())
 	{
 		ItemId = FName(*static_cast<const FMcBannerEntity&>(Entity).Layers);
+	}
+	else if (Entity.GetType() == FMcDecorEntity::StaticType())
+	{
+		ItemId = FName(*static_cast<const FMcDecorEntity&>(Entity).Look);
 	}
 	else if (Entity.GetType() == FMcPrimedTnt::StaticType())
 	{

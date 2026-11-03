@@ -55,7 +55,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -194,6 +194,8 @@ private:
 	void DrawTitle(int32 Width, int32 Height);
 	void DrawWorlds(int32 Width, int32 Height);
 	void DrawConfirmDelete(int32 Width, int32 Height);
+	// "Import Java World": the folders of %APPDATA%\.minecraft\saves that are worlds, one of which is copied into ours.
+	void DrawImportJava(int32 Width, int32 Height);
 	void DrawNewWorld(int32 Width, int32 Height);
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
@@ -305,6 +307,10 @@ private:
 	TSharedPtr<class SWidget> DropTarget;
 	int32 PacksScrollAvailable = 0;
 	int32 PacksScrollSelected = 0;
+	// The Java worlds the import screen lists (Folder is the full path) and what happened to the last import.
+	TArray<FWorldRow> JavaRows;
+	int32 SelectedJava = INDEX_NONE;
+	FString ImportMessage;
 	int32 SelectedWorld = INDEX_NONE;
 	int32 WorldScroll = 0;
 	double LastRowClick = 0.0;

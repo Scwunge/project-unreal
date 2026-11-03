@@ -10,6 +10,7 @@
 #include "CoreMinimal.h"
 #include "McBanner.h"
 #include "McCore.h"
+#include "McDecor.h"
 #include "McPlayerModel.h"
 #include "ProceduralMeshComponent.h"
 #include "McEntityModel.generated.h"
@@ -92,7 +93,7 @@ namespace McEntityModel
 		// Drawn at full brightness whatever the light (a spider's or an enderman's eyes).
 		bool bGlow = false;
 		FVector Pivot = FVector::ZeroVector;
-		// Its boxes shrunk about the pivot (a chest at three quarters in a minecart).
+		// How much its boxes are scaled about the pivot (a chest at three quarters in a minecart, a small armor stand's parts).
 		float Scale = 1.0f;
 		// The rest pose, radians: tip forward, turn, lean sideways.
 		float RestPitch = 0.0f;
@@ -228,6 +229,13 @@ namespace McEntityModel
 	// A placed banner (McBanner): its pole and crossbar (bFlag false) or its flag (true), facing Minecraft yaw BodyYaw, at
 	// the size the game draws it. The flag is cut from whichever 64 square picture is laid over it.
 	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out);
+
+	// An item frame, painting or armor stand from an imported world (McDecor), at its entity's position: how many pictures
+	// (layers) it is drawn from, and one layer's mesh. A painting's layer 0 is its picture (PictureBlocks across and up) and 1 the
+	// plain back and edges; a frame's 0 is its wood, 1 its back plate and 2 its item (ItemVMax is how much of the item's
+	// picture to show, an animated one being a column of frames).
+	MCRENDER_API int32 GetDecorLayers(const McDecor::FDecor& Decor);
+	MCRENDER_API void BuildDecorMesh(const McDecor::FDecor& Decor, int32 Layer, FVector2D PictureBlocks, float ItemVMax, McPlayerModel::FMeshData& Out);
 
 	// A flat picture of an item standing up, two-sided, spinning and bobbing: Count copies stacked a little apart.
 	// Width is in blocks. The picture's V runs 0..VMax (an animated item's strip is cut to its first frame).
@@ -375,6 +383,9 @@ private:
 	// A placed banner: its pictures are the base and then one for each pattern, each tinted by its dye.
 	bool bIsBanner = false;
 	bool bIsTnt = false;
+	// An item frame, painting or armor stand of an imported world: Decor is its line, decoded.
+	bool bIsDecor = false;
+	McDecor::FDecor Decor;
 	bool bBannerWall = false;
 	FString BannerBase;
 	TArray<McBanner::FLayer> BannerLayers;

@@ -12,6 +12,7 @@
 #include "McLoot.h"
 #include "McMob.h"
 #include "McBannerEntity.h"
+#include "McDecorEntity.h"
 #include "McVehicle.h"
 #include "McRandom.h"
 #include "McStructureSpawns.h"
@@ -674,6 +675,16 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 			if (Banner->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Banner));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcDecorEntity::StaticType())
+		{
+			TUniquePtr<FMcDecorEntity> Decor = MakeUnique<FMcDecorEntity>();
+			if (Decor->Serialize(DataReader))
+			{
+				UE_LOG(LogMcServer, Display, TEXT("Restored scenery %s at %s"), *Decor->Look, *Decor->Body.Position.ToString());
+				Manager.Add(MoveTemp(Decor));
 				++Restored;
 			}
 		}

@@ -9,7 +9,7 @@
 
 namespace
 {
-	constexpr uint8 Version = 1;
+	constexpr uint8 ChunkFormatVersion = 1;
 	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 	constexpr int32 CellsPerSection = 64;
 	// Anything bigger than this was not written by us, whatever the compressed header claims.
@@ -132,7 +132,7 @@ TArray<uint8> McChunkSave::Encode(const FMcChunk& Chunk, const FMcChunkSaveExtra
 	int32 CompressedSize = FCompression::CompressMemoryBound(NAME_Zlib, RawSize);
 	TArray<uint8> Out;
 	Out.SetNumUninitialized(1 + sizeof(int32) + CompressedSize);
-	Out[0] = Version;
+	Out[0] = ChunkFormatVersion;
 	FMemory::Memcpy(&Out[1], &RawSize, sizeof(int32));
 	if (!FCompression::CompressMemory(NAME_Zlib, &Out[1 + sizeof(int32)], CompressedSize, Raw.GetData(), RawSize))
 	{
@@ -144,7 +144,7 @@ TArray<uint8> McChunkSave::Encode(const FMcChunk& Chunk, const FMcChunkSaveExtra
 
 bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunkSaveExtras& Extras)
 {
-	if (Bytes.Num() < 1 + static_cast<int32>(sizeof(int32)) || Bytes[0] != Version)
+	if (Bytes.Num() < 1 + static_cast<int32>(sizeof(int32)) || Bytes[0] != ChunkFormatVersion)
 	{
 		return false;
 	}

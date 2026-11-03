@@ -992,6 +992,29 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	// The Nether's biomes on the same grid (CBN lines), against `log cbiomes ... 64 nether` on the reference.
+	{
+		FMcNoiseSettings NetherSettings;
+		FMcBiomeSource NetherSource;
+		if (TestTrue(TEXT("nether setup"), FMcNoiseSettings::Load(TEXT("minecraft:nether"), NetherSettings) && NetherSource.Load(TEXT("minecraft:nether"))))
+		{
+			for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+			{
+				const FMcNoiseGenerator NetherGenerator(NetherSettings, Seeds[SeedIndex], TEXT("minecraft:nether"));
+				for (int32 J = 0; J < 64; ++J)
+				{
+					for (int32 I = 0; I < 64; ++I)
+					{
+						const int32 X = -8192 + I * 256;
+						const int32 Z = -8192 + J * 256;
+						const FMcClimate Climate = NetherGenerator.SampleClimate(X, 64, Z);
+						int32 Hint = INDEX_NONE;
+						AddInfo(FString::Printf(TEXT("CBN %d %d %d %s"), SeedIndex, X, Z, *Registry.GetName(NetherSource.Find(Climate, Hint)).ToString()));
+					}
+				}
+			}
+		}
+	}
 	// Is the middle 4 km (where the structure starts are counted) as oceanic as the rest? Many seeds, deep ocean shares.
 	TArray<double> Shares;
 	for (int32 K = 0; K < 60; ++K)

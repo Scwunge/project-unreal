@@ -481,7 +481,13 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 				}
 			}
 		}
-		return McHopper::ForContainer(Container);
+		FMcSlotAccess Access = McHopper::ForContainer(Container);
+		if (McShulker::IsBox(Name))
+		{
+			// A shulker box never goes into a shulker box (reference run lg_hop, a hopper holding one beside a box).
+			Access.CanInsert = [](int32, const FMcItemStack& Stack) { return !Stack.Item.ToString().EndsWith(TEXT("shulker_box")); };
+		}
+		return Access;
 	}
 	if (Name == TEXT("minecraft:brewing_stand"))
 	{

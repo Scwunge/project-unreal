@@ -43,6 +43,9 @@ namespace
 	const FLinearColor NetherFogColor(0x33 / 255.0f, 0x08 / 255.0f, 0x08 / 255.0f, 1.0f);
 	const FLinearColor EndFogColor(0x18 / 255.0f, 0x13 / 255.0f, 0x18 / 255.0f, 1.0f);
 	// The Nether's fog starts 10 blocks out and is thick at 96; the End's is the view distance's.
+	// Unreal Mode's exposure and grade leave a plain display colour dimmer than the vanilla look draws it, so the Nether's and
+	// the End's fog and the End's sky picture are drawn this much brighter there.
+	constexpr float EnhancedFogBoost = 2.4f;
 	constexpr float NetherFogStartBlocks = 10.0f;
 	constexpr float NetherFogEndBlocks = 96.0f;
 	// The enhanced look's sun and moon, in lux. Lit surfaces show their colour times the light over pi, before the
@@ -747,10 +750,24 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		FParse::Value(FCommandLine::Get(), TEXT("-McFogGlow="), Glow);
 #endif
 		const FLinearColor NetherAmbient = FLinearColor(FColor(0x30, 0x28, 0x21)) * 5.0f;
-		SunLight->SetLightColor(bNether ? FLinearColor::LerpUsingHSV(NetherAmbient.GetClamped(), FLinearColor(1.0f, 0.3f, 0.1f), 0.5f) : FLinearColor(FColor(0xac, 0x60, 0xcd)));
+		SunLight->SetLightColor(bNether ? FLinearColor::LerpUsingHSV(NetherAmbient.GetClamped(), FLinearColor(1.0f, 0.3f, 0.1f), 0.5f) : FMath::Lerp(FLinearColor::White, FLinearColor(FColor(0xac, 0x60, 0xcd)), 0.5f));
 		SunLight->SetIntensity(Fill);
+		if (EndSky)
+		{
+			if (UMaterialInstanceDynamic* EndMaterial = Cast<UMaterialInstanceDynamic>(EndSky->GetMaterial(0)))
+			{
+				const float Shine = EndSkyBrightness * (McRenderMode::IsEnhanced() ? EnhancedFogBoost : 1.0f);
+				EndMaterial->SetVectorParameterValue(TEXT("Tint"), FLinearColor(Shine, Shine, Shine, 1.0f));
+			}
+		}
 		if (Fog)
 		{
+			// The Nether's and the End's fog is their own colour at a distance; the volumetric fog (made for the sun's
+			// shafts) only darkens it to black there.
+			if (Fog->bEnableVolumetricFog)
+			{
+				Fog->SetVolumetricFog(false);
+			}
 			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
 			Fog->SetVolumetricFogEmissive(bNether ? FLinearColor(0.12f, 0.025f, 0.004f) * Glow : FLinearColor(0.02f, 0.01f, 0.05f) * Glow);
 			Fog->SetVolumetricFogAlbedo(bNether ? FColor(255, 110, 60) : FColor(200, 160, 255));
@@ -759,6 +776,10 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	}
 	if (Fog)
 	{
+		if (Fog->bEnableVolumetricFog != McRenderMode::IsEnhanced())
+		{
+			Fog->SetVolumetricFog(McRenderMode::IsEnhanced());
+		}
 		Fog->SetVolumetricFogEmissive(FLinearColor::Black);
 		Fog->SetVolumetricFogAlbedo(FColor::White);
 	}
@@ -972,6 +993,6 @@ void UMcSkyComponent::UpdateFog()
 	Fog->SetFogDensity(3.3f / FMath::Max(End - Start, 1.0f) * 1000.0f * Thin);
 	const FLinearColor SeaColour(0.04f, 0.2f, 0.34f, 1.0f);
 	const FLinearColor Shown = FMath::Lerp(FogColor, SeaColour * (0.35f + 0.65f * McSky::GetSkyLightFactor()), Under);
-	Fog->FogInscatteringLuminance = DisplayToLinear(Shown);
+	Fog->FogInscatteringLuminance = DisplayToLinear(Shown) * ((Mode != EMode::Overworld && McRenderMode::IsEnhanced()) ? EnhancedFogBoost : 1.0f);
 	Fog->MarkRenderStateDirty();
 }

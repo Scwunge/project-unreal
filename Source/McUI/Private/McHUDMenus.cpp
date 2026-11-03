@@ -1038,31 +1038,27 @@ void AMcHUD::UpdateMenuBlur(bool bOn)
 		{
 			return;
 		}
-		// Everything beyond a hair's breadth from the camera is "out of focus", so the Gaussian depth of field blurs the
-		// whole picture; the HUD is drawn after it and stays sharp. The game blurs by three box passes in each direction
-		// (an edge turns from sharp to soft over about 12 pixels at 1280 x 720); -McMenuBlur=<percent of the width> tunes it.
+		// Depth of field with the focus right in front of the camera, so everything beyond is "out of focus" and the whole
+		// picture blurs; the HUD is drawn after it and stays sharp. The game blurs with three box passes each way (an edge
+		// goes from sharp to soft over about 12 pixels at 1280 x 720). With a 24.576 mm sensor and the 70 degree view the
+		// lens is about 17.5 mm; focused at 300 mm, an aperture of f/2.2 turns a distant point into a disc 0.5 mm across,
+		// 2% of the width. -McMenuBlur=<f-stop> tunes it (a smaller number blurs more).
 		APostProcessVolume* Volume = World->SpawnActor<APostProcessVolume>();
 		Volume->bUnbound = true;
 		Volume->Priority = 50.0f;
-		float Size = 0.6f;
-		FParse::Value(FCommandLine::Get(), TEXT("-McMenuBlur="), Size);
-		FPostProcessSettings& Settings = Volume->Settings;
-		Settings.bOverride_DepthOfFieldMethod = true;
-		Settings.DepthOfFieldMethod = DOFM_Gaussian;
-		Settings.bOverride_DepthOfFieldFocalDistance = true;
-		Settings.DepthOfFieldFocalDistance = 1.0f;
-		Settings.bOverride_DepthOfFieldFocalRegion = true;
-		Settings.DepthOfFieldFocalRegion = 0.0f;
-		Settings.bOverride_DepthOfFieldNearTransitionRegion = true;
-		Settings.DepthOfFieldNearTransitionRegion = 0.0f;
-		Settings.bOverride_DepthOfFieldFarTransitionRegion = true;
-		Settings.DepthOfFieldFarTransitionRegion = 1.0f;
-		Settings.bOverride_DepthOfFieldScale = true;
-		Settings.DepthOfFieldScale = 1.0f;
-		Settings.bOverride_DepthOfFieldNearBlurSize = true;
-		Settings.DepthOfFieldNearBlurSize = Size;
-		Settings.bOverride_DepthOfFieldFarBlurSize = true;
-		Settings.DepthOfFieldFarBlurSize = Size;
+		float FStop = 2.2f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McMenuBlur="), FStop);
+		FPostProcessSettings& Blur = Volume->Settings;
+		Blur.bOverride_DepthOfFieldEnabled = true;
+		Blur.DepthOfFieldEnabled = true;
+		Blur.bOverride_DepthOfFieldSensorWidth = true;
+		Blur.DepthOfFieldSensorWidth = 24.576f;
+		Blur.bOverride_DepthOfFieldFocalDistance = true;
+		Blur.DepthOfFieldFocalDistance = 30.0f;
+		Blur.bOverride_DepthOfFieldFstop = true;
+		Blur.DepthOfFieldFstop = FStop;
+		Blur.bOverride_DepthOfFieldMinFstop = true;
+		Blur.DepthOfFieldMinFstop = FStop;
 		MenuBlur = Volume;
 	}
 	MenuBlur->bEnabled = bOn;

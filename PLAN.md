@@ -640,10 +640,10 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   against vanilla's screen. The 1070 needs those cache files copied by hand (the cache is not synced). Not done: the
   in-world blur behind the screen.
 
-- **In-world menu background (2026-11-03, written, NOT built or shot yet).** The game blurs the world behind the pause menu,
-  Options and Resource Packs (three box-blur passes each way, the Menu Background Blur option, default 5; an edge goes soft
-  over about 12 pixels at 1280 x 720) and darkens it to exactly 0.748 of the plain view at every point (vanilla shots
-  `blur_plain`/`blur_options`, script `blur_edge.txt`). We drew a 0.45 black fill. Now `DrawWorldMenuDim` draws 0.252 and
-  `UpdateMenuBlur` turns on an unbound post volume with Gaussian depth of field that blurs everything (`-McMenuBlur=<%
-  of width>` tunes it, default 0.6, a guess). To do once builds are allowed: build, shoot the Options screen in a world and
-  compare the edge width (12 px) and the 0.748 with `ref_blur_options.png`.
+- **In-world menu background (2026-11-03, built and shot).** The game blurs the world behind the pause menu, Options and
+  Resource Packs (three box-blur passes each way; an edge goes soft over about 12 pixels at 1280 x 720) and darkens it to
+  0.748 of the plain view (vanilla shots `blur_plain`/`blur_options`). `DrawWorldMenuDim` draws a 0.252 black fill; `UpdateMenuBlur`
+  spawns an unbound post volume with cinematic depth of field focused 30 cm out (UE 5.8 has no Gaussian DOF at SM5), so
+  everything beyond blurs and the HUD stays sharp. `-McMenuBlur=<f-stop>` tunes it, default 2.2: f/4 and up blur nothing, 2.9
+  blurs distant parts only, 2.2 removes the texture grain like vanilla. Not matched exactly: DOF blur grows with distance, so
+  nearby blocks are sharper than in the game, and the edge width was judged by eye, not measured; the 0.748 was not re-measured.

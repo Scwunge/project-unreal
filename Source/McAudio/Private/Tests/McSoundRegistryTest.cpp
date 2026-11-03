@@ -25,6 +25,22 @@ bool FMcSoundRegistryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("events"), Registry.NumEvents(), 7);
 	TestFalse(TEXT("text that isn't an object fails"), FMcSoundRegistry().Parse(TEXT("[1, 2")));
 
+	// A pack's sounds.json is merged: new events added, listed events extended, "replace" swaps the list.
+	{
+		FMcSoundRegistry Merged;
+		Merged.Parse(TEXT(R"({ "a": { "sounds": ["one"] }, "b": { "sounds": ["x"] } })"));
+		TestTrue(TEXT("merge parses"), Merged.Merge(TEXT(R"({ "a": { "sounds": ["two"] }, "b": { "replace": true, "sounds": ["y"] }, "c": { "sounds": ["z"] } })")));
+		TestEqual(TEXT("one new event"), Merged.NumEvents(), 3);
+		const TArray<FMcSoundVariant>* A = Merged.Find(FName("a"));
+		const TArray<FMcSoundVariant>* B = Merged.Find(FName("b"));
+		if (TestNotNull(TEXT("a"), A) && TestNotNull(TEXT("b"), B))
+		{
+			TestEqual(TEXT("a keeps its sound and gains one"), A->Num(), 2);
+			TestEqual(TEXT("b is replaced"), B->Num(), 1);
+			TestEqual(TEXT("with the pack's sound"), (*B)[0].Name, FString(TEXT("y")));
+		}
+	}
+
 	// Plain list: the draw picks an equal share each.
 	FMcSoundVariant Variant;
 	TestTrue(TEXT("stone break"), Registry.Pick(FName("block.stone.break"), 0.0f, Variant));

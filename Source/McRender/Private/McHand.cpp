@@ -563,7 +563,7 @@ void UMcHandComponent::ShowHeld(FName Item)
 	{
 		TArray<FColor> Pixels;
 		int32 PixelWidth = 0, PixelHeight = 0;
-		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight) && PixelWidth > 0 && PixelHeight >= PixelWidth)
+		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight, 64) && PixelWidth > 0 && PixelHeight >= PixelWidth)
 		{
 			McHand::BuildExtrudedMesh(Pixels, PixelWidth, SideV, Data);
 			if (McCache::PathOf(Item.ToString()) == TEXT("fishing_rod"))

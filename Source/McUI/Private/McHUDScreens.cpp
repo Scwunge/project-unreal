@@ -3,6 +3,9 @@
 
 #include "Kismet/GameplayStatics.h"
 #include "McHUD.h"
+#include "McFontRaster.h"
+#include "McDropTarget.h"
+#include "Engine/GameViewportClient.h"
 #include "McEffects.h"
 #include "McRenderMode.h"
 #include "McSkyComponent.h"
@@ -17,6 +20,11 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
+#include "Algo/Reverse.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Dom/JsonObject.h"
+#include "McResourcePacks.h"
 #include "McCache.h"
 #include "McFont.h"
 #include "McGameViewportClient.h"
@@ -153,7 +161,13 @@ namespace
 }
 
 AMcHUD::AMcHUD() = default;
-AMcHUD::~AMcHUD() = default;
+AMcHUD::~AMcHUD()
+{
+	if (DropTarget.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(DropTarget.ToSharedRef());
+	}
+}
 
 void AMcHUD::DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint)
 {
@@ -175,23 +189,426 @@ void AMcHUD::DrawFill(float X, float Y, float Width, float Height, const FLinear
 
 // ---- Text ----
 
+namespace
+{
+	// The pictures a font definition names, by sheet file; read once per load.
+	struct FSheet
+	{
+		int32 Width = 0;
+		int32 Height = 0;
+		TArray64<uint8> Raw;
+	};
+
+	// The providers of a font definition in priority order: a pack's copy of the file first (the topmost pack first),
+	// then the game's. A "reference" provider is replaced by the providers of the file it names.
+	void CollectProviders(const FString& Relative, int32 Depth, TArray<TSharedPtr<FJsonObject>>& Out)
+	{
+		if (Depth > 4)
+		{
+			return;
+		}
+		TArray<TArray<uint8>> Files;
+		McPacks::ReadAll(Relative, Files);
+		Algo::Reverse(Files);
+		TArray<uint8> Vanilla;
+		const FString InJar = FPaths::Combine(McCache::Root(), TEXT("client/assets/minecraft"), Relative);
+		FFileHelper::LoadFileToArray(Vanilla, *InJar);
+		// The jar's include/unifont.json has no providers (the launcher builds it, with the size overrides of the CJK and Hangul
+		// blocks); the launcher's own copy, with the asset files, has them.
+		TArray<uint8> FromAssets;
+		if (FString(reinterpret_cast<const char*>(Vanilla.GetData()), Vanilla.Num()).Contains(TEXT("\"type\"")) == false
+			&& FFileHelper::LoadFileToArray(FromAssets, *FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative)))
+		{
+			Vanilla = MoveTemp(FromAssets);
+		}
+		if (Vanilla.Num() > 0)
+		{
+			Files.Add(MoveTemp(Vanilla));
+		}
+		for (const TArray<uint8>& File : Files)
+		{
+			FString Text;
+			FFileHelper::BufferToString(Text, File.GetData(), File.Num());
+			// The empty cells of a sheet are NUL characters in the lines of characters, which would end the string early.
+			Text.ReplaceInline(TEXT("\\u0000"), TEXT("\\uffff"), ESearchCase::IgnoreCase);
+			TSharedPtr<FJsonObject> Root;
+			const TArray<TSharedPtr<FJsonValue>>* Providers = nullptr;
+			if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid() || !Root->TryGetArrayField(TEXT("providers"), Providers))
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& Value : *Providers)
+			{
+				const TSharedPtr<FJsonObject>* Provider;
+				if (!Value->TryGetObject(Provider))
+				{
+					continue;
+				}
+				// A filter names options the provider needs switched on; none of them is on here.
+				const TSharedPtr<FJsonObject>* Filter;
+				bool bSkip = false;
+				if ((*Provider)->TryGetObjectField(TEXT("filter"), Filter))
+				{
+					for (const TPair<FString, TSharedPtr<FJsonValue>>& Option : (*Filter)->Values)
+					{
+						bool bOn = false;
+						bSkip |= Option.Value->TryGetBool(bOn) && bOn;
+					}
+				}
+				if (bSkip)
+				{
+					continue;
+				}
+				FString Type;
+				(*Provider)->TryGetStringField(TEXT("type"), Type);
+				if (Type == TEXT("reference"))
+				{
+					FString Id;
+					if ((*Provider)->TryGetStringField(TEXT("id"), Id))
+					{
+						Id.RemoveFromStart(TEXT("minecraft:"));
+						CollectProviders(TEXT("font/") + Id + TEXT(".json"), Depth + 1, Out);
+					}
+				}
+				else
+				{
+					Out.Add(*Provider);
+				}
+			}
+		}
+	}
+
+	// The .hex file inside a Unifont zip of the packs, or of the game's asset files (the launcher's, next to the jar's).
+	bool ReadHexZip(const FString& Relative, TArray<uint8>& Out)
+	{
+		FString Path;
+		if (!McPacks::TryResolve(Relative, Path))
+		{
+			Path = FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative);
+		}
+		return FMcResourcePack::ReadZipEntry(Path, TEXT(".hex"), Out);
+	}
+
+	// The code point at Text[At] (a surrogate pair is one), and At moved past it.
+	int32 NextCodePoint(const FString& Text, int32& At)
+	{
+		const int32 High = Text[At++];
+		if (High >= 0xd800 && High < 0xdc00 && At < Text.Len() && Text[At] >= 0xdc00 && Text[At] < 0xe000)
+		{
+			return 0x10000 + ((High - 0xd800) << 10) + (Text[At++] - 0xdc00);
+		}
+		return High;
+	}
+
+	bool ReadSheet(const FString& Path, FSheet& Sheet)
+	{
+		TArray<uint8> File;
+		IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+		const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
+		if (!FFileHelper::LoadFileToArray(File, *Path) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
+			|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Sheet.Raw))
+		{
+			return false;
+		}
+		Sheet.Width = Wrapper->GetWidth();
+		Sheet.Height = Wrapper->GetHeight();
+		return Sheet.Raw.Num() == static_cast<int64>(Sheet.Width) * Sheet.Height * 4;
+	}
+}
+
+// The glyph table from the font definition font/default.json, as the game reads it: the first provider that has a character
+// wins. "bitmap" providers cut a sheet into a grid of the characters of their lines (a glyph is as wide as its rightmost
+// opaque pixel, in the pixels of a glyph "height" tall, plus a gap of 1), "space" providers give plain advances. The
+// other kinds ("ttf", "unihex", "legacy_unicode") draw a character when it is first needed (FindGlyph); where the
+// definition of the game has none for Unifont, its own .hex files stand in at the end.
 void AMcHUD::LoadFont()
 {
-	if (GlyphWidths.Num() > 0)
+	if (Glyphs.Num() > 0)
 	{
 		return;
 	}
-	// A glyph is as wide as its rightmost pixel; a space is 3 and the gap after each glyph is 1.
-	GlyphWidths = McFont::GetGlyphWidths();
 	McFont::ReadGlyphWidths(TEXT("textures/font/ascii_sga.png"), GalacticWidths);
+
+	TArray<TSharedPtr<FJsonObject>> Providers;
+	CollectProviders(TEXT("font/default.json"), 0, Providers);
+	RasterFonts = MakeShared<FMcRasterFonts>();
+	RasterAsked.Reset();
+	bool bHasUnihex = false;
+	for (int32 Priority = 0; Priority < Providers.Num(); ++Priority)
+	{
+		const TSharedPtr<FJsonObject>& Provider = Providers[Priority];
+		FString Type;
+		Provider->TryGetStringField(TEXT("type"), Type);
+		if (Type == TEXT("unihex"))
+		{
+			FString HexFile;
+			TArray<uint8> Hex;
+			if (Provider->TryGetStringField(TEXT("hex_file"), HexFile))
+			{
+				HexFile.RemoveFromStart(TEXT("minecraft:"));
+				if (ReadHexZip(HexFile, Hex))
+				{
+					TArray<FMcRasterFonts::FUnihexOverride> Overrides;
+					const TArray<TSharedPtr<FJsonValue>>* Entries;
+					if (Provider->TryGetArrayField(TEXT("size_overrides"), Entries))
+					{
+						for (const TSharedPtr<FJsonValue>& Entry : *Entries)
+						{
+							const TSharedPtr<FJsonObject>* Object;
+							FString From, To;
+							double Left = 0, Right = 0;
+							if (Entry->TryGetObject(Object) && (*Object)->TryGetStringField(TEXT("from"), From) && (*Object)->TryGetStringField(TEXT("to"), To)
+								&& From.Len() == 1 && To.Len() == 1)
+							{
+								(*Object)->TryGetNumberField(TEXT("left"), Left);
+								(*Object)->TryGetNumberField(TEXT("right"), Right);
+								Overrides.Add({ From[0], To[0], static_cast<int32>(Left), static_cast<int32>(Right) });
+							}
+						}
+					}
+					RasterFonts->AddUnihex(Priority, MoveTemp(Hex), MoveTemp(Overrides));
+					bHasUnihex = true;
+				}
+			}
+		}
+		else if (Type == TEXT("legacy_unicode"))
+		{
+			FString SizesFile, Template;
+			TArray<uint8> Sizes;
+			if (Provider->TryGetStringField(TEXT("sizes"), SizesFile) && Provider->TryGetStringField(TEXT("template"), Template))
+			{
+				SizesFile.RemoveFromStart(TEXT("minecraft:"));
+				Template.RemoveFromStart(TEXT("minecraft:"));
+				// The pages are pictures, so the template is relative to textures/.
+				Template = TEXT("textures/") + Template;
+				if (FFileHelper::LoadFileToArray(Sizes, *McCache::Asset(SizesFile)))
+				{
+					RasterFonts->AddLegacyUnicode(Priority, MoveTemp(Sizes), Template);
+				}
+			}
+		}
+		else if (Type == TEXT("ttf"))
+		{
+			FString File, Skip;
+			double Size = 11.0, Oversample = 1.0;
+			FVector2D Shift = FVector2D::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* ShiftArray;
+			if (Provider->TryGetArrayField(TEXT("shift"), ShiftArray) && ShiftArray->Num() >= 2)
+			{
+				Shift = FVector2D((*ShiftArray)[0]->AsNumber(), (*ShiftArray)[1]->AsNumber());
+			}
+			Provider->TryGetNumberField(TEXT("size"), Size);
+			Provider->TryGetNumberField(TEXT("oversample"), Oversample);
+			// "skip" is one string or a list of them.
+			const TArray<TSharedPtr<FJsonValue>>* SkipArray;
+			if (Provider->TryGetArrayField(TEXT("skip"), SkipArray))
+			{
+				for (const TSharedPtr<FJsonValue>& Value : *SkipArray)
+				{
+					Skip += Value->AsString();
+				}
+			}
+			else
+			{
+				Provider->TryGetStringField(TEXT("skip"), Skip);
+			}
+			TArray<uint8> Data;
+			if (Provider->TryGetStringField(TEXT("file"), File))
+			{
+				File.RemoveFromStart(TEXT("minecraft:"));
+				// The font file is relative to font/ ("minecraft:mojangles.ttf" is assets/minecraft/font/mojangles.ttf).
+				if (FFileHelper::LoadFileToArray(Data, *McCache::Asset(TEXT("font/") + File)) || FFileHelper::LoadFileToArray(Data, *McCache::Asset(File)))
+				{
+					RasterFonts->AddTrueType(Priority, MoveTemp(Data), static_cast<float>(Size), static_cast<float>(Oversample), Shift, Skip);
+				}
+			}
+		}
+		else if (Type == TEXT("space"))
+		{
+			const TSharedPtr<FJsonObject>* Advances;
+			if (Provider->TryGetObjectField(TEXT("advances"), Advances))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Advances)->Values)
+				{
+					double Advance = 0.0;
+					int32 KeyAt = 0;
+					const int32 KeyChar = Entry.Key.IsEmpty() ? 0 : NextCodePoint(Entry.Key, KeyAt);
+					if (KeyChar != 0 && KeyAt == Entry.Key.Len() && Entry.Value->TryGetNumber(Advance) && !Glyphs.Contains(KeyChar))
+					{
+						FGlyph& Glyph = Glyphs.Add(KeyChar);
+						Glyph.Priority = Priority;
+						Glyph.Advance = static_cast<float>(Advance);
+					}
+				}
+			}
+		}
+		else if (Type == TEXT("bitmap"))
+		{
+			FString File;
+			const TArray<TSharedPtr<FJsonValue>>* Lines = nullptr;
+			double Height = 8.0, Ascent = 0.0;
+			if (!Provider->TryGetStringField(TEXT("file"), File) || !Provider->TryGetArrayField(TEXT("chars"), Lines) || Lines->Num() == 0)
+			{
+				continue;
+			}
+			Provider->TryGetNumberField(TEXT("height"), Height);
+			Provider->TryGetNumberField(TEXT("ascent"), Ascent);
+			File.RemoveFromStart(TEXT("minecraft:"));
+			const FString Sprite = TEXT("textures/") + File;
+			FSheet Sheet;
+			if (!ReadSheet(McCache::Asset(Sprite), Sheet))
+			{
+				UE_LOG(LogMcUI, Warning, TEXT("Can't read the font %s"), *Sprite);
+				continue;
+			}
+			// A cell is a code point: one beyond the basic plane is two UTF-16 units here but one cell.
+			TArray<TArray<int32>> Rows;
+			int32 Columns = 0;
+			for (const TSharedPtr<FJsonValue>& Line : *Lines)
+			{
+				const FString Text = Line->AsString();
+				TArray<int32>& Row = Rows.AddDefaulted_GetRef();
+				for (int32 At = 0; At < Text.Len();)
+				{
+					Row.Add(NextCodePoint(Text, At));
+				}
+				Columns = FMath::Max(Columns, Row.Num());
+			}
+			const int32 CellWidth = Sheet.Width / FMath::Max(Columns, 1), CellHeight = Sheet.Height / Rows.Num();
+			if (CellWidth < 1 || CellHeight < 1 || Height <= 0.0)
+			{
+				continue;
+			}
+			const float GlyphScale = static_cast<float>(Height) / CellHeight;
+			for (int32 Row = 0; Row < Rows.Num(); ++Row)
+			{
+				for (int32 Column = 0; Column < Rows[Row].Num(); ++Column)
+				{
+					const int32 Char = Rows[Row][Column];
+					if (Char == 0 || Char == 0xffff || Glyphs.Contains(Char))
+					{
+						continue;
+					}
+					int32 Widest = 0;
+					for (int32 X = 0; X < CellWidth; ++X)
+					{
+						for (int32 Y = 0; Y < CellHeight; ++Y)
+						{
+							const int64 Pixel = (static_cast<int64>(Row * CellHeight + Y) * Sheet.Width + Column * CellWidth + X) * 4;
+							if (Sheet.Raw[Pixel + 3] != 0)
+							{
+								Widest = X + 1;
+							}
+						}
+					}
+					FGlyph& Glyph = Glyphs.Add(Char);
+					Glyph.Priority = Priority;
+					Glyph.Sprite = Sprite;
+					Glyph.U = static_cast<float>(Column * CellWidth);
+					Glyph.V = static_cast<float>(Row * CellHeight);
+					Glyph.CellWidth = static_cast<float>(CellWidth);
+					Glyph.CellHeight = static_cast<float>(CellHeight);
+					Glyph.DrawWidth = CellWidth * GlyphScale;
+					Glyph.DrawHeight = static_cast<float>(Height);
+					Glyph.OffsetY = static_cast<float>(7.0 - Ascent);
+					Glyph.Advance = FMath::CeilToFloat(Widest * GlyphScale) + 1.0f;
+				}
+			}
+		}
+	}
+	if (!bHasUnihex)
+	{
+		// The jar's include/unifont.json lists no providers (the launcher builds it); the data is in the asset files.
+		for (const TCHAR* Zip : { TEXT("font/unifont.zip"), TEXT("font/unifont_pua.zip") })
+		{
+			TArray<uint8> Hex;
+			if (ReadHexZip(Zip, Hex))
+			{
+				RasterFonts->AddUnihex(Providers.Num(), MoveTemp(Hex), {});
+			}
+		}
+	}
+	if (!Glyphs.Contains(TEXT(' ')))
+	{
+		Glyphs.Add(TEXT(' ')).Advance = 4.0f;
+	}
+}
+
+// The character's glyph: from the sheet providers read at once, unless a provider before that one draws it itself, which
+// happens the first time it is asked for. A character nothing has shows as "?".
+const AMcHUD::FGlyph* AMcHUD::FindGlyph(int32 Char) const
+{
+	const FGlyph* Found = Glyphs.Find(Char);
+	if (RasterFonts.IsValid() && !RasterAsked.Contains(Char))
+	{
+		AMcHUD* Self = const_cast<AMcHUD*>(this);
+		Self->RasterAsked.Add(Char);
+		FMcRasterGlyph Raster;
+		if (RasterFonts->Make(Char, Found ? Found->Priority : MAX_int32, Raster))
+		{
+			FGlyph Glyph;
+			Glyph.Texture = Raster.Width > 0 ? Self->MakeGlyphTexture(Raster) : nullptr;
+			Glyph.CellWidth = static_cast<float>(Raster.Width);
+			Glyph.CellHeight = static_cast<float>(Raster.Height);
+			Glyph.DrawWidth = Raster.DrawWidth;
+			Glyph.DrawHeight = Raster.DrawHeight;
+			Glyph.OffsetX = Raster.OffsetX;
+			Glyph.OffsetY = Raster.OffsetY;
+			Glyph.Advance = Raster.Advance;
+			Glyph.ShadowOffset = Raster.ShadowOffset;
+			Glyph.Priority = -1;
+			Found = &Self->Glyphs.Add(Char, Glyph);
+		}
+	}
+	if (Found)
+	{
+		return Found;
+	}
+	return Char == TEXT('?') ? nullptr : FindGlyph(TEXT('?'));
+}
+
+float AMcHUD::GetGlyphAdvance(int32 Char)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	return Glyph ? Glyph->Advance : 6.0f;
+}
+
+float AMcHUD::GetGlyphShadowOffset(int32 Char)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	return Glyph ? Glyph->ShadowOffset : 1.0f;
+}
+
+bool AMcHUD::GetGlyphInk(int32 Char, float& Left, float& Right, float& Up, float& Down)
+{
+	LoadFont();
+	const FGlyph* Glyph = FindGlyph(Char);
+	if (!Glyph || Glyph->DrawWidth <= 0.0f)
+	{
+		return false;
+	}
+	Left = Glyph->OffsetX;
+	Right = Glyph->OffsetX + Glyph->DrawWidth;
+	Up = Glyph->OffsetY;
+	Down = Glyph->OffsetY + Glyph->DrawHeight;
+	return true;
+}
+
+float AMcHUD::GetTextWidth(const FString& Text)
+{
+	LoadFont();
+	return TextWidth(Text);
 }
 
 float AMcHUD::TextWidth(const FString& Text) const
 {
 	float Width = 0.0f;
-	for (const TCHAR Char : Text)
+	for (int32 At = 0; At < Text.Len();)
 	{
-		Width += (GlyphWidths.IsValidIndex(Char) ? GlyphWidths[Char] : 5) + 1;
+		const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, At));
+		Width += Glyph ? Glyph->Advance : 6.0f;
 	}
 	return Width;
 }
@@ -199,23 +616,33 @@ float AMcHUD::TextWidth(const FString& Text) const
 void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool bShadow, float Alpha, float TextScale)
 {
 	LoadFont();
-	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii.png"));
-	const auto Draw = [&](float OffsetX, float OffsetY, const FLinearColor& Tint)
+	// The shadow is the colour at a quarter of its brightness, moved down and right by a pixel (half a pixel for Unifont).
+	const auto Draw = [&](bool bShadowPass, const FLinearColor& Tint)
 	{
-		float At = X + OffsetX;
-		for (const TCHAR Char : Text)
+		float At = X;
+		for (int32 CharAt = 0; CharAt < Text.Len();)
 		{
-			const int32 Code = Char < 256 ? Char : '?';
-			DrawRegion(Font, At, Y + OffsetY, 8 * TextScale, 8 * TextScale, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Tint);
-			At += (GlyphWidths[Code] + 1) * TextScale;
+			const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, CharAt));
+			if (!Glyph)
+			{
+				At += 6.0f * TextScale;
+				continue;
+			}
+			UTexture2D* Picture = Glyph->Texture ? Glyph->Texture : Glyph->Sprite.IsEmpty() ? nullptr : LoadSprite(Glyph->Sprite);
+			if (Picture)
+			{
+				const float Shadow = bShadowPass ? Glyph->ShadowOffset * TextScale : 0.0f;
+				DrawRegion(Picture, At + Glyph->OffsetX * TextScale + Shadow, Y + Glyph->OffsetY * TextScale + Shadow, Glyph->DrawWidth * TextScale,
+					Glyph->DrawHeight * TextScale, Glyph->U, Glyph->V, Glyph->CellWidth, Glyph->CellHeight, Tint);
+			}
+			At += Glyph->Advance * TextScale;
 		}
 	};
 	if (bShadow)
 	{
-		// The shadow is the colour at a quarter of its brightness, one pixel down and right.
-		Draw(TextScale, TextScale, FromRgb(Rgb) * 0.25f * Alpha);
+		Draw(true, FromRgb(Rgb) * 0.25f * Alpha);
 	}
-	Draw(0, 0, FromRgb(Rgb, Alpha));
+	Draw(false, FromRgb(Rgb, Alpha));
 }
 
 // ---- Items ----
@@ -583,8 +1010,14 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			bDevChatDone = true;
 			TArray<FString> Lines;
 			DevChat.TrimQuotes().ParseIntoArray(Lines, TEXT("|"));
-			for (const FString& Line : Lines)
+			for (FString& Line : Lines)
 			{
+				// \uXXXX stands for that character, for text a command line can't carry.
+				for (int32 At = 0; (At = Line.Find(TEXT("\\u"), ESearchCase::CaseSensitive, ESearchDir::FromStart, At)) != INDEX_NONE && At + 6 <= Line.Len(); ++At)
+				{
+					const TCHAR Char = static_cast<TCHAR>(FParse::HexNumber(*Line.Mid(At + 2, 4)));
+					Line = Line.Left(At) + FString(1, &Char) + Line.Mid(At + 6);
+				}
 				Data->SendChat(Line);
 			}
 		}
@@ -629,12 +1062,13 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
 		FString DevMenu;
-		bool bDevOptions = false;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options")))
+		bool bDevOptions = false, bDevPacks = false;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
-			bDevOptions = DevMenu == TEXT("options");
+			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs");
+			bDevPacks = DevMenu == TEXT("packs");
 		}
 #endif
 		if (bPause)
@@ -644,6 +1078,10 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			if (bDevOptions)
 			{
 				OpenOptions(EMenu::Pause);
+			}
+			if (bDevPacks)
+			{
+				OpenResourcePacks();
 			}
 #endif
 		}
@@ -949,6 +1387,7 @@ void AMcHUD::DrawGalacticText(const FString& Text, float X, float Y, float Width
 {
 	LoadFont();
 	UTexture2D* Font = LoadSprite(TEXT("textures/font/ascii_sga.png"));
+	const float Cell = Font ? Font->GetSizeX() / 16.0f : 8.0f;
 	const auto WidthOf = [this](const FString& Piece)
 	{
 		float Total = 0.0f;
@@ -968,7 +1407,7 @@ void AMcHUD::DrawGalacticText(const FString& Text, float X, float Y, float Width
 		for (const TCHAR Char : Line)
 		{
 			const int32 Code = Char < 256 ? Char : '?';
-			DrawRegion(Font, At, Y + Row * 9, 8, 8, (Code % 16) * 8, (Code / 16) * 8, 8, 8, FromRgb(Rgb));
+			DrawRegion(Font, At, Y + Row * 9, 8, 8, (Code % 16) * Cell, (Code / 16) * Cell, Cell, Cell, FromRgb(Rgb));
 			At += GalacticWidths[Code] + 1;
 		}
 		Line.Reset();
@@ -1490,6 +1929,35 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 void AMcHUD::DrawHUD()
 {
 	Super::DrawHUD();
+#if !UE_BUILD_SHIPPING
+	// Development: -McReload=<seconds> asks for the reload (F3+T) that long into the run, once.
+	static double DevReloadAt = -1.0;
+	static bool bDevReloadRead = false;
+	if (!bDevReloadRead)
+	{
+		bDevReloadRead = true;
+		double Seconds = 0.0;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McReload="), Seconds))
+		{
+			DevReloadAt = FPlatformTime::Seconds() + Seconds;
+		}
+	}
+	if (DevReloadAt > 0.0 && FPlatformTime::Seconds() >= DevReloadAt)
+	{
+		DevReloadAt = -1.0;
+		McPacks::RequestReload();
+	}
+#endif
+	if (McPacks::TakeReloadRequest())
+	{
+		ReloadResources();
+		return;
+	}
+	if (!DropTarget.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		DropTarget = SNew(SMcDropTarget).OnFiles(FMcOnFilesDropped::CreateUObject(this, &AMcHUD::OnFilesDropped));
+		GEngine->GameViewport->AddViewportWidgetContent(DropTarget.ToSharedRef(), 1000);
+	}
 	if (!Canvas)
 	{
 		return;
@@ -1619,9 +2087,10 @@ void AMcHUD::DrawHUD()
 	{
 		DrawDebug(Width, Height, *Player);
 	}
-	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed.
-	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr;
-	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed (unless -McShowChat: text for a font test).
+	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr
+		&& !FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
+	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options && ActiveMenu != EMenu::ResourcePacks && ActiveMenu != EMenu::ConfirmPacks && ActiveMenu != EMenu::ConfirmIncompatible)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}
@@ -1691,7 +2160,9 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 	{
 		const UMcPlayerDataComponent::FChatLine& Entry = Log[Index];
 		float Alpha = 1.0f;
-		if (!bOpen)
+		// -McShowChat (a font test's shot) keeps the lines at full strength.
+		static const bool bKeepLines = FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
+		if (!bOpen && !bKeepLines)
 		{
 			// Ten seconds on screen, the last of them fading.
 			const double Age = Now - Entry.Time;
@@ -2132,7 +2603,7 @@ void AMcHUD::DrawSign(int32 Width, int32 Height)
 	{
 		const int32 Code = Char < 256 ? Char : '?';
 		DrawRegion(Font, X, Y, 8 * TextScale, 8 * TextScale, (Code % 16) * 8, (Code / 16) * 8, 8, 8, Colour);
-		return (GlyphWidths[Code] + 1) * TextScale;
+		return (McFont::GetGlyphWidths()[Code] + 1) * TextScale;
 	};
 	for (int32 Index = 0; Index < Menu.Lines.Num(); ++Index)
 	{

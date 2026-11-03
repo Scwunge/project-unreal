@@ -2,6 +2,7 @@
 #include "McBanner.h"
 #include "McShulker.h"
 #include "McCache.h"
+#include "McResourcePacks.h"
 #include "McRenderTextures.h"
 #include "McBannerEntity.h"
 #include "McBed.h"
@@ -634,9 +635,16 @@ void AMcPlayerPawn::HandleFunctionKeys(APlayerController& Player)
 	{
 		bHudHidden = !bHudHidden;
 	}
-	if (Player.WasInputKeyJustPressed(EKeys::F3))
+	// F3 alone shows the debug text, on its release; F3 with another key is a combination: T reloads the resource packs.
+	if (Player.IsInputKeyDown(EKeys::F3) && Player.WasInputKeyJustPressed(EKeys::T))
 	{
-		bDebugShown = !bDebugShown;
+		McPacks::RequestReload();
+		bF3Combo = true;
+	}
+	if (Player.WasInputKeyJustReleased(EKeys::F3))
+	{
+		bDebugShown = bDebugShown != !bF3Combo;
+		bF3Combo = false;
 	}
 	if (Player.WasInputKeyJustPressed(EKeys::F5))
 	{

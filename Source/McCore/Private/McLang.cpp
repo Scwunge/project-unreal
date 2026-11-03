@@ -1,5 +1,8 @@
 #include "McLang.h"
 #include "McCache.h"
+#include "McResourcePacks.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Dom/JsonObject.h"
 #include "Misc/ScopeLock.h"
 
@@ -10,12 +13,19 @@ namespace
 		static TMap<FString, FString> Table;
 		static FCriticalSection Lock;
 		static bool bLoaded = false;
+		static uint32 LoadedGeneration = 0;
 		FScopeLock Guard(&Lock);
-		if (!bLoaded)
+		if (!bLoaded || LoadedGeneration != McPacks::GetGeneration())
 		{
 			bLoaded = true;
-			if (const TSharedPtr<FJsonObject> Object = McCache::LoadJsonObject(McCache::Asset(TEXT("lang/en_us.json"))))
+			LoadedGeneration = McPacks::GetGeneration();
+			Table.Reset();
+			auto Merge = [](const TSharedPtr<FJsonObject>& Object)
 			{
+				if (!Object.IsValid())
+				{
+					return;
+				}
 				for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
 				{
 					FString Text;
@@ -23,6 +33,20 @@ namespace
 					{
 						Table.Add(Pair.Key, MoveTemp(Text));
 					}
+				}
+			};
+			// The game's own file, then each pack's lang/en_us.json over it key by key (a pack gives only the keys it
+			// changes; the file is not replaced as pictures are).
+			Merge(McCache::LoadJsonObject(McCache::Root() / TEXT("client/assets/minecraft/lang/en_us.json")));
+			TArray<TArray<uint8>> FromPacks;
+			McPacks::ReadAll(TEXT("lang/en_us.json"), FromPacks);
+			for (const TArray<uint8>& Bytes : FromPacks)
+			{
+				TSharedPtr<FJsonObject> Object;
+				const FUTF8ToTCHAR Text(reinterpret_cast<const ANSICHAR*>(Bytes.GetData()), Bytes.Num());
+				if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(Text.Length(), Text.Get())), Object))
+				{
+					Merge(Object);
 				}
 			}
 		}

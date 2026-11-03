@@ -95,8 +95,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       - **Skins and mobs:** player skins and mob textures go through the same pipeline (upscale, light detail,
         normal, roughness; UVs unchanged, so the models are too). `-McSelfShot=<blocks>` puts the camera in front
         of the player for a skin picture, and `-McSpawnMobs=cow,4` a few mobs near the player.
-      - **Resource packs: later** (zip and LabPBR reading are not built; the arrays use the same layout so a
-        pack's maps could be dropped in).
+      - **Resource packs:** see "Resource packs" below: `-McPacks=` stacks zips and folders over the vanilla
+        assets, and with `-McPackPbr` their LabPBR `_n` and `_s` maps replace the generated ones.
   - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
     (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 
@@ -606,6 +606,121 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     crafting table, chests and furnaces did before.
   - **Not done:** buckets of fish, axolotls and powder snow, milk, and waterlogging blocks.
 
+### Resource packs (2026-10-31)
+
+**Where the game read textures and models before packs** (the gaps this work closes):
+- Every asset path went through `McCache::Asset(rel)` to `cache/client/assets/minecraft/<rel>` and then straight to
+  a file read. There was no layer between the path and the disk, so nothing could be overridden.
+- `FMcBlockTextures` made one 16x16 `UTexture2DArray` (nearest, 5 mips) from the textures the baked models name.
+  16 was a constant in the loader, the mips, the animation uploads and the HD generator. A texture of another size
+  was sampled down to 16 at its texel centres, so a 1024 pack could never show.
+- `.png.mcmeta` was read beside the png at that same path; animation frames were all squeezed to 16x16.
+- `FMcHdBlocks` (Unreal Mode plus HD Textures) made albedo, normal and specular arrays from those 16 pixels
+  (`-McHdSize`, 64 by default); its comment said "resource packs are not read yet". Its LabPBR layout is the one
+  Faithful PBR uses, so a pack's `_n` and `_s` maps could go straight in.
+- Blockstates and models were read in `McBlockModels` from `McCache::Asset`. Entity, sky, weather, particle, GUI
+  and item pictures were read by the callers that need them (`McEntityModel`, `McSkyComponent`, `McHUD`, `McHand`...),
+  all through `McCache::Asset` too, except sounds (`McCache::Root()/assets/...`, not part of this work).
+- `McHand` built a quad-per-pixel mesh from the held item's picture: fine at 16, millions of quads at 1024.
+- No notion of pack order, `pack.mcmeta`, `pack.png`, zip reading or a pack folder.
+
+**What is built:**
+- `McResourcePacks` (McCore): `FMcResourcePack` opens a zip (own reader: stored and deflated, zip64) or a folder and
+  reads `pack.mcmeta` (`pack_format`, `min_format`/`max_format`, `supported_formats` as number, pair or range,
+  `description` as a text component, the `filter.block` rules) and notes `pack.png`. `FMcPackStack` puts packs in
+  order, later wins per file, a pack's `filter` hides what is below it, and vanilla is the bottom layer.
+  Source of the format: minecraft.wiki "Resource pack".
+- `McCache::Asset` asks the stack first. A folder pack's file is used where it is; a zip's file is taken out once
+  into `Saved/McPackCache/<hash of zip path, size and time>/` (with its `.png.mcmeta`, and only that pack's, as in
+  vanilla where the animation file comes from the pack that gave the png), so every existing reader sees the
+  override with no change: block and item textures, animations, blockstates, models, and the entity, environment,
+  particle, GUI, painting and font pictures the renderer loads. Item models and entity pictures are read the same way.
+- `-McPacks=a.zip,b` names the packs: a file in the `resourcepacks/` folder next to the project (or a path), last
+  listed on top. Without it nothing changes. `-McPackMaxSize=<px>` (default 512), `-McPackBudgetMB=<MB>` (default
+  1536) and `-McPackPbr` (default off) are the options.
+- **High resolution:** one array, as wide as the widest pack texture (a power of two), lowered to `-McPackMaxSize` and
+  then until the array and its mips fit the budget; every layer is scaled to it (shrunk with an alpha-weighted box
+  filter, vanilla 16 pixel layers repeated). The array is filtered like the HD arrays (trilinear, anisotropic) above 16.
+  Animated frames are scaled the same way. `McHand`'s extruded item mesh shrinks the picture to 64 first.
+- **PBR:** with `-McPackPbr`, a pack's `<name>_n.png` and `<name>_s.png` (first frame) are kept per layer. The HD
+  arrays (Unreal Mode plus HD Textures) use them in place of the generated maps, and make the missing one from the
+  picture without added detail. Vanilla Mode ignores them, as vanilla does. HD arrays are sized to a third of the budget.
+- **Picker:** Options, Resource Packs... (`EMenu::ResourcePacks`): the packs in `resourcepacks/` (zips and folders,
+  `McPacks::ScanFolder`) in Available and Selected lists, arrows over the icon (select, unselect, move up/down as in
+  vanilla's `transferable_list` sprites), Open Pack Folder, Done applies. The choice is kept in
+  `Saved/McResourcePacks.json`, which `-McPacks=` overrides. The topmost selected pack wins.
+- **HD plus PBR check (Faithful PBR 1024 on the packs scene):** 108 layers carry `_n`/`_s` maps, the HD arrays are
+  256 px under the budget, and the normal array's alpha is the pack's height map, so parallax can read it from there.
+- **Gaps closed after the picker:** a pack's `sounds/*.ogg` replace the cache's and its `sounds.json` events are merged
+  (`"replace": true` swaps the list); `lang/en_us.json` is merged key by key; font sheets of any multiple of 128
+  work (glyph widths in vanilla pixels); a pack made for another resource format (game: 97) is marked Incompatible
+  in the picker and still loads, falling back to vanilla files; broken zips and missing packs are listed with the
+  reason and skipped. GUI sprites, HUD, mobs, items, particles, sky go through `McCache::Asset` and were checked with
+  a throwaway pack (red hotbar, blue cow, 4x font) shot on the 1070. The Faithful demo pack itself only has blocks.
+- **Not done / later:**
+  - Sounds already decoded and the language table are rebuilt when the pack choice changes, but a decoded-sound
+    cache entry made before the change stays until the next start.
+  - Switching packs while a world is open: the world holds the models and the texture array, so the choice is saved
+    and applies at the next start. From the title screen the caches are unloaded and rebuilt on the next world.
+  - The picker doesn't take dropped files or show pack compatibility warnings (`pack_format` is not checked).
+  - One array per size, so a pack of 100 big textures and 900 vanilla ones wouldn't repeat the 16 pixel layers up to
+    the big size. It needs the block materials to sample two arrays (`tools/make_materials.py`), so it waits for the
+    editor.
+  - Entity and GUI pictures at pack size get no mips in vanilla mode (`McRenderTextures::MakeArray`).
+  - Pack `overlays`, `optifine/` and `mcpatcher/` data (CTM, custom colormaps), the `lang` and sounds from packs.
+  - A pack's animated normal and specular maps use the first frame.
+
+**Resource pack feature checklist** (every item of minecraft.wiki "Resource pack"; [x] done = built and tested or shot, [~] partly,
+  [ ] missing = not read at all):
+
+Pack files
+- [x] Zip and folder packs, stacked in order, later wins per file (`resourcepacks/`, `-McPacks=`, the picker)
+- [x] `pack.mcmeta`: `pack_format`, `supported_formats`, `min_format`/`max_format`, text-component `description`
+- [x] `pack.png` icon (picker)
+- [x] `filter.block` rules hiding lower packs' files
+- [x] Pack compatibility with the game's resource format (97): marked Incompatible, still loads
+- [x] `overlays` (pack.mcmeta entries with formats or min/max_format and a directory; later entries win; test in McResourcePacks)
+- [x] Broken zip, missing pack, missing file: listed with the reason, skipped, vanilla's file used
+- [x] Drag and drop of packs onto the window (confirm "Do you want to add the following packs", copied into the folder) and the "Are you sure you want to load this pack?" confirm when selecting an incompatible or broken pack (the game's lang strings by old, new or unknown; not shot against the reference, whose script cannot click)
+- [ ] Server-sent packs (a server offering a pack and the client downloading it): missing
+
+Textures
+- [x] Block textures at any size (array side follows the widest pack texture, budgeted)
+- [x] `.png.mcmeta` animations: `frametime`, `frames` with per-frame `time`, `interpolate`, `width`/`height` (tested)
+- [x] Item, entity, environment (sky, clouds, weather), particle, painting, GUI sprite, HUD and map pictures:
+  read through `McCache::Asset`, so a pack's file replaces the game's
+- [x] Colormaps (`colormap/grass.png`, `foliage.png`, `dry_foliage.png`)
+- [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
+- [x] GUI `.png.mcmeta` scaling (`gui.scaling`: nine_slice with one border or per side, tile, stretch) for the widget
+  sprites (button, slider and handle, text field), from the sprite's own pack
+- [~] Texture `.png.mcmeta` `blur`/`clamp` read for standalone textures (GUI pictures, block texture arrays; each texture asset carries its own sampler, so no second sampler was needed; atlas sprites ignore blur as in vanilla). Villager `hat`: read (see the note below), the model has to use it
+
+> Resource packs, fonts: glyphs are keyed by code point (astral characters in bitmap providers draw); the jar's empty include/unifont.json is replaced by the launcher's copy with the CJK/Hangul size overrides; ttf advances are whole oversampled pixels. Checked against the vanilla client's own per-glyph advance, shadow offset and whole-string width (reference script scripts/respack_metrics.txt, verb `log glyphs`; tests McUI.FontMetrics and FontMetricsTrueType, the latter needs the zz_test_ttf pack that only the 1070 has and skips elsewhere). Ink bounds (left/right/up/down) are compared too (exact for the default font, within 0.3 for ttf, whose bounds depend on FreeType's rasterising).
+> **For the villagers session: villager `hat`.** A villager's profession and type pictures (`textures/entity/villager/profession/<name>.png`, `.../type/<name>.png`) may carry a `.png.mcmeta` with `{"villager":{"hat":"none"|"partial"|"full"}}`. `McCache::VillagerHat(Category, Name)` (McCache.h; Category is `"profession"` or `"type"`, Name `"farmer"` or `"minecraft:plains"`) returns `McCache::EVillagerHat::None/Partial/Full` from whichever pack gives the picture (zip packs too). The model should read the profession's value and the type's and decide which head layers (hat, hat rim, hair) to draw by the rule on minecraft.wiki "Resource pack" (villager `hat`) / vanilla's `VillagerProfessionLayer`; I only read the value and did not check that rule against the client. I have not touched the villager model.
+- [x] `atlases/*.json` for every atlas: unstitch, paletted_permutations and filter sources become pictures the game finds as a pack's own (McPackAtlas.cpp; tests PackAtlas, PackAtlasSprites); single and directory sources need nothing (textures are found by path)
+- [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
+- [x] `font/default.json` providers: bitmap, space, unihex (Unifont .hex zips, size_overrides; the game's own Unifont stands in where the jar's include/unifont.json is empty), legacy_unicode (glyph_sizes.bin and unicode_page_XX.png) and ttf (FreeType: size, oversample, shift, skip) in the packs' order; the last three draw a character into a small texture of its own on first use (McFontRaster.cpp, glyph textures in AMcHUD). Other font ids (alt, illageralt, uniform) are not read (only the enchanting table's galactic font has its own code)
+
+Models and items
+- [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's, the higher pack wins, parents may be in a lower pack (tests PackModels, PackModelStack)
+- [~] Item models: held-item mesh and HUD icons read `models/item` and `items/*.json` from packs; custom
+  `items/*.json` conditions/selects are only as far as the game's own are
+- [ ] Entity models in `models/entity` format (Optifine CEM) and `optifine/`/`mcpatcher/` data (CTM, custom colormaps,
+  `texture.properties` formats): missing; LabPBR is detected through the maps, not the property file
+
+Other assets
+- [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`); tested through the pack stack (McAudio.PackSounds)
+- [x] `lang/en_us.json` merged key by key, the higher pack winning (McCore.PackLang); other languages are not read (the game has no language option)
+- [~] `texts/splashes.txt`: the title screen's yellow splash is drawn from the top pack's copy (else the game's). Its numbers are fitted from 48 vanilla shots (reference scripts/respack_splash_pulse.txt with the `screen title` and `log millis` verbs; 3 splashes of 10, 90 and 222 px; analysis by pixel masks, not from any code): tilt 20.0 degrees up (rows sharpest at -20.0); scale at its biggest 179.3/(width+31.1) (exact to 0.1% over the three widths); a dip of 5.5% of that, |sine| shaped, every 500 ms (sine period 999 to 1002 ms, rms 0.13 to 0.25 px), tied to the clock with phase 0 at whole seconds within the shots' 0-135 ms timing; anchor 123.95 GUI px right of the middle and 68.38 down, first text row 7.39 above it (0.56 GUI px rms). The date splashes are from minecraft.wiki's Splash page (Merry X-mas! 24 Dec, Happy new year! 1 Jan, OOoooOOOoooo! Spooky! 31 Oct); test McUI.Splash; ours is shot with `-McTitle -McPacks=zz_test_splash`. Credits and the end poem (`texts/`) and `particles/*.json`: nothing in the game reads them yet (no credits, particles are drawn from block pictures and colours, not the particle sheets),
+  so a pack's copy has nothing to change until those features exist. `shaders/` (post effects, core) cannot apply:
+  Unreal draws the world. `waypoint_style`, `regional_compliance`: missing
+
+PBR (LabPBR 1.3, an Optifine/shader-pack feature, not vanilla)
+- [x] `_n`/`_s` maps kept per layer with `-McPackPbr`; HD arrays use them (normal RG xy, B AO, A height; specular
+  R smoothness, G F0, A emissive)
+- [ ] `_e` and `_r` extra maps, porosity/subsurface channels in specular B, parallax from the height alpha: with the
+  unrealmode session's surface work
+
 ### M4 build order
 
 The 26.3 worldgen data (`cache/client/data/minecraft/worldgen`) is the source of truth. The overworld biome
@@ -919,3 +1034,15 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   random-tick growth of cane and kelp (done by command instead), a detector with a block over it (vanilla reads the light reaching its cell, 14 beside
   open sky; ours reads the global level). Falling-block entity shot still not taken.
 - Main's note-block hook (`PlayNote`, 074d37b) to be wired in McRedstone.cpp at merge.
+- [~] Pack feature audit 2 (2026-11-01): tests McAssets.PackColormap (a pack's colormap/grass.png and foliage.png replace the game's; the biome table now reloads when the pack stack changes, it kept the first load before), McUI.PackGui (gui.scaling stretch/tile/nine_slice with one or four borders; a pack's title panorama replaces the asset index one, it was ignored because the "resources:" path skipped the packs). Already covered: animation frametime/frames/interpolate (McAssets.PackAnimation), pack.mcmeta supported_formats and overlays (McCore tests). Not testable yet: armor and elytra layers, since nothing in the game draws worn armor or an elytra (no textures/entity/equipment reads); whoever adds them should read through McCache::Asset so packs apply. No vanilla-vs-ours shots for these yet.
+- [x] Pack shots vs the vanilla client (2026-11-01, 1280x720): panorama pack (6 solid magenta faces, reference `scripts/respack_pan.txt`) mean 199,0,199 vs ours 200,0,200; the button sprite pack (red 3 px border, blue, nine_slice) draws the same border on both (`respack_btn.txt`, `-McMenu=options -McPacks=zz_test_btn`); colormap pack (`respack_cmap.txt`, `-McScene=packs -McPacks=zz_test_cmap`) shows green grass and red leaves, but the vanilla shots of it were taken at night (the scene needs `time set noon` in the script, added; numbers not compared). The reference's pack folder on the 1070 (C:\mc-reference\run\resourcepacks) is not synced by ref.sh: scp new test packs there. New reference verb `log packs` prints the game's verdict per pack: pack_format over 64 without min_format and max_format is UNKNOWN (red row, "Broken or incompatible"), pack_format 3 and the Faithful demo are TOO_OLD; McPacks::GetCompatibility follows.
+- [x] Resource Packs screen fitted to the reference's pixels (in-world look, `-McScene=packs -McMenu=packs -McPacks=a,b` for ours, `screen resourcepacks` after `packs file/a,file/b` for the reference; `-McTitle -McMenu=packs` for the title look): list top 49 and bottom 208, header text +4, first row box +16 (34 high, pitch 36, 188 wide with a scroll bar, 194 without), icon 1 right of the box, text 34 right of the icon, description lines 9 apart, a 6 wide black scroll bar with a 192 grey thumb, incompatible and broken packs on a (119,0,0) box with the description shown (the Incompatible text only while hovered); the left list matches to the pixel, the right list is 1 px off. Not done: the reference lists the built-in packs (Default, High Contrast, Programmer Art) which ours does not have; the in-world screen's background blur; hover and click behaviour not shot (the reference script cannot move the mouse).
+- [x] Reloading packs live, F3+T (`McPacks::RequestReload`, taken by the HUD, `AMcHUD::ReloadResources`): the packs are opened again from disk, the HUD, font, model and texture caches dropped, and a single-player world is opened again from its save (the player and chunks are saved on leaving the map); a client joined to a server is told changes apply on the next join. F3 alone shows the debug text on release; F3 with T does not. Tested with `-McScene=packs -McReload=3 -McReloadPacks=zz_test_cmap` (reload 3 s in): the shot equals the one started with the pack (grass mean 4.9,100.3,14.9 in both). Not live in the sense of the game's own reload: the world is reloaded, not patched.
+- **Grass tops looked 17-20% darker than vanilla (checked 2026-11-03).** Mostly a flawed comparison: our HUD draws the
+  vanilla-style vignette and the reference shots used `hud off`. At the screen centre, with the camera at the same
+  height (`-McCam` y is the eye, not the feet), white wool matches vanilla (233,236,236 vs 233,236,237) and grass tops are 3% low in
+  red and green and 7% low in blue (83,108,51 vs 85,111,55). The grass tint is identical (vanilla `log tint` gives 91bd59,
+  ours samples the same colormap) and the texture's bytes are identical. The leftover is in the dark texels: vanilla's
+  grass pixels have less contrast (1st percentile 70 vs 67, 99th 107 vs 110), which looks like a different texture
+  filter, not shading. Not fixed. Test scenes: `tools/scenes/shade_top.json`, `shade_side.json`; vanilla scripts
+  `shade_cal.txt`, `shade_ctr.txt`, `shade_tint.txt` (verb `log tint x y z`).

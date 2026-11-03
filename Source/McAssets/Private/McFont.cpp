@@ -14,39 +14,53 @@ void McFont::ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& OutWidths)
 	const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
 	TArray64<uint8> Raw;
 	if (!FFileHelper::LoadFileToArray(File, *McCache::Asset(Asset)) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
-		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() != 128 || Wrapper->GetHeight() != 128)
+		|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw) || Wrapper->GetWidth() < 128 || Wrapper->GetWidth() % 128 != 0 || Wrapper->GetHeight() != Wrapper->GetWidth())
 	{
 		UE_LOG(LogMcAssets, Warning, TEXT("Can't read the font %s"), Asset);
 		OutWidths.Init(5, 256);
 		return;
 	}
+	// A pack's sheet can be a whole number of times larger: widths are given in vanilla pixels.
+	const int32 Size = Wrapper->GetWidth();
+	const int32 Cell = Size / 16;
+	const int32 Scale = Size / 128;
 	for (int32 Code = 0; Code < 256; ++Code)
 	{
 		int32 Widest = 0;
-		for (int32 Column = 0; Column < 8; ++Column)
+		for (int32 Column = 0; Column < Cell; ++Column)
 		{
-			for (int32 Row = 0; Row < 8; ++Row)
+			for (int32 Row = 0; Row < Cell; ++Row)
 			{
-				const int64 Pixel = (static_cast<int64>((Code / 16) * 8 + Row) * 128 + (Code % 16) * 8 + Column) * 4;
+				const int64 Pixel = (static_cast<int64>((Code / 16) * Cell + Row) * Size + (Code % 16) * Cell + Column) * 4;
 				if (Raw[Pixel + 3] != 0)
 				{
 					Widest = Column + 1;
 				}
 			}
 		}
-		OutWidths[Code] = static_cast<uint8>(Widest);
+		OutWidths[Code] = static_cast<uint8>(FMath::DivideAndRoundUp(Widest, Scale));
 	}
 	OutWidths[' '] = 3;
 }
 
+namespace
+{
+	TArray<uint8> AsciiWidths;
+}
+
 const TArray<uint8>& McFont::GetGlyphWidths()
 {
-	static TArray<uint8> Widths;
+	TArray<uint8>& Widths = AsciiWidths;
 	if (Widths.IsEmpty())
 	{
 		ReadGlyphWidths(TEXT("textures/font/ascii.png"), Widths);
 	}
 	return Widths;
+}
+
+void McFont::ClearCache()
+{
+	AsciiWidths.Empty();
 }
 
 int32 McFont::GetWidth(const FString& Text)

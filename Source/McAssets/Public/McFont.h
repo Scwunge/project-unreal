@@ -13,6 +13,8 @@ namespace McFont
 	MCASSETS_API void ReadGlyphWidths(const TCHAR* Asset, TArray<uint8>& OutWidths);
 	// The ascii sheet's, read once.
 	MCASSETS_API const TArray<uint8>& GetGlyphWidths();
+	// Forgets the ascii sheet's widths, so the next GetGlyphWidths reads the sheet again (a resource pack changed it).
+	MCASSETS_API void ClearCache();
 	// The width of a line in font pixels, each glyph with its gap after it (characters past the sheet count as 5).
 	MCASSETS_API int32 GetWidth(const FString& Text);
 	// Text cut, from the end, until it is no wider than MaxWidth.

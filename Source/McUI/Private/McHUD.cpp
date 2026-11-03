@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McFontRaster.h"
 #include "McBanner.h"
 #include "McGuiLayout.h"
 #include "McBlockModels.h"
@@ -45,7 +46,7 @@ namespace
 		return FVector3d(X, Y, Depth);
 	}
 
-	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height, bool bSmooth = false)
+	UTexture2D* MakeTexture(const TArray64<uint8>& Bgra, int32 Width, int32 Height, bool bSmooth = false, bool bClamp = false)
 	{
 		UTexture2D* Texture = UTexture2D::CreateTransient(Width, Height, PF_B8G8R8A8);
 		if (!Texture)
@@ -53,6 +54,11 @@ namespace
 			return nullptr;
 		}
 		Texture->Filter = bSmooth ? TF_Bilinear : TF_Nearest;
+		if (bClamp)
+		{
+			Texture->AddressX = TA_Clamp;
+			Texture->AddressY = TA_Clamp;
+		}
 		Texture->SRGB = !bSmooth;
 		Texture->LODGroup = TEXTUREGROUP_Pixels2D;
 		void* Data = Texture->GetPlatformData()->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
@@ -61,6 +67,8 @@ namespace
 		Texture->UpdateResource();
 		return Texture;
 	}
+
+	UTexture2D* LoadPngBytes(const TArray<uint8>& File, const FString& Path, bool bFirstFrame, bool bGreyToAlpha);
 
 	// A PNG from the jar, cut to its top square when it is an animation strip.
 	UTexture2D* LoadPng(const FString& Path, bool bFirstFrame, bool bGreyToAlpha = false)
@@ -71,6 +79,12 @@ namespace
 			UE_LOG(LogMcUI, Warning, TEXT("Can't read %s"), *Path);
 			return nullptr;
 		}
+		return LoadPngBytes(File, Path, bFirstFrame, bGreyToAlpha);
+	}
+
+	// The same from bytes already in memory (Path only names it in the log).
+	UTexture2D* LoadPngBytes(const TArray<uint8>& File, const FString& Path, bool bFirstFrame, bool bGreyToAlpha)
+	{
 		IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
 		const TSharedPtr<IImageWrapper> Wrapper = Module.CreateImageWrapper(EImageFormat::PNG);
 		TArray64<uint8> Raw;
@@ -96,7 +110,9 @@ namespace
 				Bgra[0] = Bgra[1] = Bgra[2] = 0;
 			}
 		}
-		return MakeTexture(Raw, Width, Height, bGreyToAlpha);
+		// The picture's own .png.mcmeta may ask for smooth filtering or clamping.
+		const McCache::FTextureMeta Meta = McCache::ReadTextureMeta(Path);
+		return MakeTexture(Raw, Width, Height, bGreyToAlpha || Meta.bBlur, Meta.bHasClamp && Meta.bClamp);
 	}
 }
 
@@ -105,18 +121,51 @@ int32 AMcHUD::GetGuiScale(int32 Width, int32 Height)
 	return McGui::GetGuiScale(Width, Height);
 }
 
+FString AMcHUD::SpritePath(const FString& RelativeAssetPath)
+{
+	// "resources:" pictures come with the sounds, from the launcher's asset index, rather than in the jar (the title
+	// panorama: the jar's is a 1 by 1 stand-in). A pack that has the same picture still replaces it.
+	if (RelativeAssetPath.StartsWith(TEXT("resources:")))
+	{
+		const FString Relative = RelativeAssetPath.Mid(10);
+		return McPacks::IsFromPack(Relative) ? McCache::Asset(Relative)
+			: FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative);
+	}
+	return McCache::Asset(RelativeAssetPath);
+}
+
 UTexture2D* AMcHUD::LoadSprite(const FString& RelativeAssetPath)
 {
 	if (TObjectPtr<UTexture2D>* Found = Sprites.Find(RelativeAssetPath))
 	{
 		return *Found;
 	}
-	// "resources:" pictures come with the sounds, from the launcher's asset index, rather than in the jar (the title
-	// panorama: the jar's is a 1 by 1 stand-in).
-	const FString Path = RelativeAssetPath.StartsWith(TEXT("resources:"))
-		? FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), RelativeAssetPath.Mid(10)) : McCache::Asset(RelativeAssetPath);
+	const FString Path = SpritePath(RelativeAssetPath);
 	UTexture2D* Texture = LoadPng(Path, false);
 	Sprites.Add(RelativeAssetPath, Texture);
+	return Texture;
+}
+
+UTexture2D* AMcHUD::LoadPackIcon(const FString& Key, const TArray<uint8>& Png)
+{
+	if (TObjectPtr<UTexture2D>* Found = Sprites.Find(Key))
+	{
+		return *Found;
+	}
+	UTexture2D* Texture = LoadPngBytes(Png, Key, false, false);
+	Sprites.Add(Key, Texture);
+	return Texture;
+}
+
+UTexture2D* AMcHUD::MakeGlyphTexture(const FMcRasterGlyph& Glyph)
+{
+	TArray64<uint8> Bgra;
+	Bgra.Append(Glyph.Bgra.GetData(), Glyph.Bgra.Num());
+	UTexture2D* Texture = MakeTexture(Bgra, Glyph.Width, Glyph.Height);
+	if (Texture)
+	{
+		GlyphTextures.Add(Texture);
+	}
 	return Texture;
 }
 

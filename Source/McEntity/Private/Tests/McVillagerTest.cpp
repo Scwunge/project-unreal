@@ -13,7 +13,7 @@
 namespace
 {
 	// Nine chunks with a stone floor at y 0, so a villager's feet stand at y 1.
-	void MakeFlatWorld(FMcBlockWorld& World, FMcStateId Stone)
+	void MakeVillagerWorld(FMcBlockWorld& World, FMcStateId Stone)
 	{
 		for (int32 Z = -1; Z <= 1; ++Z)
 		{
@@ -90,7 +90,7 @@ bool FMcVillagerTest::RunTest(const FString& Parameters)
 		// A jobless villager takes the profession of the nearest job site, which then is its own; a second villager
 		// next to it takes the other; with none left, it stays jobless; and a lost job site takes the job back.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeVillagerWorld(World, Stone);
 		World.SetBlock(FIntVector(5, 1, 0), State(TEXT("minecraft:composter")));
 		World.SetBlock(FIntVector(0, 1, 6), State(TEXT("minecraft:lectern")));
 		FMcEntityManager Manager(World);
@@ -135,7 +135,7 @@ bool FMcVillagerTest::RunTest(const FString& Parameters)
 		// A villager that has earned experience keeps its profession and level when its job site goes, and looks only for
 		// a site of its own kind.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeVillagerWorld(World, Stone);
 		World.SetBlock(FIntVector(4, 1, 0), State(TEXT("minecraft:composter")));
 		FMcEntityManager Manager(World);
 		FMcVillager* Farmer = AddVillager(Manager, FVector(1.5, 1.0, 0.5));
@@ -161,7 +161,7 @@ bool FMcVillagerTest::RunTest(const FString& Parameters)
 	{
 		// A baby is half the size, takes no profession and grows up in 24000 ticks.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeVillagerWorld(World, Stone);
 		World.SetBlock(FIntVector(4, 1, 0), State(TEXT("minecraft:composter")));
 		FMcEntityManager Manager(World);
 		FMcVillager* Baby = AddVillager(Manager, FVector(1.5, 1.0, 0.5));

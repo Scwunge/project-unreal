@@ -18,7 +18,7 @@
 
 namespace
 {
-	FMcStateId Parse(const TCHAR* Text)
+	FMcStateId ParseState(const TCHAR* Text)
 	{
 		return FMcBlockRegistry::Get().ParseState(Text).Get(0);
 	}
@@ -42,13 +42,13 @@ namespace
 
 		FScene(const FMcNoiseSettings& Settings, EScene Kind, int32 InSize, FIntPoint InBase) : Size(InSize), Base(InBase)
 		{
-			const FMcStateId Dirt = Parse(TEXT("minecraft:dirt"));
-			const FMcStateId Grass = Parse(TEXT("minecraft:grass_block"));
-			const FMcStateId Sand = Parse(TEXT("minecraft:sand"));
-			const FMcStateId Water = Parse(TEXT("minecraft:water"));
-			const FMcStateId Stone = Parse(TEXT("minecraft:stone"));
-			const FMcStateId Netherrack = Parse(TEXT("minecraft:netherrack"));
-			const FMcStateId EndStone = Parse(TEXT("minecraft:end_stone"));
+			const FMcStateId Dirt = ParseState(TEXT("minecraft:dirt"));
+			const FMcStateId Grass = ParseState(TEXT("minecraft:grass_block"));
+			const FMcStateId Sand = ParseState(TEXT("minecraft:sand"));
+			const FMcStateId Water = ParseState(TEXT("minecraft:water"));
+			const FMcStateId Stone = ParseState(TEXT("minecraft:stone"));
+			const FMcStateId Netherrack = ParseState(TEXT("minecraft:netherrack"));
+			const FMcStateId EndStone = ParseState(TEXT("minecraft:end_stone"));
 			const FMcBiomeId Biome = FMcBiomeRegistry::Get().GetPlains();
 			for (int32 Index = 0; Index < Size * Size; ++Index)
 			{
@@ -245,7 +245,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 			{
 				for (int32 DZ = 0; DZ < 3; ++DZ)
 				{
-					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), Parse(Case.FloorBlock));
+					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), ParseState(Case.FloorBlock));
 				}
 			}
 		}

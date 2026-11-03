@@ -365,6 +365,11 @@ private:
 	bool bRodCast = false;
 	// Server: keeps the bobber told where the angler is, and takes it away when the rod is put down or left too far behind.
 	void ServerTickFishing(FMcEntityManager& Entities);
+	// Maps (McPlayerMaps.cpp): an empty map used makes a filled one; one held fills in, a row at a time.
+	void ServerUseMap();
+	void ServerTickMaps();
+	int32 MapTicks = 0;
+	int32 MapRow = 0;
 	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
 	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
 	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;

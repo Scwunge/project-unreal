@@ -27,6 +27,11 @@ FMcFishingBobber* AMcPlayerPawn::FindBobber(FMcEntityManager& Entities) const
 void AMcPlayerPawn::ServerUseItem_Implementation()
 {
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (Data && Data->GetSelected().Item == FName("minecraft:map"))
+	{
+		ServerUseMap();
+		return;
+	}
 	// A firework rocket used while gliding pulls (McPlayerElytra.cpp).
 	if (!Data || bServerDead || !Entities || ServerBoost() || Data->GetSelected().Item != RodItem)
 	{

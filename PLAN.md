@@ -1281,3 +1281,6 @@ Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dum
 
 ### Integrate 2026-11-03: known failing test
 - `McClient.McSim.RefScriptsLogistics` fails on integrate (lg_disp.txt: 483 changes expected, 138 got; lg_hop.txt: 114 expected, 65 got). Both scripts are baked from the reference client but the redstone replay for them is not implemented yet (redstone session's work in progress, commits 0c00e23, c5d6b84). Everything else passes: 192 of 193 at 7648caa.
+
+### Maps: item behaviours (2026-11-03)
+McMapStore (map id component, create, zoom cached per source, lock, JSON save/load), empty map used makes a filled map centred under the player, a held filled map fills one row every 4 ticks while the player is inside it (rate from mapexp2/3: about 500 ticks for a full map), map cloning as crafting_transmute with 1-8 empty maps (copies share the id), map extending (eight paper around a map) makes the next scale. Tests Mc.Map.Store. Still open: calling Save/Load from the world save, the cartography table (lock, copy, zoom menu), sending map data to clients, rendering in hand/HUD/frames, decorations.

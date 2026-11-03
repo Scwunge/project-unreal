@@ -1928,15 +1928,35 @@ namespace McEntityModel
 			return;
 		}
 		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(FName(*Item));
-		TArray<FColor> Pixels;
-		int32 Width = 0, Height = 0;
-		if (Pictures.Kind != McHand::EHeld::Flat || !McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, Width, Height) || Width <= 0 || Height < Width)
-		{
-			return;
-		}
+		const bool bCube = Pictures.Kind == McHand::EHeld::Cube;
 		McPlayerModel::FMeshData Flat;
-		McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Flat);
-		McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(FName(*Item), bMain ? TEXT("thirdperson_righthand") : TEXT("thirdperson_lefthand"));
+		if (bCube)
+		{
+			// A full block: its sides and top, both from the side picture.
+			McPlayerModel::FMeshData Top;
+			McHand::BuildCubeSidesMesh(FColor::White, 1.0f, Flat);
+			McHand::BuildCubeTopMesh(FColor::White, 1.0f, Top);
+			const int32 First = Flat.Positions.Num();
+			Flat.Positions.Append(Top.Positions);
+			Flat.Normals.Append(Top.Normals);
+			Flat.UV0.Append(Top.UV0);
+			Flat.Colors.Append(Top.Colors);
+			for (const int32 Index : Top.Triangles)
+			{
+				Flat.Triangles.Add(Index + First);
+			}
+		}
+		else
+		{
+			TArray<FColor> Pixels;
+			int32 Width = 0, Height = 0;
+			if (Pictures.Kind != McHand::EHeld::Flat || !McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, Width, Height) || Width <= 0 || Height < Width)
+			{
+				return;
+			}
+			McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Flat);
+		}
+		McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(bCube ? FName(TEXT("block/block")) : FName(*Item), bMain ? TEXT("thirdperson_righthand") : TEXT("thirdperson_lefthand"));
 		// A model with no left hand display has the right one turned over (the left hand mirrors the right).
 		static FString ModeText;
 		static bool bModeRead = FParse::Value(FCommandLine::Get(), TEXT("-McStandLeft="), ModeText);

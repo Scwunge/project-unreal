@@ -92,6 +92,8 @@ public:
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
 	bool bDaylight = false;
+	// 0 peaceful to 3 hard; what some mob effects scale with.
+	int32 Difficulty = 2;
 	// The tick of the day, 0 at sunrise to 23999; set by the server each tick. Villagers keep their hours by it.
 	int32 TimeOfDay = 0;
 	// A bell rung for an alarm (a raid): every villager that hears it goes to Pos until it has run out.

@@ -928,6 +928,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	const int32 TimeOfDay = static_cast<int32>(FMath::Fmod(DayTicks, 24000.0));
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
+	Manager.Difficulty = Rules.Difficulty;
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;

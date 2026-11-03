@@ -421,6 +421,18 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 	Arrow->Body.Velocity = (Direction + FVector(Gauss(), Gauss(), Gauss()) * Spread) * ArrowSpeed;
 	// 3 to 5 on Normal.
 	Arrow->Damage = static_cast<float>(Random.RandRange(3, 5));
+	// Reference (effects3 to effects5.txt, the effect read off the player the tick after a hit): a stray's arrow gave slowness for 600
+	// ticks (598, 598, 599 read) at every difficulty, a bogged's poison for 100 (99, 97 read).
+	if (Type.Name == FName(TEXT("minecraft:stray")))
+	{
+		Arrow->Effect = TEXT("slowness");
+		Arrow->EffectDuration = 600;
+	}
+	else if (Type.Name == FName(TEXT("minecraft:bogged")))
+	{
+		Arrow->Effect = TEXT("poison");
+		Arrow->EffectDuration = 100;
+	}
 	Manager.Add(MoveTemp(Arrow));
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
 }
@@ -967,6 +979,19 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		else if (OnAttackPlayer)
 		{
 			OnAttackPlayer(Target, BiteDamage);
+			// What a bite gives (reference, effects2/3/4.txt): a husk hunger for 140 ticks on Normal and 280 on Hard (none on Easy,
+			// the Easy runs showed none in 120 ticks), a wither skeleton wither for 200 at Normal and Hard (199 on Easy too).
+			if (Manager.OnPlayerEffect)
+			{
+				if (Type.Name == FName(TEXT("minecraft:husk")) && Manager.Difficulty >= 2)
+				{
+					Manager.OnPlayerEffect(Target, TEXT("hunger"), 0, Manager.Difficulty >= 3 ? 280 : 140);
+				}
+				else if (Type.Name == FName(TEXT("minecraft:wither_skeleton")))
+				{
+					Manager.OnPlayerEffect(Target, TEXT("wither"), 0, 200);
+				}
+			}
 		}
 	}
 

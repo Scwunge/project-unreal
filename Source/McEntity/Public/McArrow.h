@@ -19,6 +19,9 @@ public:
 
 	// What it does to a player it hits.
 	float Damage = 4.0f;
+	// An effect it gives the player it hits (a stray's slowness, a bogged's poison), for Duration ticks; none when unnamed.
+	FName Effect;
+	int32 EffectDuration = 0;
 	bool bStuck = false;
 	int32 StuckTicks = 0;
 

@@ -59,11 +59,16 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:cow"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:sheep"), 0.9f, 1.3f, 8.f, 0.23f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:chicken"), 0.4f, 0.7f, 4.f, 0.25f, 0.f, 0.f, true, false);
-		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
+		FMcMobType& ZombieType = Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		ZombieType.bHuntsVillagers = true;
+		ZombieType.bSinks = true;
 		// A drowned (reference, `attribute get` on a spawned one): the zombie's 20 health, 0.23 speed, 3 bite, 35 follow range, burns in
-		// the sun like it; its box is taken as the zombie's (not measured). Swimming (its water movement efficiency reads 0), the thrown
-		// trident, and spawning in water are not done.
-		Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		// the sun like it; its box is taken as the zombie's (not measured). In water it swims at its target (see Tick): from `drownswim.txt`
+		// (one drowned and one zombie in a glass pool, a survival player 20 blocks away), the drowned sank 2 blocks then swam level with
+		// the player at a steady 0.0485 blocks a tick (4.85 over 100 ticks, one run), where the zombie only sank, 0.025 a tick, and never
+		// moved. The thrown trident and spawning in water are not done.
+		FMcMobType& DrownedType = Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		DrownedType.bSwims = true;
 		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
@@ -972,6 +977,23 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		return;
 	}
 
+	if (Type.bSwims && Body.bInWater && bHasTarget)
+	{
+		// Straight at the target through the water, at the logged swimming speed; the physics tick still runs (it finds the water and
+		// the walls) with this as its velocity and no input.
+		const FVector To = Target - Body.Position;
+		if (To.SizeSquared() > 0.4 * 0.4)
+		{
+			Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+			Body.Velocity = To.GetSafeNormal() * 0.0485;
+		}
+		FMcMoveInput Swim;
+		Swim.Speed = 0.0f;
+		McPhysics::TickPlayer(World, Body, Swim);
+		LastPosition = Body.Position;
+		return;
+	}
+
 	FMcMoveInput Input;
 	Input.Speed = static_cast<float>(GetInputSpeed(Type));
 	bool bWalking = false;
@@ -1030,7 +1052,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		--HopDelay;
 	}
 	// Wading mobs paddle upwards rather than sink.
-	Input.bJump |= Body.bInWater || Body.bInLava;
+	Input.bJump |= (Body.bInWater && !Type.bSinks) || Body.bInLava;
 	McPhysics::TickPlayer(World, Body, Input);
 	if (Type.bClimbsWalls && bWalking && Body.bHorizontalCollision)
 	{

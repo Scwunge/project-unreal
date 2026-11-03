@@ -334,6 +334,25 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("fifteen blocks: dark"), Manager.EstimateBlockLight(FIntVector(10, 1, -4)), 0);
 		TestFalse(TEXT("no spawning beside it, roof or not"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
 	}
+	{
+		// In a pool (logged in the reference, drownswim.txt): a drowned swims at its target at about 0.0485 blocks a tick and a zombie
+		// only sinks.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		const FMcStateId Water = State(TEXT("minecraft:water"));
+		FillBox(World, 0, 1, -4, 30, 12, 4, Water);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		Manager.PlayerPositions = { FVector(0.5, 5.0, 0.5) };
+		FMcMob* Drowned = AddMob(Manager, TEXT("minecraft:drowned"), FVector(20.5, 5.0, 0.5));
+		FMcMob* Zombie = AddMob(Manager, TEXT("minecraft:zombie"), FVector(20.5, 9.0, 3.5));
+		for (int32 Tick = 0; Tick < 100; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the drowned has swum 3 to 6 blocks toward the player"), Drowned->Body.Position.X < 20.5 - 3.0 && Drowned->Body.Position.X > 20.5 - 6.0);
+		TestTrue(TEXT("the zombie has sunk, not risen"), Zombie->Body.Position.Y < 8.0);
+	}
 	return true;
 }
 

@@ -53,6 +53,10 @@ struct MCENTITY_API FMcMobType
 	bool bHops = false;
 	// Bees fly: no gravity, and they wander at different heights.
 	bool bFlies = false;
+	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
+	bool bSwims = false;
+	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
+	bool bSinks = false;
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
 	// The golem fights hostile mobs rather than being one.

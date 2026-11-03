@@ -45,6 +45,7 @@ namespace
 		Trapdoor,
 		Gate,
 		Dispenser,
+		Crafter,
 		Hopper,
 		Rail,
 		PoweredRail,
@@ -123,6 +124,7 @@ namespace
 				else if (Name.EndsWith(TEXT("_trapdoor"))) Kind = Trapdoor;
 				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
 				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
+				else if (Name == TEXT("minecraft:crafter")) Kind = Crafter;
 				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
 				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
@@ -537,6 +539,21 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 			return Number(State, TEXT("honey_level")) * 3;
 		}
 	}
+	if (KindOf(State) == Crafter)
+	{
+		// The number of filled slots (rs_crafter).
+		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+		int32 Filled = 0;
+		if (Entity && Entity->Kind == EMcBlockEntityKind::Container)
+		{
+			for (const FMcItemStack& Stack : Entity->Slots)
+			{
+				Filled += Stack.IsEmpty() ? 0 : 1;
+			}
+		}
+		return Filled;
+	}
 	// The slots of a container, and of the other half of a double chest.
 	TArray<FIntVector, TInlineAllocator<2>> Halves;
 	Halves.Add(Pos);
@@ -908,6 +925,23 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		break;
 	}
+	case Crafter:
+	{
+		// Measured with the reference client (rs_crafter): triggered follows the power at once (quasi-connectivity as for
+		// the dropper), the craft comes 4 ticks after a rising edge.
+		const bool bPowered = ShouldExtend(Pos, -1);
+		if (bPowered != Flag(State, TEXT("triggered")))
+		{
+			bQuietChange = true;
+			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), bPowered ? TEXT("true") : TEXT("false")) }));
+			bQuietChange = false;
+			if (bPowered)
+			{
+				Sim.ScheduleTick(Pos, 4);
+			}
+		}
+		break;
+	}
 	case Hopper:
 	{
 		// A powered hopper is locked.
@@ -981,6 +1015,17 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case MovingPiston:
 		TickMovingPiston(Pos, State);
+		break;
+	case Crafter:
+		if (Flag(State, TEXT("crafting")))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("crafting"), TEXT("false")) }));
+		}
+		else if (Sim.OnCraft && Sim.OnCraft(Pos))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("crafting"), TEXT("true")) }));
+			Sim.ScheduleTick(Pos, 5);
+		}
 		break;
 	case Dispenser:
 		if (Sim.OnDispense)

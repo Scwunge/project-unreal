@@ -106,6 +106,8 @@ public:
 
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
+	// A powered crafter at Pos tries to craft: it takes its items, hands on the product and says whether it made one.
+	TFunction<bool(const FIntVector&)> OnCraft;
 
 	// Sand, gravel and the like in the air: a falling block is not a block until it lands. Position is the bottom of the block.
 	struct FFallingBlock

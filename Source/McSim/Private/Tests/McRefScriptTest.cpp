@@ -3,6 +3,10 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McBlockEntity.h"
+#include "McChunk.h"
+#include "McItemStack.h"
+#include "McRecipe.h"
 #include "McDimensionType.h"
 #include "McSimulation.h"
 #include "Misc/AutomationTest.h"
@@ -128,6 +132,27 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		struct FDying { int32 Delay; FIntVector Cell; };
 		TArray<FDying> Dying;
 		FString HeldName;
+		// A crafter's slots are its chunk's block entity; "item replace" fills them and the sim's crafting works on them.
+		const auto SlotsAt = [&World](const FIntVector& Cell) -> FMcBlockEntity*
+		{
+			FMcChunk* Chunk = World.FindChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4));
+			if (!Chunk) return nullptr;
+			FMcBlockEntity* Entity = Chunk->FindBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15);
+			if (!Entity || Entity->Kind != EMcBlockEntityKind::Container)
+			{
+				Chunk->SetBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15, FMcBlockEntity::MakeContainer(9));
+				Entity = Chunk->FindBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15);
+			}
+			return Entity;
+		};
+		Sim.OnCraft = [&](const FIntVector& Cell)
+		{
+			FMcBlockEntity* Entity = SlotsAt(Cell);
+			FMcItemStack Product;
+			if (!Entity || !McCrafterCraft(Entity->Slots, Product)) return false;
+			Sim.NotifyContainerChanged(Cell);
+			return true;
+		};
 		for (const FString& Raw : Lines)
 		{
 			TArray<FString> P;
@@ -135,6 +160,17 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			if (P.Num() >= 6 && P[0] == TEXT("cmd") && P[1] == TEXT("setblock"))
 			{
 				World.SetBlock(FIntVector(FCString::Atoi(*P[2]), FCString::Atoi(*P[3]) + Lift, FCString::Atoi(*P[4])), Parse(P[5]));
+			}
+			else if (P.Num() >= 10 && P[0] == TEXT("cmd") && P[1] == TEXT("item") && P[2] == TEXT("replace") && P[3] == TEXT("block") && P[8] == TEXT("with"))
+			{
+				const FIntVector Cell(FCString::Atoi(*P[4]), FCString::Atoi(*P[5]) + Lift, FCString::Atoi(*P[6]));
+				if (FMcBlockEntity* Entity = SlotsAt(Cell))
+				{
+					const int32 Slot = FCString::Atoi(*P[7].Mid(10));
+					Entity->Slots.SetNum(FMath::Max(Entity->Slots.Num(), 9));
+					Entity->Slots[Slot] = FMcItemStack(FName(*P[9]), P.Num() > 10 ? FCString::Atoi(*P[10]) : 1);
+					Sim.NotifyContainerChanged(Cell);
+				}
 			}
 			else if (P.Num() >= 9 && P[0] == TEXT("cmd") && P[1] == TEXT("fill"))
 			{

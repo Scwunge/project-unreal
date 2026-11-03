@@ -60,6 +60,8 @@ public:
 	// "Dropper"). A dropper puts it into a container in front, or throws it out. A dispenser shoots an arrow, uses
 	// bone meal on the block in front, or throws the item out. Called by the redstone; a test calls it directly.
 	void Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A powered crafter at Pos crafts once from its nine slots; the product goes into the container it faces, or drops. False if no recipe fits.
+	bool Craft(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	// The furnace at Pos, loaded from its chunk's block entity if it is not being kept yet; null if there is none and
 	// bCreate is false. Also what a test uses to look at one.

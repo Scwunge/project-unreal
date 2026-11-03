@@ -178,19 +178,21 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
 
-		// The right hand's item of a humanoid arm, placed as the game does: the arm's hand frame (turned -90 about x and 180 about y,
-		// moved 1/16, 0.125, -0.625 blocks) then the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
-		// pixels), both read from the item model data. That leaves the sprite in the arm's y-z plane 1 pixel out from the shoulder,
-		// 13.6 pixels square about 9.5 down and 6 forward, with its handle-to-tip diagonal 10 degrees below the arm's forward line:
-		// our axis-aligned flat turned -35 degrees about x (the box is placed so it lands there). The vex's hand frame is the arm's
-		// with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes: -0.91, -3.47, 1.08).
+		// The right hand's item of a humanoid arm, placed from vanilla shots: an armor stand holding an iron sword in two arm poses,
+		// shot from the front, side and top, its logged hand matrix, and the sprite's outline fitted over all six (24 axis-aligned
+		// turns, the display turn's order, and an offset; PLAN has the scores). The fit picked one turn clearly (0.46 against 0.36 for
+		// the next) and put the sprite's centre 1.9 pixels in, 10.2 down and 6.3 forward of the hand frame, good to about a pixel
+		// (the camera was set by eye). With the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
+		// pixels, read from the item model data) the sprite lies in the arm's y-z plane, 13.6 pixels square, handle-to-tip diagonal
+		// 10 degrees below the arm's forward line: our axis-aligned flat turned -35 degrees about x. The vex's hand frame is the
+		// arm's with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes).
 		void AddHeldItemInHand(FModel& Model, const FVector& Pivot, float HandScale = 1.0f, const FVector& HandShift = FVector::ZeroVector)
 		{
 			constexpr float Tilt = -0.6109f;
 			Model.HeldLayer = Model.Textures.Num();
 			Model.Textures.Add(FString());
 			// The sprite's centre in the arm's frame (vanilla's axes, y down and z back), then ours (y up, z forward).
-			const FVector Vanilla = FVector(-1.0f, 9.5f, -6.0f) * HandScale + HandShift;
+			const FVector Vanilla = FVector(-1.93f, 10.21f, -6.34f) * HandScale + HandShift;
 			const FVector Centre(Vanilla.X, -Vanilla.Y, -Vanilla.Z);
 			const float Size = 13.6f * HandScale;
 			// The box sits where the tilt about x lands its centre on Centre.

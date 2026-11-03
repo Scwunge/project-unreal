@@ -138,4 +138,6 @@ namespace McCommands
 	MCSERVER_API const FGameRule* FindGameRule(const FString& Name);
 	// The longest chat line the game accepts.
 	constexpr int32 MaxChatLength = 256;
+	// A command line (it starts with a slash) may be far longer: JSON text in /tellraw and /title runs past a chat line.
+	constexpr int32 MaxCommandLength = 32500;
 }

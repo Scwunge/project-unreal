@@ -13,12 +13,15 @@
 .EXAMPLE
     tools/package.ps1
     tools/package.ps1 -SkipBuild    # check and zip an existing stage
+    tools/package.ps1 -Config Development -Date verify    # a packaged build that takes -McShot, to check the look
 #>
 [CmdletBinding()]
 param(
     [string]$OutDir = 'E:\mc-unreal-builds',
     [string]$Date = (Get-Date -Format 'yyyy-MM-dd'),
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    # Development keeps the -McShot / -McScene / -McEnhanced test arguments (Shipping drops them): to look at the packaged game, not for a friend.
+    [ValidateSet('Shipping','Development')][string]$Config = 'Shipping'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,7 +34,7 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 if (-not $SkipBuild) {
     if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
     & "$EngineRoot\Build\BatchFiles\RunUAT.bat" BuildCookRun "-project=$Project" -noP4 -platform=Win64 `
-        -clientconfig=Shipping -target=McClient -build -cook -stage -pak -prereqs -archive "-archivedirectory=$Stage" `
+        -clientconfig=$Config -target=McClient -build -cook -stage -pak -prereqs -archive "-archivedirectory=$Stage" `
         -utf8output -nocompileeditor
     if ($LASTEXITCODE -ne 0) { throw "BuildCookRun failed ($LASTEXITCODE)" }
 }

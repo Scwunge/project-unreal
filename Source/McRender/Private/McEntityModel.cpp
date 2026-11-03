@@ -380,12 +380,13 @@ namespace McEntityModel
 				// its plane at the face's front (z 4, the side view's sliver), the sprite's centre 0.6 pixels right of the middle and
 				// 1.8 below the chin (y 22.2), 6.3 pixels for the sprite's 16 (its bottle 13 rows is 32 screen pixels against the head's
 				// 50 for 8), turned 12.5 degrees in the picture's plane and mirrored (fitted over the bottle's outline, overlap 0.77).
-				// The hold is only drawn while it drinks, as the witch has nothing in hand otherwise.
+				// Only the glass outline is drawn: the liquid is a separate tinted overlay sprite, not done. The hold is only drawn while it
+				// drinks, as the witch has nothing in hand otherwise.
 				Witch.Textures.Add(TEXT("../item/potion.png"));
 				FBox Bottle = Box(0, 0, 0, -3, -3, 0, 6, 6);  // 6.3 measured, whole pixels only
 				Bottle.bFlat = true;
 				Bottle.bMirror = true;
-				FPart Drinking = Part(ERole::Static, FVector(0.6f, 22.2f, 4.0f), { Bottle }, 0, -HALF_PI, 0.2182f, 0, 1);
+				FPart Drinking = Part(ERole::Static, FVector(0.6f, 22.2f, 6.0f), { Bottle }, 0, -HALF_PI, 0.2182f, 0, 1);
 				Drinking.ShowPoses = 1u << 4;
 				Witch.Parts.Add(Drinking);
 				Models.Add(Witch.Kind, Witch);

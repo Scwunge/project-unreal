@@ -255,10 +255,13 @@ namespace
 
 		// Where a corridor crosses empty space its floor of planks is held up from below by a pillar of logs down to the ground, or
 		// failing that hung from above on iron chains up to the rock (minecraft.wiki, "Mineshaft"; the longest either goes is not
-		// given there: ten blocks here).
+		// given there). Log pillars: counted in 12 vanilla mineshafts (`log shaft`, 12 areas of radius 5 chunks, terrain3 save), the
+		// longest run of log under planks was 15 blocks (twice, one shaft), then 12 and 11; runs of 9 to 11 were common. Fifteen is the
+		// longest SEEN, not a proven cap (the pillar ends at the ground, so it is limited by the cave). Chains: none turned up in
+		// the scan, so their reach is unmeasured and keeps the old guess of ten.
 		void Bridge(const FFrame& F, int32 U, int32 V)
 		{
-			constexpr int32 Reach = 10;
+			constexpr int32 Reach = 15;
 			int32 Down = 0;
 			while (Down < Reach && Open(F.W(U, -2 - Down, V)))
 			{
@@ -273,11 +276,12 @@ namespace
 				return;
 			}
 			int32 Up = 0;
-			while (Up < Reach && Open(F.W(U, 3 + Up, V)))
+			constexpr int32 ChainReach = 10;
+			while (Up < ChainReach && Open(F.W(U, 3 + Up, V)))
 			{
 				++Up;
 			}
-			if (Up > 0 && Up < Reach)
+			if (Up > 0 && Up < ChainReach)
 			{
 				Fill(F, U, 3, V, U, 2 + Up, V, Chain);
 			}

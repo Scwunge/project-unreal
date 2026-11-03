@@ -449,8 +449,14 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
     reference script, shoot vanilla at a matched camera, fit the pivots, tilts and constants to the shots (silhouette fit), recommit.
     Most visible first; tick one off when its commit lands.
     - [x] Wolf (standing, sitting, angry, tame): refitted to vanilla shots with `fov steady` at our FOV 70 (pivots, tilts, tail angles by mood). Left: sitting front legs a little short, a few px of framing, shadows (item 9).
-    - [ ] Mineshaft cave-crossing bridge reach (10 blocks) is UNFITTED, a guess: measure the longest bridged gap in a vanilla
-          mineshaft over a cave or ravine (`log states` or heights row along the corridor) and fit to it.
+    - [x] Mineshaft cave-crossing bridge reach: log pillars fitted (2026-11-03, `log shaft` scan of 12 vanilla mineshaft areas, radius 5
+          chunks): longest run of log under planks 15 (x2, one shaft), then 12, 11; 9-11 common. Reach 15 = longest seen, medium
+          confidence (pillar is limited by cave depth, no true cap known). Chains: none found in the scan, so the hung-chain reach
+          stays a guess of 10 (unmeasured; check the scan's chain test or find a chain-hung bridge).
+    - [x] Witch potion (2026-11-03, witchhold.txt vanilla front/side shots, head width 8 px as scale): flat sprite 6.3 px (6 drawn), centre
+          0.6 px right of middle and 1.8 below the chin, tilt 12.5 degrees, mirrored, overlap 0.77 against the vanilla bottle outline.
+          Depth z 6 chosen from our own shot (z 4 hid it behind the arm bar). Checked against vanilla front shot (hw5.png): cork under the
+          nose, same tilt. Not done: the liquid (tinted potion_overlay sprite), so only the glass outline shows; side view not re-compared.
     - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
           Measure stride from a vanilla walking-loop filmed at a fixed camera.
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).

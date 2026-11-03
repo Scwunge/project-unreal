@@ -278,7 +278,13 @@ bool McText::Parse(const FString& Json, TArray<FSpan>& Out)
 	TSharedPtr<FJsonValue> Value;
 	if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Value) || !Value.IsValid())
 	{
-		return false;
+		// The reader takes only an object or an array at the top; a bare string, number or boolean rides inside an array.
+		TArray<TSharedPtr<FJsonValue>> Wrapped;
+		if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(TEXT("[") + Json + TEXT("]")), Wrapped) || Wrapped.Num() != 1 || !Wrapped[0].IsValid())
+		{
+			return false;
+		}
+		Value = Wrapped[0];
 	}
 	FromValue(Value, Out);
 	return true;

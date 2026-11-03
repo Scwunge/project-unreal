@@ -30,7 +30,10 @@ namespace McItemFrames
 	// Sets the context and moves the needles on to now.
 	MCITEM_API void SetContext(const FContext& Context);
 
-	// The compass angle, 0 to 1 (0.5 when the target is straight ahead... as the game's), without the needle's spring.
+	// The clock's 0 to 1 value for a time of day in ticks, without the needle's spring (a frame is 1/64).
+	MCITEM_API double ClockValue(double DayTime);
+
+	// The compass angle, 0 to 1 (0 or 1 when the target is straight ahead), without the needle's spring.
 	MCITEM_API double CompassValue(const FVector2D& From, double Yaw, const FVector2D& Target);
 
 	// The item whose picture to draw for Item: compass_NN or clock_NN or recovery_compass_NN for the three, Item itself for

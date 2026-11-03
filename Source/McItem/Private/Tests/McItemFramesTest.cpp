@@ -34,7 +34,10 @@ bool FMcItemFramesTest::RunTest(const FString& Parameters)
 	Context.GameTicks = 100;
 	McItemFrames::SetContext(Context);
 	TestEqual(TEXT("compass ahead"), McItemFrames::Resolve(TEXT("minecraft:compass")), FName(TEXT("minecraft:compass_16")));
-	TestEqual(TEXT("clock at noon"), McItemFrames::Resolve(TEXT("minecraft:clock")), FName(TEXT("minecraft:clock_16")));
+	TestEqual(TEXT("clock at 6000 (run frames2)"), McItemFrames::Resolve(TEXT("minecraft:clock")), FName(TEXT("minecraft:clock_00")));
+	TestEqual(TEXT("clock settles at 0 on frame 50"), FMath::RoundToInt32(McItemFrames::ClockValue(0.0) * 64.0), 50);
+	TestEqual(TEXT("and at 12000 on 14"), FMath::RoundToInt32(McItemFrames::ClockValue(12000.0) * 64.0), 14);
+	TestEqual(TEXT("and just before 24000 on 50"), McItemFrames::FrameOf(McItemFrames::ClockValue(23900.0), 64), 50);
 	TestEqual(TEXT("other items"), McItemFrames::Resolve(TEXT("minecraft:stick")), FName(TEXT("minecraft:stick")));
 	return true;
 }

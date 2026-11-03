@@ -152,6 +152,8 @@ protected:
 	TArray<int32> MobPassengers;
 	bool bEjectMobs = false;
 	int32 BoardCooldown = 0;
+	// The mobs the last eject set down, left alone by a cart while the cooldown runs.
+	TArray<int32> EjectedMobs;
 	float RiderForward = 0.0f;
 	float RiderStrafe = 0.0f;
 	float RiderYaw = 0.0f;
@@ -234,7 +236,8 @@ private:
 	// The speed another cart sees when they meet: a driving furnace cart's is FurnaceDriveSpeed.
 	FVector2D GetPushVelocity() const;
 	void SetPushVelocity(const FVector2D& Velocity);
-	TOptional<FIntVector> LastDetector;
+	// Tells the manager of each detector rail the box overlaps the sensor of.
+	void TouchDetectors(FMcEntityManager& Manager, const FMcBlockWorld& World);
 	// Which way the rail it was last on runs: carts only shove one another along it.
 	FVector2D RailAlong = FVector2D::ZeroVector;
 };

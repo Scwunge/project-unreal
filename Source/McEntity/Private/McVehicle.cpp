@@ -339,11 +339,17 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	{
 		Velocity = Speed < 0.03 ? FVector2D::ZeroVector : Velocity * 0.5;
 	}
+	if (Block == TEXT("minecraft:activator_rail"))
+	{
+		// A hopper cart is told by every activator rail it is on: it picks nothing up from a powered one, and goes on not
+		// to after it (vehicle_log13.txt: a hopper cart at 0.2 over a powered rail leaves the stacks waiting past it alone for
+		// 90 ticks); an unpowered one turns it back on.
+		bHopperLocked = bPowered;
+	}
 	if (Block == TEXT("minecraft:activator_rail") && bPowered)
 	{
-		// A powered activator rail throws the rider off, lights a TNT cart and stops a hopper cart picking things up.
+		// A powered activator rail throws the rider off and lights a TNT cart.
 		EjectRiders();
-		bHopperLocked = true;
 		if (Variant == EVariant::Tnt && Fuse < 0)
 		{
 			Fuse = FuseTicks;
@@ -377,13 +383,42 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	// A furnace cart's is 0.2, driving or not.
 	const double Cap = Variant == EVariant::Furnace ? FurnaceSpeed : MaxSpeed;
 	// With a rider it goes three quarters of that (vehicle_log2.txt: a ridden cart at 0.4 moves 0.3, at 0.3988 0.2991).
-	const FVector2D Step = (Fast > Cap ? Velocity * (Cap / Fast) : Velocity) * (HasRider() ? 0.75 : 1.0);
+	const FVector2D Step = (Fast > Cap ? Velocity * (Cap / Fast) : Velocity) * (GetPassengerCount() > 0 ? 0.75 : 1.0);
 
 	// Along the line to where it gets to, and if something is in the way, stop.
 	const double Reach = FVector2D::DotProduct(Step, Along);
 	const double NextWhere = Where + Reach / Length;
 	const double NextT = FMath::Clamp(NextWhere, 0.0, 1.0);
-	const FVector Target(EndA.X + Line.X * NextWhere, FMath::Lerp(EndA.Y, EndB.Y, NextT), EndA.Z + Line.Y * NextWhere);
+	FVector Target(EndA.X + Line.X * NextWhere, FMath::Lerp(EndA.Y, EndB.Y, NextT), EndA.Z + Line.Y * NextWhere);
+	// Past the end of this piece it goes on in the same direction over the next one, at that piece's height (vehicle_log12.txt:
+	// a cart at 0.4 passing from flat rail onto a slope at x=10 is 0.0065 up at 10.0065; it only turns the tick after).
+	bool bOnNext = false;
+	bool bNextAscends = false;
+	if (NextWhere < 0.0 || NextWhere > 1.0)
+	{
+		const FIntVector TargetCell(FMath::FloorToInt32(Target.X), Cell.Y, FMath::FloorToInt32(Target.Z));
+		if (TargetCell.X != Cell.X || TargetCell.Z != Cell.Z)
+		{
+			for (int32 Dy : { 0, 1, -1 })
+			{
+				McRails::FTrack Next;
+				const FIntVector Candidate(TargetCell.X, TargetCell.Y + Dy, TargetCell.Z);
+				if (!McRails::IsRail(World.GetBlock(Candidate)) || !McRails::GetTrack(World.GetBlock(Candidate), Next))
+				{
+					continue;
+				}
+				const FVector NMiddle(Candidate.X + 0.5, Candidate.Y + RailLift, Candidate.Z + 0.5);
+				const FVector NA = NMiddle + FVector(Next.EndA.X * 0.5, Next.bRiseA ? 1.0 : 0.0, Next.EndA.Z * 0.5);
+				const FVector NB = NMiddle + FVector(Next.EndB.X * 0.5, Next.bRiseB ? 1.0 : 0.0, Next.EndB.Z * 0.5);
+				const FVector2D NLine(NB.X - NA.X, NB.Z - NA.Z);
+				const double NT = FMath::Clamp(FVector2D::DotProduct(FVector2D(Target.X - NA.X, Target.Z - NA.Z), NLine) / NLine.SizeSquared(), 0.0, 1.0);
+				Target.Y = FMath::Lerp(NA.Y, NB.Y, NT);
+				bOnNext = true;
+				bNextAscends = Next.IsAscending();
+				break;
+			}
+		}
+	}
 	const FVector Before = Body.Position;
 	Body.Velocity = FVector(Velocity.X, 0.0, Velocity.Y);
 	// A mob it can't take in stops it dead where their boxes meet (vehicle_log8.txt: a cart at 0.158 stops at 7.31 against
@@ -440,7 +475,25 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 			}
 		}
 	}
-	McPhysics::Move(World, Body, Motion, false);
+	double AlongY;
+	if (Track.IsAscending() || bNextAscends)
+	{
+		// The blocks under a slope stand in a box's way as it climbs, and a cart on rails isn't moved by them.
+		Body.Position += Motion;
+		Body.bHorizontalCollision = false;
+		AlongY = Body.Position.Y;
+	}
+	else
+	{
+		McPhysics::Move(World, Body, Motion, false);
+		AlongY = Body.Position.Y;
+		if ((NextWhere < 0.0 || NextWhere > 1.0) && !bOnNext && !Body.bHorizontalCollision)
+		{
+			// Off the end of the rails it drops onto what is under it in the same tick (vehicle_log12.txt: the cart that rolls
+			// off a rail's end at y -60.9375 is at -61 on the stone, or on the ledge's edge, when it has gone 0.3006 further).
+			McPhysics::Move(World, Body, FVector(0.0, -RailLift, 0.0), false);
+		}
+	}
 	if (Body.bHorizontalCollision || bHitMob)
 	{
 		Body.Velocity = FVector::ZeroVector;
@@ -454,8 +507,8 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		// Uphill it keeps 0.91 of its move (powered_log.txt: 0.0918 up the slope leaves 0.0836).
 		// A ridden cart keeps 0.997 (vehicle_log2.txt, 50 ticks), a furnace cart not driving 0.96 * 0.98 (0.9408 there,
 		// fuelled but never pushed).
-		const double Friction = HasRider() ? 0.997 : Variant == EVariant::Furnace && !bDriving ? 0.96 * 0.98 : GetFriction();
-		const double Kept = Friction * Fast + 0.05 * (Before.Y - Body.Position.Y);
+		const double Friction = GetPassengerCount() > 0 ? 0.997 : Variant == EVariant::Furnace && !bDriving ? 0.96 * 0.98 : GetFriction();
+		const double Kept = Friction * Fast + 0.05 * (Before.Y - AlongY);
 		Velocity = Fast > 1e-9 ? Velocity / Fast * Kept : FVector2D::ZeroVector;
 		// A powered rail adds to what is left (powered_log.txt: 0.0792 = 0.02 * 0.96 + 0.06, 0.13603, ...); a cart standing
 		// still against something at one end is pushed off from it at 0.02, and moves the tick after.
@@ -496,11 +549,6 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 		Yaw = RailYaw + (FMath::Abs(FMath::FindDeltaAngleDegrees(RailYaw, static_cast<double>(Yaw))) > 90.0 ? 180.0 : 0.0);
 	}
 	OnRail = Cell;
-	if (Block == TEXT("minecraft:detector_rail"))
-	{
-		Manager.SetDetector(Cell, true);
-		LastDetector = Cell;
-	}
 	return true;
 }
 
@@ -513,27 +561,53 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 	{
 		return;
 	}
-	const TOptional<FIntVector> PreviousDetector = LastDetector;
-	LastDetector.Reset();
 	OnRail.Reset();
-	bHopperLocked = false;
 	if (!TickOnRail(Manager, World))
 	{
-		// Off the rails: it falls, and drags along the ground.
+		// Off the rails it falls, and a cart that stood on the ground halves its motion before it moves, while one in the
+		// air loses a twentieth after (vehicle_log12.txt: onto stone it moves 0.2886, then 0.1443, 0.0721, ...; off a ledge
+		// the tick after, 0.1443 across and 0.02 down, then 0.95 of that and a gravity of 0.04 each tick).
 		Body.Velocity.Y -= Gravity;
+		if (Body.bOnGround)
+		{
+			Body.Velocity *= 0.5;
+		}
 		McPhysics::Move(World, Body, Body.Velocity, false);
-		const double Drag = Body.bOnGround ? 0.5 : 0.95;
-		Body.Velocity.X *= Drag;
-		Body.Velocity.Z *= Drag;
-		Body.Velocity.Y *= 0.95;
+		if (!Body.bOnGround)
+		{
+			Body.Velocity *= 0.95;
+		}
 	}
-	if (PreviousDetector.IsSet() && (!LastDetector.IsSet() || LastDetector.GetValue() != PreviousDetector.GetValue()))
-	{
-		Manager.SetDetector(PreviousDetector.GetValue(), false);
-	}
+	TouchDetectors(Manager, World);
 	TickVariant(Manager);
 	TickPassengers(Manager);
 	PushMobs(Manager);
+}
+
+void FMcMinecartEntity::TouchDetectors(FMcEntityManager& Manager, const FMcBlockWorld& World)
+{
+	// Every detector rail whose sensor (the middle three fifths of the cell, half a block up) the box overlaps.
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FBox Box = Body.GetBox();
+	for (int32 Y = FMath::FloorToInt32(Box.Min.Y); Y <= FMath::FloorToInt32(Box.Max.Y); ++Y)
+	{
+		for (int32 Z = FMath::FloorToInt32(Box.Min.Z); Z <= FMath::FloorToInt32(Box.Max.Z); ++Z)
+		{
+			for (int32 X = FMath::FloorToInt32(Box.Min.X); X <= FMath::FloorToInt32(Box.Max.X); ++X)
+			{
+				const FMcStateId State = World.GetBlock(FIntVector(X, Y, Z));
+				if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:detector_rail"))
+				{
+					continue;
+				}
+				const FBox Sensor(FVector(X + 0.2, Y, Z + 0.2), FVector(X + 0.8, Y + 0.5, Z + 0.8));
+				if (Box.Intersect(Sensor))
+				{
+					Manager.TouchDetector(FIntVector(X, Y, Z));
+				}
+			}
+		}
+	}
 }
 
 bool FMcMinecartEntity::CanCarryMob(const FMcMob& Mob) const
@@ -654,6 +728,12 @@ void FMcMinecartEntity::PushMobs(FMcEntityManager& Manager)
 		{
 			continue;
 		}
+		// A mob just set down beside the cart isn't shoved, nor does it shove (vehicle_log13.txt: a pig put down a block off
+		// leaves the cart's speed at exactly 0.997 and then 0.96 of what it was, and stays where it was put).
+		if (BoardCooldown > 0 && EjectedMobs.Contains(Entity->Id))
+		{
+			continue;
+		}
 		const FVector2D Between(Entity->Body.Position.X - Body.Position.X, Entity->Body.Position.Z - Body.Position.Z);
 		if (bFast)
 		{
@@ -715,7 +795,9 @@ void FMcMinecartEntity::TickVariant(FMcEntityManager& Manager)
 				const FMcItemStack Left = GetInventory()->AddItem(Item.Stack);
 				if (Left.IsEmpty())
 				{
+					// One whole stack a tick (vehicle_log13.txt: five stacks dropped together are taken a tick apart).
 					Item.bRemoved = true;
+					break;
 				}
 				else
 				{
@@ -809,13 +891,30 @@ void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
 	{
 		bEjectMobs = false;
 		BoardCooldown = 10;
+		if (MobPassengers.Num() > 0)
+		{
+			EjectedMobs = MobPassengers;
+		}
 		for (const int32 MobId : MobPassengers)
 		{
 			if (FMcMob* Mob = FindMob(MobId))
 			{
 				// Back up out of the hull, onto its floor.
 				Mob->RidingId = 0;
-				Mob->Body.Position.Y += Mob->Type.Height * 0.4;
+				if (RunsOnRails())
+				{
+					// A cart sets them down beside it, at the middle of the next cell on the right of the way it faces
+					// (vehicle_log13.txt: a pig from a cart going east lands one south, from one at rest facing west one north).
+					const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
+					const FVector2D Facing(-FMath::Sin(Radians), FMath::Cos(Radians));
+					const bool bAlongX = FMath::Abs(Facing.X) > FMath::Abs(Facing.Y);
+					const FVector2D Way = bAlongX ? FVector2D(FMath::Sign(Facing.X), 0.0) : FVector2D(0.0, FMath::Sign(Facing.Y));
+					Mob->Body.Position = FVector(FMath::FloorToInt32(Body.Position.X) + 0.5 - Way.Y, FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z) + 0.5 + Way.X);
+				}
+				else
+				{
+					Mob->Body.Position.Y += Mob->Type.Height * 0.4;
+				}
 			}
 		}
 		MobPassengers.Reset();

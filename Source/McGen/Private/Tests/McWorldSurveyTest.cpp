@@ -425,6 +425,24 @@ namespace
 		}
 		const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
 		const uint64 Seed = Seeds[SeedIndex];
+		// Content/Tests/aqcfg.txt, if present: lines "<console variable> <value>" for sweeping the aquifer over these statistics.
+		FString ConfigText;
+		if (FFileHelper::LoadFileToString(ConfigText, *(FPaths::ProjectContentDir() / TEXT("Tests/aqcfg.txt"))))
+		{
+			TArray<FString> ConfigLines;
+			ConfigText.ParseIntoArrayLines(ConfigLines);
+			for (const FString& ConfigLine : ConfigLines)
+			{
+				FString Name, Value;
+				if (ConfigLine.Split(TEXT(" "), &Name, &Value))
+				{
+					if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(*Name))
+					{
+						Variable->Set(*Value);
+					}
+				}
+			}
+		}
 		const TSharedRef<FMcNoiseGenerator> Generator = MakeShared<FMcNoiseGenerator>(Settings, Seed, TEXT("minecraft:overworld"));
 		FMcFeatureLibrary Features(Settings.SeaLevel, Settings.MinY, Settings.Height);
 		Features.LoadBiomes();
@@ -438,6 +456,7 @@ namespace
 		// Per biome and log block: trunk bases (a log with no log below it) and logs.
 		TMap<FString, TPair<int64, int64>> Trees;
 		TMap<FString, TPair<int64, int64>> Depth;  // biome and water depth bucket: columns, columns with kelp
+		TMap<FString, int64> PrelDiff;
 		TMap<FString, TTuple<int64, int64, int64>> OpenCells;  // sea or land column and 8-block band: air, water, lava below the ground
 		auto NameOf = [&Blocks](FMcStateId State) { return Blocks.GetBlockOf(State).Name.ToString(); };
 		TArray<FIntPoint> CornerList;
@@ -550,6 +569,12 @@ namespace
 										Above.FindOrAdd(Biome + TEXT(" ") + Name)++;
 									}
 								}
+								if (GroundY >= 62)
+								{
+									// The aquifer's preliminary surface (chunk corner) against the ground of a land column: STATP <seed> <bucket> <columns>.
+									const int32 Diff = GroundY - FMath::FloorToInt32(Generator->GetPreliminarySurface(Chunk.GetPos().X * 16, Chunk.GetPos().Y * 16));
+									PrelDiff.FindOrAdd(FString::Printf(TEXT("%d"), FMath::Clamp(FMath::FloorToInt32(Diff / 8.0), -8, 8) * 8), 0)++;
+								}
 								// Open cells below the ground, by whether the column's ground is under the sea (the reference's stat W).
 								for (int32 Y = Settings.MinY; Y < FMath::Min(GroundY, 64); ++Y)
 								{
@@ -606,6 +631,7 @@ namespace
 			}
 			Test.AddInfo(FString::Printf(TEXT("STATY %d %s%s"), SeedIndex, *Pair.Key, *Row));
 		}
+		for (const TPair<FString, int64>& Pair : PrelDiff) { Test.AddInfo(FString::Printf(TEXT("STATP %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
 		for (const TPair<FString, TTuple<int64, int64, int64>>& Pair : OpenCells) { Test.AddInfo(FString::Printf(TEXT("STATW %d %s %lld %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Get<0>(), Pair.Value.Get<1>(), Pair.Value.Get<2>())); }
 		for (const TPair<FString, TPair<int64, int64>>& Pair : Depth) { Test.AddInfo(FString::Printf(TEXT("STATD %d %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value)); }
 		for (const TPair<FString, int64>& Pair : Ground) { Test.AddInfo(FString::Printf(TEXT("STATG %d %s %lld"), SeedIndex, *Pair.Key, Pair.Value)); }
@@ -700,7 +726,7 @@ bool FMcAquiferSweepTest::RunTest(const FString& Parameters)
 	// The sea-floor clause's three numbers; each line is the water share of the open cells below the ground, by 8-block
 	// band from y -8 to 39, for columns whose ground is under the sea and for land columns, over 5 seeds.
 	struct FConfig { double Full0; double Partial0; double Depth; int32 Base; double Flood; };
-	const FConfig Configs[] = { { 0.0, -0.5, 64, 20, 0.25 }, { 0.1, -0.4, 64, 20, 0.25 }, { -0.1, -0.6, 64, 20, 0.4 } };
+	const FConfig Configs[] = { { -0.2, -0.7, 44, 20, 1.0 }, { -0.2, -0.7, 44, 20, 0.75 }, { -0.2, -0.7, 32, 20, 1.0 } };
 	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
 	const uint64 Seeds[] = { 4242424242ull, 1001ull, 909090909ull };
 	for (const FConfig& Config : Configs)

@@ -153,6 +153,9 @@ namespace
 		bool bRoots = false;
 		int32 RootWidth = 8;
 		int32 RootLength = 15;
+		// A block (moss carpet) set on the air above a root with this chance.
+		float AboveRootChance = 0.0f;
+		FString AboveRootBlock;
 		TArray<FDecorator> Decorators;
 
 		virtual bool Place(FMcFeatureContext& Context, const FIntVector& Origin) const override
@@ -573,6 +576,14 @@ namespace
 						break;
 					}
 					B.Region.SetBlock(At, bMud ? MuddyRoots : bWater ? McWithProperty(Roots, TEXT("waterlogged"), TEXT("true")) : Roots);
+					if (AboveRootChance > 0.0f && !AboveRootBlock.IsEmpty() && B.Random.NextFloat() < AboveRootChance)
+					{
+						const FIntVector Over = At + FIntVector(0, 1, 0);
+						if (B.Region.IsAir(B.Region.GetBlock(Over)))
+						{
+							B.Region.SetBlock(Over, DefaultState(AboveRootBlock));
+						}
+					}
 				}
 			}
 		}
@@ -1035,6 +1046,18 @@ namespace
 			{
 				Tree->RootWidth = ReadInt(**Placement, TEXT("max_root_width"), 8);
 				Tree->RootLength = ReadInt(**Placement, TEXT("max_root_length"), 15);
+			}
+			const TSharedPtr<FJsonObject>* Above;
+			if ((*RootJson)->TryGetObjectField(TEXT("above_root_placement"), Above))
+			{
+				double Chance = 0.0;
+				(*Above)->TryGetNumberField(TEXT("above_root_placement_chance"), Chance);
+				Tree->AboveRootChance = static_cast<float>(Chance);
+				const TSharedPtr<FJsonObject>* Provider;
+				if ((*Above)->TryGetObjectField(TEXT("above_root_provider"), Provider))
+				{
+					(*Provider)->TryGetStringField(TEXT("id"), Tree->AboveRootBlock);
+				}
 			}
 		}
 		if (Tree->Trunk == ETrunk::Cherry)

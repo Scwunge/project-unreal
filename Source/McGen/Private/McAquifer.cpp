@@ -11,20 +11,21 @@ namespace
 	constexpr int32 LavaLevel = -54;
 	// Aquifers deeper than this may hold lava.
 	constexpr int32 LavaAquiferTop = -10;
-	// Scale on the floodedness noise. The wiki's thresholds read against the noise's documented amplitude flood too
-	// much underground: measured on the reference client (5 worlds, 25 patches each), water in caves at y -64 to -33
-	// is 0.01 to 0.13% of the volume and the deep lava 0.67%; at 1.0 we had 0.57% water, at 0.5 0.09%.
-	static float FloodScale = 0.5f;
+	// Scale on the floodedness noise, fitted with the level base and the sea-floor thresholds below on the cave water share of land
+	// columns by 8-block band (5 worlds, 25 patches each, `log stats` W lines vs STATW, five seeds): 0.75 with 0.0 / -0.5 fits land y 16..32
+	// best; y 0 and y 8 come out slightly dry and y 32+ stays above the worlds' range. At 1.0 the deep layers (y -40..-32) were too wet.
+	static float FloodScale = 0.75f;
 	static int32 SeaMargin = 28;
 	// Partial levels sit at 40 * region + this + a step of 3 in -9..9: measured on the reference (water surfaces in caves, 5 worlds,
 	// levels 11 / 14 / 17 / 20 / 23 in region 0, the sea peaking at exactly 20, region -1 at -23 and -20); the wiki says 20.
 	static int32 LevelBase = 20;
-	// Under the sea floor: the thresholds at the floor and the depth below it at which they reach the land's.
-	// Fitted on the reference's cave water by sea-floor and land columns (the wiki's -0.3 / -0.8 left land columns at y 32+
-	// with 31..45% water against 9..32% in the five worlds).
-	static float SeaFull0 = -0.2f;
-	static float SeaPartial0 = -0.7f;
-	static float SeaDepth = 64.0f;
+	// Under the sea floor: the thresholds at the floor and the depth below it at which they reach the land's (the wiki: -0.3 / -0.8
+	// rising over 64 blocks; the five-seed fit wants 0.0 / -0.5 over 44).
+	static float SeaFull0 = 0.0f;
+	static float SeaPartial0 = -0.5f;
+	static float SeaDepth = 44.0f;
+	static int32 ExactSurface = 0;
+	static FAutoConsoleVariableRef CVarExactSurface(TEXT("mc.aq.exactsurface"), ExactSurface, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarSeaMargin(TEXT("mc.aq.seamargin"), SeaMargin, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarSeaFull0(TEXT("mc.aq.seafull0"), SeaFull0, TEXT("sweep"));
@@ -120,7 +121,21 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 	Global.Fluid = Water;
 	FStatus Result;
 
-	const int32 OwnSurface = SurfaceAt(ChunkX, ChunkZ, Context, Cache);
+	int32 OwnSurface = SurfaceAt(ChunkX, ChunkZ, Context, Cache);
+	if (ExactSurface)
+	{
+		const FIntPoint Key(Centre.X, Centre.Z);
+		if (const int32* Found = Cache.ExactSurfaces.Find(Key))
+		{
+			OwnSurface = *Found;
+		}
+		else
+		{
+			Context.SetPos(Centre.X, 0, Centre.Z);
+			OwnSurface = FMath::FloorToInt32(Graph->Evaluate(SurfaceLevel, Context));
+			Cache.ExactSurfaces.Add(Key, OwnSurface);
+		}
+	}
 	int32 LowestSurface = MAX_int32;
 	bool bOpenToSea = false;
 	for (const FIntPoint& Offset : SurfaceOffsets)

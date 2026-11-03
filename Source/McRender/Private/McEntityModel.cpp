@@ -458,8 +458,8 @@ namespace McEntityModel
 			Result.Scale = Scale;
 			Result.Boxes = Boxes;
 			const FVector3f Angles = Decor.Pose[static_cast<int32>(Pose)];
-			Result.RestPitch = -FMath::DegreesToRadians(Angles.X);
-			Result.RestYaw = FMath::DegreesToRadians(Angles.Y);
+			Result.RestPitch = FMath::DegreesToRadians(Angles.X);
+			Result.RestYaw = -FMath::DegreesToRadians(Angles.Y);
 			Result.RestRoll = FMath::DegreesToRadians(Angles.Z);
 			return Result;
 		};
@@ -536,8 +536,8 @@ namespace McEntityModel
 				if (bHasPose)
 				{
 					const FVector3f Angles = Decor.Pose[static_cast<int32>(Pose)];
-					Result.RestPitch = -FMath::DegreesToRadians(Angles.X);
-					Result.RestYaw = FMath::DegreesToRadians(Angles.Y);
+					Result.RestPitch = FMath::DegreesToRadians(Angles.X);
+					Result.RestYaw = -FMath::DegreesToRadians(Angles.Y);
 					Result.RestRoll = FMath::DegreesToRadians(Angles.Z);
 				}
 				return Result;

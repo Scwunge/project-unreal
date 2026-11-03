@@ -72,7 +72,7 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 		}
 		FMcBlockWorld& Blocks = *Actor->GetBlockWorld();
 		FMcSimulation& Sim = *Actor->GetSimulation();
-		for (int32 Z = -1; Z <= 1; ++Z)
+		for (int32 Z = -1; Z <= 16; ++Z)
 		{
 			for (int32 X = -1; X <= 5; ++X)
 			{
@@ -178,6 +178,10 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 			{
 				Place(FIntVector(FCString::Atoi(*P[2]), FCString::Atoi(*P[3]) + Lift, FCString::Atoi(*P[4])), P[5]);
 			}
+			else if (P.Num() >= 6 && P[0] == TEXT("cmd") && P[1] == TEXT("summon") && P[2] == TEXT("lightning_bolt"))
+			{
+				Sim.LightningStruck(FIntVector(FMath::FloorToInt32(FCString::Atod(*P[3])), FMath::FloorToInt32(FCString::Atod(*P[4])) + Lift, FMath::FloorToInt32(FCString::Atod(*P[5]))));
+			}
 			else if (P.Num() >= 10 && P[0] == TEXT("cmd") && P[1] == TEXT("item") && P[2] == TEXT("replace") && P[3] == TEXT("block") && P[8] == TEXT("with"))
 			{
 				// "cmd item replace block x y z container.N with <item> [count]": one slot of the container there.
@@ -270,12 +274,18 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 						{
 							const FMcChunk* Chunk = Blocks.FindChunk(FIntPoint(X >> 4, Z >> 4));
 							const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(X & 15, Y + Lift, Z & 15) : nullptr;
-							if (!Entity)
+							// A furnace or brewing stand keeps its items in the machine until the next save.
+							TSharedPtr<FMcMachine> Machine = Use->GetFurnace(*Actor, FIntVector(X, Y + Lift, Z), false);
+							if (!Machine.IsValid())
+							{
+								Machine = Use->GetBrewingStand(*Actor, FIntVector(X, Y + Lift, Z), false);
+							}
+							if (!Entity && !Machine.IsValid())
 							{
 								continue;
 							}
 							TMap<FString, int32> Counts;
-							for (const FMcItemStack& Stack : Entity->Slots)
+							for (const FMcItemStack& Stack : Machine.IsValid() ? Machine->GetItems()->GetAll() : Entity->Slots)
 							{
 								if (Stack.Count > 0)
 								{

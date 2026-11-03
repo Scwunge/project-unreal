@@ -17,10 +17,8 @@
 2|3,-60,6|dropper[facing=east,triggered=false]|dropper[facing=east,triggered=true]
 2|4,-59,6|redstone_lamp[lit=false]|redstone_lamp[lit=true]
 2|4,-60,20|weathered_lightning_rod[facing=up,powered=false,waterlogged=false]|lightning_rod[facing=up,powered=true,waterlogged=false]
-2|4,-60,21|weathered_copper|copper_block
 2|5,-60,20|redstone_lamp[lit=false]|redstone_lamp[lit=true]
 2|8,-60,20|oxidized_lightning_rod[facing=up,powered=false,waterlogged=false]|lightning_rod[facing=up,powered=true,waterlogged=false]
-2|8,-60,21|oxidized_copper|weathered_copper
 2|9,-60,20|redstone_lamp[lit=false]|redstone_lamp[lit=true]
 30|12,-59,7|-|stone
 5|12,-59,6|redstone_block|-

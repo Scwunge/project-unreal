@@ -726,6 +726,17 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	{
 		return;
 	}
+	// The two halves of a door agree: when one half changes, the other takes its open flag at once (reference run rs_obs2: a
+	// setblock of one half open opens the other).
+	if (Reg().IsValidState(State) && KindOf(State) == Door)
+	{
+		const FIntVector Other = Pos + Vec[Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower") ? Up : Down];
+		const FMcStateId OtherState = World.GetBlock(Other);
+		if (KindOf(OtherState) == Door && Reg().GetBlockOf(OtherState).Name == Reg().GetBlockOf(State).Name && Flag(OtherState, TEXT("open")) != Flag(State, TEXT("open")))
+		{
+			World.SetBlock(Other, With(OtherState, { FChange(TEXT("open"), Bool(Flag(State, TEXT("open")))) }));
+		}
+	}
 	// A disarmed string that goes (shears) is not felt by the hooks (reference client, rs_trip3).
 	const bool bDisarmedGone = DisarmedStrings.Remove(Pos) > 0 && KindOf(State) != Tripwire;
 	if (KindOf(State) == Tripwire && Flag(State, TEXT("disarmed")))
@@ -855,9 +866,9 @@ void FMcRedstone::PlayerBroke(const FIntVector& Pos, FMcStateId State)
 
 void FMcRedstone::LightningStruck(const FIntVector& Pos)
 {
-	// A bolt in the cell above a rod, or in its own cell, strikes it: it powers for 8 ticks and loses all its rust (reference run
+	// A bolt in the cell above a rod strikes it (one in the rod's own cell does nothing in the reference run): it powers for 8 ticks and loses all its rust (reference run
 	// lg_misc4: exposed, weathered and oxidized rods became plain at once, the copper under them lost some). Not done: that copper.
-	for (const FIntVector& Cell : { Pos + FIntVector(0, -1, 0), Pos })
+	for (const FIntVector& Cell : { Pos + FIntVector(0, -1, 0) })
 	{
 		const FMcStateId State = World.GetBlock(Cell);
 		if (KindOf(State) != LightningRod)
@@ -873,7 +884,7 @@ void FMcRedstone::LightningStruck(const FIntVector& Pos)
 		if (Struck.IsSet())
 		{
 			World.SetBlock(Cell, Struck.GetValue());
-			Sim.ScheduleTick(Cell, 8);
+			Sim.ScheduleTick(Cell, 9); // the reference run turns the rod off 8 ticks after the sample showing it on; the replay strikes between ticks
 		}
 		return;
 	}
@@ -1275,6 +1286,8 @@ bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
 	case Sculk:
 	case CalibratedSculk:
 	case TripwireHook:
+	case Jukebox:
+	case LightningRod:
 		return true;
 	case Repeater:
 		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
@@ -1643,7 +1656,7 @@ void FMcRedstone::TickOpening(const FIntVector& Pos, FMcStateId State)
 		const bool bLower = Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower");
 		const FIntVector Other = Pos + Vec[bLower ? Up : Down];
 		const bool bPowered = HasPower(Pos) || HasPower(Other);
-		if (bPowered != Flag(State, TEXT("open")) || bPowered != Flag(State, TEXT("powered")))
+		if (bPowered != Flag(State, TEXT("powered"))) // like trapdoors: only a change of power moves it, so a hand or a command keeps it open (reference run rs_obs2)
 		{
 			if (bPowered != Flag(State, TEXT("open")))
 			{

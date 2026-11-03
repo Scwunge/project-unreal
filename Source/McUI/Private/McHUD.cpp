@@ -620,10 +620,10 @@ void AMcHUD::BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints,
 	const FMcModelDisplay* Display = Model.Display.Find(TEXT("gui"));
 	const FVector Rotation = Display ? Display->Rotation : FVector::ZeroVector;
 	const FVector Translation = Display ? Display->Translation : FVector::ZeroVector;
-	const FVector Scale = Display ? Display->Scale : FVector::OneVector;
+	const FVector DisplayScale = Display ? Display->Scale : FVector::OneVector;
 	const auto View = [&](const FVector3f& P)
 	{
-		FVector3d V = (FVector3d(P) - FVector3d(0.5)) * Scale;
+		FVector3d V = (FVector3d(P) - FVector3d(0.5)) * DisplayScale;
 		const auto Turn = [](double A, double B, double Degrees, double& OutA, double& OutB)
 		{
 			const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees));

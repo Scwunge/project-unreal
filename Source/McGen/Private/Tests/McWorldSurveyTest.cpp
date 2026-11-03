@@ -845,6 +845,9 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 	{
 		const uint64 Seed = Seeds[SeedIndex];
 		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+		// The real start path: the biome one block under the surface, the ground found by the generator.
+		Structures.SetHeightSource([&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
+		Structures.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
 		TMap<FName, int64> Counts;
 		TMap<FName, int64> Pre;
 		TMap<FName, int64> AllCandidates;
@@ -858,7 +861,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 				{
 					continue;
 				}
-				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Settings.SeaLevel + 4, Z * 16 + 8);
+				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Generator.FindSurfaceY(X * 16 + 8, Z * 16 + 8), Z * 16 + 8);
 				for (const FName Name : Here)
 				{
 					AllCandidates.FindOrAdd(Name)++;
@@ -872,7 +875,7 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 				for (const FName Name : Here)
 				{
 					Pre.FindOrAdd(Name)++;
-					if (!Structures.SurroundAllows(Name, FIntPoint(X, Z), [&](int32 BX, int32 BZ) { return Generator.GetBiome(BX, Settings.SeaLevel + 4, BZ); }))
+					if (!Structures.SurroundAllows(Name, FIntPoint(X, Z), [&](int32 BX, int32 BZ) { return Generator.GetBiome(BX, Generator.FindSurfaceY(BX, BZ), BZ); }))
 					{
 						continue;
 					}

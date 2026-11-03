@@ -7,6 +7,8 @@
 #include "McBlockWorld.h"
 #include "McPathfinding.h"
 #include "Serialization/Archive.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 namespace
 {
@@ -59,12 +61,31 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:cow"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:sheep"), 0.9f, 1.3f, 8.f, 0.23f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:chicken"), 0.4f, 0.7f, 4.f, 0.25f, 0.f, 0.f, true, false);
-		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
+		FMcMobType& ZombieType = Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		ZombieType.bHuntsVillagers = true;
+		ZombieType.bSinks = true;
 		// A drowned (reference, `attribute get` on a spawned one): the zombie's 20 health, 0.23 speed, 3 bite, 35 follow range, burns in
-		// the sun like it; its box is taken as the zombie's (not measured). Swimming (its water movement efficiency reads 0), the thrown
-		// trident, and spawning in water are not done.
-		Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		// the sun like it; its box is taken as the zombie's (not measured). In water it swims at its target (see Tick): from `drownswim.txt`
+		// (one drowned and one zombie in a glass pool, a survival player 20 blocks away), the drowned sank 2 blocks then swam level with
+		// the player at a steady 0.0485 blocks a tick (4.85 over 100 ticks, one run), where the zombie only sank, 0.025 a tick, and never
+		// moved. The thrown trident and spawning in water are not done.
+		FMcMobType& DrownedType = Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
+		DrownedType.bSwims = true;
 		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		// The zombie and skeleton kin (reference 2026-11-03, `variants1.txt` attributes, `variants2.txt` dims, `variants4/5.txt` spawn
+		// gear of 100 each and burning by day): a husk is the zombie's 20 / 0.23 / 3 / 35 and does not burn; a stray is the skeleton's
+		// but burns, a bogged has 16 health and burns, both shoot; a wither skeleton is 0.7 x 2.4 with a stone sword and does not shoot.
+		// Their special arrows and effects (hunger, slowness, poison, wither) are not done.
+		Add(TEXT("minecraft:husk"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, false);
+		Add(TEXT("minecraft:stray"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		Add(TEXT("minecraft:bogged"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		Add(TEXT("minecraft:wither_skeleton"), 0.7f, 2.4f, 20.f, 0.25f, 2.f, 16.f, false, false);
+		// The piglins (same runs): 0.6 x 1.95, none burn. Piglin 16 hp / 0.35 / 5 / 16, the brute 50 / 0.35 / 7 / 12, the zombified one
+		// 20 / 0.23 / 5 / 35 (angered only). Their gold-armor rule, bartering, hoglin hunting and the nether's own spawning are not done:
+		// they go for a player like any hostile mob.
+		Add(TEXT("minecraft:piglin"), 0.6f, 1.95f, 16.f, 0.35f, 5.f, 16.f, false, false);
+		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
+		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
 		Spider.bClimbsWalls = true;
@@ -151,9 +172,15 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.Height = InType.Height;
 	Body.StepHeight = 0.6f;
 	// What they carry when they spawn: a skeleton its bow, a vex its iron sword.
-	if (InType.Name == FName(TEXT("minecraft:skeleton")))
+	if (InType.Name == FName(TEXT("minecraft:skeleton")) || InType.Name == FName(TEXT("minecraft:stray")) || InType.Name == FName(TEXT("minecraft:bogged")))
 	{
+		// 100 of each spawned held a bow, none anything else (reference).
 		HeldItem = TEXT("minecraft:bow");
+	}
+	else if (InType.Name == FName(TEXT("minecraft:wither_skeleton")))
+	{
+		// 100 of 100 held a stone sword.
+		HeldItem = TEXT("minecraft:stone_sword");
 	}
 	else if (InType.Name == FName(TEXT("minecraft:vex")))
 	{
@@ -401,6 +428,18 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 	Arrow->Body.Velocity = (Direction + FVector(Gauss(), Gauss(), Gauss()) * Spread) * ArrowSpeed;
 	// 3 to 5 on Normal.
 	Arrow->Damage = static_cast<float>(Random.RandRange(3, 5));
+	// Reference (effects3 to effects5.txt, the effect read off the player the tick after a hit): a stray's arrow gave slowness for 600
+	// ticks (598, 598, 599 read) at every difficulty, a bogged's poison for 100 (99, 97 read).
+	if (Type.Name == FName(TEXT("minecraft:stray")))
+	{
+		Arrow->Effect = TEXT("slowness");
+		Arrow->EffectDuration = 600;
+	}
+	else if (Type.Name == FName(TEXT("minecraft:bogged")))
+	{
+		Arrow->Effect = TEXT("poison");
+		Arrow->EffectDuration = 100;
+	}
 	Manager.Add(MoveTemp(Arrow));
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
 }
@@ -540,6 +579,105 @@ FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
 	return Dest;
 }
 
+void FMcMob::TickBarter(FMcEntityManager& Manager)
+{
+	// Measured on the reference, two runs of ~40 (barter1.txt, barter2.txt; a gold ingot dropped a block from an idle piglin): the
+	// piglin takes the ingot into its off hand within ~10 ticks and one item entity is thrown ~125 ticks after the drop (~120
+	// after the pickup), sideways at ~0.29 and slightly up, from ~1.5 above the feet. The second run checked the "9 of 50 gave
+	// nothing" of the first: all 39 of its readable runs gave an item (the first run's gaps came from its counting). Items seen over both,
+	// with runs and stack sizes: crying_obsidian 12 (1-3), nether_brick 9 (4-8), gravel 10 (9-16), blackstone 8 (8-15),
+	// leather 7 (2-4), fire_charge 7 (1), spectral_arrow 7 (8-12), obsidian 6 (1), ender_pearl 3 (3), soul_sand 3 (2-8), quartz 2 (7-8),
+	// string 2 (5-8), potion of fire resistance 2 and its splash form 1, a water bottle 1, dried_ghast 1. A low-count table (about 80 runs):
+	// weights are those counts, sizes uniform over the range seen.
+	struct FBarter { const TCHAR* Item; int32 Weight; int32 Min; int32 Max; const TCHAR* Potion; };
+	static const FBarter Table[] = {
+		{ TEXT("minecraft:crying_obsidian"), 12, 1, 3, nullptr }, { TEXT("minecraft:gravel"), 10, 9, 16, nullptr },
+		{ TEXT("minecraft:nether_brick"), 9, 4, 8, nullptr }, { TEXT("minecraft:blackstone"), 8, 8, 15, nullptr },
+		{ TEXT("minecraft:leather"), 7, 2, 4, nullptr }, { TEXT("minecraft:fire_charge"), 7, 1, 1, nullptr },
+		{ TEXT("minecraft:spectral_arrow"), 7, 8, 12, nullptr }, { TEXT("minecraft:obsidian"), 6, 1, 1, nullptr },
+		{ TEXT("minecraft:ender_pearl"), 3, 3, 3, nullptr }, { TEXT("minecraft:soul_sand"), 3, 2, 8, nullptr },
+		{ TEXT("minecraft:quartz"), 2, 7, 8, nullptr }, { TEXT("minecraft:string"), 2, 5, 8, nullptr },
+		{ TEXT("minecraft:potion"), 2, 1, 1, TEXT("minecraft:fire_resistance") }, { TEXT("minecraft:splash_potion"), 1, 1, 1, TEXT("minecraft:fire_resistance") },
+		{ TEXT("minecraft:potion"), 1, 1, 1, TEXT("minecraft:water") }, { TEXT("minecraft:dried_ghast"), 1, 1, 1, nullptr } };
+	bHasBarterGoal = false;
+	if (BarterTicks > 0)
+	{
+		if (--BarterTicks == 0)
+		{
+			int32 Total = 0;
+			for (const FBarter& Entry : Table)
+			{
+				Total += Entry.Weight;
+			}
+			int32 Roll = Random.RandHelper(Total);
+			for (const FBarter& Entry : Table)
+			{
+				if (Roll < Entry.Weight)
+				{
+					FVector Away = FVector::ZeroVector;
+					double Nearest = FMath::Square(16.0);
+					for (const FVector& Player : Manager.PlayerPositions)
+					{
+						const double Distance = FVector::DistSquared(Player, Body.Position);
+						if (Distance < Nearest)
+						{
+							Nearest = Distance;
+							Away = Player - Body.Position;
+						}
+					}
+					Away.Y = 0.0;
+					if (!Away.Normalize())
+					{
+						Away = FVector(0.0, 0.0, 1.0);
+					}
+					FMcItemStack Stack(FName(Entry.Item), Random.RandRange(Entry.Min, Entry.Max));
+					if (Entry.Potion)
+					{
+						const TSharedRef<FJsonObject> Contents = MakeShared<FJsonObject>();
+						Contents->SetStringField(TEXT("potion"), Entry.Potion);
+						Stack.Set(TEXT("minecraft:potion_contents"), MakeShared<FJsonValueObject>(Contents));
+					}
+					FMcItemEntity& Out = Manager.DropItem(Body.Position + FVector(0.0, 1.5, 0.0), Stack);
+					Out.Body.Velocity = Away * 0.29 + FVector(0.0, 0.065, 0.0);
+					break;
+				}
+				Roll -= Entry.Weight;
+			}
+		}
+		return;
+	}
+	// It walks to an ingot within 8 blocks (the range is a guess: only a drop a block away was measured).
+	TArray<FMcEntity*> Near;
+	Manager.FindInBox(FBox(Body.Position - FVector(8.0, 2.0, 8.0), Body.Position + FVector(8.0, 3.0, 8.0)), Near);
+	for (FMcEntity* Other : Near)
+	{
+		if (Other->GetType() != FMcItemEntity::StaticType() || Other->bRemoved)
+		{
+			continue;
+		}
+		FMcItemEntity* Item = static_cast<FMcItemEntity*>(Other);
+		if (Item->Stack.Item != TEXT("minecraft:gold_ingot"))
+		{
+			continue;
+		}
+		if (FVector::DistSquared(Item->Body.Position, Body.Position) > FMath::Square(1.5))
+		{
+			BarterGoal = Item->Body.Position;
+			bHasBarterGoal = true;
+			continue;
+		}
+		if (Item->PickupDelay <= 0)
+		{
+			if (--Item->Stack.Count <= 0)
+			{
+				Item->bRemoved = true;
+			}
+			BarterTicks = 120;
+			return;
+		}
+	}
+}
+
 void FMcMob::Tick(FMcEntityManager& Manager)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
@@ -622,6 +760,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	if (ShootCooldown > 0)
 	{
 		--ShootCooldown;
+	}
+	if (Type.Name == TEXT("minecraft:piglin"))
+	{
+		TickBarter(Manager);
 	}
 	if (RepathCooldown > 0)
 	{
@@ -721,13 +863,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		Target = Goal.GetValue();
 		bHasTarget = true;
 	}
+	else if (bHasBarterGoal)
+	{
+		Target = BarterGoal;
+		bHasTarget = true;
+	}
 	else if (Type.FollowRange > 0.0f && !bTamed && (!Type.bNeutral || AngerTicks > 0) && (!Type.bNeutralInLight || AngerTicks > 0 || !bBrightHere))
 	{
 		double Best = Type.FollowRange * Type.FollowRange;
 		for (const FVector& Player : Manager.PlayerPositions)
 		{
 			const double Distance = FVector::DistSquared(Player, Body.Position);
-			if (Distance < Best)
+			// Piglins (not the brutes, which were not measured) ignore a player in gold armour: the bare player lost
+			// 40 hp in 200 ticks to three piglins, the one in a golden helmet lost none.
+			if (Distance < Best && !(Type.Name == TEXT("minecraft:piglin") && Manager.PlayerWearsGold && Manager.PlayerWearsGold(Player)))
 			{
 				Best = Distance;
 				Target = Player;
@@ -915,7 +1064,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		// A vex with prey charges (the model's pose 1: sword arm thrown up, body upright).
 		ArmPose = bChasing ? 1 : 0;
 	}
-	else if (Type.Name == FName(TEXT("minecraft:skeleton")))
+	else if (Type.Name == FName(TEXT("minecraft:skeleton")) || Type.Name == FName(TEXT("minecraft:stray")) || Type.Name == FName(TEXT("minecraft:bogged")))
 	{
 		// A skeleton with a target raises its bow arms (the model's pose 1).
 		ArmPose = bChasing ? 1 : 0;
@@ -958,6 +1107,19 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		else if (OnAttackPlayer)
 		{
 			OnAttackPlayer(Target, BiteDamage);
+			// What a bite gives (reference, effects2/3/4.txt): a husk hunger for 140 ticks on Normal and 280 on Hard (none on Easy,
+			// the Easy runs showed none in 120 ticks), a wither skeleton wither for 200 at Normal and Hard (199 on Easy too).
+			if (Manager.OnPlayerEffect)
+			{
+				if (Type.Name == FName(TEXT("minecraft:husk")) && Manager.Difficulty >= 2)
+				{
+					Manager.OnPlayerEffect(Target, TEXT("hunger"), 0, Manager.Difficulty >= 3 ? 280 : 140);
+				}
+				else if (Type.Name == FName(TEXT("minecraft:wither_skeleton")))
+				{
+					Manager.OnPlayerEffect(Target, TEXT("wither"), 0, 200);
+				}
+			}
 		}
 	}
 
@@ -984,6 +1146,23 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		{
 			Goal.Reset();
 		}
+		LastPosition = Body.Position;
+		return;
+	}
+
+	if (Type.bSwims && Body.bInWater && bHasTarget)
+	{
+		// Straight at the target through the water, at the logged swimming speed; the physics tick still runs (it finds the water and
+		// the walls) with this as its velocity and no input.
+		const FVector To = Target - Body.Position;
+		if (To.SizeSquared() > 0.4 * 0.4)
+		{
+			Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+			Body.Velocity = To.GetSafeNormal() * 0.0485;
+		}
+		FMcMoveInput Swim;
+		Swim.Speed = 0.0f;
+		McPhysics::TickPlayer(World, Body, Swim);
 		LastPosition = Body.Position;
 		return;
 	}
@@ -1046,7 +1225,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		--HopDelay;
 	}
 	// Wading mobs paddle upwards rather than sink.
-	Input.bJump |= Body.bInWater || Body.bInLava;
+	Input.bJump |= (Body.bInWater && !Type.bSinks) || Body.bInLava;
 	McPhysics::TickPlayer(World, Body, Input);
 	if (Type.bClimbsWalls && bWalking && Body.bHorizontalCollision)
 	{

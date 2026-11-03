@@ -56,6 +56,8 @@ public:
 	TFunction<void(const FVector&, float)> OnPlayerHit;
 	// Called with the player's feet, the damage, the push and the centre when a blast reaches a player.
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
+	// Whether the player at the position wears gold armour (piglins ignore them).
+	TFunction<bool(const FVector&)> PlayerWearsGold;
 	// A splash potion's effect on the player at the position (name, level less one, ticks).
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 
@@ -160,6 +162,8 @@ private:
 	void SyncProxies();
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.
 	TOptional<int32> FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
+	// The feet cell for something that swims: just under the surface of the water at X, Z (feet and head both in water), if there is any near NearY.
+	TOptional<int32> FindSwimmingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
 	void DropLoot(FMcMob& Mob);
 	// A slime that died splits into smaller ones.
 	void SplitSlime(FMcMob& Dead);

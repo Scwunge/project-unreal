@@ -521,6 +521,84 @@ namespace McEntityModel
 				Models.Add(Skeleton.Kind, Skeleton);
 			}
 			{
+				// Husk: the zombie's body on its own picture, drawn a little bigger. Measured from one shot of a row of them (head to foot
+				// height against the zombie's, 185 against 173 screen pixels: 1.07, good to about 0.03).
+				FModel Husk;
+				Husk.Kind = TEXT("minecraft:husk");
+				Husk.TextureSize = FIntPoint(64, 64);
+				Husk.Textures = { TEXT("zombie/husk.png") };
+				Husk.Scale = 1.07f;
+				Husk.bArmsForward = true;
+				AddPerson(Husk, false, true);
+				AddHeldItemInHand(Husk, FVector(-5, 22, 0));
+				Models.Add(Husk.Kind, Husk);
+			}
+			{
+				// Stray, bogged and wither skeleton: the skeleton's body on their own pictures. The stray and bogged wear a second picture over
+				// it (their clothes, the body's boxes grown by a quarter pixel: not fitted); the bogged's mushrooms are not drawn. The wither
+				// skeleton is drawn 1.2 times the size (height against the stray's in one row shot: 210 against 175 screen pixels, ~0.03).
+				struct FSkeletonKin { const TCHAR* Name; const TCHAR* Texture; const TCHAR* Overlay; float Scale; bool bBow; };
+				for (const FSkeletonKin& Each : { FSkeletonKin{ TEXT("stray"), TEXT("skeleton/stray.png"), TEXT("skeleton/stray_overlay.png"), 1.0f, true },
+					FSkeletonKin{ TEXT("bogged"), TEXT("skeleton/bogged.png"), TEXT("skeleton/bogged_overlay.png"), 1.0f, true },
+					FSkeletonKin{ TEXT("wither_skeleton"), TEXT("skeleton/wither_skeleton.png"), nullptr, 1.2f, false } })
+				{
+					FModel Kin;
+					Kin.Kind = FName(*(FString(TEXT("minecraft:")) + Each.Name));
+					Kin.Textures = { Each.Texture };
+					Kin.Scale = Each.Scale;
+					AddPerson(Kin, true, false);
+					if (Each.Overlay)
+					{
+						Kin.Textures.Add(Each.Overlay);
+						const TArray<FPart> Body = Kin.Parts;
+						for (FPart Copy : Body)
+						{
+							for (FBox& Box : Copy.Boxes)
+							{
+								Box.Inflate += 0.25f;
+							}
+							Copy.Layer = 1;
+							Kin.Parts.Add(Copy);
+						}
+					}
+					AddHeldItemInHand(Kin, FVector(-5, 22, 0));
+					Kin.bBowAim = Each.bBow;
+					Models.Add(Kin.Kind, Kin);
+				}
+			}
+			{
+				// The piglins: one body from the logged model (`variants3.txt`): a 10 x 8 x 8 head with a snout and two tusks, ears
+				// hanging out at their logged slants, the ordinary body, arms and legs. Zombified ones hold their arms out like the
+				// zombie. The jacket, sleeves and trousers layers log as the very same boxes as the body's.
+				struct FPiglinKin { const TCHAR* Name; const TCHAR* Texture; bool bArmsOut; };
+				for (const FPiglinKin& Each : { FPiglinKin{ TEXT("piglin"), TEXT("piglin/piglin.png"), false }, FPiglinKin{ TEXT("piglin_brute"), TEXT("piglin/piglin_brute.png"), false },
+					FPiglinKin{ TEXT("zombified_piglin"), TEXT("piglin/zombified_piglin.png"), true } })
+				{
+					FModel Piglin;
+					Piglin.Kind = FName(*(FString(TEXT("minecraft:")) + Each.Name));
+					Piglin.TextureSize = FIntPoint(64, 64);
+					Piglin.Textures = { Each.Texture };
+					Piglin.bArmsForward = Each.bArmsOut;
+					Piglin.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -5, 0, -4, 10, 8, 8), Box(31, 1, -2, 0, 4, 4, 4, 1), Box(2, 4, 2, 0, 4, 1, 2, 1), Box(2, 0, -3, 0, 4, 1, 2, 1) }));
+					Piglin.Parts.Add(Part(ERole::Static, FVector(-4.5f, 30, 0), { Box(39, 6, -1, -5, -2, 1, 5, 4) }, 0, 0, -0.6004f));
+					Piglin.Parts.Add(Part(ERole::Static, FVector(4.5f, 30, 0), { Box(51, 6, 0, -5, -2, 1, 5, 4) }, 0, 0, 0.5214f));
+					Piglin.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 16, -4, -12, -2, 8, 12, 4) }));
+					Piglin.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(40, 16, -3, -10, -2, 4, 12, 4) }));
+					Piglin.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(32, 48, -1, -10, -2, 4, 12, 4) }));
+					Piglin.Parts.Add(Part(ERole::LegRight, FVector(-1.9f, 12, 0), { Box(0, 16, -2, -12, -2, 4, 12, 4) }));
+					Piglin.Parts.Add(Part(ERole::LegLeft, FVector(1.9f, 12, 0), { Box(16, 48, -2, -12, -2, 4, 12, 4) }));
+					// The jacket, sleeves and trousers over them (the piglin brute's black clothes are these; the others' are clear there),
+					// grown a twentieth of a pixel so they do not fight the body under them.
+					Piglin.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 32, -4, -12, -2, 8, 12, 4, 0.05f) }));
+					Piglin.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(40, 32, -3, -10, -2, 4, 12, 4, 0.05f) }));
+					Piglin.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(48, 48, -1, -10, -2, 4, 12, 4, 0.05f) }));
+					Piglin.Parts.Add(Part(ERole::LegRight, FVector(-1.9f, 12, 0), { Box(0, 32, -2, -12, -2, 4, 12, 4, 0.05f) }));
+					Piglin.Parts.Add(Part(ERole::LegLeft, FVector(1.9f, 12, 0), { Box(0, 48, -2, -12, -2, 4, 12, 4, 0.05f) }));
+					AddHeldItemInHand(Piglin, FVector(-5, 22, 0));
+					Models.Add(Piglin.Kind, Piglin);
+				}
+			}
+			{
 				FModel Spider;
 				Spider.Kind = TEXT("minecraft:spider");
 				// The second picture is the eyes, which glow in the dark.

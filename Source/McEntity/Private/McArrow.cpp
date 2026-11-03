@@ -100,6 +100,10 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 				// The arrow's hit sounds on a body as on a block; the player's own hurt sound comes with the damage.
 				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				Manager.HurtPlayer(Player, Damage);
+				if (!Effect.IsNone() && Manager.OnPlayerEffect)
+				{
+					Manager.OnPlayerEffect(Player, Effect, 0, EffectDuration);
+				}
 				bRemoved = true;
 				return;
 			}

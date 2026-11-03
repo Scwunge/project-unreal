@@ -400,6 +400,48 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("fifteen blocks: dark"), Manager.EstimateBlockLight(FIntVector(10, 1, -4)), 0);
 		TestFalse(TEXT("no spawning beside it, roof or not"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
 	}
+	{
+		// In a pool (logged in the reference, drownswim.txt): a drowned swims at its target at about 0.0485 blocks a tick and a zombie
+		// only sinks.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		const FMcStateId Water = State(TEXT("minecraft:water"));
+		FillMobBox(World, 0, 1, -4, 30, 12, 4, Water);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		Manager.PlayerPositions = { FVector(0.5, 5.0, 0.5) };
+		FMcMob* Drowned = AddMob(Manager, TEXT("minecraft:drowned"), FVector(20.5, 5.0, 0.5));
+		FMcMob* Zombie = AddMob(Manager, TEXT("minecraft:zombie"), FVector(20.5, 9.0, 3.5));
+		for (int32 Tick = 0; Tick < 100; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the drowned has swum 3 to 6 blocks toward the player"), Drowned->Body.Position.X < 20.5 - 3.0 && Drowned->Body.Position.X > 20.5 - 6.0);
+		TestTrue(TEXT("the zombie has sunk, not risen"), Zombie->Body.Position.Y < 8.0);
+	}
+	{
+		// Bartering (barter1.txt, 50 runs): a piglin takes a gold ingot dropped by it and throws one item about 120 ticks later.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		FMcMob* Piglin = AddMob(Manager, TEXT("minecraft:piglin"), FVector(10.5, 1.0, 10.5));
+		Manager.DropItem(FVector(10.5, 1.0, 14.5), FMcItemStack(TEXT("minecraft:gold_ingot"), 1), 0);
+		int32 Items = 0;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		for (const TUniquePtr<FMcEntity>& Each : Manager.GetEntities())
+		{
+			if (Each->GetType() == FMcItemEntity::StaticType() && static_cast<FMcItemEntity*>(Each.Get())->Stack.Item != TEXT("minecraft:gold_ingot"))
+			{
+				++Items;
+			}
+		}
+		TestEqual(TEXT("one item thrown for the ingot"), Items, 1);
+		TestEqual(TEXT("and the piglin is ready again"), Piglin->BarterTicks, 0);
+	}
 	return true;
 }
 

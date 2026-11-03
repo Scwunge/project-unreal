@@ -24,6 +24,9 @@ public:
 	float PlayerBase = 0.0f;
 	bool bCritical = false;
 	bool bPickup = false;
+	// An effect it gives the player it hits (a stray's slowness, a bogged's poison), for Duration ticks; none when unnamed.
+	FName Effect;
+	int32 EffectDuration = 0;
 	bool bStuck = false;
 	int32 StuckTicks = 0;
 

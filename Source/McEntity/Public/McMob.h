@@ -53,6 +53,10 @@ struct MCENTITY_API FMcMobType
 	bool bHops = false;
 	// Bees fly: no gravity, and they wander at different heights.
 	bool bFlies = false;
+	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
+	bool bSwims = false;
+	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
+	bool bSinks = false;
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
 	// The golem fights hostile mobs rather than being one.
@@ -103,6 +107,11 @@ public:
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
 	int32 OfferTicks = 0;
+	// A piglin that took a gold ingot: ticks left before it throws what it gives for it. Not saved.
+	int32 BarterTicks = 0;
+	// A dropped gold ingot it is walking to. Not saved.
+	FVector BarterGoal = FVector::ZeroVector;
+	bool bHasBarterGoal = false;
 	// The item in its right hand (drawn on the model), None for nothing.
 	FName HeldItem;
 	// Fangs: ticks before they bite. A vex: ticks of life left (it starts to waste away when they run out), 0 for no limit.
@@ -193,6 +202,7 @@ private:
 	void ThrowPotion(FMcEntityManager& Manager, const FVector& TargetFeet);
 	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
 	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
+	void TickBarter(FMcEntityManager& Manager);
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

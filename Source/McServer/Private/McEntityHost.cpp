@@ -130,6 +130,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
 	};
+	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
+	{
+		return PlayerWearsGold && PlayerWearsGold(PlayerPos);
+	};
 	Manager.OnPlayerEffect = [this](const FVector& PlayerPos, FName Effect, int32 Amplifier, int32 Duration)
 	{
 		if (OnPlayerEffect)
@@ -273,6 +277,26 @@ int32 FMcEntityHost::NumHostile() const
 	return Count;
 }
 
+TOptional<int32> FMcEntityHost::FindSwimmingY(int32 X, int32 Z, int32 NearY, int32 Range) const
+{
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	if (!World.HasChunk(FIntPoint(X >> 4, Z >> 4)))
+	{
+		return {};
+	}
+	const int32 MinY = World.GetDimension().MinY + 1;
+	const int32 MaxY = World.GetDimension().MaxY() - 2;
+	for (int32 Y = FMath::Min(NearY + Range, MaxY); Y >= FMath::Max(NearY - Range, MinY); --Y)
+	{
+		if (Shapes.GetFluid(World.GetBlock(FIntVector(X, Y, Z))) == EMcFluid::Water)
+		{
+			// The surface block; the feet go one lower so the head is in water too.
+			return Shapes.GetFluid(World.GetBlock(FIntVector(X, Y - 1, Z))) == EMcFluid::Water ? TOptional<int32>(Y - 1) : TOptional<int32>();
+		}
+	}
+	return {};
+}
+
 TOptional<int32> FMcEntityHost::FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const
 {
 	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
@@ -335,7 +359,8 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
-	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FMcZombieVillager::StaticType())
+	// (A husk: 2 of 100 spawned at Normal held an iron sword, the zombie's rate within the count's noise; shared.)
+	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FName(TEXT("minecraft:husk")) || Kind == FMcZombieVillager::StaticType())
 	{
 		// Armed at spawn, from counts of 2000 spawned zombies per difficulty on the reference (night, drops cleared between batches):
 		//   Easy 19 armed (0.95%), Normal 20 (1.0%), Hard 108 (5.4%); every armed one held an iron sword, shovel or spear.
@@ -346,6 +371,21 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 			const int32 Pick = Random.RandHelper(147);
 			Mob->HeldItem = Pick < 29 ? FName(TEXT("minecraft:iron_sword")) : Pick < 29 + 94 ? FName(TEXT("minecraft:iron_shovel")) : FName(TEXT("minecraft:iron_spear"));
 		}
+	}
+	if (Kind == FName(TEXT("minecraft:piglin")))
+	{
+		// 100 spawned (Normal): golden sword 38, crossbow 42, nothing 20.
+		const int32 Pick = Random.RandHelper(100);
+		Mob->HeldItem = Pick < 38 ? FName(TEXT("minecraft:golden_sword")) : Pick < 80 ? FName(TEXT("minecraft:crossbow")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:zombified_piglin")))
+	{
+		// 93 of 100 held a golden sword.
+		Mob->HeldItem = Random.RandHelper(100) < 93 ? FName(TEXT("minecraft:golden_sword")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:piglin_brute")))
+	{
+		Mob->HeldItem = TEXT("minecraft:golden_axe");
 	}
 	if (Kind == FName(TEXT("minecraft:drowned")))
 	{
@@ -853,7 +893,15 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	const double Distance = Random.FRandRange(MinSpawnDistance, MaxSpawnDistance);
 	const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Distance);
 	const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Distance);
-	const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	// Where there is water over the spot instead of a floor to stand on, a drowned can come: its feet and head in the water just
+	// under the surface (the rest of the monsters only spawn on ground, so a water spot is for the drowned alone).
+	bool bInWater = false;
+	if (!Y)
+	{
+		Y = FindSwimmingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+		bInWater = Y.IsSet();
+	}
 	if (!Y)
 	{
 		return;
@@ -876,6 +924,10 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		return;
 	}
 	const FName Kind = PickSpawn(Monsters, Random.RandHelper(TotalWeight));
+	if (bInWater != (Kind == TEXT("minecraft:drowned")))
+	{
+		return;
+	}
 	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach). A
 	// pillager only minds block light, 8 or less (minecraft.wiki, "Pillager").
 	if (Kind == TEXT("minecraft:pillager") ? Manager.EstimateBlockLight(Cell) > 8 : !Manager.IsDarkEnoughToSpawn(Cell))
@@ -937,6 +989,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	const int32 TimeOfDay = static_cast<int32>(FMath::Fmod(DayTicks, 24000.0));
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
+	Manager.Difficulty = Rules.Difficulty;
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;

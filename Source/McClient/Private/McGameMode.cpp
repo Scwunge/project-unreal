@@ -458,6 +458,29 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				BlastPlayerNear(*Here, Position, Damage, Push, Center);
 			}
 		};
+		Host->PlayerWearsGold = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && McPawn->Data && McPawn->Data->Armor && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5)
+				{
+					for (int32 Slot = 0; Slot < McPawn->Data->Armor->Num(); ++Slot)
+					{
+						if (McPawn->Data->Armor->Get(Slot).Item.ToString().StartsWith(TEXT("minecraft:golden_")))
+						{
+							return true;
+						}
+					}
+				}
+			}
+			return false;
+		};
 		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
 		{
 			if (const AMcWorldActor* Here = Weak.Get())

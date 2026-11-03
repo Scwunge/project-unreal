@@ -1289,3 +1289,8 @@ Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dum
 
 ### Maps: item behaviours (2026-11-03)
 McMapStore (map id component, create, zoom cached per source, lock, JSON save/load), empty map used makes a filled map centred under the player, a held filled map fills one row every 4 ticks while the player is inside it (rate from mapexp2/3: about 500 ticks for a full map), map cloning as crafting_transmute with 1-8 empty maps (copies share the id), map extending (eight paper around a map) makes the next scale. Tests Mc.Map.Store. Still open: calling Save/Load from the world save, the cartography table (lock, copy, zoom menu), sending map data to clients, rendering in hand/HUD/frames, decorations.
+
+## Vanilla pixel check (HEAD vs 0d991b4, Unreal off, 1070)
+cave: 252 px differ (17x16 box, a particle). end: identical. village/forest/shore: differences only in the cloud/horizon band
+(the intentional cloud face shades). nether: mean diff 0.56/255, max 70, lower half only; looks like chunk light-update timing
+(block tints differ in the warped patch), not a code path I changed for vanilla. Not re-run; worth one repeat if it matters.

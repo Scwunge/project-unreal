@@ -2176,8 +2176,8 @@ namespace McEntityModel
 			const FVector RotU = U * FMath::Cos(Angle) + V * FMath::Sin(Angle);
 			const FVector RotV = V * FMath::Cos(Angle) - U * FMath::Sin(Angle);
 			const FVector4 Rect(0, 0, 1, ItemVMax);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
 			return;
 		}
 		if (Decor.bInvisible)

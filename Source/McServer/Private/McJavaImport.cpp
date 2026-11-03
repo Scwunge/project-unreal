@@ -7,6 +7,8 @@
 #include "McCache.h"
 #include "McChunk.h"
 #include "McEntityManager.h"
+#include "McMob.h"
+#include "McVehicle.h"
 #include "McChunkSave.h"
 #include "McDecor.h"
 #include "McDecorEntity.h"
@@ -360,6 +362,112 @@ namespace
 		return false;
 	}
 
+	// A moving entity of the game's NBT as the bytes of a chunk's entity save (the kind's name, then what its Serialize
+	// writes): a dropped item, a mob the port has, a minecart or a boat. False for any other.
+	bool MakeLive(const FMcNbt& Entity, FString& OutType, TArray<uint8>& OutData)
+	{
+		const FString Id = Entity.GetString(TEXT("id"));
+		const FMcNbt* Pos = FindList(Entity, TEXT("Pos"));
+		if (!Pos || Pos->Num() != 3)
+		{
+			return false;
+		}
+		const FVector Position(Pos->Values[0].GetReal(), Pos->Values[1].GetReal(), Pos->Values[2].GetReal());
+		FVector Motion = FVector::ZeroVector;
+		if (const FMcNbt* Motions = FindList(Entity, TEXT("Motion")))
+		{
+			if (Motions->Num() == 3)
+			{
+				Motion = FVector(Motions->Values[0].GetReal(), Motions->Values[1].GetReal(), Motions->Values[2].GetReal());
+			}
+		}
+		float Yaw = 0.0f, Pitch = 0.0f;
+		if (const FMcNbt* Rotation = FindList(Entity, TEXT("Rotation")))
+		{
+			if (Rotation->Num() == 2)
+			{
+				Yaw = static_cast<float>(Rotation->Values[0].GetReal());
+				Pitch = static_cast<float>(Rotation->Values[1].GetReal());
+			}
+		}
+		const auto Place = [&](FMcEntity& Live)
+		{
+			Live.Body.Position = Position;
+			Live.Body.Velocity = Motion;
+			Live.Body.bOnGround = Entity.GetInt(TEXT("OnGround")) != 0;
+			Live.Yaw = Yaw;
+			Live.Pitch = Pitch;
+		};
+		TUniquePtr<FMcEntity> Live;
+		if (Id == TEXT("minecraft:item"))
+		{
+			const FMcNbt* Held = Entity.Find(TEXT("Item"));
+			if (!Held)
+			{
+				return false;
+			}
+			TUniquePtr<FMcItemEntity> Item = MakeUnique<FMcItemEntity>();
+			Item->Stack = MakeStack(*Held);
+			if (Item->Stack.IsEmpty())
+			{
+				return false;
+			}
+			Item->PickupDelay = static_cast<int32>(Entity.GetInt(TEXT("PickupDelay")));
+			Item->Age = static_cast<int32>(Entity.GetInt(TEXT("Age")));
+			Live = MoveTemp(Item);
+		}
+		else if (const FMcMobType* Type = FMcMobType::Find(FName(*Id)))
+		{
+			TUniquePtr<FMcMob> Mob = MakeUnique<FMcMob>(*Type);
+			if (Type->bHops)
+			{
+				// The game's size counts from 0 (size 1, 2 or 4 is 0, 1 or 3).
+				const int32 Wanted = static_cast<int32>(Entity.GetInt(TEXT("Size"))) + 1;
+				Mob->SetSize(Wanted >= 4 ? 4 : (Wanted >= 2 ? 2 : 1), false);
+			}
+			if (const FMcNbt* Health = Entity.Find(TEXT("Health")))
+			{
+				Mob->Health = FMath::Clamp(static_cast<float>(Health->GetReal()), 1.0f, Type->bHops ? 64.0f : Type->MaxHealth);
+			}
+			else
+			{
+				Mob->Health = Type->MaxHealth;
+			}
+			if (Type->bPanics && Entity.GetInt(TEXT("Age")) < 0)
+			{
+				Mob->MakeBaby();
+			}
+			Live = MoveTemp(Mob);
+		}
+		else if (Id.EndsWith(TEXT("minecart")) && Id != TEXT("minecraft:command_block_minecart") && Id != TEXT("minecraft:spawner_minecart"))
+		{
+			// The chest, furnace, hopper and TNT carts become plain ones; what they carried is kept in javaentities.
+			Live = MakeUnique<FMcMinecartEntity>();
+		}
+		else if (Id.EndsWith(TEXT("_boat")) || Id.EndsWith(TEXT("_raft")))
+		{
+			TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
+			FString Wood = Id;
+			for (const TCHAR* Suffix : { TEXT("_chest_boat"), TEXT("_chest_raft"), TEXT("_boat"), TEXT("_raft") })
+			{
+				if (Wood.RemoveFromEnd(Suffix))
+				{
+					break;
+				}
+			}
+			Boat->WoodName = FName(*Wood);
+			Live = MoveTemp(Boat);
+		}
+		else
+		{
+			return false;
+		}
+		Place(*Live);
+		OutType = Live->GetType().ToString();
+		FMemoryWriter DataWriter(OutData);
+		return Live->Serialize(DataWriter);
+	}
+
 	// What an entity file turned into scenery, by chunk: the entities' count and bytes as a chunk's save keeps them.
 	struct FSceneryChunk
 	{
@@ -402,7 +510,17 @@ namespace
 					McDecor::FDecor Decor;
 					FVector Position;
 					float Yaw = 0.0f;
-					if (MakeDecor(Entity, Decor, Position, Yaw))
+					FString LiveType;
+					TArray<uint8> LiveData;
+					if (MakeLive(Entity, LiveType, LiveData))
+					{
+						FSceneryChunk& Chunk = Scenery.FindOrAdd(FIntPoint(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ));
+						FMemoryWriter BodyWriter(Chunk.Body, false, true);
+						BodyWriter << LiveType << LiveData;
+						++Chunk.Count;
+						++Stats.Scenery;
+					}
+					else if (MakeDecor(Entity, Decor, Position, Yaw))
 					{
 						FMcDecorEntity Scenic;
 						Scenic.Body.Position = Position;

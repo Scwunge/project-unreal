@@ -949,6 +949,11 @@ void AMcWorldActor::Strike(const FVector& Position)
 {
 	UE_LOG(LogMcServer, Log, TEXT("Lightning struck %s at %s"), *Dimension, *Position.ToString());
 	MulticastLightning(FVector_NetQuantize10(Position), LightningRandom.RandHelper(MAX_int32));
+	if (Simulation)
+	{
+		const FVector Block = McCoords::UnrealToBlock(Position);
+		Simulation->LightningStruck(FIntVector(FMath::FloorToInt32(Block.X), FMath::FloorToInt32(Block.Y), FMath::FloorToInt32(Block.Z)));
+	}
 	// The thunder carries everywhere (its volume makes its range huge); the crack is near.
 	MulticastSound(FName("entity.lightning_bolt.thunder"), FVector_NetQuantize10(Position), 10000.0f, 0.8f + LightningRandom.FRand() * 0.2f);
 	MulticastSound(FName("entity.lightning_bolt.impact"), FVector_NetQuantize10(Position), 2.0f, 0.5f + LightningRandom.FRand() * 0.2f);

@@ -1310,7 +1310,7 @@ TArray<FMcCommandReply> McCommands::HandleChat(const FString& Line, const FMcCom
 {
 	// Characters the game won't take in chat: the section sign (formatting codes) and control characters.
 	FString Text;
-	for (const TCHAR C : Line.Left(MaxChatLength))
+	for (const TCHAR C : Line.Left(Line.StartsWith(TEXT("/")) ? MaxCommandLength : MaxChatLength))
 	{
 		if (C >= 32 && C != 127 && C != TEXT('§'))
 		{

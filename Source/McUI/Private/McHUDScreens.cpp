@@ -813,7 +813,7 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 				continue;
 			}
 			const uint32 Colour = Style.Rgb >= 0 ? static_cast<uint32>(Style.Rgb) : Rgb;
-			const FLinearColor Tint = bShadowPass ? FromRgb(Colour) * 0.25f * Alpha : FromRgb(Colour, Alpha);
+			const FLinearColor Tint = bShadowPass ? FromRgb((((Colour >> 16) & 0xFF) / 4 << 16) | (((Colour >> 8) & 0xFF) / 4 << 8) | ((Colour & 0xFF) / 4), Alpha) : FromRgb(Colour, Alpha);
 			const float Bold = Style.bBold ? Glyph->ShadowOffset : 0.0f;
 			const float Shadow = bShadowPass ? Glyph->ShadowOffset * TextScale : 0.0f;
 			UTexture2D* Picture = Glyph->Texture ? Glyph->Texture : Glyph->Sprite.IsEmpty() ? nullptr : LoadSprite(Glyph->Sprite);
@@ -2463,7 +2463,7 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 	const float ChatWidth = FMath::Min(320.0f, Width - 8.0f);
 	const double Now = FPlatformTime::Seconds();
 	const int32 MaxLines = bOpen ? 20 : 10;
-	float Y = Height - 48.0f;
+	float Y = Height - 40.0f;
 	int32 Shown = 0;
 	for (int32 Index = Log.Num() - 1; Index >= 0 && Shown < MaxLines; --Index)
 	{
@@ -2485,7 +2485,7 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 		for (int32 Part = Wrapped.Num() - 1; Part >= 0 && Shown < MaxLines; --Part, ++Shown)
 		{
 			Y -= 9.0f;
-			DrawFill(2.0f, Y, ChatWidth, 9.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.5f * Alpha));
+			DrawFill(2.0f, Y, ChatWidth + 10.0f, 9.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.5f * Alpha));
 			DrawGuiText(Wrapped[Part], 4.0f, Y + 1.0f, Entry.Rgb, true, Alpha);
 		}
 	}

@@ -882,7 +882,7 @@ void UMcPlayerDataComponent::SendChat(const FString& Text)
 	}
 	else
 	{
-		ServerChat(Text.Left(256));
+		ServerChat(Text.Left(Text.StartsWith(TEXT("/")) ? 32500 : 256));
 	}
 }
 
@@ -1026,8 +1026,8 @@ void UMcPlayerDataComponent::ClientChat_Implementation(const FString& Text, int3
 
 void UMcPlayerDataComponent::ServerChat_Implementation(const FString& Text)
 {
-	// The game takes at most 256 characters a line.
-	if (ServerOnChat && Text.Len() <= 256)
+	// The game takes at most 256 characters a line, and 32500 for a command.
+	if (ServerOnChat && Text.Len() <= (Text.StartsWith(TEXT("/")) ? 32500 : 256))
 	{
 		ServerOnChat(Text);
 	}

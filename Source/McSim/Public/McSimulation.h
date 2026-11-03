@@ -49,6 +49,8 @@ public:
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
 	// A projectile hit the target block at Pos: it gives Power (1 to 15) for Duration ticks.
 	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
+	// A lightning bolt struck at Pos: lightning rods in or under it power up.
+	void LightningStruck(const FIntVector& Pos);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
 	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.

@@ -46,6 +46,8 @@ public:
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
 	void PlayerPlaced(const FIntVector& Pos);
+	// A lightning bolt hit Pos (or the cell above a lightning rod).
+	void LightningStruck(const FIntVector& Pos);
 	// A player broke the block that was at Pos (its kind in State): a vibration of 12.
 	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
 

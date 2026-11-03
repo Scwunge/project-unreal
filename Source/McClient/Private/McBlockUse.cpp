@@ -531,6 +531,20 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		}
 		return Access;
 	}
+	if (Name == TEXT("minecraft:jukebox"))
+	{
+		// One disc, put in by a hopper or a dropper while the jukebox is empty (reference run lg_misc4); nothing is taken out.
+		const TSharedPtr<FMcContainer> Disc = GetChest(WorldActor, Pos, 1);
+		if (!Disc.IsValid())
+		{
+			return FMcSlotAccess();
+		}
+		FMcSlotAccess Access = McHopper::ForContainer(Disc);
+		Access.Extract.Reset();
+		Access.CanInsert = [Disc](int32, const FMcItemStack& Stack) { return Disc->Get(0).IsEmpty() && Stack.Item.ToString().Contains(TEXT("music_disc_")); };
+		Access.SlotLimit = [](int32) { return 1; };
+		return Access;
+	}
 	if (Name == TEXT("minecraft:brewing_stand"))
 	{
 		const TSharedPtr<FMcBrewingStand> Stand = GetBrewingStand(WorldActor, Pos, true);
@@ -813,6 +827,17 @@ void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FInt
 			{
 				WriteChest(WorldActor, Partner.GetValue());
 			}
+		}
+	}
+	// A jukebox is playing a disc while it holds one.
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && GetBlockName(*Blocks, Pos) == TEXT("minecraft:jukebox"))
+	{
+		const TSharedPtr<FMcContainer> Disc = GetChest(WorldActor, Pos, 1);
+		const bool bHas = Disc.IsValid() && !Disc->Get(0).IsEmpty();
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		if ((Registry.GetPropertyValue(Blocks->GetBlock(Pos), TEXT("has_record")) == TEXT("true")) != bHas)
+		{
+			WorldActor.SetBlock(Pos, Registry.ParseState(bHas ? TEXT("minecraft:jukebox[has_record=true]") : TEXT("minecraft:jukebox[has_record=false]")).Get(0));
 		}
 	}
 	// Comparators that read it look again (after the write-back above).

@@ -48,6 +48,8 @@ namespace
 		Crafter,
 		NoteBlock,
 		Composter,
+		Jukebox,
+		LightningRod,
 		Hopper,
 		Rail,
 		PoweredRail,
@@ -129,6 +131,8 @@ namespace
 				else if (Name == TEXT("minecraft:crafter")) Kind = Crafter;
 				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
 				else if (Name == TEXT("minecraft:composter")) Kind = Composter;
+				else if (Name == TEXT("minecraft:jukebox")) Kind = Jukebox;
+				else if (Name.EndsWith(TEXT("lightning_rod"))) Kind = LightningRod;
 				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
 				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
@@ -442,6 +446,13 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 		return Flag(State, TEXT("lit")) && Toward != Up ? 15 : 0;
 	case WallTorch:
 		return Flag(State, TEXT("lit")) && Toward != FacingOf(State) ? 15 : 0;
+	// A jukebox with a disc in it gives 15 to everything around it, weakly (reference run lg_misc4: a lamp on three sides lit, dust
+	// beside it took 15, a hopper locked).
+	case Jukebox:
+		return Flag(State, TEXT("has_record")) ? 15 : 0;
+	// A struck lightning rod gives 15 around it for 8 ticks (reference run lg_misc4: a lamp beside it lit the tick of the strike).
+	case LightningRod:
+		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case Repeater:
 	case Observer:
 		return Flag(State, TEXT("powered")) && FacingOf(State) == Toward ? 15 : 0;
@@ -569,6 +580,42 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		if (Name == TEXT("minecraft:cake"))
 		{
 			return (7 - Number(State, TEXT("bites"))) * 2;
+		}
+		if (Name == TEXT("minecraft:jukebox"))
+		{
+			// The disc inside gives its own level (reference run lg_juke, every disc put in by a dropper).
+			static const TMap<FName, int32> Levels = {
+				{ TEXT("minecraft:music_disc_11"), 11 },
+				{ TEXT("minecraft:music_disc_13"), 1 },
+				{ TEXT("minecraft:music_disc_5"), 15 },
+				{ TEXT("minecraft:music_disc_blocks"), 3 },
+				{ TEXT("minecraft:music_disc_bounce"), 8 },
+				{ TEXT("minecraft:music_disc_cat"), 2 },
+				{ TEXT("minecraft:music_disc_chirp"), 4 },
+				{ TEXT("minecraft:music_disc_creator"), 12 },
+				{ TEXT("minecraft:music_disc_creator_music_box"), 11 },
+				{ TEXT("minecraft:music_disc_far"), 5 },
+				{ TEXT("minecraft:music_disc_lava_chicken"), 9 },
+				{ TEXT("minecraft:music_disc_mall"), 6 },
+				{ TEXT("minecraft:music_disc_mellohi"), 7 },
+				{ TEXT("minecraft:music_disc_otherside"), 14 },
+				{ TEXT("minecraft:music_disc_pigstep"), 13 },
+				{ TEXT("minecraft:music_disc_precipice"), 13 },
+				{ TEXT("minecraft:music_disc_relic"), 14 },
+				{ TEXT("minecraft:music_disc_stal"), 8 },
+				{ TEXT("minecraft:music_disc_strad"), 9 },
+				{ TEXT("minecraft:music_disc_tears"), 10 },
+				{ TEXT("minecraft:music_disc_wait"), 12 },
+				{ TEXT("minecraft:music_disc_ward"), 10 }
+			};
+			const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+			if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.IsEmpty() || !Flag(State, TEXT("has_record")))
+			{
+				return 0;
+			}
+			const int32* Level = Levels.Find(Entity->Slots[0].Item);
+			return Level ? *Level : 0;
 		}
 		if (Name == TEXT("minecraft:composter"))
 		{
@@ -803,6 +850,32 @@ void FMcRedstone::PlayerBroke(const FIntVector& Pos, FMcStateId State)
 	if (!Broken.EndsWith(TEXT("_wool")) && !Broken.EndsWith(TEXT("_carpet")))
 	{
 		Vibrate(Pos, 12);
+	}
+}
+
+void FMcRedstone::LightningStruck(const FIntVector& Pos)
+{
+	// A bolt in the cell above a rod, or in its own cell, strikes it: it powers for 8 ticks and loses all its rust (reference run
+	// lg_misc4: exposed, weathered and oxidized rods became plain at once, the copper under them lost some). Not done: that copper.
+	for (const FIntVector& Cell : { Pos + FIntVector(0, -1, 0), Pos })
+	{
+		const FMcStateId State = World.GetBlock(Cell);
+		if (KindOf(State) != LightningRod)
+		{
+			continue;
+		}
+		TMap<FName, FName> Props;
+		Props.Add(TEXT("facing"), Reg().GetPropertyValue(State, TEXT("facing")));
+		Props.Add(TEXT("waterlogged"), Reg().GetPropertyValue(State, TEXT("waterlogged")));
+		Props.Add(TEXT("powered"), TEXT("true"));
+		const FString Name = Reg().GetBlockOf(State).Name.ToString();
+		const TOptional<FMcStateId> Struck = Reg().FindState(Name.Contains(TEXT("waxed_")) ? Reg().GetBlockOf(State).Name : FName(TEXT("minecraft:lightning_rod")), Props);
+		if (Struck.IsSet())
+		{
+			World.SetBlock(Cell, Struck.GetValue());
+			Sim.ScheduleTick(Cell, 8);
+		}
+		return;
 	}
 }
 
@@ -1115,6 +1188,12 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case MovingPiston:
 		TickMovingPiston(Pos, State);
+		break;
+	case LightningRod:
+		if (Flag(State, TEXT("powered")))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("powered"), TEXT("false")) }));
+		}
 		break;
 	case Composter:
 		ComposterPending.Remove(Pos);

@@ -87,6 +87,14 @@ AMcPlayerPawn::AMcPlayerPawn()
 	// The hand is drawn with this scale, which squeezes its depth toward the camera.
 	Camera->bEnableFirstPersonScale = true;
 	Camera->FirstPersonScale = 0.1f;
+#if !UE_BUILD_SHIPPING
+	// Development: -McFov=<degrees> (the reference client in spectator mode shoots at about 80, not the setting).
+	float DevFov = 0.0f;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McFov="), DevFov) && DevFov > 10.0f)
+	{
+		Camera->SetFieldOfView(DevFov);
+	}
+#endif
 	Camera->SetRelativeLocation(FVector(0.0, 0.0, StandingEyeHeight * McCoords::UnitsPerBlock));
 
 	Data = CreateDefaultSubobject<UMcPlayerDataComponent>(TEXT("PlayerData"));
@@ -784,6 +792,33 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			if (!It->IsHidden() && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * RideReach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * RideReach < BlockDistance)
 			{
 				ServerTryRide(Look);
+				return;
+			}
+		}
+	}
+
+	// A right click on a trader in front of the block being looked at asks it to trade (not while sneaking).
+	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && !bSneaking)
+	{
+		const double McYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));
+		const double McPitch = FMath::DegreesToRadians(static_cast<double>(-Pitch));
+		const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+		const FVector Eye = McCoords::UnrealToBlock(Camera->GetComponentLocation());
+		constexpr double UseReach = 3.0;
+		const double BlockDistance = Target.IsSet() ? FVector::Dist(Eye, Target->Point) : UseReach;
+		for (TActorIterator<AMcEntityActor> It(GetWorld()); It; ++It)
+		{
+			if (It->IsHidden() || (It->Kind != TEXT("minecraft:villager") && It->Kind != TEXT("minecraft:wandering_trader") && It->Kind != TEXT("minecraft:zombie_villager")))
+			{
+				continue;
+			}
+			const FVector Feet = McCoords::UnrealToBlock(It->GetActorLocation());
+			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
+			FVector HitPoint, HitNormal;
+			float Time = 0.0f;
+			if (FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * UseReach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * UseReach < BlockDistance)
+			{
+				ServerUseMob(Look);
 				return;
 			}
 		}
@@ -1688,7 +1723,37 @@ void AMcPlayerPawn::ServerGameTick()
 		// Eating takes a while with the food held: 1.6 seconds unless the food says otherwise.
 		FMcFoodData Food;
 		const FMcItemStack& Held = Data->GetSelected();
-		if (bServerUsing && !Data->bCreative && !Held.IsEmpty() && Items.GetFood(Held.Item, Food) && McSurvival::CanEat(Stats, Food))
+		if (bServerUsing && !Held.IsEmpty() && Held.Item == FName(TEXT("minecraft:ominous_bottle")))
+		{
+			// An ominous bottle is drunk in 1.6 seconds and gives Bad Omen for 100 minutes, a level above its amplifier.
+			if (++EatTicks >= 32)
+			{
+				EatTicks = 0;
+				int32 Level = 0;
+				if (const TSharedPtr<FJsonValue> Amplifier = Held.Get(TEXT("minecraft:ominous_bottle_amplifier")))
+				{
+					Level = FMath::Clamp(FMath::RoundToInt32(Amplifier->AsNumber()), 0, 4);
+				}
+				McEffects::Add(Stats, TEXT("bad_omen"), Level, 120000);
+				if (!Data->bCreative)
+				{
+					FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
+					if (--Slot.Count <= 0)
+					{
+						Slot = FMcItemStack(FName(TEXT("minecraft:glass_bottle")), 1);
+					}
+					else
+					{
+						const FMcItemStack Left = Data->Inventory->AddItem(FMcItemStack(FName(TEXT("minecraft:glass_bottle")), 1));
+						if (!Left.IsEmpty() && Entities)
+						{
+							Entities->DropItem(Feet + FVector(0.0, 1.0, 0.0), Left);
+						}
+					}
+				}
+			}
+		}
+		else if (bServerUsing && !Data->bCreative && !Held.IsEmpty() && Items.GetFood(Held.Item, Food) && McSurvival::CanEat(Stats, Food))
 		{
 			const float Seconds = GetEatSeconds(Held);
 			const int32 MealTicks = FMath::Max(1, FMath::RoundToInt32(Seconds * 20.0f));
@@ -2184,6 +2249,15 @@ void AMcPlayerPawn::ServerUseBlock_Implementation(FIntVector Pos)
 		return;
 	}
 	OnUseBlock(*this, Pos);
+}
+
+void AMcPlayerPawn::ServerUseMob_Implementation(FVector Look)
+{
+	if (!OnUseMob || bServerDead || !Data || Look.ContainsNaN() || Look.IsNearlyZero())
+	{
+		return;
+	}
+	OnUseMob(*this, Body.Position + FVector(0.0, GetEyeHeight(), 0.0), Look.GetSafeNormal(), 3.0);
 }
 
 void AMcPlayerPawn::ServerSetUsing_Implementation(bool bUsing)

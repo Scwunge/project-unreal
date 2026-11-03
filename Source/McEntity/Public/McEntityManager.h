@@ -13,6 +13,7 @@
 class FArchive;
 class FMcBlockWorld;
 class FMcEntityManager;
+class FMcMob;
 
 class MCENTITY_API FMcEntity
 {
@@ -115,6 +116,16 @@ public:
 	bool bDaylight = false;
 	// Whether it rains (where the sky is open); set by the server each tick.
 	bool bRaining = false;
+	// The tick of the day, 0 at sunrise to 23999; set by the server each tick. Villagers keep their hours by it.
+	int32 TimeOfDay = 0;
+	// A bell rung for an alarm (a raid): every villager that hears it goes to Pos until it has run out.
+	void SoundAlarm(const FVector& Pos, int32 Ticks)
+	{
+		AlarmPos = Pos;
+		AlarmTicks = Ticks;
+	}
+	bool IsAlarmSounding() const { return AlarmTicks > 0; }
+	const FVector& GetAlarmPos() const { return AlarmPos; }
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
 	// Whether nothing solid is over the block, so rain and sun reach it.
@@ -147,6 +158,19 @@ public:
 	// Called instead of OnPlayerHurt for a player a blast reaches: the feet position, the damage, the push to add to
 	// their velocity (blocks a tick) and the centre of the blast. Left unset, the damage goes to OnPlayerHurt.
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlasted;
+	// Called with the position of a player, an effect's name ("poison"), its level less one and its ticks, for a splash
+	// potion that reached them. Left unset, the effect is dropped.
+	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
+	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
+	TFunction<void(FMcMob&)> OnVillagerSlain;
+	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.
+	TFunction<void(const FVector&)> OnGolemWanted;
+	// Called to change a block (a villager shutting a door), so the owner of the blocks can send the change on.
+	TFunction<void(const FIntVector&, FMcStateId)> OnSetBlock;
+	// Called to put a mob of a kind at a position (an evoker's fangs and vexes); returns it, or null if it can't be.
+	TFunction<FMcMob*(FName, const FVector&)> OnSpawnMob;
+	// Called with where two villagers made a baby and the one that called (for its look); the host puts the baby there.
+	TFunction<void(const FVector&, FMcMob&)> OnVillagerBred;
 	// Called after an explosion with the blocks it destroyed and its power, so whoever knows the item registry can
 	// drop what they leave.
 	TFunction<void(const TArray<FMcDestroyedBlock>&, float)> OnBlocksDestroyed;
@@ -196,4 +220,6 @@ private:
 	TArray<TUniquePtr<FMcEntity>> Entities;
 	int32 NextId = 1;
 	FRandomStream Random{ 7 };
+	int32 AlarmTicks = 0;
+	FVector AlarmPos = FVector::ZeroVector;
 };

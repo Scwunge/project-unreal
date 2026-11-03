@@ -49,14 +49,92 @@ namespace McEntityModel
 			return Result;
 		}
 
+		// A rabbit's hop, from the logged model (13 ticks from the first move of the hind legs; the logged curves are all turns about
+		// the sideways axis, so they compose as sums): the body's pitch, the head's, the tail's and the front legs' (those two
+		// also move: the front legs' pivot (y, z) in the body's frame) and the hind legs'.
+		constexpr int32 HopSteps = 14;
+		constexpr float HopBody[HopSteps] = { -0.390f, -0.371f, -0.146f, 0.152f, 0.225f, 0.210f, 0.163f, 0.093f, 0.004f, -0.087f, -0.182f, -0.276f, -0.370f, -0.3927f };
+		constexpr float HopHead[HopSteps] = { -0.011f, -0.053f, -0.245f, -0.540f, -0.585f, -0.588f, -0.527f, -0.466f, -0.404f, -0.339f, -0.234f, -0.130f, -0.025f, 0.0f };
+		constexpr float HopTail[HopSteps] = { -0.393f, -0.225f, -0.058f, 0.110f, 0.286f, 0.463f, 0.399f, 0.335f, 0.271f, 0.207f, 0.143f, 0.079f, 0.015f, 0.0f };
+		constexpr float HopFront[HopSteps] = { 0.066f, 0.333f, -0.034f, -1.094f, -1.291f, -1.323f, -1.239f, -0.972f, -0.625f, -0.278f, -0.022f, -0.022f, -0.022f, 0.0f };
+		constexpr float HopFrontY[HopSteps] = { -1.57f, -1.69f, -1.81f, -1.93f, -2.06f, -2.30f, -2.38f, -2.24f, -2.11f, -1.97f, -1.84f, -1.70f, -1.57f, -1.53f };
+		constexpr float HopFrontZ[HopSteps] = { -6.27f, -6.13f, -5.99f, -5.84f, -5.72f, -5.84f, -5.94f, -6.00f, -6.06f, -6.12f, -6.18f, -6.24f, -6.30f, -6.31f };
+		constexpr float HopBack[HopSteps] = { 0.227f, 1.100f, 1.972f, 2.182f, 2.133f, 2.026f, 1.764f, 1.329f, 0.774f, 0.462f, 0.168f, 0.0f, 0.0f, 0.0f };
+		constexpr float HopHind[HopSteps] = { 0.0f, 0.427f, 0.880f, 0.927f, 0.926f, 0.878f, 0.405f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+
+		float HopAt(const float (&Table)[HopSteps], float Pos)
+		{
+			const int32 Low = FMath::Clamp(FMath::FloorToInt(Pos), 0, HopSteps - 2);
+			return FMath::Lerp(Table[Low], Table[Low + 1], FMath::Clamp(Pos - Low, 0.0f, 1.0f));
+		}
+
+		FVector TurnAbout(const FVector& Centre, float Pitch, const FVector& Point)
+		{
+			return Centre + FQuat(FVector::XAxisVector, Pitch).RotateVector(Point - Centre);
+		}
+
+		// Moves a rabbit's part (its pivot and turn) to where the hop has it.
+		void ApplyHop(float Pos, int32 Group, FVector& Pivot, FQuat& Rotation)
+		{
+			constexpr float RestBody = -0.3927f;
+			const FVector Hips(0.0f, 1.0f, -4.0f);
+			const float Body = HopAt(HopBody, Pos);
+			// Where a part that hangs from the body is: its place in the body's own frame, turned by the body's pitch.
+			const auto Hung = [&](const FVector& RestPivot)
+			{
+				return TurnAbout(Hips, Body, TurnAbout(Hips, -RestBody, RestPivot));
+			};
+			float Turn = 0.0f;
+			switch (Group)
+			{
+			case 1:
+				Turn = Body - RestBody;
+				break;
+			case 2:
+				Turn = Body - RestBody + HopAt(HopHead, Pos);
+				Pivot = Hung(Pivot);
+				break;
+			case 3:
+				Turn = Body - RestBody + HopAt(HopTail, Pos);
+				Pivot = Hung(Pivot);
+				break;
+			case 4:
+			{
+				Turn = Body - RestBody + HopAt(HopFront, Pos);
+				const FVector Rest = Hung(Pivot);
+				// The group's pivot moves in the body's frame (ours: y and z the other way round from the log's).
+				const FVector Shift(0.0f, -(HopAt(HopFrontY, Pos) - HopFrontY[HopSteps - 1]), -(HopAt(HopFrontZ, Pos) - HopFrontZ[HopSteps - 1]));
+				Pivot = Rest + FQuat(FVector::XAxisVector, Body).RotateVector(Shift);
+				break;
+			}
+			case 5:
+				Turn = HopAt(HopBack, Pos);
+				Pivot = TurnAbout(Hips, Turn, Pivot);
+				break;
+			default:
+				return;
+			}
+			Rotation = FQuat(FVector::XAxisVector, Turn) * Rotation;
+		}
+
+		// A box tilted about a point of its own (in the part's frame).
+		FBox Posed(FBox Each, FVector Pivot, float Pitch, float Yaw, float Roll)
+		{
+			Each.BoxPivot = Pivot;
+			Each.BoxRotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
+			return Each;
+		}
+
 		// The four legs of a pig, cow or sheep.
-		void AddLegs(FModel& Model, int32 U, int32 V, float Width, float Height, float X, float Front, float Back, float Top)
+		// LeftU, if it is not negative, is where the left legs' own picture starts (the ravager has one for each side).
+		void AddLegs(FModel& Model, int32 U, int32 V, float Width, float Height, float X, float Front, float Back, float Top, int32 LeftU = -1)
 		{
 			const FBox Leg = Box(U, V, -Width * 0.5f, -Height, -Width * 0.5f, static_cast<int32>(Width), static_cast<int32>(Height), static_cast<int32>(Width));
+			const FBox LeftLeg = LeftU < 0 ? Leg : Box(LeftU, V, -Width * 0.5f, -Height, -Width * 0.5f, static_cast<int32>(Width), static_cast<int32>(Height), static_cast<int32>(Width));
 			Model.Parts.Add(Part(ERole::LegFrontRight, FVector(-X, Top, Front), { Leg }));
-			Model.Parts.Add(Part(ERole::LegFrontLeft, FVector(X, Top, Front), { Leg }));
+			Model.Parts.Add(Part(ERole::LegFrontLeft, FVector(X, Top, Front), { LeftLeg }));
 			Model.Parts.Add(Part(ERole::LegBackRight, FVector(-X, Top, Back), { Leg }));
-			Model.Parts.Add(Part(ERole::LegBackLeft, FVector(X, Top, Back), { Leg }));
+			Model.Parts.Add(Part(ERole::LegBackLeft, FVector(X, Top, Back), { LeftLeg }));
 		}
 
 		// A person: head, body, two arms and two legs laid out on the player's skin. The left limbs have their own
@@ -110,19 +188,106 @@ namespace McEntityModel
 		Model.Parts.Add(Lid);
 	}
 
+		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a hat, a robe, arms folded across the chest
+		// and two legs. The biome type, profession and level pictures are laid over the base one into a single picture (the
+		// game draws each over the whole body in turn, which comes to the same), so the hat and robe are cut from it as well.
+		// A zombie villager holds its arms out in front like the zombie: two arms of its own, cut from the same place of the
+		// picture the crossed ones are, instead of the folded pair.
+		void AddVillager(FModel& Model, bool bArmsOut = false)
+		{
+			// Measured: the zombie villager is full size and swings its legs like a zombie; the others are 15/16 and swing half as far (0.7).
+			Model.Scale = bArmsOut ? 1.0f : 15.0f / 16.0f;
+			Model.LegSwing = bArmsOut ? 1.4f : 0.7f;
+			Model.TextureSize = FIntPoint(64, 64);
+			Model.BaseWidth = 0.6f;
+			Model.bComposite = true;
+			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2), Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }));
+			Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 20, -4, -12, -3, 8, 12, 6), Box(0, 38, -4, -18, -3, 8, 18, 6, 0.5f) }));
+			if (bArmsOut)
+			{
+				Model.bArmsForward = true;
+				Model.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(44, 22, -3, -10, -2, 4, 12, 4) }));
+				Model.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(44, 22, -1, -10, -2, 4, 12, 4, 0.0f, true) }));
+			}
+			else
+			{
+				Model.Parts.Add(Part(ERole::Static, FVector(0, 21, 1), { Box(44, 22, -8, -6, -2, 4, 8, 4), Box(44, 22, 4, -6, -2, 4, 8, 4, 0.0f, true), Box(40, 38, -4, -6, -2, 8, 4, 4) }, -0.75f));
+			}
+			Model.Parts.Add(Part(ERole::LegRight, FVector(-2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4) }));
+			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
+		}
+
+		// The right hand's item of a humanoid arm, placed as the game does: the arm's hand frame (turned -90 about x and 180 about y,
+		// moved 1/16, 0.125, -0.625 blocks) then the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
+		// pixels), both read from the item model data. That leaves the sprite in the arm's y-z plane 1 pixel out from the shoulder,
+		// 13.6 pixels square about 9.5 down and 6 forward, with its handle-to-tip diagonal 10 degrees below the arm's forward line:
+		// our axis-aligned flat turned -35 degrees about x (the box is placed so it lands there). The vex's hand frame is the arm's
+		// with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes: -0.91, -3.47, 1.08).
+		void AddHeldItemInHand(FModel& Model, const FVector& Pivot, float HandScale = 1.0f, const FVector& HandShift = FVector::ZeroVector)
+		{
+			constexpr float Tilt = -0.6109f;
+			Model.HeldLayer = Model.Textures.Num();
+			Model.Textures.Add(FString());
+			// The sprite's centre in the arm's frame (vanilla's axes, y down and z back), then ours (y up, z forward).
+			const FVector Vanilla = FVector(-1.0f, 9.5f, -6.0f) * HandScale + HandShift;
+			const FVector Centre(Vanilla.X, -Vanilla.Y, -Vanilla.Z);
+			const float Size = 13.6f * HandScale;
+			// The box sits where the tilt about x lands its centre on Centre.
+			const FVector Placed = FQuat(FVector::XAxisVector, -Tilt).RotateVector(Centre);
+			FBox Picture = Box(0, 0, Centre.X, Placed.Y - Size * 0.5f, Placed.Z - Size * 0.5f, 0, Size, Size);
+			Picture.bFlat = true;
+			Model.Parts.Add(Part(ERole::ArmRight, Pivot, { Picture }, Tilt, 0, 0, 0, Model.HeldLayer));
+		}
+
+		// An illager (minecraft.wiki, "Illager"): the villager's shape without its robe's colour, on its own picture. Idle it
+		// folds its arms like the villager; armed it has two arms of its own, held out with the weapon of its Style (1 a crossbow,
+		// 2 an axe, 3 none: it casts), and Held is the item picture drawn in the right hand.
+		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
+		{
+			Model.Scale = 15.0f / 16.0f;
+			AddVillager(Model, false);
+			Model.bComposite = false;
+			Model.IllagerStyle = Style;
+			for (FPart& Each : Model.Parts)
+			{
+				if (Each.Role == ERole::Static && Each.Boxes.Num() == 3)
+				{
+					// The pillager never folds its arms: its own two hang at its sides.
+					Each.ShowPoses = Style == 1 ? 0u : 1u;
+				}
+			}
+			const uint32 Armed = Style == 1 ? ~0u : ~1u;
+			Model.Parts.Add(Part(ERole::ArmRight, FVector(-5, 22, 0), { Box(40, 46, -3, -10, -2, 4, 12, 4) }));
+			Model.Parts.Add(Part(ERole::ArmLeft, FVector(5, 22, 0), { Box(40, 46, -1, -10, -2, 4, 12, 4, 0.0f, true) }));
+			Model.Parts.Last(1).ShowPoses = Armed;
+			Model.Parts.Last(0).ShowPoses = Armed;
+			if (Held)
+			{
+				Model.Textures.Add(FString(TEXT("../item/")) + Held + TEXT(".png"));
+				FBox Picture = Style == 1 ? Box(0, 0, -1, -16, 0, 12, 12, 0) : Box(0, 0, -1, -22, -1, 0, 12, 12);
+				Picture.bFlat = true;
+				// The crossbow lies flat along the arms, its barrel forward (the item model's display turns it down by 90 degrees).
+				Picture.bFlatTop = Style == 1;
+				FPart Hand = Part(ERole::ArmRight, FVector(-5, 22, 0), { Picture }, 0.0f, 0, 0, 0, 1);
+				Hand.ShowPoses = Armed;
+				Model.Parts.Add(Hand);
+			}
+		}
+
 		TMap<FName, FModel> BuildModels()
 		{
 			TMap<FName, FModel> Models;
-			constexpr float Flat = -HALF_PI;
+			constexpr float Flat = HALF_PI;
 
 			{
 				FModel Pig;
 				Pig.Kind = TEXT("minecraft:pig");
 				Pig.TextureSize = FIntPoint(64, 64);
 				Pig.Textures = { TEXT("pig/pig_temperate.png") };
+				Pig.Variants = { { TEXT("pig/pig_cold.png") }, { TEXT("pig/pig_temperate.png") }, { TEXT("pig/pig_warm.png") } };
 				Pig.Parts.Add(Part(ERole::Static, FVector(0, 10, 0), { Box(28, 8, -5, -8, -4, 10, 16, 8) }, Flat));
-				Pig.Parts.Add(Part(ERole::Head, FVector(0, 12, 8), { Box(0, 0, -4, -4, 0, 8, 8, 8), Box(16, 16, -2, -3, 8, 4, 3, 1) }));
-				AddLegs(Pig, 0, 16, 4, 6, 3, 5, -5, 6);
+				Pig.Parts.Add(Part(ERole::Head, FVector(0, 12, 6), { Box(0, 0, -4, -4, 0, 8, 8, 8), Box(16, 16, -2, -3, 8, 4, 3, 1) }));
+				AddLegs(Pig, 0, 16, 4, 6, 3, 5, -7, 6);
 				Models.Add(Pig.Kind, Pig);
 			}
 			{
@@ -130,9 +295,10 @@ namespace McEntityModel
 				Cow.Kind = TEXT("minecraft:cow");
 				Cow.TextureSize = FIntPoint(64, 64);
 				Cow.Textures = { TEXT("cow/cow_temperate.png") };
-				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(18, 4, -6, -9, -5, 12, 18, 10) }, Flat));
-				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 9), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 3, 1, 1, 3, 1), Box(22, 0, 4, 3, 1, 1, 3, 1, 0.0f, true) }));
-				AddLegs(Cow, 0, 16, 4, 12, 4, 7, -7, 12);
+				Cow.Variants = { { TEXT("cow/cow_cold.png") }, { TEXT("cow/cow_temperate.png") }, { TEXT("cow/cow_warm.png") } };
+				Cow.Parts.Add(Part(ERole::Static, FVector(0, 17, -1), { Box(18, 4, -6, -9, -5, 12, 18, 10), Box(52, 0, -2, -9, 5, 4, 6, 1) }, Flat));
+				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true), Box(1, 33, -3, -4, 6, 6, 3, 1) }));
+				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
 			}
 			{
@@ -140,16 +306,16 @@ namespace McEntityModel
 				Sheep.Kind = TEXT("minecraft:sheep");
 				Sheep.Textures = { TEXT("sheep/sheep.png"), TEXT("sheep/sheep_wool.png") };
 				Sheep.Parts.Add(Part(ERole::Static, FVector(0, 16, 0), { Box(28, 8, -4, -8, -3, 8, 16, 6) }, Flat));
-				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 8), { Box(0, 0, -3, -3, 0, 6, 6, 8) }));
-				AddLegs(Sheep, 0, 16, 4, 12, 3, 5, -5, 12);
+				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 18, 8), { Box(0, 0, -3, -2, -2, 6, 6, 8) }));
+				AddLegs(Sheep, 0, 16, 4, 12, 3, 5, -7, 12);
 				// The wool: a bigger body, a head covering, and the top of each leg.
 				Sheep.Parts.Add(Part(ERole::Static, FVector(0, 16, 0), { Box(28, 8, -4, -8, -3, 8, 16, 6, 1.75f) }, Flat, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 8), { Box(0, 0, -3, -3, 0, 6, 6, 6, 0.6f) }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::Head, FVector(0, 19, 6), { Box(0, 0, -3, -3, 0, 6, 6, 6, 0.6f) }, 0, 0, 0, 0, 1));
 				const FBox WoolLeg = Box(0, 16, -2, -6, -2, 4, 6, 4, 0.5f);
 				Sheep.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -5), { WoolLeg }, 0, 0, 0, 0, 1));
-				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -5), { WoolLeg }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
+				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
 				Models.Add(Sheep.Kind, Sheep);
 			}
 			{
@@ -158,11 +324,12 @@ namespace McEntityModel
 				Chicken.Textures = { TEXT("chicken/chicken_temperate.png") };
 				// A chick is the same model at half the width.
 				Chicken.BaseWidth = 0.4f;
+				Chicken.Variants = { { TEXT("chicken/chicken_cold.png") }, { TEXT("chicken/chicken_temperate.png") }, { TEXT("chicken/chicken_warm.png") } };
 				Chicken.Parts.Add(Part(ERole::Static, FVector(0, 8, 0), { Box(0, 9, -3, -4, -3, 6, 8, 6) }, Flat));
-				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -2, 4, 6, 3), Box(14, 0, -2, 2, 1, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
-				const FBox Leg = Box(26, 0, -1.5f, -5, -1.5f, 3, 5, 3);
-				Chicken.Parts.Add(Part(ERole::LegRight, FVector(-2, 5, 0), { Leg }));
-				Chicken.Parts.Add(Part(ERole::LegLeft, FVector(2, 5, 0), { Leg }));
+				Chicken.Parts.Add(Part(ERole::Head, FVector(0, 9, 4), { Box(0, 0, -2, 0, -1, 4, 6, 3), Box(14, 0, -2, 2, 2, 4, 2, 2), Box(14, 4, -1, 0, 1, 2, 2, 2) }));
+				const FBox Leg = Box(26, 0, -1, -5, 0, 3, 5, 3);
+				Chicken.Parts.Add(Part(ERole::LegRight, FVector(-2, 5, -1), { Leg }));
+				Chicken.Parts.Add(Part(ERole::LegLeft, FVector(1, 5, -1), { Leg }));
 				Chicken.Parts.Add(Part(ERole::WingRight, FVector(-3, 11, 0), { Box(24, 13, -1, -4, -3, 1, 4, 6) }));
 				Chicken.Parts.Add(Part(ERole::WingLeft, FVector(3, 11, 0), { Box(24, 13, 0, -4, -3, 1, 4, 6) }));
 				Models.Add(Chicken.Kind, Chicken);
@@ -174,13 +341,151 @@ namespace McEntityModel
 				Zombie.Textures = { TEXT("zombie/zombie.png") };
 				Zombie.bArmsForward = true;
 				AddPerson(Zombie, false, true);
+				AddHeldItemInHand(Zombie, FVector(-5, 22, 0));
 				Models.Add(Zombie.Kind, Zombie);
+			}
+			{
+				struct FIllager { const TCHAR* Name; int32 Style; const TCHAR* Held; };
+				for (const FIllager& Each : { FIllager{ TEXT("pillager"), 1, TEXT("crossbow_standby") }, FIllager{ TEXT("vindicator"), 2, TEXT("iron_axe") }, FIllager{ TEXT("evoker"), 3, nullptr } })
+				{
+					FModel Illager;
+					Illager.Kind = FName(*(FString(TEXT("minecraft:")) + Each.Name));
+					Illager.Textures = { FString(TEXT("illager/")) + Each.Name + TEXT(".png") };
+					AddIllager(Illager, Each.Style, Each.Held);
+					Models.Add(Illager.Kind, Illager);
+				}
+			}
+			{
+				// The witch: a villager under a tall pointed hat of four stacked pieces.
+				FModel Witch;
+				Witch.Kind = TEXT("minecraft:witch");
+				Witch.TextureSize = FIntPoint(64, 128);
+				Witch.Textures = { TEXT("witch/witch.png") };
+				AddVillager(Witch);
+				Witch.TextureSize = FIntPoint(64, 128);
+				Witch.bComposite = false;
+				for (FPart& Part : Witch.Parts)
+				{
+					if (Part.Role == ERole::Head)
+					{
+						Part.Boxes.Reset();
+						Part.Boxes.Add(Box(0, 0, -4, 0, -4, 8, 10, 8));
+						FBox Nose = Box(24, 0, -1, -1, 4, 2, 4, 2);
+						Nose.BoxPivot = FVector(0, 2, 0);
+						Nose.bNoseWobble = true;
+						Part.Boxes.Add(Nose);
+						// The hat bends: the brim, then three cones each on the last, every one turned about its own pivot (the
+						// pivots and turns are the vanilla model's as logged, x and y offsets in its own frame: y down, z south).
+						const auto Turn = [](float Pitch, float Roll) { return FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch); };
+						FVector Pivot(-5.0f, 10.03125f, 5.0f);
+						FQuat Frame = FQuat::Identity;
+						FBox Brim = Box(0, 64, 0, 0, 0, 10, 10, 2);
+						Brim.Min += Pivot;
+						Brim.BoxPivot = Pivot;
+						Brim.BoxRotation = FQuat(FVector::XAxisVector, -HALF_PI);
+						Part.Boxes.Add(Brim);
+						struct FCone { int32 V; int32 W, H, D; float Dx, Dy, Dz; float Pitch, Roll; };
+						const FCone Cones[] = {
+							{ 76, 7, 4, 7, 1.75f, 4.0f, -2.0f, -0.0524f, -0.0262f },
+							{ 87, 4, 4, 4, 1.75f, 4.0f, -2.0f, -0.1047f, -0.0524f },
+							{ 95, 1, 2, 1, 1.75f, 2.0f, -2.0f, -0.2094f, -0.1047f },
+						};
+						for (const FCone& Cone : Cones)
+						{
+							Pivot += Frame.RotateVector(FVector(Cone.Dx, Cone.Dy, Cone.Dz));
+							Frame = Frame * Turn(Cone.Pitch, Cone.Roll);
+							FBox Piece = Box(0, Cone.V, 0, -Cone.H, -Cone.D, Cone.W, Cone.H, Cone.D);
+							Piece.Min += Pivot;
+							Piece.BoxPivot = Pivot;
+							Piece.BoxRotation = Frame;
+							Part.Boxes.Add(Piece);
+						}
+					}
+				}
+				// The potion it holds up to drink, in front of its face.
+				Witch.Textures.Add(TEXT("../item/potion.png"));
+				FBox Bottle = Box(0, 0, -1, 0, 3, 0, 10, 10);
+				Bottle.bFlat = true;
+				Bottle.bMirror = true;
+				FPart Drinking = Part(ERole::Static, FVector(0, 24, 0), { Bottle }, 0, 0, 0, 0, 1);
+				Drinking.ShowPoses = 1u << 4;
+				Witch.Parts.Add(Drinking);
+				Models.Add(Witch.Kind, Witch);
+			}
+			{
+				// The vex: a small head and body with arms, floating.
+				FModel Vex;
+				Vex.Kind = TEXT("minecraft:vex");
+				Vex.TextureSize = FIntPoint(32, 32);
+				Vex.Textures = { TEXT("illager/vex.png") };
+				// Placed from the logged model (the model sits 2.5 higher than its parts say; the body leans 0.1571 forward at rest).
+				Vex.Parts.Add(Part(ERole::Head, FVector(0, 6.5f, 0), { Box(0, 0, -2.5f, 0, -2.5f, 5, 5, 5) }));
+				Vex.Parts.Add(Part(ERole::Static, FVector(0, 6.5f, 0), { Box(0, 10, -1.5f, -4, -1, 3, 4, 2), Box(0, 16, -1.5f, -6, -1, 3, 5, 2) }, 0.1571f));
+				Vex.Parts.Add(Part(ERole::ArmRight, FVector(-1.75f, 6.25f, 0), { Box(23, 0, -1.25f, -3.5f, -1, 2, 4, 2) }));
+				Vex.Parts.Add(Part(ERole::ArmLeft, FVector(1.75f, 6.25f, 0), { Box(23, 6, -0.75f, -3.5f, -1, 2, 4, 2) }));
+				// Two wings at its back, beating all the time.
+				Vex.bFlutter = true;
+				Vex.Parts.Add(Part(ERole::WingRight, FVector(-0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8) }));
+				Vex.Parts.Add(Part(ERole::WingLeft, FVector(0.5f, 5.5f, -1), { Box(16, 22, 0, -5, -8, 0, 5, 8, 0.0f, true) }));
+				AddHeldItemInHand(Vex, FVector(-1.75f, 6.25f, 0), 0.55f, FVector(-0.91f, -3.47f, 1.08f));
+				Models.Add(Vex.Kind, Vex);
+			}
+			{
+				// The ravager (minecraft.wiki, "Ravager"): a long torso between four tall legs and a big head
+				// carried low in front with a jaw under it and two horns at its sides.
+				FModel Ravager;
+				Ravager.Kind = TEXT("minecraft:ravager");
+				Ravager.TextureSize = FIntPoint(128, 128);
+				Ravager.Textures = { TEXT("illager/ravager.png") };
+				// The torso is two blocks end to end: the front 14x16x20 (its saddle patch on top) and behind it the 12x13x18
+				// hindquarters, so it runs about 29 long and 20 high between four whole 8x37x8 legs that stand a little above
+				// its back. The head hangs low in front, its bottom near the knees, the neck hidden inside it.
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 26, 0), { Box(0, 55, -7, -8, -10, 14, 16, 20), Box(0, 91, -6, -21, -8, 12, 13, 18) }, Flat));
+				Ravager.Parts.Add(Part(ERole::Static, FVector(0, 27, 0), { Box(68, 73, -5, -5, -3, 10, 10, 15) }));
+				// The head stands level with the top of the legs, its back against the front legs' fronts, so no neck shows; the nose hangs from the face.
+				Ravager.Parts.Add(Part(ERole::Head, FVector(0, 25, 9), { Box(0, 0, -8, -10, 0, 16, 20, 16), Box(0, 36, -8, -13, 0, 16, 3, 16), Box(0, 0, -2, -12, 16, 4, 8, 4) }));
+				// The horns stand on the head's top corners and lean well forward (vanilla's 63 degrees).
+				Ravager.Parts.Add(Part(ERole::Head, FVector(-8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4) }, 1.1f, 0, 0));
+				Ravager.Parts.Add(Part(ERole::Head, FVector(8.5f, 30, 19), { Box(74, 55, -1, 0, -2, 2, 14, 4, 0.0f, true) }, 1.1f, 0, 0));
+				AddLegs(Ravager, 96, 0, 8, 37, 8, 5, -18, 37, 64);
+				Ravager.LegSwing = 0.4f;
+				Models.Add(Ravager.Kind, Ravager);
+			}
+			{
+				// The evoker fangs: a base with a pair of jaws.
+				FModel Fangs;
+				Fangs.Kind = TEXT("minecraft:evoker_fangs");
+				Fangs.TextureSize = FIntPoint(64, 32);
+				Fangs.Textures = { TEXT("illager/evoker_fangs.png") };
+				Fangs.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -5, 0, -5, 10, 12, 10) }));
+				Fangs.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(40, 0, -3, 0, -2, 4, 14, 8), Box(40, 0, -1, 0, -2, 4, 14, 8, 0.0f, true) }));
+				Models.Add(Fangs.Kind, Fangs);
+			}
+			{
+				// The iron golem (minecraft.wiki, "Iron Golem"): a 2.7 block tall slab of a body on short legs with arms to its knees.
+				FModel Golem;
+				Golem.Kind = TEXT("minecraft:iron_golem");
+				Golem.TextureSize = FIntPoint(128, 128);
+				Golem.Textures = { TEXT("iron_golem/iron_golem.png") };
+				Golem.Parts.Add(Part(ERole::Head, FVector(0, 31, 2), { Box(0, 0, -4, 2, -2.5f, 8, 10, 8), Box(24, 0, -1, 1, 5.5f, 2, 4, 2) }));
+				Golem.Parts.Add(Part(ERole::Static, FVector(0, 21, 0), { Box(0, 40, -9, 0, -5, 18, 12, 11), Box(0, 70, -4.5f, -5, -3, 9, 5, 6) }));
+				Golem.Parts.Add(Part(ERole::ArmRight, FVector(0, 33.5f, 0), { Box(60, 21, -13, -30, -3, 4, 30, 6) }));
+				Golem.Parts.Add(Part(ERole::ArmLeft, FVector(0, 33.5f, 0), { Box(60, 58, 9, -30, -3, 4, 30, 6) }));
+				Golem.Parts.Add(Part(ERole::LegRight, FVector(-4, 13, 0), { Box(37, 0, -3.5f, -13, -2, 6, 16, 5) }));
+				Golem.Parts.Add(Part(ERole::LegLeft, FVector(5, 13, 0), { Box(60, 0, -3.5f, -13, -2, 6, 16, 5) }));
+				// Measured: a triangle wave of 13 steps a cycle, 1.5 radians a point of walk amount, no limit below that.
+				Golem.bTriangleWalk = true;
+				Golem.LegSwing = 1.5f;
+				Golem.ArmSwing = 1.5f;
+				Models.Add(Golem.Kind, Golem);
 			}
 			{
 				FModel Skeleton;
 				Skeleton.Kind = TEXT("minecraft:skeleton");
 				Skeleton.Textures = { TEXT("skeleton/skeleton.png") };
 				AddPerson(Skeleton, true, false);
+				AddHeldItemInHand(Skeleton, FVector(-5, 22, 0));
+				Skeleton.bBowAim = true;
 				Models.Add(Skeleton.Kind, Skeleton);
 			}
 			{
@@ -194,12 +499,13 @@ namespace McEntityModel
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, 0), { Box(0, 0, -3, -3, -3, 6, 6, 6) }));
 				Spider.Parts.Add(Part(ERole::Static, FVector(0, 9, -9), { Box(0, 12, -5, -4, -6, 10, 8, 12) }));
 				// Four legs a side, fanned out and sloping down.
-				const float Fan[4] = { 0.78f, 0.39f, -0.39f, -0.78f };
-				const float Spread[4] = { 4.0f, 1.5f, -1.0f, -3.5f };
+				const float Fan[4] = { 0.7854f, 0.3927f, -0.3927f, -0.7854f };
+				const float Spread[4] = { 1.0f, 0.0f, -1.0f, -2.0f };
+				const float Roll[4] = { 0.7854f, 0.5812f, 0.5812f, 0.7854f };
 				for (int32 Row = 0; Row < 4; ++Row)
 				{
-					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(-4, 9, Spread[Row]), { Box(18, 0, -16, -1, -1, 16, 2, 2) }, 0, Fan[Row], 0.58f, Row * 2));
-					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(4, 9, Spread[Row]), { Box(18, 0, 0, -1, -1, 16, 2, 2, 0.0f, true) }, 0, -Fan[Row], -0.58f, Row * 2 + 1));
+					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(-4, 9, Spread[Row]), { Box(18, 0, -16, -1, -1, 16, 2, 2) }, 0, Fan[Row], Roll[Row], Row * 2));
+					Spider.Parts.Add(Part(ERole::SpiderLeg, FVector(4, 9, Spread[Row]), { Box(18, 0, 0, -1, -1, 16, 2, 2, 0.0f, true) }, 0, -Fan[Row], -Roll[Row], Row * 2 + 1));
 				}
 				Models.Add(Spider.Kind, Spider);
 			}
@@ -225,8 +531,10 @@ namespace McEntityModel
 				Enderman.Textures = { TEXT("enderman/enderman.png"), TEXT("enderman/enderman_eyes.png") };
 				Enderman.GlowLayers = 2;
 				Enderman.MaxLimbSwing = 0.4f;
-				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
-				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 38, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
+				Enderman.LegSwing = 0.7f;
+				Enderman.ArmSwing = 0.56f;
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8) }));
+				Enderman.Parts.Add(Part(ERole::Head, FVector(0, 37, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 0.05f) }, 0, 0, 0, 0, 1));
 				Enderman.Parts.Add(Part(ERole::Static, FVector(0, 38, 0), { Box(32, 16, -4, -12, -2, 8, 12, 4) }));
 				Enderman.Parts.Add(Part(ERole::ArmRight, FVector(-5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2) }));
 				Enderman.Parts.Add(Part(ERole::ArmLeft, FVector(5, 36, 0), { Box(56, 0, -1, -28, -1, 2, 30, 2, 0.0f, true) }));
@@ -543,6 +851,492 @@ namespace McEntityModel
 				Hunting.Textures[1] = TEXT("conduit/open_eye.png");
 				Models.Add(Hunting.Kind, Hunting);
 			}
+			{
+				// The pictures are chosen per villager (GetVillagerTextures); these are the plains novice farmer's.
+				FModel Villager;
+				Villager.Kind = TEXT("minecraft:villager");
+				Villager.Textures = { TEXT("villager/villager.png"), TEXT("villager/type/plains.png"), TEXT("villager/profession/farmer.png"), TEXT("villager/profession_level/stone.png") };
+				AddVillager(Villager);
+				Models.Add(Villager.Kind, Villager);
+			}
+			{
+				// A zombie villager is the villager's shape in the zombie's greens; the pictures are chosen per one.
+				FModel Zombie;
+				Zombie.Kind = TEXT("minecraft:zombie_villager");
+				Zombie.Textures = { TEXT("zombie_villager/zombie_villager.png"), TEXT("zombie_villager/type/plains.png") };
+				AddVillager(Zombie, true);
+				Models.Add(Zombie.Kind, Zombie);
+			}
+			{
+				// The wandering trader wears one picture, laid out as the villager's.
+				FModel Trader;
+				Trader.Kind = TEXT("minecraft:wandering_trader");
+				Trader.Textures = { TEXT("wandering_trader/wandering_trader.png") };
+				AddVillager(Trader);
+				Models.Add(Trader.Kind, Trader);
+			}
+			{
+				// Pieces are cut from the textures' own nets (box sizes read off the picture), placed from minecraft.wiki's models:
+				// the body is a long box along z, the wolf's and the others' laid down as the pig's is.
+				FModel Horse;
+				Horse.Kind = TEXT("minecraft:horse");
+				Horse.TextureSize = FIntPoint(64, 64);
+				Horse.Textures = { TEXT("horse/horse_brown.png") };
+				// Measured: the hind legs swing 0.5 a point of walk amount and the front legs 0.8.
+				Horse.LegSwing = 0.5f;
+				Horse.FrontLegSwing = 0.8f;
+				// The coat with its markings laid over it.
+				Horse.bComposite = true;
+				for (const TCHAR* Coat : { TEXT("white"), TEXT("creamy"), TEXT("chestnut"), TEXT("brown"), TEXT("black"), TEXT("gray"), TEXT("darkbrown") })
+				{
+					for (const TCHAR* Marking : { TEXT(""), TEXT("white"), TEXT("whitefield"), TEXT("whitedots"), TEXT("blackdots") })
+					{
+						Horse.Variants.Add({ FString::Printf(TEXT("horse/horse_%s.png"), Coat), FCString::Strlen(Marking) ? FString::Printf(TEXT("horse/horse_markings_%s.png"), Marking) : FString() });
+					}
+				}
+				// Placed from the logged model (pivots and every box's extent, in vanilla's frame; ours is y = 24 - y, z = -z), which
+				// draws the whole horse 1.1 times its size about its feet.
+				Horse.Scale = 1.1f;
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));
+				// The tail hangs from the rump, leaning back.
+				Horse.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f));
+				// The neck, head, mane, mouth and ears all lean forward from the withers together.
+				Horse.Parts.Add(Part(ERole::Head, FVector(0, 20, 12),
+					{ Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 0, -3, 6, -5, 6, 5, 7), Box(0, 25, -2, 6, 2, 4, 5, 5), Box(56, 36, -1, -5, -7.01f, 2, 16, 2),
+					  Box(19, 16, -2.55f, 10, -5, 2, 3, 1), Box(19, 16, 0.55f, 10, -5, 2, 3, 1) }, 0.5236f));
+				// The legs are 4 wide, 11 tall (a hair short of the ground), their boxes set 1 in from the hip and the front ones 0.1 forward.
+				Horse.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));
+				Horse.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4) }));
+				Models.Add(Horse.Kind, Horse);
+			}
+			{
+				FModel Wolf;
+				Wolf.Kind = TEXT("minecraft:wolf");
+				Wolf.Textures = { TEXT("wolf/wolf.png"), TEXT("wolf/wolf_collar.png") };
+				Wolf.TintedLayers = 2u;
+				// In the order of data/minecraft/wolf_variant/ (McMobLook): the files by name.
+				for (const TCHAR* Breed : { TEXT("wolf_ashen"), TEXT("wolf_black"), TEXT("wolf_chestnut"), TEXT("wolf"), TEXT("wolf_rusty"), TEXT("wolf_snowy"), TEXT("wolf_spotted"), TEXT("wolf_striped"), TEXT("wolf_woods") })
+				{
+					Wolf.Variants.Add({ FString::Printf(TEXT("wolf/%s.png"), Breed), TEXT("wolf/wolf_collar.png") });
+				}
+				// The poses are bits: 1 sitting, 2 angry, 4 tame. Standing is where bit 1 is clear; the collar is drawn for tame ones.
+				// The boxes are cut from the picture; where they sit (pivots, tilts, the tail's angle by mood) was fitted to the
+				// silhouettes of side-on shots of the real thing, at the same camera and a steady field of view.
+				constexpr uint32 Standing = 0x55u;
+				constexpr uint32 Sitting = 0xAAu;
+				constexpr uint32 Wild = 0x03u;
+				constexpr uint32 Angry = 0x0Cu;
+				constexpr uint32 Tame = 0xF0u;
+				// From the logged model (pivots and every box's extent), standing and sitting.
+				const FBox StandRear = Box(18, 14, -3, -7, -3, 6, 9, 6);
+				const FBox StandChest = Box(21, 0, -3, -3, -4, 8, 6, 7);
+				const FBox StandChestCollar = Box(21, 0, -3, -3, -4, 8, 6, 7, 0.03f);
+				const FBox StandLeg = Box(0, 18, 0, -8, -1, 2, 8, 2);
+				const FBox StandTail = Box(9, 18, 0, -8, -1, 2, 8, 2);
+				const auto Add = [&Wolf](FPart Each, uint32 Poses)
+				{
+					Each.ShowPoses = Poses;
+					Wolf.Parts.Add(Each);
+				};
+				const std::initializer_list<FBox> HeadBoxes = { Box(0, 0, -3, -3, -2, 6, 6, 4), Box(16, 14, -3, 3, -1, 2, 2, 1), Box(16, 14, 1, 3, -1, 2, 2, 1), Box(0, 10, -1.5f, -3, 1, 3, 3, 4) };
+				// Standing.
+				Add(Part(ERole::Head, FVector(-1, 10.5f, 7), { Box(0, 0, -2, -3, -2, 6, 6, 4), Box(16, 14, -2, 3, -1, 2, 2, 1), Box(16, 14, 2, 3, -1, 2, 2, 1), Box(0, 10, -0.5f, -3, 1, 3, 3, 4) }), Standing);
+				Add(Part(ERole::Static, FVector(0, 10, -2), { StandRear }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChest }, Flat), Standing);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 0.6283f), Standing & Wild);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.45f), Standing & Angry);
+				Add(Part(ERole::Static, FVector(-1, 12, -8), { StandTail }, 1.65f), Standing & Tame);
+				Add(Part(ERole::LegFrontRight, FVector(-2.5f, 8, 4), { StandLeg }), Standing);
+				Add(Part(ERole::LegFrontLeft, FVector(0.5f, 8, 4), { StandLeg }), Standing);
+				Add(Part(ERole::LegBackRight, FVector(-2.5f, 8, -7), { StandLeg }), Standing);
+				Add(Part(ERole::LegBackLeft, FVector(0.5f, 8, -7), { StandLeg }), Standing);
+				// Sitting: the rear on its haunches, the chest raised, the hind legs folded forward and the front ones straight down.
+				Add(Part(ERole::Head, FVector(-1, 10.5f, 7), { Box(0, 0, -2, -3, -2, 6, 6, 4), Box(16, 14, -2, 3, -1, 2, 2, 1), Box(16, 14, 2, 3, -1, 2, 2, 1), Box(0, 10, -0.5f, -3, 1, 3, 3, 4) }), Sitting);
+				Add(Part(ERole::Static, FVector(0, 6, 0), { StandRear }, 0.7854f), Sitting);
+				Add(Part(ERole::Static, FVector(-1, 8, 3), { StandChest }, 1.2566f), Sitting);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 0.6283f), Sitting & Wild);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 1.5f), Sitting & Angry);
+				Add(Part(ERole::Static, FVector(-1, 3, -6), { StandTail }, 1.64f), Sitting & Tame);
+				Add(Part(ERole::Static, FVector(-2.5f, 1.3f, -2), { StandLeg }, 4.7124f), Sitting);
+				Add(Part(ERole::Static, FVector(0.5f, 1.3f, -2), { StandLeg }, 4.7124f), Sitting);
+				Add(Part(ERole::Static, FVector(-2.49f, 7, 4), { StandLeg }, 5.8119f), Sitting);
+				Add(Part(ERole::Static, FVector(0.49f, 7, 4), { StandLeg }, 5.8119f), Sitting);
+				// The collar: the chest drawn again, a hair larger, in the collar's own picture.
+				Add(Part(ERole::Static, FVector(-1, 10, 3), { StandChestCollar }, Flat, 0.0f, 0.0f, 0, 1), Standing & Tame);
+				Add(Part(ERole::Static, FVector(-1, 8, 3), { StandChestCollar }, 1.2566f, 0.0f, 0.0f, 0, 1), Sitting & Tame);
+				Models.Add(Wolf.Kind, Wolf);
+			}
+			{
+				FModel Goat;
+				Goat.Kind = TEXT("minecraft:goat");
+				Goat.TextureSize = FIntPoint(64, 64);
+				Goat.Textures = { TEXT("goat/goat.png") };
+				// Placed from the logged model, which sits half a point to the right of centre (the head's pivot is at x 1 and the legs
+				// at -3 and 1). The head is a box tipped 55 degrees forward about a pivot of its own, with the horns on the head itself.
+				Goat.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(1, 1, -4, 6, -9, 9, 11, 16), Box(0, 28, -5, 4, -3, 11, 14, 11) }));
+				FBox GoatNose = Box(34, 46, -3, 5, 6, 5, 7, 10);
+				GoatNose.BoxPivot = FVector(0, 8, 8);
+				GoatNose.BoxRotation = FQuat(FVector::XAxisVector, 0.9599f);
+				Goat.Parts.Add(Part(ERole::Head, FVector(1, 10, 0), { GoatNose, Box(12, 55, -2.99f, 9, 8, 2, 7, 2), Box(12, 55, -0.01f, 9, 8, 2, 7, 2, 0.0f, true), Box(2, 61, -6, 9, 9, 3, 2, 1), Box(2, 61, 2, 9, 9, 3, 2, 1, 0.0f, true), Box(23, 52, -0.5f, -4, 9, 0, 7, 5) }));
+				const FBox FrontLegRight = Box(35, 2, 0, -10, -3, 3, 10, 3);
+				const FBox FrontLegLeft = Box(49, 2, 0, -10, -3, 3, 10, 3);
+				const FBox BackLegRight = Box(49, 29, 0, -10, -3, 3, 6, 3);
+				const FBox BackLegLeft = Box(36, 29, 0, -10, -3, 3, 6, 3);
+				Goat.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 10, 6), { FrontLegRight }));
+				Goat.Parts.Add(Part(ERole::LegFrontLeft, FVector(1, 10, 6), { FrontLegLeft }));
+				Goat.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 10, -4), { BackLegRight }));
+				Goat.Parts.Add(Part(ERole::LegBackLeft, FVector(1, 10, -4), { BackLegLeft }));
+				Models.Add(Goat.Kind, Goat);
+			}
+			{
+				FModel Fox;
+				Fox.Kind = TEXT("minecraft:fox");
+				Fox.TextureSize = FIntPoint(48, 32);
+				Fox.Textures = { TEXT("fox/fox.png") };
+				Fox.Variants = { { TEXT("fox/fox.png") }, { TEXT("fox/fox_snow.png") } };
+				// Placed from the logged model: the head's pivot is at x -1, the body lies down about a pivot of its own, and the tail
+				// hangs from the body (its turn is the body's quarter turn less 0.0524).
+				Fox.Parts.Add(Part(ERole::Static, FVector(0, 8, 6), { Box(24, 15, -3, -14.999f, -2.5f, 6, 11, 6) }, Flat));
+				Fox.Parts.Add(Part(ERole::Head, FVector(-1, 7.5f, 3), { Box(1, 5, -3, -4, -1, 8, 6, 6), Box(8, 1, -3, 2, 3, 2, 2, 1), Box(15, 1, 3, 2, 3, 2, 2, 1), Box(6, 18, -1, -4.01f, 5, 4, 2, 3) }));
+				Fox.Parts.Add(Part(ERole::Static, FVector(-4, 7, -9), { Box(30, 0, 2, -9, -4, 4, 9, 5) }, Flat - 0.0524f));
+				const FBox FoxLeg = Box(4, 24, 2, -6.5f, -1, 2, 6, 2);
+				Fox.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 6.5f, 0), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegFrontLeft, FVector(-1, 6.5f, 0), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegBackRight, FVector(-5, 6.5f, -7), { FoxLeg }));
+				Fox.Parts.Add(Part(ERole::LegBackLeft, FVector(-1, 6.5f, -7), { FoxLeg }));
+				Models.Add(Fox.Kind, Fox);
+			}
+			for (const TCHAR* LlamaKind : { TEXT("minecraft:llama"), TEXT("minecraft:trader_llama") })
+			{
+				FModel Llama;
+				Llama.Kind = LlamaKind;
+				Llama.TextureSize = FIntPoint(128, 64);
+				Llama.Textures = { TEXT("llama/llama_brown.png") };
+				Llama.Variants = { { TEXT("llama/llama_creamy.png") }, { TEXT("llama/llama_white.png") }, { TEXT("llama/llama_brown.png") }, { TEXT("llama/llama_gray.png") } };
+				// From the logged model (the same shape for the trader llama).
+				Llama.Parts.Add(Part(ERole::Head, FVector(0, 17, 6), { Box(0, 0, -2, 10, 1, 4, 4, 9), Box(0, 14, -4, -2, 0, 8, 18, 6), Box(17, 0, -4, 16, 2, 3, 3, 2), Box(17, 0, 1, 16, 2, 3, 3, 2, 0.0f, true) }));  // head
+				Llama.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 14, -6), { Box(29, 29, -2, -14, -2, 4, 14, 4) }));  // rightHindLeg
+				Llama.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 14, -6), { Box(29, 29, -2, -14, -2, 4, 14, 4, 0.0f, true) }));  // leftHindLeg
+				Llama.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4) }));  // rightFrontLeg
+				Llama.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4, 0.0f, true) }));  // leftFrontLeg
+				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, -2), { Box(29, 0, -6, -8, -3, 12, 18, 10) }, 1.5708f, 0, 0));  // root/body
+				Models.Add(Llama.Kind, Llama);
+			}
+			{
+				FModel Bee;
+				Bee.Kind = TEXT("minecraft:bee");
+				Bee.TextureSize = FIntPoint(64, 64);
+				Bee.Textures = { TEXT("bee/bee.png") };
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3.5f, -3, -5, 7, 7, 10), Box(26, 7, 0, 0, -7, 0, 1, 2) }));
+				// The antennae, and three legs that are flat planes (a box with no depth, drawn both sides).
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(2, 0, 1.5f, 2, 5, 1, 2, 3), Box(2, 3, -2.5f, 2, 5, 1, 2, 3) }));
+				Bee.Parts.Add(Part(ERole::Static, FVector(0, 5, 0), { Box(26, 1, -3.5f, -5, 2, 7, 2, 0), Box(26, 3, -3.5f, -5, 0, 7, 2, 0), Box(26, 5, -3.5f, -5, -2, 7, 2, 0) }));
+				// Two flat wings that beat.
+				Bee.Parts.Add(Part(ERole::WingRight, FVector(-1.5f, 9, 3), { Box(0, 18, -9, 0, -6, 9, 0, 6) }));
+				Bee.Parts.Add(Part(ERole::WingLeft, FVector(1.5f, 9, 3), { Box(0, 18, 0, 0, -6, 9, 0, 6, 0.0f, true) }));
+				Bee.bBeatWings = true;
+				Models.Add(Bee.Kind, Bee);
+			}
+			{
+				// The nets of the rabbit's picture (read off its pixels): body 8x6x10, head 5x5x5, ears 2x5x1, haunches 4x4x4, feet 2x1x6.
+				FModel Rabbit;
+				Rabbit.Kind = TEXT("minecraft:rabbit");
+				Rabbit.TextureSize = FIntPoint(64, 64);
+				Rabbit.Textures = { TEXT("rabbit/rabbit_brown.png") };
+				for (const TCHAR* Coat : { TEXT("brown"), TEXT("white"), TEXT("black"), TEXT("gold"), TEXT("salt"), TEXT("white_splotched"), TEXT("toast") })
+				{
+					Rabbit.Variants.Add({ FString::Printf(TEXT("rabbit/rabbit_%s.png"), Coat) });
+				}
+				// From the logged model: the body leans 0.3927 back about a pivot at its hind end, the head, ears and tail hang from it, the
+				// front legs turn back the lean (so they stand straight) and the hind feet are flat slabs turned 22.5 degrees out.
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 1, -4), { Box(0, 0, -4, 0, -1, 8, 6, 10) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(0, 5.607f, -5.9216f), { Box(20, 16, -2, -0.992f, -2.987f, 4, 4, 4) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Head, FVector(0, 8.9983f, 1.4777f), { Box(0, 16, -2.5f, -2, -1, 5, 5, 5), Box(26, 0, -2.5f, 3, 0, 2, 5, 1), Box(32, 0, 0.5f, 3, 0, 2, 5, 1) }, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(-2, 2.9093f, 1.6259f), { Box(36, 18, -0.9f, -3, -1.1f, 2, 4, 2) }));
+				Rabbit.Parts.Add(Part(ERole::Static, FVector(2, 2.9093f, 1.5336f), { Box(44, 18, -1, -3, -1, 2, 4, 2) }));
+				Rabbit.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 1, -4), { Box(20, 24, -1, -1, -1, 2, 1, 6) }, 0, -0.3927f));
+				Rabbit.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 1, -4), { Box(36, 24, -1, -1, -1, 2, 1, 6) }, 0, 0.3927f));
+				Rabbit.bHops = true;
+				for (int32 Index = 0; Index < Rabbit.Parts.Num(); ++Index)
+				{
+					// body, tail, head, the two front legs, the two hind feet
+					static constexpr uint8 Groups[] = { 1, 3, 2, 4, 4, 5, 5 };
+					Rabbit.Parts[Index].Hop = Groups[Index];
+				}
+				Models.Add(Rabbit.Kind, Rabbit);
+			}
+			{
+				// The sea turtle's shell, belly and head, and its four flippers (nets read off the picture).
+				FModel Turtle;
+				Turtle.Kind = TEXT("minecraft:turtle");
+				Turtle.TextureSize = FIntPoint(128, 64);
+				Turtle.Textures = { TEXT("turtle/turtle.png") };
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 1.5f, -2), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
+				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 10), { Box(3, 0, -3, -4, -3, 6, 5, 6) }));
+				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
+				Turtle.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10, 0.0f, true) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontRight, FVector(-5, 3, 4), { Box(27, 30, -13, -1, -3, 13, 1, 5) }));
+				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 3, 4), { Box(27, 30, 0, -1, -3, 13, 1, 5, 0.0f, true) }));
+				Models.Add(Turtle.Kind, Turtle);
+			}
+			// Young ones with a model of their own (not the grown one's halved), from the logged baby models: every pivot, tilt and box,
+			// on the baby pictures (the grown one's names with _baby before the .png).
+			{
+				const auto BabyPicture = [](const FString& Path)
+				{
+					return Path.IsEmpty() ? Path : Path.LeftChop(4) + TEXT("_baby.png");
+				};
+				const auto Young = [&Models, &BabyPicture](const TCHAR* Kind, int32 Width, int32 Height) -> FModel
+				{
+					FModel Baby = Models[FName(Kind)];
+					Baby.Kind = FName(*(FString(Kind) + TEXT("_baby")));
+					Baby.bBabyModel = true;
+					Baby.TextureSize = FIntPoint(Width, Height);
+					Baby.Parts.Reset();
+					for (FString& Each : Baby.Textures)
+					{
+						Each = BabyPicture(Each);
+					}
+					for (TArray<FString>& Look : Baby.Variants)
+					{
+						for (FString& Each : Look)
+						{
+							Each = BabyPicture(Each);
+						}
+					}
+					return Baby;
+				};
+
+				{
+					FModel Baby = Young(TEXT("minecraft:horse"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 14, 6), { Box(30, 0, -2, -2, -2, 4, 8, 4), Box(0, 0, -3, 5.9996f, -1.9999f, 6, 4, 9), Posed(Box(0, 0, -3, 9.8f, -1.8499f, 2, 3, 1), FVector(-2, 10.3f, -1.3499f), 0, 0, 0.2618f), Posed(Box(0, 4, 1, 9.8f, -1.85f, 2, 3, 1), FVector(2, 10.3f, -1.65f), 0, 0, -0.2618f) }, 0.6109f, 0, 0));  // headParts
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 11.5f, 0), { Box(0, 13, -4, -3.5f, -7, 8, 7, 14) }));  // body
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 12.5f, -7), { Box(24, 34, -1.5f, -1.5f, -7, 3, 3, 8) }, -0.7418f, 0, 0));  // body/tail
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.4f, 8, -5.4f), { Box(0, 46, -1.5f, -8, -1.5f, 3, 9, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.4f, 8, -5.4f), { Box(12, 46, -1.5f, -8, -1.5f, 3, 9, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.4f, 8, 5.4f), { Box(0, 34, -1.5f, -8, -1.5f, 3, 9, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.4f, 8, 5.4f), { Box(12, 34, -1.5f, -8, -1.5f, 3, 9, 3) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:sheep"), 64, 32);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 8.5f, 2.5f), { Box(0, 0, -2.5f, -0.5f, -1.5f, 5, 5, 5) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 7, -0.5f), { Box(0, 10, -3, -2, -4.5f, 6, 4, 9) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2, 5, -3), { Box(0, 23, -1, -5, -1, 2, 5, 2) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 5, -3), { Box(24, 12, -1, -5, -1, 2, 5, 2) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 5, 2), { Box(8, 23, -1, -5, -1, 2, 5, 2) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 5, 2), { Box(24, 5, -1, -5, -1, 2, 5, 2) }));  // leftFrontLeg
+					// The wool layer's logged model is the baby's own boxes again (same pivots and picture offsets, no inflation), on the wool picture.
+					const int32 Skin = Baby.Parts.Num();
+					for (int32 Index = 0; Index < Skin; ++Index)
+					{
+						FPart Wool = Baby.Parts[Index];
+						Wool.Layer = 1;
+						Baby.Parts.Add(Wool);
+					}
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:wolf"), 32, 32);
+					// From the logged baby wolf: standing, and sitting (tame ones only), the tail by mood (wild, angry, tame; the log showed no change with health).
+					constexpr uint32 Standing = 0x55u;
+					constexpr uint32 Sitting = 0xAAu;
+					constexpr uint32 Wild = 0x03u;
+					constexpr uint32 Angry = 0x0Cu;
+					constexpr uint32 Tame = 0xF0u;
+					const auto Add = [&Baby](FPart Each, uint32 Poses)
+					{
+						Each.ShowPoses = Poses;
+						Baby.Parts.Add(Each);
+					};
+					Add(Part(ERole::Head, FVector(0, 5.75f, 4), { Box(0, 12, -2.99f, -1.75f, -2, 6, 5, 5), Box(17, 12, -1.5f, -1.76f, 3, 3, 2, 2), Box(0, 5, -3, 3.25f, 0, 2, 2, 1), Box(20, 5, 1, 3.25f, 0, 2, 2, 1) }), 0xFFFFFFFFu);  // head
+					Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8) }), Standing);  // body
+					Add(Part(ERole::LegBackRight, FVector(-1.5f, 3, -3), { Box(0, 22, -1, -3, -1, 2, 3, 2) }), Standing);  // rightHindLeg
+					Add(Part(ERole::LegBackLeft, FVector(1.5f, 3, -3), { Box(8, 22, -1, -3, -1, 2, 3, 2) }), Standing);  // leftHindLeg
+					Add(Part(ERole::LegFrontRight, FVector(-1.5f, 3, 3), { Box(0, 0, -1, -3, -1, 2, 3, 2) }), Standing);  // rightFrontLeg
+					Add(Part(ERole::LegFrontLeft, FVector(1.5f, 3, 3), { Box(20, 0, -1, -3, -1, 2, 3, 2) }), Standing);  // leftFrontLeg
+					Add(Part(ERole::Static, FVector(0, 5.603f, -2.8091f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -2.4717f, 0, 0), Standing & Wild);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 5.2187f, -2.4066f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.5606f, 0, 0), Standing & Angry);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 5.1037f, -2.3761f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.3721f, 0, 0), Standing & Tame);  // tail/tail_r1
+					Add(Part(ERole::Static, FVector(0, 3, 1), { Box(0, 0, -3, -2, -4, 6, 4, 8) }, -0.7854f, 0, 0), Sitting);  // body sitting
+					Add(Part(ERole::Static, FVector(-1.5f, -0.35f, -0.5f), { Box(0, 22, -1, -3, -1, 2, 3, 2) }, -1.5708f, 0, 0), Sitting);  // rightHindLeg sitting
+					Add(Part(ERole::Static, FVector(1.5f, -0.35f, -0.5f), { Box(8, 22, -1, -3, -1, 2, 3, 2) }, -1.5708f, 0, 0), Sitting);  // leftHindLeg sitting
+					Add(Part(ERole::Static, FVector(-1.495f, 2.5f, 3), { Box(0, 0, -1, -3, -1, 2, 3, 2) }, -0.4713f, 0, 0), Sitting);  // rightFrontLeg sitting
+					Add(Part(ERole::Static, FVector(1.495f, 2.5f, 3), { Box(20, 0, -1, -3, -1, 2, 3, 2) }, -0.4713f, 0, 0), Sitting);  // leftFrontLeg sitting
+					Add(Part(ERole::Static, FVector(0, 0.6037f, -1.3761f), { Box(22, 16, -1, -0.3f, -1, 2, 6, 2) }, -1.3721f, 0, 0), Sitting);  // tail/tail_r1 sitting
+					// The collar: the body drawn again, a hair larger, in the collar picture, for tame ones.
+					Add(Part(ERole::Static, FVector(0, 5, 0), { Box(0, 0, -3, -2, -4, 6, 4, 8, 0.03f) }, 0, 0, 0, 0, 1), Standing & Tame);
+					Add(Part(ERole::Static, FVector(0, 3, 1), { Box(0, 0, -3, -2, -4, 6, 4, 8, 0.03f) }, -0.7854f, 0, 0, 0, 1), Sitting & Tame);
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:goat"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 8.5f, 3), { Posed(Box(24, 0, -1.5f, 4, 0, 1, 2, 1), FVector(-1.5f, 1.5f, 1), -0.3927f, 0, 0), Posed(Box(24, 0, 0.5f, 4, 0, 1, 2, 1, 0.0f, true), FVector(-1.5f, 1.5f, 1), -0.3927f, 0, 0), Box(0, 0, -2, -0.1874f, -0.8452f, 4, 4, 6), Posed(Box(0, 12, -3.7f, 1.8126f, -0.6452f, 2, 1, 1), FVector(-1.7f, 2.3126f, -0.1452f), 0, 0.5236f, 0), Posed(Box(0, 12, 1.7f, 1.8126f, -0.6452f, 2, 1, 1, 0.0f, true), FVector(1.7f, 2.3126f, -0.1452f), 0, -0.5236f, 0) }, 0.4363f, 0, 0));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 6.2f, 0), { Box(0, 10, -3, -2.7f, -4.5f, 6, 5, 9), Box(0, 24, -2.5f, -1.8f, -4, 5, 4, 8) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.5f, 4.5f, -3), { Box(21, 12, -1, -4.5f, -1, 2, 5, 2) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(1.5f, 4.5f, -3), { Box(29, 12, -1, -4.5f, -1, 2, 5, 2) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.5f, 4.5f, 2), { Box(21, 5, -1, -4.5f, -1, 2, 5, 2) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.5f, 4.5f, 2), { Box(29, 5, -1, -4.5f, -1, 2, 5, 2) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:fox"), 32, 32);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 5.875f, -0.125f), { Box(0, 0, -3, -2.875f, 0.125f, 6, 5, 5), Box(18, 20, -1, -2.875f, 5.125f, 2, 2, 2), Box(22, 8, -3, 2.125f, 3.125f, 2, 2, 1), Box(22, 11, 1, 2.125f, 3.125f, 2, 2, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 4, -2), { Box(0, 10, -2.5f, -2, -3, 5, 4, 6) }));  // body
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 4.5f, -5), { Box(0, 20, -1.5f, -1.52f, -5, 3, 3, 6) }));  // body/tail
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.5f, 2, -4), { Box(22, 4, -1, -2, -1, 2, 2, 2) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(1.5f, 2, -4), { Box(22, 0, -1, -2, -1, 2, 2, 2) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.5f, 2, 0), { Box(22, 4, -1, -2, -1, 2, 2, 2) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.5f, 2, 0), { Box(22, 0, -1, -2, -1, 2, 2, 2) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:bee"), 32, 32);
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 4.3333f, 1.8567f), { Box(6, 12, 1, -0.333f, 0.163f, 1, 2, 2), Box(0, 12, -2, -0.333f, 0.193f, 1, 2, 2) }));  // bone
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 1, 0), { Box(13, 0, -1.5f, -1, 0, 3, 1, 0) }));  // bone/front_legs
+					Baby.Parts.Add(Part(ERole::WingRight, FVector(-1, 5, 1), { Box(3, 9, -3, 0, -3, 3, 0, 3) }, 0.2182f, -0.3491f, 0));  // bone/right_wing
+					Baby.Parts.Add(Part(ERole::WingLeft, FVector(1, 5, 1), { Box(3, 9, 0, 0, -3, 3, 0, 3, 0.0f, true) }, 0.2182f, 0.3491f, 0));  // bone/left_wing
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 1, -1), { Box(13, 1, -1.5f, -1, 0, 3, 1, 0) }));  // bone/middle_legs
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 3, -0.5f), { Box(0, 0, -2, -2, -2.5f, 4, 4, 5) }));  // bone/body
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 2.5f, -3), { Box(13, 2, 0, -0.5f, -1, 0, 1, 1) }));  // bone/body/stinger
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 1, -2), { Box(13, 2, -1.5f, -1, 0, 3, 1, 0) }));  // bone/back_legs
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:rabbit"), 32, 32);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 6, 1), { Box(0, 0, -2.5f, -1, -1, 5, 4, 4), Box(18, 0, -2.5f, 3, 0, 2, 4, 1), Box(24, 0, 0.5f, 3, 0, 2, 4, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(-2, 0.5f, -3.4f), { Box(0, 17, -2, -0.5f, -3, 2, 1, 3) }, 3.1416f, 0.7854f, -3.1416f));  // root/backlegs/right_hind_leg/right_haunch
+					Baby.Parts.Add(Part(ERole::Static, FVector(0.5f, 0.5f, -2), { Box(10, 17, -2, -0.5f, -3, 2, 1, 3) }, 3.1416f, -0.7854f, -3.1416f));  // root/backlegs/left_hind_leg/left_haunch
+					Baby.Parts.Add(Part(ERole::Static, FVector(-0.1f, 3.2f, -3.6f), { Box(0, 21, -1.4f, -0.973f, -1.982f, 3, 3, 3) }, -0.5236f, 0, 0));  // root/body/tail/tail_r1
+					Baby.Parts.Add(Part(ERole::Static, FVector(-1, 1.5761f, 1.1173f), { Box(14, 8, -0.5f, -1.5f, -0.5f, 1, 3, 1) }));  // root/body/frontlegs/right_front_leg/right_front_leg_r1
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 1.5761f, 1.1173f), { Box(18, 8, -0.5f, -1.5f, -0.5f, 1, 3, 1) }));  // root/body/frontlegs/left_front_leg/left_front_leg_r1
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 3, 0), { Box(0, 8, -2, -1, -3, 4, 3, 6) }, -0.5236f, 0, 0));  // root/body/body_r1
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:turtle"), 16, 16);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 1.1f, 1), { Box(0, 6, -1.5f, -1, 0, 3, 3, 3) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 1.1f, -1), { Box(0, 0, -2, -1, -2, 4, 2, 4) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2, 0.1f, -2.5f), { Box(1, 0, -2, 0, -0.5f, 2, 0, 1, 0.0f, true) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 0.1f, -2.5f), { Box(1, 1, 0, 0, -0.5f, 2, 0, 1, 0.0f, true) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 0.1f, 0.5f), { Box(8, 6, -2, 0, -0.5f, 2, 0, 1) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 0.1f, 0.5f), { Box(8, 7, 0, 0, -0.5f, 2, 0, 1) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:pig"), 32, 32);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 5, 2), { Box(0, 15, -3.5f, -1, -1, 7, 6, 6), Box(6, 27, -1.5f, -0.025f, 5, 3, 2, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 5, -0.5f), { Box(0, 0, -3.5f, -3, -4.5f, 7, 6, 9) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 2, -4), { Box(23, 4, -1, -2, -1, 2, 2, 2) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 2, -4), { Box(0, 4, -1, -2, -1, 2, 2, 2) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 2, 3), { Box(23, 0, -1, -2, -1, 2, 2, 2) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 2, 3), { Box(0, 0, -1, -2, -1, 2, 2, 2) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:cow"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 10.431f, 5.1667f), { Box(0, 18, -3, -1.431f, -0.167f, 6, 6, 5), Box(8, 29, 3, 3.569f, 2.833f, 1, 2, 1), Box(4, 29, -4, 3.569f, 2.833f, 1, 2, 1), Box(12, 29, -2, -1.431f, 4.833f, 4, 3, 1) }));  // head
+					Baby.Parts.Add(Part(ERole::Static, FVector(3, 5, 5), { Box(0, 0, -7, 1, -11, 8, 6, 12) }));  // body
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6, -3.5f), { Box(22, 27, -1.5f, -6, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6, -3.5f), { Box(34, 27, -1.5f, -6, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6, 3.5f), { Box(22, 18, -1.5f, -6, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6, 3.5f), { Box(34, 18, -1.5f, -6, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:chicken"), 16, 16);
+					Baby.WingRest = 0.0611f;
+					Baby.Parts.Add(Part(ERole::LegRight, FVector(-1, 2, -0.5f), { Box(0, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 0, -0.5f, -2, 0, 1, 0, 1) }));  // rightLeg
+					Baby.Parts.Add(Part(ERole::LegLeft, FVector(1, 2, -0.5f), { Box(2, 2, -0.5f, -2, 0, 1, 2, 0), Box(0, 1, -0.5f, -2, 0, 1, 0, 1) }));  // leftLeg
+					Baby.Parts.Add(Part(ERole::WingLeft, FVector(2, 4, 0), { Box(6, 8, 0, 0, -1, 1, 0, 2) }));  // rightWing
+					Baby.Parts.Add(Part(ERole::WingRight, FVector(-2, 4, 0), { Box(4, 8, -1, 0, -1, 1, 0, 2) }));  // leftWing
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 3.75f, 1.25f), { Box(0, 0, -2, -1.75f, -3.25f, 4, 4, 4), Box(10, 8, -1, -0.75f, 0.75f, 2, 1, 1) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					// A donkey: the horse's shape, from its own logged model (the chests are only drawn when carried).
+					FModel Beast;
+					Beast.Kind = TEXT("minecraft:donkey");
+					Beast.TextureSize = FIntPoint(64, 64);
+					Beast.Textures = { TEXT("horse/donkey.png") };
+					Beast.Scale = 0.87f;
+					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail
+					Beast.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));  // rightHindLeg
+					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
+					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
+					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					Models.Add(Beast.Kind, Beast);
+				}
+				{
+					// A mule: the horse's shape, from its own logged model (the chests are only drawn when carried).
+					FModel Beast;
+					Beast.Kind = TEXT("minecraft:mule");
+					Beast.TextureSize = FIntPoint(64, 64);
+					Beast.Textures = { TEXT("horse/mule.png") };
+					Beast.Scale = 0.92f;
+					Beast.Parts.Add(Part(ERole::Head, FVector(0, 20, 12), { Box(0, 35, -2.05f, -6, -5, 4, 12, 7), Box(0, 13, -3, 6, -5, 6, 5, 7), Posed(Box(0, 12, -2.25f, 10, -5, 2, 7, 1), FVector(-1.25f, 10, -4), 0.2618f, 0, 0.2618f), Posed(Box(0, 12, 0.25f, 10, -5, 2, 7, 1, 0.0f, true), FVector(1.25f, 10, -4), 0.2618f, 0, -0.2618f), Box(56, 36, -1, -5, -7.01f, 2, 16, 2), Box(0, 25, -2, 6, 2, 4, 5, 5) }, 0.5236f, 0, 0));  // headParts
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 13, -5), { Box(0, 32, -5, -2, -5, 10, 10, 22) }));  // body
+					Beast.Parts.Add(Part(ERole::Static, FVector(0, 18, -7), { Box(42, 36, -1.5f, -14, -4, 3, 14, 4) }, 0.5236f, 0, 0));  // body/tail
+					Beast.Parts.Add(Part(ERole::LegBackRight, FVector(-4, 10, -7), { Box(48, 21, -1, -9.99f, -3, 4, 11, 4) }));  // rightHindLeg
+					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
+					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
+					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					Models.Add(Beast.Kind, Beast);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:llama"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 12, 4), { Box(0, 0, -3, -2, 0, 6, 11, 4), Box(0, 15, -1.5f, 4, 4, 3, 3, 3), Box(20, 4, 0.5f, 9, 1, 2, 2, 2), Box(20, 0, -2.5f, 9, 1, 2, 2, 2) }));  // head
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 7.5f, -4.5f), { Box(0, 45, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 7.5f, -4.5f), { Box(12, 45, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 7.5f, 3.5f), { Box(0, 34, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 7.5f, 3.5f), { Box(12, 34, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftFrontLeg
+					Baby.Parts.Add(Part(ERole::Static, FVector(-8.5f, 20, -3), { Box(45, 28, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // rightChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(5.5f, 20, -3), { Box(45, 41, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // leftChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 10, -2.5f), { Box(0, 15, -4, -3, -4.5f, 8, 6, 13) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:trader_llama"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 12, 4), { Box(0, 0, -3, -2, 0, 6, 11, 4), Box(0, 15, -1.5f, 4, 4, 3, 3, 3), Box(20, 4, 0.5f, 9, 1, 2, 2, 2), Box(20, 0, -2.5f, 9, 1, 2, 2, 2) }));  // head
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 7.5f, -4.5f), { Box(0, 45, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightHindLeg
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 7.5f, -4.5f), { Box(12, 45, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftHindLeg
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 7.5f, 3.5f), { Box(0, 34, -1.4f, -7.5f, -1.5f, 3, 8, 3) }));  // rightFrontLeg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 7.5f, 3.5f), { Box(12, 34, -1.6f, -7.5f, -1.5f, 3, 8, 3) }));  // leftFrontLeg
+					Baby.Parts.Add(Part(ERole::Static, FVector(-8.5f, 20, -3), { Box(45, 28, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // rightChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(5.5f, 20, -3), { Box(45, 41, -3, -8, -3, 8, 8, 3) }, 3.1416f, -1.5708f, -3.1416f));  // leftChest
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 10, -2.5f), { Box(0, 15, -4, -3, -4.5f, 8, 6, 13) }));  // root/body
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:donkey"), 64, 64);
+					Baby.Scale = 1.0f;
+					Baby.Parts.Add(Part(ERole::Head, FVector(1, 13, 5), { Posed(Box(0, 0, -4, 5.6f, 1.4f, 6, 4, 9), FVector(0, 6, 2), 0.3927f, 0, 0), Posed(Box(22, 0, -4, 8, 3.3f, 2, 7, 1), FVector(-2, 8.5f, 4), 0.48f, 0, 0.48f), Posed(Box(0, 0, 0, 8, 3.3f, 2, 7, 1), FVector(2, 8.5f, 4), 0.48f, 0, -0.48f), Posed(Box(30, 9, -3, -2, -1, 4, 8, 4), FVector(0, 0, 0), 0.3927f, 0, 0) }));  // body/head_parts
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 10, 0), { Box(0, 13, -5, -3, -7, 8, 6, 14) }));  // body
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.4f, 6.5f, 5.4f), { Box(0, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_front_leg
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.4f, 6.5f, -5.4f), { Box(0, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_hind_leg
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 11.5f, -6.5f), { Box(24, 33, -2.5f, -2, -7.5f, 3, 3, 8) }, -0.7418f, 0, 0));  // body/tail/tail_r1
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3.25f, 6.5f, -5.25f), { Box(12, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_hind_leg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					FModel Baby = Young(TEXT("minecraft:mule"), 64, 64);
+					Baby.Scale = 1.0f;
+					Baby.Parts.Add(Part(ERole::Head, FVector(1, 13, 5), { Posed(Box(0, 0, -4, 5.6f, 1.4f, 6, 4, 9), FVector(0, 6, 2), 0.3927f, 0, 0), Posed(Box(22, 0, -4, 8, 3.3f, 2, 7, 1), FVector(-2, 8.5f, 4), 0.48f, 0, 0.48f), Posed(Box(0, 0, 0, 8, 3.3f, 2, 7, 1), FVector(2, 8.5f, 4), 0.48f, 0, -0.48f), Posed(Box(30, 9, -3, -2, -1, 4, 8, 4), FVector(0, 0, 0), 0.3927f, 0, 0) }));  // body/head_parts
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 10, 0), { Box(0, 13, -5, -3, -7, 8, 6, 14) }));  // body
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.4f, 6.5f, 5.4f), { Box(0, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_front_leg
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-1.4f, 6.5f, -5.4f), { Box(0, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/right_hind_leg
+					Baby.Parts.Add(Part(ERole::Static, FVector(1, 11.5f, -6.5f), { Box(24, 33, -2.5f, -2, -7.5f, 3, 3, 8) }, -0.7418f, 0, 0));  // body/tail/tail_r1
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3.25f, 6.5f, -5.25f), { Box(12, 44, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_hind_leg
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
+					Models.Add(Baby.Kind, Baby);
+				}
+			}
 			return Models;
 		}
 
@@ -557,14 +1351,83 @@ namespace McEntityModel
 			return FColor(Byte(Value), Byte(Value * Rest), Byte(Value * Rest), 255);
 		}
 
-		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, McPlayerModel::FMeshData& Out)
+		// A held picture: two faces back to back, the whole of the picture on each.
+		void AddFlat(const FBox& Box, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, float Hurt, float WholeScale, McPlayerModel::FMeshData& Out)
 		{
-			const FVector Min = Box.Min - FVector(Box.Inflate);
-			const FVector Max = Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate);
 			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			if (Box.bFlatTop)
+			{
+				// Corners of the picture (u right, v up) laid in the x-y plane with its diagonal along -y.
+				const FVector Centre(Box.Min.X + Box.Size.X * 0.5f, Box.Min.Y + Box.Size.Y * 0.5f, Box.Min.Z);
+				const FVector U(0.7071, -0.7071, 0.0);
+				const FVector V(-0.7071, -0.7071, 0.0);
+				const FVector2D Uv[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+				for (const bool bBack : { false, true })
+				{
+					const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(FVector(0.0, 0.0, bBack ? -1.0 : 1.0)));
+					const FColor Color = Shade(Normal, Hurt);
+					const int32 First = Out.Positions.Num();
+					for (const FVector2D& Corner : Uv)
+					{
+						const FVector Local = Centre + Box.Size.Y * ((Corner.X - 0.5) * U + (Corner.Y - 0.5) * V);
+						const FVector Model = ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local)) * WholeScale;
+						Out.Positions.Add(FVector(Model.X, Model.Z, Model.Y) * (McCoords::UnitsPerBlock / 16.0));
+						Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+						Out.UV0.Add(FVector2D(Corner.X, 1.0 - Corner.Y));
+						Out.Colors.Add(Color);
+					}
+					if (bBack)
+					{
+						Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+					}
+					else
+					{
+						Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+					}
+				}
+				return;
+			}
+			const float Y0 = Box.Min.Y;
+			const float Y1 = Box.Min.Y + Box.Size.Y;
+			const float Z0 = Box.Min.Z;
+			const float Z1 = Box.Min.Z + Box.Size.Z;
+			const FVector Corners[4] = { FVector(Box.Min.X, Y1, Z0), FVector(Box.Min.X, Y1, Z1), FVector(Box.Min.X, Y0, Z1), FVector(Box.Min.X, Y0, Z0) };
+			// Hanging down from a shoulder the top of the picture is towards -y; mirrored, it stands up with its top towards +y.
+			const FVector2D UVs[4] = { FVector2D(0, Box.bMirror ? 0 : 1), FVector2D(1, Box.bMirror ? 0 : 1), FVector2D(1, Box.bMirror ? 1 : 0), FVector2D(0, Box.bMirror ? 1 : 0) };
+			for (const bool bBack : { false, true })
+			{
+				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(FVector(bBack ? -1.0 : 1.0, 0.0, 0.0)));
+				const FColor Color = Shade(Normal, Hurt);
+				const int32 First = Out.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Model = ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Corners[Corner])) * WholeScale;
+					Out.Positions.Add(FVector(Model.X, Model.Z, Model.Y) * (McCoords::UnitsPerBlock / 16.0));
+					Out.Normals.Add(FVector(Normal.X, Normal.Z, Normal.Y));
+					Out.UV0.Add(UVs[Corner]);
+					Out.Colors.Add(Color);
+				}
+				if (bBack)
+				{
+					Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+				}
+				else
+				{
+					Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+				}
+			}
+		}
+
+		void AddBox(const FBox& Box, const FPart& Part, const FQuat& PartRotation, const FVector& Pivot, float BodyYaw, FIntPoint TextureSize, float Hurt, bool bGlow, float LocalScale, float WholeScale, McPlayerModel::FMeshData& Out)
+		{
+			const FVector Min = (Box.Min - FVector(Box.Inflate)) * LocalScale;
+			const FVector Max = (Box.Min + FVector(Box.Size.X, Box.Size.Y, Box.Size.Z) + FVector(Box.Inflate)) * LocalScale;
+			const FQuat ModelRotation(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const FVector BendPivot = Box.BoxPivot * LocalScale;
 			const auto Place = [&](const FVector& Local)
 			{
-				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Local * Part.Scale));
+				const FVector Bent = BendPivot + Box.BoxRotation.RotateVector(Local - BendPivot);
+				return ModelRotation.RotateVector(Pivot + PartRotation.RotateVector(Bent * Part.Scale)) * WholeScale;
 			};
 
 			struct FFace { EBoxFace Face; FVector Normal; FVector Corners[4]; };
@@ -591,7 +1454,7 @@ namespace McEntityModel
 					FVector2D(Left, Rect.Max.Y), FVector2D(Right, Rect.Max.Y),
 					FVector2D(Right, Rect.Min.Y), FVector2D(Left, Rect.Min.Y),
 				};
-				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Face.Normal));
+				const FVector Normal = ModelRotation.RotateVector(PartRotation.RotateVector(Box.BoxRotation.RotateVector(Face.Normal)));
 				const FVector UnrealNormal(Normal.X, Normal.Z, Normal.Y);
 				const FColor Color = bGlow ? FColor::White : Shade(Normal, Hurt);
 				const int32 First = Out.Positions.Num();
@@ -607,9 +1470,15 @@ namespace McEntityModel
 			}
 		}
 
-		float Swing(float WalkPos, float WalkAmount, float Phase)
+		// The swing of a limb at a walk position: a cosine, or for the golem a triangle wave (13 steps to a cycle) of the same reach.
+		float Swing(const FModel& Model, float WalkPos, float WalkAmount, float Phase, float Reach)
 		{
-			return FMath::Cos(WalkPos * 0.6662f + Phase) * 1.4f * WalkAmount;
+			if (Model.bTriangleWalk)
+			{
+				const float Cycle = FMath::Frac(WalkPos / 13.0f + 0.41f + Phase / (2.0f * PI));
+				return (4.0f * FMath::Abs(Cycle - 0.5f) - 1.0f) * Reach * WalkAmount;
+			}
+			return FMath::Cos(WalkPos * 0.6662f + Phase) * Reach * WalkAmount;
 		}
 	}
 
@@ -659,6 +1528,31 @@ namespace McEntityModel
 		}
 	}
 
+	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
+	{
+		const FString Folder = bZombie ? TEXT("zombie_villager/") : TEXT("villager/");
+		const FString Type = Variant.IsNone() ? FString(TEXT("plains")) : Variant.ToString();
+		const FString Job = Profession.IsNone() ? FString() : McCache::PathOf(Profession.ToString());
+		// A jobless villager has no clothes picture, and a nitwit has clothes but no badge.
+		const bool bClothes = !Job.IsEmpty() && Job != TEXT("none");
+		static const TCHAR* Badges[] = { TEXT("stone"), TEXT("iron"), TEXT("gold"), TEXT("emerald"), TEXT("diamond") };
+		TArray<FString> Textures;
+		Textures.Add(Folder + (bZombie ? TEXT("zombie_villager.png") : TEXT("villager.png")));
+		Textures.Add(Folder + TEXT("type/") + Type + TEXT(".png"));
+		Textures.Add(bClothes ? Folder + TEXT("profession/") + Job + TEXT(".png") : FString());
+		Textures.Add(bClothes && Job != TEXT("nitwit") ? Folder + TEXT("profession_level/") + Badges[FMath::Clamp(Level, 1, 5) - 1] + TEXT(".png") : FString());
+		return Textures;
+	}
+
+	FColor GetDyeColor(int32 Index)
+	{
+		static const FColor Colors[16] = {
+			FColor(249, 255, 254), FColor(249, 128, 29), FColor(199, 78, 189), FColor(58, 179, 218), FColor(254, 216, 61), FColor(128, 199, 31),
+			FColor(243, 139, 170), FColor(71, 79, 82), FColor(157, 157, 151), FColor(22, 156, 156), FColor(137, 50, 184), FColor(60, 68, 170),
+			FColor(131, 84, 50), FColor(94, 124, 22), FColor(176, 46, 38), FColor(29, 29, 33) };
+		return Colors[FMath::Clamp(Index, 0, 15)];
+	}
+
 	void BuildMesh(const FModel& Model, const FAnim& Anim, int32 Layer, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -668,10 +1562,12 @@ namespace McEntityModel
 		Out.Triangles.Reset();
 		for (const FPart& Part : Model.Parts)
 		{
-			if (Part.Layer != Layer)
+			if (Part.Layer != Layer || ((Part.ShowPoses >> FMath::Clamp(Anim.Pose, 0, 31)) & 1u) == 0)
 			{
 				continue;
 			}
+			// A young one is half the size, with its head only a third smaller than a grown one's, so the head is big for it.
+			const bool bHeadBig = Anim.bBaby && Part.Role == ERole::Head;
 			float Pitch = Part.RestPitch;
 			float Yaw = Part.RestYaw;
 			float Roll = Part.RestRoll;
@@ -680,7 +1576,12 @@ namespace McEntityModel
 			const bool bGlow = Part.bGlow || ((Model.GlowLayers >> Layer) & 1u) != 0 || Anim.bFlash;
 			const float Pos = Anim.WalkPos;
 			const float Amount = Anim.WalkAmount;
-			switch (Part.Role)
+			if (Model.bFlutter && Anim.Pose == 1 && Part.Role == ERole::Static)
+			{
+				// A charging vex's body stands upright (logged: 0 against its 0.1571 lean at rest).
+				Pitch = 0.0f;
+			}
+			switch (Model.bHops && Part.Hop >= 4 ? ERole::Static : Part.Role)
 			{
 			case ERole::Head:
 				Pitch += FMath::DegreesToRadians(Anim.HeadPitch);
@@ -689,25 +1590,83 @@ namespace McEntityModel
 			case ERole::LegFrontRight:
 			case ERole::LegBackLeft:
 			case ERole::LegRight:
-				Pitch += Swing(Pos, Amount, 0.0f);
+				Pitch += Swing(Model, Pos, Amount, 0.0f, (Part.Role == ERole::LegFrontRight && Model.FrontLegSwing >= 0.0f) ? Model.FrontLegSwing : Model.LegSwing);
 				break;
 			case ERole::LegFrontLeft:
 			case ERole::LegBackRight:
 			case ERole::LegLeft:
-				Pitch += Swing(Pos, Amount, PI);
+				Pitch += Swing(Model, Pos, Amount, PI, (Part.Role == ERole::LegFrontLeft && Model.FrontLegSwing >= 0.0f) ? Model.FrontLegSwing : Model.LegSwing);
 				break;
 			case ERole::ArmRight:
 			case ERole::ArmLeft:
 			{
 				const bool bRight = Part.Role == ERole::ArmRight;
+				if (Model.IllagerStyle != 0 && Anim.Pose != 0)
+				{
+					// Armed, the arms leave the folded pair: forward on a crossbow (one drawn back as it charges), up with an axe,
+					// up and out as a spell is cast.
+					const float Wave = FMath::Sin(Anim.Age * 9.0f);
+					if (Anim.Pose == 3)
+					{
+						// Both arms out and up to the sides, mirror images, swinging together (vanilla's 135 degrees of roll, its
+						// sign flipped in this model space).
+						Pitch += FMath::Cos(Anim.Age * 13.0f * 0.6662f) * 0.25f;
+						Roll += (bRight ? -2.3562f : 2.3562f);
+					}
+					else if (Model.IllagerStyle == 1)
+					{
+						// Both straight forward at the target, the right a little inward and the left more, as the crossbow is held.
+						Pitch += (bRight ? -1.5708f : (Anim.Pose == 2 ? -0.9f : -1.5708f));
+						Yaw += (bRight ? 0.3f : -0.6f);
+					}
+					else
+					{
+						Pitch += (bRight ? -2.3f : -1.0f) + Wave * 0.35f * Amount + Wave * 0.15f;
+					}
+					break;
+				}
+				if (Model.bBowAim && Anim.Pose == 1)
+				{
+					// Aiming (logged, 3 samples a skeleton): both arms straight out at -pi/2 with the hands turned 0.1 in, the pair swaying
+					// 0.05 opposite each other forward and back, and the roll easing between 0 and 0.1 (the same sway the zombie's arms have;
+					// the phase is not pinned by the samples, so each mob starts where its age puts it).
+					const float Side = bRight ? 1.0f : -1.0f;
+					Pitch += -HALF_PI + Side * FMath::Sin(Anim.Age * 1.34f) * 0.05f;
+					Yaw += Side * 0.1f;
+					Roll -= Side * (0.05f + FMath::Cos(Anim.Age * 1.8f) * 0.05f);
+					break;
+				}
+				if (Anim.bOffering && bRight)
+				{
+					// Held out in front, a little up.
+					Pitch += -HALF_PI * 0.9f + FMath::Sin(Anim.Age * 2.0f) * 0.05f;
+					break;
+				}
+				if (Model.bFlutter)
+				{
+					// A vex's arms hang out to the sides at 0.6283, swaying 0.1 either way every 65 ticks (logged). Charging (pose 1), the
+					// sword arm goes up and over (3.6652 forward, 15 degrees in) and sways half as far about 0.4205, the other arm unchanged.
+					if (Anim.Pose == 1 && bRight)
+					{
+						Pitch += 3.6652f;
+						Yaw -= 0.2618f;
+						Roll += 0.4205f - 0.05f * FMath::Sin(Anim.Age * 1.92f + 0.4988f);
+						break;
+					}
+					Roll += (bRight ? -1.0f : 1.0f) * (0.6283f - 0.1f * FMath::Sin(Anim.Age * 1.92f + 0.4988f));
+					break;
+				}
 				if (Model.bArmsForward)
 				{
-					// Out in front, swaying a little as it walks.
-					Pitch += -HALF_PI + FMath::Cos(Pos * 0.6662f + (bRight ? PI : 0.0f)) * 0.2f * Amount + FMath::Sin(Anim.Age * 1.2f) * 0.04f;
+					// Out in front at 80 degrees, not swinging with the legs, only swaying a little (measured: 0.05 radians, the two arms
+					// in opposite phase, forward and back every 4.7 seconds and in and out every 3.5).
+					const float Side = bRight ? 1.0f : -1.0f;
+					Pitch += -1.396f - Side * FMath::Sin(Anim.Age * 1.34f) * 0.05f;
+					Roll -= Side * (0.05f + FMath::Sin(Anim.Age * 1.8f) * 0.05f);
 				}
 				else
 				{
-					Pitch += FMath::Cos(Pos * 0.6662f + (bRight ? PI : 0.0f)) * Amount;
+					Pitch += Swing(Model, Pos, Amount, bRight ? PI : 0.0f, Model.ArmSwing);
 				}
 				break;
 			}
@@ -717,7 +1676,24 @@ namespace McEntityModel
 				// Flat against the sides at rest (chicken_fall.txt and spawner_display.txt's log model: no roll at all), and
 				// beating when it runs.
 				const float Side = Part.Role == ERole::WingRight ? 1.0f : -1.0f;
-				Roll += Side * (Amount > 0.4f ? FMath::Abs(FMath::Sin(Anim.Age * 25.0f)) * 0.9f : 0.0f);
+				if (Model.bFlutter)
+				{
+					// A vex's wings, from the logged model: tipped 0.4712 and 0.4712 about the length, turning 1.1 (and 0.28 either side of that,
+					// 0.8 radians a tick) about the up axis.
+					Pitch += 0.4712f;
+					Yaw += Side * (1.1008f + 0.2808f * FMath::Sin(Anim.Age * 16.0f - 0.037f));
+					Roll -= Side * 0.4712f;
+					break;
+				}
+				if (Model.bBeatWings)
+				{
+					// A bee's wings beat all the time: 0.4712 either side of flat, 2.1 radians a tick (logged).
+					Roll -= Side * 0.4712f * FMath::Cos(Anim.Age * 42.0f);
+					break;
+				}
+				// A bird's wings, as logged: a little out at rest, and in the air (a chicken falling) swinging between 0.06 and 2.0
+				// about 1.02 at 1.8 radians a tick.
+				Roll -= Side * (Anim.bAirborne ? 1.0205f + 0.9606f * FMath::Sin(Anim.Age * 35.96f - 0.3076f) : Model.WingRest);
 				break;
 			}
 			case ERole::PaddleLeft:
@@ -820,8 +1796,13 @@ namespace McEntityModel
 			{
 				Pitch = RestPitch + FMath::Clamp(Pitch - RestPitch, -Model.MaxLimbSwing, Model.MaxLimbSwing);
 			}
-			// Turn, tip and lean, in the order the player's parts are turned.
-			const FQuat Rotation = FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::XAxisVector, Pitch);
+			// Lean (x) first, then turn (y), then tip (z): the order the logged spider legs and vex wings are drawn in (a spider's
+			// outer legs, 0.7854 turned and 0.7854 tipped, only come to rest on the ground that way round).
+			FQuat Rotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
+			if (Model.bHops && Part.Hop != 0 && Anim.HopPos >= 0.0f)
+			{
+				ApplyHop(Anim.HopPos, Part.Hop, Pivot, Rotation);
+			}
 			const FIntPoint Size = Model.LayerTextureSizes.IsValidIndex(Layer) && Model.LayerTextureSizes[Layer].X > 0 ? Model.LayerTextureSizes[Layer] : Model.TextureSize;
 			for (const FBox& Box : Part.Boxes)
 			{
@@ -839,14 +1820,36 @@ namespace McEntityModel
 					FBox Frame = Box;
 					Frame.UV.Y += ((Ticks / 3) % NumFrames) * 32;
 					const int32 FirstTriangle = Out.Triangles.Num();
-					AddBox(Frame, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
+					AddBox(Frame, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 					for (int32 Index = Out.Triangles.Num() - 3; Index >= FirstTriangle; Index -= 3)
 					{
 						Out.Triangles.Append({ Out.Triangles[Index], Out.Triangles[Index + 2], Out.Triangles[Index + 1] });
 					}
 					continue;
 				}
-				AddBox(Box, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, Out);
+				if (Box.bFlat)
+				{
+					AddFlat(Box, Rotation, Pivot, Anim.BodyYaw, Anim.Hurt, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
+					continue;
+				}
+				FBox Drawn = Box;
+				if (Box.bNoseWobble)
+				{
+					// Measured from the logged model: a smooth circle, 0.0785 radians about x and 0.0436 about z (its sign flipped here),
+					// a quarter of a cycle apart, 0.0898 radians a tick.
+					const float Angle = Anim.Age * 20.0f * 0.0898f; // Age is in seconds
+					Drawn.BoxRotation = FQuat(FVector::ZAxisVector, -0.0436f * FMath::Cos(Angle)) * FQuat(FVector::XAxisVector, 0.0785f * FMath::Sin(Angle));
+				}
+				AddBox(Drawn, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
+			}
+		}
+		if (((Model.TintedLayers >> Layer) & 1u) != 0)
+		{
+			for (FColor& Color : Out.Colors)
+			{
+				Color.R = static_cast<uint8>(Color.R * Anim.Tint.R / 255);
+				Color.G = static_cast<uint8>(Color.G * Anim.Tint.G / 255);
+				Color.B = static_cast<uint8>(Color.B * Anim.Tint.B / 255);
 			}
 		}
 	}
@@ -1193,6 +2196,23 @@ namespace
 		return Texture;
 	}
 
+	// The pictures laid over each other, kept like LoadCached's (a villager's look is the same for every villager that has it).
+	UTexture2DArray* LoadCompositeCached(const TArray<FString>& Paths, FIntPoint& OutSize)
+	{
+		const FString Key = FString::Join(Paths, TEXT("|")) + TEXT("#composite");
+		if (const TStrongObjectPtr<UTexture2DArray>* Found = TextureCache().Find(Key))
+		{
+			OutSize = SizeCache().FindRef(Key);
+			return Found->Get();
+		}
+		int32 Width = 0, Height = 0;
+		UTexture2DArray* Texture = McRenderTextures::LoadPngLayersAsArray(GetTransientPackage(), Paths, Width, Height);
+		TextureCache().Add(Key, TStrongObjectPtr<UTexture2DArray>(Texture));
+		SizeCache().Add(Key, FIntPoint(Width, Height));
+		OutSize = FIntPoint(Width, Height);
+		return Texture;
+	}
+
 	// The texture of an item: its own picture, or its block's side, top or front.
 	FString FindItemTexture(FName Item)
 	{
@@ -1232,6 +2252,11 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	Kind = InKind;
 	Item = InItem;
 	Count = InCount;
+	TextureOverrides.Reset();
+	LookKey = NAME_None;
+	VariantSeed = INT32_MIN;
+	WolfTextureState = 0;
+	bBabyLook = false;
 	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
 	PotSides = NAME_None;
@@ -1265,6 +2290,117 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bItemFailed = false;
 	bFlashing = false;
 	bDirty = true;
+}
+
+void UMcEntityModelComponent::SetBaby(bool bInBaby)
+{
+	if (bInBaby == bBabyLook)
+	{
+		return;
+	}
+	bBabyLook = bInBaby;
+	bDirty = true;
+	if (bIsItem || bIsArrow)
+	{
+		return;
+	}
+	const McEntityModel::FModel* Own = bInBaby ? McEntityModel::Find(FName(*(Kind.ToString() + TEXT("_baby")))) : nullptr;
+	const McEntityModel::FModel* Target = Own ? Own : McEntityModel::Find(Kind);
+	if (Target != Model)
+	{
+		Model = Target;
+		TextureOverrides.Reset();
+		Materials.Reset();
+		ClearAllMeshSections();
+		NumSections = 0;
+		if (Model && !Model->Variants.IsEmpty() && VariantSeed != INT32_MIN)
+		{
+			ApplyVariant();
+		}
+	}
+}
+
+void UMcEntityModelComponent::SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby)
+{
+	const bool bVillager = Kind == TEXT("minecraft:villager");
+	const bool bZombie = Kind == TEXT("minecraft:zombie_villager");
+	if (!bVillager && !bZombie)
+	{
+		return;
+	}
+	const FName Key(*FString::Printf(TEXT("%s|%s|%d"), *InVariant.ToString(), *InProfession.ToString(), InLevel));
+	if (Key == LookKey)
+	{
+		return;
+	}
+	LookKey = Key;
+	TextureOverrides = McEntityModel::GetVillagerTextures(bZombie, InVariant, InProfession, InLevel);
+	// The layers are made again from the new pictures.
+	Materials.Reset();
+	ClearAllMeshSections();
+	NumSections = 0;
+	bFlashing = false;
+}
+
+void UMcEntityModelComponent::SetVariantSeed(int32 InSeed)
+{
+	if (!Model || Model->Variants.IsEmpty() || InSeed == VariantSeed)
+	{
+		return;
+	}
+	VariantSeed = InSeed;
+	ApplyVariant();
+}
+
+void UMcEntityModelComponent::ApplyVariant()
+{
+	TextureOverrides = Model->Variants[FMath::Abs(VariantSeed) % Model->Variants.Num()];
+	if (Kind == TEXT("minecraft:wolf") && WolfTextureState != 0 && !TextureOverrides.IsEmpty())
+	{
+		// wolf_ashen.png -> wolf_ashen_tame.png, wolf_ashen_angry.png
+		FString& Base = TextureOverrides[0];
+		const bool bBabyPicture = Base.EndsWith(TEXT("_baby.png"));
+		Base = Base.LeftChop(bBabyPicture ? 9 : 4) + (WolfTextureState == 2 ? TEXT("_tame") : TEXT("_angry")) + (bBabyPicture ? TEXT("_baby.png") : TEXT(".png"));
+	}
+	Materials.Reset();
+	ClearAllMeshSections();
+	NumSections = 0;
+	bFlashing = false;
+}
+
+void UMcEntityModelComponent::SetHeldItem(FName InItem)
+{
+	if (InItem == HeldLook)
+	{
+		return;
+	}
+	HeldLook = InItem;
+	if (Model && Model->HeldLayer >= 0)
+	{
+		// The picture in the hand changed: the materials are made again, and the mesh with them.
+		Materials.Reset();
+		ClearAllMeshSections();
+		NumSections = 0;
+		bFlashing = false;
+	}
+}
+
+void UMcEntityModelComponent::SetPose(int32 InPose)
+{
+	PoseLook = InPose;
+	if (Kind == TEXT("minecraft:wolf"))
+	{
+		// Tame wins over angry (a tamed wolf is never drawn angry); the picture changes only when that does.
+		const int32 State = (InPose & 4) ? 2 : (InPose & 2) ? 1 : 0;
+		if (State != WolfTextureState)
+		{
+			WolfTextureState = State;
+			if (Model && !Model->Variants.IsEmpty() && VariantSeed != INT32_MIN)
+			{
+				ApplyVariant();
+			}
+		}
+	}
 }
 
 bool UMcEntityModelComponent::HasModel() const
@@ -1437,6 +2573,14 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 			return McCache::Asset(TEXT("textures/entity/decorated_pot/") + Side + TEXT("_pottery_pattern.png"));
 		}
 	}
+	if (Model && Layer == Model->HeldLayer)
+	{
+		return HeldLook.IsNone() ? FString() : FindItemTexture(HeldLook);
+	}
+	if (TextureOverrides.IsValidIndex(Layer))
+	{
+		return TextureOverrides[Layer].IsEmpty() ? FString() : McCache::Asset(TEXT("textures/entity/") + TextureOverrides[Layer]);
+	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{
 		return McCache::Asset(TEXT("textures/entity/") + Model->Textures[Layer]);
@@ -1462,7 +2606,20 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		return nullptr;
 	}
 	FIntPoint Size;
-	UTexture2DArray* Texture = LoadCached(Path, Size);
+	UTexture2DArray* Texture = nullptr;
+	if (Model && Model->bComposite)
+	{
+		TArray<FString> Paths;
+		for (int32 Index = 0; Index < FMath::Max(Model->Textures.Num(), TextureOverrides.Num()); ++Index)
+		{
+			Paths.Add(GetTexturePath(Index));
+		}
+		Texture = LoadCompositeCached(Paths, Size);
+	}
+	else
+	{
+		Texture = LoadCached(Path, Size);
+	}
 	if (!Texture)
 	{
 		return nullptr;
@@ -1542,7 +2699,18 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		// The distance was over every tick since last time: spread it.
 		LastPosition = Position;
-		Squish.Tick(bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f);
+		const float Dropped = bHasY ? static_cast<float>(Feet.Y - LastY) : 0.0f;
+		Squish.Tick(Dropped);
+		const int32 WasAir = AirTicks;
+		AirTicks = FMath::Abs(Dropped) > 0.03f ? 6 : FMath::Max(0, AirTicks - 1);
+		if (HopTicks >= 0 && ++HopTicks >= McEntityModel::HopSteps - 1)
+		{
+			HopTicks = -1;
+		}
+		if (HopTicks < 0 && WasAir == 0 && AirTicks > 0)
+		{
+			HopTicks = 0;
+		}
 		LastY = Feet.Y;
 		bHasY = true;
 		// A boat's paddles go round the stroke while they row (Count's bits), and start again from the top.
@@ -1559,8 +2727,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		Lid = FMath::Clamp(Lid + (bOpen ? 0.1f : -0.1f), 0.0f, 1.0f);
 		Walking +=(FMath::Min(static_cast<float>(Moved) * 4.0f, 1.0f) - Walking) * 0.4f;
 		Anim.WalkAmount = Walking;
+		Anim.bAirborne = AirTicks > 0;
 		Anim.WalkPos += Walking;
 	}
+	Anim.HopPos = HopTicks >= 0 ? HopTicks + FMath::Clamp(TickAccumulator / 0.05f, 0.0f, 1.0f) : -1.0f;
 	Anim.Hurt = FMath::Max(0.0f, Anim.Hurt - DeltaTime * 2.5f);
 	Anim.Lid = FMath::Lerp(PreviousLid, Lid, TickAccumulator / 0.05f);
 
@@ -1751,10 +2921,17 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		return;
 	}
-	const int32 NumLayers = Model->Textures.Num();
+	const int32 NumLayers = Model->bComposite ? 1 : Model->Textures.Num();
 	// Every other tenth of the fuse the creeper goes white.
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;
+	Anim.bBaby = bBabyLook && !Model->bBabyModel;
+	Anim.bOffering = bOfferingLook;
+	Anim.Pose = PoseLook & 31;
+	if (Model->TintedLayers != 0)
+	{
+		Anim.Tint = McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
+	}
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);

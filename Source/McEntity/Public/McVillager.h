@@ -1,0 +1,265 @@
+// Villagers (minecraft.wiki, "Villager"): a mob with a biome type, a profession taken from the job site block it
+// claims, a level from novice to master that its trades earn, and a baby form that grows up in 20 minutes. What
+// they do through the day is in McVillager.cpp's routine; what they sell is in McTrading (McGen).
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "McMob.h"
+#include "McTrading.h"
+
+namespace McVillager
+{
+	constexpr int32 MaxLevel = 5;
+	// Villagers this close count as one village, and a golem within the guard distance is already guarding it.
+	constexpr double GolemVillageRadius = 16.0;
+	constexpr double GolemGuardRadius = 32.0;
+	// How often (ticks) each villager thinks about calling for a golem.
+	constexpr int32 GolemCheckTicks = 600;
+	// A baby takes this long to grow up.
+	constexpr int32 BabyTicks = 24000;
+	// Food points a villager must have eaten to be willing to breed (a loaf of bread is 4, a carrot, potato or beetroot 1),
+	// the most it keeps, how far off a mate can be and the wait after a child.
+	constexpr int32 BreedFood = 12;
+	constexpr int32 MaxFood = 24;
+	constexpr double BreedRange = 5.0;
+	constexpr int32 BreedCooldownTicks = 6000;
+	// What a food item is worth to a villager, 0 for anything else.
+	MCENTITY_API int32 GetFoodValue(FName Item);
+	// How far a villager looks for a job site, and how far up and down.
+	constexpr int32 SearchRadius = 16;
+	constexpr int32 SearchHeight = 6;
+
+	// The look of a villager by the biome it was born in: "plains", "desert" and so on, without the namespace.
+	MCENTITY_API FName GetVariantOfBiome(FName Biome);
+	MCENTITY_API const TArray<FName>& GetVariants();
+	// What a villager runs from: zombies, illagers and vexes.
+	MCENTITY_API bool IsFeared(FName Kind);
+
+	// The profession a job site block gives ("minecraft:composter" gives "minecraft:farmer"); none for any other block.
+	MCENTITY_API FName GetProfessionOfJobSite(FName Block);
+	// The block a profession works at; none for nitwit and the jobless.
+	MCENTITY_API FName GetJobSite(FName Profession);
+	MCENTITY_API const TArray<FName>& GetProfessions();
+
+	// The levels run novice (1), apprentice, journeyman, expert and master (5); a villager reaches each at 0, 10, 70,
+	// 150 and 250 experience.
+	MCENTITY_API int32 GetXpForLevel(int32 Level);
+	MCENTITY_API int32 GetLevelOfXp(int32 Xp);
+	// "Novice", "Apprentice", "Journeyman", "Expert" or "Master".
+	MCENTITY_API FString GetLevelName(int32 Level);
+
+	// What a villager is doing by the hour (minecraft.wiki, "Villager#Daily routine"), the day starting at 0 with sunrise:
+	// work at the job site from 2000 to 9000, meet at the bell until 11000, free time to 12000 and sleep in a bed after.
+	// A sounding alarm sends every villager to the bell.
+	enum class EActivity : uint8
+	{
+		Idle,
+		Work,
+		Meet,
+		Rest,
+		Alarm,
+	};
+	constexpr int32 WorkStart = 2000;
+	constexpr int32 MeetStart = 9000;
+	constexpr int32 FreeStart = 11000;
+	constexpr int32 RestStart = 12000;
+	// How far a villager looks for a bell, wider than for a job site or bed.
+	constexpr int32 BellRadius = 48;
+	// How long a bell rung for an alarm keeps the villagers at it.
+	constexpr int32 AlarmTicks = 1200;
+	// What hitting a villager lowers its opinion of the player by.
+	constexpr int32 HitReputation = 25;
+	MCENTITY_API EActivity GetActivityAt(int32 TimeOfDay, bool bAlarm);
+
+	// Whether the block is a bed (either half) and whether it is a bell.
+	MCENTITY_API bool IsBed(FName Block);
+	MCENTITY_API bool IsBell(FName Block);
+
+	// The nearest block within Radius across and Height up and down for which Is (given its name and place) gives true; false if none.
+	MCENTITY_API bool FindNearestBlock(const FMcBlockWorld& World, const FIntVector& Origin, int32 Radius, int32 Height, TFunctionRef<bool(FName, const FIntVector&)> Is, FIntVector& Out);
+}
+
+namespace McZombieVillager
+{
+	// Curing takes between 3 and 5 minutes once a weakened zombie villager has eaten a golden apple.
+	constexpr int32 MinCureTicks = 3600;
+	constexpr int32 MaxCureTicks = 6000;
+	// What a cure raises the curing player's standing with the villager by (its price discount, and the villagers around hear).
+	constexpr int32 CureReputation = 20;
+}
+
+namespace McWanderingTrader
+{
+	// It leaves after this long (48000 ticks, two days).
+	constexpr int32 StayTicks = 48000;
+}
+
+class MCENTITY_API FMcVillager : public FMcMob
+{
+public:
+	explicit FMcVillager(const FMcMobType& InType);
+	static const FName& StaticType();
+
+	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
+
+	// A baby is half the size, takes no profession and can't trade. Growing up is BabyTicks from birth.
+	void SetBaby(bool bInBaby);
+	int32 GetFood() const { return FoodPoints; }
+	void SetFood(int32 Points) { FoodPoints = FMath::Clamp(Points, 0, McVillager::MaxFood); }
+	// Ready to have a child: grown, fed enough and not just had one.
+	bool IsWilling() const { return !bBaby && FoodPoints >= McVillager::BreedFood && BreedCooldown <= 0; }
+	bool IsBaby() const { return bBaby; }
+	int32 GetGrowthTicksLeft() const { return GrowthTicks; }
+	void SetGrowthTicksLeft(int32 Ticks) { GrowthTicks = Ticks; }
+
+	// The profession, "minecraft:none" for a jobless villager and "minecraft:nitwit" for one that will never work.
+	FName GetProfession() const { return Profession; }
+	void SetProfession(FName InProfession);
+	bool HasProfession() const { return Profession != NoProfession() && Profession != NitwitProfession(); }
+	FName GetVariant() const { return Variant; }
+	void SetVariant(FName InVariant) { Variant = InVariant; }
+	int32 GetLevel() const { return Level; }
+	int32 GetXp() const { return Xp; }
+	void SetLevelAndXp(int32 InLevel, int32 InXp) { Level = FMath::Clamp(InLevel, 1, McVillager::MaxLevel); Xp = FMath::Max(0, InXp); }
+
+	// What it sells: made from its profession's trade sets when first asked, a set more at each level reached. Empty for one
+	// that has no profession.
+	TArray<McTrading::FOffer>& GetOffers();
+	// A trade was made: the villager earns Xp, and on reaching a new level offers the trades of that level.
+	void AddTradeXp(int32 Amount);
+	// How the villager thinks of a player (by name): trades made, a cure and a hero's deeds raise it, a blow lowers it. Cheaper
+	// trades for the high, dearer for the low.
+	int32 GetReputation(const FString& Player) const;
+	void AddReputation(const FString& Player, int32 Amount);
+	// Its trades are fresh again (what it does at its job site twice a day).
+	void Restock();
+
+	// The job site claimed, if any; none for the jobless.
+	TOptional<FIntVector> GetJobSite() const { return bHasJobSite ? TOptional<FIntVector>(JobSite) : TOptional<FIntVector>(); }
+	void ClaimJobSite(const FIntVector& Pos) { bHasJobSite = true; JobSite = Pos; }
+	void ReleaseJobSite() { bHasJobSite = false; }
+
+	// What it is doing now (decided about once a second), the bed it has claimed and whether it is asleep in it.
+	McVillager::EActivity GetActivity() const { return Activity; }
+	TOptional<FIntVector> GetBed() const { return bHasBed ? TOptional<FIntVector>(Bed) : TOptional<FIntVector>(); }
+	void ClaimBed(const FIntVector& Pos) { bHasBed = true; Bed = Pos; }
+	void ReleaseBed() { bHasBed = false; bSleeping = false; }
+	bool IsSleeping() const { return bSleeping; }
+
+	static FName NoProfession(){ return FName(TEXT("minecraft:none")); }
+	static FName NitwitProfession() { return FName(TEXT("minecraft:nitwit")); }
+
+private:
+	// Once a second or so: a jobless adult looks for a job site nobody has claimed and takes its profession; one that
+	// has lost its job site (and never traded) goes jobless again.
+	void UpdateProfession(FMcEntityManager& Manager);
+	// Whether another villager has the block as its job site.
+	bool IsClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
+	// Whether another villager has the bed (either half of it) as its own.
+	bool IsBedClaimedByOther(FMcEntityManager& Manager, const FIntVector& Pos) const;
+	// Calls for a golem if at least that many villagers live near and none is guarding them.
+	void WantGolem(FMcEntityManager& Manager, int32 MinVillagers);
+	// Eats the bread and vegetables lying within a block and a half.
+	void PickUpFood(FMcEntityManager& Manager);
+	// With a willing mate near and a bed to spare, has a baby.
+	void TryBreed(FMcEntityManager& Manager);
+	// A baby runs after a villager near it, now and then.
+	void Play(FMcEntityManager& Manager);
+	// At night a villager shuts the open wooden doors within 3 blocks of it.
+	void CloseDoorsNearby(FMcEntityManager& Manager);
+	// Once a second: picks the activity for the hour and walks to where it is done, or stays put when there.
+	void UpdateRoutine(FMcEntityManager& Manager);
+	// Heads for Place (block coordinates), and stays put once within two blocks. True when there.
+	bool WalkTo(const FVector& Place);
+
+	FName Variant;
+	FName Profession;
+	int32 Level = 1;
+	int32 Xp = 0;
+	TArray<McTrading::FOffer> Offers;
+	TMap<FString, int32> Reputation;
+	int32 RestocksToday = 0;
+	int32 LastRestockAge = 0;
+	bool bBaby = false;
+	int32 GrowthTicks = 0;
+	int32 FoodPoints = 0;
+	int32 BreedCooldown = 0;
+	bool bHasJobSite = false;
+	FIntVector JobSite = FIntVector::ZeroValue;
+	McVillager::EActivity Activity = McVillager::EActivity::Idle;
+	bool bHasBed = false;
+	FIntVector Bed = FIntVector::ZeroValue;
+	bool bSleeping = false;
+	// The bell found for the meeting, looked for again when the activity changes.
+	bool bHasBell = false;
+	FIntVector Bell = FIntVector::ZeroValue;
+};
+
+// A villager a zombie got (minecraft.wiki, "Zombie Villager"): it keeps what the villager was (its look, trades and
+// what the players thought of it), to give back when it is cured. Curing needs it weakened (a splash potion of
+// weakness) and then fed a golden apple; it shakes for 3 to 5 minutes and is a villager again.
+class MCENTITY_API FMcZombieVillager : public FMcMob
+{
+public:
+	explicit FMcZombieVillager(const FMcMobType& InType);
+	static const FName& StaticType();
+
+	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
+
+	// Takes what the villager was.
+	void Become(FMcVillager& Villager);
+	// The saved villager, to make again on a cure; empty for a zombie villager that was never one.
+	const TArray<uint8>& GetVillagerData() const { return VillagerData; }
+
+	FName GetVariant() const { return Variant; }
+	void SetVariant(FName InVariant) { Variant = InVariant; }
+	FName GetProfession() const { return Profession; }
+	int32 GetLevel() const { return Level; }
+
+	bool IsWeakened() const { return bWeakened; }
+	void Weaken() { bWeakened = true; }
+	bool IsCuring() const { return CureTicks > 0; }
+	// Whether it has shaken for long enough.
+	bool IsCured() const { return bCuring && CureTicks <= 0; }
+	// A golden apple was eaten by a weakened one: the cure starts, for the player (by name) who fed it. False if it
+	// can't (not weakened, or already curing).
+	bool StartCure(const FString& InCurer, int32 Ticks);
+	const FString& GetCurer() const { return Curer; }
+	// One tick of the shaking (Tick does it too).
+	void AdvanceCure() { if (bCuring && CureTicks > 0) { --CureTicks; } }
+
+private:
+	FName Variant;
+	FName Profession;
+	int32 Level = 1;
+	TArray<uint8> VillagerData;
+	bool bWeakened = false;
+	bool bCuring = false;
+	int32 CureTicks = 0;
+	FString Curer;
+};
+
+// The wandering trader (minecraft.wiki, "Wandering Trader"): sells from three sets of trades (what it buys for
+// emeralds, and the common and uncommon things it sells), has no levels, no restock and no standing with players, and
+// leaves two days after it came.
+class MCENTITY_API FMcWanderingTrader : public FMcMob
+{
+public:
+	explicit FMcWanderingTrader(const FMcMobType& InType);
+	static const FName& StaticType();
+
+	virtual void Tick(FMcEntityManager& Manager) override;
+	virtual bool Serialize(FArchive& Ar) override;
+
+	// What it sells: made when first asked.
+	TArray<McTrading::FOffer>& GetOffers();
+	int32 GetStayTicksLeft() const { return StayTicks; }
+
+private:
+	TArray<McTrading::FOffer> Offers;
+	int32 StayTicks = McWanderingTrader::StayTicks;
+};
+

@@ -31,6 +31,7 @@
 #include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
+#include "McVillager.h"
 #include "McWorldActor.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
@@ -1472,6 +1473,18 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenBlockWindow(EMcWindowKind::Loom, Pos, TEXT("Loom"), nullptr, nullptr);
 		return true;
 	}
+	if (Name == TEXT("minecraft:bell"))
+	{
+		// Ringing the bell is the alarm: the villagers within reach come and gather at it for a minute.
+		WorldActor.MulticastSound(FName("block.bell.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, 1.0f);
+		if (FMcEntityHost* Host = WorldActor.GetEntityHost())
+		{
+			Host->GetManager().SoundAlarm(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5), McVillager::AlarmTicks);
+			// Any raider within 48 blocks shows through the walls for 3 seconds.
+			Host->RingBell(FVector(Pos.X + 0.5, Pos.Y, Pos.Z + 0.5));
+		}
+		return true;
+	}
 	if (IsAnvilName(Name))
 	{
 		// Each use has a 12% chance to wear it a step: chipped, damaged, then gone (minecraft.wiki, "Anvil").
@@ -1651,6 +1664,11 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	if (FVector::Dist(Eye, FVector(Window.Pos) + FVector(0.5)) > AMcPlayerPawn::ServerReach + 1.0)
 	{
 		return false;
+	}
+	// A trader's window is on whoever stands there, not on a block.
+	if (Window.Kind == EMcWindowKind::Trading)
+	{
+		return true;
 	}
 	const FName Name = GetBlockName(*Blocks, Window.Pos);
 	EMcFurnaceKind Kind;

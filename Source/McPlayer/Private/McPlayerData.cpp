@@ -9,7 +9,9 @@
 #include "McAnvilMenu.h"
 #include "McItemRegistry.h"
 #include "McPlayerMenu.h"
+#include "McTradeMenu.h"
 #include "McSurvival.h"
+#include "McEffects.h"
 #include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 #include "Serialization/MemoryReader.h"
@@ -234,6 +236,9 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		Made.Enchanting = &Menu.Get();
 		break;
 	}
+	case EMcWindowKind::Trading:
+		Made.Menu = MakeShared<FMcTradeMenu>(Inventory);
+		break;
 	case EMcWindowKind::Furnace:
 		if (Aux >= 0 && Aux <= static_cast<int32>(EMcFurnaceKind::Smoker))
 		{
@@ -623,6 +628,30 @@ void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bo
 	OpenServerWindow(MoveTemp(Made), Bookshelves);
 }
 
+void UMcPlayerDataComponent::OpenTrading(const FIntVector& Pos, const FString& Title, const TArray<McTrading::FOffer>& Offers, int32 Reputation, int32 Level, int32 Xp, bool bLevels, TFunction<void(int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)> OnTrade)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Trading, ++NextWindowId, 0);
+	FMcTradeMenu* Menu = static_cast<FMcTradeMenu*>(Made.Menu.Get());
+	const FMcStatusEffect* Hero = McEffects::Find(Stats, TEXT("hero_of_the_village"));
+	Menu->SetTrader(Offers, Reputation, Level, Xp, bLevels, bLevels && Hero ? Hero->Amplifier : -1);
+	// The menu lives as long as the window, and so does this.
+	Menu->OnTrade = [Menu, OnTrade = MoveTemp(OnTrade)](int32 Index, int32 TraderXp)
+	{
+		TArray<McTrading::FOffer> Current;
+		int32 NewLevel = 1;
+		int32 NewXp = 0;
+		OnTrade(Index, TraderXp, Current, NewLevel, NewXp);
+		Menu->UpdateTrader(Current, NewLevel, NewXp);
+	};
+	Made.Title = Title;
+	Made.Pos = Pos;
+	OpenServerWindow(MoveTemp(Made), 0);
+}
+
 void UMcPlayerDataComponent::ClickMenuButton(int32 Id)
 {
 	if (!HasWindow())
@@ -795,6 +824,12 @@ void UMcPlayerDataComponent::ServerTick()
 	{
 		return;
 	}
+	if (RaidBarFraction != SentRaidFraction || RaidBarTitle != SentRaidTitle)
+	{
+		SentRaidFraction = RaidBarFraction;
+		SentRaidTitle = RaidBarTitle;
+		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -906,6 +941,18 @@ void UMcPlayerDataComponent::ServerChat_Implementation(const FString& Text)
 	{
 		ServerOnChat(Text);
 	}
+}
+
+void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
+{
+	RaidBarFraction = Fraction;
+	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)
+{
+	RaidBarFraction = Fraction;
+	RaidBarTitle = Title;
 }
 
 void UMcPlayerDataComponent::ClientSetStats_Implementation(const TArray<uint8>& Bytes)

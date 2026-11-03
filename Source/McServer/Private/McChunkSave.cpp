@@ -125,6 +125,8 @@ TArray<uint8> McChunkSave::Encode(const FMcChunk& Chunk, const FMcChunkSaveExtra
 	Writer << BlockEntities;
 	TArray<uint8> Entities = Extras.Entities;
 	Writer << Entities;
+	TArray<uint8> Structures = Extras.Structures;
+	Writer << Structures;
 
 	const int32 RawSize = Raw.Num();
 	int32 CompressedSize = FCompression::CompressMemoryBound(NAME_Zlib, RawSize);
@@ -276,7 +278,12 @@ bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunk
 	uint8 bPopulated = 0;
 	TArray<uint8> BlockEntities;
 	TArray<uint8> Entities;
+	TArray<uint8> Structures;
 	Reader << bPopulated << BlockEntities << Entities;
+	if (!Reader.IsError() && !Reader.AtEnd())
+	{
+		Reader << Structures;
+	}
 	if (Reader.IsError())
 	{
 		return false;
@@ -293,5 +300,6 @@ bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunk
 	}
 	Extras.bPopulated = bPopulated != 0;
 	Extras.Entities = MoveTemp(Entities);
+	Extras.Structures = MoveTemp(Structures);
 	return true;
 }

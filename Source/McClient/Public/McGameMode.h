@@ -85,6 +85,14 @@ private:
 	void BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center);
 	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
 	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);
+	// Gives the player at the position a status effect (a witch's splash potion).
+	void EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration);
+	// Once a second: a player with Bad Omen in a village calls a raid on it (the omen turns into Raid Omen, 30 seconds
+	// before the first wave), and the players near a raid are shown its bar.
+	void TickVillages();
+	FTimerHandle VillageTimer;
+	// A raid on a village was won: the players round it become Heroes of the Village.
+	void HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level);
 	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
 	void SetUpWorld(AMcWorldActor& World);
 	// Every player with a pawn; called whenever the world saves.

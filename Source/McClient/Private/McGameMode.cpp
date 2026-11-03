@@ -162,6 +162,24 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				BlastPlayerNear(*Here, Position, Damage, Push, Center);
 			}
 		};
+		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				EffectPlayerNear(*Here, Position, Effect, Amplifier, Duration);
+			}
+		};
+		Host->OnRaidWon = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Center, int32 Level)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HonourHeroes(*Here, Center, Level);
+			}
+		};
+		if (!GetWorldTimerManager().IsTimerActive(VillageTimer))
+		{
+			GetWorldTimerManager().SetTimer(VillageTimer, this, &AMcGameMode::TickVillages, 1.0f, true);
+		}
 	}
 	if (FMcSimulation* Sim = World.GetSimulation())
 	{
@@ -800,6 +818,90 @@ void AMcGameMode::BlastPlayerNear(const AMcWorldActor& World, const FVector& Pos
 	if (Nearest)
 	{
 		Nearest->ServerBlast(Damage, Push, Center);
+	}
+}
+
+void AMcGameMode::TickVillages()
+{
+	for (AMcWorldActor* World : Worlds)
+	{
+		FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+		if (!Host)
+		{
+			continue;
+		}
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+			if (Player && Player->GetWorldActor() && Player->GetWorldActor() != World)
+			{
+				continue;
+			}
+			AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+			if (!Pawn || !Pawn->Data)
+			{
+				continue;
+			}
+			FMcPlayerStats& Stats = Pawn->Data->Stats;
+			const FVector Feet = Pawn->GetFeetPosition();
+			const FMcStatusEffect* Omen = McEffects::Find(Stats, TEXT("bad_omen"));
+			FVector Center;
+			if (Omen && Stats.Health > 0.0f && Host->FindVillage(Feet, Center))
+			{
+				const int32 Level = Omen->Amplifier + 1;
+				// The raid comes after the omen has run its 30 seconds.
+				if (Host->StartRaid(Center, Level, 600) != 0)
+				{
+					McEffects::Remove(Stats, TEXT("bad_omen"));
+					McEffects::Add(Stats, TEXT("raid_omen"), Level - 1, 600);
+				}
+			}
+			FString Title;
+			float Fraction = 0.0f;
+			if (Host->GetRaidBar(Feet, Title, Fraction))
+			{
+				Pawn->Data->SetRaidBar(Fraction, Title);
+			}
+			else
+			{
+				Pawn->Data->SetRaidBar(-1.0f, FString());
+			}
+		}
+	}
+}
+
+void AMcGameMode::HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (Pawn && Pawn->Data && FVector::Dist(Pawn->GetFeetPosition(), Center) <= FMcEntityHost::RaidBarRange)
+		{
+			// 40 minutes, a level for each level of omen past the first.
+			McEffects::Add(Pawn->Data->Stats, TEXT("hero_of_the_village"), FMath::Max(0, Level - 1), 48000);
+		}
+	}
+}
+
+void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (McPawn && McPawn->Data && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5)
+		{
+			McEffects::Add(McPawn->Data->Stats, Effect, Amplifier, Duration);
+		}
 	}
 }
 

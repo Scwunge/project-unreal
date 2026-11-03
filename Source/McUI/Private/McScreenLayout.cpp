@@ -148,6 +148,55 @@ McGui::FScreenLayout McGui::MakeStonecutterLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeTradingLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Trading;
+	Layout.Texture = TEXT("villager.png");
+	Layout.Size = FIntPoint(276, 166);
+	Layout.Slots.Add(FIntPoint(136, 37));
+	Layout.Slots.Add(FIntPoint(162, 37));
+	Layout.Slots.Add(FIntPoint(220, 37));
+	for (int32 Index = 0; Index < 27; ++Index)
+	{
+		Layout.Slots.Add(FIntPoint(108 + 18 * (Index % 9), 84 + 18 * (Index / 9)));
+	}
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		Layout.Slots.Add(FIntPoint(108 + 18 * Index, 142));
+	}
+	return Layout;
+}
+
+int32 McGui::Trading::FindRow(FIntPoint Local, int32 Scroll, int32 Count)
+{
+	const int32 X = Local.X - ListX;
+	const int32 Y = Local.Y - ListY;
+	if (X < 0 || Y < 0 || X >= RowWidth || Y >= Rows * RowHeight)
+	{
+		return -1;
+	}
+	const int32 Index = Scroll + Y / RowHeight;
+	return Index < Count ? Index : -1;
+}
+
+int32 McGui::Trading::MaxScroll(int32 Count)
+{
+	return FMath::Max(0, Count - Rows);
+}
+
+float McGui::Trading::GetBarFill(int32 Level, int32 Xp)
+{
+	if (Level >= 5)
+	{
+		return 1.0f;
+	}
+	static const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
+	const int32 From = LevelXp[FMath::Clamp(Level, 1, 5) - 1];
+	const int32 To = LevelXp[FMath::Clamp(Level, 1, 5)];
+	return FMath::Clamp(static_cast<float>(Xp - From) / static_cast<float>(To - From), 0.0f, 1.0f);
+}
+
 McGui::FScreenLayout McGui::MakeLoomLayout()
 {
 	FScreenLayout Layout;

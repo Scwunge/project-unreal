@@ -14,6 +14,10 @@
 #include "McPortal.h"
 #include "McRails.h"
 #include "McVehicle.h"
+#include "McVillager.h"
+#include "McCache.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -288,9 +292,23 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	const TWeakObjectPtr<AMcWorldActor> World = WorldActor;
 	Hooked.ServerSetBlock = [World](const FIntVector& Pos, FMcStateId State)
 	{
-		if (World.IsValid())
+		if (!World.IsValid())
 		{
-			World->SetBlock(Pos, State);
+			return;
+		}
+		World->SetBlock(Pos, State);
+		// A pumpkin on a T of iron blocks becomes a golem.
+		FMcEntityHost* Host = World->GetEntityHost();
+		TArray<FIntVector> Blocks;
+		FVector Feet;
+		if (Host && Host->MatchGolem(Pos, Blocks, Feet))
+		{
+			const TOptional<FMcStateId> Air = FMcBlockRegistry::Get().ParseState(TEXT("minecraft:air"));
+			for (const FIntVector& Cell : Blocks)
+			{
+				World->SetBlock(Cell, Air.Get(0));
+			}
+			Host->SpawnMob(TEXT("minecraft:iron_golem"), Feet);
 		}
 	};
 	Hooked.GetEntities = [World]() -> FMcEntityManager*
@@ -314,9 +332,169 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
 	};
-	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
 	{
-		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+		if (!World.IsValid())
+		{
+			return false;
+		}
+		// A villager that is hit thinks the less of whoever did it.
+		FMcMob* Target = World->FindMob(Eye, Look, static_cast<float>(Reach));
+		if (Target && Target->GetType() == FMcVillager::StaticType() && WeakAttacker.IsValid())
+		{
+			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
+		}
+		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+	};
+	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
+	{
+		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
+		if (!Mob)
+		{
+			return false;
+		}
+		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
+		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
+		const int32 Id = Mob->Id;
+		const FIntVector Where(FMath::FloorToInt(Mob->Body.Position.X), FMath::FloorToInt(Mob->Body.Position.Y), FMath::FloorToInt(Mob->Body.Position.Z));
+		if (Mob->GetType() == FName(TEXT("minecraft:wolf")))
+		{
+			// A bone tames a wild wolf one time in three; a tamed wolf takes a dye for its collar, and its owner's bare hand sits it or stands it.
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (!Mob->bTamed)
+			{
+				if (Held.Item != TEXT("minecraft:bone"))
+				{
+					return false;
+				}
+				UseOne();
+				if (FMath::RandRange(0, 2) == 0)
+				{
+					Mob->bTamed = true;
+					Mob->bSitting = true;
+					Mob->OwnerName = Player;
+					Mob->AngerTicks = 0;
+					Mob->Health = 40.0f;
+				}
+				return true;
+			}
+			static const TCHAR* const Dyes[16] = { TEXT("white"), TEXT("orange"), TEXT("magenta"), TEXT("light_blue"), TEXT("yellow"), TEXT("lime"), TEXT("pink"), TEXT("gray"),
+				TEXT("light_gray"), TEXT("cyan"), TEXT("purple"), TEXT("blue"), TEXT("brown"), TEXT("green"), TEXT("red"), TEXT("black") };
+			for (int32 Color = 0; Color < 16; ++Color)
+			{
+				if (Held.Item == FName(*FString::Printf(TEXT("minecraft:%s_dye"), Dyes[Color])))
+				{
+					if (Mob->OwnerName != Player || Mob->CollarColor == Color)
+					{
+						return false;
+					}
+					Mob->CollarColor = Color;
+					UseOne();
+					return true;
+				}
+			}
+			if (Mob->OwnerName != Player)
+			{
+				return false;
+			}
+			Mob->bSitting = !Mob->bSitting;
+			return true;
+		}
+		if (Mob->GetType() == FMcZombieVillager::StaticType())
+		{
+			// A splash potion of weakness, then a golden apple, cure it; the player's hand gives up one of each.
+			FMcZombieVillager& Zombie = static_cast<FMcZombieVillager&>(*Mob);
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (Held.Item == TEXT("minecraft:splash_potion") && !Zombie.IsWeakened())
+			{
+				const TSharedPtr<FJsonValue> Contents = Held.Get(TEXT("minecraft:potion_contents"));
+				FString Potion;
+				if (Contents.IsValid() && Contents->Type == EJson::Object && Contents->AsObject()->TryGetStringField(TEXT("potion"), Potion) && Potion.Contains(TEXT("weakness")))
+				{
+					Zombie.Weaken();
+					UseOne();
+					return true;
+				}
+			}
+			if (Held.Item == TEXT("minecraft:golden_apple") && Zombie.IsWeakened() && !Zombie.IsCuring()
+				&& Zombie.StartCure(Player, FMath::RandRange(McZombieVillager::MinCureTicks, McZombieVillager::MaxCureTicks)))
+			{
+				UseOne();
+				return true;
+			}
+			return false;
+		}
+		if (Mob->GetType() == FMcWanderingTrader::StaticType())
+		{
+			FMcWanderingTrader& Trader = static_cast<FMcWanderingTrader&>(*Mob);
+			User.Data->OpenTrading(Where, TEXT("Wandering Trader"), Trader.GetOffers(), 0, 1, 0, false,
+				[WeakWorld, Id](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+				{
+					FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+					FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+					if (!Found || Found->GetType() != FMcWanderingTrader::StaticType())
+					{
+						return;
+					}
+					FMcWanderingTrader& Seller = static_cast<FMcWanderingTrader&>(*Found);
+					if (Seller.GetOffers().IsValidIndex(Index))
+					{
+						++Seller.GetOffers()[Index].Uses;
+					}
+					OutOffers = Seller.GetOffers();
+				});
+			return true;
+		}
+		if (Mob->GetType() != FMcVillager::StaticType())
+		{
+			return false;
+		}
+		FMcVillager& Villager = static_cast<FMcVillager&>(*Mob);
+		if (Villager.IsBaby() || !Villager.HasProfession() || Villager.IsSleeping())
+		{
+			return false;
+		}
+		FString Profession = McCache::PathOf(Villager.GetProfession().ToString());
+		Profession = FText::FromString(Profession.Left(1)).ToUpper().ToString() + Profession.Mid(1);
+		User.Data->OpenTrading(Where, Profession + TEXT(" - ") + McVillager::GetLevelName(Villager.GetLevel()), Villager.GetOffers(), Villager.GetReputation(Player), Villager.GetLevel(), Villager.GetXp(), true,
+			[WeakWorld, Id, Player](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+			{
+				FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+				FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+				if (!Found || Found->GetType() != FMcVillager::StaticType())
+				{
+					return;
+				}
+				FMcVillager& Trader = static_cast<FMcVillager&>(*Found);
+				if (Trader.GetOffers().IsValidIndex(Index))
+				{
+					++Trader.GetOffers()[Index].Uses;
+				}
+				Trader.AddTradeXp(TraderXp);
+				Trader.AddReputation(Player, 1);
+				OutOffers = Trader.GetOffers();
+				OutLevel = Trader.GetLevel();
+				OutXp = Trader.GetXp();
+			});
+		return true;
 	};
 	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
 	{

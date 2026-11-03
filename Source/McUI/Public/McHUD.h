@@ -120,6 +120,8 @@ private:
 	float DebugDelta = 0.016f;
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
+	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
+	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
@@ -128,6 +130,7 @@ private:
 	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
 	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
 	void DrawLoom(FIntPoint Origin, FIntPoint Local);
+	void DrawTrading(FIntPoint Origin, FIntPoint Local);
 	void DrawAnvil(FIntPoint Origin);
 	// The sign editor: the board large in the middle with the four lines on it, the cursor on the line being written,
 	// and Done. Its keys are taken by PollSign; Done and Esc send the lines and close it.

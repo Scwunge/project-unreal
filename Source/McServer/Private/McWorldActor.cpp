@@ -18,6 +18,7 @@
 #include "McSpawners.h"
 #include "McPhysics.h"
 #include "McServer.h"
+#include "McStructureSpawns.h"
 #include "McWorldStorage.h"
 #include "McLaunch.h"
 #include "HAL/FileManager.h"
@@ -306,6 +307,10 @@ void AMcWorldActor::BeginPlay()
 		MulticastBellRung(Pos, static_cast<uint8>(Side));
 	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
+	if (!bSecondary)
+	{
+		FMcStructureSpawns::Get().SetRecording(true);
+	}
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
 	Entities->GetSpawners().OnCycle = [this](const FIntVector& Pos)
 	{
@@ -391,6 +396,8 @@ void AMcWorldActor::BeginPlay()
 		}
 		Simulation->HitTarget(Cell, FMath::Clamp(15 - FMath::FloorToInt32(Away * 2.0 * 15.0), 1, 15), 20);
 	};
+	// A villager shutting a door goes through the same path as any other change.
+	Entities->GetManager().OnSetBlock = [this](const FIntVector& Pos, FMcStateId State) { SetBlock(Pos, State); };
 	// Every sound the entities make goes to the players.
 	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
 	{
@@ -541,6 +548,11 @@ int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float 
 {
 	const FMcEntity* Found = Entities ? Entities->FindVehicle(Eye, Look, Reach) : nullptr;
 	return Found ? Found->Id : 0;
+}
+
+FMcMob* AMcWorldActor::FindMob(const FVector& Eye, const FVector& Look, float Reach)
+{
+	return Entities ? Entities->FindMob(Eye, Look, Reach) : nullptr;
 }
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
@@ -967,6 +979,8 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 		// Its animals were placed when it was first made; what's left of them is in the save.
 		Entities->MarkSeeded(Pos);
 	}
+	// What the structures here spawn comes back with the chunk.
+	FMcStructureSpawns::Get().DecodeChunk(Arrived.Extras.Structures);
 	BlockWorld->AddChunk(MoveTemp(Arrived.Chunk));
 	++(Arrived.bFromDisk ? NumChunksFromDisk : NumChunksGenerated);
 	if (Storage)
@@ -1006,6 +1020,7 @@ bool AMcWorldActor::SaveChunk(FIntPoint Pos)
 	{
 		Extras.Entities = Entities->CaptureChunk(Pos);
 	}
+	Extras.Structures = FMcStructureSpawns::Get().EncodeChunk(Pos);
 	// Block entities can be changed in place without the chunk's revision moving, so a chunk with any is always rewritten.
 	const bool bNeeded = !State.bOnDisk || State.bDirty || Chunk->GetRevision() != State.SavedRevision
 		|| !Chunk->GetBlockEntities().IsEmpty() || !Extras.Entities.IsEmpty() || State.bHadEntities;

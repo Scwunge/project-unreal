@@ -267,11 +267,11 @@ bool FMcPhysicsTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("sinks slowly"), Body.Position.Y, 2.446, 0.02);
 
 		// Space swims up.
-		FMcMoveInput SwimUp;
-		SwimUp.bJump = true;
+		FMcMoveInput SwimInput;
+		SwimInput.bJump = true;
 		Body = FMcBody();
 		Body.Position = FVector(13.5, 2.0, 13.5);
-		Run(Body, SwimUp, 10);
+		Run(Body, SwimInput, 10);
 		TestTrue(TEXT("Space swims up"), Body.Position.Y > 2.5);
 
 		// Sneak sinks faster than doing nothing.

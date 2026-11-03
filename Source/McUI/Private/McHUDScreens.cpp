@@ -40,6 +40,7 @@
 #include "McMenuInput.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
+#include "McTradeMenu.h"
 #include "McScreenLayout.h"
 #include "McTotem.h"
 #include "McUI.h"
@@ -60,6 +61,8 @@ struct AMcHUD::FScreenState
 	int32 RecipeScroll = 0;
 	// The loom's menu (Input holds it), its patterns scrolled the same way.
 	FMcLoomMenu* Loom = nullptr;
+	// The trading menu; its offers are scrolled by RecipeScroll too.
+	FMcTradeMenu* Trading = nullptr;
 	// The anvil's menu, the name typed, and the item the name was set for.
 	FMcAnvilMenu* Anvil = nullptr;
 	FString AnvilName;
@@ -308,6 +311,26 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 }
 
+void AMcHUD::DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data)
+{
+	if (Data->RaidBarFraction < 0.0f)
+	{
+		return;
+	}
+	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
+	DrawGuiText(Data->RaidBarTitle, (static_cast<float>(Width) - TextWidth(Data->RaidBarTitle)) * 0.5f, 3.0f, 0xFFFFFF, true);
+	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_background.png")), X, 12.0f, 182, 5);
+	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_background.png")), X, 12.0f, 182, 5);
+	const float Filled = FMath::Clamp(Data->RaidBarFraction, 0.0f, 1.0f);
+	if (Filled > 0.0f)
+	{
+		// The progress pictures are 182 wide; only the filled part of them is shown.
+		const float Part = 182.0f * Filled;
+		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+	}
+}
+
 void AMcHUD::DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 {
 	const float ScreenWidth = static_cast<float>(Width);
@@ -404,6 +427,10 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Stonecutter:
 		State->Layout = McGui::MakeStonecutterLayout();
 		State->Stonecutter = static_cast<FMcStonecutterMenu*>(Window.Menu.Get());
+		break;
+	case EMcWindowKind::Trading:
+		State->Layout = McGui::MakeTradingLayout();
+		State->Trading = static_cast<FMcTradeMenu*>(Window.Menu.Get());
 		break;
 	case EMcWindowKind::Loom:
 		State->Layout = McGui::MakeLoomLayout();
@@ -577,6 +604,16 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 				}
 			}
 		}
+		// -McTrade right-clicks the villager that -McSpawnMobs=villager,1 put two blocks south of the player, six seconds in.
+		static bool bDevTradeDone = false;
+		if (!bDevTradeDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McTrade")))
+		{
+			bDevTradeDone = true;
+			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+			{
+				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
+			}
+		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
 		static bool bDevInventoryDone = false;
 		FString DevSearch;
@@ -703,6 +740,26 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		if (Recipe >= 0 && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 		{
 			Data->ClickMenuButton(Recipe);
+			bTaken = true;
+		}
+	}
+	if (Screen->Trading && bInside)
+	{
+		namespace Shop = McGui::Trading;
+		const int32 Count = Screen->Trading->GetOffers().Num();
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollDown))
+		{
+			Screen->RecipeScroll = FMath::Min(Screen->RecipeScroll + 1, Shop::MaxScroll(Count));
+		}
+		if (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp))
+		{
+			Screen->RecipeScroll = FMath::Max(Screen->RecipeScroll - 1, 0);
+		}
+		Screen->RecipeScroll = FMath::Clamp(Screen->RecipeScroll, 0, Shop::MaxScroll(Count));
+		const int32 Offer = Shop::FindRow(Local, Screen->RecipeScroll, Count);
+		if (Offer >= 0 && Player->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			Data->ClickMenuButton(Offer);
 			bTaken = true;
 		}
 	}
@@ -1048,6 +1105,66 @@ void AMcHUD::DrawStonecutter(FIntPoint Origin, FIntPoint Local)
 	}
 }
 
+void AMcHUD::DrawTrading(FIntPoint Origin, FIntPoint Local)
+{
+	namespace Shop = McGui::Trading;
+	const FMcTradeMenu& Menu = *Screen->Trading;
+	const TArray<McTrading::FOffer>& Offers = Menu.GetOffers();
+	const FString Villager = FString(SpriteRoot) + TEXT("container/villager/");
+	const FString Widget = FString(SpriteRoot) + TEXT("widget/");
+	const int32 MaxScroll = Shop::MaxScroll(Offers.Num());
+
+	if (Menu.HasLevels())
+	{
+		const float Fill = Shop::GetBarFill(Menu.GetLevel(), Menu.GetXp());
+		DrawSprite(LoadSprite(Villager + TEXT("experience_bar_background.png")), Origin.X + Shop::BarX, Origin.Y + Shop::BarY, Shop::BarWidth, 5);
+		const float Filled = FMath::FloorToFloat(Shop::BarWidth * Fill);
+		if (Filled > 0.0f)
+		{
+			DrawRegion(LoadSprite(Villager + TEXT("experience_bar_current.png")), Origin.X + Shop::BarX, Origin.Y + Shop::BarY, Filled, 5, 0, 0, Filled, 5);
+		}
+	}
+	const float Thumb = MaxScroll > 0 ? FMath::FloorToFloat((Shop::ScrollHeight - 27) * Screen->RecipeScroll / static_cast<float>(MaxScroll)) : 0.0f;
+	DrawSprite(LoadSprite(Villager + (MaxScroll > 0 ? TEXT("scroller.png") : TEXT("scroller_disabled.png"))), Origin.X + Shop::ScrollX, Origin.Y + Shop::ScrollY + Thumb, 6, 27);
+
+	const int32 Hovered = Shop::FindRow(Local, Screen->RecipeScroll, Offers.Num());
+	for (int32 Row = 0; Row < Shop::Rows; ++Row)
+	{
+		const int32 Index = Screen->RecipeScroll + Row;
+		if (Index >= Offers.Num())
+		{
+			break;
+		}
+		const McTrading::FOffer& Offer = Offers[Index];
+		const float X = Origin.X + Shop::ListX;
+		const float Y = Origin.Y + Shop::ListY + Row * Shop::RowHeight;
+		// The row is a button 88 wide: the left half of the 200 wide picture and the right half.
+		UTexture2D* Button = LoadSprite(Widget + (Index == Menu.GetSelected() ? TEXT("button_disabled.png") : Index == Hovered ? TEXT("button_highlighted.png") : TEXT("button.png")));
+		DrawRegion(Button, X, Y, 44, 20, 0, 0, 44, 20);
+		DrawRegion(Button, X + 44, Y, 44, 20, 156, 0, 44, 20);
+		const int32 Cost = Menu.GetCost(Index);
+		FMcItemStack Pay = Offer.Wants;
+		Pay.Count = Cost;
+		DrawStack(Pay, X + 4, Y + 2);
+		if (Cost != Offer.Wants.Count)
+		{
+			// What it was, struck through, small above the price.
+			DrawGuiText(FString::FromInt(Offer.Wants.Count), X + 4, Y + 1, 0xA0A0A0, false);
+			DrawSprite(LoadSprite(Villager + TEXT("discount_strikethrough.png")), X + 4, Y + 5, 9, 2);
+		}
+		if (!Offer.Extra.IsEmpty())
+		{
+			DrawStack(Offer.Extra, X + 24, Y + 2);
+		}
+		DrawSprite(LoadSprite(Villager + (Offer.IsOutOfStock() ? TEXT("trade_arrow_out_of_stock.png") : TEXT("trade_arrow.png"))), X + 47, Y + 6, 10, 9);
+		DrawStack(Offer.Gives, X + 66, Y + 2);
+	}
+	if (Offers.IsValidIndex(Menu.GetSelected()) && Offers[Menu.GetSelected()].IsOutOfStock())
+	{
+		DrawSprite(LoadSprite(Villager + TEXT("out_of_stock.png")), Origin.X + 182, Origin.Y + 35, 28, 21);
+	}
+}
+
 void AMcHUD::DrawLoom(FIntPoint Origin, FIntPoint Local)
 {
 	namespace Layout = McGui::Loom;
@@ -1178,6 +1295,14 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		if (Screen->Stonecutter)
 		{
 			DrawStonecutter(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
+		}
+		break;
+	case McGui::EScreen::Trading:
+		DrawGuiText(Screen->Title, Origin.X + 100.0f + (176.0f - TextWidth(Screen->Title)) / 2.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 108.0f, Origin.Y + 72.0f, 0x404040, false);
+		if (Screen->Trading)
+		{
+			DrawTrading(Origin, FIntPoint(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y)) - Origin);
 		}
 		break;
 	case McGui::EScreen::Loom:
@@ -1483,6 +1608,7 @@ void AMcHUD::DrawHUD()
 			DrawStack(Data->Offhand->Get(0), static_cast<float>(Layout.Hotbar.X - 26), static_cast<float>(Layout.Hotbar.Y + 3));
 		}
 		DrawEffects(Width, Height, Data);
+		DrawRaidBar(Width, Data);
 		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
 		if (!Data->bCreative)
 		{

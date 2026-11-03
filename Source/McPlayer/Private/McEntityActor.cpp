@@ -11,6 +11,8 @@
 #include "McTnt.h"
 #include "McPot.h"
 #include "McVehicle.h"
+#include "McPotion.h"
+#include "McVillager.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
 #include "McEntityModel.h"
@@ -59,17 +61,33 @@ void AMcEntityActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AMcEntityActor, HurtCount);
 	DOREPLIFETIME(AMcEntityActor, Swelling);
 	DOREPLIFETIME(AMcEntityActor, Wake);
+	DOREPLIFETIME(AMcEntityActor, Variant);
+	DOREPLIFETIME(AMcEntityActor, Profession);
+	DOREPLIFETIME(AMcEntityActor, VillagerLevel);
+	DOREPLIFETIME(AMcEntityActor, bBaby);
+	DOREPLIFETIME(AMcEntityActor, bOffering);
+	DOREPLIFETIME(AMcEntityActor, HeldItem);
+	DOREPLIFETIME(AMcEntityActor, ArmPose);
+	DOREPLIFETIME(AMcEntityActor, LookSeed);
 }
 
 void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 {
+	LookSeed = Entity.IsLiving() && static_cast<const FMcMob&>(Entity).LookSeed >= 0 ? static_cast<const FMcMob&>(Entity).LookSeed : 0;
 	SetActorLocation(McCoords::BlockToUnreal(Entity.Body.Position));
 	Kind = Entity.GetType();
 	Size = FVector2D(Entity.Body.Width, Entity.Body.Height);
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcItemEntity::StaticType())
+	if (Kind == FMcThrownPotion::StaticType())
+	{
+		// Drawn as the splash potion bottle in flight.
+		Kind = FMcItemEntity::StaticType();
+		ItemId = FName(TEXT("minecraft:splash_potion"));
+		ItemCount = 1;
+	}
+	else if (Kind == FMcItemEntity::StaticType())
 	{
 		const FMcItemEntity& Item = static_cast<const FMcItemEntity&>(Entity);
 		ItemId = Item.Stack.Item;
@@ -130,7 +148,29 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// The mob counts its hits; clients flash it whenever this changes.
 		const FMcMob& Mob = static_cast<const FMcMob&>(Entity);
 		HurtCount = Mob.HurtEvents;
+		bOffering = Mob.OfferTicks > 0;
+		HeldItem = Mob.HeldItem;
+		ArmPose = Mob.ArmPose;
+		if (Kind != FMcVillager::StaticType())
+		{
+			bBaby = Mob.IsYoung();
+		}
 		// The game's swell runs over the fuse less 2 ticks.
+		if (Kind == FMcVillager::StaticType())
+		{
+			const FMcVillager& Villager = static_cast<const FMcVillager&>(Entity);
+			Variant = Villager.GetVariant();
+			Profession = Villager.GetProfession();
+			VillagerLevel = Villager.GetLevel();
+			bBaby = Villager.IsBaby();
+		}
+		if (Kind == FMcZombieVillager::StaticType())
+		{
+			const FMcZombieVillager& Zombie = static_cast<const FMcZombieVillager&>(Entity);
+			Variant = Zombie.GetVariant();
+			Profession = Zombie.GetProfession();
+			VillagerLevel = Zombie.GetLevel();
+		}
 		Swelling = Mob.Type.bSwells ? FMath::Clamp(static_cast<float>(Mob.SwellTicks) / (FMcMob::FuseTicks - 2), 0.0f, 1.0f) : 0.0f;
 	}
 	ApplyLook();
@@ -153,6 +193,12 @@ void AMcEntityActor::Tick(float DeltaSeconds)
 			Model->SetFishingLine(GetRodTip());
 			TickBobberParticles(DeltaSeconds);
 		}
+		Model->SetVillagerLook(Variant, Profession, VillagerLevel, bBaby);
+		Model->SetVariantSeed(LookSeed);
+		Model->SetBaby(bBaby);
+		Model->SetOffering(bOffering);
+		Model->SetHeldItem(HeldItem);
+		Model->SetPose(ArmPose);
 		if (Stand)
 		{
 			// The model draws a kind with no model yet as a magenta box; it is said once a kind in the log, so it is found and not missed.

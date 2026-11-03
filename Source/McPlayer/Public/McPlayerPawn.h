@@ -97,6 +97,9 @@ public:
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
+	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the
+	// reach; true if something was done.
+	TFunction<bool(AMcPlayerPawn& Player, const FVector& Eye, const FVector& Look, double Reach)> OnUseMob;
 	// An item is used on a block (flint and steel makes fire, an eye of ender goes into a frame): Pos is the block clicked, Beside
 	// the empty block next to the face clicked. Returns true if something happened.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos, const FIntVector& Beside)> OnUseItemOn;
@@ -211,6 +214,9 @@ protected:
 	void ServerAttachBanner(FIntVector Pos);
 	UFUNCTION(Server, Reliable)
 	void ServerUseBlock(FIntVector Pos);
+	// The owner right-clicks a mob in front of them, looking along Look (Minecraft axes).
+	UFUNCTION(Server, Reliable)
+	void ServerUseMob(FVector Look);
 	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
 	UFUNCTION(Server, Reliable)
 	void ServerUseItemOn(FIntVector Pos, int32 Face);
@@ -268,6 +274,8 @@ public:
 	void RequestUseBlock(const FIntVector& Pos) { ServerUseBlock(Pos); }
 	// Uses the held item at nothing (the -McCast development flag casts a rod this way).
 	void RequestUseItem() { ServerUseItem(); }
+	// Right-clicks the mob in front, looking along Look in Minecraft axes (the -McTrade development flag).
+	void RequestUseMob(const FVector& Look) { ServerUseMob(Look); }
 
 protected:
 

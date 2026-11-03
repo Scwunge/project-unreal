@@ -116,6 +116,8 @@ public:
 	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
 	// The id of the nearest vehicle along the ray, or 0.
 	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
+	// The nearest living mob along the ray, or null.
+	class FMcMob* FindMob(const FVector& Eye, const FVector& Look, float Reach);
 
 	// Changes a block, loaded or not. A change to a chunk that isn't loaded is kept and put on it when it arrives. In
 	// a world without a save (no -McWorld) changes to loaded chunks are kept too, so they survive unloading; in a

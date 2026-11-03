@@ -69,6 +69,18 @@ namespace McEntityModel
 		FIntVector Size;
 		float Inflate = 0.0f;
 		bool bMirror = false;
+		// A flat picture rather than a box (a held item): it lies in the part's y-z plane at Min.X, Size.Y by Size.Z, the whole
+		// of its layer's picture on it with the top towards -y and the right towards +z. Drawn from both sides.
+		bool bFlat = false;
+		// With bFlat: lying in the part's x-y plane instead, centred on (Min.X + Size.X / 2, Min.Y + Size.Y / 2) at Min.Z and Size.Y
+		// across, turned 45 degrees so an item icon's barrel (its diagonal) points along -y: a crossbow held out flat.
+		bool bFlatTop = false;
+		// Turned about BoxPivot (in the part's own space) before the part's own pose is applied: a witch's hat bends in
+		// four pieces, each on the last.
+		FVector BoxPivot = FVector::ZeroVector;
+		FQuat BoxRotation = FQuat::Identity;
+		// A witch's nose turns in a slow circle about BoxPivot with the mob's age (see Build).
+		bool bNoseWobble = false;
 	};
 
 	struct FPart
@@ -87,6 +99,10 @@ namespace McEntityModel
 		float RestYaw = 0.0f;
 		float RestRoll = 0.0f;
 		TArray<FBox> Boxes;
+		// The poses (bit per FAnim::Pose) it is drawn in.
+		uint32 ShowPoses = 0xFFFFFFFFu;
+		// A rabbit's part in its hop: 1 body, 2 head, 3 tail, 4 front legs, 5 hind legs (0 none).
+		uint8 Hop = 0;
 	};
 
 	struct FModel
@@ -103,19 +119,50 @@ namespace McEntityModel
 		// A texture file for each layer, under textures/entity/.
 		TArray<FString> Textures;
 		TArray<FPart> Parts;
+		// The pictures are laid over each other into one (a villager's biome type, profession and level over its base) and the
+		// whole model is drawn from that, as layer 0.
+		bool bComposite = false;
+		// Looks the kind comes in (a horse's coat and markings, a wolf's breed): each the pictures for the layers. One is picked by
+		// the mob's look seed. Empty for a kind with one look.
+		TArray<TArray<FString>> Variants;
 		// Zombies hold their arms out in front.
 		bool bArmsForward = false;
+		// A bowman's arms: raised straight out at its target (pose 1) with a bow.
+		bool bBowAim = false;
 		// Layers (bit per layer) drawn see-through, so a slime's outer shell shows what is inside.
 		uint32 TranslucentLayers = 0;
 		// Layers drawn at full brightness (the eyes).
 		uint32 GlowLayers = 0;
 		// Most a leg or arm swings either way, radians; 0 for no limit (an enderman strides stiffly).
 		float MaxLimbSwing = 0.0f;
+		// How far the legs swing per point of walk amount, radians (measured from the game's own model at a steady walk), the front legs'
+		// own if they differ (negative for the same), and the arms'. The golem's swing is a triangle wave of 13 steps, not a cosine.
+		float LegSwing = 1.4f;
+		float FrontLegSwing = -1.0f;
+		float ArmSwing = 1.0f;
+		bool bTriangleWalk = false;
 		// The hitbox width the model is drawn for, blocks; the model grows with a hitbox that is wider (slimes). 0 for fixed.
 		float BaseWidth = 0.0f;
 		// The layer whose parts are not drawn but mark where water is left out (a boat's hull, under its gunwales), or
 		// INDEX_NONE. It is after the textures' layers.
 		int32 MaskLayer = INDEX_NONE;
+		// How an illager holds its arms when armed: 1 a crossbow, 2 an axe, 3 casting (0 for no such arms).
+		int32 IllagerStyle = 0;
+		// The wings beat all the time (a vex).
+		bool bFlutter = false;
+		// The whole model drawn at this size about the feet (the villagers and illagers are 15/16: their root sits 1.5 pixels low in the game).
+		float Scale = 1.0f;
+		// Wings that beat all the time (a bee's), and how far out a bird's rest when they are not beating (radians).
+		bool bBeatWings = false;
+		// The layer that draws the item in the right hand (the item's own picture, per mob), or -1 for a model that holds nothing.
+		int32 HeldLayer = -1;
+		// Hops (a rabbit): its parts follow the logged hop curve (Anim.HopPos) when it leaves the ground.
+		bool bHops = false;
+		float WingRest = 0.1203f;
+		// This is a young one's own model (not the grown one's halved).
+		bool bBabyModel = false;
+		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
+		uint32 TintedLayers = 0;
 	};
 
 	// The custom stencil value a hull's mask writes; the translucent materials (tools/make_materials.py) leave out the
@@ -149,7 +196,27 @@ namespace McEntityModel
 		float BookFlip[2] = { 0.0f, 0.0f };
 		// Drawn flat white, unshaded (a creeper's flash, with the white silhouette picture).
 		bool bFlash = false;
+		// Off the ground and moving up or down (a chicken beats its wings).
+		bool bAirborne = false;
+		// Ticks into a hop (with the fraction of the tick), or -1 when not hopping.
+		float HopPos = -1.0f;
+		// A young one: half the size about its feet, the head half as big again.
+		bool bBaby = false;
+		// A golem holding out its poppy: the right arm is raised.
+		bool bOffering = false;
+		// What the arms are doing: 0 idle (an illager's folded), 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
+		int32 Pose = 0;
+		FColor Tint = FColor::White;
 	};
+	constexpr float BabyScale = 0.5f;
+	constexpr float BabyHeadScale = 1.5f;
+
+	// The pictures a villager (or zombie villager) is drawn from, by layer: the base, the biome type's hat, the
+	// profession's clothes and the level's badge (the last only for a profession that has one). Under textures/entity/.
+	MCRENDER_API TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level);
+
+	// The colour of the dye with that index (0 white .. 15 black, in the game's order), for a collar.
+	MCRENDER_API FColor GetDyeColor(int32 Index);
 
 	// A block state's quads in the pose of Model.Block: Flash draws it white from a picture's opaque corner (UV 0.2, 0.6
 	// of whatever picture the material has). UV1 gets the texture array layer for each vertex.
@@ -232,6 +299,17 @@ public:
 	// Draws the model this many times its size (a head worn on a player's).
 	void SetModelScale(float InScale) { ModelScale = InScale; }
 	FName GetKind() const { return Kind; }
+	// A villager's biome type, profession and level choose the pictures its layers are cut from. Does nothing for
+	// other kinds.
+	void SetOffering(bool bInOffering) { bOfferingLook = bInOffering; }
+	// The item in the mob's right hand (None for nothing).
+	void SetHeldItem(FName InItem);
+	void SetPose(int32 InPose);
+	// A young one of a kind that has a model of its own (registered as "<kind>_baby") is drawn with that; the others are the grown one's halved.
+	void SetBaby(bool bInBaby);
+	void SetVillagerLook(FName InVariant, FName InProfession, int32 InLevel, bool bInBaby);
+	// Picks the look of a kind that comes in several (a horse's coat): the index into its Variants, McMobLook's.
+	void SetVariantSeed(int32 InSeed);
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -244,6 +322,8 @@ private:
 	void TickStandIn();
 	// The picture a layer is cut from.
 	FString GetTexturePath(int32 Layer) const;
+	// The pictures of a kind that comes in looks: the variant the seed picks, and for a wolf its tame or angry version.
+	void ApplyVariant();
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> Materials;
@@ -267,6 +347,10 @@ private:
 	FName Kind;
 	FName Item;
 	int32 Count = 0;
+	// The pictures that stand in for the model's own, for the layers they name (a villager's look).
+	TArray<FString> TextureOverrides;
+	FName LookKey;
+	int32 VariantSeed = INT32_MIN;
 	const McEntityModel::FModel* Model = nullptr;
 	// For an item: its picture's V extent, once it is loaded.
 	float ItemVMax = 1.0f;
@@ -298,6 +382,12 @@ private:
 	float HitboxHeight = 0.0f;
 	// The hitbox the magenta box was last made for.
 	FVector2D StandInSize = FVector2D::ZeroVector;
+	bool bBabyLook = false;
+	bool bOfferingLook = false;
+	FName HeldLook;
+	int32 PoseLook = 0;
+	// A wolf's look as the textures were last chosen: 0 wild, 1 angry, 2 tame.
+	int32 WolfTextureState = 0;
 	// The fuse as told, and as shown (it eases towards it).
 	float TargetSwelling = 0.0f;
 	float Swelling = 0.0f;
@@ -306,6 +396,8 @@ private:
 	McEntityModel::FSquish Squish;
 	double LastY = 0.0;
 	bool bHasY = false;
+	int32 AirTicks = 0;
+	int32 HopTicks = -1;
 
 	McEntityModel::FAnim Anim;
 	float TargetBodyYaw = 0.0f;

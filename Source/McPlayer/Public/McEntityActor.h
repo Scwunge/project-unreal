@@ -50,6 +50,27 @@ public:
 	// A fishing bobber: where the fish coming to it is, across the water (x and z, blocks), and y 1 while it floats.
 	UPROPERTY(Replicated)
 	FVector Wake = FVector::ZeroVector;
+	// A villager's look: the biome type ("plains"), the profession ("minecraft:farmer"), the level and whether it is a baby.
+	UPROPERTY(Replicated)
+	FName Variant;
+	UPROPERTY(Replicated)
+	FName Profession;
+	UPROPERTY(Replicated)
+	int32 VillagerLevel = 1;
+	UPROPERTY(Replicated)
+	bool bBaby = false;
+	// A golem holding out a poppy.
+	UPROPERTY(Replicated)
+	bool bOffering = false;
+	// The item in a mob's right hand.
+	UPROPERTY(Replicated)
+	FName HeldItem;
+	// What a raider's arms are doing (McMob ArmPose).
+	UPROPERTY(Replicated)
+	int32 ArmPose = 0;
+	// Which coat or breed the mob has, where its kind has several (McMobLook).
+	UPROPERTY(Replicated)
+	int32 LookSeed = 0;
 
 protected:
 	UFUNCTION()

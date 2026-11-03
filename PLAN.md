@@ -1287,3 +1287,6 @@ McMapStore (map id component, create, zoom cached per source, lock, JSON save/lo
 
 ### Maps: slot picture (2026-11-03)
 A filled map in a slot (hotbar, inventory) shows its own picture, redrawn when its pixels change (AMcHUD::GetMapIcon, FMcMapData::Revision); shot Saved/Shots/map1.png (`-McMapShot` gives the player a map after 40 ticks) shows it half filled. Still the plain sprite in the hand and in item frames (the hand wants the big two-handed map, frames the map on the frame); no decorations yet.
+
+### Lodestone and recovery compasses (2026-11-03)
+A compass used on a lodestone is tied to it (`minecraft:lodestone_tracker` with target pos and dimension; one of a stack); a compass with the tracker points at it, a recovery compass at the player's last death (new `FMcPlayerStats` fields, save version 3, set in ServerDie), each with its own spring needle (McItemFrames::ResolveStack), and both drift when the target is in another dimension (the drift is unmeasured, like the other spin). Slots draw the stack's own picture. Open: the held compass in the hand and in frames still uses Resolve(Item) (the spawn compass), a lodestone that is broken should untie the compass, and no ref run measured the lodestone/recovery needles.

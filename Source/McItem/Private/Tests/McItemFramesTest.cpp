@@ -39,6 +39,26 @@ bool FMcItemFramesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and at 12000 on 14"), FMath::RoundToInt32(McItemFrames::ClockValue(12000.0) * 64.0), 14);
 	TestEqual(TEXT("and just before 24000 on 50"), McItemFrames::FrameOf(McItemFrames::ClockValue(23900.0), 64), 50);
 	TestEqual(TEXT("other items"), McItemFrames::Resolve(TEXT("minecraft:stick")), FName(TEXT("minecraft:stick")));
+	// A compass tied to a lodestone points at it in its own dimension, a recovery compass at the death, and both drift elsewhere.
+	FMcItemStack Compass(TEXT("minecraft:compass"), 1);
+	TestEqual(TEXT("untied compass is the plain one"), McItemFrames::ResolveStack(Compass), McItemFrames::Resolve(TEXT("minecraft:compass")));
+	McItemFrames::SetLodestone(Compass, FIntVector(5, 64, -20), TEXT("minecraft:overworld"));
+	FIntVector Place;
+	FName Dimension;
+	TestTrue(TEXT("tied"), McItemFrames::GetLodestone(Compass, Place, Dimension));
+	TestEqual(TEXT("place"), Place, FIntVector(5, 64, -20));
+	Context.Position = FVector2D(5.5, 0.5);
+	Context.Yaw = 180.0;
+	Context.GameTicks = 200;
+	McItemFrames::SetContext(Context);
+	TestEqual(TEXT("lodestone ahead (north is yaw 180)"), McItemFrames::ResolveStack(Compass), FName(TEXT("minecraft:compass_16")));
+	FMcItemStack Recovery(TEXT("minecraft:recovery_compass"), 1);
+	Context.bHasDeath = true;
+	Context.DeathPosition = FVector2D(5.5, -19.5);
+	Context.DeathDimension = TEXT("minecraft:overworld");
+	Context.GameTicks = 201;
+	McItemFrames::SetContext(Context);
+	TestEqual(TEXT("death ahead"), McItemFrames::ResolveStack(Recovery), FName(TEXT("minecraft:recovery_compass_16")));
 	return true;
 }
 

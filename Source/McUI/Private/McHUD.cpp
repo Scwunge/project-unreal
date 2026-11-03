@@ -627,7 +627,7 @@ const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
 	}
 	if (!McItemDef::UsesPackModels(Stack))
 	{
-		return GetItemIcon(Stack.Item);
+		return GetItemIcon(McItemFrames::ResolveStack(Stack));
 	}
 	const TArray<McItemDef::FModelRef> Refs = McItemDef::Resolve(Stack, McItemDef::EContext::Gui);
 	FString Key;

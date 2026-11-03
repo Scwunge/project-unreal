@@ -192,6 +192,7 @@ public:
 	FVector2D PushDirection = FVector2D::ZeroVector;
 	// A TNT cart: ticks until it goes off, or -1 while it isn't lit.
 	int32 Fuse = -1;
+	double FallDistance = 0.0;
 	// A hopper cart on a powered activator rail picks nothing up.
 	bool bHopperLocked = false;
 	// Lit, it shows 79 that tick, counts down to 0, waits at 0 a tick and goes off the tick after (vehicle_log8.txt: lit

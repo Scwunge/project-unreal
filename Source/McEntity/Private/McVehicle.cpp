@@ -1176,6 +1176,9 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 {
 	TickRider();
 	++Age;
+	// The damage it has taken wears off a point a tick (vehicle_log17.txt: damage 4 leaves it, 4.1 breaks it, 4 then 0.5 four
+	// ticks apart breaks it, and six hits of 1 four ticks apart do not).
+	Wear = FMath::Max(0.0f, Wear - 1.0f);
 	FMcBlockWorld& World = Manager.GetWorld();
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{

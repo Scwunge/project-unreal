@@ -89,5 +89,27 @@ bool FMcBoatLogTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	// When a boat breaks (vehicle_log17.txt): damage wears off a point a tick, it goes past 40 (ten a point of damage).
+	{
+		const auto Hits = [&](std::initializer_list<float> Damages)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+			FMcEntityManager Manager(World);
+			FMcBoatEntity* Boat = new FMcBoatEntity(false);
+			Boat->Body.Position = FVector(5.5, 1.0, 5.5);
+			Manager.Add(TUniquePtr<FMcEntity>(Boat));
+			for (const float Damage : Damages)
+			{
+				Boat->OnAttacked(Damage, false);
+				for (int32 Tick = 0; Tick < 4 && !Boat->bRemoved; ++Tick) { Manager.Tick(); }
+			}
+			return Boat->bRemoved;
+		};
+		TestFalse(TEXT("damage 4 leaves it"), Hits({ 4.0f }));
+		TestTrue(TEXT("4.1 breaks it"), Hits({ 4.1f }));
+		TestTrue(TEXT("4 then 0.5 breaks it"), Hits({ 4.0f, 0.5f }));
+		TestFalse(TEXT("six hits of 1, four ticks apart, don't"), Hits({ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f }));
+	}
 	return true;
 }

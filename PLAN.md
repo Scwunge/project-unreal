@@ -644,6 +644,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   Resource Packs (three box-blur passes each way; an edge goes soft over about 12 pixels at 1280 x 720) and darkens it to
   0.748 of the plain view (vanilla shots `blur_plain`/`blur_options`). `DrawWorldMenuDim` draws a 0.252 black fill; `UpdateMenuBlur`
   spawns an unbound post volume with cinematic depth of field focused 30 cm out (UE 5.8 has no Gaussian DOF at SM5), so
-  everything beyond blurs and the HUD stays sharp. `-McMenuBlur=<f-stop>` tunes it, default 2.2: f/4 and up blur nothing, 2.9
-  blurs distant parts only, 2.2 removes the texture grain like vanilla. Not matched exactly: DOF blur grows with distance, so
-  nearby blocks are sharper than in the game, and the edge width was judged by eye, not measured; the 0.748 was not re-measured.
+  everything beyond blurs and the HUD stays sharp. `-McMenuBlur=<f-stop>` tunes it, default 0.8.
+  Measured against `ref_blur_options.png` (same scene): darkening 0.744-0.755 of the plain view (vanilla 0.748-0.752); residual texture
+  detail 0.001 (vanilla 0.0005-0.003; f/2.2 kept 0.007-0.015, so it was far too weak); edge 10-90% width 14 and 16 px (vanilla 14 and 18).
+  Residual: DOF blur grows with distance, so very near blocks stay a little sharper than in the game.

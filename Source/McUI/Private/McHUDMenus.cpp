@@ -1041,12 +1041,12 @@ void AMcHUD::UpdateMenuBlur(bool bOn)
 		// Depth of field with the focus right in front of the camera, so everything beyond is "out of focus" and the whole
 		// picture blurs; the HUD is drawn after it and stays sharp. The game blurs with three box passes each way (an edge
 		// goes from sharp to soft over about 12 pixels at 1280 x 720). With a 24.576 mm sensor and the 70 degree view the
-		// lens is about 17.5 mm; focused at 300 mm, an aperture of f/2.2 turns a distant point into a disc 0.5 mm across,
-		// 2% of the width. -McMenuBlur=<f-stop> tunes it (a smaller number blurs more).
+		// lens is about 17.5 mm; focused at 300 mm, an aperture of f/0.8 turns a distant point into a disc 1.4 mm across,
+		// 5.7% of the width. -McMenuBlur=<f-stop> tunes it (a smaller number blurs more).
 		APostProcessVolume* Volume = World->SpawnActor<APostProcessVolume>();
 		Volume->bUnbound = true;
 		Volume->Priority = 50.0f;
-		float FStop = 2.2f;
+		float FStop = 0.8f;
 		FParse::Value(FCommandLine::Get(), TEXT("-McMenuBlur="), FStop);
 		FPostProcessSettings& Blur = Volume->Settings;
 		Blur.bOverride_DepthOfFieldEnabled = true;

@@ -59,6 +59,8 @@ public:
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
+	// The frame a menu was last opened in (so one Esc press doesn't open it and close it again).
+	uint64 MenuOpenedFrame = 0;
 	// Why the last attempt to join a server failed, shown on the title screen the failure lands on. Kept across maps.
 	static void SetConnectError(const FString& Error);
 
@@ -225,6 +227,8 @@ private:
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
+	// The toasts at the top right, over everything.
+	void DrawToasts(int32 Width, int32 Height);
 	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
 	void DrawHeldName(int32 Width, int32 Height, const FMcItemStack& Held, bool bBars);
 	FName HeldNameItem;

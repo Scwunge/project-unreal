@@ -39,6 +39,42 @@ namespace
 		return FMcBlockShapes::Get().GetFluidLevel(State);
 	}
 
+	// A bubble column can fill a water source or replace another column block.
+	bool CanHoldColumn(FMcStateId State)
+	{
+		const FName Name = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+		return Name == TEXT("minecraft:bubble_column") || (Name == TEXT("minecraft:water") && FMcBlockShapes::Get().GetFluidLevel(State) == 0);
+	}
+
+	// What water above this block turns into: a column pushing up over soul sand, down over magma, the same
+	// way over another column; plain water over anything else.
+	FMcStateId ColumnStateAbove(const FMcBlockWorld& World, const FIntVector& Below)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId State = World.GetBlock(Below);
+		const FName Name = Registry.GetBlockOf(State).Name;
+		FName Drag;
+		if (Name == TEXT("minecraft:soul_sand"))
+		{
+			Drag = TEXT("false");
+		}
+		else if (Name == TEXT("minecraft:magma_block"))
+		{
+			Drag = TEXT("true");
+		}
+		else if (Name == TEXT("minecraft:bubble_column"))
+		{
+			Drag = Registry.GetPropertyValue(State, TEXT("drag"));
+		}
+		else
+		{
+			return StateOf(TEXT("minecraft:water"));
+		}
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("drag"), Drag);
+		return Registry.FindState(TEXT("minecraft:bubble_column"), Properties).Get(0);
+	}
+
 	bool IsGravityBlock(FMcStateId State)
 	{
 		const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
@@ -229,6 +265,21 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 		ScheduleTick(Pos, ConduitPeriod);
 		return;
 	}
+	{
+		// Soul sand and magma check for a column 20 ticks after they or the water over them changed; a column
+		// block rechecks what is under it after 5 (fitted to the bubble2 vanilla run).
+		const FName ColumnName = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+		if (ColumnName == TEXT("minecraft:soul_sand") || ColumnName == TEXT("minecraft:magma_block"))
+		{
+			ScheduleTick(Pos, BubbleBaseDelay);
+			return;
+		}
+		if (ColumnName == TEXT("minecraft:bubble_column"))
+		{
+			ScheduleTick(Pos, BubbleColumnDelay);
+			return;
+		}
+	}
 	switch (FluidOf(State))
 	{
 	case EMcFluid::Water:
@@ -327,7 +378,16 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	{
 		return;
 	}
-	if (McConduit::IsConduit(State))
+	const FName Block = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+	if (Block == TEXT("minecraft:soul_sand") || Block == TEXT("minecraft:magma_block"))
+	{
+		UpdateBubbleColumn(Pos + Up);
+	}
+	else if (Block == TEXT("minecraft:bubble_column"))
+	{
+		UpdateBubbleColumn(Pos);
+	}
+	else if (McConduit::IsConduit(State))
 	{
 		TickConduit(Pos);
 	}
@@ -360,6 +420,25 @@ void FMcSimulation::TickConduit(const FIntVector& Pos)
 	{
 		const int32 Frame = McConduit::CountFrame(World, Pos);
 		OnConduitPulse(Pos, McConduit::GetRange(Frame), Frame == McConduit::GetFramePlaces().Num());
+	}
+}
+
+void FMcSimulation::UpdateBubbleColumn(const FIntVector& Pos)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	if (!CanHoldColumn(State))
+	{
+		return;
+	}
+	const FMcStateId Column = ColumnStateAbove(World, Pos + Down);
+	if (Column == State && FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:water"))
+	{
+		return;
+	}
+	// The whole stretch of water sources (or columns) above turns the same way.
+	for (FIntVector At = Pos; CanHoldColumn(World.GetBlock(At)); At += Up)
+	{
+		World.SetBlock(At, Column);
 	}
 }
 

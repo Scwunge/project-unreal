@@ -9,6 +9,7 @@
 #include "McChunk.h"
 #include "McEntityModel.h"
 #include "McPlayerModel.h"
+#include "McItemFrames.h"
 #include "McPlayerPawn.h"
 #include "McPot.h"
 #include "McSectionMesher.h"
@@ -216,6 +217,8 @@ const AMcHUD::FIcon& AMcHUD::GetIcon(FMcStateId State)
 
 const AMcHUD::FIcon& AMcHUD::GetItemIcon(FName Item)
 {
+	// The compass and the clock show the picture of the moment.
+	Item = McItemFrames::Resolve(Item);
 	if (const FIcon* Found = ItemIcons.Find(Item))
 	{
 		return *Found;

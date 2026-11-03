@@ -260,6 +260,17 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 		for (TPair<FKey, FMachineEntry>& Pair : Machines)
 		{
 			Pair.Value.Machine->Tick();
+			if (Pair.Value.Kind == EMcBlockEntityKind::BrewingStand && StaticCastSharedPtr<FMcBrewingStand>(Pair.Value.Machine)->TakeFinished())
+			{
+				// The reference (sounds2 run): block.brewing_stand.brew, volume 1, pitch 1, at the block's centre, once.
+				if (AMcWorldActor* World = Pair.Value.World.Get())
+				{
+					if (FMcEntityHost* Host = World->GetEntityHost())
+					{
+						Host->GetManager().PlaySound(FName(TEXT("block.brewing_stand.brew")), FVector(Pair.Key.Pos) + FVector(0.5), 1.0f, 1.0f);
+					}
+				}
+			}
 		}
 		TickHoppers();
 		TickJukeboxes();
@@ -1549,6 +1560,28 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenEnchantingTable(Pos, Bookshelves);
 		return true;
 	}
+	if (Name == TEXT("minecraft:ender_chest"))
+	{
+		// Every ender chest shows the player's own 27 slots. The lid sounds are the reference's (echest run): volume
+		// 0.35, pitch 0.9 to 1. A block above is not checked here, as for the chest.
+		const auto LidSound = [Pos](AMcWorldActor& Actor, bool bOpen)
+		{
+			if (FMcEntityHost* Host = Actor.GetEntityHost())
+			{
+				Host->GetManager().PlaySound(FName(bOpen ? TEXT("block.ender_chest.open") : TEXT("block.ender_chest.close")), FVector(Pos) + FVector(0.5), 0.35f, FMath::FRandRange(0.9f, 1.0f));
+			}
+		};
+		LidSound(WorldActor, true);
+		Data->OpenBlockWindow(EMcWindowKind::Chest, Pos, TEXT("Ender Chest"), Data->EnderChest, nullptr,
+			[WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), LidSound]()
+			{
+				if (AMcWorldActor* Actor = WeakWorld.Get())
+				{
+					LidSound(*Actor, false);
+				}
+			});
+		return true;
+	}
 	if (const int32 Slots = GetContainerSlots(Name))
 	{
 		if (McShulker::IsBox(Name) && FMcShulkerLids::IsBlocked(*Blocks, Pos))
@@ -1682,7 +1715,7 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		{
 			return false;
 		}
-		return IsChestName(Name);
+		return IsChestName(Name) || Name == TEXT("minecraft:ender_chest");
 	case EMcWindowKind::Furnace:
 		return GetFurnaceKind(Name, Kind);
 	case EMcWindowKind::EnchantingTable:

@@ -20,6 +20,7 @@ namespace
 
 	// Aliases point at the command they stand for.
 	const FCommandInfo Commands[] = {
+		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
@@ -727,6 +728,41 @@ namespace
 		return { Ok(McLang::Format(Key, { FString::FromInt(Total), Who })) };
 	}
 
+	FReplies RunAdvancement(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /advancement (grant|revoke) <targets> only <advancement>
+		if (Words.Num() != 5 || (Words[1] != TEXT("grant") && Words[1] != TEXT("revoke")) || Words[3] != TEXT("only"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGrant = Words[1] == TEXT("grant");
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		int32 Changed = 0;
+		FString Title;
+		for (const FString& Player : Players)
+		{
+			FString Name;
+			const int32 Result = Target.SetAdvancement(Player, Words[4], bGrant, Name);
+			if (Result < 0)
+			{
+				return { Fail(McLang::Format(TEXT("advancement.advancementNotFound"), { Words[4] })) };
+			}
+			Changed += Result;
+			Title = Name;
+		}
+		const bool bSingle = Players.Num() == 1;
+		const FString Who = bSingle ? Players[0] : FString::FromInt(Players.Num());
+		const FString Key = FString::Printf(TEXT("commands.advancement.%s.one.to.%s.%s"), bGrant ? TEXT("grant") : TEXT("revoke"), bSingle ? TEXT("one") : TEXT("many"),
+			Changed > 0 ? TEXT("success") : TEXT("failure"));
+		const FString Text = McLang::Format(Key, { Title, Who });
+		return { Changed > 0 ? Ok(Text) : Fail(Text) };
+	}
+
 	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		// /effect give <targets> <effect> [<seconds>|infinite] [<amplifier>] [<hideParticles>], /effect clear [<targets>] [<effect>]
@@ -1245,6 +1281,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("clear"))
 	{
 		return RunClear(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("advancement"))
+	{
+		return RunAdvancement(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("effect"))
 	{

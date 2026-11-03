@@ -136,11 +136,16 @@ public:
 	TSharedPtr<FMcContainer> Inventory;
 	TSharedPtr<FMcContainer> Armor;
 	TSharedPtr<FMcContainer> Offhand;
+	// What every ender chest the player opens shows: 3 rows, kept with the player (and across deaths), not with a block.
+	static constexpr int32 EnderChestSize = 27;
+	TSharedPtr<FMcContainer> EnderChest;
 	int32 SelectedSlot = 0;
 	// Creative: unlimited blocks, instant breaking, flying, no damage. The server decides; the client is told.
 	bool bCreative = false;
 	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
 	TOptional<FIntVector> SpawnBed;
+	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
+	TSet<FName> Advancements;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
@@ -235,6 +240,23 @@ public:
 	static FOverlay& GetOverlay();
 	static void ShowOverlay(const FString& Text, bool bRainbow);
 	static constexpr double OverlaySeconds = 3.0;
+
+	// The small panels that slide in at the top right (an advancement made). A client list: each has the time it
+	// arrived and drops out of it once it has gone.
+	struct FToast
+	{
+		FString Heading;
+		uint32 HeadingRgb = 0xFFFF00;
+		FString Title;
+		FName Icon;
+		double Time = 0.0;  // FPlatformTime::Seconds when it arrived
+		bool bInSounded = false;
+		bool bOutSounded = false;
+	};
+	static TArray<FToast>& GetToasts();
+	static void ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon);
+	// Server: shows this player a toast.
+	void ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	// Server: shows this player the overlay message.
 	void ServerOverlay(const FString& Text, bool bRainbow);
 	// The owner typed a line (text or a command); it goes to the server.
@@ -276,6 +298,8 @@ protected:
 	void ClientChat(const FString& Text, int32 Rgb);
 	UFUNCTION(Client, Reliable)
 	void ClientOverlay(const FString& Text, bool bRainbow);
+	UFUNCTION(Client, Reliable)
+	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)
 	void ServerChat(const FString& Text);
 

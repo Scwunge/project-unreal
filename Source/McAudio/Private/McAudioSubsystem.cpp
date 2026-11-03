@@ -575,7 +575,8 @@ void UMcAudioSubsystem::TickImmersive(float DeltaTime, const FVector& Head)
 	bImmersive = true;
 
 	// Under water everything is dull, and the sea has its own sounds.
-	const bool bWet = GetBlockName(GetBlockAt(ToCell(Head))) == WaterName;
+	const FName HeadBlock = GetBlockName(GetBlockAt(ToCell(Head)));
+	const bool bWet = HeadBlock == WaterName || HeadBlock == TEXT("minecraft:bubble_column");
 	if (bWet != bUnderwater)
 	{
 		bUnderwater = bWet;

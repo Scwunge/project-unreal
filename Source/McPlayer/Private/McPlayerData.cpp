@@ -42,6 +42,7 @@ UMcPlayerDataComponent::UMcPlayerDataComponent()
 	: Inventory(MakeShared<FMcContainer>(InventorySize))
 	, Armor(MakeShared<FMcContainer>(NumArmorSlots))
 	, Offhand(MakeShared<FMcContainer>(1))
+	, EnderChest(MakeShared<FMcContainer>(EnderChestSize))
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
@@ -922,6 +923,40 @@ void UMcPlayerDataComponent::ServerOverlay(const FString& Text, bool bRainbow)
 	{
 		ShowOverlay(Text, bRainbow);
 	}
+}
+
+TArray<UMcPlayerDataComponent::FToast>& UMcPlayerDataComponent::GetToasts()
+{
+	static TArray<FToast> Toasts;
+	return Toasts;
+}
+
+void UMcPlayerDataComponent::ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon)
+{
+	UE_LOG(LogMcPlayerData, Display, TEXT("Toast: %s / %s"), *Heading, *Title);
+	FToast& Toast = GetToasts().AddDefaulted_GetRef();
+	Toast.Heading = Heading;
+	Toast.HeadingRgb = HeadingRgb;
+	Toast.Title = Title;
+	Toast.Icon = Icon;
+	Toast.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon)
+{
+	if (IsOwnerRemote())
+	{
+		ClientToast(Heading, HeadingRgb, Title, Icon);
+	}
+	else if (IsServer())
+	{
+		ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
+	}
+}
+
+void UMcPlayerDataComponent::ClientToast_Implementation(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon)
+{
+	ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
 }
 
 void UMcPlayerDataComponent::ClientOverlay_Implementation(const FString& Text, bool bRainbow)

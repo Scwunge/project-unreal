@@ -445,6 +445,7 @@ private:
 	bool bServerWasOnGround = true;
 	// Server: for the splash on entering water, the swimming sound's count of blocks, and putting a fire out.
 	bool bServerWasInWater = false;
+	bool bServerWasInBubble = false;
 	double ServerSwum = 0.0;
 	FVector ServerPreviousPosition = FVector::ZeroVector;
 	McSurvival::FFallTracker ServerFall;

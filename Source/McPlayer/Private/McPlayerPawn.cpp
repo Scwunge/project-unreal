@@ -942,7 +942,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	}
 	// A crafting table, chest or furnace opens, and a lever, button, door, trapdoor or gate moves, rather than takes a
 	// block, unless the player sneaks with something in hand. Iron doors and trapdoors don't move for a hand.
-	static const TSet<FName> Usable = { TEXT("minecraft:crafting_table"), TEXT("minecraft:chest"), TEXT("minecraft:trapped_chest"), TEXT("minecraft:barrel"),
+	static const TSet<FName> Usable = { TEXT("minecraft:crafting_table"), TEXT("minecraft:chest"), TEXT("minecraft:trapped_chest"), TEXT("minecraft:ender_chest"), TEXT("minecraft:barrel"),
 		TEXT("minecraft:furnace"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:smoker"), TEXT("minecraft:lever"), TEXT("minecraft:enchanting_table"),
 		TEXT("minecraft:stonecutter"), TEXT("minecraft:smithing_table"), TEXT("minecraft:grindstone"), TEXT("minecraft:anvil"), TEXT("minecraft:chipped_anvil"),
 		TEXT("minecraft:damaged_anvil"), TEXT("minecraft:brewing_stand"), TEXT("minecraft:hopper"), TEXT("minecraft:dispenser"), TEXT("minecraft:dropper") };
@@ -1702,6 +1702,12 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			bServerWasInWater = bInWater;
 		}
+		// Going into a bubble column: its inside sound, once (0.7 at the player, from the bubble2 and bubble3 vanilla runs).
+		if (Entities && Body.bInBubbleColumn && !bServerWasInBubble)
+		{
+			Entities->PlaySound(FName(Body.bBubbleDown ? "block.bubble_column.whirlpool_inside" : "block.bubble_column.upwards_inside"), Feet, 0.7f, 1.0f);
+		}
+		bServerWasInBubble = Body.bInBubbleColumn;
 		ServerPreviousPosition = Feet;
 		bServerWasOnGround = Body.bOnGround;
 

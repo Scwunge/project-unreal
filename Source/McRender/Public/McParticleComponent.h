@@ -83,7 +83,7 @@ private:
 		Crumb,     // a bit of eaten food: one colour, falls and lands
 		Note,      // a music note rising off a note block or jukebox, in the colour of its note
 		Splash,  // a drop thrown up off water, falling back
-		Bubble,  // rising a little and bursting
+		Bubble,  // the game's bubble.png, drawn a texel at a time: a bubble column's, and one rising a little and bursting
 		Wake,    // a fleck of foam over a swimming fish
 		Totem,   // a spark off a Totem of Undying
 	};
@@ -123,7 +123,7 @@ private:
 	float SkyLightAt(const FIntVector& Pos) const;
 
 	// What each state does when picked near the player.
-	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater };
+	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown };
 	void BuildEmitters();
 	TArray<EEmitter> Emitters;  // by state id
 	TArray<FIntVector> Facing;  // by state id: a wall torch's or furnace's facing

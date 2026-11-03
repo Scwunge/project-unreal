@@ -88,8 +88,8 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 
 	if (Fluid == EMcFluid::Water)
 	{
-		// Items float up slowly and are slowed sideways.
-		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.0005, 0.06);
+		// Items float up slowly (while slower than 0.06) and are slowed sideways.
+		Body.Velocity.Y += Body.Velocity.Y < 0.06 ? 0.0005 : 0.0;
 		Body.Velocity.X *= 0.99;
 		Body.Velocity.Z *= 0.99;
 	}
@@ -98,6 +98,7 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y -= 0.04;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
+	McPhysics::BubbleColumnPush(World, Body.GetBox(), Body.Velocity);
 
 	double Friction = 0.98;
 	if (Body.bOnGround)

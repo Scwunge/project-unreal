@@ -18,8 +18,10 @@ namespace
 	static int32 SeaMargin = 28;
 	static int32 LevelBase = 10;
 	// Under the sea floor: the thresholds at the floor and the depth below it at which they reach the land's.
-	static float SeaFull0 = -0.3f;
-	static float SeaPartial0 = -0.8f;
+	// Fitted on the reference's cave water by sea-floor and land columns (the wiki's -0.3 / -0.8 left land columns at y 32+
+	// with 31..45% water against 9..32% in the five worlds).
+	static float SeaFull0 = -0.2f;
+	static float SeaPartial0 = -0.7f;
 	static float SeaDepth = 64.0f;
 	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarSeaMargin(TEXT("mc.aq.seamargin"), SeaMargin, TEXT("sweep"));

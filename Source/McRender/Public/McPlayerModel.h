@@ -125,6 +125,9 @@ namespace McPlayerModel
 	// The two wings in the pose, with UVs over the wings picture.
 	MCRENDER_API void BuildWings(const FPose& Pose, FMeshData& Out);
 
+	// One part with its outer layer, standing, added to Out: its pivot at the origin, in the same units.
+	MCRENDER_API void BuildPartMesh(EMcPlayerPart Part, FMeshData& Out);
+
 	// Slow-moving state that makes the pose out of what the world sees: where the player is, and where they look.
 	struct FAnimState
 	{

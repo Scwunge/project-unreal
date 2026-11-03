@@ -27,6 +27,10 @@ enum class EMcBlockEntityKind : uint8
 	Lectern,
 	// A decorated pot: its back, left, right and front (a sherd or a brick each, McPot) in Slots[0..3].
 	Pot,
+	// Anything else that came from another world (a sign, banner, skull, lectern, decorated pot...): EntityId is the
+	// block entity's id ("minecraft:sign") and Data its NBT, written by FMcNbt::WriteRoot, kept as it was read so
+	// that nothing is lost until the feature that uses it exists. Nothing in the game reads it yet.
+	Raw,
 };
 
 // One side of a sign (minecraft.wiki, "Sign"): four lines of text, the dye they are written in, and whether glow ink

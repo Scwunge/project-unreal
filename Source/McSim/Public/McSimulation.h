@@ -47,8 +47,19 @@ public:
 	// lamps, doors and pistons run off block changes and scheduled ticks like the rest. What stands on a pressure
 	// plate is told to the simulation, and daylight detectors read the sun level (0 to 15) it is given.
 	void SetPressurePlate(const FIntVector& Pos, int32 NumEntities);
+	// A projectile hit the target block at Pos: it gives Power (1 to 15) for Duration ticks.
+	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
+	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.
+	void NotifyContainerChanged(const FIntVector& Pos);
+	// A player put the block at Pos in place by hand. A tripwire hook put down this way looks along its line at once, which
+	// one put by a command does not (reference run rs_trip4).
+	void PlayerPlaced(const FIntVector& Pos);
+	// A player broke the block that was at Pos (State is what it was).
+	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
+	// Something made a vibration (frequency 1 to 15) at Pos; sculk sensors hear it.
+	void Vibrate(const FIntVector& Pos, int32 Frequency);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.
@@ -82,6 +93,24 @@ public:
 	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// The TNT block at Pos is lit (by fire, flint and steel or redstone): the server turns it into primed TNT
+	// (FMcPrimedTnt::Ignite). Redstone calls LightTnt when the power on a TNT block rises.
+	TFunction<void(const FIntVector&)> OnLightTnt;
+	void LightTnt(const FIntVector& Pos) const
+	{
+		if (OnLightTnt)
+		{
+			OnLightTnt(Pos);
+		}
+	}
+
+	// Note blocks (McNoteBlock.h). PlayNote sounds the note block at Pos (the redstone side calls it when power on a
+	// note block rises, setting `powered` itself; a punch in survival calls it too): false if there is no note block
+	// or the space above it is not air or a head. TuneNote is a player's use: steps the note on (25 back to 0) and
+	// plays it (a silenced block still steps). Both only on the server.
+	bool PlayNote(const FIntVector& Pos);
+	bool TuneNote(const FIntVector& Pos);
+
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
 	// The bell at Pos was rung by redstone, as if struck on Side (McBell's numbering): it swings for every viewer.
@@ -93,6 +122,29 @@ public:
 	// ticks, and the effect is seen at 259 the tick after it is given.
 	static constexpr int32 ConduitPeriod = 40;
 	static constexpr int32 ConduitPowerTicks = 260;
+
+	// A note block played: where its note particle rises (above the block) and which note it shows.
+	TFunction<void(const FVector&, int32)> OnNoteParticle;
+	// A powered crafter at Pos tries to craft: it takes its items, hands on the product and says whether it made one.
+	TFunction<bool(const FIntVector&)> OnCraft;
+
+	// Sand, gravel and the like in the air: a falling block is not a block until it lands. Position is the bottom of the block.
+	struct FFallingBlock
+	{
+		// Unique among the falling blocks, for whoever mirrors them as entities.
+		int32 Id = 0;
+		FIntVector Column;
+		double Y = 0.0;
+		// The distance fallen, summed in a float tick by tick as the game does (an anvil hurts and wears by it).
+		float FallDistance = 0.0f;
+		double Velocity = 0.0;
+		FMcStateId State = 0;
+	};
+	const TArray<FFallingBlock>& GetFallingBlocks() const { return Falling; }
+	// A falling block lands somewhere it can't be placed (a torch, a slab): it breaks and drops as an item.
+	TFunction<void(const FIntVector&, FMcStateId)> OnFallingBlockDropped;
+	// A falling block came to rest at the cell, having fallen the distance: for whoever hurts what is under an anvil.
+	TFunction<void(const FIntVector&, FMcStateId, double)> OnFallingBlockLanded;
 
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;
@@ -106,12 +158,16 @@ public:
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;
+	static constexpr int32 BubbleBaseDelay = 20;
+	static constexpr int32 BubbleColumnDelay = 5;
 	static constexpr int32 LavaDelay = 30;
 	static constexpr int32 GravityDelay = 2;
 	static constexpr int32 LeafDelay = 1;
 
 private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
+	// Sets the instrument of the note block at Pos from what is below and above it (nothing if it is not one).
+	void RefreshNoteBlock(const FIntVector& Pos);
 	// A chunk loaded (from disk, the generator or the network): its conduits start their round of checks.
 	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.
@@ -119,7 +175,10 @@ private:
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
 	void TickConduit(const FIntVector& Pos);
+	// Turns the water sources from Pos up into a bubble column, or back into water when nothing drives it.
+	void UpdateBubbleColumn(const FIntVector& Pos);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
+	void StepFalling();
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);
 	void TickFire(const FIntVector& Pos, FMcStateId State);
@@ -133,6 +192,8 @@ private:
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;
 	TSet<FIntVector> Pending;
+	TArray<FFallingBlock> Falling;
+	int32 NextFallingId = 1;
 	TArray<FIntPoint> TickingChunks;
 	int32 RandomTickSpeed = 3;
 	FRandomStream Random{ 1 };

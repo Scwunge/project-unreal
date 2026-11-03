@@ -37,6 +37,8 @@ namespace McSurvival
 		// Poison, instant damage and the like, and wither; neither is turned aside by armour.
 		Magic,
 		Wither,
+		// A blast; armour turns some of it aside.
+		Explosion,
 	};
 
 	// What the blocks around a player are doing to them this tick.
@@ -129,6 +131,8 @@ namespace McSurvival
 	// The items lying within reach of a player whose hitbox is PlayerBox go into the inventory (those still in their pickup
 	// delay stay); what does not fit stays on the ground. Returns how many items were taken.
 	MCPLAYER_API int32 CollectItems(FMcEntityManager& Entities, const FBox& PlayerBox, FMcContainer& Inventory);
+	// Arrows a player shot that lie stuck in a block within reach go back into the inventory, one each. Returns how many.
+	MCPLAYER_API int32 CollectArrows(FMcEntityManager& Entities, const FBox& PlayerBox, FMcContainer& Inventory);
 	// The experience orbs within reach of the player are taken into their experience. Returns the points.
 	MCPLAYER_API int32 CollectXp(FMcEntityManager& Entities, const FBox& PlayerBox, FMcPlayerStats& Stats);
 }

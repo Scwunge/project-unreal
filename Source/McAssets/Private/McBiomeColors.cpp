@@ -1,5 +1,6 @@
 #include "McBiomeColors.h"
 #include "McCache.h"
+#include "McResourcePacks.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "IImageWrapper.h"
@@ -89,7 +90,9 @@ FMcBiomeColorTable& FMcBiomeColorTable::Get()
 bool FMcBiomeColorTable::EnsureLoaded()
 {
 	check(IsInGameThread());
-	if (IsLoaded())
+	// The colormaps (and the colours worked out from them) are read again when the pack stack changes. A pack's
+	// textures/colormap/grass.png, foliage.png or dry_foliage.png replaces the game's.
+	if (IsLoaded() && LoadedGeneration == McPacks::GetGeneration())
 	{
 		return true;
 	}
@@ -172,6 +175,7 @@ bool FMcBiomeColorTable::EnsureLoaded()
 	FoliageMap = MoveTemp(NewFoliage);
 	DryFoliageMap = MoveTemp(NewDryFoliage);
 	Biomes = MoveTemp(NewBiomes);
+	LoadedGeneration = McPacks::GetGeneration();
 	UE_LOG(LogMcAssets, Log, TEXT("Loaded the colours of %d biomes in %.0f ms"), Biomes.Num(), (FPlatformTime::Seconds() - StartTime) * 1000.0);
 	return true;
 }

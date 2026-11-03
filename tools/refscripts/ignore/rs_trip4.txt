@@ -1,0 +1,6 @@
+# unexplained: survival shears on an attached pair power the string next to the hook on release (72, z=0) and the no-shears row releases one tick earlier (91, z=3); ours differs there, both left out
+~72|1,-60,0|tripwire[attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=false,north=false,powered=true,south=false,west=true]
+~91|0,-60,3|tripwire_hook[attached=true,facing=east,powered=true]|tripwire_hook[attached=false,facing=east,powered=false]
+~91|1,-60,3|tripwire[attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=false,north=false,powered=true,south=false,west=true]
+~91|3,-60,3|tripwire[attached=true,disarmed=false,east=true,north=false,powered=false,south=false,west=false]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=false]
+~91|4,-60,3|tripwire_hook[attached=true,facing=west,powered=true]|tripwire_hook[attached=false,facing=west,powered=false]

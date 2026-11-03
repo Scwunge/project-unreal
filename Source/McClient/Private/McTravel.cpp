@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McClient.h"
+#include "McEntityHost.h"
 #include "McGameMode.h"
 #include "McPlayerController.h"
 #include "McPlayerData.h"
@@ -84,6 +85,11 @@ void UMcTravelSubsystem::TickPlayers()
 		if (State.bMustLeave)
 		{
 			continue;
+		}
+		if (!bInEnd && State.Ticks == 0 && Pawn->Data->ServerSound)
+		{
+			// The portal's hum as it takes hold.
+			Pawn->Data->ServerSound(FName("block.portal.trigger"), 0.25f, FMath::FRand() * 0.4f + 0.8f);
 		}
 		if (bInEnd)
 		{
@@ -274,4 +280,11 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 	Player->EnterWorld(*Dest);
 	Pawn->ServerTeleport(Feet, Yaw);
 	States.FindOrAdd(Player).bMustLeave = true;
+	if (Trip.Kind == EKind::NetherPortal)
+	{
+		if (FMcEntityHost* Host = Dest->GetEntityHost())
+		{
+			Host->GetManager().PlaySound(FName("block.portal.travel"), Feet + FVector(0.0, 1.0, 0.0), 0.25f, FMath::FRand() * 0.4f + 0.8f);
+		}
+	}
 }

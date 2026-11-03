@@ -36,6 +36,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	float MouseSensitivity = 0.15f;
 
+	// Development (-McInput): turns the view by these degrees, as the mouse would. Positive pitch looks up.
+	void DevTurn(float DeltaYaw, float DeltaPitch)
+	{
+		Yaw = FMath::Fmod(Yaw + DeltaYaw, 360.0f);
+		Pitch = FMath::Clamp(Pitch + DeltaPitch, -89.9f, 89.9f);
+	}
+
 	// Whether a double tap of Space starts and stops flying, as in creative mode.
 	UPROPERTY(EditAnywhere, Category = "Mc")
 	bool bMayFly = true;
@@ -72,12 +79,16 @@ public:
 	TFunction<FMcEntityManager*()> GetEntities;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
+	// A survival player started to dig at Pos (a click on it): a note block sounds.
+	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPunchBlock;
 	// The player died and their things are on the ground: put them back at the spawn.
 	TFunction<void(AMcPlayerPawn& Player)> OnDied;
 	// The dead player asked to start again (the death screen's button): the game mode makes a new body.
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// Called after the server put a block down for this player.
+	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
 	TFunction<void(const FIntVector& Pos, TArray<FMcItemStack>& Drops)> OnBreakDrops;
 	// An item that carries what it holds was placed at Pos (a shulker box gives its things to the new block).
@@ -88,6 +99,9 @@ public:
 	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
+	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the
+	// reach; true if something was done.
+	TFunction<bool(AMcPlayerPawn& Player, const FVector& Eye, const FVector& Look, double Reach)> OnUseMob;
 	// An item is used on a block (flint and steel makes fire, an eye of ender goes into a frame): Pos is the block clicked, Beside
 	// the empty block next to the face clicked. Returns true if something happened.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos, const FIntVector& Beside)> OnUseItemOn;
@@ -95,19 +109,45 @@ public:
 
 	// Server: hurts the player (a mob's bite, a blast). Does nothing in creative. Returns the health lost.
 	// From is where the blow came from (for the knockback), if it came from somewhere.
-	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr);
+	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true);
+	// A blast reaches the player: the damage (armour turns some aside), a push added to the velocity (blocks a tick),
+	// and the centre it came from for the side the view rolls to.
+	void ServerBlast(float Amount, const FVector& Push, const FVector& Center);
 	// Server: the owner's swing along Look (Minecraft axes): damage by the held item and how charged the attack is.
 	void ServerSwing(const FVector& Look);
 	// Pushes the player: the velocity is added to the body's (blocks a tick).
 	void ApplyKnockback(const FVector& Velocity);
+	// Adds to the velocity (a blast's push), where ApplyKnockback sets it.
+	void AddVelocity(const FVector& Push);
 	// Server: the points of experience as orbs at the player (a death drops them).
 	void ServerDropXp(int32 Points);
 	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
+	// The experience points the player had when they died: the death screen's "Score".
+	int32 GetDeathScore() const { return DeathScore; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
 	void ServerTeleport(const FVector& Feet, float McYaw);
 	// Server: where the player's feet are, in block coordinates.
 	FVector GetFeetPosition() const { return Body.Position; }
 	bool IsServerDead() const { return bServerDead; }
+	// The function keys, as this machine's player has set them: F1 hides the HUD and hand, F3 shows the debug text, F5 cycles
+	// the view (0 from the eyes, 1 from behind, 2 from the front looking back).
+	bool IsHudHidden() const { return bHudHidden; }
+	bool IsDebugShown() const { return bDebugShown; }
+	int32 GetViewMode() const { return ViewMode; }
+	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
+	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
+	bool IsSleeping() const { return bSleeping; }
+	int32 GetSleepTicks() const { return SleepTicks; }
+	// How dark the screen is from sleeping, 0 to 1: it fades to black as the night goes by and back in when they get up.
+	float GetSleepFade() const { return SleepFade; }
+	// Server: puts the player to bed in the bed whose head is at Head. The caller has checked the time and the monsters.
+	void ServerStartSleep(const FIntVector& Head);
+	// Server: gets the player up, to the free spot beside the bed.
+	void ServerWakeUp();
+	// Server: where the player was put to bed.
+	const FIntVector& GetSleepBed() const { return SleepBed; }
+	// Server: told each tick a player has slept the whole 100 (by the controller, which knows the other players and the world).
+	TFunction<void(AMcPlayerPawn& Player)> OnSleptThrough;
 	// The entity id of the minecart or boat the player sits in, or 0.
 	int32 GetRidingId() const { return RidingId; }
 	// Whether the player's fishing bobber is out (their rod is drawn cast).
@@ -176,9 +216,15 @@ protected:
 	void ServerAttachBanner(FIntVector Pos);
 	UFUNCTION(Server, Reliable)
 	void ServerUseBlock(FIntVector Pos);
+	// The owner right-clicks a mob in front of them, looking along Look (Minecraft axes).
+	UFUNCTION(Server, Reliable)
+	void ServerUseMob(FVector Look);
 	// The owner uses the held item on the face (0 to 5, as FMcBlockHit) of a block.
 	UFUNCTION(Server, Reliable)
 	void ServerUseItemOn(FIntVector Pos, int32 Face);
+	// The owner throws the snowball, egg or ender pearl they hold, along where they look.
+	UFUNCTION(Server, Reliable)
+	void ServerThrow();
 	// The server moved the owner: they move too, and say so, since until then the server ignores where they say they are.
 	UFUNCTION(Client, Reliable)
 	void ClientTeleport(FVector Feet, float McYaw);
@@ -199,6 +245,11 @@ protected:
 	// The server hit the owner: a push for their own body, which they simulate.
 	UFUNCTION(Client, Reliable)
 	void ClientKnockback(FVector Velocity);
+	UFUNCTION(Client, Reliable)
+	void ClientAddVelocity(FVector Push);
+	// The server hit the owner from this side (-1 to 1): the view rolls for it.
+	UFUNCTION(Client, Reliable)
+	void ClientHurtSide(float Side);
 	// The owner clicks on a vehicle along Look (Minecraft axes) to get in.
 	UFUNCTION(Server, Reliable)
 	void ServerTryRide(FVector Look);
@@ -208,6 +259,12 @@ protected:
 	// A riding owner wants out.
 	UFUNCTION(Server, Reliable)
 	void ServerWantDismount();
+	// A sleeping owner presses to get up.
+	UFUNCTION(Server, Reliable)
+	void ServerWantWake();
+	// The owner presses Q (one of the selected item) or Ctrl+Q (the whole stack): it is thrown from the eyes along the look.
+	UFUNCTION(Server, Reliable)
+	void ServerDropSelected(bool bWholeStack);
 	// Where the vehicle seats a riding owner whose body the server simulates.
 	UFUNCTION(Client, Unreliable)
 	void ClientRideSeat(FVector Feet);
@@ -219,6 +276,8 @@ public:
 	void RequestUseBlock(const FIntVector& Pos) { ServerUseBlock(Pos); }
 	// Uses the held item at nothing (the -McCast development flag casts a rod this way).
 	void RequestUseItem() { ServerUseItem(); }
+	// Right-clicks the mob in front, looking along Look in Minecraft axes (the -McTrade development flag).
+	void RequestUseMob(const FVector& Look) { ServerUseMob(Look); }
 
 protected:
 
@@ -245,6 +304,8 @@ private:
 	void ServerDie();
 	// Plays the hurt (or death) sound if health has dropped since the last call.
 	void ServerHurtSound();
+	// A tool or weapon wore out: the crack of it breaking.
+	void ServerItemBroke();
 	void StopDigging();
 	float GetEyeHeight() const;
 	void ShowPosition() const;
@@ -277,6 +338,21 @@ private:
 	bool bSneakPose = false;
 	UPROPERTY(Replicated)
 	int32 RidingId = 0;
+	UPROPERTY(Replicated)
+	bool bSleeping = false;
+	UPROPERTY(Replicated)
+	int32 SleepTicks = 0;
+	UPROPERTY(Replicated)
+	int32 DeathScore = 0;
+	FIntVector SleepBed = FIntVector::ZeroValue;
+	bool bSleptThroughSent = false;
+	bool bHudHidden = false;
+	bool bDebugShown = false;
+	bool bF3Combo = false;
+	int32 ViewMode = 0;
+	void HandleFunctionKeys(APlayerController& Player);
+	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.
+	float SleepFade = 0.0f;
 	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.
 	float RideForward = 0.0f;
 	float RideStrafe = 0.0f;
@@ -337,6 +413,10 @@ private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
 	TWeakObjectPtr<class UMcPlayerModelComponent> Model;
+	// The player's own arm and what it holds, in first person.
+	TWeakObjectPtr<class UMcHandComponent> Hand;
+	// The outline round the aimed block and the cracks on the dug one, in the world.
+	TWeakObjectPtr<class UMcBlockHighlightComponent> Highlight;
 
 	TOptional<FMcBlockHit> Target;
 	// Seconds until holding a button breaks or places again.
@@ -347,6 +427,9 @@ private:
 	// The block the dig button is held on, so the server is told when it changes.
 	TOptional<FIntVector> DigSent;
 	bool bUsingSent = false;
+	// The local player is eating what is in hand, and how long that takes (for the hand's animation).
+	bool bEatingLocal = false;
+	float EatSecondsLocal = 1.6f;
 	int32 LastSelectedSent = -1;
 
 	// ---- Server side ----
@@ -355,18 +438,44 @@ private:
 	bool bServerPositionKnown = false;
 	bool bServerInitialised = false;
 	bool bServerDead = false;
+	// When the next ender pearl may be thrown (a second's wait after each).
+	double PearlReadyTime = 0.0;
 	bool bServerSprint = false;
 	bool bServerFlying = false;
 	bool bServerWasOnGround = true;
+	// Server: for the splash on entering water, the swimming sound's count of blocks, and putting a fire out.
+	bool bServerWasInWater = false;
+	bool bServerWasInBubble = false;
+	double ServerSwum = 0.0;
 	FVector ServerPreviousPosition = FVector::ZeroVector;
 	McSurvival::FFallTracker ServerFall;
 	McSurvival::EDifficulty Difficulty = McSurvival::EDifficulty::Normal;
 	FMcGameRules GameRules;
 	TOptional<FIntVector> DigPos;
 	float DigProgress = 0.0f;
+	// How far the dig has gone, in tenths (0 to 9, -1 for none), and on what block: the digger's client draws the cracks.
+	UPROPERTY(Replicated)
+	int32 DigStage = -1;
+	UPROPERTY(Replicated)
+	FIntVector DigBlockPos = FIntVector::ZeroValue;
 	// Ticks spent on the block being dug; it is hit (with its sound) every 4.
 	int32 DigTicks = 0;
 	int32 EatTicks = 0;
+	// Client: ticks spent eating (the crumbs follow the munching), and the colours of the food's sprite they take.
+	int32 EatCrumbTicks = 0;
+	// The bow: server ticks the draw has been held (and the slot it began in), and the client's seconds drawn and the
+	// field of view it had before the zoom of the draw.
+	int32 BowTicks = 0;
+	int32 BowSlot = -1;
+	float BowSecondsLocal = 0.0f;
+	bool bBowLocal = false;
+	// The side of the last hit on the owner, for the view's roll while the hurt time runs down.
+	float HurtSide = 0.0f;
+	float BowBaseFov = 0.0f;
+	// Lets the arrow go after DrawTicks of drawing.
+	void ServerShootBow(int32 DrawTicks);
+	FName EatCrumbItem;
+	TArray<FColor> EatCrumbColours;
 	McSound::FStepCounter ServerSteps;
 	// The health at the end of the last tick, for the hurt sound whatever did the damage; below 0 until the first.
 	float ServerLastHealth = -1.0f;

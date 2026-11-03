@@ -1,0 +1,90 @@
+{
+ "description": "Ice test on classic_flat (surface y=-61): a frozen lake spanning chunk borders x,z=16 and 32 (ice over water, the near half open water), a 3x3x3 ice cube straddling x=16 on grass, and packed and blue ice beside it.",
+ "camera": [
+  4.0,
+  -58.0,
+  4.0,
+  -40.0,
+  20.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    8,
+    -62,
+    8
+   ],
+   "to": [
+    40,
+    -62,
+    40
+   ],
+   "state": "minecraft:water[level=0]"
+  },
+  {
+   "from": [
+    8,
+    -61,
+    8
+   ],
+   "to": [
+    40,
+    -61,
+    40
+   ],
+   "state": "minecraft:water[level=0]"
+  },
+  {
+   "from": [
+    8,
+    -61,
+    8
+   ],
+   "to": [
+    40,
+    -61,
+    26
+   ],
+   "state": "minecraft:ice"
+  },
+  {
+   "from": [
+    15,
+    -60,
+    -6
+   ],
+   "to": [
+    17,
+    -58,
+    -4
+   ],
+   "state": "minecraft:ice"
+  },
+  {
+   "from": [
+    20,
+    -60,
+    -6
+   ],
+   "to": [
+    20,
+    -60,
+    -6
+   ],
+   "state": "minecraft:packed_ice"
+  },
+  {
+   "from": [
+    21,
+    -60,
+    -6
+   ],
+   "to": [
+    21,
+    -60,
+    -6
+   ],
+   "state": "minecraft:blue_ice"
+  }
+ ]
+}

@@ -33,6 +33,20 @@ public:
 	// true if it did. Server only.
 	bool Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 
+private:
+	// A click on a jukebox: puts the held disc in, or takes the one in it out. True if it did either.
+	bool UseJukebox(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// Brings a jukebox's block state and music in line with its slot, after a hand or a hopper changed it: a disc newly
+	// in starts its song, one taken out silences it.
+	void SyncJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	void StopJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	void TickJukeboxes();
+
+	// A click on a bed: sets the respawn point, and puts the player to sleep if it is night and no monsters are near.
+	void UseBed(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+
+public:
+
 	// Whether the window the player has open may stay open: the block is still what it was, and they are close.
 	static bool IsWindowValid(const AMcPlayerPawn& Player, const AMcWorldActor& WorldActor, const FMcWindow& Window);
 
@@ -51,6 +65,9 @@ public:
 	// A shulker box item was placed at Pos: what it carried goes into the new box.
 	void FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box);
 
+	// A jukebox at Pos: whether its record is playing (it plays for the song's length once put in, then keeps the disc).
+	bool IsJukeboxPlaying(const AMcWorldActor& WorldActor, const FIntVector& Pos) const;
+
 	// How many furnaces and brewing stands are being kept (for tests and logs).
 	int32 NumFurnaces() const { return Machines.Num(); }
 	// How many hoppers are at work.
@@ -60,6 +77,8 @@ public:
 	// "Dropper"). A dropper puts it into a container in front, or throws it out. A dispenser shoots an arrow, uses
 	// bone meal on the block in front, or throws the item out. Called by the redstone; a test calls it directly.
 	void Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A powered crafter at Pos crafts once from its nine slots; the product goes into the container it faces, or drops. False if no recipe fits.
+	bool Craft(AMcWorldActor& WorldActor, const FIntVector& Pos);
 
 	// The furnace at Pos, loaded from its chunk's block entity if it is not being kept yet; null if there is none and
 	// bCreate is false. Also what a test uses to look at one.
@@ -100,6 +119,8 @@ private:
 	{
 		TWeakObjectPtr<AMcWorldActor> World;
 		int32 Cooldown = 0;
+		// The order hoppers were set down in, which is the order they take their turn in each tick.
+		int64 Order = 0;
 	};
 
 	static FKey MakeKey(const AMcWorldActor& WorldActor, const FIntVector& Pos);
@@ -143,6 +164,16 @@ private:
 	TMap<FKey, FChestEntry> Chests;
 	TMap<FKey, FMachineEntry> Machines;
 	TMap<FKey, FHopperEntry> Hoppers;
+	// A record playing, until its song ends.
+	struct FJukeboxPlay
+	{
+		TWeakObjectPtr<AMcWorldActor> World;
+		int32 TicksLeft = 0;
+		int32 Elapsed = 0;
+		FName Sound;
+	};
+	TMap<FKey, FJukeboxPlay> Jukeboxes;
+	int64 NextHopperOrder = 0;
 	TSet<TWeakObjectPtr<AMcWorldActor>> Watched;
 	float Accumulator = 0.0f;
 	int32 CleanTimer = 0;

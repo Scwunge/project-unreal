@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McGameRules.h"
+#include "McArrow.h"
 #include "McEntityManager.h"
 #include "McXpOrb.h"
 #include "McItemRegistry.h"
@@ -130,6 +131,7 @@ namespace McSurvival
 		case EDamage::InFire:
 		case EDamage::Lava:
 		case EDamage::Mob:
+		case EDamage::Explosion:
 			return 0.1f;
 		default:
 			return 0.0f;
@@ -459,6 +461,27 @@ namespace McSurvival
 			else
 			{
 				Item->Stack = Left;
+			}
+		}
+		return Taken;
+	}
+
+	int32 CollectArrows(FMcEntityManager& Entities, const FBox& PlayerBox, FMcContainer& Inventory)
+	{
+		int32 Taken = 0;
+		TArray<FMcEntity*> Near;
+		Entities.FindInBox(PlayerBox.ExpandBy(FVector(1.0, 0.5, 1.0)), Near);
+		for (FMcEntity* Entity : Near)
+		{
+			if (Entity->GetType() != FMcArrowEntity::StaticType() || Entity->bRemoved)
+			{
+				continue;
+			}
+			FMcArrowEntity* Arrow = static_cast<FMcArrowEntity*>(Entity);
+			if (Arrow->bPickup && Arrow->bStuck && Inventory.AddItem(FMcItemStack(TEXT("minecraft:arrow"), 1)).IsEmpty())
+			{
+				Arrow->bRemoved = true;
+				++Taken;
 			}
 		}
 		return Taken;

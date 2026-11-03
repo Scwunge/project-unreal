@@ -43,6 +43,8 @@ struct MCENTITY_API FMcBody
 	bool bInLava = false;
 	bool bClimbing = false;  // in a ladder, vine or scaffolding
 	bool bStuck = false;     // in a cobweb, sweet berry bush or powder snow
+	bool bInBubbleColumn = false;  // set by TickPlayer; bBubbleDown when the column is the one over magma
+	bool bBubbleDown = false;
 
 	FBox GetBox() const;
 };
@@ -64,6 +66,11 @@ namespace McPhysics
 	// pushes; ladders and vines cap the fall and sideways speed at 0.15 and climb at 0.2 when you press against
 	// the wall or jump; cobwebs scale the motion down.
 	MCENTITY_API void TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcMoveInput& Input);
+
+	// Bubble columns push what is in them, once per column block the box overlaps: up by 0.06 a tick to 0.7, or
+	// down by 0.03 to -0.3 (a column over magma); in the top block, under air, up by 0.1 to 1.8 and down to -0.9.
+	// Fitted to vanilla runs (bubble1: items, players). Returns whether the box touched a column.
+	MCENTITY_API bool BubbleColumnPush(const FMcBlockWorld& World, const FBox& Box, FVector& Velocity, bool* bOutDown = nullptr);
 
 	// Whether the box overlaps any block's collision.
 	MCENTITY_API bool Collides(const FMcBlockWorld& World, const FBox& Box);

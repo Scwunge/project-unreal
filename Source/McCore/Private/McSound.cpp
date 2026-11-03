@@ -133,6 +133,11 @@ namespace
 		{
 			Text.RightChopInline(Colon + 1);
 		}
+		// The trader's llamas sound as llamas.
+		if (Text == TEXT("trader_llama"))
+		{
+			return TEXT("llama");
+		}
 		return Text;
 	}
 
@@ -180,9 +185,18 @@ namespace
 		// named for the land and a bee hums on a loop, so those are left off.
 		{ TEXT("wolf"), true, true, true, true }, { TEXT("rabbit"), true, true, true, false },
 		{ TEXT("fox"), true, true, true, false }, { TEXT("horse"), true, true, true, true },
+		// Donkeys and mules have the three but no step of their own.
+		{ TEXT("donkey"), true, true, true, false }, { TEXT("mule"), true, true, true, false },
 		{ TEXT("goat"), true, true, true, true }, { TEXT("llama"), true, true, true, true },
 		{ TEXT("turtle"), false, true, true, false }, { TEXT("frog"), true, true, true, true },
 		{ TEXT("bee"), false, true, true, false },
+		// The villagers and their kin: a golem has no ambient sound, and a villager and a trader no step.
+		{ TEXT("iron_golem"), false, true, true, true }, { TEXT("villager"), true, true, true, false },
+		{ TEXT("wandering_trader"), true, true, true, false }, { TEXT("zombie_villager"), true, true, true, true },
+		// The illagers: they step as the block under them, and the vex has no step at all.
+		{ TEXT("pillager"), true, true, true, false }, { TEXT("vindicator"), true, true, true, false },
+		{ TEXT("evoker"), true, true, true, false }, { TEXT("vex"), true, true, true, false },
+		{ TEXT("ravager"), true, true, true, true }, { TEXT("witch"), true, true, true, false },
 	};
 }
 

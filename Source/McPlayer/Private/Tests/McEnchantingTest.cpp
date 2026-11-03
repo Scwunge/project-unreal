@@ -16,7 +16,7 @@ bool FMcEnchantingTest::RunTest(const FString& Parameters)
 	}
 	const FName Sword(TEXT("minecraft:diamond_sword"));
 	const FName Book(TEXT("minecraft:book"));
-	const FName Lapis(TEXT("minecraft:lapis_lazuli"));
+	const FName LapisLazuli(TEXT("minecraft:lapis_lazuli"));
 
 	// Bookshelves: a full ring of 16 positions on two levels counts at most 15; a blocked gap hides the shelf behind it.
 	TestEqual(TEXT("a full ring counts 15"), McEnchanting::CountBookshelves([](const FIntVector&) { return true; }, [](const FIntVector&) { return true; }), 15);
@@ -64,7 +64,7 @@ bool FMcEnchantingTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("no lapis, no enchanting"), Menu.CanEnchant(0, 100, false));
 	TestTrue(TEXT("creative needs no lapis"), Menu.CanEnchant(0, 0, true));
 	FMcItemStack Fuel;
-	Fuel.Item = Lapis;
+	Fuel.Item = LapisLazuli;
 	Fuel.Count = 5;
 	Menu.SetStack(FMcEnchantMenu::LapisSlot, Fuel);
 	TestFalse(TEXT("too few levels"), Menu.CanEnchant(2, 29, false));

@@ -76,12 +76,12 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("lone water: 7 translucent quads"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 7);
+		TestEqual(TEXT("lone water: 7 translucent quads"), NumFluidQuads(Mesh, EMcRenderPass::Water), 7);
 		TestEqual(TEXT("lone water: nothing opaque"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 0);
-		TestEqual(TEXT("lone water: 14 triangles"), Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)].Triangles.Num(), 42);
+		TestEqual(TEXT("lone water: 14 triangles"), Mesh.Passes[static_cast<int32>(EMcRenderPass::Water)].Triangles.Num(), 42);
 
 		// The top is plains water blue, the bottom half of it; the sides are flowing water.
-		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
+		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Water)];
 		const FColor Blue(0x3F, 0x76, 0xE4);
 		bool bTop = false;
 		bool bBottom = false;
@@ -114,8 +114,8 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 			}
 		}
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("2x2 water: each source has 2 outer sides, a bottom and a two-sided top"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 20);
-		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
+		TestEqual(TEXT("2x2 water: each source has 2 outer sides, a bottom and a two-sided top"), NumFluidQuads(Mesh, EMcRenderPass::Water), 20);
+		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Water)];
 		bool bFoundCentre = false;
 		for (int32 Vertex = 0; Vertex < Buffers.Positions.Num(); ++Vertex)
 		{
@@ -132,7 +132,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		PlaceFluid(Snapshot, 5, 4, 4, Water);
-		TestEqual(TEXT("two adjacent sources: shared faces go"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 12);
+		TestEqual(TEXT("two adjacent sources: shared faces go"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Water), 12);
 	}
 	{
 		// Water above hides the top; the corner heights go to a full block.
@@ -140,8 +140,8 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		PlaceFluid(Snapshot, 4, 5, 4, Water);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("stacked water"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 5 + 6);
-		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
+		TestEqual(TEXT("stacked water"), NumFluidQuads(Mesh, EMcRenderPass::Water), 5 + 6);
+		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Water)];
 		double MaxLowerHeight = 0.0;
 		for (const FVector& P : Buffers.Positions)
 		{
@@ -158,7 +158,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		PlaceFluid(Snapshot, 4, 3, 4, Stone);
 		PlaceFluid(Snapshot, 5, 4, 4, Stone);
-		TestEqual(TEXT("water on stone beside stone"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Translucent), 7 - 2);
+		TestEqual(TEXT("water on stone beside stone"), NumFluidQuads(BuildFluids(Snapshot, *Fluids, *Blocks), EMcRenderPass::Water), 7 - 2);
 	}
 	{
 		// A flowing block next to a source slopes away from it and shows the flowing texture on top.
@@ -169,7 +169,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		PlaceFluid(Snapshot, 5, 4, 5, Stone);
 		PlaceFluid(Snapshot, 6, 4, 4, Stone);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Translucent)];
+		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Water)];
 		bool bFlowTop = false;
 		for (int32 Vertex = 0; Vertex < Buffers.Positions.Num(); ++Vertex)
 		{
@@ -188,7 +188,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		PlaceFluid(Snapshot, 4, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
 		TestEqual(TEXT("lone lava: 6 opaque quads"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 6);
-		TestEqual(TEXT("lone lava: nothing translucent"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 0);
+		TestEqual(TEXT("lone lava: nothing translucent"), NumFluidQuads(Mesh, EMcRenderPass::Water), 0);
 		const FMcMeshBuffers& Buffers = Mesh.Passes[static_cast<int32>(EMcRenderPass::Opaque)];
 		bool bWhiteTop = false;
 		bool bLavaLayers = true;
@@ -207,7 +207,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		PlaceFluid(Snapshot, 4, 4, 4, Water);
 		PlaceFluid(Snapshot, 5, 4, 4, Lava);
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestEqual(TEXT("water beside lava: water keeps all 7"), NumFluidQuads(Mesh, EMcRenderPass::Translucent), 7);
+		TestEqual(TEXT("water beside lava: water keeps all 7"), NumFluidQuads(Mesh, EMcRenderPass::Water), 7);
 		TestEqual(TEXT("water beside lava: lava keeps all 6"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 6);
 	}
 	{
@@ -215,7 +215,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		PlaceFluid(Snapshot, 4, 4, 4, State(TEXT("minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=true]")));
 		const FMcSectionMesh Mesh = BuildFluids(Snapshot, *Fluids, *Blocks);
-		TestTrue(TEXT("waterlogged stairs make water quads"), NumFluidQuads(Mesh, EMcRenderPass::Translucent) > 0);
+		TestTrue(TEXT("waterlogged stairs make water quads"), NumFluidQuads(Mesh, EMcRenderPass::Water) > 0);
 		TestEqual(TEXT("waterlogged stairs make no lava"), NumFluidQuads(Mesh, EMcRenderPass::Opaque), 0);
 	}
 	{

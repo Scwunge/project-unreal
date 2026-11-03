@@ -10,6 +10,7 @@
 #include "McRails.h"
 #include "McChunk.h"
 #include "McCombat.h"
+#include "McArrow.h"
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McFurnace.h"
@@ -45,6 +46,46 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a swing at once is a tenth charged"), McCombat::GetStrength(0, 4.0f), 0.1f, 0.001f);
 	TestEqual(TEXT("a recharged swing is whole"), McCombat::GetStrength(20, 4.0f), 1.0f);
 	TestEqual(TEXT("a full charge does the full damage"), McCombat::GetDamage(7.0f, 1.0f, false), 7.0f, 0.001f);
+
+	// The bow: a quarter second of drawing is too weak to shoot, a second is a full draw.
+	TestTrue(TEXT("a draw of 2 ticks is under a tenth"), McCombat::GetBowPower(2) < 0.1f);
+	TestEqual(TEXT("a draw of 10 ticks has power 0.5"), McCombat::GetBowPower(10), (0.25f + 1.0f) / 3.0f, 0.001f);
+	TestEqual(TEXT("a draw of a second is full"), McCombat::GetBowPower(20), 1.0f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowPower(100), 1.0f, 0.001f);
+	{
+		// The aim's spread: 0.0085 on each component, centred on the look.
+		FRandomStream Random(5);
+		double Sum = 0.0;
+		double SumSquares = 0.0;
+		const int32 Count = 4000;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Off = McCombat::GetBowAim(FVector(0.0, 0.0, 1.0), Random).X;
+			Sum += Off;
+			SumSquares += Off * Off;
+		}
+		const double Mean = Sum / Count;
+		TestTrue(TEXT("the aim is centred on the look"), FMath::Abs(Mean) < 0.0008);
+		TestEqual(TEXT("with a spread of 0.0085"), FMath::Sqrt(SumSquares / Count - Mean * Mean), 0.0085, 0.0006);
+		TestEqual(TEXT("an arrow starts 0.1 under the eye"), McCombat::GetBowLaunchDrop(), 0.1, 1.0e-9);
+	}
+	TestEqual(TEXT("a full draw shoots from 1.12"), McCombat::GetBowShootPitch(0.0f, 1.0f), 1.12f, 0.001f);
+	TestEqual(TEXT("to 1.33"), McCombat::GetBowShootPitch(1.0f, 1.0f), 1.33f, 0.001f);
+	TestTrue(TEXT("a weaker draw sounds lower"), McCombat::GetBowShootPitch(0.5f, 0.3f) < McCombat::GetBowShootPitch(0.5f, 1.0f));
+	TestEqual(TEXT("a hit sounds between 1.09"), FMcArrowEntity::GetHitPitch(0.0f), 1.09f, 0.001f);
+	TestEqual(TEXT("and 1.33"), FMcArrowEntity::GetHitPitch(1.0f), 1.33f, 0.001f);
+	TestEqual(TEXT("the first hurt frame rolls 16.5 degrees"), McCombat::GetHurtTilt(10.0f), 16.5f, 0.3f);
+	TestEqual(TEXT("at 5 ticks 2.4"), McCombat::GetHurtTilt(5.0f), 41.1f * FMath::Pow(0.5f, 4.08f), 0.01f);
+	TestEqual(TEXT("and none at the end"), McCombat::GetHurtTilt(0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("a hit from the left (+x facing +z) is +1"), McCombat::GetHurtSide(0.0f, 5.0, 0.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("from the right -1"), McCombat::GetHurtSide(0.0f, -5.0, 0.0, true), -1.0f, 0.001f);
+	TestEqual(TEXT("from the front 0"), McCombat::GetHurtSide(0.0f, 0.0, 5.0, true), 0.0f, 0.001f);
+	TestEqual(TEXT("facing west (yaw 90), +z is the left"), McCombat::GetHurtSide(90.0f, 0.0, 5.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("no source is +1"), McCombat::GetHurtSide(0.0f, 0.0, 0.0, false), 1.0f, 0.001f);
+	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
+	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
+	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowFovScale(3.0f), 0.85f, 0.001f);
 	TestEqual(TEXT("a critical does half as much again"), McCombat::GetDamage(7.0f, 1.0f, true), 10.5f, 0.001f);
 	TestEqual(TEXT("a tenth charge does 0.2 + 0.8 * 0.01"), McCombat::GetDamage(7.0f, 0.1f, false), 7.0f * 0.208f, 0.001f);
 
@@ -293,6 +334,79 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TArray<FMcItemStack> Left;
 	UMcBlockUseSubsystem::GetContents(*Actor, Top, Left);
 	TestTrue(TEXT("the upper one is empty"), !Left.ContainsByPredicate([](const FMcItemStack& Stack) { return !Stack.IsEmpty(); }));
+
+	// Hopper timing held to the reference client's per-tick item counts (log_hopper1): a hopper sends one item, then waits 8
+	// ticks. One that was handed an item waits 8 as well, but counted from before its own turn that tick when it comes
+	// later in the order the hoppers were placed, so each hop down a chain takes 7 ticks, and the first hopper's next item
+	// goes at 8. Under a chest, the upper hopper takes an item and the one below takes it on from it in the same tick.
+	{
+		const auto Total = [&](const FIntVector& At, const TCHAR* Item)
+		{
+			TArray<FMcItemStack> Stacks;
+			UMcBlockUseSubsystem::GetContents(*Actor, At, Stacks);
+			int32 Count = 0;
+			for (const FMcItemStack& Stack : Stacks) Count += Stack.Item == Item ? Stack.Count : 0;
+			return Count;
+		};
+		const FString Hopper = TEXT("minecraft:hopper[facing=");
+		FIntVector Chain[4];
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Chain[Index] = FIntVector(1 + Index, 70, 1);
+			Blocks.SetBlock(Chain[Index], Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		}
+		const FIntVector ChainEnd(5, 70, 1);
+		Blocks.SetBlock(ChainEnd, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Stock = FMcBlockEntity::MakeContainer(McHopper::NumSlots);
+		Stock.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 12);
+		Stock.Slots[1] = FMcItemStack(TEXT("minecraft:stick"), 5);
+		Chunk->SetBlockEntity(Chain[0].X, Chain[0].Y, Chain[0].Z, Stock);
+		const FIntVector Source(1, 73, 5), Upper(1, 72, 5), Lower(1, 71, 5), Sink(1, 71, 6);
+		Blocks.SetBlock(Source, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		Blocks.SetBlock(Upper, Registry.ParseState(*(Hopper + TEXT("down]"))).Get(0));
+		Blocks.SetBlock(Lower, Registry.ParseState(*(Hopper + TEXT("south]"))).Get(0));
+		Blocks.SetBlock(Sink, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Pile = FMcBlockEntity::MakeContainer(27);
+		Pile.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 20);
+		Chunk->SetBlockEntity(Source.X, Source.Y, Source.Z, Pile);
+		TArray<int32> ChainArrivals, SinkArrivals;
+		int32 ChainSeen = 0, SinkSeen = 0;
+		for (int32 Step = 1; Step <= 170; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			const int32 ChainNow = Total(ChainEnd, TEXT("minecraft:cobblestone")) + Total(ChainEnd, TEXT("minecraft:stick"));
+			const int32 SinkNow = Total(Sink, TEXT("minecraft:cobblestone"));
+			for (; ChainSeen < ChainNow; ++ChainSeen) ChainArrivals.Add(Step);
+			for (; SinkSeen < SinkNow; ++SinkSeen) SinkArrivals.Add(Step);
+			if (Step == 1)
+			{
+				TestEqual(TEXT("hopper chain: the first item moves on the first tick"), Total(Chain[1], TEXT("minecraft:cobblestone")), 1);
+				TestEqual(TEXT("hopper under a chest: the item falls through both hoppers in one tick"), Total(Lower, TEXT("minecraft:cobblestone")), 1);
+			}
+		}
+		// The vanilla run's first arrivals, one every 8 ticks: at 22 along the chain (4 hops of 7 less the first), at 9 into the sink.
+		TestEqual(TEXT("hopper chain: all 17 items arrive"), ChainArrivals.Num(), 17);
+		TestEqual(TEXT("hopper under a chest: all 20 items arrive"), SinkArrivals.Num(), 20);
+		for (int32 Index = 0; Index < ChainArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper chain: item %d arrives"), Index), ChainArrivals[Index], 22 + 8 * Index);
+		for (int32 Index = 0; Index < SinkArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper under a chest: item %d arrives"), Index), SinkArrivals[Index], 9 + 8 * Index);
+		TestEqual(TEXT("hopper chain: the cobblestone goes first, then the sticks"), Total(ChainEnd, TEXT("minecraft:stick")), 5);
+		// A dropper that hands a hopper an item sets its wait too: it sends on 7 ticks later (log_dropper1).
+		const FIntVector Dropper(1, 70, 9), Between(2, 70, 9), Catch(3, 70, 9);
+		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+		Blocks.SetBlock(Between, Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		Blocks.SetBlock(Catch, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Loaded = FMcBlockEntity::MakeContainer(9);
+		Loaded.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+		Chunk->SetBlockEntity(Dropper.X, Dropper.Y, Dropper.Z, Loaded);
+		Use->Dispense(*Actor, Dropper);
+		int32 Landed = 0;
+		for (int32 Step = 1; Step <= 12 && !Landed; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			Landed = Total(Catch, TEXT("minecraft:cobblestone")) > 0 ? Step : 0;
+		}
+		TestEqual(TEXT("dropper into a hopper: the item reaches the chest on the 8th tick"), Landed, 8);
+	}
 
 	const FIntVector Open(12, 64, 12);
 	Blocks.SetBlock(Open, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));

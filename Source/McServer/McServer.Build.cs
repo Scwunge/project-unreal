@@ -6,5 +6,6 @@ public class McServer : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "McCore", "McWorld", "McGen", "McSim", "McEntity", "McNet", "McItem", "Json" });
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib");
 	}
 }

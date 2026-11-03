@@ -16,6 +16,8 @@ struct FMcSoundEvent
 	// Over 1 carries further: the sound can be heard 16 blocks times the volume away.
 	float Volume = 1.0f;
 	float Pitch = 1.0f;
+	// Silences the sound of this name playing at Position instead of starting one (a jukebox's disc taken out).
+	bool bStop = false;
 };
 
 // Where events arrive on a client: the world actor broadcasts what the server sent, and the audio listens.
@@ -26,6 +28,9 @@ public:
 
 	static FMcSoundBus& Get();
 	FOnSound OnSound;
+	// A music note rises at Position (a note block played, a jukebox playing), in the colour of this note (0 to 24).
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnNote, const FVector&, int32);
+	FOnNote OnNote;
 };
 
 namespace McSound

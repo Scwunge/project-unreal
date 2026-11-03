@@ -1,15 +1,24 @@
 #include "McPlayerController.h"
 #include "McMob.h"
+#include "ShaderCompiler.h"
 #include "McLaunch.h"
+#include "McBed.h"
 #include "McBlockUse.h"
+#include "McSimulation.h"
+#include "McDevInput.h"
 #include "McBuckets.h"
 #include "McEntityActor.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McGameMode.h"
 #include "McPlayerData.h"
 #include "McPortal.h"
 #include "McRails.h"
 #include "McVehicle.h"
+#include "McVillager.h"
+#include "McCache.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -76,6 +85,17 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 	}
 
 #if !UE_BUILD_SHIPPING
+	// Development: -McInput="hold:W:2;key:Q;shot:name" plays that input (see McDevInput.h).
+	if (IsLocalController() && FMcDevInput::Wanted())
+	{
+		if (!DevInput.IsValid())
+		{
+			FString Script;
+			FParse::Value(FCommandLine::Get(), TEXT("-McInput="), Script, false);
+			DevInput = MakeShared<FMcDevInput>(Script.TrimQuotes());
+		}
+		DevInput->Tick(*this, DeltaSeconds);
+	}
 	// Development: -McNetLog logs where this player is and how many chunks it has, every two seconds.
 	static const bool bNetLog = FParse::Param(FCommandLine::Get(), TEXT("McNetLog"));
 	NetLogTimer += DeltaSeconds;
@@ -273,9 +293,23 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	const TWeakObjectPtr<AMcWorldActor> World = WorldActor;
 	Hooked.ServerSetBlock = [World](const FIntVector& Pos, FMcStateId State)
 	{
-		if (World.IsValid())
+		if (!World.IsValid())
 		{
-			World->SetBlock(Pos, State);
+			return;
+		}
+		World->SetBlock(Pos, State);
+		// A pumpkin on a T of iron blocks becomes a golem.
+		FMcEntityHost* Host = World->GetEntityHost();
+		TArray<FIntVector> Blocks;
+		FVector Feet;
+		if (Host && Host->MatchGolem(Pos, Blocks, Feet))
+		{
+			const TOptional<FMcStateId> Air = FMcBlockRegistry::Get().ParseState(TEXT("minecraft:air"));
+			for (const FIntVector& Cell : Blocks)
+			{
+				World->SetBlock(Cell, Air.Get(0));
+			}
+			Host->SpawnMob(TEXT("minecraft:iron_golem"), Feet);
 		}
 	};
 	Hooked.GetEntities = [World]() -> FMcEntityManager*
@@ -288,16 +322,194 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
 		return Use && World.IsValid() && Use->Use(User, *World, Pos);
 	};
+	Hooked.OnPunchBlock = [World](AMcPlayerPawn&, const FIntVector& Pos)
+	{
+		if (World.IsValid())
+		{
+			World->PlayNote(Pos);
+		}
+	};
 	Hooked.FindVehicle = [World](const FVector& Eye, const FVector& Look, double Reach)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
 	};
-	Hooked.MobAttack = [World](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
 	{
-		return World.IsValid() && World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+		if (!World.IsValid())
+		{
+			return false;
+		}
+		// A villager that is hit thinks the less of whoever did it.
+		FMcMob* Target = World->FindMob(Eye, Look, static_cast<float>(Reach));
+		if (Target && Target->GetType() == FMcVillager::StaticType() && WeakAttacker.IsValid())
+		{
+			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
+		}
+		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+	};
+	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
+	{
+		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
+		if (!Mob)
+		{
+			return false;
+		}
+		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
+		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
+		const int32 Id = Mob->Id;
+		const FIntVector Where(FMath::FloorToInt(Mob->Body.Position.X), FMath::FloorToInt(Mob->Body.Position.Y), FMath::FloorToInt(Mob->Body.Position.Z));
+		if (Mob->GetType() == FName(TEXT("minecraft:wolf")))
+		{
+			// A bone tames a wild wolf one time in three; a tamed wolf takes a dye for its collar, and its owner's bare hand sits it or stands it.
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (!Mob->bTamed)
+			{
+				if (Held.Item != TEXT("minecraft:bone"))
+				{
+					return false;
+				}
+				UseOne();
+				if (FMath::RandRange(0, 2) == 0)
+				{
+					Mob->bTamed = true;
+					Mob->bSitting = true;
+					Mob->OwnerName = Player;
+					Mob->AngerTicks = 0;
+					Mob->Health = 40.0f;
+				}
+				return true;
+			}
+			static const TCHAR* const Dyes[16] = { TEXT("white"), TEXT("orange"), TEXT("magenta"), TEXT("light_blue"), TEXT("yellow"), TEXT("lime"), TEXT("pink"), TEXT("gray"),
+				TEXT("light_gray"), TEXT("cyan"), TEXT("purple"), TEXT("blue"), TEXT("brown"), TEXT("green"), TEXT("red"), TEXT("black") };
+			for (int32 Color = 0; Color < 16; ++Color)
+			{
+				if (Held.Item == FName(*FString::Printf(TEXT("minecraft:%s_dye"), Dyes[Color])))
+				{
+					if (Mob->OwnerName != Player || Mob->CollarColor == Color)
+					{
+						return false;
+					}
+					Mob->CollarColor = Color;
+					UseOne();
+					return true;
+				}
+			}
+			if (Mob->OwnerName != Player)
+			{
+				return false;
+			}
+			Mob->bSitting = !Mob->bSitting;
+			return true;
+		}
+		if (Mob->GetType() == FMcZombieVillager::StaticType())
+		{
+			// A splash potion of weakness, then a golden apple, cure it; the player's hand gives up one of each.
+			FMcZombieVillager& Zombie = static_cast<FMcZombieVillager&>(*Mob);
+			const int32 Slot = User.Data->SelectedSlot;
+			FMcItemStack Held = User.Data->Inventory->Get(Slot);
+			const auto UseOne = [&]()
+			{
+				if (!User.Data->bCreative)
+				{
+					--Held.Count;
+					User.Data->Inventory->Set(Slot, Held.Count > 0 ? Held : FMcItemStack());
+				}
+			};
+			if (Held.Item == TEXT("minecraft:splash_potion") && !Zombie.IsWeakened())
+			{
+				const TSharedPtr<FJsonValue> Contents = Held.Get(TEXT("minecraft:potion_contents"));
+				FString Potion;
+				if (Contents.IsValid() && Contents->Type == EJson::Object && Contents->AsObject()->TryGetStringField(TEXT("potion"), Potion) && Potion.Contains(TEXT("weakness")))
+				{
+					Zombie.Weaken();
+					UseOne();
+					return true;
+				}
+			}
+			if (Held.Item == TEXT("minecraft:golden_apple") && Zombie.IsWeakened() && !Zombie.IsCuring()
+				&& Zombie.StartCure(Player, FMath::RandRange(McZombieVillager::MinCureTicks, McZombieVillager::MaxCureTicks)))
+			{
+				UseOne();
+				return true;
+			}
+			return false;
+		}
+		if (Mob->GetType() == FMcWanderingTrader::StaticType())
+		{
+			FMcWanderingTrader& Trader = static_cast<FMcWanderingTrader&>(*Mob);
+			User.Data->OpenTrading(Where, TEXT("Wandering Trader"), Trader.GetOffers(), 0, 1, 0, false,
+				[WeakWorld, Id](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+				{
+					FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+					FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+					if (!Found || Found->GetType() != FMcWanderingTrader::StaticType())
+					{
+						return;
+					}
+					FMcWanderingTrader& Seller = static_cast<FMcWanderingTrader&>(*Found);
+					if (Seller.GetOffers().IsValidIndex(Index))
+					{
+						++Seller.GetOffers()[Index].Uses;
+					}
+					OutOffers = Seller.GetOffers();
+				});
+			return true;
+		}
+		if (Mob->GetType() != FMcVillager::StaticType())
+		{
+			return false;
+		}
+		FMcVillager& Villager = static_cast<FMcVillager&>(*Mob);
+		if (Villager.IsBaby() || !Villager.HasProfession() || Villager.IsSleeping())
+		{
+			return false;
+		}
+		FString Profession = McCache::PathOf(Villager.GetProfession().ToString());
+		Profession = FText::FromString(Profession.Left(1)).ToUpper().ToString() + Profession.Mid(1);
+		User.Data->OpenTrading(Where, Profession + TEXT(" - ") + McVillager::GetLevelName(Villager.GetLevel()), Villager.GetOffers(), Villager.GetReputation(Player), Villager.GetLevel(), Villager.GetXp(), true,
+			[WeakWorld, Id, Player](int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)
+			{
+				FMcEntityHost* Host = WeakWorld.IsValid() ? WeakWorld->GetEntityHost() : nullptr;
+				FMcEntity* Found = Host ? Host->GetManager().Find(Id) : nullptr;
+				if (!Found || Found->GetType() != FMcVillager::StaticType())
+				{
+					return;
+				}
+				FMcVillager& Trader = static_cast<FMcVillager&>(*Found);
+				if (Trader.GetOffers().IsValidIndex(Index))
+				{
+					++Trader.GetOffers()[Index].Uses;
+				}
+				Trader.AddTradeXp(TraderXp);
+				Trader.AddReputation(Player, 1);
+				OutOffers = Trader.GetOffers();
+				OutLevel = Trader.GetLevel();
+				OutXp = Trader.GetXp();
+			});
+		return true;
+	};
+	Hooked.OnPlaced = [World](const FIntVector& Pos)
+	{
+		if (World.IsValid())
+		{
+			World->PlayerPlaced(Pos);
+		}
 	};
 	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
 	{
+		if (World.IsValid())
+		{
+			World->PlayerBroke(Pos);
+		}
 		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
 		if (Use)
 		{
@@ -339,6 +551,12 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		const FName Held = User.Data->Inventory->Get(User.Data->SelectedSlot).Item;
 		// The builders of portals change blocks in pieces, so the world is not to look for broken frames in between.
 		const McPortal::FSetBlock Place = [World](const FIntVector& At, FMcStateId State) { World->SetBlock(At, State, false); };
+		if ((Held == TEXT("minecraft:flint_and_steel") || Held == TEXT("minecraft:fire_charge")) && FMcPrimedTnt::IsTnt(Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name))
+		{
+			// Lights the TNT it is used on.
+			FMcEntityHost* Host = World->GetEntityHost();
+			return Host && FMcPrimedTnt::Ignite(Host->GetManager(), Pos) != nullptr;
+		}
 		if (Held == TEXT("minecraft:flint_and_steel"))
 		{
 			if (!Registry.IsAir(Blocks->GetBlock(Beside)))
@@ -398,6 +616,28 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		}
 		return false;
 	};
+	// A night slept through: once every player is in bed for the hundred ticks, it is morning and the weather has cleared.
+	Hooked.OnSleptThrough = [World](AMcPlayerPawn& Sleeper)
+	{
+		UWorld* Level = Sleeper.GetWorld();
+		if (!World.IsValid() || !Level)
+		{
+			return;
+		}
+		for (TActorIterator<AMcPlayerPawn> It(Level); It; ++It)
+		{
+			if (!It->IsServerDead() && It->Data && !It->Data->bCreative && (!It->IsSleeping() || It->GetSleepTicks() < McBed::TicksToSleep))
+			{
+				return;
+			}
+		}
+		World->SetDayTime(static_cast<double>(McBed::GetMorning(static_cast<int64>(World->GetDayTime()))));
+		World->SetWeather(EMcWeather::Clear, 6000);
+		for (TActorIterator<AMcPlayerPawn> It(Level); It; ++It)
+		{
+			It->ServerWakeUp();
+		}
+	};
 	// Dying shows the death screen; the player comes back when they press Respawn.
 	Hooked.OnRespawnRequest = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](AMcPlayerPawn&)
 	{
@@ -427,6 +667,14 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			{
 				// Thrown from the eyes, with a pause before it can be taken straight back.
 				Host->GetManager().DropItem(WeakPawn->GetFeetPosition() + FVector(0.0, 1.3, 0.0), Stack, 40);
+			}
+		};
+		Data->ServerSound = [World, WeakPawn](FName Event, float Volume, float Pitch)
+		{
+			FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
+			if (Host && WeakPawn.IsValid())
+			{
+				Host->GetManager().PlaySound(Event, WeakPawn->GetFeetPosition() + FVector(0.0, 1.0, 0.0), Volume, Pitch);
 			}
 		};
 		Data->ServerWindowValid = [World, WeakPawn](const FMcWindow& Window)
@@ -928,16 +1176,93 @@ void AMcPlayerController::StartDevScreenshot()
 	float Delay = 5.0f;
 	FParse::Value(FCommandLine::Get(), TEXT("-McShotDelay="), Delay);
 
-	FTimerHandle ShotTimer;
-	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, ShotPath]()
+	// After the delay, wait until the chunks round the camera are meshed (none waiting for a mesh, and the count
+	// steady for two checks), up to -McShotMaxWait= seconds (default 90): far chunks on a slow machine otherwise
+	// shoot as sky. -McShotNoWait shoots at the delay as before.
+	float MaxWait = 90.0f;
+	FParse::Value(FCommandLine::Get(), TEXT("-McShotMaxWait="), MaxWait);
+	const bool bWait = !FParse::Param(FCommandLine::Get(), TEXT("McShotNoWait"));
+
+	// The shot waits for the shaders still compiling (a material that changed is compiled when first drawn, and a
+	// translucent surface is skipped until then), up to three minutes more.
+	// Frames per second over the last three seconds, for the log line: one frame's rate is too noisy to compare looks by.
+	struct FFpsWindow
 	{
-		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s"), *ShotPath);
+		TArray<TPair<double, float>> Frames;
+		float Average() const
+		{
+			const double Now = FPlatformTime::Seconds();
+			double Sum = 0.0;
+			int32 Count = 0;
+			for (const TPair<double, float>& Frame : Frames)
+			{
+				if (Now - Frame.Key <= 3.0)
+				{
+					Sum += Frame.Value;
+					++Count;
+				}
+			}
+			return Count > 0 && Sum > 0.0 ? (float)(Count / Sum) : 0.0f;
+		}
+	};
+	const TSharedRef<FFpsWindow> FpsWindow = MakeShared<FFpsWindow>();
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([FpsWindow](float DeltaTime)
+	{
+		FpsWindow->Frames.Add({ FPlatformTime::Seconds(), DeltaTime });
+		if (FpsWindow->Frames.Num() > 1200)
+		{
+			FpsWindow->Frames.RemoveAt(0, 600, EAllowShrinking::No);
+		}
+		return true;
+	}));
+	const TSharedRef<TFunction<void(int32)>> TakeShot = MakeShared<TFunction<void(int32)>>();
+	*TakeShot = [this, ShotPath, TakeShot, FpsWindow](int32 Waited)
+	{
+		if (GShaderCompilingManager && GShaderCompilingManager->IsCompiling() && Waited < 180)
+		{
+			FTimerHandle WaitTimer;
+			GetWorldTimerManager().SetTimer(WaitTimer, FTimerDelegate::CreateWeakLambda(this, [TakeShot, Waited]() { (*TakeShot)(Waited + 1); }), 1.0f, false);
+			return;
+		}
+		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()
 		{
 			FPlatformMisc::RequestExit(false, TEXT("McShot"));
 		}), 1.0f, false);
+	};
+	// Once the chunks are meshed (or the wait is up) the shot is taken by TakeShot, which also waits for the shaders.
+	const TFunction<void()> Save = [TakeShot]() { (*TakeShot)(0); };
+
+	FTimerHandle ShotTimer;
+	GetWorldTimerManager().SetTimer(ShotTimer, FTimerDelegate::CreateWeakLambda(this, [this, Save, bWait, MaxWait]()
+	{
+		if (!bWait)
+		{
+			Save();
+			return;
+		}
+		struct FWaitState { int32 Last = -1; int32 Steady = 0; float Waited = 0.0f; };
+		TSharedRef<FWaitState> State = MakeShared<FWaitState>();
+		TSharedRef<FTimerHandle> Poll = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*Poll, FTimerDelegate::CreateWeakLambda(this, [this, Save, MaxWait, State, Poll]()
+		{
+			const UMcWorldRenderComponent* Drawer = Cast<UMcWorldRenderComponent>(Renderer.Get());
+			const int32 Meshed = Drawer ? Drawer->NumMeshedChunks() : 0;
+			const bool bIdle = Drawer && Drawer->NumPendingChunks() == 0 && Meshed > 0;
+			State->Steady = (bIdle && Meshed == State->Last) ? State->Steady + 1 : 0;
+			State->Last = Meshed;
+			State->Waited += 0.5f;
+			if (State->Steady >= 2 || State->Waited >= MaxWait)
+			{
+				UE_LOG(LogMcClient, Display, TEXT("McShot: %d chunks meshed after waiting %.1f s more"), Meshed, State->Waited);
+				// Clearing the timer frees this lambda's captures: run a copy of Save.
+				const TFunction<void()> Run = Save;
+				GetWorldTimerManager().ClearTimer(*Poll);
+				Run();
+			}
+		}), 0.5f, true);
 	}), Delay, false);
 #endif
 }
@@ -996,7 +1321,11 @@ void AMcPlayerController::SpawnEnvironment()
 	// The clouds, drifting with the world's time.
 	UMcCloudComponent* Cover = NewObject<UMcCloudComponent>(WorldActor);
 	Cover->SetupAttachment(WorldActor->GetRootComponent());
-	Cover->GetTime = Heavens->GetTime;
+	// The clouds drift with the game's own count, not the sky's: /time set moves the sun and leaves them be.
+	Cover->GetTime = [Actor = TWeakObjectPtr<AMcWorldActor>(WorldActor)]()
+	{
+		return Actor.IsValid() ? Actor->GetGameTicks() : 0.0;
+	};
 	Cover->GetWeather = Heavens->GetWeather;
 	if (const FMcBlockWorld* Blocks = WorldActor->GetBlockWorld())
 	{

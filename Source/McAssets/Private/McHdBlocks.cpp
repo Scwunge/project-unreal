@@ -2,6 +2,7 @@
 #include "McAssets.h"
 #include "McBlockTextures.h"
 #include "McCache.h"
+#include "McResourcePacks.h"
 #include "Async/ParallelFor.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Texture2DArray.h"
@@ -118,6 +119,52 @@ namespace
 		Source.Width = Source.Height = Size;
 		Source.Pixels = TArray<FColor>(Pixels.GetData(), Pixels.Num());
 		return Source;
+	}
+
+	// The three maps of one block layer at Size pixels on a side.
+	// - A layer from the vanilla assets is 16 pixels (repeated, in an array made wider by a resource pack): the generator
+	//   works from those 16 as always.
+	// - A layer from a resource pack is used as the picture it is, shrunk to Size if needed; its normal and specular maps
+	//   are the pack's own when it has them (and -McPackPbr is on), else made from the picture without added detail.
+	McHd::FMaps MakeLayerMaps(const FMcBlockTextures& Blocks, int32 Layer, int32 Size, const McHd::FClassTags& Tags)
+	{
+		const int32 Source = Blocks.GetSize();
+		const FString Id = Blocks.GetLayerId(Layer) == NAME_None ? FString(TEXT("minecraft:block/missing")) : Blocks.GetLayerId(Layer).ToString();
+		const McHd::EMaterialClass Class = McHd::PickClass(Id, &Tags);
+		const bool bEmissive = McHd::IsEmissiveTexture(Id);
+		const TConstArrayView<FColor> Pixels = Blocks.GetPixels(Layer);
+
+		if (Source == FMcBlockTextures::TextureSize || !Blocks.IsFromPack(Layer))
+		{
+			McHd::FPicture Plain;
+			Plain.Width = Plain.Height = FMcBlockTextures::TextureSize;
+			Plain.Pixels.SetNumUninitialized(Plain.Width * Plain.Height);
+			const int32 Step = Source / FMcBlockTextures::TextureSize;
+			for (int32 Y = 0; Y < Plain.Height; ++Y)
+			{
+				for (int32 X = 0; X < Plain.Width; ++X)
+				{
+					Plain.Pixels[Y * Plain.Width + X] = Pixels[Y * Step * Source + X * Step];
+				}
+			}
+			return McHd::Generate(Id, Plain, Size / FMcBlockTextures::TextureSize, Class, bEmissive, true);
+		}
+
+		auto ToSize = [Source, Size](TConstArrayView<FColor> From, bool bPlain)
+		{
+			McHd::FPicture Picture = MakeSource(From, Source);
+			return Size == Source ? Picture : McHd::Shrink(Picture, Size, Size, bPlain);
+		};
+		McHd::FMaps Made = McHd::GenerateFromAlbedo(Id, ToSize(Pixels, false), Class, bEmissive, true);
+		if (Blocks.GetNormalPixels(Layer).Num() > 0)
+		{
+			Made.Normal = ToSize(Blocks.GetNormalPixels(Layer), true);
+		}
+		if (Blocks.GetSpecularPixels(Layer).Num() > 0)
+		{
+			Made.Specular = ToSize(Blocks.GetSpecularPixels(Layer), true);
+		}
+		return Made;
 	}
 
 	constexpr uint32 CacheMagic = 0x4448434d;  // "MCHD"
@@ -279,9 +326,13 @@ bool FMcHdBlocks::EnsureBuilt()
 		return false;
 	}
 	const double Start = FPlatformTime::Seconds();
-	const int32 Size = GetHdSize();
 	const int32 NumLayers = Blocks.NumLayers();
-	const int32 Scale = Size / FMcBlockTextures::TextureSize;
+	int32 Size = GetHdSize();
+	if (Blocks.GetSize() > FMcBlockTextures::TextureSize)
+	{
+		// A resource pack's pictures are kept as they are; the three arrays together stay within the pack memory budget.
+		Size = McPacks::ChooseTextureSize(Blocks.GetSize(), NumLayers, Blocks.GetSize(), McPacks::GetBudgetBytes() / 3);
+	}
 	ReadTags();
 
 	LayerIds.Reset();
@@ -299,10 +350,16 @@ bool FMcHdBlocks::EnsureBuilt()
 	{
 		const FString Id = LayerIds[Layer].ToString();
 		Hash.Update(reinterpret_cast<const uint8*>(*Id), Id.Len() * sizeof(TCHAR));
-		if (!Blocks.IsAnimated(Layer))
+		if (!Blocks.IsAnimated(Layer) && Blocks.GetSize() == FMcBlockTextures::TextureSize)
 		{
 			Hash.Update(reinterpret_cast<const uint8*>(Blocks.GetPixels(Layer).GetData()), Blocks.GetPixels(Layer).Num() * sizeof(FColor));
 		}
+	}
+	// With a resource pack the picture is too big to hash; the packs' files and the options stand for it.
+	if (Blocks.GetSize() > FMcBlockTextures::TextureSize)
+	{
+		const FString Source = Blocks.GetSourceKey();
+		Hash.Update(reinterpret_cast<const uint8*>(*Source), Source.Len() * sizeof(TCHAR));
 	}
 	uint8 Key[16];
 	Hash.Final(Key);
@@ -339,9 +396,7 @@ bool FMcHdBlocks::EnsureBuilt()
 	{
 		ParallelFor(NumLayers, [&](int32 Layer)
 		{
-			const FString Id = LayerIds[Layer] == NAME_None ? FString(TEXT("minecraft:block/missing")) : LayerIds[Layer].ToString();
-			const McHd::FMaps Made = McHd::Generate(Id, MakeSource(Blocks.GetPixels(Layer), FMcBlockTextures::TextureSize), Scale,
-				McHd::PickClass(Id, &Tags), McHd::IsEmissiveTexture(Id), true);
+			const McHd::FMaps Made = MakeLayerMaps(Blocks, Layer, Size, Tags);
 			const McHd::FPicture* Pictures[3] = { &Made.Albedo, &Made.Normal, &Made.Specular };
 			for (int32 Kind = 0; Kind < 3; ++Kind)
 			{
@@ -393,9 +448,7 @@ void FMcHdBlocks::RefreshLayer(int32 Layer)
 	}
 	FMcBlockTextures& Blocks = FMcBlockTextures::Get();
 	const int32 Size = Summary.Size;
-	const FString Id = LayerIds[Layer].ToString();
-	const McHd::FMaps Made = McHd::Generate(Id, MakeSource(Blocks.GetPixels(Layer), FMcBlockTextures::TextureSize), Size / FMcBlockTextures::TextureSize,
-		McHd::PickClass(Id, &Tags), McHd::IsEmissiveTexture(Id), true);
+	const McHd::FMaps Made = MakeLayerMaps(Blocks, Layer, Size, Tags);
 
 	struct FUpload
 	{
@@ -504,6 +557,19 @@ UTexture2DArray* FMcHdBlocks::GetWhitePicture(const FString& TextureId, const FS
 	}
 	WhitePictures.Add(PngPath, Result);
 	return Result;
+}
+
+void FMcHdBlocks::Unload()
+{
+	check(IsInGameThread());
+	Shutdown();
+	Albedo = nullptr;
+	Normal = nullptr;
+	Specular = nullptr;
+	Summary = FMcHdSummary();
+	LayerIds.Empty();
+	Pictures.Empty();
+	WhitePictures.Empty();
 }
 
 void FMcHdBlocks::Shutdown()

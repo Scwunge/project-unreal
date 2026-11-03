@@ -1,0 +1,14 @@
+11|2,-60,0|-|redstone_block
+11|3,-60,0|redstone_wire[east=side,north=none,power=0,south=none,west=side]|redstone_wire[east=side,north=none,power=15,south=none,west=side]
+11|4,-60,0|redstone_wire[east=side,north=none,power=0,south=none,west=side]|redstone_wire[east=side,north=none,power=14,south=none,west=side]
+12|5,-60,0|comparator[facing=west,mode=compare,powered=false]|comparator[facing=west,mode=compare,powered=true]
+12|6,-60,0|redstone_wire[east=side,north=none,power=0,south=none,west=side]|redstone_wire[east=side,north=none,power=14,south=none,west=side]
+21|5,-60,0|comparator[facing=west,mode=compare,powered=true]|comparator[facing=west,mode=subtract,powered=false]
+21|6,-60,0|redstone_wire[east=side,north=none,power=14,south=none,west=side]|redstone_wire[east=side,north=none,power=0,south=none,west=side]
+22|5,-60,0|comparator[facing=west,mode=subtract,powered=false]|comparator[facing=west,mode=subtract,powered=true]
+22|6,-60,0|redstone_wire[east=side,north=none,power=0,south=none,west=side]|redstone_wire[east=side,north=none,power=2,south=none,west=side]
+31|2,-60,0|redstone_block|-
+31|3,-60,0|redstone_wire[east=side,north=none,power=15,south=none,west=side]|redstone_wire[east=side,north=none,power=0,south=none,west=side]
+31|4,-60,0|redstone_wire[east=side,north=none,power=14,south=none,west=side]|redstone_wire[east=side,north=none,power=0,south=none,west=side]
+32|5,-60,0|comparator[facing=west,mode=subtract,powered=true]|comparator[facing=west,mode=subtract,powered=false]
+32|6,-60,0|redstone_wire[east=side,north=none,power=2,south=none,west=side]|redstone_wire[east=side,north=none,power=0,south=none,west=side]

@@ -1,0 +1,13 @@
+12|0,-60,0|oak_log[axis=y]|-
+12|1,-60,0|oak_leaves[distance=1,persistent=false,waterlogged=false]|oak_leaves[distance=3,persistent=false,waterlogged=false]
+13|2,-60,0|oak_leaves[distance=2,persistent=false,waterlogged=false]|oak_leaves[distance=4,persistent=false,waterlogged=false]
+14|1,-60,0|oak_leaves[distance=3,persistent=false,waterlogged=false]|oak_leaves[distance=5,persistent=false,waterlogged=false]
+14|3,-60,0|oak_leaves[distance=3,persistent=false,waterlogged=false]|oak_leaves[distance=5,persistent=false,waterlogged=false]
+15|2,-60,0|oak_leaves[distance=4,persistent=false,waterlogged=false]|oak_leaves[distance=6,persistent=false,waterlogged=false]
+15|4,-60,0|oak_leaves[distance=4,persistent=false,waterlogged=false]|oak_leaves[distance=6,persistent=false,waterlogged=false]
+16|1,-60,0|oak_leaves[distance=5,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]
+16|3,-60,0|oak_leaves[distance=5,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]
+16|5,-60,0|oak_leaves[distance=5,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]
+17|2,-60,0|oak_leaves[distance=6,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]
+17|4,-60,0|oak_leaves[distance=6,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]
+17|6,-60,0|oak_leaves[distance=6,persistent=false,waterlogged=false]|oak_leaves[distance=7,persistent=false,waterlogged=false]

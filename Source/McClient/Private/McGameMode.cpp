@@ -1,7 +1,9 @@
 #include "McGameMode.h"
+#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "McBed.h"
 #include "McBlockEntity.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
@@ -9,12 +11,14 @@
 #include "McClient.h"
 #include "McBlockShapes.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McVehicle.h"
 #include "McPlayerController.h"
 #include "McPlayerData.h"
 #include "McPlayerSave.h"
 #include "McTravel.h"
 #include "McPlayerPawn.h"
+#include "McItemFrames.h"
 #include "McWorldActor.h"
 #include "McWorldSave.h"
 #include "McLaunch.h"
@@ -37,6 +41,8 @@
 #include "McBlockRegistry.h"
 #include "McCache.h"
 #include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "TimerManager.h"
@@ -55,6 +61,275 @@ AMcGameMode::AMcGameMode()
 #if MC_WITH_RENDER
 	HUDClass = AMcHUD::StaticClass();
 #endif
+}
+
+namespace
+{
+	// Grants or revokes an advancement for a player (the advancement command's and the triggers'), with its toast.
+	// 1 changed, 0 already so, -1 no such player or advancement.
+	int32 AwardAdvancement(AMcPlayerPawn* Pawn, const FString& Id, bool bGrant, FString& OutTitle)
+	{
+		const FString Full = McCache::Namespaced(Id);
+		const TSharedPtr<FJsonObject> Def = McCache::LoadJsonObject(McCache::Data(FString::Printf(TEXT("advancement/%s.json"), *McCache::PathOf(Full))));
+		if (!Pawn || !Pawn->Data || !Def.IsValid())
+		{
+			return -1;
+		}
+		// Its display (the game's data): the title's lang key, the icon item and the frame (task, goal, challenge).
+		const TSharedPtr<FJsonObject>* Display = nullptr;
+		FString Title = Full;
+		FName Icon;
+		FString Frame = TEXT("task");
+		bool bToast = false;
+		if (Def->TryGetObjectField(TEXT("display"), Display))
+		{
+			const TSharedPtr<FJsonObject>* TitleObject = nullptr;
+			FString Key;
+			if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
+			{
+				Title = McLang::Get(Key);
+			}
+			const TSharedPtr<FJsonObject>* IconObject = nullptr;
+			FString IconId;
+			if ((*Display)->TryGetObjectField(TEXT("icon"), IconObject) && (*IconObject)->TryGetStringField(TEXT("id"), IconId))
+			{
+				Icon = FName(*IconId);
+			}
+			(*Display)->TryGetStringField(TEXT("frame"), Frame);
+			bToast = true;
+			(*Display)->TryGetBoolField(TEXT("show_toast"), bToast);
+		}
+		OutTitle = Def->HasField(TEXT("display")) ? TEXT("[") + Title + TEXT("]") : Full;
+		const FName Key(*Full);
+		if (!bGrant)
+		{
+			return Pawn->Data->Advancements.Remove(Key) > 0 ? 1 : 0;
+		}
+		if (Pawn->Data->Advancements.Contains(Key))
+		{
+			return 0;
+		}
+		Pawn->Data->Advancements.Add(Key);
+		UE_LOG(LogMcClient, Log, TEXT("Advancement %s made: %s"), *Full, *Title);
+		if (bToast)
+		{
+			const bool bChallenge = Frame == TEXT("challenge");
+			// The challenge's heading colour is the wiki's purple (not measured).
+			Pawn->Data->ServerToast(McLang::Get(Frame == TEXT("goal") ? TEXT("advancements.toast.goal") : bChallenge ? TEXT("advancements.toast.challenge") : TEXT("advancements.toast.task")),
+				bChallenge ? 0xFF55FF : 0xFFFF00, Title, Icon);
+		}
+		return 1;
+	
+	}
+
+	using FPredicate = TPair<TArray<FString>, int32>;
+
+	struct FInventoryTrigger
+	{
+		FString Id;
+		// Each group needs one of its criteria; a criterion needs every item predicate met.
+		TArray<TArray<TArray<FPredicate>>> Groups;
+	};
+
+	// The advancements that fire on what the player carries (the game's data: trigger minecraft:inventory_changed with
+	// plain item predicates; those with component or slot conditions are left out).
+	const TArray<FInventoryTrigger>& InventoryTriggers()
+	{
+		static TArray<FInventoryTrigger> Triggers;
+		static bool bLoaded = false;
+		if (bLoaded)
+		{
+			return Triggers;
+		}
+		bLoaded = true;
+		const FString Root = McCache::Data(TEXT("advancement"));
+		TArray<FString> Files;
+		IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
+		for (const FString& File : Files)
+		{
+			TSharedPtr<FJsonObject> Def;
+			FString Text;
+			if (!FFileHelper::LoadFileToString(Text, *File) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Def) || !Def.IsValid())
+			{
+				continue;
+			}
+			const TSharedPtr<FJsonObject>* Criteria = nullptr;
+			if (!Def->TryGetObjectField(TEXT("criteria"), Criteria))
+			{
+				continue;
+			}
+			TMap<FString, TArray<FPredicate>> Parsed;
+			bool bReadable = true;
+			for (const auto& Entry : (*Criteria)->Values)
+			{
+				const TSharedPtr<FJsonObject>* Criterion = nullptr;
+				FString Trigger;
+				const TSharedPtr<FJsonObject>* Conditions = nullptr;
+				const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
+				if (!Entry.Value->TryGetObject(Criterion) || !(*Criterion)->TryGetStringField(TEXT("trigger"), Trigger) || Trigger != TEXT("minecraft:inventory_changed")
+					|| !(*Criterion)->TryGetObjectField(TEXT("conditions"), Conditions) || (*Conditions)->Values.Num() != 1 || !(*Conditions)->TryGetArrayField(TEXT("items"), Items))
+				{
+					bReadable = false;
+					break;
+				}
+				TArray<FPredicate>& Predicates = Parsed.FindOrAdd(FString(Entry.Key));
+				for (const TSharedPtr<FJsonValue>& Value : *Items)
+				{
+					const TSharedPtr<FJsonObject>* Predicate = nullptr;
+					if (!Value->TryGetObject(Predicate))
+					{
+						bReadable = false;
+						break;
+					}
+					TArray<FString> Names;
+					FString One;
+					const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+					if ((*Predicate)->TryGetStringField(TEXT("items"), One))
+					{
+						Names.Add(One);
+					}
+					else if ((*Predicate)->TryGetArrayField(TEXT("items"), Many))
+					{
+						for (const TSharedPtr<FJsonValue>& Name : *Many)
+						{
+							Names.Add(Name->AsString());
+						}
+					}
+					else
+					{
+						bReadable = false;
+						break;
+					}
+					int32 Min = 1;
+					const TSharedPtr<FJsonObject>* Count = nullptr;
+					const bool bHasCount = (*Predicate)->TryGetObjectField(TEXT("count"), Count);
+					if (bHasCount)
+					{
+						double MinValue = 1.0;
+						(*Count)->TryGetNumberField(TEXT("min"), MinValue);
+						Min = static_cast<int32>(MinValue);
+					}
+					if ((*Predicate)->Values.Num() != (bHasCount ? 2 : 1))
+					{
+						bReadable = false;
+						break;
+					}
+					Predicates.Add(FPredicate(Names, Min));
+				}
+				if (!bReadable)
+				{
+					break;
+				}
+			}
+			if (!bReadable || Parsed.IsEmpty())
+			{
+				continue;
+			}
+			FInventoryTrigger Trigger;
+			FString Relative = File;
+			FPaths::MakePathRelativeTo(Relative, *(Root + TEXT("/")));
+			Trigger.Id = TEXT("minecraft:") + FPaths::ChangeExtension(Relative, TEXT(""));
+			const TArray<TSharedPtr<FJsonValue>>* Requirements = nullptr;
+			if (Def->TryGetArrayField(TEXT("requirements"), Requirements))
+			{
+				for (const TSharedPtr<FJsonValue>& Group : *Requirements)
+				{
+					TArray<TArray<FPredicate>> Alternatives;
+					for (const TSharedPtr<FJsonValue>& Name : Group->AsArray())
+					{
+						if (const TArray<FPredicate>* Found = Parsed.Find(Name->AsString()))
+						{
+							Alternatives.Add(*Found);
+						}
+					}
+					Trigger.Groups.Add(Alternatives);
+				}
+			}
+			else
+			{
+				for (const auto& Entry : Parsed)
+				{
+					Trigger.Groups.Add({ Entry.Value });
+				}
+			}
+			Triggers.Add(MoveTemp(Trigger));
+		}
+		return Triggers;
+	}
+
+	// Once a second: whatever a player carries that an advancement asks for grants it (parents are not needed, as in the game).
+	void PollInventoryTriggers(UWorld* World)
+	{
+		if (!World)
+		{
+			return;
+		}
+		const FMcItemRegistry& Items = FMcItemRegistry::Get();
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			AMcPlayerPawn* Pawn = It->IsValid() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+			if (!Pawn || !Pawn->Data || !Pawn->Data->Inventory)
+			{
+				continue;
+			}
+			TMap<FName, int32> Carried;
+			const TSharedPtr<FMcContainer> Containers[3] = { Pawn->Data->Inventory, Pawn->Data->Armor, Pawn->Data->Offhand };
+			for (const TSharedPtr<FMcContainer>& Container : Containers)
+			{
+				for (int32 Slot = 0; Container && Slot < Container->Num(); ++Slot)
+				{
+					const FMcItemStack& Stack = Container->Get(Slot);
+					if (Stack.Count > 0 && !Stack.Item.IsNone())
+					{
+						Carried.FindOrAdd(Stack.Item) += Stack.Count;
+					}
+				}
+			}
+			const auto Has = [&](const FPredicate& Predicate)
+			{
+				int32 Total = 0;
+				for (const auto& Slot : Carried)
+				{
+					for (const FString& Name : Predicate.Key)
+					{
+						if (Items.Matches(Slot.Key, Name))
+						{
+							Total += Slot.Value;
+							break;
+						}
+					}
+				}
+				return Total >= Predicate.Value;
+			};
+			for (const FInventoryTrigger& Trigger : InventoryTriggers())
+			{
+				if (Pawn->Data->Advancements.Contains(FName(*Trigger.Id)))
+				{
+					continue;
+				}
+				bool bDone = !Trigger.Groups.IsEmpty();
+				for (const auto& Group : Trigger.Groups)
+				{
+					bool bAny = false;
+					for (const auto& Criterion : Group)
+					{
+						bool bAll = true;
+						for (const FPredicate& Predicate : Criterion)
+						{
+							bAll = bAll && Has(Predicate);
+						}
+						bAny = bAny || bAll;
+					}
+					bDone = bDone && bAny;
+				}
+				if (bDone)
+				{
+					FString Title;
+					AwardAdvancement(Pawn, Trigger.Id, true, Title);
+				}
+			}
+		}
+	}
 }
 
 void AMcGameMode::StartPlay()
@@ -78,6 +353,30 @@ void AMcGameMode::StartPlay()
 		UE_LOG(LogMcClient, Log, TEXT("Dedicated server \"%s\" on port %d: up to %d players, allowlist %s."), *Properties.GetString(TEXT("motd")),
 			GetWorld()->URL.Port, Properties.GetInt(TEXT("max-players"), 20), Properties.GetBool(TEXT("white-list")) ? TEXT("on") : TEXT("off"));
 	}
+
+	// The compass and the clock read where the local player is and what time it is, once a game tick.
+	GetWorldTimerManager().SetTimer(ItemFrameTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+	{
+		const APlayerController* Local = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+		const AMcPlayerPawn* Pawn = Local ? Cast<AMcPlayerPawn>(Local->GetPawn()) : nullptr;
+		const AMcPlayerController* Controller = Cast<AMcPlayerController>(Local);
+		const AMcWorldActor* Here = Controller ? Controller->GetWorldActor() : nullptr;
+		if (!Pawn || !Here)
+		{
+			return;
+		}
+		McItemFrames::FContext Context;
+		Context.Position = FVector2D(Pawn->GetFeetPosition().X, Pawn->GetFeetPosition().Z);
+		Context.Yaw = Pawn->GetLookYaw();
+		Context.Spawn = FVector2D(Here->GetSpawnColumn().X + 0.5, Here->GetSpawnColumn().Y + 0.5);
+		Context.DayTime = Here->GetDayTime();
+		Context.bOverworld = Here->Dimension == TEXT("minecraft:overworld");
+		Context.GameTicks = Here->GetGameTime();
+		McItemFrames::SetContext(Context);
+	}), 0.05f, true);
+
+	// Advancements that fire on what a player carries.
+	GetWorldTimerManager().SetTimer(AdvancementTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { PollInventoryTriggers(GetWorld()); }), 1.0f, true);
 
 	// Spawned after Super::StartPlay so the world has begun play and BeginPlay runs straight away.
 	WorldActor = GetWorld()->SpawnActor<AMcWorldActor>();
@@ -153,6 +452,54 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				HurtPlayerNear(*Here, Position, Damage);
 			}
 		};
+		Host->OnPlayerBlast = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				BlastPlayerNear(*Here, Position, Damage, Push, Center);
+			}
+		};
+		Host->PlayerWearsGold = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && McPawn->Data && McPawn->Data->Armor && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5)
+				{
+					for (int32 Slot = 0; Slot < McPawn->Data->Armor->Num(); ++Slot)
+					{
+						if (McPawn->Data->Armor->Get(Slot).Item.ToString().StartsWith(TEXT("minecraft:golden_")))
+						{
+							return true;
+						}
+					}
+				}
+			}
+			return false;
+		};
+		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				EffectPlayerNear(*Here, Position, Effect, Amplifier, Duration);
+			}
+		};
+		Host->OnRaidWon = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Center, int32 Level)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HonourHeroes(*Here, Center, Level);
+			}
+		};
+		if (!GetWorldTimerManager().IsTimerActive(VillageTimer))
+		{
+			GetWorldTimerManager().SetTimer(VillageTimer, this, &AMcGameMode::TickVillages, 1.0f, true);
+		}
 	}
 	if (FMcSimulation* Sim = World.GetSimulation())
 	{
@@ -651,8 +998,13 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		float KeptProgress = 0.0f;
 		int32 KeptSlot = 0;
 		bool bKeep = false;
+		TOptional<FIntVector> Bed;
 		if (const AMcPlayerPawn* Dead = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
+			if (Dead->Data)
+			{
+				Bed = Dead->Data->SpawnBed;
+			}
 			bKeep = Dead->Data && Dead->GetGameRules().bKeepInventory;
 			if (bKeep)
 			{
@@ -680,10 +1032,39 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			Player->EnterWorld(*WorldActor);
 		}
-		RestartPlayerAtTransform(Who, GetSpawnTransform());
+		// Beside the bed they last slept in, if it is still there and has room beside it (minecraft.wiki: "Respawn").
+		FTransform Spawn = GetSpawnTransform();
+		bool bBedMissing = false;
+		const FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+		if (Bed.IsSet() && Blocks)
+		{
+			const FIntPoint Chunk(McCoords::BlockToChunk(Bed->X), McCoords::BlockToChunk(Bed->Z));
+			if (!Blocks->HasChunk(Chunk))
+			{
+				// Not loaded: they come down on the bed, and the world loads round them.
+				Spawn.SetLocation(McCoords::BlockToUnreal(FVector(Bed->X + 0.5, Bed->Y + 1.0, Bed->Z + 0.5)));
+			}
+			else if (const TOptional<FVector> Stand = McBed::FindStandPosition(*Blocks, Bed.GetValue()))
+			{
+				Spawn.SetLocation(McCoords::BlockToUnreal(Stand.GetValue()));
+			}
+			else
+			{
+				bBedMissing = true;
+			}
+		}
+		RestartPlayerAtTransform(Who, Spawn);
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
 			McPawn->SetGameRules(GetGameRules());
+			if (McPawn->Data)
+			{
+				McPawn->Data->SpawnBed = bBedMissing ? TOptional<FIntVector>() : Bed;
+				if (bBedMissing)
+				{
+					McPawn->Data->TellOwner(TEXT("Your home bed was missing or obstructed"), 0xFFFFFF);
+				}
+			}
 			ApplyDefaultGameMode(*McPawn);
 			if (bKeep && McPawn->Data)
 			{
@@ -731,6 +1112,115 @@ void AMcGameMode::ApplyGameRules()
 			{
 				Pawn->SetGameRules(Rules);
 			}
+		}
+	}
+}
+
+void AMcGameMode::BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
+{
+	AMcPlayerPawn* Nearest = nullptr;
+	double NearestDistance = 0.5;
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		const double Distance = McPawn ? FVector::Dist(McPawn->GetFeetPosition(), Position) : NearestDistance;
+		if (McPawn && Distance < NearestDistance)
+		{
+			Nearest = McPawn;
+			NearestDistance = Distance;
+		}
+	}
+	if (Nearest)
+	{
+		Nearest->ServerBlast(Damage, Push, Center);
+	}
+}
+
+void AMcGameMode::TickVillages()
+{
+	for (AMcWorldActor* World : Worlds)
+	{
+		FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+		if (!Host)
+		{
+			continue;
+		}
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+			if (Player && Player->GetWorldActor() && Player->GetWorldActor() != World)
+			{
+				continue;
+			}
+			AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+			if (!Pawn || !Pawn->Data)
+			{
+				continue;
+			}
+			FMcPlayerStats& Stats = Pawn->Data->Stats;
+			const FVector Feet = Pawn->GetFeetPosition();
+			const FMcStatusEffect* Omen = McEffects::Find(Stats, TEXT("bad_omen"));
+			FVector Center;
+			if (Omen && Stats.Health > 0.0f && Host->FindVillage(Feet, Center))
+			{
+				const int32 Level = Omen->Amplifier + 1;
+				// The raid comes after the omen has run its 30 seconds.
+				if (Host->StartRaid(Center, Level, 600) != 0)
+				{
+					McEffects::Remove(Stats, TEXT("bad_omen"));
+					McEffects::Add(Stats, TEXT("raid_omen"), Level - 1, 600);
+				}
+			}
+			FString Title;
+			float Fraction = 0.0f;
+			if (Host->GetRaidBar(Feet, Title, Fraction))
+			{
+				Pawn->Data->SetRaidBar(Fraction, Title);
+			}
+			else
+			{
+				Pawn->Data->SetRaidBar(-1.0f, FString());
+			}
+		}
+	}
+}
+
+void AMcGameMode::HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* Pawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (Pawn && Pawn->Data && FVector::Dist(Pawn->GetFeetPosition(), Center) <= FMcEntityHost::RaidBarRange)
+		{
+			// 40 minutes, a level for each level of omen past the first.
+			McEffects::Add(Pawn->Data->Stats, TEXT("hero_of_the_village"), FMath::Max(0, Level - 1), 48000);
+		}
+	}
+}
+
+void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
+{
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+	{
+		const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+		if (Player && Player->GetWorldActor() && Player->GetWorldActor() != &World)
+		{
+			continue;
+		}
+		AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+		if (McPawn && McPawn->Data && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5)
+		{
+			McEffects::Add(McPawn->Data->Stats, Effect, Amplifier, Duration);
 		}
 	}
 }
@@ -920,6 +1410,27 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	if (GetNetMode() != NM_Standalone)
 	{
 		BroadcastChat(McLang::Format(TEXT("multiplayer.player.joined"), { GetPlayerName(NewPlayer) }), 0xFFFF55);
+	}
+
+	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
+	// command script for a shot or sound run, like the reference client's "cmd").
+	FString Lines;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
+	{
+		TArray<FString> Parts;
+		Lines.ParseIntoArray(Parts, TEXT("|"));
+		for (int32 Index = 0; Index < Parts.Num(); ++Index)
+		{
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+				[this, Player = TWeakObjectPtr<APlayerController>(NewPlayer), Line = Parts[Index]](float)
+				{
+					if (Player.IsValid())
+					{
+						HandleChat(Player.Get(), Line);
+					}
+					return false;
+				}), 8.0f + 0.5f * Index);
+		}
 	}
 }
 
@@ -1127,6 +1638,13 @@ namespace
 				World->SetBlock(Pos, State);
 			}
 		}
+		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->MulticastSound(Event, FVector_NetQuantize10(Position), Volume, Pitch);
+			}
+		}
 		virtual bool Summon(FName Kind, const FVector& Feet) override
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
@@ -1136,6 +1654,13 @@ namespace
 				TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 				Vehicle->Body.Position = Feet;
 				Host->GetManager().Add(MoveTemp(Vehicle));
+				return true;
+			}
+			if (Host && FMcPrimedTnt::IsTnt(Kind))
+			{
+				TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
+				Tnt->Body.Position = Feet;
+				Host->GetManager().Add(MoveTemp(Tnt));
 				return true;
 			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
@@ -1226,6 +1751,10 @@ namespace
 			return Found;
 		}
 
+		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
+		{
+			return AwardAdvancement(FindPawn(Player), Id, bGrant, OutTitle);
+		}
 		virtual bool IsEffect(FName Effect) const override
 		{
 			FName Parsed;

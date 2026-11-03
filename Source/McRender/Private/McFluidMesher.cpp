@@ -165,7 +165,7 @@ namespace
 			Buffers.Positions.Add(FVector(Block.X, Block.Z, Block.Y) * McCoords::UnitsPerBlock);
 			Buffers.Normals.Add(Normal);
 			Buffers.UV0.Add(UVs[Corner]);
-			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Translucent ? McSurface::Water : McSurface::Lava));
+			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Water ? McSurface::Water : McSurface::Lava));
 			Buffers.UV2.Add(Light);
 			Buffers.Colors.Add(Color);
 		}
@@ -188,7 +188,7 @@ namespace
 			return;
 		}
 		const bool bWater = Kind == EFluid::Water;
-		const EMcRenderPass Pass = bWater ? EMcRenderPass::Translucent : EMcRenderPass::Opaque;
+		const EMcRenderPass Pass = bWater ? EMcRenderPass::Water : EMcRenderPass::Opaque;
 		const FColor Tint = bWater ? Snapshot.GetTint(EMcTintSource::Water, X, Z) : FColor::White;
 		const uint16 StillLayer = bWater ? Fluids.WaterStill : Fluids.LavaStill;
 		const uint16 FlowLayer = bWater ? Fluids.WaterFlow : Fluids.LavaFlow;

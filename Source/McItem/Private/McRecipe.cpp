@@ -824,3 +824,34 @@ bool FMcRecipeBook::IsBrewingReagent(const FMcItemStack& Stack) const
 	}
 	return false;
 }
+
+bool McCrafterCraft(TArray<FMcItemStack>& Slots, FMcItemStack& Result)
+{
+	Slots.SetNum(9);
+	FMcRecipeBook& Book = FMcRecipeBook::Get();
+	Book.EnsureLoaded();
+	FMcCraftingMatch Match;
+	if (!Book.FindCraftingMatch(Slots, 3, 3, Match) || Match.Result.IsEmpty())
+	{
+		return false;
+	}
+	TArray<FMcItemStack> Left;
+	FMcRecipeBook::GetRemainders(Match.Recipe, Slots, Left);
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		if (Slots[Index].IsEmpty())
+		{
+			continue;
+		}
+		if (--Slots[Index].Count <= 0)
+		{
+			Slots[Index].Clear();
+		}
+		if (Slots[Index].IsEmpty() && Left.IsValidIndex(Index) && !Left[Index].IsEmpty())
+		{
+			Slots[Index] = Left[Index];
+		}
+	}
+	Result = Match.Result;
+	return true;
+}

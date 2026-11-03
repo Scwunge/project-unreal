@@ -20,6 +20,8 @@ namespace
 	thread_local const McLoot::FBlockContext* GBlock = nullptr;
 	// The catch being rolled for, likewise for RollFishing.
 	thread_local const McLoot::FFishingContext* GFishing = nullptr;
+	// Whether the mob whose table is being rolled leads a raid party: 1 or 0, -1 when the roll is for no mob.
+	thread_local int32 GCaptain = -1;
 
 	TSharedPtr<FJsonObject> FindTable(const FString& Id)
 	{
@@ -234,6 +236,18 @@ namespace
 				}
 			}
 			return 0;
+		}
+		if (GCaptain >= 0 && Type == TEXT("entity_properties"))
+		{
+			// Only the raider's captain flag is known; any other predicate can't be told here.
+			const TSharedPtr<FJsonObject>* Predicate;
+			const TSharedPtr<FJsonObject>* Raider;
+			bool bWanted = false;
+			if (Object->TryGetObjectField(TEXT("predicate"), Predicate) && (*Predicate)->TryGetObjectField(TEXT("minecraft:type_specific/raider"), Raider) && (*Raider)->TryGetBoolField(TEXT("is_captain"), bWanted))
+			{
+				return (GCaptain != 0) == bWanted ? 1 : 0;
+			}
+			return -1;
 		}
 		if (Type == TEXT("inverted"))
 		{
@@ -887,6 +901,11 @@ namespace
 	}
 }
 
+void McLoot::ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack)
+{
+	Modify(Modifier, Random, Stack);
+}
+
 bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>& Out)
 {
 	const TSharedPtr<FJsonObject> Json = FindTable(Table);
@@ -906,6 +925,15 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 		}
 	}
 	return true;
+}
+
+bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out)
+{
+	const int32 Previous = GCaptain;
+	GCaptain = bCaptain ? 1 : 0;
+	const bool bRolled = Roll(Table, Random, Out);
+	GCaptain = Previous;
+	return bRolled;
 }
 
 bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out)

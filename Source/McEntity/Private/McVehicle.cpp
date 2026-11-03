@@ -1024,6 +1024,8 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 			return ESurface::Water;
 		}
 		const FMcStateId Over = World.GetBlock(FIntVector(X, FMath::FloorToInt32(Body.Position.Y + Body.Height), Z));
+		// With water over its hull the drag is a half (vehicle_log18.txt: driven under water it tops out at 0.0727 = 0.04 / (1 - 0.45)).
+		OutFriction = 0.45;
 		const FName Level = Registry.GetPropertyValue(Over, TEXT("level"));
 		return HasWater(Over) && !Level.IsNone() && Level != FName(TEXT("0")) ? ESurface::UnderFlowing : ESurface::Underwater;
 	}
@@ -1192,7 +1194,9 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	const float Turn = bRiding ? -RiderStrafe : 0.0f;
 	// A degree more each tick a key is held, and nine tenths of it kept (paddle_log.txt: the yaw goes -1, -1.9, -2.71,
 	// -3.439 a tick turning left, and 7.46, 6.72, 6.04 coasting after).
-	TurnRate = TurnRate * 0.9f + Turn;
+	// The turn decays with the same friction as the way it moves (vehicle_log18.txt, under water: the yaw steps go 1.0, 1.45,
+	// 1.65, 1.74, 1.78 ...).
+	TurnRate = TurnRate * static_cast<float>(Slip) + Turn;
 	Yaw += TurnRate;
 	double Push = 0.0;
 	if (bRiding)

@@ -16,6 +16,9 @@
 #include "McServer.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
+#include "Async/ParallelFor.h"
+#include "HAL/Thread.h"
+#include "HAL/Event.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Dom/JsonObject.h"
@@ -868,32 +871,210 @@ bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 	return true;
 }
 
+namespace
+{
+	enum class EChunkResult : uint8
+	{
+		Missing,
+		Failed,
+		Done,
+	};
+
+	// One chunk of a region file already in memory, as a save (McChunkSave) with the scenery its chunk had.
+	EChunkResult ConvertToSave(TConstArrayView<uint8> Region, const FString& RegionFolder, FIntPoint Pos, const FMcDimensionType& Type,
+		const TMap<FIntPoint, FSceneryChunk>& Scenery, McJavaImport::FStats& Stats, TArray<uint8>& OutSave)
+	{
+		TArray<uint8> Raw;
+		bool bMissing = false;
+		if (!McJavaImport::ReadChunkBytes(Region, Pos.X & 31, Pos.Y & 31, RegionFolder, Pos.X, Pos.Y, Raw, bMissing))
+		{
+			return bMissing ? EChunkResult::Missing : EChunkResult::Failed;
+		}
+		FMcNbt Root;
+		FMcChunk Chunk(Pos, Type.MinY, Type.NumSections());
+		Chunk.FillBiome(FMcBiomeRegistry::Get().GetPlains());
+		if (!FMcNbt::Parse(Raw, Root) || !McJavaImport::ConvertChunk(Root, Chunk, Stats))
+		{
+			return EChunkResult::Failed;
+		}
+		FMcChunkSaveExtras Extras;
+		Extras.bPopulated = true;
+		if (const FSceneryChunk* Here = Scenery.Find(Pos))
+		{
+			FMemoryWriter CountWriter(Extras.Entities);
+			int32 Count = Here->Count;
+			CountWriter << Count;
+			Extras.Entities.Append(Here->Body);
+		}
+		OutSave = McChunkSave::Encode(Chunk, Extras);
+		++Stats.Chunks;
+		return EChunkResult::Done;
+	}
+
+	// Every chunk of one region file into Storage, 32 rows at once on the thread pool. A chunk the storage has already (a
+	// world picked up again, or one the game asked for) is left alone when bSkipSaved. Returns the chunks the file holds.
+	int32 ImportRegion(const FString& RegionFolder, const FString& File, int32 RegionX, int32 RegionZ, const FMcDimensionType& Type,
+		const TMap<FIntPoint, FSceneryChunk>& Scenery, FMcWorldStorage& Storage, bool bSkipSaved, const TAtomic<bool>* Stop, McJavaImport::FStats& Stats)
+	{
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *(RegionFolder / File)))
+		{
+			return 0;
+		}
+		++Stats.Regions;
+		TArray<McJavaImport::FStats> Rows;
+		Rows.SetNum(32);
+		TArray<int32> Held;
+		Held.Init(0, 32);
+		TBitArray<> Saved;
+		if (bSkipSaved)
+		{
+			Storage.GetSavedMask(FIntPoint(RegionX, RegionZ), Saved);
+		}
+		ParallelFor(32, [&](int32 LocalZ)
+		{
+			for (int32 LocalX = 0; LocalX < 32; ++LocalX)
+			{
+				if (Stop && *Stop)
+				{
+					return;
+				}
+				const FIntPoint Pos(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ);
+				if (bSkipSaved && Saved[LocalX + 32 * LocalZ])
+				{
+					++Held[LocalZ];
+					continue;
+				}
+				TArray<uint8> Save;
+				switch (ConvertToSave(Bytes, RegionFolder, Pos, Type, Scenery, Rows[LocalZ], Save))
+				{
+				case EChunkResult::Done:
+					++Held[LocalZ];
+					if (bSkipSaved)
+					{
+						Storage.QueueSaveIfAbsent(Pos, MoveTemp(Save));
+					}
+					else
+					{
+						Storage.QueueSave(Pos, MoveTemp(Save));
+					}
+					break;
+				case EChunkResult::Failed:
+					++Held[LocalZ];
+					++Rows[LocalZ].ChunksFailed;
+					break;
+				default:
+					break;
+				}
+			}
+		});
+		int32 Total = 0;
+		for (int32 Row = 0; Row < 32; ++Row)
+		{
+			McJavaImport::AddStats(Stats, Rows[Row]);
+			Total += Held[Row];
+		}
+		return Total;
+	}
+
+	// r.<x>.<z>.mca -> x, z.
+	bool ParseRegionName(const FString& File, int32& OutX, int32& OutZ)
+	{
+		TArray<FString> Parts;
+		File.ParseIntoArray(Parts, TEXT("."));
+		if (Parts.Num() != 4 || Parts[0] != TEXT("r"))
+		{
+			return false;
+		}
+		OutX = FCString::Atoi(*Parts[1]);
+		OutZ = FCString::Atoi(*Parts[2]);
+		return true;
+	}
+
+	// The entities/ files of a dimension into scenery by chunk (and the javaentities files).
+	void CollectEntities(const FString& RegionFolder, const FString& OutFolder, McJavaImport::FStats& Stats, TMap<FIntPoint, FSceneryChunk>& Scenery)
+	{
+		// entities/ is next to region/ (in both layouts).
+		const FString EntityFolder = FPaths::GetPath(RegionFolder) / TEXT("entities");
+		TArray<FString> EntityFiles;
+		IFileManager::Get().FindFiles(EntityFiles, *(EntityFolder / TEXT("*.mca")), true, false);
+		for (const FString& File : EntityFiles)
+		{
+			int32 X = 0, Z = 0;
+			if (ParseRegionName(File, X, Z))
+			{
+				SaveEntities(EntityFolder / File, EntityFolder, X, Z, OutFolder, Stats, Scenery);
+			}
+		}
+	}
+
+	FString GetMarkerPath(const FString& WorldDir)
+	{
+		return WorldDir / TEXT("javaimport.txt");
+	}
+
+	// A new world's folder for a Java world, its level read into OutLevel; empty if it can't be.
+	FString MakeWorldFolder(const FString& Source, const FString& Name, FMcLevelData& OutLevel)
+	{
+		if (!FMcBlockRegistry::Get().EnsureLoaded() || !FMcBiomeRegistry::Get().EnsureLoaded() || !McJavaImport::IsJavaWorld(Source))
+		{
+			UE_LOG(LogMcServer, Error, TEXT("Cannot import '%s': the registries did not load or it has no level.dat."), *Source);
+			return FString();
+		}
+		if (!McJavaImport::ReadLevel(Source, OutLevel))
+		{
+			UE_LOG(LogMcServer, Error, TEXT("Cannot import '%s': level.dat is unreadable."), *Source);
+			return FString();
+		}
+		if (!Name.IsEmpty())
+		{
+			OutLevel.Name = Name;
+		}
+		if (OutLevel.Name.IsEmpty())
+		{
+			OutLevel.Name = FPaths::GetCleanFilename(Source);
+		}
+		return McWorldSave::MakeNewFolder(OutLevel.Name);
+	}
+}
+
+void McJavaImport::AddStats(FStats& Stats, const FStats& Other)
+{
+	Stats.Regions += Other.Regions;
+	Stats.Chunks += Other.Chunks;
+	Stats.ChunksFailed += Other.ChunksFailed;
+	Stats.Blocks += Other.Blocks;
+	Stats.NonAirBlocks += Other.NonAirBlocks;
+	Stats.Scenery += Other.Scenery;
+	Stats.BlockEntities += Other.BlockEntities;
+	for (const TPair<FString, int64>& Pair : Other.UnknownStates)
+	{
+		Stats.UnknownStates.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+	for (const TPair<FString, int32>& Pair : Other.DroppedBlockEntities)
+	{
+		Stats.DroppedBlockEntities.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+	for (const TPair<FString, int32>& Pair : Other.KeptRawBlockEntities)
+	{
+		Stats.KeptRawBlockEntities.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+	for (const TPair<FString, int32>& Pair : Other.Entities)
+	{
+		Stats.Entities.FindOrAdd(Pair.Key) += Pair.Value;
+	}
+}
+
 FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FStats& OutStats)
 {
-	FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
-	FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
-	if (!Blocks.EnsureLoaded() || !Biomes.EnsureLoaded() || !IsJavaWorld(Source))
-	{
-		UE_LOG(LogMcServer, Error, TEXT("Cannot import '%s': the registries did not load or it has no level.dat."), *Source);
-		return FString();
-	}
 	FMcLevelData Level;
-	if (!ReadLevel(Source, Level))
+	const FString Folder = MakeWorldFolder(Source, Name, Level);
+	if (Folder.IsEmpty())
 	{
-		UE_LOG(LogMcServer, Error, TEXT("Cannot import '%s': level.dat is unreadable."), *Source);
 		return FString();
 	}
-	if (!Name.IsEmpty())
-	{
-		Level.Name = Name;
-	}
-	if (Level.Name.IsEmpty())
-	{
-		Level.Name = FPaths::GetCleanFilename(Source);
-	}
-	const FString Folder = McWorldSave::MakeNewFolder(Level.Name);
 	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
-	IFileManager& Files = IFileManager::Get();
+	const double Start = FPlatformTime::Seconds();
 	for (const TCHAR* Dimension : { TEXT("minecraft:overworld"), TEXT("minecraft:the_nether"), TEXT("minecraft:the_end") })
 	{
 		const FString RegionFolder = FindRegionFolder(Source, Dimension);
@@ -903,85 +1084,275 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 			continue;
 		}
 		FMcWorldStorage Storage(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
-		// entities/ is next to region/ (in both layouts).
 		TMap<FIntPoint, FSceneryChunk> Scenery;
-		const FString EntityFolder = FPaths::GetPath(RegionFolder) / TEXT("entities");
-		TArray<FString> EntityFiles;
-		Files.FindFiles(EntityFiles, *(EntityFolder / TEXT("*.mca")), true, false);
-		for (const FString& File : EntityFiles)
-		{
-			TArray<FString> Parts;
-			File.ParseIntoArray(Parts, TEXT("."));
-			if (Parts.Num() == 4 && Parts[0] == TEXT("r"))
-			{
-				SaveEntities(EntityFolder / File, EntityFolder, FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2]),
-					WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats, Scenery);
-			}
-		}
+		const double EntitiesStart = FPlatformTime::Seconds();
+		CollectEntities(RegionFolder, WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats, Scenery);
+		UE_LOG(LogMcServer, Display, TEXT("Import %s: entities %.1f s"), Dimension, FPlatformTime::Seconds() - EntitiesStart);
 
 		TArray<FString> Names;
-		Files.FindFiles(Names, *(RegionFolder / TEXT("*.mca")), true, false);
+		IFileManager::Get().FindFiles(Names, *(RegionFolder / TEXT("*.mca")), true, false);
 		for (const FString& File : Names)
 		{
-			// r.<x>.<z>.mca
-			TArray<FString> Parts;
-			File.ParseIntoArray(Parts, TEXT("."));
-			if (Parts.Num() != 4 || Parts[0] != TEXT("r"))
+			int32 RegionX = 0, RegionZ = 0;
+			if (!ParseRegionName(File, RegionX, RegionZ))
 			{
 				continue;
 			}
-			const int32 RegionX = FCString::Atoi(*Parts[1]);
-			const int32 RegionZ = FCString::Atoi(*Parts[2]);
-			TArray<uint8> Bytes;
-			if (!FFileHelper::LoadFileToArray(Bytes, *(RegionFolder / File)))
-			{
-				continue;
-			}
-			++OutStats.Regions;
-			for (int32 LocalZ = 0; LocalZ < 32; ++LocalZ)
-			{
-				for (int32 LocalX = 0; LocalX < 32; ++LocalX)
-				{
-					const FIntPoint Pos(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ);
-					TArray<uint8> Raw;
-					bool bMissing = false;
-					if (!ReadChunkBytes(Bytes, LocalX, LocalZ, RegionFolder, Pos.X, Pos.Y, Raw, bMissing))
-					{
-						OutStats.ChunksFailed += bMissing ? 0 : 1;
-						continue;
-					}
-					FMcNbt Root;
-					FMcChunk Chunk(Pos, Type.MinY, Type.NumSections());
-					Chunk.FillBiome(Biomes.GetPlains());
-					if (!FMcNbt::Parse(Raw, Root) || !ConvertChunk(Root, Chunk, OutStats))
-					{
-						++OutStats.ChunksFailed;
-						continue;
-					}
-					FMcChunkSaveExtras Extras;
-					Extras.bPopulated = true;
-					if (const FSceneryChunk* Here = Scenery.Find(Pos))
-					{
-						FMemoryWriter CountWriter(Extras.Entities);
-						int32 Count = Here->Count;
-						CountWriter << Count;
-						Extras.Entities.Append(Here->Body);
-					}
-					Storage.QueueSave(Pos, McChunkSave::Encode(Chunk, Extras));
-					++OutStats.Chunks;
-				}
-			}
+			const double RegionStart = FPlatformTime::Seconds();
+			const int32 Held = ImportRegion(RegionFolder, File, RegionX, RegionZ, Type, Scenery, Storage, false, nullptr, OutStats);
+			UE_LOG(LogMcServer, Display, TEXT("Import %s %s: %d chunks, %.2f s"), Dimension, *File, Held, FPlatformTime::Seconds() - RegionStart);
 		}
 		Storage.Flush();
-
 	}
 	if (!McWorldSave::SaveLevel(WorldDir, Level))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
 		return FString();
 	}
-	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s': %s"), *Source, *Folder, *Describe(OutStats));
+	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s' in %.1f s: %s"), *Source, *Folder, FPlatformTime::Seconds() - Start, *Describe(OutStats));
 	return Folder;
+}
+
+FString McJavaImport::BeginImport(const FString& Source, const FString& Name)
+{
+	FMcLevelData Level;
+	const FString Folder = MakeWorldFolder(Source, Name, Level);
+	if (Folder.IsEmpty())
+	{
+		return FString();
+	}
+	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
+	// The game reads this when it opens the world; the chunks are made from the folder it names, read only.
+	if (!McWorldSave::SaveLevel(WorldDir, Level) || !FFileHelper::SaveStringToFile(FPaths::ConvertRelativePathToFull(Source), *GetMarkerPath(WorldDir)))
+	{
+		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
+		return FString();
+	}
+	UE_LOG(LogMcServer, Log, TEXT("Began importing '%s' as '%s'; its chunks come in while it is played."), *Source, *Folder);
+	return Folder;
+}
+
+// ---- The import that goes on while the world is played ----
+
+struct McJavaImport::FLiveState
+{
+	FString Source, RegionFolder, WorldDir, DimensionFolder, Dimension;
+	FMcDimensionType Type;
+	TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage;
+	FIntPoint SpawnChunk = FIntPoint::ZeroValue;
+	TMap<FIntPoint, FSceneryChunk> Scenery;
+	FEventRef Ready{ EEventMode::ManualReset };
+	TAtomic<bool> bStop{ false };
+	TAtomic<bool> bFinished{ false };
+	TAtomic<int32> Done{ 0 };
+	TAtomic<int32> Total{ 0 };
+	McJavaImport::FStats Stats;
+	FCriticalSection CacheLock;
+	TArray<TPair<FIntPoint, TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe>>> Cache;
+	TUniquePtr<FThread> Thread;
+
+	FString GetDonePath() const { return WorldDir / DimensionFolder / TEXT("javaimport.done"); }
+
+	// A region file's bytes, the last few kept so a walk across one doesn't read it again for each chunk.
+	TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> GetRegion(FIntPoint Region)
+	{
+		{
+			FScopeLock Guard(&CacheLock);
+			for (const TPair<FIntPoint, TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe>>& Entry : Cache)
+			{
+				if (Entry.Key == Region)
+				{
+					return Entry.Value;
+				}
+			}
+		}
+		TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> Bytes = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
+		if (!FFileHelper::LoadFileToArray(*Bytes, *(RegionFolder / FString::Printf(TEXT("r.%d.%d.mca"), Region.X, Region.Y))))
+		{
+			return nullptr;
+		}
+		FScopeLock Guard(&CacheLock);
+		if (Cache.Num() >= 6)
+		{
+			Cache.RemoveAt(0);
+		}
+		Cache.Emplace(Region, Bytes);
+		return Bytes;
+	}
+
+	bool MakeChunk(FIntPoint Pos, TArray<uint8>& OutSave)
+	{
+		Ready->Wait();
+		const TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> Region = GetRegion(FIntPoint(Pos.X >> 5, Pos.Y >> 5));
+		McJavaImport::FStats Unused;
+		return Region && ConvertToSave(*Region, RegionFolder, Pos, Type, Scenery, Unused, OutSave) == EChunkResult::Done;
+	}
+
+	void Run()
+	{
+		const double Start = FPlatformTime::Seconds();
+		CollectEntities(RegionFolder, WorldDir / DimensionFolder / TEXT("javaentities"), Stats, Scenery);
+		Ready->Trigger();
+
+		struct FRegion
+		{
+			FString File;
+			int32 X = 0, Z = 0, Chunks = 0;
+			int64 Distance = 0;
+		};
+		TArray<FRegion> Regions;
+		TArray<FString> Names;
+		IFileManager::Get().FindFiles(Names, *(RegionFolder / TEXT("*.mca")), true, false);
+		for (const FString& File : Names)
+		{
+			FRegion Region;
+			Region.File = File;
+			if (!ParseRegionName(File, Region.X, Region.Z))
+			{
+				continue;
+			}
+			// The chunks the file holds, from its table of locations alone.
+			TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(*(RegionFolder / File)));
+			if (Reader && Reader->TotalSize() >= 4096)
+			{
+				TArray<uint8> Table;
+				Table.SetNumUninitialized(4096);
+				Reader->Serialize(Table.GetData(), Table.Num());
+				for (int32 Slot = 0; Slot < 1024; ++Slot)
+				{
+					Region.Chunks += (Table[Slot * 4] | Table[Slot * 4 + 1] | Table[Slot * 4 + 2] | Table[Slot * 4 + 3]) != 0;
+				}
+			}
+			const int64 DX = Region.X * 32 + 16 - SpawnChunk.X, DZ = Region.Z * 32 + 16 - SpawnChunk.Y;
+			Region.Distance = DX * DX + DZ * DZ;
+			Total += Region.Chunks;
+			Regions.Add(MoveTemp(Region));
+		}
+		Regions.Sort([](const FRegion& A, const FRegion& B) { return A.Distance < B.Distance; });
+		for (const FRegion& Region : Regions)
+		{
+			// Not so far ahead of the disk that the queue eats memory.
+			while (!bStop && Storage->NumQueued() > 3000)
+			{
+				FPlatformProcess::Sleep(0.02f);
+			}
+			if (bStop)
+			{
+				break;
+			}
+			const double RegionStart = FPlatformTime::Seconds();
+			const int32 Held = ImportRegion(RegionFolder, Region.File, Region.X, Region.Z, Type, Scenery, *Storage, true, &bStop, Stats);
+			Done += Region.Chunks;
+			UE_LOG(LogMcServer, Display, TEXT("Import %s %s: %d chunks, %.2f s"), *Dimension, *Region.File, Held, FPlatformTime::Seconds() - RegionStart);
+		}
+		if (!bStop)
+		{
+			Storage->Flush();
+			FFileHelper::SaveStringToFile(TEXT("done"), *GetDonePath());
+			bFinished = true;
+			UE_LOG(LogMcServer, Log, TEXT("Imported the %s of '%s' in %.1f s: %s"), *Dimension, *Source, FPlatformTime::Seconds() - Start, *McJavaImport::Describe(Stats));
+		}
+	}
+};
+
+namespace
+{
+	FCriticalSection LiveLock;
+	TArray<TWeakPtr<McJavaImport::FLiveState, ESPMode::ThreadSafe>> LiveStates;
+}
+
+McJavaImport::FLiveImport::FLiveImport() = default;
+
+McJavaImport::FLiveImport::~FLiveImport()
+{
+	Stop();
+}
+
+TSharedPtr<McJavaImport::FLiveImport, ESPMode::ThreadSafe> McJavaImport::FLiveImport::Start(const FString& WorldDir, const FString& Dimension,
+	TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage, FIntPoint SpawnChunk)
+{
+	FString Source;
+	if (!Storage || !FFileHelper::LoadFileToString(Source, *GetMarkerPath(WorldDir)))
+	{
+		return nullptr;
+	}
+	Source = Source.TrimStartAndEnd();
+	const FString RegionFolder = FindRegionFolder(Source, Dimension);
+	TSharedRef<FLiveState, ESPMode::ThreadSafe> State = MakeShared<FLiveState, ESPMode::ThreadSafe>();
+	if (RegionFolder.IsEmpty() || !FMcDimensionType::Load(Dimension, State->Type)
+		|| IFileManager::Get().FileExists(*(WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaimport.done"))))
+	{
+		return nullptr;
+	}
+	State->Source = Source;
+	State->RegionFolder = RegionFolder;
+	State->WorldDir = WorldDir;
+	State->DimensionFolder = McWorldSave::GetDimensionFolder(Dimension);
+	State->Dimension = Dimension;
+	State->Storage = Storage;
+	State->SpawnChunk = SpawnChunk;
+	TSharedPtr<FLiveImport, ESPMode::ThreadSafe> Import = MakeShareable(new FLiveImport());
+	Import->State = State;
+	{
+		FScopeLock Guard(&LiveLock);
+		LiveStates.Add(State);
+	}
+	Storage->SetChunkSource([State](FIntPoint Pos, TArray<uint8>& OutBytes)
+	{
+		if (!State->MakeChunk(Pos, OutBytes))
+		{
+			return false;
+		}
+		State->Storage->QueueSaveIfAbsent(Pos, TArray<uint8>(OutBytes));
+		return true;
+	});
+	State->Thread = MakeUnique<FThread>(TEXT("McJavaImport"), [State]() { State->Run(); });
+	return Import;
+}
+
+void McJavaImport::FLiveImport::Stop()
+{
+	if (!State)
+	{
+		return;
+	}
+	State->bStop = true;
+	if (State->Thread)
+	{
+		// The thread may be waiting for the entities nobody will read: let it through.
+		State->Ready->Trigger();
+		State->Thread->Join();
+		State->Thread.Reset();
+	}
+	if (State->Storage)
+	{
+		State->Storage->SetChunkSource(nullptr);
+	}
+}
+
+bool McJavaImport::FLiveImport::IsFinished() const
+{
+	return !State || State->bFinished;
+}
+
+bool McJavaImport::FLiveImport::GetProgress(int32& OutDone, int32& OutTotal)
+{
+	OutDone = 0;
+	OutTotal = 0;
+	FScopeLock Guard(&LiveLock);
+	for (int32 Index = LiveStates.Num() - 1; Index >= 0; --Index)
+	{
+		if (const TSharedPtr<FLiveState, ESPMode::ThreadSafe> Live = LiveStates[Index].Pin())
+		{
+			OutDone += Live->Done;
+			OutTotal += Live->Total;
+		}
+		else
+		{
+			LiveStates.RemoveAt(Index);
+		}
+	}
+	return OutTotal > 0;
 }
 
 bool McJavaImport::GetSceneryLine(const FMcNbt& Entity, FString& OutLine, FVector& OutPos, float& OutYaw)

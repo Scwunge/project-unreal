@@ -38,6 +38,8 @@ public:
 	bool Write(FIntPoint Chunk, TConstArrayView<uint8> Payload);
 	bool Contains(FIntPoint Chunk);
 	int32 NumChunks();
+	// Which of the 1024 chunks (x + 32 * z, in the region's own coordinates) the file holds, in one look.
+	void GetPresent(TBitArray<>& OutPresent);
 
 	const FString& GetPath() const { return Path; }
 

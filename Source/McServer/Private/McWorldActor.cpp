@@ -17,6 +17,7 @@
 #include "McPortal.h"
 #include "McSimulation.h"
 #include "McServer.h"
+#include "McJavaImport.h"
 #include "McWorldStorage.h"
 #include "McLaunch.h"
 #include "HAL/FileManager.h"
@@ -419,10 +420,18 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
 	}
+	// A Java world begun with McJavaImport::BeginImport is converted from here on, near its spawn first.
+	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
 
 void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (LiveImport)
+	{
+		// Before the last save, so nothing is being queued behind it.
+		LiveImport->Stop();
+		LiveImport.Reset();
+	}
 	// Chunks, mobs and players are all still here; this is the last chance to write them.
 	if (Storage && BlockWorld)
 	{

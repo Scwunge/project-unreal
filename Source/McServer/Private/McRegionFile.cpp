@@ -200,6 +200,19 @@ bool FMcRegionFile::Contains(FIntPoint Chunk)
 	return EnsureHeader() && Entries[IndexOf(Chunk)].Length > 0;
 }
 
+void FMcRegionFile::GetPresent(TBitArray<>& OutPresent)
+{
+	FScopeLock Guard(&Lock);
+	OutPresent.Init(false, NumEntries);
+	if (EnsureHeader())
+	{
+		for (int32 Index = 0; Index < Entries.Num(); ++Index)
+		{
+			OutPresent[Index] = Entries[Index].Length > 0;
+		}
+	}
+}
+
 int32 FMcRegionFile::NumChunks()
 {
 	FScopeLock Guard(&Lock);

@@ -136,6 +136,8 @@ private:
 	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
 	UTexture2D* LoadVignette();
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
+	// The same with the top edge moved right by TopShift and the bottom edge by BottomShift (italic text).
+	void DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift);
 	void DrawIcon(const FIcon& Icon, float X, float Y);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);
 
@@ -244,6 +246,8 @@ private:
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
+	// The /title text: the title at four times the size above the middle of the screen, the subtitle at twice below it.
+	void DrawTitleText(int32 Width, int32 Height);
 	// The toasts at the top right, over everything.
 	void DrawToasts(int32 Width, int32 Height);
 	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
@@ -252,7 +256,7 @@ private:
 	FString HeldNameText;
 	double HeldNameTime = -100.0;
 	void DrawChatInput(int32 Width, int32 Height);
-	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
+	TArray<FString> WrapText(const FString& Text, float MaxWidth, bool bKeepSpace = false) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
 	// focused; a click focuses it, Tab moves on).
 	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);

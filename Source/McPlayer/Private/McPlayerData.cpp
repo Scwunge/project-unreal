@@ -959,6 +959,61 @@ void UMcPlayerDataComponent::ClientToast_Implementation(const FString& Heading, 
 	ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
 }
 
+UMcPlayerDataComponent::FTitle& UMcPlayerDataComponent::GetTitle()
+{
+	static FTitle Title;
+	return Title;
+}
+
+void UMcPlayerDataComponent::ApplyTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	FTitle& Title = GetTitle();
+	switch (Kind)
+	{
+	case ETitleKind::Title:
+		Title.Title = Text;
+		Title.Time = FPlatformTime::Seconds();
+		break;
+	case ETitleKind::Subtitle:
+		// The subtitle is kept for the next title; one given alone is not shown by itself.
+		Title.Subtitle = Text;
+		break;
+	case ETitleKind::ActionBar:
+		ShowOverlay(Text, false);
+		break;
+	case ETitleKind::Clear:
+		Title.Title.Reset();
+		Title.Subtitle.Reset();
+		Title.Time = -1000.0;
+		break;
+	case ETitleKind::Reset:
+		Title = FTitle();
+		break;
+	case ETitleKind::Times:
+		Title.FadeIn = FadeIn;
+		Title.Stay = Stay;
+		Title.FadeOut = FadeOut;
+		break;
+	}
+}
+
+void UMcPlayerDataComponent::ServerTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	if (IsOwnerRemote())
+	{
+		ClientTitle(static_cast<uint8>(Kind), Text, FadeIn, Stay, FadeOut);
+	}
+	else if (IsServer())
+	{
+		ApplyTitle(Kind, Text, FadeIn, Stay, FadeOut);
+	}
+}
+
+void UMcPlayerDataComponent::ClientTitle_Implementation(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	ApplyTitle(static_cast<ETitleKind>(Kind), Text, FadeIn, Stay, FadeOut);
+}
+
 void UMcPlayerDataComponent::ClientOverlay_Implementation(const FString& Text, bool bRainbow)
 {
 	ShowOverlay(Text, bRainbow);

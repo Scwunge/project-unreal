@@ -1481,6 +1481,14 @@ namespace
 			}
 		}
 		virtual void Broadcast(const FString& Line) override { Mode.BroadcastChat(Line); }
+		virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				Pawn->Data->ServerTitle(static_cast<UMcPlayerDataComponent::ETitleKind>(Kind), Text, FadeIn, Stay, FadeOut);
+			}
+		}
 
 		virtual bool IsCreative(const FString& Player) const override
 		{

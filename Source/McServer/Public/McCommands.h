@@ -44,6 +44,9 @@ public:
 	virtual bool IsDedicated() const = 0;
 	virtual void SendTo(const FString& Player, const FMcCommandReply& Line) = 0;
 	virtual void Broadcast(const FString& Line) = 0;
+	// /title: what to show a player. Kind is 0 title, 1 subtitle, 2 action bar, 3 clear, 4 reset, 5 times (the three tick counts);
+	// Text is legacy text (McText::ToLegacy of the component).
+	virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) {}
 
 	virtual bool IsCreative(const FString& Player) const = 0;
 	virtual void SetCreative(const FString& Player, bool bCreative) = 0;

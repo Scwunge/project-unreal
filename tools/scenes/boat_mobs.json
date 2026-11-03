@@ -1,0 +1,8 @@
+{
+  "description": "Mobs seated in boats, side-on from about 6 blocks, on the paddles pond on classic_flat (surface y=-61). Summon a boat and a chest boat at x=4.5 (z=2.5 and 5.2) and mobs on them with -McChat (see PLAN.md, Boats take mobs).",
+  "camera": [10.5, -58.4, 3.85, 90.0, 12.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [9, -60, 7], "state": "minecraft:stone" },
+    { "from": [1, -60, 1], "to": [8, -60, 6], "state": "minecraft:water[level=0]" }
+  ]
+}

@@ -202,9 +202,13 @@ float McEffects::GetJumpBonus(const FMcPlayerStats& Stats)
 float McEffects::GetDigFactor(const FMcPlayerStats& Stats)
 {
 	float Factor = 1.0f;
-	if (const FMcStatusEffect* Haste = Find(Stats, TEXT("haste")))
+	// Conduit Power digs as Haste of its level does, the two not adding up: the stronger counts (minecraft.wiki).
+	const FMcStatusEffect* Haste = Find(Stats, TEXT("haste"));
+	const FMcStatusEffect* Conduit = Find(Stats, TEXT("conduit_power"));
+	const int32 Level = FMath::Max(Haste ? Haste->Amplifier + 1 : 0, Conduit ? Conduit->Amplifier + 1 : 0);
+	if (Level > 0)
 	{
-		Factor *= 1.0f + 0.2f * (Haste->Amplifier + 1);
+		Factor *= 1.0f + 0.2f * Level;
 	}
 	if (const FMcStatusEffect* Fatigue = Find(Stats, TEXT("mining_fatigue")))
 	{

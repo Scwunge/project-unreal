@@ -3,6 +3,8 @@
 #include "McChunk.h"
 #include "McChunkCodec.h"
 #include "McNet.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
@@ -30,6 +32,7 @@ void UMcChunkStreamComponent::SetBlockWorld(FMcBlockWorld* InWorld)
 	if (BlockWorld && Owner && Owner->HasAuthority())
 	{
 		BlockChangedHandle = BlockWorld->OnBlockChanged.AddUObject(this, &UMcChunkStreamComponent::HandleBlockChanged);
+		BlockEntityHandle = BlockWorld->OnBlockEntityChanged.AddUObject(this, &UMcChunkStreamComponent::HandleBlockEntityChanged);
 		ChunkRemovedHandle = BlockWorld->OnChunkRemoved.AddUObject(this, &UMcChunkStreamComponent::HandleChunkRemoved);
 	}
 	if (BlockWorld && Owner && !Owner->HasAuthority())
@@ -43,6 +46,7 @@ void UMcChunkStreamComponent::SwitchWorld(FMcBlockWorld* NewWorld, const FString
 	SetBlockWorld(NewWorld);
 	Sent.Reset();
 	PendingChanges.Reset();
+	PendingEntities.Reset();
 	PiecesInFlight = 0;
 	if (IsServerForRemotePlayer())
 	{
@@ -73,9 +77,11 @@ void UMcChunkStreamComponent::Unbind()
 	if (BlockWorld)
 	{
 		BlockWorld->OnBlockChanged.Remove(BlockChangedHandle);
+		BlockWorld->OnBlockEntityChanged.Remove(BlockEntityHandle);
 		BlockWorld->OnChunkRemoved.Remove(ChunkRemovedHandle);
 	}
 	BlockChangedHandle.Reset();
+	BlockEntityHandle.Reset();
 	ChunkRemovedHandle.Reset();
 }
 
@@ -161,6 +167,21 @@ void UMcChunkStreamComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		ClientBlockChanges(TArray<FMcNetBlockChange>(PendingChanges.GetData() + Start, FMath::Min(MaxChangesPerMessage, PendingChanges.Num() - Start)));
 	}
 	PendingChanges.Reset();
+	// Then block entities, after the blocks they belong to (a sign's text after the sign).
+	for (const FIntVector& Pos : PendingEntities)
+	{
+		const FMcChunk* Chunk = BlockWorld->FindChunk(FIntPoint(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z)));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+		TArray<uint8> Bytes;
+		if (Entity)
+		{
+			FMemoryWriter Writer(Bytes);
+			FMcBlockEntity Copy = *Entity;
+			Copy.Serialize(Writer);
+		}
+		ClientBlockEntity(Pos, Bytes);
+	}
+	PendingEntities.Reset();
 
 	SendChunks();
 }
@@ -231,6 +252,16 @@ void UMcChunkStreamComponent::SendChunks()
 		}
 		PiecesInFlight += NumPieces;
 		Sent.Add(Entry.Value);
+		if (GetOpenBoxes)
+		{
+			TArray<FIntVector> Boxes;
+			TArray<int32> Openers;
+			GetOpenBoxes(Entry.Value, Boxes, Openers);
+			if (!Boxes.IsEmpty())
+			{
+				ClientOpenBoxes(Boxes, Openers);
+			}
+		}
 	}
 }
 
@@ -240,6 +271,15 @@ void UMcChunkStreamComponent::HandleBlockChanged(const FIntVector& Pos, FMcState
 	if (Sent.Contains(FIntPoint(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z))))
 	{
 		PendingChanges.Add({ Pos, State });
+	}
+}
+
+void UMcChunkStreamComponent::HandleBlockEntityChanged(const FIntVector& Pos)
+{
+	// As with blocks: a chunk not sent yet carries the entity when it goes.
+	if (Sent.Contains(FIntPoint(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z))))
+	{
+		PendingEntities.AddUnique(Pos);
 	}
 }
 
@@ -319,4 +359,40 @@ void UMcChunkStreamComponent::ClientBlockChanges_Implementation(const TArray<FMc
 	{
 		BlockWorld->SetBlock(Change.Pos, Change.State);
 	}
+}
+
+void UMcChunkStreamComponent::ClientOpenBoxes_Implementation(const TArray<FIntVector>& Boxes, const TArray<int32>& Openers)
+{
+	for (int32 Index = 0; Index < Boxes.Num() && Index < Openers.Num(); ++Index)
+	{
+		if (OnBoxOpen)
+		{
+			OnBoxOpen(Boxes[Index], Openers[Index]);
+		}
+	}
+}
+
+void UMcChunkStreamComponent::ClientBlockEntity_Implementation(FIntVector Pos, const TArray<uint8>& Bytes)
+{
+	FMcChunk* Chunk = BlockWorld ? BlockWorld->FindChunk(FIntPoint(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z))) : nullptr;
+	if (!Chunk)
+	{
+		return;
+	}
+	if (Bytes.IsEmpty())
+	{
+		Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	}
+	else
+	{
+		FMcBlockEntity Entity;
+		FMemoryReader Reader(Bytes);
+		if (!Entity.Serialize(Reader))
+		{
+			UE_LOG(LogMcNet, Error, TEXT("Block entity at %d %d %d arrived damaged"), Pos.X, Pos.Y, Pos.Z);
+			return;
+		}
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, MoveTemp(Entity));
+	}
+	BlockWorld->OnBlockEntityChanged.Broadcast(Pos);
 }

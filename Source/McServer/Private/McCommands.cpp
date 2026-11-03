@@ -2,6 +2,7 @@
 #include "McLang.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McVehicle.h"
 
 namespace
 {
@@ -19,6 +20,7 @@ namespace
 
 	// Aliases point at the command they stand for.
 	const FCommandInfo Commands[] = {
+		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
@@ -681,7 +683,7 @@ namespace
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
 		// Minecarts and boats are entities without a mob type.
-		if (!Type && Kind != TEXT("minecraft:minecart") && Kind != TEXT("minecraft:boat"))
+		if (!Type && !FMcVehicle::IsVehicleType(Kind) && Kind != TEXT("minecraft:tnt"))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}
@@ -786,6 +788,41 @@ namespace
 		}
 		const FString Key = FString::Printf(TEXT("commands.clear.%s.%s"), bTest ? TEXT("test") : TEXT("success"), bSingle ? TEXT("single") : TEXT("multiple"));
 		return { Ok(McLang::Format(Key, { FString::FromInt(Total), Who })) };
+	}
+
+	FReplies RunAdvancement(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /advancement (grant|revoke) <targets> only <advancement>
+		if (Words.Num() != 5 || (Words[1] != TEXT("grant") && Words[1] != TEXT("revoke")) || Words[3] != TEXT("only"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGrant = Words[1] == TEXT("grant");
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		int32 Changed = 0;
+		FString Title;
+		for (const FString& Player : Players)
+		{
+			FString Name;
+			const int32 Result = Target.SetAdvancement(Player, Words[4], bGrant, Name);
+			if (Result < 0)
+			{
+				return { Fail(McLang::Format(TEXT("advancement.advancementNotFound"), { Words[4] })) };
+			}
+			Changed += Result;
+			Title = Name;
+		}
+		const bool bSingle = Players.Num() == 1;
+		const FString Who = bSingle ? Players[0] : FString::FromInt(Players.Num());
+		const FString Key = FString::Printf(TEXT("commands.advancement.%s.one.to.%s.%s"), bGrant ? TEXT("grant") : TEXT("revoke"), bSingle ? TEXT("one") : TEXT("many"),
+			Changed > 0 ? TEXT("success") : TEXT("failure"));
+		const FString Text = McLang::Format(Key, { Title, Who });
+		return { Changed > 0 ? Ok(Text) : Fail(Text) };
 	}
 
 	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -1311,6 +1348,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunClear(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("advancement"))
+	{
+		return RunAdvancement(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("effect"))
 	{
 		return RunEffect(Command, Words, Sender, Target);
@@ -1388,7 +1429,7 @@ TConstArrayView<McCommands::FGameRule> McCommands::GetGameRules()
 		{ TEXT("showDeathMessages"), false, TEXT("true") },
 		{ TEXT("snowAccumulationHeight"), true, TEXT("1") },
 		{ TEXT("spawnChunkRadius"), true, TEXT("2") },
-		{ TEXT("spawnerBlocksEnabled"), false, TEXT("true") },
+		{ TEXT("spawnerBlocksWork"), false, TEXT("true") },
 		{ TEXT("spawnMonsters"), false, TEXT("true") },
 		{ TEXT("spawnRadius"), true, TEXT("10") },
 		{ TEXT("spectatorsGenerateChunks"), false, TEXT("true") },

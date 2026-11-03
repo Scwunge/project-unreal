@@ -1,0 +1,2593 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd tp @s 60 -45 4
+wait 40
+cmd tick freeze
+cmd weather clear 1000000
+cmd fill -2 -60 -2 17 -50 12 air
+cmd fill 18 -60 -2 37 -50 12 air
+cmd fill 38 -60 -2 57 -50 12 air
+cmd fill 58 -60 -2 77 -50 12 air
+cmd fill 78 -60 -2 97 -50 12 air
+cmd fill 98 -60 -2 117 -50 12 air
+cmd fill 118 -60 -2 137 -50 12 air
+wait 6
+cmd fill -3 -62 -3 134 -49 -3 stone
+cmd fill -3 -62 13 134 -49 13 stone
+cmd fill -3 -62 -3 -3 -49 13 stone
+cmd fill 134 -62 -3 134 -49 13 stone
+cmd fill -3 -49 -3 134 -49 13 stone
+wait 6
+cmd fill -2 -61 -2 17 -61 12 stone
+cmd fill 18 -61 -2 37 -61 12 stone
+cmd fill 38 -61 -2 57 -61 12 stone
+cmd fill 58 -61 -2 77 -61 12 stone
+cmd fill 78 -61 -2 97 -61 12 stone
+cmd fill 98 -61 -2 117 -61 12 stone
+cmd fill 118 -61 -2 137 -61 12 stone
+wait 6
+cmd setblock 0 -60 0 redstone_wire
+cmd setblock 2 -60 0 redstone_wire
+cmd setblock 2 -60 2 redstone_wire
+cmd setblock 0 -60 2 redstone_wire
+cmd setblock 1 -60 0 repeater[delay=2,facing=west]
+cmd setblock 2 -60 1 repeater[delay=2,facing=north]
+cmd setblock 1 -60 2 repeater[delay=2,facing=east]
+cmd setblock 5 -60 0 repeater[delay=1,facing=east]
+cmd setblock 6 -60 0 repeater[delay=4,facing=east]
+cmd setblock 7 -60 0 redstone_lamp
+cmd setblock 19 -60 0 redstone_wire
+cmd setblock 20 -60 0 redstone_wire
+wait 3
+cmd setblock 21 -60 0 comparator[facing=west,mode=compare]
+cmd setblock 22 -60 0 redstone_wire
+cmd fill 21 -60 1 21 -60 4 redstone_wire
+cmd setblock 21 -60 5 redstone_block
+cmd setblock 33 -60 0 observer[facing=east]
+cmd setblock 34 -60 0 observer[facing=east]
+cmd setblock 35 -60 0 observer[facing=east]
+cmd setblock 36 -60 0 observer[facing=east]
+cmd setblock 37 -60 0 observer[facing=east]
+cmd setblock 38 -60 0 observer[facing=east]
+cmd setblock 32 -60 0 redstone_lamp
+cmd setblock 49 -60 0 sticky_piston[facing=east]
+wait 3
+cmd setblock 50 -60 0 cobblestone
+cmd setblock 49 -60 3 sticky_piston[facing=east]
+cmd setblock 50 -60 3 cobblestone
+cmd setblock 49 -60 6 sticky_piston[facing=east]
+cmd setblock 50 -60 6 cobblestone
+cmd setblock 49 -60 9 sticky_piston[facing=east]
+cmd setblock 50 -60 9 cobblestone
+cmd setblock 65 -60 0 piston[facing=east]
+cmd setblock 66 -60 0 cobblestone
+cmd setblock 65 -60 3 piston[facing=east]
+cmd setblock 66 -60 3 cobblestone
+cmd setblock 65 -60 6 piston[facing=east]
+wait 3
+cmd setblock 66 -60 6 cobblestone
+cmd setblock 65 -60 9 piston[facing=east]
+cmd setblock 66 -60 9 cobblestone
+cmd setblock 81 -60 0 piston[facing=east]
+cmd setblock 82 -60 0 cobblestone
+cmd tp @s 98 205 0
+wait 40
+cmd fill 94 200 -2 102 319 2 air
+cmd fill 94 200 -2 102 200 2 stone
+cmd setblock 96 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 98 201 0 daylight_detector[inverted=true,power=0]
+cmd time set 6000
+wait 3
+cmd setblock 115 -60 0 sand
+cmd setblock 115 -59 0 sugar_cane[age=0]
+cmd setblock 114 -58 0 observer[facing=east]
+cmd setblock 113 -58 0 stone
+cmd setblock 113 -59 0 piston[facing=east]
+cmd setblock 114 -59 0 cobblestone
+cmd fill 119 -60 3 121 -56 5 stone
+cmd fill 120 -60 4 120 -57 4 water
+cmd setblock 120 -60 4 kelp[age=1]
+cmd setblock 120 -59 4 kelp[age=1]
+cmd setblock 119 -58 4 observer[facing=east]
+cmd setblock 118 -58 4 redstone_lamp
+wait 3
+wait 40
+cmd tick step 60
+wait 10
+cmd setblock 0 -60 1 repeater[delay=2,facing=south]
+cmd setblock 115 -59 0 sugar_cane[age=0]
+cmd setblock 114 -59 0 cobblestone
+wait 5
+cmd tick step 4
+wait 8
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 0 -60 -1 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 0 -60 -1 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 39 -60 0 stone
+cmd setblock 49 -60 1 redstone_block
+cmd setblock 65 -60 1 redstone_block
+cmd setblock 81 -59 1 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 1 air
+cmd setblock 65 -60 1 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 18 -60 0 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 81 -60 -1 stone
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 4 -60 0 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 21 -60 0 comparator[facing=west,mode=subtract]
+cmd setblock 81 -59 1 air
+cmd setblock 115 -58 0 sugar_cane[age=0]
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 81 -60 -1 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 39 -60 0 air
+cmd setblock 65 -60 4 redstone_block
+cmd setblock 120 -58 4 kelp[age=1]
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 65 -60 4 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 18 -60 0 air
+cmd setblock 49 -60 4 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 4 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 4 -60 0 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 65 -60 7 redstone_block
+cmd setblock 65 -60 7 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 115 -58 0 sugar_cane[age=0]
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 7 redstone_block
+cmd setblock 120 -57 4 kelp[age=1]
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 7 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 65 -60 10 redstone_block
+cmd time set 6000
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 65 -60 10 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 10 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd setblock 49 -60 10 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 0
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 12500
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 13500
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 18000
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 23000
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd time set 1000
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick step 1
+wait 4
+log states -1 -60 -1 130 -55 10
+log states 95 200 -1 101 203 1
+cmd tick unfreeze

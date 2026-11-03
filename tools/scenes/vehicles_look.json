@@ -1,0 +1,10 @@
+{
+  "description": "Vehicles' looks, as mc-reference's vehicle_look.txt has them on classic_flat (surface y=-61): a rail at z 144 x 0..14 and a pond at y -61 x 0..14 z 150..154. Summon with -McChat=\"/summon minecraft:minecart 1.5 -60 144.5|/summon minecraft:chest_minecart 4.5 -60 144.5|/summon minecraft:furnace_minecart 7.5 -60 144.5|/summon minecraft:hopper_minecart 10.5 -60 144.5|/summon minecraft:tnt_minecart 13.5 -60 144.5|/summon minecraft:oak_boat 2.5 -61 152.5|/summon minecraft:oak_chest_boat 7.5 -61 152.5|/summon minecraft:bamboo_raft 12.5 -61 152.5\". Eyes: carts 7.5 -58.5 139 0 20; chest and furnace 6 -59 141.5 0 25; hopper and TNT 12 -59 141.5 0 25; plain 3 -59 141.5 0 25; boats 7.5 -58 147 0 25; oak and chest boat 5 -58.5 149.5 0 25; raft 12.5 -58.5 149.5 0 25.",
+  "camera": [7.5, -58.5, 139.0, 0.0, 20.0],
+  "blocks": [
+    { "from": [-3, -60, 136], "to": [18, -50, 158], "state": "minecraft:air" },
+    { "from": [-3, -63, 136], "to": [18, -61, 158], "state": "minecraft:stone" },
+    { "from": [0, -60, 144], "to": [14, -60, 144], "state": "minecraft:rail[shape=east_west]" },
+    { "from": [0, -61, 150], "to": [14, -61, 154], "state": "minecraft:water[level=0]" }
+  ]
+}

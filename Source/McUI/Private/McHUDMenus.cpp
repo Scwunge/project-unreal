@@ -11,11 +11,13 @@
 #include "Serialization/JsonReader.h"
 #include "Dom/JsonObject.h"
 #include "McGameViewportClient.h"
+#include "McJavaImport.h"
 #include "McLaunch.h"
 #include "McLocalPlayer.h"
 #include "McCore.h"
 #include "McBlockModels.h"
 #include "McBlockTextures.h"
+#include "McFont.h"
 #include "McHdBlocks.h"
 #include "McResourcePacks.h"
 #include "McRenderMode.h"
@@ -74,6 +76,8 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 	}
 	ActiveMenu = NewMenu;
 	bSplashChosen = false;
+	// The Esc that opened a menu this frame is not also its Back.
+	MenuOpenedFrame = GFrameCounter;
 	FocusedField = 0;
 	UMcGameViewportClient::TakeTyped();
 	if (NewMenu == EMenu::Worlds)
@@ -90,6 +94,29 @@ void AMcHUD::OpenMenu(EMenu NewMenu)
 			// With no worlds yet the game goes straight on to making one.
 			OpenMenu(EMenu::NewWorld);
 		}
+	}
+	else if (NewMenu == EMenu::ImportJava)
+	{
+		JavaRows.Reset();
+		FString Saves = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA")) / TEXT(".minecraft") / TEXT("saves");
+#if !UE_BUILD_SHIPPING
+		// Development: -McJavaSaves=<folder> lists the worlds of another folder (for a -McShot of the screen).
+		FParse::Value(FCommandLine::Get(), TEXT("-McJavaSaves="), Saves);
+#endif
+		TArray<FString> Folders;
+		IFileManager::Get().FindFiles(Folders, *(Saves / TEXT("*")), false, true);
+		for (const FString& Folder : Folders)
+		{
+			FMcLevelData Level;
+			if (McJavaImport::IsJavaWorld(Saves / Folder) && McJavaImport::ReadLevel(Saves / Folder, Level))
+			{
+				JavaRows.Add({ Saves / Folder, Level.Name.IsEmpty() ? Folder : Level.Name, Level.GameMode,
+					IFileManager::Get().GetTimeStamp(*(Saves / Folder / TEXT("level.dat"))) });
+			}
+		}
+		JavaRows.Sort([](const FWorldRow& A, const FWorldRow& B) { return A.LastPlayed > B.LastPlayed; });
+		SelectedJava = JavaRows.Num() > 0 ? 0 : INDEX_NONE;
+		ImportMessage = JavaRows.Num() > 0 ? FString() : FString::Printf(TEXT("No Java worlds found in %s"), *Saves);
 	}
 	else if (NewMenu == EMenu::NewWorld)
 	{
@@ -156,13 +183,13 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	{
 		OpenMenu(EMenu::Title);
 #if !UE_BUILD_SHIPPING
-		// Development: -McMenu=worlds, newworld or join opens that screen first (for a -McShot of it).
+		// Development: -McMenu=worlds, newworld, join or importjava opens that screen first (for a -McShot of it).
 		static bool bDevMenuDone = false;
 		FString DevMenu;
 		if (!bDevMenuDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu))
 		{
 			bDevMenuDone = true;
-			OpenMenu(DevMenu == TEXT("worlds") ? EMenu::Worlds : DevMenu == TEXT("newworld") ? EMenu::NewWorld : DevMenu == TEXT("join") ? EMenu::Join : EMenu::Title);
+			OpenMenu(DevMenu == TEXT("worlds") ? EMenu::Worlds : DevMenu == TEXT("newworld") ? EMenu::NewWorld : DevMenu == TEXT("join") ? EMenu::Join : DevMenu == TEXT("importjava") ? EMenu::ImportJava : EMenu::Title);
 			if (DevMenu == TEXT("options"))
 			{
 				OpenOptions(EMenu::Title);
@@ -198,7 +225,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	bMenuEnter = Player && Player->WasInputKeyJustPressed(EKeys::Enter);
 	bMenuTab = Player && Player->WasInputKeyJustPressed(EKeys::Tab);
 	MenuTyped = UMcGameViewportClient::TakeTyped();
-	const bool bEscape = Player && Player->WasInputKeyJustPressed(EKeys::Escape);
+	const bool bEscape = Player && Player->WasInputKeyJustPressed(EKeys::Escape) && MenuOpenedFrame != GFrameCounter;
 	if (bMenuTab && FieldCount > 0)
 	{
 		FocusedField = (FocusedField + 1) % FieldCount;
@@ -212,7 +239,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		{
 		case EMenu::Pause: case EMenu::Chat: OpenMenu(EMenu::None); return false;
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
-		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
+		case EMenu::NewWorld: case EMenu::ConfirmDelete: case EMenu::ImportJava: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
 		case EMenu::ResourcePacks: ApplyResourcePacks(); OpenMenu(EMenu::Options); break;
 		case EMenu::Language: OpenMenu(EMenu::Options); break;
@@ -226,6 +253,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Title: DrawTitle(Width, Height); break;
 	case EMenu::Worlds: DrawWorlds(Width, Height); break;
 	case EMenu::ConfirmDelete: DrawConfirmDelete(Width, Height); break;
+	case EMenu::ImportJava: DrawImportJava(Width, Height); break;
 	case EMenu::NewWorld: DrawNewWorld(Width, Height); break;
 	case EMenu::Join: DrawJoin(Width, Height); break;
 	case EMenu::Message: DrawMessage(Width, Height); break;
@@ -696,10 +724,66 @@ void AMcHUD::DrawWorlds(int32 Width, int32 Height)
 		ActiveMenu = EMenu::ConfirmDelete;
 		return;
 	}
-	MenuButton(McLang::Get(TEXT("selectWorld.recreate")), CentreX + 4.0f, Height - 28.0f, 72.0f, 20.0f, false);
+	if (MenuButton(TEXT("Import Java"), CentreX + 4.0f, Height - 28.0f, 72.0f, 20.0f))
+	{
+		OpenMenu(EMenu::ImportJava);
+		return;
+	}
 	if (MenuButton(McLang::Get(TEXT("gui.back")), CentreX + 82.0f, Height - 28.0f, 72.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Title);
+	}
+}
+
+void AMcHUD::DrawImportJava(int32 Width, int32 Height)
+{
+	DrawMenuBackground(Width, Height, true);
+	const float CentreX = Width / 2.0f;
+	DrawCentredText(TEXT("Import Java World"), CentreX, 16.0f, White);
+	const float ListTop = 32.0f;
+	const float ListBottom = Height - 64.0f;
+	const float RowWidth = 270.0f;
+	const float RowX = CentreX - RowWidth / 2.0f;
+	DrawFill(0.0f, ListTop, static_cast<float>(Width), ListBottom - ListTop, FLinearColor(0.0f, 0.0f, 0.0f, 0.35f));
+	const int32 Visible = FMath::Max(1, FMath::FloorToInt((ListBottom - ListTop) / 36.0f));
+	for (int32 Index = 0; Index < JavaRows.Num() && Index < Visible; ++Index)
+	{
+		const FWorldRow& Row = JavaRows[Index];
+		const float Y = ListTop + 2.0f + Index * 36.0f;
+		if (GuiMouse.X >= RowX && GuiMouse.X < RowX + RowWidth && GuiMouse.Y >= Y && GuiMouse.Y < Y + 36.0f && bMenuClick)
+		{
+			SelectedJava = Index;
+		}
+		if (SelectedJava == Index)
+		{
+			DrawFill(RowX - 2.0f, Y - 2.0f, RowWidth + 4.0f, 36.0f, FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
+			DrawFill(RowX - 1.0f, Y - 1.0f, RowWidth + 2.0f, 34.0f, FLinearColor::Black);
+		}
+		DrawGuiText(Row.Name, RowX + 3.0f, Y + 1.0f, White, true);
+		DrawGuiText(FPaths::GetCleanFilename(Row.Folder), RowX + 3.0f, Y + 12.0f, DarkGrey, true);
+		DrawGuiText(McLaunch::IsCreativeMode(Row.GameMode) ? TEXT("Creative Mode") : TEXT("Survival Mode"), RowX + 3.0f, Y + 23.0f, DarkGrey, true);
+	}
+	if (!ImportMessage.IsEmpty())
+	{
+		DrawCentredText(ImportMessage, CentreX, ListTop + 8.0f, White);
+	}
+	const bool bSelected = JavaRows.IsValidIndex(SelectedJava);
+	if (MenuButton(TEXT("Import Selected World"), CentreX - 154.0f, Height - 28.0f, 150.0f, 20.0f, bSelected))
+	{
+		// A copy goes into Saved/Worlds; the Java folder is only read. The world is there at once and its chunks are
+		// converted while it is played, the ones near the spawn first.
+		const FString Folder = McJavaImport::BeginImport(JavaRows[SelectedJava].Folder, FString());
+		OpenMenu(EMenu::Worlds);
+		const int32 Imported = WorldRows.IndexOfByPredicate([&Folder](const FWorldRow& Row) { return Row.Folder == Folder; });
+		if (Imported != INDEX_NONE)
+		{
+			SelectedWorld = Imported;
+		}
+		return;
+	}
+	if (MenuButton(TEXT("Back"), CentreX + 4.0f, Height - 28.0f, 150.0f, 20.0f))
+	{
+		OpenMenu(EMenu::Worlds);
 	}
 }
 
@@ -919,27 +1003,55 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	{
 		ToggleHd();
 	}
+	// Quality, for Unreal Mode: cycles Low, Medium, High, Ultra; the FPS readout works in both looks.
+	static const TCHAR* const QualityNames[4] = { TEXT("Quality: Low"), TEXT("Quality: Medium"), TEXT("Quality: High"), TEXT("Quality: Ultra") };
+	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 132.0f, 150.0f, 20.0f, bUnreal))
+	{
+		McRenderMode::SetQuality((McRenderMode::GetQuality() + 1) % 4);
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.Quality = McRenderMode::GetQuality();
+		Options.Save();
+	}
+	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
+	{
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.bShowFps = !Options.bShowFps;
+		Options.Save();
+		GetOwningPlayerController()->ConsoleCommand(TEXT("stat fps"));
+	}
+	// Ray tracing: greyed out, with the reason, without Unreal Mode or a card (and DX12) that traces rays.
+	const bool bRaysCan = McRenderMode::IsRayTracingSupported();
+	const bool bRays = McRenderMode::GetRayTracingSwitch();
+	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 156.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
+	{
+		McRenderMode::SetRayTracing(!bRays);
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.bRayTracing = McRenderMode::GetRayTracingSwitch();
+		Options.Save();
+	}
+	DrawCentredText(!bUnreal ? TEXT("Ray Tracing needs Unreal Mode") : !bRaysCan ? TEXT("Ray Tracing: this card or graphics API can't trace rays (needs DX12)")
+		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 180.0f, Grey);
 	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
 		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(McLang::Get(TEXT("options.language")), Left, Top + 136.0f, 150.0f, 20.0f))
-	{
-		OpenLanguage();
-		return;
-	}
-	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 136.0f, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 156.0f, 150.0f, 20.0f))
 	{
 		OpenResourcePacks();
 		return;
 	}
 	if (bPacksNeedRestart)
 	{
-		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 184.0f, Grey);
+		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 246.0f, Grey);
 	}
 
-	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 160.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.language")), CentreX - 100.0f, Top + 196.0f, 200.0f, 20.0f))
+	{
+		OpenLanguage();
+		return;
+	}
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 220.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}
@@ -1223,6 +1335,7 @@ void AMcHUD::ClearPackCaches()
 	RasterAsked.Reset();
 	GlyphTextures.Reset();
 	GalacticWidths.Reset();
+	McFont::ClearCache();
 	bSplashChosen = false;
 }
 

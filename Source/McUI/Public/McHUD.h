@@ -55,10 +55,12 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, Language };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
+	// The frame a menu was last opened in (so one Esc press doesn't open it and close it again).
+	uint64 MenuOpenedFrame = 0;
 	// Why the last attempt to join a server failed, shown on the title screen the failure lands on. Kept across maps.
 	static void SetConnectError(const FString& Error);
 
@@ -115,6 +117,8 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// A decorated pot in 3D, with its sherds.
+	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
@@ -124,6 +128,9 @@ private:
 	void BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints, FIcon& Icon);
 	TMap<FString, FIcon> StackIcons;
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
+	// A mob head's item: its placed model, turned and lifted as the item's template_skull model shows it in a slot.
+	// PotSides: a decorated pot's sides (back, left, right, front), drawn with their sherds' patterns.
+	bool BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSides = {});
 	void DrawSprite(UTexture2D* Texture, float X, float Y, float Width, float Height);
 	// A part of a picture: U, V, UW and VH are in pixels of the picture itself.
 	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
@@ -146,17 +153,38 @@ private:
 	int32 DebugSky = 0;
 	int32 DebugBlockLight = 0;
 	FString DebugBiome;
+	// The screen's edge darkening: its strength eases towards what the light at the eyes asks for. The light is
+	// worked out twice a second.
+	float VignetteStrength = -1.0f;
+	double VignetteLightTime = -10.0;
+	double VignetteLastTime = 0.0;
+	float VignetteEyeLight = 15.0f;
+	float GetEyeLight(const class AMcPlayerPawn& Player);
+	float StepVignette(const class AMcPlayerPawn& Player);
 	float DebugDelta = 0.016f;
 	// The icons of the player's effects along the top right: good ones on the first row, harmful ones on the second.
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
-	void DrawStack(const FMcItemStack& Stack, float X, float Y);
+	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
+	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
+	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
+	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);
 	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
 	void DrawStonecutter(FIntPoint Origin, FIntPoint Local);
 	void DrawLoom(FIntPoint Origin, FIntPoint Local);
+	void DrawTrading(FIntPoint Origin, FIntPoint Local);
 	void DrawAnvil(FIntPoint Origin);
+	// The sign editor: the board large in the middle with the four lines on it, the cursor on the line being written,
+	// and Done. Its keys are taken by PollSign; Done and Esc send the lines and close it.
+	void DrawSign(int32 Width, int32 Height);
+	void PollSign(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
+	// A lectern's book (the game's book screen): the open page with "Page n of m" and the arrows to turn it, and under
+	// the book Done and Take Book. PollLectern turns the pages (the arrows, Page Up and Page Down) through the menu's
+	// buttons, which the server answers.
+	void DrawLectern(int32 Width, int32 Height);
+	void PollLectern(APlayerController& Player, UMcPlayerDataComponent& Data, int32 Width, int32 Height);
 	void PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The creative screen's own input: typing into the search, scrolling, and clicks on the item list. True if it
 	// took this frame's click.
@@ -174,6 +202,8 @@ private:
 	void DrawTitle(int32 Width, int32 Height);
 	void DrawWorlds(int32 Width, int32 Height);
 	void DrawConfirmDelete(int32 Width, int32 Height);
+	// "Import Java World": the folders of %APPDATA%\.minecraft\saves that are worlds, one of which is copied into ours.
+	void DrawImportJava(int32 Width, int32 Height);
 	void DrawNewWorld(int32 Width, int32 Height);
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
@@ -212,6 +242,15 @@ private:
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	// The overlay line over the hotbar (a jukebox's "Now Playing").
+	void DrawOverlay(int32 Width, int32 Height);
+	// The toasts at the top right, over everything.
+	void DrawToasts(int32 Width, int32 Height);
+	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
+	void DrawHeldName(int32 Width, int32 Height, const FMcItemStack& Held, bool bBars);
+	FName HeldNameItem;
+	FString HeldNameText;
+	double HeldNameTime = -100.0;
 	void DrawChatInput(int32 Width, int32 Height);
 	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
@@ -290,6 +329,10 @@ private:
 	TSharedPtr<class SWidget> DropTarget;
 	int32 PacksScrollAvailable = 0;
 	int32 PacksScrollSelected = 0;
+	// The Java worlds the import screen lists (Folder is the full path) and what happened to the last import.
+	TArray<FWorldRow> JavaRows;
+	int32 SelectedJava = INDEX_NONE;
+	FString ImportMessage;
 	int32 SelectedWorld = INDEX_NONE;
 	int32 WorldScroll = 0;
 	double LastRowClick = 0.0;
@@ -316,6 +359,7 @@ private:
 	TMap<FMcStateId, FIcon> Icons;
 	TMap<FName, FIcon> ItemIcons;
 	TMap<FString, FIcon> BannerIcons;
+	TMap<FString, FIcon> PotIcons;
 
 	// One character of the font: where its picture is on a sheet (texels), how big it is drawn and how far the next one is,
 	// in GUI pixels. A space provider's character has no sprite, only an advance.

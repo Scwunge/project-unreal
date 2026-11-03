@@ -92,6 +92,9 @@ public:
 	virtual bool IsEffect(FName Effect) const = 0;
 	// False if the player has a stronger one already.
 	virtual bool GiveEffect(const FString& Player, FName Effect, int32 Amplifier, int32 DurationTicks) = 0;
+	// Grants or revokes an advancement for a player (showing its toast on a grant): -1 if there is no such advancement,
+	// 0 if it changed nothing (already had it, or hadn't), 1 if it did. OutTitle is its name as the game's replies show it.
+	virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) { return -1; }
 	// Takes one (every one, if None) from the player; how many there were.
 	virtual int32 ClearEffects(const FString& Player, FName Effect) = 0;
 

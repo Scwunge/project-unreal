@@ -37,7 +37,12 @@ public:
 	// the top block) the terrain has there, before features, e.g.
 	// [Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; }. Without it they assume the ground
 	// is as high as at the start. Set before decorating.
-	void SetHeightSource(TFunction<int32(int32, int32)> Source) { HeightSource = MoveTemp(Source); }
+	void SetHeightSource(TFunction<int32(int32, int32)> Source)
+	{
+		HeightSource = MoveTemp(Source);
+		FScopeLock Guard(&GroundLock);
+		GroundCache.Reset();
+	}
 
 	// The biome at a block, with the terrain's own biome source: what decides whether a structure that reaches
 	// far from its start chunk (a village) is there at all, since the chunks round it aren't in the region. e.g.
@@ -88,6 +93,9 @@ private:
 	TSharedPtr<FMcJigsawLibrary> Jigsaws;
 	FMcFeatureLibrary* FeatureLibrary = nullptr;
 	TFunction<int32(int32, int32)> HeightSource;
+	// Ground heights the mineshafts asked for (finding one runs the noise, and every chunk a structure reaches asks again).
+	mutable FCriticalSection GroundLock;
+	mutable TMap<int64, int32> GroundCache;
 	TFunction<FMcBiomeId(int32, int32, int32)> BiomeSource;
 	// Jigsaw layouts by seed, start chunk and structure, newest last.
 	mutable FCriticalSection LayoutLock;

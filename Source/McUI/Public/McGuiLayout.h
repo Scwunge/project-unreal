@@ -45,7 +45,11 @@ namespace McGui
 	// How strongly the vignette picture (textures/misc/vignette.png, grey 0 in the middle to 0.82 in a corner) darkens the
 	// screen, for a brightness of 0 (dark) to 1 (noon): the picture's grey times this is the share of the view that is lost.
 	// Fitted to the reference client's HUD-on and HUD-off pairs: 0.356 at noon, 0.289 at night.
-	MCUI_API float GetVignetteStrength(float Brightness);
+	// How dark the screen's edges end up for the light at the player's eyes (0 to 15, between levels it is interpolated):
+	// 1 in the dark, 0 at full light. The strength the vignette eases towards.
+	MCUI_API float GetVignetteTarget(float EyeLight);
+	// One step of the ease, Ticks game ticks long (the strength moves about 0.9 percent of the way to its target each tick).
+	MCUI_API float EaseVignette(float Current, float Target, float Ticks);
 
 	// The layout for a screen of Width x Height GUI pixels. Shake is a number that changes every few ticks: hearts
 	// jiggle by a pixel when health is low, and which ones depends on it.

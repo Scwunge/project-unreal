@@ -35,10 +35,60 @@ bool FMcWorldStorage::Load(FIntPoint Chunk, TArray<uint8>& OutBytes)
 	}
 	// A write that finishes between the two steps has put its bytes in the file before dropping them from the queue,
 	// so the file always has them.
-	return FindRegion(FMcRegionFile::RegionOf(Chunk)).Read(Chunk, OutBytes);
+	if (FindRegion(FMcRegionFile::RegionOf(Chunk)).Read(Chunk, OutBytes))
+	{
+		return true;
+	}
+	TSharedPtr<FChunkSource, ESPMode::ThreadSafe> Source;
+	{
+		FScopeLock Guard(&SourceLock);
+		Source = ChunkSource;
+	}
+	return Source && (*Source)(Chunk, OutBytes);
+}
+
+void FMcWorldStorage::SetChunkSource(FChunkSource Source)
+{
+	{
+		FScopeLock Guard(&QueueLock);
+		bTrackSaves = static_cast<bool>(Source);
+		SavedSinceSource.Reset();
+	}
+	FScopeLock Guard(&SourceLock);
+	ChunkSource.Reset();
+	if (Source)
+	{
+		ChunkSource = MakeShared<FChunkSource, ESPMode::ThreadSafe>(MoveTemp(Source));
+	}
+}
+
+bool FMcWorldStorage::QueueSaveIfAbsent(FIntPoint Chunk, TArray<uint8>&& Bytes)
+{
+	// Only the queue and what was saved since the source was set are looked at (not the file, whose lock the writer holds
+	// while it writes): a chunk the file already had is not asked of the source, and callers that go through whole
+	// regions look at GetSavedMask first.
+	{
+		FScopeLock Guard(&QueueLock);
+		if (Queued.Contains(Chunk) || SavedSinceSource.Contains(Chunk))
+		{
+			return false;
+		}
+	}
+	Enqueue(Chunk, MoveTemp(Bytes));
+	return true;
+}
+
+void FMcWorldStorage::GetSavedMask(FIntPoint Region, TBitArray<>& OutMask)
+{
+	FindRegion(Region).GetPresent(OutMask);
 }
 
 void FMcWorldStorage::QueueSave(FIntPoint Chunk, TArray<uint8>&& Bytes)
+{
+	Enqueue(Chunk, MoveTemp(Bytes));
+}
+
+void FMcWorldStorage::Enqueue(FIntPoint Chunk, TArray<uint8>&& Bytes)
 {
 	if (Bytes.IsEmpty())
 	{
@@ -51,6 +101,10 @@ void FMcWorldStorage::QueueSave(FIntPoint Chunk, TArray<uint8>&& Bytes)
 		FQueued& Entry = Queued.FindOrAdd(Chunk);
 		Entry.Bytes = MoveTemp(Bytes);
 		Entry.Ticket = Ticket;
+		if (bTrackSaves)
+		{
+			SavedSinceSource.Add(Chunk);
+		}
 	}
 	Pipe.Launch(UE_SOURCE_LOCATION, [this, Chunk, Ticket]() { WriteQueued(Chunk, Ticket); });
 }
@@ -68,7 +122,7 @@ void FMcWorldStorage::WriteQueued(FIntPoint Chunk, uint32 Ticket)
 		}
 		Bytes = Entry->Bytes;
 	}
-	if (!FindRegion(FMcRegionFile::RegionOf(Chunk)).Write(Chunk, Bytes))
+	if (!FindRegion(FMcRegionFile::RegionOf(Chunk)).Write(Chunk, Bytes, !bBulk))
 	{
 		// Keep the bytes queued: loading the chunk again still finds them, and the next save of it tries again.
 		++FailedWrites;
@@ -85,6 +139,20 @@ void FMcWorldStorage::WriteQueued(FIntPoint Chunk, uint32 Ticket)
 void FMcWorldStorage::Flush()
 {
 	Pipe.WaitUntilEmpty();
+}
+
+void FMcWorldStorage::SetBulk(bool bInBulk)
+{
+	bBulk = bInBulk;
+	if (!bInBulk)
+	{
+		Flush();
+		FScopeLock Guard(&RegionsLock);
+		for (TPair<FIntPoint, TUniquePtr<FMcRegionFile>>& Pair : Regions)
+		{
+			Pair.Value->CloseWriter();
+		}
+	}
 }
 
 bool FMcWorldStorage::Contains(FIntPoint Chunk)

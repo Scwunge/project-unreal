@@ -22,6 +22,14 @@ public:
 	// The saved bytes of a chunk (McChunkSave's), newest first: still waiting to be written, else in the file. False
 	// if the chunk was never saved or is damaged.
 	bool Load(FIntPoint Chunk, TArray<uint8>& OutBytes);
+	// Where a chunk that was never saved can come from (a Java world still being imported): Load asks it, after the
+	// queue and the file, for the chunk's bytes. It is called on whatever thread loads; it should QueueSaveIfAbsent what
+	// it makes. Pass an empty function to stop.
+	using FChunkSource = TFunction<bool(FIntPoint, TArray<uint8>&)>;
+	void SetChunkSource(FChunkSource Source);
+	// Like QueueSave, but only if the chunk has no save yet (queued or written): false if it had one and the bytes were
+	// dropped. A chunk the player has already changed and saved is not replaced by a late import of it.
+	bool QueueSaveIfAbsent(FIntPoint Chunk, TArray<uint8>&& Bytes);
 	// Hands the bytes over to be written in the background. A newer save of the same chunk replaces an older one that
 	// hasn't been written yet.
 	void QueueSave(FIntPoint Chunk, TArray<uint8>&& Bytes);
@@ -29,8 +37,13 @@ public:
 	void Flush();
 
 	bool Contains(FIntPoint Chunk);
+	// Which chunks of a region (its coordinates, as McRegionFile::RegionOf gives them) the file holds, x + 32 * z.
+	void GetSavedMask(FIntPoint Region, TBitArray<>& OutMask);
 	// Chunks queued and not yet written.
 	int32 NumQueued() const;
+	// A bulk import writes without asking the disk to confirm each chunk.
+	// Leaving bulk waits for the writes and lets go of the files kept open.
+	void SetBulk(bool bInBulk);
 	// Writes that failed, so a caller can tell the disk is full or the folder is read-only.
 	int32 NumFailedWrites() const { return FailedWrites; }
 
@@ -46,8 +59,15 @@ private:
 
 	FMcRegionFile& FindRegion(FIntPoint Region);
 	void WriteQueued(FIntPoint Chunk, uint32 Ticket);
+	void Enqueue(FIntPoint Chunk, TArray<uint8>&& Bytes);
 
 	FString Folder;
+	FCriticalSection SourceLock;
+	TSharedPtr<FChunkSource, ESPMode::ThreadSafe> ChunkSource;
+	// Chunks saved since a chunk source was set, so a late import of one does not replace it (under QueueLock).
+	TSet<FIntPoint> SavedSinceSource;
+	bool bTrackSaves = false;
+	TAtomic<bool> bBulk{ false };
 	mutable FCriticalSection QueueLock;
 	TMap<FIntPoint, FQueued> Queued;
 	uint32 NextTicket = 1;

@@ -37,6 +37,8 @@ namespace McSurvival
 		// Poison, instant damage and the like, and wither; neither is turned aside by armour.
 		Magic,
 		Wither,
+		// A blast; armour turns some of it aside.
+		Explosion,
 	};
 
 	// What the blocks around a player are doing to them this tick.

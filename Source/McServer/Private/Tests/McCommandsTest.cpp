@@ -160,6 +160,26 @@ namespace
 			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
 			return true;
 		}
+		TSet<FString> Advancements;
+		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
+		{
+			if (Id != TEXT("story/mine_stone"))
+			{
+				return -1;
+			}
+			OutTitle = TEXT("[Stone Age]");
+			const FString Key = Player + Id;
+			if (!bGrant)
+			{
+				return Advancements.Remove(Key) > 0 ? 1 : 0;
+			}
+			if (Advancements.Contains(Key))
+			{
+				return 0;
+			}
+			Advancements.Add(Key);
+			return 1;
+		}
 		virtual int32 ClearEffects(const FString& Player, FName Effect) override
 		{
 			const int32 Had = Effect.IsNone() ? Effects.Num() : Effects.Contains(Effect) ? 1 : 0;
@@ -391,6 +411,12 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("clear one"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve speed"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed effect Speed from Steve")));
 	TestTrue(TEXT("clear all"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed every effect from Steve")));
 	TestTrue(TEXT("nothing to clear"), AnyError(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)));
+
+	// /advancement
+	TestTrue(TEXT("grant"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Granted the advancement [Stone Age] to Steve")));
+	TestTrue(TEXT("already made"), AnyError(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("revoke"), Joined(McCommands::HandleChat(TEXT("/advancement revoke Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Revoked the advancement [Stone Age] from Steve")));
+	TestTrue(TEXT("unknown"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/nothing"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown advancement")));
 	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
 	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
 	Target.HeldItem = TEXT("minecraft:diamond_sword");

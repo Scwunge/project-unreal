@@ -1,0 +1,23 @@
+{
+  "description": "Mob heads on classic_flat (surface y=-61, stone floor), seen from the south: on the floor at z=4, rotation 0 (facing north, away from the camera), skeleton, wither skeleton, zombie, creeper, piglin and player at x=0..10 in twos; behind them on a stone brick wall at z=1, the same heads hanging facing south at y=-59; at x=12 a skeleton skull turned to face east (rotation 4); a dragon head at x=6, z=6 turned north-east (rotation 2), and a dragon wall head at x=12 on the wall.",
+  "camera": [6.0, -57.5, 10.5, 180.0, 18.0],
+  "blocks": [
+    { "from": [-2, -61, -1], "to": [14, -61, 8], "state": "minecraft:stone" },
+    { "from": [-1, -60, 1], "to": [13, -58, 1], "state": "minecraft:stone_bricks" },
+    { "from": [0, -60, 4], "to": [0, -60, 4], "state": "minecraft:skeleton_skull[powered=false,rotation=0]" },
+    { "from": [2, -60, 4], "to": [2, -60, 4], "state": "minecraft:wither_skeleton_skull[powered=false,rotation=0]" },
+    { "from": [4, -60, 4], "to": [4, -60, 4], "state": "minecraft:zombie_head[powered=false,rotation=0]" },
+    { "from": [6, -60, 4], "to": [6, -60, 4], "state": "minecraft:creeper_head[powered=false,rotation=0]" },
+    { "from": [8, -60, 4], "to": [8, -60, 4], "state": "minecraft:piglin_head[powered=false,rotation=0]" },
+    { "from": [10, -60, 4], "to": [10, -60, 4], "state": "minecraft:player_head[powered=false,rotation=0]" },
+    { "from": [12, -60, 4], "to": [12, -60, 4], "state": "minecraft:skeleton_skull[powered=false,rotation=4]" },
+    { "from": [6, -60, 6], "to": [6, -60, 6], "state": "minecraft:dragon_head[powered=false,rotation=2]" },
+    { "from": [12, -59, 2], "to": [12, -59, 2], "state": "minecraft:dragon_wall_head[facing=south,powered=false]" },
+    { "from": [0, -59, 2], "to": [0, -59, 2], "state": "minecraft:skeleton_wall_skull[facing=south,powered=false]" },
+    { "from": [2, -59, 2], "to": [2, -59, 2], "state": "minecraft:wither_skeleton_wall_skull[facing=south,powered=false]" },
+    { "from": [4, -59, 2], "to": [4, -59, 2], "state": "minecraft:zombie_wall_head[facing=south,powered=false]" },
+    { "from": [6, -59, 2], "to": [6, -59, 2], "state": "minecraft:creeper_wall_head[facing=south,powered=false]" },
+    { "from": [8, -59, 2], "to": [8, -59, 2], "state": "minecraft:piglin_wall_head[facing=south,powered=false]" },
+    { "from": [10, -59, 2], "to": [10, -59, 2], "state": "minecraft:player_wall_head[facing=south,powered=false]" }
+  ]
+}

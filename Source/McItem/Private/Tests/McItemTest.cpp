@@ -5,6 +5,7 @@
 #include "McItemRegistry.h"
 #include "McItemStack.h"
 #include "McRecipe.h"
+#include "McPot.h"
 #include "Misc/AutomationTest.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
@@ -233,6 +234,14 @@ bool FMcRecipeTest::RunTest(const FString& Parameters)
 
 	// A decorated pot from four bricks.
 	TestTrue(TEXT("a decorated pot"), Book.FindCraftingMatch(Grid(3, { TEXT(""), TEXT("minecraft:brick"), TEXT(""), TEXT("minecraft:brick"), TEXT(""), TEXT("minecraft:brick"), TEXT(""), TEXT("minecraft:brick") }), 3, 3, Match) && Match.Result.Item == FName("minecraft:decorated_pot"));
+	// With sherds, the pot keeps them: the top is its back, the left its left, the right its right, the bottom its front.
+	TestTrue(TEXT("a decorated pot with sherds"), Book.FindCraftingMatch(Grid(3, { TEXT(""), TEXT("minecraft:angler_pottery_sherd"), TEXT(""), TEXT("minecraft:archer_pottery_sherd"), TEXT(""), TEXT("minecraft:brick"), TEXT(""), TEXT("minecraft:blade_pottery_sherd") }), 3, 3, Match));
+	const TArray<FName> PotSides = McPot::GetSides(Match.Result);
+	TestTrue(TEXT("its sides back, left, right and front"), PotSides == TArray<FName>({ TEXT("minecraft:angler_pottery_sherd"), TEXT("minecraft:archer_pottery_sherd"), TEXT("minecraft:brick"), TEXT("minecraft:blade_pottery_sherd") }));
+	TestEqual(TEXT("a sherd's pattern"), McPot::GetPattern(TEXT("minecraft:arms_up_pottery_sherd")), FString(TEXT("entity/decorated_pot/arms_up_pottery_pattern")));
+	FMcItemStack Plain(TEXT("minecraft:decorated_pot"));
+	McPot::SetSides(Plain, { TEXT("minecraft:brick"), TEXT("minecraft:brick"), TEXT("minecraft:brick"), TEXT("minecraft:brick") });
+	TestFalse(TEXT("a plain pot keeps no sides of its own"), Plain.Components.Contains(TEXT("minecraft:pot_decorations")));
 
 	// ---- The specials ----
 	TArray<FMcItemStack> Repair = Grid(2, { TEXT("minecraft:iron_pickaxe"), TEXT("minecraft:iron_pickaxe") });

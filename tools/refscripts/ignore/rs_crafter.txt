@@ -1,0 +1,3 @@
+# unexplained: rows 48 (the lever row): ours drops the wall lever a command placed with nothing behind it; the script should put a block behind it
+~*|2,-60,48|
+~*|3,-60,48|

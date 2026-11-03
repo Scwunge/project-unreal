@@ -11,12 +11,14 @@
 #include "McChunkSave.h"
 #include "McEntityHost.h"
 #include "McSimulation.h"
+#include "McShulkerLids.h"
 #include "McWorldSave.h"
 #include "GameFramework/Controller.h"
 #include "McWorldActor.generated.h"
 
 class FMcFeatureLibrary;
 class FMcWorldStorage;
+namespace McJavaImport { class FLiveImport; }
 
 UCLASS()
 class MCSERVER_API AMcWorldActor : public AActor
@@ -77,6 +79,10 @@ public:
 
 	// Null until BeginPlay has loaded the registry, the dimension and the preset from cache/.
 	FMcBlockWorld* GetBlockWorld() const { return BlockWorld.Get(); }
+	// A player put the block at Pos down by hand (a hook then looks along its tripwire line at once).
+	void PlayerPlaced(const FIntVector& Pos);
+	// A player is breaking the block at Pos (it is still there).
+	void PlayerBroke(const FIntVector& Pos);
 
 	// World height of the top block at the spawn column, for spawning players above it. Under a ceiling (the Nether)
 	// it is a floor with room to stand, and the column may be off 0, 0.
@@ -88,6 +94,9 @@ public:
 	// clients once a second, as the game's time packet does; clients run their own clock in between. Fractional,
 	// so the sky moves smoothly between ticks.
 	double GetDayTime() const { return DayTicks; }
+	// Ticks since the world began, which /time set and the daylight rule don't touch (the clouds drift by it). Counted
+	// on every machine and corrected from the server's once a second.
+	double GetGameTicks() const { return GameTicks; }
 	// -McTime=<ticks> sets where a new world starts (default 1000, the start of the day); -McTimeFreeze stops time.
 	void SetDayTime(double Ticks);
 	bool IsTimeFrozen() const { return bTimeFrozen; }
@@ -112,6 +121,8 @@ public:
 	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
 	// The id of the nearest vehicle along the ray, or 0.
 	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
+	// The nearest living mob along the ray, or null.
+	class FMcMob* FindMob(const FVector& Eye, const FVector& Look, float Reach);
 
 	// Changes a block, loaded or not. A change to a chunk that isn't loaded is kept and put on it when it arrives. In
 	// a world without a save (no -McWorld) changes to loaded chunks are kept too, so they survive unloading; in a
@@ -123,6 +134,10 @@ public:
 	// or fence gate (see FMcSimulation::UseBlock). Yaw is where they look. True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
 
+	// Server: a note block at Pos is struck (a punch) or tuned and played (a use); see FMcSimulation::PlayNote, TuneNote.
+	bool PlayNote(const FIntVector& Pos);
+	bool TuneNote(const FIntVector& Pos);
+
 	// Whether this machine is showing this dimension to its player; sounds made in a dimension are only played where it is.
 	void SetViewed(bool bInViewed) { bViewed = bInViewed; }
 
@@ -133,10 +148,43 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastSound(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch);
 
+	// A jukebox at Position starts its record (bPlay) or has it taken out, which silences it. Reliable: a record is
+	// minutes long, and one that never started or never stopped is noticed.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastRecord(FName Name, FVector_NetQuantize10 Position, bool bPlay);
+
+	// A music note rises at Position, in the colour of Note (0 to 24).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastNote(FVector_NetQuantize10 Position, int32 Note);
+
 	// Every machine showing this dimension: the block State at Pos was broken (its bits fly; the view's OnBlockBroken).
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastBlockBroken(FIntVector Pos, int32 State);
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> OnBlockBroken;
+
+	// Every machine showing this dimension: the bell at Pos was rung from its Side (0 north, 1 south, 2 west, 3 east),
+	// so it swings away from there (the view's OnBellRung).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastBellRung(FIntVector Pos, uint8 Side);
+	TFunction<void(const FIntVector& Pos, uint8 Side)> OnBellRung;
+
+	// Every machine showing this dimension: the spawner at Pos started a new wait (the view's spinning mob).
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastSpawnerCycled(FIntVector Pos);
+	TFunction<void(const FIntVector& Pos)> OnSpawnerCycled;
+
+	// Shulker box lids, stepped 20 times a second on every machine: the boxes' collision while open, and the pushes
+	// of opening lids. Null until the first tick.
+	FMcShulkerLids* GetShulkerLids() const { return ShulkerLids.Get(); }
+	// Server: how many have each shulker box open now (each tick, the boxes anyone has open); changes go to everyone.
+	void SetShulkerOpeners(const TMap<FIntVector, int32>& Openers);
+	// Every machine showing this dimension: the box at Pos is now open for Count.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastShulkerOpeners(FIntVector Pos, int32 Count);
+	// Server: the boxes open in a chunk, for a player the chunk is going to. Client: a box already open when its chunk
+	// came, shown open at once.
+	void GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const;
+	void ShowShulkerOpen(const FIntVector& Pos, int32 Count);
 
 	// ---- Lightning (M8) ----
 	// In a thunderstorm each loaded chunk has a 1 in 100,000 chance a tick of a strike (minecraft.wiki: "Lightning"), on
@@ -189,6 +237,8 @@ protected:
 
 	UFUNCTION()
 	void OnRep_SyncedDayTime();
+	UFUNCTION()
+	void OnRep_SyncedGameTime();
 
 private:
 	void StreamChunks();
@@ -223,6 +273,9 @@ private:
 	// Mobs and dropped items. Server only.
 	TUniquePtr<FMcEntityHost> Entities;
 	double TickRemainder = 0.0;
+	TUniquePtr<FMcShulkerLids> ShulkerLids;
+	TMap<FIntVector, int32> ShulkerOpeners;
+	double LidRemainder = 0.0;
 	// Shared with the worker tasks, which may outlive the actor by a moment.
 	TSharedPtr<const FMcChunkGenerator, ESPMode::ThreadSafe> Generator;
 	int32 SurfaceY = 0;
@@ -233,6 +286,9 @@ private:
 	double TicksSinceSync = 0.0;
 	UPROPERTY(ReplicatedUsing = OnRep_SyncedDayTime)
 	int64 SyncedDayTime = 1000;
+	double GameTicks = 0.0;
+	UPROPERTY(ReplicatedUsing = OnRep_SyncedGameTime)
+	int64 SyncedGameTime = 0;
 	UPROPERTY(Replicated)
 	bool bTimeFrozen = false;
 	// The server's weather (EMcWeather), and the levels easing towards it.
@@ -244,6 +300,14 @@ private:
 	bool HasWeather() const;
 	// One tick of the storm's chances of a strike on each loaded chunk.
 	void TickLightning();
+	// Mirrors the simulation's falling blocks as entities (so clients see them) and drops what lands unplaced.
+	void SyncFallingBlocks();
+	// Tells the simulation how many entities stand on each pressure plate (minecraft.wiki, "Pressure Plate": wooden
+	// and weighted plates feel every entity, stone ones only mobs and players).
+	void FeedPressurePlates();
+	TMap<FIntVector, int32> FedPlates;
+	// Simulation falling block id -> entity id.
+	TMap<int32, int32> FallingEntities;
 	FRandomStream LightningRandom{ 31 };
 	// -McStrike=x,z (development): the column struck every three seconds.
 	FString DevStrike;
@@ -287,6 +351,8 @@ private:
 	FMcLevelData Level;
 	// Shared with the worker tasks that read chunks from it, like the generator.
 	TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage;
+	// The rest of an imported Java world coming in, while its chunks are still being converted.
+	TSharedPtr<McJavaImport::FLiveImport, ESPMode::ThreadSafe> LiveImport;
 	// What a loaded chunk's save looks like, to tell whether it needs writing again.
 	struct FChunkState
 	{

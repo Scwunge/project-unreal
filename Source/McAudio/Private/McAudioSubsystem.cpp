@@ -58,7 +58,18 @@ void UMcAudioSubsystem::OnSound(const FMcSoundEvent& Event)
 				Event.Volume * Chosen.Volume, Settings.Pitch, Settings.Range, *Chosen.Name);
 		}
 	}
-	Play(Event);
+	if (Event.bStop)
+	{
+		StopRecord(Event);
+	}
+	else if (Event.Name.ToString().StartsWith(TEXT("music_disc.")))
+	{
+		PlayRecord(Event);
+	}
+	else
+	{
+		Play(Event);
+	}
 }
 
 void UMcAudioSubsystem::PlayMusic(FName Event)
@@ -198,6 +209,75 @@ namespace
 		Wave->bLooping = false;
 		Wave->QueueAudio(Sound.Pcm.GetData(), Sound.Pcm.Num());
 		return Wave;
+	}
+}
+
+void UMcAudioSubsystem::PlayRecord(const FMcSoundEvent& Event)
+{
+	UWorld* World = GetWorld();
+	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
+	FMcSoundVariant Variant;
+	if (!GEngine || !GEngine->UseSound() || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded() || !FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Variant))
+	{
+		return;
+	}
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Player->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	const McAudio::FMcSoundPlay Settings = McAudio::Resolve(Event, Variant);
+	if (FVector::Dist(McCoords::UnrealToBlock(ViewLocation), Event.Position) > Settings.Range)
+	{
+		return;
+	}
+	const FIntVector Cell = ToCell(Event.Position);
+	StopRecord(FMcSoundEvent{ Event.Name, Event.Position, 1.0f, 1.0f, true });
+	const int32 Request = ++RecordRequest;
+	Records.Add(Cell).Request = Request;
+	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Variant.Name + TEXT(".ogg"));
+	Async(EAsyncExecution::ThreadPool, [WeakThis = TWeakObjectPtr<UMcAudioSubsystem>(this), Path, Request, Cell, Event, Settings]()
+	{
+		TSharedPtr<McAudio::FDecodedSound> Sound = MakeShared<McAudio::FDecodedSound>();
+		TArray<uint8> File;
+		if (!FFileHelper::LoadFileToArray(File, *Path) || !McAudio::DecodeOgg(File, *Sound))
+		{
+			UE_LOG(LogMcAudio, Warning, TEXT("Can't play record file %s."), *Path);
+			Sound.Reset();
+		}
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Sound, Request, Cell, Event, Settings]()
+		{
+			UMcAudioSubsystem* Self = WeakThis.Get();
+			UWorld* World = Self ? Self->GetWorld() : nullptr;
+			FRecord* Record = Self ? Self->Records.Find(Cell) : nullptr;
+			if (!Sound || !World || !Record || Record->Request != Request)
+			{
+				return;
+			}
+			USoundAttenuation* Attenuation = NewObject<USoundAttenuation>(Self);
+			FSoundAttenuationSettings& Falloff = Attenuation->Attenuation;
+			Falloff.bAttenuate = true;
+			Falloff.bSpatialize = true;
+			Falloff.bEnableOcclusion = false;
+			Falloff.DistanceAlgorithm = EAttenuationDistanceModel::Linear;
+			Falloff.AttenuationShape = EAttenuationShape::Sphere;
+			Falloff.AttenuationShapeExtents = FVector(1.0);
+			Falloff.FalloffDistance = Settings.Range * McCoords::UnitsPerBlock;
+			USoundWaveProcedural* Wave = MakeWave(Self, *Sound);
+			Wave->SoundGroup = SOUNDGROUP_Music;
+			Record->Component = UGameplayStatics::SpawnSoundAtLocation(World, Wave, McCoords::BlockToUnreal(Event.Position),
+				FRotator::ZeroRotator, Settings.Volume, Settings.Pitch, 0.0f, Attenuation);
+		});
+	});
+}
+
+void UMcAudioSubsystem::StopRecord(const FMcSoundEvent& Event)
+{
+	if (const FRecord* Record = Records.Find(ToCell(Event.Position)))
+	{
+		if (UAudioComponent* Component = Record->Component.Get())
+		{
+			Component->Stop();
+		}
+		Records.Remove(ToCell(Event.Position));
 	}
 }
 
@@ -503,7 +583,8 @@ void UMcAudioSubsystem::TickImmersive(float DeltaTime, const FVector& Head)
 	bImmersive = true;
 
 	// Under water everything is dull, and the sea has its own sounds.
-	const bool bWet = GetBlockName(GetBlockAt(ToCell(Head))) == WaterName;
+	const FName HeadBlock = GetBlockName(GetBlockAt(ToCell(Head)));
+	const bool bWet = HeadBlock == WaterName || HeadBlock == TEXT("minecraft:bubble_column");
 	if (bWet != bUnderwater)
 	{
 		bUnderwater = bWet;

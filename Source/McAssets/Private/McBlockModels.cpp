@@ -1,4 +1,6 @@
 #include "McBlockModels.h"
+#include "McTextureTiles.h"
+#include "Async/ParallelFor.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
 #include "HAL/PlatformTime.h"
@@ -963,6 +965,45 @@ bool FMcBlockModels::EnsureBaked()
 			case EMcModelStatus::Builtin: ++NewStats.Builtin; break;
 			default:                      ++NewStats.Failed; break;
 			}
+			NewStats.Quads += Model.Quads.Num();
+			for (const FMcBakedQuad& Quad : Model.Quads)
+			{
+				TextureSet.Add(Quad.Texture);
+			}
+		}
+	}
+
+	// Pictures bigger than a layer are drawn a 16-pixel tile at a time: the quads using them are cut along the tiles.
+	TMap<FName, FIntPoint> Grids;
+	for (const FName Texture : TextureSet)
+	{
+		const FIntPoint Grid = McTextureTiles::GetGrid(Texture);
+		if (Grid != FIntPoint(1, 1))
+		{
+			Grids.Add(Texture, Grid);
+		}
+	}
+	if (Grids.Num() > 0)
+	{
+		ParallelFor(NewModels.Num(), [&](int32 Index)
+		{
+			TArray<FMcBakedQuad>& Quads = NewModels[Index].Quads;
+			if (!Quads.ContainsByPredicate([&](const FMcBakedQuad& Quad) { return Grids.Contains(Quad.Texture); }))
+			{
+				return;
+			}
+			TArray<FMcBakedQuad> Cut;
+			for (const FMcBakedQuad& Quad : Quads)
+			{
+				const FIntPoint* Grid = Grids.Find(Quad.Texture);
+				McTextureTiles::SplitQuad(Quad, Grid ? *Grid : FIntPoint(1, 1), Cut);
+			}
+			Quads = MoveTemp(Cut);
+		});
+		TextureSet.Reset();
+		NewStats.Quads = 0;
+		for (const FMcBakedModel& Model : NewModels)
+		{
 			NewStats.Quads += Model.Quads.Num();
 			for (const FMcBakedQuad& Quad : Model.Quads)
 			{

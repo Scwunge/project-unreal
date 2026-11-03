@@ -32,9 +32,14 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(FString::Printf(TEXT("%s: (%d, %d), expected (%d, %d)"), What, Actual.X, Actual.Y, Expected.X, Expected.Y), Actual == Expected);
 	};
-	// The vignette is a little stronger by day than at night.
-	TestTrue(TEXT("noon vignette strength"), FMath::IsNearlyEqual(GetVignetteStrength(1.0f), 0.356f, 1e-4f));
-	TestTrue(TEXT("night vignette is weaker"), GetVignetteStrength(0.24f) < GetVignetteStrength(1.0f));
+	// The vignette is full in the dark and gone in full light, in between as measured, and eases about 0.9 percent a tick.
+	TestEqual(TEXT("dark vignette"), GetVignetteTarget(0.0f), 1.0f);
+	TestEqual(TEXT("no vignette in full light"), GetVignetteTarget(15.0f), 0.0f);
+	TestTrue(TEXT("light 13 measured"), FMath::IsNearlyEqual(GetVignetteTarget(13.0f), 0.378f, 1e-4f));
+	TestTrue(TEXT("between levels it is interpolated"), FMath::IsNearlyEqual(GetVignetteTarget(10.5f), 0.5f * (0.621f + 0.572f), 1e-4f));
+	TestTrue(TEXT("never stronger in more light"), GetVignetteTarget(8.0f) > GetVignetteTarget(9.0f) && GetVignetteTarget(3.0f) > GetVignetteTarget(4.0f));
+	TestTrue(TEXT("a tick moves it a little"), FMath::IsNearlyEqual(EaseVignette(0.2f, 0.7f, 1.0f), 0.2f + 0.5f * 0.0087f, 1e-4f));
+	TestTrue(TEXT("a hundred ticks about halfway"), FMath::IsNearlyEqual(EaseVignette(0.2f, 0.7f, 100.0f), 0.2f + 0.5f * (1.0f - FMath::Pow(1.0f - 0.0087f, 100.0f)), 1e-4f));
 
 	// The GUI scale: the largest that keeps 320 x 240, or the setting if smaller.
 	TestEqual(TEXT("1080p is scale 4"), GetGuiScale(1920, 1080), 4);

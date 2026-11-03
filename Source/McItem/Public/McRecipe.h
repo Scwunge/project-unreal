@@ -85,6 +85,11 @@ struct MCITEM_API FMcCraftingMatch
 	FMcItemStack Result;
 };
 
+// One craft of a crafter: the 3x3 slots (row by row) are matched against the crafting recipes; on a match one item is
+// taken from each filled slot (a remainder such as a bucket goes back to its slot) and Result is what it made.
+// False, with Slots untouched, if no recipe fits.
+MCITEM_API bool McCrafterCraft(TArray<FMcItemStack>& Slots, FMcItemStack& Result);
+
 class MCITEM_API FMcRecipeBook
 {
 public:

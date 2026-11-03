@@ -4,6 +4,7 @@
 #include "McDimensionType.h"
 #include "McEntityManager.h"
 #include "McMob.h"
+#include "McPot.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -102,7 +103,9 @@ bool FMcEntityManagerTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(12, 1, 10), State(TEXT("minecraft:lava[level=0]")));
 		FMcItemEntity& Floating = Manager.DropItem(FVector(10.5, 1.2, 10.5), Diamond);
 		Manager.DropItem(FVector(12.5, 1.2, 10.5), Diamond);
-		for (int32 Tick = 0; Tick < 100; ++Tick)
+		// A dropped item is tossed up out of the water and sinks back in; the buoyancy of 0.0005 a tick takes a few hundred
+		// ticks to turn that round (vanilla's rule: only added below 0.06, no cap).
+		for (int32 Tick = 0; Tick < 500; ++Tick)
 		{
 			Manager.Tick();
 		}
@@ -206,6 +209,24 @@ bool FMcEntityManagerTest::RunTest(const FString& Parameters)
 			Manager.Tick();
 		}
 		TestTrue(TEXT("a block in the way is jumped"), Bitten >= 3.0f);
+	}
+	{
+		// Stacks of one item with different components stay apart: a pot with sherds and a plain one.
+		FMcItemStack Plain(TEXT("minecraft:decorated_pot"));
+		FMcItemStack Sherds = Plain;
+		McPot::SetSides(Sherds, { TEXT("minecraft:brick"), TEXT("minecraft:angler_pottery_sherd"), TEXT("minecraft:brick"), TEXT("minecraft:brick") });
+		Manager.DropItem(FVector(5.5, 1.0, 5.5), Plain).Body.Velocity = FVector::ZeroVector;
+		Manager.DropItem(FVector(5.6, 1.0, 5.5), Sherds).Body.Velocity = FVector::ZeroVector;
+		for (int32 Tick = 0; Tick < 60; ++Tick)
+		{
+			Manager.Tick();
+		}
+		int32 Pots = 0;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			Pots += !Entity->bRemoved && Entity->GetType() == FMcItemEntity::StaticType() && static_cast<const FMcItemEntity&>(*Entity).Stack.Item == TEXT("minecraft:decorated_pot");
+		}
+		TestEqual(TEXT("a pot with sherds doesn't join a plain one"), Pots, 2);
 	}
 	return true;
 }

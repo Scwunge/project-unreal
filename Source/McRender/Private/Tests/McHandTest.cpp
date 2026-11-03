@@ -92,6 +92,16 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 		const FHeldPictures Cast = FindHeldPictures(TEXT("minecraft:fishing_rod"), true);
 		TestTrue(TEXT("a cast rod shows the cast picture"), Idle.Side.EndsWith(TEXT("fishing_rod.png")) && Cast.Side.EndsWith(TEXT("fishing_rod_cast.png")));
 	}
+	// The bow is still until a second of draw, then trembles about 0.2 either way.
+	{
+		TestTrue(TEXT("no tremble before a full draw"), GetBowTremble(0.9f).IsNearlyZero());
+		double Peak = 0.0;
+		for (int32 Step = 0; Step < 200; ++Step)
+		{
+			Peak = FMath::Max(Peak, FMath::Abs(GetBowTremble(1.0f + Step * 0.01f).Z));
+		}
+		TestEqual(TEXT("up to 0.2 down and up"), Peak, 0.2, 0.01);
+	}
 	// A drawn bow's arrow (the picture's up-left diagonal) points forward and its limbs (the other diagonal) up.
 	{
 		const double R = FMath::Sqrt(0.5);

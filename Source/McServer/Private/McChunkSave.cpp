@@ -9,7 +9,7 @@
 
 namespace
 {
-	constexpr uint8 Version = 1;
+	constexpr uint8 ChunkFormatVersion = 1;
 	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 	constexpr int32 CellsPerSection = 64;
 	// Anything bigger than this was not written by us, whatever the compressed header claims.
@@ -125,12 +125,14 @@ TArray<uint8> McChunkSave::Encode(const FMcChunk& Chunk, const FMcChunkSaveExtra
 	Writer << BlockEntities;
 	TArray<uint8> Entities = Extras.Entities;
 	Writer << Entities;
+	TArray<uint8> Structures = Extras.Structures;
+	Writer << Structures;
 
 	const int32 RawSize = Raw.Num();
 	int32 CompressedSize = FCompression::CompressMemoryBound(NAME_Zlib, RawSize);
 	TArray<uint8> Out;
 	Out.SetNumUninitialized(1 + sizeof(int32) + CompressedSize);
-	Out[0] = Version;
+	Out[0] = ChunkFormatVersion;
 	FMemory::Memcpy(&Out[1], &RawSize, sizeof(int32));
 	if (!FCompression::CompressMemory(NAME_Zlib, &Out[1 + sizeof(int32)], CompressedSize, Raw.GetData(), RawSize))
 	{
@@ -142,7 +144,7 @@ TArray<uint8> McChunkSave::Encode(const FMcChunk& Chunk, const FMcChunkSaveExtra
 
 bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunkSaveExtras& Extras)
 {
-	if (Bytes.Num() < 1 + static_cast<int32>(sizeof(int32)) || Bytes[0] != Version)
+	if (Bytes.Num() < 1 + static_cast<int32>(sizeof(int32)) || Bytes[0] != ChunkFormatVersion)
 	{
 		return false;
 	}
@@ -276,7 +278,12 @@ bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunk
 	uint8 bPopulated = 0;
 	TArray<uint8> BlockEntities;
 	TArray<uint8> Entities;
+	TArray<uint8> Structures;
 	Reader << bPopulated << BlockEntities << Entities;
+	if (!Reader.IsError() && !Reader.AtEnd())
+	{
+		Reader << Structures;
+	}
 	if (Reader.IsError())
 	{
 		return false;
@@ -293,5 +300,6 @@ bool McChunkSave::Decode(TConstArrayView<uint8> Bytes, FMcChunk& Chunk, FMcChunk
 	}
 	Extras.bPopulated = bPopulated != 0;
 	Extras.Entities = MoveTemp(Entities);
+	Extras.Structures = MoveTemp(Structures);
 	return true;
 }

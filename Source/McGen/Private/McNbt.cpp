@@ -216,3 +216,83 @@ FString FMcNbt::GetString(const TCHAR* Key) const
 	const FMcNbt* Child = Find(Key);
 	return Child && Child->Type == EType::String ? Child->String : FString();
 }
+
+namespace
+{
+	void WriteBig(TArray<uint8>& Out, uint64 Value, int32 Size)
+	{
+		for (int32 Shift = (Size - 1) * 8; Shift >= 0; Shift -= 8)
+		{
+			Out.Add(static_cast<uint8>(Value >> Shift));
+		}
+	}
+
+	void WriteString(TArray<uint8>& Out, const FString& Text)
+	{
+		const FTCHARToUTF8 Utf8(*Text);
+		WriteBig(Out, FMath::Min(Utf8.Length(), 65535), 2);
+		Out.Append(reinterpret_cast<const uint8*>(Utf8.Get()), FMath::Min(Utf8.Length(), 65535));
+	}
+
+	void WritePayload(TArray<uint8>& Out, const FMcNbt& Tag)
+	{
+		using EType = FMcNbt::EType;
+		switch (Tag.Type)
+		{
+		case EType::Byte: WriteBig(Out, static_cast<uint64>(Tag.Integer), 1); break;
+		case EType::Short: WriteBig(Out, static_cast<uint64>(Tag.Integer), 2); break;
+		case EType::Int: WriteBig(Out, static_cast<uint64>(Tag.Integer), 4); break;
+		case EType::Long: WriteBig(Out, static_cast<uint64>(Tag.Integer), 8); break;
+		case EType::Float:
+		{
+			const float Value = static_cast<float>(Tag.Real);
+			uint32 Bits;
+			FMemory::Memcpy(&Bits, &Value, 4);
+			WriteBig(Out, Bits, 4);
+			break;
+		}
+		case EType::Double:
+		{
+			uint64 Bits;
+			FMemory::Memcpy(&Bits, &Tag.Real, 8);
+			WriteBig(Out, Bits, 8);
+			break;
+		}
+		case EType::String: WriteString(Out, Tag.String); break;
+		case EType::ByteArray:
+			WriteBig(Out, Tag.Num(), 4);
+			for (const FMcNbt& Value : Tag.Values) { WriteBig(Out, static_cast<uint64>(Value.Integer), 1); }
+			break;
+		case EType::IntArray:
+			WriteBig(Out, Tag.Num(), 4);
+			for (const FMcNbt& Value : Tag.Values) { WriteBig(Out, static_cast<uint64>(Value.Integer), 4); }
+			break;
+		case EType::LongArray:
+			WriteBig(Out, Tag.Num(), 4);
+			for (const FMcNbt& Value : Tag.Values) { WriteBig(Out, static_cast<uint64>(Value.Integer), 8); }
+			break;
+		case EType::List:
+			WriteBig(Out, Tag.Num() > 0 ? static_cast<uint8>(Tag.Values[0].Type) : 0, 1);
+			WriteBig(Out, Tag.Num(), 4);
+			for (const FMcNbt& Value : Tag.Values) { WritePayload(Out, Value); }
+			break;
+		case EType::Compound:
+			for (int32 Index = 0; Index < Tag.Num(); ++Index)
+			{
+				WriteBig(Out, static_cast<uint8>(Tag.Values[Index].Type), 1);
+				WriteString(Out, Tag.Keys[Index]);
+				WritePayload(Out, Tag.Values[Index]);
+			}
+			WriteBig(Out, 0, 1);
+			break;
+		default: break;
+		}
+	}
+}
+
+void FMcNbt::WriteRoot(TArray<uint8>& Out) const
+{
+	WriteBig(Out, static_cast<uint8>(EType::Compound), 1);
+	WriteString(Out, FString());
+	WritePayload(Out, *this);
+}

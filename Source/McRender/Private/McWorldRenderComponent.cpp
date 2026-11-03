@@ -1,9 +1,10 @@
-#include "McWorldRenderComponent.h"
+﻿#include "McWorldRenderComponent.h"
 #include "McBlockModels.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McBlockTags.h"
 #include "McFluidMesher.h"
 #include "McLightEngine.h"
 #include "McRender.h"
@@ -229,12 +230,48 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// Mode what the rain falls on goes wet in about five seconds, and dries in about thirty once it stops.
 	const float Rain = GetRain ? FMath::Clamp(GetRain(), 0.0f, 1.0f) : 0.0f;
 	Wetness = Rain > Wetness ? FMath::Min(Rain, Wetness + DeltaTime / 5.0f) : FMath::Max(Rain, Wetness - DeltaTime / 30.0f);
+	// How open to the sky the camera is: nothing but air (or leaves, which let half through) in the 24 blocks above it.
+	if (World)
+	{
+		const FVector Eye = McCoords::UnrealToBlock(GetViewLocation());
+		const FIntVector Pos(FMath::FloorToInt(Eye.X), FMath::FloorToInt(Eye.Y), FMath::FloorToInt(Eye.Z));
+		static const int32 Leaves = FMcBlockTags::Get().Find(TEXT("leaves"));
+		float Open = 1.0f;
+		for (int32 Up = 1; Up <= 24 && Open > 0.0f; ++Up)
+		{
+			const FMcStateId Above = World->GetBlock(Pos + FIntVector(0, Up, 0));
+			if (Above != 0 && !FMcBlockTags::Get().Has(Leaves, Above))
+			{
+				Open = 0.0f;
+			}
+		}
+		McSky::SetCameraOpen(Open);
+		// Eyes in a water block: the sea's fog and dim light.
+		const FMcStateId Here = World->GetBlock(Pos);
+		const bool bWet = FluidPalette.IsValid() && FluidPalette->States.IsValidIndex(Here) && FluidPalette->States[Here].Kind == McFluidMesher::EFluid::Water;
+		Underwater = FMath::FInterpTo(Underwater, bWet ? 1.0f : 0.0f, DeltaTime, 8.0f);
+		McSky::SetCameraUnderwater(Underwater);
+	}
+#if !UE_BUILD_SHIPPING
+	// For tuning: -McWaterIor= and -McWaterSky= (the water's index of refraction, and its mirrored-sky strength).
+	static const float WaterIor = [] { float V = 1.33f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
+	static const float WaterSky = [] { float V = 0.5f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
+	static const float Puddles = [] { float V = 1.0f; FParse::Value(FCommandLine::Get(), TEXT("-McPuddles="), V); return V; }();  // 0 is none
+#else
+	constexpr float WaterIor = 1.33f;
+	constexpr float WaterSky = 0.5f;
+	constexpr float Puddles = 1.0f;
+#endif
 	for (UMaterialInterface* Material : PassMaterials)
 	{
 		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))
 		{
 			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Instance->SetScalarParameterValue(TEXT("Wetness"), Wetness);
+				Instance->SetScalarParameterValue(TEXT("Underwater"), Underwater);
+				Instance->SetScalarParameterValue(TEXT("WaterIor"), WaterIor);
+				Instance->SetScalarParameterValue(TEXT("WaterSky"), WaterSky);
+				Instance->SetScalarParameterValue(TEXT("Puddles"), Puddles);
 		}
 	}
 

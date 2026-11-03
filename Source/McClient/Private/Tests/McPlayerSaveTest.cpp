@@ -39,6 +39,8 @@ bool FMcPlayerSaveTest::RunTest(const FString& Parameters)
 	Before->Armor->Set(0, FMcItemStack(TEXT("minecraft:iron_helmet"), 1));
 	Before->Armor->Set(3, FMcItemStack(TEXT("minecraft:iron_boots"), 1));
 	Before->Offhand->Set(0, FMcItemStack(TEXT("minecraft:torch"), 12));
+	Before->EnderChest->Set(0, FMcItemStack(TEXT("minecraft:diamond"), 5));
+	Before->EnderChest->Set(26, FMcItemStack(TEXT("minecraft:stick"), 7));
 
 	FMcPlayerData Saved;
 	McPlayerSave::Capture(*Before, Saved);
@@ -77,6 +79,9 @@ bool FMcPlayerSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("boots on the feet"), After->Armor->Get(3).Item, FName(TEXT("minecraft:iron_boots")));
 	TestTrue(TEXT("nothing on the chest"), After->Armor->Get(1).IsEmpty());
 	TestEqual(TEXT("torches in the off hand"), After->Offhand->Get(0).Count, 12);
+	TestEqual(TEXT("diamonds in the ender chest"), After->EnderChest->Get(0).Count, 5);
+	TestEqual(TEXT("sticks at its end"), After->EnderChest->Get(26).Count, 7);
+	TestTrue(TEXT("and not in the inventory"), After->Inventory->Get(0).Item != FName(TEXT("minecraft:diamond")));
 	TestEqual(TEXT("armour points follow the armour"), After->Stats.Armor, 4);
 
 	// A file from before survival has no state and leaves a new player alone.

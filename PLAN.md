@@ -1251,3 +1251,6 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 
 ### Maps, measured and partly written (2026-11-03, UNBUILT)
 Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dumped (McMapColorData.inc), centre rule, marker byte and rotation, scale 0 land shading (sign of the step to the north neighbour) and water shading by depth. Code in McMapColors / McMapData with tests Mc.Map.*; none of it built (no building on this PC). NOT fitted: land and water shading at scales 1+ (averaged heights gave a dithered, inconsistent pattern; the scaled rule is the scale 0 rule on averages), how maps fill while held, decorations beyond the player, locking, cloning, zoom, item use, saving, rendering.
+
+## After the port
+- Realistic fluids (the user's idea, not started): an opt-in world setting (game rule), decided by the server, that replaces vanilla water and lava with per-cell volume flowing by height and pressure (finite water, momentum, basins, U-bends, slower lava). Only active cells are simulated, and changed cells are sent to clients. Unreal mode may add visual-only splashes and waves. Vanilla stays the default.

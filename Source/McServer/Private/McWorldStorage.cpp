@@ -122,7 +122,7 @@ void FMcWorldStorage::WriteQueued(FIntPoint Chunk, uint32 Ticket)
 		}
 		Bytes = Entry->Bytes;
 	}
-	if (!FindRegion(FMcRegionFile::RegionOf(Chunk)).Write(Chunk, Bytes))
+	if (!FindRegion(FMcRegionFile::RegionOf(Chunk)).Write(Chunk, Bytes, !bBulk))
 	{
 		// Keep the bytes queued: loading the chunk again still finds them, and the next save of it tries again.
 		++FailedWrites;
@@ -139,6 +139,20 @@ void FMcWorldStorage::WriteQueued(FIntPoint Chunk, uint32 Ticket)
 void FMcWorldStorage::Flush()
 {
 	Pipe.WaitUntilEmpty();
+}
+
+void FMcWorldStorage::SetBulk(bool bInBulk)
+{
+	bBulk = bInBulk;
+	if (!bInBulk)
+	{
+		Flush();
+		FScopeLock Guard(&RegionsLock);
+		for (TPair<FIntPoint, TUniquePtr<FMcRegionFile>>& Pair : Regions)
+		{
+			Pair.Value->CloseWriter();
+		}
+	}
 }
 
 bool FMcWorldStorage::Contains(FIntPoint Chunk)

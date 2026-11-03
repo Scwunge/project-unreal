@@ -1093,6 +1093,7 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 			continue;
 		}
 		FMcWorldStorage Storage(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
+		Storage.SetBulk(true);
 		TMap<FIntPoint, FSceneryChunk> Scenery;
 		const double EntitiesStart = FPlatformTime::Seconds();
 		CollectEntities(RegionFolder, WorldDir / McWorldSave::GetDimensionFolder(Dimension) / TEXT("javaentities"), OutStats, Scenery);
@@ -1257,6 +1258,7 @@ struct McJavaImport::FLiveState
 		if (!bStop)
 		{
 			Storage->Flush();
+			Storage->SetBulk(false);
 			FFileHelper::SaveStringToFile(TEXT("done"), *GetDonePath());
 			bFinished = true;
 			UE_LOG(LogMcServer, Log, TEXT("Imported the %s of '%s' in %.1f s: %s"), *Dimension, *Source, FPlatformTime::Seconds() - Start, *McJavaImport::Describe(Stats));
@@ -1299,6 +1301,7 @@ TSharedPtr<McJavaImport::FLiveImport, ESPMode::ThreadSafe> McJavaImport::FLiveIm
 	State->DimensionFolder = McWorldSave::GetDimensionFolder(Dimension);
 	State->Dimension = Dimension;
 	State->Storage = Storage;
+	Storage->SetBulk(true);
 	State->SpawnChunk = SpawnChunk;
 	TSharedPtr<FLiveImport, ESPMode::ThreadSafe> Import = MakeShareable(new FLiveImport());
 	Import->State = State;
@@ -1336,6 +1339,7 @@ void McJavaImport::FLiveImport::Stop()
 	if (State->Storage)
 	{
 		State->Storage->SetChunkSource(nullptr);
+		State->Storage->SetBulk(false);
 	}
 }
 

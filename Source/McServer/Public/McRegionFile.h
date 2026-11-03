@@ -35,11 +35,16 @@ public:
 	// Chunk positions are world chunk coordinates; only their place within the region is used, so pass chunks of
 	// this file's region. False if the chunk isn't saved here or its bytes fail their checksum.
 	bool Read(FIntPoint Chunk, TArray<uint8>& OutPayload);
-	bool Write(FIntPoint Chunk, TConstArrayView<uint8> Payload);
+	// bSync asks the disk to take the bytes before returning (a normal save); a bulk import leaves it to the system, since a write cut short
+	// leaves a payload that fails its checksum and the chunk is converted again.
+	bool Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool bSync = true);
 	bool Contains(FIntPoint Chunk);
 	int32 NumChunks();
 	// Which of the 1024 chunks (x + 32 * z, in the region's own coordinates) the file holds, in one look.
 	void GetPresent(TBitArray<>& OutPresent);
+
+	// Bulk writes (bSync false) keep the file open between chunks; this lets it go.
+	void CloseWriter();
 
 	const FString& GetPath() const { return Path; }
 
@@ -58,6 +63,7 @@ private:
 
 	FString Path;
 	FCriticalSection Lock;
+	TUniquePtr<IFileHandle> BulkHandle;
 	bool bHeaderLoaded = false;
 	bool bFileExists = false;
 	TArray<FEntry> Entries;

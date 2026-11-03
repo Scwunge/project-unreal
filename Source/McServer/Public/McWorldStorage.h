@@ -41,6 +41,9 @@ public:
 	void GetSavedMask(FIntPoint Region, TBitArray<>& OutMask);
 	// Chunks queued and not yet written.
 	int32 NumQueued() const;
+	// A bulk import writes without asking the disk to confirm each chunk.
+	// Leaving bulk waits for the writes and lets go of the files kept open.
+	void SetBulk(bool bInBulk);
 	// Writes that failed, so a caller can tell the disk is full or the folder is read-only.
 	int32 NumFailedWrites() const { return FailedWrites; }
 
@@ -64,6 +67,7 @@ private:
 	// Chunks saved since a chunk source was set, so a late import of one does not replace it (under QueueLock).
 	TSet<FIntPoint> SavedSinceSource;
 	bool bTrackSaves = false;
+	TAtomic<bool> bBulk{ false };
 	mutable FCriticalSection QueueLock;
 	TMap<FIntPoint, FQueued> Queued;
 	uint32 NextTicket = 1;

@@ -120,7 +120,7 @@ bool FMcRegionFile::Read(FIntPoint Chunk, TArray<uint8>& OutPayload)
 	return true;
 }
 
-bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload)
+bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool bSync)
 {
 	if (Payload.IsEmpty() || Payload.Num() > MaxPayload)
 	{
@@ -143,13 +143,27 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload)
 	Entry.Length = Payload.Num();
 	Entry.Crc = FCrc::MemCrc32(Payload.GetData(), Payload.Num());
 
-	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
-	TUniquePtr<IFileHandle> File = OpenForUpdate(Path);
-	if (!File)
+	// A bulk write keeps its file open for the next chunk (opening and closing it for each makes a big import wait on the
+	// system's file scanning); a normal save closes it first and opens its own.
+	TUniquePtr<IFileHandle> Own;
+	if (bSync)
+	{
+		BulkHandle.Reset();
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+		Own = OpenForUpdate(Path);
+	}
+	else if (!BulkHandle)
+	{
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+		BulkHandle = OpenForUpdate(Path);
+	}
+	IFileHandle* const FilePtr = bSync ? Own.Get() : BulkHandle.Get();
+	if (!FilePtr)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write %s"), *Path);
 		return false;
 	}
+	IFileHandle* File = FilePtr;
 	bool bOk = true;
 	if (!bFileExists)
 	{
@@ -178,7 +192,7 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload)
 	}
 	if (bOk)
 	{
-		bOk = File->Flush();
+		bOk = !bSync || File->Flush();
 	}
 	if (!bOk)
 	{
@@ -192,6 +206,12 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload)
 		EndSector += Entry.Sectors;
 	}
 	return true;
+}
+
+void FMcRegionFile::CloseWriter()
+{
+	FScopeLock Guard(&Lock);
+	BulkHandle.Reset();
 }
 
 bool FMcRegionFile::Contains(FIntPoint Chunk)

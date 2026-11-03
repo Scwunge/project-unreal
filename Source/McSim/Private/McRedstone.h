@@ -25,7 +25,12 @@ public:
 	bool RunTick(const FIntVector& Pos, FMcStateId State);
 	// Pistons told of a change while a game tick's scheduled ticks run act at the end of that same tick (block events),
 	// not the next one (reference run rs_world, an observer pulse driving a piston).
-	void BeginTick() { bInTick = true; }
+	void BeginTick()
+	{
+		bInTick = true;
+		for (const FIntVector& Pos : NextPistonEvents) PistonEvents.AddUnique(Pos);
+		NextPistonEvents.Reset();
+	}
 	void EndTick();
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
@@ -147,6 +152,9 @@ private:
 	TSet<FIntVector> DirtyDust;
 	bool bFlushing = false;
 	bool bInTick = false;
+	// A moving block is landing: its neighbours hear of it after this tick's block events, so a piston acts next tick.
+	bool bLanding = false;
+	TArray<FIntVector> NextPistonEvents;
 	TArray<FIntVector> PistonEvents;
 	// Set while an observer changes its own state, which is not a new observer.
 	bool bObserverSelf = false;

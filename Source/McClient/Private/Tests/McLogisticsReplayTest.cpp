@@ -178,6 +178,25 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 			{
 				Place(FIntVector(FCString::Atoi(*P[2]), FCString::Atoi(*P[3]) + Lift, FCString::Atoi(*P[4])), P[5]);
 			}
+			else if (P.Num() >= 10 && P[0] == TEXT("cmd") && P[1] == TEXT("item") && P[2] == TEXT("replace") && P[3] == TEXT("block") && P[8] == TEXT("with"))
+			{
+				// "cmd item replace block x y z container.N with <item> [count]": one slot of the container there.
+				const FIntVector Cell(FCString::Atoi(*P[4]), FCString::Atoi(*P[5]) + Lift, FCString::Atoi(*P[6]));
+				const int32 Slot = FCString::Atoi(*P[7].RightChop(10));
+				if (FMcChunk* Chunk = Blocks.FindChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)))
+				{
+					FMcBlockEntity* Entity = Chunk->FindBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15);
+					if (!Entity || Entity->Kind != EMcBlockEntityKind::Container)
+					{
+						Chunk->SetBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15, FMcBlockEntity::MakeContainer(9));
+						Entity = Chunk->FindBlockEntity(Cell.X & 15, Cell.Y, Cell.Z & 15);
+					}
+					if (Entity && Slot >= 0 && Slot < Entity->Slots.Num())
+					{
+						Entity->Slots[Slot] = FMcItemStack(*(TEXT("minecraft:") + P[9]), P.Num() > 10 ? FCString::Atoi(*P[10]) : 1);
+					}
+				}
+			}
 			else if (P.Num() >= 9 && P[0] == TEXT("cmd") && P[1] == TEXT("fill"))
 			{
 				const FMcStateId State = Parse(P[8]);

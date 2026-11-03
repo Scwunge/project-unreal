@@ -1,0 +1,453 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd tp @s 5 -50 4
+wait 40
+cmd tick freeze
+cmd kill @e[type=!player]
+cmd fill -4 -60 -3 14 -55 240 air
+cmd fill -4 -61 -3 14 -61 240 stone
+cmd gamerule do_mob_spawning false
+cmd gamerule do_fire_tick false
+wait 10
+cmd setblock 2 -60 0 dispenser[facing=east]
+cmd item replace block 2 -60 0 container.0 with arrow 3
+cmd setblock 2 -60 4 dispenser[facing=east]
+cmd item replace block 2 -60 4 container.0 with water_bucket 1
+cmd setblock 2 -60 8 dispenser[facing=east]
+cmd item replace block 2 -60 8 container.0 with lava_bucket 1
+cmd setblock 2 -60 12 dispenser[facing=east]
+cmd item replace block 2 -60 12 container.0 with bucket 1
+cmd setblock 3 -60 12 water
+cmd setblock 2 -60 16 dispenser[facing=east]
+cmd item replace block 2 -60 16 container.0 with bucket 1
+cmd setblock 3 -60 16 lava
+cmd setblock 2 -60 20 dispenser[facing=east]
+cmd item replace block 2 -60 20 container.0 with water_bucket 1
+cmd setblock 3 -60 20 stone
+cmd setblock 2 -60 24 dispenser[facing=east]
+cmd item replace block 2 -60 24 container.0 with flint_and_steel 1
+cmd setblock 3 -60 24 tnt
+cmd setblock 2 -60 28 dispenser[facing=east]
+cmd item replace block 2 -60 28 container.0 with flint_and_steel 1
+cmd setblock 3 -60 28 campfire[lit=false]
+cmd setblock 2 -60 32 dispenser[facing=east]
+cmd item replace block 2 -60 32 container.0 with flint_and_steel 1
+cmd setblock 2 -60 36 dispenser[facing=east]
+cmd item replace block 2 -60 36 container.0 with flint_and_steel 1
+cmd setblock 3 -60 36 candle
+cmd setblock 2 -60 40 dispenser[facing=east]
+cmd item replace block 2 -60 40 container.0 with fire_charge 1
+cmd setblock 2 -60 44 dispenser[facing=east]
+cmd item replace block 2 -60 44 container.0 with fire_charge 1
+cmd setblock 3 -60 44 campfire[lit=false]
+cmd setblock 2 -60 48 dispenser[facing=east]
+cmd item replace block 2 -60 48 container.0 with bone_meal 1
+cmd setblock 3 -61 48 farmland
+cmd setblock 3 -60 48 wheat[age=0]
+cmd setblock 2 -60 52 dispenser[facing=east]
+cmd item replace block 2 -60 52 container.0 with bone_meal 1
+cmd setblock 3 -61 52 dirt
+cmd setblock 3 -60 52 oak_sapling
+cmd setblock 2 -60 56 dispenser[facing=east]
+cmd item replace block 2 -60 56 container.0 with bone_meal 1
+cmd setblock 3 -60 56 grass_block
+cmd setblock 2 -60 60 dispenser[facing=east]
+cmd item replace block 2 -60 60 container.0 with bone_meal 1
+cmd setblock 2 -60 64 dispenser[facing=east]
+cmd item replace block 2 -60 64 container.0 with shulker_box 1
+cmd setblock 2 -60 68 dispenser[facing=east]
+cmd item replace block 2 -60 68 container.0 with carved_pumpkin 1
+cmd setblock 2 -60 72 dispenser[facing=east]
+cmd item replace block 2 -60 72 container.0 with carved_pumpkin 1
+cmd setblock 3 -60 72 air
+cmd setblock 2 -60 76 dispenser[facing=east]
+cmd item replace block 2 -60 76 container.0 with glass_bottle 1
+cmd setblock 3 -60 76 water_cauldron[level=3]
+cmd setblock 2 -60 80 dispenser[facing=east]
+cmd item replace block 2 -60 80 container.0 with glass_bottle 1
+cmd setblock 3 -60 80 beehive[honey_level=5,facing=north]
+cmd setblock 2 -60 84 dispenser[facing=east]
+cmd item replace block 2 -60 84 container.0 with shears 1
+cmd setblock 3 -60 84 beehive[honey_level=5,facing=north]
+cmd setblock 2 -60 88 dispenser[facing=east]
+cmd item replace block 2 -60 88 container.0 with honeycomb 1
+cmd setblock 3 -60 88 copper_block
+cmd setblock 2 -60 92 dispenser[facing=east]
+cmd item replace block 2 -60 92 container.0 with minecart 1
+cmd setblock 3 -60 92 rail[shape=east_west]
+cmd setblock 2 -60 96 dispenser[facing=east]
+cmd item replace block 2 -60 96 container.0 with minecart 1
+cmd setblock 2 -60 100 dispenser[facing=east]
+cmd item replace block 2 -60 100 container.0 with tnt 1
+cmd setblock 2 -60 104 dispenser[facing=east]
+cmd item replace block 2 -60 104 container.0 with stone 4
+cmd setblock 2 -60 108 dispenser[facing=east]
+cmd item replace block 2 -60 108 container.0 with egg 1
+cmd setblock 2 -60 112 dispenser[facing=east]
+cmd item replace block 2 -60 112 container.0 with snowball 1
+cmd setblock 2 -60 116 dispenser[facing=east]
+cmd item replace block 2 -60 116 container.0 with water_bucket 1
+cmd setblock 3 -60 116 cauldron
+cmd setblock 2 -60 120 dispenser[facing=east]
+cmd item replace block 2 -60 120 container.0 with lava_bucket 1
+cmd setblock 3 -60 120 cauldron
+cmd setblock 2 -60 124 dispenser[facing=east]
+cmd item replace block 2 -60 124 container.0 with bucket 1
+cmd setblock 3 -60 124 water_cauldron[level=3]
+cmd setblock 2 -60 128 dispenser[facing=east]
+cmd item replace block 2 -60 128 container.0 with oak_boat 1
+cmd setblock 3 -61 128 stone
+cmd setblock 3 -60 128 water
+cmd setblock 2 -60 132 dispenser[facing=east]
+cmd item replace block 2 -60 132 container.0 with oak_boat 1
+cmd setblock 2 -60 136 dispenser[facing=east]
+cmd item replace block 2 -60 136 container.0 with wither_skeleton_skull 1
+cmd setblock 2 -60 140 dispenser[facing=east]
+cmd item replace block 2 -60 140 container.0 with wither_skeleton_skull 1
+cmd setblock 3 -61 140 soul_sand
+cmd setblock 2 -60 144 dispenser[facing=east]
+cmd gamerule send_command_feedback false
+cmd setblock 2 -60 148 dispenser[facing=east]
+cmd item replace block 2 -60 148 container.0 with iron_sword 1
+cmd setblock 2 -60 152 dispenser[facing=east]
+cmd item replace block 2 -60 152 container.0 with iron_helmet 1
+cmd summon armor_stand 3.5 -60 152.5 {NoGravity:1b}
+cmd setblock 2 -60 156 dispenser[facing=east]
+cmd item replace block 2 -60 156 container.0 with pig_spawn_egg 1
+cmd setblock 2 -60 160 dispenser[facing=east]
+cmd item replace block 2 -60 160 container.0 with firework_rocket 1
+cmd setblock 2 -60 164 dispenser[facing=east]
+cmd item replace block 2 -60 164 container.0 with experience_bottle 1
+cmd setblock 2 -60 168 dispenser[facing=east]
+cmd item replace block 2 -60 168 container.0 with splash_potion 1
+cmd setblock 2 -60 172 dispenser[facing=east]
+cmd item replace block 2 -60 172 container.0 with brush 1
+cmd setblock 3 -60 172 suspicious_sand
+cmd setblock 2 -60 176 dispenser[facing=east]
+cmd item replace block 2 -60 176 container.0 with bone_meal 1
+cmd setblock 3 -61 176 farmland
+cmd setblock 3 -60 176 pumpkin_stem[age=0]
+cmd setblock 2 -60 180 dropper[facing=east]
+cmd item replace block 2 -60 180 container.0 with cobblestone 5
+cmd setblock 3 -60 180 chest
+cmd setblock 2 -60 184 dropper[facing=east]
+cmd item replace block 2 -60 184 container.0 with cobblestone 5
+cmd setblock 3 -60 184 hopper[facing=down]
+cmd setblock 2 -60 188 dropper[facing=east]
+cmd item replace block 2 -60 188 container.0 with coal 5
+cmd setblock 3 -60 188 furnace
+cmd setblock 2 -60 192 dropper[facing=east]
+cmd item replace block 2 -60 192 container.0 with iron_ore 5
+cmd setblock 3 -60 192 furnace
+cmd setblock 2 -60 196 dropper[facing=east]
+cmd item replace block 2 -60 196 container.0 with wheat_seeds 5
+cmd setblock 3 -60 196 composter
+cmd setblock 2 -60 200 dropper[facing=east]
+cmd item replace block 2 -60 200 container.0 with blaze_powder 1
+cmd setblock 3 -60 200 brewing_stand
+cmd setblock 2 -60 204 dropper[facing=east]
+cmd item replace block 2 -60 204 container.0 with music_disc_cat 1
+cmd setblock 3 -60 204 jukebox
+cmd setblock 2 -60 208 dropper[facing=east]
+cmd item replace block 2 -60 208 container.0 with writable_book 1
+cmd setblock 3 -60 208 lectern
+cmd setblock 2 -60 212 dropper[facing=east]
+cmd item replace block 2 -60 212 container.0 with water_bucket 1
+cmd setblock 3 -60 212 cauldron
+cmd setblock 2 -60 216 dropper[facing=east]
+cmd item replace block 2 -60 216 container.0 with cobblestone 5
+cmd setblock 3 -60 216 barrel
+cmd setblock 2 -60 220 dropper[facing=east]
+cmd item replace block 2 -60 220 container.0 with cobblestone 5
+cmd setblock 3 -60 220 shulker_box
+cmd setblock 2 -60 224 dropper[facing=east]
+cmd item replace block 2 -60 224 container.0 with cobblestone 5
+cmd setblock 3 -60 224 dispenser[facing=east]
+cmd setblock 2 -60 228 dropper[facing=east]
+cmd item replace block 2 -60 228 container.0 with cobblestone 5
+cmd setblock 2 -60 232 dropper[facing=east]
+cmd item replace block 2 -60 232 container.0 with cobblestone 5
+cmd setblock 3 -60 232 hopper[facing=east]
+wait 10
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+log sents minecraft 600
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd setblock 1 -60 0 redstone_block
+cmd setblock 1 -60 4 redstone_block
+cmd setblock 1 -60 8 redstone_block
+cmd setblock 1 -60 12 redstone_block
+cmd setblock 1 -60 16 redstone_block
+cmd setblock 1 -60 20 redstone_block
+cmd setblock 1 -60 24 redstone_block
+cmd setblock 1 -60 28 redstone_block
+cmd setblock 1 -60 32 redstone_block
+cmd setblock 1 -60 36 redstone_block
+cmd setblock 1 -60 40 redstone_block
+cmd setblock 1 -60 44 redstone_block
+cmd setblock 1 -60 48 redstone_block
+cmd setblock 1 -60 52 redstone_block
+cmd setblock 1 -60 56 redstone_block
+cmd setblock 1 -60 60 redstone_block
+cmd setblock 1 -60 64 redstone_block
+cmd setblock 1 -60 68 redstone_block
+cmd setblock 1 -60 72 redstone_block
+cmd setblock 1 -60 76 redstone_block
+cmd setblock 1 -60 80 redstone_block
+cmd setblock 1 -60 84 redstone_block
+cmd setblock 1 -60 88 redstone_block
+cmd setblock 1 -60 92 redstone_block
+cmd setblock 1 -60 96 redstone_block
+cmd setblock 1 -60 100 redstone_block
+cmd setblock 1 -60 104 redstone_block
+cmd setblock 1 -60 108 redstone_block
+cmd setblock 1 -60 112 redstone_block
+cmd setblock 1 -60 116 redstone_block
+cmd setblock 1 -60 120 redstone_block
+cmd setblock 1 -60 124 redstone_block
+cmd setblock 1 -60 128 redstone_block
+cmd setblock 1 -60 132 redstone_block
+cmd setblock 1 -60 136 redstone_block
+cmd setblock 1 -60 140 redstone_block
+cmd setblock 1 -60 144 redstone_block
+cmd setblock 1 -60 148 redstone_block
+cmd setblock 1 -60 152 redstone_block
+cmd setblock 1 -60 156 redstone_block
+cmd setblock 1 -60 160 redstone_block
+cmd setblock 1 -60 164 redstone_block
+cmd setblock 1 -60 168 redstone_block
+cmd setblock 1 -60 172 redstone_block
+cmd setblock 1 -60 176 redstone_block
+cmd setblock 1 -60 180 redstone_block
+cmd setblock 1 -60 184 redstone_block
+cmd setblock 1 -60 188 redstone_block
+cmd setblock 1 -60 192 redstone_block
+cmd setblock 1 -60 196 redstone_block
+cmd setblock 1 -60 200 redstone_block
+cmd setblock 1 -60 204 redstone_block
+cmd setblock 1 -60 208 redstone_block
+cmd setblock 1 -60 212 redstone_block
+cmd setblock 1 -60 216 redstone_block
+cmd setblock 1 -60 220 redstone_block
+cmd setblock 1 -60 224 redstone_block
+cmd setblock 1 -60 228 redstone_block
+cmd setblock 1 -60 232 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd setblock 1 -60 0 air
+cmd setblock 1 -60 4 air
+cmd setblock 1 -60 8 air
+cmd setblock 1 -60 12 air
+cmd setblock 1 -60 16 air
+cmd setblock 1 -60 20 air
+cmd setblock 1 -60 24 air
+cmd setblock 1 -60 28 air
+cmd setblock 1 -60 32 air
+cmd setblock 1 -60 36 air
+cmd setblock 1 -60 40 air
+cmd setblock 1 -60 44 air
+cmd setblock 1 -60 48 air
+cmd setblock 1 -60 52 air
+cmd setblock 1 -60 56 air
+cmd setblock 1 -60 60 air
+cmd setblock 1 -60 64 air
+cmd setblock 1 -60 68 air
+cmd setblock 1 -60 72 air
+cmd setblock 1 -60 76 air
+cmd setblock 1 -60 80 air
+cmd setblock 1 -60 84 air
+cmd setblock 1 -60 88 air
+cmd setblock 1 -60 92 air
+cmd setblock 1 -60 96 air
+cmd setblock 1 -60 100 air
+cmd setblock 1 -60 104 air
+cmd setblock 1 -60 108 air
+cmd setblock 1 -60 112 air
+cmd setblock 1 -60 116 air
+cmd setblock 1 -60 120 air
+cmd setblock 1 -60 124 air
+cmd setblock 1 -60 128 air
+cmd setblock 1 -60 132 air
+cmd setblock 1 -60 136 air
+cmd setblock 1 -60 140 air
+cmd setblock 1 -60 144 air
+cmd setblock 1 -60 148 air
+cmd setblock 1 -60 152 air
+cmd setblock 1 -60 156 air
+cmd setblock 1 -60 160 air
+cmd setblock 1 -60 164 air
+cmd setblock 1 -60 168 air
+cmd setblock 1 -60 172 air
+cmd setblock 1 -60 176 air
+cmd setblock 1 -60 180 air
+cmd setblock 1 -60 184 air
+cmd setblock 1 -60 188 air
+cmd setblock 1 -60 192 air
+cmd setblock 1 -60 196 air
+cmd setblock 1 -60 200 air
+cmd setblock 1 -60 204 air
+cmd setblock 1 -60 208 air
+cmd setblock 1 -60 212 air
+cmd setblock 1 -60 216 air
+cmd setblock 1 -60 220 air
+cmd setblock 1 -60 224 air
+cmd setblock 1 -60 228 air
+cmd setblock 1 -60 232 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick step 1
+wait 4
+log states -1 -60 -2 8 -57 236
+log items -1 -60 -2 8 -57 236
+cmd tick unfreeze

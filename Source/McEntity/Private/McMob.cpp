@@ -7,6 +7,8 @@
 #include "McBlockWorld.h"
 #include "McPathfinding.h"
 #include "Serialization/Archive.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 
 namespace
 {
@@ -574,19 +576,25 @@ FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
 
 void FMcMob::TickBarter(FMcEntityManager& Manager)
 {
-	// Measured on the reference (50 runs, a gold ingot dropped a block from an idle piglin): the ingot was gone within ~10 ticks
-	// and one item entity was thrown ~125 ticks after the drop (so ~120 after the pickup), sideways at ~0.29 and slightly up,
-	// from ~1.5 above the feet. 41 of 50 runs left an item; the other 9 left none (cause not found, so every barter here gives one).
-	// What came, with how many runs and the stack sizes seen: crying_obsidian 7 (1-3), blackstone 5 (8-15), gravel 5 (10-16),
-	// spectral_arrow 5 (8-12), nether_brick 4 (4-8), leather 4 (2-3), obsidian 3 (1), ender_pearl 3 (3), fire_charge 2 (1),
-	// dried_ghast 1 (1), string 1 (8), soul_sand 1 (5). A low-count table: the weights are those counts and the sizes the middle of
-	// the range seen. Items from an earlier run that did not show here (quartz 6-8, gold_nugget 1, iron_nugget) are left out.
-	struct FBarter { const TCHAR* Item; int32 Weight; int32 Min; int32 Max; };
+	// Measured on the reference, two runs of ~40 (barter1.txt, barter2.txt; a gold ingot dropped a block from an idle piglin): the
+	// piglin takes the ingot into its off hand within ~10 ticks and one item entity is thrown ~125 ticks after the drop (~120
+	// after the pickup), sideways at ~0.29 and slightly up, from ~1.5 above the feet. The second run checked the "9 of 50 gave
+	// nothing" of the first: all 39 of its readable runs gave an item (the first run's gaps came from its counting). Items seen over both,
+	// with runs and stack sizes: crying_obsidian 12 (1-3), nether_brick 9 (4-8), gravel 10 (9-16), blackstone 8 (8-15),
+	// leather 7 (2-4), fire_charge 7 (1), spectral_arrow 7 (8-12), obsidian 6 (1), ender_pearl 3 (3), soul_sand 3 (2-8), quartz 2 (7-8),
+	// string 2 (5-8), potion of fire resistance 2 and its splash form 1, a water bottle 1, dried_ghast 1. A low-count table (about 80 runs):
+	// weights are those counts, sizes uniform over the range seen.
+	struct FBarter { const TCHAR* Item; int32 Weight; int32 Min; int32 Max; const TCHAR* Potion; };
 	static const FBarter Table[] = {
-		{ TEXT("minecraft:crying_obsidian"), 7, 1, 3 }, { TEXT("minecraft:blackstone"), 5, 8, 15 }, { TEXT("minecraft:gravel"), 5, 10, 16 },
-		{ TEXT("minecraft:spectral_arrow"), 5, 8, 12 }, { TEXT("minecraft:nether_brick"), 4, 4, 8 }, { TEXT("minecraft:leather"), 4, 2, 3 },
-		{ TEXT("minecraft:obsidian"), 3, 1, 1 }, { TEXT("minecraft:ender_pearl"), 3, 3, 3 }, { TEXT("minecraft:fire_charge"), 2, 1, 1 },
-		{ TEXT("minecraft:dried_ghast"), 1, 1, 1 }, { TEXT("minecraft:string"), 1, 8, 8 }, { TEXT("minecraft:soul_sand"), 1, 5, 5 } };
+		{ TEXT("minecraft:crying_obsidian"), 12, 1, 3, nullptr }, { TEXT("minecraft:gravel"), 10, 9, 16, nullptr },
+		{ TEXT("minecraft:nether_brick"), 9, 4, 8, nullptr }, { TEXT("minecraft:blackstone"), 8, 8, 15, nullptr },
+		{ TEXT("minecraft:leather"), 7, 2, 4, nullptr }, { TEXT("minecraft:fire_charge"), 7, 1, 1, nullptr },
+		{ TEXT("minecraft:spectral_arrow"), 7, 8, 12, nullptr }, { TEXT("minecraft:obsidian"), 6, 1, 1, nullptr },
+		{ TEXT("minecraft:ender_pearl"), 3, 3, 3, nullptr }, { TEXT("minecraft:soul_sand"), 3, 2, 8, nullptr },
+		{ TEXT("minecraft:quartz"), 2, 7, 8, nullptr }, { TEXT("minecraft:string"), 2, 5, 8, nullptr },
+		{ TEXT("minecraft:potion"), 2, 1, 1, TEXT("minecraft:fire_resistance") }, { TEXT("minecraft:splash_potion"), 1, 1, 1, TEXT("minecraft:fire_resistance") },
+		{ TEXT("minecraft:potion"), 1, 1, 1, TEXT("minecraft:water") }, { TEXT("minecraft:dried_ghast"), 1, 1, 1, nullptr } };
+	bHasBarterGoal = false;
 	if (BarterTicks > 0)
 	{
 		if (--BarterTicks == 0)
@@ -617,7 +625,14 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 					{
 						Away = FVector(0.0, 0.0, 1.0);
 					}
-					FMcItemEntity& Out = Manager.DropItem(Body.Position + FVector(0.0, 1.5, 0.0), FMcItemStack(FName(Entry.Item), Random.RandRange(Entry.Min, Entry.Max)));
+					FMcItemStack Stack(FName(Entry.Item), Random.RandRange(Entry.Min, Entry.Max));
+					if (Entry.Potion)
+					{
+						const TSharedRef<FJsonObject> Contents = MakeShared<FJsonObject>();
+						Contents->SetStringField(TEXT("potion"), Entry.Potion);
+						Stack.Set(TEXT("minecraft:potion_contents"), MakeShared<FJsonValueObject>(Contents));
+					}
+					FMcItemEntity& Out = Manager.DropItem(Body.Position + FVector(0.0, 1.5, 0.0), Stack);
 					Out.Body.Velocity = Away * 0.29 + FVector(0.0, 0.065, 0.0);
 					break;
 				}
@@ -626,8 +641,9 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 		}
 		return;
 	}
+	// It walks to an ingot within 8 blocks (the range is a guess: only a drop a block away was measured).
 	TArray<FMcEntity*> Near;
-	Manager.FindInBox(FBox(Body.Position - FVector(2.0, 1.0, 2.0), Body.Position + FVector(2.0, 2.0, 2.0)), Near);
+	Manager.FindInBox(FBox(Body.Position - FVector(8.0, 2.0, 8.0), Body.Position + FVector(8.0, 3.0, 8.0)), Near);
 	for (FMcEntity* Other : Near)
 	{
 		if (Other->GetType() != FMcItemEntity::StaticType() || Other->bRemoved)
@@ -635,7 +651,17 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 			continue;
 		}
 		FMcItemEntity* Item = static_cast<FMcItemEntity*>(Other);
-		if (Item->PickupDelay <= 0 && Item->Stack.Item == TEXT("minecraft:gold_ingot"))
+		if (Item->Stack.Item != TEXT("minecraft:gold_ingot"))
+		{
+			continue;
+		}
+		if (FVector::DistSquared(Item->Body.Position, Body.Position) > FMath::Square(1.5))
+		{
+			BarterGoal = Item->Body.Position;
+			bHasBarterGoal = true;
+			continue;
+		}
+		if (Item->PickupDelay <= 0)
 		{
 			if (--Item->Stack.Count <= 0)
 			{
@@ -819,6 +845,11 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			Goal = Body.Position + FVector(FMath::Cos(Angle) * 8.0, 0.0, FMath::Sin(Angle) * 8.0);
 		}
 		Target = Goal.GetValue();
+		bHasTarget = true;
+	}
+	else if (bHasBarterGoal)
+	{
+		Target = BarterGoal;
 		bHasTarget = true;
 	}
 	else if (Type.FollowRange > 0.0f && !bTamed && (!Type.bNeutral || AngerTicks > 0) && (!Type.bNeutralInLight || AngerTicks > 0 || !bBrightHere))

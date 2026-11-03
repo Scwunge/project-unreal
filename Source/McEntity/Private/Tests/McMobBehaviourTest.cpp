@@ -360,9 +360,9 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		FMcEntityManager Manager(World);
 		Manager.bDaylight = false;
 		FMcMob* Piglin = AddMob(Manager, TEXT("minecraft:piglin"), FVector(10.5, 1.0, 10.5));
-		Manager.DropItem(FVector(10.5, 1.0, 11.5), FMcItemStack(TEXT("minecraft:gold_ingot"), 1), 0);
+		Manager.DropItem(FVector(10.5, 1.0, 14.5), FMcItemStack(TEXT("minecraft:gold_ingot"), 1), 0);
 		int32 Items = 0;
-		for (int32 Tick = 0; Tick < 150; ++Tick)
+		for (int32 Tick = 0; Tick < 200; ++Tick)
 		{
 			Manager.Tick();
 		}

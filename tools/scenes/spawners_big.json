@@ -1,0 +1,18 @@
+{
+  "description": "Spawners on classic_flat (surface y=-61), as vanilla's vehicle_log9.txt has them: a stone floor at y -61, cow, sheep, spider and creeper spawners (mobs bigger than a block one way) at x 0, 3, 6 and 9, y -60, z 60. Cameras: straight above each at x+0.5 -57.5 60.5 0 90, from the south at x+0.5 -59.5 62.5 180 0. With -McSpawnerSpin=0 the mobs hold still, as vanilla's do with only a spectator about.",
+  "camera": [4.5, -59.5, 64.0, 180.0, 0.0],
+  "rules": { "spawnerBlocksWork": "false" },
+  "blocks": [
+    { "from": [-2, -61, 55], "to": [12, -61, 64], "state": "minecraft:stone" },
+    { "from": [0, -60, 60], "to": [0, -60, 60], "state": "minecraft:spawner" },
+    { "from": [3, -60, 60], "to": [3, -60, 60], "state": "minecraft:spawner" },
+    { "from": [6, -60, 60], "to": [6, -60, 60], "state": "minecraft:spawner" },
+    { "from": [9, -60, 60], "to": [9, -60, 60], "state": "minecraft:spawner" }
+  ],
+  "spawners": [
+    { "at": [0, -60, 60], "mob": "minecraft:cow" },
+    { "at": [3, -60, 60], "mob": "minecraft:sheep" },
+    { "at": [6, -60, 60], "mob": "minecraft:spider" },
+    { "at": [9, -60, 60], "mob": "minecraft:creeper" }
+  ]
+}

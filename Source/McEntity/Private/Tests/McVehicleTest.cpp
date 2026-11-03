@@ -67,6 +67,22 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 	}
 
+	// ---- A cart at rest lies along its rail, not across it (vehicle_look.txt: from the south, vanilla's carts on an
+	// east-west rail show their long side) ----
+	{
+		FMcMinecartEntity* Resting = new FMcMinecartEntity();
+		Resting->Body.Position = FVector(8.5, 1.0625, 0.5);
+		Resting->Yaw = 0.0f;
+		Manager.Add(TUniquePtr<FMcEntity>(Resting));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("a cart at rest on an east-west rail turns to face along it"), FMath::Abs(Resting->Yaw), 90.0f, 0.01f);
+		Resting->Yaw = 170.0f;
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and keeps to the end it already faced (170 is nearer 90 than -90)"), Resting->Yaw, 90.0f, 0.01f);
+		Resting->bRemoved = true;
+		Manager.Tick();
+	}
+
 	// ---- A powered rail speeds a moving cart up, an unpowered one stops it ----
 	for (int32 X = 0; X <= 12; ++X)
 	{
@@ -293,6 +309,88 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		{
 			World.SetBlock(FIntVector(9, Y, 18), State(TEXT("minecraft:air")));
 		}
+	}
+
+	// ---- A boat with water over it sinks to the floor (vehicle_log10.txt: v' = 0.75 (v - 0.04 + 0.04 / 65)) ----
+	{
+		FMcBoatEntity* Sinker = new FMcBoatEntity();
+		Sinker->Body.Position = FVector(8.5, 2.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Sinker));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("summoned under water it falls 0.029538 the first tick"), Sinker->Body.Position.Y, 2.0 - 0.0295385, 1e-5);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and 0.051692 the second"), Sinker->Body.Velocity.Y, -0.0516923, 1e-5);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and 0.068308 the third"), Sinker->Body.Velocity.Y, -0.0683077, 1e-5);
+		for (int32 Tick = 0; Tick < 30; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestNearlyEqual(TEXT("it lands on the pond's floor and stays there"), Sinker->Body.Position.Y, 1.0, 1e-4);
+		Sinker->bRemoved = true;
+		Manager.Tick();
+	}
+
+	// ---- A boat in a bubble column (vehicle_log11.txt: a boat over soul sand, pond y 1..2, floor at 0) ----
+	{
+		for (int32 Y = 1; Y <= 2; ++Y)
+		{
+			World.SetBlock(FIntVector(2, Y, 12), State(TEXT("minecraft:bubble_column[drag=false]")));
+			World.SetBlock(FIntVector(2, Y, 14), State(TEXT("minecraft:bubble_column[drag=true]")));
+		}
+		FMcBoatEntity* Up = new FMcBoatEntity();
+		Up->Body.Position = FVector(2.5, 1.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Up));
+		FMcBoatEntity* Down = new FMcBoatEntity();
+		Down->Body.Position = FVector(2.5, 1.0, 14.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Down));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("on the floor of a rising column, a boat is pushed up twice 0.06 (log: 0.12 the first tick)"), Up->Body.Velocity.Y, 0.12, 1e-6);
+		TestNearlyEqual(TEXT("over magma it is pulled down 0.06 at the floor"), Down->Body.Velocity.Y, -0.06, 1e-6);
+		for (int32 Tick = 0; Tick < 10; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the up boat has risen toward the surface"), Up->Body.Position.Y > 1.5);
+		Up->bRemoved = true;
+		Down->bRemoved = true;
+		Manager.Tick();
+	}
+
+	// ---- vehicle_log11.txt's boat over soul sand in a pond seven deep, replayed (the log's y plus 58) ----
+	{
+		for (int32 Y = 1; Y <= 7; ++Y)
+		{
+			World.SetBlock(FIntVector(20, Y, 12), State(TEXT("minecraft:bubble_column[drag=false]")));
+		}
+		FMcBoatEntity* Rise = new FMcBoatEntity();
+		Rise->Body.Position = FVector(20.5, 4.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Rise));
+		const double Expected[][2] = { { 3.97046, 0.210462 }, { 4.09877, 0.248308 }, { 4.25546, 0.276692 }, { 4.43344, 0.297981 }, { 4.62739, 0.433947 } };
+		for (int32 Tick = 0; Tick < 5; ++Tick)
+		{
+			Manager.Tick();
+			TestNearlyEqual(*FString::Printf(TEXT("rising boat %d, y"), Tick + 1), Rise->Body.Position.Y, Expected[Tick][0], 1e-4);
+			TestNearlyEqual(*FString::Printf(TEXT("rising boat %d, speed"), Tick + 1), Rise->Body.Velocity.Y, Expected[Tick][1], 1e-5);
+		}
+		for (int32 Tick = 5; Tick < 69; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("it floats at the top of the column, not yet thrown"), Rise->Body.Velocity.Y < 0.1 && Rise->Body.Position.Y > 7.4 && Rise->Body.Position.Y < 7.6);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and the 70th tick throws it up at 0.6"), Rise->Body.Velocity.Y, 0.6, 1e-6);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("it flies 0.45 the next tick"), Rise->Body.Position.Y - 7.5233, 0.45, 2e-3);
+		for (int32 Tick = 72; Tick < 152; ++Tick)
+		{
+			Manager.Tick();
+			TestTrue(*FString::Printf(TEXT("not thrown again at tick %d"), Tick), Rise->Body.Velocity.Y < 0.5 || Tick < 74);
+		}
+		Manager.Tick();
+		TestNearlyEqual(TEXT("it is thrown again at the 152nd tick (the log's second throw, 82 after the first)"), Rise->Body.Velocity.Y, 0.6, 1e-6);
+		Rise->bRemoved = true;
+		Manager.Tick();
 	}
 
 	// ---- A boat takes in the mobs it bumps into, up to its seats ----
@@ -669,7 +767,12 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 		{
 			World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:slime_block")));
 			World.SetBlock(FIntVector(X, 0, Z - 4), State(TEXT("minecraft:soul_sand")));
+			World.SetBlock(FIntVector(X, 0, Z - 8), State(TEXT("minecraft:honey_block")));
 		}
+		// vehicle_log9.txt: a row of ice each side of an empty one.
+		World.SetBlock(FIntVector(X, 0, -16), State(TEXT("minecraft:ice")));
+		World.SetBlock(FIntVector(X, 0, -15), State(TEXT("minecraft:air")));
+		World.SetBlock(FIntVector(X, 0, -14), State(TEXT("minecraft:ice")));
 	}
 	// A slope rising east, a block a block.
 	for (int32 X = 0; X <= 5; ++X)
@@ -734,6 +837,16 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	SoulSand->Body.Position = FVector(2.5, 1.0, -6.5);
 	SoulSand->Body.Velocity = FVector(0.5, 0.0, 0.0);
 	Manager.Add(TUniquePtr<FMcEntity>(SoulSand));
+	// vehicle_log9.txt: summoned a block up, it drops the sixteenth of a block onto honey.
+	FMcBoatEntity* Honey = new FMcBoatEntity();
+	Honey->Body.Position = FVector(2.5, 1.0, -10.5);
+	Honey->Body.Velocity = FVector(0.5, 0.0, 0.0);
+	Manager.Add(TUniquePtr<FMcEntity>(Honey));
+	FMcBoatEntity* Trench = new FMcBoatEntity();
+	Trench->Body.Position = FVector(2.5, 1.0, -14.5);
+	Trench->Body.Velocity = FVector(0.5, 0.0, 0.0);
+	Trench->Body.bOnGround = true;
+	Manager.Add(TUniquePtr<FMcEntity>(Trench));
 	// Vanilla's floating boat as its first logged tick left it.
 	FMcBoatEntity* Float = new FMcBoatEntity();
 	Float->Body.Position = FVector(14.95, -60.58989 + 62.0, 23.5);
@@ -769,6 +882,9 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("and 0.16 of that after"), Slime->Body.Velocity.X, 0.064, 1e-6);
 	TestNearlyEqual(TEXT("one dropping onto soul sand keeps 0.9 before it moves"), SoulSand->Body.Position.X, 2.95, 1e-6);
 	TestNearlyEqual(TEXT("and 0.4 of that after"), SoulSand->Body.Velocity.X, 0.18, 1e-6);
+	TestNearlyEqual(TEXT("one dropping onto honey keeps 0.9 before it moves"), Honey->Body.Position.X, 2.95, 1e-6);
+	TestNearlyEqual(TEXT("and 0.4 of that after, as on soul sand"), Honey->Body.Velocity.X, 0.18, 1e-6);
+	TestNearlyEqual(TEXT("one over ice, an empty row and ice keeps the ice's 0.98: the empty cells don't count"), Trench->Body.Position.X, 2.99, 1e-6);
 
 	Manager.Tick();
 	TestNearlyEqual(TEXT("the flat cart's second tick"), Flat->Body.Position.X, 3.284, 1e-4);
@@ -784,10 +900,15 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("the falling boat, with no drag"), Drop->Body.Position.Y, 4.88, 1e-6);
 	TestNearlyEqual(TEXT("the slime boat's second"), Slime->Body.Position.X, 2.9512, 1e-6);
 	TestNearlyEqual(TEXT("the soul sand boat's second"), SoulSand->Body.Position.X, 3.112, 1e-6);
+	TestNearlyEqual(TEXT("the honey boat's second, landing"), Honey->Body.Position.X, 3.112, 1e-6);
+	TestNearlyEqual(TEXT("and speed"), Honey->Body.Velocity.X, 0.0648, 1e-6);
+	TestNearlyEqual(TEXT("the trench boat's second"), Trench->Body.Position.X, 3.4702, 1e-6);
 	TestNearlyEqual(TEXT("still falling"), SoulSand->Body.Position.Y, 0.88, 1e-6);
 
 	Manager.Tick();
 	TestNearlyEqual(TEXT("the kicked cart's third"), Kicked->Body.Velocity.X, 0.13603, 1e-5);
+	TestNearlyEqual(TEXT("on honey, stone's 0.6 before the move"), Honey->Body.Position.X, 3.15088, 1e-6);
+	TestNearlyEqual(TEXT("and 0.4 after"), Honey->Body.Velocity.X, 0.015552, 1e-6);
 	Manager.Tick();
 	TestNearlyEqual(TEXT("a cart braked under 0.03 stops dead"), Braked->Body.Velocity.X, 0.0, 1e-9);
 	TestNearlyEqual(TEXT("where vanilla's did"), Braked->Body.Position.X, 5.5 + 0.07806 + 0.03747 + 0.01798, 1e-4);
@@ -805,6 +926,177 @@ bool FMcVehicleLogTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 	}
 	TestNearlyEqual(TEXT("a boat settles 0.65 of its height under the surface"), Float->Body.Position.Y, -60.47674 + 62.0, 1e-4);
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcCartPushLogTest, "McClient.McEntity.CartPushLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// The numbers vanilla gave in vehicle_log7.txt and vehicle_log8.txt (log sents, one line a tick): carts into carts, mobs
+// and furnace carts, chest and hopper carts, a TNT cart's fuse. Each scene starts from a tick vanilla logged, 62 blocks
+// higher and moved to its own rail; the carts are added in vanilla's entity order, which is the order they tick in.
+bool FMcCartPushLogTest::RunTest(const FString& Parameters)
+{
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	const auto State = [&](const TCHAR* Text) { return Registry.ParseState(Text).Get(0); };
+	FMcBlockWorld World{FMcDimensionType()};
+	for (int32 Z = -1; Z <= 3; ++Z)
+	{
+		for (int32 X = -1; X <= 2; ++X)
+		{
+			World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		}
+	}
+	for (int32 X = -2; X <= 40; ++X)
+	{
+		for (int32 Z = 0; Z <= 54; ++Z)
+		{
+			World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:stone")));
+		}
+		for (int32 Z = 0; Z <= 48; Z += 4)
+		{
+			World.SetBlock(FIntVector(X, 1, Z), State(TEXT("minecraft:rail[shape=east_west]")));
+		}
+		World.SetBlock(FIntVector(X, 1, 49), State(TEXT("minecraft:rail[shape=east_west]")));
+		World.SetBlock(FIntVector(X, 1, 52), State(TEXT("minecraft:rail[shape=east_west]")));
+	}
+	World.SetBlock(FIntVector(10, 1, 44), State(TEXT("minecraft:activator_rail[powered=true,shape=east_west]")));
+	FMcEntityManager Manager(World);
+	using EVariant = FMcMinecartEntity::EVariant;
+	const auto Cart = [&](EVariant Variant, double X, int32 Z, double Speed)
+	{
+		FMcMinecartEntity* New = new FMcMinecartEntity(Variant);
+		New->Body.Position = FVector(X, 1.0625, Z + 0.5);
+		New->Body.Velocity = FVector(Speed, 0.0, 0.0);
+		Manager.Add(TUniquePtr<FMcEntity>(New));
+		return New;
+	};
+	const auto Mob = [&](const TCHAR* Type, double X, int32 Z)
+	{
+		FMcMob* New = new FMcMob(*FMcMobType::Find(Type));
+		New->Body.Position = FVector(X, 1.0, Z + 0.5);
+		New->Body.bOnGround = true;
+		Manager.Add(TUniquePtr<FMcEntity>(New));
+		return New;
+	};
+
+	// vehicle_log7.txt, ticks 424413 on: a cart at rest (id 272) and one running into it (273).
+	FMcMinecartEntity* Still = Cart(EVariant::Plain, 8.5, 0, 0.0);
+	FMcMinecartEntity* Runner = Cart(EVariant::Plain, 7.29597, 0, 0.208161);
+	// Ticks 424428 on: two head on.
+	FMcMinecartEntity* East = Cart(EVariant::Plain, 7.88422, 4, 0.084631);
+	FMcMinecartEntity* West = Cart(EVariant::Plain, 9.11578, 4, -0.084631);
+	// Ticks 424544 on: a cart at rest (313) and a furnace cart driving into it (314).
+	FMcMinecartEntity* Ahead = Cart(EVariant::Plain, 10.5, 8, 0.0);
+	FMcMinecartEntity* Driving = Cart(EVariant::Furnace, 9.3, 8, FMcMinecartEntity::FurnaceSpeed);
+	Driving->Fuel = 1000;
+	Driving->PushDirection = FVector2D(1.0, 0.0);
+	// vehicle_log8.txt, ticks 425388 on: a cart (114) into an unfuelled furnace cart at rest (115).
+	FMcMinecartEntity* Bouncer = Cart(EVariant::Plain, 7.29597, 12, 0.208161);
+	FMcMinecartEntity* Cold = Cart(EVariant::Furnace, 8.5, 12, 0.0);
+	// Ticks 425387 on: an iron golem (105) and a cart running into it (106). There is no iron golem here, so a cow stands
+	// in for it, 1.1 ahead (as the golem was more than a block ahead, and within reach), and a TNT cart, which takes nothing
+	// in and keeps the same 0.96, for the cart.
+	FMcMob* Golem = Mob(TEXT("minecraft:cow"), 8.4, 16);
+	FMcMinecartEntity* GolemCart = Cart(EVariant::Tnt, 7.07914, 16, 0.216835);
+	// Ticks 425388 on: a cart with someone in it (108) running into a cow (107), which here ticks after it, as vanilla's
+	// never moved.
+	FMcMinecartEntity* Full2 = Cart(EVariant::Plain, 7.19350, 52, 0.381226);
+	Full2->SetRider(0.0f, 0.0f, 0.0f);
+	FMcMob* Blocker = Mob(TEXT("minecraft:cow"), 8.5, 52);
+	// Ticks 425373 on: a cart at rest (110) with a cow standing 0.7 into it (111).
+	FMcMinecartEntity* Stood = Cart(EVariant::Plain, 8.5, 20, 0.0);
+	FMcMob* Cow = Mob(TEXT("minecraft:cow"), 9.2, 20);
+	// vehicle_log7.txt, ticks 424764 on: chest carts from 0.4, empty, with a stack of stone and full.
+	FMcMinecartEntity* Empty = Cart(EVariant::Chest, 2.5, 24, 0.4);
+	FMcMinecartEntity* OneStack = Cart(EVariant::Chest, 2.5, 28, 0.4);
+	OneStack->GetInventory()->Set(0, FMcItemStack(TEXT("minecraft:stone"), 64));
+	FMcMinecartEntity* Full = Cart(EVariant::Chest, 2.5, 32, 0.4);
+	for (int32 Slot = 0; Slot < 27; ++Slot)
+	{
+		Full->GetInventory()->Set(Slot, FMcItemStack(TEXT("minecraft:stone"), 64));
+	}
+	// vehicle_log8.txt: an empty hopper cart from 0.4, and ones at rest with an item 1.6 or 2.0 over them, or 0.6 or 0.8 aside.
+	FMcMinecartEntity* Hopper = Cart(EVariant::Hopper, 2.5, 36, 0.4);
+	FMcMinecartEntity* Picker = Cart(EVariant::Hopper, 20.5, 40, 0.0);
+	FMcMinecartEntity* High = Cart(EVariant::Hopper, 24.5, 40, 0.0);
+	FMcMinecartEntity* Side = Cart(EVariant::Hopper, 28.5, 40, 0.0);
+	FMcMinecartEntity* Far = Cart(EVariant::Hopper, 32.5, 40, 0.0);
+	const auto Float = [&](double X, double Up)
+	{
+		Manager.DropItem(FVector(X, 1.0625 + Up, 40.5), FMcItemStack(TEXT("minecraft:cobblestone"), 1), 0).Body.Velocity = FVector::ZeroVector;
+	};
+	Float(20.5, 1.6);
+	Float(24.5, 2.0);
+	Float(29.1, 0.8);
+	Float(33.3, 0.8);
+	// Tick 425383 on: a TNT cart coming up to a powered activator rail.
+	FMcMinecartEntity* Tnt = Cart(EVariant::Tnt, 9.85167, 44, 0.265933);
+	// Ticks 425388 on: a cart passing one at rest on the next rail over.
+	FMcMinecartEntity* Passing = Cart(EVariant::Plain, 7.29597, 48, 0.208161);
+	FMcMinecartEntity* Beside = Cart(EVariant::Plain, 8.5, 49, 0.0);
+
+	Manager.Tick();
+	TestNearlyEqual(TEXT("a cart running into one at rest keeps a fifth and half the two together, less the shove"), Runner->Body.Velocity.X, 0.089884, 1e-5);
+	TestNearlyEqual(TEXT("having moved first"), Runner->Body.Position.X, 7.50413, 1e-5);
+	TestNearlyEqual(TEXT("and the one at rest gets the other half and the shove"), Still->Body.Velocity.X, 0.149917, 1e-5);
+	TestNearlyEqual(TEXT("head on, the first to tick bounces back"), East->Body.Velocity.X, -0.051004, 1e-5);
+	TestNearlyEqual(TEXT("the second moved by what the first left it"), West->Body.Position.X, 9.14075, 1e-5);
+	TestNearlyEqual(TEXT("and goes back the other way"), West->Body.Velocity.X, 0.044931, 1e-5);
+	TestNearlyEqual(TEXT("a driving furnace cart throws the cart ahead at its own speed and the shove"), Ahead->Body.Velocity.X, 3.505616, 1e-5);
+	TestNearlyEqual(TEXT("moving its 0.2 still"), Driving->Body.Position.X, 9.5, 1e-6);
+	TestNearlyEqual(TEXT("a cart into a furnace cart at rest bounces off it"), Bouncer->Body.Velocity.X, -0.052007, 1e-5);
+	TestNearlyEqual(TEXT("which doesn't move"), Cold->Body.Velocity.X, 0.0, 1e-9);
+	TestNearlyEqual(TEXT("a cart at 0.2 reaching a mob it can't take in is shoved back 0.05"), GolemCart->Body.Velocity.X, 0.158161, 1e-5);
+	TestNearlyEqual(TEXT("and the mob 0.05 on"), Golem->Body.Velocity.X, 0.05, 1e-5);
+	TestNearlyEqual(TEXT("a cart with someone in it reaching a cow moves three quarters"), Full2->Body.Position.X, 7.47942, 1e-5);
+	TestNearlyEqual(TEXT("and isn't shoved back"), Full2->Body.Velocity.X, 0.380082, 1e-5);
+	TestNearlyEqual(TEXT("a cow standing in a cart at rest shoves it off at 0.05"), Stood->Body.Velocity.X, -0.05, 1e-6);
+	TestNearlyEqual(TEXT("an empty chest cart keeps 0.995"), Empty->Body.Velocity.X, 0.398, 1e-6);
+	TestNearlyEqual(TEXT("with a stack in it 0.994"), OneStack->Body.Velocity.X, 0.3976, 1e-6);
+	TestNearlyEqual(TEXT("full 0.98"), Full->Body.Velocity.X, 0.392, 1e-6);
+	TestNearlyEqual(TEXT("and an empty hopper cart 0.995"), Hopper->Body.Velocity.X, 0.398, 1e-6);
+	TestEqual(TEXT("a hopper cart takes in an item floating 1.6 over it"), Picker->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 1);
+	TestEqual(TEXT("but not one 2.0 over"), High->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 0);
+	TestEqual(TEXT("one 0.6 to the side"), Side->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 1);
+	TestEqual(TEXT("but not 0.8"), Far->GetInventory()->CountItem(TEXT("minecraft:cobblestone")), 0);
+	TestEqual(TEXT("the TNT cart isn't on the activator rail yet"), Tnt->Fuse, -1);
+	TestNearlyEqual(TEXT("a cart on the next rail over isn't shoved"), Beside->Body.Velocity.Size(), 0.0, 1e-9);
+	TestNearlyEqual(TEXT("nor shoves"), Passing->Body.Velocity.X, 0.199835, 1e-6);
+
+	Manager.Tick();
+	TestNearlyEqual(TEXT("the cart that was at rest moves by what it was given"), Still->Body.Position.X, 8.64992, 1e-5);
+	TestNearlyEqual(TEXT("and shoves the other as it goes, and is shoved back"), Still->Body.Velocity.X, 0.223737, 1e-5);
+	TestNearlyEqual(TEXT("the runner, shoved before it moved"), Runner->Body.Position.X, 7.59537, 1e-5);
+	TestNearlyEqual(TEXT("and after"), Runner->Body.Velocity.X, 0.108563, 1e-5);
+	TestNearlyEqual(TEXT("the thrown cart is held to 2 and moves 0.4"), Ahead->Body.Position.X, 10.9, 1e-6);
+	TestNearlyEqual(TEXT("keeping 0.96 of 2"), Ahead->Body.Velocity.X, 1.92, 1e-6);
+	TestNearlyEqual(TEXT("the cart off the furnace cart, shoved again by it standing"), Bouncer->Body.Velocity.X, -0.059256, 1e-5);
+	TestNearlyEqual(TEXT("the cow shoves the cart standing in it again"), Stood->Body.Velocity.X, -0.098, 1e-3);
+	TestEqual(TEXT("which is too slow to take it in"), Cow->RidingId, 0);
+	TestTrue(TEXT("the TNT cart on the activator rail is lit"), Tnt->Fuse >= 0);
+	TestNearlyEqual(TEXT("a cart with someone in it stops dead where it meets the cow"), Full2->Body.Velocity.X, 0.0, 1e-9);
+	// Against the cow's box, which has moved on a little since, ticking after it.
+	TestTrue(TEXT("its box against the cow's"), Full2->Body.GetBox().Max.X <= Blocker->Body.GetBox().Min.X + 1e-6
+		&& Full2->Body.GetBox().Max.X > Blocker->Body.GetBox().Min.X - 0.1);
+	const int32 LitAt = 2;
+	Manager.Tick();
+	TestEqual(TEXT("still too slow at 0.098"), Cow->RidingId, 0);
+	Manager.Tick();
+	TestEqual(TEXT("at 0.144 the cart takes the cow in"), Cow->RidingId, Stood->Id);
+
+	int32 Gone = 0;
+	for (int32 Tick = 5; Tick <= 90 && Gone == 0; ++Tick)
+	{
+		Manager.Tick();
+		Gone = Tnt->bRemoved ? Tick : 0;
+	}
+	TestEqual(TEXT("the TNT cart goes off 81 ticks after the one it was lit in"), Gone - LitAt, 81);
 	return true;
 }
 

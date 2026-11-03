@@ -180,7 +180,8 @@ public:
 	virtual FString GetInventoryTitle() const override { return Variant == EVariant::Hopper ? TEXT("Minecart with Hopper") : TEXT("Minecart with Chest"); }
 	virtual bool CanRide() const override { return Variant == EVariant::Plain; }
 	virtual EUse UseItem(FName Item, const FVector& From) override;
-	// A plain cart going along takes in a mob it runs into (not a player, who gets in by asking).
+	// A plain cart going faster than 0.1 takes in a mob it runs into (not a player, who gets in by asking, nor an iron
+	// golem). vehicle_log8.txt: one shoved off at 0.05, 0.098 by a cow standing in it takes the cow in at 0.144.
 	virtual bool CanCarryMob(const FMcMob& Mob) const override;
 
 	const EVariant Variant;
@@ -191,10 +192,19 @@ public:
 	int32 Fuse = -1;
 	// A hopper cart on a powered activator rail picks nothing up.
 	bool bHopperLocked = false;
-	static constexpr int32 FuseTicks = 80;
+	// Lit, it shows 79 that tick, counts down to 0, waits at 0 a tick and goes off the tick after (vehicle_log8.txt: lit
+	// at 10.37, fuse 79 ... 0, 0, then gone), so 81 ticks from the one it was lit in.
+	static constexpr int32 FuseTicks = 81;
 	static constexpr int32 FuelPerItem = 3600;
 	// How fast a furnace cart drives itself, blocks a tick.
 	static constexpr double FurnaceSpeed = 0.2;
+	// What vanilla's speed reads while one drives (it only ever moves 0.2 of it), which it hands on to a cart it runs
+	// into (vehicle_log7.txt: steady at 3.455616, the cart it hits goes to 3.455616 + 0.05).
+	static constexpr double FurnaceDriveSpeed = 3.455616;
+	// Whether it is a furnace cart driving itself: fuel and a push from whoever fed it.
+	bool IsDriving() const { return Variant == EVariant::Furnace && Fuel > 0 && !PushDirection.IsNearlyZero(); }
+	// Another cart has run into this one (or this one into it, standing still): see PushMobs.
+	void PushedBy(FMcMinecartEntity& Pusher);
 	virtual bool RunsOnRails() const override { return true; }
 	virtual FVector GetSeat(int32 Index = 0) const override { return Body.Position + FVector(0.0, 0.0, 0.0); }
 
@@ -216,9 +226,17 @@ private:
 	bool TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& World);
 	// What the cart carries does each tick: fuel burns, a fuse runs down, a hopper takes in what lies in it.
 	void TickVariant(FMcEntityManager& Manager);
-	// Shoves the mobs it touches aside, harder the faster it goes.
+	// Shoves the carts and mobs it touches, once it has moved.
 	void PushMobs(FMcEntityManager& Manager);
+	// How much of its speed it keeps a tick without a rider: 0.96, or for a chest or hopper cart 0.995 empty down to 0.98
+	// full.
+	double GetFriction();
+	// The speed another cart sees when they meet: a driving furnace cart's is FurnaceDriveSpeed.
+	FVector2D GetPushVelocity() const;
+	void SetPushVelocity(const FVector2D& Velocity);
 	TOptional<FIntVector> LastDetector;
+	// Which way the rail it was last on runs: carts only shove one another along it.
+	FVector2D RailAlong = FVector2D::ZeroVector;
 };
 
 class MCENTITY_API FMcBoatEntity final : public FMcVehicle
@@ -283,8 +301,12 @@ private:
 	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
 	// Falling last tick, so landing in water stops it.
 	bool bWasInAir = false;
+	// Ticks the hull has spent in the top block of a rising bubble column, under air (not saved).
+	int32 BubbleTime = 0;
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
+	// Bubble columns push the hull after the move (see the body).
+	void TickBubbleColumns(FMcBlockWorld& World);
 	// How much of its speed a boat on land keeps a tick, from the blocks under its hull.
 	double GroundFriction(FMcBlockWorld& World) const;
 };

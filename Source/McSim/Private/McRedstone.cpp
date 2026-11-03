@@ -1572,7 +1572,7 @@ void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
 		const FIntVector Cell = Hook + Vec[Dir] * Step;
 		const FMcStateId State = World.GetBlock(Cell);
 		const uint8 Kind = KindOf(State);
-		if (Cell == RemovedString && !bShornBreak)
+		if (Cell == RemovedString && (!bShornBreak || Flag(HookState, TEXT("attached"))))
 		{
 			// The string that was just taken away still counts, powered, in the line it was in (reference runs rs_tripwire,
 			// rs_trip3): the hooks join up and power on at once.
@@ -1645,7 +1645,7 @@ void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
 	for (int32 Step = 1; bChanged && Step <= TripwireMaxLength; ++Step)
 	{
 		const FIntVector Cell = Hook + Vec[Dir] * Step;
-		if (Cell == RemovedString && !bShornBreak)
+		if (Cell == RemovedString && (!bShornBreak || Flag(HookState, TEXT("attached"))))
 		{
 			continue;
 		}

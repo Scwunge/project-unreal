@@ -105,3 +105,15 @@ void AMcPlayerPawn::ServerTickMaps()
 	const FMcBlockWorld& World = *BlockWorld;
 	Map->UpdateRow(MapRow, [&World](int32 X, int32 Z) { return SampleColumn(World, X, Z); });
 }
+
+void AMcPlayerPawn::GiveShotMap()
+{
+	if (!Data || !BlockWorld)
+	{
+		return;
+	}
+	const int32 Id = McMapStore::Create(0, FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Z), BlockWorld->GetDimension().Name);
+	FMcItemStack Filled(FilledMapItem, 1);
+	McMapStore::SetId(Filled, Id);
+	Data->Inventory->GetMutable(Data->SelectedSlot) = Filled;
+}

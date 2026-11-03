@@ -64,6 +64,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks since food last healed or starved the player.
 	int32 FoodTimer = 0;
 	TArray<FMcStatusEffect> Effects;
+	// Where the player last died (a recovery compass points there), and in which dimension.
+	bool bHasDeath = false;
+	FIntVector DeathPos = FIntVector::ZeroValue;
+	FName DeathDimension;
 
 	// Reads or writes, by whether the archive is loading. False if a loading archive is malformed.
 	bool Serialize(FArchive& Ar);

@@ -1,4 +1,6 @@
 #include "McPlayerController.h"
+#include "McItemFrames.h"
+#include "McSurvival.h"
 #include "McMob.h"
 #include "ShaderCompiler.h"
 #include "McLaunch.h"
@@ -556,6 +558,22 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			// Lights the TNT it is used on.
 			FMcEntityHost* Host = World->GetEntityHost();
 			return Host && FMcPrimedTnt::Ignite(Host->GetManager(), Pos) != nullptr;
+		}
+		if (Held == TEXT("minecraft:compass") && Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name == TEXT("minecraft:lodestone"))
+		{
+			// A compass used on a lodestone points at it from then on (one of a stack is tied, the rest stay).
+			FMcItemStack& Compass = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			FMcItemStack Tied(Compass.Item, 1);
+			Tied.Components = Compass.Components;
+			McItemFrames::SetLodestone(Tied, Pos, Blocks->GetDimension().Name);
+			if (Compass.Count > 1 && !User.Data->bCreative)
+			{
+				Compass.Count -= 1;
+				McSurvival::GiveItem(*User.Data->Inventory, Tied);
+				return true;
+			}
+			Compass = Tied;
+			return true;
 		}
 		if (Held == TEXT("minecraft:flint_and_steel"))
 		{

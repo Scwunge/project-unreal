@@ -372,7 +372,20 @@ void AMcGameMode::StartPlay()
 		Context.DayTime = Here->GetDayTime();
 		Context.bOverworld = Here->Dimension == TEXT("minecraft:overworld");
 		Context.GameTicks = Here->GetGameTime();
+		Context.Dimension = FName(*Here->Dimension);
+		if (Pawn->Data && Pawn->Data->Stats.bHasDeath)
+		{
+			Context.bHasDeath = true;
+			Context.DeathPosition = FVector2D(Pawn->Data->Stats.DeathPos.X + 0.5, Pawn->Data->Stats.DeathPos.Z + 0.5);
+			Context.DeathDimension = Pawn->Data->Stats.DeathDimension;
+		}
 		McItemFrames::SetContext(Context);
+		static bool bShotMapGiven = !FParse::Param(FCommandLine::Get(), TEXT("McMapShot"));
+		if (!bShotMapGiven && Here->GetGameTime() > 40)
+		{
+			bShotMapGiven = true;
+			const_cast<AMcPlayerPawn*>(Pawn)->GiveShotMap();
+		}
 	}), 0.05f, true);
 
 	// Advancements that fire on what a player carries.

@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McMapStore.h"
 #include "McFontRaster.h"
 #include "McBanner.h"
 #include "McGuiLayout.h"
@@ -562,15 +563,71 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 	}
 }
 
+const AMcHUD::FIcon& AMcHUD::GetMapIcon(const FMcItemStack& Stack)
+{
+	const int32 Id = McMapStore::GetId(Stack);
+	const FMcMapData* Map = McMapStore::Find(Id);
+	static const FIcon None;
+	if (!Map)
+	{
+		return None;
+	}
+	TObjectPtr<UTexture2D>& Texture = MapTextures.FindOrAdd(Id);
+	if (!Texture)
+	{
+		Texture = UTexture2D::CreateTransient(FMcMapData::Size, FMcMapData::Size, PF_B8G8R8A8);
+		Texture->Filter = TF_Nearest;
+		Texture->SRGB = true;
+		MapIconRevisions.Remove(Id);
+		MapIcons.Remove(Id);
+	}
+	const int32* Seen = MapIconRevisions.Find(Id);
+	if (!Seen || *Seen != Map->Revision)
+	{
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		uint32* Out = static_cast<uint32*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		for (int32 Index = 0; Index < FMcMapData::Size * FMcMapData::Size; ++Index)
+		{
+			Out[Index] = McMapColors::Argb(Map->Colors[Index]);
+		}
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		MapIconRevisions.Add(Id, Map->Revision);
+	}
+	FIcon& Icon = MapIcons.FindOrAdd(Id);
+	if (Icon.Triangles.IsEmpty())
+	{
+		const FVector2D Corners[4] = { FVector2D(0, 0), FVector2D(16, 0), FVector2D(16, 16), FVector2D(0, 16) };
+		const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+		for (const int32 First : { 0, 2 })
+		{
+			FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+			const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+			for (int32 I = 0; I < 3; ++I)
+			{
+				Triangle.Positions[I] = Corners[Indices[I]];
+				Triangle.UVs[I] = UVs[Indices[I]];
+			}
+			Triangle.Color = FLinearColor::White;
+			Triangle.Texture = Texture;
+		}
+	}
+	return Icon;
+}
+
 const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
 {
+	if (Stack.Item == TEXT("minecraft:filled_map") && McMapStore::GetId(Stack) != INDEX_NONE)
+	{
+		return GetMapIcon(Stack);
+	}
 	if (Stack.Item.ToString().EndsWith(TEXT("_banner")))
 	{
 		return GetBannerIcon(Stack);
 	}
 	if (!McItemDef::UsesPackModels(Stack))
 	{
-		return GetItemIcon(Stack.Item);
+		return GetItemIcon(McItemFrames::ResolveStack(Stack));
 	}
 	const TArray<McItemDef::FModelRef> Refs = McItemDef::Resolve(Stack, McItemDef::EContext::Gui);
 	FString Key;

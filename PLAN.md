@@ -188,6 +188,15 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     `FMcBoatEntity::TickBubbleColumns` is its own rule, not main's `McPhysics::BubbleColumnPush` (m1/blocks-and-chunks,
     not merged here): same per-block push, twice, and a boat-only throw. Not fitted: a boat in a downward column's top
     block, mobs and players riding, a column starting under a moving boat.
+    Cart rails against vehicle_log12.txt (`McClient.McEntity.CartRailLog` replays six rows tick by tick to 1e-3): a cart
+    carries on over the next rail piece in the same direction at that piece's height (so it is already climbing on the
+    tick it passes onto a slope), blocks under a slope don't stop it, and past the end of its rails it drops 0.0625
+    onto the floor the same tick. Off the rails: gravity, then a cart that stood on the ground halves everything before it
+    moves, one in the air keeps 0.95 after (stone: 0.2886, 0.1443, 0.0721 ...; off a ledge 0.02 down, then 0.04 a tick).
+    Curves and powered ascending rails already matched. Detector rails: on the tick a cart's box overlaps the sensor
+    (middle 0.6 of the cell, 0.5 up), a look every 20 ticks made before entities move (so on the cart's last position),
+    on 40 ticks in all for a cart passing at 0.4. Not fitted: the log's slope-down bottom (my script built it a block
+    above the flat rails, the cart carries on in its line through the air until it lands), activator rails beyond TNT/riders.
   - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:

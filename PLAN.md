@@ -196,7 +196,12 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     Curves and powered ascending rails already matched. Detector rails: on the tick a cart's box overlaps the sensor
     (middle 0.6 of the cell, 0.5 up), a look every 20 ticks made before entities move (so on the cart's last position),
     on 40 ticks in all for a cart passing at 0.4. Not fitted: the log's slope-down bottom (my script built it a block
-    above the flat rails, the cart carries on in its line through the air until it lands), activator rails beyond TNT/riders.
+    above the flat rails, the cart carries on in its line through the air until it lands).
+    Activator rails and hopper carts against vehicle_log13.txt: a mob in a cart counts as a rider (moves 0.75, keeps 0.997,
+    then 0.96 once thrown out); thrown out the tick after the cart's start is in the rail's cell, it is set down at the
+    middle of the cell on the right of the cart's way (a cart going east: one south), on the ground, and neither shoves
+    nor is shoved while the 10-tick boarding cooldown runs; every activator rail a hopper cart is on sets it off (powered)
+    or on (unpowered), so one that has passed a powered one stays off; it takes in one whole stack a tick.
   - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:

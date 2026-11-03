@@ -3,6 +3,7 @@
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McMob.h"
 #include "McVehicle.h"
 #include "Misc/AutomationTest.h"
 
@@ -96,6 +97,32 @@ static const double Log12_260[][3] = {
 {11.52398,-60.93750,156.50000},{11.56302,-60.93750,156.50000},{11.60050,-60.93750,156.50000},{11.63648,-60.93750,156.50000},
 
 };
+static const double Log13_172[][4] = {
+{1,2.80000,-60.93750,102.50000},{2,3.09910,-60.93750,102.50000},{3,3.39730,-60.93750,102.50000},{4,3.69461,-60.93750,102.50000},
+{5,3.99103,-60.93750,102.50000},{6,4.28655,-60.93750,102.50000},{7,4.58119,-60.93750,102.50000},{8,4.87495,-60.93750,102.50000},
+{9,5.16783,-60.93750,102.50000},{10,5.45982,-60.93750,102.50000},{11,5.75094,-60.93750,102.50000},{12,6.04119,-60.93750,102.50000},
+{13,6.33057,-60.93750,102.50000},{14,6.61907,-60.93750,102.50000},{15,6.90672,-60.93750,102.50000},{16,7.19350,-60.93750,102.50000},
+{17,7.47942,-60.93750,102.50000},{18,7.76448,-60.93750,102.50000},{19,8.04869,-60.93750,102.50000},{20,8.33204,-60.93750,102.50000},
+{21,8.61454,-60.93750,102.50000},{22,8.89620,-60.93750,102.50000},{23,9.17701,-60.93750,102.50000},{24,9.45698,-60.93750,102.50000},
+{25,9.73611,-60.93750,102.50000},{26,10.01440,-60.93750,102.50000},{27,10.29186,-60.93750,102.50000},{28,10.66069,-60.93750,102.50000},
+{29,11.01477,-60.93750,102.50000},{30,11.35469,-60.93750,102.50000},{31,11.68100,-60.93750,102.50000},{32,12.29501,-60.93750,102.50000},
+{33,12.58371,-60.93750,102.50000},{34,12.86087,-60.93750,102.50000},{35,13.12694,-60.93750,102.50000},{36,13.38237,-60.93750,102.50000},
+{37,13.62759,-60.93750,102.50000},{38,13.86299,-60.93750,102.50000},{39,14.08898,-60.93750,102.50000},{40,14.30592,-60.93750,102.50000},
+{41,14.51419,-60.93750,102.50000},{42,14.71413,-60.93750,102.50000},{43,14.71413,-60.93750,102.50000},{44,14.90607,-60.93750,102.50000},
+{45,15.26723,-60.93750,102.50000},};
+static const double Log13_174[][4] = {
+{1,2.80000,-60.93750,106.50000},{2,3.09910,-60.93750,106.50000},{3,3.39730,-60.93750,106.50000},{4,3.69461,-60.93750,106.50000},
+{5,3.99103,-60.93750,106.50000},{6,4.28655,-60.93750,106.50000},{7,4.58119,-60.93750,106.50000},{8,4.87495,-60.93750,106.50000},
+{9,5.16783,-60.93750,106.50000},{10,5.45982,-60.93750,106.50000},{11,5.75094,-60.93750,106.50000},{12,6.04119,-60.93750,106.50000},
+{13,6.33057,-60.93750,106.50000},{14,6.61907,-60.93750,106.50000},{15,6.90672,-60.93750,106.50000},{16,7.19350,-60.93750,106.50000},
+{17,7.47942,-60.93750,106.50000},{18,7.76448,-60.93750,106.50000},{19,8.04869,-60.93750,106.50000},{20,8.33204,-60.93750,106.50000},
+{21,8.61454,-60.93750,106.50000},{22,8.89620,-60.93750,106.50000},{23,9.17701,-60.93750,106.50000},{24,9.45698,-60.93750,106.50000},
+{25,9.73611,-60.93750,106.50000},{26,10.01440,-60.93750,106.50000},{27,10.29186,-60.93750,106.50000},{28,10.56848,-60.93750,106.50000},
+{29,10.84428,-60.93750,106.50000},{30,11.11924,-60.93750,106.50000},{31,11.39339,-60.93750,106.50000},{32,11.93921,-60.93750,106.50000},
+{33,12.21089,-60.93750,106.50000},{34,12.48176,-60.93750,106.50000},{35,12.75181,-60.93750,106.50000},{36,13.02105,-60.93750,106.50000},
+{37,13.28949,-60.93750,106.50000},{38,13.55712,-60.93750,106.50000},{39,13.82395,-60.93750,106.50000},{40,14.08998,-60.93750,106.50000},
+{41,14.35521,-60.93750,106.50000},{42,14.61964,-60.93750,106.50000},{43,14.61964,-60.93750,106.50000},{44,14.88329,-60.93750,106.50000},
+{45,15.40820,-60.93750,106.50000},};
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcCartRailLogTest, "McClient.McEntity.CartRailLog",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
@@ -252,6 +279,116 @@ bool FMcCartRailLogTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the detector comes on the tick the cart reaches its sensor"), On, Overlap);
 		TestEqual(TEXT("and goes off 40 ticks later, after one look that found the cart still over it"), Off - On, 40);
 		TestEqual(TEXT("no other changes"), Flips, 2);
+	}
+
+	// ---- vehicle_log13.txt: a cart with a pig in it at 0.4 over an activator rail at x=10 (powered, with a redstone block
+	// under it, or not) ----
+	for (const bool bPowered : { true, false })
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		for (int32 Z = -1; Z <= 1; ++Z) { for (int32 X = -1; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+		for (int32 X = 0; X <= 40; ++X)
+		{
+			for (int32 Z = -2; Z <= 3; ++Z) { World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:stone"))); }
+			World.SetBlock(FIntVector(X, 1, 0), State(X != 10 ? TEXT("minecraft:rail[shape=east_west]") : bPowered ? TEXT("minecraft:activator_rail[shape=east_west,powered=true]") : TEXT("minecraft:activator_rail[shape=east_west,powered=false]")));
+		}
+		FMcEntityManager Manager(World);
+		FMcMinecartEntity* Cart = new FMcMinecartEntity();
+		// (A cart only takes a mob in while it moves, so it comes up to 2.5 at 0.4 with the pig already there.)
+		Cart->Body.Position = FVector(2.1, 1.0, 0.5);
+		Cart->Body.Velocity = FVector(0.4 / 0.96, 0.0, 0.0);
+		Manager.Add(TUniquePtr<FMcEntity>(Cart));
+		FMcMob* Pig = new FMcMob(*FMcMobType::Find(TEXT("minecraft:pig")));
+		Pig->Body.Position = FVector(2.5, 1.0, 0.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Pig));
+		for (int32 Tick = 0; Tick < 3 && Pig->RidingId == 0; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("the pig gets in"), Pig->RidingId, Cart->Id);
+		const double (*Want)[4] = bPowered ? Log13_172 : Log13_174;
+		int32 Bad = 0;
+		// Rows are by tick (the log has a tick or two missing).
+		// (The log's later rows are off by the tick its server lagged on.)
+		for (int32 Now = 1, Row = 0; Row < 31; ++Row)
+		{
+			for (; Now <= static_cast<int32>(Want[Row][0]); ++Now)
+			{
+				Manager.Tick();
+				
+				if (bPowered && Now == 27)
+				{
+					TestEqual(TEXT("the pig is out the tick after the cart is in the activator's cell"), Pig->RidingId, 0);
+					TestNearlyEqual(TEXT("pig x, the middle of the cell"), Pig->Body.Position.X, 10.5, 0.05);
+					TestNearlyEqual(TEXT("pig z, a cell south of a cart going east"), Pig->Body.Position.Z, 1.5, 0.05);
+					TestNearlyEqual(TEXT("pig y, on the ground"), Pig->Body.Position.Y, 1.0, 1e-6);
+				}
+			}
+			const FVector Expect(Want[Row][1], Want[Row][2] + 62.0, Want[Row][3] - (bPowered ? 102.0 : 106.0));
+			if (FVector::Dist(Expect, Cart->Body.Position) > 1e-3 && ++Bad <= 3)
+			{
+				AddError(FString::Printf(TEXT("activator %d tick %d: want %.4f %.4f got %.4f %.4f"), bPowered, Now - 1, Expect.X, Expect.Y, Cart->Body.Position.X, Cart->Body.Position.Y));
+			}
+		}
+		if (!bPowered)
+		{
+			TestEqual(TEXT("an unpowered activator rail leaves the pig in"), Pig->RidingId, Cart->Id);
+		}
+	}
+
+	// ---- vehicle_log13.txt: hopper carts. One at 0.2 over a powered activator rail at x=10 picks up nothing, not the stacks
+	// lying on the rails past it either (still empty 90 ticks on); one at rest takes five stacks dropped together a stack a
+	// tick ----
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		for (int32 Z = -1; Z <= 1; ++Z) { for (int32 X = -1; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+		for (int32 X = 0; X <= 40; ++X)
+		{
+			for (int32 Z = -2; Z <= 3; ++Z) { World.SetBlock(FIntVector(X, 0, Z), State(TEXT("minecraft:stone"))); }
+			World.SetBlock(FIntVector(X, 1, 0), State(X != 10 ? TEXT("minecraft:rail[shape=east_west]") : TEXT("minecraft:activator_rail[shape=east_west,powered=true]")));
+		}
+		FMcEntityManager Manager(World);
+		FMcMinecartEntity* Moving = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Hopper);
+		Moving->Body.Position = FVector(6.5, 1.0, 0.5);
+		Moving->Body.Velocity = FVector(0.2, 0.0, 0.0);
+		Manager.Add(TUniquePtr<FMcEntity>(Moving));
+		Manager.DropItem(FVector(14.5, 1.5, 0.5), FMcItemStack(TEXT("minecraft:cobblestone"), 20), 0).Body.Velocity = FVector::ZeroVector;
+		Manager.DropItem(FVector(18.5, 1.5, 0.5), FMcItemStack(TEXT("minecraft:dirt"), 20), 0).Body.Velocity = FVector::ZeroVector;
+		for (int32 Tick = 0; Tick < 90; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the hopper cart went past the stacks"), Moving->Body.Position.X > 19.0);
+		TestEqual(TEXT("and took neither"), Moving->GetInventory()->CountItem(TEXT("minecraft:cobblestone")) + Moving->GetInventory()->CountItem(TEXT("minecraft:dirt")), 0);
+		Moving->bRemoved = true;
+		Manager.Tick();
+
+		FMcMinecartEntity* Rest = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Hopper);
+		Rest->Body.Position = FVector(30.5, 1.0, 0.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Rest));
+		Manager.Tick();
+		for (const TCHAR* Name : { TEXT("minecraft:cobblestone"), TEXT("minecraft:dirt"), TEXT("minecraft:stone"), TEXT("minecraft:sand"), TEXT("minecraft:gravel") })
+		{
+			Manager.DropItem(FVector(30.5, 1.0, 0.5), FMcItemStack(Name, 10), 0).Body.Velocity = FVector::ZeroVector;
+		}
+		int32 Total = 0;
+		TArray<int32> Counts;
+		for (int32 Tick = 0; Tick < 8; ++Tick)
+		{
+			Manager.Tick();
+			int32 Held = 0;
+			for (const TCHAR* Name : { TEXT("minecraft:cobblestone"), TEXT("minecraft:dirt"), TEXT("minecraft:stone"), TEXT("minecraft:sand"), TEXT("minecraft:gravel") })
+			{
+				Held += Rest->GetInventory()->CountItem(Name);
+			}
+			Counts.Add(Held);
+			Total = Held;
+		}
+		TestEqual(TEXT("it ends with all five"), Total, 50);
+		for (int32 Index = 1; Index < Counts.Num(); ++Index)
+		{
+			TestTrue(*FString::Printf(TEXT("never more than one stack a tick (tick %d)"), Index), Counts[Index] - Counts[Index - 1] <= 10);
+		}
 	}
 	return true;
 }

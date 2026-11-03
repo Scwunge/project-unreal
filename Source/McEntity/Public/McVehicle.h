@@ -152,6 +152,8 @@ protected:
 	TArray<int32> MobPassengers;
 	bool bEjectMobs = false;
 	int32 BoardCooldown = 0;
+	// The mobs the last eject set down, left alone by a cart while the cooldown runs.
+	TArray<int32> EjectedMobs;
 	float RiderForward = 0.0f;
 	float RiderStrafe = 0.0f;
 	float RiderYaw = 0.0f;

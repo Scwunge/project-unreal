@@ -1020,12 +1020,12 @@ namespace McEntityModel
 				Strider.Parts.Add(Part(ERole::Static, FVector(0, 23, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
 				Strider.Parts.Add(Part(ERole::LegRight, FVector(-4, 16, 0), { Box(0, 32, -2, -16, -2, 4, 16, 4) }));
 				Strider.Parts.Add(Part(ERole::LegLeft, FVector(4, 16, 0), { Box(0, 55, -2, -16, -2, 4, 16, 4) }));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
 				Models.Add(Strider.Kind, Strider);
 			}
 			{
@@ -1037,15 +1037,15 @@ namespace McEntityModel
 				Ghast.Scale = 4.5f;
 				Ghast.Textures = { TEXT("ghast/ghast.png") };
 				Ghast.Parts.Add(Part(ERole::Static, FVector(0, 6.4f, 0), { Box(0, 0, -8, -8, -8, 16, 16, 16) }));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
 				Models.Add(Ghast.Kind, Ghast);
 			}
 			{

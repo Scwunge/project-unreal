@@ -1063,12 +1063,13 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
 		FString DevMenu;
-		bool bDevOptions = false, bDevPacks = false;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs")))
+		bool bDevOptions = false, bDevPacks = false, bDevLanguage = false;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
-			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs");
+			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language");
+			bDevLanguage = DevMenu == TEXT("language");
 			bDevPacks = DevMenu == TEXT("packs");
 		}
 #endif
@@ -1083,6 +1084,10 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			if (bDevPacks)
 			{
 				OpenResourcePacks();
+			}
+			if (bDevLanguage)
+			{
+				OpenLanguage();
 			}
 #endif
 		}
@@ -1930,6 +1935,8 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 void AMcHUD::DrawHUD()
 {
 	Super::DrawHUD();
+	// Chat is the one world menu that leaves the world sharp.
+	UpdateMenuBlur(IsWorldMenu() && ActiveMenu != EMenu::Chat);
 #if !UE_BUILD_SHIPPING
 	// Development: -McReload=<seconds> asks for the reload (F3+T) that long into the run, once.
 	static double DevReloadAt = -1.0;

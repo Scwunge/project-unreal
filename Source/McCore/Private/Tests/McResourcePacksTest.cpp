@@ -570,4 +570,100 @@ bool FMcPackLangTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// The chosen language's file goes over en_us, key by key, and a pack's lang file of that language over both; a pack's
+// "language" entry in pack.mcmeta adds a language to the picker.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcLanguageTest, "McClient.McCore.Language",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcLanguageTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const FString Before = McLang::GetLanguage();
+	McLang::SetLanguage(TEXT("en_us"));
+	const FString English = McLang::Get(TEXT("gui.done"));
+	if (!TestNotEqual(TEXT("the game has gui.done"), English, FString(TEXT("gui.done"))))
+	{
+		return true;
+	}
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McLanguageTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97},\"language\":{\"zz_zz\":{\"name\":\"Zedzed\",\"region\":\"Zedland\",\"bidirectional\":true}}}"),
+		*(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"gui.done\":\"Zed done\",\"zz.only\":\"zed only\"}"), *(Root / TEXT("assets/minecraft/lang/zz_zz.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"zz.only\":\"english only\"}"), *(Root / TEXT("assets/minecraft/lang/en_us.json")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+
+	bool bListed = false;
+	for (const McLang::FLanguage& Language : McLang::GetLanguages())
+	{
+		if (Language.Code == TEXT("zz_zz"))
+		{
+			bListed = true;
+			TestEqual(TEXT("label"), Language.GetLabel(), FString(TEXT("Zedzed (Zedland)")));
+			TestTrue(TEXT("bidirectional"), Language.bBidirectional);
+		}
+	}
+	TestTrue(TEXT("the pack's language is offered"), bListed);
+
+	TestEqual(TEXT("english: the pack's en_us over the game's"), McLang::Get(TEXT("zz.only")), FString(TEXT("english only")));
+	McLang::SetLanguage(TEXT("zz_zz"));
+	TestEqual(TEXT("the chosen language's key"), McLang::Get(TEXT("gui.done")), FString(TEXT("Zed done")));
+	TestEqual(TEXT("the language file over en_us"), McLang::Get(TEXT("zz.only")), FString(TEXT("zed only")));
+	TestEqual(TEXT("a key the language lacks falls back to english"), McLang::Get(TEXT("gameMode.survival")), McLang::Get(TEXT("gameMode.survival")));
+	TestNotEqual(TEXT("and is not the key"), McLang::Get(TEXT("gameMode.survival")), FString(TEXT("gameMode.survival")));
+	McLang::SetLanguage(TEXT("en_us"));
+	TestEqual(TEXT("back to english"), McLang::Get(TEXT("gui.done")), English);
+	McLang::SetLanguage(Before.IsEmpty() ? TEXT("en_us") : Before);
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackBuiltInTest, "McClient.McCore.PackBuiltIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackBuiltInTest::RunTest(const FString& Parameters)
+{
+	// The packs the game ships (High Contrast, Programmer Art) are offered by the ids the game gives them, and a selection
+	// that names one comes back under that id, not under the file name the cache keeps.
+	const TArray<FString> Names = McPacks::GetBuiltInNames();
+	if (Names.IsEmpty())
+	{
+		AddWarning(TEXT("no built-in packs in the cache (run tools/fetch_cache.py)"));
+		return true;
+	}
+	TestTrue(TEXT("High Contrast is there"), Names.Contains(TEXT("high_contrast")));
+	TestTrue(TEXT("Programmer Art is there"), Names.Contains(TEXT("programmer_art")));
+	const TArray<McPacks::FFolderEntry> Entries = McPacks::ScanFolder();
+	int32 NumBuiltIn = 0;
+	for (const McPacks::FFolderEntry& Entry : Entries)
+	{
+		if (Entry.bBuiltIn)
+		{
+			++NumBuiltIn;
+			TestTrue(Entry.Name + TEXT(" opens: ") + Entry.Error, Entry.Pack.IsValid());
+			if (Entry.Pack.IsValid())
+			{
+				TestEqual(Entry.Name + TEXT(" is named by its id"), Entry.Pack->GetInfo().Name, Entry.Name);
+				TestEqual(Entry.Name + TEXT(" is made for this version"), McPacks::GetCompatibility(Entry.Pack->GetInfo()), 0);
+				TestTrue(Entry.Name + TEXT(" has a description"), !Entry.Pack->GetInfo().Description.IsEmpty());
+			}
+		}
+	}
+	TestEqual(TEXT("each built-in pack is listed once"), NumBuiltIn, Names.Num());
+
+	const TArray<FString> Before = McPacks::GetSelectedNames();
+	McPacks::SetPacks({ TEXT("programmer_art") });
+	TestEqual(TEXT("a selection of a built-in pack keeps its id"), McPacks::GetSelectedNames(), TArray<FString>({ TEXT("programmer_art") }));
+	McPacks::SetPacks(Before);
+	return true;
+}
+
 #endif

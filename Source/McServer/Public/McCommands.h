@@ -104,6 +104,9 @@ public:
 	// Puts it on the item in the player's main hand, replacing a level it already has there.
 	virtual EEnchantResult Enchant(const FString& Player, FName Enchantment, int32 Level) = 0;
 
+	// Plays a sounds.json event for everyone, at a position in blocks (volume over 1 carries further).
+	virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) {}
+
 	virtual FMcServerAccess LoadAccess() const = 0;
 	virtual void SaveAccess(const FMcServerAccess& Access) = 0;
 	virtual bool IsAllowlistOn() const = 0;

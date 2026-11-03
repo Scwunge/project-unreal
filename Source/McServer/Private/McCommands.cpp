@@ -38,6 +38,7 @@ namespace
 		{ TEXT("me"), 0, TEXT("/me <action>") },
 		{ TEXT("msg"), 0, TEXT("/msg <targets> <message>") },
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
+		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -507,6 +508,67 @@ namespace
 		const int32 Bracket = Token.Find(TEXT("["));
 		const FString Id = Bracket == INDEX_NONE ? Token : Token.Left(Bracket);
 		return Registry.ParseState((Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id).ToLower() + (Bracket == INDEX_NONE ? FString() : Token.Mid(Bracket)));
+	}
+
+	// /playsound <sound> <source> [<targets>] [<x> <y> <z>] [<volume>] [<pitch>]: the event plays for everyone (the targets are
+	// not told apart), at the position given or where the sender stands. The sounds.json of the packs decides what is heard.
+	FReplies RunPlaySound(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		static const TCHAR* Sources[] = { TEXT("master"), TEXT("music"), TEXT("record"), TEXT("weather"), TEXT("block"), TEXT("hostile"),
+			TEXT("neutral"), TEXT("player"), TEXT("ambient"), TEXT("voice") };
+		if (Words.Num() < 3 || Words.Num() > 10)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		bool bSource = false;
+		for (const TCHAR* Source : Sources)
+		{
+			bSource |= Words[2] == Source;
+		}
+		FString Event = Words[1];
+		Event.RemoveFromStart(TEXT("minecraft:"));
+		if (!bSource || Event.IsEmpty())
+		{
+			return BadArgument(Command);
+		}
+		int32 Next = 3;
+		FString Who = SenderName(Sender);
+		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || !Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~"))))
+		{
+			Who = Words[Next].StartsWith(TEXT("@")) ? SenderName(Sender) : Words[Next];
+			++Next;
+		}
+		const FVector Here = SenderFeet(Sender, Target);
+		FVector Position = Here;
+		if (Words.Num() - Next >= 3)
+		{
+			if (!(ParseCoordinate(Words[Next], Here.X, true, Position.X) && ParseCoordinate(Words[Next + 1], Here.Y, false, Position.Y)
+				&& ParseCoordinate(Words[Next + 2], Here.Z, true, Position.Z)))
+			{
+				return BadArgument(Command);
+			}
+			Next += 3;
+		}
+		float Volume = 1.0f;
+		float Pitch = 1.0f;
+		if (Words.IsValidIndex(Next))
+		{
+			if (!Words[Next].IsNumeric() || FCString::Atof(*Words[Next]) < 0.0f)
+			{
+				return BadArgument(Command);
+			}
+			Volume = FCString::Atof(*Words[Next++]);
+		}
+		if (Words.IsValidIndex(Next))
+		{
+			if (!Words[Next].IsNumeric() || FCString::Atof(*Words[Next]) < 0.0f || FCString::Atof(*Words[Next]) > 2.0f)
+			{
+				return BadArgument(Command);
+			}
+			Pitch = FCString::Atof(*Words[Next++]);
+		}
+		Target.PlaySoundAt(FName(*Event), Position, Volume, Pitch);
+		return { Ok(McLang::Format(TEXT("commands.playsound.success.single"), { Words[1], Who })) };
 	}
 
 	FReplies RunSetBlock(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -1261,6 +1323,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("op") || Name == TEXT("deop") || Name == TEXT("whitelist"))
 	{
 		return RunAccess(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("playsound"))
+	{
+		return RunPlaySound(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("setblock"))
 	{

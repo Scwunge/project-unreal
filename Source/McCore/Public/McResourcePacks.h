@@ -43,6 +43,16 @@ struct MCCORE_API FMcPackInfo
 		bool bHasRange = false;
 	};
 	TArray<FOverlay> Overlays;
+	// "language": { "xx_yy": { "name": "...", "region": "...", "bidirectional": false } }: languages the pack adds to the picker
+	// (its lang/xx_yy.json holds the text).
+	struct FLanguage
+	{
+		FString Code;
+		FString Name;
+		FString Region;
+		bool bBidirectional = false;
+	};
+	TArray<FLanguage> Languages;
 };
 
 class MCCORE_API FMcResourcePack
@@ -58,6 +68,8 @@ public:
 	static FString FlattenText(const TSharedPtr<FJsonValue>& Component);
 
 	const FMcPackInfo& GetInfo() const { return Info; }
+	// The name the picker and -McPacks call the pack, when that is not its file name (a built-in pack).
+	void SetName(const FString& InName) { Info.Name = InName; }
 
 	// Whether the pack holds this file, by its path inside the pack ("assets/minecraft/textures/block/stone.png").
 	bool Has(const FString& Relative) const;
@@ -124,6 +136,12 @@ namespace McPacks
 	MCCORE_API FString GetFolder();
 	// A pack name to a path: an existing path as given, else the name inside the resourcepacks folder. Empty if neither exists.
 	MCCORE_API FString ResolveName(const FString& Name);
+	// The packs that ship with the game, under the names the game gives them: the zips the launcher's asset index holds
+	// ("high_contrast", "programmer_art"), which tools/fetch_cache.py puts in cache/assets/minecraft/resourcepacks. Only
+	// the ones that are in the cache. They are offered in the picker and used by name like any other pack. The Default
+	// pack, the vanilla assets themselves, is not one of them: it is always on, below everything.
+	MCCORE_API TArray<FString> GetBuiltInNames();
+	MCCORE_API bool IsBuiltIn(const FString& Name);
 
 	// The packs now in use. The first call reads -McPacks from the command line.
 	MCCORE_API TSharedRef<const FMcPackStack> GetStack();
@@ -160,8 +178,9 @@ namespace McPacks
 		FString Path;
 		TSharedPtr<FMcResourcePack> Pack;
 		FString Error;
+		bool bBuiltIn = false;
 	};
-	// Everything in the folder that is a zip or a directory, by name.
+	// The built-in packs, then everything in the folder that is a zip or a directory, by name.
 	MCCORE_API TArray<FFolderEntry> ScanFolder();
 	// Dropping files onto the window: the paths that are packs (a .zip, or a folder holding pack.mcmeta), by the name they
 	// would have in the resourcepacks folder, and the others, which the game does not offer to add.

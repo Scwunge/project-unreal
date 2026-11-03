@@ -2004,10 +2004,11 @@ bool FMcRedstone::IsBreakable(FMcStateId State) const
 		return true;
 	}
 	if (Name.EndsWith(TEXT("_door")) || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:pumpkin") || Name == TEXT("minecraft:melon")
-		|| Name == TEXT("minecraft:carved_pumpkin") || Name == TEXT("minecraft:jack_o_lantern") || Name.EndsWith(TEXT("cake")))
+		|| Name == TEXT("minecraft:carved_pumpkin") || Name == TEXT("minecraft:jack_o_lantern") || Name.EndsWith(TEXT("cake")) || Name == TEXT("minecraft:bell"))
 	{
 		return true;
 	}
+	// (A bell is destroyed too, reference run rs_pist2.)
 	// Plants, torches, dust, levers: anything with no body to push, except rails.
 	return !Shapes.HasCollision(State) && !Name.Contains(TEXT("rail")) && KindOf(State) != PistonHead && KindOf(State) != MovingPiston;
 }

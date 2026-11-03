@@ -336,7 +336,8 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
-	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FMcZombieVillager::StaticType())
+	// (A husk: 2 of 100 spawned at Normal held an iron sword, the zombie's rate within the count's noise; shared.)
+	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FName(TEXT("minecraft:husk")) || Kind == FMcZombieVillager::StaticType())
 	{
 		// Armed at spawn, from counts of 2000 spawned zombies per difficulty on the reference (night, drops cleared between batches):
 		//   Easy 19 armed (0.95%), Normal 20 (1.0%), Hard 108 (5.4%); every armed one held an iron sword, shovel or spear.

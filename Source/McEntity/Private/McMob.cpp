@@ -70,6 +70,14 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& DrownedType = Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
 		DrownedType.bSwims = true;
 		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		// The zombie and skeleton kin (reference 2026-11-03, `variants1.txt` attributes, `variants2.txt` dims, `variants4/5.txt` spawn
+		// gear of 100 each and burning by day): a husk is the zombie's 20 / 0.23 / 3 / 35 and does not burn; a stray is the skeleton's
+		// but burns, a bogged has 16 health and burns, both shoot; a wither skeleton is 0.7 x 2.4 with a stone sword and does not shoot.
+		// Their special arrows and effects (hunger, slowness, poison, wither) are not done.
+		Add(TEXT("minecraft:husk"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, false);
+		Add(TEXT("minecraft:stray"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		Add(TEXT("minecraft:bogged"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
+		Add(TEXT("minecraft:wither_skeleton"), 0.7f, 2.4f, 20.f, 0.25f, 2.f, 16.f, false, false);
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
 		Spider.bClimbsWalls = true;
@@ -156,9 +164,15 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.Height = InType.Height;
 	Body.StepHeight = 0.6f;
 	// What they carry when they spawn: a skeleton its bow, a vex its iron sword.
-	if (InType.Name == FName(TEXT("minecraft:skeleton")))
+	if (InType.Name == FName(TEXT("minecraft:skeleton")) || InType.Name == FName(TEXT("minecraft:stray")) || InType.Name == FName(TEXT("minecraft:bogged")))
 	{
+		// 100 of each spawned held a bow, none anything else (reference).
 		HeldItem = TEXT("minecraft:bow");
+	}
+	else if (InType.Name == FName(TEXT("minecraft:wither_skeleton")))
+	{
+		// 100 of 100 held a stone sword.
+		HeldItem = TEXT("minecraft:stone_sword");
 	}
 	else if (InType.Name == FName(TEXT("minecraft:vex")))
 	{
@@ -904,7 +918,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		// A vex with prey charges (the model's pose 1: sword arm thrown up, body upright).
 		ArmPose = bChasing ? 1 : 0;
 	}
-	else if (Type.Name == FName(TEXT("minecraft:skeleton")))
+	else if (Type.Name == FName(TEXT("minecraft:skeleton")) || Type.Name == FName(TEXT("minecraft:stray")) || Type.Name == FName(TEXT("minecraft:bogged")))
 	{
 		// A skeleton with a target raises its bow arms (the model's pose 1).
 		ArmPose = bChasing ? 1 : 0;

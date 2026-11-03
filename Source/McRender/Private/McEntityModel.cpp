@@ -478,6 +478,52 @@ namespace McEntityModel
 				Models.Add(Skeleton.Kind, Skeleton);
 			}
 			{
+				// Husk: the zombie's body on its own picture, drawn a little bigger. Measured from one shot of a row of them (head to foot
+				// height against the zombie's, 185 against 173 screen pixels: 1.07, good to about 0.03).
+				FModel Husk;
+				Husk.Kind = TEXT("minecraft:husk");
+				Husk.TextureSize = FIntPoint(64, 64);
+				Husk.Textures = { TEXT("zombie/husk.png") };
+				Husk.Scale = 1.07f;
+				Husk.bArmsForward = true;
+				AddPerson(Husk, false, true);
+				AddHeldItemInHand(Husk, FVector(-5, 22, 0));
+				Models.Add(Husk.Kind, Husk);
+			}
+			{
+				// Stray, bogged and wither skeleton: the skeleton's body on their own pictures. The stray and bogged wear a second picture over
+				// it (their clothes, the body's boxes grown by a quarter pixel: not fitted); the bogged's mushrooms are not drawn. The wither
+				// skeleton is drawn 1.2 times the size (height against the stray's in one row shot: 210 against 175 screen pixels, ~0.03).
+				struct FSkeletonKin { const TCHAR* Name; const TCHAR* Texture; const TCHAR* Overlay; float Scale; bool bBow; };
+				for (const FSkeletonKin& Each : { FSkeletonKin{ TEXT("stray"), TEXT("skeleton/stray.png"), TEXT("skeleton/stray_overlay.png"), 1.0f, true },
+					FSkeletonKin{ TEXT("bogged"), TEXT("skeleton/bogged.png"), TEXT("skeleton/bogged_overlay.png"), 1.0f, true },
+					FSkeletonKin{ TEXT("wither_skeleton"), TEXT("skeleton/wither_skeleton.png"), nullptr, 1.2f, false } })
+				{
+					FModel Kin;
+					Kin.Kind = FName(*(FString(TEXT("minecraft:")) + Each.Name));
+					Kin.Textures = { Each.Texture };
+					Kin.Scale = Each.Scale;
+					AddPerson(Kin, true, false);
+					if (Each.Overlay)
+					{
+						Kin.Textures.Add(Each.Overlay);
+						const TArray<FPart> Body = Kin.Parts;
+						for (FPart Copy : Body)
+						{
+							for (FBox& Box : Copy.Boxes)
+							{
+								Box.Inflate += 0.25f;
+							}
+							Copy.Layer = 1;
+							Kin.Parts.Add(Copy);
+						}
+					}
+					AddHeldItemInHand(Kin, FVector(-5, 22, 0));
+					Kin.bBowAim = Each.bBow;
+					Models.Add(Kin.Kind, Kin);
+				}
+			}
+			{
 				FModel Spider;
 				Spider.Kind = TEXT("minecraft:spider");
 				// The second picture is the eyes, which glow in the dark.

@@ -532,3 +532,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   random-tick growth of cane and kelp (done by command instead), a detector with a block over it (vanilla reads the light reaching its cell, 14 beside
   open sky; ours reads the global level). Falling-block entity shot still not taken.
 - Main's note-block hook (`PlayNote`, 074d37b) to be wired in McRedstone.cpp at merge.
+
+### Update (2026-11-03): moving piston window, crafter, pist2 (redstone session)
+- rs_mov (244 changes, equal): a piston checks at once, when told of a change, whether it can push; if the cell in front is held by a moving block it queues nothing and hears nothing more until that block lands. A block landing (block-entity phase, after block events) tells its neighbours, whose event runs in the NEXT tick, so a powered piston waiting for the cell extends the tick after the block arrives. Observers watching the cell a pushed block leaves or enters matched with no change.
+- Entities (rs_mov `log sents`, not implemented): a mob or item in the cell beyond a pushed block is moved so that its box clears the block's face plus 0.01 each tick (block face at +0.5 then +1.0): a pig 4.5 -> 4.96 -> 5.46, an item 4.5 -> 4.635 -> 5.135. Entities standing on top of a plain pushed block do not ride it; they stay and fall when it has gone (items 3.5, y -59 then falling; NoAI pigs do not fall). Slime riding not measured. McClient has no piston push of entities yet.
+- Crafter (rs_crafter, 93 changes, equal except one script row): see 7a0301e. Pistons (rs_pist2, 155, equal): a bell is destroyed when pushed.

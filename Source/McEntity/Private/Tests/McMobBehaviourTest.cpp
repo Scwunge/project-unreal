@@ -6,13 +6,14 @@
 #include "McEntityManager.h"
 #include "McFireball.h"
 #include "McMob.h"
+#include "McThrown.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 namespace
 {
-	void FillBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
+	void FillMobBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
 	{
 		for (int32 X = X0; X <= X1; ++X)
 		{
@@ -36,7 +37,7 @@ namespace
 				World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 			}
 		}
-		FillBox(World, -16, 0, -16, 31, 0, 31, Stone);
+		FillMobBox(World, -16, 0, -16, 31, 0, 31, Stone);
 	}
 
 	FMcMob* AddMob(FMcEntityManager& Manager, const TCHAR* Kind, const FVector& Pos)
@@ -66,7 +67,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		// A zombie walks round a wall to bite a player behind it: a straight line would leave it standing at the stone.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
-		FillBox(World, 3, 1, -5, 3, 2, 5, Stone);
+		FillMobBox(World, 3, 1, -5, 3, 2, 5, Stone);
 		FMcEntityManager Manager(World);
 		Manager.bDaylight = false;
 		Manager.PlayerPositions = { FVector(7.5, 1.0, 0.5) };
@@ -200,7 +201,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("at night it bites without being hurt"), NightBites > 0);
 
 		// A wall four high between it and the player: it goes up and over.
-		FillBox(World, 14, 1, -16, 14, 4, 31, Stone);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Stone);
 		FMcEntityManager Climb(World);
 		Climb.bDaylight = false;
 		Climb.PlayerPositions = { FVector(18.5, 1.0, 8.5) };
@@ -215,7 +216,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("the spider climbs the wall"), Highest > 4.5);
 		TestTrue(TEXT("and bites the player on the other side"), bBit);
-		FillBox(World, 14, 1, -16, 14, 4, 31, Air);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Air);
 	}
 	{
 		// Skeleton: stops at a distance and shoots; the arrow flies in an arc and hurts the player.
@@ -242,7 +243,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("while it keeps its distance (10 blocks)"), FMath::Abs(Skeleton->Body.Position.Z - Player.Z) >= 7.0);
 
 		// An arrow into a wall sticks there and is gone after a minute.
-		FillBox(World, 8, 1, 10, 9, 3, 10, Stone);
+		FillMobBox(World, 8, 1, 10, 9, 3, 10, Stone);
 		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
 		Arrow->Body.Position = FVector(8.5, 2.0, 5.5);
 		Arrow->Body.Velocity = FVector(0.0, 0.0, 1.0);
@@ -256,6 +257,71 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("an arrow sticks in a wall"), Shot->bStuck);
 		TestTrue(TEXT("just inside it"), Shot->Body.Position.Z >= 10.0 &&Shot->Body.Position.Z < 10.5);
 		TestFalse(TEXT("arrows are not kept in a chunk's save"), Shot->IsPersistent());
+	}
+	{
+		// A player's arrow at full draw (3 blocks a tick) hurts a mob in its way by 6, and passes players.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 12.5));
+		const float Before = Pig->Health;
+		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+		Arrow->Body.Position = FVector(8.5, 1.4, 5.8);
+		Arrow->Body.Velocity = FVector(0.0, 0.0, 3.0);
+		Arrow->PlayerBase = 2.0f;
+		Arrow->bPickup = true;
+		FMcArrowEntity* Shot = Arrow.Get();
+		Manager.Add(MoveTemp(Arrow));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a player's arrow hurts the pig it hits by 6"), FMath::IsNearlyEqual(Before - Pig->Health, 6.0f, 0.01f));
+		TestFalse(TEXT("the hit arrow is spent"), Shot != nullptr && !Manager.GetEntities().IsEmpty() && Manager.GetEntities().Last().Get() == Shot);
+	}
+	{
+		// A snowball knocks a pig back without hurting it; an egg breaks into a chick one time in eight; a pearl comes
+		// down in front of the wall it hits and tells where.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 9.5));
+		const float Health = Pig->Health;
+		TUniquePtr<FMcThrownEntity> Ball = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::Snowball);
+		Ball->Body.Position = FVector(8.5, 1.4, 5.8);
+		Ball->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		Manager.Add(MoveTemp(Ball));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("a snowball flinches the pig it hits"), Pig->HurtEvents, 1);
+		TestEqual(TEXT("without taking health"), Pig->Health, Health);
+
+		TestEqual(TEXT("an egg rolling under an eighth makes a chick"), FMcThrownEntity::GetChickCount(0.1f, 0.5f), 1);
+		TestEqual(TEXT("one in thirty-two of those make four"), FMcThrownEntity::GetChickCount(0.1f, 0.01f), 4);
+		TestEqual(TEXT("and over an eighth makes none"), FMcThrownEntity::GetChickCount(0.2f, 0.01f), 0);
+
+		FillMobBox(World, 8, 1, 14, 9, 3, 14, Stone);
+		TUniquePtr<FMcThrownEntity> Pearl = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderPearl);
+		Pearl->Body.Position = FVector(8.5, 3.5, 5.8);
+		Pearl->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		FVector Landed = FVector::ZeroVector;
+		Pearl->OnPearlLanded = [&Landed](const FVector& At) { Landed = At; };
+		Manager.Add(MoveTemp(Pearl));
+		for (int32 Tick = 0; Tick < 12; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a pearl lands in front of the wall"), Landed.Z > 12.0 && Landed.Z < 14.0);
+		// A baby chicken is half the size and grows up.
+		FMcMob* Chick = AddMob(Manager, TEXT("minecraft:chicken"), FVector(2.5, 1.0, 2.5));
+		Chick->MakeBaby();
+		TestTrue(TEXT("a chick is half a chicken's size"), FMath::IsNearlyEqual(Chick->Body.Width, 0.2f, 0.001f));
 	}
 	{
 		// Enderman: neutral until hurt; a hit teleports it off.
@@ -324,7 +390,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("open sky by day is 15"), Manager.EstimateSkyLight(Open), 15);
 		TestFalse(TEXT("too bright to spawn"), Manager.IsDarkEnoughToSpawn(Open));
 		// Under a roof 21 across, by day: dark.
-		FillBox(World, 0, 3, 0, 20, 3, 20, Stone);
+		FillMobBox(World, 0, 3, 0, 20, 3, 20, Stone);
 		TestEqual(TEXT("under a wide roof the sky is out"), Manager.EstimateSkyLight(FIntVector(10, 1, 10)), 0);
 		TestTrue(TEXT("so mobs spawn there by day"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
 		TestTrue(TEXT("though near the edge, light creeps in"), Manager.EstimateSkyLight(FIntVector(1, 1, 10)) >= 8);
@@ -341,7 +407,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
 		const FMcStateId Water = State(TEXT("minecraft:water"));
-		FillBox(World, 0, 1, -4, 30, 12, 4, Water);
+		FillMobBox(World, 0, 1, -4, 30, 12, 4, Water);
 		FMcEntityManager Manager(World);
 		Manager.bDaylight = false;
 		Manager.PlayerPositions = { FVector(0.5, 5.0, 0.5) };

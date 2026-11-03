@@ -2,6 +2,7 @@
 #include "McLang.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McVehicle.h"
 
 namespace
 {
@@ -19,6 +20,7 @@ namespace
 
 	// Aliases point at the command they stand for.
 	const FCommandInfo Commands[] = {
+		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
@@ -36,6 +38,7 @@ namespace
 		{ TEXT("me"), 0, TEXT("/me <action>") },
 		{ TEXT("msg"), 0, TEXT("/msg <targets> <message>") },
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
+		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -400,7 +403,21 @@ namespace
 		{
 			return { Fail(Error) };
 		}
-		const FName Item = ItemId(Words[2]);
+		// Item components ride in brackets after the id: name[component=json,...] (the JSON may not contain spaces).
+		FString ItemToken = Words[2];
+		TMap<FName, FString> Components;
+		int32 Open;
+		if (ItemToken.FindChar(TEXT('['), Open) && ItemToken.EndsWith(TEXT("]")))
+		{
+			const FString Inside = ItemToken.Mid(Open + 1, ItemToken.Len() - Open - 2);
+			ItemToken.LeftInline(Open);
+			int32 Equals;
+			if (Inside.FindChar(TEXT('='), Equals))
+			{
+				Components.Add(ItemId(Inside.Left(Equals)), Inside.Mid(Equals + 1));
+			}
+		}
+		const FName Item = ItemId(ItemToken);
 		const int32 MaxStack = Target.GetMaxStackSize(Item);
 		if (MaxStack <= 0)
 		{
@@ -423,7 +440,7 @@ namespace
 		}
 		for (const FString& Player : Players)
 		{
-			Target.Give(Player, Item, Count);
+			Components.IsEmpty() ? Target.Give(Player, Item, Count) : Target.GiveWith(Player, Item, Count, Components);
 		}
 		if (Players.Num() == 1)
 		{
@@ -491,6 +508,67 @@ namespace
 		const int32 Bracket = Token.Find(TEXT("["));
 		const FString Id = Bracket == INDEX_NONE ? Token : Token.Left(Bracket);
 		return Registry.ParseState((Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id).ToLower() + (Bracket == INDEX_NONE ? FString() : Token.Mid(Bracket)));
+	}
+
+	// /playsound <sound> <source> [<targets>] [<x> <y> <z>] [<volume>] [<pitch>]: the event plays for everyone (the targets are
+	// not told apart), at the position given or where the sender stands. The sounds.json of the packs decides what is heard.
+	FReplies RunPlaySound(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		static const TCHAR* Sources[] = { TEXT("master"), TEXT("music"), TEXT("record"), TEXT("weather"), TEXT("block"), TEXT("hostile"),
+			TEXT("neutral"), TEXT("player"), TEXT("ambient"), TEXT("voice") };
+		if (Words.Num() < 3 || Words.Num() > 10)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		bool bSource = false;
+		for (const TCHAR* Source : Sources)
+		{
+			bSource |= Words[2] == Source;
+		}
+		FString Event = Words[1];
+		Event.RemoveFromStart(TEXT("minecraft:"));
+		if (!bSource || Event.IsEmpty())
+		{
+			return BadArgument(Command);
+		}
+		int32 Next = 3;
+		FString Who = SenderName(Sender);
+		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || !Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~"))))
+		{
+			Who = Words[Next].StartsWith(TEXT("@")) ? SenderName(Sender) : Words[Next];
+			++Next;
+		}
+		const FVector Here = SenderFeet(Sender, Target);
+		FVector Position = Here;
+		if (Words.Num() - Next >= 3)
+		{
+			if (!(ParseCoordinate(Words[Next], Here.X, true, Position.X) && ParseCoordinate(Words[Next + 1], Here.Y, false, Position.Y)
+				&& ParseCoordinate(Words[Next + 2], Here.Z, true, Position.Z)))
+			{
+				return BadArgument(Command);
+			}
+			Next += 3;
+		}
+		float Volume = 1.0f;
+		float Pitch = 1.0f;
+		if (Words.IsValidIndex(Next))
+		{
+			if (!Words[Next].IsNumeric() || FCString::Atof(*Words[Next]) < 0.0f)
+			{
+				return BadArgument(Command);
+			}
+			Volume = FCString::Atof(*Words[Next++]);
+		}
+		if (Words.IsValidIndex(Next))
+		{
+			if (!Words[Next].IsNumeric() || FCString::Atof(*Words[Next]) < 0.0f || FCString::Atof(*Words[Next]) > 2.0f)
+			{
+				return BadArgument(Command);
+			}
+			Pitch = FCString::Atof(*Words[Next++]);
+		}
+		Target.PlaySoundAt(FName(*Event), Position, Volume, Pitch);
+		return { Ok(McLang::Format(TEXT("commands.playsound.success.single"), { Words[1], Who })) };
 	}
 
 	FReplies RunSetBlock(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -604,11 +682,12 @@ namespace
 			return BadArgument(Command);
 		}
 		const FMcMobType* Type = FMcMobType::Find(Kind);
-		if (!Type)
+		// Minecarts and boats are entities without a mob type.
+		if (!Type && !FMcVehicle::IsVehicleType(Kind) && Kind != TEXT("minecraft:tnt"))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed"))) };
 		}
-		if (Type->IsHostile() && Target.GetDifficulty() == 0)
+		if (Type && Type->IsHostile() && Target.GetDifficulty() == 0)
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed.peaceful"))) };
 		}
@@ -709,6 +788,41 @@ namespace
 		}
 		const FString Key = FString::Printf(TEXT("commands.clear.%s.%s"), bTest ? TEXT("test") : TEXT("success"), bSingle ? TEXT("single") : TEXT("multiple"));
 		return { Ok(McLang::Format(Key, { FString::FromInt(Total), Who })) };
+	}
+
+	FReplies RunAdvancement(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /advancement (grant|revoke) <targets> only <advancement>
+		if (Words.Num() != 5 || (Words[1] != TEXT("grant") && Words[1] != TEXT("revoke")) || Words[3] != TEXT("only"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGrant = Words[1] == TEXT("grant");
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		int32 Changed = 0;
+		FString Title;
+		for (const FString& Player : Players)
+		{
+			FString Name;
+			const int32 Result = Target.SetAdvancement(Player, Words[4], bGrant, Name);
+			if (Result < 0)
+			{
+				return { Fail(McLang::Format(TEXT("advancement.advancementNotFound"), { Words[4] })) };
+			}
+			Changed += Result;
+			Title = Name;
+		}
+		const bool bSingle = Players.Num() == 1;
+		const FString Who = bSingle ? Players[0] : FString::FromInt(Players.Num());
+		const FString Key = FString::Printf(TEXT("commands.advancement.%s.one.to.%s.%s"), bGrant ? TEXT("grant") : TEXT("revoke"), bSingle ? TEXT("one") : TEXT("many"),
+			Changed > 0 ? TEXT("success") : TEXT("failure"));
+		const FString Text = McLang::Format(Key, { Title, Who });
+		return { Changed > 0 ? Ok(Text) : Fail(Text) };
 	}
 
 	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -1210,6 +1324,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunAccess(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("playsound"))
+	{
+		return RunPlaySound(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("setblock"))
 	{
 		return RunSetBlock(Command, Words, Sender, Target);
@@ -1229,6 +1347,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("clear"))
 	{
 		return RunClear(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("advancement"))
+	{
+		return RunAdvancement(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("effect"))
 	{
@@ -1307,7 +1429,7 @@ TConstArrayView<McCommands::FGameRule> McCommands::GetGameRules()
 		{ TEXT("showDeathMessages"), false, TEXT("true") },
 		{ TEXT("snowAccumulationHeight"), true, TEXT("1") },
 		{ TEXT("spawnChunkRadius"), true, TEXT("2") },
-		{ TEXT("spawnerBlocksEnabled"), false, TEXT("true") },
+		{ TEXT("spawnerBlocksWork"), false, TEXT("true") },
 		{ TEXT("spawnMonsters"), false, TEXT("true") },
 		{ TEXT("spawnRadius"), true, TEXT("10") },
 		{ TEXT("spectatorsGenerateChunks"), false, TEXT("true") },

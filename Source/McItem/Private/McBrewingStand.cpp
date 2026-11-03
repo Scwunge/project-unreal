@@ -82,6 +82,7 @@ bool FMcBrewingStand::Tick()
 		else if (--BrewTimeLeft == 0)
 		{
 			Brew();
+			bFinished = true;
 			bChanged = true;
 		}
 	}

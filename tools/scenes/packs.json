@@ -1,0 +1,28 @@
+{
+  "description": "Resource pack look test on classic_flat (surface y=-61): stone, ores, grass, dirt, wood, sand, wool, a crafting table and furnace, a water pool. Shoot it with -McSpawnMobs=cow,3 for a mob, with and without -McPacks.",
+  "camera": [4.5, -55.5, -3.5, 0.0, 42.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [0, -60, 0], "state": "minecraft:stone" },
+    { "from": [1, -60, 0], "to": [1, -60, 0], "state": "minecraft:cobblestone" },
+    { "from": [2, -60, 0], "to": [2, -60, 0], "state": "minecraft:coal_ore" },
+    { "from": [3, -60, 0], "to": [3, -60, 0], "state": "minecraft:iron_ore" },
+    { "from": [4, -60, 0], "to": [4, -60, 0], "state": "minecraft:gold_ore" },
+    { "from": [5, -60, 0], "to": [5, -60, 0], "state": "minecraft:diamond_ore" },
+    { "from": [6, -60, 0], "to": [6, -60, 0], "state": "minecraft:emerald_ore" },
+    { "from": [7, -60, 0], "to": [7, -60, 0], "state": "minecraft:lapis_ore" },
+    { "from": [8, -60, 0], "to": [8, -60, 0], "state": "minecraft:redstone_ore[lit=false]" },
+
+    { "from": [0, -60, 2], "to": [0, -60, 2], "state": "minecraft:grass_block[snowy=false]" },
+    { "from": [1, -60, 2], "to": [1, -60, 2], "state": "minecraft:dirt" },
+    { "from": [2, -60, 2], "to": [2, -60, 2], "state": "minecraft:oak_log[axis=y]" },
+    { "from": [3, -60, 2], "to": [3, -60, 2], "state": "minecraft:oak_planks" },
+    { "from": [4, -60, 2], "to": [4, -60, 2], "state": "minecraft:birch_log[axis=y]" },
+    { "from": [5, -60, 2], "to": [5, -60, 2], "state": "minecraft:sand" },
+    { "from": [6, -60, 2], "to": [6, -60, 2], "state": "minecraft:white_wool" },
+    { "from": [7, -60, 2], "to": [7, -60, 2], "state": "minecraft:crafting_table" },
+    { "from": [8, -60, 2], "to": [8, -60, 2], "state": "minecraft:furnace[facing=south,lit=false]" },
+
+    { "from": [0, -61, 4], "to": [3, -61, 5], "state": "minecraft:water[level=0]" },
+    { "from": [5, -60, 4], "to": [5, -59, 4], "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]" }
+  ]
+}

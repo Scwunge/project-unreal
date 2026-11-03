@@ -158,7 +158,11 @@ public:
 	FMcContainerMenu(const TSharedPtr<FMcContainer>& First, const TSharedPtr<FMcContainer>& Second, const TSharedPtr<FMcContainer>& PlayerInventory);
 
 protected:
-	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override { return true; }
+	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override;
+
+public:
+	// A shulker box's menu: another box can't go inside.
+	bool bNoShulkerBoxes = false;
 
 private:
 	TSharedPtr<FMcContainer> Container;

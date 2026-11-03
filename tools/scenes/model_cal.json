@@ -1,0 +1,7 @@
+{
+  "description": "One stone block for checking a pack's block model and blockstate override (zz_test_model).",
+  "camera": [0.5, -55.38, 0.5, 0, 90],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [0, -60, 0], "state": "minecraft:stone" }
+  ]
+}

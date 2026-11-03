@@ -22,7 +22,7 @@ namespace
 		{
 			return 0;
 		}
-		const FMcItemStack& Current = To.Items->Get(Slot);
+		const FMcItemStack& Current = To.GetStack(Slot);
 		const int32 Limit = FMath::Min(To.SlotLimit ? To.SlotLimit(Slot) : 64, Stack.GetMaxStackSize());
 		if (Current.IsEmpty())
 		{
@@ -32,11 +32,12 @@ namespace
 	}
 }
 
-FMcSlotAccess McHopper::ForContainer(const TSharedPtr<FMcContainer>& Items)
+FMcSlotAccess McHopper::ForContainer(const TSharedPtr<FMcContainer>& Items, const TSharedPtr<FMcContainer>& More)
 {
 	FMcSlotAccess Access;
 	Access.Items = Items;
-	Access.Insert = Range(0, Items->Num());
+	Access.More = More;
+	Access.Insert = Range(0, Items->Num() + (More.IsValid() ? More->Num() : 0));
 	Access.Extract = Access.Insert;
 	return Access;
 }
@@ -110,14 +111,14 @@ bool McHopper::Insert(const FMcSlotAccess& To, FMcItemStack& Stack)
 		{
 			continue;
 		}
-		FMcItemStack Current = To.Items->Get(Slot);
+		FMcItemStack Current = To.GetStack(Slot);
 		if (Current.IsEmpty())
 		{
 			Current = Stack;
 			Current.Count = 0;
 		}
 		Current.Count += Put;
-		To.Items->Set(Slot, Current);
+		To.SetStack(Slot, Current);
 		Stack.Count -= Put;
 		bMoved = true;
 	}
@@ -136,7 +137,7 @@ bool McHopper::MoveOne(const FMcSlotAccess& From, const FMcSlotAccess& To)
 	}
 	for (const int32 Slot : From.Extract)
 	{
-		FMcItemStack Source = From.Items->Get(Slot);
+		FMcItemStack Source = From.GetStack(Slot);
 		if (Source.IsEmpty())
 		{
 			continue;
@@ -146,7 +147,7 @@ bool McHopper::MoveOne(const FMcSlotAccess& From, const FMcSlotAccess& To)
 		if (Insert(To, One))
 		{
 			--Source.Count;
-			From.Items->Set(Slot, Source.Count > 0 ? Source : FMcItemStack());
+			From.SetStack(Slot, Source.Count > 0 ? Source : FMcItemStack());
 			return true;
 		}
 	}

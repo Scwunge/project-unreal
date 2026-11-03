@@ -47,6 +47,65 @@ namespace McCombat
 		return FMath::Clamp((static_cast<float>(TicksSinceAttack) + 0.5f) / (20.0f / FMath::Max(Speed, 0.1f)), 0.0f, 1.0f);
 	}
 
+	float GetBowPower(int32 DrawTicks)
+	{
+		const float Seconds = static_cast<float>(DrawTicks) / 20.0f;
+		return FMath::Min(1.0f, (Seconds * Seconds + Seconds * 2.0f) / 3.0f);
+	}
+
+	float GetBowFovScale(float DrawSeconds)
+	{
+		const float T = FMath::Clamp(DrawSeconds, 0.0f, 1.0f);
+		return 1.0f - 0.15f * T * T;
+	}
+
+	namespace
+	{
+		double Gaussian(FRandomStream& Random)
+		{
+			// Box-Muller from two uniforms.
+			const double U1 = FMath::Max(static_cast<double>(Random.FRand()), 1.0e-9);
+			return FMath::Sqrt(-2.0 * FMath::Loge(U1)) * FMath::Cos(2.0 * PI * static_cast<double>(Random.FRand()));
+		}
+	}
+
+	FVector GetBowAim(const FVector& Look, FRandomStream& Random)
+	{
+		return Look + FVector(Gaussian(Random), Gaussian(Random), Gaussian(Random)) * 0.0085;
+	}
+
+	double GetBowLaunchDrop()
+	{
+		return 0.1;
+	}
+
+	float GetHurtTilt(float HurtTicks)
+	{
+		const float T = FMath::Clamp(HurtTicks, 0.0f, 8.0f);
+		return 41.1f * FMath::Pow(T / 10.0f, 4.08f);
+	}
+
+	float GetHurtSide(float McYawDegrees, double OffsetX, double OffsetZ, bool bHasSource)
+	{
+		if (!bHasSource)
+		{
+			return 1.0f;
+		}
+		const double Length = FMath::Sqrt(OffsetX * OffsetX + OffsetZ * OffsetZ);
+		if (Length < 1.0e-6)
+		{
+			return 0.0f;
+		}
+		const double Yaw = FMath::DegreesToRadians(static_cast<double>(McYawDegrees));
+		// Facing is (-sin, cos) in (x, z); the left of it is (cos, sin).
+		return static_cast<float>((OffsetX * FMath::Cos(Yaw) + OffsetZ * FMath::Sin(Yaw)) / Length);
+	}
+
+	float GetBowShootPitch(float U, float Power)
+	{
+		return 0.62f + 0.21f * U + 0.5f * Power;
+	}
+
 	float GetDamage(float BaseDamage, float Strength, bool bCritical)
 	{
 		float Damage = BaseDamage * (0.2f + Strength * Strength * 0.8f);

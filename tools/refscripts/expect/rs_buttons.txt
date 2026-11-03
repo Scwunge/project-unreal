@@ -1,0 +1,6 @@
+23|1,-60,0|stone_button[face=floor,facing=north,powered=true]|stone_button[face=floor,facing=north,powered=false]
+34|4,-60,0|oak_button[face=floor,facing=north,powered=false]|oak_button[face=floor,facing=north,powered=true]
+4|1,-60,0|stone_button[face=floor,facing=north,powered=false]|stone_button[face=floor,facing=north,powered=true]
+63|4,-60,0|oak_button[face=floor,facing=north,powered=true]|oak_button[face=floor,facing=north,powered=false]
+74|7,-60,0|lever[face=floor,facing=north,powered=false]|lever[face=floor,facing=north,powered=true]
+78|7,-60,0|lever[face=floor,facing=north,powered=true]|lever[face=floor,facing=north,powered=false]

@@ -1,10 +1,12 @@
-#include "McWeatherComponent.h"
+﻿#include "McWeatherComponent.h"
 #include "McBiomeRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McRender.h"
+#include "McSkyComponent.h"
+#include "McRenderMode.h"
 #include "McRenderTextures.h"
 #include "McSound.h"
 #include "Camera/PlayerCameraManager.h"
@@ -139,6 +141,9 @@ void UMcWeatherComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const float Rain = GetRain ? GetRain() : 0.0f;
+	// In Unreal Mode the world is lit by the scene, so unlit streaks would glow at night: dim them with the sky's light
+	// (the vanilla material already scales by it, but its picture is brighter than the dark scene around it).
+	const uint8 Tone = McRenderMode::IsEnhanced() ? static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Sqrt(FMath::Clamp(McSky::GetSkyLightFactor(), 0.0f, 1.0f)) * 255.0f), 0, 255)) : 255;
 	const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
 	if (Rain <= 0.0f || !BlockWorld || !RainMaterial || !Controller || !Controller->PlayerCameraManager)
 	{
@@ -224,7 +229,7 @@ void UMcWeatherComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 			Out.UV0.Add(FVector2D(1.0f + Sway, -VBottom));
 			Out.UV0.Add(FVector2D(Sway, -VBottom));
 			const FVector Normal = McCoords::BlockToUnreal(FVector(Away.X, 0.0, Away.Y)).GetSafeNormal();
-			const FColor Colour(255, 255, 255, static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(Fade * Rain * 255.0f), 0, 255)));
+			const FColor Colour(Tone, Tone, Tone, static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(Fade * Rain * 255.0f), 0, 255)));
 			for (int32 Corner = 0; Corner < 4; ++Corner)
 			{
 				Out.Normals.Add(-Normal);

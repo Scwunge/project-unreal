@@ -5,7 +5,7 @@ public class McRender : ModuleRules
 	public McRender(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "McCore", "McWorld", "McAssets", "ProceduralMeshComponent" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "ImageWrapper", "Json" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "McCore", "McWorld", "McItem", "McAssets", "ProceduralMeshComponent" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI", "ImageWrapper", "Json", "InputCore", "McSim" });
 	}
 }

@@ -84,6 +84,9 @@ public:
 	// Whether this mob goes for that entity as its prey (zombies: villagers; golems: hostile mobs but the creeper).
 	bool IsPrey(const FMcEntity& Other) const;
 
+	// A chick: half the size, and grown up after twenty minutes (the baby's age counts up from -24000): SetYoung(YoungSpan).
+	void MakeBaby();
+
 	// Slimes only: 1, 2 or 4. Sets the size of the body and (with bHeal) the health, size squared.
 	void SetSize(int32 InSize, bool bHeal = true);
 	// What a bite does: the type's, except for slimes, where the smallest does none and the others their size.
@@ -97,6 +100,9 @@ public:
 	// Counts up with every hit that gets through, so a watcher can tell a new hit from the last without having to
 	// catch HurtTime at its peak (it has already counted down once by the time the tick is over).
 	int32 HurtEvents = 0;
+	// The id of the vehicle it sits in (a boat picks up what it bumps into), or 0. A mob that sits does nothing and is
+	// moved by its vehicle; it gets out when that goes. Not saved.
+	int32 RidingId = 0;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).

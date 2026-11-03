@@ -25,6 +25,12 @@ public:
 	virtual void Tick(FMcEntityManager& Manager) {}
 	// True for mobs and the like, which have health and can be hit.
 	virtual bool IsLiving() const { return false; }
+	// Minecarts and boats, which a player can ride (see McVehicle.h).
+	virtual bool IsVehicle() const { return false; }
+	// What a player's blow can land on: the living and the vehicles.
+	virtual bool IsAttackable() const { return IsLiving(); }
+	// A player hit something attackable that isn't a mob (a vehicle): Damage is what the held item does. False if it did nothing.
+	virtual bool OnAttacked(float Damage, bool bCreative) { return false; }
 	// False for what isn't worth keeping in a chunk's save (an arrow in flight).
 	virtual bool IsPersistent() const { return true; }
 
@@ -67,6 +73,21 @@ public:
 	static constexpr int32 MergeIntervalTicks = 10;
 };
 
+// A sand, gravel or other block in the air. The block simulation moves it (FMcSimulation::GetFallingBlocks) and whoever
+// owns both mirrors it here so clients are sent and draw it like any other entity. Not kept in a save: the simulation
+// owns the falling block, and it lands (or is lost) when the world closes.
+class MCENTITY_API FMcFallingBlockEntity final : public FMcEntity
+{
+public:
+	FMcFallingBlockEntity();
+	static const FName& StaticType();
+	virtual FName GetType() const override { return StaticType(); }
+	virtual bool IsPersistent() const override { return false; }
+
+	// The block's registry name, e.g. "minecraft:sand": its picture is the block's.
+	FName Block;
+};
+
 class MCENTITY_API FMcEntityManager
 {
 public:
@@ -88,10 +109,13 @@ public:
 
 	const TArray<TUniquePtr<FMcEntity>>& GetEntities() const { return Entities; }
 	FMcBlockWorld& GetWorld() { return World; }
+	FRandomStream& GetRandom() { return Random; }
 	const FMcBlockWorld& GetWorld() const { return World; }
 
 	// Whether the sun is up, for mobs that burn in it; set by the server each tick.
 	bool bDaylight = false;
+	// Whether it rains (where the sky is open); set by the server each tick.
+	bool bRaining = false;
 	// 0 peaceful to 3 hard; what some mob effects scale with.
 	int32 Difficulty = 2;
 	// The tick of the day, 0 at sunrise to 23999; set by the server each tick. Villagers keep their hours by it.
@@ -133,6 +157,9 @@ public:
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
+	// Called instead of OnPlayerHurt for a player a blast reaches: the feet position, the damage, the push to add to
+	// their velocity (blocks a tick) and the centre of the blast. Left unset, the damage goes to OnPlayerHurt.
+	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlasted;
 	// Called with the position of a player, an effect's name ("poison"), its level less one and its ticks, for a splash
 	// potion that reached them. Left unset, the effect is dropped.
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
@@ -176,7 +203,40 @@ public:
 		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
 	}
 
-	FRandomStream& GetRandom() { return Random; }
+	// ---- Detector rails ----
+	// Called when a minecart is on a detector rail (true, every tick) or has left it (false), for whoever runs the
+	// redstone. Left unset, rails don't hear.
+	TFunction<void(const FIntVector&, bool)> OnDetector;
+	// Detector rails now powered (the tick of their next look) and those touched this tick.
+	TMap<FIntVector, int32> Detectors;
+	TSet<FIntVector> Touched;
+	int32 TickNow = 0;
+	void SetDetector(const FIntVector& Pos, bool bOccupied) const
+	{
+		if (OnDetector)
+		{
+			OnDetector(Pos, bOccupied);
+		}
+	}
+
+	// ---- Target blocks ----
+	// Called when an arrow sticks in a block: the cell, where it hit (block coordinates) and which way it was flying, for
+	// whoever runs the redstone. Left unset, targets don't hear.
+	TFunction<void(const FIntVector&, const FVector&, const FVector&)> OnArrowHit;
+
+	// A minecart touching a detector rail's sensor (the rail's middle three fifths, up to half a block) powers it at once and
+	// again every tick it touches; once on, the rail looks again 20 ticks on and every 20 after, and goes off at the first look
+	// with no cart on it (vehicle_log12.txt: on at tick 557000 with the cart's box 0.01 over the sensor, still on at 557039
+	// with the cart's box 0.5 past it, off at 557040).
+	void TouchDetector(const FIntVector& Pos)
+	{
+		Touched.Add(Pos);
+		if (!Detectors.Contains(Pos))
+		{
+			Detectors.Add(Pos, TickNow + 20);
+			SetDetector(Pos, true);
+		}
+	}
 
 private:
 	FMcBlockWorld& World;

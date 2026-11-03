@@ -165,7 +165,7 @@ namespace
 			Buffers.Positions.Add(FVector(Block.X, Block.Z, Block.Y) * McCoords::UnitsPerBlock);
 			Buffers.Normals.Add(Normal);
 			Buffers.UV0.Add(UVs[Corner]);
-			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Translucent ? McSurface::Water : McSurface::Lava));
+			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Water ? McSurface::Water : McSurface::Lava));
 			Buffers.UV2.Add(Light);
 			Buffers.Colors.Add(Color);
 		}
@@ -188,10 +188,11 @@ namespace
 			return;
 		}
 		const bool bWater = Kind == EFluid::Water;
-		const EMcRenderPass Pass = bWater ? EMcRenderPass::Translucent : EMcRenderPass::Opaque;
+		const EMcRenderPass Pass = bWater ? EMcRenderPass::Water : EMcRenderPass::Opaque;
 		const FColor Tint = bWater ? Snapshot.GetTint(EMcTintSource::Water, X, Z) : FColor::White;
 		const uint16 StillLayer = bWater ? Fluids.WaterStill : Fluids.LavaStill;
 		const uint16 FlowLayer = bWater ? Fluids.WaterFlow : Fluids.LavaFlow;
+		const uint16 SideLayer = bWater ? Fluids.WaterFlowSide : Fluids.LavaFlowSide;
 		const uint8 OwnFaces = OpaqueFacesAt(X, Y, Z);
 		const FVector2D OwnLight = LightAt(X, Y, Z);
 
@@ -217,7 +218,8 @@ namespace
 			}
 		}
 
-		// Sides. They use the flowing texture, which covers a half-size piece of the sprite.
+		// Sides. They show the top left quarter of the flowing picture, which is a layer of its own, the fluid's height
+		// cut from the bottom of it.
 		for (int32 Direction = 2; Direction < NumDirections; ++Direction)
 		{
 			const FIntVector& Offset = Offsets[Direction];
@@ -235,9 +237,9 @@ namespace
 				FVector(Left.X, LeftHeight, Left.Y), FVector(Left.X, 0.0, Left.Y), FVector(Right.X, 0.0, Right.Y), FVector(Right.X, RightHeight, Right.Y),
 			};
 			const FVector2D UVs[4] = {
-				FVector2D(0.0, 0.5 - LeftHeight * 0.5), FVector2D(0.0, 0.5), FVector2D(0.5, 0.5), FVector2D(0.5, 0.5 - RightHeight * 0.5),
+				FVector2D(0.0, 1.0 - LeftHeight), FVector2D(0.0, 1.0), FVector2D(1.0, 1.0), FVector2D(1.0, 1.0 - RightHeight),
 			};
-			Emit(Pass, X, Y, Z, Corners, UVs, Direction, false, LightFor(Direction), FlowLayer, Tint);
+			Emit(Pass, X, Y, Z, Corners, UVs, Direction, false, LightFor(Direction), SideLayer, Tint);
 		}
 
 		// Bottom.
@@ -331,6 +333,8 @@ TSharedRef<const FFluidPalette> BuildPalette(const FMcBlockRegistry& Registry, c
 	Palette->WaterFlow = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/water_flow")));
 	Palette->LavaStill = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_still")));
 	Palette->LavaFlow = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_flow")));
+	Palette->WaterFlowSide = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/water_flow#side")));
+	Palette->LavaFlowSide = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_flow#side")));
 
 	FMcBiomeColorTable& Biomes = FMcBiomeColorTable::Get();
 	Biomes.EnsureLoaded();

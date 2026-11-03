@@ -1,3 +1,4 @@
+#include "McBlockEntity.h"
 #include "McBlockRegistry.h"
 #include "McChunk.h"
 #include "McChunkCodec.h"
@@ -31,6 +32,14 @@ bool FMcChunkCodecTest::RunTest(const FString& Parameters)
 	}
 	Chunk.FillBiome(3);
 	Chunk.SetBiomeCell(1, 40, 2, 7);
+	// A sign's words go with its chunk (other players have to read them); a chest's contents don't.
+	Chunk.SetBlock(2, 70, 3, State(TEXT("minecraft:oak_sign[rotation=4]")));
+	FMcBlockEntity Sign = FMcBlockEntity::MakeSign();
+	Sign.SignSides[1].Lines[2] = TEXT("on the back");
+	Sign.SignSides[1].Color = FName("red");
+	Chunk.SetBlockEntity(2, 70, 3, Sign);
+	Chunk.SetBlock(4, 70, 3, State(TEXT("minecraft:chest")));
+	Chunk.SetBlockEntity(4, 70, 3, FMcBlockEntity::MakeContainer(27));
 
 	const TArray<uint8> Bytes = McChunkCodec::Encode(Chunk);
 	TestTrue(TEXT("a mostly flat chunk is small"), Bytes.Num() > 0 && Bytes.Num() < 2048);
@@ -60,6 +69,9 @@ bool FMcChunkCodecTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("every block comes back"), bSame);
 	TestEqual(TEXT("biomes come back"), Copy.GetBiome(5, -64 + 40 * 4, 9), static_cast<FMcBiomeId>(7));
 	TestEqual(TEXT("other biomes come back"), Copy.GetBiome(0, 0, 0), static_cast<FMcBiomeId>(3));
+	const FMcBlockEntity* SignBack = Copy.FindBlockEntity(2, 70, 3);
+	TestTrue(TEXT("the sign's words come back"), SignBack && *SignBack == Sign);
+	TestNull(TEXT("the chest's contents stay on the server"), Copy.FindBlockEntity(4, 70, 3));
 	for (int32 Index = 0; Index < 24; ++Index)
 	{
 		TestEqual(TEXT("non-air counts match"), Copy.GetSection(Index).NonAirCount, Chunk.GetSection(Index).NonAirCount);

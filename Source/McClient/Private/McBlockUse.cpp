@@ -1,18 +1,34 @@
 #include "McBlockUse.h"
+#include "McRecipe.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
+#include "McBed.h"
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
+#include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBell.h"
+#include "McBook.h"
+#include "McLecternMenu.h"
 #include "McChunk.h"
 #include "McChestLink.h"
 #include "McEnchanting.h"
 #include "McEntityHost.h"
+#include "McTnt.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
 #include "McAnvilMenu.h"
 #include "McArrow.h"
 #include "McBuckets.h"
+#include "McJukebox.h"
+#include "McSound.h"
+
+#include "McShulker.h"
+#include "McShulkerLids.h"
+#include "McPot.h"
+#include "McFont.h"
+#include "McSign.h"
 #include "McSimulation.h"
 #include "McPlayerData.h"
 #include "McPlayerPawn.h"
@@ -32,6 +48,38 @@ namespace
 		return Registry.IsValidState(State) ? Registry.GetBlockOf(State).Name : NAME_None;
 	}
 
+	// Whether a block burns, for fire to stay beside it.
+	bool IsFlammableName(FName Name)
+	{
+	const FString Path = Name.ToString();
+	return Path.EndsWith(TEXT("_planks")) || Path.EndsWith(TEXT("_log")) || Path.EndsWith(TEXT("_wood")) || Path.EndsWith(TEXT("_leaves"))
+		|| Path.EndsWith(TEXT("_wool")) || Path.EndsWith(TEXT("_carpet"))
+		|| Path == TEXT("minecraft:hay_block") || Path == TEXT("minecraft:bookshelf") || Path == TEXT("minecraft:tnt") || Path == TEXT("minecraft:vine")
+		|| Path == TEXT("minecraft:coal_block") || Path == TEXT("minecraft:dried_kelp_block") || Path == TEXT("minecraft:short_grass") || Path == TEXT("minecraft:tall_grass")
+		|| Path == TEXT("minecraft:scaffolding");
+	}
+
+	// Fire stays on something solid under it, or against a block that burns.
+	bool CanFireStay(const FMcBlockWorld& Blocks, const FIntVector& Pos)
+	{
+	const FMcStateId Below = Blocks.GetBlock(Pos - FIntVector(0, 1, 0));
+	for (const FBox3f& Box : FMcBlockShapes::Get().GetCollision(Below))
+	{
+		if (Box.Max.Y >= 0.99f && Box.Min.X <= 0.01f && Box.Max.X >= 0.99f && Box.Min.Z <= 0.01f && Box.Max.Z >= 0.99f)
+		{
+			return true;
+		}
+	}
+	for (const FIntVector& Step : { FIntVector(1, 0, 0), FIntVector(-1, 0, 0), FIntVector(0, 0, 1), FIntVector(0, 0, -1), FIntVector(0, 1, 0), FIntVector(0, -1, 0) })
+	{
+		if (IsFlammableName(GetBlockName(Blocks, Pos + Step)))
+		{
+			return true;
+		}
+	}
+	return false;
+	}
+
 	bool IsAnvilName(FName Name)
 	{
 		return Name == TEXT("minecraft:anvil") || Name == TEXT("minecraft:chipped_anvil") || Name == TEXT("minecraft:damaged_anvil");
@@ -39,7 +87,7 @@ namespace
 
 	bool IsChestName(FName Name)
 	{
-		return Name == TEXT("minecraft:chest") || Name == TEXT("minecraft:trapped_chest") || Name == TEXT("minecraft:barrel");
+		return Name == TEXT("minecraft:chest") || Name == TEXT("minecraft:trapped_chest") || Name == TEXT("minecraft:barrel") || McShulker::IsBox(Name);
 	}
 
 	// How many slots the block keeps as a plain container (chests, barrels, hoppers); 0 for any other.
@@ -48,6 +96,10 @@ namespace
 		if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper"))
 		{
 			return 9;
+		}
+		if (Name == TEXT("minecraft:jukebox"))
+		{
+			return 1;
 		}
 		return IsChestName(Name) ? ChestSlots : Name == TEXT("minecraft:hopper") ? McHopper::NumSlots : 0;
 	}
@@ -138,6 +190,7 @@ void UMcBlockUseSubsystem::ForgetAll()
 	Chests.Reset();
 	Machines.Reset();
 	Hoppers.Reset();
+	Jukeboxes.Reset();
 }
 
 void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
@@ -153,7 +206,20 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 			const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 			if (Actor && Actor->HasAuthority() && Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == TEXT("minecraft:hopper"))
 			{
-				Hoppers.FindOrAdd(MakeKey(*Actor, Pos)).World = Actor;
+				FHopperEntry& Entry = Hoppers.FindOrAdd(MakeKey(*Actor, Pos));
+				if (!Entry.World.IsValid())
+				{
+					Entry.Order = NextHopperOrder++;
+				}
+				Entry.World = Actor;
+			}
+		});
+		// So do the hoppers and part-done furnaces of a chunk as it loads.
+		Blocks->OnChunkAdded.AddWeakLambda(this, [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](FIntPoint ChunkPos)
+		{
+			if (AMcWorldActor* Actor = Weak.Get(); Actor && Actor->HasAuthority())
+			{
+				StartChunk(*Actor, ChunkPos);
 			}
 		});
 		if (FMcSimulation* Sim = WorldActor.GetSimulation())
@@ -164,6 +230,11 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 				{
 					Dispense(*Actor, Pos);
 				}
+			};
+			Sim->OnCraft = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](const FIntVector& Pos)
+			{
+				AMcWorldActor* Actor = Weak.Get();
+				return Actor && Craft(*Actor, Pos);
 			};
 		}
 		// Furnaces go into their chunks whenever the world saves.
@@ -195,13 +266,49 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 		for (TPair<FKey, FMachineEntry>& Pair : Machines)
 		{
 			Pair.Value.Machine->Tick();
+			if (Pair.Value.Kind == EMcBlockEntityKind::BrewingStand && StaticCastSharedPtr<FMcBrewingStand>(Pair.Value.Machine)->TakeFinished())
+			{
+				// The reference (sounds2 run): block.brewing_stand.brew, volume 1, pitch 1, at the block's centre, once.
+				if (AMcWorldActor* World = Pair.Value.World.Get())
+				{
+					if (FMcEntityHost* Host = World->GetEntityHost())
+					{
+						Host->GetManager().PlaySound(FName(TEXT("block.brewing_stand.brew")), FVector(Pair.Key.Pos) + FVector(0.5), 1.0f, 1.0f);
+					}
+				}
+			}
 		}
 		TickHoppers();
+		TickJukeboxes();
+		TickShulkers();
 		if (++CleanTimer >= 100)
 		{
 			CleanTimer = 0;
 			Sweep();
 		}
+	}
+}
+
+void UMcBlockUseSubsystem::TickShulkers()
+{
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		const FMcBlockWorld* Blocks = It->HasAuthority() ? It->GetBlockWorld() : nullptr;
+		if (!Blocks)
+		{
+			continue;
+		}
+		TMap<FIntVector, int32> Openers;
+		for (FConstPlayerControllerIterator Controller = GetWorld()->GetPlayerControllerIterator(); Controller; ++Controller)
+		{
+			const AMcPlayerPawn* Pawn = Controller->IsValid() && (!It->PlayerFilter || It->PlayerFilter(*Controller->Get())) ? Cast<AMcPlayerPawn>(Controller->Get()->GetPawn()) : nullptr;
+			const UMcPlayerDataComponent* Items = Pawn ? Pawn->Data.Get() : nullptr;
+			if (Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && McShulker::IsBox(GetBlockName(*Blocks, Items->GetWindow().Pos)))
+			{
+				++Openers.FindOrAdd(Items->GetWindow().Pos);
+			}
+		}
+		It->SetShulkerOpeners(Openers);
 	}
 }
 
@@ -258,62 +365,105 @@ void UMcBlockUseSubsystem::Sweep()
 		{
 			continue;
 		}
-		TArray<FIntVector> ToLoad;
-		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& ChunkPair : Blocks->GetChunks())
+		TArray<FIntPoint> Loaded;
+		Blocks->GetChunks().GetKeys(Loaded);
+		for (const FIntPoint& ChunkPos : Loaded)
 		{
-			for (const TPair<FIntVector, FMcBlockEntity>& Entity : ChunkPair.Value->GetBlockEntities())
+			StartChunk(*World, ChunkPos);
+		}
+	}
+}
+
+void UMcBlockUseSubsystem::StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	const FMcChunk* Chunk = Blocks ? Blocks->FindChunk(ChunkPos) : nullptr;
+	if (!Chunk)
+	{
+		return;
+	}
+	// Hoppers by their block, whether or not they hold anything yet.
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto IsHopper = [&Registry](FMcStateId State) { return Registry.IsValidState(State) && Registry.GetBlockOf(State).Name == TEXT("minecraft:hopper"); };
+	TArray<FMcStateId> States;
+	for (int32 Section = 0; Section < Chunk->NumSections(); ++Section)
+	{
+		const FMcChunkSection& Part = Chunk->GetSection(Section);
+		if (Part.IsEmpty() || !Part.Blocks.MayContain(IsHopper))
+		{
+			continue;
+		}
+		States.SetNumUninitialized(FMcPalettedContainer::NumEntries);
+		Part.Blocks.CopyTo(States);
+		for (int32 Index = 0; Index < States.Num(); ++Index)
+		{
+			if (IsHopper(States[Index]))
 			{
-				const FIntVector Pos(ChunkPair.Key.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPair.Key.Y * 16 + Entity.Key.Z);
-				if (Entity.Value.Kind == EMcBlockEntityKind::Container && !Hoppers.Contains(MakeKey(*World, Pos))
-					&& GetBlockName(*Blocks, Pos) == TEXT("minecraft:hopper"))
+				const FIntVector Pos(ChunkPos.X * 16 + (Index & 15), Chunk->SectionMinY(Section) + (Index >> 8), ChunkPos.Y * 16 + ((Index >> 4) & 15));
+				if (!Hoppers.Contains(MakeKey(WorldActor, Pos)))
 				{
-					Hoppers.Add(MakeKey(*World, Pos), FHopperEntry{ World, 0 });
-				}
-				if (Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
-				{
-					if (!Machines.Contains(MakeKey(*World, Pos)))
-					{
-						ToLoad.Add(Pos);
-					}
+					Hoppers.Add(MakeKey(WorldActor, Pos), FHopperEntry{ &WorldActor, 0, NextHopperOrder++ });
 				}
 			}
 		}
-		for (const FIntVector& Pos : ToLoad)
+	}
+	// Furnaces and brewing stands saved mid-work go on with it.
+	TArray<FIntVector> ToLoad;
+	for (const TPair<FIntVector, FMcBlockEntity>& Entity : Chunk->GetBlockEntities())
+	{
+		const FIntVector Pos(ChunkPos.X * 16 + Entity.Key.X, Entity.Key.Y, ChunkPos.Y * 16 + Entity.Key.Z);
+		if ((Entity.Value.Kind == EMcBlockEntityKind::Furnace || Entity.Value.Kind == EMcBlockEntityKind::BrewingStand)
+			&& !Machines.Contains(MakeKey(WorldActor, Pos)))
 		{
-			GetMachine(*World, Pos, false);
+			ToLoad.Add(Pos);
 		}
+	}
+	for (const FIntVector& Pos : ToLoad)
+	{
+		GetMachine(WorldActor, Pos, false);
 	}
 }
 
 void UMcBlockUseSubsystem::TickHoppers()
 {
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	for (auto It = Hoppers.CreateIterator(); It; ++It)
+	// In the order they were set down (the reference client's: a hopper handed an item before its own turn counts its wait
+	// from 8 down at once, so the next hop is 7 ticks on, and one handed it after its turn waits the full 8).
+	TArray<FKey> Keys;
+	Hoppers.GenerateKeyArray(Keys);
+	Keys.Sort([this](const FKey& A, const FKey& B) { return Hoppers[A].Order < Hoppers[B].Order; });
+	for (const FKey& Key : Keys)
 	{
-		AMcWorldActor* World = It.Value().World.Get();
+		FHopperEntry* Entry = Hoppers.Find(Key);
+		if (!Entry)
+		{
+			continue;
+		}
+		AMcWorldActor* World = Entry->World.Get();
 		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
-		const FIntVector Pos = It.Key().Pos;
+		const FIntVector Pos = Key.Pos;
 		if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
 		{
-			It.RemoveCurrent();
+			Hoppers.Remove(Key);
 			continue;
 		}
 		const FMcStateId State = Blocks->GetBlock(Pos);
 		if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:hopper"))
 		{
 			// Breaking it drops its items (ReleaseBlock, or the chest sweep).
-			It.RemoveCurrent();
+			Hoppers.Remove(Key);
 			continue;
 		}
-		if (--It.Value().Cooldown > 0)
+		if (--Entry->Cooldown > 0)
 		{
 			continue;
 		}
-		It.Value().Cooldown = 0;
+		Entry->Cooldown = 0;
 		// A powered hopper (enabled=false) holds still.
 		if (Registry.GetPropertyValue(State, TEXT("enabled")) != TEXT("false") && TickHopper(*World, Pos, State))
 		{
-			It.Value().Cooldown = McHopper::Cooldown;
+			// TickHopper may have handed items to other hoppers; the entry is still ours.
+			Hoppers[Key].Cooldown = McHopper::Cooldown;
 		}
 	}
 }
@@ -337,7 +487,16 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
 		if (McHopper::MoveOne(Self, Into))
 		{
+			ContentsChanged(WorldActor, Pos);
 			ContentsChanged(WorldActor, Target);
+			if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Target)))
+			{
+				// A receiver that has already had its turn this tick (earlier in Order) misses the decrement a later one gets in
+				// this same pass, so it is given one less: a hopper pair passes an item on every 7 ticks both ways (reference run
+				// log_lg_logi: moves at ticks 1, 8, 15, 22, ...).
+				const FHopperEntry* Sender = Hoppers.Find(MakeKey(WorldActor, Pos));
+				Receiver->Cooldown = McHopper::Cooldown - (Sender && Receiver->Order < Sender->Order ? 1 : 0);
+			}
 			bMoved = true;
 		}
 	}
@@ -388,10 +547,39 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		return FMcSlotAccess();
 	}
 	const FName Name = GetBlockName(*Blocks, Pos);
-	if (const int32 Slots = GetContainerSlots(Name))
+		if (const int32 Slots = GetContainerSlots(Name))
 	{
 		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
-		return Container.IsValid() ? McHopper::ForContainer(Container) : FMcSlotAccess();
+		if (!Container.IsValid())
+		{
+			return FMcSlotAccess();
+		}
+		// A double chest is one 54-slot inventory, the right half's slots first.
+		if (McChestLink::IsLinkable(Name))
+		{
+			if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pos))
+			{
+				const TSharedPtr<FMcContainer> Other = GetChest(WorldActor, Partner.GetValue(), Slots);
+				if (Other.IsValid())
+				{
+					const bool bRight = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("type")) == TEXT("right");
+					return bRight ? McHopper::ForContainer(Container, Other) : McHopper::ForContainer(Other, Container);
+				}
+			}
+		}
+		FMcSlotAccess Access = McHopper::ForContainer(Container);
+		if (Name == TEXT("minecraft:jukebox"))
+		{
+			// One music disc and nothing else.
+			Access.CanInsert = [](int32, const FMcItemStack& Stack) { return McJukebox::IsDisc(Stack.Item); };
+			Access.SlotLimit = [](int32) { return 1; };
+		}
+		if (McShulker::IsBox(Name))
+		{
+			// A shulker box never goes into a shulker box (reference run lg_hop, a hopper holding one beside a box).
+			Access.CanInsert = [](int32, const FMcItemStack& Stack) { return !Stack.Item.ToString().EndsWith(TEXT("shulker_box")); };
+		}
+		return Access;
 	}
 	if (Name == TEXT("minecraft:brewing_stand"))
 	{
@@ -405,6 +593,50 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		return Furnace.IsValid() ? McHopper::ForFurnace(Furnace, Face) : FMcSlotAccess();
 	}
 	return FMcSlotAccess();
+}
+
+bool UMcBlockUseSubsystem::Craft(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	using McHopper::EFace;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcEntityHost* Host = WorldActor.GetEntityHost();
+	if (!Blocks || !Host || GetBlockName(*Blocks, Pos) != TEXT("minecraft:crafter"))
+	{
+		return false;
+	}
+	const TSharedPtr<FMcContainer> Items = GetChest(WorldActor, Pos, 9);
+	if (!Items.IsValid())
+	{
+		return false;
+	}
+	TArray<FMcItemStack> Slots = Items->GetAll();
+	FMcItemStack Product;
+	if (!McCrafterCraft(Slots, Product))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		Items->Set(Index, Slots[Index]);
+	}
+	ContentsChanged(WorldActor, Pos);
+	// The block's orientation reads front_top: the front is the first word.
+	const FString Orientation = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("orientation")).ToString();
+	FString Front = Orientation;
+	Orientation.Split(TEXT("_"), &Front, nullptr);
+	const FName Facing(*Front);
+	const FIntVector Step = FacingStep(Facing);
+	const FMcSlotAccess Into = GetAccess(WorldActor, Pos + Step, Facing == TEXT("down") ? EFace::Top : Facing == TEXT("up") ? EFace::Bottom : EFace::Side);
+	if (Into.IsValid())
+	{
+		McHopper::Insert(Into, Product);
+		ContentsChanged(WorldActor, Pos + Step);
+	}
+	if (!Product.IsEmpty())
+	{
+		Host->GetManager().DropItem(FVector(Pos) + FVector(0.5) + FVector(Step) * 0.7, Product);
+	}
+	return true;
 }
 
 void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos)
@@ -467,6 +699,11 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			{
 				TakeOne();
 				ContentsChanged(WorldActor, Pos + Step);
+				// A hopper handed an item starts its wait (reference run log_dropper1: a dropper into a hopper, the hopper sends 7 on).
+				if (FHopperEntry* Receiver = Hoppers.Find(MakeKey(WorldActor, Pos + Step)))
+				{
+					Receiver->Cooldown = McHopper::Cooldown;
+				}
 			}
 			return;
 		}
@@ -517,11 +754,41 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 	}
 	else if (One.Item == TEXT("minecraft:fire_charge") || One.Item == TEXT("minecraft:flint_and_steel"))
 	{
-		// Fire where the front is air; a flint and steel is worn by one, a fire charge is used up.
+		// Lights an unlit campfire or candle in front, or makes fire where the front is air and the fire can stay; a flint and
+		// steel is worn by one, a fire charge is used up.
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		if (Registry.IsAir(Blocks->GetBlock(Pos + Step)))
+		const FIntVector Front = Pos + Step;
+		const FMcStateId FrontState = Blocks->GetBlock(Front);
+		const FString FrontName = GetBlockName(*Blocks, Front).ToString();
+		const bool bLightable = (FrontName == TEXT("minecraft:campfire") || FrontName == TEXT("minecraft:soul_campfire") || FrontName.EndsWith(TEXT("candle")))
+			&& Registry.GetPropertyValue(FrontState, TEXT("lit")) == TEXT("false")
+			&& Registry.GetPropertyValue(FrontState, TEXT("waterlogged")) != TEXT("true");
+		const bool bFire = Registry.IsAir(FrontState) && CanFireStay(*Blocks, Front);
+		const bool bTnt = FMcPrimedTnt::IsTnt(Registry.GetBlockOf(FrontState).Name);
+		if (bLightable || bFire || bTnt)
 		{
-			WorldActor.SetBlock(Pos + Step, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			if (bTnt)
+			{
+				FMcPrimedTnt::Ignite(Manager, Front);
+			}
+			else if (bLightable)
+			{
+				TMap<FName, FName> Lit;
+				for (const TCHAR* Kept : { TEXT("facing"), TEXT("signal_fire"), TEXT("waterlogged"), TEXT("candles") })
+				{
+					const FName Value = Registry.GetPropertyValue(FrontState, Kept);
+					if (!Value.IsNone())
+					{
+						Lit.Add(Kept, Value);
+					}
+				}
+				Lit.Add(TEXT("lit"), TEXT("true"));
+				WorldActor.SetBlock(Front, Registry.FindState(Registry.GetBlockOf(FrontState).Name, Lit).Get(FrontState));
+			}
+			else
+			{
+				WorldActor.SetBlock(Front, Registry.FindDefaultState(TEXT("minecraft:fire")).Get(0));
+			}
 			if (One.Item == TEXT("minecraft:fire_charge"))
 			{
 				TakeOne();
@@ -548,6 +815,7 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 		if (Box.IsSet() && Registry.IsAir(Blocks->GetBlock(Pos + Step)))
 		{
 			WorldActor.SetBlock(Pos + Step, Box.GetValue());
+			FillBox(WorldActor, Pos + Step, One);
 			TakeOne();
 			Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
 		}
@@ -588,12 +856,31 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 
 void UMcBlockUseSubsystem::ContentsChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && GetBlockName(*Blocks, Pos) == TEXT("minecraft:jukebox"))
+	{
+		SyncJukebox(WorldActor, Pos);
+	}
 	// Furnaces and brewing stands are written back at each sweep and save.
 	if (Chests.Contains(MakeKey(WorldActor, Pos)))
 	{
 		WriteChest(WorldActor, Pos);
+		// The other half of a double chest may have changed too.
+		const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+		if (Blocks && McChestLink::IsLinkable(GetBlockName(*Blocks, Pos)))
+		{
+			if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pos))
+			{
+				WriteChest(WorldActor, Partner.GetValue());
+			}
+		}
+	}
+	// Comparators that read it look again (after the write-back above).
+	if (FMcSimulation* Sim = WorldActor.GetSimulation())
+	{
+		Sim->NotifyContainerChanged(Pos);
 	}
 }
+
 
 TSharedPtr<FMcContainer> UMcBlockUseSubsystem::GetChest(AMcWorldActor& WorldActor, const FIntVector& Pos, int32 NumSlots)
 {
@@ -736,7 +1023,7 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 	{
 		return;
 	}
-	if (Entity->Kind == EMcBlockEntityKind::Container)
+	if (Entity->Kind == EMcBlockEntityKind::Container || Entity->Kind == EMcBlockEntityKind::Lectern)
 	{
 		Out.Append(Entity->Slots);
 	}
@@ -753,6 +1040,12 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 
 void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
+	// A shulker box keeps its things for the item it drops, and a decorated pot its sides (PackBoxDrops).
+	if (const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld(); Blocks && (McShulker::IsBox(GetBlockName(*Blocks, Pos)) || GetBlockName(*Blocks, Pos) == TEXT("minecraft:decorated_pot")))
+	{
+		return;
+	}
+	StopJukebox(WorldActor, Pos);
 	const FKey Key = MakeKey(WorldActor, Pos);
 	TArray<FMcItemStack> Contents;
 	if (const FChestEntry* Chest = Chests.Find(Key))
@@ -780,6 +1073,409 @@ void UMcBlockUseSubsystem::ReleaseBlock(AMcWorldActor& WorldActor, const FIntVec
 	}
 }
 
+void UMcBlockUseSubsystem::PackBoxDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (Blocks && GetBlockName(*Blocks, Pos) == TEXT("minecraft:decorated_pot"))
+	{
+		PackPotDrops(WorldActor, Pos, Drops);
+		return;
+	}
+	if (!Blocks || !McShulker::IsBox(GetBlockName(*Blocks, Pos)))
+	{
+		return;
+	}
+	const FKey Key = MakeKey(WorldActor, Pos);
+	TArray<FMcItemStack> Contents;
+	if (const FChestEntry* Chest = Chests.Find(Key))
+	{
+		Contents = Chest->Container->GetAll();
+		Chests.Remove(Key);
+	}
+	else
+	{
+		GetContents(WorldActor, Pos, Contents);
+	}
+	if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
+	{
+		if (Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15))
+		{
+			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		}
+	}
+	const TSharedPtr<FJsonValue> Packed = McShulker::Pack(Contents);
+	for (FMcItemStack& Drop : Drops)
+	{
+		if (Packed.IsValid() && McShulker::IsBox(Drop.Item))
+		{
+			Drop.Set(TEXT("minecraft:container"), Packed);
+			return;
+		}
+	}
+	// No box to carry them (nothing dropped): they spill.
+	DropAll(WorldActor, Pos, Contents);
+}
+
+void UMcBlockUseSubsystem::PackPotDrops(AMcWorldActor& WorldActor, const FIntVector& Pos, TArray<FMcItemStack>& Drops)
+{
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	TArray<FName> Sides;
+	Sides.Init(FName(TEXT("minecraft:brick")), McPot::NumSides);
+	if (Entity && Entity->Kind == EMcBlockEntityKind::Pot)
+	{
+		for (int32 Side = 0; Side < McPot::NumSides && Side < Entity->Slots.Num(); ++Side)
+		{
+			Sides[Side] = Entity->Slots[Side].IsEmpty() ? Sides[Side] : Entity->Slots[Side].Item;
+		}
+	}
+	if (Chunk && Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15))
+	{
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	}
+	// The loot table copies the sides onto the pot it drops; a cracked pot (broken with a tool that breaks pots) drops
+	// nothing from the table, but its "sherds": each side's sherd or brick.
+	bool bWhole = false;
+	for (FMcItemStack& Drop : Drops)
+	{
+		if (Drop.Item == TEXT("minecraft:decorated_pot"))
+		{
+			McPot::SetSides(Drop, Sides);
+			bWhole = true;
+		}
+	}
+	if (!bWhole && Drops.IsEmpty())
+	{
+		for (const FName Side : Sides)
+		{
+			Drops.Add(FMcItemStack(Side, 1));
+		}
+	}
+}
+
+void UMcBlockUseSubsystem::FillBox(AMcWorldActor& WorldActor, const FIntVector& Pos, const FMcItemStack& Box)
+{
+	if (Box.Item == TEXT("minecraft:decorated_pot"))
+	{
+		// A placed pot keeps the item's sides.
+		if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos); Chunk && WorldActor.GetBlockWorld() && GetBlockName(*WorldActor.GetBlockWorld(), Pos) == Box.Item)
+		{
+			Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakePot(McPot::GetSides(Box)));
+			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			WorldActor.GetBlockWorld()->OnBlockEntityChanged.Broadcast(Pos);
+		}
+		return;
+	}
+	if (!McShulker::IsBox(Box.Item) || !Box.Has(TEXT("minecraft:container")))
+	{
+		return;
+	}
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, McShulker::NumSlots);
+	if (!Container.IsValid())
+	{
+		return;
+	}
+	const TArray<FMcItemStack> Slots = McShulker::Unpack(Box);
+	for (int32 Slot = 0; Slot < Slots.Num(); ++Slot)
+	{
+		Container->Set(Slot, Slots[Slot]);
+	}
+	WriteChest(WorldActor, Pos);
+}
+
+void UMcBlockUseSubsystem::UseBed(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	UMcPlayerDataComponent* Data = Player.Data;
+	FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	const TOptional<FIntVector> Head = Blocks ? McBed::GetHead(*Blocks, Pos) : TOptional<FIntVector>();
+	if (!Data || !Head.IsSet() || Player.IsSleeping())
+	{
+		return;
+	}
+	FMcEntityHost* Host = WorldActor.GetEntityHost();
+	// Out of the overworld a bed is a bomb (minecraft.wiki: "Bed", "Explosion").
+	if (WorldActor.Dimension != TEXT("minecraft:overworld"))
+	{
+		if (Host)
+		{
+			Host->GetManager().Explode(FVector(Pos.X + 0.5, Pos.Y + 0.5, Pos.Z + 0.5), 5.0f);
+		}
+		return;
+	}
+	// Clicking a bed sets where they come back to, whether or not they can sleep in it now.
+	if (!Data->SpawnBed.IsSet() || McBed::GetHead(*Blocks, Data->SpawnBed.GetValue()) != Head)
+	{
+		Data->TellOwner(TEXT("Respawn point set"), 0xFFFFFF);
+	}
+	Data->SpawnBed = Head.GetValue();
+	const int64 DayTime = static_cast<int64>(WorldActor.GetDayTime());
+	if (!McBed::CanSleepAt(DayTime, WorldActor.GetThunderLevel() > 0.9f))
+	{
+		Data->TellOwner(TEXT("You can only sleep at night"), 0xFFFFFF);
+		return;
+	}
+	if (Host && McBed::HasMonstersNear(Host->GetManager(), Head.GetValue()))
+	{
+		Data->TellOwner(TEXT("You may not rest now, there are monsters nearby"), 0xFFFFFF);
+		return;
+	}
+	Player.ServerStartSleep(Head.GetValue());
+}
+
+FMcBlockEntity* UMcBlockUseSubsystem::FindSign(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Blocks || !Chunk || McSign::GetKind(Blocks->GetBlock(Pos)) == McSign::EKind::None)
+	{
+		return nullptr;
+	}
+	FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	if (!Entity || Entity->Kind != EMcBlockEntityKind::Sign)
+	{
+		// A sign from before signs kept text, or one a structure put there.
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeSign());
+		Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	}
+	return Entity;
+}
+
+void UMcBlockUseSubsystem::SignChanged(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	if (FMcBlockWorld* Blocks = WorldActor.GetBlockWorld())
+	{
+		Blocks->OnBlockEntityChanged.Broadcast(Pos);
+	}
+}
+
+void UMcBlockUseSubsystem::PlacedSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	if (!FindSign(WorldActor, Pos))
+	{
+		return;
+	}
+	SignChanged(WorldActor, Pos);
+	EditSign(Player, WorldActor, Pos, false);
+}
+
+void UMcBlockUseSubsystem::EditSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, bool bBack)
+{
+	const FMcBlockEntity* Sign = FindSign(WorldActor, Pos);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Sign || !Blocks || !Player.Data)
+	{
+		return;
+	}
+	const FMcSignSide& Side = Sign->SignSides[bBack ? 1 : 0];
+	const TArray<FString> Lines(Side.Lines, FMcSignSide::NumLines);
+	const McSign::EKind Kind = McSign::GetKind(Blocks->GetBlock(Pos));
+	Player.Data->OpenSignEditor(Pos, GetBlockName(*Blocks, Pos), static_cast<uint8>(Kind), bBack, McSign::GetTextColour(Side.Color), Lines,
+		[WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, bBack, Kind](const TArray<FString>& Written)
+		{
+			AMcWorldActor* Actor = WeakWorld.Get();
+			FMcBlockEntity* Entity = Actor ? FindSign(*Actor, Pos) : nullptr;
+			// Gone, turned into another kind of sign, or waxed by someone else meanwhile: nothing is written.
+			if (!Entity || Entity->bWaxed || McSign::GetKind(Actor->GetBlockWorld()->GetBlock(Pos)) != Kind)
+			{
+				return;
+			}
+			FMcSignSide& Into = Entity->SignSides[bBack ? 1 : 0];
+			const FMcSignSide Before = Into;
+			for (int32 Line = 0; Line < FMcSignSide::NumLines; ++Line)
+			{
+				// The screen keeps each line to the sign's width; this keeps a client that didn't to it too.
+				Into.Lines[Line] = Written.IsValidIndex(Line) ? McFont::FitToWidth(Written[Line], McSign::GetMaxLineWidth(Kind)) : FString();
+			}
+			if (!(Into == Before))
+			{
+				SignChanged(*Actor, Pos);
+			}
+		});
+}
+
+bool UMcBlockUseSubsystem::UseSign(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	FMcBlockEntity* Sign = FindSign(WorldActor, Pos);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	UMcPlayerDataComponent* Data = Player.Data;
+	if (!Sign || !Blocks || !Data)
+	{
+		return false;
+	}
+	const FVector Centre = FVector(Pos) + FVector(0.5);
+	if (Sign->bWaxed)
+	{
+		WorldActor.MulticastSound(FName("block.sign.waxed_interact_fail"), FVector_NetQuantize10(Centre), 1.0f, 1.0f);
+		return true;
+	}
+	const bool bBack = !McSign::IsFacingFront(Blocks->GetBlock(Pos), Pos, Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0));
+	FMcSignSide& Side = Sign->SignSides[bBack ? 1 : 0];
+	FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+	// What the held item does: a dye or glow ink on text not already so, an ink sac on glowing text, honeycomb on any sign.
+	FName Sound;
+	const FName Dye = McSign::GetDyeOfItem(Held.Item);
+	if (!Dye.IsNone() && Side.HasText() && Side.Color != Dye)
+	{
+		Side.Color = Dye;
+		Sound = FName("item.dye.use");
+	}
+	else if (Held.Item == TEXT("minecraft:glow_ink_sac") && Side.HasText() && !Side.bGlowing)
+	{
+		Side.bGlowing = true;
+		Sound = FName("item.glow_ink_sac.use");
+	}
+	else if (Held.Item == TEXT("minecraft:ink_sac") && Side.HasText() && Side.bGlowing)
+	{
+		Side.bGlowing = false;
+		Sound = FName("item.ink_sac.use");
+	}
+	else if (Held.Item == TEXT("minecraft:honeycomb"))
+	{
+		Sign->bWaxed = true;
+		Sound = FName("item.honeycomb.wax_on");
+	}
+	if (!Sound.IsNone())
+	{
+		if (!Data->bCreative && --Held.Count <= 0)
+		{
+			Held.Clear();
+		}
+		WorldActor.MulticastSound(Sound, FVector_NetQuantize10(Centre), 1.0f, 1.0f);
+		SignChanged(WorldActor, Pos);
+		return true;
+	}
+	EditSign(Player, WorldActor, Pos, bBack);
+	return true;
+}
+
+FMcBlockEntity* UMcBlockUseSubsystem::FindLectern(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Blocks || !Chunk || GetBlockName(*Blocks, Pos) != TEXT("minecraft:lectern")
+		|| FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("has_book")) != TEXT("true"))
+	{
+		return nullptr;
+	}
+	FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	return Entity && Entity->Kind == EMcBlockEntityKind::Lectern && !Entity->Slots.IsEmpty() && !Entity->Slots[0].IsEmpty() ? Entity : nullptr;
+}
+
+namespace
+{
+	// The lectern state with its facing kept and the book and power as given.
+	FMcStateId LecternState(FMcStateId State, bool bHasBook, bool bPowered)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("facing"), Registry.GetPropertyValue(State, TEXT("facing")));
+		Properties.Add(TEXT("has_book"), bHasBook ? TEXT("true") : TEXT("false"));
+		Properties.Add(TEXT("powered"), bPowered ? TEXT("true") : TEXT("false"));
+		return Registry.FindState(TEXT("minecraft:lectern"), Properties).Get(State);
+	}
+}
+
+bool UMcBlockUseSubsystem::UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	UMcPlayerDataComponent* Data = Player.Data;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Data || !Blocks || !Chunk)
+	{
+		return false;
+	}
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	if (FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("has_book")) != TEXT("true"))
+	{
+		// The book in hand goes on (one of it; creative keeps its own).
+		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+		if (!McBook::IsLecternBook(Held.Item))
+		{
+			return false;
+		}
+		FMcItemStack One = Held;
+		One.Count = 1;
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeLectern(One));
+		if (!Data->bCreative && --Held.Count <= 0)
+		{
+			Held.Clear();
+		}
+		WorldActor.SetBlock(Pos, LecternState(State, true, false));
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		WorldActor.MulticastSound(FName("item.book.put"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 1.0f, 1.0f);
+		return true;
+	}
+	const FMcBlockEntity* Lectern = FindLectern(WorldActor, Pos);
+	if (!Lectern)
+	{
+		return false;
+	}
+	Data->OpenLectern(Pos, McBook::GetPages(Lectern->Slots[0]), Lectern->Page,
+		[WeakPlayer = TWeakObjectPtr<AMcPlayerPawn>(&Player), WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos](FMcLecternMenu& Menu)
+		{
+			AMcPlayerPawn* Reader = WeakPlayer.Get();
+			AMcWorldActor* Actor = WeakWorld.Get();
+			if (Reader && Actor)
+			{
+				LecternButton(*Reader, *Actor, Pos, Menu);
+			}
+		});
+	return true;
+}
+
+void UMcBlockUseSubsystem::LecternButton(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, FMcLecternMenu& Menu)
+{
+	FMcBlockEntity* Lectern = FindLectern(WorldActor, Pos);
+	UMcPlayerDataComponent* Data = Player.Data;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Lectern || !Data || !Blocks)
+	{
+		// Gone, or someone else took the book meanwhile: the window closes as it is found invalid.
+		return;
+	}
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	if (Menu.bTakeAsked)
+	{
+		// Into the reader's inventory, or at their feet if it is full; the lectern is left bare and unpowered.
+		Menu.bTakeAsked = false;
+		const FMcItemStack Rest = Data->Inventory->AddItem(Lectern->Slots[0]);
+		if (!Rest.IsEmpty())
+		{
+			Data->DropFromWindow(Rest);
+		}
+		if (FMcChunk* Chunk = FindChunkOf(WorldActor, Pos))
+		{
+			Chunk->RemoveBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+		}
+		WorldActor.SetBlock(Pos, LecternState(State, false, false));
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		return;
+	}
+	if (Menu.Page == Lectern->Page)
+	{
+		return;
+	}
+	Lectern->Page = Menu.Page;
+	WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+	WorldActor.MulticastSound(FName("item.book.page_turn"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, FMath::FRandRange(0.9f, 1.0f));
+	// Everyone else reading it turns with it.
+	for (TActorIterator<AMcPlayerPawn> It(WorldActor.GetWorld()); It; ++It)
+	{
+		UMcPlayerDataComponent* Other = It->Data;
+		if (Other && Other->GetWindow().Kind == EMcWindowKind::Lectern && Other->GetWindow().Pos == Pos && Other->GetWindow().Menu.Get() != &Menu)
+		{
+			static_cast<FMcLecternMenu*>(Other->GetWindow().Menu.Get())->Page = Menu.Page;
+		}
+	}
+	// A full-strength pulse for 2 ticks (the redstone ends it), which also has comparators read the new page.
+	WorldActor.SetBlock(Pos, LecternState(State, true, true));
+	if (FMcSimulation* Sim = WorldActor.GetSimulation())
+	{
+		Sim->ScheduleTick(Pos, 2);
+	}
+}
+
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -788,13 +1484,46 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	{
 		return false;
 	}
+	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
+	{
+		return WorldActor.TuneNote(Pos);
+	}
+	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:jukebox"))
+	{
+		return UseJukebox(Player, WorldActor, Pos);
+	}
 	// Levers, buttons, doors, trapdoors and gates move rather than open a window.
 	if (WorldActor.UseBlock(Pos, Player.GetLookYaw()))
 	{
 		return true;
 	}
 	const FName Name = GetBlockName(*Blocks, Pos);
+	if (McSign::GetKind(Name) != McSign::EKind::None)
+	{
+		return UseSign(Player, WorldActor, Pos);
+	}
+	if (Name == TEXT("minecraft:lectern"))
+	{
+		return UseLectern(Player, WorldActor, Pos);
+	}
+	if (McBell::IsBell(Blocks->GetBlock(Pos)))
+	{
+		// Struck from a side it can swing away from, it rings (and swings on every screen); from its bar's ends, nothing.
+		const int32 Side = McBell::GetStruckSide(Blocks->GetBlock(Pos), Pos, Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0));
+		if (Side == INDEX_NONE)
+		{
+			return false;
+		}
+		WorldActor.MulticastSound(FName("block.bell.use"), FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 2.0f, 1.0f);
+		WorldActor.MulticastBellRung(Pos, static_cast<uint8>(Side));
+		return true;
+	}
 	EMcFurnaceKind FurnaceKind;
+	if (McBed::IsBed(Name.ToString()))
+	{
+		UseBed(Player, WorldActor, Pos);
+		return true;
+	}
 	if (Name == TEXT("minecraft:crafting_table"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::CraftingTable, Pos, TEXT("Crafting"), nullptr, nullptr);
@@ -886,8 +1615,34 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenEnchantingTable(Pos, Bookshelves);
 		return true;
 	}
+	if (Name == TEXT("minecraft:ender_chest"))
+	{
+		// Every ender chest shows the player's own 27 slots. The lid sounds are the reference's (echest run): volume
+		// 0.35, pitch 0.9 to 1. A block above is not checked here, as for the chest.
+		const auto LidSound = [Pos](AMcWorldActor& Actor, bool bOpen)
+		{
+			if (FMcEntityHost* Host = Actor.GetEntityHost())
+			{
+				Host->GetManager().PlaySound(FName(bOpen ? TEXT("block.ender_chest.open") : TEXT("block.ender_chest.close")), FVector(Pos) + FVector(0.5), 0.35f, FMath::FRandRange(0.9f, 1.0f));
+			}
+		};
+		LidSound(WorldActor, true);
+		Data->OpenBlockWindow(EMcWindowKind::Chest, Pos, TEXT("Ender Chest"), Data->EnderChest, nullptr,
+			[WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), LidSound]()
+			{
+				if (AMcWorldActor* Actor = WeakWorld.Get())
+				{
+					LidSound(*Actor, false);
+				}
+			});
+		return true;
+	}
 	if (const int32 Slots = GetContainerSlots(Name))
 	{
+		if (McShulker::IsBox(Name) && FMcShulkerLids::IsBlocked(*Blocks, Pos))
+		{
+			return true;
+		}
 		const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, Slots);
 		if (!Container.IsValid())
 		{
@@ -914,13 +1669,27 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		const bool bHopper = Slots == McHopper::NumSlots;
 		const bool bDispenser = Slots == 9;
 		const FString Title = bHopper ? TEXT("Hopper") : Name == TEXT("minecraft:dispenser") ? TEXT("Dispenser") : Name == TEXT("minecraft:dropper") ? TEXT("Dropper")
-			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : TEXT("Chest");
+			: Name == TEXT("minecraft:barrel") ? TEXT("Barrel") : McShulker::IsBox(Name) ? TEXT("Shulker Box") : TEXT("Chest");
 		const EMcWindowKind Kind = bHopper ? EMcWindowKind::Hopper : bDispenser ? EMcWindowKind::Dispenser : EMcWindowKind::Chest;
+		// Chests, barrels and shulker boxes creak when they open and again when they shut.
+		const TCHAR* Lid = Name == TEXT("minecraft:barrel") ? TEXT("barrel") : McShulker::IsBox(Name) ? TEXT("shulker_box") : IsChestName(Name) ? TEXT("chest") : nullptr;
+		const auto LidSound = [Lid, Pos](AMcWorldActor& Actor, bool bOpen)
+		{
+			if (Lid)
+			{
+				if (FMcEntityHost* Host = Actor.GetEntityHost())
+				{
+					Host->GetManager().PlaySound(FName(*FString::Printf(TEXT("block.%s.%s"), Lid, bOpen ? TEXT("open") : TEXT("close"))), FVector(Pos) + FVector(0.5), 0.5f, FMath::FRandRange(0.9f, 1.0f));
+				}
+			}
+		};
+		LidSound(WorldActor, true);
 		Data->OpenBlockWindow(Kind, Pos, Second.IsValid() ? FString(TEXT("Large Chest")) : Title, First, nullptr,
-			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos]()
+			[this, WeakWorld = TWeakObjectPtr<AMcWorldActor>(&WorldActor), Pos, SecondPos, LidSound]()
 			{
 				if (AMcWorldActor* Actor = WeakWorld.Get())
 				{
+					LidSound(*Actor, false);
 					WriteChest(*Actor, Pos);
 					if (SecondPos != Pos)
 					{
@@ -1001,7 +1770,7 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		{
 			return false;
 		}
-		return IsChestName(Name);
+		return IsChestName(Name) || Name == TEXT("minecraft:ender_chest");
 	case EMcWindowKind::Furnace:
 		return GetFurnaceKind(Name, Kind);
 	case EMcWindowKind::EnchantingTable:
@@ -1022,7 +1791,148 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:hopper");
 	case EMcWindowKind::Dispenser:
 		return Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper");
+	case EMcWindowKind::Sign:
+		return McSign::GetKind(Name) != McSign::EKind::None;
+	case EMcWindowKind::Lectern:
+		return Name == TEXT("minecraft:lectern") && FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Window.Pos), TEXT("has_book")) == TEXT("true");
 	default:
 		return false;
+	}
+}
+
+// ---- Jukebox ----
+
+namespace
+{
+	FVector JukeboxCentre(const FIntVector& Pos)
+	{
+		return FVector(Pos) + FVector(0.5);
+	}
+}
+
+bool UMcBlockUseSubsystem::IsJukeboxPlaying(const AMcWorldActor& WorldActor, const FIntVector& Pos) const
+{
+	return Jukeboxes.Contains(MakeKey(WorldActor, Pos));
+}
+
+bool UMcBlockUseSubsystem::UseJukebox(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, 1);
+	UMcPlayerDataComponent* Data = Player.Data;
+	if (!Container.IsValid() || !Data)
+	{
+		return false;
+	}
+	if (!Container->Get(0).IsEmpty())
+	{
+		// Any hand takes the disc out; it pops up out of the top.
+		const FMcItemStack Disc = Container->Get(0);
+		Container->Set(0, FMcItemStack());
+		SyncJukebox(WorldActor, Pos);
+		ContentsChanged(WorldActor, Pos);
+		DropAll(WorldActor, Pos, { Disc });
+		return true;
+	}
+	FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+	if (!McJukebox::IsDisc(Held.Item))
+	{
+		return false;
+	}
+	FMcItemStack One = Held;
+	One.Count = 1;
+	Container->Set(0, One);
+	if (!Data->bCreative && --Held.Count <= 0)
+	{
+		Held.Clear();
+	}
+	SyncJukebox(WorldActor, Pos);
+	ContentsChanged(WorldActor, Pos);
+	return true;
+}
+
+void UMcBlockUseSubsystem::SyncJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	const TSharedPtr<FMcContainer> Container = GetChest(WorldActor, Pos, 1);
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	if (!Container.IsValid() || !Blocks)
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId State = Blocks->GetBlock(Pos);
+	const bool bHad = Registry.GetPropertyValue(State, TEXT("has_record")) == TEXT("true");
+	const bool bHas = !Container->Get(0).IsEmpty();
+	if (bHas != bHad)
+	{
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("has_record"), bHas ? FName(TEXT("true")) : FName(TEXT("false")));
+		if (const TOptional<FMcStateId> Next = Registry.FindState(Registry.GetBlockOf(State).Name, Properties))
+		{
+			WorldActor.SetBlock(Pos, Next.GetValue());
+		}
+	}
+	if (!bHas)
+	{
+		StopJukebox(WorldActor, Pos);
+		return;
+	}
+	FMcSong Song;
+	if (!bHad && McJukebox::FindSong(Container->Get(0).Item, Song))
+	{
+		// A disc put in starts at once, and its title shows to those who can hear it.
+		const FName Event = McJukebox::GetSoundEvent(Song);
+		Jukeboxes.Add(MakeKey(WorldActor, Pos), FJukeboxPlay{ &WorldActor, Song.LengthTicks, 0, Event });
+		WorldActor.MulticastRecord(Event, FVector_NetQuantize10(JukeboxCentre(Pos)), true);
+		WorldActor.MulticastNote(FVector_NetQuantize10(FVector(Pos) + FVector(0.5, 1.2, 0.5)), FMath::RandRange(0, 24));
+		const FString Text = McJukebox::GetNowPlaying(Song);
+		const double Range = McSound::GetAudibleRange(McJukebox::Volume);
+		for (TActorIterator<AMcPlayerPawn> It(GetWorld()); It; ++It)
+		{
+			if (It->Data && FVector::Dist(McCoords::UnrealToBlock(It->GetActorLocation()), JukeboxCentre(Pos)) <= Range)
+			{
+				It->Data->ServerOverlay(Text, true);
+			}
+		}
+	}
+}
+
+void UMcBlockUseSubsystem::StopJukebox(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	FJukeboxPlay Play;
+	if (Jukeboxes.RemoveAndCopyValue(MakeKey(WorldActor, Pos), Play))
+	{
+		WorldActor.MulticastRecord(Play.Sound, FVector_NetQuantize10(JukeboxCentre(Pos)), false);
+	}
+}
+
+void UMcBlockUseSubsystem::TickJukeboxes()
+{
+	for (auto It = Jukeboxes.CreateIterator(); It; ++It)
+	{
+		AMcWorldActor* World = It.Value().World.Get();
+		const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+		const FIntVector Pos = It.Key().Pos;
+		if (!Blocks || !Blocks->HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) || GetBlockName(*Blocks, Pos) != TEXT("minecraft:jukebox"))
+		{
+			// Blown up or replaced: the sound goes with it.
+			if (World)
+			{
+				World->MulticastRecord(It.Value().Sound, FVector_NetQuantize10(JukeboxCentre(Pos)), false);
+			}
+			It.RemoveCurrent();
+		}
+		else
+		{
+			if (++It.Value().Elapsed % 20 == 0 && It.Value().TicksLeft > 1)
+			{
+				// A note rises off the top every second of the song.
+				World->MulticastNote(FVector_NetQuantize10(FVector(Pos) + FVector(0.5, 1.2, 0.5)), FMath::RandRange(0, 24));
+			}
+			if (--It.Value().TicksLeft <= 0)
+			{
+				// The song is over; the disc stays in.
+				It.RemoveCurrent();
+			}
+		}
 	}
 }

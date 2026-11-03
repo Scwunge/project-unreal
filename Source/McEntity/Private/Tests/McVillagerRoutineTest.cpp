@@ -11,7 +11,7 @@
 namespace
 {
 	// Nine chunks with a stone floor at y 0, so a villager's feet stand at y 1.
-	void MakeFlatWorld(FMcBlockWorld& World, FMcStateId Stone)
+	void MakeRoutineWorld(FMcBlockWorld& World, FMcStateId Stone)
 	{
 		for (int32 Z = -1; Z <= 1; ++Z)
 		{
@@ -29,7 +29,7 @@ namespace
 		}
 	}
 
-	FMcVillager* AddVillager(FMcEntityManager& Manager, const FVector& Pos)
+	FMcVillager* AddRoutineVillager(FMcEntityManager& Manager, const FVector& Pos)
 	{
 		FMcVillager* Villager = new FMcVillager(*FMcMobType::Find(FMcVillager::StaticType()));
 		Villager->Body.Position = Pos;
@@ -76,11 +76,11 @@ bool FMcVillagerRoutineTest::RunTest(const FString& Parameters)
 	{
 		// At work hours a villager goes to its job site and stays; when the work is over it is free to wander again.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeRoutineWorld(World, Stone);
 		World.SetBlock(FIntVector(10, 1, 0), State(TEXT("minecraft:composter")));
 		FMcEntityManager Manager(World);
 		Manager.TimeOfDay = 3000;
-		FMcVillager* Farmer = AddVillager(Manager, FVector(0.5, 1.0, 0.5));
+		FMcVillager* Farmer = AddRoutineVillager(Manager, FVector(0.5, 1.0, 0.5));
 		Run(Manager, 500);
 		TestEqual(TEXT("it took the composter's job"), Farmer->GetProfession(), FName(TEXT("minecraft:farmer")));
 		TestTrue(TEXT("it is working"), Farmer->GetActivity() == EActivity::Work);
@@ -99,12 +99,12 @@ bool FMcVillagerRoutineTest::RunTest(const FString& Parameters)
 	{
 		// At night each villager takes a bed of its own and sleeps in it; one bed has one sleeper.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeRoutineWorld(World, Stone);
 		World.SetBlock(FIntVector(8, 1, 0), State(TEXT("minecraft:red_bed")));
 		FMcEntityManager Manager(World);
 		Manager.TimeOfDay = 13000;
-		FMcVillager* First = AddVillager(Manager, FVector(0.5, 1.0, 0.5));
-		FMcVillager* Second = AddVillager(Manager, FVector(0.5, 1.0, 2.5));
+		FMcVillager* First = AddRoutineVillager(Manager, FVector(0.5, 1.0, 0.5));
+		FMcVillager* Second = AddRoutineVillager(Manager, FVector(0.5, 1.0, 2.5));
 		Run(Manager, 500);
 		const bool bFirstHas = First->GetBed().IsSet();
 		const bool bSecondHas = Second->GetBed().IsSet();
@@ -124,10 +124,10 @@ bool FMcVillagerRoutineTest::RunTest(const FString& Parameters)
 	{
 		// An alarm calls every villager to the bell, whatever the hour.
 		FMcBlockWorld World{ FMcDimensionType() };
-		MakeFlatWorld(World, Stone);
+		MakeRoutineWorld(World, Stone);
 		FMcEntityManager Manager(World);
 		Manager.TimeOfDay = 3000;
-		FMcVillager* Villager = AddVillager(Manager, FVector(0.5, 1.0, 0.5));
+		FMcVillager* Villager = AddRoutineVillager(Manager, FVector(0.5, 1.0, 0.5));
 		Manager.SoundAlarm(FVector(9.5, 1.0, 0.5), McVillager::AlarmTicks);
 		TestTrue(TEXT("the alarm is sounding"), Manager.IsAlarmSounding());
 		Run(Manager, 400);

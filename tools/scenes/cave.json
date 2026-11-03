@@ -1,0 +1,9 @@
+{
+  "description": "A small stone room under a roof on classic_flat (surface y=-61), a torch on one wall: for the cave exposure of Unreal Mode.",
+  "camera": [4.5, -59.0, 1.5, 0.0, 5.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [9, -55, 9], "state": "minecraft:stone" },
+    { "from": [1, -60, 1], "to": [8, -57, 8], "state": "minecraft:air" },
+    { "from": [4, -58, 8], "to": [4, -58, 8], "state": "minecraft:wall_torch[facing=north]" }
+  ]
+}

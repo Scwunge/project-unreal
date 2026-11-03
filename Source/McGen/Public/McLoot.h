@@ -42,6 +42,19 @@ namespace McLoot
 	// (it drops nothing then, as in the game).
 	MCGEN_API bool RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out);
 
+	// What the fishing table can ask about a catch: whether the bobber lies in open water (treasure needs it), the
+	// angler's luck (Luck of the Sea's level plus the Luck effect, which moves each entry's weight by its quality times
+	// the luck), and the biome the bobber is in (bamboo is only caught in jungles; unset passes).
+	struct FFishingContext
+	{
+		bool bOpenWater = true;
+		int32 Luck = 0;
+		FName Biome;
+	};
+
+	// Rolls "gameplay/fishing" for a catch.
+	MCGEN_API bool RollFishing(const FFishingContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out);
+
 	// Rolls a table into the container's slots, the stacks in random free slots (more than fit are dropped), and
 	// remembers the table and seed on it. False if there is no such table; the container is left alone then.
 	MCGEN_API bool Fill(const FString& Table, uint64 Seed, FMcBlockEntity& Container);

@@ -13,6 +13,7 @@ class AActor;
 class UWorld;
 class FMcBlockWorld;
 class FMcMob;
+class FMcSpawners;
 class FMcVillager;
 
 class MCSERVER_API FMcEntityHost
@@ -53,6 +54,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// Called with the player's feet, the damage, the push and the centre when a blast reaches a player.
+	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).
 	TFunction<bool(const FVector&)> PlayerWearsGold;
 	// A splash potion's effect on the player at the position (name, level less one, ticks).
@@ -71,7 +74,10 @@ public:
 
 	// Player attacks: the mob (if any) the ray from the eyes hits within Reach, hurt by Damage and pushed away.
 	// True if something was hit.
-	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage);
+	// A vehicle (minecart, boat) is hit as well; in creative it breaks at once and drops nothing.
+	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative = false);
+	// The nearest vehicle the ray from the eyes reaches within Reach, or null.
+	FMcEntity* FindVehicle(const FVector& Eye, const FVector& Direction, float Reach);
 	// The nearest living mob the ray from the eyes enters within Reach, or null.
 	FMcMob* FindMob(const FVector& Eye, const FVector& Direction, float Reach);
 	// A zombie got the villager: a zombie villager stands where it did, with what it was kept for a cure. Null if it is gone.
@@ -85,6 +91,8 @@ public:
 
 	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
+	// The monster spawners of the loaded chunks (McSpawners), run each tick.
+	FMcSpawners& GetSpawners() { return *Spawners; }
 
 	// A carved pumpkin or jack o'lantern was just placed at Pumpkin: whether it tops an iron golem (a column of two iron
 	// blocks with an iron block on each side of the upper one, the arms, along either axis). True gives the five blocks
@@ -182,6 +190,8 @@ private:
 	TArray<FIntPoint> SeedQueue;
 	bool bDevSpawnDone = false;
 	FMcGameRules Rules;
+	TUniquePtr<FMcSpawners> Spawners;
+	FDelegateHandle BlockEntityHandle;
 
 	TWeakObjectPtr<UWorld> GameWorld;
 	TSubclassOf<AActor> ProxyClass;

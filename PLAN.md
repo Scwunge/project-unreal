@@ -1,4 +1,4 @@
-# Minecraft in Unreal: its own game, playing like Java Edition 26.3
+﻿# Minecraft in Unreal: its own game, playing like Java Edition 26.3
 
 Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/blocks-and-chunks`).
 
@@ -44,7 +44,55 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **What the chunks still supply.** Sky ambient comes only where the chunk's sky light reaches, so caves
     stay dark. Block light (torches, lava) is added as warm emissive.
   - **Not done:**
-    - The Nether and the End have no sun, so enhanced mode lights them only by block light.
+    - Nether and End mood (done, 2026-10-31): a shadowless fill light (the Nether's `ambient_light_color` warmed
+      towards lava, 4 lux; the End's `sky_light_color`, 1.2 lux), a warm or cool colour grade with more bloom and
+      vignette. Tuning args: `-McNetherFill=`, `-McEndFill=`, `-McFogGlow=`. The faint box lines in the Nether
+      were the volumetric fog's own emissive (visible froxel edges), so the glow defaults to 0.
+    - Physical sky (done, 2026-10-31): the Overworld by day uses SkyAtmosphere (lit by the one directional light),
+      volumetric clouds (the engine's simple cloud material, 0.6 to 2.0 km up) and a reflection-only SkyLight (diffuse
+      off, so caves stay dark). The vanilla dome and sun/moon squares hide meanwhile. Not done: the sun disc and the
+      dark strip at the world edge on the horizon; stars and moon phase on the atmosphere sky.
+    - Water (done, 2026-10-31): the lit and HD translucent materials tint by depth (scene depth minus pixel depth)
+      and show a drifting foam line where the water is shallow.
+    - Storm wind (done, 2026-10-31): the leaf, plant and water sway scales with the wetness (rain level eased in
+      over 5 s): about 2.6 times the amplitude and 1.6 times the speed at full rain. Shot: `storm_unreal` (thunder).
+    - Quality presets (done, 2026-10-31): Options has Quality Low, Medium, High, Ultra (saved in options.json; `-McQuality=N`
+      to test) and an FPS counter (`stat fps`; `-McFps`). Presets set render scale (70, 85, 100, 100 percent with TSR),
+      Lumen probe density and reflections, virtual shadow detail, volumetric fog, bloom, DoF and motion-blur quality, only
+      while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Measured on the 1070 (720p, the unreal scene, one frame
+      before the shot, logged by `-McShot`): Medium 100 fps, High 95 fps. The scene is tiny; measure a forest later.
+    - Torch flicker (done, 2026-10-31): block light in the lit and HD materials breathes by about 7 percent, out of step
+      from place to place. Shot: `torch_night`. The dark strip at the horizon is fixed (2026-10-31): past the loaded terrain
+      the atmosphere's own ground showed a dark band, so the physical sky draws the dome's lower half (to the horizon) in
+      the fog colour. Shots `skirt_noon`, `skirt_sunset`. At dusk the band is a paler grey than the glowing horizon behind
+      it; blend it with the glow. `-McHide=fog,clouds,stars,moon,post` leaves parts out for finding artifacts.
+    - Cave exposure (done, 2026-10-31): the world renderer checks the 24 blocks above the camera (leaves count as open);
+      under a roof in the Overworld the exposure rises up to 1.5 stops over a second or two and falls back outdoors.
+      Scene `tools/scenes/cave.json`, shot `cave_unreal`. Depth of field is left off on purpose (it softens voxel
+      edges); `r.DepthOfFieldQuality` is still set at Ultra if it is ever enabled in the post settings.
+    - Vanilla-look check (2026-10-31): a baseline built from dfe04f8 (before the Unreal Mode work) against this branch, Unreal
+      Mode off, on fresh worlds: the cave scene differs by 9 pixels (the torch flame), the village scene only where mobs
+      stand; terrain, sky and HUD are identical. Daylight Unreal shot `day_noon` shows no exposure regression.
+    - Showcase scenes (`tools/scenes/forest.json`, `shore.json`, `village.json`; shots `show_forest` at sunset, `show_village`
+      at night): the forest and village read well. The shore (`show_shore2`) does not yet: the sea is a raised block basin,
+      so it reads as a dark wall; use a generated ocean for that shot. Shots need a fresh `-McWorld=` name per scene: a
+      world keeps the blocks of scenes placed in it before. `-McCam` did not change the view of `-McScene=unreal` (the scene's
+      camera wins), so the sun disc facing the sun is still unchecked.
+    - Sun and sunset (checked 2026-10-31): facing the sun (`sun_c`, `-McCam=0.5,-59.4,0.5,-90,-8` at `-McTime=500`) the
+      atmosphere draws a sun disc with bloom, lens-like glare spots and its glint on the grass; the sunset (`dusk_w`,
+      `-McTime=12400`, yaw 90) is orange to dark with the skirt a thin line at the horizon. Unreal Mode hides the vanilla
+      cloud slabs (the volumetric clouds replace them; vanilla keeps them). Shore: `show_shore3` (sand, a flat sea level
+      with the land, ripples, sunset sky). Shots go on fresh `-McWorld=` names, and the camera for a scene can be
+      overridden with `-McCam=` (the sun shots show it works without a scene).
+    - Lightning (done, 2026-10-31): a flash lights the scene with a pale blue light from high up for 0.2 s, with shadows
+      (`flash_on` with `-McFlashHold -McStrike=20,-10` against `flash_off`, a night thunderstorm). The held shot used 1.5
+      times the sun's lux; the shipped value is 1.0 (not re-shot). Seen but not fixed: at night the rain streaks stay
+      bright blue (they are unlit particles), so lit rain still needs their material to take the sky factor.
+    - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
+      the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
+      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.
+    - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
+      material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.
     - Clouds, rain and the sky stay unlit.
   - **Dev switches:**
@@ -95,8 +143,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       - **Skins and mobs:** player skins and mob textures go through the same pipeline (upscale, light detail,
         normal, roughness; UVs unchanged, so the models are too). `-McSelfShot=<blocks>` puts the camera in front
         of the player for a skin picture, and `-McSpawnMobs=cow,4` a few mobs near the player.
-      - **Resource packs: later** (zip and LabPBR reading are not built; the arrays use the same layout so a
-        pack's maps could be dropped in).
+      - **Resource packs:** see "Resource packs" below: `-McPacks=` stacks zips and folders over the vanilla
+        assets, and with `-McPackPbr` their LabPBR `_n` and `_s` maps replace the generated ones.
   - **Dev switches:** `-McMenu=options` opens the Options screen; `tools/scenes/unreal.json` is a look-test scene
     (`-McScene=unreal -McTime=18000` for torch light). Take shots with `-McShotDelay=12`: later ones drift.
 
@@ -122,6 +170,392 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     fatigue, strength, weakness, resistance and fire resistance. The rest are kept and shown only. The icons
     show along the top right (blinking in the last ten seconds). `/effect give|clear` and `/enchant` (which
     checks the item, the level and what it clashes with) are in. Potions, food and beacons don't give effects yet.
+  - **Vehicles** (2026-10-29): `McRails` joins the four rails as they are placed (lines, curves for the plain
+    rail, slopes) and `McVehicle` has the minecart and boat entities. A cart follows its rail, slows when empty,
+    is pulled down slopes, speeds up on a powered rail and stops on an unpowered one; detector rails power while
+    one sits on them and an activator rail throws the rider off. A boat floats, glides with friction by the
+    surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
+    cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
+    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works.
+    Carts pushing (vehicle_log7/8.txt, `McClient.McEntity.CartPushLog`; `log sents` there also prints an `mcref sentx:`
+    line each tick with an item's count, a container entity's item total and a TNT cart's fuse, added to
+    E:/mc-reference's Script.java, which is not a git repository, so this note is its only record): a cart touching another along its rail
+    (within 0.2 aside) keeps 0.2 of its speed plus half the two together, shoved 0.05 apart (0.05/distance past a
+    block); a furnace cart, fuelled or not, hands the other its whole speed and keeps 0.95. A cart takes a mob in
+    only above 0.1 a tick; faster than that, it and a mob it can't take are shoved 0.05 apart (not a ridden cart),
+    and a mob it can't take stops it dead. Chest and hopper carts keep 0.98 + (15 - comparator signal) * 0.001; a
+    hopper cart picks up every tick, up to 1.97 above it; a TNT cart goes off 81 ticks after it is lit. There is no
+    iron golem, so the logged golem scene is only replayed as a TNT cart into a cow.
+    Physics refitted 2026-11-01 from vanilla's server, logged each tick (`log sents`; vehicle_log.txt, powered_log.txt,
+    paddle_log.txt), and replayed number for number by the `McClient.McEntity.VehicleLog` test. A cart is braked by
+    an unpowered powered rail (half, or stopped under 0.03), moves (at most 0.4 a tick; its speed itself has no cap),
+    then keeps 0.96 of its speed plus 0.05 for each block dropped (less for each climbed); a powered rail adds 0.06
+    after that, or kicks a cart at rest off a block at 0.02. A boat keeps 0.9 on water, 0.98 on ice, 0.6 on stone
+    before it moves, falls with no drag, floats with vy' = 0.75 (vy - 0.04 + 0.04 depth / 0.65 height), and its turn
+    keeps 0.9. Second round (vehicle_log2/3/5.txt): a ridden cart keeps 0.997 and moves 0.75 of its speed; a fuelled
+    furnace cart nobody pushed coasts at 0.9408; one fed coal moves its full 0.2 a tick from the next tick (vanilla's
+    own speed reads up to 3.46 meanwhile, held back by the move cap); a boat dropped into water lands at the surface
+    less 0.3504 with its fall speed gone; a boat on land keeps the mean friction of the blocks under its hull (blue
+    ice 0.989, ice and packed ice 0.98, stone 0.6; a hull over one row of packed ice between stone 0.72667).
+    vehicle_log2-4.txt's air fill was over the 32768 block limit and failed (every boat there kept 0.45); clear air
+    in fills under it (Script.java now stops a run on one). vehicle_log6.txt: on slime a boat keeps 0.8 before the
+    move and 0.16 of that after; soul sand leaves 0.4 after the move (counted from half a block under the boat, so
+    while dropping onto it too); a furnace cart out of fuel is left going at 2, held to its 0.2 a tick cap until 0.9408
+    a tick wears it under. vehicle_log9.txt: honey leaves 0.4 after the move, like soul sand; frosted ice keeps 0.98,
+    mud and soul soil stone's 0.6; empty cells under a hull are left out of the mean.
+  - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
+    oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
+    variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
+    a vehicle from an entity name or an item; `/summon minecraft:cherry_boat` works too. A vehicle can carry an
+    inventory (`GetInventory`, saved with it, thrown out when it breaks): a chest boat has 27 slots and opens as a
+    chest when you click it sneaking (an ordinary click gets in). Shot: `Saved/Shots/boats.png`
+    (`-McScene=boats`, boats summoned with `-McChat`, see `tools/scenes/boats.json`). The bamboo raft has its own
+    flat deck model. Water inside a hull is not masked (the pond shows through the boat); that needs a depth
+    pass and is left.
+  - **Minecart variants** (2026-10-29): chest (27 slots), furnace, hopper (5 slots) and TNT carts
+    (`minecraft:chest_minecart` and so on, placed by item or `/summon`). A chest or hopper cart opens as its
+    window when clicked sneaking. A furnace cart burns coal or charcoal (3600 ticks an item) and drives itself at
+    0.2 blocks a tick, pushing in the direction it was last shoved. A TNT cart ignites on a powered activator rail
+    or from flint and steel, then blows 81 ticks after it was lit (stronger when fast). A hopper cart picks up items
+    over it every tick and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
+    `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
+    cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
+    primed TNT entity, so the cart keeps its own fuse.
+    Looks fitted to vanilla's (vehicle_look.txt, ref_side_*, `tools/scenes/vehicles_look.json`): a cart at rest lies
+    along its rail (it only turned when moving before); the furnace's and TNT's blocks stand 1.125 higher, the
+    hopper's block 3.75 lower than those, and the chest 2.875 higher. Not done: vanilla's cart sits about a unit
+    lower under its walls, and shows two dark marks along its foot (the floor's edge strip) and a soft shadow blob
+    under it (nothing draws entity shadows yet).
+    Boats under water and in bubble columns (vehicle_log10/11.txt, a pond seven deep, the world's lowest block is -64 so
+    a pond below it is void): a boat with water over its hull sinks, `v' = 0.75 (v - 0.04 + 0.04 / 65)` (summoned at rest
+    it falls 0.029538, 0.051692 ... to 0.118152 a tick, and stops on the floor; it used to rise); in a bubble column,
+    after its move, each column block its hull overlaps (with water above the block) pushes it twice, each push up 0.06
+    to 0.7 or down 0.03 to -0.3 (over magma at the floor it sits at -0.06, in two blocks 0.24 at once), the top block
+    (air above) pushes nothing, but the 60th tick the hull has been in it throws the boat up at 0.6 (it flies 0.45, 0.41
+    ... and drops back in at the surface less 0.3504, as a dropped boat does), then again 82 ticks after the first.
+    `FMcBoatEntity::TickBubbleColumns` is its own rule, not main's `McPhysics::BubbleColumnPush` (m1/blocks-and-chunks,
+    not merged here): same per-block push, twice, and a boat-only throw. Not fitted: a boat in a downward column's top
+    block, mobs and players riding, a column starting under a moving boat.
+    Cart rails against vehicle_log12.txt (`McClient.McEntity.CartRailLog` replays six rows tick by tick to 1e-3): a cart
+    carries on over the next rail piece in the same direction at that piece's height (so it is already climbing on the
+    tick it passes onto a slope), blocks under a slope don't stop it, and past the end of its rails it drops 0.0625
+    onto the floor the same tick. Off the rails: gravity, then a cart that stood on the ground halves everything before it
+    moves, one in the air keeps 0.95 after (stone: 0.2886, 0.1443, 0.0721 ...; off a ledge 0.02 down, then 0.04 a tick).
+    Curves and powered ascending rails already matched. Detector rails: on the tick a cart's box overlaps the sensor
+    (middle 0.6 of the cell, 0.5 up), a look every 20 ticks made before entities move (so on the cart's last position),
+    on 40 ticks in all for a cart passing at 0.4. Not fitted: the log's slope-down bottom (my script built it a block
+    above the flat rails, the cart carries on in its line through the air until it lands).
+    Activator rails and hopper carts against vehicle_log13.txt: a mob in a cart counts as a rider (moves 0.75, keeps 0.997,
+    then 0.96 once thrown out); thrown out the tick after the cart's start is in the rail's cell, it is set down at the
+    middle of the cell on the right of the cart's way (a cart going east: one south), on the ground, and neither shoves
+    nor is shoved while the 10-tick boarding cooldown runs; every activator rail a hopper cart is on sets it off (powered)
+    or on (unpowered), so one that has passed a powered one stays off; it takes in one whole stack a tick.
+    vehicle_log14.txt (carts into carts, a still villager and a sheep) already matched the round-4 rules: a chain of three,
+    one overtaking another, and a cart taking in a villager/sheep (the wider sheep a tick sooner) replay to 2e-3 in
+    CartRailLog with no change. Armor stands (they move a cart back and are shoved) are not in the game, so not fitted.
+  - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
+    which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
+    other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:
+    `Saved/Shots/cart_mobs.png` (`-McScene=cart_mobs`, a cart rolled down a slope into a cow and a pig).
+  - **Water out of hulls** (2026-10-30): a boat (not a raft) has a mask over the space inside its sides up to their tops
+    (`FModel::MaskLayer`), drawn only into custom depth with **custom stencil 77** (`McEntityModel::HullStencil`; nothing
+    else may use 77). The translucent block materials (`tools/make_materials.py`, `HULL_STENCIL`) leave out water (kind 1)
+    farther than the mask where the stencil is 77, so water in front of the boat, and a waterfall pouring into it, still
+    show. Needs `r.CustomDepth=3` (`Config/DefaultEngine.ini`). Whoever changes the translucent materials re-runs the
+    generator rather than merging the .uassets. Shots: `Saved/Shots/hull_water_above.png` and `hull_water_side.png`
+    (`-McScene=hull_water_above` / `hull_water_side`: a boat with a pig, one half under a waterfall, one on land).
+    A boat under flowing water (a waterfall) is held down and sinks slowly instead of being lifted up the fall
+    (`ESurface::UnderFlowing`).
+  - **Flowing fluids' pictures** (2026-10-30, for main): falling water drew as a solid blue-violet box because
+    `water_flow` and `lava_flow` were never in the texture array (it held only what block models name, and the fluids'
+    models give only a particle), so the fluid mesher got layer 0, the missing texture, tinted. `FMcBlockTextures` now
+    always loads the four fluid pictures. A side shows the top left quarter of the 32-pixel flow frames, so that
+    quarter, unscaled, is a layer of its own (`water_flow#side`, `lava_flow#side`, animated with the frames) and
+    McFluidMesher's sides use it with UVs 0..1 (`FFluidPalette::WaterFlowSide`/`LavaFlowSide`): 16 texels a block, as in
+    vanilla. Limit: a flowing top still reads the whole frame scaled to 16 (8 texels a block), since its turned square
+    reaches outside any one quarter. Shot: `Saved/Shots/waterfall_close.png` (`-McScene=hull_water_side
+    -McCam=12.6,-58.0,6.5,90,-5`).
+  - **Beds** (2026-10-30): in 26.3 beds are ordinary block models (`template_bed_head`/`_foot`, a picture per colour and
+    face, and the new `straw_bed`), so the block baker draws them; no block entity. Checked in `Saved/Shots/beds.png`
+    (`-McScene=beds`: the 16 colours, a straw bed, red beds facing each way). The 64-pixel `straw_bed` is drawn in tiles
+    (Big pictures in tiles, below).
+  - **Big pictures in tiles** (2026-10-30): the texture array is 16 pixels, so a block picture that is a whole number
+    of 16-pixel tiles and bigger than one (signs, hanging signs and shelves 32, `straw_bed` 64; not animated ones) is
+    cut into tiles, each a layer named `<picture>#tile:x,y:w,h` (`McTextureTiles`, which reads only the PNG's header).
+    The baker splits every quad drawn with such a picture along the tiles' edges, one quad a tile with UVs 0..1 over it,
+    so each pixel is kept; the HUD's block icons map tiles back onto the whole picture. Test `McAssets.TextureTiles`
+    checks the UVs carry on across a cut (a 32-pixel face split two and four ways, and turned) and that each loaded
+    tile has the PNG's pixels.
+  - **Shulker boxes** (2026-10-30): drawn by `UMcChestComponent` with entity models `mc:shulker_box/shulker[_colour]`
+    from the 64-pixel mob nets: a base (8 high) and a lid (12 high, over the base), centred in the block and turned by
+    `facing` (placement faces the clicked face, as vanilla). Opening raises the lid 8 pixels while turning it 270°,
+    eased like the chest's lid. Test `McRender.ShulkerBoxModels`; shot `Saved/Shots/shulkers.png`
+    (`-McScene=shulkers`: the 17 colours, each facing, and a sign and straw bed in tiles).
+  - **Shulker box lids and collision** (2026-10-31): `FMcShulkerLids` (McEntity), fitted to vanilla's logged per-tick
+    state (mc-reference `shulker_log.txt`, `log shulker`): progress goes 0.1 a tick to 1 while anyone has the box open
+    and back when no one does; the collision is the block grown by half the progress the way it faces (an override in
+    `FMcBlockWorld`, read by `McPhysics::GatherBoxes`); while opening, what overlaps the block shifted by the progress
+    (0.01 further) moves 0.11 a tick along the facing (a player on top rose 1.1, one in front of an east-facing box
+    went 0.88). A box stays shut when a block's collision is in the half block in front: stone, a bottom slab, carpet
+    and a chest stopped it, a top slab and a torch did not. The server counts each box's openers every tick
+    (`UMcBlockUseSubsystem::TickShulkers`) and multicasts changes; every machine steps the lids, the server pushes mobs
+    and items, each player's machine its own player; others' open boxes now show their lids. Test
+    `McEntity.ShulkerLids`. A chunk going to a player is followed by the boxes open in it (the chunk stream's
+    `ClientOpenBoxes`), whose lids start all the way up (`FMcShulkerLids::SetOpen`), so a player joining while a box is
+    open sees it open. (Vanilla with two players wasn't measured; whether its joiner sees the lid up is assumed.)
+  - **Bells** (2026-10-30): the block models are only the frame (bar, posts, chain), so the body is an entity model
+    `mc:bell` from `entity/bell/bell_body.png` (a cup 6 across, a rim 8 across), stood in each bell by
+    `UMcChestComponent`. Using a bell rings it (`block.bell.use`) when struck from a side it can swing away from: a
+    floor bell's front or back, a wall bell's sides along the wall, a ceiling bell's any side (`McBell::GetStruckSide`,
+    from where the player's eye is). The server tells every screen (`AMcWorldActor::MulticastBellRung`) and the body
+    swings away from the blow about its top for 50 ticks, dying away (`McBell::GetSwing`). Placement: floor and ceiling
+    bells face the player, wall bells face the wall, double wall with a block on the far side too. Test
+    `McRender.Bells`; shots `Saved/Shots/bells.png` and `bells_swung.png` (`-McScene=bells`, `-McBellsSwung`). Not
+    done: ringing by redstone, and villagers and raids hearing it.
+  - **Books on lecterns and enchanting tables** (2026-10-30): an entity model `mc:book` cut from
+    `entity/enchantment/enchanting_table_book.png` as the picture is laid out (two covers and a spine, a block of pages
+    in each half, two loose pages), posed by how far open it is and how far over each loose page is. `UMcChestComponent`
+    lays one open on the slanted top of each lectern with `has_book=true` (`GetLecternBook`: spine up the slope, facing
+    the reader), and floats one over each enchanting table: bobbing, turning slowly while nobody is near, and within 3
+    blocks of this machine's player turning to them and opening, its loose pages waving. Test `McRender.Books`; shots
+    `Saved/Shots/books.png` and `books_wide.png` (`-McScene=books`).
+  - **Lecterns** (2026-10-30): using an empty lectern with a book and quill or a written book puts one on (a `Lectern`
+    block entity: the book and the page it lies open at, saved after the existing data; `item.book.put`; creative keeps
+    its own). Using one with a book opens it to read (window kind `Lectern`, `FMcLecternMenu`: the pages as plain text,
+    `McBook::GetPages`, and the page). The screen (`AMcHUD::DrawLectern`/`PollLectern`) is the game's book: the page
+    picture from `gui/book.png`, "Page n of m", the text wrapped to 114 font pixels, 14 lines, the page arrows and Page
+    Up/Down, and Done and Take Book under it. A page turn is a menu button the server answers: everyone reading it turns
+    with it, `item.book.page_turn` sounds and the lectern gives a full pulse for 2 ticks (`powered`, strong into the
+    block below); Take Book puts the book in the reader's inventory (or at their feet) and leaves the lectern bare.
+    Breaking it drops the book. A comparator reads floor(1 + 14 (page - 1) / (pages - 1)), 15 for a one-page book
+    (`McBook::GetComparatorSignal`). Scenes put books on with `"lecterns"`. Test `McSim.Lectern`; shots
+    `Saved/Shots/lectern.png` and `lectern_book.png` (`-McScene=lectern`, `-McUse=2,-60,2`). Not done: reading a book
+    held in the hand, writing in a book and quill, the text's colours and formatting (pages are plain), and hoppers
+    taking the book.
+  - **Mob heads** (2026-10-30): skeleton, wither skeleton, zombie, creeper, piglin, player (Steve's picture) and dragon
+    heads and their wall forms are entity models `mc:head/...` cut from each mob's own picture (an 8 cube, with the hat
+    layer for the zombie and player; the piglin's 10 wide with snout, tusks and ears; the dragon's a 16 cube with
+    scales, nostrils and two jaws, at three quarters), stood by `UMcChestComponent` (`GetHeadModel`): on the floor in
+    sixteen steps of `rotation`, on a wall facing out with the back against it, half way up. Placement turns floor heads
+    to the player and puts heads on walls when a side is clicked (none under a block). Test `McRender.Heads`; shot
+    `Saved/Shots/heads.png` (`-McScene=heads`). Not done: player heads' owners' skins (all Steve), the dragon's and
+    piglin's moving jaw and ears when powered, wearing a head, and heads in the inventory drawn as models. Where the
+    dragon's scales and nostrils sit is read from their sizes, not checked against the game.
+  - **Re-shoots against vanilla** (2026-10-30): every block-entity scene (`tools/scenes/*.json`) is built in vanilla
+    26.3 from the same JSON (`tools/scene_to_mcfunction.py --script`, run with mc-reference's `ref.sh`) and shot from
+    the same camera: a spectator with FOV effects off (`fov steady`), or, with `"standing": true`, a creative player
+    on the floor with the HUD hidden (`hud off`), since an enchanting table's book ignores spectators. Side by sides in
+    `Saved/Pairs/`. Found and fixed: a floor head's `rotation` 0 faces north (half a turn from a sign's), the dragon
+    head's lower jaw hangs 0.2 radians open, the enchanting table's open book lies back with its spine 11 degrees over
+    level, covers 10 degrees short of flat and its middle 0.91 up, and a lectern's book folds 28 degrees a cover.
+    Pots, bells, signs, beds and shulker boxes matched. Differences left to others: vanilla's vignette (part of its HUD:
+    every HUD-on vanilla shot is darker at the edges) and clouds; horses have no model (magenta boxes).
+  - **Polish list** (block entities): the enchanting book's page blocks lie flatter than its covers in vanilla and
+    meet over the spine, where ours fold with the covers (measure from ref_book_level and ref_book_above).
+    A worn dragon head stands 5% narrower and 15% shorter (top to lip) than vanilla's from the front
+    (sc_wear_dragon_head against ref_wh_dragon), so not a plain scale: likely its snout's offset or pitch, to be
+    measured side on. Zombie, pumpkin and bare heads match to the pixel.
+    Conduit: the eye is drawn at 0.6 and the wind at 1.25 blocks, two-sided and unshaded, tumbling with the cage
+    (fitted to ref_scene_conduits and ref_conduits_b/c with `-McScene=conduits`). Still guesses: the cage's turn and
+    tilt and the eye's bob. The logged rotation field goes 0.0375 a tick while awake and stops while asleep
+    (conduit_log), but how the renderer turns that into the cage's angle needs frame shots. The wind takes turns,
+    22 frames of 3 ticks each: `wind.png` as rings, then `wind_vertical.png` on a box stood on end, a run of each,
+    `wind.png`'s starting 20 ticks into a 66-tick count (conduit_frames.txt: one shot each 3 ticks, rings in
+    ref_cf_07 to 23 and 50 to 59, upright streaks in 33 to 45). Our frame clock is the conduit's age, not vanilla's
+    tick count, so the phase only matches for a conduit placed at a run's start.
+    For whoever owns the water mesher: a waterlogged conduit's cell draws no water (in vanilla it's the purple
+    box), so the cell shows the floor through it.
+    Spawner: vanilla's spawners don't count spectators as players near (spawner_mob.txt: with only a spectator about the
+    wait held at 20 and the spin at 0); we have no spectator mode yet.
+    For main, with the vignette (both full-screen HUD layers): a worn carved pumpkin's `camera_overlay`
+    (`misc/pumpkinblur.png`, from the item's `minecraft:equippable` data) over the first-person view.
+  - **Redstone hooks for the redstone session to wire** (McRedstone is theirs): `FMcSimulation::OnBellRung` and
+    McRedstone's `Bell` kind (below) are already in; further block-entity redstone input gets a hook here first.
+  - **Conduit Power, measured** (2026-10-30): mc-reference's `log conduit x y z ticks` prints the player's effect and
+    the conduit's state each tick (scripts `conduit_log.txt`, `conduit_rain.txt`). A conduit checks itself every 40
+    ticks (and just after it is set): awake, it gives Conduit Power for 260 ticks to players within 16 blocks per whole
+    7 of frame (given at 31 with 16 frame blocks, not at 33) who are in water or out in the rain; it wakes and sleeps
+    only on those checks, and hunts (the eye opens) with all 42. The effect keeps the player's breath full and digs as
+    Haste I (minecraft.wiki). Conduits in a chunk start their checks as it loads.
+    Hunting (`log mobs`, script `conduit_hunt.txt`): each check with a target hits it for 4, the picking check
+    included; with none it picks at random among wet hostile mobs whose box reaches the conduit's block grown by 8,
+    and keeps it while it lives, is wet and stands within 8 blocks of the middle (McConduitHunt). Dry and passive
+    mobs are left alone.
+  - **Ticking block entities start as their chunk loads** (2026-10-31): hoppers (found by their block, so empty ones
+    too, which before only started when placed) and part-done furnaces and brewing stands (which waited for the next
+    5 second sweep) start when the chunk comes in, and so do mob spawners (below).
+  - **Mob spawners tick** (2026-10-31): `FMcSpawners` in the entity host, fitted to vanilla's logged per-tick state
+    (mc-reference `spawner_log.txt`, zombie spawner): a first wait of 20 ticks, then a cycle the tick after the wait
+    reaches 0 and a new wait of 200 to 799; the wait stands still with no player within 16 blocks (it held at 347 with
+    the player 17.4 off). A cycle makes 4 tries, each at a random point within 4 blocks across and on the spawner's
+    layer or one above or below; a try that does not fit is lost (vanilla's cycles gave 2 to 4). 6 of the mob within
+    the 9x9x9 box stop a cycle; hostile mobs need their own dark rule, and none come on peaceful (wiki). Spawning goes
+    through the host's `SpawnMob`.
+  - **Spawner polish** (2026-10-31): the mob turns inside the spawner (McChestComponent, its block entity's mob, sent to
+    clients with the chunk): 20 times a second while this machine's player is within 16 blocks, the client's wait
+    counts down to 0 and the mob turns 1000/(wait+200) degrees; each cycle (the server's `MulticastSpawnerCycled`) puts
+    the wait back to 200 (spawner_log.txt, every tick; it stood still with the player 17 off). The game rule
+    `spawnerBlocksWork` (vanilla's `spawner_blocks_work`; we had it listed as spawnerBlocksEnabled) off holds every
+    spawner's wait where it is, so nothing comes out, while the mob inside still turns (spawner_rule.txt: the server's
+    wait held at 20 for 700 ticks and went on when the rule came back). Scene `-McScene=spawners` (`-McSpawnerSpin=0`
+    holds the mobs still, `-McSpawnerPose` tries another pose) for vanilla's spawner_mob.txt shots.
+    The mob faces east at spin 0 and turns 10 times the spin toward the south (logged spins 0 and 256.2643 against
+    ref_spawner_mob_pig and ref_spawner_pig_south/east/top), so it goes round about 1.7 times a second between cycles.
+    Pose: size 0.5, nose up 40 degrees, fitted on the pig only. At spin 0 vanilla's pig looks a little more compact
+    than ours from the south (a few degrees of heading, or the tilt's axis). Zombie and chicken, shot close at spin 0
+    (spawner_mob2.txt, ref_spawner_mob_zombie/chicken against ours from `-McCam=3.5|6.5,-59.5,62.5,180,0`): the zombie
+    agrees (both mostly behind the cage's middle, a little green at the top), the chicken doesn't: vanilla's shows only
+    a sliver of beak at the top middle, ours its wings out at 45 degrees and its wattle well left. Likely the size
+    should go by the mob's own size rather than a flat 0.5, or our display chicken flaps; it needs the displayed
+    entity's scale and pose logged (log model on the spawner's display mob) before changing it.
+    Logged (spawner_display.txt, mc-reference's new `log display`): the display chicken stands at rest (no flap, wings
+    at no roll, yaw 0), so our chicken's wings no longer rest folded 0.08 out (chicken_fall.txt agrees). Its scale
+    isn't a field; from ref_display_chicken it is about 0.55, the pig's, so a mob is no longer blown up to fill the
+    cage: 0.556 of its size, shrunk further only past a block. Ours at that size hides behind the cage's middle as
+    vanilla's does, but at the logged spin 110.5378 vanilla's faces the eye (beak top middle) and ours faces west:
+    the 10 times spin heading, fitted on the pig at two spins, doesn't hold there; it needs more spins logged.
+    Logged (vehicle_log6.txt, shots from straight above at four spins): vanilla's mob faces south at spin 0 and turns ten
+    times the spin toward the east (ours turned the other way; the spin-0 "head east" reading was wrong). A mob over a
+    block is drawn with its bigger side 0.62 of a block (the zombie at 0.318, by eye against 0.556 to 1.0); one up to a
+    block at 0.556 of its size, so the two rules jump at a block. vehicle_log9.txt (cow, sheep, spider and creeper at spin 0):
+    0.62 still fits the creeper and zombie, not 0.45 or 0.5; the mob had been drawn facing north at spin 0, the back of
+    the cow's and sheep's heads to the south where vanilla's show their faces, and is turned round. Left: vanilla's
+    cow and sheep faces look upright where ours are tipped nose up 40, and its spider's legs reach less far.
+  - **Bells rung by redstone** (2026-10-30): power coming on rings a bell the same tick (sound and swing), as if
+    struck on its facing side, floor and wall bells alike; power going off only clears `powered` (vanilla frames,
+    mc-reference scripts `bell_redstone.txt`, `bell_wall.txt`, `bell_wall_side.txt`). McRedstone's `Bell` kind;
+    the simulation's `OnBellRung` goes to the world actor's `MulticastBellRung`. Ceiling bells assumed the same.
+  - **Enchanting book motion, measured** (2026-10-30): mc-reference's `log table x y z ticks` prints a table's book
+    state each tick (scripts `table_book_log.txt`, `table_book_run2.txt`: 2500 ticks), and frame runs shoot it every 2
+    (`table_book_frames.txt`) or 14 ticks (`table_book_bob.txt`). The state rules fit every logged tick:
+    `FMcTableBook` steps 20 times a second. Near (feet within 3 blocks of the table's middle: opens at 2.9 level, not
+    3.0) it aims at the player, opens 0.1 a tick and its page target jumps by -3..3 (measured counts) every tick while
+    under half open, else one tick in 45; away it shuts 0.1 a tick and its aim creeps 0.02 a tick. Its turn closes
+    0.4 of the gap a tick; the flip springs (0.4 of the gap, capped 0.2, nine tenths of the change taken). Each of the
+    two loose pages turns over in the second part of its half-offset flip (fitted to 11 mid-turn frames). Open, each
+    cover lies 37 degrees off flat and the spine's middle 0.735 up (our model's gold corners fitted to both vanilla
+    views together, to 2 pixels; the earlier 10 degrees and 0.91 drew them a fifth too wide). Left: vanilla's page
+    blocks lie flatter than its covers and meet over the spine, where ours fold with the covers; a book
+    opening part way folds its covers as our model's shut does (gold corner fits). The bob is two waves of the table's
+    age, 0.010 blocks at 0.1 a tick and 0.026 at 0.02 (fitted to 90 frames to 0.1 pixel).
+  - **Decorated pots and conduits** (2026-10-30): a pot is an entity model `mc:decorated_pot` (a 14 by 16 body with
+    an 8 by 4 neck: its top, bottom and neck from `decorated_pot_base.png`, each side the middle of a side picture),
+    turned by `facing`. A conduit is its 6 cube shell (`mc:conduit/shell`) while asleep and, awake, the 8 cube cage
+    turning slowly with the eye inside looking at the player (`mc:conduit/cage`). Awake is `McConduit::IsActive`:
+    waterlogged, water in all 26 blocks round it, and at least 16 of the 42 frame places (three rings five across)
+    holding prismarine, prismarine bricks, dark prismarine or sea lanterns; the view looks again twice a second. Test
+    `McRender.PotsAndConduits`; shot `Saved/Shots/pots.png` (`-McScene=pots`). Not done: its wobble and what it
+    holds; the conduit's wind, its closed eye when hunting, Conduit Power and attacking hostile mobs (none of which
+    the server does yet).
+  - **Pot sherds** (2026-10-31): a pot keeps its four sides, back, left, right and front (`McPot`, in McItem; the
+    item's `minecraft:pot_decorations`, left off when all are bricks). Crafting puts the diamond's top, left, right and
+    bottom on them; placing the pot gives the block a `Pot` block entity with them (sent to clients with the chunk, as
+    signs are), and breaking it drops the pot with them, or, hit with a tool of `minecraft:breaks_decorated_pots`, the
+    loot table's cracked case and the four sides as items. Each side of the model is its own layer, drawn with the
+    plain side or its sherd's `<name>_pottery_pattern`: facing south, the front south, the right east, the back north,
+    the left west (vanilla, mc-reference `scripts/heads_pots.txt`, `ref_pots_front`). In the inventory the pot is drawn
+    in 3D with its sherds, by the item model's gui display (turned 45, tipped 30, at 0.6), as the heads are. Tests
+    `McItem` (crafting with sherds), `McRender.PotsAndConduits`; shot `-McScene=sherds`.
+    Dropped, a pot is its own model with its sherds at a quarter size, bobbing and turning as a dropped item's picture
+    does (the item entity's id carries the sides, `minecraft:decorated_pot=<back>,<left>,<right>,<front>`); size and
+    height match vanilla's (mc-reference `conduits.txt`, `ref_conduit_pots`, against `-McScene=conduits
+    -McCam=13.5,-59.2,5.0,180,25`; `-McPotDrop=<scale>,<lift>` tries others). Dropped stacks merge only with the same
+    components now (a sherd pot no longer joins a plain one). Scenes take `"items"` (dropped, never picked up), for
+    both sides (`tools/scene_to_mcfunction.py`). Not done: the held pot, which belongs to the held-item drawing
+    (`McHand`, on main's branch), and other blocks dropped in 3D (all dropped items here are flat pictures).
+  - **Fishing** (2026-10-30): using a fishing rod casts a bobber (`FMcFishingBobber` in McEntity, `McFishing`) from the
+    eyes along the look, at 1.1 blocks a tick looking level and harder the steeper (measured from vanilla casts at
+    eight pitches, mc-reference `scripts/bobber_cast*.txt`); it flies under gravity 0.03 and drag 0.92 a tick (measured), hooks the first mob, player or item it touches,
+    lies on ground or sticks to a wall, and in water floats on a spring at the surface. In water the wait for a bite is
+    100 to 600 ticks, 100 shorter at each end per level of Lure; under open sky in rain a tick in four counts double,
+    and without sky half the ticks don't count. Then a fish swims in for 20 to 80 ticks (its wake drawn on the water)
+    and bites for 20 to 40 (the bobber dips, a splash). Using the rod again reels in (`McPlayerFishing.cpp`): during a
+    bite the catch is rolled from the data's `gameplay/fishing` loot table (`McLoot::RollFishing`: luck of the sea
+    adds each entry's quality, the treasure needs open water, a 5 by 4 by 5 box of only water and air, and the jungle
+    bamboo needs a jungle) and flung to the angler with 1 to 6 experience; a hooked mob or item is pulled toward them.
+    The rod wears 1 for a catch, 2 on the ground, 3 for an item, 5 for a mob. The bobber goes when the rod is put away,
+    or is 32 blocks off; one lying on the ground stays (a vanilla bobber on stone was still there after 1600 ticks,
+    though the wiki says 1200). Drawn as the hook picture facing the camera, with a
+    black line hanging slack to the rod tip in the angler's hand (`UMcEntityModelComponent::SetFishingLine`); the hotbar shows
+    the cast rod. Sounds: `entity.fishing_bobber.throw`, `.splash`, `.retrieve`. Test `McPlayer.Fishing`; shot
+    `Saved/Shots/fishing.png` (`-McScene=fishing -McCast=6`). Not done: the rod and line in a third-person hand (the
+    player model holds nothing), Lure's and luck's effect on mobs' fishing, and fishing advancements; not yet measured: the
+    caught item's throw and the float's springiness and dip (set by eye).
+  - **Elytra** (2026-10-30): worn in the chest slot (the data's equippable slot), a jump in the air starts a glide
+    (`McPlayerElytra.cpp`), which ends on landing, in water or lava, on a ladder or vine, or when the wings are down to
+    their last point (they never break: 432 points, 1 a second while gliding, none from blows). Gliding the body is a
+    0.6 cube with the eyes 0.4 up, falls no further than a dive of 0.5 a tick allows for fall damage, and flying into a
+    wall hurts by 10 times the sideways speed lost less 3. The flight (`McElytra`) is this port's own model, its numbers
+    fitted to vanilla glides measured from positions (mc-reference `scripts/glide_steady.txt`, `glide_turn.txt`,
+    `glide_speed.txt`): level flight about 24 m/s after 10 s, sinking about 3 m/s and gliding about 10 to 1 (wiki), 20
+    down about 37 m/s, a vertical dive averaging 60 m/s over 10 s, a 90 degree turn shedding speed, and climbs that
+    stall (ours lose speed ahead faster than vanilla's in a steep climb). A firework rocket used while gliding is spent
+    and pulls toward 33.5 blocks a second along the look, halving the gap each tick (measured), for 10 (flight + 1)
+    ticks plus up to 11 (wiki; `entity.firework_rocket.launch`). Other players see wings on the back
+    (`McPlayerModel::BuildWings`: two 10 by 20 by 2 boxes from `equipment/wings/elytra.png`, hung from behind the
+    shoulders and fanned 15 degrees, matching the vanilla husk in `ref_elytra_back.png`), and a glider lying along the
+    look, head bent back, wings spread. Test `McPlayer.Elytra`; shots `Saved/Shots/elytra_back.png` and
+    `elytra_glide.png` (`-McGlide`, `-McSelfShot` with `-McSelfShotYaw` and `-McSelfShotRise`). Not done: the rocket
+    entity and its trail, rockets' explosion damage, the wind sound, the camera roll, wings on armour stands and mobs,
+    and the server checking the glide.
+  - **Totem of Undying** (2026-10-30): a blow that would kill (anything but the void, which `FMcPlayerStats::LastHurtKind`
+    tells) uses up a totem in the main hand, or else the off hand (vanilla measured with one in each: the main hand's
+    goes, `ref_totem_hands.png`; `McTotem::TryUse`, called from the server's tick just before the death check in
+    `McPlayerTotem.cpp`): the player lives on with 1 health, every effect taken away, then Regeneration II for 45
+    seconds, Fire Resistance for 40 and Absorption II for 5 (wiki), and `item.totem.use` plays. Every machine then shows
+    it (`MulticastTotem`): green and lime-yellow sparks thrown out from the body for 15 ticks, drawn with the
+    `glitter_7`..`glitter_0` sprites over their lives (`particles/totem_of_undying.json`; `UMcParticleComponent::TotemBurst`,
+    its own mesh section), and on the holder's screen the totem's picture grows in the middle from a tenth of the
+    screen's height to just over half in 4 ticks, turning half round, and hangs there until 20 ticks (`McTotem::GetFlight`,
+    drawn by the HUD under the hotbar). Every timing, size and colour is measured from vanilla shots 2 ticks apart
+    (mc-reference `scripts/totem_ticks.txt`, `ref_tk_*.png`). Test `McPlayer.Totem`; shot `Saved/Shots/totem.png`
+    (`-McTotem=seconds` puts one in the off hand and deals a killing blow). Not done: the totem drawn as a thick 3D item
+    and tilted as vanilla's, the effects' own particles (vanilla's coloured rings round the player from about tick 20),
+    the Postmortal advancement and the death message's statistic.
+  - **Sign text** (2026-10-30): signs keep their words in a `Sign` block entity (`FMcSignSide` for each side: four
+    lines, a dye, glowing; and waxed), saved after the existing data of that entity only, so older saves load with blank
+    signs (`McSign` in McWorld has the kinds, facing, board places and text colours). The chunk stream sends signs' entities
+    with their chunks (`McChunkCodec` version 3; containers' contents stay on the server) and each change after
+    (`ClientBlockEntity`, from `FMcBlockWorld::OnBlockEntityChanged`). Placing a sign opens the editor (`FMcSignMenu`,
+    the window kind `Sign`); right-clicking one opens the side the player is in front of, unless it is waxed. The screen
+    (`AMcHUD::DrawSign`/`PollSign`) shows the board with four lines, each stopped at the board's width in the font's
+    pixels (90, a hanging sign's 60: `McFont`, shared from McAssets), a cursor that moves with the arrows, Home and End,
+    and Done or Esc to send; the server cuts each line to the width again. A dye recolours text, a glow ink sac makes it
+    glow and an ink sac stops that, honeycomb waxes it (each used up outside creative, with its sound; a waxed sign
+    plays `block.sign.waxed_interact_fail`). `UMcSignComponent` draws the text on standing, wall, hanging and wall
+    hanging signs, both sides, at 1/96 of a block a font pixel (hanging 0.9/64): plain text at four tenths of its dye,
+    glowing text full bright with its eight-way outline (cream round black, seen from any distance; the others' only
+    within 16 blocks). Placement now turns signs: standing in sixteen steps towards the player, wall signs on side faces,
+    hanging signs under a block (or on top with something above) and wall hanging signs across the face clicked.
+    Scenes take a `signs` list (`tools/scenes/signs.json`, which `scene_to_mcfunction.py` turns into `data merge`).
+    Shot: `Saved/Shots/signs.png` (`-McScene=signs`). Limits: formatting codes and other fonts (unicode) are not drawn;
+    the text is lit as a block entity, not by the block's own light.
+  - **Boat paddles** (2026-10-30): every boat and raft has two paddles, cut from its own picture, pivoting on the gunwales (a raft's
+    on its deck edges, clear of a chest). They rest slanting out over the sides and row while a rider pushes: both going forward, the left turning right and the right turning left,
+    neither going back (`FMcBoatEntity::GetPaddleBits`, sent in the entity's count). Shots: `-McScene=paddles` (`-McPaddling` rows them without a rider).
+    Refitted 2026-11-01 from paddle_log.txt (mc-reference's new `hold <key> <ticks>` rows a boat; `log model` gives the
+    paddles' angles each tick): a 16-tick stroke, the pose and the hull's paddle mount ported from the logged angles
+    (`PaddleLeft` in McEntityModel). The raft's (vehicle_log3.txt, log model bamboo_raft) row the same stroke from a
+    pixel lower: 9 out, 10 up, 3 forward. The raft deck is two boxes, the lower one 28 by 16, from 8.1 up.
+  - **Two riders** (2026-10-30): a boat carries two players (`FMcVehicle::GetCapacity`; a cart one). The first in is the driver and
+    steers; the second sits behind (seats a fifth of a block forward and six tenths back when two are aboard). If the driver
+    gets out the other drives. A pawn is a seat by its key (`SetRider(..., Key)`), so a full vehicle turns a third away.
+  - **Boats take mobs** (2026-10-30): a boat takes in any mob narrower than itself that it touches while it has a free seat
+    (a plain boat two, a chest boat one: the chest has the back seat). The mob sits (`FMcMob::RidingId`, not saved) doing
+    nothing until the boat goes, sunk four tenths of its height into the hull; animals sit across it. Players count against the seats, so a boat with two pigs turns a
+    player away. Shot: `Saved/Shots/boat_mobs.png` (`-McScene=boat_mobs`, side-on: a boat with a pig and a chicken, a chest boat with
+    a sheep, summoned with `-McChat`).
+  - **Chests** (2026-10-30): placed chests are drawn from their entity pictures (`UMcChestComponent`, which finds them in the
+    loaded chunks and stands an `mc:chest/...` model in each): chest, trapped, ender and the four copper chests (waxed too),
+    single and double, turned to their facing, Christmas pictures on 24 to 26 December. The lid opens over ten ticks while
+    this player has the chest open, both halves of a double together. The chest picture's net is the other way up from a
+    mob's, so the boxes are turned half round (`AddChest`, which the chest minecart uses too). Shots: `-McScene=chests`
+    (`-McChestsOpen` opens every lid), `Saved/Shots/chests_shut.png`, `chests_open.png`. Limits: another player's open
+    chest doesn't open its lid here (who has a chest open isn't sent), and the chest is lit as an entity, not by the
+    block's light. A half's picture follows where its other half is: `_left` is the half whose other half is on its +x
+    (as turned), which `McChestLink` calls `right`. Not done: the other block entities whose block models are only a
+    particle (beds, shulker boxes, skulls and heads, decorated pots, conduits, copper golem statues, end portals and
+    gateways), a bell's body, and the books on lecterns and enchanting tables (sign text is done: see above).
   - **Not done:** /spawnpoint, /clone, /execute, data tags, selector arguments, and tab
     completion.
   - **Dev switch:** `-McChat="/time set night|hello"` sends those lines three seconds in.
@@ -158,6 +592,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   item, its own), 4 by 4 and scrolled with the wheel, each drawn as a small banner in the dye's colour. The one
   chosen gives the banner with that layer added (`minecraft:banner_patterns`). A banner with six layers takes
   no more. Taking the result uses one banner and one dye; the pattern item stays.
+- **Placed banners** (2026-10-29): a banner block carries a flag entity (`mc:banner`, `FMcBannerEntity`) holding its base,
+  wall/standing and layers, drawn as pole, bar and one tinted layer per pattern; placing keeps the item's patterns, breaking
+  drops them back. `/give` takes `item[component=json]`.
   - **Not done:** drawing banners with their patterns as items or in the world, and the cartography table (it
     needs maps first).
 - **Stonecutter, grindstone and smithing table** (2026-10-28), in `McWorkstationMenus`:
@@ -210,8 +647,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **Comparator readings** (2026-10-29), following minecraft.wiki's "Redstone Comparator": besides containers (a double
     chest reads both halves as 54 slots) it reads a cake (2 per bite left), composter and cauldron level, an end
     portal frame with an eye (15), a respawn anchor (0, 4, 8, 12, 15), and a beehive or bee nest (3 per honey level).
-  - **Not done:** hopper minecarts, furnace, brewing stand, jukebox, lectern and item frame readings, and hoppers
-    seeing a double chest as one.
+  - Furnace, blast furnace, smoker and brewing stand readings measured in vanilla (16 cases, `lg_cmpread`) and held 79/79:
+    `floor(sum(count/maxstack)/slots*14) + (any ? 1 : 0)` over 3 slots (furnaces) or 5 (brewing stand), the same as chests.
+    A brewing stand's `has_bottle_N` block-state properties are not set from its bottles yet (vanilla sets them; the replay reads them as false).
+  - **Not done:** hopper minecarts, jukebox, lectern (main measured page 3 of 5 = 8) and item frame readings (none exist on this
+    branch), and hoppers seeing a double chest as one.
 - **Dispenser and dropper** (2026-10-28), following minecraft.wiki's "Dispenser" and "Dropper":
   - Nine slots. Powered (quasi-connectivity included, as for pistons), it is `triggered` and fires 4 ticks
     later, once a pulse, taking one item from a random slot.
@@ -221,6 +661,36 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     anything else out.
   - A fire charge or flint and steel lights the air in front (charge used up, steel worn by one); a shulker
     box is placed in front, facing the way the dispenser does. A blocked front does nothing.
+- **Pause menu and options** (2026-10-30), in `McHUDMenus`: Back to Game, Options, Open to LAN and Save and Quit; Esc
+  closes a screen first, then opens the pause menu. Options has sliders for field of view, render distance,
+  sensitivity and volume (kept in `Saved/options.json`) and the Unreal Mode / HD choice. Open to LAN starts a listen
+  server on the running world. **Not tested:** another client joining.
+- **Water draws before ice and glass** (2026-10-30): water is its own render pass (`EMcRenderPass::Water`, same
+  translucent material) in a mesh of its own per chunk with translucent sort priority -1, so over a frozen lake every
+  chunk's ice is blended over the water below it instead of the order following the chunk meshes' distances.
+  Still per-mesh: translucent blocks against each other (glass behind glass) sort by chunk distance only.
+- **F-keys** (2026-10-30): F1 hides the HUD and hand, F2 saves `Saved/Screenshots/<date>.png`, F3 shows the debug screen (version, fps, XYZ, block, chunk, facing, light, biome, targeted block), F5 cycles first person, behind (camera clipped at 4 blocks by a raycast) and in front. `Config/DefaultInput.ini` clears the engine's own F1-F5 view-mode bindings. **Not done:** F3 combos, F4, the full F3 pie chart/graphs. The FOV is vertical now (`r.UseLegacyMaintainYFOVViewMatrix=1`; Unreal otherwise took 70 as the horizontal angle at 16:9, about 44 degrees vertical, which zoomed the whole game in): the F5 player is about 245 px tall at 720p.
+- **Eating and sound audit** (2026-10-30): the held food rises to the face, turns toward the camera and bobs while eaten (`McHand::GetEatTransform`, driven from the use button; no drink items exist yet, so drinking is the same pose once they do). Sounds the game now plays by name: `entity.generic.eat` every 4 ticks and `entity.player.burp` on finishing, `entity.item.pickup`, `entity.experience_orb.pickup`, `entity.player.levelup`, `entity.player.attack.strong/weak/crit`, chest, barrel and shulker box `open`/`close`, `ui.button.click` on every menu button. **Audit** (sounds.json has 1991 events): block and mob sounds are built from the group and mob name (451 events); only about 40 others are played by name. Still silent: splash and swim, fire, lava and water ambience, furnace crackle, note blocks and jukebox, portals, tnt primed, throw and bow shots, item and tool breaking, hurt variants (drown, burn), ender chest, anvil land, enchant, sleeping and the UI sounds other than the click (toasts, bubble pop, stonecutter, loom, cartography).
+- **Glass behind glass** (2026-10-30): translucent quads (stained glass, glass, ice, slime) are sorted back to front per section when meshed (`McTranslucent::SortQuadsBackToFront`), and the component re-sorts one chunk per frame once the camera has moved 1.5 blocks, so a pane in front of another blends over it from every side. Test `McTranslucentSortTest`; shots `glass1`, `glass2` (red, blue, lime, clear in a row, seen head-on and from the side).
+- **Eating crumbs** (2026-10-30): while food is eaten the local player throws bits of the food's own sprite (random opaque pixels of `textures/item/<name>.png`) from just below the mouth, every 4th tick from the 7th with the munch sound (`UMcParticleComponent::ItemEaten`, a one-colour `Crumb` particle that falls and lands). Shot `crumbs3`.
+- **Sound pass 2, part 1** (2026-10-30): the player splashes going into water (`entity.player.splash`, `.high_speed` over a quarter; volume from the speed, at least 0.12), swims (`entity.player.swim` every 1.6 blocks), puts a fire out (`entity.generic.extinguish_fire`), and says `hurt_drown` or `hurt_on_fire` by the last damage kind (`FMcPlayerStats::LastDamageKind`); a tool or weapon that breaks cracks (`entity.item.break`); buying an enchantment plays `block.enchantment_table.use` (`UMcPlayerDataComponent::ServerSound`); the nether portal hums (`block.portal.trigger`) and travel plays `block.portal.travel`. Ambient blocks near the player say things at the game's odds, from the same random pick as the particles: fire, lava pop and ambient, flowing water, nether portal, furnaces and campfires crackling. `-McLogSounds` logs every sound event for runs with the sound off. Not yet: bow, throws, TNT primed, note blocks and jukebox have no gameplay to attach to; toasts wait for advancements.
+- **Translucent opacity** (2026-10-30): vanilla blends in sRGB and Unreal in linear, so every translucent material (stained glass, ice, water, slime, honey) uses opacity `pow(alpha, 0.63)` (`McSrgbOpacity` in `tools/make_materials.py`); five measured points are within about 10 of vanilla.
+- **Bow** (2026-10-30): hold right mouse with a bow and an arrow (or in creative) to draw; power is `(t*t+2t)/3` for t seconds, capped at 1, no shot under 0.1 (`McCombat::GetBowPower`); the arrow flies at power*3 blocks a tick, hits mobs for `ceil(speed*2)` (a full draw adds up to half again), sticks in blocks and is picked up again unless shot in creative. The bow shows `bow_pulling_0/1/2` at 0/0.65/0.9 s and the view zooms `1-0.15*min(1,t)^2`; sounds `entity.arrow.shoot`, `.hit` and the pickup.
+- **Bow pose** (2026-10-30): drawing stands the bow side-on, arrow forward, limbs up, string toward you (`McHand::GetBowStandRotation`), moved (-2, -20, 20), scaled 1.2, yawed 22 and rolled 7 degrees in the camera's space from where it rests (`GetDrawTransform`), (idle scale to 1.2 times it). Fitted by overlaying our shot on the reference's at 5 and 12 ticks of draw (limbs, string column and size within roughly 10 percent; the string is not yet an exact vertical column). Held flat items are a true one-pixel extrusion of the picture (`BuildExtrudedMesh`), no doubled outline. The near plane is 1 unit (the drawn string comes within 2 of the eye). Polish left (Jeff, aeb69aa): the lens between limb and string is narrower than vanilla's, the arrow sits more level than vanilla's slight downward slant, and the upper limb leans less. Not yet measured: whether the bow trembles at full draw (none now). **Arrow launch** (2026-10-31, measured: scripts/spread.txt with the new `log arrows` verb, 50 full draws at yaw 0 pitch 0, each arrow's first two ticks): the arrow starts on the eye's line (x and z exactly) 0.1 block under the eye (`McCombat::GetBowLaunchDrop`; ours was 0.3 ahead of the eye), its speed is 3.000 blocks a tick (sd 0.022), and its direction has a spread of 0.0090 sideways and 0.0082 up (sd of the launch direction's slope; kurtosis of 50 samples 1.7 to 2.0, a Gaussian would be 3: more samples would tell whether it is a Gaussian or flatter), added per component to the look before the speed scales it, 0.0085 each in `GetBowAim`. The air then slows an arrow by 1 percent a tick and drops it 0.05 a tick (measured as vz2/vz1 0.990000, gravity -0.0500; already what the arrow does). Not measured: whether the spread depends on the draw (only full draws), the shot sound, and the crit trail. **Hurt tilt** (2026-10-31, measured: scripts/hurt.txt, hurt2.txt with `shot` lines that print the hurt time, a wall of columns, a hit from the front, back, east and west by an armor stand): the view rolls after a hit for the hurt time (counted down from 10; the first value the client shows is 8). The roll, taken from the lean of the columns (structure tensor of the top of the picture, so a measure that reads about 1.2 times the true angle), is 18.9, 10.6, 5.8, 3.0, 1.2, 0.2 degrees at hurt times 8 to 3, a power law 41.1 * (t/10)^4.08 (`McCombat::GetHurtTilt`, scaled so that our shot at hurtTime 7 reads 11.6 as the reference's east and west hits do); from the east +11.6 and from the west -11.6 at hurt time 7, from the front or the back about 0 (+-1): the roll goes with the side, `GetHurtSide`, the sine of the angle assumed between the four measured directions, +1 for a hit without a place (the reference's damage without a source rolled the same way as one from the east). The roll is `AddAdditiveOffset` on the camera (it multiplies on each call: cleared each frame; the engine's roll is clockwise, ours is turned to match); `-McHurtHold=N` shows the roll of N ticks, for shots. Hurt time 10 and 9 were not seen at the end of any client tick, so the roll is capped at the value of 8. Not measured: oblique hits, the roll's dependence on damage, and the damage tilt option. Remote players get the side by `ClientHurtSide`; untested over a network. **Bow tremble at full draw** (measured: scripts/fulldraw.txt, fulldraw2.txt, 42 shots on a 1-tick grid): no shake of the world; the bow's pixels move along a line (x 0.87, y 1.39 px of amplitude at 720p) with a period of 7.8 ticks (0.1285 cycles a tick, residual 0.27 px), from the full second of draw on (`GetBowTremble`; the phase is not known, nor whether it builds up earlier). **Arrow sounds** (2026-10-31, measured: scripts/sounds_bow2.txt with a new `log sounds` verb, 70 shots at a wall 12 blocks away; scripts/sounds_bow.txt a first 15): volume is 1 for the shot and the hit. Shot pitch, 40 full draws: min 1.1262, max 1.3273, mean 1.2120; 30 draws held 8 ticks: min 0.8149, max 1.0006, mean 0.9016. Hit pitch, 70 hits: min 1.0927, max 1.3300, mean 1.2003. A uniform range fits each set (KS against the range widened by one spacing: p 0.23, 0.53, 0.33), and so does a uniform spread of the reciprocal (p 0.75, 0.95, 0.93), so 70 samples do not tell the two shapes apart: the simplest, a plain uniform range, is used (`GetBowShootPitch` 0.62 + 0.21 U + power/2, `FMcArrowEntity::GetHitPitch` 1.09 + 0.24 U), and the shape is NOT fitted. The power term is two points only (the midrange moves 0.319 between power 1 and about 0.32 to 0.37; 0.5 per power is a rounding). Heard only within 16 blocks: a hit at 20 blocks is not started by the client. Not measured: the bow draw itself has no sound; other draws. **Draw zoom** (2026-10-31, measured: ref_zm_* from scripts/zoom.txt, a wall of one-block columns 9.5 blocks away on a platform, survival on the ground, no `fov steady` because that removes the zoom; focal length fitted from four silhouette edges, residual under 1 px): the focal length against the unzoomed 513 px is x1.000, 1.006, 1.033, 1.085, 1.174, 1.227 and 1.227 at 2, 5, 10, 15, 20, 25 and 30 ticks of draw, which as a field-of-view angle (70 degrees) is 1 - 0.15 t^2 with t the seconds of draw up to 1 (the shots land about 2 ticks into the draw; 0.033, 0.164, 0.412, 0.799 and 1.006 of 0.15 against t^2 of 0.0225, 0.16, 0.42, 0.81 and 1.0). `McCombat::GetBowFovScale`, applied to the camera in `McPlayerPawn` while the bow is drawn and put back on release. Confirmed in our game (zmA0 and zmA20 with a column wall): the column edges at no draw are 451, 559, 721, 829 px and at a capped draw 408, 541, 739, 872, identical to the reference's at 0 and 25 ticks. Not measured: the zoom on the way back (release is instant here), the spyglass, sprint and speed FOV effects. Rechecked with `fov steady` (2026-10-31, ref_bowfs_* from scripts/bowfs2.txt on a clean sky platform; the first rerun in the shared 1070 world had the wrong slot selected and is void): the bow's size and position at 5 and 12 ticks match the earlier shots (bow pixels within 4 percent), so the fit was not an FOV artefact (the hand is not scaled by the world FOV); ours at 12 ticks (bw12) still sits within about 10 percent as before. The idle and 24-tick shots differ between runs by draw timing only.
+- **Held item placement** (2026-10-30): all held things now share one placement, measured from the reference client's idle shots (E:\mc-reference scripts/idle_items.txt): anchor (0.72, 0.567, -0.525) blocks forward/right/up of the eye (solved from the corners of the held stone's top face), the display transform's own scales (0.4 block, 0.68 flat; the old 0.5 and 0.37 fudges and the anchor were compensating for each other), and flat items' rotation signs turned over (blade up and to the right). Sword, stick, snowball, bow, stone overlay the reference within a few pixels; the empty hand was not touched.
+- **Held rod** (2026-10-30): a held item's firstperson_righthand display is read from its model in the cache, parents followed (a fishing rod has its own, rotation 0,90,25 translation 0,1.6,0.8), instead of one fixed for all flat items. `UMcHandComponent::SetRodCast(true)` shows the cast picture (fishing_rod_cast); `GetRodTipWorld()` gives where the line leaves (the picture's top-right opaque pixel, in world space, following swing and bob) for the fishing branch to attach its line to. Checked against the reference client's idle and cast shots (taken with `click`, 20 ticks after the cast): the held rod stands at the same angle in both, top at about (230,320) and bottom at about (350,640) of 1280x720, and ours matches that within a few pixels (our rod is lit brighter: the reference shot was taken in a darker light). The line runs from the rod tip to the bobber and is drawn by the fishing branch. `-McRodCast` forces the cast picture for shots.
+- **Thrown items** (2026-10-30): right click throws a snowball, egg or ender pearl along the look (`ServerThrow`, `FMcThrownEntity`): 1.5 blocks a tick, gravity 0.03, drag 0.99 (0.8 in water). A snowball flinches mobs without damage (a blaze takes 3); an egg makes a chick one time in eight (four in one of thirty-two of those; a chick is a half-size chicken, grown after 20 minutes, not kept in saves as a chick); a pearl takes its thrower to where it lands for 5 fall damage, one throw a second. Sounds from the cache (`entity.*.throw`, `entity.player.teleport`). No hit particles yet (nothing carries particles from server to client), and no endermite chance (no model).
+- **Death screen** (2026-10-30): "You died!", "Score: N" (experience points at death, yellow, replicated as `DeathScore`), Respawn and Title Screen buttons (Title Screen leaves the map, saving). **Not done:** hardcore's Spectate World, the cause-of-death line.
+- **Beds and block outline** (2026-10-30): the aimed block's outline is a thin black 40% line, the same width on screen at any distance; crack stages darken the block (`McBlockHighlight`). `McBed`: right-click sets the respawn point ("Respawn point set"), sleeps at night 12542 to 23459 or in a thunderstorm (else "You can only sleep at night", or "You may not rest now, there are monsters nearby"); every player in bed for 100 ticks skips to morning and clears the weather; sneak, jump or damage gets up; death respawns beside the bed ("Your home bed was missing or obstructed" if gone); in the Nether and End the bed explodes. Chat lines go to the log (`Chat: ...`). **Not done:** other players see a sleeper standing, no occupied bed state, sleeping players can't be told apart from awake ones in a bed already taken, respawn anchors.
+- **First-person hand** (2026-10-30), `McHand`: the right arm (empty hand only) and the held item, drawn with UE
+  first-person rendering (camera `FirstPersonScale` 0.1, its own 70 degree vertical field of view). A held item is
+  placed from the models' `display.firstperson_righthand` data at one anchor (`HeldAnchor`); swing, walk bob and the
+  drop when the item changes are in. Held block 150-250 px wide is a test. **Not done:** maps in hand, off-hand,
+  enchantment glint, tools that differ from item/handheld (rods, mace).
+- **Shulker box contents** (2026-10-29), in `McShulker` and `McBlockUse`: a shulker box is a 27-slot "Shulker Box"
+  container. Breaking one drops it with its items packed into the item (`PackBoxDrops`), and placing it fills
+  the box again (`FillBox`); a dispenser placing one keeps the contents. A box cannot open with a block against
+  its lid, and shulker boxes cannot go inside one (`bNoShulkerBoxes`).
   - **Not done:** dispensing TNT, armour, minecarts and boats, thrown items, spawn eggs and the rest of the item
     behaviours.
 - **Buckets** (2026-10-28), in `McBuckets`: an empty bucket aimed at a water or lava source takes it (the aim
@@ -230,6 +700,123 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - Right-clicking a workstation, brewing stand, hopper, dispenser or dropper now opens it in play; only the
     crafting table, chests and furnaces did before.
   - **Not done:** buckets of fish, axolotls and powder snow, milk, and waterlogging blocks.
+
+### Resource packs (2026-10-31)
+
+**Where the game read textures and models before packs** (the gaps this work closes):
+- Every asset path went through `McCache::Asset(rel)` to `cache/client/assets/minecraft/<rel>` and then straight to
+  a file read. There was no layer between the path and the disk, so nothing could be overridden.
+- `FMcBlockTextures` made one 16x16 `UTexture2DArray` (nearest, 5 mips) from the textures the baked models name.
+  16 was a constant in the loader, the mips, the animation uploads and the HD generator. A texture of another size
+  was sampled down to 16 at its texel centres, so a 1024 pack could never show.
+- `.png.mcmeta` was read beside the png at that same path; animation frames were all squeezed to 16x16.
+- `FMcHdBlocks` (Unreal Mode plus HD Textures) made albedo, normal and specular arrays from those 16 pixels
+  (`-McHdSize`, 64 by default); its comment said "resource packs are not read yet". Its LabPBR layout is the one
+  Faithful PBR uses, so a pack's `_n` and `_s` maps could go straight in.
+- Blockstates and models were read in `McBlockModels` from `McCache::Asset`. Entity, sky, weather, particle, GUI
+  and item pictures were read by the callers that need them (`McEntityModel`, `McSkyComponent`, `McHUD`, `McHand`...),
+  all through `McCache::Asset` too, except sounds (`McCache::Root()/assets/...`, not part of this work).
+- `McHand` built a quad-per-pixel mesh from the held item's picture: fine at 16, millions of quads at 1024.
+- No notion of pack order, `pack.mcmeta`, `pack.png`, zip reading or a pack folder.
+
+**What is built:**
+- `McResourcePacks` (McCore): `FMcResourcePack` opens a zip (own reader: stored and deflated, zip64) or a folder and
+  reads `pack.mcmeta` (`pack_format`, `min_format`/`max_format`, `supported_formats` as number, pair or range,
+  `description` as a text component, the `filter.block` rules) and notes `pack.png`. `FMcPackStack` puts packs in
+  order, later wins per file, a pack's `filter` hides what is below it, and vanilla is the bottom layer.
+  Source of the format: minecraft.wiki "Resource pack".
+- `McCache::Asset` asks the stack first. A folder pack's file is used where it is; a zip's file is taken out once
+  into `Saved/McPackCache/<hash of zip path, size and time>/` (with its `.png.mcmeta`, and only that pack's, as in
+  vanilla where the animation file comes from the pack that gave the png), so every existing reader sees the
+  override with no change: block and item textures, animations, blockstates, models, and the entity, environment,
+  particle, GUI, painting and font pictures the renderer loads. Item models and entity pictures are read the same way.
+- `-McPacks=a.zip,b` names the packs: a file in the `resourcepacks/` folder next to the project (or a path), last
+  listed on top. Without it nothing changes. `-McPackMaxSize=<px>` (default 512), `-McPackBudgetMB=<MB>` (default
+  1536) and `-McPackPbr` (default off) are the options.
+- **High resolution:** one array, as wide as the widest pack texture (a power of two), lowered to `-McPackMaxSize` and
+  then until the array and its mips fit the budget; every layer is scaled to it (shrunk with an alpha-weighted box
+  filter, vanilla 16 pixel layers repeated). The array is filtered like the HD arrays (trilinear, anisotropic) above 16.
+  Animated frames are scaled the same way. `McHand`'s extruded item mesh shrinks the picture to 64 first.
+- **PBR:** with `-McPackPbr`, a pack's `<name>_n.png` and `<name>_s.png` (first frame) are kept per layer. The HD
+  arrays (Unreal Mode plus HD Textures) use them in place of the generated maps, and make the missing one from the
+  picture without added detail. Vanilla Mode ignores them, as vanilla does. HD arrays are sized to a third of the budget.
+- **Picker:** Options, Resource Packs... (`EMenu::ResourcePacks`): the packs in `resourcepacks/` (zips and folders,
+  `McPacks::ScanFolder`) in Available and Selected lists, arrows over the icon (select, unselect, move up/down as in
+  vanilla's `transferable_list` sprites), Open Pack Folder, Done applies. The choice is kept in
+  `Saved/McResourcePacks.json`, which `-McPacks=` overrides. The topmost selected pack wins.
+- **HD plus PBR check (Faithful PBR 1024 on the packs scene):** 108 layers carry `_n`/`_s` maps, the HD arrays are
+  256 px under the budget, and the normal array's alpha is the pack's height map, so parallax can read it from there.
+- **Gaps closed after the picker:** a pack's `sounds/*.ogg` replace the cache's and its `sounds.json` events are merged
+  (`"replace": true` swaps the list); `lang/en_us.json` is merged key by key; font sheets of any multiple of 128
+  work (glyph widths in vanilla pixels); a pack made for another resource format (game: 97) is marked Incompatible
+  in the picker and still loads, falling back to vanilla files; broken zips and missing packs are listed with the
+  reason and skipped. GUI sprites, HUD, mobs, items, particles, sky go through `McCache::Asset` and were checked with
+  a throwaway pack (red hotbar, blue cow, 4x font) shot on the 1070. The Faithful demo pack itself only has blocks.
+- **Not done / later:**
+  - Sounds already decoded and the language table are rebuilt when the pack choice changes, but a decoded-sound
+    cache entry made before the change stays until the next start.
+  - Switching packs while a world is open: the world holds the models and the texture array, so the choice is saved
+    and applies at the next start. From the title screen the caches are unloaded and rebuilt on the next world.
+  - The picker doesn't take dropped files or show pack compatibility warnings (`pack_format` is not checked).
+  - One array per size, so a pack of 100 big textures and 900 vanilla ones wouldn't repeat the 16 pixel layers up to
+    the big size. It needs the block materials to sample two arrays (`tools/make_materials.py`), so it waits for the
+    editor.
+  - Entity and GUI pictures at pack size get no mips in vanilla mode (`McRenderTextures::MakeArray`).
+  - Pack `overlays`, `optifine/` and `mcpatcher/` data (CTM, custom colormaps), the `lang` and sounds from packs.
+  - A pack's animated normal and specular maps use the first frame.
+
+**Resource pack feature checklist** (every item of minecraft.wiki "Resource pack"; [x] done = built and tested or shot, [~] partly,
+  [ ] missing = not read at all):
+
+Pack files
+- [x] Zip and folder packs, stacked in order, later wins per file (`resourcepacks/`, `-McPacks=`, the picker)
+- [x] `pack.mcmeta`: `pack_format`, `supported_formats`, `min_format`/`max_format`, text-component `description`
+- [x] `pack.png` icon (picker)
+- [x] `filter.block` rules hiding lower packs' files
+- [x] Pack compatibility with the game's resource format (97): marked Incompatible, still loads
+- [x] `overlays` (pack.mcmeta entries with formats or min/max_format and a directory; later entries win; test in McResourcePacks)
+- [x] Broken zip, missing pack, missing file: listed with the reason, skipped, vanilla's file used
+- [x] Drag and drop of packs onto the window (confirm "Do you want to add the following packs", copied into the folder) and the "Are you sure you want to load this pack?" confirm when selecting an incompatible or broken pack (the game's lang strings by old, new or unknown; not shot against the reference, whose script cannot click)
+- [ ] Server-sent packs (a server offering a pack and the client downloading it): missing
+
+Textures
+- [x] Block textures at any size (array side follows the widest pack texture, budgeted)
+- [x] `.png.mcmeta` animations: `frametime`, `frames` with per-frame `time`, `interpolate`, `width`/`height` (tested)
+  - Shot against the vanilla client (2026-11-03, test pack `zz_test_anim`: stone as four solid frames red, green, blue, yellow at frametime 20; cobblestone black and white with `interpolate`; reference `scripts/anim_pack.txt`, ours `-McScene=anim_cal -McPacks=zz_test_anim -McAnimTick=<n>`, which holds the animation clock at tick n): vanilla shows stone changing green, blue, yellow, red in two shots each of 10 ticks (20 ticks a frame) and cobblestone passing every grey from 0 to 255; ours at ticks 10/30/50/70 shows exactly 255,0,0 / 0,255,0 / 0,0,255 / 255,255,0 and cobblestone 66, 127, 189 at ticks 5, 10, 15 (linear). The two clocks cannot be lined up tick for tick (vanilla shots land at unknown game ticks), so the frame order, length and blend are what was compared. The pack folder is not synced to the 1070: scp `resourcepacks/<pack>` to `C:/mc-runs/<worktree>/resourcepacks/` and the reference one to `C:/mc-reference/run/resourcepacks/` first.
+- [x] Item, entity, environment (sky, clouds, weather), particle, painting, GUI sprite, HUD and map pictures:
+  read through `McCache::Asset`, so a pack's file replaces the game's
+- [x] Colormaps (`colormap/grass.png`, `foliage.png`, `dry_foliage.png`)
+- [x] Font sheets `font/ascii.png`, `ascii_sga.png` at any multiple of 128
+- [x] GUI `.png.mcmeta` scaling (`gui.scaling`: nine_slice with one border or per side, tile, stretch) for the widget
+  sprites (button, slider and handle, text field), from the sprite's own pack
+- [~] Texture `.png.mcmeta` `blur`/`clamp` read for standalone textures (GUI pictures, block texture arrays; each texture asset carries its own sampler, so no second sampler was needed; atlas sprites ignore blur as in vanilla). Villager `hat`: read (see the note below), the model has to use it
+
+> Resource packs, fonts: glyphs are keyed by code point (astral characters in bitmap providers draw); the jar's empty include/unifont.json is replaced by the launcher's copy with the CJK/Hangul size overrides; ttf advances are whole oversampled pixels. Checked against the vanilla client's own per-glyph advance, shadow offset and whole-string width (reference script scripts/respack_metrics.txt, verb `log glyphs`; tests McUI.FontMetrics and FontMetricsTrueType, the latter needs the zz_test_ttf pack that only the 1070 has and skips elsewhere). Ink bounds (left/right/up/down) are compared too (exact for the default font, within 0.3 for ttf, whose bounds depend on FreeType's rasterising).
+> **For the villagers session: villager `hat`.** A villager's profession and type pictures (`textures/entity/villager/profession/<name>.png`, `.../type/<name>.png`) may carry a `.png.mcmeta` with `{"villager":{"hat":"none"|"partial"|"full"}}`. `McCache::VillagerHat(Category, Name)` (McCache.h; Category is `"profession"` or `"type"`, Name `"farmer"` or `"minecraft:plains"`) returns `McCache::EVillagerHat::None/Partial/Full` from whichever pack gives the picture (zip packs too). The model should read the profession's value and the type's and decide which head layers (hat, hat rim, hair) to draw by the rule on minecraft.wiki "Resource pack" (villager `hat`) / vanilla's `VillagerProfessionLayer`; I only read the value and did not check that rule against the client. I have not touched the villager model.
+- [x] `atlases/*.json` for every atlas: unstitch, paletted_permutations and filter sources become pictures the game finds as a pack's own (McPackAtlas.cpp; tests PackAtlas, PackAtlasSprites); single and directory sources need nothing (textures are found by path)
+- [~] Mob textures: replaced per file, but entity model JSON/`equipment/` (armor, trims) not read from packs
+- [x] `font/default.json` providers: bitmap, space, unihex (Unifont .hex zips, size_overrides; the game's own Unifont stands in where the jar's include/unifont.json is empty), legacy_unicode (glyph_sizes.bin and unicode_page_XX.png) and ttf (FreeType: size, oversample, shift, skip) in the packs' order; the last three draw a character into a small texture of its own on first use (McFontRaster.cpp, glyph textures in AMcHUD). Other font ids (alt, illageralt, uniform) are not read (only the enchanting table's galactic font has its own code)
+
+Models and items
+- [x] Blockstates (variants, multipart) and block models (elements, parents, rotations): packs' replace the game's, the higher pack wins, parents may be in a lower pack (tests PackModels, PackModelStack)
+- [~] Item models: held-item mesh and HUD icons read `models/item` and `items/*.json` from packs; custom
+  `items/*.json` conditions/selects are only as far as the game's own are
+- [ ] Entity models in `models/entity` format (Optifine CEM) and `optifine/`/`mcpatcher/` data (CTM, custom colormaps,
+  `texture.properties` formats): missing; LabPBR is detected through the maps, not the property file
+
+Other assets
+- [x] `sounds/*.ogg` replacing the game's, `sounds.json` merged (`replace`); tested through the pack stack (McAudio.PackSounds)
+  - Shot against the vanilla client (2026-11-03, pack `zz_test_snd`, reference `scripts/snd_pack.txt`; the reference `log sounds` now also prints the chosen file): `/playsound` (new, `McCommands`, plays for everyone at the given or the sender's position, `<sound> <source> [targets] [pos] [volume] [pitch]`) gives for a replaced `block.stone.break` (volume 0.5, pitch 1.5) file zz_a at 0.5 / 1.5; a new event 0.7; an event entry (`"type":"event"`, volume 0.5, pitch 0.8) pointing at it 0.35 / 0.8 and its file; a weighted (1000) addition to `block.grass.break` always the pack's file; an untouched `block.stone.place` still the game's dig/stone files; volume 2 at pitch 1.5 gives 1.4 / 1.5 and range 22.4. Ours (`-McLogSounds` now prints a `SoundPick:` line with the same fields; `-McChat="/cmd|/cmd"` runs chat lines from 8 s in) printed identical numbers and files. Not covered: `stream`, `preload`, `subtitle`, a pack's `sounds` folder ogg with the same name as the game's (tested in McAudio.PackSounds) and what is heard, since both runs are silent.
+- [x] `lang/en_us.json` merged key by key, the higher pack winning (McCore.PackLang); the Language screen (Options, `McHUD::DrawLanguage`) picks one of the launcher's languages or a pack's (pack.mcmeta `language`, `lang/<code>.json`), the chosen file over en_us key by key, the packs' over both (McCore.Language); saved in Saved/McLanguage.json, `-McLang=<code>` for a run, `-McMenu=language` opens it. Shot against the vanilla client (`lang_screen.txt`, `lang` and `log lang` verbs): the list, rows, scroll bar, warning and buttons line up and the Options text in German reads the same (Sprache ..., Ressourcenpakete ..., Fertig). Font Settings is shown disabled (no such screen); only the title, world list, pause and options/pack screens use the lang table, other strings are still English literals
+- [~] `texts/splashes.txt`: the title screen's yellow splash is drawn from the top pack's copy (else the game's). Its numbers are fitted from 48 vanilla shots (reference scripts/respack_splash_pulse.txt with the `screen title` and `log millis` verbs; 3 splashes of 10, 90 and 222 px; analysis by pixel masks, not from any code): tilt 20.0 degrees up (rows sharpest at -20.0); scale at its biggest 179.3/(width+31.1) (exact to 0.1% over the three widths); a dip of 5.5% of that, |sine| shaped, every 500 ms (sine period 999 to 1002 ms, rms 0.13 to 0.25 px), tied to the clock with phase 0 at whole seconds within the shots' 0-135 ms timing; anchor 123.95 GUI px right of the middle and 68.38 down, first text row 7.39 above it (0.56 GUI px rms). The date splashes are from minecraft.wiki's Splash page (Merry X-mas! 24 Dec, Happy new year! 1 Jan, OOoooOOOoooo! Spooky! 31 Oct); test McUI.Splash; ours is shot with `-McTitle -McPacks=zz_test_splash`. Credits and the end poem (`texts/`) and `particles/*.json`: nothing in the game reads them yet (no credits, particles are drawn from block pictures and colours, not the particle sheets),
+  so a pack's copy has nothing to change until those features exist. `shaders/` (post effects, core) cannot apply:
+  Unreal draws the world. `waypoint_style`, `regional_compliance`: missing
+
+PBR (LabPBR 1.3, an Optifine/shader-pack feature, not vanilla)
+- [x] `_n`/`_s` maps kept per layer with `-McPackPbr`; HD arrays use them (normal RG xy, B AO, A height; specular
+  R smoothness, G F0, A emissive)
+- [ ] `_e` and `_r` extra maps, porosity/subsurface channels in specular B, parallax from the height alpha: with the
+  unrealmode session's surface work
 
 ### M4 build order
 
@@ -510,6 +1097,116 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - Data generators: https://wiki.vg/Data_Generators
 - Running the data generator: https://minecraft.gamepedia.com/Tutorials/Running_the_Data_Generator
 - Entity Model Features: https://modrinth.com/mod/entity-model-features
+- **Held item lowering and the use swing** (2026-10-30; measured with E:\mc-reference\scripts\equip2.txt, shots at ticks 0 to 8 after each event, and snowball.txt): the held item is lowered and raised again (about 0.12 s each way, two to three ticks) when it is changed for a different item and when the stack of the same item grows (a pickup); it is NOT when the slot is switched to an identical stack, nor when the count drops (placing a block, throwing). The 'item vanishes for ticks 1 to 3 after a throw' of snowball.txt was the use swing itself (the script's `use` pressed the key, which swings), which carries the item toward the middle and down out of the view and back by tick 6: now `McHand::UseSwingMove` (-46 right, -40 up, in units) times the swing stroke for a right-click swing with an item. Only that it is out of view at ticks 1 to 3 and back by 6 is measured, so the two numbers are chosen to put it off screen; the sword's attack swing is untouched. TODO: the swing frames cannot pin UseSwingMove beyond off-screen at ticks 1-3 with a sliver at the bottom centre; a snowball held at several known offsets would. Finishing a meal looked like a lowering too (the apple is away for four ticks), not yet done; a breaking tool did not show (the shot kept the tool).
+- **Vignette** (2026-10-30, redone 2026-10-31): the cache's own picture, textures/misc/vignette.png (grey 0 in the middle, 0.39 at an edge's middle, 0.82 in a corner), is drawn stretched over the screen as black with its grey times a strength as the opacity, under the HUD (gone with F1). The strength is NOT a function of the sky alone: it eases (about 0.87 percent of the way a tick, roughly 115 ticks to 63 percent) towards a target that falls with the light at the eyes' cell, `McGui::GetVignetteTarget`: 1.0 at light 0, 0.94 at 2, 0.90 at 4, 0.83 at 6, 0.75 at 8, 0.62 at 10, 0.57 at 11, 0.38 at 13, 0.19 at 14 and 0 at 15 (noon outdoors, measured 0.000). Measured (ref_v5 to v7: a hall whose far wall is lit from 22 blocks, a light block in the eye cell, each level held 500 ticks; strength = fitted opacity against the picture's grey, on/off HUD pairs, residual under 0.5 percent at the edges). The earlier 0.356 noon and 0.289 night were the ease in flight. The HUD takes the larger of the block light and the sky light times the sky factor at the eye cell (night outdoors 15 x 0.24 = 3.6, target 0.91, measured 0.893), worked out twice a second. Levels 3, 6, 9 and 12 of the table are filled in between their neighbours, not measured; the start value after joining is the target (the reference's is not known). Heads-up: the vignette light reads `McSky::GetSkyLightFactor()`; redstone's 78c2e23 (claude/redstone-1fae88, not merged) changes the sky-darkness constant 0.2 to ~0.505, which moves dawn and dusk (noon and midnight fits hold). When the branches meet, take one vanilla dusk shot to confirm the vignette.
+- **Where I stopped (side session of 2026-10-31, paused by the user)**: everything measured is committed (last f4477e3: hurt tilt and bow tremble). Open: (1) cloud face shading: `E:\mc-reference\scripts\cloudshade.txt` (tops from above, four oblique yaws, bottoms from below, `fov steady`) ran, and the shots are in `E:/mc-reference/run/screenshots/ref_cs_*.png` (top, y0, y90, y180, y270, bottom, bottomobl), not yet measured; measure each face's brightness against the top, then set the shades in `UMcCloudComponent::Rebuild` (now 1.0 top, 0.7 bottom, 0.9 east/west, 0.8 north/south, unfitted); cloud phase is also unmatched. (2) Re-take our hurt-7 shot with the new amplitude (`-McFlat -McWorld=<new> -McHurtHold=7`, the nine-column wall chat, `-McInput=look:0,0;wait:1;shot:<n>;end -McInputDelay=2`) and check the roll reads about 11.6 by the structure-tensor measure (hurt0 baseline -0.44). (3) Still owed: TNT, note blocks, jukebox/discs, toasts, campfire smoke, compass/clock/maps, advancements, Nether/End lighting in Unreal Mode, eat-finish lowering, tool-breaking re-equip, bow polish (lens width, arrow slant, upper limb lean), verifying the shot-wait cherry-pick (7771ee3), vignette at dusk after the redstone sky constant merges.
+- **Clouds checked against the reference client** (2026-10-31; ref_zen_*, ref_zn_*, ref_ch_*, ref_dr_* straight-up shots, ours cz_c/cz_g from the 1070): `McCloudComponent` already matched, so no code changed. Cell size 12 blocks and the height 192.33 (from the dimension type) hold: the reference cell is 60 px at an eye at y 101.6 and 21.6 px at -58.4 with the same focal length, which solves to a height of 191.3; the drift is two cells in 800 ticks (0.03 blocks a tick) towards -x, the pattern repeating every 256 cells. The straight-up pattern of both clients matches clouds.png at 93 percent with the same mirroring once ours faces south (yaw 90 in -McInput), so the texture is laid the same way. A first estimate of a height of 286 and a 77 degree vertical FOV was the spectator/flying FOV widening of a run without `fov steady`, not the clouds. Not matched: the phase (which cell is over a place at which game time) is not read from the reference, so the pattern is the same but not at the same spot; the colour and shading of the faces: see the next note. **Cloud faces** (2026-10-31, vanilla ref_cs_* from scripts/cloudshade.txt, ours cs_u_* and cs_v_*): the lighter shaded sides were the faces being drawn inside out: swapping the axes into the engine's mirrors the corner order, so the near faces were culled and the far ones drawn (from below the top showed, from above the bottom). The triangle order in `UMcCloudComponent::Rebuild` is flipped. The shade table (top 1.0, east/west 0.9, north/south 0.8, bottom 0.7) was already right: with the clouds 0.8 opaque, the reference reads top (238,244,254) over its sky (184,210,254), north/south (198,206,216), east/west (219,225,235), bottom (166,176,196) over (128,172,254), and ours now reads bottom (169,176,196), sides (223,227,234), top (244,248,253) over a lighter sky. The phase of the pattern is still not matched.
+- **TODO held decorated pot** (2026-10-31): drawn flat here; the reference draws the 3D pot model. Fit the held pose against vehicles' pot mesh after that branch is merged (not copied): reference shot ref_pot_idle.png (scripts/pot_held.txt, a plain pot on a sky platform; the sherd variant's pot_decorations syntax needs fixing for this version).
+- **Primed TNT** (2026-11-01; measured with E:/mc-reference/scripts/tnt.txt, tnt2.txt, tnt3.txt through `log ents tnt`, logs log_tnt*.log): fuse 80 ticks; per tick gravity 0.04 added, then the move, then drag 0.98, and on the ground (0.7, -0.5, 0.7) on top; lit from a block it starts at the block's centre with 0.02 sideways (random angle) and 0.2 up; blast power 4 at 0.0625 up from its feet (box 0.98). Player damage 1+56*(I^2+I)/2 unrounded at normal difficulty (7 blocks 4.94, 6.265 8.39, 5.1665 14.43), knockback I*unit(centre to eye at 1.62) added to the velocity (`McExplosion::GetKnockback`, `ServerBlast`; armour reduces: `EDamage::Explosion`). Blast sound pitch at volume 4: a triangle, centre 0.699, half-width 0.131 (537 blasts, tnt3/4/5 logs, 0.5776..0.8298). A blast that reaches a TNT block lights it with a chain fuse of 10..28 uniform (47 pairs in tnt5.txt; the 432-TNT run tnt4 lagged and its lifetimes are not trustworthy). In tnt5 only about a third of the TNT next to a blasting one lit (17 of 48 per round); ours lights every one the blast destroys, so check what vanilla spares (`log box` after a pair);  chain TNT made during a blast gets no push from that blast. Open: crater size against the reference (9 stone for TNT on a stone slab), no priming sound heard from redstone ignition, flint-and-steel sound unmeasured, mob blast knockback still from the box middle, primed TNT not saved, no scale pulse. **For the redstone session**: call `FMcSimulation::LightTnt(Pos)` (fires `OnLightTnt`, wired in McWorldActor to `FMcPrimedTnt::Ignite`) when power on a TNT block rises or a neighbour changes to powered; fire next to TNT, flint and steel / fire charge, dispensers and blasts already call it. `FMcPrimedTnt::Ignite(Manager, Cell, Fuse)` does the rest. `/summon tnt` works.
+- **Note blocks** (2026-11-01; reference runs scripts note1 to note4 with `log sounds`, which now also prints the sound's range; wiki "Note Block" for the particle colours, the use cycle and the instrument names): `McNoteBlock.h`, `FMcSimulation::PlayNote/TuneNote`. Instrument by the block below from a table measured block by block (522 non-harp blocks, `McNoteTable.inc`, harp otherwise; stairs, buttons and plates answer as the block they are made of); a head above wins (zombie, skeleton, creeper, dragon, wither skeleton, piglin; a player's head is silent). Pitch 2^((n-12)/12) exactly for notes 0 to 24; volume 3, range 48 for all but the piglin voice (1.98, 31.7); heads ignore the note: pitch 1, the creeper's 0.5 (also at notes 12 and 24). A block above that is not air or a head silences it (carpet, slab, stone all did) but a use still steps the note. Use steps and plays (25th back to 0), a survival punch (`OnPunchBlock`, start of a dig) plays. Sand, gravel and concrete powder are listed as snare from the wiki; the reference gave snare for gravel, heavy core and some powders (different ones each run, falling blocks under a note block are unsteady) and harp for sand. Note particle colours are the wiki's table (`GetNoteColour`); the particle itself is not drawn yet (needs a texture path in the particle component and a client event). **For the redstone session**: when power on a note block rises (and `powered` was false) set `powered=true` and call `FMcSimulation::PlayNote(Pos)`; clear `powered` when the power goes. Nothing else is needed from them; the instrument follows block changes in `FMcSimulation::OnBlockChanged`.
+- **Jukebox** (2026-11-01; reference runs scripts jukebox3 to jukebox6 and jb4/jb6 shots through ref.sh with `log sounds`; cache `jukebox_song/<id>.json` for length, comparator output and sound, lang `record.nowPlaying`): `McJukebox.h`, `UMcBlockUseSubsystem` (`UseJukebox`, `SyncJukebox`, `TickJukeboxes`). One-slot container, discs only (`jukebox_playable`), a full jukebox rejects a second disc, use with a disc inside ejects it. Hoppers insert from above and the side and extract from below (measured). The disc stays after the song ends (length from the cache, e.g. cat 3700 ticks). Sound range 64 blocks (volume 4), linear falloff like all sounds; `has_record` follows the slot. A note rises every 20 ticks (measured; 7 ticks life, 0.19 up per tick, friction 0.66, colour from the note table). "Now Playing: C418 - 13" overlay above the hotbar for 3 s, lime for the first 10 ticks then rainbow, fading in the last second (colours and timing fitted from the jb4/jb6 frames; the fade was not cleanly measured). Comparator outputs match the cache for all 22 discs. The note particle is also drawn for note blocks now (`FMcSimulation::OnNoteParticle`). **For the redstone session**: in `ContainerLevel` for `minecraft:jukebox` return `McJukebox::GetComparatorOutput(item in slot 0)` (0 when empty), read from the chunk block entity. McRedstone.cpp untouched. **Missing**: the held-item name label above the hotbar (vanilla shows "Music Disc" in its place on slot change).
+- **Jukebox measurements replaced estimates, held-item label** (2026-11-01; reference runs jukebox7 (70 stepped shots, chat cleared by the new `clearchat` verb), jukebox8 (90 shots two ticks apart with game ticks), helditem and helditem2): note particle size 0.1375 (glyph 30 by 48 px at 3 blocks, jukebox face 181 px at 2.5; ours was 75 px tall at 0.215) and rise 0.2 a tick (30, 20, 13, 9, 6, 4 px a tick, friction 0.66, 7 ticks). "Now Playing" lime for 10 ticks, hue falling 1/50 a tick, linear fade over the last 20 of 60 ticks (strength 0.9, 0.8, 0.68, 0.57, 0.46, 0.36, 0.28, 0.21 at ticks 36 to 50): the existing code already matched. Held-item label (`DrawHeldName`): 40 ticks, full for 30, fade over the last 10, text top 45 GUI px above the bottom (creative) or 59 (survival, with the bars), colour by the item's `minecraft:rarity` (rare 55FFFF, epic FF55FF, uncommon FFFF55); shot tops matched the reference (585 and 543 px).
+- **TNT chain ignition checked against the blast-ray hit pattern** (2026-11-01; reference run tnt6, three solid 9x9x9 TNT cubes each with a fuse-10 TNT summoned in the hollow middle, `log ents tnt`; the TNT entities first seen on the first blast tick are the blocks its rays destroyed): the first blast lit 447, 508 and 497 of 728 blocks (mean 484, about two thirds; the rest light from the lit ones' own blasts), by distance 3.5 and under all, 0.89 at 4.0, 0.79 at 4.5, 0.46 at 5.0, 0.15 at 5.5, 0.02 at 6.0. Our `McExplosion::Collect` (1352 rays, 0.7 to 1.3 times the power, 0.3 steps) gives 486 on average and the same curve, so nothing needed fixing: "a third lights" is how vanilla behaves too. `McClient.McEntity.ExplosionTntCube` holds the shells and the manager's own blast to the reference. The third cube (x -40) ran looser than the other two (0.74 at 4.0 against 0.97); the test bands take in all three.
+
+
+- **Primed TNT saved, priming hiss, mob blast knockback** (2026-11-01; reference runs tnt5, tnt8, tnt9). A lit fuse now survives a save: `FMcPrimedTnt::Serialize` writes the fuse with the entity, `FMcEntityHost::RestoreChunk` rebuilds it (`McClient.McServer.SavePrimedTnt`). `log sounds` in tnt5: every TNT lit by redstone (36 of them) hissed `entity.tnt.primed`, none lit by a neighbour's blast did; `Ignite` plays it only for the former. Mobs in tnt8/tnt9 (pigs, cow, chicken, sheep, wolf) were pushed by exactly the blast's knockback, no melee knock on top: direction from the blast to the mob's eye, strength `1 - dist/(2*power)` times exposure. Eye heights measured: pig 0.77, cow 1.31, chicken 0.65, sheep 1.24 (`McExplosion::GetMobEyeHeight`; others 0.9 of the body height until measured). `McClient.McEntity.Explosion` checks the cow's push and the single hiss.
+
+- **Cloud phase** (2026-11-01; reference run cloudph, three straight-up shots 200 ticks apart): the pattern's column is floor((x + 0.03*gameTick)/12), sub-cell phase matched exactly in all three; rows are floor((z + 3.9)/12) (+-0.3), texture rows along z, columns along x, no flips. Ours drifted by the day time (jumped on `/time set`) and had no z offset. Now `AMcWorldActor` keeps a game clock (`GetGameTicks`, replicated once a second like the day time, never touched by `/time` or the daylight rule) and `McClouds::ZOffset` = 3.9 shifts the rows. The pattern's absolute phase still depends on how long the world has run, as in vanilla.
+- **Clouds follow game time, not day time** (2026-11-01; reference run cloudtime: same camera, shots at game ticks 536111, 536158, 536205 with `time set 3000` and `time set 9000` in between): the white-pixel masks of the three shots agree to 98% after a sideways shift of 2-3 px per 47 ticks (0.03 blocks a tick at the cloud height predicts 2.9), in spite of the time of day jumping by 3000 and 6000 ticks. A day-time drift would have moved the pattern by 90 and 180 blocks.
+
+## M5 redstone session: where I stopped (2026-10-31)
+- Done and held to vanilla traces: hoppers, droppers, falling blocks, water, lava, fire (see commits up to 872262b).
+- WIP, built but not tested or seen: falling-block entity. `FMcFallingBlockEntity` (McEntityManager.h) is mirrored from `FMcSimulation::GetFallingBlocks` by `AMcWorldActor::SyncFallingBlocks`; `UMcEntityModelComponent` draws a cube with the block's side texture (`BuildBlockMesh`), eased between ticks. Landing-unplaced blocks drop as items (`OnFallingBlockDropped`). A shot (`-McChat="/setblock 1 -30 3 minecraft:sand"`) was queued and stopped before it ran. Cube uses one texture on all faces (no separate top).
+- Next, in order: check the shot and run McSim/McServer suites; pressure plates, tripwire, target blocks (entities; no reference verb yet); crops/melon edge rows; detector rain/thunder values; Bell hook (`git show 9f78f77 -- Source/McSim`, `OnBellRung`).
+
+### Update (2026-10-31 night)
+- Done: pressure plates and target blocks (8c544d5; target strength by hit spot is a guess, no vanilla verb shoots), crop growth fields (a90c261, rule matches vanilla within noise), rain/thunder ramp 0.01 a tick (708cd7a), tripwire and hooks (7aaf2fa), now held to the reference client: rs_tripwire 32/32, rs_trip2 178/178 (lengths, no partner, same-facing hooks, gap, missing support, creative shears), rs_trip3 (survival shears, 41 strings do not attach; 28 vanilla changes from something other than the script are ignored, unexplained). Measured rules: a hook put in place does not look along its line, only a string placed or an entity touching it does; strings join the string or hook facing them; strings' `attached` follows the hooks only when a hook joins or leaves; a string taken away mid-line joins and powers both hooks for 10 ticks, but not when it is next to a hook; survival shears take a string away disarmed and the hooks feel nothing (creative shears do not); a hook drops only when its support is removed; max 40 strings. rs_trip4 (vanilla log only, not yet replayed): survival shears on an already attached pair pulse the hooks 9 ticks exactly like no shears (rule coded in UpdateHookLine, unbuilt); a PLAYER placing the second hook attaches and joins the line at once (a hook put by command does not), a player placing the last string attaches it as strings already do; a pig on a string powers it from the tick it enters until it is gone (death animation delayed release to tick 64), an arrow lying in it likewise (release 4 ticks after it was removed). Now coded and replayed (rs_trip4, 60 of 65 vanilla changes match; the other 5 are unexplained: shears-attached release also powers the string next to the hook, and the no-shears row releases one tick earlier in vanilla). Target-block strength by hit spot was measured in rs_target (arrows summoned at a 7x7 grid) and is implemented as 15-floor(30*d), floats at the 0.3/0.7 edges are noise.
+- Open: daylight detector under weather matches vanilla within one 20-tick step except the thunder onset and the recovery after `weather clear`; script and vanilla log kept (tools/refscripts/rs_daylight_weather.txt), baked expect parked as tools/refscripts/expect_pending_rs_daylight_weather.txt. Falling-block entity and entity-fed plates/tripwire never seen in a game.
+- Bell: not done here; 9f78f77 (vehicles branch) already rings bells from McRedstone with `OnBellRung`, so take it at merge.
+- Build note: `E:\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat McClientEditor Win64 Development -Project=<worktree>\McClient.uproject` from PowerShell; it fails (exit 6) while an editor holds Live Coding.
+
+### Update (2026-11-01): the M5 exit scene
+- `tools/refscripts/gen_world.py` writes `rs_world.txt`: one world of 8 regions 16 blocks apart (repeater ring + delay-1/4 repeaters, comparator
+  compare/subtract, 6-observer chain, sticky pistons on 1/2/3/16-tick pulses, plain pistons on 1-tick pulses at even/odd ticks + same-tick
+  place/remove + 2-tick pulse, quasi-connectivity, daylight detectors high up, cane harvester with observer, kelp in a walled water column with an
+  observer), 600 ticks plus 17 settling ticks, every block state logged per tick. Vanilla's log is `expect/rs_world.txt`; `McClient.McSim.RefScripts`
+  holds our tick-by-tick states to it (760 changes, all equal).
+- Rules fitted from it: observers are not redstone conductors; a piston told of a change while scheduled ticks run acts at the end of that same
+  tick (was a tick late behind an observer pulse); a piston let go during its extension never places its head, and a sticky one's pushed block
+  lands at once; kelp with kelp above is `kelp_plant`; sky-darkness constant 0.53 (any value 0.516 to 0.555 fits the 25 vanilla inverted-detector
+  readings).
+- Unexplained, left out of the baked file (`tools/refscripts/ignore/rs_world.txt`): the observer at x=33 fires 1 to 2 ticks into sampling in vanilla only.
+- Not in the scene: hopper clock and dropper elevator (the headless replay has no container contents; hoppers and droppers live in McClient),
+  random-tick growth of cane and kelp (done by command instead), a detector with a block over it (vanilla reads the light reaching its cell, 14 beside
+  open sky; ours reads the global level). Falling-block entity shot still not taken.
+- Main's note-block hook (`PlayNote`, 074d37b) to be wired in McRedstone.cpp at merge.
+- [~] Pack feature audit 2 (2026-11-01): tests McAssets.PackColormap (a pack's colormap/grass.png and foliage.png replace the game's; the biome table now reloads when the pack stack changes, it kept the first load before), McUI.PackGui (gui.scaling stretch/tile/nine_slice with one or four borders; a pack's title panorama replaces the asset index one, it was ignored because the "resources:" path skipped the packs). Already covered: animation frametime/frames/interpolate (McAssets.PackAnimation), pack.mcmeta supported_formats and overlays (McCore tests). Not testable yet: armor and elytra layers, since nothing in the game draws worn armor or an elytra (no textures/entity/equipment reads); whoever adds them should read through McCache::Asset so packs apply. No vanilla-vs-ours shots for these yet.
+- [x] Pack shots vs the vanilla client (2026-11-01, 1280x720): panorama pack (6 solid magenta faces, reference `scripts/respack_pan.txt`) mean 199,0,199 vs ours 200,0,200; the button sprite pack (red 3 px border, blue, nine_slice) draws the same border on both (`respack_btn.txt`, `-McMenu=options -McPacks=zz_test_btn`); colormap pack (`respack_cmap.txt`, `-McScene=packs -McPacks=zz_test_cmap`) shows green grass and red leaves, but the vanilla shots of it were taken at night (the scene needs `time set noon` in the script, added; numbers not compared). The reference's pack folder on the 1070 (C:\mc-reference\run\resourcepacks) is not synced by ref.sh: scp new test packs there. New reference verb `log packs` prints the game's verdict per pack: pack_format over 64 without min_format and max_format is UNKNOWN (red row, "Broken or incompatible"), pack_format 3 and the Faithful demo are TOO_OLD; McPacks::GetCompatibility follows.
+- [x] Resource Packs screen fitted to the reference's pixels (in-world look, `-McScene=packs -McMenu=packs -McPacks=a,b` for ours, `screen resourcepacks` after `packs file/a,file/b` for the reference; `-McTitle -McMenu=packs` for the title look): list top 49 and bottom 208, header text +4, first row box +16 (34 high, pitch 36, 188 wide with a scroll bar, 194 without), icon 1 right of the box, text 34 right of the icon, description lines 9 apart, a 6 wide black scroll bar with a 192 grey thumb, incompatible and broken packs on a (119,0,0) box with the description shown (the Incompatible text only while hovered); the left list matches to the pixel, the right list is 1 px off. Not done: the reference lists the built-in packs (Default, High Contrast, Programmer Art) which ours does not have; the in-world screen's background blur; hover and click behaviour not shot (the reference script cannot move the mouse).
+- [x] Reloading packs live, F3+T (`McPacks::RequestReload`, taken by the HUD, `AMcHUD::ReloadResources`): the packs are opened again from disk, the HUD, font, model and texture caches dropped, and a single-player world is opened again from its save (the player and chunks are saved on leaving the map); a client joined to a server is told changes apply on the next join. F3 alone shows the debug text on release; F3 with T does not. Tested with `-McScene=packs -McReload=3 -McReloadPacks=zz_test_cmap` (reload 3 s in): the shot equals the one started with the pack (grass mean 4.9,100.3,14.9 in both). Not live in the sense of the game's own reload: the world is reloaded, not patched.
+- **Grass tops looked 17-20% darker than vanilla (checked 2026-11-03).** Mostly a flawed comparison: our HUD draws the
+  vanilla-style vignette and the reference shots used `hud off`. At the screen centre, with the camera at the same
+  height (`-McCam` y is the eye, not the feet), white wool matches vanilla (233,236,236 vs 233,236,237) and grass tops are 3% low in
+  red and green and 7% low in blue (83,108,51 vs 85,111,55). The grass tint is identical (vanilla `log tint` gives 91bd59,
+  ours samples the same colormap) and the texture's bytes are identical. The leftover is in the dark texels: vanilla's
+  grass pixels have less contrast (1st percentile 70 vs 67, 99th 107 vs 110), which looks like a different texture
+  filter, not shading. Not fixed. Test scenes: `tools/scenes/shade_top.json`, `shade_side.json`; vanilla scripts
+  `shade_cal.txt`, `shade_ctr.txt`, `shade_tint.txt` (verb `log tint x y z`).
+
+- **Importing Java worlds** (2026-11-01, side session `claude/import-java-world`): `McJavaImport` (McServer) converts a vanilla world folder once into one of ours under `Saved/Worlds/<name>` (the vanilla folder is only read). Start with `-McImportWorld=<folder> [-McImportName=<name>]` (the copy opens unless `-McWorld=` names another), or the **Import Java** button on the Select World screen, which lists the worlds in `%APPDATA%\.minecraft\saves`. Reads `level.dat` (spawn, time, difficulty, game mode), the seed from `data/minecraft/world_gen_settings.dat`, rules from `game_rules.dat` (or the older level.dat fields), and `dimensions/minecraft/<dim>/region/*.mca` (or `region/`, `DIM-1`, `DIM1`): sector table, gzip, zlib and uncompressed payloads, external `c.X.Z.mcc`. Chunks use `sections[].block_states` / `biomes` (palette entries `Name`/`Properties` or `id`/`properties`; minimum 4 bits for blocks, entries never span longs; biomes in 4x4x4 cells), mapped onto the registry by name and properties; unknown blocks become magenta concrete and are logged with a count. **Block entities**: containers (chests, barrels, shulker boxes, hoppers, dispensers, droppers) keep their items with item components (NBT to the JSON the stacks use), spawners keep their mob, furnaces, blast furnaces, smokers and brewing stands keep their items (burn and brew timers start at rest), and everything else (signs with front and back text, banners and patterns, skulls, lecterns and their book, decorated pots, beehives, bells, campfires, sculk blocks, vaults...) is kept whole as `EMcBlockEntityKind::Raw`: `EntityId` the id and `Data` the entity's NBT (`FMcNbt::WriteRoot`), saved and sent with the chunk but read by nothing yet: whoever builds signs, banners and so on should read it from there. **Entities** from `entities/*.mca` are saved unmapped to `<dimension>/javaentities/r.X.Z.nbt` (`Chunks` list of `xPos`, `zPos`, `entities` as the game wrote them: item frames, glow item frames, paintings, armor stands, villagers, pets...); the port has no item frame, painting or armor stand entity yet, and no loader of that file. Not done: LZ4 (24w04a+) chunks and the custom method (the wiki does not describe the LZ4 framing, so those chunks count as unreadable), player data and inventory, the world clock (DayTime is the level `Time`), furnace burn and cook times. Test: `McClient.McServer.JavaImport.*`; a real vanilla save (`terrain3`) imports with 83,509 chunks and no unknown states. Test world script: `E:\mc-reference\scripts\import_build.txt` (`MCREF_SAVE=importtest`; needs the save to exist first).
+  - Banners from imported worlds are drawn now: `McJavaImport::StandBanners` (called from `AMcWorldActor::AddToWorld`) stands the existing flag entity from the kept `minecraft:banner` Raw entity's `patterns`. Signs, skulls, decorated pots and lecterns stay `Raw` on purpose: `claude/vehicles-be5b17` has its own block entities for them (Sign with two sides of four lines, mob heads, pots with sherds, lecterns with a book). **When that branch reaches main**, add one pass beside `StandBanners` that converts the kept Raw entities by `EntityId`: `minecraft:sign` / `minecraft:hanging_sign` -> Sign (`front_text` / `back_text`: `messages` (each a plain string or a text compound with `text`), `color`, `has_glowing_text`; `is_waxed`), `minecraft:skull` -> the head's kind from the block name (`profile` / `custom_name` ignored, rotation from the block state), `minecraft:decorated_pot` -> pot with `sherds` (four item ids, back/left/right/front order as the wiki lists them) , `minecraft:lectern` -> lectern with `Book` (an item stack with components) and `Page`. Do it in `AddToWorld` like the banners, rewriting the entity in place, so the block entity is converted once and saved as its new kind.
+
+### Rain at night, lightning at 1.0x, distance-field Lumen (2026-10-31)
+- Rain/snow sheets now take their vertex tone from the sky light (sqrt of `McSky::GetSkyLightFactor`) in Unreal Mode, so night rain reads dim like vanilla instead of bright blue. Shots: rain_night, rain_day, thunder_night (lightning at 1.0x, -McFlashHold).
+- Distance-field Lumen on the DX11 1070: not achievable as a cvar switch. Chunk meshes are `UProceduralMeshComponent`, which has no mesh distance fields and no Lumen cards, so software Lumen sees them only through screen traces. Real fix = build chunks as static meshes (or a custom scene proxy with SDF), a large change touching the mesher; left open.
+
+### Underwater look, vanilla check again (2026-10-31)
+- Thunder at night: `thunder_noflash` (-McTime=15000, no -McFlashHold) is dark, so the time flag works in storms; the bright `thunder_night` was the held flash lighting the sky.
+- Underwater (Unreal Mode only): `McSky::GetCameraUnderwater` (the world renderer sets it when the eye is in a water block, eased in 8/s) closes the fog to about 16 blocks in the sea's blue-green, dims the sun, and the grade goes blue-green and a stop darker. Scene `tools/scenes/underwater.json` (a raised sea; the world floor is y=-64, so a deep pool can't be dug). Shot `uw_day`.
+- Caustics (updated): now in the lit block materials (scalar `Underwater`, set each tick by the world renderer): under water, sky-lit surfaces are modulated by a moving net of light, `e *= lerp(1, 0.45+2.2c^2...)`. Visible on the prismarine in `uw_day`; the sand is so bright it clips and shows little. Open: lower the exposure underwater or darken the sand so the net reads on it. The light-function version below stays but is weak.
+- Caustics, first try: `M_McCaustics` (a light function made by `make_materials.py`, `MC_ONLY_CAUSTICS=1`) is set on the sun while under water. Compiled and applied, but the pattern is not visible in `uw_day`: the sun is dim there and the sand is washed. Open: brighten/scale the pattern or put it in the lit block material.
+- Vanilla check against dfe04f8, Unreal Mode off: cave differs by 152 px (torch flame, x 633-645); village by mobs only (band y 259-363); terrain, sky and HUD identical.
+
+- Unreal-off pixel check redone (2026-11-01, baseline dfe04f8 rebuilt, 20 s shot delay): cave 136 px (torch flame only), village 1543 px (mob band only); terrain, sky and HUD identical. Underwater exposure is now -1.8 EV (`uw_day`: sand no longer clips; the caustic net reads on the prismarine, faintly on the sand).
+- Water refraction (2026-11-01): the lit translucent materials give water an index of refraction of 1.2 (other see-through blocks 1.0), so the ripples' normals bend what lies under the surface. Shot `refr_a`/`refr_b` (shore, day): the water renders correctly and the ripples read, but at a shallow angle the bend is subtle, and the sky is barely mirrored in the water: reflections come from Lumen's screen trace plus the reflection-only skylight, which seems too weak on a translucent surface. Open: a stronger sky reflection for water (a fresnel-weighted sky colour in the emissive), then volumetric fog shafts.
+- Water sky reflection and refraction A/B (2026-11-01, scene `shore_down`, -McTime=5000, dev args `-McWaterIor=` and `-McWaterSky=`): the water's emissive adds a fresnel-weighted sky colour (horizon to zenith by the reflected direction, scaled by the sky light), default strength 1. Shots `w_ior10`/`w_ior12` (IOR 1.0 vs 1.2, sky off): the ripple pattern differs, but the shots run on different game clocks so the wave phase differs too; not a clean proof that refraction bends the floor. `w_sky1` is hardly different from sky off at this steep angle (fresnel is low); `w_sky3` washes the water to a white sheet, so keep the default. The water is milky over a one-block-deep sand floor even with the sky off: the specular and the sand through it; a deeper scene would show the blue. Open: pin the wave clock for A/B shots, test with a deep sea at a grazing angle.
+- Water reflection and refraction at a grazing angle (2026-11-01, scene `lake_low`: camera just above a 2-deep lake, `lk_*`, `lk2_*`, `lk3_*` shots). Sky reflection: at strength 1-2 it milked the water pale near the horizon, so the sky colour is bluer now and the default strength 0.5 (`lk2_dflt`: a pale sheen toward the horizon over the blue, bricks still mirrored by Lumen). Refraction: with the index only wired to the Refraction pin nothing moved (IOR 1.0 vs 1.8, `lk2_i10`/`lk2_i18`, identical); the material also needs `refraction_method = RM_INDEX_OF_REFRACTION`, set in `make_materials.py`. With it, IOR 1.8 visibly changes the submerged bricks against 1.0 (`lk3_i18` vs `lk3_i10`). Default is now 1.33 (water's own); not shot at 1.33 itself. Wave phase still differs between runs, so ripples differ.
+- Light shafts (2026-11-01): the volumetric fog is thicker (extinction 0.04 + 0.03 x Shafts), leans forward (scattering distribution 0.2 to 0.8) and the sun scatters 1 + 2 x Shafts times as strongly; default `Shafts` 1.8, `-McShafts=` tunes it (0 is the old haze). Scene `forest_sun` (inside the forest facing east at `-McTime=500`). Shots `sh_t0` (0), `sh_t1` (1: hardly visible), `sh_t3` (3: clear rays, milky), `sh_tdef` (1.8, chosen): soft warm shafts through the leaves and trunk gaps. Open-ground view into the low sun (`sh_s1`) just goes milky at 1: shafts need trees in the way. Not yet shot: shafts into caves; Unreal-off pixel check not re-run (Unreal-only paths, but the vanilla check is due on the next run).
+
+### Light shafts into caves + Unreal-off check (2026-11-01)
+- Cave scene, -McShafts=0 vs default: identical look (enclosed room, no sun path, not milky). Shafts only show with an open sky path (forest_sun).
+- Vanilla (Unreal off) pixel check vs dfe04f8 after the shafts change: cave 98 px (torch flame, x 629-646 y 150-175); village 3463 px confined to rows 229-343 (wandering mobs); terrain, sky, HUD identical.
+
+### Block lights budget (2026-11-01)
+- `UMcBlockLightComponent` existed (nearest light-giving blocks get point lights); the budget now follows the quality preset: 8 / 16 / 24 / 32 lights and 0 / 3 / 6 / 8 shadowed at Low to Ultra. `-McBlockLights=N` sets it for tests (0 = no lamps). Unreal off: the component hides all lights, unchanged.
+- Shots: `bl_off` / `bl_on` (village, night): the lamps add a warm pool on walls and path. `ls_off` / `ls_8` / `ls_24` (`tools/scenes/lamp_street.json`, 40 lights, Quality 2).
+- 1070 fps over the last 3 s before the shot (new `-McShot` log line; read from `C:/mc-runs/<name>/Saved/Logs/McClient.log`): lamps off 75.6, 8 lights 80.7, 24 lights 84.2: within noise (other sessions share the machine), so the budget costs no visible frames at this scale.
+
+### Volumetric clouds from the vanilla layout: PARKED (2026-11-01)
+- Built: `M_McVolumeClouds` (Volume domain, additive; `tools/make_materials.py`, `MC_ONLY_CLOUDS=1`) reads the pattern from a runtime texture of `clouds.png` (`UMcCloudComponent::Mask`, one texel per 12 block cell), carried west by `DriftX`, puffy profile by world Z, `Storm` greys and thickens; the sky component feeds it (`McSky::SetCloudLayer`) and places the cloud layer at the vanilla height (`-McCloudDensity=` scales it).
+- It is off by default (`-McVolumeClouds` turns it on): on the 1070 the whole frame goes black with it, even with density 0, with the engine's own layer height, and even with a constants-only graph (zero extinction, white albedo, no custom nodes), so the graph is not the cause. The screenshot frame took about 3 s each time (0.3 fps), so it may be the volume material compiling in the frame; or a missing piece of the pipeline that the engine's `m_SimpleVolumetricCloud` has (its pins go through ShadingPathSwitch nodes and a VolumetricAdvancedMaterialInput). Python has no CloudLayer node. Next try: duplicate the engine's material and swap in the mask for its cloud-type texture, rather than building from scratch; or one run that cycles variants per frame.
+- Default stays the engine's simple clouds (`cl_simple`, shot at level view).
+
+### Rain puddles (2026-11-01)
+- Lit and HD materials: rain (Wetness) now fills puddles on flat, sky-open faces from a world-space blotchy field (a few metres across; they grow as the rain goes on): darker, near-mirror (roughness 0.02, specular 0.9), a fresnel-weighted grey sky sheen in the emissive, and rain rings (a drop every 1.1 s per 40 cm cell) tilting the normal. The old uniform wet look (darker, glossier) stays everywhere else. `-McPuddles=0` turns them off for A/B (`pd_off`), default 1.
+- Shots (`-McScene=village -McWeather=rain -McTime=6000`, fresh world): `pe_on` (low angle: puddles on grass and the path), `pd_on` / `pd_off` (top-down: only a darker patch without the sheen, which is why the sky sheen was added). Unreal off is untouched (vanilla materials, same as before).
+
+- **Cloud face shading** (2026-11-03, reference shots `ref_cs_*`, opaque faces read from `ref_cs_y0` at yaw 0: top (238,244,255), north/south face (199,206,216) = 0.84 of the top, east/west face (219,225,235) = 0.92; `ref_cs_bottom*` underside red 166 = 0.70): `UMcCloudComponent::Rebuild` shades are now bottom 0.70 (unchanged), north/south 0.84 (was 0.8), east/west 0.92 (was 0.9). Not yet checked by a paired shot: my one `-McCam` shot (`cl_shade`) did not get above the cloud layer. The reference's underside is slightly bluer than a plain multiply (G 177, B 197 of top 244, 255), not modelled.
+- **Nether and End fog in Unreal Mode** (2026-11-03, shots `nn_enh`/`ne_enh` before, `nn_fix2`/`ne_fix2` after, `-McDimension=`): the volumetric fog (made for the Overworld's shafts) darkened the Nether's and the End's distance to black, and the unlit fog colour and End sky picture were dimmer than the vanilla look through the enhanced exposure. Now the volumetric fog is off in those dimensions (`UMcSkyComponent`, switched back by mode), their fog luminance and the End sky's tint are 2.4 times (`EnhancedFogBoost`, enhanced only, so the vanilla look is unchanged), and the End's fill light is half white, half `#ac60cd` (it turned the olive End stone magenta). The Nether now reads like the vanilla fog (dark red haze to the horizon); the End stone is a little grey-pink next to vanilla's olive. Spawn spots differ between runs, so the shots are not the same view. `cloud_top` scene added (a platform at 228 looking down at the clouds) but the haze flattens the face contrasts there, so the cloud shades are still not verified by a shot.
+
+- **Ender chest** (2026-11-01; reference run echest, `log sounds` and a shot): using one opens the player's own 27 slots as "Ender Chest" (three rows, as the reference shot), the same for every ender chest; `UMcPlayerDataComponent::EnderChest`, kept with the player and saved in `McPlayerSave` as slots 200 to 226 of the player's slot list (the game keeps them in a list of their own: the world-import session should map `EnderItems` onto these). Lid sounds `block.ender_chest.open/close`, volume 0.35, pitch 0.9 to 1 (reference 0.948 and 0.939), range 16 (a chest's logged range was 12 at volume 0.5, ours uses 16 for all: unchecked). Not done: a solid block above does not stop it opening (also true of the chest here; unmeasured), the block drops (obsidian) not checked, and **chests, ender chests and shulker boxes are not drawn at all** (no block-entity model: the block is invisible with its outline), which is the bigger open item for whoever takes block-entity rendering.
+
+- **Brewing finish sound; bubble columns measured** (2026-11-03; reference run sounds2, `log sounds`): a finished brew plays `block.brewing_stand.brew` once, volume 1, pitch 1, at the stand's centre (done: `FMcBrewingStand::TakeFinished`, played by the block-use subsystem). Bubble columns were not implemented at that point (done in the next entry; the repeat every 16 to 17 ticks below was a player bobbing in and out at the top, later runs show one sound per entry); measured then: standing in an upward column (soul sand under water) plays `block.bubble_column.upwards_inside` vol 0.7 pitch 1 at the entity, on entering and then about every 16 to 17 ticks (ticks 427796, 819, 836, 851, 867); a downward column (magma) plays `block.bubble_column.whirlpool_inside` vol 0.7 pitch 1 when entering, and `whirlpool_ambient` (vol 0.19, pitch 0.91, random) at the column's block now and then. `ambient.underwater.enter/exit/loop` were already ours; the toast sounds `ui.toast.in/out` (vol 0.4, 2D) played when the game's toast appeared (not ours yet, toasts are still owed).
+- **Compass and clock, fitted** (2026-11-03). `McItemFrames` (McItem) picks compass_00-31, recovery_compass_00-31 and clock_00-63 (the item model definitions: range_dispatch, scale 32 and 64). Every constant is fitted from logged vanilla runs, none recalled: the harness verb `log frames <ticks>` (Script.java) prints the picture the game picks each client tick for hotbar slots 0 to 2. Run frames1 (player turned and moved around a spawn): the settled compass frame is `16 + round(32 * (0.5 - (yaw/360 - 0.25 - atan2(dz,dx)/2pi)))` mod 32 toward the spawn's block centre, and the needle is a spring, speed += 0.1 * way to go, speed *= 0.8, position += speed (the sharp optimum, the first 240 ticks match frame for frame). Run frames2 (28 times set, 120 ticks each): the clock settles on frame 50 at time 0 and 53, 55, 58, 60, 62, 64 ... 111 every thousand ticks (not linear: 14 frames in the first and second six thousand, 18 in the last two), with a spring inside pull 0.11-0.12 and damping 0.89-0.90 (the middle is used). `AMcGameMode` sets the context each game tick; the HUD icon, the held item and dropped items call `Resolve`. Open: in two of five frames1 segments (after teleports of 40 blocks) the compass was on its final frame from the first tick with no spring, unexplained and not modelled; a needle exactly opposite the target may turn either way (a coin toss in the data); other dimensions and the recovery compass spin with an unmeasured placeholder; lodestone compasses and maps are not done.
+- **Water sinking, advancement triggers, signal smoke** (2026-11-03). (1) Swimming: a vanilla idle player in water sinks with `v = 0.8 v - 0.005`, terminal -0.025 (run swim1: -0.0050, -0.0090, -0.0122 ... -0.0250), so water sinking is gravity/16; ours was gravity/4 (0.02, terminal -0.1) for water and lava alike. Now water 0.005 and lava 0.02 (lava unmeasured, vanilla's gravity/4). The physics test's ten-tick sink expectation moved from 2.446 to 2.87. (2) Advancement triggers: the game's `minecraft:inventory_changed` advancements fire from the data files themselves (`PollInventoryTriggers` in `McGameMode.cpp`, once a second over the inventory, armour and offhand; item predicates with an item, a tag or a list, and a minimum count; those with component or slot conditions are skipped). Parents are not needed, as in the game (giving a diamond makes Diamonds! and nothing else is asked first); a run with a stone pickaxe and a diamond showed the toasts "Getting an Upgrade" and "Diamonds!" in the log. Not done: every other trigger (block placed, item used, kills, locations, recipes unlocked) and recipe toasts; "first log" and "crafting table" are not advancements in this version, only recipe unlocks. (3) Campfire smoke over a hay bale (`signal_fire=true`) lives 280 to 330 ticks (a plain one 80 to 160): the vanilla shot `ref_camp_b.png` shows the signal column reaching far above the plain one's; the lifetimes are from memory, only the difference is seen.
+- **Advancement toasts** (2026-11-03; vanilla runs toast1 and toast2, one-tick shots and `log sounds`): `/advancement grant|revoke <targets> only <id>` (`McCommands`, replies as vanilla's `commands.advancement.*` keys) now grants an advancement from the cache data (`advancement/<path>.json`: title, icon, frame, show_toast), keeps it on the player (`Advancements`, saved as `advancement:<id>` stats) and shows the toast on the client (`ClientToast`, drawn by `UMcHUD::DrawToasts`). Measured: the 160x32 `toast/advancement` sprite at the top right, up to 5 stacked; slides in over 13/20 s, holds to 112 ticks, slides out over 12/20 s (slide is `1 - s^2` in, `s^2` out, on wall-clock time, so a `shot` does not advance it); heading at (30, 7) in yellow, title at (30, 18) in white, icon at (8, 8); `ui.toast.in` and `ui.toast.out` vol 0.4, 2D. Not measured: challenge toast colour (0xFF55FF is the wiki's) and its sound, recipe toasts. Not done: nothing grants advancements by itself yet (no triggers).
+- **Bubble columns** (2026-11-03; vanilla runs bubble1, bubble2, bubble3 in `E:\mc-reference
+un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cpp` (formation), `McPhysics.cpp` (`BubbleColumnPush`), `McEntityManager.cpp` (items), `McPlayerPawn.cpp` (entry sound), `McParticleComponent.cpp` (ambient sound and bubbles). `McRedstone.cpp` untouched.
+  - **Formation**: soul sand or magma under water schedules a check 20 ticks after it (or the water over it) changes (a dropped item started rising 20 ticks after the soul sand went in); the water sources above it, up to the first non-source, become `bubble_column[drag=false]` over soul sand and `drag=true` over magma. A column block rechecks what is under it after 5 ticks, and turns back to water when nothing drives it (the 5 is not measured; vanilla's value is from memory).
+  - **Push**: once per column block the entity's box overlaps (an item on a block boundary gets two pushes, seen as 0.112 steps in the log). Inside (non-air above): up `min(0.7, vy+0.06)`, down `max(-0.3, vy-0.03)`. The top block (air above): up `min(1.8, vy+0.1)`, down `max(-0.9, vy-0.03)` (the 1.8, -0.9 and 0.1 are not measured as caps; the item bobbing at the surface in the log is the only sign). Items push before their 0.98 friction (sequence 0.059, 0.117, 0.174 ... 0.686 = 0.98 x 0.7 matches), and the item water step is now vanilla's `vy += 0.0005` only while vy < 0.06 (it was clamped to 0.06). Players and walking mobs push after the water drag (velocity ends the tick at exactly 0.700 and -0.300; the step before is `0.8 v - 0.005 + 0.06 k`, k the 2 or 3 blocks the 1.8 tall box overlaps). Note: that fit says water sinking is 0.005 a tick (gravity/16), while `FluidSinking` here is 0.02; left alone, worth checking separately.
+  - **Sounds**: entering a column plays `block.bubble_column.upwards_inside` or `whirlpool_inside`, vol 0.7 pitch 1, at the player's feet, once per entry (also when teleported in; nothing while staying). Ambient `upwards_ambient` / `whirlpool_ambient` at the block's corner (x, y, z, not the centre), 1 in 200 of the game's random block visits, vol 0.12 to 0.23 and pitch 0.90 to 0.99 (six samples; ours draws 0.1 to 0.25 and 0.9 to 1.05). Head in a column counts as under water for `ambient.underwater.enter/exit`.
+  - **Particles**: `bubble.png` bubbles through the column, drawn a texel at a time; the game's lifetimes, gravity and size are from memory, not fitted (the shots only show scattered small pale bubbles; see `ref_bc_up_a.png`).
+  - **Not done**: boats (the vanilla boat rises to about 0.44 a tick and sinks to -0.255 in a column, bounces roughly 60 ticks after reaching the top, and a boat summoned under water sinks at 0.117 a tick where ours rises, so McVehicle's boat water model differs from vanilla separately), fall distance reset and the splash/bubble particles above the top block, bubble column pop particles, mobs other than through `TickPlayer`.
 
 ### Piglin gold rule, bartering, nether spawning (2026-11-03)
 - Gold rule: measured once (piglin1.txt): a bare player lost 40 hp in 200 ticks to three piglins, one in a golden helmet lost 0. `FMcEntityManager::PlayerWearsGold` (set in `AMcGameMode` from the worn armour, any `minecraft:golden_*`) makes `minecraft:piglin` skip such a player as a target. Brutes were not measured, so they still hunt everyone. Not done: a piglin already angry (hit) should still attack; one sample only.
@@ -524,6 +1221,39 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   - basalt deltas (7 intervals): zombified_piglin 270, skeleton 98, magma_cube 71, piglin 52, enderman 6, ghast 3
   The biome files (`natural_mob_spawns`, read by `FMcBiomeRegistry`) already drive our `SpawnHostiles`, so piglin and zombified piglin spawn in the Nether by their weights; ghast, magma cube, strider, hoglin, blaze and enderman have no mob yet (their rolls give nothing). Mixed biomes mean the weights cannot be fitted from these counts alone; the overall rate was ~30 to 70 spawns per 300 ticks around one player. Not done: our own Nether run to compare rates, and the Nether light rule.
 - Bartering recheck (barter2.txt, 40 runs, held item read at 30/90/150 ticks): the "9 of 50 gave nothing" of barter1 was the counting, not the game: 39 of 39 readable runs gave an item. The piglin holds the ingot in its OFF hand from ~10 to ~120 ticks, then the thrown item shows briefly in its main hand. New items seen: potion of fire resistance (2), splash fire resistance (1), water bottle (1), quartz (2), more soul sand (2-8), fire charge (7 over both runs). Table in `FMcMob::TickBarter` now holds both runs (~80). Piglins walk to a dropped ingot within 8 blocks (range a guess; only 1 block measured). Not done: drawing the ingot in the off hand.
+- **Cloud shade shot: PARKED** (2026-11-03): `95b9c0d`'s shades (bottom 0.70, north/south 0.84, east/west 0.92, from the reference opaque faces) have no paired shot of ours. The `cloud_top` scene (`tools/scenes/cloud_top.json`, a platform at y 204 above the 192 layer) gives a near-level camera whatever pitch it names, so only fogged horizon clouds show; `-McInput=look:0,50` with `remote.sh shot` returned no shot (the shot wrapper wants the `-McShot` path, and the input script's own `shot:` writes elsewhere). Next try: `-McInput="look:0,50;wait:1;shot:cs;end"` run by hand on the 1070 and read from `Saved/Screenshots`, then measure top vs north face on an un-fogged cloud.
+- **Puddles toned down** (2026-11-03, `rn_a` before, `rn_c` after, scene `forest`, rain, Unreal Mode): the puddles read as big blown-out white patches on the grass; coverage threshold at full wet 0.5 -> 0.62, puddle specular 0.9 -> 0.55, grey-sky sheen 0.7 -> 0.3 (`make_materials.py`, lit and HD twins regenerated). Now they are paler, patchier sheens. The rain streaks are the vanilla texture's blue in both looks (`rn_v`), so left alone. One shot at `-McShotDelay=40` (`rn_b`) caught the world with placeholder checker textures and black blocks, which a 20 s delay did not: the wait for shaders is not catching everything after a material change, worth a look.
+- **Caustics visible** (2026-11-03, scene `underwater`, Unreal Mode, noon; before `fc_underwater_a`/`fc_uw_noon`, after `fc_uw_f` with `-McCreative`): the sun's light function was a faint mottling that the underwater grade and fog hid, so the sea floor read as a flat teal sheet. `M_McCaustics` is now three ridged sine layers (lines where each wave crosses zero, width from the power 7) as a net of bright lines over a dim base, 0.5 to 2.4 times the sun; the net drifts with `Time`. It reads clearly now on the sand. Note a survival player in this scene drowns before a shot delayed 9 s or more (the shot also waits for shaders), so use `-McCreative` for underwater shots.
+- **Shore foam: tried, reverted** (2026-11-03, `foam_b` vs the earlier `pkg_water`/`w_*` shots on `shore_down`): vanilla beaches are flat steps, so the scene depth behind the water jumps from 0 to a block at the waterline and the depth-fade foam (40 cm) only ever draws on the last pixel of the edge. Widening it to 110 cm with a drifting lace pattern milked the whole one-block-deep shallows pale grey (worse than none). Real shore foam needs to know where the water's own edge is: a per-vertex flag from the chunk mesher (a water top face with a non-water, non-solid-above neighbour on a side, or the neighbour column's height) feeding a distance-to-edge in the material. Not started; it touches the mesher (a shared file), so it waits.
+- **Rain and snow daylight** (2026-11-03, Unreal Mode, noon; rain in `forest`: before `rn_c`, after `rn_d`; snow on `-McFlatPreset=minecraft:snowy_kingdom` (new dev arg): before `sn_a`, after `sn_b`, vanilla `sn_v`): in rain the sun kept 20% of its light and the sky light only reflects, so a noon storm was as dark as dusk next to the vanilla look. The sun keeps 50% in rain now (`Clear = 1 - 0.5 * Rain`), the Mie haze still greys the sky. The snow field is a bright overcast white and the flakes are low-contrast on it (as in vanilla, white on white). Next for snow: flakes catching light, a snow-covered-leaves and grass look are not started.
+
+- **Built-in packs on the Resource Packs screen (2026-11-03).** High Contrast and Programmer Art (the launcher's
+  `resourcepacks/*.zip`, which `tools/fetch_cache.py` puts in `cache/assets/minecraft/resourcepacks`) are offered by their
+  ids and used like any pack; the Default pack (the game's own assets, icon `cache/client/pack.png`, which fetch_cache now
+  extracts too) is a fixed last row of Selected with no arrows. Titles and "(built-in)" come from the game's lang. Shot
+  against vanilla's screen. The 1070 needs those cache files copied by hand (the cache is not synced). Not done: the
+  in-world blur behind the screen.
+
+- **Pack order (2026-11-03, shot).** Two packs that both replace `stone` (solid red `zz_ord_a`, blue `zz_ord_b`, reference `scripts/order_pack.txt`): the vanilla client with `packs file/zz_ord_a,file/zz_ord_b` shows blue, reversed shows red, i.e. the pack selected last (the top of the Selected list) wins; ours, `-McPacks=zz_ord_a,zz_ord_b` and reversed, gives the same colours (226,0,0 / 0,0,226 lit). This found `-McPacks=a,b` using only `a` (FParse::Value stops at a comma): fixed. The Selected list order and arrows were shot against vanilla earlier; the screen's own clicks on the arrows are not scripted in the reference.
+
+- **In-world menu background (2026-11-03, built and shot).** The game blurs the world behind the pause menu, Options and
+  Resource Packs (three box-blur passes each way; an edge goes soft over about 12 pixels at 1280 x 720) and darkens it to
+  0.748 of the plain view (vanilla shots `blur_plain`/`blur_options`). `DrawWorldMenuDim` draws a 0.252 black fill; `UpdateMenuBlur`
+  spawns an unbound post volume with cinematic depth of field focused 30 cm out (UE 5.8 has no Gaussian DOF at SM5), so
+  everything beyond blurs and the HUD stays sharp. `-McMenuBlur=<f-stop>` tunes it, default 0.8.
+  Measured against `ref_blur_options.png` (same scene): darkening 0.744-0.755 of the plain view (vanilla 0.748-0.752); residual texture
+  detail 0.001 (vanilla 0.0005-0.003; f/2.2 kept 0.007-0.015, so it was far too weak); edge 10-90% width 14 and 16 px (vanilla 14 and 18).
+  Residual: DOF blur grows with distance, so very near blocks stay a little sharper than in the game.
+  - **Imports stream now** (2026-11-03): the menu button and `-McImportWorld` call `McJavaImport::BeginImport`: the world folder, `level` and a note `javaimport.txt` (the Java folder) are made at once; `AMcWorldActor::StartStorage` starts `FLiveImport` for each dimension, which converts regions nearest the spawn first on all cores (a region of terrain3 takes about 0.5 s; the disk writer, not the conversion, is the limit: a full-height flat world writes about 120 chunks/s on the 1070) and `FMcWorldStorage::SetChunkSource` converts any chunk the game asks for before its turn at once. `<dimension>/javaimport.done` marks a finished dimension; a world closed early resumes where it was (saved chunks are skipped). The HUD shows "Importing world: N%" while it runs. `-McImportWhole` or `ImportWorld` still converts everything first (parallel too; terrain3, 68,604 chunks, 70 regions: about a minute). Entities (`entities/*.mca`) are read before any region and make scenery chunks wait for them, so a world with huge entity files starts a little slower. Armor stands wear head/chest/legs/feet armor (measured model, `BuildStandArmor`); held items and leather dye are not drawn yet, and a small stand wears the adult model at half size.
+- **Paintings fit (2026-11-03)**: imported paintings (`facing` 0 south, 1 west, 2 north, 3 east on a stone-brick wall) compared against vanilla shots of 1x1, 2x2 and 4x2 paintings, front and angled: size, frame, depth and facing already match; nothing to change. Held items and leather dye on armor stands are still open.
+- **Armor stands: held items and leather dye** (2026-11-03): dyed leather (`dyed_color`, the game's brown 0xA06540 when undyed) tints the base picture of the leather sheet and its `_overlay` (layers 5 to 8) is drawn untinted; the importer keeps the dye in the decor line as `dye<slot>=<rgb>`. A held flat item (layers 9 main, 10 off hand) is the picture extruded one pixel, placed from its model's `thirdperson_righthand` display at the end of the arm that holds it and turned with the arm's pose; the left hand mirrors the right hand's data (using the model's own `thirdperson_lefthand` turned the bow wrong; the mirror matched the reference). Fitted against vanilla front shots (scripts/stand_held.txt: sword, pickaxe, apple, bow): pickaxe, apple, bow and sword overlay the reference within a few percent of the stand's height; the hold (arm-end offset 1.6 px down, turn -90 x then 180 y) has `-McStandHeld=hx,hy,hz,ex,ey,ez,xsign` and `-McStandLeft=` for refitting. Not done: held blocks (a stone block in hand), the stick's diagonal across the body in the off hand, side views not compared, small stands hold at half size unmeasured.
+- **Import speed** (2026-11-03, terrain3: 70 regions, 68,604 chunks, `-McImportWhole`): the conversion was never the limit (about 28 s for all regions on 12 threads); the single disk writer was: each chunk write opened the region file, wrote and asked the disk to confirm (`Flush`), so the import waited minutes on the writer (the first end-to-end run did not finish in over 80 s after the last region was converted). Now a bulk import (`FMcWorldStorage::SetBulk`, set by `ImportWorld` and the live import) keeps each region file open between chunks and does not confirm each write (`FMcRegionFile::Write` bSync false; a cut-short write leaves a payload that fails its checksum and the chunk is converted again); `SetBulk(false)` waits for the writes and closes the files. End to end: 19.5 s (3,500 chunks/s) for the whole of terrain3, the same 277 MB. McServer tests 26/26.
+
+### Maps, measured and partly written (2026-11-03, UNBUILT)
+Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dumped (McMapColorData.inc), centre rule, marker byte and rotation, scale 0 land shading (sign of the step to the north neighbour) and water shading by depth. Code in McMapColors / McMapData with tests Mc.Map.*; none of it built (no building on this PC). NOT fitted: land and water shading at scales 1+ (averaged heights gave a dithered, inconsistent pattern; the scaled rule is the scale 0 rule on averages), how maps fill while held, decorations beyond the player, locking, cloning, zoom, item use, saving, rendering.
+
+## After the port
+- Realistic fluids (the user's idea, not started): an opt-in world setting (game rule), decided by the server, that replaces vanilla water and lava with per-cell volume flowing by height and pressure (finite water, momentum, basins, U-bends, slower lava). Only active cells are simulated, and changed cells are sent to clients. Unreal mode may add visual-only splashes and waves. Vanilla stays the default.
 
 ### Nether mobs, measured so far (2026-11-03; nethermobs1/2.txt, ghast1/2.txt; NoAI summons, attributes at scale 1)
 - Attributes (health / speed / attack / follow / armor / kb-resist / step): ghast 10 / 0.7 (flying_speed 0.06) / none / 100 / 0 / 0 / 0.6; magma cube (size 1) 1 / 0.3 / 1 / 16 / 3 / 0 / 0.6; blaze 20 / 0.23 / 6 / 48 / 0 / 0 / 0.6; hoglin 40 / 0.3 / 6 / 16 / 0 / 0.6 (attack knockback 1.0) / 0.6; strider 20 / 0.175 / none / 16 / 0 / 0 / 0.6; enderman (already in) 40 / 0.3 / 7 / 64 / step 1.0.
@@ -538,3 +1268,21 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - BUILT AND CHECKED 2026-11-03 (after the earlier "unbuilt" commits, which had invalid `5f` literals; `remote.sh test` runs with -SkipBuild, so build with Build.bat first): the full suite passes 120/120, with model size tests for hoglin, magma cube, blaze, strider, ghast, endermite, shulker, phantom, guardian (ghast tentacles hang 3.6 blocks under its hitbox, strider and hoglin stand taller than their boxes, as measured). Pair shots against `pairshots1.txt` (ref_pair_a/b/c.png vs Saved/Remote/pair_a/b2/c.png): strider, blaze, hoglin, magma cube, ghast, endermite and shulker match in size and place; the phantom was lowered 21 units (1.3125 blocks) to lie in its hitbox like the reference's; the shulker lid is 0.02 bigger so its notched edge does not z-fight the base. Differences left: guardian spikes look longer than the reference's resting ones, the strider is drawn with the warm skin (the reference's out of lava is the cold one), the phantom's fire and wing flap are not drawn.
 - NOT built: strider lava walking and saddle, baby hoglin and strider, magma cube split/armour/speed rise, hoglin knockback and zombification, hoglin hunting (hogbehave1.txt), the Nether light rule.
 - Barter pickup range (barter3.txt, 3 runs per distance, ingot dropped 1.5/3/4/6/8/10/12/16 blocks from an idle piglin, checked at 60 ticks): taken at every distance up to 8, never at 10, 12 or 16 (9 untested). It needs the mobGriefing gamerule on: runs after my ghast scripts (which left it off) saw no pickup at all. Our piglins do not check that rule yet.
+
+### Update (2026-11-03): moving piston window, crafter, pist2 (redstone session)
+- rs_mov (244 changes, equal): a piston checks at once, when told of a change, whether it can push; if the cell in front is held by a moving block it queues nothing and hears nothing more until that block lands. A block landing (block-entity phase, after block events) tells its neighbours, whose event runs in the NEXT tick, so a powered piston waiting for the cell extends the tick after the block arrives. Observers watching the cell a pushed block leaves or enters matched with no change.
+- Entities (rs_mov `log sents`, not implemented): a mob or item in the cell beyond a pushed block is moved so that its box clears the block's face plus 0.01 each tick (block face at +0.5 then +1.0): a pig 4.5 -> 4.96 -> 5.46, an item 4.5 -> 4.635 -> 5.135. Entities standing on top of a plain pushed block do not ride it; they stay and fall when it has gone (items 3.5, y -59 then falling; NoAI pigs do not fall). Slime riding not measured. McClient has no piston push of entities yet.
+- Crafter (rs_crafter, 93 changes, equal except one script row): see 7a0301e. Pistons (rs_pist2, 155, equal): a bell is destroyed when pushed.
+- **Dusk and dawn in Unreal Mode** (2026-11-03, scene `shore`, `-McCreative`; before `ss_12300` (sky black, ground nearly black) and `ss_23100`, after `ss2_12100`, `ss2_23100`, vanilla `ss_v12300`): the sun's light cut out at 4% under the horizon and the moon (0.6 lux) took over, so the sky went black and the ground dark while the vanilla look still has a blue dusk. Now the sun's window reaches 20% under the horizon in Unreal Mode (the atmosphere keeps its glow; the vanilla look's window is unchanged) and a shadowless blue fill (`TwilightFill`, 2.5 lux, from the side away from the sun, peak at about 3% under the horizon, rain-dimmed) lights the ground. The sunset now shows orange clouds, a lit beach and a darker blue-grey sky overhead. Block lights at night (`lt_a`, scene `lamp_street`, 15000) already read well; the cave scene shot did not return, so caves are not re-checked.
+- **Vanilla check after the 2026-11-03 Unreal Mode work** (partial): the vanilla `cave` scene now (`vc_new_cave`, `-McCreative`) against the earlier `vn_cave` (at 0d991b4): every pixel above row 510 is identical; the differences (rows 510-719) are the hotbar and hearts, creative against survival. Village, forest, shore, Nether and End were not compared: a baseline build for a proper diff ran the E: drive out of space (0 bytes free, now cleaned to 2.3 GB; see the disk note to Jeff), and `vc_new_*` for those did not all return. Note the cloud shades (`95b9c0d`) change the vanilla clouds on purpose, and the Nether/End fog and End sky tint paths run in the vanilla look with unchanged values.
+- **Item models, shaders, fonts (2026-11-03, UNBUILT).** Written while this PC was off limits, so none of it has been compiled or run; shots against `ref_items_hotbar.png` / `ref_model_*.png` (vanilla, zz_test_items / zz_test_model packs) are still to do.
+  - Item definitions: `McItemDef` (McUI) reads `items/<item>.json` (model, empty, composite, special base model, condition, select, range_dispatch) from the pack stack; properties known: custom_model_data (floats/flags/strings/colors), damage, count, damaged, has_component, display_context; any other property takes the fallback / on_false. `McBakeItemModel` (McAssets) bakes `models/item/*.json` (builtin/generated layers, elements, `display`, `gui_light`). `GetStackIcon` / `BuildModelIcon` draw pack models in inventory slots with constant, dye and custom_model_data tints. Test: `McClient.McUI.ItemDefinition`.
+  - Gaps: held items in hand, ground items and item frames still use the built-in models; `special` models draw only their base; properties using_item, time, compass, bundle fill, cooldown etc. are not read.
+  - Block model overrides (`models/block/*.json`) already work through the baker. Open: top faces of a non-flush custom model on an opaque block look darker (~0.69) than vanilla (1.0), since the quad takes its own cell's light.
+  - Shaders / post effects: a pack's `shaders/` and `post_effect/` files are detected and a warning is logged (`FMcPackInfo::ShaderFiles`, test `McClient.McCore.PackShaders`). Core GLSL and post-effect chains cannot run: Unreal draws the world, so none are honoured and the game renders as normal.
+  - Fonts: the default font's providers and pack glyph/unicode pages are covered by the existing font tests; other font ids (alt, uniform, illageralt) need text components (tellraw, titles), which don't exist yet.
+- **Imported entities** (2026-11-03): besides item frames, paintings and armor stands, a Java save's dropped items, the mobs the port has (pig, cow, sheep, chicken, zombie, ... with health, slime size, baby age), minecarts (chest, furnace, hopper and TNT carts become plain ones) and boats/rafts (wood from the id) go into the chunk's entity bytes (`MakeLive` in McJavaImport.cpp). Checked against vanilla scene `ents_ref` (pig, dyed sheep, cow, baby chicken, zombie, minecart, boat, diamond, sword): items, cart, boat, cow and sheep match. Not carried over yet: custom names and gear on mobs, sheep/cat/horse variants and colours (the dyed sheep comes out white), the baby chick model (a small adult is drawn), villagers and other mobs the port lacks, cart contents, and the port's mobs wander and burn in daylight where vanilla `NoAI` ones stand still (NoAI isn't read).
+- **Villagers from saves (UNBUILT, 2026-11-03)**: `MakeLive` makes an `FMcVillager` (biome type, profession, level, xp, baby age, the trades of `Offers.Recipes` with uses, demand, xp and price multiplier) and an `FMcZombieVillager` for those ids, so the host's `RestoreChunk` can read them. Not compiled or checked yet: build, run JavaImport, then compare with the vanilla scene `ents_ref2` (named pig, dyed sheep, geared zombie and skeleton, farmer and librarian villagers, four item frames, carts, boat, dropped items; shots ents2_*). Still open: mob custom names (no field on the mob; the name must go in front of the subclass data, so it wants a save version), mob gear, sheep colour.
+
+### Integrate 2026-11-03: known failing test
+- `McClient.McSim.RefScriptsLogistics` fails on integrate (lg_disp.txt: 483 changes expected, 138 got; lg_hop.txt: 114 expected, 65 got). Both scripts are baked from the reference client but the redstone replay for them is not implemented yet (redstone session's work in progress, commits 0c00e23, c5d6b84). Everything else passes: 192 of 193 at 7648caa.

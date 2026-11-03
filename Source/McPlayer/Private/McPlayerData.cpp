@@ -1,4 +1,6 @@
 #include "McPlayerData.h"
+#include "McSignMenu.h"
+#include "McLecternMenu.h"
 #include "McCraftingMenu.h"
 #include "McFurnace.h"
 #include "McBrewingStand.h"
@@ -40,6 +42,7 @@ UMcPlayerDataComponent::UMcPlayerDataComponent()
 	: Inventory(MakeShared<FMcContainer>(InventorySize))
 	, Armor(MakeShared<FMcContainer>(NumArmorSlots))
 	, Offhand(MakeShared<FMcContainer>(1))
+	, EnderChest(MakeShared<FMcContainer>(EnderChestSize))
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
@@ -248,6 +251,12 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		Made.Brewing = MakeShared<FMcBrewingStand>();
 		Made.Menu = MakeShared<FMcBrewingMenu>(Made.Brewing, Inventory);
 		break;
+	case EMcWindowKind::Sign:
+		Made.Menu = MakeShared<FMcSignMenu>();
+		break;
+	case EMcWindowKind::Lectern:
+		Made.Menu = MakeShared<FMcLecternMenu>();
+		break;
 	default:
 		break;
 	}
@@ -442,7 +451,11 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 			Made.Menu = MakeShared<FMcContainerMenu>(Container, SecondContainer, Inventory);
 			break;
 		}
-		Made.Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
+		{
+			const TSharedRef<FMcContainerMenu> Menu = MakeShared<FMcContainerMenu>(Container, Inventory);
+			Menu->bNoShulkerBoxes = Title == TEXT("Shulker Box");
+			Made.Menu = Menu;
+		}
 		break;
 	case EMcWindowKind::Furnace:
 		if (!Machine.IsValid())
@@ -550,6 +563,56 @@ void UMcPlayerDataComponent::CreativeTake(FName Item, int32 Count, bool bToInven
 	}
 }
 
+void UMcPlayerDataComponent::OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Sign, ++NextWindowId, 0);
+	const TSharedPtr<FMcSignMenu> Menu = StaticCastSharedPtr<FMcSignMenu>(Made.Menu);
+	Menu->bBack = bBack;
+	Menu->SignKind = Kind;
+	Menu->Block = Block;
+	Menu->TextColour = Colour;
+	Menu->SetText(FMcSignMenu::Join(Lines));
+	Made.Pos = Pos;
+	// Called as the window closes, by then with what the player sent.
+	Made.OnChanged = [WeakMenu = TWeakPtr<FMcSignMenu>(Menu), OnDone = MoveTemp(OnDone)]()
+	{
+		if (const TSharedPtr<FMcSignMenu> Open = WeakMenu.Pin(); Open.IsValid() && OnDone)
+		{
+			OnDone(Open->Lines);
+		}
+	};
+	OpenServerWindow(MoveTemp(Made), 0);
+}
+
+void UMcPlayerDataComponent::OpenLectern(const FIntVector& Pos, const TArray<FString>& Pages, int32 Page, TFunction<void(FMcLecternMenu&)> OnButton)
+{
+	if (!IsServer() || Stats.Health <= 0.0f)
+	{
+		return;
+	}
+	FMcWindow Made = MakeWindow(EMcWindowKind::Lectern, ++NextWindowId, 0);
+	const TSharedPtr<FMcLecternMenu> Menu = StaticCastSharedPtr<FMcLecternMenu>(Made.Menu);
+	Menu->Pages = Pages;
+	if (Menu->Pages.Num() > FMcLecternMenu::MaxPages)
+	{
+		Menu->Pages.SetNum(FMcLecternMenu::MaxPages);
+	}
+	Menu->Page = FMath::Clamp(Page, 0, FMath::Max(0, Menu->Pages.Num() - 1));
+	Made.Pos = Pos;
+	Made.OnChanged = [WeakMenu = TWeakPtr<FMcLecternMenu>(Menu), OnButton = MoveTemp(OnButton)]()
+	{
+		if (const TSharedPtr<FMcLecternMenu> Open = WeakMenu.Pin(); Open.IsValid() && OnButton)
+		{
+			OnButton(*Open);
+		}
+	};
+	OpenServerWindow(MoveTemp(Made), 0);
+}
+
 void UMcPlayerDataComponent::OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves)
 {
 	if (!IsServer() || Stats.Health <= 0.0f)
@@ -598,7 +661,10 @@ void UMcPlayerDataComponent::ClickMenuButton(int32 Id)
 	}
 	if (IsServer())
 	{
-		Window.Menu->ClickButton(Id);
+		if (Window.Menu->ClickButton(Id) && Window.OnChanged)
+		{
+			Window.OnChanged();
+		}
 		return;
 	}
 	// Shown at once; the server's answer follows with the window.
@@ -645,6 +711,10 @@ void UMcPlayerDataComponent::ServerMenuButton_Implementation(int32 WindowId, int
 	{
 		++NumRefused;
 	}
+	else if (Window.OnChanged)
+	{
+		Window.OnChanged();
+	}
 	LastSequence = Sequence;
 	SendWindowTo(Sequence);
 }
@@ -684,6 +754,10 @@ void UMcPlayerDataComponent::ServerEnchant_Implementation(int32 WindowId, int32 
 	if (!Window.IsOpen() || WindowId != Window.Id || !ApplyEnchant(Slot))
 	{
 		++NumRefused;
+	}
+	else if (ServerSound)
+	{
+		ServerSound(FName("block.enchantment_table.use"), 1.0f, FMath::FRand() * 0.1f + 0.9f);
 	}
 	LastSequence = Sequence;
 	SendWindowTo(Sequence);
@@ -784,6 +858,8 @@ TArray<UMcPlayerDataComponent::FChatLine>& UMcPlayerDataComponent::GetChatLog()
 
 void UMcPlayerDataComponent::AddChatLine(const FString& Text, uint32 Rgb)
 {
+	// The game's own chat goes to the log too, which is how a run without eyes sees what the player was told.
+	UE_LOG(LogMcPlayerData, Display, TEXT("Chat: %s"), *Text);
 	TArray<FChatLine>& Log = GetChatLog();
 	FChatLine& Line = Log.AddDefaulted_GetRef();
 	Line.Text = Text;
@@ -820,6 +896,72 @@ void UMcPlayerDataComponent::TellOwner(const FString& Text, uint32 Rgb)
 	{
 		AddChatLine(Text, Rgb);
 	}
+}
+
+UMcPlayerDataComponent::FOverlay& UMcPlayerDataComponent::GetOverlay()
+{
+	static FOverlay Overlay;
+	return Overlay;
+}
+
+void UMcPlayerDataComponent::ShowOverlay(const FString& Text, bool bRainbow)
+{
+	UE_LOG(LogMcPlayerData, Display, TEXT("Overlay: %s"), *Text);
+	FOverlay& Overlay = GetOverlay();
+	Overlay.Text = Text;
+	Overlay.bRainbow = bRainbow;
+	Overlay.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ServerOverlay(const FString& Text, bool bRainbow)
+{
+	if (IsOwnerRemote())
+	{
+		ClientOverlay(Text, bRainbow);
+	}
+	else if (IsServer())
+	{
+		ShowOverlay(Text, bRainbow);
+	}
+}
+
+TArray<UMcPlayerDataComponent::FToast>& UMcPlayerDataComponent::GetToasts()
+{
+	static TArray<FToast> Toasts;
+	return Toasts;
+}
+
+void UMcPlayerDataComponent::ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon)
+{
+	UE_LOG(LogMcPlayerData, Display, TEXT("Toast: %s / %s"), *Heading, *Title);
+	FToast& Toast = GetToasts().AddDefaulted_GetRef();
+	Toast.Heading = Heading;
+	Toast.HeadingRgb = HeadingRgb;
+	Toast.Title = Title;
+	Toast.Icon = Icon;
+	Toast.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon)
+{
+	if (IsOwnerRemote())
+	{
+		ClientToast(Heading, HeadingRgb, Title, Icon);
+	}
+	else if (IsServer())
+	{
+		ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
+	}
+}
+
+void UMcPlayerDataComponent::ClientToast_Implementation(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon)
+{
+	ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
+}
+
+void UMcPlayerDataComponent::ClientOverlay_Implementation(const FString& Text, bool bRainbow)
+{
+	ShowOverlay(Text, bRainbow);
 }
 
 void UMcPlayerDataComponent::ClientChat_Implementation(const FString& Text, int32 Rgb)

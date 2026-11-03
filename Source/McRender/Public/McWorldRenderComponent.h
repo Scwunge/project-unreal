@@ -1,4 +1,4 @@
-// Draws an FMcBlockWorld: meshes chunk columns on worker threads and uploads them as procedural meshes.
+﻿// Draws an FMcBlockWorld: meshes chunk columns on worker threads and uploads them as procedural meshes.
 
 #pragma once
 
@@ -87,6 +87,7 @@ private:
 	void LaunchMeshTasks();
 	void UploadResults();
 	void Upload(FChunkResult& Result);
+	UProceduralMeshComponent* MakeMesh(TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map, FIntPoint Pos, int32 SortPriority);
 
 	FMcBlockWorld* World = nullptr;
 	FDelegateHandle AddedHandle;
@@ -98,6 +99,7 @@ private:
 	TSharedPtr<const FMcRenderPalette> Palette;
 	TSharedPtr<const struct FMcLightPalette> LightPalette;
 	TSharedPtr<const McFluidMesher::FFluidPalette> FluidPalette;
+	float Underwater = 0.0f;
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;
@@ -107,6 +109,26 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> Meshes;
+	// The water of each chunk, in a mesh of its own that is drawn before all the other translucent things (ice,
+	// glass), whichever chunk they are in; one mesh cannot order them against another chunk's.
+	UPROPERTY(Transient)
+	TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>> WaterMeshes;
+
+	// The translucent quads of each chunk's sections, kept to be put in order again, farthest first, when the camera has
+	// moved: blending glass over glass only comes out right in that order.
+	struct FTranslucentSection
+	{
+		int32 MeshSection = 0;
+		FMcMeshBuffers Buffers;
+	};
+	struct FTranslucentChunk
+	{
+		TArray<FTranslucentSection> Sections;
+		FVector SortedFor = FVector::ZeroVector;
+	};
+	TMap<FIntPoint, FTranslucentChunk> TranslucentChunks;
+	void ResortTranslucent();
+	FVector GetViewLocation() const;
 
 	// The pass materials with the texture array set, indexed by EMcRenderPass.
 	UPROPERTY(Transient)

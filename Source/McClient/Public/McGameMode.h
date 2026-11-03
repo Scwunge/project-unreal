@@ -70,6 +70,8 @@ public:
 	void ApplyGameRules();
 
 private:
+	FTimerHandle AdvancementTimer;
+	FTimerHandle ItemFrameTimer;
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
 	// flying when saved.
 	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
@@ -82,6 +84,9 @@ private:
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
 	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	void BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center);
+	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
+	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);
 	// Gives the player at the position a status effect (a witch's splash potion).
 	void EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration);
 	// Once a second: a player with Bad Omen in a village calls a raid on it (the omen turns into Raid Omen, 30 seconds

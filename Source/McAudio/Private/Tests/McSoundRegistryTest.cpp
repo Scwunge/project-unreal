@@ -25,6 +25,22 @@ bool FMcSoundRegistryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("events"), Registry.NumEvents(), 7);
 	TestFalse(TEXT("text that isn't an object fails"), FMcSoundRegistry().Parse(TEXT("[1, 2")));
 
+	// A pack's sounds.json is merged: new events added, listed events extended, "replace" swaps the list.
+	{
+		FMcSoundRegistry Merged;
+		Merged.Parse(TEXT(R"({ "a": { "sounds": ["one"] }, "b": { "sounds": ["x"] } })"));
+		TestTrue(TEXT("merge parses"), Merged.Merge(TEXT(R"({ "a": { "sounds": ["two"] }, "b": { "replace": true, "sounds": ["y"] }, "c": { "sounds": ["z"] } })")));
+		TestEqual(TEXT("one new event"), Merged.NumEvents(), 3);
+		const TArray<FMcSoundVariant>* A = Merged.Find(FName("a"));
+		const TArray<FMcSoundVariant>* B = Merged.Find(FName("b"));
+		if (TestNotNull(TEXT("a"), A) && TestNotNull(TEXT("b"), B))
+		{
+			TestEqual(TEXT("a keeps its sound and gains one"), A->Num(), 2);
+			TestEqual(TEXT("b is replaced"), B->Num(), 1);
+			TestEqual(TEXT("with the pack's sound"), (*B)[0].Name, FString(TEXT("y")));
+		}
+	}
+
 	// Plain list: the draw picks an equal share each.
 	FMcSoundVariant Variant;
 	TestTrue(TEXT("stone break"), Registry.Pick(FName("block.stone.break"), 0.0f, Variant));
@@ -146,6 +162,35 @@ bool FMcSoundCacheTest::RunTest(const FString& Parameters)
 		TestTrue(*FString::Printf(TEXT("%s sample rate"), Name), Decoded.SampleRate >= 8000 && Decoded.SampleRate <= 48000);
 		TestTrue(*FString::Printf(TEXT("%s channels"), Name), Decoded.NumChannels == 1 || Decoded.NumChannels == 2);
 		TestTrue(*FString::Printf(TEXT("%s length"), Name), Decoded.Duration > 0.0f && Decoded.Duration < 10.0f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPlayedEventsExistTest, "McClient.McAudio.PlayedEventsExist",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPlayedEventsExistTest::RunTest(const FString& Parameters)
+{
+	// The events the game plays by name (not the block and mob ones built from a group), against the real sounds.json.
+	if (!FMcSoundRegistry::Get().EnsureLoaded())
+	{
+		AddInfo(TEXT("No sounds.json in the cache: skipped."));
+		return true;
+	}
+	const TCHAR* Events[] = {
+		TEXT("entity.generic.eat"), TEXT("entity.player.burp"), TEXT("entity.item.pickup"), TEXT("entity.experience_orb.pickup"),
+		TEXT("entity.player.levelup"), TEXT("entity.player.attack.strong"), TEXT("entity.player.attack.weak"), TEXT("entity.player.attack.crit"),
+		TEXT("block.chest.open"), TEXT("block.chest.close"), TEXT("block.barrel.open"), TEXT("block.barrel.close"),
+		TEXT("block.shulker_box.open"), TEXT("block.shulker_box.close"), TEXT("block.ender_chest.open"), TEXT("block.ender_chest.close"), TEXT("ui.button.click"),
+		TEXT("entity.player.splash"), TEXT("entity.player.splash.high_speed"), TEXT("entity.player.swim"), TEXT("entity.generic.extinguish_fire"),
+		TEXT("entity.player.hurt_drown"), TEXT("entity.player.hurt_on_fire"), TEXT("entity.item.break"), TEXT("block.enchantment_table.use"),
+		TEXT("block.portal.trigger"), TEXT("block.portal.travel"), TEXT("block.portal.ambient"), TEXT("block.fire.ambient"), TEXT("block.lava.pop"),
+		TEXT("block.lava.ambient"), TEXT("block.water.ambient"), TEXT("block.furnace.fire_crackle"), TEXT("block.campfire.crackle"),
+	};
+	FMcSoundVariant Variant;
+	for (const TCHAR* Event : Events)
+	{
+		TestTrue(FString::Printf(TEXT("%s is in sounds.json"), Event), FMcSoundRegistry::Get().Pick(FName(Event), 0.0f, Variant));
 	}
 	return true;
 }

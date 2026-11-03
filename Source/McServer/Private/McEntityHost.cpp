@@ -1,4 +1,6 @@
 #include "McEntityHost.h"
+#include "McTnt.h"
+#include "McSpawners.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBiomeRegistry.h"
@@ -9,6 +11,9 @@
 #include "McItemRegistry.h"
 #include "McLoot.h"
 #include "McMob.h"
+#include "McBannerEntity.h"
+#include "McDecorEntity.h"
+#include "McVehicle.h"
 #include "McRandom.h"
 #include "McStructureSpawns.h"
 #include "McVillager.h"
@@ -100,6 +105,19 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
+	{
+		if (OnPlayerBlast)
+		{
+			OnPlayerBlast(PlayerPos, Damage, Push, Center);
+		}
+		else if (OnPlayerHit)
+		{
+			OnPlayerHit(PlayerPos, Damage);
+		}
+	};
+	Spawners = MakeUnique<FMcSpawners>(InWorld);
+	BlockEntityHandle = World.OnBlockEntityChanged.AddLambda([this](const FIntVector& Pos) { Spawners->OnBlockEntityChanged(Pos); });
 	// Bites, arrows and blasts all reach the player through here.
 	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
 	{
@@ -197,6 +215,7 @@ FMcEntityHost::~FMcEntityHost()
 	// Runs when the owning actor is destroyed by garbage collection, when other actors can't be destroyed safely;
 	// DestroyProxies has done that by now, at EndPlay. Only the bookkeeping is left.
 	Proxies.Empty();
+	World.OnBlockEntityChanged.Remove(BlockEntityHandle);
 }
 
 void FMcEntityHost::DestroyProxies()
@@ -606,6 +625,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 
 void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 {
+	Spawners->OnChunkAdded(Chunk);
 	if (Seeded.Contains(Chunk))
 	{
 		return;
@@ -692,6 +712,42 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 			if (Item->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Item));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcPrimedTnt::StaticType())
+		{
+			TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
+			if (Tnt->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Tnt));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcBannerEntity::StaticType())
+		{
+			TUniquePtr<FMcBannerEntity> Banner = MakeUnique<FMcBannerEntity>();
+			if (Banner->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Banner));
+				++Restored;
+			}
+		}
+		else if (Kind == FMcDecorEntity::StaticType())
+		{
+			TUniquePtr<FMcDecorEntity> Decor = MakeUnique<FMcDecorEntity>();
+			if (Decor->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Decor));
+				++Restored;
+			}
+		}
+		else if (FMcVehicle::IsVehicleType(Kind))
+		{
+			TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
+			if (Vehicle->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Vehicle));
 				++Restored;
 			}
 		}
@@ -937,6 +993,11 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
+	// With spawnerBlocksWork off a spawner's wait holds where it is (vanilla, spawner_rule.txt: 20 for 700 ticks).
+	if (!Players.IsEmpty() && Rules.bSpawnerBlocksWork)
+	{
+		Spawners->Tick(*this, Players, Random);
+	}
 
 	// Every 10 minutes or so a raid party may come to a player, from the fifth day on and in daylight.
 	if (NextPatrolTick == 0)
@@ -1227,13 +1288,70 @@ FMcMob* FMcEntityHost::FindMob(const FVector& Eye, const FVector& Direction, flo
 	return Best;
 }
 
-bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage)
+FMcEntity* FMcEntityHost::FindVehicle(const FVector& Eye, const FVector& Direction, float Reach)
 {
-	FMcMob* Best = FindMob(Eye, Direction, Reach);
+	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
+	{
+		return nullptr;
+	}
+	FMcEntity* Best = nullptr;
+	double BestDistance = Reach;
+	const FVector Dir = Direction.GetSafeNormal();
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->IsVehicle() || Entity->bRemoved)
+		{
+			continue;
+		}
+		FVector HitPoint, HitNormal;
+		float Time = 0.0f;
+		if (FMath::LineExtentBoxIntersection(Entity->Body.GetBox(), Eye, Eye + Dir * Reach, FVector::ZeroVector, HitPoint, HitNormal, Time) && Time * Reach <= BestDistance)
+		{
+			BestDistance = Time * Reach;
+			Best = Entity.Get();
+		}
+	}
+	return Best;
+}
+
+bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative)
+{
+	// The nearest living entity whose box the ray enters within Reach.
+	// The direction comes from a client: a NaN or empty one hits nothing.
+	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
+	{
+		return false;
+	}
+	FMcEntity* Best = nullptr;
+	double BestDistance = Reach;
+	const FVector Dir = Direction.GetSafeNormal();
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->IsAttackable() || Entity->bRemoved)
+		{
+			continue;
+		}
+		const FBox Box = Entity->Body.GetBox();
+		FVector HitPoint, HitNormal;
+		float Time = 0.0f;
+		if (FMath::LineExtentBoxIntersection(Box, Eye, Eye + Dir * Reach, FVector::ZeroVector, HitPoint, HitNormal, Time))
+		{
+			const double Distance = Time * Reach;
+			if (Distance <= BestDistance)
+			{
+				BestDistance = Distance;
+				Best = Entity.Get();
+			}
+		}
+	}
 	if (!Best)
 	{
 		return false;
 	}
-	Best->Damage(Damage, &Eye);
-	return true;
+	if (Best->IsLiving())
+	{
+		static_cast<FMcMob*>(Best)->Damage(Damage, &Eye);
+		return true;
+	}
+	return Best->OnAttacked(Damage, bCreative);
 }

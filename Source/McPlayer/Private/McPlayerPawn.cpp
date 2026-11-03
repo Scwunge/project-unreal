@@ -2011,6 +2011,18 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	{
 		ServerSetBlock(Other, Air);
 	}
+	// Shears take a tripwire away disarmed, so the hooks do not feel it go (reference client, rs_trip3: survival, shears
+	// held, the hooks did nothing; without shears they powered for 9 ticks).
+	if (Registry.GetBlockOf(State).Name == TEXT("minecraft:tripwire") && !Tool.IsEmpty() && Tool.Item == TEXT("minecraft:shears"))
+	{
+		TMap<FName, FName> Disarmed;
+		for (const TCHAR* Property : { TEXT("attached"), TEXT("east"), TEXT("north"), TEXT("powered"), TEXT("south"), TEXT("west") })
+		{
+			Disarmed.Add(Property, Registry.GetPropertyValue(State, Property));
+		}
+		Disarmed.Add(TEXT("disarmed"), TEXT("true"));
+		ServerSetBlock(Pos, Registry.FindState(TEXT("minecraft:tripwire"), Disarmed).Get(State));
+	}
 	ServerSetBlock(Pos, Air);
 	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
 	{
@@ -2150,6 +2162,10 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	for (const FMcNetBlockChange& Change : Placed)
 	{
 		ServerSetBlock(Change.Pos, Change.State);
+		if (OnPlaced)
+		{
+			OnPlaced(Change.Pos);
+		}
 		AttachBanner(Change.Pos, Held);
 	}
 	if (!Data->bCreative && --Held.Count <= 0)

@@ -556,6 +556,14 @@ FMcMob* AMcWorldActor::FindMob(const FVector& Eye, const FVector& Look, float Re
 	return Entities ? Entities->FindMob(Eye, Look, Reach) : nullptr;
 }
 
+void AMcWorldActor::PlayerPlaced(const FIntVector& Pos)
+{
+	if (Simulation)
+	{
+		Simulation->PlayerPlaced(Pos);
+	}
+}
+
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
 {
 	if (!BlockWorld)

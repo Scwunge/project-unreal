@@ -1,0 +1,321 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd tp @s 5 -50 2
+wait 40
+cmd tick freeze
+cmd fill -2 -60 -2 14 -46 8 air
+cmd fill -2 -61 -2 14 -61 8 stone
+wait 10
+cmd setblock -1 -60 0 stone
+cmd setblock 6 -60 0 stone
+cmd setblock 1 -60 0 tripwire
+cmd setblock 2 -60 0 tripwire
+cmd setblock 3 -60 0 tripwire
+cmd setblock 4 -60 0 tripwire
+cmd setblock 0 -60 0 tripwire_hook[facing=east]
+cmd setblock 5 -60 0 tripwire_hook[facing=west]
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd summon item 2.5 -60 0.5 {Item:{id:"minecraft:stone",count:1},PickupDelay:32767}
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd kill @e[type=item]
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd setblock 3 -60 0 air
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd setblock 3 -60 0 tripwire
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd setblock 3 -60 0 tripwire[disarmed=true]
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd summon item 3.5 -60 0.5 {Item:{id:"minecraft:stone",count:1},PickupDelay:32767}
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 0
+cmd kill @e[type=item]
+cmd tick unfreeze

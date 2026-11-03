@@ -244,8 +244,9 @@ namespace McEntityModel
 	// Width is in blocks. The picture's V runs 0..VMax (an animated item's strip is cut to its first frame).
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
 
-	// A block of picture on every side, one block big, standing on the feet (a falling block).
-	MCRENDER_API void BuildBlockMesh(McPlayerModel::FMeshData& Out);
+	// A block of picture on every side, one block big, standing on the feet (a falling block). Layer 0 is every side (all six when
+	// there is no separate top picture, otherwise all but the top), layer 1 the top alone.
+	MCRENDER_API void BuildBlockMesh(bool bTopPicture, int32 Layer, McPlayerModel::FMeshData& Out);
 
 	// How many pictures an item entity shows for a count: 1, 2 above one, 3 above 16, 4 above 32, 5 above 48.
 	MCRENDER_API int32 GetItemCopies(int32 Count);

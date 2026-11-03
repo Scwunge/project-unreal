@@ -4,7 +4,9 @@
 #include "McBlockUse.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
+#include "McBrewingStand.h"
 #include "McEntityHost.h"
+#include "McFurnace.h"
 #include "McItemRegistry.h"
 #include "McSimulation.h"
 #include "McWorldActor.h"
@@ -12,6 +14,7 @@
 #include "Engine/World.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
+#include "Serialization/MemoryWriter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
@@ -71,7 +74,7 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 		FMcSimulation& Sim = *Actor->GetSimulation();
 		for (int32 Z = -1; Z <= 1; ++Z)
 		{
-			for (int32 X = -1; X <= 1; ++X)
+			for (int32 X = -1; X <= 5; ++X)
 			{
 				if (!Blocks.HasChunk(FIntPoint(X, Z)))
 				{
@@ -116,7 +119,18 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 			}
 			int32 Bracket = INDEX_NONE;
 			const FString Name = Block.FindChar('[', Bracket) ? Block.Left(Bracket) : Block;
-			const int32 NumSlots = Name == TEXT("hopper") ? 5 : Name == TEXT("chest") ? 27 : 9;
+			const bool bFurnace = Name == TEXT("furnace") || Name == TEXT("blast_furnace") || Name == TEXT("smoker");
+			const bool bStand = Name == TEXT("brewing_stand");
+			TSharedPtr<FMcMachine> Machine;
+			if (bFurnace)
+			{
+				Machine = MakeShared<FMcFurnace>(Name == TEXT("furnace") ? EMcFurnaceKind::Furnace : Name == TEXT("smoker") ? EMcFurnaceKind::Smoker : EMcFurnaceKind::BlastFurnace);
+			}
+			else if (bStand)
+			{
+				Machine = MakeShared<FMcBrewingStand>();
+			}
+			const int32 NumSlots = Machine ? Machine->GetItems()->GetAll().Num() : Name == TEXT("hopper") ? 5 : Name == TEXT("chest") ? 27 : 9;
 			FMcBlockEntity Entity = FMcBlockEntity::MakeContainer(NumSlots);
 			int32 From = 0;
 			while ((From = Nbt.Find(TEXT("Slot:"), ESearchCase::CaseSensitive, ESearchDir::FromStart, From)) != INDEX_NONE)
@@ -127,9 +141,23 @@ bool FMcLogisticsReplayTest::RunTest(const FString& Parameters)
 				const int32 CountAt = Nbt.Find(TEXT("count:"), ESearchCase::CaseSensitive, ESearchDir::FromStart, From) + 6;
 				if (Slot >= 0 && Slot < NumSlots)
 				{
-					Entity.Slots[Slot] = FMcItemStack(*Id, FCString::Atoi(*Nbt.Mid(CountAt)));
+					if (Machine)
+					{
+						Machine->GetItems()->Set(Slot, FMcItemStack(*Id, FCString::Atoi(*Nbt.Mid(CountAt))));
+					}
+					else
+					{
+						Entity.Slots[Slot] = FMcItemStack(*Id, FCString::Atoi(*Nbt.Mid(CountAt)));
+					}
 				}
 				From = CountAt;
+			}
+			if (Machine)
+			{
+				Entity = FMcBlockEntity();
+				Entity.Kind = bFurnace ? EMcBlockEntityKind::Furnace : EMcBlockEntityKind::BrewingStand;
+				FMemoryWriter Writer(Entity.Data);
+				Machine->Serialize(Writer);
 			}
 			if (FMcChunk* Chunk = Blocks.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
 			{

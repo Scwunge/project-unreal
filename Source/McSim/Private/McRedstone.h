@@ -37,6 +37,7 @@ public:
 	bool Use(const FIntVector& Pos, float Yaw);
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
+	void PlayerPlaced(const FIntVector& Pos);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
 	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; SunScale = 1.0; }
@@ -85,7 +86,21 @@ private:
 	// Recomputes every hook whose line passes through Pos (or is Pos), and those hooks' ends.
 	void UpdateTripwires(const FIntVector& Pos);
 	void UpdateHookLine(const FIntVector& Hook);
+	void ShapeTripwire(const FIntVector& Pos);
+	// The hook being put in place by the change being handled (X is INT32_MIN when none).
+	FIntVector HookPlaced = FIntVector(INT32_MIN);
 	static constexpr int32 TripwireDelay = 10;
+	// Strings that are disarmed now, and whether the change being handled is one of them going (shears).
+	TSet<FIntVector> DisarmedStrings;
+	bool bShornBreak = false;
+	// Every string seen, and whether the change being handled turns one into another state of itself.
+	TSet<FIntVector> StringCells;
+	bool bStringReplaced = false;
+	bool bDetachLine = false;
+	FIntVector RemovedString = FIntVector(INT32_MIN);
+	FIntVector ChangedPos = FIntVector(INT32_MIN);
+	// The hook each attached hook is joined to.
+	TMap<FIntVector, FIntVector> HookPartner;
 	static constexpr int32 TripwireMaxLength = 40;
 	void TickTarget(const FIntVector& Pos, FMcStateId State);
 	void TickDaylight(const FIntVector& Pos, FMcStateId State);

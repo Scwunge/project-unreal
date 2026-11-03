@@ -497,6 +497,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			});
 		return true;
 	};
+	Hooked.OnPlaced = [World](const FIntVector& Pos)
+	{
+		if (World.IsValid())
+		{
+			World->PlayerPlaced(Pos);
+		}
+	};
 	Hooked.OnBeforeBreak = [World](const FIntVector& Pos)
 	{
 		UMcBlockUseSubsystem* Use = World.IsValid() ? World->GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;

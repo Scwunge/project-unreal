@@ -353,6 +353,7 @@ Pack files
 Textures
 - [x] Block textures at any size (array side follows the widest pack texture, budgeted)
 - [x] `.png.mcmeta` animations: `frametime`, `frames` with per-frame `time`, `interpolate`, `width`/`height` (tested)
+  - Shot against the vanilla client (2026-11-03, test pack `zz_test_anim`: stone as four solid frames red, green, blue, yellow at frametime 20; cobblestone black and white with `interpolate`; reference `scripts/anim_pack.txt`, ours `-McScene=anim_cal -McPacks=zz_test_anim -McAnimTick=<n>`, which holds the animation clock at tick n): vanilla shows stone changing green, blue, yellow, red in two shots each of 10 ticks (20 ticks a frame) and cobblestone passing every grey from 0 to 255; ours at ticks 10/30/50/70 shows exactly 255,0,0 / 0,255,0 / 0,0,255 / 255,255,0 and cobblestone 66, 127, 189 at ticks 5, 10, 15 (linear). The two clocks cannot be lined up tick for tick (vanilla shots land at unknown game ticks), so the frame order, length and blend are what was compared. The pack folder is not synced to the 1070: scp `resourcepacks/<pack>` to `C:/mc-runs/<worktree>/resourcepacks/` and the reference one to `C:/mc-reference/run/resourcepacks/` first.
 - [x] Item, entity, environment (sky, clouds, weather), particle, painting, GUI sprite, HUD and map pictures:
   read through `McCache::Asset`, so a pack's file replaces the game's
 - [x] Colormaps (`colormap/grass.png`, `foliage.png`, `dry_foliage.png`)

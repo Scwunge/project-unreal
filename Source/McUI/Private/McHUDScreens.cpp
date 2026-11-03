@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "McHUD.h"
 #include "McItemDefinition.h"
+#include "McTextComponent.h"
 #include "McFontRaster.h"
 #include "McDropTarget.h"
 #include "Engine/GameViewportClient.h"
@@ -132,6 +133,18 @@ namespace
 
 	FString GetItemName(const FMcItemStack& Stack)
 	{
+		// A name given as a styled component (colours, styles) is drawn with them, as legacy text.
+		const TSharedPtr<FJsonValue> Raw = Stack.Get(TEXT("minecraft:custom_name"));
+		if (Raw.IsValid() && (Raw->Type == EJson::Object || Raw->Type == EJson::Array))
+		{
+			TArray<McText::FSpan> Spans;
+			McText::FromValue(Raw, Spans);
+			const FString Styled = McText::ToLegacy(Spans);
+			if (!Styled.IsEmpty())
+			{
+				return Styled;
+			}
+		}
 		const FString Custom = Stack.GetCustomName();
 		return Custom.IsEmpty() ? DisplayName(Stack.Item) : Custom;
 	}
@@ -182,6 +195,39 @@ void AMcHUD::DrawRegion(UTexture2D* Texture, float X, float Y, float Width, floa
 	FCanvasTileItem Tile(FVector2D(X, Y) * Scale, Texture->GetResource(), FVector2D(Width, Height) * Scale, FVector2D(U / TexW, V / TexH), FVector2D((U + UW) / TexW, (V + VH) / TexH), Tint);
 	Tile.BlendMode = SE_BLEND_Translucent;
 	Canvas->DrawItem(Tile);
+}
+
+void AMcHUD::DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift)
+{
+	if (TopShift == 0.0f && BottomShift == 0.0f)
+	{
+		DrawRegion(Texture, X, Y, Width, Height, U, V, UW, VH, Tint);
+		return;
+	}
+	if (!Texture || !Texture->GetResource())
+	{
+		return;
+	}
+	const float TexW = static_cast<float>(Texture->GetSizeX());
+	const float TexH = static_cast<float>(Texture->GetSizeY());
+	using FPos = decltype(FCanvasUVTri::V0_Pos);
+	using FUv = decltype(FCanvasUVTri::V0_UV);
+	const FPos TopLeft((X + TopShift) * Scale, Y * Scale), TopRight((X + Width + TopShift) * Scale, Y * Scale);
+	const FPos BottomLeft((X + BottomShift) * Scale, (Y + Height) * Scale), BottomRight((X + Width + BottomShift) * Scale, (Y + Height) * Scale);
+	const FUv UvTopLeft(U / TexW, V / TexH), UvTopRight((U + UW) / TexW, V / TexH);
+	const FUv UvBottomLeft(U / TexW, (V + VH) / TexH), UvBottomRight((U + UW) / TexW, (V + VH) / TexH);
+	TArray<FCanvasUVTri> Triangles;
+	FCanvasUVTri& A = Triangles.AddDefaulted_GetRef();
+	A.V0_Pos = TopLeft; A.V1_Pos = TopRight; A.V2_Pos = BottomLeft;
+	A.V0_UV = UvTopLeft; A.V1_UV = UvTopRight; A.V2_UV = UvBottomLeft;
+	A.V0_Color = A.V1_Color = A.V2_Color = Tint;
+	FCanvasUVTri& B = Triangles.AddDefaulted_GetRef();
+	B.V0_Pos = TopRight; B.V1_Pos = BottomRight; B.V2_Pos = BottomLeft;
+	B.V0_UV = UvTopRight; B.V1_UV = UvBottomRight; B.V2_UV = UvBottomLeft;
+	B.V0_Color = B.V1_Color = B.V2_Color = Tint;
+	FCanvasTriangleItem Item(Triangles, Texture->GetResource());
+	Item.BlendMode = SE_BLEND_Translucent;
+	Canvas->DrawItem(Item);
 }
 
 void AMcHUD::DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color)
@@ -315,6 +361,106 @@ namespace
 		Sheet.Width = Wrapper->GetWidth();
 		Sheet.Height = Wrapper->GetHeight();
 		return Sheet.Raw.Num() == static_cast<int64>(Sheet.Width) * Sheet.Height * 4;
+	}
+}
+
+namespace
+{
+	// Legacy formatting codes in drawn text (the section sign and a character): 0-9 a-f the sixteen colours, k obfuscated, l bold,
+	// m strikethrough, n underline, o italic, r reset; a colour code also clears the styles before it. "x" followed by six
+	// "section sign + hex digit" pairs is a colour of its own (how McText writes a #RRGGBB colour). A sign with any other
+	// character after it is dropped with that character.
+	struct FTextStyle
+	{
+		int32 Rgb = -1;
+		bool bBold = false, bItalic = false, bUnderline = false, bStrike = false, bObfuscated = false;
+	};
+
+	// Reads the code at Text[At] (the section sign) into Style and moves At past it.
+	void ReadStyleCode(const FString& Text, int32& At, FTextStyle& Style)
+	{
+		static const int32 Colours[16] = { 0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+			0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF };
+		if (At + 1 >= Text.Len())
+		{
+			At = Text.Len();
+			return;
+		}
+		const TCHAR Code = FChar::ToLower(Text[At + 1]);
+		At += 2;
+		const int32 Digit = FChar::IsHexDigit(Code) ? FParse::HexDigit(Code) : -1;
+		if (Digit >= 0)
+		{
+			Style = FTextStyle();
+			Style.Rgb = Colours[Digit];
+			return;
+		}
+		switch (Code)
+		{
+		case TEXT('k'): Style.bObfuscated = true; break;
+		case TEXT('l'): Style.bBold = true; break;
+		case TEXT('m'): Style.bStrike = true; break;
+		case TEXT('n'): Style.bUnderline = true; break;
+		case TEXT('o'): Style.bItalic = true; break;
+		case TEXT('r'): Style = FTextStyle(); break;
+		case TEXT('x'):
+		{
+			int32 Rgb = 0, Read = 0;
+			int32 Scan = At;
+			while (Read < 6 && Scan + 1 < Text.Len() && Text[Scan] == TEXT('§') && FChar::IsHexDigit(Text[Scan + 1]))
+			{
+				Rgb = Rgb * 16 + FParse::HexDigit(Text[Scan + 1]);
+				Scan += 2;
+				++Read;
+			}
+			if (Read == 6)
+			{
+				Style = FTextStyle();
+				Style.Rgb = Rgb;
+				At = Scan;
+			}
+			break;
+		}
+		default: break;
+		}
+	}
+
+	// The codes that make Style, to start a wrapped line with: the text goes on in the same colour and styles.
+	FString StyleCodes(const FTextStyle& Style)
+	{
+		FString Out;
+		if (Style.Rgb >= 0)
+		{
+			Out += TEXT("§x");
+			for (const TCHAR Digit : FString::Printf(TEXT("%06x"), Style.Rgb))
+			{
+				Out += TEXT("§");
+				Out.AppendChar(Digit);
+			}
+		}
+		if (Style.bObfuscated) Out += TEXT("§k");
+		if (Style.bBold) Out += TEXT("§l");
+		if (Style.bStrike) Out += TEXT("§m");
+		if (Style.bUnderline) Out += TEXT("§n");
+		if (Style.bItalic) Out += TEXT("§o");
+		return Out;
+	}
+
+	FTextStyle StyleAtEnd(const FString& Text)
+	{
+		FTextStyle Style;
+		for (int32 At = 0; At < Text.Len();)
+		{
+			if (Text[At] == TEXT('§'))
+			{
+				ReadStyleCode(Text, At, Style);
+			}
+			else
+			{
+				++At;
+			}
+		}
+		return Style;
 	}
 }
 
@@ -607,10 +753,17 @@ float AMcHUD::GetTextWidth(const FString& Text)
 float AMcHUD::TextWidth(const FString& Text) const
 {
 	float Width = 0.0f;
+	FTextStyle Style;
 	for (int32 At = 0; At < Text.Len();)
 	{
+		if (Text[At] == TEXT('§'))
+		{
+			ReadStyleCode(Text, At, Style);
+			continue;
+		}
 		const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, At));
-		Width += Glyph ? Glyph->Advance : 6.0f;
+		// A bold glyph is wider by its bold offset (1, half for Unifont: the shadow's).
+		Width += (Glyph ? Glyph->Advance : 6.0f) + (Style.bBold ? (Glyph ? Glyph->ShadowOffset : 1.0f) : 0.0f);
 	}
 	return Width;
 }
@@ -619,32 +772,82 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 {
 	LoadFont();
 	// The shadow is the colour at a quarter of its brightness, moved down and right by a pixel (half a pixel for Unifont).
-	const auto Draw = [&](bool bShadowPass, const FLinearColor& Tint)
+	const auto Draw = [&](bool bShadowPass)
 	{
 		float At = X;
+		FTextStyle Style;
 		for (int32 CharAt = 0; CharAt < Text.Len();)
 		{
+			if (Text[CharAt] == TEXT('§'))
+			{
+				ReadStyleCode(Text, CharAt, Style);
+				continue;
+			}
 			const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, CharAt));
+			if (Glyph && Style.bObfuscated)
+			{
+				// A glyph of the same advance, picked anew every frame.
+				static TMap<int32, TArray<int32>> Pool;
+				static int32 PoolFor = -1;
+				if (PoolFor != Glyphs.Num())
+				{
+					PoolFor = Glyphs.Num();
+					Pool.Reset();
+					for (const TPair<int32, FGlyph>& Pair : Glyphs)
+					{
+						if (Pair.Key > 32 && Pair.Value.Advance > 0.0f)
+						{
+							Pool.FindOrAdd(FMath::RoundToInt(Pair.Value.Advance)).Add(Pair.Key);
+						}
+					}
+				}
+				const TArray<int32>* Same = Pool.Find(FMath::RoundToInt(Glyph->Advance));
+				if (Same && Same->Num() > 0)
+				{
+					Glyph = FindGlyph((*Same)[FMath::RandRange(0, Same->Num() - 1)]);
+				}
+			}
 			if (!Glyph)
 			{
 				At += 6.0f * TextScale;
 				continue;
 			}
+			const uint32 Colour = Style.Rgb >= 0 ? static_cast<uint32>(Style.Rgb) : Rgb;
+			const FLinearColor Tint = bShadowPass ? FromRgb(Colour) * 0.25f * Alpha : FromRgb(Colour, Alpha);
+			const float Bold = Style.bBold ? Glyph->ShadowOffset : 0.0f;
+			const float Shadow = bShadowPass ? Glyph->ShadowOffset * TextScale : 0.0f;
 			UTexture2D* Picture = Glyph->Texture ? Glyph->Texture : Glyph->Sprite.IsEmpty() ? nullptr : LoadSprite(Glyph->Sprite);
 			if (Picture)
 			{
-				const float Shadow = bShadowPass ? Glyph->ShadowOffset * TextScale : 0.0f;
-				DrawRegion(Picture, At + Glyph->OffsetX * TextScale + Shadow, Y + Glyph->OffsetY * TextScale + Shadow, Glyph->DrawWidth * TextScale,
-					Glyph->DrawHeight * TextScale, Glyph->U, Glyph->V, Glyph->CellWidth, Glyph->CellHeight, Tint);
+				// An italic glyph leans: its top edge moves right by 1 - up / 4 pixels and its bottom edge by 1 - down / 4.
+				const float Up = Glyph->OffsetY, Down = Glyph->OffsetY + Glyph->DrawHeight;
+				const float TopShift = Style.bItalic ? (1.0f - 0.25f * Up) * TextScale : 0.0f;
+				const float BottomShift = Style.bItalic ? (1.0f - 0.25f * Down) * TextScale : 0.0f;
+				// A bold glyph is drawn twice, the second a bold offset to the right.
+				for (int32 Pass = 0; Pass < (Style.bBold ? 2 : 1); ++Pass)
+				{
+					const float Left = At + Glyph->OffsetX * TextScale + Shadow + Pass * Bold * TextScale;
+					DrawRegionSheared(Picture, Left, Y + Glyph->OffsetY * TextScale + Shadow, Glyph->DrawWidth * TextScale, Glyph->DrawHeight * TextScale,
+						Glyph->U, Glyph->V, Glyph->CellWidth, Glyph->CellHeight, Tint, TopShift, BottomShift);
+				}
 			}
-			At += Glyph->Advance * TextScale;
+			const float Advance = (Glyph->Advance + Bold) * TextScale;
+			if (Style.bUnderline)
+			{
+				DrawFill(At + Shadow, Y + 8.0f * TextScale + Shadow, Advance, TextScale, Tint);
+			}
+			if (Style.bStrike)
+			{
+				DrawFill(At + Shadow, Y + 3.5f * TextScale + Shadow, Advance, TextScale, Tint);
+			}
+			At += Advance;
 		}
 	};
 	if (bShadow)
 	{
-		Draw(true, FromRgb(Rgb) * 0.25f * Alpha);
+		Draw(true);
 	}
-	Draw(false, FromRgb(Rgb, Alpha));
+	Draw(false);
 }
 
 // ---- Items ----
@@ -2107,6 +2310,11 @@ void AMcHUD::DrawHUD()
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed (unless -McShowChat: text for a font test).
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr
 		&& !FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
+	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
+	{
+		// Under the chat, which is drawn over it (shot against the vanilla client: the chat box darkens the subtitle).
+		DrawTitleText(Width, Height);
+	}
 	if (!bDead && !bShot && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options && ActiveMenu != EMenu::ResourcePacks && ActiveMenu != EMenu::ConfirmPacks && ActiveMenu != EMenu::ConfirmIncompatible)
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
@@ -2213,7 +2421,7 @@ void AMcHUD::DrawToasts(int32 Width, int32 Height)
 
 // ---- Chat ----
 
-TArray<FString> AMcHUD::WrapText(const FString& Text, float MaxWidth) const
+TArray<FString> AMcHUD::WrapText(const FString& Text, float MaxWidth, bool bKeepSpace) const
 {
 	TArray<FString> Lines;
 	FString Line;
@@ -2227,16 +2435,18 @@ TArray<FString> AMcHUD::WrapText(const FString& Text, float MaxWidth) const
 		Line.AppendChar(Char);
 		if (TextWidth(Line) > MaxWidth && Line.Len() > 1)
 		{
-			// Break at the last space if there is one, else mid-word.
+			// Break at the last space if there is one, else mid-word. The next line goes on in the colour and styles the
+			// text had where it was cut.
 			if (LastSpace > 0)
 			{
+				// The space stays at the start of the next line (the vanilla client's wrapped chat lines begin with it).
 				Lines.Add(Line.Left(LastSpace));
-				Line = Line.Mid(LastSpace + 1);
+				Line = StyleCodes(StyleAtEnd(Lines.Last())) + Line.Mid(bKeepSpace ? LastSpace : LastSpace + 1);
 			}
 			else
 			{
 				Lines.Add(Line.LeftChop(1));
-				Line = Line.Right(1);
+				Line = StyleCodes(StyleAtEnd(Lines.Last())) + Line.Right(1);
 			}
 			LastSpace = INDEX_NONE;
 		}
@@ -2271,7 +2481,7 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 			}
 			Alpha = static_cast<float>(FMath::Clamp(10.0 - Age, 0.0, 1.0));
 		}
-		const TArray<FString> Wrapped = WrapText(Entry.Text, ChatWidth - 4.0f);
+		const TArray<FString> Wrapped = WrapText(Entry.Text, ChatWidth - 4.0f, true);
 		for (int32 Part = Wrapped.Num() - 1; Part >= 0 && Shown < MaxLines; --Part, ++Shown)
 		{
 			Y -= 9.0f;
@@ -2365,6 +2575,49 @@ void AMcHUD::DrawOverlay(int32 Width, int32 Height)
 	}
 	const float Alpha = static_cast<float>(FMath::Clamp(UMcPlayerDataComponent::OverlaySeconds - Age, 0.0, 1.0));
 	DrawGuiText(Overlay.Text, FMath::RoundToFloat(Width / 2.0f - TextWidth(Overlay.Text) / 2.0f), Height - 72.0f, Rgb, true, Alpha);
+}
+
+void AMcHUD::DrawTitleText(int32 Width, int32 Height)
+{
+	const UMcPlayerDataComponent::FTitle& Title = UMcPlayerDataComponent::GetTitle();
+	if (Title.Title.IsEmpty() && Title.Subtitle.IsEmpty())
+	{
+		return;
+	}
+	// In ticks since it was shown: it fades in over FadeIn, stays, fades out over FadeOut, and is gone after that.
+	const double Ticks = (FPlatformTime::Seconds() - Title.Time) * 20.0;
+	const double Total = Title.FadeIn + Title.Stay + Title.FadeOut;
+	if (Title.Time < 0.0 || Ticks < 0.0 || Ticks >= Total)
+	{
+		return;
+	}
+	float Alpha = 1.0f;
+	if (Ticks < Title.FadeIn)
+	{
+		Alpha = static_cast<float>(Ticks / FMath::Max(Title.FadeIn, 1));
+	}
+	else if (Ticks >= Title.FadeIn + Title.Stay)
+	{
+		Alpha = static_cast<float>((Total - Ticks) / FMath::Max(Title.FadeOut, 1));
+	}
+	// Under a hundredth of the way in the game draws nothing (its alpha rounds to under 8 of 255).
+	if (Alpha * 255.0f < 8.0f)
+	{
+		return;
+	}
+	LoadFont();
+	// Measured against the vanilla client at gui scale 3 (shot tc_title): the title is drawn at four times the size with its
+	// top 40 gui pixels above the middle, the subtitle at twice with its top 10 below it, both centred on the width.
+	const float CentreX = Width / 2.0f;
+	const float CentreY = Height / 2.0f;
+	if (!Title.Title.IsEmpty())
+	{
+		DrawGuiText(Title.Title, CentreX - TextWidth(Title.Title) * 4.0f / 2.0f, CentreY - 40.0f, 0xFFFFFF, true, Alpha, 4.0f);
+	}
+	if (!Title.Subtitle.IsEmpty())
+	{
+		DrawGuiText(Title.Subtitle, CentreX - TextWidth(Title.Subtitle) * 2.0f / 2.0f, CentreY + 10.0f, 0xFFFFFF, true, Alpha, 2.0f);
+	}
 }
 
 void AMcHUD::DrawChatInput(int32 Width, int32 Height)

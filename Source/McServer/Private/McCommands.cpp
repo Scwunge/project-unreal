@@ -1,5 +1,6 @@
 #include "McCommands.h"
 #include "McLang.h"
+#include "McTextComponent.h"
 #include "McCache.h"
 #include "McMob.h"
 #include "McVehicle.h"
@@ -45,7 +46,9 @@ namespace
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
+		{ TEXT("tellraw"), 2, TEXT("/tellraw <targets> <message>") },
 		{ TEXT("time"), 2, TEXT("/time (add|query|set) ...") },
+		{ TEXT("title"), 2, TEXT("/title <targets> (actionbar|clear|reset|subtitle|times|title) ...") },
 		{ TEXT("tp"), 2, TEXT("/tp -> teleport") },
 		{ TEXT("w"), 0, TEXT("/w -> msg") },
 		{ TEXT("weather"), 2, TEXT("/weather (clear|rain|thunder) [<duration>]") },
@@ -1070,6 +1073,132 @@ namespace
 		return Replies;
 	}
 
+	// What is left of a command after its first Count words and the spaces after them, exactly as typed (JSON text keeps its spaces).
+	FString RawAfter(const FString& Command, int32 Count)
+	{
+		int32 At = 0;
+		for (int32 Word = 0; Word < Count; ++Word)
+		{
+			while (At < Command.Len() && Command[At] == TEXT(' '))
+			{
+				++At;
+			}
+			while (At < Command.Len() && Command[At] != TEXT(' '))
+			{
+				++At;
+			}
+		}
+		while (At < Command.Len() && Command[At] == TEXT(' '))
+		{
+			++At;
+		}
+		return Command.Mid(At);
+	}
+
+	// A JSON text component as legacy text; false, with the game's reply in Error, when it isn't one.
+	bool ReadComponent(const FString& Json, FString& OutLegacy, FString& Error)
+	{
+		TArray<McText::FSpan> Spans;
+		if (Json.IsEmpty() || !McText::Parse(Json, Spans))
+		{
+			Error = McLang::Format(TEXT("argument.component.invalid"), { Json });
+			return false;
+		}
+		OutLegacy = McText::ToLegacy(Spans);
+		return true;
+	}
+
+	FReplies RunTellraw(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		FString Legacy;
+		if (!ReadComponent(RawAfter(Command, 2), Legacy, Error))
+		{
+			return { Fail(Error) };
+		}
+		for (const FString& Player : Players)
+		{
+			Target.SendTo(Player, Ok(Legacy));
+		}
+		// The game says nothing back: what the player sees is the message.
+		return {};
+	}
+
+	FReplies RunTitle(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FString& What = Words[2];
+		int32 Kind = -1;
+		FString Key, Text;
+		int32 Times[3] = { 0, 0, 0 };
+		if (What == TEXT("clear") || What == TEXT("reset"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			Kind = What == TEXT("clear") ? 3 : 4;
+			Key = What == TEXT("clear") ? TEXT("commands.title.cleared") : TEXT("commands.title.reset");
+		}
+		else if (What == TEXT("title") || What == TEXT("subtitle") || What == TEXT("actionbar"))
+		{
+			if (Words.Num() < 4 || !ReadComponent(RawAfter(Command, 3), Text, Error))
+			{
+				return Words.Num() < 4 ? Unknown(Command, Command.Len()) : FReplies{ Fail(Error) };
+			}
+			Kind = What == TEXT("title") ? 0 : What == TEXT("subtitle") ? 1 : 2;
+			Key = TEXT("commands.title.show.") + What;
+		}
+		else if (What == TEXT("times"))
+		{
+			if (Words.Num() != 6)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			for (int32 Index = 0; Index < 3; ++Index)
+			{
+				Times[Index] = McCommands::ParseTime(Words[3 + Index]);
+				if (Times[Index] < 0)
+				{
+					return Unknown(Command, Command.Len());
+				}
+			}
+			Kind = 5;
+			Key = TEXT("commands.title.times");
+		}
+		else
+		{
+			return Unknown(Command, Command.Len());
+		}
+		for (const FString& Player : Players)
+		{
+			Target.SendTitle(Player, Kind, Text, Times[0], Times[1], Times[2]);
+		}
+		if (Players.Num() == 1)
+		{
+			return { Ok(McLang::Format(Key + TEXT(".single"), { Players[0] })) };
+		}
+		return { Ok(McLang::Format(Key + TEXT(".multiple"), { FString::FromInt(Players.Num()) })) };
+	}
+
 	FReplies RunAccess(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		const FString& Name = Words[0];
@@ -1266,6 +1395,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("msg") || Name == TEXT("tell") || Name == TEXT("w"))
 	{
 		return RunMessage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("tellraw"))
+	{
+		return RunTellraw(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("title"))
+	{
+		return RunTitle(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("seed"))
 	{

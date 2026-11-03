@@ -202,6 +202,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     middle of the cell on the right of the cart's way (a cart going east: one south), on the ground, and neither shoves
     nor is shoved while the 10-tick boarding cooldown runs; every activator rail a hopper cart is on sets it off (powered)
     or on (unpowered), so one that has passed a powered one stays off; it takes in one whole stack a tick.
+    vehicle_log14.txt (carts into carts, a still villager and a sheep) already matched the round-4 rules: a chain of three,
+    one overtaking another, and a cart taking in a villager/sheep (the wider sheep a tick sooner) replay to 2e-3 in
+    CartRailLog with no change. Armor stands (they move a cart back and are shoved) are not in the game, so not fitted.
   - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:

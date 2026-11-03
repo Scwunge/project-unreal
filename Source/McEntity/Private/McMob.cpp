@@ -78,6 +78,12 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:stray"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
 		Add(TEXT("minecraft:bogged"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
 		Add(TEXT("minecraft:wither_skeleton"), 0.7f, 2.4f, 20.f, 0.25f, 2.f, 16.f, false, false);
+		// The piglins (same runs): 0.6 x 1.95, none burn. Piglin 16 hp / 0.35 / 5 / 16, the brute 50 / 0.35 / 7 / 12, the zombified one
+		// 20 / 0.23 / 5 / 35 (angered only). Their gold-armor rule, bartering, hoglin hunting and the nether's own spawning are not done:
+		// they go for a player like any hostile mob.
+		Add(TEXT("minecraft:piglin"), 0.6f, 1.95f, 16.f, 0.35f, 5.f, 16.f, false, false);
+		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
+		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);
 		Spider.bClimbsWalls = true;

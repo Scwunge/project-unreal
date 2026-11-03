@@ -349,6 +349,21 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 			Mob->HeldItem = Pick < 29 ? FName(TEXT("minecraft:iron_sword")) : Pick < 29 + 94 ? FName(TEXT("minecraft:iron_shovel")) : FName(TEXT("minecraft:iron_spear"));
 		}
 	}
+	if (Kind == FName(TEXT("minecraft:piglin")))
+	{
+		// 100 spawned (Normal): golden sword 38, crossbow 42, nothing 20.
+		const int32 Pick = Random.RandHelper(100);
+		Mob->HeldItem = Pick < 38 ? FName(TEXT("minecraft:golden_sword")) : Pick < 80 ? FName(TEXT("minecraft:crossbow")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:zombified_piglin")))
+	{
+		// 93 of 100 held a golden sword.
+		Mob->HeldItem = Random.RandHelper(100) < 93 ? FName(TEXT("minecraft:golden_sword")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:piglin_brute")))
+	{
+		Mob->HeldItem = TEXT("minecraft:golden_axe");
+	}
 	if (Kind == FName(TEXT("minecraft:drowned")))
 	{
 		// Armed at spawn, from 1000 drowned spawned on each difficulty on the reference (night): trident 69 / 57 / 58 on Easy / Normal / Hard

@@ -152,6 +152,8 @@ private:
 	void SyncProxies();
 	// The y of the feet of a mob that would stand on the ground of this column near NearY, or none.
 	TOptional<int32> FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
+	// The feet cell for something that swims: just under the surface of the water at X, Z (feet and head both in water), if there is any near NearY.
+	TOptional<int32> FindSwimmingY(int32 X, int32 Z, int32 NearY, int32 Range) const;
 	void DropLoot(FMcMob& Mob);
 	// A slime that died splits into smaller ones.
 	void SplitSlime(FMcMob& Dead);

@@ -254,6 +254,26 @@ int32 FMcEntityHost::NumHostile() const
 	return Count;
 }
 
+TOptional<int32> FMcEntityHost::FindSwimmingY(int32 X, int32 Z, int32 NearY, int32 Range) const
+{
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	if (!World.HasChunk(FIntPoint(X >> 4, Z >> 4)))
+	{
+		return {};
+	}
+	const int32 MinY = World.GetDimension().MinY + 1;
+	const int32 MaxY = World.GetDimension().MaxY() - 2;
+	for (int32 Y = FMath::Min(NearY + Range, MaxY); Y >= FMath::Max(NearY - Range, MinY); --Y)
+	{
+		if (Shapes.GetFluid(World.GetBlock(FIntVector(X, Y, Z))) == EMcFluid::Water)
+		{
+			// The surface block; the feet go one lower so the head is in water too.
+			return Shapes.GetFluid(World.GetBlock(FIntVector(X, Y - 1, Z))) == EMcFluid::Water ? TOptional<int32>(Y - 1) : TOptional<int32>();
+		}
+	}
+	return {};
+}
+
 TOptional<int32> FMcEntityHost::FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const
 {
 	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
@@ -796,7 +816,15 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	const double Distance = Random.FRandRange(MinSpawnDistance, MaxSpawnDistance);
 	const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Distance);
 	const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Distance);
-	const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	// Where there is water over the spot instead of a floor to stand on, a drowned can come: its feet and head in the water just
+	// under the surface (the rest of the monsters only spawn on ground, so a water spot is for the drowned alone).
+	bool bInWater = false;
+	if (!Y)
+	{
+		Y = FindSwimmingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+		bInWater = Y.IsSet();
+	}
 	if (!Y)
 	{
 		return;
@@ -819,6 +847,10 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		return;
 	}
 	const FName Kind = PickSpawn(Monsters, Random.RandHelper(TotalWeight));
+	if (bInWater != (Kind == TEXT("minecraft:drowned")))
+	{
+		return;
+	}
 	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach). A
 	// pillager only minds block light, 8 or less (minecraft.wiki, "Pillager").
 	if (Kind == TEXT("minecraft:pillager") ? Manager.EstimateBlockLight(Cell) > 8 : !Manager.IsDarkEnoughToSpawn(Cell))

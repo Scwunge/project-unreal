@@ -63,7 +63,7 @@ PUDDLE_HLSL = """
 float open = saturate((Light.x - 0.9) * 10.0);
 float up = saturate(VNormal.z) * open;
 float pn = 0.5 + 0.3 * sin(Pos.x * 0.0123 + 1.3 * sin(Pos.y * 0.0191)) + 0.2 * sin(Pos.y * 0.0157 + 1.7 * sin(Pos.x * 0.0137 + Pos.y * 0.0071));
-float thr = lerp(1.05, 0.5, saturate(Wet * 1.3 - 0.15));
+float thr = lerp(1.05, 0.62, saturate(Wet * 1.3 - 0.15));
 float puddle = smoothstep(thr, thr + 0.07, pn) * open * saturate((VNormal.z - 0.9) * 10.0) * Puddles;
 """
 
@@ -257,7 +257,7 @@ return lerp(lerp(r, 0.1, wet), 0.02, puddle);
 LIT_SPECULAR_HLSL = KIND_HLSL + WET_HLSL + """
 float s = 0.3;
 if (k == 1.0 || (Glass > 0.5 && k == 0.0)) s = 0.5;
-return lerp(lerp(s, 0.6, wet), 0.9, puddle);
+return lerp(lerp(s, 0.6, wet), 0.55, puddle);
 """
 
 # What the lit twins add that Unreal's lights don't. Lava burns, flickering slowly; blocks that give light and glowing
@@ -287,7 +287,7 @@ if (puddle > 0.01 && k != 1.0 && k < 9.0)
     // A puddle mirrors the grey sky, strongest at a grazing angle.
     float3 pv = normalize(View);
     float pf = 0.1 + 0.9 * pow(1.0 - saturate(pv.z), 5.0);
-    e += float3(0.5, 0.56, 0.66) * pow(b.x, 2.2) * SkyFactor * pf * puddle * 0.7;
+    e += float3(0.5, 0.56, 0.66) * pow(b.x, 2.2) * SkyFactor * pf * puddle * 0.3;
 }
 if (k == 2.0)
 {
@@ -612,7 +612,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                                    KIND_HLSL + WET_HLSL + "float r = max(pow(1.0 - S.r, 2.0), 0.04);\nif (k == 1.0) r = 0.02;\nelse if (k >= 9.0) r = 0.9;\nreturn lerp(lerp(r, 0.1, wet), 0.02, puddle);\n",
                                    dict(common, S=(spec_map, "RGB")), scalar=True)
             specular = add_custom(material, -100, 550, "McHdSpecular",
-                                  KIND_HLSL + WET_HLSL + "float s = (k == 1.0) ? 0.5 : saturate(S.g / 0.08);\nreturn lerp(lerp(s, 0.6, wet), 0.9, puddle);\n",
+                                  KIND_HLSL + WET_HLSL + "float s = (k == 1.0) ? 0.5 : saturate(S.g / 0.08);\nreturn lerp(lerp(s, 0.6, wet), 0.55, puddle);\n",
                                   dict(common, S=(spec_map, "RGB")), scalar=True)
             metallic = add_custom(material, -100, 650, "McHdMetallic",
                                   KIND_HLSL + "return (k < 9.0 && k != 1.0 && S.g >= 0.9) ? 1.0 : 0.0;\n",

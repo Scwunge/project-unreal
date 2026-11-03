@@ -31,6 +31,8 @@ public:
 	int32 GetBrewTimeLeft() const { return BrewTimeLeft; }
 	int32 GetFuel() const { return Fuel; }
 	bool IsBrewing() const { return BrewTimeLeft > 0; }
+	// True once after each brew finishes (the owner plays its sound).
+	bool TakeFinished() { const bool bWas = bFinished; bFinished = false; return bWas; }
 
 	static bool IsBottle(const FMcItemStack& Stack);
 	static bool IsFuel(const FMcItemStack& Stack);
@@ -43,6 +45,7 @@ private:
 	TSharedPtr<FMcContainer> Items;
 	int32 BrewTimeLeft = 0;
 	int32 Fuel = 0;
+	bool bFinished = false;
 	// The ingredient the brew under way was started with.
 	FName Brewing;
 };

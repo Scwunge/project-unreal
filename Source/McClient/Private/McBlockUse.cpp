@@ -246,6 +246,17 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 		for (TPair<FKey, FMachineEntry>& Pair : Machines)
 		{
 			Pair.Value.Machine->Tick();
+			if (Pair.Value.Kind == EMcBlockEntityKind::BrewingStand && StaticCastSharedPtr<FMcBrewingStand>(Pair.Value.Machine)->TakeFinished())
+			{
+				// The reference (sounds2 run): block.brewing_stand.brew, volume 1, pitch 1, at the block's centre, once.
+				if (AMcWorldActor* World = Pair.Value.World.Get())
+				{
+					if (FMcEntityHost* Host = World->GetEntityHost())
+					{
+						Host->GetManager().PlaySound(FName(TEXT("block.brewing_stand.brew")), FVector(Pair.Key.Pos) + FVector(0.5), 1.0f, 1.0f);
+					}
+				}
+			}
 		}
 		TickHoppers();
 		TickJukeboxes();

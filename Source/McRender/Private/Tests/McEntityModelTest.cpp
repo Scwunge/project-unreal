@@ -31,6 +31,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		// creeper), a spider's legs well past it. And the hitbox height: the model is nearly as tall.
 		double MaxWidth;
 		double Height;
+		// How far below the feet the drawing may hang (a ghast's tentacles hang 3.6 blocks), and how far past 1 the pictures' UVs may run
+		// (a strider's flat bristles have a 72 wide net on a 64 wide picture, as in the game).
+		double Below = 0.07;
+		double UVSlack = 0.0;
 	};
 	const FExpectation Expectations[] = {
 		{ TEXT("minecraft:creeper"), 1, 0.8, 1.7 },
@@ -38,6 +42,15 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:skeleton"), 2, 1.2, 1.99 },  // its picture and the one for what it holds (a held item is 0.85 across, tilted 35 degrees up to 1.17)
 		{ TEXT("minecraft:enderman"), 2, 0.8, 2.9 },
 		{ TEXT("minecraft:slime"), 2, 0.55, 0.52 },
+		{ TEXT("minecraft:hoglin"), 1, 2.6, 1.95 },
+		{ TEXT("minecraft:magma_cube"), 1, 0.6, 0.52 },
+		{ TEXT("minecraft:blaze"), 1, 1.6, 1.8 },
+		{ TEXT("minecraft:strider"), 1, 2.4, 1.95, 0.07, 0.15 },
+		{ TEXT("minecraft:ghast"), 1, 5.3, 4.05, 3.7 },
+		{ TEXT("minecraft:endermite"), 1, 0.6, 0.25 },
+		{ TEXT("minecraft:shulker"), 1, 1.1, 1.0 },
+		{ TEXT("minecraft:phantom"), 1, 3.2, 0.4 },
+		{ TEXT("minecraft:guardian"), 1, 3.0, 1.25, 0.3 },
 	};
 	for (const FExpectation& Expect : Expectations)
 	{
@@ -53,14 +66,14 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
 			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide (%.3f by %.3f)"), Expect.Kind, Layer, Bounds.GetSize().X, Bounds.GetSize().Y), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
-			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height"), Expect.Kind, Layer), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -0.07);
+			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height (%.3f to %.3f)"), Expect.Kind, Layer, Bounds.Min.Z, Bounds.Max.Z), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -Expect.Below);
 			// UVs stay on the picture.
 			McPlayerModel::FMeshData Data;
 			BuildMesh(*Model, FAnim(), Layer, Data);
 			bool bOnPicture = true;
 			for (const FVector2D& UV : Data.UV0)
 			{
-				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 && UV.Y >= 0.0 && UV.Y <= 1.0;
+				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 + Expect.UVSlack && UV.Y >= 0.0 && UV.Y <= 1.0;
 			}
 			TestTrue(FString::Printf(TEXT("%s layer %d UVs are on the picture"), Expect.Kind, Layer), bOnPicture);
 		}
@@ -70,7 +83,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{
 			Top = FMath::Max(Top, LayerBounds(*Model, Layer).Max.Z);
 		}
-		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox"), Expect.Kind), Top >= Expect.Height * 0.85);
+		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox (%.3f of %.3f)"), Expect.Kind, Top, Expect.Height), Top >= Expect.Height * 0.85);
 	}
 
 	// A slime is see-through on its outer shell only; the eyes of a spider and an enderman glow.

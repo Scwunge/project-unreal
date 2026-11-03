@@ -29,7 +29,7 @@
 namespace
 {
 	constexpr int32 SectorSize = 4096;
-	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
+	constexpr int32 ImportSectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 	constexpr int32 MaxInflated = 256 * 1024 * 1024;
 	constexpr uint8 ExternalFlag = 128;
 
@@ -840,7 +840,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 	}
 	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
 	TArray<FMcStateId> States;
-	States.SetNumUninitialized(SectionVolume);
+	States.SetNumUninitialized(ImportSectionVolume);
 	TArray<FMcBiomeId> BiomeCells;
 	BiomeCells.Init(Biomes.GetPlains(), 64 * Chunk.NumSections());
 	for (const FMcNbt& Section : Sections->Values)
@@ -856,7 +856,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 			if (Palette && Palette->Num() > 0)
 			{
 				TArray<int32> Indexes;
-				if (Palette->Num() > 1 && !UnpackIndices(GetLongs(BlockStates->Find(TEXT("data"))), GetBitsPerEntry(Palette->Num(), 4), SectionVolume, Indexes))
+				if (Palette->Num() > 1 && !UnpackIndices(GetLongs(BlockStates->Find(TEXT("data"))), GetBitsPerEntry(Palette->Num(), 4), ImportSectionVolume, Indexes))
 				{
 					continue;
 				}
@@ -865,7 +865,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 				Uses.Init(0, Palette->Num());
 				if (Palette->Num() == 1)
 				{
-					Uses[0] = SectionVolume;
+					Uses[0] = ImportSectionVolume;
 				}
 				else
 				{
@@ -889,13 +889,13 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 					}
 					Mapped.Add(MapState(Name, Properties, Stats, Uses[Entry]));
 				}
-				for (int32 Block = 0; Block < SectionVolume; ++Block)
+				for (int32 Block = 0; Block < ImportSectionVolume; ++Block)
 				{
 					const int32 Entry = Palette->Num() == 1 ? 0 : Indexes[Block];
 					States[Block] = Mapped.IsValidIndex(Entry) ? Mapped[Entry] : Mapped[0];
 				}
 				Chunk.LoadSection(Index, States);
-				Stats.Blocks += SectionVolume;
+				Stats.Blocks += ImportSectionVolume;
 				Stats.NonAirBlocks += Chunk.GetSection(Index).NonAirCount;
 			}
 		}

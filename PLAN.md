@@ -1,4 +1,4 @@
-# Minecraft in Unreal: its own game, playing like Java Edition 26.3
+﻿# Minecraft in Unreal: its own game, playing like Java Edition 26.3
 
 Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/blocks-and-chunks`).
 
@@ -44,7 +44,55 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
   - **What the chunks still supply.** Sky ambient comes only where the chunk's sky light reaches, so caves
     stay dark. Block light (torches, lava) is added as warm emissive.
   - **Not done:**
-    - The Nether and the End have no sun, so enhanced mode lights them only by block light.
+    - Nether and End mood (done, 2026-10-31): a shadowless fill light (the Nether's `ambient_light_color` warmed
+      towards lava, 4 lux; the End's `sky_light_color`, 1.2 lux), a warm or cool colour grade with more bloom and
+      vignette. Tuning args: `-McNetherFill=`, `-McEndFill=`, `-McFogGlow=`. The faint box lines in the Nether
+      were the volumetric fog's own emissive (visible froxel edges), so the glow defaults to 0.
+    - Physical sky (done, 2026-10-31): the Overworld by day uses SkyAtmosphere (lit by the one directional light),
+      volumetric clouds (the engine's simple cloud material, 0.6 to 2.0 km up) and a reflection-only SkyLight (diffuse
+      off, so caves stay dark). The vanilla dome and sun/moon squares hide meanwhile. Not done: the sun disc and the
+      dark strip at the world edge on the horizon; stars and moon phase on the atmosphere sky.
+    - Water (done, 2026-10-31): the lit and HD translucent materials tint by depth (scene depth minus pixel depth)
+      and show a drifting foam line where the water is shallow.
+    - Storm wind (done, 2026-10-31): the leaf, plant and water sway scales with the wetness (rain level eased in
+      over 5 s): about 2.6 times the amplitude and 1.6 times the speed at full rain. Shot: `storm_unreal` (thunder).
+    - Quality presets (done, 2026-10-31): Options has Quality Low, Medium, High, Ultra (saved in options.json; `-McQuality=N`
+      to test) and an FPS counter (`stat fps`; `-McFps`). Presets set render scale (70, 85, 100, 100 percent with TSR),
+      Lumen probe density and reflections, virtual shadow detail, volumetric fog, bloom, DoF and motion-blur quality, only
+      while Unreal Mode is on. Shots: `q_low`, `q_ultra`. Measured on the 1070 (720p, the unreal scene, one frame
+      before the shot, logged by `-McShot`): Medium 100 fps, High 95 fps. The scene is tiny; measure a forest later.
+    - Torch flicker (done, 2026-10-31): block light in the lit and HD materials breathes by about 7 percent, out of step
+      from place to place. Shot: `torch_night`. The dark strip at the horizon is fixed (2026-10-31): past the loaded terrain
+      the atmosphere's own ground showed a dark band, so the physical sky draws the dome's lower half (to the horizon) in
+      the fog colour. Shots `skirt_noon`, `skirt_sunset`. At dusk the band is a paler grey than the glowing horizon behind
+      it; blend it with the glow. `-McHide=fog,clouds,stars,moon,post` leaves parts out for finding artifacts.
+    - Cave exposure (done, 2026-10-31): the world renderer checks the 24 blocks above the camera (leaves count as open);
+      under a roof in the Overworld the exposure rises up to 1.5 stops over a second or two and falls back outdoors.
+      Scene `tools/scenes/cave.json`, shot `cave_unreal`. Depth of field is left off on purpose (it softens voxel
+      edges); `r.DepthOfFieldQuality` is still set at Ultra if it is ever enabled in the post settings.
+    - Vanilla-look check (2026-10-31): a baseline built from dfe04f8 (before the Unreal Mode work) against this branch, Unreal
+      Mode off, on fresh worlds: the cave scene differs by 9 pixels (the torch flame), the village scene only where mobs
+      stand; terrain, sky and HUD are identical. Daylight Unreal shot `day_noon` shows no exposure regression.
+    - Showcase scenes (`tools/scenes/forest.json`, `shore.json`, `village.json`; shots `show_forest` at sunset, `show_village`
+      at night): the forest and village read well. The shore (`show_shore2`) does not yet: the sea is a raised block basin,
+      so it reads as a dark wall; use a generated ocean for that shot. Shots need a fresh `-McWorld=` name per scene: a
+      world keeps the blocks of scenes placed in it before. `-McCam` did not change the view of `-McScene=unreal` (the scene's
+      camera wins), so the sun disc facing the sun is still unchecked.
+    - Sun and sunset (checked 2026-10-31): facing the sun (`sun_c`, `-McCam=0.5,-59.4,0.5,-90,-8` at `-McTime=500`) the
+      atmosphere draws a sun disc with bloom, lens-like glare spots and its glint on the grass; the sunset (`dusk_w`,
+      `-McTime=12400`, yaw 90) is orange to dark with the skirt a thin line at the horizon. Unreal Mode hides the vanilla
+      cloud slabs (the volumetric clouds replace them; vanilla keeps them). Shore: `show_shore3` (sand, a flat sea level
+      with the land, ripples, sunset sky). Shots go on fresh `-McWorld=` names, and the camera for a scene can be
+      overridden with `-McCam=` (the sun shots show it works without a scene).
+    - Lightning (done, 2026-10-31): a flash lights the scene with a pale blue light from high up for 0.2 s, with shadows
+      (`flash_on` with `-McFlashHold -McStrike=20,-10` against `flash_off`, a night thunderstorm). The held shot used 1.5
+      times the sun's lux; the shipped value is 1.0 (not re-shot). Seen but not fixed: at night the rain streaks stay
+      bright blue (they are unlit particles), so lit rain still needs their material to take the sky factor.
+    - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
+      the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
+      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.
+    - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
+      material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.
     - Clouds, rain and the sky stay unlit.
   - **Dev switches:**
@@ -1049,3 +1097,41 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 
 - **Importing Java worlds** (2026-11-01, side session `claude/import-java-world`): `McJavaImport` (McServer) converts a vanilla world folder once into one of ours under `Saved/Worlds/<name>` (the vanilla folder is only read). Start with `-McImportWorld=<folder> [-McImportName=<name>]` (the copy opens unless `-McWorld=` names another), or the **Import Java** button on the Select World screen, which lists the worlds in `%APPDATA%\.minecraft\saves`. Reads `level.dat` (spawn, time, difficulty, game mode), the seed from `data/minecraft/world_gen_settings.dat`, rules from `game_rules.dat` (or the older level.dat fields), and `dimensions/minecraft/<dim>/region/*.mca` (or `region/`, `DIM-1`, `DIM1`): sector table, gzip, zlib and uncompressed payloads, external `c.X.Z.mcc`. Chunks use `sections[].block_states` / `biomes` (palette entries `Name`/`Properties` or `id`/`properties`; minimum 4 bits for blocks, entries never span longs; biomes in 4x4x4 cells), mapped onto the registry by name and properties; unknown blocks become magenta concrete and are logged with a count. **Block entities**: containers (chests, barrels, shulker boxes, hoppers, dispensers, droppers) keep their items with item components (NBT to the JSON the stacks use), spawners keep their mob, furnaces, blast furnaces, smokers and brewing stands keep their items (burn and brew timers start at rest), and everything else (signs with front and back text, banners and patterns, skulls, lecterns and their book, decorated pots, beehives, bells, campfires, sculk blocks, vaults...) is kept whole as `EMcBlockEntityKind::Raw`: `EntityId` the id and `Data` the entity's NBT (`FMcNbt::WriteRoot`), saved and sent with the chunk but read by nothing yet: whoever builds signs, banners and so on should read it from there. **Entities** from `entities/*.mca` are saved unmapped to `<dimension>/javaentities/r.X.Z.nbt` (`Chunks` list of `xPos`, `zPos`, `entities` as the game wrote them: item frames, glow item frames, paintings, armor stands, villagers, pets...); the port has no item frame, painting or armor stand entity yet, and no loader of that file. Not done: LZ4 (24w04a+) chunks and the custom method (the wiki does not describe the LZ4 framing, so those chunks count as unreadable), player data and inventory, the world clock (DayTime is the level `Time`), furnace burn and cook times. Test: `McClient.McServer.JavaImport.*`; a real vanilla save (`terrain3`) imports with 83,509 chunks and no unknown states. Test world script: `E:\mc-reference\scripts\import_build.txt` (`MCREF_SAVE=importtest`; needs the save to exist first).
   - Banners from imported worlds are drawn now: `McJavaImport::StandBanners` (called from `AMcWorldActor::AddToWorld`) stands the existing flag entity from the kept `minecraft:banner` Raw entity's `patterns`. Signs, skulls, decorated pots and lecterns stay `Raw` on purpose: `claude/vehicles-be5b17` has its own block entities for them (Sign with two sides of four lines, mob heads, pots with sherds, lecterns with a book). **When that branch reaches main**, add one pass beside `StandBanners` that converts the kept Raw entities by `EntityId`: `minecraft:sign` / `minecraft:hanging_sign` -> Sign (`front_text` / `back_text`: `messages` (each a plain string or a text compound with `text`), `color`, `has_glowing_text`; `is_waxed`), `minecraft:skull` -> the head's kind from the block name (`profile` / `custom_name` ignored, rotation from the block state), `minecraft:decorated_pot` -> pot with `sherds` (four item ids, back/left/right/front order as the wiki lists them) , `minecraft:lectern` -> lectern with `Book` (an item stack with components) and `Page`. Do it in `AddToWorld` like the banners, rewriting the entity in place, so the block entity is converted once and saved as its new kind.
+
+### Rain at night, lightning at 1.0x, distance-field Lumen (2026-10-31)
+- Rain/snow sheets now take their vertex tone from the sky light (sqrt of `McSky::GetSkyLightFactor`) in Unreal Mode, so night rain reads dim like vanilla instead of bright blue. Shots: rain_night, rain_day, thunder_night (lightning at 1.0x, -McFlashHold).
+- Distance-field Lumen on the DX11 1070: not achievable as a cvar switch. Chunk meshes are `UProceduralMeshComponent`, which has no mesh distance fields and no Lumen cards, so software Lumen sees them only through screen traces. Real fix = build chunks as static meshes (or a custom scene proxy with SDF), a large change touching the mesher; left open.
+
+### Underwater look, vanilla check again (2026-10-31)
+- Thunder at night: `thunder_noflash` (-McTime=15000, no -McFlashHold) is dark, so the time flag works in storms; the bright `thunder_night` was the held flash lighting the sky.
+- Underwater (Unreal Mode only): `McSky::GetCameraUnderwater` (the world renderer sets it when the eye is in a water block, eased in 8/s) closes the fog to about 16 blocks in the sea's blue-green, dims the sun, and the grade goes blue-green and a stop darker. Scene `tools/scenes/underwater.json` (a raised sea; the world floor is y=-64, so a deep pool can't be dug). Shot `uw_day`.
+- Caustics (updated): now in the lit block materials (scalar `Underwater`, set each tick by the world renderer): under water, sky-lit surfaces are modulated by a moving net of light, `e *= lerp(1, 0.45+2.2c^2...)`. Visible on the prismarine in `uw_day`; the sand is so bright it clips and shows little. Open: lower the exposure underwater or darken the sand so the net reads on it. The light-function version below stays but is weak.
+- Caustics, first try: `M_McCaustics` (a light function made by `make_materials.py`, `MC_ONLY_CAUSTICS=1`) is set on the sun while under water. Compiled and applied, but the pattern is not visible in `uw_day`: the sun is dim there and the sand is washed. Open: brighten/scale the pattern or put it in the lit block material.
+- Vanilla check against dfe04f8, Unreal Mode off: cave differs by 152 px (torch flame, x 633-645); village by mobs only (band y 259-363); terrain, sky and HUD identical.
+
+- Unreal-off pixel check redone (2026-11-01, baseline dfe04f8 rebuilt, 20 s shot delay): cave 136 px (torch flame only), village 1543 px (mob band only); terrain, sky and HUD identical. Underwater exposure is now -1.8 EV (`uw_day`: sand no longer clips; the caustic net reads on the prismarine, faintly on the sand).
+- Water refraction (2026-11-01): the lit translucent materials give water an index of refraction of 1.2 (other see-through blocks 1.0), so the ripples' normals bend what lies under the surface. Shot `refr_a`/`refr_b` (shore, day): the water renders correctly and the ripples read, but at a shallow angle the bend is subtle, and the sky is barely mirrored in the water: reflections come from Lumen's screen trace plus the reflection-only skylight, which seems too weak on a translucent surface. Open: a stronger sky reflection for water (a fresnel-weighted sky colour in the emissive), then volumetric fog shafts.
+- Water sky reflection and refraction A/B (2026-11-01, scene `shore_down`, -McTime=5000, dev args `-McWaterIor=` and `-McWaterSky=`): the water's emissive adds a fresnel-weighted sky colour (horizon to zenith by the reflected direction, scaled by the sky light), default strength 1. Shots `w_ior10`/`w_ior12` (IOR 1.0 vs 1.2, sky off): the ripple pattern differs, but the shots run on different game clocks so the wave phase differs too; not a clean proof that refraction bends the floor. `w_sky1` is hardly different from sky off at this steep angle (fresnel is low); `w_sky3` washes the water to a white sheet, so keep the default. The water is milky over a one-block-deep sand floor even with the sky off: the specular and the sand through it; a deeper scene would show the blue. Open: pin the wave clock for A/B shots, test with a deep sea at a grazing angle.
+- Water reflection and refraction at a grazing angle (2026-11-01, scene `lake_low`: camera just above a 2-deep lake, `lk_*`, `lk2_*`, `lk3_*` shots). Sky reflection: at strength 1-2 it milked the water pale near the horizon, so the sky colour is bluer now and the default strength 0.5 (`lk2_dflt`: a pale sheen toward the horizon over the blue, bricks still mirrored by Lumen). Refraction: with the index only wired to the Refraction pin nothing moved (IOR 1.0 vs 1.8, `lk2_i10`/`lk2_i18`, identical); the material also needs `refraction_method = RM_INDEX_OF_REFRACTION`, set in `make_materials.py`. With it, IOR 1.8 visibly changes the submerged bricks against 1.0 (`lk3_i18` vs `lk3_i10`). Default is now 1.33 (water's own); not shot at 1.33 itself. Wave phase still differs between runs, so ripples differ.
+- Light shafts (2026-11-01): the volumetric fog is thicker (extinction 0.04 + 0.03 x Shafts), leans forward (scattering distribution 0.2 to 0.8) and the sun scatters 1 + 2 x Shafts times as strongly; default `Shafts` 1.8, `-McShafts=` tunes it (0 is the old haze). Scene `forest_sun` (inside the forest facing east at `-McTime=500`). Shots `sh_t0` (0), `sh_t1` (1: hardly visible), `sh_t3` (3: clear rays, milky), `sh_tdef` (1.8, chosen): soft warm shafts through the leaves and trunk gaps. Open-ground view into the low sun (`sh_s1`) just goes milky at 1: shafts need trees in the way. Not yet shot: shafts into caves; Unreal-off pixel check not re-run (Unreal-only paths, but the vanilla check is due on the next run).
+
+### Light shafts into caves + Unreal-off check (2026-11-01)
+- Cave scene, -McShafts=0 vs default: identical look (enclosed room, no sun path, not milky). Shafts only show with an open sky path (forest_sun).
+- Vanilla (Unreal off) pixel check vs dfe04f8 after the shafts change: cave 98 px (torch flame, x 629-646 y 150-175); village 3463 px confined to rows 229-343 (wandering mobs); terrain, sky, HUD identical.
+
+### Block lights budget (2026-11-01)
+- `UMcBlockLightComponent` existed (nearest light-giving blocks get point lights); the budget now follows the quality preset: 8 / 16 / 24 / 32 lights and 0 / 3 / 6 / 8 shadowed at Low to Ultra. `-McBlockLights=N` sets it for tests (0 = no lamps). Unreal off: the component hides all lights, unchanged.
+- Shots: `bl_off` / `bl_on` (village, night): the lamps add a warm pool on walls and path. `ls_off` / `ls_8` / `ls_24` (`tools/scenes/lamp_street.json`, 40 lights, Quality 2).
+- 1070 fps over the last 3 s before the shot (new `-McShot` log line; read from `C:/mc-runs/<name>/Saved/Logs/McClient.log`): lamps off 75.6, 8 lights 80.7, 24 lights 84.2: within noise (other sessions share the machine), so the budget costs no visible frames at this scale.
+
+### Volumetric clouds from the vanilla layout: PARKED (2026-11-01)
+- Built: `M_McVolumeClouds` (Volume domain, additive; `tools/make_materials.py`, `MC_ONLY_CLOUDS=1`) reads the pattern from a runtime texture of `clouds.png` (`UMcCloudComponent::Mask`, one texel per 12 block cell), carried west by `DriftX`, puffy profile by world Z, `Storm` greys and thickens; the sky component feeds it (`McSky::SetCloudLayer`) and places the cloud layer at the vanilla height (`-McCloudDensity=` scales it).
+- It is off by default (`-McVolumeClouds` turns it on): on the 1070 the whole frame goes black with it, even with density 0, with the engine's own layer height, and even with a constants-only graph (zero extinction, white albedo, no custom nodes), so the graph is not the cause. The screenshot frame took about 3 s each time (0.3 fps), so it may be the volume material compiling in the frame; or a missing piece of the pipeline that the engine's `m_SimpleVolumetricCloud` has (its pins go through ShadingPathSwitch nodes and a VolumetricAdvancedMaterialInput). Python has no CloudLayer node. Next try: duplicate the engine's material and swap in the mask for its cloud-type texture, rather than building from scratch; or one run that cycles variants per frame.
+- Default stays the engine's simple clouds (`cl_simple`, shot at level view).
+
+### Rain puddles (2026-11-01)
+- Lit and HD materials: rain (Wetness) now fills puddles on flat, sky-open faces from a world-space blotchy field (a few metres across; they grow as the rain goes on): darker, near-mirror (roughness 0.02, specular 0.9), a fresnel-weighted grey sky sheen in the emissive, and rain rings (a drop every 1.1 s per 40 cm cell) tilting the normal. The old uniform wet look (darker, glossier) stays everywhere else. `-McPuddles=0` turns them off for A/B (`pd_off`), default 1.
+- Shots (`-McScene=village -McWeather=rain -McTime=6000`, fresh world): `pe_on` (low angle: puddles on grass and the path), `pd_on` / `pd_off` (top-down: only a darker patch without the sheen, which is why the sky sheen was added). Unreal off is untouched (vanilla materials, same as before).
+
+- **Cloud face shading** (2026-11-03, reference shots `ref_cs_*`, opaque faces read from `ref_cs_y0` at yaw 0: top (238,244,255), north/south face (199,206,216) = 0.84 of the top, east/west face (219,225,235) = 0.92; `ref_cs_bottom*` underside red 166 = 0.70): `UMcCloudComponent::Rebuild` shades are now bottom 0.70 (unchanged), north/south 0.84 (was 0.8), east/west 0.92 (was 0.9). Not yet checked by a paired shot: my one `-McCam` shot (`cl_shade`) did not get above the cloud layer. The reference's underside is slightly bluer than a plain multiply (G 177, B 197 of top 244, 255), not modelled.
+- **Nether and End fog in Unreal Mode** (2026-11-03, shots `nn_enh`/`ne_enh` before, `nn_fix2`/`ne_fix2` after, `-McDimension=`): the volumetric fog (made for the Overworld's shafts) darkened the Nether's and the End's distance to black, and the unlit fog colour and End sky picture were dimmer than the vanilla look through the enhanced exposure. Now the volumetric fog is off in those dimensions (`UMcSkyComponent`, switched back by mode), their fog luminance and the End sky's tint are 2.4 times (`EnhancedFogBoost`, enhanced only, so the vanilla look is unchanged), and the End's fill light is half white, half `#ac60cd` (it turned the olive End stone magenta). The Nether now reads like the vanilla fog (dark red haze to the horizon); the End stone is a little grey-pink next to vanilla's olive. Spawn spots differ between runs, so the shots are not the same view. `cloud_top` scene added (a platform at 228 looking down at the clouds) but the haze flattens the face contrasts there, so the cloud shades are still not verified by a shot.

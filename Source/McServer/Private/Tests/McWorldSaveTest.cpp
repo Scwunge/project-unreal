@@ -38,7 +38,7 @@ namespace
 		return Bytes;
 	}
 
-	bool LoadRegistries()
+	bool LoadSaveRegistries()
 	{
 		return FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded();
 	}
@@ -185,7 +185,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcChunkSaveTest, "McClient.McServer.SaveChunkC
 
 bool FMcChunkSaveTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -244,7 +244,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcWorldStorageTest, "McClient.McServer.SaveUnl
 
 bool FMcWorldStorageTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -366,7 +366,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcEntitySaveTest, "McClient.McServer.SaveEntit
 
 bool FMcEntitySaveTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -430,7 +430,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPrimedTntSaveTest, "McClient.McServer.SavePr
 
 bool FMcPrimedTntSaveTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}

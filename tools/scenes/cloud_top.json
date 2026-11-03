@@ -1,0 +1,7 @@
+{
+ "description": "A platform above the cloud layer (192), camera looking down at the cloud faces, for the cloud shading.",
+ "camera": [0.5, 230.6, 0.5, 0.0, 40.0],
+ "blocks": [
+  { "from": [0, 228, 0], "to": [0, 228, 0], "state": "minecraft:stone" }
+ ]
+}

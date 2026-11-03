@@ -49,7 +49,7 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const TArray<FAnimal> Animals = {
+	const TArray<FAnimal> Species = {
 		{ TEXT("minecraft:wolf"), 8.0f, {} },
 		{ TEXT("minecraft:rabbit"), 3.0f, { TEXT("minecraft:rabbit_hide"), TEXT("minecraft:rabbit"), TEXT("minecraft:rabbit_foot") } },
 		{ TEXT("minecraft:fox"), 10.0f, {} },
@@ -68,7 +68,7 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:zombie_villager"), 20.0f, { TEXT("minecraft:rotten_flesh"), TEXT("minecraft:iron_ingot"), TEXT("minecraft:carrot"), TEXT("minecraft:potato") } },
 	};
 
-	for (const FAnimal& Animal : Animals)
+	for (const FAnimal& Animal : Species)
 	{
 		const FName Kind(Animal.Name);
 		const FMcMobType* Type = FMcMobType::Find(Kind);

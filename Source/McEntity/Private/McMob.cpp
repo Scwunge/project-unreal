@@ -748,7 +748,9 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		for (const FVector& Player : Manager.PlayerPositions)
 		{
 			const double Distance = FVector::DistSquared(Player, Body.Position);
-			if (Distance < Best)
+			// Piglins (not the brutes, which were not measured) ignore a player in gold armour: the bare player lost
+			// 40 hp in 200 ticks to three piglins, the one in a golden helmet lost none.
+			if (Distance < Best && !(Type.Name == TEXT("minecraft:piglin") && Manager.PlayerWearsGold && Manager.PlayerWearsGold(Player)))
 			{
 				Best = Distance;
 				Target = Player;

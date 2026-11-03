@@ -112,6 +112,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
 	};
+	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
+	{
+		return PlayerWearsGold && PlayerWearsGold(PlayerPos);
+	};
 	Manager.OnPlayerEffect = [this](const FVector& PlayerPos, FName Effect, int32 Amplifier, int32 Duration)
 	{
 		if (OnPlayerEffect)

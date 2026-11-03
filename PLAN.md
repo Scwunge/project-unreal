@@ -510,3 +510,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - Data generators: https://wiki.vg/Data_Generators
 - Running the data generator: https://minecraft.gamepedia.com/Tutorials/Running_the_Data_Generator
 - Entity Model Features: https://modrinth.com/mod/entity-model-features
+
+### Piglin gold rule, bartering, nether spawning (2026-11-03)
+- Gold rule: measured once (piglin1.txt): a bare player lost 40 hp in 200 ticks to three piglins, one in a golden helmet lost 0. `FMcEntityManager::PlayerWearsGold` (set in `AMcGameMode` from the worn armour, any `minecraft:golden_*`) makes `minecraft:piglin` skip such a player as a target. Brutes were not measured, so they still hunt everyone. Not done: a piglin already angry (hit) should still attack; one sample only.
+- Overworld zombification (~300 ticks, seen once) and bartering (no item entity seen) are NOT implemented; the barter run needs logging from the drop tick with the piglin kept from zombifying.
+- Nether spawning: spawns there come from biome spawner data; not measured, nothing added.

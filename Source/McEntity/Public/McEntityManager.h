@@ -136,6 +136,9 @@ public:
 	// Called with the position of a player, an effect's name ("poison"), its level less one and its ticks, for a splash
 	// potion that reached them. Left unset, the effect is dropped.
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
+	// Called with the position of a player (as in PlayerPositions): whether they wear any gold armour. Piglins leave
+	// such a player alone. Left unset, nobody does.
+	TFunction<bool(const FVector&)> PlayerWearsGold;
 	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
 	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.

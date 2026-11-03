@@ -53,6 +53,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// Whether the player at the position wears gold armour (piglins ignore them).
+	TFunction<bool(const FVector&)> PlayerWearsGold;
 	// A splash potion's effect on the player at the position (name, level less one, ticks).
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 

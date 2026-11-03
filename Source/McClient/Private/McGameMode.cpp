@@ -1,4 +1,5 @@
 #include "McGameMode.h"
+#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -692,6 +693,27 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		BroadcastChat(McLang::Format(TEXT("multiplayer.player.joined"), { GetPlayerName(NewPlayer) }), 0xFFFF55);
 	}
+
+	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
+	// command script for a shot or sound run, like the reference client's "cmd").
+	FString Lines;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
+	{
+		TArray<FString> Parts;
+		Lines.ParseIntoArray(Parts, TEXT("|"));
+		for (int32 Index = 0; Index < Parts.Num(); ++Index)
+		{
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+				[this, Player = TWeakObjectPtr<APlayerController>(NewPlayer), Line = Parts[Index]](float)
+				{
+					if (Player.IsValid())
+					{
+						HandleChat(Player.Get(), Line);
+					}
+					return false;
+				}), 8.0f + 0.5f * Index);
+		}
+	}
 }
 
 // ---- Chat ----
@@ -896,6 +918,13 @@ namespace
 			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
 			{
 				World->SetBlock(Pos, State);
+			}
+		}
+		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->MulticastSound(Event, FVector_NetQuantize10(Position), Volume, Pitch);
 			}
 		}
 		virtual bool Summon(FName Kind, const FVector& Feet) override

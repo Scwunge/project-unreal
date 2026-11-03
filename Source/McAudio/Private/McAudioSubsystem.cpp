@@ -49,6 +49,14 @@ void UMcAudioSubsystem::OnSound(const FMcSoundEvent& Event)
 	if (bLogSounds)
 	{
 		UE_LOG(LogMcAudio, Display, TEXT("Sound: %s %.2f %.2f"), *Event.Name.ToString(), Event.Volume, Event.Pitch);
+		// What the lookup makes of it (the game's listener prints the same: volume and pitch with the chosen file's, the range, the file).
+		FMcSoundVariant Chosen;
+		if (FMcSoundRegistry::Get().EnsureLoaded() && FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Chosen))
+		{
+			const McAudio::FMcSoundPlay Settings = McAudio::Resolve(Event, Chosen);
+			UE_LOG(LogMcAudio, Display, TEXT("SoundPick: %s vol %.4f pitch %.4f range %.1f file %s"), *Event.Name.ToString(),
+				Event.Volume * Chosen.Volume, Settings.Pitch, Settings.Range, *Chosen.Name);
+		}
 	}
 	Play(Event);
 }

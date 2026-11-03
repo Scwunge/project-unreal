@@ -48,7 +48,6 @@ namespace
 		Gate,
 		Dispenser,
 		Crafter,
-		NoteBlock,
 		Composter,
 		Jukebox,
 		LightningRod,
@@ -134,7 +133,6 @@ namespace
 				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
 				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
 				else if (Name == TEXT("minecraft:crafter")) Kind = Crafter;
-				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
 				else if (Name == TEXT("minecraft:composter")) Kind = Composter;
 				else if (Name == TEXT("minecraft:jukebox")) Kind = Jukebox;
 				else if (Name.EndsWith(TEXT("lightning_rod"))) Kind = LightningRod;
@@ -154,64 +152,6 @@ namespace
 			}
 		}
 		return Kinds[State];
-	}
-
-	// The instrument a note block plays, by what is under it (a head on top takes over). Measured with the reference client
-	// (lg_misc2): the blocks listed in the comment of each branch were tried; the rest of a family is by the wiki ("Note Block").
-	FName NoteInstrument(FName Below, FName Above)
-	{
-		const auto Path = [](FName Name)
-		{
-			FString Text = Name.ToString();
-			Text.RemoveFromStart(TEXT("minecraft:"));
-			return Text;
-		};
-		const FString Up = Path(Above);
-		if (Up == TEXT("skeleton_skull")) return TEXT("skeleton");
-		if (Up == TEXT("wither_skeleton_skull")) return TEXT("wither_skeleton");
-		if (Up == TEXT("zombie_head")) return TEXT("zombie");
-		if (Up == TEXT("creeper_head")) return TEXT("creeper");
-		if (Up == TEXT("dragon_head")) return TEXT("dragon");
-		if (Up == TEXT("piglin_head")) return TEXT("piglin");
-		if (Up == TEXT("player_head")) return TEXT("custom_head");
-		const FString Down = Path(Below);
-		const auto Has = [&Down](const TCHAR* Part) { return Down.Contains(Part); };
-		if (Down == TEXT("gold_block")) return TEXT("bell");
-		if (Down == TEXT("packed_ice")) return TEXT("chime");
-		if (Down == TEXT("bone_block")) return TEXT("xylophone");
-		if (Down == TEXT("iron_block")) return TEXT("iron_xylophone");
-		if (Down == TEXT("soul_sand")) return TEXT("cow_bell");
-		if (Down == TEXT("pumpkin") || Down == TEXT("carved_pumpkin") || Down == TEXT("jack_o_lantern")) return TEXT("didgeridoo");
-		if (Down == TEXT("emerald_block")) return TEXT("bit");
-		if (Down == TEXT("hay_block")) return TEXT("banjo");
-		if (Down == TEXT("glowstone")) return TEXT("pling");
-		if (Down == TEXT("clay")) return TEXT("flute");
-		if (Down.EndsWith(TEXT("_wool"))) return TEXT("guitar");
-		if (Down.EndsWith(TEXT("copper_block")) || Down.Contains(TEXT("cut_copper"))) return TEXT("trumpet");
-		if (Down == TEXT("sand") || Down == TEXT("red_sand") || Down == TEXT("gravel") || Down.EndsWith(TEXT("concrete_powder"))) return TEXT("snare");
-		if (Down == TEXT("glass") || Down.EndsWith(TEXT("_glass")) || Down == TEXT("sea_lantern") || Down == TEXT("beacon")) return TEXT("hat");
-		static const TCHAR* Woods[] = { TEXT("oak"), TEXT("spruce"), TEXT("birch"), TEXT("jungle"), TEXT("acacia"), TEXT("mangrove"), TEXT("cherry"),
-			TEXT("bamboo"), TEXT("crimson"), TEXT("warped"), TEXT("stripped") };
-		for (const TCHAR* Wood : Woods)
-		{
-			if (Down.StartsWith(Wood) && !Down.EndsWith(TEXT("_door")) && !Down.EndsWith(TEXT("leaves")) && !Down.EndsWith(TEXT("sapling")) && !Down.EndsWith(TEXT("propagule")))
-			{
-				return TEXT("bass");
-			}
-		}
-		if (Down == TEXT("chest") || Down == TEXT("trapped_chest") || Down == TEXT("crafting_table") || Down == TEXT("bookshelf") || Down == TEXT("barrel")
-			|| Down == TEXT("note_block") || Down == TEXT("jukebox") || Down == TEXT("loom") || Down == TEXT("composter"))
-		{
-			return TEXT("bass");
-		}
-		if ((Has(TEXT("stone")) && !Has(TEXT("redstone_"))) || Has(TEXT("cobble")) || Has(TEXT("deepslate")) || Has(TEXT("brick")) || Down.EndsWith(TEXT("_ore"))
-			|| Down == TEXT("netherrack") || Has(TEXT("obsidian")) || Has(TEXT("sandstone")) || Down.EndsWith(TEXT("_concrete")) || Has(TEXT("terracotta"))
-			|| Has(TEXT("basalt")) || Down == TEXT("andesite") || Down == TEXT("diorite") || Down == TEXT("granite") || Has(TEXT("tuff")) || Down == TEXT("calcite")
-			|| Down == TEXT("magma_block") || Has(TEXT("quartz")) || Has(TEXT("purpur")) || Has(TEXT("prismarine")) || Down == TEXT("bedrock") || Down == TEXT("coal_block"))
-		{
-			return TEXT("basedrum");
-		}
-		return TEXT("harp");
 	}
 
 	bool IsDiode(FMcStateId State)
@@ -1170,20 +1110,6 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 			Sim.ScheduleTick(Pos, 20);
 		}
 		break;
-	case NoteBlock:
-	{
-		// Measured with the reference client (lg_misc2): the instrument follows the blocks above and under at once, powered follows
-		// the power around it; no sound is played here.
-		const FName Instrument = NoteInstrument(Reg().GetBlockOf(World.GetBlock(Pos + FIntVector(0, -1, 0))).Name,
-			Reg().GetBlockOf(World.GetBlock(Pos + FIntVector(0, 1, 0))).Name);
-		const bool bPowered = HasPower(Pos);
-		const FName Now = Reg().GetPropertyValue(State, TEXT("instrument"));
-		if (Now != Instrument || bPowered != Flag(State, TEXT("powered")))
-		{
-			World.SetBlock(Pos, With(State, { FChange(TEXT("instrument"), *Instrument.ToString()), FChange(TEXT("powered"), bPowered ? TEXT("true") : TEXT("false")) }));
-		}
-		break;
-	}
 	case Hopper:
 	{
 		// A powered hopper is locked.

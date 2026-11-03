@@ -580,11 +580,32 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 		{
 			Body.Velocity *= 0.5;
 		}
+		const double HeightBefore = Body.Position.Y;
 		McPhysics::Move(World, Body, Body.Velocity, false);
 		if (!Body.bOnGround)
 		{
 			Body.Velocity *= 0.95;
+			FallDistance += FMath::Max(0.0, HeightBefore - Body.Position.Y);
 		}
+		else
+		{
+			FallDistance += FMath::Max(0.0, HeightBefore - Body.Position.Y);
+			// A TNT cart landing after a fall of 3 or more goes off, with a power of 4 plus up to 1.5 times a tenth of the
+			// fall (vehicle_log20.txt: dropped from 2 it lands, from 3, 4, 6 and 10 it blows on landing; a cart running
+			// into a wall at up to 0.4 on rails doesn't, vehicle_log21.txt).
+			if (Variant == EVariant::Tnt && FallDistance >= 3.0)
+			{
+				const double Tenth = FMath::Min(FallDistance / 10.0, 5.0);
+				Manager.Explode(Body.Position + FVector(0.0, 0.5, 0.0), 4.0f + FMath::FRand() * 1.5f * static_cast<float>(Tenth));
+				bRemoved = true;
+				return;
+			}
+			FallDistance = 0.0;
+		}
+	}
+	else
+	{
+		FallDistance = 0.0;
 	}
 	TouchDetectors(Manager, World);
 	TickVariant(Manager);

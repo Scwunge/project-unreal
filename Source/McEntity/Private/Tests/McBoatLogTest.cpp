@@ -135,3 +135,29 @@ bool FMcBoatLogTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+// A TNT cart goes off landing from a fall of 3 or more, not 2 (vehicle_log20.txt: dropped from 2, 3, 4, 6, 10 blocks).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcTntCartFallTest, "McClient.McEntity.TntCartFall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcTntCartFallTest::RunTest(const FString& Parameters)
+{
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	for (const int32 Drop : { 2, 3, 6 })
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+		for (int32 X = 0; X < 16; ++X) { for (int32 Z = 0; Z < 16; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:dirt")).Get(0)); } }
+		FMcEntityManager Manager(World);
+		FMcMinecartEntity* Cart = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Tnt);
+		Cart->Body.Position = FVector(8.5, 1.0 + Drop, 8.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Cart));
+		for (int32 Tick = 0; Tick < 40; ++Tick) { Manager.Tick(); }
+		TestEqual(*FString::Printf(TEXT("drop %d goes off"), Drop), Cart->bRemoved, Drop >= 3);
+	}
+	return true;
+}

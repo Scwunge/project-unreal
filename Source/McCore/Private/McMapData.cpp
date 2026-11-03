@@ -95,5 +95,9 @@ int32 FMcMapData::UpdateRow(int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sa
 			++Changed;
 		}
 	}
+	if (Changed > 0)
+	{
+		++Revision;
+	}
 	return Changed;
 }

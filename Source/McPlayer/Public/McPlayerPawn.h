@@ -367,6 +367,10 @@ private:
 	void ServerTickFishing(FMcEntityManager& Entities);
 	// Maps (McPlayerMaps.cpp): an empty map used makes a filled one; one held fills in, a row at a time.
 	void ServerUseMap();
+public:
+	// For screenshots (-McMapShot): puts a new filled map into the selected slot.
+	void GiveShotMap();
+private:
 	void ServerTickMaps();
 	int32 MapTicks = 0;
 	int32 MapRow = 0;

@@ -1284,3 +1284,6 @@ Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dum
 
 ### Maps: item behaviours (2026-11-03)
 McMapStore (map id component, create, zoom cached per source, lock, JSON save/load), empty map used makes a filled map centred under the player, a held filled map fills one row every 4 ticks while the player is inside it (rate from mapexp2/3: about 500 ticks for a full map), map cloning as crafting_transmute with 1-8 empty maps (copies share the id), map extending (eight paper around a map) makes the next scale. Tests Mc.Map.Store. Still open: calling Save/Load from the world save, the cartography table (lock, copy, zoom menu), sending map data to clients, rendering in hand/HUD/frames, decorations.
+
+### Maps: slot picture (2026-11-03)
+A filled map in a slot (hotbar, inventory) shows its own picture, redrawn when its pixels change (AMcHUD::GetMapIcon, FMcMapData::Revision); shot Saved/Shots/map1.png (`-McMapShot` gives the player a map after 40 ticks) shows it half filled. Still the plain sprite in the hand and in item frames (the hand wants the big two-handed map, frames the map on the frame); no decorations yet.

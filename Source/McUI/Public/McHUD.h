@@ -119,6 +119,12 @@ private:
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
+	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).
+	const FIcon& GetMapIcon(const FMcItemStack& Stack);
+	TMap<int32, FIcon> MapIcons;
+	TMap<int32, int32> MapIconRevisions;
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then

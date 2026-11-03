@@ -373,6 +373,12 @@ void AMcGameMode::StartPlay()
 		Context.bOverworld = Here->Dimension == TEXT("minecraft:overworld");
 		Context.GameTicks = Here->GetGameTime();
 		McItemFrames::SetContext(Context);
+		static bool bShotMapGiven = !FParse::Param(FCommandLine::Get(), TEXT("McMapShot"));
+		if (!bShotMapGiven && Here->GetGameTime() > 40)
+		{
+			bShotMapGiven = true;
+			const_cast<AMcPlayerPawn*>(Pawn)->GiveShotMap();
+		}
 	}), 0.05f, true);
 
 	// Advancements that fire on what a player carries.

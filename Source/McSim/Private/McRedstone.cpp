@@ -23,6 +23,7 @@ namespace
 		Torch,
 		WallTorch,
 		Lamp,
+		CopperBulb,
 		Observer,
 		Piston,
 		StickyPiston,
@@ -98,6 +99,7 @@ namespace
 				else if (Name == TEXT("minecraft:redstone_torch")) Kind = Torch;
 				else if (Name == TEXT("minecraft:redstone_wall_torch")) Kind = WallTorch;
 				else if (Name == TEXT("minecraft:redstone_lamp")) Kind = Lamp;
+				else if (Name.EndsWith(TEXT("copper_bulb"))) Kind = CopperBulb;
 				else if (Name == TEXT("minecraft:observer")) Kind = Observer;
 				else if (Name == TEXT("minecraft:piston")) Kind = Piston;
 				else if (Name == TEXT("minecraft:sticky_piston")) Kind = StickyPiston;
@@ -808,6 +810,24 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 			Sim.ScheduleTick(Pos, 2);
 		}
 		break;
+	case CopperBulb:
+	{
+		// Power coming on flips the light, power going away leaves it; either way `powered` follows at once, also when the bulb is
+		// only just put in place and when it was put down with a wrong `powered` (reference run rs_bulb: no delay, no quasi-connectivity).
+		const bool bPowered = HasPower(Pos);
+		if (bPowered != Flag(State, TEXT("powered")))
+		{
+			if (bPowered)
+			{
+				Set(Pos, { FChange(TEXT("lit"), Bool(!Flag(State, TEXT("lit")))), FChange(TEXT("powered"), TEXT("true")) });
+			}
+			else
+			{
+				Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+			}
+		}
+		break;
+	}
 	case Lamp:
 		if (Flag(State, TEXT("lit")) && !HasPower(Pos))
 		{

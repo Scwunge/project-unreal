@@ -758,19 +758,13 @@ def make_caustics_material():
     position = mel.create_material_expression(material, unreal.MaterialExpressionWorldPosition, -600, 0)
     time = mel.create_material_expression(material, unreal.MaterialExpressionTime, -600, 150)
     code = """
-float2 q = Pos.xy * 0.011;
-float t = Time * 0.55;
-float2 i = q;
-float c = 0.0;
-for (int n = 0; n < 3; n++)
-{
-    t *= 1.25;
-    i = q + float2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
-    c += 1.0 / length(float2(q.x / (sin(i.x + t) / 0.006), q.y / (cos(i.y + t) / 0.006)));
-}
-c = saturate(1.17 - pow(c / 3.0, 1.4));
-float lines = pow(c, 8.0);
-return float3(1, 1, 1) * lerp(0.45, 2.2, saturate(lines));
+float2 p = Pos.xy * 0.014;
+float t = Time * 0.6;
+float w1 = sin(p.x + sin(p.y * 1.3 + t) * 1.5 + t);
+float w2 = sin(p.y * 1.1 + sin(p.x * 0.9 - t) * 1.5 - t * 0.8);
+float w3 = sin((p.x + p.y) * 0.7 + sin((p.x - p.y) * 1.2 + t * 1.3) * 1.4);
+float lines = saturate(pow(1.0 - abs(w1), 7.0) + pow(1.0 - abs(w2), 7.0) + pow(1.0 - abs(w3), 7.0));
+return float3(1, 1, 1) * lerp(0.5, 2.4, lines);
 """
     node = add_custom(material, -300, 0, "McCaustics", code, {"Pos": (position, ""), "Time": (time, "")})
     mel.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)

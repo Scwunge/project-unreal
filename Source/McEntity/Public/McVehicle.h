@@ -301,8 +301,12 @@ private:
 	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
 	// Falling last tick, so landing in water stops it.
 	bool bWasInAir = false;
+	// Ticks the hull has spent in the top block of a rising bubble column, under air (not saved).
+	int32 BubbleTime = 0;
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
+	// Bubble columns push the hull after the move (see the body).
+	void TickBubbleColumns(FMcBlockWorld& World);
 	// How much of its speed a boat on land keeps a tick, from the blocks under its hull.
 	double GroundFriction(FMcBlockWorld& World) const;
 };

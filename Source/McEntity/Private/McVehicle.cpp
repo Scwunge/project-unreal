@@ -928,6 +928,50 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 	return ESurface::Air;
 }
 
+void FMcBoatEntity::TickBubbleColumns(FMcBlockWorld& World)
+{
+	// After the move, for each column block the hull is in (vehicle_log11.txt, a boat over soul sand and over magma, every
+	// tick): with water over the block it is pushed twice, each push up 0.06 to 0.7 or down 0.03 to -0.3 (a boat summoned
+	// at 0.0 in a column goes 0.21046, 0.24831, ... = the sinking law's step plus 0.12 a block, 0.24 in two; down
+	// at the floor it sits at -0.06); in the top block, under air, it is not pushed, but on the 60th tick of that it is thrown
+	// up at 0.6 (ticks 70 and 152 of the log: 60 ticks after it first reached the top, then 82 after the first, 58 after it dropped back in, as
+	// if the count restarts at -1).
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FBox Box = Body.GetBox().ExpandBy(-1e-5);
+	bool bAtTop = false;
+	for (int32 Y = FMath::FloorToInt32(Box.Min.Y); Y <= FMath::FloorToInt32(Box.Max.Y); ++Y)
+	{
+		for (int32 Z = FMath::FloorToInt32(Box.Min.Z); Z <= FMath::FloorToInt32(Box.Max.Z); ++Z)
+		{
+			for (int32 X = FMath::FloorToInt32(Box.Min.X); X <= FMath::FloorToInt32(Box.Max.X); ++X)
+			{
+				const FMcStateId State = World.GetBlock(FIntVector(X, Y, Z));
+				if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:bubble_column"))
+				{
+					continue;
+				}
+				const bool bDown = Registry.GetPropertyValue(State, TEXT("drag")) == TEXT("true");
+				const FMcStateId Above = World.GetBlock(FIntVector(X, Y + 1, Z));
+				const FName AboveName = Registry.IsValidState(Above) ? Registry.GetBlockOf(Above).Name : FName(TEXT("minecraft:air"));
+				if (AboveName == TEXT("minecraft:air") || AboveName == TEXT("minecraft:cave_air") || AboveName == TEXT("minecraft:void_air"))
+				{
+					bAtTop |= !bDown;
+					continue;
+				}
+				for (int32 Push = 0; Push < 2; ++Push)
+				{
+					Body.Velocity.Y = bDown ? FMath::Max(-0.3, Body.Velocity.Y - 0.03) : FMath::Min(0.7, Body.Velocity.Y + 0.06);
+				}
+			}
+		}
+	}
+	if (bAtTop && ++BubbleTime >= 60)
+	{
+		Body.Velocity.Y = 0.6;
+		BubbleTime = -1;
+	}
+}
+
 void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 {
 	TickRider();
@@ -981,7 +1025,11 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y = 0.75 * (Body.Velocity.Y - Gravity + Gravity * (Surface - Body.Position.Y) / (0.65 * Body.Height));
 		break;
 	case ESurface::Underwater:
-		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.04, 0.15);
+		// A boat with water over its hull sinks, as the same weight against buoyancy law with the depth term at a sixty
+		// fifth (vehicle_log10.txt: summoned at rest a block, three blocks and four blocks down it falls 0.029538,
+		// 0.051692, 0.068308 ... settling at 0.118152 a tick, v' = 0.75 (v - 0.04 + 0.04 / 65) to 1e-6, and lands on the
+		// floor at its own height). It used to rise, at 0.04 a tick up to 0.15.
+		Body.Velocity.Y = 0.75 * (Body.Velocity.Y - Gravity + Gravity / 65.0);
 		break;
 	case ESurface::UnderFlowing:
 		Body.Velocity.Y = FMath::Max(Body.Velocity.Y * 0.9 - 0.002, -0.05);
@@ -996,6 +1044,7 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	const double Factor = SpeedFactor(FMcBlockRegistry::Get().GetBlockOf(World.GetBlock(Under)).Name);
 	Body.Velocity.X *= Factor;
 	Body.Velocity.Z *= Factor;
+	TickBubbleColumns(World);
 	bWasInAir = Where == ESurface::Air;
 	TickPassengers(Manager);
 }

@@ -178,6 +178,16 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     hopper's block 3.75 lower than those, and the chest 2.875 higher. Not done: vanilla's cart sits about a unit
     lower under its walls, and shows two dark marks along its foot (the floor's edge strip) and a soft shadow blob
     under it (nothing draws entity shadows yet).
+    Boats under water and in bubble columns (vehicle_log10/11.txt, a pond seven deep, the world's lowest block is -64 so
+    a pond below it is void): a boat with water over its hull sinks, `v' = 0.75 (v - 0.04 + 0.04 / 65)` (summoned at rest
+    it falls 0.029538, 0.051692 ... to 0.118152 a tick, and stops on the floor; it used to rise); in a bubble column,
+    after its move, each column block its hull overlaps (with water above the block) pushes it twice, each push up 0.06
+    to 0.7 or down 0.03 to -0.3 (over magma at the floor it sits at -0.06, in two blocks 0.24 at once), the top block
+    (air above) pushes nothing, but the 60th tick the hull has been in it throws the boat up at 0.6 (it flies 0.45, 0.41
+    ... and drops back in at the surface less 0.3504, as a dropped boat does), then again 82 ticks after the first.
+    `FMcBoatEntity::TickBubbleColumns` is its own rule, not main's `McPhysics::BubbleColumnPush` (m1/blocks-and-chunks,
+    not merged here): same per-block push, twice, and a boat-only throw. Not fitted: a boat in a downward column's top
+    block, mobs and players riding, a column starting under a moving boat.
   - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:

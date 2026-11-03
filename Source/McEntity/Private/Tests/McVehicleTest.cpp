@@ -311,6 +311,88 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// ---- A boat with water over it sinks to the floor (vehicle_log10.txt: v' = 0.75 (v - 0.04 + 0.04 / 65)) ----
+	{
+		FMcBoatEntity* Sinker = new FMcBoatEntity();
+		Sinker->Body.Position = FVector(8.5, 2.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Sinker));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("summoned under water it falls 0.029538 the first tick"), Sinker->Body.Position.Y, 2.0 - 0.0295385, 1e-5);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and 0.051692 the second"), Sinker->Body.Velocity.Y, -0.0516923, 1e-5);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and 0.068308 the third"), Sinker->Body.Velocity.Y, -0.0683077, 1e-5);
+		for (int32 Tick = 0; Tick < 30; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestNearlyEqual(TEXT("it lands on the pond's floor and stays there"), Sinker->Body.Position.Y, 1.0, 1e-4);
+		Sinker->bRemoved = true;
+		Manager.Tick();
+	}
+
+	// ---- A boat in a bubble column (vehicle_log11.txt: a boat over soul sand, pond y 1..2, floor at 0) ----
+	{
+		for (int32 Y = 1; Y <= 2; ++Y)
+		{
+			World.SetBlock(FIntVector(2, Y, 12), State(TEXT("minecraft:bubble_column[drag=false]")));
+			World.SetBlock(FIntVector(2, Y, 14), State(TEXT("minecraft:bubble_column[drag=true]")));
+		}
+		FMcBoatEntity* Up = new FMcBoatEntity();
+		Up->Body.Position = FVector(2.5, 1.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Up));
+		FMcBoatEntity* Down = new FMcBoatEntity();
+		Down->Body.Position = FVector(2.5, 1.0, 14.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Down));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("on the floor of a rising column, a boat is pushed up twice 0.06 (log: 0.12 the first tick)"), Up->Body.Velocity.Y, 0.12, 1e-6);
+		TestNearlyEqual(TEXT("over magma it is pulled down 0.06 at the floor"), Down->Body.Velocity.Y, -0.06, 1e-6);
+		for (int32 Tick = 0; Tick < 10; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the up boat has risen toward the surface"), Up->Body.Position.Y > 1.5);
+		Up->bRemoved = true;
+		Down->bRemoved = true;
+		Manager.Tick();
+	}
+
+	// ---- vehicle_log11.txt's boat over soul sand in a pond seven deep, replayed (the log's y plus 58) ----
+	{
+		for (int32 Y = 1; Y <= 7; ++Y)
+		{
+			World.SetBlock(FIntVector(20, Y, 12), State(TEXT("minecraft:bubble_column[drag=false]")));
+		}
+		FMcBoatEntity* Rise = new FMcBoatEntity();
+		Rise->Body.Position = FVector(20.5, 4.0, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Rise));
+		const double Expected[][2] = { { 3.97046, 0.210462 }, { 4.09877, 0.248308 }, { 4.25546, 0.276692 }, { 4.43344, 0.297981 }, { 4.62739, 0.433947 } };
+		for (int32 Tick = 0; Tick < 5; ++Tick)
+		{
+			Manager.Tick();
+			TestNearlyEqual(*FString::Printf(TEXT("rising boat %d, y"), Tick + 1), Rise->Body.Position.Y, Expected[Tick][0], 1e-4);
+			TestNearlyEqual(*FString::Printf(TEXT("rising boat %d, speed"), Tick + 1), Rise->Body.Velocity.Y, Expected[Tick][1], 1e-5);
+		}
+		for (int32 Tick = 5; Tick < 69; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("it floats at the top of the column, not yet thrown"), Rise->Body.Velocity.Y < 0.1 && Rise->Body.Position.Y > 7.4 && Rise->Body.Position.Y < 7.6);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and the 70th tick throws it up at 0.6"), Rise->Body.Velocity.Y, 0.6, 1e-6);
+		Manager.Tick();
+		TestNearlyEqual(TEXT("it flies 0.45 the next tick"), Rise->Body.Position.Y - 7.5233, 0.45, 2e-3);
+		for (int32 Tick = 72; Tick < 152; ++Tick)
+		{
+			Manager.Tick();
+			TestTrue(*FString::Printf(TEXT("not thrown again at tick %d"), Tick), Rise->Body.Velocity.Y < 0.5 || Tick < 74);
+		}
+		Manager.Tick();
+		TestNearlyEqual(TEXT("it is thrown again at the 152nd tick (the log's second throw, 82 after the first)"), Rise->Body.Velocity.Y, 0.6, 1e-6);
+		Rise->bRemoved = true;
+		Manager.Tick();
+	}
+
 	// ---- A boat takes in the mobs it bumps into, up to its seats ----
 	{
 		FMcBoatEntity* Boat = new FMcBoatEntity();

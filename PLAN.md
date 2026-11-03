@@ -129,7 +129,9 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
     placed from the item on a rail or water. `/summon minecraft:minecart|boat` works.
-    Carts pushing (vehicle_log7/8.txt, `McClient.McEntity.CartPushLog`): a cart touching another along its rail
+    Carts pushing (vehicle_log7/8.txt, `McClient.McEntity.CartPushLog`; `log sents` there also prints an `mcref sentx:`
+    line each tick with an item's count, a container entity's item total and a TNT cart's fuse, added to
+    E:/mc-reference's Script.java, which is not a git repository, so this note is its only record): a cart touching another along its rail
     (within 0.2 aside) keeps 0.2 of its speed plus half the two together, shoved 0.05 apart (0.05/distance past a
     block); a furnace cart, fuelled or not, hands the other its whole speed and keeps 0.95. A cart takes a mob in
     only above 0.1 a tick; faster than that, it and a mob it can't take are shoved 0.05 apart (not a ridden cart),

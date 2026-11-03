@@ -860,7 +860,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 
 	// A fishing rod casts or reels in, and a firework rocket pulls a glider along: at nothing, or (below) at a block that
 	// doesn't open or move.
-	const bool bUsedInAir = Held.Item == TEXT("minecraft:fishing_rod") || (bGliding && Held.Item == TEXT("minecraft:firework_rocket"));
+	const bool bUsedInAir = Held.Item == TEXT("minecraft:fishing_rod") || Held.Item == TEXT("minecraft:map") || (bGliding && Held.Item == TEXT("minecraft:firework_rocket"));
 	if (!Target.IsSet())
 	{
 		if (bUsedInAir && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
@@ -1669,6 +1669,7 @@ void AMcPlayerPawn::ServerGameTick()
 			ServerTickFishing(*Entities);
 		}
 		ServerTickElytra();
+		ServerTickMaps();
 
 		// Footsteps, on the ground and not sneaking (sneaking is quiet), at the step sound of the block underfoot.
 		const bool bSneakNow = bLocal ? bSneaking : bSneakPose;

@@ -725,7 +725,7 @@ namespace McPacks
 		}
 		FString List;
 		TArray<FString> Names;
-		if (FParse::Value(FCommandLine::Get(), TEXT("-McPacks="), List))
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McPacks="), List, false))
 		{
 			Names = ParseList(List);
 		}

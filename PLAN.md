@@ -642,6 +642,8 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   against vanilla's screen. The 1070 needs those cache files copied by hand (the cache is not synced). Not done: the
   in-world blur behind the screen.
 
+- **Pack order (2026-11-03, shot).** Two packs that both replace `stone` (solid red `zz_ord_a`, blue `zz_ord_b`, reference `scripts/order_pack.txt`): the vanilla client with `packs file/zz_ord_a,file/zz_ord_b` shows blue, reversed shows red, i.e. the pack selected last (the top of the Selected list) wins; ours, `-McPacks=zz_ord_a,zz_ord_b` and reversed, gives the same colours (226,0,0 / 0,0,226 lit). This found `-McPacks=a,b` using only `a` (FParse::Value stops at a comma): fixed. The Selected list order and arrows were shot against vanilla earlier; the screen's own clicks on the arrows are not scripted in the reference.
+
 - **In-world menu background (2026-11-03, built and shot).** The game blurs the world behind the pause menu, Options and
   Resource Packs (three box-blur passes each way; an edge goes soft over about 12 pixels at 1280 x 720) and darkens it to
   0.748 of the plain view (vanilla shots `blur_plain`/`blur_options`). `DrawWorldMenuDim` draws a 0.252 black fill; `UpdateMenuBlur`

@@ -126,7 +126,15 @@ void FMcVehicle::DropInventory()
 	{
 		if (!Stack.IsEmpty())
 		{
-			Owner->DropItem(Body.Position + FVector(0.0, 0.3, 0.0), Stack);
+			// In pieces of ten to thirty at a time (vehicle_log16.txt: 64 stone left as 13, 12, 19, 16 and 4; 11, 19, 11, 22
+			// and 1; 14, 19, 25 and 6; the three apples whole).
+			while (Stack.Count > 0)
+			{
+				FMcItemStack Piece = Stack;
+				Piece.Count = FMath::Min(Stack.Count, FMath::RandRange(10, 30));
+				Stack.Count -= Piece.Count;
+				Owner->DropItem(Body.Position + FVector(0.0, 0.3, 0.0), Piece);
+			}
 			Stack = FMcItemStack();
 		}
 	}
@@ -1027,6 +1035,99 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 	return ESurface::Air;
 }
 
+bool FMcBoatEntity::IsBlockedBy(const FMcEntity& Other) const
+{
+	if (&Other == this || Other.bRemoved)
+	{
+		return false;
+	}
+	if (IsBoatType(Other.GetType()))
+	{
+		return true;
+	}
+	if (!Other.IsLiving())
+	{
+		return false;
+	}
+	const FMcMob& Mob = static_cast<const FMcMob&>(Other);
+	// One it takes in (or has in) isn't in the way.
+	return Mob.RidingId == 0 && !(CanCarryMob(Mob) && HasFreeSeat());
+}
+
+void FMcBoatEntity::ClipAgainstNeighbours(FMcEntityManager& Manager)
+{
+	// vehicle_log15.txt: a boat at 0.3 into an iron golem stops against its box (x 7.1125, the golem's edge 7.8 less the
+	// boat's half width) and its speed along that axis is gone.
+	if (FMath::Abs(Body.Velocity.X) < 1e-9 && FMath::Abs(Body.Velocity.Z) < 1e-9)
+	{
+		return;
+	}
+	const FBox Box = Body.GetBox();
+	TArray<FMcEntity*> Near;
+	Manager.FindInBox(Box.ExpandBy(FVector(FMath::Abs(Body.Velocity.X), 0.0, FMath::Abs(Body.Velocity.Z))), Near);
+	for (const bool bXFirst : { FMath::Abs(Body.Velocity.X) >= FMath::Abs(Body.Velocity.Z), FMath::Abs(Body.Velocity.X) < FMath::Abs(Body.Velocity.Z) })
+	{
+		const bool bX = bXFirst;
+		double& V = bX ? Body.Velocity.X : Body.Velocity.Z;
+		for (FMcEntity* Entity : Near)
+		{
+			if (!IsBlockedBy(*Entity) || V == 0.0)
+			{
+				continue;
+			}
+			const FBox Other = Entity->Body.GetBox();
+			const bool bAcross = bX ? (Box.Min.Z < Other.Max.Z && Box.Max.Z > Other.Min.Z) : (Box.Min.X < Other.Max.X && Box.Max.X > Other.Min.X);
+			if (!bAcross || Box.Min.Y >= Other.Max.Y || Box.Max.Y <= Other.Min.Y)
+			{
+				continue;
+			}
+			const double MinMine = bX ? Box.Min.X : Box.Min.Z, MaxMine = bX ? Box.Max.X : Box.Max.Z;
+			const double MinTheirs = bX ? Other.Min.X : Other.Min.Z, MaxTheirs = bX ? Other.Max.X : Other.Max.Z;
+			if (V > 0.0 && MaxMine <= MinTheirs + 1e-7 && MaxMine + V > MinTheirs)
+			{
+				V = 0.0;
+				(bX ? Body.Position.X : Body.Position.Z) += MinTheirs - MaxMine;
+			}
+			else if (V < 0.0 && MinMine >= MaxTheirs - 1e-7 && MinMine + V < MaxTheirs)
+			{
+				V = 0.0;
+				(bX ? Body.Position.X : Body.Position.Z) += MaxTheirs - MinMine;
+			}
+		}
+	}
+}
+
+void FMcBoatEntity::PushNeighbours(FMcEntityManager& Manager)
+{
+	// After it has moved, everything its box (0.2 more each side) reaches is shoved by the bigger of the two gaps and
+	// shoves it back, 0.05 at a block or more (vehicle_log15.txt: boats on ice 1.518 apart, then 1.567, 1.46, 1.552: one
+	// push each time either of them looks and sees the other, so two in a tick when both do; an iron golem 1.388, 1.437
+	// and 1.535 off pushed three times and not at 1.625; a boat with a rider isn't shoved).
+	TArray<FMcEntity*> Near;
+	const FBox Box = Body.GetBox().ExpandBy(FVector(0.2, 0.0, 0.2));
+	Manager.FindInBox(Box, Near);
+	for (FMcEntity* Entity : Near)
+	{
+		if (!IsBlockedBy(*Entity) || !Overlaps(Box, Entity->Body.GetBox()))
+		{
+			continue;
+		}
+		const FVector2D Between(Entity->Body.Position.X - Body.Position.X, Entity->Body.Position.Z - Body.Position.Z);
+		const double Gap = FMath::Max(FMath::Abs(Between.X), FMath::Abs(Between.Y));
+		if (Gap < 0.01)
+		{
+			continue;
+		}
+		const double Root = FMath::Sqrt(Gap);
+		const FVector2D Shove = Between / Root * FMath::Min(1.0 / Root, 1.0) * 0.05;
+		Entity->Body.Velocity += FVector(Shove.X, 0.0, Shove.Y);
+		if (GetPassengerCount() == 0)
+		{
+			Body.Velocity -= FVector(Shove.X, 0.0, Shove.Y);
+		}
+	}
+}
+
 void FMcBoatEntity::TickBubbleColumns(FMcBlockWorld& World)
 {
 	// After the move, for each column block the hull is in (vehicle_log11.txt, a boat over soul sand and over magma, every
@@ -1101,10 +1202,12 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		}
 	}
 	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
-	Body.Velocity.X += -FMath::Sin(Radians) * Push;
-	Body.Velocity.Z += FMath::Cos(Radians) * Push;
+	// The block's friction first, then the paddles' push (vehicle_log15.txt, a driven boat on ice: 0.04, then
+	// 0.04 * 0.98 + 0.04 = 0.0792, 0.1176 ...; on stone 0.04, 0.064).
 	Body.Velocity.X *= Slip;
 	Body.Velocity.Z *= Slip;
+	Body.Velocity.X += -FMath::Sin(Radians) * Push;
+	Body.Velocity.Z += FMath::Cos(Radians) * Push;
 
 	// Up and down: it floats at the surface, rises through water over it and falls in the air.
 	switch (Where)
@@ -1138,12 +1241,14 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y -= Gravity;
 		break;
 	}
+	ClipAgainstNeighbours(Manager);
 	McPhysics::Move(World, Body, Body.Velocity, false);
 	const FIntVector Under(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.5), FMath::FloorToInt32(Body.Position.Z));
 	const double Factor = SpeedFactor(FMcBlockRegistry::Get().GetBlockOf(World.GetBlock(Under)).Name);
 	Body.Velocity.X *= Factor;
 	Body.Velocity.Z *= Factor;
 	TickBubbleColumns(World);
+	PushNeighbours(Manager);
 	bWasInAir = Where == ESurface::Air;
 	TickPassengers(Manager);
 }

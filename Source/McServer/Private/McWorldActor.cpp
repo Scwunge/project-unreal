@@ -685,6 +685,10 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 		State.bOnDisk = Arrived.bFromDisk;
 		State.bHadEntities = !Arrived.Extras.Entities.IsEmpty();
 	}
+	if (Pos == FIntPoint(0, 0))
+	{
+		UE_LOG(LogMcServer, Display, TEXT("Chunk 0, 0 arrived with %d bytes of entities (host %d, from disk %d)"), Arrived.Extras.Entities.Num(), Entities ? 1 : 0, Arrived.bFromDisk ? 1 : 0);
+	}
 	if (Entities && !Arrived.Extras.Entities.IsEmpty())
 	{
 		Entities->RestoreChunk(Arrived.Extras.Entities);

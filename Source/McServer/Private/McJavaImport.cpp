@@ -401,7 +401,7 @@ namespace
 						FMemoryWriter DataWriter(Data);
 						Scenic.Serialize(DataWriter);
 						FSceneryChunk& Chunk = Scenery.FindOrAdd(FIntPoint(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ));
-						FMemoryWriter BodyWriter(Chunk.Body);
+						FMemoryWriter BodyWriter(Chunk.Body, false, true);
 						BodyWriter << Type << Data;
 						++Chunk.Count;
 						++Stats.Scenery;
@@ -966,6 +966,7 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 						int32 Count = Here->Count;
 						CountWriter << Count;
 						Extras.Entities.Append(Here->Body);
+						UE_LOG(LogMcServer, Display, TEXT("Scenery in chunk %d, %d: %d, %d bytes"), Pos.X, Pos.Y, Here->Count, Extras.Entities.Num());
 					}
 					Storage.QueueSave(Pos, McChunkSave::Encode(Chunk, Extras));
 					++OutStats.Chunks;

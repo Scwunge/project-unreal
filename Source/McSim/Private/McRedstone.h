@@ -37,6 +37,7 @@ public:
 	bool Use(const FIntVector& Pos, float Yaw);
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
+	void PlayerPlaced(const FIntVector& Pos);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
 	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; SunScale = 1.0; }

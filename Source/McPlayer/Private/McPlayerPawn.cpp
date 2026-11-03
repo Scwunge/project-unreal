@@ -1915,6 +1915,10 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	for (const FMcNetBlockChange& Change : Placed)
 	{
 		ServerSetBlock(Change.Pos, Change.State);
+		if (OnPlaced)
+		{
+			OnPlaced(Change.Pos);
+		}
 		AttachBanner(Change.Pos, Held);
 	}
 	if (!Data->bCreative && --Held.Count <= 0)

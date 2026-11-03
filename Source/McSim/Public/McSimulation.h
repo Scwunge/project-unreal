@@ -53,6 +53,9 @@ public:
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
 	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
+	// A player put the block at Pos in place by hand. A tripwire hook put down this way looks along its line at once, which
+	// one put by a command does not (reference run rs_trip4).
+	void PlayerPlaced(const FIntVector& Pos);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.

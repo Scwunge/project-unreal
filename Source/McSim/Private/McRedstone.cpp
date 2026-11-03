@@ -702,6 +702,15 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 	}
 }
 
+void FMcRedstone::PlayerPlaced(const FIntVector& Pos)
+{
+	// Reference run rs_trip4: the second hook a player puts in place joins the line and the strings at once.
+	if (KindOf(World.GetBlock(Pos)) == TripwireHook)
+	{
+		UpdateHookLine(Pos);
+	}
+}
+
 void FMcRedstone::NotifyContainerChanged(const FIntVector& Pos)
 {
 	// The comparators beside it, and beyond a solid block the comparator that reads through it (minecraft.wiki, "Redstone

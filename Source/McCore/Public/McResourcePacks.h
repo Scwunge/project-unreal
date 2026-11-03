@@ -53,6 +53,10 @@ struct MCCORE_API FMcPackInfo
 		bool bBidirectional = false;
 	};
 	TArray<FLanguage> Languages;
+	// Files the pack has under assets/<namespace>/shaders/ and assets/<namespace>/post_effect/ (core shaders, post effects):
+	// GLSL and render-graph JSON for the game's own renderer. Unreal draws the world, so they have no effect here; they are
+	// listed so the pack's load can say so.
+	TArray<FString> ShaderFiles;
 };
 
 class MCCORE_API FMcResourcePack
@@ -96,6 +100,8 @@ private:
 	};
 
 	bool OpenZip(const FString& PackPath, FString& OutError);
+	// Fills Info.ShaderFiles from what the pack holds.
+	void FindShaderFiles();
 	// The path a file has inside the pack: in the last overlay for this game's format that has it, else as given.
 	FString Resolve(const FString& Relative) const;
 	bool HasExact(const FString& Path) const;

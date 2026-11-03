@@ -116,7 +116,13 @@ private:
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
-	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
+	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
+	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
+	// the definition is read (McItemDef) and each model it names is drawn: a flat item's layers, or a model's elements under its
+	// "gui" display transform.
+	const FIcon& GetStackIcon(const FMcItemStack& Stack);
+	void BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints, FIcon& Icon);
+	TMap<FString, FIcon> StackIcons;
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
 	void DrawSprite(UTexture2D* Texture, float X, float Y, float Width, float Height);
 	// A part of a picture: U, V, UW and VH are in pixels of the picture itself.

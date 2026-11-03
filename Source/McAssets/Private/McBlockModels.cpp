@@ -186,6 +186,9 @@ namespace
 		TMap<FName, FTextureValue> Textures;
 		bool bAmbientOcclusion = true;
 		bool bBuiltin = false;
+		bool bGenerated = false;
+		bool bGuiFront = false;
+		TMap<FString, FMcModelDisplay> Display;
 		bool bFailed = false;
 		FString Error;
 	};
@@ -289,6 +292,7 @@ namespace
 		FBlockStateDef LoadBlockState(const FMcBlock& Block);
 		bool Matches(const FCondition& Condition, FMcStateId State) const;
 		const FBakedApply& BakeApply(const FApply& Apply);
+		FMcItemModel BakeItem(const FString& ModelId);
 
 	private:
 		TSharedRef<const FResolvedModel> LoadModel(const FString& RawId, int32 Depth);
@@ -408,6 +412,7 @@ namespace
 		if (ModelPath.StartsWith(TEXT("builtin/")))
 		{
 			Model->bBuiltin = true;
+			Model->bGenerated = ModelPath == TEXT("builtin/generated");
 		}
 		else if (Depth > 32)
 		{
@@ -457,6 +462,29 @@ namespace
 					ParseElements(*Elements, *Model, Id);
 				}
 				Json->TryGetBoolField(TEXT("ambientocclusion"), Model->bAmbientOcclusion);
+				const TSharedPtr<FJsonObject>* DisplayObject;
+				if (Json->TryGetObjectField(TEXT("display"), DisplayObject))
+				{
+					for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*DisplayObject)->Values)
+					{
+						const TSharedPtr<FJsonObject>* Transform;
+						if (!Entry.Value->TryGetObject(Transform))
+						{
+							continue;
+						}
+						FMcModelDisplay Display;
+						float Values[3];
+						if (ReadFloats(*Transform, TEXT("rotation"), Values, 3)) { Display.Rotation = FVector(Values[0], Values[1], Values[2]); }
+						if (ReadFloats(*Transform, TEXT("translation"), Values, 3)) { Display.Translation = FVector(Values[0], Values[1], Values[2]); }
+						if (ReadFloats(*Transform, TEXT("scale"), Values, 3)) { Display.Scale = FVector(Values[0], Values[1], Values[2]); }
+						Model->Display.Add(Entry.Key, Display);
+					}
+				}
+				FString GuiLight;
+				if (Json->TryGetStringField(TEXT("gui_light"), GuiLight))
+				{
+					Model->bGuiFront = GuiLight == TEXT("front");
+				}
 			}
 		}
 
@@ -641,6 +669,39 @@ namespace
 		return Result;
 	}
 
+	FMcItemModel FBaker::BakeItem(const FString& ModelId)
+	{
+		FMcItemModel Out;
+		const TSharedRef<const FResolvedModel> Model = LoadModel(ModelId, 0);
+		if (Model->bFailed)
+		{
+			Out.bFailed = true;
+			return Out;
+		}
+		Out.bGenerated = Model->bGenerated;
+		Out.bGuiFront = Model->bGuiFront;
+		Out.Display = Model->Display;
+		const FApply Identity{ ModelId };
+		for (const FElement& Element : Model->Elements)
+		{
+			BakeElement(*Model, Element, Identity, Out.Quads);
+		}
+		if (Model->bGenerated)
+		{
+			for (int32 Layer = 0; Layer < 5; ++Layer)
+			{
+				bool bResolved, bTranslucent;
+				const FName Texture = ResolveTexture(*Model, FString::Printf(TEXT("#layer%d"), Layer), bResolved, bTranslucent);
+				if (!bResolved)
+				{
+					break;
+				}
+				Out.Layers.Add(Texture);
+			}
+		}
+		return Out;
+	}
+
 	void FBaker::ParseApplies(const TSharedPtr<FJsonValue>& Value, TArray<FApply>& Out) const
 	{
 		TArray<TSharedPtr<FJsonValue>> Items;
@@ -793,6 +854,13 @@ namespace
 			return true;
 		}
 	}
+}
+
+FMcItemModel McBakeItemModel(const FString& ModelId)
+{
+	FMcBakeStats Stats;
+	FBaker Baker(Stats);
+	return Baker.BakeItem(ModelId);
 }
 
 FMcBlockModels& FMcBlockModels::Get()

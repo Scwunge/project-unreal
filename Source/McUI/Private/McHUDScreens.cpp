@@ -677,7 +677,7 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y)
 	{
 		return;
 	}
-	DrawIcon(Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
+	DrawIcon(GetStackIcon(Stack), X, Y);
 	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{

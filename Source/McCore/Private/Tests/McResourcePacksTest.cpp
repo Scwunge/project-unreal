@@ -626,6 +626,44 @@ bool FMcLanguageTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A pack's core shaders and post effects are found (folder and zip) and listed; nothing else counts as one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackShadersTest, "McClient.McCore.PackShaders",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackShadersTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackShadersTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString FolderDir = Root / TEXT("folder");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(FolderDir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("void main() {}"), *(FolderDir / TEXT("assets/minecraft/shaders/core/position.fsh")));
+	FFileHelper::SaveStringToFile(TEXT("{}"), *(FolderDir / TEXT("assets/minecraft/post_effect/blur.json")));
+	FFileHelper::SaveStringToFile(TEXT("png"), *(FolderDir / TEXT("assets/minecraft/textures/block/stone.png")));
+	const FString NonePath = Root / TEXT("none");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(NonePath / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("png"), *(NonePath / TEXT("assets/minecraft/textures/block/stone.png")));
+	const FString ZipPath = Root / TEXT("shaders.zip");
+	FFileHelper::SaveArrayToFile(MakeZip({
+		{ TEXT("pack.mcmeta"), Bytes(TEXT("{\"pack\":{\"pack_format\":97}}")), false },
+		{ TEXT("assets/other/shaders/core/x.vsh"), Bytes(TEXT("x")), true },
+		{ TEXT("assets/minecraft/textures/shaders/not.png"), Bytes(TEXT("png")), true } }), *ZipPath);
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Folder = FMcResourcePack::Open(FolderDir, &Error);
+	const TSharedPtr<FMcResourcePack> None = FMcResourcePack::Open(NonePath, &Error);
+	const TSharedPtr<FMcResourcePack> Zip = FMcResourcePack::Open(ZipPath, &Error);
+	if (!TestTrue(TEXT("the packs open: ") + Error, Folder.IsValid() && None.IsValid() && Zip.IsValid()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("folder: two shader files"), Folder->GetInfo().ShaderFiles.Num(), 2);
+	TestTrue(TEXT("folder: the core shader"), Folder->GetInfo().ShaderFiles.Contains(TEXT("assets/minecraft/shaders/core/position.fsh")));
+	TestTrue(TEXT("folder: the post effect"), Folder->GetInfo().ShaderFiles.Contains(TEXT("assets/minecraft/post_effect/blur.json")));
+	TestEqual(TEXT("a pack without shaders"), None->GetInfo().ShaderFiles.Num(), 0);
+	TestEqual(TEXT("zip: one, in another namespace; a texture under textures/shaders is not one"), Zip->GetInfo().ShaderFiles.Num(), 1);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackBuiltInTest, "McClient.McCore.PackBuiltIn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 

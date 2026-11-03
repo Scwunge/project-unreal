@@ -316,7 +316,55 @@ TSharedPtr<FMcResourcePack> FMcResourcePack::Open(const FString& PackPath, FStri
 	{
 		return Fail(TEXT("pack.mcmeta has no \"pack\" section"));
 	}
+	Pack->FindShaderFiles();
+	if (Pack->Info.ShaderFiles.Num() > 0)
+	{
+		UE_LOG(LogMcCore, Warning, TEXT("Resource pack %s has %d shader file(s) (e.g. %s): core shaders and post effects are for the game's own renderer and are not used here"),
+			*Pack->Info.Name, Pack->Info.ShaderFiles.Num(), *Pack->Info.ShaderFiles[0]);
+	}
 	return Pack;
+}
+
+void FMcResourcePack::FindShaderFiles()
+{
+	const auto IsShaderPath = [](const FString& Path)
+	{
+		// assets/<namespace>/shaders/... or assets/<namespace>/post_effect/...
+		TArray<FString> Parts;
+		Path.ParseIntoArray(Parts, TEXT("/"), true);
+		return Parts.Num() >= 4 && Parts[0] == TEXT("assets") && (Parts[2] == TEXT("shaders") || Parts[2] == TEXT("post_effect"));
+	};
+	Info.ShaderFiles.Reset();
+	if (Info.bZip)
+	{
+		for (const TPair<FString, FZipEntry>& Entry : Entries)
+		{
+			if (IsShaderPath(Entry.Key))
+			{
+				Info.ShaderFiles.Add(Entry.Key);
+			}
+		}
+	}
+	else
+	{
+		TArray<FString> Namespaces;
+		IFileManager::Get().FindFiles(Namespaces, *(Info.Path / TEXT("assets") / TEXT("*")), false, true);
+		for (const FString& Namespace : Namespaces)
+		{
+			for (const TCHAR* Folder : { TEXT("shaders"), TEXT("post_effect") })
+			{
+				TArray<FString> Found;
+				IFileManager::Get().FindFilesRecursive(Found, *(Info.Path / TEXT("assets") / Namespace / Folder), TEXT("*"), true, false);
+				for (const FString& File : Found)
+				{
+					FString Relative = File;
+					FPaths::MakePathRelativeTo(Relative, *(Info.Path / TEXT("")));
+					Info.ShaderFiles.Add(Relative.Replace(TEXT("\\"), TEXT("/")));
+				}
+			}
+		}
+	}
+	Info.ShaderFiles.Sort();
 }
 
 bool FMcResourcePack::OpenZip(const FString& PackPath, FString& OutError)

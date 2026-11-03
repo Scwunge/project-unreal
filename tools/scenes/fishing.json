@@ -1,0 +1,7 @@
+{
+  "description": "A pond three deep in classic_flat (surface y=-61), the player on its north shore looking south over it. -McCast=6 gives them a fishing rod and casts it: the bobber lands a few blocks out and floats, its line running back to the rod.",
+  "camera": [0.5, -59.38, 0.5, 0.0, 5.0],
+  "blocks": [
+    { "from": [-6, -63, 3], "to": [6, -61, 15], "state": "minecraft:water" }
+  ]
+}

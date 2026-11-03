@@ -1,0 +1,8 @@
+{
+  "description": "A lectern with a book, facing south, seen from above where its reader stands.",
+  "camera": [2.5, -58.0, 3.9, 180.0, 50.0],
+  "blocks": [
+    { "from": [-2, -61, -2], "to": [6, -61, 6], "state": "minecraft:stone" },
+    { "from": [2, -60, 2], "to": [2, -60, 2], "state": "minecraft:lectern[facing=south,has_book=true,powered=false]" }
+  ]
+}

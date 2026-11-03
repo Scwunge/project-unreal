@@ -1,5 +1,9 @@
 #include "McBlockModels.h"
 #include "McBlockRegistry.h"
+#include "McResourcePacks.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -188,6 +192,173 @@ bool FMcModelBakerTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("piston body facing down is the top 12 pixels"), FMath::IsNearlyEqual(Down.X, 0.25) && FMath::IsNearlyEqual(Down.Y, 1.0));
 	}
 
+	return true;
+}
+
+// A pack's blockstates and models replace the game's: a blockstate that names a model of the pack's own (a half-height
+// box, written with elements) and one that names a child of block/cube_all with another texture. Both are read through
+// the pack stack, so the baker needs no pack code of its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackModelsTest, "McClient.McAssets.PackModels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackModelsTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackModelsTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Assets = Root / TEXT("assets/minecraft");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"models test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_half\"}}}"), *(Assets / TEXT("blockstates/stone.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_dirt_cube\"}}}"), *(Assets / TEXT("blockstates/sand.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"textures\":{\"all\":\"minecraft:block/cobblestone\",\"particle\":\"minecraft:block/cobblestone\"},"
+		"\"elements\":[{\"from\":[0,0,0],\"to\":[16,8,16],\"faces\":{\"up\":{\"texture\":\"#all\",\"cullface\":\"up\"},\"down\":{\"texture\":\"#all\"},"
+		"\"north\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"south\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"west\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]},\"east\":{\"texture\":\"#all\",\"uv\":[0,8,16,16]}}}]}"),
+		*(Assets / TEXT("models/block/zz_half.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"minecraft:block/dirt\"}}"), *(Assets / TEXT("models/block/zz_dirt_cube.json")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockModels& Models = FMcBlockModels::Get();
+	Models.Unload();
+	if (TestTrue(TEXT("models bake with the pack"), Models.EnsureBaked()))
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const TOptional<FMcStateId> Stone = Registry.FindDefaultState(FName("minecraft:stone"));
+		const TOptional<FMcStateId> Sand = Registry.FindDefaultState(FName("minecraft:sand"));
+		if (TestTrue(TEXT("stone and sand exist"), Stone.IsSet() && Sand.IsSet()))
+		{
+			const FMcBakedModel& Half = Models.GetModel(Stone.GetValue());
+			TestEqual(TEXT("the pack's own model has six faces"), Half.Quads.Num(), 6);
+			float MaxY = 0.0f;
+			for (const FMcBakedQuad& Quad : Half.Quads)
+			{
+				for (const FVector3f& P : Quad.Positions)
+				{
+					MaxY = FMath::Max(MaxY, P.Y);
+				}
+				TestEqual(TEXT("with the model's texture"), Quad.Texture, FName("minecraft:block/cobblestone"));
+			}
+			TestEqual(TEXT("and half the height"), MaxY, 0.5f);
+
+			const FMcBakedModel& Cube = Models.GetModel(Sand.GetValue());
+			TestEqual(TEXT("a child of cube_all has six faces"), Cube.Quads.Num(), 6);
+			for (const FMcBakedQuad& Quad : Cube.Quads)
+			{
+				TestEqual(TEXT("with the child's texture"), Quad.Texture, FName("minecraft:block/dirt"));
+			}
+		}
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Models.Unload();
+	Models.EnsureBaked();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// Two packs: the higher pack's blockstate wins; a model can have its parent in the lower pack; a variant's x rotation turns
+// the model over; a multipart blockstate of a pack applies its unconditional part. Swapped, the other pack wins.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackModelStackTest, "McClient.McAssets.PackModelStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackModelStackTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackModelStackTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const auto Save = [&Root](const TCHAR* Pack, const FString& Relative, const TCHAR* Text)
+	{
+		FFileHelper::SaveStringToFile(Text, *(Root / Pack / TEXT("assets/minecraft") / Relative));
+	};
+	for (const TCHAR* Pack : { TEXT("low"), TEXT("high") })
+	{
+		FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"model stack test\"}}"), *(Root / Pack / TEXT("pack.mcmeta")));
+	}
+	// Low: stone is a cube of dirt; a half box and a cube of dirt as models; the fence has a multipart state of one half box.
+	Save(TEXT("low"), TEXT("blockstates/stone.json"), TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_dirt_cube\"}}}"));
+	Save(TEXT("low"), TEXT("models/block/zz_dirt_cube.json"), TEXT("{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"minecraft:block/dirt\"}}"));
+	Save(TEXT("low"), TEXT("models/block/zz_half.json"),
+		TEXT("{\"textures\":{\"all\":\"minecraft:block/cobblestone\",\"particle\":\"minecraft:block/cobblestone\"},"
+			"\"elements\":[{\"from\":[0,0,0],\"to\":[16,8,16],\"faces\":{\"up\":{\"texture\":\"#all\"},\"down\":{\"texture\":\"#all\"},"
+			"\"north\":{\"texture\":\"#all\"},\"south\":{\"texture\":\"#all\"},\"west\":{\"texture\":\"#all\"},\"east\":{\"texture\":\"#all\"}}}]}"));
+	Save(TEXT("low"), TEXT("blockstates/oak_fence.json"),
+		TEXT("{\"multipart\":[{\"apply\":{\"model\":\"minecraft:block/zz_half\"}},{\"when\":{\"north\":\"true\"},\"apply\":{\"model\":\"minecraft:block/zz_dirt_cube\"}}]}"));
+	// High: stone is the half box turned over, sand a child of the low pack's dirt cube with another texture.
+	Save(TEXT("high"), TEXT("blockstates/stone.json"), TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_half\",\"x\":180}}}"));
+	Save(TEXT("high"), TEXT("blockstates/sand.json"), TEXT("{\"variants\":{\"\":{\"model\":\"minecraft:block/zz_cobble_child\"}}}"));
+	Save(TEXT("high"), TEXT("models/block/zz_cobble_child.json"), TEXT("{\"parent\":\"minecraft:block/zz_dirt_cube\",\"textures\":{\"all\":\"minecraft:block/cobblestone\"}}"));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Low = FMcResourcePack::Open(Root / TEXT("low"), &Error);
+	const TSharedPtr<FMcResourcePack> High = FMcResourcePack::Open(Root / TEXT("high"), &Error);
+	if (!TestTrue(TEXT("the packs open: ") + Error, Low.IsValid() && High.IsValid()))
+	{
+		return false;
+	}
+	FMcBlockModels& Models = FMcBlockModels::Get();
+	const auto Bounds = [](const FMcBakedModel& Model, float& MinY, float& MaxY)
+	{
+		MinY = 10.0f;
+		MaxY = -10.0f;
+		for (const FMcBakedQuad& Quad : Model.Quads)
+		{
+			for (const FVector3f& P : Quad.Positions)
+			{
+				MinY = FMath::Min(MinY, P.Y);
+				MaxY = FMath::Max(MaxY, P.Y);
+			}
+		}
+	};
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const TOptional<FMcStateId> Stone = Registry.FindDefaultState(FName("minecraft:stone"));
+	const TOptional<FMcStateId> Sand = Registry.FindDefaultState(FName("minecraft:sand"));
+	const TOptional<FMcStateId> Fence = Registry.FindDefaultState(FName("minecraft:oak_fence"));
+	if (!TestTrue(TEXT("stone, sand and the fence exist"), Stone.IsSet() && Sand.IsSet() && Fence.IsSet()))
+	{
+		return false;
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Low, High })));
+	Models.Unload();
+	if (TestTrue(TEXT("models bake with both packs"), Models.EnsureBaked()))
+	{
+		float MinY, MaxY;
+		const FMcBakedModel& StoneModel = Models.GetModel(Stone.GetValue());
+		Bounds(StoneModel, MinY, MaxY);
+		TestEqual(TEXT("the higher pack's stone is a box"), StoneModel.Quads.Num(), 6);
+		TestEqual(TEXT("turned over by x 180: its bottom is at half height"), MinY, 0.5f);
+		TestEqual(TEXT("and its top at the block's"), MaxY, 1.0f);
+		const FMcBakedModel& SandModel = Models.GetModel(Sand.GetValue());
+		TestEqual(TEXT("a model with its parent in the lower pack has faces"), SandModel.Quads.Num(), 6);
+		for (const FMcBakedQuad& Quad : SandModel.Quads)
+		{
+			TestEqual(TEXT("with the child's own texture"), Quad.Texture, FName("minecraft:block/cobblestone"));
+		}
+		const FMcBakedModel& FenceModel = Models.GetModel(Fence.GetValue());
+		Bounds(FenceModel, MinY, MaxY);
+		TestEqual(TEXT("a multipart state: only the unconditional part for the default fence"), FenceModel.Quads.Num(), 6);
+		TestEqual(TEXT("and it is the half box"), MaxY, 0.5f);
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ High, Low })));
+	Models.Unload();
+	if (TestTrue(TEXT("models bake with the packs the other way round"), Models.EnsureBaked()))
+	{
+		const FMcBakedModel& StoneModel = Models.GetModel(Stone.GetValue());
+		TestEqual(TEXT("the low pack's stone now wins: a cube"), StoneModel.Quads.Num(), 6);
+		for (const FMcBakedQuad& Quad : StoneModel.Quads)
+		{
+			TestEqual(TEXT("of dirt"), Quad.Texture, FName("minecraft:block/dirt"));
+		}
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Models.Unload();
+	Models.EnsureBaked();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

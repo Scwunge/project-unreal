@@ -3,10 +3,13 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBook.h"
 #include "McChestLink.h"
 #include "McBrewingStand.h"
 #include "McChunk.h"
+#include "McLightEngine.h"
 #include "McFurnace.h"
+#include "McJukebox.h"
 #include "Serialization/MemoryReader.h"
 #include "McRails.h"
 #include "McSimulation.h"
@@ -22,6 +25,9 @@ namespace
 		Torch,
 		WallTorch,
 		Lamp,
+		CopperBulb,
+		Sculk,
+		CalibratedSculk,
 		Observer,
 		Piston,
 		StickyPiston,
@@ -32,17 +38,25 @@ namespace
 		Plate,
 		PlateLight,
 		PlateHeavy,
+		Tripwire,
+		TripwireHook,
+		Tnt,
 		Daylight,
 		RedstoneBlock,
 		Door,
 		Trapdoor,
 		Gate,
 		Dispenser,
+		Crafter,
 		Hopper,
 		Rail,
 		PoweredRail,
 		ActivatorRail,
 		DetectorRail,
+		Target,
+		NoteBlock,
+		Lectern,
+		Bell,
 	};
 
 	enum EDir : int32
@@ -93,6 +107,9 @@ namespace
 				else if (Name == TEXT("minecraft:redstone_torch")) Kind = Torch;
 				else if (Name == TEXT("minecraft:redstone_wall_torch")) Kind = WallTorch;
 				else if (Name == TEXT("minecraft:redstone_lamp")) Kind = Lamp;
+				else if (Name.EndsWith(TEXT("copper_bulb"))) Kind = CopperBulb;
+				else if (Name == TEXT("minecraft:sculk_sensor")) Kind = Sculk;
+				else if (Name == TEXT("minecraft:calibrated_sculk_sensor")) Kind = CalibratedSculk;
 				else if (Name == TEXT("minecraft:observer")) Kind = Observer;
 				else if (Name == TEXT("minecraft:piston")) Kind = Piston;
 				else if (Name == TEXT("minecraft:sticky_piston")) Kind = StickyPiston;
@@ -103,17 +120,25 @@ namespace
 				else if (Name == TEXT("minecraft:light_weighted_pressure_plate")) Kind = PlateLight;
 				else if (Name == TEXT("minecraft:heavy_weighted_pressure_plate")) Kind = PlateHeavy;
 				else if (Name.EndsWith(TEXT("_pressure_plate"))) Kind = Plate;
+				else if (Name == TEXT("minecraft:tnt")) Kind = Tnt;
+				else if (Name == TEXT("minecraft:tripwire")) Kind = Tripwire;
+				else if (Name == TEXT("minecraft:tripwire_hook")) Kind = TripwireHook;
 				else if (Name == TEXT("minecraft:daylight_detector")) Kind = Daylight;
 				else if (Name == TEXT("minecraft:redstone_block")) Kind = RedstoneBlock;
 				else if (Name.EndsWith(TEXT("_door"))) Kind = Door;
 				else if (Name.EndsWith(TEXT("_trapdoor"))) Kind = Trapdoor;
 				else if (Name.EndsWith(TEXT("_fence_gate"))) Kind = Gate;
 				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
+				else if (Name == TEXT("minecraft:crafter")) Kind = Crafter;
 				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
 				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
+				else if (Name == TEXT("minecraft:target")) Kind = Target;
+				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
+				else if (Name == TEXT("minecraft:lectern")) Kind = Lectern;
+				else if (Name == TEXT("minecraft:bell")) Kind = Bell;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -209,6 +234,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 	{
 		const bool bOn = !Flag(State, TEXT("powered"));
 		Set(Pos, { FChange(TEXT("powered"), Bool(bOn)) });
+		Vibrate(Pos, bOn ? 10 : 9);
 		Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, bOn), Centre, 0.3f, bOn ? 0.6f : 0.5f });
 		return true;
 	}
@@ -217,6 +243,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 		if (!Flag(State, TEXT("powered")))
 		{
 			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+			Vibrate(Pos, 10);
 			Sim.ScheduleTick(Pos, IsStoneButton(Block) ? 20 : 30);
 			Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, true), Centre });
 		}
@@ -235,6 +262,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 			const bool bLower = Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower");
 			const FIntVector Other = Pos + Vec[bLower ? Up : Down];
 			Set(Pos, { FChange(TEXT("open"), Bool(bOpen)) });
+			Vibrate(Pos, bOpen ? 10 : 9);
 			if (IsKind(Other, Door))
 			{
 				Set(Other, { FChange(TEXT("open"), Bool(bOpen)) });
@@ -324,8 +352,9 @@ bool FMcRedstone::IsKind(const FIntVector& Pos, int32 Kind) const
 
 bool FMcRedstone::IsConductor(FMcStateId State) const
 {
-	// A full, opaque block takes power and gives it on; a redstone block gives power but doesn't take it.
-	return FMcBlockLight::Get().GetDampening(State) >= 15 && FMcBlockShapes::Get().HasCollision(State) && KindOf(State) != RedstoneBlock;
+	// A full, opaque block takes power and gives it on; a redstone block gives power but doesn't take it, and neither does an
+	// observer: a lamp behind a chain of them lights as the last one fires, not two ticks earlier (reference run rs_world).
+	return FMcBlockLight::Get().GetDampening(State) >= 15 && FMcBlockShapes::Get().HasCollision(State) && KindOf(State) != RedstoneBlock && KindOf(State) != Observer;
 }
 
 int32 FMcRedstone::GetDustPower(const FIntVector& Pos) const
@@ -346,10 +375,15 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case Button:
 	case Plate:
 	case DetectorRail:
+	case TripwireHook:
+	case Lectern:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
 	case Daylight:
+	case Target:
+	case Sculk:
+	case CalibratedSculk:
 		return Number(State, TEXT("power"));
 	case Torch:
 		return Flag(State, TEXT("lit")) && Toward != Up ? 15 : 0;
@@ -404,7 +438,11 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case PlateLight:
 	case PlateHeavy:
 	case DetectorRail:
+	case Lectern:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
+	// The hook powers the block it hangs on (the receiver sees it in the direction the hook faces).
+	case TripwireHook:
+		return Toward == FacingOf(State) ? Signal(State, Pos, Toward) : 0;
 	case Torch:
 	case WallTorch:
 		return Toward == Down ? Signal(State, Pos, Toward) : 0;
@@ -492,6 +530,11 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return 3;
 		}
+		if (Name.EndsWith(TEXT("copper_bulb")))
+		{
+			// Measured with the reference client (rs_bulb): 15 while lit, 0 otherwise.
+			return Flag(State, TEXT("lit")) ? 15 : 0;
+		}
 		if (Name == TEXT("minecraft:end_portal_frame"))
 		{
 			return Flag(State, TEXT("eye")) ? 15 : 0;
@@ -505,6 +548,39 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return Number(State, TEXT("honey_level")) * 3;
 		}
+		if (Name == TEXT("minecraft:lectern"))
+		{
+			// By the page its book lies open at: 1 on the first up to 15 on the last.
+			const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+			if (!Flag(State, TEXT("has_book")) || !Entity || Entity->Kind != EMcBlockEntityKind::Lectern || Entity->Slots.IsEmpty())
+			{
+				return 0;
+			}
+			return McBook::GetComparatorSignal(Entity->Page, McBook::GetPages(Entity->Slots[0]).Num());
+		}
+	}
+	// A jukebox reads its disc's song, not how full its one slot is (McJukebox.h).
+	if (Reg().IsValidState(State) && Reg().GetBlockOf(State).Name == TEXT("minecraft:jukebox"))
+	{
+		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+		return Entity && Entity->Slots.Num() > 0 ? McJukebox::GetComparatorOutput(Entity->Slots[0].Item) : 0;
+	}
+	if (KindOf(State) == Crafter)
+	{
+		// The number of filled slots (rs_crafter).
+		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+		int32 Filled = 0;
+		if (Entity && Entity->Kind == EMcBlockEntityKind::Container)
+		{
+			for (const FMcItemStack& Stack : Entity->Slots)
+			{
+				Filled += Stack.IsEmpty() ? 0 : 1;
+			}
+		}
+		return Filled;
 	}
 	// The slots of a container, and of the other half of a double chest.
 	TArray<FIntVector, TInlineAllocator<2>> Halves;
@@ -565,6 +641,46 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 
 void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
+	if (bQuietChange)
+	{
+		return;
+	}
+	// A disarmed string that goes (shears) is not felt by the hooks (reference client, rs_trip3).
+	const bool bDisarmedGone = DisarmedStrings.Remove(Pos) > 0 && KindOf(State) != Tripwire;
+	if (KindOf(State) == Tripwire && Flag(State, TEXT("disarmed")))
+	{
+		DisarmedStrings.Add(Pos);
+	}
+	TGuardValue<bool> GuardShorn(bShornBreak, bDisarmedGone);
+	// A hook put in place connects the string beside it but does not look along its line yet (reference run rs_tripwire:
+	// the hooks stay unattached until the first string is placed or something touches the string).
+	// A string that becomes another state of itself does not look along its line (reference run rs_tripwire: a disarmed one
+	// put over a string leaves the hooks and the other strings as they were).
+	const bool bWasString = StringCells.Contains(Pos);
+	if (KindOf(State) == Tripwire) StringCells.Add(Pos); else StringCells.Remove(Pos);
+	TGuardValue<FIntVector> GuardChanged(ChangedPos, Pos);
+	TGuardValue<FIntVector> GuardRemoved(RemovedString, bWasString && KindOf(State) != Tripwire ? Pos : FIntVector(INT32_MIN));
+	TGuardValue<bool> GuardSame(bStringReplaced, bWasString && KindOf(State) == Tripwire);
+	TGuardValue<FIntVector> GuardHook(HookPlaced, KindOf(State) == TripwireHook ? Pos : FIntVector(INT32_MIN));
+	// Kelp with kelp growing above it is the stem block, kelp_plant (reference run rs_world: the lower kelp changes the
+	// moment one is put above it).
+	static const FName KelpName(TEXT("minecraft:kelp")), KelpPlantName(TEXT("minecraft:kelp_plant"));
+	const auto IsKelpName = [&](FMcStateId Block) { const FName Name = Reg().GetBlockOf(Block).Name; return Name == KelpName || Name == KelpPlantName; };
+	if (Reg().IsValidState(State) && IsKelpName(State))
+	{
+		const FMcStateId Plant = Reg().FindState(KelpPlantName, TMap<FName, FName>()).Get(0);
+		const FIntVector Above = Pos + Vec[Up], Below = Pos + Vec[Down];
+		const FMcStateId AboveState = World.GetBlock(Above), BelowState = World.GetBlock(Below);
+		if (Plant != State && Reg().IsValidState(AboveState) && IsKelpName(AboveState))
+		{
+			World.SetBlock(Pos, Plant);
+			return;
+		}
+		if (Reg().IsValidState(BelowState) && Reg().GetBlockOf(BelowState).Name == KelpName)
+		{
+			World.SetBlock(Below, Plant);
+		}
+	}
 	Notify(Pos);
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
@@ -572,11 +688,14 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	}
 	// One step further: through a conductor (a block a signal passes through), and from anything redstone does
 	// itself, so a piston still hears dust that reaches the block above it.
-	const bool bFull = KindOf(State) != None || Reg().IsAir(State);
+	// (A redstone block or a removed block sends no update past its own neighbours: reference run rs_quasi.)
+	const bool bFull = KindOf(State) != None && KindOf(State) != RedstoneBlock;
 	for (int32 Dir = 0; Dir < 6; ++Dir)
 	{
 		const FIntVector Next = Pos + Vec[Dir];
-		if (bFull || IsConductor(World.GetBlock(Next)))
+		// (Nor through a conductor: a removed block with a dropper beside it does not reach the dropper's other neighbours,
+		// so a dropper under a quasi-powered dropper keeps triggered=true, reference run lg_logi.)
+		if (bFull || (KindOf(State) != None && KindOf(State) != RedstoneBlock && IsConductor(World.GetBlock(Next))))
 		{
 			for (int32 Other = 0; Other < 6; ++Other)
 			{
@@ -586,6 +705,11 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 				}
 			}
 		}
+	}
+	// A new observer gives one pulse of its own (reference run rs_observer): its changes of its own do not.
+	if (!bObserverSelf && KindOf(State) == Observer && !Flag(State, TEXT("powered")))
+	{
+		Sim.ScheduleTick(Pos, 2);
 	}
 	// An observer sees the block it faces change.
 	for (int32 Dir = 0; Dir < 6; ++Dir)
@@ -624,6 +748,9 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Down]));
 	case WallTorch:
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
+	case TripwireHook:
+		// A hook just put in place is not looked at (setblock does not check; reference run rs_trip2, "nowall"), only when a neighbour changes.
+		return Pos == HookPlaced || Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
 	case Lever:
 	case Button:
 	{
@@ -636,6 +763,52 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 	}
 }
 
+void FMcRedstone::PlayerBroke(const FIntVector& Pos, FMcStateId State)
+{
+	const FString Broken = Reg().GetBlockOf(State).Name.ToString();
+	if (!Broken.EndsWith(TEXT("_wool")) && !Broken.EndsWith(TEXT("_carpet")))
+	{
+		Vibrate(Pos, 12);
+	}
+}
+
+void FMcRedstone::PlayerPlaced(const FIntVector& Pos)
+{
+	// A block put down is a vibration of 13, unless it is wool or carpet (minecraft.wiki, "Sculk Sensor").
+	const FString Placed = Reg().GetBlockOf(World.GetBlock(Pos)).Name.ToString();
+	if (!Placed.EndsWith(TEXT("_wool")) && !Placed.EndsWith(TEXT("_carpet")))
+	{
+		Vibrate(Pos, 13);
+	}
+	// Reference run rs_trip4: the second hook a player puts in place joins the line and the strings at once.
+	if (KindOf(World.GetBlock(Pos)) == TripwireHook)
+	{
+		UpdateHookLine(Pos);
+	}
+}
+
+void FMcRedstone::NotifyContainerChanged(const FIntVector& Pos)
+{
+	// The comparators beside it, and beyond a solid block the comparator that reads through it (minecraft.wiki, "Redstone
+	// Comparator"). Only comparators are told: a dropper beside a changed container keeps its triggered flag (reference run lg_logi).
+	for (int32 Dir = 0; Dir < 6; ++Dir)
+	{
+		if (Dir == Up || Dir == Down)
+		{
+			continue;
+		}
+		const FIntVector Next = Pos + Vec[Dir];
+		if (KindOf(World.GetBlock(Next)) == Comparator)
+		{
+			Notify(Next);
+		}
+		else if (IsConductor(World.GetBlock(Next)) && KindOf(World.GetBlock(Next + Vec[Dir])) == Comparator)
+		{
+			Notify(Next + Vec[Dir]);
+		}
+	}
+}
+
 void FMcRedstone::Notify(const FIntVector& Pos)
 {
 	const FMcStateId State = World.GetBlock(Pos);
@@ -644,7 +817,10 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	{
 		return;
 	}
-	if (!IsSupported(Pos, State))
+	// (A hook only looks at what it hangs on when that is the block that changed.)
+	// (And only when it was taken away: a string put where the hook hangs does not drop it, reference run rs_trip2, "same".)
+	const bool bHookOk = Kind == TripwireHook && (ChangedPos != Pos + Vec[Opposite(FacingOf(State))] || !Reg().IsAir(World.GetBlock(ChangedPos)));
+	if (!bHookOk && !IsSupported(Pos, State))
 	{
 		if (Kind == Dust)
 		{
@@ -661,6 +837,38 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	case Dust:
 		DirtyDust.Add(Pos);
 		break;
+	case Tripwire:
+		ShapeTripwire(Pos);
+		if (HookPlaced.X == INT32_MIN && !bStringReplaced)
+		{
+			UpdateTripwires(Pos);
+		}
+		break;
+	case TripwireHook:
+		if (HookPlaced.X == INT32_MIN && !bStringReplaced)
+		{
+			UpdateTripwires(Pos);
+		}
+		break;
+	// Power on TNT lights it (the server makes it primed TNT and takes the block away).
+	case Tnt:
+		if (HasPower(Pos))
+		{
+			Sim.LightTnt(Pos);
+		}
+		break;
+	// Power rising on a note block plays it once; `powered` goes again when the power does (McNoteBlock.h).
+	case NoteBlock:
+		if (HasPower(Pos) != Flag(State, TEXT("powered")))
+		{
+			const bool bPowered = !Flag(State, TEXT("powered"));
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+			if (bPowered)
+			{
+				Sim.PlayNote(Pos);
+			}
+		}
+		break;
 	case Repeater:
 	{
 		const bool bLocked = IsRepeaterLocked(Pos, State);
@@ -675,6 +883,24 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		break;
 	}
+	case Bell:
+		// Power coming on rings it at once, as if struck on its facing side; power going off only clears powered
+		// (measured in vanilla: E:/mc-reference/scripts/bell_redstone.txt, bell_wall_side.txt).
+		if (HasPower(Pos) != Flag(State, TEXT("powered")))
+		{
+			const bool bPowered = HasPower(Pos);
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+			if (bPowered)
+			{
+				Sim.PlaySound(FMcSoundEvent{ FName(TEXT("block.bell.use")), FVector(Pos) + FVector(0.5), 2.0f, 1.0f });
+				if (Sim.OnBellRung)
+				{
+					const FName Facing = Reg().GetPropertyValue(State, TEXT("facing"));
+					Sim.OnBellRung(Pos, Facing == TEXT("north") ? 0 : Facing == TEXT("south") ? 1 : Facing == TEXT("west") ? 2 : 3);
+				}
+			}
+		}
+		break;
 	case Comparator:
 		if (ComparatorOutput(Pos, State) != ComparatorOutputs.FindRef(Pos) || (ComparatorOutput(Pos, State) > 0) != Flag(State, TEXT("powered")))
 		{
@@ -688,6 +914,24 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 			Sim.ScheduleTick(Pos, 2);
 		}
 		break;
+	case CopperBulb:
+	{
+		// Power coming on flips the light, power going away leaves it; either way `powered` follows at once, also when the bulb is
+		// only just put in place and when it was put down with a wrong `powered` (reference run rs_bulb: no delay, no quasi-connectivity).
+		const bool bPowered = HasPower(Pos);
+		if (bPowered != Flag(State, TEXT("powered")))
+		{
+			if (bPowered)
+			{
+				Set(Pos, { FChange(TEXT("lit"), Bool(!Flag(State, TEXT("lit")))), FChange(TEXT("powered"), TEXT("true")) });
+			}
+			else
+			{
+				Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+			}
+		}
+		break;
+	}
 	case Lamp:
 		if (Flag(State, TEXT("lit")) && !HasPower(Pos))
 		{
@@ -695,11 +939,19 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		else if (!Flag(State, TEXT("lit")) && HasPower(Pos))
 		{
-			Sim.ScheduleTick(Pos, 1);
+			// An unlit lamp that is powered lights at once (reference run rs_repeater); only going out waits 4 ticks.
+			Set(Pos, { FChange(TEXT("lit"), TEXT("true")) });
 		}
 		break;
 	case Piston:
 	case StickyPiston:
+		if (bInTick)
+		{
+			PistonEvents.AddUnique(Pos);
+			break;
+		}
+		Sim.ScheduleTick(Pos, 1);
+		break;
 	case PistonHead:
 	case Door:
 	case Trapdoor:
@@ -716,12 +968,35 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		const bool bPowered = ShouldExtend(Pos, -1);
 		if (bPowered && !Flag(State, TEXT("triggered")))
 		{
+			// The flag is set without a neighbour update: after a pulse through quasi-connectivity, a dropper under a
+			// dropper keeps triggered=true when the blocks go (reference run lg_logi).
+			bQuietChange = true;
 			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("true")) }));
+			bQuietChange = false;
 			Sim.ScheduleTick(Pos, 4);
 		}
 		else if (!bPowered && Flag(State, TEXT("triggered")))
 		{
+			bQuietChange = true;
 			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), TEXT("false")) }));
+			bQuietChange = false;
+		}
+		break;
+	}
+	case Crafter:
+	{
+		// Measured with the reference client (rs_crafter): triggered follows the power at once (quasi-connectivity as for
+		// the dropper), the craft comes 4 ticks after a rising edge.
+		const bool bPowered = ShouldExtend(Pos, -1);
+		if (bPowered != Flag(State, TEXT("triggered")))
+		{
+			bQuietChange = true;
+			World.SetBlock(Pos, With(State, { FChange(TEXT("triggered"), bPowered ? TEXT("true") : TEXT("false")) }));
+			bQuietChange = false;
+			if (bPowered)
+			{
+				Sim.ScheduleTick(Pos, 4);
+			}
 		}
 		break;
 	}
@@ -789,6 +1064,13 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case DetectorRail:
 		TickDetector(Pos, State);
 		break;
+	case Lectern:
+		// The end of the pulse a page turn gives.
+		if (Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+		}
+		break;
 	case Piston:
 	case StickyPiston:
 		TickPiston(Pos, State);
@@ -798,6 +1080,17 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case MovingPiston:
 		TickMovingPiston(Pos, State);
+		break;
+	case Crafter:
+		if (Flag(State, TEXT("crafting")))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("crafting"), TEXT("false")) }));
+		}
+		else if (Sim.OnCraft && Sim.OnCraft(Pos))
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("crafting"), TEXT("true")) }));
+			Sim.ScheduleTick(Pos, 5);
+		}
 		break;
 	case Dispenser:
 		if (Sim.OnDispense)
@@ -820,6 +1113,19 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case Daylight:
 		TickDaylight(Pos, State);
+		break;
+	case Target:
+		TickTarget(Pos, State);
+		break;
+	case Sculk:
+	case CalibratedSculk:
+		TickSculk(Pos, State);
+		break;
+	case Tripwire:
+		TickTripwire(Pos, State);
+		break;
+	case TripwireHook:
+		UpdateHookLine(Pos);
 		break;
 	default:
 		break;
@@ -844,6 +1150,10 @@ bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
 	case WallTorch:
 	case Comparator:
 	case Daylight:
+	case Target:
+	case Sculk:
+	case CalibratedSculk:
+	case TripwireHook:
 		return true;
 	case Repeater:
 		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
@@ -1193,6 +1503,7 @@ void FMcRedstone::TickLamp(const FIntVector& Pos, FMcStateId State)
 
 void FMcRedstone::TickObserver(const FIntVector& Pos, FMcStateId State)
 {
+	TGuardValue<bool> Own(bObserverSelf, true);
 	if (Flag(State, TEXT("powered")))
 	{
 		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
@@ -1326,6 +1637,20 @@ void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
 {
 	const FMcStateId State = World.GetBlock(Pos);
 	const uint8 Kind = KindOf(State);
+	if (Kind == Tripwire)
+	{
+		Plates.Add(Pos, NumEntities);
+		if (NumEntities > 0 && !Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
+			Sim.ScheduleTick(Pos, TripwireDelay);
+			// Something on a disarmed string lets go of the hooks and the strings until the next look (reference run
+			// rs_tripwire: all unattached when the item lands, attached again 10 ticks on).
+			TGuardValue<bool> Guard(bDetachLine, Flag(State, TEXT("disarmed")));
+			UpdateTripwires(Pos);
+		}
+		return;
+	}
 	if (Kind != Plate && Kind != PlateLight && Kind != PlateHeavy)
 	{
 		return;
@@ -1356,14 +1681,356 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 	}
 }
 
-void FMcRedstone::TickDaylight(const FIntVector& Pos, FMcStateId State)
+// ---- Tripwire (minecraft.wiki, "Tripwire", "Tripwire Hook") ----
+// Two hooks facing each other 1 to 40 blocks apart with string between them. An entity touching the string powers it
+// (not once it is disarmed); the hooks are powered while any of the string is. The string looks again 10 ticks after
+// it was triggered and every 10 while something stays in it. Held to the reference client's rs_tripwire log: an entity
+// powers the string and both hooks the tick it enters, they let go at the first 10-tick look that finds it empty, a
+// disarmed string powers itself but not the hooks, and a broken string powers the hooks. Shears and hook placement are
+// not done.
+
+void FMcRedstone::UpdateTripwires(const FIntVector& Pos)
 {
-	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - SunLight : SunLight;
+	// The hooks whose line passes through Pos (or that is Pos itself).
+	TArray<FIntVector> Hooks;
+	if (KindOf(World.GetBlock(Pos)) == TripwireHook)
+	{
+		Hooks.Add(Pos);
+	}
+	else
+	{
+		for (const int32 Dir : { North, East, South, West })
+		{
+			FIntVector Cell = Pos;
+			for (int32 Step = 0; Step <= TripwireMaxLength + 1; ++Step)
+			{
+				Cell += Vec[Dir];
+				const FMcStateId State = World.GetBlock(Cell);
+				const uint8 Kind = KindOf(State);
+				if (Kind == TripwireHook)
+				{
+					if (FacingOf(State) == Opposite(Dir))
+					{
+						Hooks.Add(Cell);
+					}
+					break;
+				}
+				if (Kind != Tripwire)
+				{
+					break;
+				}
+			}
+		}
+	}
+	for (const FIntVector& Hook : Hooks)
+	{
+		UpdateHookLine(Hook);
+	}
+}
+
+void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
+{
+	const FMcStateId HookState = World.GetBlock(Hook);
+	if (KindOf(HookState) != TripwireHook)
+	{
+		return;
+	}
+	const int32 Dir = FacingOf(HookState);
+	bool bAttached = false;
+	bool bPowered = false;
+	bool bBroken = false;
+	int32 RemovedStep = 0;
+	FIntVector Other = Hook;
+	for (int32 Step = 1; Step <= TripwireMaxLength + 1; ++Step)
+	{
+		const FIntVector Cell = Hook + Vec[Dir] * Step;
+		const FMcStateId State = World.GetBlock(Cell);
+		const uint8 Kind = KindOf(State);
+		if (Cell == RemovedString && (!bShornBreak || Flag(HookState, TEXT("attached"))))
+		{
+			// The string that was just taken away still counts, powered, in the line it was in (reference runs rs_tripwire,
+			// rs_trip3): the hooks join up and power on at once.
+			bPowered = true;
+			bBroken = true;
+			RemovedStep = Step;
+			continue;
+		}
+		if (Kind == TripwireHook)
+		{
+			bAttached = FacingOf(State) == Opposite(Dir) && Step >= 2;
+			Other = Cell;
+			break;
+		}
+		if (Kind != Tripwire)
+		{
+			break;
+		}
+		bPowered |= Flag(State, TEXT("powered")) && !Flag(State, TEXT("disarmed"));
+	}
+	// Taking away the string next to a hook (either end) does not join or power them (reference run rs_trip2).
+	if (bBroken && (RemovedStep == 1 || (bAttached && Other - Vec[Dir] == RemovedString)))
+	{
+		bAttached = false;
+		bPowered = false;
+		bBroken = false;
+	}
+	bPowered &= bAttached;
+	if (bDetachLine)
+	{
+		bAttached = bPowered = false;
+	}
+	const auto Apply = [&](const FIntVector& Pos)
+	{
+		const FMcStateId State = World.GetBlock(Pos);
+		if (Flag(State, TEXT("attached")) != bAttached || Flag(State, TEXT("powered")) != bPowered)
+		{
+			Set(Pos, { FChange(TEXT("attached"), Bool(bAttached)), FChange(TEXT("powered"), Bool(bPowered)) });
+			return true;
+		}
+		return false;
+	};
+	// Only a hook joining or leaving its partner marks the strings; a power change alone does not (rs_tripwire).
+	const bool bWasAttached = Flag(HookState, TEXT("attached"));
+	bool bChanged = bWasAttached != bAttached || (bAttached && !Flag(World.GetBlock(Other), TEXT("attached")));
+	Apply(Hook);
+	if (bAttached)
+	{
+		Apply(Other);
+		HookPartner.Add(Hook, Other);
+		HookPartner.Add(Other, Hook);
+	}
+	else if (const FIntVector* Partner = HookPartner.Find(Hook))
+	{
+		// The one it was joined to lets go with it.
+		const FIntVector Gone = *Partner;
+		HookPartner.Remove(Hook);
+		if (bWasAttached)
+		{
+			UpdateHookLine(Gone);
+		}
+	}
+	// They let go again a while later.
+	if (bBroken && bPowered)
+	{
+		Sim.ScheduleTick(Hook, TripwireDelay);
+	}
+	// The strings between carry the flag too, when the hooks changed (reference run rs_tripwire: a look that finds
+	// nothing new leaves the strings as they are).
+	for (int32 Step = 1; bChanged && Step <= TripwireMaxLength; ++Step)
+	{
+		const FIntVector Cell = Hook + Vec[Dir] * Step;
+		if (Cell == RemovedString && (!bShornBreak || Flag(HookState, TEXT("attached"))))
+		{
+			continue;
+		}
+		const FMcStateId State = World.GetBlock(Cell);
+		if (KindOf(State) != Tripwire)
+		{
+			break;
+		}
+		if (Flag(State, TEXT("attached")) != bAttached)
+		{
+			Set(Cell, { FChange(TEXT("attached"), Bool(bAttached)) });
+		}
+	}
+}
+
+// A string joins the string or the hook that faces it on each side (reference run rs_tripwire: the string next to a hook is
+// connected to it from the moment it is there).
+void FMcRedstone::ShapeTripwire(const FIntVector& Pos)
+{
+	static const TCHAR* Names[4] = { TEXT("north"), TEXT("east"), TEXT("south"), TEXT("west") };
+	const int32 Dirs[4] = { North, East, South, West };
+	const FMcStateId State = World.GetBlock(Pos);
+	bool bJoin[4];
+	bool bChanged = false;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const FMcStateId Beside = World.GetBlock(Pos + Vec[Dirs[Index]]);
+		const uint8 Kind = KindOf(Beside);
+		bJoin[Index] = Kind == Tripwire || (Kind == TripwireHook && FacingOf(Beside) == Opposite(Dirs[Index]));
+		bChanged |= Flag(State, Names[Index]) != bJoin[Index];
+	}
+	if (bChanged)
+	{
+		Set(Pos, { FChange(Names[0], Bool(bJoin[0])), FChange(Names[1], Bool(bJoin[1])), FChange(Names[2], Bool(bJoin[2])), FChange(Names[3], Bool(bJoin[3])) });
+	}
+}
+
+void FMcRedstone::TickTripwire(const FIntVector& Pos, FMcStateId State)
+{
+	if (Plates.FindRef(Pos) > 0)
+	{
+		Sim.ScheduleTick(Pos, TripwireDelay);
+		UpdateTripwires(Pos);
+		return;
+	}
+	if (Flag(State, TEXT("powered")))
+	{
+		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+	}
+	UpdateTripwires(Pos);
+}
+
+// A projectile hit a target block: it gives Power for Duration ticks (minecraft.wiki, "Target": 20 for arrows and
+// tridents, 8 for the other projectiles; a new hit starts the time again). The strength by where it hit is not
+// measured yet (no reference verb shoots), so the caller's figure stands.
+void FMcRedstone::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	if (KindOf(State) != Target)
+	{
+		return;
+	}
+	TargetUntil.Add(Pos, Sim.GetGameTime() + Duration);
 	if (Power != Number(State, TEXT("power")))
 	{
 		Set(Pos, { FChange(TEXT("power"), Power) });
 	}
-	Sim.ScheduleTick(Pos, 20);
+	Sim.ScheduleTick(Pos, Duration);
+}
+
+void FMcRedstone::TickTarget(const FIntVector& Pos, FMcStateId State)
+{
+	const int64* Until = TargetUntil.Find(Pos);
+	const int64 Left = Until ? *Until - Sim.GetGameTime() : 0;
+	if (Left > 0)
+	{
+		Sim.ScheduleTick(Pos, static_cast<int32>(Left));
+		return;
+	}
+	TargetUntil.Remove(Pos);
+	if (Number(State, TEXT("power")) != 0)
+	{
+		Set(Pos, { FChange(TEXT("power"), 0) });
+	}
+}
+
+// Sensors hear a vibration within 8 blocks (calibrated ones 16), one tick a block; wool and carpet in the way stop it, a sensor already
+// hearing one or active hears no other, a calibrated one only the frequency its back is powered to (minecraft.wiki, "Sculk Sensor";
+// strength max(1, 15 - floor(15 / range * distance)), active 30 ticks, then 10 ticks of cooldown: reference run rs_sculk).
+void FMcRedstone::Vibrate(const FIntVector& Source, int32 Frequency)
+{
+	static const FName SculkPhase(TEXT("sculk_sensor_phase"));
+	for (int32 DX = -16; DX <= 16; ++DX)
+		for (int32 DY = -16; DY <= 16; ++DY)
+			for (int32 DZ = -16; DZ <= 16; ++DZ)
+			{
+				const FIntVector Cell = Source + FIntVector(DX, DY, DZ);
+				const FMcStateId State = World.GetBlock(Cell);
+				const uint8 Kind = KindOf(State);
+				if (Kind != Sculk && Kind != CalibratedSculk)
+				{
+					continue;
+				}
+				const int32 Range = Kind == Sculk ? 8 : 16;
+				const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DY * DY + DZ * DZ));
+				if (Distance > Range || Vibrations.Contains(Cell) || Reg().GetPropertyValue(State, SculkPhase) != TEXT("inactive"))
+				{
+					continue;
+				}
+				if (Kind == CalibratedSculk)
+				{
+					const int32 Back = Opposite(FacingOf(State));
+					const FIntVector BackPos = Cell + Vec[Back];
+					const int32 Input = FMath::Max(Signal(World.GetBlock(BackPos), BackPos, Opposite(Back)), KindOf(World.GetBlock(BackPos)) == Dust ? Number(World.GetBlock(BackPos), TEXT("power")) : 0);
+					if (Input > 0 && Input != Frequency)
+					{
+						continue;
+					}
+				}
+				bool bBlocked = false;
+				static const FName WoolSuffix(TEXT("_wool")), CarpetSuffix(TEXT("_carpet"));
+				for (int32 Step = 1; Step < 64 && !bBlocked; ++Step)
+				{
+					const double Along = Step / 64.0;
+					const FIntVector Mid(FMath::FloorToInt32(Source.X + 0.5 + DX * Along), FMath::FloorToInt32(Source.Y + 0.5 + DY * Along), FMath::FloorToInt32(Source.Z + 0.5 + DZ * Along));
+					if (Mid == Source || Mid == Cell)
+					{
+						continue;
+					}
+					const FString Name = Reg().GetBlockOf(World.GetBlock(Mid)).Name.ToString();
+					bBlocked = Name.EndsWith(TEXT("_wool")) || Name.EndsWith(TEXT("_carpet"));
+				}
+				if (bBlocked)
+				{
+					continue;
+				}
+				const int32 Delay = FMath::Max(1, FMath::FloorToInt32(Distance));
+				Vibrations.Add(Cell, FVibration{ Sim.GetGameTime() + Delay, FMath::Max(1, 15 - FMath::FloorToInt32(15.0 / Range * Distance)) });
+				Sim.ScheduleTick(Cell, Delay);
+			}
+}
+
+void FMcRedstone::TickSculk(const FIntVector& Pos, FMcStateId State)
+{
+	static const FName SculkPhase(TEXT("sculk_sensor_phase"));
+	const FName Phase = Reg().GetPropertyValue(State, SculkPhase);
+	if (const FVibration* Coming = Vibrations.Find(Pos))
+	{
+		if (Coming->Arrive > Sim.GetGameTime())
+		{
+			Sim.ScheduleTick(Pos, static_cast<int32>(Coming->Arrive - Sim.GetGameTime()));
+			return;
+		}
+		const int32 Power = Coming->Power;
+		Vibrations.Remove(Pos);
+		Set(Pos, { FChange(TEXT("sculk_sensor_phase"), TEXT("active")), FChange(TEXT("power"), Power) });
+		// (A calibrated one stays active only 10 ticks.)
+		Sim.ScheduleTick(Pos, KindOf(State) == CalibratedSculk ? 10 : 30);
+	}
+	else if (Phase == TEXT("active"))
+	{
+		Set(Pos, { FChange(TEXT("sculk_sensor_phase"), TEXT("cooldown")), FChange(TEXT("power"), 0) });
+		Sim.ScheduleTick(Pos, 10);
+	}
+	else if (Phase == TEXT("cooldown"))
+	{
+		Set(Pos, { FChange(TEXT("sculk_sensor_phase"), TEXT("inactive")) });
+	}
+}
+
+int32 FMcRedstone::SkyLightAt(const FIntVector& Pos) const
+{
+	// Open above (full sky light passes straight down through everything over it): 15, without the light engine.
+	const FMcBlockLight& Light = FMcBlockLight::Get();
+	if (!Light.IsLoaded())
+	{
+		return 15;
+	}
+	bool bOpen = true;
+	for (int32 Y = Pos.Y + 1; Y <= World.GetDimension().MaxY() && bOpen; ++Y)
+	{
+		bOpen = Light.PropagatesSkylightDown(World.GetBlock(FIntVector(Pos.X, Y, Pos.Z)));
+	}
+	if (bOpen)
+	{
+		return 15;
+	}
+	static TSharedPtr<const FMcLightPalette> Palette;
+	if (!Palette.IsValid())
+	{
+		Palette = FMcLightPalette::Build();
+	}
+	const FIntPoint Chunk(Pos.X >> 4, Pos.Z >> 4);
+	FMcLightRegion Region = FMcLightRegion::Capture(World, Chunk);
+	Region.Compute(*Palette);
+	return Region.GetSkyLight(Pos.X - Chunk.X * 16 + FMcLightRegion::Border, Pos.Y, Pos.Z - Chunk.Y * 16 + FMcLightRegion::Border);
+}
+
+void FMcRedstone::TickDaylight(const FIntVector& Pos, FMcStateId State)
+{
+	// The light that reaches the detector's own cell, less what the sun leaves off the sky (reference run rs_detcover: a
+	// detector under a block reads the light of its cell, 13 under the middle of a 3x3 roof at noon, and the inverted one
+	// 15 minus that; the plain one scales it by the sun's height as the open sky's is).
+	const int32 Cell = FMath::Max(0, SkyLightAt(Pos) - (15 - SkyLevel));
+	const int32 Power = Flag(State, TEXT("inverted")) ? 15 - Cell : FMath::Clamp(FMath::RoundToInt(Cell * SunScale), 0, 15);
+	if (Power != Number(State, TEXT("power")))
+	{
+		Set(Pos, { FChange(TEXT("power"), Power) });
+	}
+	// It updates whenever the game time divides by 20 (minecraft.wiki, "Daylight Detector").
+	Sim.ScheduleTick(Pos, 20 - static_cast<int32>(Sim.GetGameTime() % 20));
 }
 
 // ---- Pistons ----
@@ -1402,10 +2069,11 @@ bool FMcRedstone::IsBreakable(FMcStateId State) const
 		return true;
 	}
 	if (Name.EndsWith(TEXT("_door")) || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:pumpkin") || Name == TEXT("minecraft:melon")
-		|| Name == TEXT("minecraft:carved_pumpkin") || Name == TEXT("minecraft:jack_o_lantern") || Name.EndsWith(TEXT("cake")))
+		|| Name == TEXT("minecraft:carved_pumpkin") || Name == TEXT("minecraft:jack_o_lantern") || Name.EndsWith(TEXT("cake")) || Name == TEXT("minecraft:bell"))
 	{
 		return true;
 	}
+	// (A bell is destroyed too, reference run rs_pist2.)
 	// Plants, torches, dust, levers: anything with no body to push, except rails.
 	return !Shapes.HasCollision(State) && !Name.Contains(TEXT("rail")) && KindOf(State) != PistonHead && KindOf(State) != MovingPiston;
 }
@@ -1501,7 +2169,9 @@ bool FMcRedstone::ResolvePush(const FIntVector& PistonPos, const FIntVector& Sta
 	return Line(Start, true);
 }
 
-void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, bool bSticky)
+// Every carried block shows as a moving piston facing the way the piston faces, type normal, for the 2 ticks it
+// takes to land (reference run rs_piston).
+void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVector>& Destroy, int32 Toward, int32 PistonFacing)
 {
 	const FMcBlockRegistry& Registry = Reg();
 	for (const FIntVector& At : Destroy)
@@ -1518,8 +2188,8 @@ void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVe
 		World.SetBlock(At, Air());
 	}
 	TMap<FName, FName> Properties;
-	Properties.Add(TEXT("facing"), DirName[Toward]);
-	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+	Properties.Add(TEXT("facing"), DirName[PistonFacing]);
+	Properties.Add(TEXT("type"), TEXT("normal"));
 	const FMcStateId Moving = Registry.FindState(TEXT("minecraft:moving_piston"), Properties).Get(0);
 	for (int32 Index = 0; Index < Move.Num(); ++Index)
 	{
@@ -1537,12 +2207,18 @@ bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, 
 	{
 		return false;
 	}
-	MoveBlocks(Move, Destroy, Facing, bSticky);
+	MoveBlocks(Move, Destroy, Facing, Facing);
+	// The head is a moving piston of the piston's own type for 2 ticks, then the head itself.
 	TMap<FName, FName> Properties;
 	Properties.Add(TEXT("facing"), DirName[Facing]);
 	Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
 	Properties.Add(TEXT("short"), TEXT("false"));
-	World.SetBlock(Pos + Vec[Facing], Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0));
+	const FMcStateId Head = Reg().FindState(TEXT("minecraft:piston_head"), Properties).Get(0);
+	Properties.Remove(TEXT("short"));
+	const FIntVector HeadPos = Pos + Vec[Facing];
+	MovingBlocks.Add(HeadPos, TPair<FMcStateId, int64>(Head, Sim.GetGameTime() + 2));
+	World.SetBlock(HeadPos, Reg().FindState(TEXT("minecraft:moving_piston"), Properties).Get(0));
+	Sim.ScheduleTick(HeadPos, 2);
 	Set(Pos, { FChange(TEXT("extended"), TEXT("true")) });
 	ExtendedAt.Add(Pos, Sim.GetGameTime());
 	return true;
@@ -1555,11 +2231,36 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 	const int64* Started = ExtendedAt.Find(Pos);
 	const bool bShortPulse = Started && Sim.GetGameTime() - *Started < 3;
 	ExtendedAt.Remove(Pos);
-	Set(Pos, { FChange(TEXT("extended"), TEXT("false")) });
+	// The base shows as a moving piston of its type for 2 ticks, then is the piston again.
+	{
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("facing"), DirName[Facing]);
+		Properties.Add(TEXT("type"), bSticky ? TEXT("sticky") : TEXT("normal"));
+		MovingBlocks.Add(Pos, TPair<FMcStateId, int64>(With(State, { FChange(TEXT("extended"), TEXT("false")) }), Sim.GetGameTime() + 2));
+		World.SetBlock(Pos, Reg().FindState(TEXT("minecraft:moving_piston"), Properties).Get(0));
+		Sim.ScheduleTick(Pos, 2);
+	}
 	const FIntVector HeadPos = Pos + Vec[Facing];
 	if (IsKind(HeadPos, PistonHead))
 	{
 		World.SetBlock(HeadPos, Air());
+	}
+	// Let go while the extension is still under way (a 1-tick pulse): the head never lands, it is gone the same tick, and a
+	// sticky piston's pushed block lands at once instead of a tick later (reference run rs_world, rows of 1-tick pulses).
+	else if (const TPair<FMcStateId, int64>* Head = MovingBlocks.Find(HeadPos); Head && KindOf(Head->Key) == PistonHead)
+	{
+		MovingBlocks.Remove(HeadPos);
+		World.SetBlock(HeadPos, Air());
+		const FIntVector Pushed = HeadPos + Vec[Facing];
+		if (bSticky)
+		{
+			if (const TPair<FMcStateId, int64>* Carried = MovingBlocks.Find(Pushed))
+			{
+				const FMcStateId Landed = Carried->Key;
+				MovingBlocks.Remove(Pushed);
+				World.SetBlock(Pushed, Landed);
+			}
+		}
 	}
 	if (bSticky && !bShortPulse)
 	{
@@ -1569,9 +2270,24 @@ void FMcRedstone::Retract(const FIntVector& Pos, FMcStateId State, int32 Facing,
 		{
 			// What can't be moved or broken stays where it is.
 			Destroy.Reset();
-			MoveBlocks(Move, Destroy, Opposite(Facing), true);
+			MoveBlocks(Move, Destroy, Opposite(Facing), Facing);
 		}
 	}
+}
+
+void FMcRedstone::EndTick()
+{
+	bInTick = false;
+	for (int32 Index = 0; Index < PistonEvents.Num(); ++Index)
+	{
+		const FIntVector Pos = PistonEvents[Index];
+		const FMcStateId State = World.GetBlock(Pos);
+		if (KindOf(State) == Piston || KindOf(State) == StickyPiston)
+		{
+			TickPiston(Pos, State);
+		}
+	}
+	PistonEvents.Reset();
 }
 
 void FMcRedstone::TickPiston(const FIntVector& Pos, FMcStateId State)

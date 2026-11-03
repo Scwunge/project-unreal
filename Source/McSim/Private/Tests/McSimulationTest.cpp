@@ -126,9 +126,46 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		MakeWorld(World);
 		FMcSimulation Sim(World);
 		World.SetBlock(FIntVector(0, 6, 0), State(TEXT("minecraft:sand")));
-		Run(Sim, 10);
+		Run(Sim, 30);
 		TestEqual(TEXT("sand lands on the floor"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
 		TestTrue(TEXT("and leaves its place"), Registry.IsAir(World.GetBlock(FIntVector(0, 6, 0))));
+	}
+	{
+		// A sand block falling 8 blocks moves as the reference client's falling_block entity does (rs log falling_ents):
+		// down 0.04 and then times 0.98 a tick, so after 20 ticks it has dropped 7.4256, and it lands on the next.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		World.SetBlock(FIntVector(0, 9, 0), State(TEXT("minecraft:sand")));
+		double LastY = 0.0;
+		int32 Observed = 0;
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			Sim.Tick();
+			if (Sim.GetFallingBlocks().IsEmpty())
+			{
+				if (Observed > 0)
+				{
+					break;
+				}
+				continue;
+			}
+			LastY = Sim.GetFallingBlocks()[0].Y;
+			++Observed;
+		}
+		TestEqual(TEXT("it fell 7.4256 before the tick it landed"), 9.0 - LastY, 7.4256, 0.001);
+		TestEqual(TEXT("and landed"), Registry.GetBlockOf(World.GetBlock(FIntVector(0, 1, 0))).Name.ToString(), FString(TEXT("minecraft:sand")));
+	}
+	{
+		// An anvil that lands says how far it fell, for the server to hurt what is under it.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		double Fallen = 0.0;
+		Sim.OnFallingBlockLanded = [&Fallen](const FIntVector&, FMcStateId, double Distance) { Fallen = Distance; };
+		World.SetBlock(FIntVector(0, 9, 0), State(TEXT("minecraft:anvil[facing=north]")));
+		Run(Sim, 40);
+		TestEqual(TEXT("it reports 8 blocks fallen"), Fallen, 8.0, 0.001);
 	}
 	{
 		// Random tick rules, run on single blocks.
@@ -188,25 +225,63 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("and goes without it"), Registry.IsAir(World.GetBlock(FIntVector(-5, 2, 0))));
 	}
 	{
-		// Fire on a wooden floor burns it and spreads; fire on stone with nothing to burn goes out.
+		// Fire on a wool floor burns it and spreads; fire on stone with nothing to burn goes out.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);
 		FMcSimulation Sim(World);
+		Sim.SetWeatherCycle(false);
 		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:fire")));
 		Run(Sim, 700);
 		TestTrue(TEXT("fire with no fuel goes out"), Registry.IsAir(World.GetBlock(FIntVector(0, 1, 0))));
 		for (int32 X = 5; X <= 9; ++X)
 		{
-			World.SetBlock(FIntVector(X, 1, 0), State(TEXT("minecraft:oak_planks")));
+			World.SetBlock(FIntVector(X, 1, 0), State(TEXT("minecraft:white_wool")));
 		}
 		World.SetBlock(FIntVector(5, 2, 0), State(TEXT("minecraft:fire")));
 		Run(Sim, 3000);
 		int32 Burnt = 0;
 		for (int32 X = 5; X <= 9; ++X)
 		{
-			Burnt += Registry.GetBlockOf(World.GetBlock(FIntVector(X, 1, 0))).Name == TEXT("minecraft:oak_planks") ? 0 : 1;
+			Burnt += Registry.GetBlockOf(World.GetBlock(FIntVector(X, 1, 0))).Name == TEXT("minecraft:white_wool") ? 0 : 1;
 		}
-		TestTrue(TEXT("fire eats planks beside it"), Burnt >= 2);
+		TestTrue(TEXT("fire eats wool beside it"), Burnt >= 2);
+	}
+	{
+		// Water over soul sand becomes a bubble column 20 ticks later, pushing up; over magma it pushes down; it goes when
+		// the block under it does (the delays are fitted to the bubble2 vanilla run).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		const auto Name = [&](const FIntVector& At) { return Registry.GetBlockOf(World.GetBlock(At)).Name; };
+		for (int32 Y = 1; Y <= 5; ++Y)
+		{
+			for (const FIntVector& Side : { FIntVector(1, 0, 0), FIntVector(-1, 0, 0), FIntVector(0, 0, 1), FIntVector(0, 0, -1) })
+			{
+				World.SetBlock(FIntVector(0, Y, 0) + Side, Stone);
+			}
+		}
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			World.SetBlock(FIntVector(0, Y, 0), Source);
+		}
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:soul_sand")));
+		Run(Sim, 12);
+		TestEqual(TEXT("no column yet at 12 ticks"), Name(FIntVector(0, 2, 0)), FName(TEXT("minecraft:water")));
+		Run(Sim, 20);
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			TestEqual(*FString::Printf(TEXT("column at y %d"), Y), Name(FIntVector(0, Y, 0)), FName(TEXT("minecraft:bubble_column")));
+			TestEqual(TEXT("pushing up"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, Y, 0)), TEXT("drag")), FName(TEXT("false")));
+		}
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:magma_block")));
+		Run(Sim, 40);
+		TestEqual(TEXT("magma pulls down"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 3, 0)), TEXT("drag")), FName(TEXT("true")));
+		World.SetBlock(FIntVector(0, 1, 0), Stone);
+		Run(Sim, 60);
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			TestEqual(*FString::Printf(TEXT("water again at y %d"), Y), Name(FIntVector(0, Y, 0)), FName(TEXT("minecraft:water")));
+		}
 	}
 	return true;
 }

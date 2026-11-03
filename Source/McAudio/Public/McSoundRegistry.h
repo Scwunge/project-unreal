@@ -40,10 +40,17 @@ public:
 
 	// Where the sound files are.
 	static FString GetSoundsDir();
+	// The file of a sound by its name ("mob/cow/say1"): a pack's if one has sounds/<name>.ogg, else the cache's.
+	static FString ResolveSoundFile(const FString& Name);
+	// Merges a pack's sounds.json into the events: its events are added to the game's, or replace them when they say
+	// "replace": true.
+	bool Merge(const FString& Json);
 
 private:
 	TMap<FName, TArray<FMcSoundVariant>> Events;
 	bool bLoaded = false;
+	uint32 LoadedGeneration = 0;
+	bool ParseInto(const FString& Json, bool bMerge);
 };
 
 namespace McAudio

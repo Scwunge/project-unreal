@@ -1,0 +1,498 @@
+cmd gamerule send_command_feedback false
+cmd gamemode survival
+cmd tp @s 20 -57 8
+wait 40
+cmd tick freeze
+cmd fill -4 -60 -3 20 -55 40 air
+cmd fill -4 -61 -3 20 -61 40 stone
+cmd gamerule do_mob_spawning false
+wait 10
+cmd setblock -1 -60 0 stone
+cmd setblock 5 -60 0 stone
+cmd setblock 1 -60 0 tripwire
+cmd setblock 2 -60 0 tripwire
+cmd setblock 3 -60 0 tripwire
+cmd setblock 0 -60 0 tripwire_hook[facing=east]
+cmd setblock 4 -60 0 tripwire_hook[facing=west]
+cmd setblock -1 -60 3 stone
+cmd setblock 5 -60 3 stone
+cmd setblock 1 -60 3 tripwire
+cmd setblock 2 -60 3 tripwire
+cmd setblock 3 -60 3 tripwire
+cmd setblock 0 -60 3 tripwire_hook[facing=east]
+cmd setblock 4 -60 3 tripwire_hook[facing=west]
+cmd setblock -1 -60 9 stone
+cmd setblock 5 -60 9 stone
+cmd setblock 1 -60 9 tripwire
+cmd setblock 2 -60 9 tripwire
+cmd setblock 3 -60 9 tripwire
+cmd setblock 0 -60 9 tripwire_hook[facing=east]
+cmd setblock 4 -60 9 tripwire_hook[facing=west]
+cmd setblock -1 -60 12 stone
+cmd setblock 5 -60 12 stone
+cmd setblock 1 -60 12 tripwire
+cmd setblock 2 -60 12 tripwire
+cmd setblock 3 -60 12 tripwire
+cmd setblock 0 -60 12 tripwire_hook[facing=east]
+cmd setblock 4 -60 12 tripwire_hook[facing=west]
+cmd setblock -1 -60 18 stone
+cmd setblock 5 -60 18 stone
+cmd setblock 0 -60 18 tripwire_hook[facing=east]
+cmd setblock 4 -60 18 tripwire_hook[facing=west]
+cmd setblock -1 -60 6 stone
+cmd setblock 5 -60 6 stone
+cmd setblock 1 -60 6 tripwire
+cmd setblock 2 -60 6 tripwire
+cmd setblock 3 -60 6 tripwire
+wait 10
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd summon item 1.5 -60 0.5 {Item:{id:"minecraft:stone",count:1},PickupDelay:32767}
+cmd summon item 1.5 -60 3.5 {Item:{id:"minecraft:stone",count:1},PickupDelay:32767}
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd kill @e[type=item]
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd summon pig 2.5 -60 9.5 {NoAI:1b,PersistenceRequired:1b}
+cmd summon arrow 2.5 -60 12.5 {Motion:[0.0,0.0,0.0]}
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd kill @e[type=pig]
+cmd kill @e[type=arrow]
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tp @s 2 -58 2
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd give @s shears
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+slot 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+break 2 -60 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tp @s 2 -58 5
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd clear @s
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+slot 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+break 2 -60 3
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tp @s 0.5 -60 8
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd clear @s
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd give @s tripwire_hook 2
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+slot 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+use_on -1 -60 6 east
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tp @s 4.5 -60 8
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+use_on 5 -60 6 west
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tp @s 2.5 -60 20
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd clear @s
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd give @s string 3
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+slot 0
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+use_on 1 -61 18 up
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+use_on 2 -61 18 up
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+use_on 3 -61 18 up
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick step 1
+wait 4
+log states -1 -60 0 6 -60 19
+cmd tick unfreeze

@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McCache.h"
+#include "McItemFrames.h"
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderMode.h"
@@ -140,16 +141,25 @@ namespace McHand
 		return MakeBasis(FVector(0, 1, 0), FVector(-R, 0, R), FVector(R, 0, R));
 	}
 
+	FVector GetBowTremble(float DrawSeconds)
+	{
+		if (DrawSeconds < 1.0f)
+		{
+			return FVector::ZeroVector;
+		}
+		const double Wave = FMath::Sin(2.0 * PI * static_cast<double>(DrawSeconds) * 20.0 / 7.78);
+		return FVector(0.0, 0.12, -0.20) * Wave;
+	}
+
 	FTransform GetDrawTransform(float Lift, float Seconds)
 	{
 		const float Eased = Lift * Lift * (3.0f - 2.0f * Lift);
-		// TODO: whether the bow trembles at full draw, and how much, measured from the reference client (none until then).
 		// Fitted to the reference client's shots at 5 and 12 ticks of draw (overlaid, edges within about 10 pixels): the bow is
 		// moved toward the middle of the screen and up from where it rests, in the camera's space (forward, right, up), and turned a
-		// little about its own middle. It grows to 1.4 times the idle size.
-		const FVector Move = FVector(6.0, -24.0, 20.0) * Eased;
-		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 17.0f, 2.0f).Quaternion(), Eased);
-		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.4f, Eased)));
+		// little about its own middle. It grows to 1.2 times the idle size (moving it nearer alone made the arrow shaft far too long).
+		const FVector Move = FVector(-2.0, -20.0, 20.0) * Eased + GetBowTremble(Seconds);
+		const FQuat Turn = FQuat::Slerp(FQuat::Identity, FRotator(0.0f, 22.0f, 7.0f).Quaternion(), Eased);
+		return FTransform(Turn, Move, FVector(FMath::Lerp(1.0f, 1.2f, Eased)));
 	}
 
 	FVector GetTipInArm()
@@ -203,9 +213,15 @@ namespace McHand
 		return FTransform(FMatrix(Image(FVector(1, 0, 0)), Image(FVector(0, 1, 0)), Image(FVector(0, 0, 1)), Origin));
 	}
 
-	FHeldDisplay ReadHeldDisplay(FName Item)
+	FHeldDisplay ReadHeldDisplay(FName Item, const TCHAR* Key)
 	{
 		FHeldDisplay Result;
+		if (FCString::Strcmp(Key, TEXT("firstperson_righthand")) != 0)
+		{
+			Result.Rotation = FVector::ZeroVector;
+			Result.Translation = FVector::ZeroVector;
+			Result.Scale = 1.0;
+		}
 		FString Model = TEXT("item/") + McCache::PathOf(Item.ToString());
 		for (int32 Depth = 0; Depth < 6; ++Depth)
 		{
@@ -218,7 +234,7 @@ namespace McHand
 			const TSharedPtr<FJsonObject>* Display = nullptr;
 			const TSharedPtr<FJsonObject>* Displays = nullptr;
 			const TSharedPtr<FJsonObject>* Hand = nullptr;
-			if (Json->TryGetObjectField(TEXT("display"), Displays) && (*Displays)->TryGetObjectField(TEXT("firstperson_righthand"), Hand))
+			if (Json->TryGetObjectField(TEXT("display"), Displays) && (*Displays)->TryGetObjectField(Key, Hand))
 			{
 				auto Triple = [&Hand](const TCHAR* Name, FVector& Out)
 				{
@@ -233,6 +249,7 @@ namespace McHand
 				Triple(TEXT("translation"), Result.Translation);
 				Triple(TEXT("scale"), ScaleValues);
 				Result.Scale = ScaleValues.X;
+				Result.bFound = true;
 				break;
 			}
 			FString Parent;
@@ -252,7 +269,7 @@ namespace McHand
 		{
 			return Result;
 		}
-		FString Name = McCache::PathOf(Item.ToString());
+		FString Name = McCache::PathOf(McItemFrames::Resolve(Item).ToString());
 		if (bCast && Name == TEXT("fishing_rod"))
 		{
 			Name = TEXT("fishing_rod_cast");
@@ -442,9 +459,14 @@ UMcHandComponent::UMcHandComponent(const FObjectInitializer& ObjectInitializer)
 #endif
 }
 
-void UMcHandComponent::SetHeld(FName InItem)
+void UMcHandComponent::SetHeld(FName InItem, int32 InCount)
 {
+	if (InItem == Wanted && InCount > WantedCount && !InItem.IsNone())
+	{
+		bReequip = true;
+	}
 	Wanted = InItem;
+	WantedCount = InCount;
 }
 
 void UMcHandComponent::SetShown(bool bInShown)
@@ -549,7 +571,7 @@ void UMcHandComponent::ShowHeld(FName Item)
 	{
 		TArray<FColor> Pixels;
 		int32 PixelWidth = 0, PixelHeight = 0;
-		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight) && PixelWidth > 0 && PixelHeight >= PixelWidth)
+		if (McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, PixelWidth, PixelHeight, 64) && PixelWidth > 0 && PixelHeight >= PixelWidth)
 		{
 			McHand::BuildExtrudedMesh(Pixels, PixelWidth, SideV, Data);
 			if (McCache::PathOf(Item.ToString()) == TEXT("fishing_rod"))
@@ -674,6 +696,7 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 				if (Controller->IsInputKeyDown(EKeys::LeftMouseButton) || Controller->WasInputKeyJustPressed(EKeys::RightMouseButton))
 				{
 					Swing();
+					bUseSwing = Controller->WasInputKeyJustPressed(EKeys::RightMouseButton);
 				}
 			}
 		}
@@ -697,12 +720,16 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 	WalkAmount = FMath::FInterpTo(WalkAmount, Target, DeltaTime, 8.0f);
 
 	// A different item in the hand: lower it, change it, bring it up.
-	if (Wanted != Shown)
+	if (Wanted != Shown || bReequip)
 	{
 		Equip = FMath::Min(Equip + DeltaTime / McHand::EquipSeconds, 1.0f);
 		if (Equip >= 1.0f)
 		{
-			ShowHeld(Wanted);
+			bReequip = false;
+			if (Wanted != Shown)
+			{
+				ShowHeld(Wanted);
+			}
 		}
 	}
 	else if (Equip > 0.0f)
@@ -740,6 +767,11 @@ void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActo
 		const FTransform Eat = McHand::GetEatTransform(EatLift, EatTime, EatSeconds);
 		Pose.SetRotation(Eat.GetRotation() * Pose.GetRotation());
 		Pose.AddToTranslation(Eat.GetTranslation());
+	}
+	if (bUseSwing && !Shown.IsNone() && Stroke > 0.0f)
+	{
+		// Using the item (a throw) carries it toward the middle and down out of the view and back, as the swing runs.
+		Pose.AddToTranslation(McHand::UseSwingMove * Stroke);
 	}
 	SetRelativeTransform(Pose);
 	// Only an empty hand shows its arm.

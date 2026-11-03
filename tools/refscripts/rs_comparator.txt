@@ -1,0 +1,139 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd tp @s 5 -50 2
+wait 40
+cmd tick freeze
+cmd fill -2 -60 -2 14 -50 8 air
+cmd fill -2 -61 -2 14 -61 8 stone
+wait 10
+cmd setblock 3 -60 0 redstone_wire
+cmd setblock 4 -60 0 redstone_wire
+cmd setblock 5 -60 0 comparator[facing=west,mode=compare]
+cmd setblock 6 -60 0 redstone_wire
+cmd fill 5 -60 1 5 -60 4 redstone_wire
+cmd setblock 5 -60 5 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+log states -1 -60 -1 12 -58 6
+cmd setblock 2 -60 0 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd setblock 5 -60 0 comparator[facing=west,mode=subtract]
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd setblock 2 -60 0 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick step 1
+wait 4
+log states -1 -60 -1 12 -58 6
+cmd tick unfreeze

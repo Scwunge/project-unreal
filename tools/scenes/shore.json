@@ -1,0 +1,129 @@
+{
+ "description": "A sand beach and a flat sea level with the land, palms on the beach, for the ocean showcase shot.",
+ "camera": [
+  8.5,
+  -59.4,
+  -2.0,
+  20.0,
+  3.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    -24,
+    -61,
+    0
+   ],
+   "to": [
+    24,
+    -61,
+    4
+   ],
+   "state": "minecraft:sand"
+  },
+  {
+   "from": [
+    -24,
+    -61,
+    5
+   ],
+   "to": [
+    24,
+    -61,
+    36
+   ],
+   "state": "minecraft:water[level=0]"
+  },
+  {
+   "from": [
+    -24,
+    -62,
+    5
+   ],
+   "to": [
+    24,
+    -62,
+    36
+   ],
+   "state": "minecraft:sand"
+  },
+  {
+   "from": [
+    -8,
+    -60,
+    1
+   ],
+   "to": [
+    -8,
+    -57,
+    1
+   ],
+   "state": "minecraft:jungle_log[axis=y]"
+  },
+  {
+   "from": [
+    -10,
+    -56,
+    -1
+   ],
+   "to": [
+    -6,
+    -56,
+    3
+   ],
+   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    1
+   ],
+   "to": [
+    3,
+    -57,
+    1
+   ],
+   "state": "minecraft:jungle_log[axis=y]"
+  },
+  {
+   "from": [
+    1,
+    -56,
+    -1
+   ],
+   "to": [
+    5,
+    -56,
+    3
+   ],
+   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    1
+   ],
+   "to": [
+    12,
+    -57,
+    1
+   ],
+   "state": "minecraft:jungle_log[axis=y]"
+  },
+  {
+   "from": [
+    10,
+    -56,
+    -1
+   ],
+   "to": [
+    14,
+    -56,
+    3
+   ],
+   "state": "minecraft:jungle_leaves[distance=1,persistent=true,waterlogged=false]"
+  }
+ ]
+}

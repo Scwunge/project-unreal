@@ -117,6 +117,8 @@ namespace
 
 		virtual int32 GetDifficulty() const override { return Difficulty; }
 		virtual void SetDifficulty(int32 InDifficulty) override { Difficulty = InDifficulty; }
+		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override { Played = Event.ToString() + FString::Printf(TEXT(" %.1f %.1f %.1f %.1f"), Position.X, Volume, Pitch, Position.Z); }
+		FString Played;
 		virtual FString GetGameRule(const FString& Rule) const override { const FString* Value = Rules.Find(Rule); return Value ? *Value : FString(); }
 		virtual void SetGameRule(const FString& Rule, const FString& Value) override { Rules.Add(Rule, Value); }
 		virtual bool GetBlock(const FIntVector& Pos, FMcStateId& OutState) const override
@@ -157,6 +159,26 @@ namespace
 			}
 			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
 			return true;
+		}
+		TSet<FString> Advancements;
+		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
+		{
+			if (Id != TEXT("story/mine_stone"))
+			{
+				return -1;
+			}
+			OutTitle = TEXT("[Stone Age]");
+			const FString Key = Player + Id;
+			if (!bGrant)
+			{
+				return Advancements.Remove(Key) > 0 ? 1 : 0;
+			}
+			if (Advancements.Contains(Key))
+			{
+				return 0;
+			}
+			Advancements.Add(Key);
+			return 1;
 		}
 		virtual int32 ClearEffects(const FString& Player, FName Effect) override
 		{
@@ -268,6 +290,12 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("gamemode creative"), Target.Find(TEXT("Steve"))->bCreative);
 	McCommands::HandleChat(TEXT("/gamemode survival @a"), Op(TEXT("Steve")), Target);
 	TestFalse(TEXT("gamemode @a"), Target.Find(TEXT("Steve"))->bCreative || Target.Find(TEXT("Alex"))->bCreative);
+
+	// /playsound: the event without its namespace, the position (the sender's feet by default), volume and pitch
+	Replies = McCommands::HandleChat(TEXT("/playsound minecraft:zz.add master @s 4 70 5 2 1.5"), Op(TEXT("Steve")), Target);
+	TestFalse(TEXT("playsound ok"), AnyError(Replies));
+	TestEqual(TEXT("playsound passes its arguments on"), Target.Played, FString(TEXT("zz.add 4.5 2.0 1.5 5.5")));
+	TestTrue(TEXT("playsound with a bad source"), AnyError(McCommands::HandleChat(TEXT("/playsound zz.add nowhere"), Op(TEXT("Steve")), Target)));
 
 	// /time
 	McCommands::HandleChat(TEXT("/time set night"), Op(TEXT("Steve")), Target);
@@ -383,6 +411,12 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("clear one"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve speed"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed effect Speed from Steve")));
 	TestTrue(TEXT("clear all"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed every effect from Steve")));
 	TestTrue(TEXT("nothing to clear"), AnyError(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)));
+
+	// /advancement
+	TestTrue(TEXT("grant"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Granted the advancement [Stone Age] to Steve")));
+	TestTrue(TEXT("already made"), AnyError(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("revoke"), Joined(McCommands::HandleChat(TEXT("/advancement revoke Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Revoked the advancement [Stone Age] from Steve")));
+	TestTrue(TEXT("unknown"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/nothing"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown advancement")));
 	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
 	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
 	Target.HeldItem = TEXT("minecraft:diamond_sword");

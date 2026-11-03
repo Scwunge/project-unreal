@@ -1,0 +1,77 @@
+{
+  "description": "Animated opaque blocks (magma, sea lantern, prismarine) for checking texture animation; stone and cobblestone take a pack animation (zz_test_anim).",
+  "camera": [
+    2.0,
+    -58.0,
+    0.5,
+    0,
+    90
+  ],
+  "blocks": [
+    {
+      "from": [
+        0,
+        -60,
+        0
+      ],
+      "to": [
+        0,
+        -60,
+        0
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "from": [
+        1,
+        -60,
+        0
+      ],
+      "to": [
+        1,
+        -60,
+        0
+      ],
+      "state": "minecraft:cobblestone"
+    },
+    {
+      "from": [
+        2,
+        -60,
+        0
+      ],
+      "to": [
+        2,
+        -60,
+        0
+      ],
+      "state": "minecraft:magma_block"
+    },
+    {
+      "from": [
+        3,
+        -60,
+        0
+      ],
+      "to": [
+        3,
+        -60,
+        0
+      ],
+      "state": "minecraft:sea_lantern"
+    },
+    {
+      "from": [
+        4,
+        -60,
+        0
+      ],
+      "to": [
+        4,
+        -60,
+        0
+      ],
+      "state": "minecraft:prismarine"
+    }
+  ]
+}

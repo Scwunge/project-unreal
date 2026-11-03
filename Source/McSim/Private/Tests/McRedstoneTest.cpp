@@ -272,7 +272,8 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		FMcSimulation Sim(World);
 		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:observer[facing=east,powered=false]")));
 		World.SetBlock(FIntVector(-1, 1, 0), State(TEXT("minecraft:redstone_lamp[lit=false]")));
-		Run(Sim, 3);
+		// A new observer pulses once by itself (reference run rs_observer); let that go by.
+		Run(Sim, 12);
 		const auto Powered = [&] { return Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 1, 0)), TEXT("powered")).ToString() == TEXT("true"); };
 		const auto Lit = [&] { return Registry.GetPropertyValue(World.GetBlock(FIntVector(-1, 1, 0)), TEXT("lit")).ToString() == TEXT("true"); };
 		TestFalse(TEXT("quiet"), Powered());
@@ -507,7 +508,57 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		Sim.SetPressurePlate(FIntVector(8, 1, 4), 5);
 		Run(Sim, 2);
 		TestEqual(TEXT("a light plate gives 1 a thing on it"), Registry.GetPropertyValue(World.GetBlock(FIntVector(8, 1, 4)), TEXT("power")).ToString(), FString(TEXT("5")));
-		// A daylight detector reads the sun.
+		// A target block hit by an arrow gives its strength for 20 ticks, and a new hit starts the time again.
+			World.SetBlock(FIntVector(14, 1, 0), State(TEXT("minecraft:target[power=0]")));
+			World.SetBlock(FIntVector(15, 1, 0), State(TEXT("minecraft:redstone_wire")));
+			Sim.HitTarget(FIntVector(14, 1, 0), 9, 20);
+			Run(Sim, 1);
+			TestEqual(TEXT("a hit target powers the dust beside it"), Sim.GetDustPower(FIntVector(15, 1, 0)), 9);
+			Run(Sim, 10);
+			Sim.HitTarget(FIntVector(14, 1, 0), 9, 20);
+			Run(Sim, 15);
+			TestEqual(TEXT("a second hit keeps it on"), Registry.GetPropertyValue(World.GetBlock(FIntVector(14, 1, 0)), TEXT("power")).ToString(), FString(TEXT("9")));
+			Run(Sim, 10);
+			TestEqual(TEXT("and it lets go 20 ticks after the last"), Registry.GetPropertyValue(World.GetBlock(FIntVector(14, 1, 0)), TEXT("power")).ToString(), FString(TEXT("0")));
+		// Tripwire: two hooks facing each other with string between, 1 to 40 apart. Something in the string powers both
+		// hooks, which let go 10 ticks after it leaves. Placed in the row z=7: hooks at x=0 (facing east) and x=4 (facing west).
+		const auto HookValue = [&](int32 X, const TCHAR* Property) { return Registry.GetPropertyValue(World.GetBlock(FIntVector(X, 1, 7)), Property).ToString(); };
+		World.SetBlock(FIntVector(0, 1, 7), State(TEXT("minecraft:tripwire_hook[attached=false,facing=east,powered=false]")));
+		for (int32 X = 1; X <= 3; ++X)
+		{
+			World.SetBlock(FIntVector(X, 1, 7), State(TEXT("minecraft:tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]")));
+		}
+		World.SetBlock(FIntVector(4, 1, 7), State(TEXT("minecraft:tripwire_hook[attached=false,facing=west,powered=false]")));
+		Run(Sim, 2);
+		// Put there by a command, the hooks stay unattached until the string is touched (reference run rs_tripwire).
+		TestEqual(TEXT("hooks put in place last are not attached yet"), HookValue(0, TEXT("attached")), FString(TEXT("false")));
+		Sim.SetPressurePlate(FIntVector(2, 1, 7), 1);
+		Run(Sim, 1);
+		TestEqual(TEXT("something in the string attaches the hooks"), HookValue(0, TEXT("attached")), FString(TEXT("true")));
+		TestEqual(TEXT("something in the string powers the near hook"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
+		TestEqual(TEXT("and the far one"), HookValue(4, TEXT("powered")), FString(TEXT("true")));
+		Sim.SetPressurePlate(FIntVector(2, 1, 7), 0);
+		Run(Sim, 8);
+		TestEqual(TEXT("it holds a few ticks after the thing leaves"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
+		Run(Sim, 4);
+		TestEqual(TEXT("and lets go after the 10"), HookValue(0, TEXT("powered")), FString(TEXT("false")));
+		// Power on a TNT block lights it: the simulation calls LightTnt, and the server makes primed TNT of it.
+		{
+			TArray<FIntVector> Lit;
+			Sim.OnLightTnt = [&Lit](const FIntVector& Pos) { Lit.Add(Pos); };
+			World.SetBlock(FIntVector(12, 1, 7), State(TEXT("minecraft:tnt")));
+			Run(Sim, 3);
+			TestEqual(TEXT("unpowered TNT stays"), Lit.Num(), 0);
+			World.SetBlock(FIntVector(11, 1, 7), State(TEXT("minecraft:redstone_block")));
+			Run(Sim, 1);
+			TestEqual(TEXT("TNT beside a redstone block is lit"), Lit.Num(), 1);
+		}
+		// Breaking the string (not next to a hook) powers both hooks at once (reference client).
+		World.SetBlock(FIntVector(2, 1, 7), Air);
+		Run(Sim, 2);
+		TestEqual(TEXT("a broken string powers the near hook"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
+		TestEqual(TEXT("and the far one"), HookValue(4, TEXT("powered")), FString(TEXT("true")));
+			// A daylight detector reads the sun.
 		World.SetBlock(FIntVector(12, 1, 0), State(TEXT("minecraft:daylight_detector[inverted=false,power=0]")));
 		Sim.SetSunLight(11);
 		Run(Sim, 3);
@@ -607,7 +658,10 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		// Quasi-connectivity: power beside the block above counts.
 		World.SetBlock(FIntVector(0, 2, -1), State(TEXT("minecraft:redstone_block")));
 		Run(Sim, 5);
-		TestEqual(TEXT("powered through the block above"), Fired.Num(), 2);
+		TestEqual(TEXT("no update reaches it yet (vanilla rs_quasi)"), Fired.Num(), 1);
+		World.SetBlock(FIntVector(0, 1, -1), State(TEXT("minecraft:stone")));
+		Run(Sim, 5);
+		TestEqual(TEXT("powered through the block above once a neighbour updates"), Fired.Num(), 2);
 
 		const FIntVector Hopper(4, 1, 0);
 		World.SetBlock(Hopper, State(TEXT("minecraft:hopper[enabled=true,facing=down]")));
@@ -615,6 +669,31 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("a powered hopper is locked"), Value(Hopper, TEXT("enabled")), FString(TEXT("false")));
 		World.SetBlock(FIntVector(4, 1, -1), Air);
 		TestEqual(TEXT("and free again"), Value(Hopper, TEXT("enabled")), FString(TEXT("true")));
+	}
+	{
+		// Held to the reference client's dropper run (log_dropper1): power at tick 3 fires on 7 and holding it adds nothing; a one-tick
+		// pulse still fires 4 ticks on; powered and dropped within the delay it fires with nothing powering it; power put back the
+		// tick after it fired is a new pulse.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		int32 Now = 0;
+		TArray<int32> Fired;
+		Sim.OnDispense = [&](const FIntVector&) { Fired.Add(Now + 1); };
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:dropper[facing=east,triggered=false]")));
+		const auto Step = [&](int32 Count) { for (int32 Index = 0; Index < Count; ++Index) { Sim.Tick(); ++Now; } };
+		const auto Power = [&](bool bOn) { World.SetBlock(FIntVector(0, 1, -1), bOn ? State(TEXT("minecraft:redstone_block")) : Air); };
+		Step(3); Power(true); Step(25); Power(false); Step(5);
+		Power(true); Step(1); Power(false); Step(15);
+		Power(true); Step(3); Power(false); Step(1); Power(true); Step(20);
+		TestEqual(TEXT("dropper fires four times"), Fired.Num(), 4);
+		if (Fired.Num() == 4)
+		{
+			TestEqual(TEXT("first fire"), Fired[0], 7);
+			TestEqual(TEXT("pulse fire"), Fired[1], 37);
+			TestEqual(TEXT("fire after power dropped inside the delay"), Fired[2], 53);
+			TestEqual(TEXT("fire on the new pulse"), Fired[3], 57);
+		}
 	}
 	return true;
 }

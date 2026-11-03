@@ -1,0 +1,8 @@
+{
+  "description": "A player standing on stone facing south and looking level, as mc-reference's wear_heads.txt. With -McSelfShot=4 the camera stands in front looking back at them; -McWear=minecraft:zombie_head (or carved_pumpkin, dragon_head...) puts that in the head slot.",
+  "camera": [5.5, -58.38, 5.5, 0.0, 0.0],
+  "standing": true,
+  "blocks": [
+    { "from": [-6, -61, -6], "to": [22, -61, 22], "state": "minecraft:stone" }
+  ]
+}

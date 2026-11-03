@@ -1,4 +1,9 @@
 // Every block texture packed into one texture array, with the animations from the .mcmeta files.
+//
+// The array is 16 pixels on a side with the vanilla assets. With a resource pack (McResourcePacks.h) it is as wide as the
+// widest texture the packs bring, down to what -McPackMaxSize and the -McPackBudgetMB memory budget allow; every layer is
+// scaled to that one size (larger ones shrunk with a box filter, smaller ones enlarged with nearest). Packs with the
+// LabPBR _n and _s maps keep them here too when -McPackPbr is on.
 
 #pragma once
 
@@ -14,9 +19,16 @@ struct FMcTextureStats
 	int32 Ids = 0;            // texture ids the models refer to
 	int32 Loaded = 0;
 	int32 Layers = 0;         // including layer 0, the missing texture
+	int32 Size = 16;          // pixels on a side of every layer
+	int32 WantedSize = 16;    // the widest texture a pack brings (a power of two); more than Size when it was limited
+	int32 FromPacks = 0;      // layers whose picture came from a resource pack
+	int32 PbrMaps = 0;        // layers with a pack normal and/or specular map (only with -McPackPbr)
+	int64 ArrayBytes = 0;     // the array with its mips
 	int32 Animated = 0;
 	int32 Translucent = 0;    // layers with partial-alpha pixels
 	int32 Cutout = 0;         // layers with fully transparent pixels
+	int32 SideLayers = 0;     // the flowing pictures' "#side" layers, after the loaded ones
+	int32 Tiles = 0;          // 16-pixel tiles of pictures bigger than a layer (McTextureTiles.h)
 	TArray<FName> Fallbacks;  // ids that couldn't be loaded and use layer 0
 	TArray<FString> Resized;  // "id WxH": not 16 wide (or a 16x16 frame), scaled down with nearest
 };
@@ -26,6 +38,7 @@ struct FMcTextureStats
 class MCASSETS_API FMcBlockTextures : public FGCObject
 {
 public:
+	// The size and mip count of the vanilla array. With a resource pack see GetSize and GetNumMips.
 	static constexpr int32 TextureSize = 16;
 	static constexpr int32 NumMips = 5;  // 16, 8, 4, 2, 1
 
@@ -37,8 +50,13 @@ public:
 
 	// Releases the render-side helper resources; the module calls this on shutdown.
 	void Shutdown();
+	// Forgets the array and every layer, so the next EnsureLoaded reads the pictures again (a resource pack changed).
+	// Only while no world is using them.
+	void Unload();
 
-	// The layer for an id like "minecraft:block/stone". 0, the missing-texture layer, for unknown ids.
+	// The layer for an id like "minecraft:block/stone". 0, the missing-texture layer, for unknown ids. A flowing fluid's
+	// picture also has "<id>#side", the top left 16 pixels of its 32-pixel frames, which is what a fluid's side shows. A
+	// picture bigger than a layer is in tiles, "<id>#tile:x,y:w,h" (McTextureTiles.h), as the baked quads name them.
 	int32 GetLayer(FName TextureId) const;
 	int32 NumLayers() const { return Layers.Num(); }
 	UTexture2DArray* GetTextureArray() const { return TextureArray; }
@@ -51,8 +69,19 @@ public:
 	bool IsAnimated(int32 Layer) const { return Layers[Layer].Animation != INDEX_NONE; }
 	// The step of the animation's frame order now showing, or INDEX_NONE if the layer isn't animated.
 	int32 GetAnimationStep(int32 Layer) const;
-	// The 16x16 pixels now in the layer's top mip (the blend, for interpolated animations).
+	// The GetSize x GetSize pixels now in the layer's top mip (the blend, for interpolated animations).
 	TConstArrayView<FColor> GetPixels(int32 Layer) const { return Layers[Layer].Pixels; }
+	// Pixels on a side of the array, and its mip count (a full chain down to 1x1).
+	int32 GetSize() const { return ArraySize; }
+	int32 GetNumMips() const { return FMath::FloorLog2(ArraySize) + 1; }
+	// The pack's LabPBR maps for the layer, GetSize squared, or empty (none in the packs, or -McPackPbr is off). The
+	// normal map has x, y in R, G, occlusion in B, height in A; the specular map smoothness in R, F0 in G, emission in A.
+	TConstArrayView<FColor> GetNormalPixels(int32 Layer) const { return Layers[Layer].Normal; }
+	TConstArrayView<FColor> GetSpecularPixels(int32 Layer) const { return Layers[Layer].Specular; }
+	// True if the layer's picture comes from a resource pack, not the vanilla assets.
+	bool IsFromPack(int32 Layer) const { return Layers[Layer].bFromPack; }
+	// A string that changes with the packs and options the arrays were made from, to key caches.
+	const FString& GetSourceKey() const { return SourceKey; }
 
 	// The id the layer was loaded for (NAME_None for the missing-texture layer).
 	FName GetLayerId(int32 Layer) const { return Layers[Layer].Id; }
@@ -74,14 +103,17 @@ private:
 		FName Id;
 		bool bTranslucent = false;
 		bool bCutout = false;
+		bool bFromPack = false;
 		int32 Animation = INDEX_NONE;
-		TArray<FColor> Pixels;  // the current top mip, TextureSize squared
+		TArray<FColor> Pixels;  // the current top mip, Size squared
+		TArray<FColor> Normal;
+		TArray<FColor> Specular;
 	};
 
 	struct FAnimation
 	{
 		int32 Layer = INDEX_NONE;
-		TArray<TArray<FColor>> Frames;  // each TextureSize squared
+		TArray<TArray<FColor>> Frames;  // each Size squared
 		TArray<int32> Order;            // the frame shown at each step
 		TArray<int32> Times;            // ticks each step lasts
 		int32 TotalTime = 1;
@@ -98,4 +130,6 @@ private:
 	TMap<FName, int32> LayersById;
 	TSharedPtr<FRenderState, ESPMode::ThreadSafe> RenderState;
 	FMcTextureStats Stats;
+	int32 ArraySize = TextureSize;
+	FString SourceKey;
 };

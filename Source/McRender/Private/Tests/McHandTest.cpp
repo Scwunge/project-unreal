@@ -31,6 +31,11 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no stroke at the end"), FMath::IsNearlyZero(GetSwingStroke(1.0f), 1e-4f));
 	TestTrue(TEXT("full stroke a quarter in"), FMath::IsNearlyEqual(GetSwingStroke(0.25f), 1.0f, 1e-4f));
 
+	// A used item is carried toward the middle and down: at the reference client's ticks 1 to 3 it is out of the view's bottom.
+	TestTrue(TEXT("use swing goes toward the middle"), UseSwingMove.Y < 0.0);
+	TestTrue(TEXT("use swing goes down"), UseSwingMove.Z < 0.0);
+	TestTrue(TEXT("use swing goes nowhere forward"), FMath::IsNearlyZero(UseSwingMove.X));
+
 	// Eating: nothing moves with the item down, it is raised and turned with it up, and it bobs only until four fifths of the meal.
 	TestTrue(TEXT("a lowered food is not moved"), GetEatTransform(0.0f, 0.5f, 1.6f).GetTranslation().IsNearlyZero());
 	TestTrue(TEXT("a raised food moves toward the middle and up"), GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Y < 0.0 && GetEatTransform(1.0f, 0.4f, 1.6f).GetTranslation().Z > 0.0);
@@ -86,6 +91,16 @@ bool FMcHandPoseTest::RunTest(const FString& Parameters)
 		const FHeldPictures Idle = FindHeldPictures(TEXT("minecraft:fishing_rod"), false);
 		const FHeldPictures Cast = FindHeldPictures(TEXT("minecraft:fishing_rod"), true);
 		TestTrue(TEXT("a cast rod shows the cast picture"), Idle.Side.EndsWith(TEXT("fishing_rod.png")) && Cast.Side.EndsWith(TEXT("fishing_rod_cast.png")));
+	}
+	// The bow is still until a second of draw, then trembles about 0.2 either way.
+	{
+		TestTrue(TEXT("no tremble before a full draw"), GetBowTremble(0.9f).IsNearlyZero());
+		double Peak = 0.0;
+		for (int32 Step = 0; Step < 200; ++Step)
+		{
+			Peak = FMath::Max(Peak, FMath::Abs(GetBowTremble(1.0f + Step * 0.01f).Z));
+		}
+		TestEqual(TEXT("up to 0.2 down and up"), Peak, 0.2, 0.01);
 	}
 	// A drawn bow's arrow (the picture's up-left diagonal) points forward and its limbs (the other diagonal) up.
 	{

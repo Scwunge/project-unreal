@@ -1,0 +1,64 @@
+{
+ "description": "A raised sea 6 blocks deep over a sand floor (the world's floor is -64), camera under water, for the underwater look.",
+ "camera": [
+  0.5,
+  -59.6,
+  3.0,
+  0.0,
+  22.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    -24,
+    -63,
+    0
+   ],
+   "to": [
+    24,
+    -63,
+    36
+   ],
+   "state": "minecraft:sand"
+  },
+  {
+   "from": [
+    -24,
+    -62,
+    0
+   ],
+   "to": [
+    24,
+    -57,
+    36
+   ],
+   "state": "minecraft:water[level=0]"
+  },
+  {
+   "from": [
+    -6,
+    -62,
+    14
+   ],
+   "to": [
+    -4,
+    -60,
+    16
+   ],
+   "state": "minecraft:sandstone"
+  },
+  {
+   "from": [
+    4,
+    -62,
+    22
+   ],
+   "to": [
+    6,
+    -58,
+    24
+   ],
+   "state": "minecraft:prismarine"
+  }
+ ]
+}

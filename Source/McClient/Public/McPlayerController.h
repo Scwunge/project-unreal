@@ -73,6 +73,8 @@ private:
 	TWeakObjectPtr<UActorComponent> Sky;
 	TWeakObjectPtr<UActorComponent> Particles;
 	TWeakObjectPtr<UActorComponent> BlockLights;
+	TWeakObjectPtr<UActorComponent> Chests;
+	TWeakObjectPtr<UActorComponent> Signs;
 	TWeakObjectPtr<UActorComponent> Weather;
 	TWeakObjectPtr<UActorComponent> Clouds;
 	float NetLogTimer = 0.0f;

@@ -85,6 +85,9 @@ private:
 	void OnSound(const FMcSoundEvent& Event);
 	const McAudio::FDecodedSound* GetDecoded(const FString& Name);
 	bool PlayShaped(const FMcSoundEvent& Event, const FSpawn& Spawn);
+	// A jukebox's record: minutes of music decoded off the game thread, then played from the jukebox; or silenced.
+	void PlayRecord(const FMcSoundEvent& Event);
+	void StopRecord(const FMcSoundEvent& Event);
 	// A sound in the listener's head, not in the world (a bed, the cues of going under water).
 	UAudioComponent* Play2D(FName Event, float Volume, bool bAmbience);
 
@@ -115,6 +118,14 @@ private:
 	int32 MusicRequest = 0;
 	bool bMusicDecoding = false;
 	FRandomStream Random{ 11 };
+	// The records playing, by the jukebox's block; Request drops a decode that finishes after the record was taken out.
+	struct FRecord
+	{
+		TWeakObjectPtr<UAudioComponent> Component;
+		int32 Request = 0;
+	};
+	TMap<FIntVector, FRecord> Records;
+	int32 RecordRequest = 0;
 
 	const FMcBlockWorld* ListenerWorld = nullptr;
 	// The cave's mood meter and when it was last read.

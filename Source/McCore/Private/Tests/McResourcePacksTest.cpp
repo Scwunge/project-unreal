@@ -570,4 +570,44 @@ bool FMcPackLangTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackBuiltInTest, "McClient.McCore.PackBuiltIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackBuiltInTest::RunTest(const FString& Parameters)
+{
+	// The packs the game ships (High Contrast, Programmer Art) are offered by the ids the game gives them, and a selection
+	// that names one comes back under that id, not under the file name the cache keeps.
+	const TArray<FString> Names = McPacks::GetBuiltInNames();
+	if (Names.IsEmpty())
+	{
+		AddWarning(TEXT("no built-in packs in the cache (run tools/fetch_cache.py)"));
+		return true;
+	}
+	TestTrue(TEXT("High Contrast is there"), Names.Contains(TEXT("high_contrast")));
+	TestTrue(TEXT("Programmer Art is there"), Names.Contains(TEXT("programmer_art")));
+	const TArray<McPacks::FFolderEntry> Entries = McPacks::ScanFolder();
+	int32 NumBuiltIn = 0;
+	for (const McPacks::FFolderEntry& Entry : Entries)
+	{
+		if (Entry.bBuiltIn)
+		{
+			++NumBuiltIn;
+			TestTrue(Entry.Name + TEXT(" opens: ") + Entry.Error, Entry.Pack.IsValid());
+			if (Entry.Pack.IsValid())
+			{
+				TestEqual(Entry.Name + TEXT(" is named by its id"), Entry.Pack->GetInfo().Name, Entry.Name);
+				TestEqual(Entry.Name + TEXT(" is made for this version"), McPacks::GetCompatibility(Entry.Pack->GetInfo()), 0);
+				TestTrue(Entry.Name + TEXT(" has a description"), !Entry.Pack->GetInfo().Description.IsEmpty());
+			}
+		}
+	}
+	TestEqual(TEXT("each built-in pack is listed once"), NumBuiltIn, Names.Num());
+
+	const TArray<FString> Before = McPacks::GetSelectedNames();
+	McPacks::SetPacks({ TEXT("programmer_art") });
+	TestEqual(TEXT("a selection of a built-in pack keeps its id"), McPacks::GetSelectedNames(), TArray<FString>({ TEXT("programmer_art") }));
+	McPacks::SetPacks(Before);
+	return true;
+}
+
 #endif

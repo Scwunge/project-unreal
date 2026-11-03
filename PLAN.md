@@ -632,3 +632,10 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   grass pixels have less contrast (1st percentile 70 vs 67, 99th 107 vs 110), which looks like a different texture
   filter, not shading. Not fixed. Test scenes: `tools/scenes/shade_top.json`, `shade_side.json`; vanilla scripts
   `shade_cal.txt`, `shade_ctr.txt`, `shade_tint.txt` (verb `log tint x y z`).
+
+- **Built-in packs on the Resource Packs screen (2026-11-03).** High Contrast and Programmer Art (the launcher's
+  `resourcepacks/*.zip`, which `tools/fetch_cache.py` puts in `cache/assets/minecraft/resourcepacks`) are offered by their
+  ids and used like any pack; the Default pack (the game's own assets, icon `cache/client/pack.png`, which fetch_cache now
+  extracts too) is a fixed last row of Selected with no arrows. Titles and "(built-in)" come from the game's lang. Shot
+  against vanilla's screen. The 1070 needs those cache files copied by hand (the cache is not synced). Not done: the
+  in-world blur behind the screen.

@@ -4,6 +4,7 @@
 
 #include "McHUD.h"
 #include "McCache.h"
+#include "McLang.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
@@ -945,9 +946,18 @@ void AMcHUD::OpenResourcePacks()
 		Row.Name = Name;
 		Row.Title = Name;
 		Row.Error = Error;
+		const bool bBuiltIn = McPacks::IsBuiltIn(Name);
+		if (bBuiltIn)
+		{
+			Row.Title = McLang::Get(TEXT("resourcePack.") + Name + TEXT(".name"));
+		}
 		if (Pack.IsValid())
 		{
 			Row.Description = Pack->GetInfo().Description;
+			if (bBuiltIn)
+			{
+				Row.Description += TEXT(" (") + McLang::Get(TEXT("pack.source.builtin")) + TEXT(")");
+			}
 			switch (McPacks::GetCompatibility(Pack->GetInfo()))
 			{
 			case -1: Row.Warning = TEXT("(Made for an older version of Minecraft)"); break;
@@ -992,6 +1002,18 @@ void AMcHUD::OpenResourcePacks()
 			PacksAvailable.Add(MakeRow(Entry.Name, Entry.Pack, Entry.Error));
 		}
 	}
+	// The game's own assets: always selected, always at the bottom.
+	FPackRow Default;
+	Default.Name = TEXT("vanilla");
+	Default.Title = McLang::Get(TEXT("resourcePack.vanilla.name"));
+	Default.Description = McLang::Get(TEXT("resourcePack.vanilla.description")) + TEXT(" (") + McLang::Get(TEXT("pack.source.builtin")) + TEXT(")");
+	Default.bFixed = true;
+	TArray<uint8> DefaultIcon;
+	if (FFileHelper::LoadFileToArray(DefaultIcon, *(McCache::Root() / TEXT("client/pack.png"))) && LoadPackIcon(TEXT("pack:vanilla"), DefaultIcon))
+	{
+		Default.IconKey = TEXT("pack:vanilla");
+	}
+	PacksSelected.Add(Default);
 	OpenMenu(EMenu::ResourcePacks);
 }
 
@@ -1056,7 +1078,10 @@ void AMcHUD::ApplyResourcePacks()
 	TArray<FString> Names;
 	for (int32 Index = PacksSelected.Num() - 1; Index >= 0; --Index)
 	{
-		Names.Add(PacksSelected[Index].Name);
+		if (!PacksSelected[Index].bFixed)
+		{
+			Names.Add(PacksSelected[Index].Name);
+		}
 	}
 	if (Names == McPacks::GetSelectedNames())
 	{
@@ -1220,7 +1245,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 			{
 				DrawGuiText(Clip(Row.Error, TextWidthMax), TextX, Y + 12.0f, DarkGrey, true);
 			}
-			if (bOver && bUsable)
+			if (bOver && bUsable && !Row.bFixed)
 			{
 				// The arrows over the icon: left half takes it out of the list it is in, right half moves it up or down.
 				const float RelX = static_cast<float>(GuiMouse.X) - IconX;
@@ -1248,13 +1273,13 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 				{
 					const bool bLeft = bOnIcon && RelX < 16.0f;
 					const bool bUp = bOnIcon && RelX >= 16.0f && RelY < 16.0f && Index > 0;
-					const bool bDown = bOnIcon && RelX >= 16.0f && RelY >= 16.0f && Index < Rows.Num() - 1;
+					const bool bDown = bOnIcon && RelX >= 16.0f && RelY >= 16.0f && Index < Rows.Num() - 2;
 					Arrow(TEXT("unselect"), bLeft);
 					if (Index > 0)
 					{
 						Arrow(TEXT("move_up"), bUp);
 					}
-					if (Index < Rows.Num() - 1)
+					if (Index < Rows.Num() - 2)
 					{
 						Arrow(TEXT("move_down"), bDown);
 					}

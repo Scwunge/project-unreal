@@ -261,6 +261,7 @@ private:
 		FString IconKey;
 		FString Error;
 		FString Warning;      // made for another version: shown in red, the pack still loads
+		bool bFixed = false;  // the Default pack: always on, last, no arrows
 	};
 	// Packs chosen while a world is open wait for the next start: the world is using the textures.
 	bool bPacksNeedRestart = false;

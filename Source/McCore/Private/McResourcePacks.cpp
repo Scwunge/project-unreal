@@ -594,6 +594,35 @@ namespace McPacks
 		return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("resourcepacks"));
 	}
 
+	static FString GetBuiltInPath(const FString& Name)
+	{
+		if (Name != TEXT("high_contrast") && Name != TEXT("programmer_art"))
+		{
+			return FString();
+		}
+		// The launcher's assets (cache/assets), not the jar's (cache/client/assets).
+		const FString Path = McCache::Root() / TEXT("assets/minecraft/resourcepacks") / (Name + TEXT(".zip"));
+		return IFileManager::Get().FileExists(*Path) ? Path : FString();
+	}
+
+	TArray<FString> GetBuiltInNames()
+	{
+		TArray<FString> Names;
+		for (const TCHAR* Name : { TEXT("high_contrast"), TEXT("programmer_art") })
+		{
+			if (!GetBuiltInPath(Name).IsEmpty())
+			{
+				Names.Add(Name);
+			}
+		}
+		return Names;
+	}
+
+	bool IsBuiltIn(const FString& Name)
+	{
+		return !GetBuiltInPath(Name).IsEmpty();
+	}
+
 	FString ResolveName(const FString& Name)
 	{
 		const FString InFolder = GetFolder() / Name;
@@ -605,7 +634,7 @@ namespace McPacks
 		{
 			return FPaths::ConvertRelativePathToFull(Name);
 		}
-		return FString();
+		return GetBuiltInPath(Name);
 	}
 
 	static TSharedRef<const FMcPackStack> OpenNames(const TArray<FString>& Names)
@@ -622,6 +651,10 @@ namespace McPacks
 			FString Error;
 			if (const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Path, &Error))
 			{
+				if (Path == GetBuiltInPath(Name))
+				{
+					Pack->SetName(Name);
+				}
 				const FMcPackInfo& Info = Pack->GetInfo();
 				UE_LOG(LogMcCore, Log, TEXT("Resource pack %s: pack_format %d (supports %d to %d), %s, \"%s\""), *Info.Name, Info.PackFormat,
 					Info.MinFormat, Info.MaxFormat, Info.bZip ? *FString::Printf(TEXT("zip of %d files"), Pack->NumZipEntries()) : TEXT("folder"), *Info.Description);
@@ -706,6 +739,18 @@ namespace McPacks
 	TArray<FFolderEntry> ScanFolder()
 	{
 		TArray<FFolderEntry> Entries;
+		for (const FString& Name : GetBuiltInNames())
+		{
+			FFolderEntry& Entry = Entries.AddDefaulted_GetRef();
+			Entry.Name = Name;
+			Entry.Path = GetBuiltInPath(Name);
+			Entry.bBuiltIn = true;
+			Entry.Pack = FMcResourcePack::Open(Entry.Path, &Entry.Error);
+			if (Entry.Pack.IsValid())
+			{
+				Entry.Pack->SetName(Name);
+			}
+		}
 		TArray<FString> Names;
 		IFileManager::Get().FindFiles(Names, *(GetFolder() / TEXT("*.zip")), true, false);
 		IFileManager::Get().FindFiles(Names, *(GetFolder() / TEXT("*")), false, true);

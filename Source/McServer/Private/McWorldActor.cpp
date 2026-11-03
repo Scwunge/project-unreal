@@ -213,6 +213,13 @@ void AMcWorldActor::BeginPlay()
 	{
 		bFlat |= McLaunch::HasFlag(GetWorld(), TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
 	}
+#if !UE_BUILD_SHIPPING
+	// Development: -McFlatPreset=minecraft:snowy_kingdom picks the flat preset (a saved world keeps its own).
+	if (!bSecondary)
+	{
+		FParse::Value(CommandLine, TEXT("-McFlatPreset="), FlatPreset);
+	}
+#endif
 	FString SeedArg;
 	const bool bSeedArg = !bSecondary && McLaunch::GetValue(GetWorld(), TEXT("McSeed"), SeedArg);
 	if (bSeedArg)

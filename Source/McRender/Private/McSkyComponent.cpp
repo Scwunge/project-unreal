@@ -799,7 +799,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	const FVector ToMoon = ToUnreal(FMcDayCycle::AngleToDirection(Cycle.GetMoonAngle(Ticks)));
 	// The sun fades out just after it sets and the moon takes over; rain hides most of both.
 	const float Day = FMath::SmoothStep(-0.04f, 0.12f, static_cast<float>(ToSun.Z));
-	const float Clear = 1.0f - 0.8f * Rain;
+	const float Clear = 1.0f - 0.5f * Rain;
 	const bool bSun = Day > 0.0f;
 	const FVector Towards = bSun ? ToSun : ToMoon;
 	SunLight->SetWorldRotation((-Towards).Rotation());

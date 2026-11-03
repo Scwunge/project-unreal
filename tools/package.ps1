@@ -34,7 +34,7 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 if (-not $SkipBuild) {
     if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
     & "$EngineRoot\Build\BatchFiles\RunUAT.bat" BuildCookRun "-project=$Project" -noP4 -platform=Win64 `
-        -clientconfig=$Config -target=McClient -build -cook -stage -pak -prereqs -archive "-archivedirectory=$Stage" `
+        "-clientconfig=$Config" -target=McClient -build -cook -stage -pak -prereqs -archive "-archivedirectory=$Stage" `
         -utf8output -nocompileeditor
     if ($LASTEXITCODE -ne 0) { throw "BuildCookRun failed ($LASTEXITCODE)" }
 }

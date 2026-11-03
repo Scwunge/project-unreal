@@ -560,6 +560,11 @@ namespace
 									{
 										TTuple<int64, int64, int64>& Open = OpenCells.FindOrAdd(FString::Printf(TEXT("%s %d"), GroundY < 62 ? TEXT("sea") : TEXT("land"), (Y - Settings.MinY) >> 3), MakeTuple<int64, int64, int64>(0, 0, 0));
 										(bAir ? Open.Get<0>() : Fluid == EMcFluid::Water ? Open.Get<1>() : Open.Get<2>())++;
+										if (Y >= -8 && Y < 48)
+										{
+											TTuple<int64, int64, int64>& Fine = OpenCells.FindOrAdd(FString::Printf(TEXT("%sY %d"), GroundY < 62 ? TEXT("sea") : TEXT("land"), Y), MakeTuple<int64, int64, int64>(0, 0, 0));
+											(bAir ? Fine.Get<0>() : Fluid == EMcFluid::Water ? Fine.Get<1>() : Fine.Get<2>())++;
+										}
 									}
 								}
 								if (GroundY < Settings.SeaLevel - 1 && Biome.Contains(TEXT("ocean")))
@@ -691,7 +696,7 @@ bool FMcAquiferSweepTest::RunTest(const FString& Parameters)
 	// The sea-floor clause's three numbers; each line is the water share of the open cells below the ground, by 8-block
 	// band from y -8 to 39, for columns whose ground is under the sea and for land columns, over 5 seeds.
 	struct FConfig { double Full0; double Partial0; double Depth; int32 Base; double Flood; };
-	const FConfig Configs[] = { { -0.2, -0.7, 64, 10, 0.5 }, { -0.1, -0.6, 64, 10, 0.5 }, { 0.0, -0.5, 64, 10, 0.5 } };
+	const FConfig Configs[] = { { -0.2, -0.7, 64, 20, 0.5 }, { -0.2, -0.7, 64, 20, 0.35 }, { -0.2, -0.7, 64, 15, 0.5 } };
 	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
 	const uint64 Seeds[] = { 4242424242ull, 1001ull, 909090909ull };
 	for (const FConfig& Config : Configs)

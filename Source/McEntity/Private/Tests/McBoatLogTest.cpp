@@ -111,5 +111,27 @@ bool FMcBoatLogTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("4 then 0.5 breaks it"), Hits({ 4.0f, 0.5f }));
 		TestFalse(TEXT("six hits of 1, four ticks apart, don't"), Hits({ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f }));
 	}
+	// Driven on the water surface (vehicle_log19.txt): friction 0.9, so 0.04, 0.076, 0.1084 a tick, and the turn steps 1, 1.9, 2.71.
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		for (int32 Z = -1; Z <= 2; ++Z) { for (int32 X = -1; X <= 3; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+		for (int32 X = 0; X < 40; ++X) { for (int32 Z = -2; Z <= 2; ++Z) { for (int32 Y = 0; Y < 5; ++Y) { World.SetBlock(FIntVector(X, Y, Z), State(Y == 0 ? TEXT("minecraft:stone") : TEXT("minecraft:water"))); } } }
+		FMcEntityManager Manager(World);
+		FMcBoatEntity* Boat = new FMcBoatEntity(false);
+		Boat->Body.Position = FVector(2.5, 4.5, 0.5);
+		Boat->Yaw = -90.0f;
+		Manager.Add(TUniquePtr<FMcEntity>(Boat));
+		for (int32 Tick = 0; Tick < 20; ++Tick) { Boat->SetRider(0.0f, 0.0f, -90.0f, 7); Manager.Tick(); }
+		const double Start = Boat->Body.Position.X;
+		const double Expected[] = { 0.04, 0.076, 0.1084 };
+		for (int32 Tick = 0; Tick < 3; ++Tick)
+		{
+			const double Before = Boat->Body.Position.X;
+			Boat->SetRider(1.0f, 0.0f, -90.0f, 7);
+			Manager.Tick();
+			TestTrue(*FString::Printf(TEXT("surface step %d: %f vs %f"), Tick, Boat->Body.Position.X - Before, Expected[Tick]), FMath::Abs(Boat->Body.Position.X - Before - Expected[Tick]) < 5e-4);
+		}
+		(void)Start;
+	}
 	return true;
 }

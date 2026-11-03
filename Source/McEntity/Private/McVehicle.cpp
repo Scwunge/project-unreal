@@ -488,6 +488,13 @@ bool FMcMinecartEntity::TickOnRail(FMcEntityManager& Manager, FMcBlockWorld& Wor
 	{
 		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Velocity.X, Velocity.Y));
 	}
+	else
+	{
+		// At rest it lies along its rail, the way round it was already (vehicle_look.txt: vanilla's carts on an
+		// east-west rail show their long side, not their end, from the south; ours stayed at yaw 0, along z).
+		const double RailYaw = FMath::RadiansToDegrees(FMath::Atan2(-Along.X, Along.Y));
+		Yaw = RailYaw + (FMath::Abs(FMath::FindDeltaAngleDegrees(RailYaw, static_cast<double>(Yaw))) > 90.0 ? 180.0 : 0.0);
+	}
 	OnRail = Cell;
 	if (Block == TEXT("minecraft:detector_rail"))
 	{

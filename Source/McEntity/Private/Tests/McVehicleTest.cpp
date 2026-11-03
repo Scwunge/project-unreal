@@ -67,6 +67,22 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 	}
 
+	// ---- A cart at rest lies along its rail, not across it (vehicle_look.txt: from the south, vanilla's carts on an
+	// east-west rail show their long side) ----
+	{
+		FMcMinecartEntity* Resting = new FMcMinecartEntity();
+		Resting->Body.Position = FVector(8.5, 1.0625, 0.5);
+		Resting->Yaw = 0.0f;
+		Manager.Add(TUniquePtr<FMcEntity>(Resting));
+		Manager.Tick();
+		TestNearlyEqual(TEXT("a cart at rest on an east-west rail turns to face along it"), FMath::Abs(Resting->Yaw), 90.0f, 0.01f);
+		Resting->Yaw = 170.0f;
+		Manager.Tick();
+		TestNearlyEqual(TEXT("and keeps to the end it already faced (170 is nearer 90 than -90)"), Resting->Yaw, 90.0f, 0.01f);
+		Resting->bRemoved = true;
+		Manager.Tick();
+	}
+
 	// ---- A powered rail speeds a moving cart up, an unpowered one stops it ----
 	for (int32 X = 0; X <= 12; ++X)
 	{

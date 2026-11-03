@@ -439,9 +439,56 @@ namespace McEntityModel
 		switch (Decor.Kind)
 		{
 		case McDecor::EKind::Painting: return 2;
-		case McDecor::EKind::ArmorStand: return 1;
+		case McDecor::EKind::ArmorStand: return 5;
 		default: return Decor.Item.IsEmpty() ? 2 : 3;
 		}
+	}
+
+	// One armor slot of a stand (layer 1 head, 2 chest, 3 legs, 4 feet): the armor model's parts as the game's model measured
+	// them (pivot and cubes in its y-down axes), each turned by the pose of the stand part it covers. A small stand wears
+	// them at half size.
+	void BuildStandArmor(const McDecor::FDecor& Decor, int32 Layer, McPlayerModel::FMeshData& Out)
+	{
+		const float Scale = Decor.bSmall ? 0.5f : 1.0f;
+		const auto Make = [&](McDecor::EPart Pose, FVector Pivot, std::initializer_list<FBox> Boxes) -> FPart
+		{
+			FPart Result;
+			const float Down = Decor.bSmall ? 12.0f + Pivot.Y * Scale : Pivot.Y;
+			Result.Pivot = FVector(Pivot.X * Scale, 24.0 - Down, -Pivot.Z);
+			Result.Scale = Scale;
+			Result.Boxes = Boxes;
+			const FVector3f Angles = Decor.Pose[static_cast<int32>(Pose)];
+			Result.RestPitch = -FMath::DegreesToRadians(Angles.X);
+			Result.RestYaw = FMath::DegreesToRadians(Angles.Y);
+			Result.RestRoll = FMath::DegreesToRadians(Angles.Z);
+			return Result;
+		};
+		FModel Armor;
+		Armor.TextureSize = FIntPoint(64, 32);
+		switch (Layer)
+		{
+		case 1:
+			Armor.Parts.Add(Make(McDecor::EPart::Head, FVector(0, 1, 0), { Box(0, 0, -4, 0, -4, 8, 8, 8, 1.0f), Box(32, 0, -4, 0, -4, 8, 8, 8, 1.5f) }));
+			break;
+		case 2:
+			Armor.Parts.Add(Make(McDecor::EPart::Body, FVector(0, 0, 0), { Box(16, 16, -4, -12, -2, 8, 12, 4, 1.0f) }));
+			Armor.Parts.Add(Make(McDecor::EPart::RightArm, FVector(-5, 2, 0), { Box(40, 16, -3, -10, -2, 4, 12, 4, 1.0f) }));
+			Armor.Parts.Add(Make(McDecor::EPart::LeftArm, FVector(5, 2, 0), { Box(40, 16, -1, -10, -2, 4, 12, 4, 1.0f, true) }));
+			break;
+		case 3:
+			Armor.Parts.Add(Make(McDecor::EPart::Body, FVector(0, 0, 0), { Box(16, 16, -4, -12, -2, 8, 12, 4, 0.5f) }));
+			Armor.Parts.Add(Make(McDecor::EPart::RightLeg, FVector(-1.9f, 11, 0), { Box(0, 16, -2, -12, -2, 4, 12, 4, 0.4f) }));
+			Armor.Parts.Add(Make(McDecor::EPart::LeftLeg, FVector(1.9f, 11, 0), { Box(0, 16, -2, -12, -2, 4, 12, 4, 0.4f, true) }));
+			break;
+		default:
+			Armor.Parts.Add(Make(McDecor::EPart::RightLeg, FVector(-1.9f, 11, 0), { Box(0, 16, -2, -12, -2, 4, 12, 4, 0.9f) }));
+			Armor.Parts.Add(Make(McDecor::EPart::LeftLeg, FVector(1.9f, 11, 0), { Box(0, 16, -2, -12, -2, 4, 12, 4, 0.9f, true) }));
+			break;
+		}
+		FAnim Anim;
+		Anim.BodyYaw = Decor.Yaw;
+		Anim.HeadYaw = Decor.Yaw;
+		BuildMesh(Armor, Anim, 0, Out);
 	}
 
 	void BuildDecorMesh(const McDecor::FDecor& Decor, int32 Layer, FVector2D PictureBlocks, float ItemVMax, McPlayerModel::FMeshData& Out)
@@ -473,6 +520,11 @@ namespace McEntityModel
 		{
 			// The stand's parts as the game's model measured them (pivot and cubes in its y-down, z-back axes; here y up and
 			// z forward), a small stand's parts scaled about their own pivots. Poses turn a part by the game's angles.
+			if (Layer > 0)
+			{
+				BuildStandArmor(Decor, Layer, Out);
+				return;
+			}
 			const float Scale = Decor.bSmall ? 0.5f : 1.0f;
 			const float HeadScale = Decor.bSmall ? 0.75f : 1.0f;
 			const auto Make = [&](McDecor::EPart Pose, bool bHasPose, FVector Pivot, float PartScale, std::initializer_list<FBox> Boxes) -> FPart
@@ -495,10 +547,10 @@ namespace McEntityModel
 			Stand.TextureSize = FIntPoint(64, 64);
 			const auto Rest = [&](float Big, float Small) { return Decor.bSmall ? Small : Big; };
 			// Box(U, V, minX, -maxY, -maxZ, W, H, D) from the cubes' x, y and z extents.
-			Stand.Parts.Add(Make(None, false, FVector(0, Rest(0, 12), 0), Scale, { Box(16, 0, -3, -10, -1, 2, 7, 2), Box(48, 16, 1, -10, -1, 2, 7, 2), Box(0, 48, -4, -12, -1, 8, 2, 2) }));
+			Stand.Parts.Add(Make(McDecor::EPart::Body, true, FVector(0, Rest(0, 12), 0), Scale, { Box(16, 0, -3, -10, -1, 2, 7, 2), Box(48, 16, 1, -10, -1, 2, 7, 2), Box(0, 48, -4, -12, -1, 8, 2, 2) }));
 			if (!Decor.bInvisible)
 			{
-				Stand.Parts.Add(Make(None, false, FVector(0, Rest(0, 12), 0), Scale, { Box(0, 26, -6, -3, -1.5f, 12, 3, 3) }));
+				Stand.Parts.Add(Make(McDecor::EPart::Body, true, FVector(0, Rest(0, 12), 0), Scale, { Box(0, 26, -6, -3, -1.5f, 12, 3, 3) }));
 				Stand.Parts.Add(Make(McDecor::EPart::RightLeg, true, FVector(-1.9f * Scale, Rest(12, 18), 0), Scale, { Box(8, 0, -1, -11, -1, 2, 11, 2) }));
 				Stand.Parts.Add(Make(McDecor::EPart::LeftLeg, true, FVector(1.9f * Scale, Rest(12, 18), 0), Scale, { Box(40, 16, -1, -11, -1, 2, 11, 2) }));
 				if (Decor.bArms)
@@ -1045,6 +1097,22 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 		case McDecor::EKind::Painting:
 			return McCache::Asset(TEXT("textures/painting/") + (Layer == 0 ? Decor.Variant : FString(TEXT("back"))) + TEXT(".png"));
 		case McDecor::EKind::ArmorStand:
+			if (Layer > 0)
+			{
+				// The worn piece's material names its picture; leggings have a sheet of their own.
+				FString Name = Decor.Equipment[Layer - 1];
+				if (Name.IsEmpty())
+				{
+					return FString();
+				}
+				Name.RemoveFromStart(TEXT("minecraft:"));
+				for (const TCHAR* Suffix : { TEXT("_helmet"), TEXT("_chestplate"), TEXT("_leggings"), TEXT("_boots") })
+				{
+					Name.RemoveFromEnd(Suffix);
+				}
+				Name = Name == TEXT("golden") ? FString(TEXT("gold")) : Name == TEXT("turtle") ? FString(TEXT("turtle_scute")) : Name;
+				return McCache::Asset(FString(TEXT("textures/entity/equipment/")) + (Layer == 3 ? TEXT("humanoid_leggings/") : TEXT("humanoid/")) + Name + TEXT(".png"));
+			}
 			return McCache::Asset(TEXT("textures/entity/armorstand/armorstand.png"));
 		default:
 			if (Layer == 2)

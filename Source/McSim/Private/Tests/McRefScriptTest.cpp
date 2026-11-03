@@ -35,7 +35,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		TArray<FString> Lines;
 		FFileHelper::LoadFileToStringArray(Lines, *FPaths::Combine(Dir, File));
 		FMcBlockWorld World{FMcDimensionType()};
-		for (int32 Z = -1; Z <= 1; ++Z) for (int32 X = -1; X <= 13; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		for (int32 Z = -1; Z <= 3; ++Z) for (int32 X = -1; X <= 13; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 		FMcSimulation Sim(World);
 		const FMcStateId Air = Registry.ParseState(TEXT("minecraft:air")).Get(0);
 		const auto Parse = [&](const FString& Text) { return Registry.ParseState(*(TEXT("minecraft:") + Text)).Get(Air); };
@@ -79,7 +79,6 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			if (Line.StartsWith(TEXT("#vt ")))
 			{
 				int32 Before = 0;
-				TMap<FIntVector, int32> Lying;
 		for (const FString& Raw : Lines)
 				{
 					TArray<FString> Q;
@@ -120,6 +119,9 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			Current.Reset();
 			Out.Reset();
 		};
+		TMap<FIntVector, int32> Lying;
+		TArray<TPair<FIntVector, int32>> Pending;
+		bool bSurvival = false, bShears = false;
 		for (const FString& Raw : Lines)
 		{
 			TArray<FString> P;
@@ -136,12 +138,34 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			{
 				// An item lying in a cell is one thing pressing it (a tripwire, a plate).
 				const FIntVector Cell(FMath::FloorToInt32(FCString::Atod(*P[3])), FMath::FloorToInt32(FCString::Atod(*P[4])) + Lift, FMath::FloorToInt32(FCString::Atod(*P[5])));
-				Sim.SetPressurePlate(Cell, ++Lying.FindOrAdd(Cell));
+				Pending.Add(TPair<FIntVector, int32>(Cell, ++Lying.FindOrAdd(Cell)));
 			}
 			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && P[1] == TEXT("kill") && P[2].StartsWith(TEXT("@e[type=item")))
 			{
-				for (const TPair<FIntVector, int32>& Item : Lying) Sim.SetPressurePlate(Item.Key, 0);
+				for (const TPair<FIntVector, int32>& Item : Lying) Pending.Add(TPair<FIntVector, int32>(Item.Key, 0));
 				Lying.Reset();
+			}
+			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && P[1] == TEXT("gamemode"))
+			{
+				bSurvival = P[2] == TEXT("survival");
+			}
+			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && (P[1] == TEXT("give") || P[1] == TEXT("clear")))
+			{
+				bShears = P[1] == TEXT("give") && Raw.Contains(TEXT("shears"));
+			}
+			else if (P.Num() == 4 && P[0] == TEXT("break"))
+			{
+				// A player breaking a block: it is gone at once; a survival player with shears takes a tripwire away disarmed.
+				const FIntVector Cell(FCString::Atoi(*P[1]), FCString::Atoi(*P[2]) + Lift, FCString::Atoi(*P[3]));
+				const FMcStateId Old = World.GetBlock(Cell);
+				if (bSurvival && bShears && Registry.GetBlockOf(Old).Name == TEXT("minecraft:tripwire"))
+				{
+					TMap<FName, FName> Props;
+					for (const TCHAR* Name : { TEXT("attached"), TEXT("east"), TEXT("north"), TEXT("powered"), TEXT("south"), TEXT("west") }) Props.Add(Name, Registry.GetPropertyValue(Old, Name));
+					Props.Add(TEXT("disarmed"), TEXT("true"));
+					World.SetBlock(Cell, Registry.FindState(TEXT("minecraft:tripwire"), Props).Get(Old));
+				}
+				World.SetBlock(Cell, Air);
 			}
 			else if (P.Num() == 4 && P[0] == TEXT("press"))
 			{
@@ -158,7 +182,13 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 			else if (P.Num() >= 4 && P[0] == TEXT("cmd") && P[1] == TEXT("tick") && P[2] == TEXT("step"))
 			{
 				Finish();
-				for (int32 Index = 0; Index < FCString::Atoi(*P[3]); ++Index) Sim.Tick();
+				for (int32 Index = 0; Index < FCString::Atoi(*P[3]); ++Index)
+				{
+					Sim.Tick();
+					// What the entities did this tick reaches the plates after it (the world actor feeds them once a tick).
+					for (const TPair<FIntVector, int32>& Feed : Pending) Sim.SetPressurePlate(Feed.Key, Feed.Value);
+					Pending.Reset();
+				}
 			}
 			else if (P.Num() == 8 && P[0] == TEXT("log") && P[1] == TEXT("states"))
 			{

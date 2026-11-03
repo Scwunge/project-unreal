@@ -3,7 +3,7 @@
 Y = -60
 ROWS = []          # (name, builder)
 L = ["cmd gamerule send_command_feedback false", "cmd gamemode creative", "cmd tp @s 20 -57 8", "wait 40", "cmd tick freeze",
-     "cmd fill -4 -62 -3 48 -49 62 air", "cmd fill -4 -61 -3 48 -61 62 stone", "cmd give @s shears", "wait 10"]
+     "cmd fill -4 -60 -3 48 -55 62 air", "cmd fill -4 -61 -3 48 -61 62 stone", "cmd give @s shears", "wait 10"]
 def c(s): L.append("cmd " + s)
 def row(k): return 3 * k
 def pair(z, n, x0=0, tail=False):

@@ -584,6 +584,23 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	{
 		return;
 	}
+	// A disarmed string that goes (shears) is not felt by the hooks (reference client, rs_trip3).
+	const bool bDisarmedGone = DisarmedStrings.Remove(Pos) > 0 && KindOf(State) != Tripwire;
+	if (KindOf(State) == Tripwire && Flag(State, TEXT("disarmed")))
+	{
+		DisarmedStrings.Add(Pos);
+	}
+	TGuardValue<bool> GuardShorn(bShornBreak, bDisarmedGone);
+	// A hook put in place connects the string beside it but does not look along its line yet (reference run rs_tripwire:
+	// the hooks stay unattached until the first string is placed or something touches the string).
+	// A string that becomes another state of itself does not look along its line (reference run rs_tripwire: a disarmed one
+	// put over a string leaves the hooks and the other strings as they were).
+	const bool bWasString = StringCells.Contains(Pos);
+	if (KindOf(State) == Tripwire) StringCells.Add(Pos); else StringCells.Remove(Pos);
+	TGuardValue<FIntVector> GuardChanged(ChangedPos, Pos);
+	TGuardValue<FIntVector> GuardRemoved(RemovedString, bWasString && KindOf(State) != Tripwire ? Pos : FIntVector(INT32_MIN));
+	TGuardValue<bool> GuardSame(bStringReplaced, bWasString && KindOf(State) == Tripwire);
+	TGuardValue<FIntVector> GuardHook(HookPlaced, KindOf(State) == TripwireHook ? Pos : FIntVector(INT32_MIN));
 	// Kelp with kelp growing above it is the stem block, kelp_plant (reference run rs_world: the lower kelp changes the
 	// moment one is put above it).
 	static const FName KelpName(TEXT("minecraft:kelp")), KelpPlantName(TEXT("minecraft:kelp_plant"));
@@ -670,6 +687,9 @@ bool FMcRedstone::IsSupported(const FIntVector& Pos, FMcStateId State) const
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Down]));
 	case WallTorch:
 		return Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
+	case TripwireHook:
+		// A hook just put in place is not looked at (setblock does not check; reference run rs_trip2, "nowall"), only when a neighbour changes.
+		return Pos == HookPlaced || Shapes.HasCollision(World.GetBlock(Pos + Vec[Opposite(FacingOf(State))]));
 	case Lever:
 	case Button:
 	{
@@ -712,7 +732,10 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	{
 		return;
 	}
-	if (!IsSupported(Pos, State))
+	// (A hook only looks at what it hangs on when that is the block that changed.)
+	// (And only when it was taken away: a string put where the hook hangs does not drop it, reference run rs_trip2, "same".)
+	const bool bHookOk = Kind == TripwireHook && (ChangedPos != Pos + Vec[Opposite(FacingOf(State))] || !Reg().IsAir(World.GetBlock(ChangedPos)));
+	if (!bHookOk && !IsSupported(Pos, State))
 	{
 		if (Kind == Dust)
 		{
@@ -730,8 +753,17 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		DirtyDust.Add(Pos);
 		break;
 	case Tripwire:
+		ShapeTripwire(Pos);
+		if (HookPlaced.X == INT32_MIN && !bStringReplaced)
+		{
+			UpdateTripwires(Pos);
+		}
+		break;
 	case TripwireHook:
-		UpdateTripwires(Pos);
+		if (HookPlaced.X == INT32_MIN && !bStringReplaced)
+		{
+			UpdateTripwires(Pos);
+		}
 		break;
 	// Power on TNT lights it (the server makes it primed TNT and takes the block away).
 	case Tnt:
@@ -919,6 +951,9 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case Tripwire:
 		TickTripwire(Pos, State);
+		break;
+	case TripwireHook:
+		UpdateHookLine(Pos);
 		break;
 	default:
 		break;
@@ -1431,10 +1466,14 @@ void FMcRedstone::SetPlate(const FIntVector& Pos, int32 NumEntities)
 	if (Kind == Tripwire)
 	{
 		Plates.Add(Pos, NumEntities);
-		if (NumEntities > 0 && !Flag(State, TEXT("disarmed")) && !Flag(State, TEXT("powered")))
+		if (NumEntities > 0 && !Flag(State, TEXT("powered")))
 		{
 			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
 			Sim.ScheduleTick(Pos, TripwireDelay);
+			// Something on a disarmed string lets go of the hooks and the strings until the next look (reference run
+			// rs_tripwire: all unattached when the item lands, attached again 10 ticks on).
+			TGuardValue<bool> Guard(bDetachLine, Flag(State, TEXT("disarmed")));
+			UpdateTripwires(Pos);
 		}
 		return;
 	}
@@ -1525,12 +1564,23 @@ void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
 	const int32 Dir = FacingOf(HookState);
 	bool bAttached = false;
 	bool bPowered = false;
+	bool bBroken = false;
+	int32 RemovedStep = 0;
 	FIntVector Other = Hook;
 	for (int32 Step = 1; Step <= TripwireMaxLength + 1; ++Step)
 	{
 		const FIntVector Cell = Hook + Vec[Dir] * Step;
 		const FMcStateId State = World.GetBlock(Cell);
 		const uint8 Kind = KindOf(State);
+		if (Cell == RemovedString && !bShornBreak)
+		{
+			// The string that was just taken away still counts, powered, in the line it was in (reference runs rs_tripwire,
+			// rs_trip3): the hooks join up and power on at once.
+			bPowered = true;
+			bBroken = true;
+			RemovedStep = Step;
+			continue;
+		}
 		if (Kind == TripwireHook)
 		{
 			bAttached = FacingOf(State) == Opposite(Dir) && Step >= 2;
@@ -1543,32 +1593,99 @@ void FMcRedstone::UpdateHookLine(const FIntVector& Hook)
 		}
 		bPowered |= Flag(State, TEXT("powered")) && !Flag(State, TEXT("disarmed"));
 	}
-	// String broken (not by shears) under a hook that was attached: both hooks stay attached and power on at once, and
-	// stay so until the string is mended or looked at again (reference client, rs_tripwire: 6 ticks seen).
-	if (!bAttached && Flag(HookState, TEXT("attached")) && Other == Hook)
+	// Taking away the string next to a hook (either end) does not join or power them (reference run rs_trip2).
+	if (bBroken && (RemovedStep == 1 || (bAttached && Other - Vec[Dir] == RemovedString)))
 	{
-		bAttached = true;
-		bPowered = true;
+		bAttached = false;
+		bPowered = false;
+		bBroken = false;
 	}
 	bPowered &= bAttached;
+	if (bDetachLine)
+	{
+		bAttached = bPowered = false;
+	}
 	const auto Apply = [&](const FIntVector& Pos)
 	{
 		const FMcStateId State = World.GetBlock(Pos);
 		if (Flag(State, TEXT("attached")) != bAttached || Flag(State, TEXT("powered")) != bPowered)
 		{
 			Set(Pos, { FChange(TEXT("attached"), Bool(bAttached)), FChange(TEXT("powered"), Bool(bPowered)) });
+			return true;
 		}
+		return false;
 	};
+	// Only a hook joining or leaving its partner marks the strings; a power change alone does not (rs_tripwire).
+	const bool bWasAttached = Flag(HookState, TEXT("attached"));
+	bool bChanged = bWasAttached != bAttached || (bAttached && !Flag(World.GetBlock(Other), TEXT("attached")));
 	Apply(Hook);
 	if (bAttached)
 	{
 		Apply(Other);
+		HookPartner.Add(Hook, Other);
+		HookPartner.Add(Other, Hook);
+	}
+	else if (const FIntVector* Partner = HookPartner.Find(Hook))
+	{
+		// The one it was joined to lets go with it.
+		const FIntVector Gone = *Partner;
+		HookPartner.Remove(Hook);
+		if (bWasAttached)
+		{
+			UpdateHookLine(Gone);
+		}
+	}
+	// They let go again a while later.
+	if (bBroken && bPowered)
+	{
+		Sim.ScheduleTick(Hook, TripwireDelay);
+	}
+	// The strings between carry the flag too, when the hooks changed (reference run rs_tripwire: a look that finds
+	// nothing new leaves the strings as they are).
+	for (int32 Step = 1; bChanged && Step <= TripwireMaxLength; ++Step)
+	{
+		const FIntVector Cell = Hook + Vec[Dir] * Step;
+		if (Cell == RemovedString && !bShornBreak)
+		{
+			continue;
+		}
+		const FMcStateId State = World.GetBlock(Cell);
+		if (KindOf(State) != Tripwire)
+		{
+			break;
+		}
+		if (Flag(State, TEXT("attached")) != bAttached)
+		{
+			Set(Cell, { FChange(TEXT("attached"), Bool(bAttached)) });
+		}
+	}
+}
+
+// A string joins the string or the hook that faces it on each side (reference run rs_tripwire: the string next to a hook is
+// connected to it from the moment it is there).
+void FMcRedstone::ShapeTripwire(const FIntVector& Pos)
+{
+	static const TCHAR* Names[4] = { TEXT("north"), TEXT("east"), TEXT("south"), TEXT("west") };
+	const int32 Dirs[4] = { North, East, South, West };
+	const FMcStateId State = World.GetBlock(Pos);
+	bool bJoin[4];
+	bool bChanged = false;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const FMcStateId Beside = World.GetBlock(Pos + Vec[Dirs[Index]]);
+		const uint8 Kind = KindOf(Beside);
+		bJoin[Index] = Kind == Tripwire || (Kind == TripwireHook && FacingOf(Beside) == Opposite(Dirs[Index]));
+		bChanged |= Flag(State, Names[Index]) != bJoin[Index];
+	}
+	if (bChanged)
+	{
+		Set(Pos, { FChange(Names[0], Bool(bJoin[0])), FChange(Names[1], Bool(bJoin[1])), FChange(Names[2], Bool(bJoin[2])), FChange(Names[3], Bool(bJoin[3])) });
 	}
 }
 
 void FMcRedstone::TickTripwire(const FIntVector& Pos, FMcStateId State)
 {
-	if (Plates.FindRef(Pos) > 0 && !Flag(State, TEXT("disarmed")))
+	if (Plates.FindRef(Pos) > 0)
 	{
 		Sim.ScheduleTick(Pos, TripwireDelay);
 		UpdateTripwires(Pos);

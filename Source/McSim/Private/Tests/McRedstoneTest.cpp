@@ -530,9 +530,11 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		}
 		World.SetBlock(FIntVector(4, 1, 7), State(TEXT("minecraft:tripwire_hook[attached=false,facing=west,powered=false]")));
 		Run(Sim, 2);
-		TestEqual(TEXT("hooks with string between are attached"), HookValue(0, TEXT("attached")), FString(TEXT("true")));
+		// Put there by a command, the hooks stay unattached until the string is touched (reference run rs_tripwire).
+		TestEqual(TEXT("hooks put in place last are not attached yet"), HookValue(0, TEXT("attached")), FString(TEXT("false")));
 		Sim.SetPressurePlate(FIntVector(2, 1, 7), 1);
 		Run(Sim, 1);
+		TestEqual(TEXT("something in the string attaches the hooks"), HookValue(0, TEXT("attached")), FString(TEXT("true")));
 		TestEqual(TEXT("something in the string powers the near hook"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
 		TestEqual(TEXT("and the far one"), HookValue(4, TEXT("powered")), FString(TEXT("true")));
 		Sim.SetPressurePlate(FIntVector(2, 1, 7), 0);
@@ -551,8 +553,8 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 			Run(Sim, 1);
 			TestEqual(TEXT("TNT beside a redstone block is lit"), Lit.Num(), 1);
 		}
-		// Breaking the string powers both hooks at once (reference client).
-		World.SetBlock(FIntVector(3, 1, 7), Air);
+		// Breaking the string (not next to a hook) powers both hooks at once (reference client).
+		World.SetBlock(FIntVector(2, 1, 7), Air);
 		Run(Sim, 2);
 		TestEqual(TEXT("a broken string powers the near hook"), HookValue(0, TEXT("powered")), FString(TEXT("true")));
 		TestEqual(TEXT("and the far one"), HookValue(4, TEXT("powered")), FString(TEXT("true")));

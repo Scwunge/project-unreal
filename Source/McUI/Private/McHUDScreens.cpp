@@ -1041,12 +1041,13 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
 		FString DevMenu;
-		bool bDevOptions = false, bDevPacks = false;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs")))
+		bool bDevOptions = false, bDevPacks = false, bDevLanguage = false;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
-			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs");
+			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language");
+			bDevLanguage = DevMenu == TEXT("language");
 			bDevPacks = DevMenu == TEXT("packs");
 		}
 #endif
@@ -1061,6 +1062,10 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			if (bDevPacks)
 			{
 				OpenResourcePacks();
+			}
+			if (bDevLanguage)
+			{
+				OpenLanguage();
 			}
 #endif
 		}

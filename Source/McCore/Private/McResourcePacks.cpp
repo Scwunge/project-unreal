@@ -221,6 +221,26 @@ bool FMcResourcePack::ParseMcmeta(const FString& Json, FMcPackInfo& Out)
 		}
 	}
 
+	Out.Languages.Reset();
+	const TSharedPtr<FJsonObject>* LanguageObject;
+	if (Root->TryGetObjectField(TEXT("language"), LanguageObject))
+	{
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*LanguageObject)->Values)
+		{
+			const TSharedPtr<FJsonObject>* Detail;
+			if (!Entry.Value.IsValid() || !Entry.Value->TryGetObject(Detail))
+			{
+				continue;
+			}
+			FMcPackInfo::FLanguage Language;
+			Language.Code = Entry.Key;
+			(*Detail)->TryGetStringField(TEXT("name"), Language.Name);
+			(*Detail)->TryGetStringField(TEXT("region"), Language.Region);
+			(*Detail)->TryGetBoolField(TEXT("bidirectional"), Language.bBidirectional);
+			Out.Languages.Add(MoveTemp(Language));
+		}
+	}
+
 	Out.Blocks.Reset();
 	const TSharedPtr<FJsonObject>* Filter;
 	const TArray<TSharedPtr<FJsonValue>>* Blocks;

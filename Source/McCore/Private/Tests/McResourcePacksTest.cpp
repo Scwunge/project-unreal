@@ -570,6 +570,62 @@ bool FMcPackLangTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// The chosen language's file goes over en_us, key by key, and a pack's lang file of that language over both; a pack's
+// "language" entry in pack.mcmeta adds a language to the picker.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcLanguageTest, "McClient.McCore.Language",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcLanguageTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const FString Before = McLang::GetLanguage();
+	McLang::SetLanguage(TEXT("en_us"));
+	const FString English = McLang::Get(TEXT("gui.done"));
+	if (!TestNotEqual(TEXT("the game has gui.done"), English, FString(TEXT("gui.done"))))
+	{
+		return true;
+	}
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McLanguageTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97},\"language\":{\"zz_zz\":{\"name\":\"Zedzed\",\"region\":\"Zedland\",\"bidirectional\":true}}}"),
+		*(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"gui.done\":\"Zed done\",\"zz.only\":\"zed only\"}"), *(Root / TEXT("assets/minecraft/lang/zz_zz.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"zz.only\":\"english only\"}"), *(Root / TEXT("assets/minecraft/lang/en_us.json")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+
+	bool bListed = false;
+	for (const McLang::FLanguage& Language : McLang::GetLanguages())
+	{
+		if (Language.Code == TEXT("zz_zz"))
+		{
+			bListed = true;
+			TestEqual(TEXT("label"), Language.GetLabel(), FString(TEXT("Zedzed (Zedland)")));
+			TestTrue(TEXT("bidirectional"), Language.bBidirectional);
+		}
+	}
+	TestTrue(TEXT("the pack's language is offered"), bListed);
+
+	TestEqual(TEXT("english: the pack's en_us over the game's"), McLang::Get(TEXT("zz.only")), FString(TEXT("english only")));
+	McLang::SetLanguage(TEXT("zz_zz"));
+	TestEqual(TEXT("the chosen language's key"), McLang::Get(TEXT("gui.done")), FString(TEXT("Zed done")));
+	TestEqual(TEXT("the language file over en_us"), McLang::Get(TEXT("zz.only")), FString(TEXT("zed only")));
+	TestEqual(TEXT("a key the language lacks falls back to english"), McLang::Get(TEXT("gameMode.survival")), McLang::Get(TEXT("gameMode.survival")));
+	TestNotEqual(TEXT("and is not the key"), McLang::Get(TEXT("gameMode.survival")), FString(TEXT("gameMode.survival")));
+	McLang::SetLanguage(TEXT("en_us"));
+	TestEqual(TEXT("back to english"), McLang::Get(TEXT("gui.done")), English);
+	McLang::SetLanguage(Before.IsEmpty() ? TEXT("en_us") : Before);
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackBuiltInTest, "McClient.McCore.PackBuiltIn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 

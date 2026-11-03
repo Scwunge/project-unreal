@@ -43,6 +43,16 @@ struct MCCORE_API FMcPackInfo
 		bool bHasRange = false;
 	};
 	TArray<FOverlay> Overlays;
+	// "language": { "xx_yy": { "name": "...", "region": "...", "bidirectional": false } }: languages the pack adds to the picker
+	// (its lang/xx_yy.json holds the text).
+	struct FLanguage
+	{
+		FString Code;
+		FString Name;
+		FString Region;
+		bool bBidirectional = false;
+	};
+	TArray<FLanguage> Languages;
 };
 
 class MCCORE_API FMcResourcePack

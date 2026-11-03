@@ -172,6 +172,11 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 				OpenOptions(EMenu::Title);
 				OpenResourcePacks();
 			}
+			else if (DevMenu == TEXT("language"))
+			{
+				OpenOptions(EMenu::Title);
+				OpenLanguage();
+			}
 		}
 #endif
 	}
@@ -210,6 +215,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
 		case EMenu::ResourcePacks: ApplyResourcePacks(); OpenMenu(EMenu::Options); break;
+		case EMenu::Language: OpenMenu(EMenu::Options); break;
 		case EMenu::ConfirmPacks: case EMenu::ConfirmIncompatible: ActiveMenu = EMenu::ResourcePacks; break;
 		default: break;
 		}
@@ -227,6 +233,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Chat: DrawChatInput(Width, Height); break;
 	case EMenu::Options: DrawOptions(Width, Height); break;
 	case EMenu::ResourcePacks: DrawResourcePacks(Width, Height); break;
+	case EMenu::Language: DrawLanguage(Width, Height); break;
 	case EMenu::ConfirmPacks: DrawConfirmPacks(Width, Height); break;
 	case EMenu::ConfirmIncompatible: DrawConfirmIncompatible(Width, Height); break;
 	default: break;
@@ -530,22 +537,22 @@ void AMcHUD::DrawTitle(int32 Width, int32 Height)
 	}
 
 	const float Top = Height / 4.0f + 48.0f;
-	if (MenuButton(TEXT("Singleplayer"), CentreX - 100.0f, Top, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("menu.singleplayer")), CentreX - 100.0f, Top, 200.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Worlds);
 	}
-	else if (MenuButton(TEXT("Multiplayer"), CentreX - 100.0f, Top + 24.0f, 200.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("menu.multiplayer")), CentreX - 100.0f, Top + 24.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Join);
 	}
 	// Not there yet: drawn so the screen has the game's shape, but greyed out.
-	MenuButton(TEXT("Minecraft Realms"), CentreX - 100.0f, Top + 48.0f, 200.0f, 20.0f, false);
-	if (MenuButton(TEXT("Options..."), CentreX - 100.0f, Top + 84.0f, 98.0f, 20.0f))
+	MenuButton(McLang::Get(TEXT("menu.online")), CentreX - 100.0f, Top + 48.0f, 200.0f, 20.0f, false);
+	if (MenuButton(McLang::Get(TEXT("menu.options")), CentreX - 100.0f, Top + 84.0f, 98.0f, 20.0f))
 	{
 		OpenOptions(EMenu::Title);
 		return;
 	}
-	if (MenuButton(TEXT("Quit Game"), CentreX + 2.0f, Top + 84.0f, 98.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("menu.quit")), CentreX + 2.0f, Top + 84.0f, 98.0f, 20.0f))
 	{
 		if (APlayerController* Player = GetOwningPlayerController())
 		{
@@ -629,7 +636,7 @@ void AMcHUD::DrawWorlds(int32 Width, int32 Height)
 {
 	DrawMenuBackground(Width, Height, true);
 	const float CentreX = Width / 2.0f;
-	DrawCentredText(TEXT("Select World"), CentreX, 16.0f, White);
+	DrawCentredText(McLang::Get(TEXT("selectWorld.title")), CentreX, 16.0f, White);
 
 	// The list, between the title and the buttons.
 	const float ListTop = 32.0f;
@@ -673,24 +680,24 @@ void AMcHUD::DrawWorlds(int32 Width, int32 Height)
 	}
 
 	const bool bSelected = WorldRows.IsValidIndex(SelectedWorld);
-	if (MenuButton(TEXT("Play Selected World"), CentreX - 154.0f, Height - 52.0f, 150.0f, 20.0f, bSelected) || (bSelected && (bPlay || bMenuEnter)))
+	if (MenuButton(McLang::Get(TEXT("selectWorld.select")), CentreX - 154.0f, Height - 52.0f, 150.0f, 20.0f, bSelected) || (bSelected && (bPlay || bMenuEnter)))
 	{
 		PlayWorld(WorldRows[SelectedWorld].Folder, FString());
 		return;
 	}
-	if (MenuButton(TEXT("Create New World"), CentreX + 4.0f, Height - 52.0f, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("selectWorld.create")), CentreX + 4.0f, Height - 52.0f, 150.0f, 20.0f))
 	{
 		OpenMenu(EMenu::NewWorld);
 		return;
 	}
-	MenuButton(TEXT("Edit"), CentreX - 154.0f, Height - 28.0f, 72.0f, 20.0f, false);
-	if (MenuButton(TEXT("Delete"), CentreX - 76.0f, Height - 28.0f, 72.0f, 20.0f, bSelected))
+	MenuButton(McLang::Get(TEXT("selectWorld.edit")), CentreX - 154.0f, Height - 28.0f, 72.0f, 20.0f, false);
+	if (MenuButton(McLang::Get(TEXT("selectWorld.delete")), CentreX - 76.0f, Height - 28.0f, 72.0f, 20.0f, bSelected))
 	{
 		ActiveMenu = EMenu::ConfirmDelete;
 		return;
 	}
-	MenuButton(TEXT("Re-Create"), CentreX + 4.0f, Height - 28.0f, 72.0f, 20.0f, false);
-	if (MenuButton(TEXT("Back"), CentreX + 82.0f, Height - 28.0f, 72.0f, 20.0f))
+	MenuButton(McLang::Get(TEXT("selectWorld.recreate")), CentreX + 4.0f, Height - 28.0f, 72.0f, 20.0f, false);
+	if (MenuButton(McLang::Get(TEXT("gui.back")), CentreX + 82.0f, Height - 28.0f, 72.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Title);
 	}
@@ -706,10 +713,10 @@ void AMcHUD::DrawConfirmDelete(int32 Width, int32 Height)
 		return;
 	}
 	const FWorldRow& Row = WorldRows[SelectedWorld];
-	DrawCentredText(TEXT("Are you sure you want to delete this world?"), CentreX, 70.0f, White);
+	DrawCentredText(McLang::Get(TEXT("selectWorld.deleteQuestion")), CentreX, 70.0f, White);
 	DrawCentredText(FString::Printf(TEXT("'%s' will be lost forever! (A long time!)"), *Row.Name), CentreX, 90.0f, Grey);
 	const float Y = Height / 6.0f + 96.0f;
-	if (MenuButton(TEXT("Delete"), CentreX - 155.0f, Y, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("selectWorld.delete")), CentreX - 155.0f, Y, 150.0f, 20.0f))
 	{
 		if (!McWorldSave::DeleteWorld(Row.Folder))
 		{
@@ -722,7 +729,7 @@ void AMcHUD::DrawConfirmDelete(int32 Width, int32 Height)
 			OpenMenu(EMenu::Title);
 		}
 	}
-	else if (MenuButton(TEXT("Cancel"), CentreX + 5.0f, Y, 150.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.cancel")), CentreX + 5.0f, Y, 150.0f, 20.0f))
 	{
 		ActiveMenu = EMenu::Worlds;
 	}
@@ -733,7 +740,7 @@ void AMcHUD::DrawNewWorld(int32 Width, int32 Height)
 	DrawMenuBackground(Width, Height, true);
 	const float CentreX = Width / 2.0f;
 	const float Left = CentreX - 100.0f;
-	DrawCentredText(TEXT("Create New World"), CentreX, 20.0f, White);
+	DrawCentredText(McLang::Get(TEXT("selectWorld.create")), CentreX, 20.0f, White);
 
 	DrawGuiText(TEXT("World Name"), Left, 47.0f, Grey, true);
 	MenuTextField(NewWorldName, FieldWorldName, Left, 60.0f, 200.0f, 20.0f, 32);
@@ -753,11 +760,11 @@ void AMcHUD::DrawNewWorld(int32 Width, int32 Height)
 	MenuTextField(NewWorldSeed, FieldSeed, Left, 176.0f, 200.0f, 20.0f, 32);
 	DrawGuiText(TEXT("Leave blank for a random seed"), Left, 200.0f, DarkGrey, true);
 
-	if (MenuButton(TEXT("Create New World"), CentreX - 155.0f, Height - 28.0f, 150.0f, 20.0f) || bMenuEnter)
+	if (MenuButton(McLang::Get(TEXT("selectWorld.create")), CentreX - 155.0f, Height - 28.0f, 150.0f, 20.0f) || bMenuEnter)
 	{
 		CreateWorld();
 	}
-	else if (MenuButton(TEXT("Cancel"), CentreX + 5.0f, Height - 28.0f, 150.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.cancel")), CentreX + 5.0f, Height - 28.0f, 150.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Worlds);
 		if (ActiveMenu == EMenu::NewWorld)
@@ -789,7 +796,7 @@ void AMcHUD::DrawJoin(int32 Width, int32 Height)
 	{
 		JoinServer();
 	}
-	else if (MenuButton(TEXT("Cancel"), Left, Height / 4.0f + 120.0f + 12.0f, 200.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.cancel")), Left, Height / 4.0f + 120.0f + 12.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(EMenu::Title);
 	}
@@ -801,7 +808,7 @@ void AMcHUD::DrawMessage(int32 Width, int32 Height)
 	const float CentreX = Width / 2.0f;
 	DrawCentredText(MessageTitle, CentreX, Height / 2.0f - 30.0f, Grey);
 	DrawCentredText(MessageText, CentreX, Height / 2.0f - 10.0f, White);
-	if (MenuButton(TEXT("Back to Title Screen"), CentreX - 100.0f, Height / 2.0f + 20.0f, 200.0f, 20.0f) || bMenuEnter)
+	if (MenuButton(McLang::Get(TEXT("gui.toTitle")), CentreX - 100.0f, Height / 2.0f + 20.0f, 200.0f, 20.0f) || bMenuEnter)
 	{
 		if (GEngine)
 		{
@@ -817,14 +824,14 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	// The world goes on behind (a server doesn't stop for one player, and a world of one doesn't stop yet either).
 	DrawWorldMenuDim(Width, Height);
 	const float CentreX = Width / 2.0f;
-	DrawCentredText(TEXT("Game Menu"), CentreX, 40.0f, White);
+	DrawCentredText(McLang::Get(TEXT("menu.game")), CentreX, 40.0f, White);
 	const bool bClient = GetNetMode() == NM_Client;
 	const float Top = Height / 4.0f + 24.0f;
-	if (MenuButton(TEXT("Back to Game"), CentreX - 102.0f, Top, 204.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("menu.returnToGame")), CentreX - 102.0f, Top, 204.0f, 20.0f))
 	{
 		OpenMenu(EMenu::None);
 	}
-	else if (MenuButton(TEXT("Options..."), CentreX - 102.0f, Top + 48.0f, 98.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("menu.options")), CentreX - 102.0f, Top + 48.0f, 98.0f, 20.0f))
 	{
 		OpenOptions(EMenu::Pause);
 	}
@@ -866,7 +873,7 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	const float Top = Height / 6.0f;
 	const float Left = CentreX - 155.0f;
 	const float Right = CentreX + 5.0f;
-	DrawCentredText(TEXT("Options"), CentreX, 15.0f, White);
+	DrawCentredText(McLang::Get(TEXT("options.title")), CentreX, 15.0f, White);
 
 	const int32 Dragging = DraggedSlider;
 	const FMcClientOptions Before = Settings;
@@ -917,7 +924,12 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
 		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
 
-	if (MenuButton(TEXT("Resource Packs..."), CentreX - 100.0f, Top + 136.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.language")), Left, Top + 136.0f, 150.0f, 20.0f))
+	{
+		OpenLanguage();
+		return;
+	}
+	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 136.0f, 150.0f, 20.0f))
 	{
 		OpenResourcePacks();
 		return;
@@ -927,7 +939,7 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 184.0f, Grey);
 	}
 
-	if (MenuButton(TEXT("Done"), CentreX - 100.0f, Top + 160.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 160.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}
@@ -1016,6 +1028,142 @@ void AMcHUD::OpenResourcePacks()
 	}
 	PacksSelected.Add(Default);
 	OpenMenu(EMenu::ResourcePacks);
+}
+
+void AMcHUD::OpenLanguage()
+{
+	LanguageSearch.Reset();
+	bLanguageScrollSet = false;
+	OpenMenu(EMenu::Language);
+}
+
+void AMcHUD::DrawLanguage(int32 Width, int32 Height)
+{
+	if (OptionsBack == EMenu::Pause)
+	{
+		DrawWorldMenuDim(Width, Height);
+	}
+	else
+	{
+		DrawMenuBackground(Width, Height, true);
+	}
+	LoadFont();
+	const float CentreX = Width / 2.0f;
+	DrawCentredText(McLang::Get(TEXT("options.language.title")), CentreX, 4.0f, White);
+	MenuTextField(LanguageSearch, 0, CentreX - 100.0f, 17.0f, 200.0f, 15.0f, 40);
+
+	// Fitted from the reference's screen at 1280 x 720 (GUI scale 3): the list from y 36 to 188 (a line above and below), rows 18
+	// apart and 270 wide, the chosen one outlined and kept in view, a 6 wide scroll bar 8 to the right of the rows.
+	constexpr float RowHeight = 18.0f;
+	constexpr float RowWidth = 270.0f;
+	const float ListTop = 36.0f;
+	const float ListBottom = Height - 52.0f;
+	const bool bInWorld = OptionsBack == EMenu::Pause;
+
+	if (UTexture2D* Tile = LoadSprite(bInWorld ? TEXT("textures/gui/inworld_menu_list_background.png") : TEXT("textures/gui/menu_list_background.png")))
+	{
+		for (float TileY = ListTop; TileY < ListBottom; TileY += 16.0f)
+		{
+			for (float TileX = 0.0f; TileX < Width; TileX += 16.0f)
+			{
+				const float TileW = FMath::Min(16.0f, Width - TileX);
+				const float TileH = FMath::Min(16.0f, ListBottom - TileY);
+				const float Ku = Tile->GetSizeX() / 16.0f;
+				DrawRegion(Tile, TileX, TileY, TileW, TileH, 0.0f, 0.0f, TileW * Ku, TileH * Ku);
+			}
+		}
+	}
+
+	const FString Chosen = McLang::GetLanguage();
+	TArray<McLang::FLanguage> Shown;
+	int32 ChosenAt = INDEX_NONE;
+	for (const McLang::FLanguage& Language : McLang::GetLanguages())
+	{
+		if (LanguageSearch.IsEmpty() || Language.GetLabel().Contains(LanguageSearch, ESearchCase::IgnoreCase))
+		{
+			if (Language.Code == Chosen)
+			{
+				ChosenAt = Shown.Num();
+			}
+			Shown.Add(Language);
+		}
+	}
+	// The chosen row shows at the same height as the game does (clamped where the list is too short to scroll that far).
+	const float Content = Shown.Num() * RowHeight;
+	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
+	if (!bLanguageScrollSet)
+	{
+		bLanguageScrollSet = true;
+		LanguageScroll = ChosenAt == INDEX_NONE ? 0 : FMath::RoundToInt(ChosenAt * RowHeight - 72.0f);
+	}
+	APlayerController* Player = GetOwningPlayerController();
+	const bool bInList = GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom;
+	if (bInList && Player)
+	{
+		LanguageScroll += FMath::RoundToInt(RowHeight) * ((Player->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) - (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0));
+	}
+	LanguageScroll = FMath::Clamp(LanguageScroll, 0, FMath::RoundToInt(MaxScroll));
+
+	const float RowX = CentreX - RowWidth / 2.0f;
+	FString Picked;
+	for (int32 Slot = 0; Slot < Shown.Num(); ++Slot)
+	{
+		const float Y = ListTop - 2.3f + Slot * RowHeight - LanguageScroll;
+		if (Y + RowHeight <= ListTop || Y >= ListBottom)
+		{
+			continue;
+		}
+		const McLang::FLanguage& Language = Shown[Slot];
+		if (Language.Code == Chosen)
+		{
+			DrawFill(RowX, Y + 1.0f, RowWidth, 17.0f, FLinearColor::FromSRGBColor(FColor(128, 128, 128)));
+			DrawFill(RowX + 1.0f, Y + 2.0f, RowWidth - 2.0f, 15.0f, FLinearColor::Black);
+		}
+		DrawCentredText(Language.GetLabel(), CentreX, Y + 5.0f, White);
+		if (bMenuClick && GuiMouse.X >= RowX && GuiMouse.X < RowX + RowWidth && GuiMouse.Y >= FMath::Max(Y, ListTop) && GuiMouse.Y < FMath::Min(Y + RowHeight, ListBottom))
+		{
+			Picked = Language.Code;
+		}
+	}
+	if (MaxScroll > 0.0f)
+	{
+		const float TrackH = ListBottom - ListTop;
+		const float ThumbH = FMath::Clamp(TrackH * TrackH / Content, 32.0f, TrackH - 8.0f);
+		const float ThumbY = ListTop + (TrackH - ThumbH) * LanguageScroll / MaxScroll;
+		const float BarX = CentreX + RowWidth / 2.0f + 8.0f;
+		DrawFill(BarX, ListTop, 6.0f, TrackH, FLinearColor::Black);
+		DrawFill(BarX, ThumbY, 6.0f, ThumbH, FLinearColor::FromSRGBColor(FColor(128, 128, 128)));
+		DrawFill(BarX, ThumbY, 5.0f, ThumbH - 1.0f, FLinearColor::FromSRGBColor(FColor(192, 192, 192)));
+	}
+
+	for (const bool bHeader : { true, false })
+	{
+		const TCHAR* Path = bHeader ? (bInWorld ? TEXT("textures/gui/inworld_header_separator.png") : TEXT("textures/gui/header_separator.png"))
+			: (bInWorld ? TEXT("textures/gui/inworld_footer_separator.png") : TEXT("textures/gui/footer_separator.png"));
+		if (UTexture2D* Line = LoadSprite(Path))
+		{
+			const float LineY = bHeader ? ListTop - 2.0f : ListBottom;
+			const float Ku = Line->GetSizeX() / 32.0f;
+			for (float LineX = 0.0f; LineX < Width; LineX += 32.0f)
+			{
+				const float LineW = FMath::Min(32.0f, Width - LineX);
+				DrawRegion(Line, LineX, LineY, LineW, 2.0f, 0.0f, 0.0f, LineW * Ku, 2.0f * Ku);
+			}
+		}
+	}
+	DrawCentredText(McLang::Get(TEXT("options.languageAccuracyWarning")).Replace(TEXT("%%"), TEXT("%")), CentreX, ListBottom + 7.0f, Grey);
+
+	// The game's second button here is Font Settings, which this game has no screen for: shown, and off.
+	MenuButton(McLang::Get(TEXT("options.font")), CentreX - 154.0f, Height - 28.0f, 150.0f, 20.0f, false);
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX + 4.0f, Height - 28.0f, 150.0f, 20.0f))
+	{
+		OpenMenu(EMenu::Options);
+		return;
+	}
+	if (!Picked.IsEmpty() && Picked != Chosen)
+	{
+		McLang::SetLanguage(Picked);
+	}
 }
 
 void AMcHUD::DrawWorldMenuDim(int32 Width, int32 Height)
@@ -1159,8 +1307,8 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	}
 	LoadFont();
 	const float CentreX = Width / 2.0f;
-	DrawCentredText(TEXT("Select Resource Packs"), CentreX, 4.0f, White);
-	DrawCentredText(TEXT("Drag and drop files into this window to add packs"), CentreX, 17.0f, Grey);
+	DrawCentredText(McLang::Get(TEXT("resourcePack.title")), CentreX, 4.0f, White);
+	DrawCentredText(McLang::Get(TEXT("pack.dropInfo")), CentreX, 17.0f, Grey);
 	MenuTextField(PacksSearch, 0, CentreX - 100.0f, 29.0f, 200.0f, 15.0f, 40);
 
 	// Two lists as wide as half the screen less a gap, between a header and a footer line.
@@ -1396,12 +1544,12 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 	}
 
 	const float ButtonY = Height - 26.0f;
-	if (MenuButton(TEXT("Open Pack Folder"), CentreX - 154.0f, ButtonY, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("pack.openFolder")), CentreX - 154.0f, ButtonY, 150.0f, 20.0f))
 	{
 		IFileManager::Get().MakeDirectory(*McPacks::GetFolder(), true);
 		FPlatformProcess::ExploreFolder(*McPacks::GetFolder());
 	}
-	if (MenuButton(TEXT("Done"), CentreX + 4.0f, ButtonY, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX + 4.0f, ButtonY, 150.0f, 20.0f))
 	{
 		ApplyResourcePacks();
 		OpenMenu(EMenu::Options);
@@ -1428,7 +1576,7 @@ void AMcHUD::DrawConfirmIncompatible(int32 Width, int32 Height)
 	// The game's lang strings, by how the pack is incompatible.
 	const FPackRow& Row = PacksAvailable[PendingSelect];
 	const bool bOld = Row.Warning.Contains(TEXT("older")), bNew = Row.Warning.Contains(TEXT("newer"));
-	DrawCentredText(TEXT("Are you sure you want to load this pack?"), CentreX, 70.0f, White);
+	DrawCentredText(McLang::Get(TEXT("pack.incompatible.confirm.title")), CentreX, 70.0f, White);
 	const FString Message = bOld ? TEXT("This pack was made for an older version of Minecraft and may no longer work correctly.")
 		: bNew ? TEXT("This pack was made for a newer version of Minecraft and may not work correctly.")
 		: TEXT("This pack is broken or made for an unknown version of Minecraft and may not work correctly.");
@@ -1438,14 +1586,14 @@ void AMcHUD::DrawConfirmIncompatible(int32 Width, int32 Height)
 		DrawCentredText(Lines[Index], CentreX, 90.0f + 9.0f * Index, Grey);
 	}
 	const float ButtonY = Height / 6.0f + 96.0f + 9.0f * Lines.Num();
-	if (MenuButton(TEXT("Yes"), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.yes")), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
 	{
 		PacksSelected.Insert(PacksAvailable[PendingSelect], 0);
 		PacksAvailable.RemoveAt(PendingSelect);
 		PendingSelect = INDEX_NONE;
 		ActiveMenu = EMenu::ResourcePacks;
 	}
-	else if (MenuButton(TEXT("No"), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.no")), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
 	{
 		PendingSelect = INDEX_NONE;
 		ActiveMenu = EMenu::ResourcePacks;
@@ -1473,12 +1621,12 @@ void AMcHUD::DrawConfirmPacks(int32 Width, int32 Height)
 	const float ButtonY = Height / 6.0f + 96.0f + 9.0f * PendingDrop.Names.Num();
 	if (DropFailed.Num() > 0)
 	{
-		DrawCentredText(TEXT("Failed to copy packs"), CentreX, 70.0f, White);
+		DrawCentredText(McLang::Get(TEXT("pack.copyFailure")), CentreX, 70.0f, White);
 		for (int32 Index = 0; Index < DropFailed.Num(); ++Index)
 		{
 			DrawCentredText(DropFailed[Index], CentreX, 90.0f + 9.0f * Index, Grey);
 		}
-		if (MenuButton(TEXT("Back"), CentreX - 75.0f, 100.0f + 9.0f * DropFailed.Num(), 150.0f, 20.0f))
+		if (MenuButton(McLang::Get(TEXT("gui.back")), CentreX - 75.0f, 100.0f + 9.0f * DropFailed.Num(), 150.0f, 20.0f))
 		{
 			DropFailed.Reset();
 			PendingDrop = McPacks::FDrop();
@@ -1486,12 +1634,12 @@ void AMcHUD::DrawConfirmPacks(int32 Width, int32 Height)
 		}
 		return;
 	}
-	DrawCentredText(TEXT("Do you want to add the following packs to Minecraft?"), CentreX, 70.0f, White);
+	DrawCentredText(McLang::Get(TEXT("pack.dropConfirm")), CentreX, 70.0f, White);
 	for (int32 Index = 0; Index < PendingDrop.Names.Num(); ++Index)
 	{
 		DrawCentredText(PendingDrop.Names[Index], CentreX, 90.0f + 9.0f * Index, Grey);
 	}
-	if (MenuButton(TEXT("Yes"), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.yes")), CentreX - 155.0f, ButtonY, 150.0f, 20.0f))
 	{
 		// What was picked on the screen so far stays picked when the lists are read afresh.
 		ApplyResourcePacks();
@@ -1502,7 +1650,7 @@ void AMcHUD::DrawConfirmPacks(int32 Width, int32 Height)
 			OpenResourcePacks();
 		}
 	}
-	else if (MenuButton(TEXT("No"), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.no")), CentreX + 5.0f, ButtonY, 150.0f, 20.0f))
 	{
 		PendingDrop = McPacks::FDrop();
 		ActiveMenu = EMenu::ResourcePacks;

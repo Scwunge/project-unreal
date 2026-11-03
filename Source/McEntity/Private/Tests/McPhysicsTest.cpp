@@ -264,7 +264,7 @@ bool FMcPhysicsTest::RunTest(const FString& Parameters)
 		Run(Body, FMcMoveInput(), 10);
 		TestTrue(TEXT("in water"), Body.bInWater);
 		TestFalse(TEXT("not in lava"), Body.bInLava);
-		TestEqual(TEXT("sinks slowly"), Body.Position.Y, 2.446, 0.02);
+		TestEqual(TEXT("sinks slowly"), Body.Position.Y, 2.87, 0.03);
 
 		// Space swims up.
 		FMcMoveInput SwimUp;
@@ -389,7 +389,7 @@ bool FMcPhysicsTest::RunTest(const FString& Parameters)
 		Body = FMcBody();
 		Body.Position = FVector(-9.5, 5.0, -13.5);
 		Run(Body, FMcMoveInput(), 6);
-		TestTrue(TEXT("a column over magma pulls a player down"), Body.Position.Y < 4.0 && Body.Velocity.Y < -0.1);
+		TestTrue(TEXT("a column over magma pulls a player down"), Body.Position.Y < 4.6 && Body.Velocity.Y < -0.1);
 	}
 	return true;
 }

@@ -1,6 +1,7 @@
 #include "McEntityModel.h"
 #include "McRenderMode.h"
 #include "McCache.h"
+#include "McItemFrames.h"
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderTextures.h"
@@ -700,7 +701,7 @@ namespace
 	// The texture of an item: its own picture, or its block's side, top or front.
 	FString FindItemTexture(FName Item)
 	{
-		const FString Name = McCache::PathOf(Item.ToString());
+		const FString Name = McCache::PathOf(McItemFrames::Resolve(Item).ToString());
 		for (const FString& Candidate : { TEXT("item/") + Name, TEXT("block/") + Name, TEXT("block/") + Name + TEXT("_side"), TEXT("block/") + Name + TEXT("_top"), TEXT("block/") + Name + TEXT("_front") })
 		{
 			const FString Path = McCache::Asset(TEXT("textures/") + Candidate + TEXT(".png"));

@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McCache.h"
+#include "McItemFrames.h"
 #include "McChunk.h"
 #include "McRender.h"
 #include "McRenderMode.h"
@@ -261,7 +262,7 @@ namespace McHand
 		{
 			return Result;
 		}
-		FString Name = McCache::PathOf(Item.ToString());
+		FString Name = McCache::PathOf(McItemFrames::Resolve(Item).ToString());
 		if (bCast && Name == TEXT("fishing_rod"))
 		{
 			Name = TEXT("fishing_rod_cast");

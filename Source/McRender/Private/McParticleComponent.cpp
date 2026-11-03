@@ -360,13 +360,13 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		Fire.Size = 0.05f * (Random.FRand() * 0.2f + 0.5f);
 		Fire.Light = FVector2f(1.0f, 1.0f);
 	};
-	auto Smoke = [&](const FVector& At, bool bBig)
+	auto Smoke = [&](const FVector& At, bool bBig, bool bSignal = false)
 	{
 		FParticle& Puff = Add(bBig ? EStyle::BigSmoke : EStyle::Smoke, At,
 			bBig ? FVector(Random.FRandRange(-0.005f, 0.005f), 0.07f, Random.FRandRange(-0.005f, 0.005f)) : FVector(Random.FRandRange(-0.01f, 0.01f), 0.01f, Random.FRandRange(-0.01f, 0.01f)));
 		Puff.Gravity = bBig ? -0.0003f : -0.002f;
 		Puff.Friction = bBig ? 0.98f : 0.96f;
-		Puff.Life = bBig ? Random.FRandRange(80.0f, 160.0f) : FMath::Floor(8.0f / (Random.FRand() * 0.8f + 0.2f));
+		Puff.Life = bBig ? (bSignal ? Random.FRandRange(280.0f, 330.0f) : Random.FRandRange(80.0f, 160.0f)) : FMath::Floor(8.0f / (Random.FRand() * 0.8f + 0.2f));
 		Puff.Size = bBig ? Random.FRandRange(0.07f, 0.14f) : 0.05f * (Random.FRand() * 0.5f + 0.5f) * 1.5f;
 		const uint8 Grey = static_cast<uint8>(Random.RandRange(bBig ? 100 : 70, bBig ? 135 : 110) + (McRenderMode::IsEnhanced() ? (bBig ? 15 : 50) : 0));
 		Puff.Colour = FColor(Grey, Grey, Grey);
@@ -406,7 +406,8 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		}
 		if (Random.RandRange(0, 9) < (bUnreal ? 6 : 3))
 		{
-			Smoke(Centre + FVector(Random.FRandRange(-0.33f, 0.33f), 0.0, Random.FRandRange(-0.33f, 0.33f)), true);
+			// Over a hay bale the smoke is the signal's: it climbs for three times as long (vanilla shot ref_camp_b).
+			Smoke(Centre + FVector(Random.FRandRange(-0.33f, 0.33f), 0.0, Random.FRandRange(-0.33f, 0.33f)), true, FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("signal_fire")) == TEXT("true"));
 		}
 		if (Random.RandRange(0, 4) == 0)
 		{

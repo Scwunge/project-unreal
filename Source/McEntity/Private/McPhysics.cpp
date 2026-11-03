@@ -27,7 +27,9 @@ namespace
 	constexpr double WaterDrag = 0.8;
 	constexpr double LavaDrag = 0.5;
 	constexpr double FluidAcceleration = 0.02;
-	constexpr double FluidSinking = Gravity / 4.0;
+	// Sinking per tick: water gravity/16 (terminal -0.025, swim1 vanilla run), lava gravity/4.
+	constexpr double WaterSinking = Gravity / 16.0;
+	constexpr double LavaSinking = Gravity / 4.0;
 	constexpr double SwimUp = 0.04;
 	// Flowing fluid nudges bodies by this much per tick.
 	constexpr double WaterPush = 0.014;
@@ -483,7 +485,7 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 		const double Drag = Water.bIn ? WaterDrag : LavaDrag;
 		Body.Velocity.X *= Drag;
 		Body.Velocity.Z *= Drag;
-		Body.Velocity.Y = Body.Velocity.Y * Drag - FluidSinking;
+		Body.Velocity.Y = Body.Velocity.Y * Drag - (Water.bIn ? WaterSinking : LavaSinking);
 		Body.bInBubbleColumn = BubbleColumnPush(World, Body.GetBox(), Body.Velocity, &Body.bBubbleDown);
 		return;
 	}

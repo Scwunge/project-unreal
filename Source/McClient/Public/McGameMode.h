@@ -70,6 +70,8 @@ public:
 	void ApplyGameRules();
 
 private:
+	FTimerHandle AdvancementTimer;
+	FTimerHandle ItemFrameTimer;
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
 	// flying when saved.
 	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;

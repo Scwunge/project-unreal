@@ -347,6 +347,21 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 			Mob->HeldItem = Pick < 29 ? FName(TEXT("minecraft:iron_sword")) : Pick < 29 + 94 ? FName(TEXT("minecraft:iron_shovel")) : FName(TEXT("minecraft:iron_spear"));
 		}
 	}
+	if (Kind == FName(TEXT("minecraft:drowned")))
+	{
+		// Armed at spawn, from 1000 drowned spawned on each difficulty on the reference (night): trident 69 / 57 / 58 on Easy / Normal / Hard
+		// (6.1% over all 3000, good to about 0.45 points), fishing rod 36 / 23 / 42 (3.4%, about 0.35 points); no difference by difficulty
+		// beyond that noise, so one rate each. (3.2% also carry a nautilus shell in the other hand: not modelled.)
+		const float Roll = Random.FRand();
+		if (Roll < 0.061f)
+		{
+			Mob->HeldItem = FName(TEXT("minecraft:trident"));
+		}
+		else if (Roll < 0.061f + 0.034f)
+		{
+			Mob->HeldItem = FName(TEXT("minecraft:fishing_rod"));
+		}
+	}
 	if (McMobLook::GetCount(Kind) > 0)
 	{
 		Mob->LookSeed = McMobLook::Pick(Kind, GetBiomeName(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))), Random);

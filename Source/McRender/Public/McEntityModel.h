@@ -164,6 +164,9 @@ namespace McEntityModel
 		bool bBabyModel = false;
 		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
 		uint32 TintedLayers = 0;
+		// When set, the tinted layers use this colour instead of a dye (a potion's liquid).
+		bool bFixedTint = false;
+		FColor FixedTint = FColor::White;
 	};
 
 	// The custom stencil value a hull's mask writes; the translucent materials (tools/make_materials.py) leave out the

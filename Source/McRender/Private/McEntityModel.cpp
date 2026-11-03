@@ -218,19 +218,21 @@ namespace McEntityModel
 			Model.Parts.Add(Part(ERole::LegLeft, FVector(2, 12, 0), { Box(0, 22, -2, -12, -2, 4, 12, 4, 0.0f, true) }));
 		}
 
-		// The right hand's item of a humanoid arm, placed as the game does: the arm's hand frame (turned -90 about x and 180 about y,
-		// moved 1/16, 0.125, -0.625 blocks) then the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
-		// pixels), both read from the item model data. That leaves the sprite in the arm's y-z plane 1 pixel out from the shoulder,
-		// 13.6 pixels square about 9.5 down and 6 forward, with its handle-to-tip diagonal 10 degrees below the arm's forward line:
-		// our axis-aligned flat turned -35 degrees about x (the box is placed so it lands there). The vex's hand frame is the arm's
-		// with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes: -0.91, -3.47, 1.08).
+		// The right hand's item of a humanoid arm, placed from vanilla shots: an armor stand holding an iron sword in two arm poses,
+		// shot from the front, side and top, its logged hand matrix, and the sprite's outline fitted over all six (24 axis-aligned
+		// turns, the display turn's order, and an offset; PLAN has the scores). The fit picked one turn clearly (0.46 against 0.36 for
+		// the next) and put the sprite's centre 1.9 pixels in, 10.2 down and 6.3 forward of the hand frame, good to about a pixel
+		// (the camera was set by eye). With the handheld display (turned -90 about y and 55 about z, 0.85 scale, moved 0, 4, 0.5
+		// pixels, read from the item model data) the sprite lies in the arm's y-z plane, 13.6 pixels square, handle-to-tip diagonal
+		// 10 degrees below the arm's forward line: our axis-aligned flat turned -35 degrees about x. The vex's hand frame is the
+		// arm's with a 0.55 scale and a shift (logged: the hand matrix less the arm's own, in pixels, vanilla's axes).
 		void AddHeldItemInHand(FModel& Model, const FVector& Pivot, float HandScale = 1.0f, const FVector& HandShift = FVector::ZeroVector)
 		{
 			constexpr float Tilt = -0.6109f;
 			Model.HeldLayer = Model.Textures.Num();
 			Model.Textures.Add(FString());
 			// The sprite's centre in the arm's frame (vanilla's axes, y down and z back), then ours (y up, z forward).
-			const FVector Vanilla = FVector(-1.0f, 9.5f, -6.0f) * HandScale + HandShift;
+			const FVector Vanilla = FVector(-1.93f, 10.21f, -6.34f) * HandScale + HandShift;
 			const FVector Centre(Vanilla.X, -Vanilla.Y, -Vanilla.Z);
 			const float Size = 13.6f * HandScale;
 			// The box sits where the tilt about x lands its centre on Centre.
@@ -346,6 +348,18 @@ namespace McEntityModel
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
+				// The drowned: the zombie's body with its own picture (the swimming pose, the second picture it wears over it and the
+				// trident's own hold are not done: the trident is drawn as its flat inventory picture).
+				FModel Drowned;
+				Drowned.Kind = TEXT("minecraft:drowned");
+				Drowned.TextureSize = FIntPoint(64, 64);
+				Drowned.Textures = { TEXT("zombie/drowned.png") };
+				Drowned.bArmsForward = true;
+				AddPerson(Drowned, false, true);
+				AddHeldItemInHand(Drowned, FVector(-5, 22, 0));
+				Models.Add(Drowned.Kind, Drowned);
+			}
+			{
 				struct FIllager { const TCHAR* Name; int32 Style; const TCHAR* Held; };
 				for (const FIllager& Each : { FIllager{ TEXT("pillager"), 1, TEXT("crossbow_standby") }, FIllager{ TEXT("vindicator"), 2, TEXT("iron_axe") }, FIllager{ TEXT("evoker"), 3, nullptr } })
 				{
@@ -403,14 +417,30 @@ namespace McEntityModel
 						}
 					}
 				}
-				// The potion it holds up to drink, in front of its face.
+				// The potion it holds up to drink, placed from the vanilla front and side shots of a witch holding one (witchhold.txt;
+				// measured against the head's own width, 8 pixels, so the camera does not enter): a flat picture facing the front,
+				// its plane at the face's front (z 4, the side view's sliver), the sprite's centre 0.6 pixels right of the middle and
+				// 1.8 below the chin (y 22.2), 6.3 pixels for the sprite's 16 (its bottle 13 rows is 32 screen pixels against the head's
+				// 50 for 8), turned 12.5 degrees in the picture's plane and mirrored (fitted over the bottle's outline, overlap 0.77).
+				// The hold is only drawn while it
+				// drinks, as the witch has nothing in hand otherwise.
 				Witch.Textures.Add(TEXT("../item/potion.png"));
-				FBox Bottle = Box(0, 0, -1, 0, 3, 0, 10, 10);
+				FBox Bottle = Box(0, 0, 0, -3, -3, 0, 6, 6);  // 6.3 measured, whole pixels only
 				Bottle.bFlat = true;
 				Bottle.bMirror = true;
-				FPart Drinking = Part(ERole::Static, FVector(0, 24, 0), { Bottle }, 0, 0, 0, 0, 1);
+				FPart Drinking = Part(ERole::Static, FVector(0.6f, 22.2f, 6.0f), { Bottle }, 0, -HALF_PI, 0.2182f, 0, 1);
 				Drinking.ShowPoses = 1u << 4;
 				Witch.Parts.Add(Drinking);
+				// The liquid: the grey overlay sprite times a colour. A plain potion's colour read off the same vanilla shot (median of 248
+				// blue pixels, 47/78/161) over the overlay's usual grey (166): 72/120/247. Lit by the shot's own lighting, so about right.
+				Witch.Textures.Add(TEXT("../item/potion_overlay.png"));
+				Witch.TintedLayers = 1u << 2;
+				Witch.bFixedTint = true;
+				Witch.FixedTint = FColor(72, 120, 247);
+				FBox Liquid = Bottle;
+				FPart LiquidPart = Part(ERole::Static, FVector(0.6f, 22.2f, 6.05f), { Liquid }, 0, -HALF_PI, 0.2182f, 0, 2);
+				LiquidPart.ShowPoses = 1u << 4;
+				Witch.Parts.Add(LiquidPart);
 				Models.Add(Witch.Kind, Witch);
 			}
 			{
@@ -870,6 +900,8 @@ namespace McEntityModel
 				Zombie.Kind = TEXT("minecraft:zombie_villager");
 				Zombie.Textures = { TEXT("zombie_villager/zombie_villager.png"), TEXT("zombie_villager/type/plains.png") };
 				AddVillager(Zombie, true);
+				// Its arms are the zombie's, so it holds as the zombie does (compared with vanilla in zvheld.txt).
+				AddHeldItemInHand(Zombie, FVector(-5, 22, 0));
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
@@ -2858,12 +2890,13 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	}
 	FIntPoint Size;
 	UTexture2DArray* Texture = nullptr;
-	if (Model && Model->bComposite)
+	if (Model && Model->bComposite && Layer != Model->HeldLayer)
 	{
 		TArray<FString> Paths;
 		for (int32 Index = 0; Index < FMath::Max(Model->Textures.Num(), TextureOverrides.Num()); ++Index)
 		{
-			Paths.Add(GetTexturePath(Index));
+			// A held item's picture is its own layer on top, not part of the coat.
+			Paths.Add(Index == Model->HeldLayer ? FString() : GetTexturePath(Index));
 		}
 		Texture = LoadCompositeCached(Paths, Size);
 	}
@@ -3215,7 +3248,8 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		return;
 	}
-	const int32 NumLayers = Model->bComposite ? 1 : Model->Textures.Num();
+	// A composite model (the villager's pictures laid over each other) is one layer, plus its held item's own.
+	const int32 NumLayers = Model->bComposite ? FMath::Max(1, Model->HeldLayer + 1) : Model->Textures.Num();
 	// Every other tenth of the fuse the creeper goes white.
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;
@@ -3224,10 +3258,14 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.Pose = PoseLook & 31;
 	if (Model->TintedLayers != 0)
 	{
-		Anim.Tint = McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
+		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
 	}
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
+		if (Model->bComposite && Layer != 0 && Layer != Model->HeldLayer)
+		{
+			continue;
+		}
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);
 		if (!Material)
 		{

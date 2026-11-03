@@ -60,6 +60,10 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:sheep"), 0.9f, 1.3f, 8.f, 0.23f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:chicken"), 0.4f, 0.7f, 4.f, 0.25f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:zombie"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true).bHuntsVillagers = true;
+		// A drowned (reference, `attribute get` on a spawned one): the zombie's 20 health, 0.23 speed, 3 bite, 35 follow range, burns in
+		// the sun like it; its box is taken as the zombie's (not measured). Swimming (its water movement efficiency reads 0), the thrown
+		// trident, and spawning in water are not done.
+		Add(TEXT("minecraft:drowned"), 0.6f, 1.95f, 20.f, 0.23f, 3.f, 35.f, false, true);
 		Add(TEXT("minecraft:skeleton"), 0.6f, 1.99f, 20.f, 0.25f, 2.f, 16.f, false, true).bShoots = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
 		FMcMobType& Spider = Add(TEXT("minecraft:spider"), 1.4f, 0.9f, 16.f, 0.3f, 2.f, 16.f, false, false);

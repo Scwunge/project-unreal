@@ -889,6 +889,7 @@ our monuments 8, 19, 10, 6, 5, so the rule gives one at nearly every deep-ocean 
 9, 10, 32, 11, 2 deep-ocean grid points in the middle 4 km). The difference is how oceanic the middle 4 km is: ours 14.5% of grid
 points, vanilla 5.0%, against 9.3% and 9.1% over the whole 16 km. Over 60 of our seeds the middle 4 km is deep ocean at a median 8.6%
 (2.0 to 24.2%), so both sets of five are draws from that spread, not a bias.
+Rechecked 2026-11-03 on the real start path (the test now takes the biome under the generator's surface, and underground starts at an absolute height, an ancient city at -27, take the biome at that height, `BiomeSuits`): ancient_city 5.0 per seed (0..10) against vanilla 1.2 (0..6), before the fix 0, so deep_dark at y -27 may be too common (not checked); mineshaft_mesa 13.4 against 2.6 (0..37, one badlands-heavy seed), monument 9.4 against 3.8 (variance as above), ocean_ruin_warm 20 against 11.8, swamp_hut 0.4 against 2.6, village_desert 1.6 against 4.0, snowy_taiga camps 0 against 2.0; the rest inside the vanilla spread. Open: deep_dark share at y -27, and whether the mesa/swamp/taiga differences are only biome share.
 
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

@@ -19,6 +19,26 @@ namespace
 	}
 }
 
+float McGui::GetVignetteTarget(float EyeLight)
+{
+	// Measured on the reference client (a hall lit from far away, a light block in the eyes' cell, each level held
+	// 500 ticks so the ease had settled; the strength is the fitted opacity of vignette.png): levels 0, 1, 2, 4, 5, 7, 8,
+	// 10, 11, 13, 14 and 15 as seen, the others (3, 6, 9, 12) filled in between.
+	static const float Targets[16] = { 1.0f, 0.977f, 0.941f, 0.920f, 0.900f, 0.881f, 0.829f, 0.777f, 0.748f, 0.700f, 0.621f, 0.572f, 0.475f, 0.378f, 0.192f, 0.0f };
+	const float Clamped = FMath::Clamp(EyeLight, 0.0f, 15.0f);
+	const int32 Low = FMath::FloorToInt32(Clamped);
+	const int32 High = FMath::Min(Low + 1, 15);
+	return FMath::Lerp(Targets[Low], Targets[High], Clamped - Low);
+}
+
+float McGui::EaseVignette(float Current, float Target, float Ticks)
+{
+	// About 115 ticks to come 63 percent of the way (fitted to a bright to dim change: 0.29 after 20 ticks, 0.50 after 100,
+	// 0.72 after 400, towards 0.73).
+	constexpr float PerTick = 0.0087f;
+	return Target + (Current - Target) * FMath::Pow(1.0f - PerTick, FMath::Max(Ticks, 0.0f));
+}
+
 int32 McGui::GetGuiScale(int32 Width, int32 Height, int32 Setting)
 {
 	int32 Largest = 1;

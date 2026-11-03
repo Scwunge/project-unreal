@@ -1,0 +1,8 @@
+{
+  "description": "Three boats close up on a pond on classic_flat (surface y=-61): oak, a chest boat and a bamboo raft, to look at the paddles. Summon them with -McChat; -McPaddling rows them (see PLAN.md, Vehicles).",
+  "camera": [4.5, -57.6, -1.0, 0.0, 30.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [9, -60, 7], "state": "minecraft:stone" },
+    { "from": [1, -60, 1], "to": [8, -60, 6], "state": "minecraft:water[level=0]" }
+  ]
+}

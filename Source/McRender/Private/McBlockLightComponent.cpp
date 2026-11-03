@@ -8,12 +8,40 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McRenderMode.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace
 {
 	constexpr int32 SlicesPerPass = 8;
 	// Candelas at a block that gives light 15; a block is a metre, so lux a block away.
 	constexpr float CandelasAtFull = 5.0f;
+}
+
+int32 UMcBlockLightComponent::Budget()
+{
+	static const int32 Override = []()
+	{
+#if !UE_BUILD_SHIPPING
+		int32 Value = -1;
+		FParse::Value(FCommandLine::Get(), TEXT("-McBlockLights="), Value);
+		return Value;
+#else
+		return -1;
+#endif
+	}();
+	if (Override >= 0)
+	{
+		return FMath::Min(Override, MaxLights);
+	}
+	static constexpr int32 ByQuality[] = { 8, 16, 24, 32 };
+	return ByQuality[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)];
+}
+
+int32 UMcBlockLightComponent::ShadowBudget()
+{
+	static constexpr int32 ByQuality[] = { 0, 3, 6, 8 };
+	return ByQuality[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)];
 }
 
 UMcBlockLightComponent::UMcBlockLightComponent()
@@ -115,7 +143,7 @@ void UMcBlockLightComponent::ScanSlice()
 		Found.Reset();
 		for (const FFound& Candidate : Scanning)
 		{
-			if (Found.Num() >= MaxLights)
+			if (Found.Num() >= Budget())
 			{
 				break;
 			}
@@ -154,7 +182,7 @@ void UMcBlockLightComponent::Place()
 	for (int32 Index = 0; Index < Lights.Num(); ++Index)
 	{
 		UPointLightComponent* Light = Lights[Index];
-		if (!Found.IsValidIndex(Index))
+		if (!Found.IsValidIndex(Index) || Index >= Budget())
 		{
 			Light->SetVisibility(false);
 			continue;
@@ -171,7 +199,7 @@ void UMcBlockLightComponent::Place()
 		Light->SetLightColor(Colours[Lamp.State]);
 		Light->SetIntensity(CandelasAtFull * Level * Level * Flicker);
 		Light->SetAttenuationRadius(Emission[Lamp.State] * McCoords::UnitsPerBlock);
-		Light->SetCastShadows(Index < MaxShadowed);
+		Light->SetCastShadows(Index < ShadowBudget());
 		Light->SetVisibility(true);
 		++NumShown;
 	}

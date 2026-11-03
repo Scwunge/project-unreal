@@ -6,5 +6,6 @@ public class McCore : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "Json" });
+		PrivateDependencyModuleNames.Add("ImageWrapper");
 	}
 }

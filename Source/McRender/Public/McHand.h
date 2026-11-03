@@ -22,7 +22,10 @@ namespace McHand
 	// How much smaller than the game's distances everything is drawn, and so how much nearer the camera.
 	constexpr double Scale = 1.0;
 	constexpr float SwingSeconds = 0.3f;
-	constexpr float EquipSeconds = 0.2f;
+	// How far a swung item is carried toward the middle and down out of the view, in the camera's space, at the full stroke.
+	const FVector UseSwingMove(0.0, -46.0, -40.0);
+	// Lowering or raising the held item takes this long each way: two to three ticks in the reference client's shots.
+	constexpr float EquipSeconds = 0.12f;
 
 	// What the hand holds, as it is drawn.
 	enum class EHeld : uint8
@@ -49,10 +52,13 @@ namespace McHand
 		FVector Rotation = FVector(0.0, -90.0, 25.0);
 		FVector Translation = FVector(1.13, 3.2, 1.13);
 		double Scale = 0.68;
+		// Whether the model gave the asked display (not the defaults).
+		bool bFound = false;
 	};
 
 	// The hand display of an item's model in the cache, following its parents (the flat-item default if it has none).
-	MCRENDER_API FHeldDisplay ReadHeldDisplay(FName Item);
+	// Key names another display ("thirdperson_righthand"); an item without it then has none (no turn, no shift, scale 1).
+	MCRENDER_API FHeldDisplay ReadHeldDisplay(FName Item, const TCHAR* Key = TEXT("firstperson_righthand"));
 
 	// Where the held thing sits when the arm is at rest, in the camera's space. Display is only for flat items.
 	MCRENDER_API FTransform GetHeldRestTransform(EHeld Kind, const FHeldDisplay& Display = FHeldDisplay());
@@ -85,6 +91,10 @@ namespace McHand
 	MCRENDER_API void BuildArmMesh(McPlayerModel::FMeshData& Out);
 	// How the held bow is turned while it is drawn, in the camera's space.
 	MCRENDER_API FQuat GetBowStandRotation();
+	// The bow's tremble at full draw, in the camera's space (forward, right, up), for this many seconds of draw: nothing before a
+	// second, then a sine of period 7.8 ticks moving it 0.12 right and 0.20 down at its peak (1.4 pixels up and down, 0.9 across, at
+	// 720p). Measured from 42 shots of a held full draw; the phase is not known, and whether it builds up before the full draw is not.
+	MCRENDER_API FVector GetBowTremble(float DrawSeconds);
 	MCRENDER_API void BuildFlatMesh(float VMax, McPlayerModel::FMeshData& Out);
 	// The picture's opaque pixels stood one pixel thick, as the game's generated item models are: a front and a back face and a narrow face on every edge between a pixel and a see-through one. Pixels are rows from the top, Width across, and the top Width rows are the picture.
 	MCRENDER_API void BuildExtrudedMesh(const TArray<FColor>& Pixels, int32 Width, float VMax, McPlayerModel::FMeshData& Out);
@@ -103,7 +113,8 @@ public:
 	UMcHandComponent(const FObjectInitializer& ObjectInitializer);
 
 	// The item in the selected slot (none for an empty hand). Changing it lowers the hand and brings it up again.
-	void SetHeld(FName InItem);
+	// A bigger stack of the same item lowers and raises it too (a pickup does; the count going down does not).
+	void SetHeld(FName InItem, int32 InCount = 1);
 	void SetShown(bool bInShown);
 	// Starts a swing (the component also starts one for the buttons).
 	void Swing();
@@ -143,6 +154,9 @@ private:
 	McHand::EHeld ShownKind = McHand::EHeld::Nothing;
 	float Equip = 1.0f;
 	float SwingAge = 100.0f;
+	bool bUseSwing = false;
+	bool bReequip = false;
+	int32 WantedCount = 0;
 	bool bEating = false;
 	float EatSeconds = 1.6f;
 	// How far the item is raised (0 to 1) and how long it has been eaten.

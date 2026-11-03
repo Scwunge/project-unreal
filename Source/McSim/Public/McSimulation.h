@@ -106,8 +106,27 @@ public:
 		}
 	}
 
+	// Note blocks (McNoteBlock.h). PlayNote sounds the note block at Pos (the redstone side calls it when power on a
+	// note block rises, setting `powered` itself; a punch in survival calls it too): false if there is no note block
+	// or the space above it is not air or a head. TuneNote is a player's use: steps the note on (25 back to 0) and
+	// plays it (a silenced block still steps). Both only on the server.
+	bool PlayNote(const FIntVector& Pos);
+	bool TuneNote(const FIntVector& Pos);
+
 	// A powered dispenser or dropper at Pos fires: whatever keeps its items does the rest.
 	TFunction<void(const FIntVector&)> OnDispense;
+	// The bell at Pos was rung by redstone, as if struck on Side (McBell's numbering): it swings for every viewer.
+	TFunction<void(const FIntVector&, int32)> OnBellRung;
+	// An awake conduit at Pos looks round, every ConduitPeriod ticks: players within Range blocks of its middle who
+	// are in water or rain get Conduit Power for ConduitPowerTicks. Hunting: it has the whole frame of 42.
+	TFunction<void(const FIntVector&, int32 Range, bool bHunting)> OnConduitPulse;
+	// Measured in vanilla (conduit_log): the conduit wakes, sleeps and refreshes the effect only on a check every 40
+	// ticks, and the effect is seen at 259 the tick after it is given.
+	static constexpr int32 ConduitPeriod = 40;
+	static constexpr int32 ConduitPowerTicks = 260;
+
+	// A note block played: where its note particle rises (above the block) and which note it shows.
+	TFunction<void(const FVector&, int32)> OnNoteParticle;
 	// A powered crafter at Pos tries to craft: it takes its items, hands on the product and says whether it made one.
 	TFunction<bool(const FIntVector&)> OnCraft;
 
@@ -141,16 +160,25 @@ public:
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;
+	static constexpr int32 BubbleBaseDelay = 20;
+	static constexpr int32 BubbleColumnDelay = 5;
 	static constexpr int32 LavaDelay = 30;
 	static constexpr int32 GravityDelay = 2;
 	static constexpr int32 LeafDelay = 1;
 
 private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
+	// Sets the instrument of the note block at Pos from what is below and above it (nothing if it is not one).
+	void RefreshNoteBlock(const FIntVector& Pos);
+	// A chunk loaded (from disk, the generator or the network): its conduits start their round of checks.
+	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
+	void TickConduit(const FIntVector& Pos);
+	// Turns the water sources from Pos up into a bubble column, or back into water when nothing drives it.
+	void UpdateBubbleColumn(const FIntVector& Pos);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
 	void StepFalling();
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
@@ -161,6 +189,7 @@ private:
 
 	FMcBlockWorld& World;
 	FDelegateHandle ChangedHandle;
+	FDelegateHandle AddedHandle;
 	int64 GameTime = 0;
 	// Positions by the tick they are due.
 	TMap<int64, TArray<FIntVector>> Due;

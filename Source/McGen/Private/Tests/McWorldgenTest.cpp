@@ -18,7 +18,7 @@
 
 namespace
 {
-	FMcStateId Parse(const TCHAR* Text)
+	FMcStateId ParseState(const TCHAR* Text)
 	{
 		return FMcBlockRegistry::Get().ParseState(Text).Get(0);
 	}
@@ -42,13 +42,13 @@ namespace
 
 		FScene(const FMcNoiseSettings& Settings, EScene Kind, int32 InSize, FIntPoint InBase) : Size(InSize), Base(InBase)
 		{
-			const FMcStateId Dirt = Parse(TEXT("minecraft:dirt"));
-			const FMcStateId Grass = Parse(TEXT("minecraft:grass_block"));
-			const FMcStateId Sand = Parse(TEXT("minecraft:sand"));
-			const FMcStateId Water = Parse(TEXT("minecraft:water"));
-			const FMcStateId Stone = Parse(TEXT("minecraft:stone"));
-			const FMcStateId Netherrack = Parse(TEXT("minecraft:netherrack"));
-			const FMcStateId EndStone = Parse(TEXT("minecraft:end_stone"));
+			const FMcStateId Dirt = ParseState(TEXT("minecraft:dirt"));
+			const FMcStateId Grass = ParseState(TEXT("minecraft:grass_block"));
+			const FMcStateId Sand = ParseState(TEXT("minecraft:sand"));
+			const FMcStateId Water = ParseState(TEXT("minecraft:water"));
+			const FMcStateId Stone = ParseState(TEXT("minecraft:stone"));
+			const FMcStateId Netherrack = ParseState(TEXT("minecraft:netherrack"));
+			const FMcStateId EndStone = ParseState(TEXT("minecraft:end_stone"));
 			const FMcBiomeId Biome = FMcBiomeRegistry::Get().GetPlains();
 			for (int32 Index = 0; Index < Size * Size; ++Index)
 			{
@@ -245,7 +245,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 			{
 				for (int32 DZ = 0; DZ < 3; ++DZ)
 				{
-					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), Parse(Case.FloorBlock));
+					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), ParseState(Case.FloorBlock));
 				}
 			}
 		}
@@ -444,6 +444,33 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 		TArray<FString> Sorted = AllNames.Array();
 		Sorted.Sort();
 		AddInfo(FString::Printf(TEXT("%s: best %d blocks changed; blocks: %s"), Case.Id, BestChanged, *FString::Join(Sorted, TEXT(" ")).Left(400)));
+	}
+
+	// ---- A mineshaft's pieces hanging in the air are not made (minecraft.wiki, "Mineshaft") ----
+	{
+		const auto Build = [&](TFunction<int32(int32, int32)> Height)
+		{
+			Structures.SetHeightSource(Height);
+			FScene Scene(Settings, EScene::Land, Size, FIntPoint(0, 0));
+			const TArray<TArray<FMcStateId>> Before = Scene.Snapshot();
+			for (int32 Index = 0; Index < 13 * 13; ++Index)
+			{
+				FMcChunk* Around[9];
+				const int32 CX = 1 + Index % 13;
+				const int32 CZ = 1 + Index / 13;
+				Scene.Around(CX, CZ, Around);
+				FMcGenRegion Region(FIntPoint(CX, CZ), Around);
+				Structures.PlaceStructure(Region, TEXT("minecraft:mineshaft_mesa"), 1, Start);
+			}
+			int32 Changed = 0;
+			Scene.Names(Before, Changed);
+			return Changed;
+		};
+		const int32 Whole = Build([](int32, int32) { return 64; });
+		// The ground drops away to 20 beyond a few blocks of the start: what is made out there would hang over it.
+		const int32 Hanging = Build([](int32 X, int32 Z) { return FMath::Abs(X - 120) <= 6 && FMath::Abs(Z - 120) <= 6 ? 64 : 20; });
+		AddInfo(FString::Printf(TEXT("mesa mineshaft blocks changed: %d over ground, %d with the ground dropped away round the start"), Whole, Hanging));
+		TestTrue(TEXT("a mineshaft's pieces that would hang in the air are left out"), Hanging < Whole);
 	}
 
 	// ---- Trial chambers: their spawner pools come through the aliases ----

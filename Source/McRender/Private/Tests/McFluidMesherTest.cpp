@@ -95,13 +95,13 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 			bBottom |= Normal.Z < -0.9 && Buffers.Colors[Vertex] == FColor(0x20, 0x3B, 0x72);
 			if (FMath::Abs(Normal.Z) < 0.1)
 			{
-				bSidesFlow &= static_cast<uint16>(Buffers.UV1[Vertex].X) == Fluids->WaterFlow;
+				bSidesFlow &= static_cast<uint16>(Buffers.UV1[Vertex].X) == Fluids->WaterFlowSide && Fluids->WaterFlowSide != 0;
 			}
 		}
 		TestTrue(TEXT("top is plains blue, facing up"), bTop);
 		TestTrue(TEXT("the backface top faces down"), bBack);
 		TestTrue(TEXT("bottom is half shade"), bBottom);
-		TestTrue(TEXT("sides use the flowing texture"), bSidesFlow);
+		TestTrue(TEXT("sides use the flowing picture's quarter"), bSidesFlow);
 	}
 	{
 		// A lone source sags toward its open edges; four together are 8/9 high where they meet.
@@ -196,7 +196,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		{
 			bWhiteTop |= Buffers.Normals[Vertex].Z > 0.9 && Buffers.Colors[Vertex] == FColor::White;
 			const uint16 Layer = static_cast<uint16>(Buffers.UV1[Vertex].X);
-			bLavaLayers &= Layer == Fluids->LavaStill || Layer == Fluids->LavaFlow;
+			bLavaLayers &= Layer == Fluids->LavaStill || Layer == Fluids->LavaFlow || Layer == Fluids->LavaFlowSide;
 		}
 		TestTrue(TEXT("lava top is untinted"), bWhiteTop);
 		TestTrue(TEXT("lava uses the lava textures"), bLavaLayers);

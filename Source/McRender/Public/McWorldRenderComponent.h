@@ -1,4 +1,4 @@
-// Draws an FMcBlockWorld: meshes chunk columns on worker threads and uploads them as procedural meshes.
+﻿// Draws an FMcBlockWorld: meshes chunk columns on worker threads and uploads them as procedural meshes.
 
 #pragma once
 
@@ -99,6 +99,7 @@ private:
 	TSharedPtr<const FMcRenderPalette> Palette;
 	TSharedPtr<const struct FMcLightPalette> LightPalette;
 	TSharedPtr<const McFluidMesher::FFluidPalette> FluidPalette;
+	float Underwater = 0.0f;
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;

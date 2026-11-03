@@ -25,6 +25,8 @@ struct MCSERVER_API FMcChunkSaveExtras
 	bool bPopulated = false;
 	// The mobs and items in the chunk, as FMcEntityManager wrote them. Kept as bytes so this file needn't know them.
 	TArray<uint8> Entities;
+	// The spawn zones of structures that reach into the chunk (McStructureSpawns' bytes); empty for none, and for a save from before.
+	TArray<uint8> Structures;
 };
 
 namespace McChunkSave

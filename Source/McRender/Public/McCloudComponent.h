@@ -1,4 +1,4 @@
-// The clouds (minecraft.wiki: "Cloud"): the jar's clouds.png laid over the sky at the dimension's cloud height, each of
+﻿// The clouds (minecraft.wiki: "Cloud"): the jar's clouds.png laid over the sky at the dimension's cloud height, each of
 // its pixels a 12 by 12 block cell that is a cloud where the pixel is, four blocks thick, as fancy clouds are. They drift
 // west with the world's time, so every player sees them in the same place; shaded by face, see-through, dimmed at night
 // with the sky light and greyed by rain.
@@ -12,6 +12,7 @@
 struct FMcDimensionType;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
+class UTexture2D;
 class UTexture2DArray;
 
 namespace McClouds
@@ -21,6 +22,9 @@ namespace McClouds
 	constexpr float Thickness = 4.0f;
 	// Blocks a tick the clouds drift west.
 	constexpr double DriftPerTick = 0.03;
+	// How far the pattern's rows sit past the world's z origin, measured under the reference (cloudph: the row boundary
+	// crossed at z -3.9 +- 0.3 blocks, about a third of a cell).
+	constexpr double ZOffset = 3.9;
 	// Cells drawn out from the camera's, each way.
 	constexpr int32 Radius = 24;
 
@@ -60,6 +64,9 @@ private:
 	TObjectPtr<UMaterialInstanceDynamic> Material;
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2DArray> White;
+	// The pattern as a texture for the volumetric clouds of Unreal Mode: alpha 255 in a cloud, one texel per cell.
+	UPROPERTY(Transient)
+	TObjectPtr<UTexture2D> Mask;
 
 	TArray<bool> Pattern;
 	int32 PatternWidth = 0;

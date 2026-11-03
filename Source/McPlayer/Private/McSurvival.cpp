@@ -131,6 +131,7 @@ namespace McSurvival
 		case EDamage::InFire:
 		case EDamage::Lava:
 		case EDamage::Mob:
+		case EDamage::Explosion:
 			return 0.1f;
 		default:
 			return 0.0f;
@@ -178,7 +179,7 @@ namespace McSurvival
 			Stats.InvulnTicks = 20;
 		}
 		Stats.HurtTime = 10;
-		Stats.LastDamageKind = static_cast<uint8>(Kind);
+		Stats.LastHurtKind = static_cast<uint8>(Kind);
 
 		float Taken = Dealt;
 		if (!BypassesArmor(Kind))
@@ -188,12 +189,13 @@ namespace McSurvival
 			if (Worn)
 			{
 				GetArmorValues(*Worn, ArmorPoints, Toughness);
-				// Every piece takes some wear from the blow, and one may break.
+				// Every piece takes some wear from the blow, and one may break. Elytra aren't armour: only flying wears them.
 				const int32 Wear = FMath::Max(1, FMath::FloorToInt32(Dealt / 4.0f));
+				static const FName Elytra(TEXT("minecraft:elytra"));
 				for (int32 Slot = 0; Slot < Worn->Num(); ++Slot)
 				{
 					FMcItemStack& Piece = Worn->GetMutable(Slot);
-					if (!Piece.IsEmpty() && Piece.HurtAndBreak(Wear))
+					if (!Piece.IsEmpty() && Piece.Item != Elytra && Piece.HurtAndBreak(Wear))
 					{
 						Piece.Clear();
 					}
@@ -266,7 +268,8 @@ namespace McSurvival
 		}
 
 		// Breath: 1 a tick under water, and each time it runs 20 ticks past empty, 2 damage; 4 a tick back in the air.
-		if (Environment.bHeadInWater)
+		// Water Breathing and Conduit Power fill it under water too (minecraft.wiki, "Conduit Power").
+		if (Environment.bHeadInWater && !McEffects::Find(Stats, TEXT("water_breathing")) && !McEffects::Find(Stats, TEXT("conduit_power")))
 		{
 			if (--Stats.Air <= -20)
 			{

@@ -59,6 +59,7 @@ FMcStateId FMcBlockWorld::SetBlock(const FIntVector& Pos, FMcStateId State)
 	const FMcStateId Previous = Chunk->SetBlock(McCoords::BlockToLocal(Pos.X), Pos.Y, McCoords::BlockToLocal(Pos.Z), State);
 	if (Previous != State)
 	{
+		CollisionOverrides.Remove(Pos);
 		OnBlockChanged.Broadcast(Pos, State);
 		OnChunkChanged.Broadcast(ChunkPos);
 	}

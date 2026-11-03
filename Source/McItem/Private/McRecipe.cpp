@@ -1,4 +1,5 @@
 #include "McRecipe.h"
+#include "McPot.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "McCache.h"
@@ -669,20 +670,19 @@ bool FMcRecipeBook::FindCraftingMatch(const TArray<FMcItemStack>& Grid, int32 Wi
 		case EMcRecipeType::CraftingDecoratedPot:
 			if (Width == 3 && Height == 3 && Items.Num() == 4)
 			{
-				// Four sides in a diamond; a brick where there's no sherd.
-				const int32 Slots[4] = { 1, 3, 5, 7 };
-				const TCHAR* Sides[4] = { TEXT("back"), TEXT("left"), TEXT("right"), TEXT("front") };
+				// Four sides in a diamond (back at the top, front at the bottom); a brick where there's no sherd.
+				const int32 Slots[McPot::NumSides] = { 1, 3, 5, 7 };
 				bool bFits = true;
-				TArray<TSharedPtr<FJsonValue>> Decorations;
-				for (int32 Side = 0; Side < 4 && bFits; ++Side)
+				TArray<FName> Decorations;
+				for (int32 Side = 0; Side < McPot::NumSides && bFits; ++Side)
 				{
-					bFits = Recipe.Named[FName(Sides[Side])].Test(Grid[Slots[Side]]);
-					Decorations.Add(MakeShared<FJsonValueString>(Grid[Slots[Side]].Item.ToString()));
+					bFits = Recipe.Named[FName(McPot::GetSideName(Side))].Test(Grid[Slots[Side]]);
+					Decorations.Add(Grid[Slots[Side]].Item);
 				}
 				if (bFits)
 				{
 					FMcItemStack Result = Recipe.Result;
-					Result.Set(TEXT("minecraft:pot_decorations"), MakeShared<FJsonValueArray>(Decorations));
+					McPot::SetSides(Result, Decorations);
 					Out = { &Recipe, Result };
 					return true;
 				}

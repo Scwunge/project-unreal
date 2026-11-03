@@ -129,6 +129,11 @@ void FMcSimulation::TickFire(const FIntVector& Pos, FMcStateId State)
 		const int32 Odds = BurnOdds(World.GetBlock(At));
 		if (Odds > 0 && Random.RandHelper(300) < Odds)
 		{
+			// TNT is lit before it burns away.
+			if (Registry.GetBlockOf(World.GetBlock(At)).Name == TEXT("minecraft:tnt"))
+			{
+				LightTnt(At);
+			}
 			const bool bFireInstead = Random.RandHelper(Age + 10) < 5 && !Nature->IsRainingAt(At);
 			if (bFireInstead)
 			{

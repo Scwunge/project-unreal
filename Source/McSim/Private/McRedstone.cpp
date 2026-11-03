@@ -3,11 +3,13 @@
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBook.h"
 #include "McChestLink.h"
 #include "McBrewingStand.h"
 #include "McChunk.h"
 #include "McLightEngine.h"
 #include "McFurnace.h"
+#include "McJukebox.h"
 #include "Serialization/MemoryReader.h"
 #include "McRails.h"
 #include "McSimulation.h"
@@ -56,6 +58,9 @@ namespace
 		ActivatorRail,
 		DetectorRail,
 		Target,
+		NoteBlock,
+		Lectern,
+		Bell,
 	};
 
 	enum EDir : int32
@@ -139,6 +144,9 @@ namespace
 				else if (Name == TEXT("minecraft:activator_rail")) Kind = ActivatorRail;
 				else if (Name == TEXT("minecraft:detector_rail")) Kind = DetectorRail;
 				else if (Name == TEXT("minecraft:target")) Kind = Target;
+				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
+				else if (Name == TEXT("minecraft:lectern")) Kind = Lectern;
+				else if (Name == TEXT("minecraft:bell")) Kind = Bell;
 				for (const FMcStateId State : Block.States)
 				{
 					Kinds[State] = Kind;
@@ -434,6 +442,7 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case Plate:
 	case DetectorRail:
 	case TripwireHook:
+	case Lectern:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
 	case PlateLight:
 	case PlateHeavy:
@@ -502,6 +511,7 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case PlateLight:
 	case PlateHeavy:
 	case DetectorRail:
+	case Lectern:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
 	// The hook powers the block it hangs on (the receiver sees it in the direction the hook faces).
 	case TripwireHook:
@@ -647,6 +657,24 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return Number(State, TEXT("honey_level")) * 3;
 		}
+		if (Name == TEXT("minecraft:lectern"))
+		{
+			// By the page its book lies open at: 1 on the first up to 15 on the last.
+			const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+			if (!Flag(State, TEXT("has_book")) || !Entity || Entity->Kind != EMcBlockEntityKind::Lectern || Entity->Slots.IsEmpty())
+			{
+				return 0;
+			}
+			return McBook::GetComparatorSignal(Entity->Page, McBook::GetPages(Entity->Slots[0]).Num());
+		}
+	}
+	// A jukebox reads its disc's song, not how full its one slot is (McJukebox.h).
+	if (Reg().IsValidState(State) && Reg().GetBlockOf(State).Name == TEXT("minecraft:jukebox"))
+	{
+		const FMcChunk* Chunk = World.FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+		return Entity && Entity->Slots.Num() > 0 ? McJukebox::GetComparatorOutput(Entity->Slots[0].Item) : 0;
 	}
 	if (KindOf(State) == Crafter)
 	{
@@ -975,6 +1003,18 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 			Sim.LightTnt(Pos);
 		}
 		break;
+	// Power rising on a note block plays it once; `powered` goes again when the power does (McNoteBlock.h).
+	case NoteBlock:
+		if (HasPower(Pos) != Flag(State, TEXT("powered")))
+		{
+			const bool bPowered = !Flag(State, TEXT("powered"));
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+			if (bPowered)
+			{
+				Sim.PlayNote(Pos);
+			}
+		}
+		break;
 	case Repeater:
 	{
 		const bool bLocked = IsRepeaterLocked(Pos, State);
@@ -989,6 +1029,24 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		break;
 	}
+	case Bell:
+		// Power coming on rings it at once, as if struck on its facing side; power going off only clears powered
+		// (measured in vanilla: E:/mc-reference/scripts/bell_redstone.txt, bell_wall_side.txt).
+		if (HasPower(Pos) != Flag(State, TEXT("powered")))
+		{
+			const bool bPowered = HasPower(Pos);
+			Set(Pos, { FChange(TEXT("powered"), Bool(bPowered)) });
+			if (bPowered)
+			{
+				Sim.PlaySound(FMcSoundEvent{ FName(TEXT("block.bell.use")), FVector(Pos) + FVector(0.5), 2.0f, 1.0f });
+				if (Sim.OnBellRung)
+				{
+					const FName Facing = Reg().GetPropertyValue(State, TEXT("facing"));
+					Sim.OnBellRung(Pos, Facing == TEXT("north") ? 0 : Facing == TEXT("south") ? 1 : Facing == TEXT("west") ? 2 : 3);
+				}
+			}
+		}
+		break;
 	case Comparator:
 		if (ComparatorOutput(Pos, State) != ComparatorOutputs.FindRef(Pos) || (ComparatorOutput(Pos, State) > 0) != Flag(State, TEXT("powered")))
 		{
@@ -1189,6 +1247,13 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	}
 	case DetectorRail:
 		TickDetector(Pos, State);
+		break;
+	case Lectern:
+		// The end of the pulse a page turn gives.
+		if (Flag(State, TEXT("powered")))
+		{
+			Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+		}
 		break;
 	case Piston:
 	case StickyPiston:

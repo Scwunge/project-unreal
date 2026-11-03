@@ -63,4 +63,5 @@ private:
 	FMcColormap FoliageMap;
 	FMcColormap DryFoliageMap;
 	TMap<FName, FMcBiomeColors> Biomes;
+	uint32 LoadedGeneration = 0;
 };

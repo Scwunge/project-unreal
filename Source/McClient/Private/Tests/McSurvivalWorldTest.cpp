@@ -10,6 +10,7 @@
 #include "McRails.h"
 #include "McChunk.h"
 #include "McCombat.h"
+#include "McArrow.h"
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McFurnace.h"
@@ -51,6 +52,40 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a draw of 10 ticks has power 0.5"), McCombat::GetBowPower(10), (0.25f + 1.0f) / 3.0f, 0.001f);
 	TestEqual(TEXT("a draw of a second is full"), McCombat::GetBowPower(20), 1.0f, 0.001f);
 	TestEqual(TEXT("and no more after"), McCombat::GetBowPower(100), 1.0f, 0.001f);
+	{
+		// The aim's spread: 0.0085 on each component, centred on the look.
+		FRandomStream Random(5);
+		double Sum = 0.0;
+		double SumSquares = 0.0;
+		const int32 Count = 4000;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Off = McCombat::GetBowAim(FVector(0.0, 0.0, 1.0), Random).X;
+			Sum += Off;
+			SumSquares += Off * Off;
+		}
+		const double Mean = Sum / Count;
+		TestTrue(TEXT("the aim is centred on the look"), FMath::Abs(Mean) < 0.0008);
+		TestEqual(TEXT("with a spread of 0.0085"), FMath::Sqrt(SumSquares / Count - Mean * Mean), 0.0085, 0.0006);
+		TestEqual(TEXT("an arrow starts 0.1 under the eye"), McCombat::GetBowLaunchDrop(), 0.1, 1.0e-9);
+	}
+	TestEqual(TEXT("a full draw shoots from 1.12"), McCombat::GetBowShootPitch(0.0f, 1.0f), 1.12f, 0.001f);
+	TestEqual(TEXT("to 1.33"), McCombat::GetBowShootPitch(1.0f, 1.0f), 1.33f, 0.001f);
+	TestTrue(TEXT("a weaker draw sounds lower"), McCombat::GetBowShootPitch(0.5f, 0.3f) < McCombat::GetBowShootPitch(0.5f, 1.0f));
+	TestEqual(TEXT("a hit sounds between 1.09"), FMcArrowEntity::GetHitPitch(0.0f), 1.09f, 0.001f);
+	TestEqual(TEXT("and 1.33"), FMcArrowEntity::GetHitPitch(1.0f), 1.33f, 0.001f);
+	TestEqual(TEXT("the first hurt frame rolls 16.5 degrees"), McCombat::GetHurtTilt(10.0f), 16.5f, 0.3f);
+	TestEqual(TEXT("at 5 ticks 2.4"), McCombat::GetHurtTilt(5.0f), 41.1f * FMath::Pow(0.5f, 4.08f), 0.01f);
+	TestEqual(TEXT("and none at the end"), McCombat::GetHurtTilt(0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("a hit from the left (+x facing +z) is +1"), McCombat::GetHurtSide(0.0f, 5.0, 0.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("from the right -1"), McCombat::GetHurtSide(0.0f, -5.0, 0.0, true), -1.0f, 0.001f);
+	TestEqual(TEXT("from the front 0"), McCombat::GetHurtSide(0.0f, 0.0, 5.0, true), 0.0f, 0.001f);
+	TestEqual(TEXT("facing west (yaw 90), +z is the left"), McCombat::GetHurtSide(90.0f, 0.0, 5.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("no source is +1"), McCombat::GetHurtSide(0.0f, 0.0, 0.0, false), 1.0f, 0.001f);
+	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
+	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
+	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowFovScale(3.0f), 0.85f, 0.001f);
 	TestEqual(TEXT("a critical does half as much again"), McCombat::GetDamage(7.0f, 1.0f, true), 10.5f, 0.001f);
 	TestEqual(TEXT("a tenth charge does 0.2 + 0.8 * 0.01"), McCombat::GetDamage(7.0f, 0.1f, false), 7.0f * 0.208f, 0.001f);
 

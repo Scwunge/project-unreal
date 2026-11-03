@@ -1,6 +1,8 @@
 #include "McWorldActor.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
+#include "McJavaImport.h"
+#include "McTnt.h"
 #include "McCache.h"
 #include "McRails.h"
 #include "McBiomeRegistry.h"
@@ -14,7 +16,11 @@
 #include "McNoiseGenerator.h"
 #include "McPortal.h"
 #include "McSimulation.h"
+#include "McSpawners.h"
+#include "McPhysics.h"
 #include "McServer.h"
+#include "McStructureSpawns.h"
+#include "McJavaImport.h"
 #include "McWorldStorage.h"
 #include "McLaunch.h"
 #include "HAL/FileManager.h"
@@ -40,6 +46,7 @@ void AMcWorldActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(AMcWorldActor, SyncedDayTime);
+	DOREPLIFETIME(AMcWorldActor, SyncedGameTime);
 	DOREPLIFETIME(AMcWorldActor, bTimeFrozen);
 	DOREPLIFETIME(AMcWorldActor, Weather);
 	DOREPLIFETIME_CONDITION(AMcWorldActor, Dimension, COND_InitialOnly);
@@ -114,6 +121,15 @@ void AMcWorldActor::OnRep_SyncedDayTime()
 	if (FMath::Abs(DayTicks - ServerTicks) > 4.0)
 	{
 		DayTicks = ServerTicks;
+	}
+}
+
+void AMcWorldActor::OnRep_SyncedGameTime()
+{
+	const double ServerTicks = static_cast<double>(SyncedGameTime);
+	if (FMath::Abs(GameTicks - ServerTicks) > 4.0)
+	{
+		GameTicks = ServerTicks;
 	}
 }
 
@@ -198,6 +214,13 @@ void AMcWorldActor::BeginPlay()
 	{
 		bFlat |= McLaunch::HasFlag(GetWorld(), TEXT("McFlat")) || FParse::Value(CommandLine, TEXT("-McScene="), Scene);
 	}
+#if !UE_BUILD_SHIPPING
+	// Development: -McFlatPreset=minecraft:snowy_kingdom picks the flat preset (a saved world keeps its own).
+	if (!bSecondary)
+	{
+		FParse::Value(CommandLine, TEXT("-McFlatPreset="), FlatPreset);
+	}
+#endif
 	FString SeedArg;
 	const bool bSeedArg = !bSecondary && McLaunch::GetValue(GetWorld(), TEXT("McSeed"), SeedArg);
 	if (bSeedArg)
@@ -284,8 +307,32 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Simulation->OnNoteParticle = [this](const FVector& Position, int32 Note)
+	{
+		MulticastNote(FVector_NetQuantize10(Position), Note);
+	};
+	Simulation->OnBellRung = [this](const FIntVector& Pos, int32 Side)
+	{
+		MulticastBellRung(Pos, static_cast<uint8>(Side));
+	};
 	Entities = MakeUnique<FMcEntityHost>(*BlockWorld, Seed);
+	if (!bSecondary)
+	{
+		FMcStructureSpawns::Get().SetRecording(true);
+	}
 	Entities->SetProxyClass(GetWorld(), EntityProxyClass);
+	Entities->GetSpawners().OnCycle = [this](const FIntVector& Pos)
+	{
+		MulticastSpawnerCycled(Pos);
+	};
+	// TNT lit by fire or redstone becomes a primed block.
+	Simulation->OnLightTnt = [this](const FIntVector& Pos)
+	{
+		if (Entities)
+		{
+			FMcPrimedTnt::Ignite(Entities->GetManager(), Pos);
+		}
+	};
 	// A falling block that lands where it can't stand (a torch, a slab) breaks into the item of the same name.
 	Simulation->OnFallingBlockDropped = [this](const FIntVector& Pos, FMcStateId State)
 	{
@@ -358,6 +405,8 @@ void AMcWorldActor::BeginPlay()
 		}
 		Simulation->HitTarget(Cell, FMath::Clamp(15 - FMath::FloorToInt32(Away * 2.0 * 15.0), 1, 15), 20);
 	};
+	// A villager shutting a door goes through the same path as any other change.
+	Entities->GetManager().OnSetBlock = [this](const FIntVector& Pos, FMcStateId State) { SetBlock(Pos, State); };
 	// Every sound the entities make goes to the players.
 	Entities->GetManager().OnSound = [this](const FMcSoundEvent& Event)
 	{
@@ -473,10 +522,18 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
 	}
+	// A Java world begun with McJavaImport::BeginImport is converted from here on, near its spawn first.
+	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
 
 void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (LiveImport)
+	{
+		// Before the last save, so nothing is being queued behind it.
+		LiveImport->Stop();
+		LiveImport.Reset();
+	}
 	// Chunks, mobs and players are all still here; this is the last chance to write them.
 	if (Storage && BlockWorld)
 	{
@@ -508,6 +565,11 @@ int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float 
 {
 	const FMcEntity* Found = Entities ? Entities->FindVehicle(Eye, Look, Reach) : nullptr;
 	return Found ? Found->Id : 0;
+}
+
+FMcMob* AMcWorldActor::FindMob(const FVector& Eye, const FVector& Look, float Reach)
+{
+	return Entities ? Entities->FindMob(Eye, Look, Reach) : nullptr;
 }
 
 void AMcWorldActor::PlayerBroke(const FIntVector& Pos)
@@ -606,6 +668,77 @@ void AMcWorldActor::MulticastBlockBroken_Implementation(FIntVector Pos, int32 St
 	}
 }
 
+void AMcWorldActor::MulticastBellRung_Implementation(FIntVector Pos, uint8 Side)
+{
+	if (bViewed && OnBellRung)
+	{
+		OnBellRung(Pos, Side);
+	}
+}
+
+void AMcWorldActor::MulticastSpawnerCycled_Implementation(FIntVector Pos)
+{
+	if (bViewed && OnSpawnerCycled)
+	{
+		OnSpawnerCycled(Pos);
+	}
+}
+
+void AMcWorldActor::SetShulkerOpeners(const TMap<FIntVector, int32>& Openers)
+{
+	for (const TPair<FIntVector, int32>& Pair : Openers)
+	{
+		if (ShulkerOpeners.FindRef(Pair.Key) != Pair.Value)
+		{
+			MulticastShulkerOpeners(Pair.Key, Pair.Value);
+		}
+	}
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (!Openers.Contains(Pair.Key))
+		{
+			MulticastShulkerOpeners(Pair.Key, 0);
+		}
+	}
+	ShulkerOpeners = Openers;
+}
+
+void AMcWorldActor::MulticastShulkerOpeners_Implementation(FIntVector Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpeners(Pos, Count);
+	}
+}
+
+void AMcWorldActor::GetShulkerOpeners(const FIntPoint& Chunk, TArray<FIntVector>& Boxes, TArray<int32>& Openers) const
+{
+	for (const TPair<FIntVector, int32>& Pair : ShulkerOpeners)
+	{
+		if (Pair.Value > 0 && McCoords::BlockToChunk(Pair.Key.X) == Chunk.X && McCoords::BlockToChunk(Pair.Key.Z) == Chunk.Y)
+		{
+			Boxes.Add(Pair.Key);
+			Openers.Add(Pair.Value);
+		}
+	}
+}
+
+void AMcWorldActor::ShowShulkerOpen(const FIntVector& Pos, int32 Count)
+{
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	if (ShulkerLids)
+	{
+		ShulkerLids->SetOpen(Pos, Count);
+	}
+}
+
 void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantize10 Position, float Volume, float Pitch)
 {
 	if (!bViewed)
@@ -613,6 +746,25 @@ void AMcWorldActor::MulticastSound_Implementation(FName Name, FVector_NetQuantiz
 		return;
 	}
 	FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ Name, FVector(Position), Volume, Pitch });
+}
+
+void AMcWorldActor::MulticastNote_Implementation(FVector_NetQuantize10 Position, int32 Note)
+{
+	if (bViewed)
+	{
+		FMcSoundBus::Get().OnNote.Broadcast(FVector(Position), Note);
+	}
+}
+
+void AMcWorldActor::MulticastRecord_Implementation(FName Name, FVector_NetQuantize10 Position, bool bPlay)
+{
+	if (!bViewed)
+	{
+		return;
+	}
+	FMcSoundEvent Event{ Name, FVector(Position), 4.0f, 1.0f };
+	Event.bStop = !bPlay;
+	FMcSoundBus::Get().OnSound.Broadcast(Event);
 }
 
 void AMcWorldActor::MulticastLightning_Implementation(FVector_NetQuantize10 Position, int32 BoltSeed)
@@ -774,6 +926,16 @@ bool AMcWorldActor::UseBlock(const FIntVector& Pos, float Yaw)
 	return HasAuthority() && Simulation && Simulation->UseBlock(Pos, Yaw);
 }
 
+bool AMcWorldActor::PlayNote(const FIntVector& Pos)
+{
+	return HasAuthority() && Simulation && Simulation->PlayNote(Pos);
+}
+
+bool AMcWorldActor::TuneNote(const FIntVector& Pos)
+{
+	return HasAuthority() && Simulation && Simulation->TuneNote(Pos);
+}
+
 void AMcWorldActor::SetWeather(EMcWeather NewWeather, int32 Duration)
 {
 	if (HasAuthority() && Simulation)
@@ -855,6 +1017,8 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 		// Its animals were placed when it was first made; what's left of them is in the save.
 		Entities->MarkSeeded(Pos);
 	}
+	// What the structures here spawn comes back with the chunk.
+	FMcStructureSpawns::Get().DecodeChunk(Arrived.Extras.Structures);
 	BlockWorld->AddChunk(MoveTemp(Arrived.Chunk));
 	++(Arrived.bFromDisk ? NumChunksFromDisk : NumChunksGenerated);
 	if (Storage)
@@ -865,9 +1029,21 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 		State.bOnDisk = Arrived.bFromDisk;
 		State.bHadEntities = !Arrived.Extras.Entities.IsEmpty();
 	}
+	if (Pos == FIntPoint(0, 0))
+	{
+		UE_LOG(LogMcServer, Display, TEXT("Chunk 0, 0 arrived with %d bytes of entities (host %d, from disk %d)"), Arrived.Extras.Entities.Num(), Entities ? 1 : 0, Arrived.bFromDisk ? 1 : 0);
+	}
 	if (Entities && !Arrived.Extras.Entities.IsEmpty())
 	{
 		Entities->RestoreChunk(Arrived.Extras.Entities);
+	}
+	// Banners that came from a Java world keep their patterns in a kept block entity; the flag is made from it once.
+	if (Entities)
+	{
+		if (const FMcChunk* Added = BlockWorld->FindChunk(Pos))
+		{
+			McJavaImport::StandBanners(*Added, Entities->GetManager());
+		}
 	}
 }
 
@@ -894,6 +1070,7 @@ bool AMcWorldActor::SaveChunk(FIntPoint Pos)
 	{
 		Extras.Entities = Entities->CaptureChunk(Pos);
 	}
+	Extras.Structures = FMcStructureSpawns::Get().EncodeChunk(Pos);
 	// Block entities can be changed in place without the chunk's revision moving, so a chunk with any is always rewritten.
 	const bool bNeeded = !State.bOnDisk || State.bDirty || Chunk->GetRevision() != State.SavedRevision
 		|| !Chunk->GetBlockEntities().IsEmpty() || !Extras.Entities.IsEmpty() || State.bHadEntities;
@@ -967,6 +1144,15 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 
 	// Both sides count: the server for everyone, a client between syncs. The server publishes whole ticks once a
 	// second.
+	GameTicks += DeltaSeconds * 20.0;
+	if (HasAuthority() && Simulation && FMath::Abs(GameTicks - static_cast<double>(Simulation->GetGameTime())) > 4.0)
+	{
+		GameTicks = static_cast<double>(Simulation->GetGameTime());
+	}
+	if (HasAuthority() && FMath::FloorToDouble(GameTicks) > static_cast<double>(SyncedGameTime) + 19.0)
+	{
+		SyncedGameTime = static_cast<int64>(FMath::FloorToDouble(GameTicks));
+	}
 	if (!bTimeFrozen)
 	{
 		const double Ticks = DeltaSeconds * 20.0;
@@ -995,6 +1181,27 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	if (BlockWorld && Generator)
 	{
 		StreamChunks();
+	}
+	if (BlockWorld && !ShulkerLids)
+	{
+		ShulkerLids = MakeUnique<FMcShulkerLids>(*BlockWorld);
+	}
+	LidRemainder = FMath::Min(LidRemainder + DeltaSeconds, 0.25);
+	for (; ShulkerLids && LidRemainder >= 0.05; LidRemainder -= 0.05)
+	{
+		ShulkerLids->Tick();
+		// The server moves the mobs and items in an opening lid's way; each player's own machine moves them.
+		if (HasAuthority() && Entities)
+		{
+			for (const TUniquePtr<FMcEntity>& Entity : Entities->GetManager().GetEntities())
+			{
+				const FVector Push = ShulkerLids->GetPush(Entity->Body.GetBox());
+				if (!Entity->bRemoved && !Push.IsZero())
+				{
+					McPhysics::Move(*BlockWorld, Entity->Body, Push, false);
+				}
+			}
+		}
 	}
 	if (Simulation)
 	{
@@ -1038,6 +1245,8 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 					Spawned->SetOwner(this);
 				}
 			}));
+			// It rains, for the world's rules (a fishing bobber's bite comes sooner), once the rain is more than a fifth on.
+			Entities->GetManager().bRaining = RainLevel > 0.2f;
 			// Where the time never changes it is always night to the mobs (none burn).
 			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);

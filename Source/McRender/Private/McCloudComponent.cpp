@@ -168,24 +168,25 @@ void UMcCloudComponent::Rebuild(FIntPoint Centre, const FLinearColor& Colour)
 				continue;
 			}
 			const FVector Origin(DX * McClouds::CellSize, 0.0, DZ * McClouds::CellSize);
-			// The top in full light, the bottom in shadow, the sides between; sides shared with another cloud are inside.
+			// The top in full light, the bottom in shadow, the sides between (as measured on the reference client's faces: bottom 0.70,
+				// north and south 0.84, east and west 0.92); sides shared with another cloud are inside.
 			AddFace(Origin, Top, FVector(0, 1, 0), 1.0f);
 			AddFace(Origin, Bottom, FVector(0, -1, 0), 0.7f);
 			if (!IsCloud(Cell + FIntPoint(-1, 0)))
 			{
-				AddFace(Origin, West, FVector(-1, 0, 0), 0.9f);
+				AddFace(Origin, West, FVector(-1, 0, 0), 0.92f);
 			}
 			if (!IsCloud(Cell + FIntPoint(1, 0)))
 			{
-				AddFace(Origin, East, FVector(1, 0, 0), 0.9f);
+				AddFace(Origin, East, FVector(1, 0, 0), 0.92f);
 			}
 			if (!IsCloud(Cell + FIntPoint(0, -1)))
 			{
-				AddFace(Origin, North, FVector(0, 0, -1), 0.8f);
+				AddFace(Origin, North, FVector(0, 0, -1), 0.84f);
 			}
 			if (!IsCloud(Cell + FIntPoint(0, 1)))
 			{
-				AddFace(Origin, South, FVector(0, 0, 1), 0.8f);
+				AddFace(Origin, South, FVector(0, 0, 1), 0.84f);
 			}
 		}
 	}

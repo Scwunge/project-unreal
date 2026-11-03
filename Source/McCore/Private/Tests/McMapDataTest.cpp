@@ -33,9 +33,17 @@ bool FMcMapMarkerTest::RunTest(const FString&)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMapShadeTest, "Mc.Map.Shade", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FMcMapShadeTest::RunTest(const FString&)
 {
-	TestEqual(TEXT("up"), FMcMapData::LandBrightness(1.0), 2);
-	TestEqual(TEXT("flat"), FMcMapData::LandBrightness(0.0), 1);
-	TestEqual(TEXT("down"), FMcMapData::LandBrightness(-1.0), 0);
+	TestEqual(TEXT("up"), FMcMapData::LandBrightness(1.0, 0, 0), 2);
+	TestEqual(TEXT("flat"), FMcMapData::LandBrightness(0.0, 0, 0), 1);
+	TestEqual(TEXT("down"), FMcMapData::LandBrightness(-1.0, 0, 1), 0);
+	// Scale 1 dither (mapexp5): step -1 low/normal, +1 normal/high, 0 normal, 2 saturated.
+	TestEqual(TEXT("s1 -1 p0"), FMcMapData::LandBrightness(-1.0, 1, 0), 0);
+	TestEqual(TEXT("s1 -1 p1"), FMcMapData::LandBrightness(-1.0, 1, 1), 1);
+	TestEqual(TEXT("s1 +1 p0"), FMcMapData::LandBrightness(1.0, 1, 0), 1);
+	TestEqual(TEXT("s1 +1 p1"), FMcMapData::LandBrightness(1.0, 1, 1), 2);
+	TestEqual(TEXT("s1 0"), FMcMapData::LandBrightness(0.0, 2, 1), 1);
+	TestEqual(TEXT("s2 +2"), FMcMapData::LandBrightness(2.0, 2, 0), 2);
+	TestEqual(TEXT("s2 -2"), FMcMapData::LandBrightness(-2.0, 2, 1), 0);
 	TestEqual(TEXT("shallow"), FMcMapData::WaterBrightness(2, 1), 2);
 	TestEqual(TEXT("mid"), FMcMapData::WaterBrightness(5, 0), 1);
 	TestEqual(TEXT("deep"), FMcMapData::WaterBrightness(12, 1), 0);

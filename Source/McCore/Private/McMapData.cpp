@@ -26,10 +26,16 @@ uint8 FMcMapData::MarkerRotation(double YawDegrees)
 	return static_cast<uint8>(((Step % 16) + 16) % 16);
 }
 
-int32 FMcMapData::LandBrightness(double HeightMinusNorth)
+int32 FMcMapData::LandBrightness(double HeightMinusNorth, int32 Scale, int32 Parity)
 {
-	// Scale 0 (mapexp4): up HIGH, same NORMAL, down LOW. Averaged heights at larger scales use the same sign (unfitted).
-	return HeightMinusNorth > 0.0 ? 2 : (HeightMinusNorth < 0.0 ? 0 : 1);
+	if (Scale == 0)
+	{
+		return HeightMinusNorth > 0.0 ? 2 : (HeightMinusNorth < 0.0 ? 0 : 1);
+	}
+	// value = step + (parity - 0.5); high above 0.75, low below -0.75 (fits mapexp5 at scales 1 and 2 for whole steps;
+	// fractional steps from averaged heights are unverified).
+	const double Value = HeightMinusNorth + (Parity - 0.5);
+	return Value > 0.75 ? 2 : (Value < -0.75 ? 0 : 1);
 }
 
 int32 FMcMapData::WaterBrightness(int32 Depth, int32 Parity)
@@ -79,7 +85,7 @@ int32 FMcMapData::UpdateRow(int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sa
 		uint8 Pixel = 0;
 		if (Color != 0)
 		{
-			const int32 Brightness = Depth > 0 ? WaterBrightness(Depth, (PixelX + PixelZ) & 1) : LandBrightness(Here - North);
+			const int32 Brightness = Depth > 0 ? WaterBrightness(Depth, (PixelX + PixelZ) & 1) : LandBrightness(Here - North, Scale, (PixelX + PixelZ) & 1);
 			Pixel = McMapColors::Pack(Color, Brightness);
 		}
 		uint8& Slot = Colors[PixelZ * Size + PixelX];

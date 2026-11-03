@@ -43,8 +43,10 @@ struct MCCORE_API FMcMapData
 	// Rotation 0..15 of a yaw in degrees (yaw -180 is 8, one more per 22.5 degrees).
 	static uint8 MarkerRotation(double YawDegrees);
 
-	// Brightness (0 low, 1 normal, 2 high) of land for the height step to the north neighbour.
-	static int32 LandBrightness(double HeightMinusNorth);
+	// Brightness (0 low, 1 normal, 2 high) of land for the height step to the north neighbour (parity = (px + pz) & 1).
+	// Scale 0 is the sign of the step; scales 1 and 2 (run mapexp5, flat rows) are the sign with a one step dither:
+	// step -1 low/normal, 0 normal, +1 normal/high by parity, beyond that saturated.
+	static int32 LandBrightness(double HeightMinusNorth, int32 Scale, int32 Parity);
 	// Brightness of water of a depth at a pixel (parity = (px + pz) & 1).
 	static int32 WaterBrightness(int32 Depth, int32 Parity);
 

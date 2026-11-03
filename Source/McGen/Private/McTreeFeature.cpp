@@ -581,7 +581,7 @@ namespace
 						const FIntVector Over = At + FIntVector(0, 1, 0);
 						if (B.Region.IsAir(B.Region.GetBlock(Over)))
 						{
-							B.Region.SetBlock(Over, DefaultState(AboveRootBlock));
+							B.Region.SetBlock(Over, DefaultState(*AboveRootBlock));
 						}
 					}
 				}

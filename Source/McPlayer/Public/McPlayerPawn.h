@@ -129,7 +129,6 @@ public:
 	bool IsHudHidden() const { return bHudHidden; }
 	bool IsDebugShown() const { return bDebugShown; }
 	int32 GetViewMode() const { return ViewMode; }
-	const FMcBlockWorld* GetBlockWorld() const { return BlockWorld; }
 	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
 	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
 	bool IsSleeping() const { return bSleeping; }

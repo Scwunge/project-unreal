@@ -239,8 +239,9 @@ namespace McPlayerModel
 		const FPartDef& Def = GetPartDef(Part);
 		FPartPose Pose;
 		Pose.Pivot = FVector::ZeroVector;
-		AddBox(Def, Pose, 0.0f, Def.BaseUV, 0.0f, Out);
-		AddBox(Def, Pose, 0.0f, Def.OuterUV, OuterInflateBody, Out);
+		const FPose Still;
+		AddBox(Def, Pose, Still, Def.BaseUV, 0.0f, Out);
+		AddBox(Def, Pose, Still, Def.OuterUV, OuterInflateBody, Out);
 	}
 
 	float TurnBody(float BodyYaw, float HeadYaw, bool bMoving)

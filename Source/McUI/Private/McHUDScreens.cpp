@@ -1842,7 +1842,9 @@ void AMcHUD::DrawDebug(int32 Width, int32 Height, AMcPlayerPawn& Player)
 	};
 	DrawLines(Left, false, Width);
 	DrawLines(Right, true, Width);
-}\n\n// ---- Sign editor ----
+}
+
+// ---- Sign editor ----
 
 namespace
 {

@@ -382,7 +382,10 @@ void UMcParticleComponent::ItemEaten(const FVector& Eye, const FVector& Forward,
 		Bit.Size = 0.012f * (Random.FRand() * 0.5f + 0.75f);
 		Bit.Colour = Colours[Random.RandRange(0, Colours.Num() - 1)];
 		Bit.Light = FVector2f(Sky, 0.0f);
-\t}\n}\n\nvoid UMcParticleComponent::FishingSplash(const FVector& Pos)
+	}
+}
+
+void UMcParticleComponent::FishingSplash(const FVector& Pos)
 {
 	const float Light = SkyLightAt(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y) + 1, FMath::FloorToInt32(Pos.Z)));
 	for (int32 Index = 0; Index < 12; ++Index)

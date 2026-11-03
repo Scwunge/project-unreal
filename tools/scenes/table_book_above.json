@@ -1,0 +1,8 @@
+{
+  "description": "An enchanting table's book turned to and open for a player, seen from that player (above; vanilla: E:/mc-reference/scripts/table_book.txt, ref_book_above).",
+  "camera": [5.5, -56.38, 6.3, 180.0, 72.0],
+  "blocks": [
+    { "from": [0, -61, 0], "to": [10, -61, 10], "state": "minecraft:stone" },
+    { "from": [5, -60, 5], "to": [5, -60, 5], "state": "minecraft:enchanting_table" }
+  ]
+}

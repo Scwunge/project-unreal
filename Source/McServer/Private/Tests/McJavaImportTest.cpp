@@ -366,17 +366,32 @@ bool FMcJavaImportBlockEntityTest::RunTest(const FString& Parameters)
 	FNbtWriter Writer;
 	Writer.Compound(TEXT(""));
 	Writer.List(TEXT("sections"), 10, 0);
-	Writer.List(TEXT("block_entities"), 10, 3);
+	Writer.List(TEXT("block_entities"), 10, 5);
 	{
-		// A sign: kept whole.
+		// A sign: a plain line and one written as JSON, as older saves keep them.
 		Writer.Str(TEXT("id"), TEXT("minecraft:sign"));
 		Writer.Int(TEXT("x"), 1); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 2);
 		Writer.Compound(TEXT("front_text"));
 		Writer.List(TEXT("messages"), 8, 2);
 		Writer.String(TEXT("Imported"));
-		Writer.String(TEXT("sign"));
+		Writer.String(TEXT("{\"text\":\"si\",\"extra\":[\"gn\"]}"));
 		Writer.Str(TEXT("color"), TEXT("red"));
+		Writer.Byte(TEXT("has_glowing_text"), 1);
 		Writer.End();
+		Writer.Byte(TEXT("is_waxed"), 1);
+		Writer.End();
+		// A skull: nothing of ours reads one, so it is kept whole.
+		Writer.Str(TEXT("id"), TEXT("minecraft:skull"));
+		Writer.Int(TEXT("x"), 1); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 4);
+		Writer.Str(TEXT("note_block_sound"), TEXT("minecraft:entity.zombie.ambient"));
+		Writer.End();
+		// A decorated pot with a sherd on its left and nothing listed for its front.
+		Writer.Str(TEXT("id"), TEXT("minecraft:decorated_pot"));
+		Writer.Int(TEXT("x"), 7); Writer.Int(TEXT("y"), -60); Writer.Int(TEXT("z"), 7);
+		Writer.List(TEXT("sherds"), 8, 3);
+		Writer.String(TEXT("minecraft:brick"));
+		Writer.String(TEXT("minecraft:angler_pottery_sherd"));
+		Writer.String(TEXT("minecraft:brick"));
 		Writer.End();
 		// A furnace with iron ore in the input slot.
 		Writer.Str(TEXT("id"), TEXT("minecraft:furnace"));
@@ -411,27 +426,40 @@ bool FMcJavaImportBlockEntityTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("converts"), McJavaImport::ConvertChunk(Root, Chunk, Stats));
 
 	const FMcBlockEntity* Sign = Chunk.FindBlockEntity(1, -60, 2);
-	if (TestNotNull(TEXT("the sign is kept"), Sign) && TestTrue(TEXT("as raw"), Sign->Kind == EMcBlockEntityKind::Raw))
+	if (TestNotNull(TEXT("the sign is kept"), Sign) && TestTrue(TEXT("as a sign"), Sign->Kind == EMcBlockEntityKind::Sign))
 	{
-		TestEqual(TEXT("with its id"), Sign->EntityId, FName(TEXT("minecraft:sign")));
+		TestEqual(TEXT("the plain line"), Sign->SignSides[0].Lines[0], FString(TEXT("Imported")));
+		TestEqual(TEXT("the JSON line's words"), Sign->SignSides[0].Lines[1], FString(TEXT("sign")));
+		TestTrue(TEXT("the rest empty"), Sign->SignSides[0].Lines[2].IsEmpty() && !Sign->SignSides[1].HasText());
+		TestEqual(TEXT("colour"), Sign->SignSides[0].Color, FName(TEXT("red")));
+		TestTrue(TEXT("glowing"), Sign->SignSides[0].bGlowing);
+		TestTrue(TEXT("waxed"), Sign->bWaxed);
+	}
+
+	const FMcBlockEntity* Skull = Chunk.FindBlockEntity(1, -60, 4);
+	if (TestNotNull(TEXT("the skull is kept"), Skull) && TestTrue(TEXT("as raw"), Skull->Kind == EMcBlockEntityKind::Raw))
+	{
+		TestEqual(TEXT("with its id"), Skull->EntityId, FName(TEXT("minecraft:skull")));
 		FMcNbt Back;
-		TestTrue(TEXT("its NBT reads back"), FMcNbt::Parse(Sign->Data, Back));
-		const FMcNbt* Front = Back.Find(TEXT("front_text"));
-		if (TestNotNull(TEXT("front_text"), Front))
-		{
-			TestEqual(TEXT("colour"), Front->GetString(TEXT("color")), FString(TEXT("red")));
-			const FMcNbt* Messages = Front->Find(TEXT("messages"));
-			TestTrue(TEXT("two lines"), Messages && Messages->Num() == 2 && Messages->Values[0].String == TEXT("Imported"));
-		}
+		TestTrue(TEXT("its NBT reads back"), FMcNbt::Parse(Skull->Data, Back));
+		TestEqual(TEXT("its sound"), Back.GetString(TEXT("note_block_sound")), FString(TEXT("minecraft:entity.zombie.ambient")));
 		// And it survives the save format.
 		TArray<uint8> Bytes;
 		FMemoryWriter Writer2(Bytes);
-		FMcBlockEntity Copy = *Sign;
+		FMcBlockEntity Copy = *Skull;
 		Copy.Serialize(Writer2);
 		FMcBlockEntity Loaded;
 		FMemoryReader Reader(Bytes);
 		TestTrue(TEXT("loads"), Loaded.Serialize(Reader));
-		TestTrue(TEXT("round trips"), Loaded == *Sign);
+		TestTrue(TEXT("round trips"), Loaded == *Skull);
+	}
+
+	const FMcBlockEntity* Pot = Chunk.FindBlockEntity(7, -60, 7);
+	if (TestNotNull(TEXT("the pot is kept"), Pot) && TestTrue(TEXT("as a pot"), Pot->Kind == EMcBlockEntityKind::Pot)
+		&& TestEqual(TEXT("four sides"), Pot->Slots.Num(), 4))
+	{
+		TestEqual(TEXT("the sherd on the left"), Pot->Slots[1].Item, FName(TEXT("minecraft:angler_pottery_sherd")));
+		TestEqual(TEXT("a brick for the front"), Pot->Slots[3].Item, FName(TEXT("minecraft:brick")));
 	}
 
 	const FMcBlockEntity* Furnace = Chunk.FindBlockEntity(3, -60, 3);
@@ -685,13 +713,9 @@ bool FMcJavaImportBuildTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("seventeen"), Barrel->Slots[3].Count, 17);
 	}
 	const FMcBlockEntity* Sign = Chunk.FindBlockEntity(12, -60, 0);
-	if (TestNotNull(TEXT("the sign is kept"), Sign))
+	if (TestNotNull(TEXT("the sign is kept"), Sign) && TestTrue(TEXT("as a sign"), Sign->Kind == EMcBlockEntityKind::Sign))
 	{
-		FMcNbt Back;
-		TestTrue(TEXT("its NBT reads"), FMcNbt::Parse(Sign->Data, Back));
-		const FMcNbt* Front = Back.Find(TEXT("front_text"));
-		const FMcNbt* Messages = Front ? Front->Find(TEXT("messages")) : nullptr;
-		TestTrue(TEXT("its first line is the text that was set"), Messages && Messages->Num() == 4 && Messages->Values[0].String.Contains(TEXT("Imported")));
+		TestTrue(TEXT("its first line is the text that was set"), Sign->SignSides[0].Lines[0].Contains(TEXT("Imported")));
 	}
 	return true;
 }

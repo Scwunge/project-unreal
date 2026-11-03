@@ -4,6 +4,8 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McChunk.h"
+#include "McConduit.h"
 #include "McNature.h"
 #include "McRedstone.h"
 #include "McSim.h"
@@ -37,6 +39,42 @@ namespace
 		return FMcBlockShapes::Get().GetFluidLevel(State);
 	}
 
+	// A bubble column can fill a water source or replace another column block.
+	bool CanHoldColumn(FMcStateId State)
+	{
+		const FName Name = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+		return Name == TEXT("minecraft:bubble_column") || (Name == TEXT("minecraft:water") && FMcBlockShapes::Get().GetFluidLevel(State) == 0);
+	}
+
+	// What water above this block turns into: a column pushing up over soul sand, down over magma, the same
+	// way over another column; plain water over anything else.
+	FMcStateId ColumnStateAbove(const FMcBlockWorld& World, const FIntVector& Below)
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId State = World.GetBlock(Below);
+		const FName Name = Registry.GetBlockOf(State).Name;
+		FName Drag;
+		if (Name == TEXT("minecraft:soul_sand"))
+		{
+			Drag = TEXT("false");
+		}
+		else if (Name == TEXT("minecraft:magma_block"))
+		{
+			Drag = TEXT("true");
+		}
+		else if (Name == TEXT("minecraft:bubble_column"))
+		{
+			Drag = Registry.GetPropertyValue(State, TEXT("drag"));
+		}
+		else
+		{
+			return StateOf(TEXT("minecraft:water"));
+		}
+		TMap<FName, FName> Properties;
+		Properties.Add(TEXT("drag"), Drag);
+		return Registry.FindState(TEXT("minecraft:bubble_column"), Properties).Get(0);
+	}
+
 	bool IsGravityBlock(FMcStateId State)
 	{
 		const FString Name = FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString();
@@ -67,11 +105,13 @@ FMcSimulation::FMcSimulation(FMcBlockWorld& InWorld)
 	Redstone = MakeUnique<FMcRedstone>(World, *this);
 	Nature = MakeUnique<FMcNature>(World, *this);
 	ChangedHandle = World.OnBlockChanged.AddRaw(this, &FMcSimulation::OnBlockChanged);
+	AddedHandle = World.OnChunkAdded.AddRaw(this, &FMcSimulation::OnChunkAdded);
 }
 
 FMcSimulation::~FMcSimulation()
 {
 	World.OnBlockChanged.Remove(ChangedHandle);
+	World.OnChunkAdded.Remove(AddedHandle);
 }
 
 void FMcSimulation::ScheduleTick(const FIntVector& Pos, int32 Delay)
@@ -87,6 +127,31 @@ void FMcSimulation::ScheduleTick(const FIntVector& Pos, int32 Delay)
 void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 {
 	Redstone->SetPlate(Pos, NumEntities);
+}
+
+void FMcSimulation::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration)
+{
+	Redstone->HitTarget(Pos, Power, Duration);
+}
+
+void FMcSimulation::PlayerPlaced(const FIntVector& Pos)
+{
+	Redstone->PlayerPlaced(Pos);
+}
+
+void FMcSimulation::PlayerBroke(const FIntVector& Pos, FMcStateId State)
+{
+	Redstone->PlayerBroke(Pos, State);
+}
+
+void FMcSimulation::Vibrate(const FIntVector& Pos, int32 Frequency)
+{
+	Redstone->Vibrate(Pos, Frequency);
+}
+
+void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)
+{
+	Redstone->NotifyContainerChanged(Pos);
 }
 
 void FMcSimulation::SetDetectorRail(const FIntVector& Pos, bool bOccupied)
@@ -155,9 +220,45 @@ int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const
 	return Redstone->GetDustPower(Pos);
 }
 
+void FMcSimulation::OnChunkAdded(FIntPoint ChunkPos)
+{
+	const FMcChunk* Chunk = World.FindChunk(ChunkPos);
+	if (!Chunk)
+	{
+		return;
+	}
+	TArray<FMcStateId> States;
+	for (int32 Section = 0; Section < Chunk->NumSections(); ++Section)
+	{
+		const FMcChunkSection& Blocks = Chunk->GetSection(Section);
+		if (Blocks.IsEmpty() || !Blocks.Blocks.MayContain([](FMcStateId State) { return McConduit::IsConduit(State); }))
+		{
+			continue;
+		}
+		States.SetNumUninitialized(FMcPalettedContainer::NumEntries);
+		Blocks.Blocks.CopyTo(States);
+		for (int32 Index = 0; Index < States.Num(); ++Index)
+		{
+			if (McConduit::IsConduit(States[Index]))
+			{
+				ScheduleTick(FIntVector(ChunkPos.X * 16 + (Index & 15), Chunk->SectionMinY(Section) + (Index >> 8), ChunkPos.Y * 16 + ((Index >> 4) & 15)), 1);
+			}
+		}
+	}
+}
+
 void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 {
 	Redstone->OnBlockChanged(Pos, State);
+	RefreshNoteBlock(Pos);
+	RefreshNoteBlock(Pos + FIntVector(0, 1, 0));
+	RefreshNoteBlock(Pos - FIntVector(0, 1, 0));
+	// A conduit placed in a ready frame wakes at once, its round of checks counted from then (vanilla's was awake 5
+	// ticks after it was set, conduit_rain).
+	if (McConduit::IsConduit(State))
+	{
+		ScheduleTick(Pos, 1);
+	}
 	Notify(Pos);
 	for (const FIntVector& Offset : Around)
 	{
@@ -168,6 +269,27 @@ void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 void FMcSimulation::Notify(const FIntVector& Pos)
 {
 	const FMcStateId State = World.GetBlock(Pos);
+	// A conduit keeps its own 40 tick round of checks going from when it is placed (it holds water, so before fluids).
+	if (McConduit::IsConduit(State))
+	{
+		ScheduleTick(Pos, ConduitPeriod);
+		return;
+	}
+	{
+		// Soul sand and magma check for a column 20 ticks after they or the water over them changed; a column
+		// block rechecks what is under it after 5 (fitted to the bubble2 vanilla run).
+		const FName ColumnName = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+		if (ColumnName == TEXT("minecraft:soul_sand") || ColumnName == TEXT("minecraft:magma_block"))
+		{
+			ScheduleTick(Pos, BubbleBaseDelay);
+			return;
+		}
+		if (ColumnName == TEXT("minecraft:bubble_column"))
+		{
+			ScheduleTick(Pos, BubbleColumnDelay);
+			return;
+		}
+	}
 	switch (FluidOf(State))
 	{
 	case EMcFluid::Water:
@@ -177,6 +299,19 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 		}
 		return;
 	case EMcFluid::Lava:
+		// Lava that water touches (beside or above) hardens at once when the water arrives, not on its own next tick:
+		// a source into obsidian, flowing lava into cobblestone (rs_lava).
+		if (IsFluidBlock(State))
+		{
+			for (const FIntVector& Offset : { Sides[0], Sides[1], Sides[2], Sides[3], Up })
+			{
+				if (FluidOf(World.GetBlock(Pos + Offset)) == EMcFluid::Water)
+				{
+					World.SetBlock(Pos, StateOf(LevelOf(State) == 0 ? TEXT("minecraft:obsidian") : TEXT("minecraft:cobblestone")));
+					return;
+				}
+			}
+		}
 		ScheduleTick(Pos, LavaDelay);
 		return;
 	default:
@@ -199,7 +334,7 @@ void FMcSimulation::Notify(const FIntVector& Pos)
 	}
 	else if (Tags.Has(TEXT("minecraft:flowers"), State) || Tags.Has(TEXT("minecraft:saplings"), State) || Tags.Has(TEXT("minecraft:crops"), State)
 		|| Name == TEXT("minecraft:short_grass") || Name == TEXT("minecraft:fern") || Name == TEXT("minecraft:tall_grass") || Name == TEXT("minecraft:large_fern")
-		|| Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:dead_bush"))
+		|| Name == TEXT("minecraft:sugar_cane") || Name == TEXT("minecraft:cactus") || Name == TEXT("minecraft:attached_melon_stem") || Name == TEXT("minecraft:attached_pumpkin_stem") || Name == TEXT("minecraft:dead_bush"))
 	{
 		ScheduleTick(Pos, 1);
 	}
@@ -211,26 +346,34 @@ void FMcSimulation::Tick()
 	Nature->Tick();
 	if (!bSunFixed)
 	{
-		Redstone->SetSunLight(Nature->GetDetectorLevel());
+		Redstone->SetDetector(Nature->GetDetectorLevel(), Nature->GetSunLight(), Nature->GetDetectorScale());
 	}
 	// Ticks that run now may schedule more for later; those never come due in this same tick (delay 1 or more).
+	// Earliest due first, and within one tick in the order they were asked for.
 	TArray<FIntVector> Now;
-	for (auto It = Due.CreateIterator(); It; ++It)
+	TArray<int64> DueTimes;
+	for (const TPair<int64, TArray<FIntVector>>& Entry : Due)
 	{
-		if (It.Key() <= GameTime)
+		if (Entry.Key <= GameTime)
 		{
-			Now.Append(It.Value());
-			It.RemoveCurrent();
+			DueTimes.Add(Entry.Key);
 		}
 	}
+	DueTimes.Sort();
+	for (const int64 Time : DueTimes)
+	{
+		Now.Append(Due[Time]);
+		Due.Remove(Time);
+	}
+	// A tick stays pending until its own turn, so an update arriving earlier in this same game tick cannot queue it twice.
+	Redstone->BeginTick();
 	for (const FIntVector& Pos : Now)
 	{
 		Pending.Remove(Pos);
-	}
-	for (const FIntVector& Pos : Now)
-	{
 		RunTick(Pos);
 	}
+	Redstone->EndTick();
+	StepFalling();
 	RandomTicks();
 }
 
@@ -245,7 +388,20 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	{
 		return;
 	}
-	if (FluidOf(State) != EMcFluid::None)
+	const FName Block = FMcBlockRegistry::Get().GetBlockOf(State).Name;
+	if (Block == TEXT("minecraft:soul_sand") || Block == TEXT("minecraft:magma_block"))
+	{
+		UpdateBubbleColumn(Pos + Up);
+	}
+	else if (Block == TEXT("minecraft:bubble_column"))
+	{
+		UpdateBubbleColumn(Pos);
+	}
+	else if (McConduit::IsConduit(State))
+	{
+		TickConduit(Pos);
+	}
+	else if (FluidOf(State) != EMcFluid::None)
 	{
 		TickFluid(Pos, State);
 	}
@@ -267,23 +423,129 @@ void FMcSimulation::RunTick(const FIntVector& Pos)
 	}
 }
 
+void FMcSimulation::TickConduit(const FIntVector& Pos)
+{
+	ScheduleTick(Pos, ConduitPeriod);
+	if (OnConduitPulse && McConduit::IsActive(World, Pos))
+	{
+		const int32 Frame = McConduit::CountFrame(World, Pos);
+		OnConduitPulse(Pos, McConduit::GetRange(Frame), Frame == McConduit::GetFramePlaces().Num());
+	}
+}
+
+void FMcSimulation::UpdateBubbleColumn(const FIntVector& Pos)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	if (!CanHoldColumn(State))
+	{
+		return;
+	}
+	const FMcStateId Column = ColumnStateAbove(World, Pos + Down);
+	if (Column == State && FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:water"))
+	{
+		return;
+	}
+	// The whole stretch of water sources (or columns) above turns the same way.
+	for (FIntVector At = Pos; CanHoldColumn(World.GetBlock(At)); At += Up)
+	{
+		World.SetBlock(At, Column);
+	}
+}
+
+// A block that can't stand on what is under it turns into a falling block (minecraft.wiki, "Falling Block": gravity 0.04 a
+// tick, 2% drag). It takes its first step in the tick it turns, after the scheduled ticks; measured in the reference
+// client (rs_falling): 4 blocks down lands on the 15th step, 8 on the 21st.
 void FMcSimulation::TickGravity(const FIntVector& Pos, FMcStateId State)
 {
 	const int32 MinY = World.GetDimension().MinY;
-	const auto CanFallInto = [&](int32 Y)
+	const FIntVector Below = Pos + FIntVector(0, -1, 0);
+	const FMcStateId Under = World.GetBlock(Below);
+	if (Below.Y < MinY || !(IsDisplaceable(Under) || FluidOf(Under) != EMcFluid::None))
 	{
-		const FMcStateId Below = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
-		return Y >= MinY && (IsDisplaceable(Below) || FluidOf(Below) != EMcFluid::None);
-	};
-	int32 Y = Pos.Y;
-	while (CanFallInto(Y - 1))
-	{
-		--Y;
+		return;
 	}
-	if (Y != Pos.Y)
+	World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
+	FFallingBlock Block;
+	Block.Id = NextFallingId++;
+	Block.Column = Pos;
+	Block.Y = Pos.Y;
+	Block.State = State;
+	Falling.Add(Block);
+}
+
+void FMcSimulation::StepFalling()
+{
+	const int32 MinY = World.GetDimension().MinY;
+	for (int32 Index = 0; Index < Falling.Num();)
 	{
-		World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
-		World.SetBlock(FIntVector(Pos.X, Y, Pos.Z), State);
+		FFallingBlock& Block = Falling[Index];
+		const auto CanFallInto = [&](int32 Y)
+		{
+			const FMcStateId Cell = World.GetBlock(FIntVector(Block.Column.X, Y, Block.Column.Z));
+			return Y >= MinY && (IsDisplaceable(Cell) || FluidOf(Cell) != EMcFluid::None);
+		};
+		// The lowest cell it can get to from the one it is in.
+		int32 Rest = FMath::FloorToInt(Block.Y + 1e-6);
+		while (CanFallInto(Rest - 1))
+		{
+			--Rest;
+		}
+		Block.Velocity -= 0.04;
+		const double PreviousY = Block.Y;
+		Block.Y += Block.Velocity;
+		Block.Velocity *= 0.98;
+		// What it moved counts, stopped at the cell it comes to rest in.
+		Block.FallDistance += static_cast<float>(PreviousY - FMath::Max(Block.Y, static_cast<double>(Rest)));
+		if (Block.Y > Rest)
+		{
+			++Index;
+			continue;
+		}
+		const FIntVector At(Block.Column.X, Rest, Block.Column.Z);
+		const FMcStateId Cell = World.GetBlock(At);
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId State = Block.State;
+		const double Fallen = Block.FallDistance;
+		Falling.RemoveAt(Index);
+		if (OnFallingBlockLanded)
+		{
+			OnFallingBlockLanded(At, State, Fallen);
+		}
+		if (Registry.IsAir(Cell) || FluidOf(Cell) != EMcFluid::None || FMcBlockTags::Get().Has(TEXT("minecraft:replaceable"), Cell))
+		{
+			// An anvil that falls more than a block may wear as it lands: chipped, then damaged, then gone, each with the
+			// same chance 0.05 + 0.05 a block fallen. Fitted to the reference client (anvil_wear, anvil_wear2: 100 anvils
+			// each, spaced apart): plain anvils chipped 0, 15, 15, 22, 36, 58, 74, 100, 100 of 100 after 1, 2, 3, 5, 6,
+			// 10, 15, 20, 25 blocks (rule: 0, 15, 20, 30, 35, 55, 80, 100, 100); chipped became damaged 20, 50, 100 after
+			// 3, 10, 20 (rule 20, 55, 100); damaged ones were gone 18, 51, 100 (same). No wear at a fall of 1.
+			FMcStateId Landed = State;
+			const FString Name = Registry.GetBlockOf(State).Name.ToString();
+			if (Name.EndsWith(TEXT("anvil")) && Fallen > 1.0 && Random.FRand() < 0.05 + 0.05 * Fallen)
+			{
+				const FString Facing = Registry.GetPropertyValue(State, TEXT("facing")).ToString();
+				const bool bPlain = Name == TEXT("minecraft:anvil");
+				const bool bChipped = Name == TEXT("minecraft:chipped_anvil");
+				Landed = bPlain || bChipped ? Registry.ParseState(FString::Printf(TEXT("minecraft:%s_anvil[facing=%s]"), bPlain ? TEXT("chipped") : TEXT("damaged"), *Facing)).Get(State) : StateOf(TEXT("minecraft:air"));
+			}
+			World.SetBlock(At, Landed);
+			// Sounds measured in the reference client (log sounds, anvilsnd.txt): block.anvil.land at volume 0.15, pitch 0.91 to 0.97.
+			if (Name.EndsWith(TEXT("anvil")) && !Registry.IsAir(Landed))
+			{
+				PlaySound({ FName("block.anvil.land"), FVector(At) + FVector(0.5), 0.15f, 0.91f + 0.06f * Random.FRand() });
+			}
+		}
+		else
+		{
+			// An anvil that comes down on a slab or a torch breaks: block.anvil.destroy at volume 0.5, pitch 0.93 to 0.96 (same runs).
+			if (Registry.GetBlockOf(State).Name.ToString().EndsWith(TEXT("anvil")))
+			{
+				PlaySound({ FName("block.anvil.destroy"), FVector(At) + FVector(0.5), 0.5f, 0.93f + 0.03f * Random.FRand() });
+			}
+			if (OnFallingBlockDropped)
+			{
+				OnFallingBlockDropped(At, State);
+			}
+		}
 	}
 }
 
@@ -299,7 +561,7 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 	const FMcStateId Air = StateOf(TEXT("minecraft:air"));
 	const int32 Drop = bWater ? 1 : 2;
 	const int32 SlopeReach = bWater ? 4 : 2;
-	const int32 Level = LevelOf(State);
+	int32 Level = LevelOf(State);
 	const FName Block = Registry.GetBlockOf(State).Name;
 
 	// Lava beside water hardens: a source into obsidian, flowing lava into cobblestone (water above or beside it).
@@ -361,8 +623,10 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 		}
 		if (NewLevel != Level)
 		{
+			// It changes and spreads on from its new level in the same tick (rs_water: water that a fall reaches sends its own
+			// sideways water on that tick, not 5 later).
 			SetFluid(Pos, NewLevel);
-			return;
+			Level = NewLevel;
 		}
 	}
 
@@ -387,11 +651,10 @@ void FMcSimulation::TickFluid(const FIntVector& Pos, FMcStateId State)
 		}
 		if (bOpen)
 		{
+			// A source over a drop falls first and spreads sideways on its next turn (reference run rs_water: the sideways
+			// water comes 5 ticks after the fall starts, not with it).
 			SetFluid(BelowPos, 8);
-			if (Level != 0)
-			{
-				return;
-			}
+			return;
 		}
 	}
 

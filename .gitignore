@@ -21,3 +21,6 @@ Build/
 *.sdf
 *.suo
 .vsconfig
+
+# Resource packs are third-party downloads: never committed (and what is taken out of their zips)
+resourcepacks/

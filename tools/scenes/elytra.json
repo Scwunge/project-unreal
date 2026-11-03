@@ -1,0 +1,7 @@
+{
+  "description": "Open air 40 blocks over classic_flat, the player facing south and looking level (as mc-reference's glide.txt). -McGlide=2 puts elytra on them and starts a glide; with -McSelfShot=3 -McSelfShotYaw=150 -McSelfShotRise=1 the camera follows just behind and above, showing the body laid out along the look and the wings spread.",
+  "camera": [0.5, -20.0, 0.5, 0.0, 0.0],
+  "blocks": [
+    { "from": [-8, -61, -8], "to": [8, -61, 120], "state": "minecraft:stone" }
+  ]
+}

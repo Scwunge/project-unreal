@@ -29,6 +29,10 @@ public:
 	// Every entry, in index order. 8 KiB; used to snapshot a section for a worker thread.
 	void CopyTo(TArrayView<FMcStateId> Out) const;
 
+	// False only if no entry can match: the palette is searched (it may still name states no longer used); a direct
+	// container may hold anything.
+	bool MayContain(TFunctionRef<bool(FMcStateId)> Match) const;
+
 	SIZE_T GetAllocatedSize() const { return Palette.GetAllocatedSize() + Words.GetAllocatedSize(); }
 
 private:

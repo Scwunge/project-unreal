@@ -65,6 +65,34 @@ bool FMcBlockPlacementTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("hoppers on top point down"), Place(TEXT("minecraft:hopper"), Top, 0).Contains(TEXT("facing=down")));
 	TestTrue(TEXT("hoppers on a north face point back into it"), Place(TEXT("minecraft:hopper"), NorthHigh, 0).Contains(TEXT("facing=south")));
 
+	// Signs face the player: in sixteen steps standing, square on to the wall on one, and hanging under a block.
+	TestEqual(TEXT("a sign on top faces the player"), Place(TEXT("minecraft:oak_sign"), Top, 0), FString(TEXT("minecraft:oak_sign[rotation=8,waterlogged=false]")));
+	TestTrue(TEXT("turned a sixteenth"), Place(TEXT("minecraft:oak_sign"), Top, 22.5f).Contains(TEXT("rotation=9")));
+	TestTrue(TEXT("a sign on a north face is on the wall facing north"), Place(TEXT("minecraft:oak_sign"), NorthHigh, 0).StartsWith(TEXT("minecraft:oak_wall_sign[facing=north")));
+	World.SetBlock(FIntVector(8, 5, 8), Stone);
+	FMcBlockHit Under;
+	Under.Block = FIntVector(8, 5, 8);
+	Under.Face = 0;
+	Under.State = Stone;
+	Under.Point = FVector(8.5, 5.0, 8.5);
+	TestEqual(TEXT("a sign under a block is not placed"), Place(TEXT("minecraft:oak_sign"), Under, 0), FString(TEXT("nothing")));
+	TestTrue(TEXT("a hanging sign under a block faces the player"), Place(TEXT("minecraft:oak_hanging_sign"), Under, 0).Contains(TEXT("rotation=8")));
+	TestTrue(TEXT("on chains, not attached"), Place(TEXT("minecraft:oak_hanging_sign"), Under, 0).Contains(TEXT("attached=false")));
+	TestTrue(TEXT("one on a north face hangs from the wall, across it"), Place(TEXT("minecraft:oak_hanging_sign"), NorthHigh, 0).StartsWith(TEXT("minecraft:oak_wall_hanging_sign[facing=east")) || Place(TEXT("minecraft:oak_hanging_sign"), NorthHigh, 0).StartsWith(TEXT("minecraft:oak_wall_hanging_sign[facing=west")));
+	TestEqual(TEXT("a hanging sign on top with nothing above is not placed"), Place(TEXT("minecraft:oak_hanging_sign"), Top, 0), FString(TEXT("nothing")));
+
+	TestEqual(TEXT("a shulker box on top faces up"), Place(TEXT("minecraft:red_shulker_box"), Top, 0), FString(TEXT("minecraft:red_shulker_box[facing=up]")));
+	TestEqual(TEXT("one on a north face faces north"), Place(TEXT("minecraft:shulker_box"), NorthHigh, 0), FString(TEXT("minecraft:shulker_box[facing=north]")));
+
+	TestTrue(TEXT("a skull on top faces the player"), Place(TEXT("minecraft:skeleton_skull"), Top, 0).StartsWith(TEXT("minecraft:skeleton_skull[")) && Place(TEXT("minecraft:skeleton_skull"), Top, 0).Contains(TEXT("rotation=0")));
+	TestTrue(TEXT("a head on a north face hangs on the wall"), Place(TEXT("minecraft:zombie_head"), NorthHigh, 0).StartsWith(TEXT("minecraft:zombie_wall_head[")) && Place(TEXT("minecraft:zombie_head"), NorthHigh, 0).Contains(TEXT("facing=north")));
+	TestEqual(TEXT("not under a block"), Place(TEXT("minecraft:creeper_head"), Under, 0), FString(TEXT("nothing")));
+
+	// Looking south (yaw 0) the bells face north, back at the player; on a north face one hangs facing south, towards the wall.
+	TestTrue(TEXT("a bell on top stands on the floor"), Place(TEXT("minecraft:bell"), Top, 0).Contains(TEXT("attachment=floor,facing=north")));
+	TestTrue(TEXT("under a block it hangs from the ceiling"), Place(TEXT("minecraft:bell"), Under, 0).Contains(TEXT("attachment=ceiling")));
+	TestTrue(TEXT("on a north face, from the wall"), Place(TEXT("minecraft:bell"), NorthHigh, 0).Contains(TEXT("attachment=single_wall,facing=south")));
+
 	const TArray<FMcPlacedBlock> Door = McBlockPlacement::GetPlacement(World, State(TEXT("minecraft:oak_door")), Top, 0, 0);
 	TestEqual(TEXT("doors are two blocks"), Door.Num(), 2);
 

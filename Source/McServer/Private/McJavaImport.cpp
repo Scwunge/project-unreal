@@ -15,6 +15,7 @@
 #include "McDimensionType.h"
 #include "McItemStack.h"
 #include "McNbt.h"
+#include "McPot.h"
 #include "McServer.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
@@ -25,13 +26,15 @@
 #include "Misc/FileHelper.h"
 #include "Dom/JsonObject.h"
 #include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Serialization/MemoryWriter.h"
 #include "zlib.h"
 
 namespace
 {
 	constexpr int32 SectorSize = 4096;
-	constexpr int32 SectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
+	constexpr int32 ImportSectionVolume = McCoords::SectionSize * McCoords::SectionSize * McCoords::SectionSize;
 	constexpr int32 MaxInflated = 256 * 1024 * 1024;
 	constexpr uint8 ExternalFlag = 128;
 
@@ -216,6 +219,132 @@ namespace
 			}
 		}
 		return Slots;
+	}
+
+	// A text component's words without their styling: a string, a list of components, or {"text": ..., "extra": [...]}.
+	FString PlainText(const TSharedPtr<FJsonValue>& Component)
+	{
+		FString Text;
+		if (!Component.IsValid())
+		{
+			return Text;
+		}
+		if (Component->TryGetString(Text))
+		{
+			return Text;
+		}
+		if (Component->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Part : Component->AsArray())
+			{
+				Text += PlainText(Part);
+			}
+			return Text;
+		}
+		if (Component->Type == EJson::Object)
+		{
+			const TSharedPtr<FJsonObject>& Object = Component->AsObject();
+			Object->TryGetStringField(TEXT("text"), Text);
+			const TArray<TSharedPtr<FJsonValue>>* Extra = nullptr;
+			if (Object->TryGetArrayField(TEXT("extra"), Extra))
+			{
+				for (const TSharedPtr<FJsonValue>& Part : *Extra)
+				{
+					Text += PlainText(Part);
+				}
+			}
+		}
+		return Text;
+	}
+
+	// A line of a sign as a save keeps it: older saves write the component as JSON in a string ("{\"text\":\"Hi\"}"),
+	// newer ones as NBT (a plain string, or a compound like the JSON).
+	FString ReadSignLine(const FMcNbt& Line)
+	{
+		if (Line.Type != FMcNbt::EType::String)
+		{
+			return PlainText(ToJson(Line));
+		}
+		const FString& String = Line.String;
+		if (String.StartsWith(TEXT("{")) || String.StartsWith(TEXT("[")) || String.StartsWith(TEXT("\"")))
+		{
+			TSharedPtr<FJsonValue> Json;
+			if (FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(String), Json) && Json.IsValid())
+			{
+				return PlainText(Json);
+			}
+		}
+		return String;
+	}
+
+	// A sign's block entity (minecraft.wiki, "Sign"): front_text and back_text, each with four messages, a color and
+	// has_glowing_text, and is_waxed; a sign saved before both sides could be written has Text1 to Text4, Color and
+	// GlowingText for its front.
+	FMcBlockEntity MakeSign(const FMcNbt& Entity)
+	{
+		FMcBlockEntity Sign = FMcBlockEntity::MakeSign();
+		const auto ReadSide = [](const FMcNbt& Text, FMcSignSide& Side)
+		{
+			if (const FMcNbt* Messages = Text.Find(TEXT("messages")))
+			{
+				for (int32 Line = 0; Line < FMcSignSide::NumLines && Line < Messages->Num(); ++Line)
+				{
+					Side.Lines[Line] = ReadSignLine(Messages->Values[Line]);
+				}
+			}
+			const FString Color = Text.GetString(TEXT("color"));
+			if (!Color.IsEmpty())
+			{
+				Side.Color = FName(*Color);
+			}
+			Side.bGlowing = Text.GetInt(TEXT("has_glowing_text")) != 0;
+		};
+		const FMcNbt* Front = Entity.Find(TEXT("front_text"));
+		if (Front)
+		{
+			ReadSide(*Front, Sign.SignSides[0]);
+		}
+		else
+		{
+			for (int32 Line = 0; Line < FMcSignSide::NumLines; ++Line)
+			{
+				if (const FMcNbt* Text = Entity.Find(*FString::Printf(TEXT("Text%d"), Line + 1)))
+				{
+					Sign.SignSides[0].Lines[Line] = ReadSignLine(*Text);
+				}
+			}
+			const FString Color = Entity.GetString(TEXT("Color"));
+			if (!Color.IsEmpty())
+			{
+				Sign.SignSides[0].Color = FName(*Color);
+			}
+			Sign.SignSides[0].bGlowing = Entity.GetInt(TEXT("GlowingText")) != 0;
+		}
+		if (const FMcNbt* Back = Entity.Find(TEXT("back_text")))
+		{
+			ReadSide(*Back, Sign.SignSides[1]);
+		}
+		Sign.bWaxed = Entity.GetInt(TEXT("is_waxed")) != 0;
+		return Sign;
+	}
+
+	// A decorated pot (minecraft.wiki, "Decorated Pot"): sherds, the item on its back, left, right and front, a brick
+	// where the list has none.
+	FMcBlockEntity MakePot(const FMcNbt& Entity)
+	{
+		TArray<FName> Sides;
+		Sides.Init(FName(TEXT("minecraft:brick")), McPot::NumSides);
+		if (const FMcNbt* Sherds = Entity.Find(TEXT("sherds")))
+		{
+			for (int32 Side = 0; Side < McPot::NumSides && Side < Sherds->Num(); ++Side)
+			{
+				if (!Sherds->Values[Side].String.IsEmpty())
+				{
+					Sides[Side] = FName(*Sherds->Values[Side].String);
+				}
+			}
+		}
+		return FMcBlockEntity::MakePot(Sides);
 	}
 
 	// What FMcFurnace::Serialize and FMcBrewingStand::Serialize read: the stacks, then counters that start at rest (a
@@ -611,9 +740,31 @@ namespace
 				Machine.Data = MakeMachineBytes(ReadItems(Entity, bFurnace ? 3 : 5), bFurnace);
 				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Machine));
 			}
+			else if (Id == TEXT("minecraft:sign") || Id == TEXT("minecraft:hanging_sign"))
+			{
+				Chunk.SetBlockEntity(X, Y, Z, MakeSign(Entity));
+			}
+			else if (Id == TEXT("minecraft:decorated_pot"))
+			{
+				Chunk.SetBlockEntity(X, Y, Z, MakePot(Entity));
+			}
+			else if (Id == TEXT("minecraft:lectern"))
+			{
+				// Book, the item on it, and Page, the page it lies open at. A lectern without a book has no block entity of ours
+				// (one is made when a book is put on).
+				const FMcNbt* Book = Entity.Find(TEXT("Book"));
+				const FMcItemStack Stack = Book ? MakeStack(*Book) : FMcItemStack();
+				if (!Stack.IsEmpty())
+				{
+					FMcBlockEntity Lectern = FMcBlockEntity::MakeLectern(Stack);
+					Lectern.Page = static_cast<int32>(Entity.GetInt(TEXT("Page")));
+					Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Lectern));
+				}
+			}
 			else
 			{
-				// Signs, banners, skulls, lecterns, decorated pots and the rest: kept whole for when something reads them.
+				// Banners, skulls and the rest: kept whole for when something reads them (skulls have no block entity of
+				// ours yet).
 				FMcBlockEntity Raw;
 				Raw.Kind = EMcBlockEntityKind::Raw;
 				Raw.EntityId = FName(*Id);
@@ -819,7 +970,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 	}
 	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
 	TArray<FMcStateId> States;
-	States.SetNumUninitialized(SectionVolume);
+	States.SetNumUninitialized(ImportSectionVolume);
 	TArray<FMcBiomeId> BiomeCells;
 	BiomeCells.Init(Biomes.GetPlains(), 64 * Chunk.NumSections());
 	for (const FMcNbt& Section : Sections->Values)
@@ -835,7 +986,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 			if (Palette && Palette->Num() > 0)
 			{
 				TArray<int32> Indexes;
-				if (Palette->Num() > 1 && !UnpackIndices(GetLongs(BlockStates->Find(TEXT("data"))), GetBitsPerEntry(Palette->Num(), 4), SectionVolume, Indexes))
+				if (Palette->Num() > 1 && !UnpackIndices(GetLongs(BlockStates->Find(TEXT("data"))), GetBitsPerEntry(Palette->Num(), 4), ImportSectionVolume, Indexes))
 				{
 					continue;
 				}
@@ -844,7 +995,7 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 				Uses.Init(0, Palette->Num());
 				if (Palette->Num() == 1)
 				{
-					Uses[0] = SectionVolume;
+					Uses[0] = ImportSectionVolume;
 				}
 				else
 				{
@@ -868,13 +1019,13 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 					}
 					Mapped.Add(MapState(Name, Properties, Stats, Uses[Entry]));
 				}
-				for (int32 Block = 0; Block < SectionVolume; ++Block)
+				for (int32 Block = 0; Block < ImportSectionVolume; ++Block)
 				{
 					const int32 Entry = Palette->Num() == 1 ? 0 : Indexes[Block];
 					States[Block] = Mapped.IsValidIndex(Entry) ? Mapped[Entry] : Mapped[0];
 				}
 				Chunk.LoadSection(Index, States);
-				Stats.Blocks += SectionVolume;
+				Stats.Blocks += ImportSectionVolume;
 				Stats.NonAirBlocks += Chunk.GetSection(Index).NonAirCount;
 			}
 		}

@@ -1,4 +1,4 @@
-// The sky: a dome that follows the camera and shades from the fog colour at the horizon to the sky colour overhead,
+﻿// The sky: a dome that follows the camera and shades from the fog colour at the horizon to the sky colour overhead,
 // with the sunrise and sunset glow, stars, and the sun and moon from the jar's pictures, all driven by the time of
 // day (FMcDayCycle). It also fogs the distance in the fog colour and says how much of the sky's light reaches the
 // blocks, which the block materials read.
@@ -13,6 +13,11 @@ struct FMcDimensionType;
 class UDirectionalLightComponent;
 class UExponentialHeightFogComponent;
 class UPostProcessComponent;
+class USkyAtmosphereComponent;
+class USkyLightComponent;
+class UVolumetricCloudComponent;
+class UMaterialInstanceDynamic;
+class UTexture2D;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -24,6 +29,21 @@ namespace McSky
 	// night. The chunks' light never changes with the time; this is applied when drawing.
 	MCRENDER_API float GetSkyLightFactor();
 	MCRENDER_API void SetSkyLightFactor(float Factor);
+
+	// How open to the sky the camera is, 1 outdoors to 0 under a roof (the world renderer measures it): Unreal Mode opens
+	// the exposure up in caves, over a second or two, as an eye adjusts.
+	MCRENDER_API float GetCameraOpen();
+	MCRENDER_API void SetCameraOpen(float Open);
+
+	// 1 when the camera is under water (the world renderer measures it), else 0. Unreal Mode thickens the fog to the
+	// sea's blue-green, dims the sun and lets its light dance as caustics.
+	MCRENDER_API float GetCameraUnderwater();
+	MCRENDER_API void SetCameraUnderwater(float Under);
+
+	// The vanilla cloud layer for Unreal Mode's volumetric clouds, from the cloud component: the pattern as a texture
+	// (one texel per 12 block cell, alpha 255 where there is cloud), how far (blocks) it has drifted west, and the layer's
+	// height in blocks. A null mask (no clouds in this dimension, or no pattern) leaves the engine's own clouds.
+	MCRENDER_API void SetCloudLayer(UTexture2D* Mask, float DriftBlocks, float HeightBlocks);
 
 	// A sky or fog colour (display values) under rain and thunder (0 to 1 each; thunder as heavy as the rain is):
 	// greyed and darkened towards its own brightness, as the sky goes grey in a storm (minecraft.wiki: "Rain").
@@ -96,6 +116,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Dome;
 	UPROPERTY(Transient)
+	TObjectPtr<UProceduralMeshComponent> Skirt;
+	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Stars;
 	UPROPERTY(Transient)
 	TObjectPtr<UProceduralMeshComponent> Sun;
@@ -107,7 +129,21 @@ private:
 	TObjectPtr<UDirectionalLightComponent> SunLight;
 	UPROPERTY(Transient)
 	TObjectPtr<UPostProcessComponent> EnhancedPost;
+	UPROPERTY(Transient)
+	TObjectPtr<USkyAtmosphereComponent> Atmosphere;
+	UPROPERTY(Transient)
+	TObjectPtr<UVolumetricCloudComponent> Clouds;
+	UPROPERTY(Transient)
+	TObjectPtr<USkyLightComponent> SkyLight;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> CloudMaterial;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> McCloudMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> McCloudInstance;
 	uint32 LookGeneration = 0;
+	float BaseExposure = 0.0f;
+	float CaveExposure = 0.0f;
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> DomeMaterial;

@@ -1,4 +1,6 @@
 #include "McEntityHost.h"
+#include "McTnt.h"
+#include "McSpawners.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBiomeRegistry.h"
@@ -13,6 +15,9 @@
 #include "McDecorEntity.h"
 #include "McVehicle.h"
 #include "McRandom.h"
+#include "McStructureSpawns.h"
+#include "McVillager.h"
+#include "McMobLook.h"
 #include "McServer.h"
 #include "Engine/World.h"
 #include "Serialization/MemoryReader.h"
@@ -111,6 +116,8 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 			OnPlayerHit(PlayerPos, Damage);
 		}
 	};
+	Spawners = MakeUnique<FMcSpawners>(InWorld);
+	BlockEntityHandle = World.OnBlockEntityChanged.AddLambda([this](const FIntVector& Pos) { Spawners->OnBlockEntityChanged(Pos); });
 	// Bites, arrows and blasts all reach the player through here.
 	Manager.OnPlayerHurt = [this](const FVector& PlayerPos, float Damage)
 	{
@@ -121,6 +128,54 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 		else
 		{
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
+		}
+	};
+	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
+	{
+		return PlayerWearsGold && PlayerWearsGold(PlayerPos);
+	};
+	Manager.OnPlayerEffect = [this](const FVector& PlayerPos, FName Effect, int32 Amplifier, int32 Duration)
+	{
+		if (OnPlayerEffect)
+		{
+			OnPlayerEffect(PlayerPos, Effect, Amplifier, Duration);
+		}
+	};
+	// A villager a zombie killed may rise as a zombie villager: never on Easy, half the time on Normal, always on Hard.
+	Manager.OnVillagerSlain = [this](FMcMob& Victim)
+	{
+		const int32 Difficulty = Rules.Difficulty;
+		if (Victim.GetType() == FMcVillager::StaticType() && (Difficulty >= 3 || (Difficulty == 2 && Random.FRand() < 0.5f)))
+		{
+			Infect(static_cast<FMcVillager&>(Victim));
+		}
+	};
+	Manager.OnSpawnMob = [this](FName Kind, const FVector& Pos) { return SpawnMob(Kind, Pos); };
+	// A baby villager takes the look of the parent that called.
+	Manager.OnVillagerBred = [this](const FVector& Where, FMcMob& Parent)
+	{
+		if (FMcMob* Made = SpawnMob(FMcVillager::StaticType(), Where))
+		{
+			FMcVillager& Baby = static_cast<FMcVillager&>(*Made);
+			Baby.SetVariant(static_cast<FMcVillager&>(Parent).GetVariant());
+			Baby.SetBaby(true);
+		}
+	};
+	// A village that wants a golem gets one on open ground within 3 to 6 blocks of the villager that called.
+	Manager.OnGolemWanted = [this](const FVector& Around)
+	{
+		for (int32 Try = 0; Try < 12; ++Try)
+		{
+			const float Angle = Random.FRand() * 2.0f * PI;
+			const float Radius = 3.0f + Random.FRand() * 3.0f;
+			const int32 X = FMath::FloorToInt32(Around.X + FMath::Cos(Angle) * Radius);
+			const int32 Z = FMath::FloorToInt32(Around.Z + FMath::Sin(Angle) * Radius);
+			const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Around.Y), 4);
+			if (Y.IsSet())
+			{
+				SpawnMob(TEXT("minecraft:iron_golem"), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+				return;
+			}
 		}
 	};
 	// What an explosion leaves behind: each block it destroyed rolls its own loot table (blocks/<name>), as when
@@ -160,6 +215,7 @@ FMcEntityHost::~FMcEntityHost()
 	// Runs when the owning actor is destroyed by garbage collection, when other actors can't be destroyed safely;
 	// DestroyProxies has done that by now, at EndPlay. Only the bookkeeping is left.
 	Proxies.Empty();
+	World.OnBlockEntityChanged.Remove(BlockEntityHandle);
 }
 
 void FMcEntityHost::DestroyProxies()
@@ -221,6 +277,26 @@ int32 FMcEntityHost::NumHostile() const
 	return Count;
 }
 
+TOptional<int32> FMcEntityHost::FindSwimmingY(int32 X, int32 Z, int32 NearY, int32 Range) const
+{
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	if (!World.HasChunk(FIntPoint(X >> 4, Z >> 4)))
+	{
+		return {};
+	}
+	const int32 MinY = World.GetDimension().MinY + 1;
+	const int32 MaxY = World.GetDimension().MaxY() - 2;
+	for (int32 Y = FMath::Min(NearY + Range, MaxY); Y >= FMath::Max(NearY - Range, MinY); --Y)
+	{
+		if (Shapes.GetFluid(World.GetBlock(FIntVector(X, Y, Z))) == EMcFluid::Water)
+		{
+			// The surface block; the feet go one lower so the head is in water too.
+			return Shapes.GetFluid(World.GetBlock(FIntVector(X, Y - 1, Z))) == EMcFluid::Water ? TOptional<int32>(Y - 1) : TOptional<int32>();
+		}
+	}
+	return {};
+}
+
 TOptional<int32> FMcEntityHost::FindStandingY(int32 X, int32 Z, int32 NearY, int32 Range) const
 {
 	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
@@ -260,9 +336,76 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	{
 		return nullptr;
 	}
-	FMcMob* Mob = new FMcMob(*Type);
+	FMcMob* Mob = nullptr;
+	if (Kind == FMcVillager::StaticType())
+	{
+		FMcVillager* Villager = new FMcVillager(*Type);
+		Villager->SetVariant(GetVillagerVariant(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))));
+		Mob = Villager;
+	}
+	else if (Kind == FMcZombieVillager::StaticType())
+	{
+		FMcZombieVillager* Zombie = new FMcZombieVillager(*Type);
+		Zombie->SetVariant(GetVillagerVariant(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))));
+		Mob = Zombie;
+	}
+	else if (Kind == FMcWanderingTrader::StaticType())
+	{
+		Mob = new FMcWanderingTrader(*Type);
+	}
+	else
+	{
+		Mob = new FMcMob(*Type);
+	}
 	Mob->Body.Position = Pos;
 	Mob->Yaw = Random.FRandRange(0.0f, 360.0f);
+	// (A husk: 2 of 100 spawned at Normal held an iron sword, the zombie's rate within the count's noise; shared.)
+	if (Kind == FName(TEXT("minecraft:zombie")) || Kind == FName(TEXT("minecraft:husk")) || Kind == FMcZombieVillager::StaticType())
+	{
+		// Armed at spawn, from counts of 2000 spawned zombies per difficulty on the reference (night, drops cleared between batches):
+		//   Easy 19 armed (0.95%), Normal 20 (1.0%), Hard 108 (5.4%); every armed one held an iron sword, shovel or spear.
+		//   Over all 147 armed: 29 swords, 94 shovels, 24 spears. Rates are good to about a quarter of their size (Easy and Normal
+		//   to about a third); the item mix to a few points either way. Easy and Normal read the same, so they share one rate.
+		if (Random.FRand() < (Rules.Difficulty >= 3 ? 0.054f : 0.01f))
+		{
+			const int32 Pick = Random.RandHelper(147);
+			Mob->HeldItem = Pick < 29 ? FName(TEXT("minecraft:iron_sword")) : Pick < 29 + 94 ? FName(TEXT("minecraft:iron_shovel")) : FName(TEXT("minecraft:iron_spear"));
+		}
+	}
+	if (Kind == FName(TEXT("minecraft:piglin")))
+	{
+		// 100 spawned (Normal): golden sword 38, crossbow 42, nothing 20.
+		const int32 Pick = Random.RandHelper(100);
+		Mob->HeldItem = Pick < 38 ? FName(TEXT("minecraft:golden_sword")) : Pick < 80 ? FName(TEXT("minecraft:crossbow")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:zombified_piglin")))
+	{
+		// 93 of 100 held a golden sword.
+		Mob->HeldItem = Random.RandHelper(100) < 93 ? FName(TEXT("minecraft:golden_sword")) : FName();
+	}
+	else if (Kind == FName(TEXT("minecraft:piglin_brute")))
+	{
+		Mob->HeldItem = TEXT("minecraft:golden_axe");
+	}
+	if (Kind == FName(TEXT("minecraft:drowned")))
+	{
+		// Armed at spawn, from 1000 drowned spawned on each difficulty on the reference (night): trident 69 / 57 / 58 on Easy / Normal / Hard
+		// (6.1% over all 3000, good to about 0.45 points), fishing rod 36 / 23 / 42 (3.4%, about 0.35 points); no difference by difficulty
+		// beyond that noise, so one rate each. (3.2% also carry a nautilus shell in the other hand: not modelled.)
+		const float Roll = Random.FRand();
+		if (Roll < 0.061f)
+		{
+			Mob->HeldItem = FName(TEXT("minecraft:trident"));
+		}
+		else if (Roll < 0.061f + 0.034f)
+		{
+			Mob->HeldItem = FName(TEXT("minecraft:fishing_rod"));
+		}
+	}
+	if (McMobLook::GetCount(Kind) > 0)
+	{
+		Mob->LookSeed = McMobLook::Pick(Kind, GetBiomeName(FIntVector(FMath::FloorToInt32(Pos.X), FMath::FloorToInt32(Pos.Y), FMath::FloorToInt32(Pos.Z))), Random);
+	}
 	Mob->OnDeath = [this](FMcMob& Dead)
 	{
 		if (Dead.Type.bHops && Dead.Size > 1)
@@ -292,6 +435,155 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	return Mob;
 }
 
+FName FMcEntityHost::GetBiomeName(const FIntVector& Cell) const
+{
+	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+	const FMcChunk* Chunk = World.FindChunk(FIntPoint(McCoords::BlockToChunk(Cell.X), McCoords::BlockToChunk(Cell.Z)));
+	if (!Biomes.IsLoaded() || !Chunk)
+	{
+		return NAME_None;
+	}
+	return Biomes.GetName(Chunk->GetBiome(Cell.X & 15, Cell.Y, Cell.Z & 15));
+}
+
+FMcMob* FMcEntityHost::Infect(FMcVillager& Villager)
+{
+	FMcMob* Made = SpawnMob(FMcZombieVillager::StaticType(), Villager.Body.Position);
+	if (!Made)
+	{
+		return nullptr;
+	}
+	FMcZombieVillager& Zombie = static_cast<FMcZombieVillager&>(*Made);
+	Zombie.Become(Villager);
+	Zombie.Body.Velocity = Villager.Body.Velocity;
+	Zombie.Yaw = Villager.Yaw;
+	Villager.bRemoved = true;
+	return Made;
+}
+
+void FMcEntityHost::FinishCures()
+{
+	TArray<FMcZombieVillager*> Done;
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->bRemoved && Entity->GetType() == FMcZombieVillager::StaticType() && static_cast<FMcZombieVillager&>(*Entity).IsCured())
+		{
+			Done.Add(static_cast<FMcZombieVillager*>(Entity.Get()));
+		}
+	}
+	for (FMcZombieVillager* Zombie : Done)
+	{
+		FMcMob* Made = SpawnMob(FMcVillager::StaticType(), Zombie->Body.Position);
+		if (!Made)
+		{
+			continue;
+		}
+		FMcVillager& Villager = static_cast<FMcVillager&>(*Made);
+		if (!Zombie->GetVillagerData().IsEmpty())
+		{
+			FMemoryReaderView Reader(Zombie->GetVillagerData());
+			if (!Villager.Serialize(Reader))
+			{
+				// A damaged record: the villager it was is lost, so a plain one in its look comes back.
+				Villager.SetVariant(Zombie->GetVariant());
+			}
+		}
+		else
+		{
+			Villager.SetVariant(Zombie->GetVariant());
+		}
+		Villager.Body.Position = Zombie->Body.Position;
+		Villager.Body.Velocity = Zombie->Body.Velocity;
+		Villager.Yaw = Zombie->Yaw;
+		// The player who cured it is thanked with cheaper trades.
+		if (!Zombie->GetCurer().IsEmpty())
+		{
+			Villager.AddReputation(Zombie->GetCurer(), McZombieVillager::CureReputation);
+		}
+		Zombie->bRemoved = true;
+	}
+}
+
+bool FMcEntityHost::SpawnWanderingTrader(const FVector& Player)
+{
+	for (int32 Try = 0; Try < 20; ++Try)
+	{
+		const float Angle = Random.FRand() * 2.0f * PI;
+		const float Radius = 24.0f + Random.FRand() * 24.0f;
+		const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Radius);
+		const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Radius);
+		const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 16);
+		if (!Y.IsSet())
+		{
+			continue;
+		}
+		FMcMob* Trader = SpawnMob(FMcWanderingTrader::StaticType(), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+		if (!Trader)
+		{
+			return false;
+		}
+		const int32 TraderId = Trader->Id;
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			if (FMcMob* Llama = SpawnMob(TEXT("minecraft:trader_llama"), FVector(X + 0.5 + (Index ? 1.5 : -1.5), Y.GetValue(), Z + 0.5)))
+			{
+				Llama->LeashHolderId = TraderId;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+bool FMcEntityHost::MatchGolem(const FIntVector& Pumpkin, TArray<FIntVector>& OutBlocks, FVector& OutFeet) const
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto Is = [&](const FIntVector& Cell, std::initializer_list<const TCHAR*> Names)
+	{
+		const FMcStateId State = World.GetBlock(Cell);
+		if (!Registry.IsValidState(State))
+		{
+			return false;
+		}
+		const FName Name = Registry.GetBlockOf(State).Name;
+		for (const TCHAR* Wanted : Names)
+		{
+			if (Name == FName(Wanted))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+	if (!Is(Pumpkin, { TEXT("minecraft:carved_pumpkin"), TEXT("minecraft:jack_o_lantern") }))
+	{
+		return false;
+	}
+	const FIntVector Chest = Pumpkin - FIntVector(0, 1, 0);
+	const FIntVector Base = Pumpkin - FIntVector(0, 2, 0);
+	static const TCHAR* Iron = TEXT("minecraft:iron_block");
+	if (!Is(Chest, { Iron }) || !Is(Base, { Iron }))
+	{
+		return false;
+	}
+	for (const FIntVector& Side : { FIntVector(1, 0, 0), FIntVector(0, 0, 1) })
+	{
+		if (Is(Chest + Side, { Iron }) && Is(Chest - Side, { Iron }))
+		{
+			OutBlocks = { Pumpkin, Chest, Base, Chest + Side, Chest - Side };
+			OutFeet = FVector(Base.X + 0.5, Base.Y, Base.Z + 0.5);
+			return true;
+		}
+	}
+	return false;
+}
+
+FName FMcEntityHost::GetVillagerVariant(const FIntVector& Cell) const
+{
+	const FName Biome = GetBiomeName(Cell);
+	return Biome.IsNone() ? FName(TEXT("plains")) : McVillager::GetVariantOfBiome(Biome);
+}
+
 void FMcEntityHost::SplitSlime(FMcMob& Dead)
 {
 	// Two to four of half the size, spread round where it died. Only the smallest drop loot.
@@ -319,7 +611,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
 	TArray<FMcItemStack> Drops;
-	if (McLoot::Roll(Table, Rng, Drops))
+	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops))
 	{
 		for (const FMcItemStack& Stack : Drops)
 		{
@@ -333,6 +625,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 
 void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)
 {
+	Spawners->OnChunkAdded(Chunk);
 	if (Seeded.Contains(Chunk))
 	{
 		return;
@@ -375,6 +668,14 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		TArray<uint8> Data;
 		FMemoryWriter DataWriter(Data);
 		Entity->Serialize(DataWriter);
+		if (Entity->IsLiving())
+		{
+			// After what the kind itself keeps, so an older save without it still reads.
+			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
+			DataWriter << Look;
+			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
+			DataWriter << Young;
+		}
 		Writer << Type << Data;
 		++Count;
 	}
@@ -414,6 +715,15 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
+		else if (Kind == FMcPrimedTnt::StaticType())
+		{
+			TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
+			if (Tnt->Serialize(DataReader))
+			{
+				Manager.Add(MoveTemp(Tnt));
+				++Restored;
+			}
+		}
 		else if (Kind == FMcBannerEntity::StaticType())
 		{
 			TUniquePtr<FMcBannerEntity> Banner = MakeUnique<FMcBannerEntity>();
@@ -432,17 +742,9 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
-		else if (Kind == FMcMinecartEntity::StaticType() || Kind == FMcBoatEntity::StaticType())
+		else if (FMcVehicle::IsVehicleType(Kind))
 		{
-			TUniquePtr<FMcVehicle> Vehicle;
-			if (Kind == FMcMinecartEntity::StaticType())
-			{
-				Vehicle = MakeUnique<FMcMinecartEntity>();
-			}
-			else
-			{
-				Vehicle = MakeUnique<FMcBoatEntity>();
-			}
+			TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 			if (Vehicle->Serialize(DataReader))
 			{
 				Manager.Add(MoveTemp(Vehicle));
@@ -453,6 +755,24 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
+				if (!DataReader.AtEnd())
+				{
+					int32 Look = -1;
+					DataReader << Look;
+					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
+					{
+						Mob->LookSeed = Look;
+					}
+					int32 Young = 0;
+					if (!DataReader.AtEnd())
+					{
+						DataReader << Young;
+						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
+						{
+							Mob->SetYoung(Young);
+						}
+					}
+				}
 				++Restored;
 			}
 			else
@@ -548,7 +868,14 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 		}
 		if (Y && IsSpawnGround(Kind, Registry.GetBlockOf(World.GetBlock(FIntVector(X, Y.GetValue() - 1, Z))).Name))
 		{
-			SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+			if (FMcMob* Born = SpawnMob(Kind, FVector(X + 0.5, Y.GetValue(), Z + 0.5)))
+			{
+				// About one in twenty of a natural herd is young.
+				if (FMcMob::CanBeYoung(Kind) && Local.FRand() < 0.05f)
+				{
+					Born->SetYoung(Local.RandRange(FMcMob::YoungSpan / 4, FMcMob::YoungSpan));
+				}
+			}
 			++Placed;
 		}
 	}
@@ -565,22 +892,27 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	const double Distance = Random.FRandRange(MinSpawnDistance, MaxSpawnDistance);
 	const int32 X = FMath::FloorToInt32(Player.X + FMath::Cos(Angle) * Distance);
 	const int32 Z = FMath::FloorToInt32(Player.Z + FMath::Sin(Angle) * Distance);
-	const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+	// Where there is water over the spot instead of a floor to stand on, a drowned can come: its feet and head in the water just
+	// under the surface (the rest of the monsters only spawn on ground, so a water spot is for the drowned alone).
+	bool bInWater = false;
+	if (!Y)
+	{
+		Y = FindSwimmingY(X, Z, FMath::FloorToInt32(Player.Y), 24);
+		bInWater = Y.IsSet();
+	}
 	if (!Y)
 	{
 		return;
 	}
-	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach).
 	const FIntVector Cell(X, Y.GetValue(), Z);
-	if (!Manager.IsDarkEnoughToSpawn(Cell))
-	{
-		return;
-	}
 	const FVector Pos(X + 0.5, Y.GetValue(), Z + 0.5);
 
-	// What the biome there spawns. A kind we have no mob for yet (a ghast, a piglin) uses up the roll and nothing
-	// comes, so the others keep the share they have in the game.
-	const TConstArrayView<FMcSpawnEntry> Monsters = GetMonsterSpawns(Cell);
+	// What the biome there spawns, or the list of a structure with spawn_overrides where the spot is in its box. A kind we have no mob for yet (a
+	// ghast, a piglin) uses up the roll and nothing comes, so the others keep the share they have in the game.
+	FMcStructureZone Here;
+	const bool bStructure = FMcStructureSpawns::Get().FindMonsterZone(Cell, Here);
+	const TConstArrayView<FMcSpawnEntry> Monsters = bStructure ? TConstArrayView<FMcSpawnEntry>(Here.Monsters) : GetMonsterSpawns(Cell);
 	int32 TotalWeight = 0;
 	for (const FMcSpawnEntry& Entry : Monsters)
 	{
@@ -591,6 +923,16 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		return;
 	}
 	const FName Kind = PickSpawn(Monsters, Random.RandHelper(TotalWeight));
+	if (bInWater != (Kind == TEXT("minecraft:drowned")))
+	{
+		return;
+	}
+	// Dark enough: no block light, and sky light of 7 or less (night in the open, or anywhere the sky can't reach). A
+	// pillager only minds block light, 8 or less (minecraft.wiki, "Pillager").
+	if (Kind == TEXT("minecraft:pillager") ? Manager.EstimateBlockLight(Cell) > 8 : !Manager.IsDarkEnoughToSpawn(Cell))
+	{
+		return;
+	}
 	if (Kind == TEXT("minecraft:slime"))
 	{
 		// Only low down in a slime chunk, and of a size that fits the room there.
@@ -646,8 +988,52 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	const int32 TimeOfDay = static_cast<int32>(FMath::Fmod(DayTicks, 24000.0));
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
+	Manager.Difficulty = Rules.Difficulty;
+	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
+	// With spawnerBlocksWork off a spawner's wait holds where it is (vanilla, spawner_rule.txt: 20 for 700 ticks).
+	if (!Players.IsEmpty() && Rules.bSpawnerBlocksWork)
+	{
+		Spawners->Tick(*this, Players, Random);
+	}
+
+	// Every 10 minutes or so a raid party may come to a player, from the fifth day on and in daylight.
+	if (NextPatrolTick == 0)
+	{
+		NextPatrolTick = PatrolIntervalTicks + Random.RandHelper(1200);
+	}
+	if (Ticks >= NextPatrolTick)
+	{
+		NextPatrolTick = Ticks + PatrolIntervalTicks + Random.RandHelper(1200);
+		if (!Players.IsEmpty() && Rules.bDoMobSpawning && !Rules.IsPeaceful() && DayTicks / 24000.0 >= PatrolFirstDay && TimeOfDay < 12000 && Random.RandHelper(5) == 0)
+		{
+			SpawnPatrol(Players[Random.RandHelper(Players.Num())]);
+		}
+	}
+	TickRaids();
+
+	// Every game day a trader may come to a player: a 25% chance, up from there by 25% each day it doesn't, to 75%, and
+	// none while one is about.
+	if (Ticks % WanderingTraderIntervalTicks == 0 && !Players.IsEmpty() && Rules.bDoMobSpawning)
+	{
+		bool bAbout = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bAbout |= !Entity->bRemoved && Entity->GetType() == FMcWanderingTrader::StaticType();
+		}
+		if (!bAbout)
+		{
+			if (Random.FRand() * 100.0f < TraderChance && SpawnWanderingTrader(Players[Random.RandHelper(Players.Num())]))
+			{
+				TraderChance = 25;
+			}
+			else
+			{
+				TraderChance = FMath::Min(75, TraderChance + 25);
+			}
+		}
+	}
 
 	// A few chunks a tick get their animals.
 	for (int32 Budget = MaxChunkSeedsPerTick; Budget > 0 && !SeedQueue.IsEmpty(); --Budget)
@@ -658,6 +1044,28 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 		{
 			SeedChunk(Chunk);
 		}
+	}
+
+	// The mobs structures came with (a swamp hut's witch) are born once their chunk is here.
+	if (Ticks % 20 == 0)
+	{
+		FMcStructureSpawns::Get().TakeMobs([this](const FMcStructureMob& Born)
+		{
+			const FMcMobType* Type = FMcMobType::Find(Born.Kind);
+			if (!Type)
+			{
+				return true;
+			}
+			if (!World.HasChunk(FIntPoint(McCoords::BlockToChunk(FMath::FloorToInt32(Born.Position.X)), McCoords::BlockToChunk(FMath::FloorToInt32(Born.Position.Z)))) || (Type->IsHostile() && Rules.IsPeaceful()))
+			{
+				return false;
+			}
+			if (FMcMob* Mob = SpawnMob(Born.Kind, Born.Position))
+			{
+				Mob->bPersistent = true;
+			}
+			return true;
+		});
 	}
 
 	// Hostile mobs far from everyone are removed. With nobody in the world (a listen server before its player has a
@@ -671,7 +1079,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				continue;
 			}
 			FMcMob& Mob = static_cast<FMcMob&>(*Entity);
-			if (!Mob.Type.IsHostile())
+			if (!Mob.Type.IsHostile() || Mob.RaidId != 0 || Mob.bPersistent)
 			{
 				continue;
 			}
@@ -701,6 +1109,61 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	if (!bDevSpawnDone && Ticks >= 100 && !Players.IsEmpty())
 	{
 		bDevSpawnDone = true;
+		// -McMobRow=cow,pig,... puts one of each frozen in a row 5.5 blocks south of the player, facing east (yaw 90), 2 apart;
+		// -McMobRowUp=<blocks> lifts them off the ground to be seen from underneath.
+		FString Row;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRow="), Row, false))
+		{
+			TArray<FString> Kinds;
+			Row.ParseIntoArray(Kinds, TEXT(","));
+			double Up = 0.0;
+			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowUp="), Up);
+			float RowYaw = 90.0f;
+			FParse::Value(FCommandLine::Get(), TEXT("-McMobRowYaw="), RowYaw);
+				// -McMobRowAt=x,z puts the row's middle at that block column instead of in front of the player.
+				FVector2D RowAt(Players[0].X, Players[0].Z + 5.5);
+				FString At, AtX, AtZ;
+				if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRowAt="), At, false) && At.Split(TEXT(","), &AtX, &AtZ))
+				{
+					RowAt = FVector2D(FCString::Atod(*AtX), FCString::Atod(*AtZ));
+				}
+			for (int32 Index = 0; Index < Kinds.Num(); ++Index)
+			{
+				const double X = RowAt.X + (Index - (Kinds.Num() - 1) * 0.5) * 2.0;
+				const int32 Z = FMath::FloorToInt32(RowAt.Y);
+				if (const TOptional<int32> Y = FindStandingY(FMath::FloorToInt32(X), Z, FMath::FloorToInt32(Players[0].Y), 24))
+				{
+					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
+					{
+						Spawned->bFrozen = true;
+						if (FParse::Param(FCommandLine::Get(), TEXT("McMobRowBaby")) && FMcMob::CanBeYoung(Spawned->GetType()))
+						{
+							Spawned->SetYoung(FMcMob::YoungSpan);
+						}
+						Spawned->Yaw = RowYaw;
+						// -McMobRowPose=<n> holds a raider's arms in that pose (McMob ArmPose).
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowPose="), Spawned->ArmPose);
+						// -McMobRowHeld=<item> puts that item in its right hand.
+						FString Held;
+						if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRowHeld="), Held))
+						{
+							Spawned->HeldItem = FName(*(TEXT("minecraft:") + Held));
+						}
+						// -McMobRowTame, -McMobRowSit, -McMobRowAngry and -McMobRowCollar=<dye 0..15> set a wolf's state.
+						Spawned->bTamed = FParse::Param(FCommandLine::Get(), TEXT("McMobRowTame"));
+						Spawned->bSitting = FParse::Param(FCommandLine::Get(), TEXT("McMobRowSit"));
+						Spawned->AngerTicks = FParse::Param(FCommandLine::Get(), TEXT("McMobRowAngry")) ? 1200 : 0;
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowCollar="), Spawned->CollarColor);
+						// -McMobRowLook=<n> picks the coat or breed (a wolf's 3 is the pale one a vanilla summon gets on a flat plain).
+						FParse::Value(FCommandLine::Get(), TEXT("-McMobRowLook="), Spawned->LookSeed);
+						if (Spawned->Type.Name == FName(TEXT("minecraft:wolf")))
+						{
+							Spawned->UpdateWolfPose();
+						}
+					}
+				}
+			}
+		}
 		FString Spec;
 		if (FParse::Value(FCommandLine::Get(), TEXT("-McSpawnMobs="), Spec, false))
 		{
@@ -711,11 +1174,32 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 				for (int32 Index = 0; Index < N; ++Index)
 				{
 					const double Angle = 2.0 * PI * Index / FMath::Max(N, 1);
-					const int32 X = FMath::FloorToInt32(Players[0].X + FMath::Cos(Angle) * 5.0);
-					const int32 Z = FMath::FloorToInt32(Players[0].Z + FMath::Sin(Angle) * 5.0);
+					int32 X = FMath::FloorToInt32(Players[0].X + FMath::Cos(Angle) * 5.0);
+					int32 Z = FMath::FloorToInt32(Players[0].Z + FMath::Sin(Angle) * 5.0);
+					if (Kind == TEXT("villager"))
+					{
+						// Villagers stand in a row in front of the camera (facing south, +Z), 6.5 blocks away, for a picture
+						// of each one with its job site.
+						X = FMath::FloorToInt32(Players[0].X + (Index - (N - 1) * 0.5) * 1.8);
+						Z = FMath::FloorToInt32(Players[0].Z + (FParse::Param(FCommandLine::Get(), TEXT("McTrade")) ? 2.0 : 6.5));
+					}
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
-						SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						if (Spawned && Spawned->GetType() == FMcVillager::StaticType())
+						{
+							// A ring of villagers shows every biome type, and every fifth one is a baby.
+							FMcVillager& Villager = static_cast<FMcVillager&>(*Spawned);
+							Villager.SetVariant(McVillager::GetVariants()[Index % McVillager::GetVariants().Num()]);
+							Villager.SetBaby(Index % 5 == 4);
+							if (FParse::Param(FCommandLine::Get(), TEXT("McTrade")))
+							{
+								// -McTrade: a frozen librarian two blocks south, for -McTrade to open its trades.
+								Villager.SetProfession(TEXT("minecraft:librarian"));
+								Villager.SetLevelAndXp(2, 30);
+								Villager.bFrozen = true;
+							}
+						}
 					}
 				}
 			}
@@ -726,6 +1210,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 		UE_LOG(LogTemp, Log, TEXT("Entities: %d, hostile %d"), Manager.GetEntities().Num(), NumHostile());
 	}
 #endif
+	FinishCures();
 	Manager.Tick();
 	SyncProxies();
 }
@@ -766,6 +1251,39 @@ void FMcEntityHost::SyncProxies()
 			It.RemoveCurrent();
 		}
 	}
+}
+
+FMcMob* FMcEntityHost::FindMob(const FVector& Eye, const FVector& Direction, float Reach)
+{
+	// The nearest living entity whose box the ray enters within Reach.
+	// The direction comes from a client: a NaN or empty one hits nothing.
+	if (Eye.ContainsNaN() || Direction.ContainsNaN() || Direction.IsNearlyZero())
+	{
+		return nullptr;
+	}
+	FMcMob* Best = nullptr;
+	double BestDistance = Reach;
+	const FVector Dir = Direction.GetSafeNormal();
+	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+	{
+		if (!Entity->IsLiving() || Entity->bRemoved)
+		{
+			continue;
+		}
+		const FBox Box = Entity->Body.GetBox();
+		FVector HitPoint, HitNormal;
+		float Time = 0.0f;
+		if (FMath::LineExtentBoxIntersection(Box, Eye, Eye + Dir * Reach, FVector::ZeroVector, HitPoint, HitNormal, Time))
+		{
+			const double Distance = Time * Reach;
+			if (Distance <= BestDistance)
+			{
+				BestDistance = Distance;
+				Best = static_cast<FMcMob*>(Entity.Get());
+			}
+		}
+	}
+	return Best;
 }
 
 FMcEntity* FMcEntityHost::FindVehicle(const FVector& Eye, const FVector& Direction, float Reach)

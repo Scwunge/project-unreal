@@ -1,7 +1,15 @@
 #include "McBiomeColors.h"
+#include "McBlockModels.h"
 #include "McBlockTextures.h"
+#include "McResourcePacks.h"
 #include "Engine/Texture2DArray.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
+#include "Modules/ModuleManager.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -36,15 +44,22 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 			AddError(FString::Printf(TEXT("%s fell back to the missing-texture layer"), *Fallback.ToString()));
 		}
 	}
-	TestEqual(TEXT("layer 0 plus one per loaded texture"), Textures.NumLayers(), Stats.Loaded + 1);
+	TestEqual(TEXT("layer 0 plus one per loaded texture, and the flowing pictures' sides"), Textures.NumLayers(), Stats.Loaded + 1 + Stats.SideLayers);
+	TestEqual(TEXT("water and lava both have a side layer"), Stats.SideLayers, 2);
 	TestEqual(TEXT("every id is loaded or listed as a fallback"), Stats.Loaded + Stats.Fallbacks.Num(), Stats.Ids);
 
 	UTexture2DArray* Array = Textures.GetTextureArray();
 	if (TestNotNull(TEXT("the texture array exists"), Array))
 	{
 		TestEqual(TEXT("array slices"), Array->GetArraySize(), Textures.NumLayers());
-		TestEqual(TEXT("array width"), Array->GetSizeX(), 16);
-		TestEqual(TEXT("array mips"), Array->GetNumMips(), FMcBlockTextures::NumMips);
+		TestEqual(TEXT("array width is the texture size"), Array->GetSizeX(), Textures.GetSize());
+		TestEqual(TEXT("array mips are a full chain"), Array->GetNumMips(), Textures.GetNumMips());
+		if (!McPacks::HasPacks())
+		{
+			TestEqual(TEXT("vanilla array is 16 wide"), Textures.GetSize(), 16);
+			TestEqual(TEXT("vanilla array has 5 mips"), Array->GetNumMips(), FMcBlockTextures::NumMips);
+			TestEqual(TEXT("nothing from a pack"), Textures.GetStats().FromPacks, 0);
+		}
 	}
 
 	TestEqual(TEXT("missingno is layer 0"), Textures.GetLayer(TEXT("minecraft:missingno")), 0);
@@ -79,6 +94,15 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 		TestNotEqual(TEXT("water_still moves on after frametime ticks"), Textures.GetAnimationStep(Water), FirstStep);
 		TestTrue(TEXT("the layer's pixels changed with the frame"), FirstPixels != TArray<FColor>(Textures.GetPixels(Water)));
 		Textures.Tick(0.0);
+	}
+	// No block model names the flowing pictures, but falling and running water and lava are drawn with them.
+	for (const TCHAR* Flow : { TEXT("minecraft:block/water_flow"), TEXT("minecraft:block/lava_flow") })
+	{
+		const int32 Layer = Textures.GetLayer(Flow);
+		TestTrue(FString::Printf(TEXT("%s has its own layer, and moves"), Flow), Layer > 0 && Textures.IsAnimated(Layer));
+		// A side shows the top left quarter of the 32-pixel frames, unscaled: its own layer, moving with them.
+		const int32 Side = Textures.GetLayer(FName(FString(Flow) + TEXT("#side")));
+		TestTrue(FString::Printf(TEXT("%s#side has its own layer, and moves"), Flow), Side > 0 && Side != Layer && Textures.IsAnimated(Side));
 	}
 
 	// Colormaps and biomes.
@@ -115,6 +139,192 @@ bool FMcTexturesTest::RunTest(const FString& Parameters)
 			TestNotEqual(TEXT("dark forest grass is darkened"), DarkForest->Grass, Grass.Sample(DarkForest->Temperature, DarkForest->Downfall));
 		}
 	}
+	return true;
+}
+
+// The wiki's animation rules, read from a pack's .png.mcmeta: a frames list with per-frame times, frametime, the
+// interpolation between frames. The pack overrides stone with two solid frames (frame 0 red, frame 1 blue) played as
+// blue for 4 ticks then red for 2, blended while it plays.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAnimationTest, "McClient.McAssets.PackAnimation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackAnimationTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackAnimationTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("assets/minecraft/textures/block");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"animation test\"}}"), *(Root / TEXT("pack.mcmeta")));
+
+	TArray<FColor> Pixels;
+	Pixels.SetNum(16 * 32);
+	for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+	{
+		Pixels[Index] = Index < 16 * 16 ? FColor(200, 0, 0, 255) : FColor(0, 0, 200, 255);
+	}
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+	if (!TestTrue(TEXT("a picture to write"), Png.IsValid() && Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 16, 32, ERGBFormat::BGRA, 8)))
+	{
+		return false;
+	}
+	const TArray64<uint8> Bytes = Png->GetCompressed();
+	FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Dir / TEXT("stone.png")));
+	FFileHelper::SaveStringToFile(TEXT("{\"animation\":{\"frametime\":2,\"interpolate\":true,\"frames\":[{\"index\":1,\"time\":4},0]}}"), *(Dir / TEXT("stone.png.mcmeta")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	Textures.Unload();
+	if (TestTrue(TEXT("textures load with the pack"), Textures.EnsureLoaded()))
+	{
+		const int32 Stone = Textures.GetLayer(TEXT("minecraft:block/stone"));
+		if (TestTrue(TEXT("stone is animated by the pack"), Stone > 0 && Textures.IsAnimated(Stone)))
+		{
+			Textures.Tick(0.0);
+			TestEqual(TEXT("the list starts with frame 1 (blue)"), Textures.GetPixels(Stone)[0], FColor(0, 0, 200, 255));
+			Textures.Tick(3.0);
+			TestEqual(TEXT("the first frame holds for its own time, 4 ticks, not frametime"), Textures.GetAnimationStep(Stone), 0);
+			Textures.Tick(4.0);
+			TestEqual(TEXT("then the second step"), Textures.GetAnimationStep(Stone), 1);
+			Textures.Tick(5.0);
+			// One tick into the 2 tick red step, blended towards the first listed frame (blue) again: halfway.
+			const FColor Mid = Textures.GetPixels(Stone)[0];
+			TestTrue(TEXT("interpolated halfway between red and blue"), FMath::Abs(Mid.R - 100) <= 2 && FMath::Abs(Mid.B - 100) <= 2);
+			Textures.Tick(6.0);
+			TestEqual(TEXT("the list repeats"), Textures.GetAnimationStep(Stone), 0);
+		}
+	}
+
+	// Back to the plain game.
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	Textures.Unload();
+	Textures.EnsureLoaded();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// A pack's textures/colormap/grass.png and foliage.png replace the game's, and the biome colours worked out from them
+// follow (plains has no colour of its own). The pack's colormaps are solid, so every lookup gives their colour.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackColormapTest, "McClient.McAssets.PackColormap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackColormapTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	FMcBiomeColorTable& Biomes = FMcBiomeColorTable::Get();
+	if (!TestTrue(TEXT("biome colours load"), Biomes.EnsureLoaded()))
+	{
+		return false;
+	}
+	const FColor GameGrass = Biomes.Get(TEXT("plains")).Grass;
+	const FColor GameDryFoliage = Biomes.GetDryFoliageColormap().Sample(0.8f, 0.4f);
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackColormapTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("assets/minecraft/textures/colormap");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"colormap test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const auto WriteSolid = [&](const TCHAR* Name, const FColor& Colour)
+	{
+		TArray<FColor> Pixels;
+		Pixels.Init(Colour, 256 * 256);
+		const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+		if (!Png.IsValid() || !Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 256, 256, ERGBFormat::BGRA, 8))
+		{
+			return false;
+		}
+		const TArray64<uint8> Bytes = Png->GetCompressed();
+		return FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Dir / Name));
+	};
+	const FColor PackGrass(10, 200, 30, 255), PackFoliage(200, 20, 60, 255);
+	if (!TestTrue(TEXT("the colormaps are written"), WriteSolid(TEXT("grass.png"), PackGrass) && WriteSolid(TEXT("foliage.png"), PackFoliage)))
+	{
+		return false;
+	}
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	if (TestTrue(TEXT("reloaded with the pack"), Biomes.EnsureLoaded()))
+	{
+		TestEqual(TEXT("the grass colormap is the pack's"), Biomes.GetGrassColormap().Sample(0.1f, 0.9f), PackGrass);
+		TestEqual(TEXT("the foliage colormap is the pack's"), Biomes.GetFoliageColormap().Sample(0.9f, 0.1f), PackFoliage);
+		TestEqual(TEXT("plains grass follows the pack"), Biomes.Get(TEXT("plains")).Grass, PackGrass);
+		TestEqual(TEXT("plains foliage follows the pack"), Biomes.Get(TEXT("plains")).Foliage, PackFoliage);
+		TestEqual(TEXT("the dry foliage map the pack lacks stays the game's"), Biomes.GetDryFoliageColormap().Sample(0.8f, 0.4f), GameDryFoliage);
+		TestNotEqual(TEXT("it differs from the game's"), PackGrass, GameGrass);
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	if (TestTrue(TEXT("reloaded without it"), Biomes.EnsureLoaded()))
+	{
+		TestEqual(TEXT("plains grass is the game's again"), Biomes.Get(TEXT("plains")).Grass, GameGrass);
+	}
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// A pack's atlases/blocks.json: an unstitch source cuts a sprite out of a sheet, and a model of the pack uses it. The
+// sheet is 32 x 16, red on the left and blue on the right; the sprite zz_cut is the right half (x 1 of 2).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackAtlasTest, "McClient.McAssets.PackAtlas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackAtlasTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackAtlasTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Assets = Root / TEXT("assets/minecraft");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97,\"description\":\"atlas test\"}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("{\"sources\":[{\"type\":\"minecraft:unstitch\",\"resource\":\"minecraft:block/zz_sheet\",\"divisor_x\":2,\"divisor_y\":1,\"regions\":[{\"sprite\":\"minecraft:block/zz_cut\",\"x\":1,\"y\":0,\"width\":1,\"height\":1}]}]}"), *(Assets / TEXT("atlases/blocks.json")));
+	FFileHelper::SaveStringToFile(TEXT("{\"parent\":\"minecraft:block/cube_all\",\"textures\":{\"all\":\"minecraft:block/zz_cut\"}}"), *(Assets / TEXT("models/block/stone.json")));
+
+	TArray<FColor> Pixels;
+	Pixels.SetNum(32 * 16);
+	for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+	{
+		Pixels[Index] = (Index % 32) < 16 ? FColor(200, 0, 0, 255) : FColor(0, 0, 200, 255);
+	}
+	IImageWrapperModule& Module = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const TSharedPtr<IImageWrapper> Png = Module.CreateImageWrapper(EImageFormat::PNG);
+	if (!TestTrue(TEXT("a picture to write"), Png.IsValid() && Png->SetRaw(Pixels.GetData(), Pixels.Num() * 4, 32, 16, ERGBFormat::BGRA, 8)))
+	{
+		return false;
+	}
+	const TArray64<uint8> Bytes = Png->GetCompressed();
+	FFileHelper::SaveArrayToFile(TArrayView64<const uint8>(Bytes.GetData(), Bytes.Num()), *(Assets / TEXT("textures/block/zz_sheet.png")));
+
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	FMcBlockModels::Get().Unload();
+	FMcBlockTextures& Textures = FMcBlockTextures::Get();
+	Textures.Unload();
+	if (TestTrue(TEXT("textures load with the pack"), Textures.EnsureLoaded()))
+	{
+		const int32 Cut = Textures.GetLayer(TEXT("minecraft:block/zz_cut"));
+		if (TestTrue(TEXT("the cut sprite has a layer"), Cut > 0))
+		{
+			TestEqual(TEXT("the sprite is the right half of the sheet"), Textures.GetPixels(Cut)[0], FColor(0, 0, 200, 255));
+		}
+	}
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	FMcBlockModels::Get().Unload();
+	Textures.Unload();
+	Textures.EnsureLoaded();
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

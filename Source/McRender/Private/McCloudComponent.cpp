@@ -3,9 +3,11 @@
 #include "McChunk.h"
 #include "McDimensionType.h"
 #include "McRender.h"
+#include "McRenderMode.h"
 #include "McRenderTextures.h"
 #include "McSkyComponent.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Engine/Texture2D.h"
 #include "Engine/Texture2DArray.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -64,6 +66,23 @@ void UMcCloudComponent::BeginPlay()
 	White = McRenderTextures::MakeArray(this, { FColor::White }, 1, 1);
 	Material = UMaterialInstanceDynamic::Create(CloudMaterial, this);
 	Material->SetTextureParameterValue(TEXT("Blocks"), White);
+	// The same pattern for Unreal Mode's volumetric clouds, smoothed by the bilinear filter, wrapping like the picture.
+	Mask = UTexture2D::CreateTransient(PatternWidth, PatternHeight, PF_B8G8R8A8);
+	Mask->SRGB = false;
+	Mask->Filter = TF_Bilinear;
+	Mask->AddressX = Mask->AddressY = TA_Wrap;
+	Mask->NeverStream = true;
+	{
+		FTexture2DMipMap& Mip = Mask->GetPlatformData()->Mips[0];
+		uint8* Data = static_cast<uint8*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		for (int32 Index = 0; Index < Pattern.Num(); ++Index)
+		{
+			const uint8 Value = Pattern[Index] ? 255 : 0;
+			Data[Index * 4 + 0] = Data[Index * 4 + 1] = Data[Index * 4 + 2] = Data[Index * 4 + 3] = Value;
+		}
+		Mip.BulkData.Unlock();
+	}
+	Mask->UpdateResource();
 }
 
 bool UMcCloudComponent::IsCloud(FIntPoint Cell) const
@@ -75,9 +94,12 @@ bool UMcCloudComponent::IsCloud(FIntPoint Cell) const
 void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	// Unreal Mode has its own volumetric clouds in the sky (UMcSkyComponent); the vanilla slabs are for the vanilla look.
+	SetVisibility(!McRenderMode::IsEnhanced());
 	const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
 	if (!Height || PatternWidth == 0 || !Material || !Controller || !Controller->PlayerCameraManager)
 	{
+		McSky::SetCloudLayer(nullptr, 0.0f, 0.0f);
 		if (BuiltCentre)
 		{
 			ClearAllMeshSections();
@@ -89,7 +111,8 @@ void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 	// under a fixed point counts up.
 	const double Drift = McClouds::GetDrift(GetTime ? GetTime() : 0.0, PatternWidth);
 	const FVector Eye = McCoords::UnrealToBlock(Controller->PlayerCameraManager->GetCameraLocation());
-	const FIntPoint Centre(FMath::FloorToInt32((Eye.X + Drift) / McClouds::CellSize), FMath::FloorToInt32(Eye.Z / McClouds::CellSize));
+	const FIntPoint Centre(FMath::FloorToInt32((Eye.X + Drift) / McClouds::CellSize), FMath::FloorToInt32((Eye.Z + McClouds::ZOffset) / McClouds::CellSize));
+	McSky::SetCloudLayer(Mask, static_cast<float>(Drift), *Height);
 
 	// Rain greys them as it does the sky.
 	const FVector2D Weather = GetWeather ? GetWeather() : FVector2D::ZeroVector;
@@ -102,7 +125,7 @@ void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
 		Rebuild(Centre, Rounded);
 	}
 	// The mesh is built with the centre cell at the origin; this puts it where the drift has carried it.
-	SetWorldLocation(McCoords::BlockToUnreal(FVector(Centre.X * McClouds::CellSize - Drift, *Height, Centre.Y * McClouds::CellSize)));
+	SetWorldLocation(McCoords::BlockToUnreal(FVector(Centre.X * McClouds::CellSize - Drift, *Height, Centre.Y * McClouds::CellSize - McClouds::ZOffset)));
 }
 
 void UMcCloudComponent::Rebuild(FIntPoint Centre, const FLinearColor& Colour)
@@ -146,24 +169,25 @@ void UMcCloudComponent::Rebuild(FIntPoint Centre, const FLinearColor& Colour)
 				continue;
 			}
 			const FVector Origin(DX * McClouds::CellSize, 0.0, DZ * McClouds::CellSize);
-			// The top in full light, the bottom in shadow, the sides between; sides shared with another cloud are inside.
+			// The top in full light, the bottom in shadow, the sides between (as measured on the reference client's faces: bottom 0.70,
+				// north and south 0.84, east and west 0.92); sides shared with another cloud are inside.
 			AddFace(Origin, Top, FVector(0, 1, 0), 1.0f);
 			AddFace(Origin, Bottom, FVector(0, -1, 0), 0.7f);
 			if (!IsCloud(Cell + FIntPoint(-1, 0)))
 			{
-				AddFace(Origin, West, FVector(-1, 0, 0), 0.9f);
+				AddFace(Origin, West, FVector(-1, 0, 0), 0.92f);
 			}
 			if (!IsCloud(Cell + FIntPoint(1, 0)))
 			{
-				AddFace(Origin, East, FVector(1, 0, 0), 0.9f);
+				AddFace(Origin, East, FVector(1, 0, 0), 0.92f);
 			}
 			if (!IsCloud(Cell + FIntPoint(0, -1)))
 			{
-				AddFace(Origin, North, FVector(0, 0, -1), 0.8f);
+				AddFace(Origin, North, FVector(0, 0, -1), 0.84f);
 			}
 			if (!IsCloud(Cell + FIntPoint(0, 1)))
 			{
-				AddFace(Origin, South, FVector(0, 0, 1), 0.8f);
+				AddFace(Origin, South, FVector(0, 0, 1), 0.84f);
 			}
 		}
 	}

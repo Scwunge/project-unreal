@@ -112,6 +112,9 @@ void FMcNature::NextThunder()
 
 void FMcNature::Tick()
 {
+	// Rain and thunder come on and go off over 100 ticks, 0.01 a tick (the reference client's detector series, rs_daylight_weather, agrees within one 20-tick step except the thunder onset and recovery, cause not found; its expect file is held back in tools/refscripts/expect_pending_*).
+	RainLevel = FMath::Clamp(RainLevel + (bRaining ? 0.01f : -0.01f), 0.0f, 1.0f);
+	ThunderLevel = FMath::Clamp(ThunderLevel + (bThundering ? 0.01f : -0.01f), 0.0f, 1.0f);
 	if (!bWeatherCycle)
 	{
 		return;
@@ -152,26 +155,26 @@ void FMcNature::SetWeather(EMcWeather Weather, int32 Duration)
 
 int32 FMcNature::GetSunLight() const
 {
-	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.2);
+	// 0.53 is a fit: the reference client's inverted detector over 25 readings at 7 times of day (rs_world) is right for any value from 0.516 to 0.555, and the wiki's daylight detector table stays within a tick of it (0.505 was 1 off at tick 13535).
+	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.53);
 	Level = 1.0 - FMath::Clamp(Level, 0.0, 1.0);
-	if (bRaining)
-	{
-		Level *= 1.0 - 5.0 / 16.0;
-		if (bThundering)
-		{
-			Level *= 1.0 - 5.0 / 16.0;
-		}
-	}
+	Level *= 1.0 - RainLevel * 5.0 / 16.0;
+	Level *= 1.0 - ThunderLevel * RainLevel * 5.0 / 16.0;
 	return 15 - static_cast<int32>((1.0 - Level) * 11.0);
+}
+
+double FMcNature::GetDetectorScale() const
+{
+	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
+	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
+	Angle += (Target - Angle) * 0.2;
+	return FMath::Cos(Angle);
 }
 
 int32 FMcNature::GetDetectorLevel() const
 {
 	// The sky's light, scaled by how high the sun is: noon reads full, dusk and night nothing.
-	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
-	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
-	Angle += (Target - Angle) * 0.2;
-	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * FMath::Cos(Angle)), 0, 15);
+	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * GetDetectorScale()), 0, 15);
 }
 
 // ---- Biomes and light ----

@@ -21,6 +21,8 @@ struct MCCORE_API FMcGameRules
 	bool bDrowningDamage = true;
 	bool bDoWeatherCycle = true;
 	int32 RandomTickSpeed = 3;
+	// Off, spawners stand still: their wait holds and nothing comes out (the mob inside still turns on the client).
+	bool bSpawnerBlocksWork = true;
 
 	bool IsPeaceful() const { return Difficulty <= 0; }
 

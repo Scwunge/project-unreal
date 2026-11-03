@@ -18,8 +18,8 @@ public:
 	static const FName& StaticType();
 	virtual FName GetType() const override { return StaticType(); }
 	virtual void Tick(FMcEntityManager& Manager) override;
-	// Not kept in a chunk's save.
-	virtual bool IsPersistent() const override { return false; }
+	// Kept in a chunk's save with its fuse, so a world that is reopened keeps the burning fuse where it was.
+	virtual bool Serialize(FArchive& Ar) override;
 
 	int32 Fuse = FullFuse;
 
@@ -40,6 +40,8 @@ public:
 
 	// Lights the TNT block at Cell: the block goes (to air) and a primed one is made where it stood, with the push
 	// a lit block gives it. For flint and steel, fire, blasts and redstone alike (the redstone side calls this).
-	// Returns the entity, or null if the block is not TNT.
-	static FMcPrimedTnt* Ignite(FMcEntityManager& Manager, const FIntVector& Cell, int32 InFuse = FullFuse);
+	// Returns the entity, or null if the block is not TNT. Lighting it hisses ("entity.tnt.primed", volume 1, pitch 1, at the
+	// block's centre and its bottom) unless bSound is false: the reference client's redstone-lit TNT hissed in all 36
+	// of the sounds it logged (scripts tnt5.txt, `log sounds`) and the TNT a blast lit beside it never did.
+	static FMcPrimedTnt* Ignite(FMcEntityManager& Manager, const FIntVector& Cell, int32 InFuse = FullFuse, bool bSound = true);
 };

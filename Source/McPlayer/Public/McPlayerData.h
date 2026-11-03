@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "McContainer.h"
+#include "McTrading.h"
 #include "McPlayerData.generated.h"
 
 class FArchive;
@@ -53,8 +54,9 @@ struct MCPLAYER_API FMcPlayerStats
 	// difference), and the damage of the hit that started it.
 	int32 InvulnTicks = 0;
 	float LastDamage = 0.0f;
-	// The McSurvival::EDamage of the last hit, for the sound of being hurt (not saved).
-	uint8 LastDamageKind = 0;
+	// The kind of the last damage that landed (McSurvival::EDamage): the sound of being hurt, and what a death was
+	// killed by (not saved).
+	uint8 LastHurtKind = 0;
 	// Ticks left burning.
 	int32 OnFireTicks = 0;
 	// Hunger's hidden bar: it fills as the player works, and a full 4 costs saturation, then food.
@@ -86,6 +88,12 @@ enum class EMcWindowKind : uint8
 	// A dispenser or dropper: nine slots in a square.
 	Dispenser,
 	Loom,
+	// The sign editor: the menu is an FMcSignMenu with the lines of the side being written.
+	Sign,
+	// A lectern's book being read: the menu is an FMcLecternMenu with its pages and the one it is open at.
+	Lectern,
+	// A villager's or wandering trader's trades; Pos is where the trader stands.
+	Trading,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -105,7 +113,7 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
-	// Server: told after clicks, to write a chest's items back to the world.
+	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
 	bool IsOpen() const { return Menu.IsValid(); }
@@ -128,11 +136,16 @@ public:
 	TSharedPtr<FMcContainer> Inventory;
 	TSharedPtr<FMcContainer> Armor;
 	TSharedPtr<FMcContainer> Offhand;
+	// What every ender chest the player opens shows: 3 rows, kept with the player (and across deaths), not with a block.
+	static constexpr int32 EnderChestSize = 27;
+	TSharedPtr<FMcContainer> EnderChest;
 	int32 SelectedSlot = 0;
 	// Creative: unlimited blocks, instant breaking, flying, no damage. The server decides; the client is told.
 	bool bCreative = false;
 	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
 	TOptional<FIntVector> SpawnBed;
+	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
+	TSet<FName> Advancements;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
@@ -164,8 +177,18 @@ public:
 	// the item list destroys what is dropped on it), or with bToInventory into the inventory instead. The server
 	// checks the player is in creative and that the item exists, and keeps the count to a stack.
 	void CreativeTake(FName Item, int32 Count, bool bToInventory);
+	// Server: opens the editor on one side of the sign at Pos (Block is the sign's block, Kind its McSign::EKind, Colour
+	// its dye's text colour), starting from Lines. OnDone gets what the player wrote when the window closes.
+	void OpenSignEditor(const FIntVector& Pos, FName Block, uint8 Kind, bool bBack, uint32 Colour, const TArray<FString>& Lines, TFunction<void(const TArray<FString>&)> OnDone);
+	// Server: opens the book on the lectern at Pos, at Page of Pages. OnButton is told after each button the player
+	// presses (a page turned, or Take Book), with the menu as it is then.
+	void OpenLectern(const FIntVector& Pos, const TArray<FString>& Pages, int32 Page, TFunction<void(class FMcLecternMenu&)> OnButton);
 	// Server: opens an enchanting table at Pos with Bookshelves around it.
 	void OpenEnchantingTable(const FIntVector& Pos, int32 Bookshelves);
+	// Server: opens the trading window of a trader at Pos. Offers is what it sells; OnTrade is told of each trade made (the
+	// offer's index, the trader's experience from it) to keep the trader's side, and gives back the trader's offers, level
+	// and experience as they are then.
+	void OpenTrading(const FIntVector& Pos, const FString& Title, const TArray<McTrading::FOffer>& Offers, int32 Reputation, int32 Level, int32 Xp, bool bLevels, TFunction<void(int32 Index, int32 TraderXp, TArray<McTrading::FOffer>& OutOffers, int32& OutLevel, int32& OutXp)> OnTrade);
 	// The owner pressed one of the open menu's own buttons (a stonecutter's recipe); the server's menu decides.
 	void ClickMenuButton(int32 Id);
 	// The owner typed in the open menu's text field (an anvil's name).
@@ -205,6 +228,37 @@ public:
 	// respawns and worlds), as the game's chat is.
 	static TArray<FChatLine>& GetChatLog();
 	static void AddChatLine(const FString& Text, uint32 Rgb);
+	// The line above the hotbar (the game's overlay message, the action bar): "Now Playing: ..." from a jukebox. Replaced
+	// by the next, and shown for Seconds.
+	struct FOverlay
+	{
+		FString Text;
+		// Drawn in colours that run round the rainbow, as a record's title is.
+		bool bRainbow = false;
+		double Time = -1000.0;  // FPlatformTime::Seconds when it arrived
+	};
+	static FOverlay& GetOverlay();
+	static void ShowOverlay(const FString& Text, bool bRainbow);
+	static constexpr double OverlaySeconds = 3.0;
+
+	// The small panels that slide in at the top right (an advancement made). A client list: each has the time it
+	// arrived and drops out of it once it has gone.
+	struct FToast
+	{
+		FString Heading;
+		uint32 HeadingRgb = 0xFFFF00;
+		FString Title;
+		FName Icon;
+		double Time = 0.0;  // FPlatformTime::Seconds when it arrived
+		bool bInSounded = false;
+		bool bOutSounded = false;
+	};
+	static TArray<FToast>& GetToasts();
+	static void ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon);
+	// Server: shows this player a toast.
+	void ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
+	// Server: shows this player the overlay message.
+	void ServerOverlay(const FString& Text, bool bRainbow);
 	// The owner typed a line (text or a command); it goes to the server.
 	void SendChat(const FString& Text);
 	// Server: shows a line to this player.
@@ -218,11 +272,19 @@ public:
 	// Times the server refused a click or a drag, for logging and tests.
 	int32 NumRefused = 0;
 
+	// The raid bar at the top of the screen: how full it is (0 to 1, below 0 for none) and its title. The server sets
+	// it every second or so; a remote owner is sent it.
+	float RaidBarFraction = -1.0f;
+	FString RaidBarTitle;
+	void SetRaidBar(float Fraction, const FString& Title);
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION(Client, Reliable)
 	void ClientSetStats(const TArray<uint8>& Bytes);
+	UFUNCTION(Client, Unreliable)
+	void ClientSetRaidBar(float Fraction, const FString& Title);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -234,6 +296,10 @@ protected:
 
 	UFUNCTION(Client, Reliable)
 	void ClientChat(const FString& Text, int32 Rgb);
+	UFUNCTION(Client, Reliable)
+	void ClientOverlay(const FString& Text, bool bRainbow);
+	UFUNCTION(Client, Reliable)
+	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)
 	void ServerChat(const FString& Text);
 
@@ -279,6 +345,8 @@ private:
 	TArray<FMcItemStack> Thrown;
 	// Server: what the owner was last sent.
 	TArray<uint8> SentStats;
+	float SentRaidFraction = -1.0f;
+	FString SentRaidTitle;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

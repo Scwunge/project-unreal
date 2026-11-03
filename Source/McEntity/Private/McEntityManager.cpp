@@ -39,6 +39,20 @@ const FName& FMcItemEntity::StaticType()
 	return Name;
 }
 
+const FName& FMcFallingBlockEntity::StaticType()
+{
+	static const FName Name(TEXT("minecraft:falling_block"));
+	return Name;
+}
+
+FMcFallingBlockEntity::FMcFallingBlockEntity()
+{
+	// A block 0.98 wide and tall (minecraft.wiki, "Falling Block").
+	Body.Width = 0.98f;
+	Body.Height = 0.98f;
+	Body.StepHeight = 0.0f;
+}
+
 FMcItemEntity::FMcItemEntity()
 {
 	Body.Width = 0.25f;
@@ -74,8 +88,8 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 
 	if (Fluid == EMcFluid::Water)
 	{
-		// Items float up slowly and are slowed sideways.
-		Body.Velocity.Y = FMath::Min(Body.Velocity.Y + 0.0005, 0.06);
+		// Items float up slowly (while slower than 0.06) and are slowed sideways.
+		Body.Velocity.Y += Body.Velocity.Y < 0.06 ? 0.0005 : 0.0;
 		Body.Velocity.X *= 0.99;
 		Body.Velocity.Z *= 0.99;
 	}
@@ -84,6 +98,7 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 		Body.Velocity.Y -= 0.04;
 	}
 	McPhysics::Move(World, Body, Body.Velocity, false);
+	McPhysics::BubbleColumnPush(World, Body.GetBox(), Body.Velocity);
 
 	double Friction = 0.98;
 	if (Body.bOnGround)
@@ -109,7 +124,7 @@ void FMcItemEntity::Tick(FMcEntityManager& Manager)
 		for (FMcEntity* Other : Near)
 		{
 			FMcItemEntity* Item = Other == this || Other->bRemoved || Other->GetType() != StaticType() ? nullptr : static_cast<FMcItemEntity*>(Other);
-			if (!Item || Item->Stack.Item != Stack.Item || Item->Stack.Count + Stack.Count > MaxStack || Item->Age < Age)
+			if (!Item || !Item->Stack.IsSameItemSameComponents(Stack) || Item->Stack.Count + Stack.Count > MaxStack || Item->Age < Age)
 			{
 				continue;
 			}
@@ -144,6 +159,35 @@ FMcItemEntity& FMcEntityManager::DropItem(const FVector& Pos, const FMcItemStack
 
 void FMcEntityManager::Tick()
 {
+	if (AlarmTicks > 0)
+	{
+		--AlarmTicks;
+	}
+	++TickNow;
+	// A powered detector rail looks again every 20 ticks, before the entities move, so at where they ended the tick before
+	// (vehicle_log12.txt: a cart whose box has just left the sensor at its 20th tick is still found there, and the rail is on
+	// 40 ticks in all), and goes off when nothing touches it then.
+	TArray<FIntVector> Off;
+	for (TPair<FIntVector, int32>& Detector : Detectors)
+	{
+		if (Detector.Value <= TickNow)
+		{
+			if (Touched.Contains(Detector.Key))
+			{
+				Detector.Value += 20;
+			}
+			else
+			{
+				Off.Add(Detector.Key);
+			}
+		}
+	}
+	for (const FIntVector& Pos : Off)
+	{
+		Detectors.Remove(Pos);
+		SetDetector(Pos, false);
+	}
+	Touched.Reset();
 	// Entities added while ticking (a mob dropping an item) join the next tick.
 	const int32 Count = Entities.Num();
 	for (int32 Index = 0; Index < Count; ++Index)
@@ -356,13 +400,13 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		if (Damage > 0.0f)
 		{
 			Mob.HurtTime = 0;
-			Mob.Damage(Damage, &Center);
+			// No blow's knockback of its own: the reference mobs' push was exactly the blast's (1 - distance / 8), set below.
+			Mob.Damage(Damage, nullptr);
 			if (!Mob.bRemoved)
 			{
-				// Shoved away from the blast, harder the closer and more open to it.
-				const double Push = (1.0 - Distance / Radius) * Exposure;
-				const FVector Away = (Mob.Body.Position + FVector(0.0, Mob.Body.Height * 0.5, 0.0) - Center).GetSafeNormal();
-				Mob.Body.Velocity += Away * Push;
+				// Shoved away from the blast along the line to its eye, harder the closer and more open to it.
+				const FVector Eye = Mob.Body.Position + FVector(0.0, McExplosion::GetMobEyeHeight(Mob.GetType(), Mob.Body.Height), 0.0);
+				Mob.Body.Velocity += McExplosion::GetKnockback(Power, Center, Mob.Body.Position, Eye, Exposure);
 			}
 		}
 	}
@@ -392,7 +436,7 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		if (FMcPrimedTnt::IsTnt(Registry.GetBlockOf(World.GetBlock(Cell)).Name))
 		{
 			// TNT in the blast's way is lit, not destroyed, with a short fuse.
-			FMcPrimedTnt::Ignite(*this, Cell, FMcPrimedTnt::GetChainFuse(Random.FRand()));
+			FMcPrimedTnt::Ignite(*this, Cell, FMcPrimedTnt::GetChainFuse(Random.FRand()), false);
 			continue;
 		}
 		FMcDestroyedBlock Block;

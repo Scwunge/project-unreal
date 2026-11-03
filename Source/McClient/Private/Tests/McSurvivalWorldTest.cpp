@@ -335,6 +335,79 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	UMcBlockUseSubsystem::GetContents(*Actor, Top, Left);
 	TestTrue(TEXT("the upper one is empty"), !Left.ContainsByPredicate([](const FMcItemStack& Stack) { return !Stack.IsEmpty(); }));
 
+	// Hopper timing held to the reference client's per-tick item counts (log_hopper1): a hopper sends one item, then waits 8
+	// ticks. One that was handed an item waits 8 as well, but counted from before its own turn that tick when it comes
+	// later in the order the hoppers were placed, so each hop down a chain takes 7 ticks, and the first hopper's next item
+	// goes at 8. Under a chest, the upper hopper takes an item and the one below takes it on from it in the same tick.
+	{
+		const auto Total = [&](const FIntVector& At, const TCHAR* Item)
+		{
+			TArray<FMcItemStack> Stacks;
+			UMcBlockUseSubsystem::GetContents(*Actor, At, Stacks);
+			int32 Count = 0;
+			for (const FMcItemStack& Stack : Stacks) Count += Stack.Item == Item ? Stack.Count : 0;
+			return Count;
+		};
+		const FString Hopper = TEXT("minecraft:hopper[facing=");
+		FIntVector Chain[4];
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Chain[Index] = FIntVector(1 + Index, 70, 1);
+			Blocks.SetBlock(Chain[Index], Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		}
+		const FIntVector ChainEnd(5, 70, 1);
+		Blocks.SetBlock(ChainEnd, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Stock = FMcBlockEntity::MakeContainer(McHopper::NumSlots);
+		Stock.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 12);
+		Stock.Slots[1] = FMcItemStack(TEXT("minecraft:stick"), 5);
+		Chunk->SetBlockEntity(Chain[0].X, Chain[0].Y, Chain[0].Z, Stock);
+		const FIntVector Source(1, 73, 5), Upper(1, 72, 5), Lower(1, 71, 5), Sink(1, 71, 6);
+		Blocks.SetBlock(Source, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		Blocks.SetBlock(Upper, Registry.ParseState(*(Hopper + TEXT("down]"))).Get(0));
+		Blocks.SetBlock(Lower, Registry.ParseState(*(Hopper + TEXT("south]"))).Get(0));
+		Blocks.SetBlock(Sink, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Pile = FMcBlockEntity::MakeContainer(27);
+		Pile.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 20);
+		Chunk->SetBlockEntity(Source.X, Source.Y, Source.Z, Pile);
+		TArray<int32> ChainArrivals, SinkArrivals;
+		int32 ChainSeen = 0, SinkSeen = 0;
+		for (int32 Step = 1; Step <= 170; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			const int32 ChainNow = Total(ChainEnd, TEXT("minecraft:cobblestone")) + Total(ChainEnd, TEXT("minecraft:stick"));
+			const int32 SinkNow = Total(Sink, TEXT("minecraft:cobblestone"));
+			for (; ChainSeen < ChainNow; ++ChainSeen) ChainArrivals.Add(Step);
+			for (; SinkSeen < SinkNow; ++SinkSeen) SinkArrivals.Add(Step);
+			if (Step == 1)
+			{
+				TestEqual(TEXT("hopper chain: the first item moves on the first tick"), Total(Chain[1], TEXT("minecraft:cobblestone")), 1);
+				TestEqual(TEXT("hopper under a chest: the item falls through both hoppers in one tick"), Total(Lower, TEXT("minecraft:cobblestone")), 1);
+			}
+		}
+		// The vanilla run's first arrivals, one every 8 ticks: at 22 along the chain (4 hops of 7 less the first), at 9 into the sink.
+		TestEqual(TEXT("hopper chain: all 17 items arrive"), ChainArrivals.Num(), 17);
+		TestEqual(TEXT("hopper under a chest: all 20 items arrive"), SinkArrivals.Num(), 20);
+		for (int32 Index = 0; Index < ChainArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper chain: item %d arrives"), Index), ChainArrivals[Index], 22 + 8 * Index);
+		for (int32 Index = 0; Index < SinkArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper under a chest: item %d arrives"), Index), SinkArrivals[Index], 9 + 8 * Index);
+		TestEqual(TEXT("hopper chain: the cobblestone goes first, then the sticks"), Total(ChainEnd, TEXT("minecraft:stick")), 5);
+		// A dropper that hands a hopper an item sets its wait too: it sends on 7 ticks later (log_dropper1).
+		const FIntVector Dropper(1, 70, 9), Between(2, 70, 9), Catch(3, 70, 9);
+		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+		Blocks.SetBlock(Between, Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		Blocks.SetBlock(Catch, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Loaded = FMcBlockEntity::MakeContainer(9);
+		Loaded.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+		Chunk->SetBlockEntity(Dropper.X, Dropper.Y, Dropper.Z, Loaded);
+		Use->Dispense(*Actor, Dropper);
+		int32 Landed = 0;
+		for (int32 Step = 1; Step <= 12 && !Landed; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			Landed = Total(Catch, TEXT("minecraft:cobblestone")) > 0 ? Step : 0;
+		}
+		TestEqual(TEXT("dropper into a hopper: the item reaches the chest on the 8th tick"), Landed, 8);
+	}
+
 	const FIntVector Open(12, 64, 12);
 	Blocks.SetBlock(Open, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));
 	FMcItemEntity& Lying = Actor->GetEntityHost()->GetManager().DropItem(FVector(Open) + FVector(0.5, 1.1, 0.5), FMcItemStack(TEXT("minecraft:apple"), 4));

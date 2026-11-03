@@ -1,4 +1,5 @@
 #include "McPhysics.h"
+#include "McBlockRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 
@@ -345,6 +346,53 @@ void McPhysics::Move(const FMcBlockWorld& World, FMcBody& Body, FVector Motion, 
 	}
 }
 
+bool McPhysics::BubbleColumnPush(const FMcBlockWorld& World, const FBox& Box, FVector& Velocity, bool* bOutDown)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	auto IsAir = [&](FMcStateId State)
+	{
+		if (!Registry.IsValidState(State))
+		{
+			return true;
+		}
+		const FName Name = Registry.GetBlockOf(State).Name;
+		return Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air") || Name == TEXT("minecraft:void_air");
+	};
+	// Once for each column block the box overlaps (a box on a block boundary is pushed twice).
+	const FBox Inner = Box.ExpandBy(-1e-5);
+	bool bTouched = false;
+	for (int32 Y = FMath::FloorToInt32(Inner.Min.Y); Y <= FMath::FloorToInt32(Inner.Max.Y); ++Y)
+	{
+		for (int32 Z = FMath::FloorToInt32(Inner.Min.Z); Z <= FMath::FloorToInt32(Inner.Max.Z); ++Z)
+		{
+			for (int32 X = FMath::FloorToInt32(Inner.Min.X); X <= FMath::FloorToInt32(Inner.Max.X); ++X)
+			{
+				const FMcStateId State = World.GetBlock(FIntVector(X, Y, Z));
+				if (!Registry.IsValidState(State) || Registry.GetBlockOf(State).Name != TEXT("minecraft:bubble_column"))
+				{
+					continue;
+				}
+				bTouched = true;
+				const bool bDown = Registry.GetPropertyValue(State, TEXT("drag")) == TEXT("true");
+				if (bOutDown)
+				{
+					*bOutDown = bDown;
+				}
+				if (IsAir(World.GetBlock(FIntVector(X, Y + 1, Z))))
+				{
+					// The top of the column throws things further than the inside does.
+					Velocity.Y = bDown ? FMath::Max(-0.9, Velocity.Y - 0.03) : FMath::Min(1.8, Velocity.Y + 0.1);
+				}
+				else
+				{
+					Velocity.Y = bDown ? FMath::Max(-0.3, Velocity.Y - 0.03) : FMath::Min(0.7, Velocity.Y + 0.06);
+				}
+			}
+		}
+	}
+	return bTouched;
+}
+
 void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcMoveInput& Input)
 {
 	for (int32 Axis = 0; Axis < 3; ++Axis)
@@ -367,6 +415,7 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 
 	if (Input.bFlying)
 	{
+		Body.bInBubbleColumn = false;
 		const double Vertical = (Input.bJump ? 1.0 : 0.0) - (Input.bSneak ? 1.0 : 0.0);
 		Body.Velocity.Y += Vertical * FlyingSpeed * 3.0;
 		Accelerate(Body, Strafe, Forward, FlyingSpeed * (bSprinting ? 2.0 : 1.0), Input.Yaw);
@@ -435,6 +484,7 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 		Body.Velocity.X *= Drag;
 		Body.Velocity.Z *= Drag;
 		Body.Velocity.Y = Body.Velocity.Y * Drag - FluidSinking;
+		Body.bInBubbleColumn = BubbleColumnPush(World, Body.GetBox(), Body.Velocity, &Body.bBubbleDown);
 		return;
 	}
 
@@ -483,4 +533,5 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 	Body.Velocity.Y = (Body.Velocity.Y - Gravity) * VerticalDrag;
 	Body.Velocity.X *= Friction;
 	Body.Velocity.Z *= Friction;
+	Body.bInBubbleColumn = BubbleColumnPush(World, Body.GetBox(), Body.Velocity, &Body.bBubbleDown);
 }

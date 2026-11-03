@@ -1570,6 +1570,12 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 			bServerWasInWater = bInWater;
 		}
+		// Going into a bubble column: its inside sound, once (0.7 at the player, from the bubble2 and bubble3 vanilla runs).
+		if (Entities && Body.bInBubbleColumn && !bServerWasInBubble)
+		{
+			Entities->PlaySound(FName(Body.bBubbleDown ? "block.bubble_column.whirlpool_inside" : "block.bubble_column.upwards_inside"), Feet, 0.7f, 1.0f);
+		}
+		bServerWasInBubble = Body.bInBubbleColumn;
 		ServerPreviousPosition = Feet;
 		bServerWasOnGround = Body.bOnGround;
 

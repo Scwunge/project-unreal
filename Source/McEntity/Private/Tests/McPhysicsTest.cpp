@@ -352,6 +352,45 @@ bool FMcPhysicsTest::RunTest(const FString& Parameters)
 		Run(Body, FMcMoveInput(), 20);
 		TestTrue(TEXT("a web holds a falling body"), Body.Position.Y > 5.8);
 	}
+	// Bubble columns (fitted to the bubble1 and bubble2 vanilla runs).
+	{
+		const FMcStateId Up = State(TEXT("minecraft:bubble_column[drag=false]"));
+		const FMcStateId Down = State(TEXT("minecraft:bubble_column[drag=true]"));
+		Fill(FIntVector(-14, 1, -14), FIntVector(-14, 6, -14), Up);
+		Fill(FIntVector(-10, 1, -14), FIntVector(-10, 6, -14), Down);
+		const auto Box = [](double X, double Y, double Z) { return FBox(FVector(X - 0.125, Y, Z - 0.125), FVector(X + 0.125, Y + 0.25, Z + 0.125)); };
+
+		FVector Velocity = FVector::ZeroVector;
+		TestTrue(TEXT("an item in a column touches it"), McPhysics::BubbleColumnPush(World, Box(-13.5, 3.2, -13.5), Velocity));
+		TestEqual(TEXT("up pushes 0.06 inside"), Velocity.Y, 0.06, 1e-9);
+		Velocity = FVector::ZeroVector;
+		McPhysics::BubbleColumnPush(World, Box(-13.5, 2.9, -13.5), Velocity);
+		TestEqual(TEXT("on a block boundary it is pushed twice"), Velocity.Y, 0.12, 1e-9);
+		Velocity.Y = 0.68;
+		McPhysics::BubbleColumnPush(World, Box(-13.5, 3.2, -13.5), Velocity);
+		TestEqual(TEXT("up is capped at 0.7"), Velocity.Y, 0.7, 1e-9);
+		Velocity = FVector::ZeroVector;
+		McPhysics::BubbleColumnPush(World, Box(-13.5, 6.2, -13.5), Velocity);
+		TestEqual(TEXT("the top block pushes 0.1"), Velocity.Y, 0.1, 1e-9);
+		Velocity = FVector::ZeroVector;
+		McPhysics::BubbleColumnPush(World, Box(-9.5, 3.2, -13.5), Velocity);
+		TestEqual(TEXT("down pulls 0.03"), Velocity.Y, -0.03, 1e-9);
+		Velocity.Y = -0.29;
+		McPhysics::BubbleColumnPush(World, Box(-9.5, 3.2, -13.5), Velocity);
+		TestEqual(TEXT("down is capped at -0.3"), Velocity.Y, -0.3, 1e-9);
+		Velocity = FVector::ZeroVector;
+		TestFalse(TEXT("outside a column nothing happens"), McPhysics::BubbleColumnPush(World, Box(-5.5, 3.2, -13.5), Velocity));
+
+		// A player in the column picks up speed (0.115, 0.207, 0.341 ... in the vanilla log) and rises through it.
+		FMcBody Body;
+		Body.Position = FVector(-13.5, 1.0, -13.5);
+		Run(Body, FMcMoveInput(), 8);
+		TestTrue(TEXT("the column lifts a player"), Body.Position.Y > 2.5 && Body.Velocity.Y > 0.3);
+		Body = FMcBody();
+		Body.Position = FVector(-9.5, 5.0, -13.5);
+		Run(Body, FMcMoveInput(), 6);
+		TestTrue(TEXT("a column over magma pulls a player down"), Body.Position.Y < 4.0 && Body.Velocity.Y < -0.1);
+	}
 	return true;
 }
 

@@ -208,6 +208,43 @@ bool FMcSimulationTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("fire eats planks beside it"), Burnt >= 2);
 	}
+	{
+		// Water over soul sand becomes a bubble column 20 ticks later, pushing up; over magma it pushes down; it goes when
+		// the block under it does (the delays are fitted to the bubble2 vanilla run).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeWorld(World);
+		FMcSimulation Sim(World);
+		const auto Name = [&](const FIntVector& At) { return Registry.GetBlockOf(World.GetBlock(At)).Name; };
+		for (int32 Y = 1; Y <= 5; ++Y)
+		{
+			for (const FIntVector& Side : { FIntVector(1, 0, 0), FIntVector(-1, 0, 0), FIntVector(0, 0, 1), FIntVector(0, 0, -1) })
+			{
+				World.SetBlock(FIntVector(0, Y, 0) + Side, Stone);
+			}
+		}
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			World.SetBlock(FIntVector(0, Y, 0), Source);
+		}
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:soul_sand")));
+		Run(Sim, 12);
+		TestEqual(TEXT("no column yet at 12 ticks"), Name(FIntVector(0, 2, 0)), FName(TEXT("minecraft:water")));
+		Run(Sim, 20);
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			TestEqual(*FString::Printf(TEXT("column at y %d"), Y), Name(FIntVector(0, Y, 0)), FName(TEXT("minecraft:bubble_column")));
+			TestEqual(TEXT("pushing up"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, Y, 0)), TEXT("drag")), FName(TEXT("false")));
+		}
+		World.SetBlock(FIntVector(0, 1, 0), State(TEXT("minecraft:magma_block")));
+		Run(Sim, 40);
+		TestEqual(TEXT("magma pulls down"), Registry.GetPropertyValue(World.GetBlock(FIntVector(0, 3, 0)), TEXT("drag")), FName(TEXT("true")));
+		World.SetBlock(FIntVector(0, 1, 0), Stone);
+		Run(Sim, 60);
+		for (int32 Y = 2; Y <= 5; ++Y)
+		{
+			TestEqual(*FString::Printf(TEXT("water again at y %d"), Y), Name(FIntVector(0, Y, 0)), FName(TEXT("minecraft:water")));
+		}
+	}
 	return true;
 }
 

@@ -118,6 +118,8 @@ public:
 
 	// Water and lava delays: water flows every 5 ticks, lava every 30 in the overworld.
 	static constexpr int32 WaterDelay = 5;
+	static constexpr int32 BubbleBaseDelay = 20;
+	static constexpr int32 BubbleColumnDelay = 5;
 	static constexpr int32 LavaDelay = 30;
 	static constexpr int32 GravityDelay = 2;
 	static constexpr int32 LeafDelay = 1;
@@ -130,6 +132,8 @@ private:
 	void Notify(const FIntVector& Pos);
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
+	// Turns the water sources from Pos up into a bubble column, or back into water when nothing drives it.
+	void UpdateBubbleColumn(const FIntVector& Pos);
 	void TickGravity(const FIntVector& Pos, FMcStateId State);
 	void TickLeaves(const FIntVector& Pos, FMcStateId State);
 	void TickSupport(const FIntVector& Pos, FMcStateId State);

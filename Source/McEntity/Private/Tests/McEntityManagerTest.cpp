@@ -102,7 +102,9 @@ bool FMcEntityManagerTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(12, 1, 10), State(TEXT("minecraft:lava[level=0]")));
 		FMcItemEntity& Floating = Manager.DropItem(FVector(10.5, 1.2, 10.5), Diamond);
 		Manager.DropItem(FVector(12.5, 1.2, 10.5), Diamond);
-		for (int32 Tick = 0; Tick < 100; ++Tick)
+		// A dropped item is tossed up out of the water and sinks back in; the buoyancy of 0.0005 a tick takes a few hundred
+		// ticks to turn that round (vanilla's rule: only added below 0.06, no cap).
+		for (int32 Tick = 0; Tick < 500; ++Tick)
 		{
 			Manager.Tick();
 		}

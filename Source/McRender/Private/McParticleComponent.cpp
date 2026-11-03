@@ -123,6 +123,7 @@ void UMcParticleComponent::BuildEmitters()
 		else if (Name == TEXT("minecraft:fire") || Name == TEXT("minecraft:soul_fire")) Emitter = EEmitter::Fire;
 		else if (Name == TEXT("minecraft:nether_portal")) Emitter = EEmitter::Portal;
 		else if (Name == TEXT("minecraft:water") && Registry.GetPropertyValue(State, TEXT("level")) != TEXT("0")) Emitter = EEmitter::FlowingWater;
+		else if (Name == TEXT("minecraft:bubble_column")) Emitter = Registry.GetPropertyValue(State, TEXT("drag")) == TEXT("true") ? EEmitter::BubbleDown : EEmitter::BubbleUp;
 		else if (Tags.Has(Leaves, State)) Emitter = EEmitter::Leaves;
 	}
 }
@@ -479,6 +480,33 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 			Say(TEXT("block.water.ambient"), Random.FRand() * 0.25f + 0.75f, Random.FRand() + 0.5f);
 		}
 		break;
+	case EEmitter::BubbleUp:
+	case EEmitter::BubbleDown:
+		// An ambient sound at the block's corner now and again (about one a 200th of the visits; volume and pitch
+		// from the bubble2 vanilla run: 0.12 to 0.23, 0.90 to 0.99).
+		{
+			// Bubbles: up columns send one up from the middle of the block's floor and one from anywhere in it; down
+			// columns send one from near the top (the game's bubble_column_up and current_down, sizes and lives as its own).
+			const bool bDown = Emitters[State] == EEmitter::BubbleDown;
+			const int32 Count = bDown ? 1 : 2;
+			for (int32 Index = 0; Index < Count; ++Index)
+			{
+				const FVector At = bDown ? FVector(Pos) + FVector(0.5, 0.8, 0.0)
+					: (Index == 0 ? FVector(Pos) + FVector(0.5, 0.0, 0.5) : FVector(Pos) + FVector(Random.FRand(), Random.FRand(), Random.FRand()));
+				FParticle& Bubble = Add(EStyle::Bubble, At, FVector(Random.FRandRange(-0.02f, 0.02f), Random.FRand() * 0.02f, Random.FRandRange(-0.02f, 0.02f)));
+				Bubble.Gravity = bDown ? 0.024f : -0.005f;
+				Bubble.Friction = bDown ? 0.85f : 0.85f;
+				Bubble.Life = FMath::Floor((bDown ? 60.0f : 40.0f) / (Random.FRand() * 0.8f + 0.2f));
+				Bubble.Size = 0.05f * (Random.FRand() * 0.5f + 0.5f) * 2.0f * (Random.FRand() * 0.6f + 0.2f);
+				Bubble.Light = FVector2f(1.0f, 1.0f);
+			}
+		}
+		if (Random.RandRange(0, 199) == 0)
+		{
+			FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(Emitters[State] == EEmitter::BubbleDown ? TEXT("block.bubble_column.whirlpool_ambient") : TEXT("block.bubble_column.upwards_ambient")),
+				FVector(Pos), Random.FRand() * 0.15f + 0.1f, Random.FRand() * 0.15f + 0.9f });
+		}
+		break;
 	case EEmitter::Leaves:
 		// A leaf drifts down from leaves with air below them.
 		if (World->GetBlock(Pos + FIntVector(0, -1, 0)) == 0 && Random.RandRange(0, bUnreal ? 14 : 39) == 0)
@@ -614,6 +642,8 @@ void UMcParticleComponent::Draw(float Partial)
 			Size *= 0.6f + T * 0.8f;
 			Size *= FMath::Clamp((1.0f - T) * 2.5f, 0.0f, 1.0f);
 			break;
+		case EStyle::Bubble:
+			break;
 		case EStyle::Leaf:
 			bTextured = true;
 			Size *= FMath::Clamp((Particle.Life - Particle.Age) / 10.0f, 0.0f, 1.0f);
@@ -652,35 +682,38 @@ void UMcParticleComponent::Draw(float Partial)
 		{
 			continue;
 		}
-		if (Particle.Style == EStyle::Note)
+		if (Particle.Style == EStyle::Note || Particle.Style == EStyle::Bubble)
 		{
-			// The game's note.png, a pixel at a time: its grey shades take the note's colour.
-			static TArray<FIntPoint> Pixels;
-			static TArray<uint8> Greys;
-			static bool bRead = false;
-			if (!bRead)
+			// The game's note.png or bubble.png, a pixel at a time: a note's grey shades take its colour, a bubble keeps its own.
+			const bool bBubble = Particle.Style == EStyle::Bubble;
+			static TArray<FIntPoint> Pixels[2];
+			static TArray<FColor> Texes[2];
+			static bool bRead[2] = { false, false };
+			if (!bRead[bBubble])
 			{
-				bRead = true;
+				bRead[bBubble] = true;
 				TArray<FColor> Texels;
 				int32 Width = 0, Height = 0;
-				if (McRenderTextures::LoadPngPixels(McCache::Asset(TEXT("textures/particle/note.png")), Texels, Width, Height) && Width == 8 && Height == 8)
+				if (McRenderTextures::LoadPngPixels(McCache::Asset(bBubble ? TEXT("textures/particle/bubble.png") : TEXT("textures/particle/note.png")), Texels, Width, Height) && Width == 8 && Height == 8)
 				{
 					for (int32 Index = 0; Index < Texels.Num(); ++Index)
 					{
 						if (Texels[Index].A > 0)
 						{
-							Pixels.Add(FIntPoint(Index % 8, Index / 8));
-							Greys.Add(Texels[Index].R);
+							Pixels[bBubble].Add(FIntPoint(Index % 8, Index / 8));
+							Texes[bBubble].Add(Texels[Index]);
 						}
 					}
 				}
 			}
+			const TArray<FIntPoint>& PixelList = Pixels[bBubble];
 			const FVector Middle = McCoords::BlockToUnreal(FMath::Lerp(Particle.Prev, Particle.Pos, static_cast<double>(Partial)));
 			const double PixelHalf = Size * McCoords::UnitsPerBlock / 8.0;
-			for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+			for (int32 Index = 0; Index < PixelList.Num(); ++Index)
 			{
-				const FVector At = Middle + Right * ((Pixels[Index].X - 3.5) * 2.0 * PixelHalf) - Up * ((Pixels[Index].Y - 3.5) * 2.0 * PixelHalf);
-				const FColor Shade(static_cast<uint8>(Colour.R * Greys[Index] / 255), static_cast<uint8>(Colour.G * Greys[Index] / 255), static_cast<uint8>(Colour.B * Greys[Index] / 255));
+				const FVector At = Middle + Right * ((PixelList[Index].X - 3.5) * 2.0 * PixelHalf) - Up * ((PixelList[Index].Y - 3.5) * 2.0 * PixelHalf);
+				const FColor Texel = Texes[bBubble][Index];
+				const FColor Shade = bBubble ? Texel : FColor(static_cast<uint8>(Colour.R * Texel.R / 255), static_cast<uint8>(Colour.G * Texel.R / 255), static_cast<uint8>(Colour.B * Texel.R / 255));
 				const int32 Base = Positions.Num();
 				const FVector Pixel[4] = { -Right + Up, -Right - Up, Right - Up, Right + Up };
 				for (int32 Corner = 0; Corner < 4; ++Corner)

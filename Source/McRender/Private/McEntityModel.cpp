@@ -557,6 +557,8 @@ namespace McEntityModel
 				Zombie.Kind = TEXT("minecraft:zombie_villager");
 				Zombie.Textures = { TEXT("zombie_villager/zombie_villager.png"), TEXT("zombie_villager/type/plains.png") };
 				AddVillager(Zombie, true);
+				// Its arms are the zombie's, so it holds as the zombie does (compared with vanilla in zvheld.txt).
+				AddHeldItemInHand(Zombie, FVector(-5, 22, 0));
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
@@ -1852,12 +1854,13 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	}
 	FIntPoint Size;
 	UTexture2DArray* Texture = nullptr;
-	if (Model && Model->bComposite)
+	if (Model && Model->bComposite && Layer != Model->HeldLayer)
 	{
 		TArray<FString> Paths;
 		for (int32 Index = 0; Index < FMath::Max(Model->Textures.Num(), TextureOverrides.Num()); ++Index)
 		{
-			Paths.Add(GetTexturePath(Index));
+			// A held item's picture is its own layer on top, not part of the coat.
+			Paths.Add(Index == Model->HeldLayer ? FString() : GetTexturePath(Index));
 		}
 		Texture = LoadCompositeCached(Paths, Size);
 	}
@@ -2012,7 +2015,8 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 		return;
 	}
-	const int32 NumLayers = Model->bComposite ? 1 : Model->Textures.Num();
+	// A composite model (the villager's pictures laid over each other) is one layer, plus its held item's own.
+	const int32 NumLayers = Model->bComposite ? FMath::Max(1, Model->HeldLayer + 1) : Model->Textures.Num();
 	// Every other tenth of the fuse the creeper goes white.
 	const bool bFlash = Swelling > 0.0f && McEntityModel::IsSwellFlash(Swelling);
 	Anim.bFlash = bFlash;
@@ -2025,6 +2029,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{
+		if (Model->bComposite && Layer != 0 && Layer != Model->HeldLayer)
+		{
+			continue;
+		}
 		UMaterialInstanceDynamic* Material = GetMaterial(Layer);
 		if (!Material)
 		{

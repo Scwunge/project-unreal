@@ -457,6 +457,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
           0.6 px right of middle and 1.8 below the chin, tilt 12.5 degrees, mirrored, overlap 0.77 against the vanilla bottle outline.
           Depth z 6 chosen from our own shot (z 4 hid it behind the arm bar). Checked against vanilla front shot (hw5.png): cork under the
           nose, same tilt. Liquid added: potion_overlay x fixed tint 72/120/247 (read off the vanilla shot, 248 px; hw6.png matches). Side view not re-compared.
+    - [x] Zombie villager held item (2026-11-03, `zvheld.txt`, vanilla zombie_villager with an iron sword): the model has the zombie's arms, so it takes the zombie's hold; a composite model (villager pictures laid together) now draws its held item as its own extra layer. Our front shot (zv2.png) shows the blade edge-on at the same spot as vanilla's. Spawn rate is the zombie's (still not logged for zombie villagers). Husk, stray, bogged, wither skeleton, piglins are not mobs here yet.
     - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
           Measure stride from a vanilla walking-loop filmed at a fixed camera.
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).

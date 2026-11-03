@@ -174,6 +174,8 @@ private:
 	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.
 	void Notify(const FIntVector& Pos);
+	// A sponge with water beside it soaks up the water around (reference run rs_sponge).
+	void AbsorbWater(const FIntVector& Sponge);
 	void RunTick(const FIntVector& Pos);
 	void TickFluid(const FIntVector& Pos, FMcStateId State);
 	void TickConduit(const FIntVector& Pos);

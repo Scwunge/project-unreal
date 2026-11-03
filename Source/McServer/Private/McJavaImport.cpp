@@ -9,6 +9,7 @@
 #include "McEntityManager.h"
 #include "McMob.h"
 #include "McVehicle.h"
+#include "McVillager.h"
 #include "McChunkSave.h"
 #include "McDecor.h"
 #include "McDecorEntity.h"
@@ -547,7 +548,22 @@ namespace
 		}
 		else if (const FMcMobType* Type = FMcMobType::Find(FName(*Id)))
 		{
-			TUniquePtr<FMcMob> Mob = MakeUnique<FMcMob>(*Type);
+			// A villager and a zombie villager have saves of their own on top of a mob's.
+			FMcVillager* Villager = nullptr;
+			TUniquePtr<FMcMob> Mob;
+			if (Type->Name == FMcVillager::StaticType())
+			{
+				Villager = new FMcVillager(*Type);
+				Mob.Reset(Villager);
+			}
+			else if (Type->Name == FMcZombieVillager::StaticType())
+			{
+				Mob = MakeUnique<FMcZombieVillager>(*Type);
+			}
+			else
+			{
+				Mob = MakeUnique<FMcMob>(*Type);
+			}
 			if (Type->bHops)
 			{
 				// The game's size counts from 0 (size 1, 2 or 4 is 0, 1 or 3).
@@ -562,7 +578,70 @@ namespace
 			{
 				Mob->Health = Type->MaxHealth;
 			}
-			if (Type->bPanics && Entity.GetInt(TEXT("Age")) < 0)
+			const int32 EntityAge = static_cast<int32>(Entity.GetInt(TEXT("Age")));
+			if (Villager)
+			{
+				// Type, profession, level and trades as the game keeps them (VillagerData: names, level, and the xp in Xp).
+				if (const FMcNbt* Data = Entity.Find(TEXT("VillagerData")))
+				{
+					const FString Variant = McCache::PathOf(Data->GetString(TEXT("type")));
+					if (!Variant.IsEmpty())
+					{
+						Villager->SetVariant(FName(*Variant));
+					}
+					const FString Profession = Data->GetString(TEXT("profession"));
+					if (!Profession.IsEmpty())
+					{
+						Villager->SetProfession(Profession.Contains(TEXT(":")) ? FName(*Profession) : FName(*(TEXT("minecraft:") + Profession)));
+					}
+					Villager->SetLevelAndXp(static_cast<int32>(Data->GetInt(TEXT("level"), 1)), static_cast<int32>(Entity.GetInt(TEXT("Xp"))));
+				}
+				if (EntityAge < 0)
+				{
+					Villager->SetBaby(true);
+					Villager->SetGrowthTicksLeft(-EntityAge);
+				}
+				Villager->SetFood(0);
+				const FMcNbt* Offers = Entity.Find(TEXT("Offers"));
+				const FMcNbt* Recipes = Offers ? FindList(*Offers, TEXT("Recipes")) : nullptr;
+				if (Recipes && Recipes->Num() > 0 && Villager->HasProfession())
+				{
+					TArray<McTrading::FOffer> Imported;
+					for (const FMcNbt& Recipe : Recipes->Values)
+					{
+						McTrading::FOffer Offer;
+						if (const FMcNbt* Buy = Recipe.Find(TEXT("buy")))
+						{
+							Offer.Wants = MakeStack(*Buy);
+						}
+						if (const FMcNbt* BuyB = Recipe.Find(TEXT("buyB")))
+						{
+							Offer.Extra = MakeStack(*BuyB);
+						}
+						if (const FMcNbt* Sell = Recipe.Find(TEXT("sell")))
+						{
+							Offer.Gives = MakeStack(*Sell);
+						}
+						Offer.Uses = static_cast<int32>(Recipe.GetInt(TEXT("uses")));
+						Offer.MaxUses = static_cast<int32>(Recipe.GetInt(TEXT("maxUses"), 12));
+						Offer.Xp = static_cast<int32>(Recipe.GetInt(TEXT("xp"), 1));
+						Offer.Demand = static_cast<int32>(Recipe.GetInt(TEXT("demand")));
+						if (const FMcNbt* Multiplier = Recipe.Find(TEXT("priceMultiplier")))
+						{
+							Offer.Discount = static_cast<float>(Multiplier->GetReal());
+						}
+						if (!Offer.Wants.IsEmpty() && !Offer.Gives.IsEmpty())
+						{
+							Imported.Add(MoveTemp(Offer));
+						}
+					}
+					if (!Imported.IsEmpty())
+					{
+						Villager->GetOffers() = MoveTemp(Imported);
+					}
+				}
+			}
+			else if (Type->bPanics && EntityAge < 0)
 			{
 				Mob->MakeBaby();
 			}

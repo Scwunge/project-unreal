@@ -16,7 +16,9 @@ namespace
 	// is 0.01 to 0.13% of the volume and the deep lava 0.67%; at 1.0 we had 0.57% water, at 0.5 0.09%.
 	static float FloodScale = 0.5f;
 	static int32 SeaMargin = 28;
-	static int32 LevelBase = 10;
+	// Partial levels sit at 40 * region + this + a step of 3 in -9..9: measured on the reference (water surfaces in caves, 5 worlds,
+	// levels 11 / 14 / 17 / 20 / 23 in region 0, the sea peaking at exactly 20, region -1 at -23 and -20); the wiki says 20.
+	static int32 LevelBase = 20;
 	// Under the sea floor: the thresholds at the floor and the depth below it at which they reach the land's.
 	// Fitted on the reference's cave water by sea-floor and land columns (the wiki's -0.3 / -0.8 left land columns at y 32+
 	// with 31..45% water against 9..32% in the five worlds).

@@ -572,6 +572,81 @@ FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
 	return Dest;
 }
 
+void FMcMob::TickBarter(FMcEntityManager& Manager)
+{
+	// Measured on the reference (50 runs, a gold ingot dropped a block from an idle piglin): the ingot was gone within ~10 ticks
+	// and one item entity was thrown ~125 ticks after the drop (so ~120 after the pickup), sideways at ~0.29 and slightly up,
+	// from ~1.5 above the feet. 41 of 50 runs left an item; the other 9 left none (cause not found, so every barter here gives one).
+	// What came, with how many runs and the stack sizes seen: crying_obsidian 7 (1-3), blackstone 5 (8-15), gravel 5 (10-16),
+	// spectral_arrow 5 (8-12), nether_brick 4 (4-8), leather 4 (2-3), obsidian 3 (1), ender_pearl 3 (3), fire_charge 2 (1),
+	// dried_ghast 1 (1), string 1 (8), soul_sand 1 (5). A low-count table: the weights are those counts and the sizes the middle of
+	// the range seen. Items from an earlier run that did not show here (quartz 6-8, gold_nugget 1, iron_nugget) are left out.
+	struct FBarter { const TCHAR* Item; int32 Weight; int32 Min; int32 Max; };
+	static const FBarter Table[] = {
+		{ TEXT("minecraft:crying_obsidian"), 7, 1, 3 }, { TEXT("minecraft:blackstone"), 5, 8, 15 }, { TEXT("minecraft:gravel"), 5, 10, 16 },
+		{ TEXT("minecraft:spectral_arrow"), 5, 8, 12 }, { TEXT("minecraft:nether_brick"), 4, 4, 8 }, { TEXT("minecraft:leather"), 4, 2, 3 },
+		{ TEXT("minecraft:obsidian"), 3, 1, 1 }, { TEXT("minecraft:ender_pearl"), 3, 3, 3 }, { TEXT("minecraft:fire_charge"), 2, 1, 1 },
+		{ TEXT("minecraft:dried_ghast"), 1, 1, 1 }, { TEXT("minecraft:string"), 1, 8, 8 }, { TEXT("minecraft:soul_sand"), 1, 5, 5 } };
+	if (BarterTicks > 0)
+	{
+		if (--BarterTicks == 0)
+		{
+			int32 Total = 0;
+			for (const FBarter& Entry : Table)
+			{
+				Total += Entry.Weight;
+			}
+			int32 Roll = Random.RandHelper(Total);
+			for (const FBarter& Entry : Table)
+			{
+				if (Roll < Entry.Weight)
+				{
+					FVector Away = FVector::ZeroVector;
+					double Nearest = FMath::Square(16.0);
+					for (const FVector& Player : Manager.PlayerPositions)
+					{
+						const double Distance = FVector::DistSquared(Player, Body.Position);
+						if (Distance < Nearest)
+						{
+							Nearest = Distance;
+							Away = Player - Body.Position;
+						}
+					}
+					Away.Y = 0.0;
+					if (!Away.Normalize())
+					{
+						Away = FVector(0.0, 0.0, 1.0);
+					}
+					FMcItemEntity& Out = Manager.DropItem(Body.Position + FVector(0.0, 1.5, 0.0), FMcItemStack(FName(Entry.Item), Random.RandRange(Entry.Min, Entry.Max)));
+					Out.Body.Velocity = Away * 0.29 + FVector(0.0, 0.065, 0.0);
+					break;
+				}
+				Roll -= Entry.Weight;
+			}
+		}
+		return;
+	}
+	TArray<FMcEntity*> Near;
+	Manager.FindInBox(FBox(Body.Position - FVector(2.0, 1.0, 2.0), Body.Position + FVector(2.0, 2.0, 2.0)), Near);
+	for (FMcEntity* Other : Near)
+	{
+		if (Other->GetType() != FMcItemEntity::StaticType() || Other->bRemoved)
+		{
+			continue;
+		}
+		FMcItemEntity* Item = static_cast<FMcItemEntity*>(Other);
+		if (Item->PickupDelay <= 0 && Item->Stack.Item == TEXT("minecraft:gold_ingot"))
+		{
+			if (--Item->Stack.Count <= 0)
+			{
+				Item->bRemoved = true;
+			}
+			BarterTicks = 120;
+			return;
+		}
+	}
+}
+
 void FMcMob::Tick(FMcEntityManager& Manager)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
@@ -654,6 +729,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	if (ShootCooldown > 0)
 	{
 		--ShootCooldown;
+	}
+	if (Type.Name == TEXT("minecraft:piglin"))
+	{
+		TickBarter(Manager);
 	}
 	if (RepathCooldown > 0)
 	{

@@ -456,7 +456,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
     - [x] Witch potion (2026-11-03, witchhold.txt vanilla front/side shots, head width 8 px as scale): flat sprite 6.3 px (6 drawn), centre
           0.6 px right of middle and 1.8 below the chin, tilt 12.5 degrees, mirrored, overlap 0.77 against the vanilla bottle outline.
           Depth z 6 chosen from our own shot (z 4 hid it behind the arm bar). Checked against vanilla front shot (hw5.png): cork under the
-          nose, same tilt. Not done: the liquid (tinted potion_overlay sprite), so only the glass outline shows; side view not re-compared.
+          nose, same tilt. Liquid added: potion_overlay x fixed tint 72/120/247 (read off the vanilla shot, 248 px; hw6.png matches). Side view not re-compared.
     - [ ] Walk cycle shared by all legs and arms (`Swing`: 0.6662 rate, 1.4 amplitude, arm amplitude 1.0, `MaxLimbSwing` per mob).
           Measure stride from a vanilla walking-loop filmed at a fixed camera.
     - [ ] Villager / zombie villager / wandering trader: head pivot, nose, folded arms, arm bar; offering arm pitch (0.9 of a right angle).

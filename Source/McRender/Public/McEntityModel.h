@@ -129,6 +129,9 @@ namespace McEntityModel
 		bool bBabyModel = false;
 		// Layers (bit per layer) multiplied by the anim's tint (a wolf's collar, cut white and dyed).
 		uint32 TintedLayers = 0;
+		// When set, the tinted layers use this colour instead of a dye (a potion's liquid).
+		bool bFixedTint = false;
+		FColor FixedTint = FColor::White;
 	};
 
 	// The model for a registry name like "minecraft:pig", null if the kind has none.

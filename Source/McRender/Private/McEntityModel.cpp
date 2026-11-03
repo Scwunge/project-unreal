@@ -380,7 +380,7 @@ namespace McEntityModel
 				// its plane at the face's front (z 4, the side view's sliver), the sprite's centre 0.6 pixels right of the middle and
 				// 1.8 below the chin (y 22.2), 6.3 pixels for the sprite's 16 (its bottle 13 rows is 32 screen pixels against the head's
 				// 50 for 8), turned 12.5 degrees in the picture's plane and mirrored (fitted over the bottle's outline, overlap 0.77).
-				// Only the glass outline is drawn: the liquid is a separate tinted overlay sprite, not done. The hold is only drawn while it
+				// The hold is only drawn while it
 				// drinks, as the witch has nothing in hand otherwise.
 				Witch.Textures.Add(TEXT("../item/potion.png"));
 				FBox Bottle = Box(0, 0, 0, -3, -3, 0, 6, 6);  // 6.3 measured, whole pixels only
@@ -389,6 +389,16 @@ namespace McEntityModel
 				FPart Drinking = Part(ERole::Static, FVector(0.6f, 22.2f, 6.0f), { Bottle }, 0, -HALF_PI, 0.2182f, 0, 1);
 				Drinking.ShowPoses = 1u << 4;
 				Witch.Parts.Add(Drinking);
+				// The liquid: the grey overlay sprite times a colour. A plain potion's colour read off the same vanilla shot (median of 248
+				// blue pixels, 47/78/161) over the overlay's usual grey (166): 72/120/247. Lit by the shot's own lighting, so about right.
+				Witch.Textures.Add(TEXT("../item/potion_overlay.png"));
+				Witch.TintedLayers = 1u << 2;
+				Witch.bFixedTint = true;
+				Witch.FixedTint = FColor(72, 120, 247);
+				FBox Liquid = Bottle;
+				FPart LiquidPart = Part(ERole::Static, FVector(0.6f, 22.2f, 6.05f), { Liquid }, 0, -HALF_PI, 0.2182f, 0, 2);
+				LiquidPart.ShowPoses = 1u << 4;
+				Witch.Parts.Add(LiquidPart);
 				Models.Add(Witch.Kind, Witch);
 			}
 			{
@@ -2011,7 +2021,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.Pose = PoseLook & 31;
 	if (Model->TintedLayers != 0)
 	{
-		Anim.Tint = McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
+		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
 	}
 	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
 	{

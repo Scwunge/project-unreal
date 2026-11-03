@@ -4,6 +4,7 @@
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McFireball.h"
 #include "McMob.h"
 #include "McThrown.h"
 #include "Misc/AutomationTest.h"
@@ -441,6 +442,30 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(TEXT("one item thrown for the ingot"), Items, 1);
 		TestEqual(TEXT("and the piglin is ready again"), Piglin->BarterTicks, 0);
+	}
+	{
+		// A blaze in sight of a player shoots three small fireballs 6 ticks apart then rests until 178 ticks after the first (nether1.txt),
+		// and a fireball's speed climbs 0.1, 0.19, 0.2755 (v = 0.95 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:blaze"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SmallType())
+				{
+					FireTicks.Add(Tick);
+				}
+			}
+		}
+		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
 	}
 	return true;
 }

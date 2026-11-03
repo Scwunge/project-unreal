@@ -310,6 +310,10 @@ private:
 	ESurface Sense(FMcBlockWorld& World, double& OutSurface, double& OutFriction) const;
 	// Bubble columns push the hull after the move (see the body).
 	void TickBubbleColumns(FMcBlockWorld& World);
+	// Other boats and mobs it can't take in stop it (before it moves) and shove it and are shoved by it (after).
+	bool IsBlockedBy(const FMcEntity& Other) const;
+	void ClipAgainstNeighbours(FMcEntityManager& Manager);
+	void PushNeighbours(FMcEntityManager& Manager);
 	// How much of its speed a boat on land keeps a tick, from the blocks under its hull.
 	double GroundFriction(FMcBlockWorld& World) const;
 };

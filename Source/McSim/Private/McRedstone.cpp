@@ -945,12 +945,28 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		break;
 	case Piston:
 	case StickyPiston:
-		if (bInTick)
+		// A piston hears of a change as a block event, run after the tick's scheduled ticks (and, if the change came from a
+		// block landing, which happens after the events, in the next tick): rs_mov.
+		// It looks at once whether it would move, and only queues the event if so: powered while the cell in front is
+		// held by a moving block, it hears nothing more until that block lands.
+		{
+			const int32 PistonFacing = FacingOf(State);
+			const bool bShould = ShouldExtend(Pos, PistonFacing);
+			const bool bIsExtended = Flag(State, TEXT("extended"));
+			TArray<FIntVector> TryMove, TryDestroy;
+			if (bShould == bIsExtended || (bShould && !ResolvePush(Pos, Pos + Vec[PistonFacing], PistonFacing, TryMove, TryDestroy)))
+			{
+				break;
+			}
+		}
+		if (bLanding)
+		{
+			NextPistonEvents.AddUnique(Pos);
+		}
+		else
 		{
 			PistonEvents.AddUnique(Pos);
-			break;
 		}
-		Sim.ScheduleTick(Pos, 1);
 		break;
 	case PistonHead:
 	case Door:
@@ -2331,5 +2347,9 @@ void FMcRedstone::TickMovingPiston(const FIntVector& Pos, FMcStateId State)
 		Landed = Carried->Key;
 		MovingBlocks.Remove(Pos);
 	}
+	// A piston beside the landing block that was waiting for its cell starts a tick later (reference run rs_mov: powered
+	// before the block arrived, it extends the tick after).
+	bLanding = true;
 	World.SetBlock(Pos, Landed);
+	bLanding = false;
 }

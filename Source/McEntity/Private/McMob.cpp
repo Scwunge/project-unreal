@@ -1,6 +1,7 @@
 #include "McMob.h"
 #include "McVillager.h"
 #include "McArrow.h"
+#include "McFireball.h"
 #include "McPotion.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -84,6 +85,22 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// 20 / 0.23 / 5 / 35 (angered only). Their gold-armor rule, bartering, hoglin hunting and the nether's own spawning are not done:
 		// they go for a player like any hostile mob.
 		Add(TEXT("minecraft:piglin"), 0.6f, 1.95f, 16.f, 0.35f, 5.f, 16.f, false, false);
+		// The hoglin (hogmagma1.txt, nethermobs1/2.txt): 1.3965 x 1.4, 40 hp, speed 0.3, bite 6, knockback resistance 0.6, follows 16. Its
+		// bite throws the target (attack knockback 1.0), not done.
+		Add(TEXT("minecraft:hoglin"), 1.3965f, 1.4f, 40.f, 0.3f, 6.f, 16.f, false, false);
+		// The strider (nethermobs1/2.txt): 0.9 x 1.7, 20 hp, speed 0.175, follows 16, no bite. It walks on lava, which is not done
+		// (it would sink and burn like anything else).
+		// The ghast (nethermobs1/2.txt, nether1/2.txt): 4 x 4, 10 hp, follows 100, no bite; shoots fireballs (see FMcFireball). The
+		// blaze: 0.6 x 1.8, 20 hp, speed 0.23, follows 48, hovers and shoots small fireballs. Neither burns. Their hover distances are guesses.
+		FMcMobType& Ghast = Add(TEXT("minecraft:ghast"), 4.f, 4.f, 10.f, 0.7f, 0.f, 100.f, false, false);
+		Ghast.bFlies = true;
+		Ghast.FireballKind = 1;
+		Ghast.HoverRange = 20.0;
+		FMcMobType& Blaze = Add(TEXT("minecraft:blaze"), 0.6f, 1.8f, 20.f, 0.23f, 6.f, 48.f, false, false);
+		Blaze.bFlies = true;
+		Blaze.FireballKind = 2;
+		Blaze.HoverRange = 16.0;
+		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
 		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
@@ -97,6 +114,9 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Enderman.bNeutral = true;
 		Enderman.bTeleports = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
+		// The magma cube (hogmagma1.txt): per size n (1, 2, 4 across the sizes the game makes) health n squared, attack n, armor 3n, speed
+		// 0.2 + 0.1n, box 0.52 n; it does not burn. Size 1: 1 hp, attack 1, follows 16. Armor and the speed rise are not done.
+		Add(TEXT("minecraft:magma_cube"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
 		Add(TEXT("minecraft:slime"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
 
 		// The overworld animals (minecraft.wiki, the page of each). Horses and llamas have a random health of 15 to 30
@@ -646,7 +666,8 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 		}
 		return;
 	}
-	// It walks to an ingot within 8 blocks (the range is a guess: only a drop a block away was measured).
+	// It walks to a dropped ingot up to 8 blocks away and ignores one 10 or more away (barter3.txt, 3 runs each at 1.5, 3, 4, 6, 8, 10,
+	// 12 and 16 blocks: all took it up to 8, none at 10 and beyond; 9 untested). Needs mob griefing on in the game rules, which this does not check.
 	TArray<FMcEntity*> Near;
 	Manager.FindInBox(FBox(Body.Position - FVector(8.0, 2.0, 8.0), Body.Position + FVector(8.0, 3.0, 8.0)), Near);
 	for (FMcEntity* Other : Near)
@@ -1069,6 +1090,45 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		// A skeleton with a target raises its bow arms (the model's pose 1).
 		ArmPose = bChasing ? 1 : 0;
 	}
+	if (Type.FireballKind != 0 && bChasing)
+	{
+		// Fireballs at a player in sight, from the middle of the body, along the line to their middle.
+		if (FireCooldown > 0)
+		{
+			--FireCooldown;
+		}
+		const FVector From = Body.Position + FVector(0.0, Type.Height * 0.5, 0.0);
+		const FVector At = Target + FVector(0.0, 1.0, 0.0);
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Target.X - Body.Position.X), Target.Z - Body.Position.Z));
+		const auto Fire = [&]()
+		{
+			TUniquePtr<FMcFireball> Ball = MakeUnique<FMcFireball>();
+			Ball->Body.Position = From;
+			Ball->Launch(At - From, Type.FireballKind == 2);
+			Manager.Add(MoveTemp(Ball));
+		};
+		if (FMath::Sqrt(PreyDistSq) <= (Type.FireballKind == 1 ? 64.0 : 48.0) && HasLineOfSight(World, From, At))
+		{
+			if (FireCooldown <= 0)
+			{
+				Fire();
+				if (Type.FireballKind == 1)
+				{
+					FireCooldown = Random.RandRange(60, 85);
+				}
+				else if (BurstLeft > 0)
+				{
+					--BurstLeft;
+					FireCooldown = BurstLeft > 0 ? 6 : 178 - 12;
+				}
+				else
+				{
+					BurstLeft = 2;
+					FireCooldown = 6;
+				}
+			}
+		}
+	}
 	if (Type.bShoots && bChasing && DrinkTicks == 0)
 	{
 		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.
@@ -1130,7 +1190,12 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		if (bHasTarget)
 		{
 			const FVector To = Target - Body.Position;
-			if (To.SizeSquared() < 0.4 * 0.4)
+			if (Type.HoverRange > 0.0 && bChasing && To.SizeSquared() < FMath::Square(Type.HoverRange))
+			{
+				// Close enough to shoot from: holds still, facing it.
+				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+			}
+			else if (To.SizeSquared() < 0.4 * 0.4)
 			{
 				Goal.Reset();
 			}

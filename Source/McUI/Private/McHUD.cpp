@@ -6,6 +6,8 @@
 #include "McTextureTiles.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McItemDefinition.h"
+#include "McItemStack.h"
 #include "McChunk.h"
 #include "McEntityModel.h"
 #include "McPlayerModel.h"
@@ -319,7 +321,7 @@ const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 	return BannerIcons.Add(Key, MoveTemp(Icon));
 }
 
-void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon)
+void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint)
 {
 	UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
 	const FVector2D Corners[4] = { FVector2D(0, 0), FVector2D(16, 0), FVector2D(16, 16), FVector2D(0, 16) };
@@ -333,7 +335,7 @@ void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon)
 			Triangle.Positions[I] = Corners[Indices[I]];
 			Triangle.UVs[I] = UVs[Indices[I]];
 		}
-		Triangle.Color = FLinearColor::White;
+		Triangle.Color = Tint;
 		Triangle.Texture = Texture;
 	}
 }
@@ -552,6 +554,135 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 		}
 	}
 	// Far faces first.
+	Quads.Sort([](const FProjected& A, const FProjected& B) { return A.Depth < B.Depth; });
+	for (const FProjected& Quad : Quads)
+	{
+		Icon.Triangles.Add(Quad.Triangles[0]);
+		Icon.Triangles.Add(Quad.Triangles[1]);
+	}
+}
+
+const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
+{
+	if (Stack.Item.ToString().EndsWith(TEXT("_banner")))
+	{
+		return GetBannerIcon(Stack);
+	}
+	if (!McItemDef::UsesPackModels(Stack))
+	{
+		return GetItemIcon(Stack.Item);
+	}
+	const TArray<McItemDef::FModelRef> Refs = McItemDef::Resolve(Stack, McItemDef::EContext::Gui);
+	FString Key;
+	for (const McItemDef::FModelRef& Ref : Refs)
+	{
+		Key += Ref.Model;
+		for (const uint32 Tint : Ref.Tints)
+		{
+			Key += FString::Printf(TEXT(":%08x"), Tint);
+		}
+		Key += TEXT("|");
+	}
+	if (const FIcon* Found = StackIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	for (const McItemDef::FModelRef& Ref : Refs)
+	{
+		BuildModelIcon(Ref.Model, Ref.Tints, Icon);
+	}
+	return StackIcons.Add(Key, MoveTemp(Icon));
+}
+
+// A model's "gui" display: the model centred on its middle, scaled, turned about z then y then x, moved, and 16 pixels to a
+// block in the slot (the same view InventoryView gives block/block's [30, 225, 0] at 0.625).
+void AMcHUD::BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints, FIcon& Icon)
+{
+	const FMcItemModel Model = McBakeItemModel(ModelId);
+	if (Model.bFailed)
+	{
+		return;
+	}
+	const auto TintOf = [&Tints](int32 Index)
+	{
+		return Tints.IsValidIndex(Index) ? FLinearColor::FromSRGBColor(FColor((Tints[Index] >> 16) & 0xFF, (Tints[Index] >> 8) & 0xFF, Tints[Index] & 0xFF)) : FLinearColor::White;
+	};
+	if (Model.bGenerated)
+	{
+		for (int32 Layer = 0; Layer < Model.Layers.Num(); ++Layer)
+		{
+			BuildFlatQuad(Model.Layers[Layer].ToString(), Icon, TintOf(Layer));
+		}
+		return;
+	}
+
+	const FMcModelDisplay* Display = Model.Display.Find(TEXT("gui"));
+	const FVector Rotation = Display ? Display->Rotation : FVector::ZeroVector;
+	const FVector Translation = Display ? Display->Translation : FVector::ZeroVector;
+	const FVector DisplayScale = Display ? Display->Scale : FVector::OneVector;
+	const auto View = [&](const FVector3f& P)
+	{
+		FVector3d V = (FVector3d(P) - FVector3d(0.5)) * DisplayScale;
+		const auto Turn = [](double A, double B, double Degrees, double& OutA, double& OutB)
+		{
+			const double C = FMath::Cos(FMath::DegreesToRadians(Degrees)), S = FMath::Sin(FMath::DegreesToRadians(Degrees));
+			OutA = A * C + B * S;
+			OutB = -A * S + B * C;
+		};
+		// z: (x, y) by the standard turn; y: (x, z); x: (y, z) with the signs of InventoryView.
+		{ const double X = V.X * FMath::Cos(FMath::DegreesToRadians(Rotation.Z)) - V.Y * FMath::Sin(FMath::DegreesToRadians(Rotation.Z)); const double Y = V.X * FMath::Sin(FMath::DegreesToRadians(Rotation.Z)) + V.Y * FMath::Cos(FMath::DegreesToRadians(Rotation.Z)); V.X = X; V.Y = Y; }
+		{ double X, Z; Turn(V.X, V.Z, Rotation.Y, X, Z); V.X = X; V.Z = Z; }
+		{ const double Y = V.Y * FMath::Cos(FMath::DegreesToRadians(Rotation.X)) - V.Z * FMath::Sin(FMath::DegreesToRadians(Rotation.X)); const double Z = V.Y * FMath::Sin(FMath::DegreesToRadians(Rotation.X)) + V.Z * FMath::Cos(FMath::DegreesToRadians(Rotation.X)); V.Y = Y; V.Z = Z; }
+		return V + FVector3d(Translation) / 16.0;
+	};
+
+	struct FProjected
+	{
+		double Depth;
+		FIconTriangle Triangles[2];
+	};
+	TArray<FProjected> Quads;
+	for (const FMcBakedQuad& Quad : Model.Quads)
+	{
+		FVector3d P[4];
+		for (int32 I = 0; I < 4; ++I)
+		{
+			P[I] = View(Quad.Positions[I]);
+		}
+		const FVector3d Normal = FVector3d::CrossProduct(P[1] - P[0], P[2] - P[0]);
+		if (Normal.Z <= 1e-6)
+		{
+			continue;
+		}
+		float Shade = 1.0f;
+		if (!Model.bGuiFront && Quad.bShade)
+		{
+			const FVector3d N = Normal.GetSafeNormal();
+			Shade = N.Y > 0.7 ? 1.0f : N.Y < -0.7 ? 0.5f : (N.X < 0.0 ? 0.8f : 0.6f);
+		}
+		FLinearColor Color = FLinearColor(Shade, Shade, Shade);
+		if (Quad.TintIndex >= 0)
+		{
+			Color *= TintOf(Quad.TintIndex);
+		}
+		FProjected& Projected = Quads.AddDefaulted_GetRef();
+		Projected.Depth = (P[0].Z + P[1].Z + P[2].Z + P[3].Z) * 0.25;
+		UTexture2D* Texture = GetLayerTexture(Quad.Texture);
+		const int32 Corners[2][3] = { { 0, 1, 2 }, { 0, 2, 3 } };
+		for (int32 T = 0; T < 2; ++T)
+		{
+			FIconTriangle& Triangle = Projected.Triangles[T];
+			for (int32 I = 0; I < 3; ++I)
+			{
+				const FVector3d& V = P[Corners[T][I]];
+				Triangle.Positions[I] = FVector2D(8.0 + V.X * 16.0, 8.0 - V.Y * 16.0);
+				Triangle.UVs[I] = FVector2D(Quad.UVs[Corners[T][I]]);
+			}
+			Triangle.Color = Color;
+			Triangle.Texture = Texture;
+		}
+	}
 	Quads.Sort([](const FProjected& A, const FProjected& B) { return A.Depth < B.Depth; });
 	for (const FProjected& Quad : Quads)
 	{

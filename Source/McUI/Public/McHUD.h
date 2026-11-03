@@ -120,7 +120,13 @@ private:
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
-	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
+	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
+	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
+	// the definition is read (McItemDef) and each model it names is drawn: a flat item's layers, or a model's elements under its
+	// "gui" display transform.
+	const FIcon& GetStackIcon(const FMcItemStack& Stack);
+	void BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints, FIcon& Icon);
+	TMap<FString, FIcon> StackIcons;
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
 	// A mob head's item: its placed model, turned and lifted as the item's template_skull model shows it in a slot.
 	// PotSides: a decorated pot's sides (back, left, right, front), drawn with their sherds' patterns.

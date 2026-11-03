@@ -4,12 +4,17 @@
 #include "McFurnace.h"
 #include "McGuiLayout.h"
 #include "McHUD.h"
+#include "McItemDefinition.h"
+#include "McItemStack.h"
 #include "McItemRegistry.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
 #include "McResourcePacks.h"
 #include "McRecipe.h"
 #include "McScreenLayout.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -945,6 +950,62 @@ bool FMcPackGuiTest::RunTest(const FString& Parameters)
 	McPacks::SetStack(MakeShared<FMcPackStack>());
 	TestEqual(TEXT("without the pack the game's again"), AMcHUD::SpritePath(Panorama), GamePath);
 	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// An item definition picks its model from the stack: select and range_dispatch on custom_model_data, condition on damaged,
+// composite giving two models, tints read, an unknown property taking the fallback.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcItemDefinitionTest, "McClient.McUI.ItemDefinition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcItemDefinitionTest::RunTest(const FString& Parameters)
+{
+	const auto Parse = [](const TCHAR* Text)
+	{
+		TSharedPtr<FJsonObject> Json;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(Text)), Json);
+		return Json;
+	};
+	const auto Models = [](const TArray<McItemDef::FModelRef>& Refs)
+	{
+		FString Text;
+		for (const McItemDef::FModelRef& Ref : Refs)
+		{
+			Text += Ref.Model + TEXT(";");
+		}
+		return Text;
+	};
+	const auto WithData = [](const TCHAR* DataJson)
+	{
+		FMcItemStack Stack(TEXT("minecraft:stick"), 1);
+		TSharedPtr<FJsonValue> Value;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(DataJson)), Value);
+		Stack.Set(TEXT("minecraft:custom_model_data"), Value);
+		return Stack;
+	};
+	const TSharedPtr<FJsonObject> Select = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:custom_model_data\",\"cases\":[{\"when\":\"blue\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:blue\",\"tints\":[{\"type\":\"minecraft:constant\",\"value\":255}]}},{\"when\":[\"a\",\"b\"],\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:ab\"}}],"
+		"\"fallback\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:custom_model_data\",\"entries\":[{\"threshold\":1,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:one\"}},{\"threshold\":2,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:two\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:none\"}}}}"));
+	using McItemDef::EContext;
+	TestEqual(TEXT("a string case"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui)), FString(TEXT("m:blue;")));
+	const TArray<McItemDef::FModelRef> Blue = McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui);
+	TestTrue(TEXT("its constant tint, opaque blue"), Blue.Num() == 1 && Blue[0].Tints.Num() == 1 && Blue[0].Tints[0] == 0xFF0000FFu);
+	TestEqual(TEXT("a case with a list"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"b\"]}")), EContext::Gui)), FString(TEXT("m:ab;")));
+	TestEqual(TEXT("no string: range_dispatch, float 1"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.0]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 1.5 takes the lower threshold"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.5]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 2"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[2.0]}")), EContext::Gui)), FString(TEXT("m:two;")));
+	TestEqual(TEXT("float below every threshold: the fallback"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[0.5]}")), EContext::Gui)), FString(TEXT("m:none;")));
+	TestEqual(TEXT("no data: the fallback"), Models(McItemDef::ResolveJson(Select, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:none;")));
+
+	const TSharedPtr<FJsonObject> Condition = Parse(TEXT("{\"model\":{\"type\":\"minecraft:condition\",\"property\":\"minecraft:custom_model_data\",\"index\":1,\"on_true\":{\"type\":\"minecraft:composite\",\"models\":[{\"type\":\"minecraft:model\",\"model\":\"m:a\"},{\"type\":\"minecraft:model\",\"model\":\"m:b\"}]},\"on_false\":{\"type\":\"minecraft:empty\"}}}"));
+	TestEqual(TEXT("a flag set: the composite's two models"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[false,true]}")), EContext::Gui)), FString(TEXT("m:a;m:b;")));
+	TestEqual(TEXT("a flag unset: empty"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[true,false]}")), EContext::Gui)), FString());
+
+	const TSharedPtr<FJsonObject> Context = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:display_context\",\"cases\":[{\"when\":\"gui\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:gui\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:other\"}}}"));
+	TestEqual(TEXT("display_context gui"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:gui;")));
+	TestEqual(TEXT("display_context hand"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::FirstPersonRightHand)), FString(TEXT("m:other;")));
+
+	const TSharedPtr<FJsonObject> Unknown = Parse(TEXT("{\"model\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:compass\",\"entries\":[{\"threshold\":0.5,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:never\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:fallback\"}}}"));
+	TestEqual(TEXT("an unread property reads 0: the fallback"), Models(McItemDef::ResolveJson(Unknown, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:fallback;")));
 	return true;
 }
 

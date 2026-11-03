@@ -3,6 +3,7 @@
 
 #include "Kismet/GameplayStatics.h"
 #include "McHUD.h"
+#include "McItemDefinition.h"
 #include "McFontRaster.h"
 #include "McDropTarget.h"
 #include "Engine/GameViewportClient.h"
@@ -654,8 +655,8 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Pictur
 	{
 		return;
 	}
-	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item.ToString().EndsWith(TEXT("_banner")) ? GetBannerIcon(Stack)
-		: Stack.Item == TEXT("minecraft:decorated_pot") ? GetPotIcon(Stack) : GetItemIcon(Stack.Item), X, Y);
+	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item == TEXT("minecraft:decorated_pot") && !McItemDef::UsesPackModels(Stack)
+		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y);
 	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{

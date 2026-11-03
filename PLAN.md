@@ -128,8 +128,14 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     one sits on them and an activator rail throws the rider off. A boat floats, glides with friction by the
     surface and turns and thrusts with the rider's keys. Right-click gets in (shift gets out); a hit breaks a
     cart, a boat takes a few; both drop their item (nothing in creative), are saved with the chunk, and are
-    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works. Not done:
-    carts pushing mobs.
+    placed from the item on a rail or water. `/summon minecraft:minecart|boat` works.
+    Carts pushing (vehicle_log7/8.txt, `McClient.McEntity.CartPushLog`): a cart touching another along its rail
+    (within 0.2 aside) keeps 0.2 of its speed plus half the two together, shoved 0.05 apart (0.05/distance past a
+    block); a furnace cart, fuelled or not, hands the other its whole speed and keeps 0.95. A cart takes a mob in
+    only above 0.1 a tick; faster than that, it and a mob it can't take are shoved 0.05 apart (not a ridden cart),
+    and a mob it can't take stops it dead. Chest and hopper carts keep 0.98 + (15 - comparator signal) * 0.001; a
+    hopper cart picks up every tick, up to 1.97 above it; a TNT cart goes off 81 ticks after it is lit. There is no
+    iron golem, so the logged golem scene is only replayed as a TNT cart into a cow.
     Physics refitted 2026-11-01 from vanilla's server, logged each tick (`log sents`; vehicle_log.txt, powered_log.txt,
     paddle_log.txt), and replayed number for number by the `McClient.McEntity.VehicleLog` test. A cart is braked by
     an unpowered powered rail (half, or stopped under 0.03), moves (at most 0.4 a tick; its speed itself has no cap),
@@ -145,7 +151,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     in fills under it (Script.java now stops a run on one). vehicle_log6.txt: on slime a boat keeps 0.8 before the
     move and 0.16 of that after; soul sand leaves 0.4 after the move (counted from half a block under the boat, so
     while dropping onto it too); a furnace cart out of fuel is left going at 2, held to its 0.2 a tick cap until 0.9408
-    a tick wears it under. Not measured: honey and other blocks, empty cells under a hull.
+    a tick wears it under. vehicle_log9.txt: honey leaves 0.4 after the move, like soul sand; frosted ice keeps 0.98,
+    mud and soul soil stone's 0.6; empty cells under a hull are left out of the mean.
   - **Boats by wood and chest boats** (2026-10-29): all ten woods (oak, spruce, birch, jungle, acacia, dark
     oak, mangrove, cherry, pale oak and the bamboo raft) place from their items and drop themselves, with a chest
     variant each (`minecraft:cherry_chest_boat`). `FMcVehicle::Create` and `CreateFromItem` are the one way to make
@@ -159,8 +166,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     (`minecraft:chest_minecart` and so on, placed by item or `/summon`). A chest or hopper cart opens as its
     window when clicked sneaking. A furnace cart burns coal or charcoal (3600 ticks an item) and drives itself at
     0.2 blocks a tick, pushing in the direction it was last shoved. A TNT cart ignites on a powered activator rail
-    or from flint and steel, then blows after an 80 tick fuse (stronger when fast). A hopper cart picks up items
-    over it and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
+    or from flint and steel, then blows 81 ticks after it was lit (stronger when fast). A hopper cart picks up items
+    over it every tick and locks while on a powered activator rail. Tests are in `McVehicleTest`; shot
     `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
     cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
     primed TNT entity, so the cart keeps its own fuse.

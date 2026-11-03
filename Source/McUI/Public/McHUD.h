@@ -56,6 +56,8 @@ public:
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
+	// The frame a menu was last opened in (so one Esc press doesn't open it and close it again).
+	uint64 MenuOpenedFrame = 0;
 	// Why the last attempt to join a server failed, shown on the title screen the failure lands on. Kept across maps.
 	static void SetConnectError(const FString& Error);
 

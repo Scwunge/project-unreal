@@ -56,6 +56,10 @@ public:
 	// A player put the block at Pos in place by hand. A tripwire hook put down this way looks along its line at once, which
 	// one put by a command does not (reference run rs_trip4).
 	void PlayerPlaced(const FIntVector& Pos);
+	// A player broke the block that was at Pos (State is what it was).
+	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
+	// Something made a vibration (frequency 1 to 15) at Pos; sculk sensors hear it.
+	void Vibrate(const FIntVector& Pos, int32 Frequency);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.

@@ -35,7 +35,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 		TArray<FString> Lines;
 		FFileHelper::LoadFileToStringArray(Lines, *FPaths::Combine(Dir, File));
 		FMcBlockWorld World{FMcDimensionType()};
-		for (int32 Z = -1; Z <= 3; ++Z) for (int32 X = -1; X <= 13; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
+		for (int32 Z = -1; Z <= 7; ++Z) for (int32 X = -1; X <= 13; ++X) World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 		FMcSimulation Sim(World);
 		const FMcStateId Air = Registry.ParseState(TEXT("minecraft:air")).Get(0);
 		const auto Parse = [&](const FString& Text) { return Registry.ParseState(*(TEXT("minecraft:") + Text)).Get(Air); };
@@ -177,6 +177,11 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 				{
 					World.SetBlock(Cell, Parse(TEXT("tripwire")));
 				}
+				else if (!HeldName.IsEmpty())
+				{
+					World.SetBlock(Cell, Parse(HeldName));
+					Sim.PlayerPlaced(Cell);
+				}
 			}
 			else if (P.Num() >= 3 && P[0] == TEXT("cmd") && P[1] == TEXT("gamemode"))
 			{
@@ -192,6 +197,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 				// A player breaking a block: it is gone at once; a survival player with shears takes a tripwire away disarmed.
 				const FIntVector Cell(FCString::Atoi(*P[1]), FCString::Atoi(*P[2]) + Lift, FCString::Atoi(*P[3]));
 				const FMcStateId Old = World.GetBlock(Cell);
+				Sim.PlayerBroke(Cell, Old);
 				if (bSurvival && bShears && Registry.GetBlockOf(Old).Name == TEXT("minecraft:tripwire"))
 				{
 					TMap<FName, FName> Props;
@@ -262,7 +268,7 @@ bool FMcRefScriptTest::RunTest(const FString& Parameters)
 				{
 					TArray<FString> Own;
 					Change.ParseIntoArray(Own, TEXT("|"));
-					return Own.Num() > 1 && Parts.Num() > 1 && Own[1] == Parts[1] && FMath::Abs(FCString::Atoi(*Own[0]) - FCString::Atoi(*Parts[0])) <= 1;
+					return Own.Num() > 1 && Parts.Num() > 1 && Own[1] == Parts[1] && (Parts[0] == TEXT("*") || FMath::Abs(FCString::Atoi(*Own[0]) - FCString::Atoi(*Parts[0])) <= 1);
 				});
 			}
 			Expected.RemoveAll([](const FString& Line) { return Line.IsEmpty() || Line.StartsWith(TEXT("#")) || Line.StartsWith(TEXT("~")); });

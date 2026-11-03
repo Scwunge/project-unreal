@@ -9,7 +9,9 @@ def ev(t, s): EV.setdefault(t, []).append(s)
 def crafter(z, name, items, orient="north_up"):
     c(f"setblock 2 {Y} {z} crafter[orientation={orient},crafting=false,triggered=false]")
     for slot, it in items: c(f"item replace block 2 {Y} {z} container.{slot} with minecraft:{it[0]} {it[1]}")
-    c(f"setblock 1 {Y} {z} comparator[facing=west]"); c(f"setblock 0 {Y} {z} redstone_wire")
+    c(f"setblock 1 {Y} {z} comparator[facing=east]"); c(f"setblock 0 {Y} {z} redstone_wire")
+    c(f"setblock 2 {Y-1 if orient.startswith('down') else Y} {z-(0 if orient.startswith('down') else 1)} chest")
+    c(f"setblock 2 {Y-1 if orient.startswith('down') else Y} {z-(0 if orient.startswith('down') else 1)} chest")
 ROW = {}
 def row(n, name, items, orient="north_up"):
     ROW[name] = 4 * n; crafter(4 * n, name, items, orient)

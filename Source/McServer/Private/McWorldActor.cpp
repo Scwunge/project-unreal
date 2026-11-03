@@ -510,6 +510,14 @@ int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float 
 	return Found ? Found->Id : 0;
 }
 
+void AMcWorldActor::PlayerBroke(const FIntVector& Pos)
+{
+	if (Simulation && BlockWorld)
+	{
+		Simulation->PlayerBroke(Pos, BlockWorld->GetBlock(Pos));
+	}
+}
+
 void AMcWorldActor::PlayerPlaced(const FIntVector& Pos)
 {
 	if (Simulation)

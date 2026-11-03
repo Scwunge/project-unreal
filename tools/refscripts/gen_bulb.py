@@ -11,7 +11,7 @@ ROWS = {}
 def row(n, name, bulb="copper_bulb", bulb_at_start=True):
     ROWS[name] = n; z = 4 * n
     if bulb_at_start: c(f"setblock 2 {Y} {z} {bulb}")
-    c(f"setblock 1 {Y} {z} comparator[facing=west]"); c(f"setblock 0 {Y} {z} redstone_wire")
+    c(f"setblock 1 {Y} {z} comparator[facing=east]"); c(f"setblock 0 {Y} {z} redstone_wire")
     return z
 def on(t, name, dx=3, dy=0): ev(t, f"setblock {dx} {Y+dy} {4*ROWS[name]} redstone_block")
 def off(t, name, dx=3, dy=0): ev(t, f"setblock {dx} {Y+dy} {4*ROWS[name]} air")

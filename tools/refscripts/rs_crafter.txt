@@ -12,8 +12,10 @@ cmd item replace block 2 -60 0 container.0 with minecraft:oak_planks 2
 cmd item replace block 2 -60 0 container.1 with minecraft:oak_planks 2
 cmd item replace block 2 -60 0 container.3 with minecraft:oak_planks 2
 cmd item replace block 2 -60 0 container.4 with minecraft:oak_planks 2
-cmd setblock 1 -60 0 comparator[facing=west]
+cmd setblock 1 -60 0 comparator[facing=east]
 cmd setblock 0 -60 0 redstone_wire
+cmd setblock 2 -60 -1 chest
+cmd setblock 2 -60 -1 chest
 cmd setblock 2 -60 4 crafter[orientation=north_up,crafting=false,triggered=false]
 cmd item replace block 2 -60 4 container.0 with minecraft:stone 1
 cmd item replace block 2 -60 4 container.1 with minecraft:stone 1
@@ -24,8 +26,10 @@ cmd item replace block 2 -60 4 container.5 with minecraft:stone 1
 cmd item replace block 2 -60 4 container.6 with minecraft:stone 1
 cmd item replace block 2 -60 4 container.7 with minecraft:stone 1
 cmd item replace block 2 -60 4 container.8 with minecraft:stone 1
-cmd setblock 1 -60 4 comparator[facing=west]
+cmd setblock 1 -60 4 comparator[facing=east]
 cmd setblock 0 -60 4 redstone_wire
+cmd setblock 2 -60 3 chest
+cmd setblock 2 -60 3 chest
 cmd setblock 2 -60 8 crafter[orientation=north_up,crafting=false,triggered=false]
 cmd item replace block 2 -60 8 container.0 with minecraft:oak_planks 1
 cmd item replace block 2 -60 8 container.1 with minecraft:oak_planks 1
@@ -35,11 +39,15 @@ cmd item replace block 2 -60 8 container.5 with minecraft:oak_planks 1
 cmd item replace block 2 -60 8 container.6 with minecraft:oak_planks 1
 cmd item replace block 2 -60 8 container.7 with minecraft:oak_planks 1
 cmd item replace block 2 -60 8 container.8 with minecraft:oak_planks 1
-cmd setblock 1 -60 8 comparator[facing=west]
+cmd setblock 1 -60 8 comparator[facing=east]
 cmd setblock 0 -60 8 redstone_wire
+cmd setblock 2 -60 7 chest
+cmd setblock 2 -60 7 chest
 cmd setblock 2 -60 12 crafter[orientation=north_up,crafting=false,triggered=false]
-cmd setblock 1 -60 12 comparator[facing=west]
+cmd setblock 1 -60 12 comparator[facing=east]
 cmd setblock 0 -60 12 redstone_wire
+cmd setblock 2 -60 11 chest
+cmd setblock 2 -60 11 chest
 cmd setblock 2 -60 16 crafter[orientation=north_up,crafting=false,triggered=false]
 cmd item replace block 2 -60 16 container.0 with minecraft:iron_ingot 1
 cmd item replace block 2 -60 16 container.1 with minecraft:iron_ingot 1
@@ -50,29 +58,37 @@ cmd item replace block 2 -60 16 container.5 with minecraft:iron_ingot 1
 cmd item replace block 2 -60 16 container.6 with minecraft:iron_ingot 1
 cmd item replace block 2 -60 16 container.7 with minecraft:iron_ingot 1
 cmd item replace block 2 -60 16 container.8 with minecraft:iron_ingot 1
-cmd setblock 1 -60 16 comparator[facing=west]
+cmd setblock 1 -60 16 comparator[facing=east]
 cmd setblock 0 -60 16 redstone_wire
+cmd setblock 2 -60 15 chest
+cmd setblock 2 -60 15 chest
 cmd setblock 2 -60 20 crafter[orientation=north_up,crafting=false,triggered=false]
 cmd item replace block 2 -60 20 container.0 with minecraft:oak_planks 2
 cmd item replace block 2 -60 20 container.1 with minecraft:oak_planks 2
 cmd item replace block 2 -60 20 container.3 with minecraft:oak_planks 2
 cmd item replace block 2 -60 20 container.4 with minecraft:oak_planks 2
-cmd setblock 1 -60 20 comparator[facing=west]
+cmd setblock 1 -60 20 comparator[facing=east]
 cmd setblock 0 -60 20 redstone_wire
+cmd setblock 2 -60 19 chest
+cmd setblock 2 -60 19 chest
 cmd setblock 2 -60 24 crafter[orientation=down_north,crafting=false,triggered=false]
 cmd item replace block 2 -60 24 container.0 with minecraft:oak_planks 2
 cmd item replace block 2 -60 24 container.1 with minecraft:oak_planks 2
 cmd item replace block 2 -60 24 container.3 with minecraft:oak_planks 2
 cmd item replace block 2 -60 24 container.4 with minecraft:oak_planks 2
-cmd setblock 1 -60 24 comparator[facing=west]
+cmd setblock 1 -60 24 comparator[facing=east]
 cmd setblock 0 -60 24 redstone_wire
+cmd setblock 2 -61 24 chest
+cmd setblock 2 -61 24 chest
 cmd setblock 2 -60 28 crafter[orientation=north_up,crafting=false,triggered=false]
 cmd item replace block 2 -60 28 container.0 with minecraft:water_bucket 1
 cmd item replace block 2 -60 28 container.1 with minecraft:oak_planks 1
 cmd item replace block 2 -60 28 container.3 with minecraft:oak_planks 1
 cmd item replace block 2 -60 28 container.4 with minecraft:oak_planks 1
-cmd setblock 1 -60 28 comparator[facing=west]
+cmd setblock 1 -60 28 comparator[facing=east]
 cmd setblock 0 -60 28 redstone_wire
+cmd setblock 2 -60 27 chest
+cmd setblock 2 -60 27 chest
 cmd setblock 2 -60 40 copper_bulb
 cmd setblock 3 -60 40 redstone_wire
 cmd setblock 4 -60 40 redstone_wire

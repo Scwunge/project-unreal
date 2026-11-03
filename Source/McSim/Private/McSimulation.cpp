@@ -99,6 +99,16 @@ void FMcSimulation::PlayerPlaced(const FIntVector& Pos)
 	Redstone->PlayerPlaced(Pos);
 }
 
+void FMcSimulation::PlayerBroke(const FIntVector& Pos, FMcStateId State)
+{
+	Redstone->PlayerBroke(Pos, State);
+}
+
+void FMcSimulation::Vibrate(const FIntVector& Pos, int32 Frequency)
+{
+	Redstone->Vibrate(Pos, Frequency);
+}
+
 void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)
 {
 	Redstone->NotifyContainerChanged(Pos);

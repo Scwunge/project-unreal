@@ -31,6 +31,9 @@ public:
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
 	void SetPlate(const FIntVector& Pos, int32 NumEntities);
 	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
+	// Something at Source made a vibration of the given frequency (1 to 15): sculk sensors within range hear it after a delay
+	// of one tick a block (minecraft.wiki, "Sculk Sensor"; reference run rs_sculk).
+	void Vibrate(const FIntVector& Source, int32 Frequency);
 	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
 	void SetDetector(const FIntVector& Pos, bool bOccupied);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
@@ -38,6 +41,8 @@ public:
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
 	void PlayerPlaced(const FIntVector& Pos);
+	// A player broke the block that was at Pos (its kind in State): a vibration of 12.
+	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
 
 	// Daylight detectors read this, 0 (night) to 15 (noon).
 	void SetSunLight(int32 Level) { SunLight = Level; SkyLevel = Level; SunScale = 1.0; }
@@ -156,6 +161,10 @@ private:
 	TMap<FIntVector, TArray<int64>> TorchToggles;
 	TMap<FIntVector, int32> Plates;
 	TMap<FIntVector, int64> TargetUntil;
+	// A vibration on its way to a sensor: when it arrives and the strength it gives.
+	struct FVibration { int64 Arrive; int32 Power; };
+	TMap<FIntVector, FVibration> Vibrations;
+	void TickSculk(const FIntVector& Pos, FMcStateId State);
 	TSet<FIntVector> Detectors;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;

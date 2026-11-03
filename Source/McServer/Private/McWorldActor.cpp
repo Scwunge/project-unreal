@@ -556,6 +556,14 @@ FMcMob* AMcWorldActor::FindMob(const FVector& Eye, const FVector& Look, float Re
 	return Entities ? Entities->FindMob(Eye, Look, Reach) : nullptr;
 }
 
+void AMcWorldActor::PlayerBroke(const FIntVector& Pos)
+{
+	if (Simulation && BlockWorld)
+	{
+		Simulation->PlayerBroke(Pos, BlockWorld->GetBlock(Pos));
+	}
+}
+
 void AMcWorldActor::PlayerPlaced(const FIntVector& Pos)
 {
 	if (Simulation)

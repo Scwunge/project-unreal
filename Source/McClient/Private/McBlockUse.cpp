@@ -1,4 +1,5 @@
 #include "McBlockUse.h"
+#include "McRecipe.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
@@ -229,6 +230,11 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 				{
 					Dispense(*Actor, Pos);
 				}
+			};
+			Sim->OnCraft = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&WorldActor)](const FIntVector& Pos)
+			{
+				AMcWorldActor* Actor = Weak.Get();
+				return Actor && Craft(*Actor, Pos);
 			};
 		}
 		// Furnaces go into their chunks whenever the world saves.
@@ -582,6 +588,50 @@ FMcSlotAccess UMcBlockUseSubsystem::GetAccess(AMcWorldActor& WorldActor, const F
 		return Furnace.IsValid() ? McHopper::ForFurnace(Furnace, Face) : FMcSlotAccess();
 	}
 	return FMcSlotAccess();
+}
+
+bool UMcBlockUseSubsystem::Craft(AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	using McHopper::EFace;
+	const FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+	FMcEntityHost* Host = WorldActor.GetEntityHost();
+	if (!Blocks || !Host || GetBlockName(*Blocks, Pos) != TEXT("minecraft:crafter"))
+	{
+		return false;
+	}
+	const TSharedPtr<FMcContainer> Items = GetChest(WorldActor, Pos, 9);
+	if (!Items.IsValid())
+	{
+		return false;
+	}
+	TArray<FMcItemStack> Slots = Items->GetAll();
+	FMcItemStack Product;
+	if (!McCrafterCraft(Slots, Product))
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		Items->Set(Index, Slots[Index]);
+	}
+	ContentsChanged(WorldActor, Pos);
+	// The block's orientation reads front_top: the front is the first word.
+	const FString Orientation = FMcBlockRegistry::Get().GetPropertyValue(Blocks->GetBlock(Pos), TEXT("orientation")).ToString();
+	FString Front = Orientation;
+	Orientation.Split(TEXT("_"), &Front, nullptr);
+	const FName Facing(*Front);
+	const FIntVector Step = FacingStep(Facing);
+	const FMcSlotAccess Into = GetAccess(WorldActor, Pos + Step, Facing == TEXT("down") ? EFace::Top : Facing == TEXT("up") ? EFace::Bottom : EFace::Side);
+	if (Into.IsValid())
+	{
+		McHopper::Insert(Into, Product);
+		ContentsChanged(WorldActor, Pos + Step);
+	}
+	if (!Product.IsEmpty())
+	{
+		Host->GetManager().DropItem(FVector(Pos) + FVector(0.5) + FVector(Step) * 0.7, Product);
+	}
+	return true;
 }
 
 void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector& Pos)

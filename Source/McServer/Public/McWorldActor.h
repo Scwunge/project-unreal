@@ -80,6 +80,8 @@ public:
 	FMcBlockWorld* GetBlockWorld() const { return BlockWorld.Get(); }
 	// A player put the block at Pos down by hand (a hook then looks along its tripwire line at once).
 	void PlayerPlaced(const FIntVector& Pos);
+	// A player is breaking the block at Pos (it is still there).
+	void PlayerBroke(const FIntVector& Pos);
 
 	// World height of the top block at the spawn column, for spawning players above it. Under a ceiling (the Nether)
 	// it is a floor with room to stand, and the column may be off 0, 0.

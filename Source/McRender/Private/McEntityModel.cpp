@@ -568,6 +568,27 @@ namespace McEntityModel
 				}
 			}
 			{
+				// A hoglin, from the logged model (`hogmagma1.txt`, the adult; the baby's boxes are logged too but not built): 128 x 64 picture, a
+				// 14 x 6 x 19 head held tilted down (0.8727) with two horns standing up on it (they are children of the head in the log, so they
+				// are boxes of the head here) and two ears at their own logged slants (flattened to world position and roll), a 16 x 14 x 26
+				// body with a mane fin on top and four legs, the front pair longer (14) than the hind (11). Box sizes and pivots were converted
+				// from the log by script (y = 24 - y, z = -z, the parents' turns folded in); hind legs sit at -10, front at 8.5.
+				{
+					FModel Hoglin;
+					Hoglin.Kind = TEXT("minecraft:hoglin");
+					Hoglin.TextureSize = FIntPoint(128, 64);
+					Hoglin.Textures = { TEXT("hoglin/hoglin.png") };
+					Hoglin.Parts.Add(Part(ERole::Head, FVector(0, 22, 12), { Box(61, 1, -7, -3, 0, 14, 6, 19), Box(10, 13, -8, -2, 11, 2, 11, 2), Box(1, 13, 6, -2, 11, 2, 11, 2) }, 0.8727f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(-6, 20.99f, 15.46f), { Box(1, 1, -6, 0, -2, 6, 1, 4) }, 0.74f, -0.5148f, 0.4946f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(6, 20.99f, 15.46f), { Box(1, 6, 0, 0, -2, 6, 1, 4) }, 0.74f, 0.5148f, -0.4946f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(1, 1, -8, -7, -13, 16, 14, 26) }));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(0, 31, 7), { Box(90, 33, 0, -10, -10, 0, 10, 19) }));
+					Hoglin.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 14, 8.5f), { Box(66, 42, -3, -14, -3, 6, 14, 6) }));
+					Hoglin.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 14, 8.5f), { Box(41, 42, -3, -14, -3, 6, 14, 6) }));
+					Hoglin.Parts.Add(Part(ERole::LegBackRight, FVector(-5, 11, -10), { Box(21, 45, -2.5f, -11, -2.5f, 5, 11, 5) }));
+					Hoglin.Parts.Add(Part(ERole::LegBackLeft, FVector(5, 11, -10), { Box(0, 45, -2.5f, -11, -2.5f, 5, 11, 5) }));
+					Models.Add(Hoglin.Kind, Hoglin);
+				}
 				// The piglins: one body from the logged model (`variants3.txt`): a 10 x 8 x 8 head with a snout and two tusks, ears
 				// hanging out at their logged slants, the ordinary body, arms and legs. Zombified ones hold their arms out like the
 				// zombie. The jacket, sleeves and trousers layers log as the very same boxes as the body's.
@@ -965,6 +986,83 @@ namespace McEntityModel
 				Hunting.Kind = FName(TEXT("mc:conduit/hunting"));
 				Hunting.Textures[1] = TEXT("conduit/open_eye.png");
 				Models.Add(Hunting.Kind, Hunting);
+			}
+			{
+				// A blaze, from the logged model (`stridermodel1.txt`): an 8 x 8 x 8 head and twelve 2 x 8 x 2 rods, each at the place the log has
+				// it for one tick (they circle the body, in three rings of four at different heights; the circling and bobbing are not
+				// built, so the rods stand still), on a 64 x 32 picture.
+				FModel Blaze;
+				Blaze.Kind = TEXT("minecraft:blaze");
+				Blaze.Textures = { TEXT("blaze/blaze.png") };
+				Blaze.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-7.412f, 26.99f, -5.105f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-5.105f, 26.94f, 7.412f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(7.412f, 26.67f, 5.105f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(5.106f, 26.23f, -7.412f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-4.928f, 13.07f, 0.844f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-2.321f, 21.74f, -6.604f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-0.844f, 12.37f, -4.928f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-6.604f, 21.31f, 2.321f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(2.321f, 21.05f, 6.604f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(6.604f, 21.02f, -2.321f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(0.844f, 12.18f, 4.928f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(4.928f, 12.01f, -0.844f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Models.Add(Blaze.Kind, Blaze);
+			}
+			{
+				// A strider, from the logged model (`stridermodel1.txt`; the adult): a 16 x 14 x 16 body 1 above the middle, two 4 x 16 x 4 legs,
+				// and three bristles each side (flat 12 x 16 fins, children of the body, at their rest rolls). 64 x 128 picture. The legs' swing
+				// and the bristles' sway are not fitted.
+				FModel Strider;
+				Strider.Kind = TEXT("minecraft:strider");
+				Strider.TextureSize = FIntPoint(64, 128);
+				Strider.Textures = { TEXT("strider/strider.png") };
+				Strider.Parts.Add(Part(ERole::Static, FVector(0, 23, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
+				Strider.Parts.Add(Part(ERole::LegRight, FVector(-4, 16, 0), { Box(0, 32, -2, -16, -2, 4, 16, 4) }));
+				Strider.Parts.Add(Part(ERole::LegLeft, FVector(4, 16, 0), { Box(0, 55, -2, -16, -2, 4, 16, 4) }));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
+				Models.Add(Strider.Kind, Strider);
+			}
+			{
+				// A ghast, from the logged model (`ghast1.txt`, one frame): a 16 cube body and nine 2 x L x 2 tentacles hanging from under it, all
+				// drawn 4.5 times as big (the log's root scale) on a 64 x 32 picture. The tentacles' sway (between 0.2 and 0.6 tilt) is not
+				// built, they rest at 0.4, and the shooting face is not shown.
+				FModel Ghast;
+				Ghast.Kind = TEXT("minecraft:ghast");
+				Ghast.Scale = 4.5f;
+				Ghast.Textures = { TEXT("ghast/ghast.png") };
+				Ghast.Parts.Add(Part(ERole::Static, FVector(0, 6.4f, 0), { Box(0, 0, -8, -8, -8, 16, 16, 16) }));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Models.Add(Ghast.Kind, Ghast);
+			}
+			{
+				// A magma cube of size 1 (0.52 across), from the logged model (hogmagma1.txt): eight 8 x 1 x 8 slices stacked 8 high, each
+				// with its own piece of a 64 x 64 picture (two columns of four), and a 4 x 4 x 4 core inside. Bigger sizes are the same model
+				// grown with the hitbox.
+				FModel Magma;
+				Magma.Kind = TEXT("minecraft:magma_cube");
+				Magma.TextureSize = FIntPoint(64, 64);
+				Magma.Textures = { TEXT("slime/magmacube.png") };
+				Magma.BaseWidth = 0.52f;
+				for (int32 Slice = 0; Slice < 8; ++Slice)
+				{
+					Magma.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(Slice < 4 ? 0 : 32, (Slice % 4) * 9, -4, 7 - Slice, -4, 8, 1, 8) }));
+				}
+				Magma.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(24, 40, -2, 2, -2, 4, 4, 4) }));
+				Models.Add(Magma.Kind, Magma);
 			}
 			{
 				// The pictures are chosen per villager (GetVillagerTextures); these are the plains novice farmer's.

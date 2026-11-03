@@ -1,6 +1,6 @@
 {
   "description": "Light calibration: three 3-high walls (grass, stone, white wool) seen from the south side, 6 blocks away, to read the north-facing shade against the top shade.",
-  "camera": [207.5, -60.0, 0.0, 0.0, 0.0],
+  "camera": [207.5, -58.4, 0.0, 0.0, 0.0],
   "blocks": [
     { "from": [188, -61, -14], "to": [226, -61, 14], "state": "minecraft:grass_block[snowy=false]" },
     { "from": [201, -61, -14], "to": [213, -61, 14], "state": "minecraft:stone" },

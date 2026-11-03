@@ -47,6 +47,7 @@ namespace
 		Dispenser,
 		Crafter,
 		NoteBlock,
+		Composter,
 		Hopper,
 		Rail,
 		PoweredRail,
@@ -127,6 +128,7 @@ namespace
 				else if (Name == TEXT("minecraft:dispenser") || Name == TEXT("minecraft:dropper")) Kind = Dispenser;
 				else if (Name == TEXT("minecraft:crafter")) Kind = Crafter;
 				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
+				else if (Name == TEXT("minecraft:composter")) Kind = Composter;
 				else if (Name == TEXT("minecraft:hopper")) Kind = Hopper;
 				else if (Name == TEXT("minecraft:rail")) Kind = Rail;
 				else if (Name == TEXT("minecraft:powered_rail")) Kind = PoweredRail;
@@ -1018,6 +1020,14 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		}
 		break;
 	}
+	case Composter:
+		// At level 7 the composter turns to 8 (ready) 20 ticks later (reference run lg_compost, a hopper feeding it cakes).
+		if (Number(State, TEXT("level")) == 7 && !ComposterPending.Contains(Pos))
+		{
+			ComposterPending.Add(Pos);
+			Sim.ScheduleTick(Pos, 20);
+		}
+		break;
 	case NoteBlock:
 	{
 		// Measured with the reference client (lg_misc2): the instrument follows the blocks above and under at once, powered follows
@@ -1105,6 +1115,13 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case MovingPiston:
 		TickMovingPiston(Pos, State);
+		break;
+	case Composter:
+		ComposterPending.Remove(Pos);
+		if (Number(State, TEXT("level")) == 7)
+		{
+			World.SetBlock(Pos, With(State, { FChange(TEXT("level"), 8) }));
+		}
 		break;
 	case Crafter:
 		if (Flag(State, TEXT("crafting")))

@@ -1,0 +1,526 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 3 -50 20
+wait 120
+cmd tick freeze
+cmd fill -3 -62 -3 8 -49 112 stone
+wait 4
+cmd fill -2 -60 -2 7 -50 110 air
+cmd fill -2 -61 -2 7 -61 110 stone
+wait 10
+cmd setblock 1 -58 0 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:cake",count:64}]}
+cmd setblock 1 -59 0 composter[level=0]
+cmd setblock 1 -60 0 hopper[facing=east]
+cmd setblock 2 -60 0 chest
+cmd setblock 2 -59 0 comparator[facing=east]
+cmd setblock 3 -59 0 redstone_lamp
+wait 10
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick step 1
+wait 4
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+cmd tick unfreeze
+cmd setblock 1 -58 4 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:wheat_seeds",count:64}]}
+cmd setblock 1 -59 4 composter[level=0]
+cmd setblock 1 -60 4 hopper[facing=east]
+cmd setblock 2 -60 4 chest
+cmd setblock 1 -58 8 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:carrot",count:64}]}
+cmd setblock 1 -59 8 composter[level=0]
+cmd setblock 1 -60 8 hopper[facing=east]
+cmd setblock 2 -60 8 chest
+cmd setblock 1 -58 12 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:pumpkin_seeds",count:64}]}
+cmd setblock 1 -59 12 composter[level=0]
+cmd setblock 1 -60 12 hopper[facing=east]
+cmd setblock 2 -60 12 chest
+cmd setblock 1 -58 16 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:apple",count:64}]}
+cmd setblock 1 -59 16 composter[level=0]
+cmd setblock 1 -60 16 hopper[facing=east]
+cmd setblock 2 -60 16 chest
+cmd setblock 1 -58 20 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:melon_slice",count:64}]}
+cmd setblock 1 -59 20 composter[level=0]
+cmd setblock 1 -60 20 hopper[facing=east]
+cmd setblock 2 -60 20 chest
+cmd setblock 1 -58 24 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:wheat",count:64}]}
+cmd setblock 1 -59 24 composter[level=0]
+cmd setblock 1 -60 24 hopper[facing=east]
+cmd setblock 2 -60 24 chest
+cmd setblock 1 -58 28 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:potato",count:64}]}
+cmd setblock 1 -59 28 composter[level=0]
+cmd setblock 1 -60 28 hopper[facing=east]
+cmd setblock 2 -60 28 chest
+cmd setblock 1 -58 32 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:cactus",count:64}]}
+cmd setblock 1 -59 32 composter[level=0]
+cmd setblock 1 -60 32 hopper[facing=east]
+cmd setblock 2 -60 32 chest
+cmd setblock 1 -58 36 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:pumpkin",count:64}]}
+cmd setblock 1 -59 36 composter[level=0]
+cmd setblock 1 -60 36 hopper[facing=east]
+cmd setblock 2 -60 36 chest
+cmd setblock 1 -58 40 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:hay_block",count:64}]}
+cmd setblock 1 -59 40 composter[level=0]
+cmd setblock 1 -60 40 hopper[facing=east]
+cmd setblock 2 -60 40 chest
+cmd setblock 1 -58 44 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:bread",count:64}]}
+cmd setblock 1 -59 44 composter[level=0]
+cmd setblock 1 -60 44 hopper[facing=east]
+cmd setblock 2 -60 44 chest
+cmd setblock 1 -58 48 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:oak_leaves",count:64}]}
+cmd setblock 1 -59 48 composter[level=0]
+cmd setblock 1 -60 48 hopper[facing=east]
+cmd setblock 2 -60 48 chest
+cmd setblock 1 -58 52 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:short_grass",count:64}]}
+cmd setblock 1 -59 52 composter[level=0]
+cmd setblock 1 -60 52 hopper[facing=east]
+cmd setblock 2 -60 52 chest
+cmd setblock 1 -58 56 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:kelp",count:64}]}
+cmd setblock 1 -59 56 composter[level=0]
+cmd setblock 1 -60 56 hopper[facing=east]
+cmd setblock 2 -60 56 chest
+cmd setblock 1 -58 60 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:sugar_cane",count:64}]}
+cmd setblock 1 -59 60 composter[level=0]
+cmd setblock 1 -60 60 hopper[facing=east]
+cmd setblock 2 -60 60 chest
+cmd setblock 1 -58 64 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:baked_potato",count:64}]}
+cmd setblock 1 -59 64 composter[level=0]
+cmd setblock 1 -60 64 hopper[facing=east]
+cmd setblock 2 -60 64 chest
+cmd setblock 1 -58 68 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:red_mushroom",count:64}]}
+cmd setblock 1 -59 68 composter[level=0]
+cmd setblock 1 -60 68 hopper[facing=east]
+cmd setblock 2 -60 68 chest
+cmd setblock 1 -58 72 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:dandelion",count:64}]}
+cmd setblock 1 -59 72 composter[level=0]
+cmd setblock 1 -60 72 hopper[facing=east]
+cmd setblock 2 -60 72 chest
+cmd setblock 1 -58 76 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:cake",count:64}]}
+cmd setblock 1 -59 76 composter[level=0]
+cmd setblock 1 -60 76 hopper[facing=east]
+cmd setblock 2 -60 76 chest
+cmd setblock 1 -58 80 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:pumpkin_pie",count:64}]}
+cmd setblock 1 -59 80 composter[level=0]
+cmd setblock 1 -60 80 hopper[facing=east]
+cmd setblock 2 -60 80 chest
+cmd setblock 1 -58 84 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:beetroot",count:64}]}
+cmd setblock 1 -59 84 composter[level=0]
+cmd setblock 1 -60 84 hopper[facing=east]
+cmd setblock 2 -60 84 chest
+cmd setblock 1 -58 88 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:oak_sapling",count:64}]}
+cmd setblock 1 -59 88 composter[level=0]
+cmd setblock 1 -60 88 hopper[facing=east]
+cmd setblock 2 -60 88 chest
+cmd setblock 1 -58 92 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:fern",count:64}]}
+cmd setblock 1 -59 92 composter[level=0]
+cmd setblock 1 -60 92 hopper[facing=east]
+cmd setblock 2 -60 92 chest
+cmd setblock 1 -58 96 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:lily_pad",count:64}]}
+cmd setblock 1 -59 96 composter[level=0]
+cmd setblock 1 -60 96 hopper[facing=east]
+cmd setblock 2 -60 96 chest
+cmd setblock 1 -58 100 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:stone",count:64}]}
+cmd setblock 1 -59 100 composter[level=0]
+cmd setblock 1 -60 100 hopper[facing=east]
+cmd setblock 2 -60 100 chest
+wait 20
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108
+wait 900
+log states -1 -60 -1 4 -58 108
+log items -1 -60 -1 4 -58 108

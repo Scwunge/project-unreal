@@ -9,6 +9,7 @@
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McChestLink.h"
+#include "McCompost.h"
 #include "McEnchanting.h"
 #include "McEntityHost.h"
 #include "McFurnace.h"
@@ -396,7 +397,38 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 	// Out through the spout: into the top of the block below, or the side of the one beside.
 	const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing"));
 	const FIntVector Target = Pos + FacingStep(Facing);
-	if (!Items->IsEmpty())
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	const auto ComposterLevel = [&](const FIntVector& At) -> int32
+	{
+		const FMcBlockWorld* Block = WorldActor.GetBlockWorld();
+		const FMcStateId At_ = Block->GetBlock(At);
+		return GetBlockName(*Block, At) == TEXT("minecraft:composter") ? FCString::Atoi(*Blocks.GetPropertyValue(At_, TEXT("level")).ToString()) : -1;
+	};
+	if (!Items->IsEmpty() && Facing == TEXT("down") && ComposterLevel(Target) >= 0)
+	{
+		// From above a composter takes the first compostable item whole, and goes up a level by its chance (reference runs
+		// lg_compost, lg_compost3: levels 0 to 6 take items, 7 and 8 refuse them; the hopper keeps trying each tick).
+		const int32 Level = ComposterLevel(Target);
+		for (int32 Slot = 0; Level < 7 && Slot < Items->Num(); ++Slot)
+		{
+			const int32 Chance = McCompostChance(Items->Get(Slot).Item);
+			if (Items->Get(Slot).IsEmpty() || Chance == 0)
+			{
+				continue;
+			}
+			FMcItemStack Rest = Items->Get(Slot);
+			Rest.Count -= 1;
+			Items->Set(Slot, Rest.Count > 0 ? Rest : FMcItemStack());
+			if (FMath::RandRange(1, 100) <= Chance)
+			{
+				WorldActor.SetBlock(Target, Blocks.ParseState(FString::Printf(TEXT("minecraft:composter[level=%d]"), Level + 1)).Get(0));
+			}
+			ContentsChanged(WorldActor, Pos);
+			bMoved = true;
+			break;
+		}
+	}
+	else if (!Items->IsEmpty())
 	{
 		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
 		if (McHopper::MoveOne(Self, Into))
@@ -418,7 +450,17 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 	// In from above: out of the bottom of a container, or an item lying on the hopper.
 	const FIntVector Above = Pos + FIntVector(0, 1, 0);
 	const FMcSlotAccess From = GetAccess(WorldActor, Above, EFace::Bottom);
-	if (From.IsValid())
+	if (ComposterLevel(Above) == 8)
+	{
+		// A ready composter gives a bone meal to the hopper under it and empties.
+		FMcItemStack Meal(TEXT("minecraft:bone_meal"), 1);
+		if (McHopper::Insert(Self, Meal))
+		{
+			WorldActor.SetBlock(Above, Blocks.ParseState(TEXT("minecraft:composter[level=0]")).Get(0));
+			bMoved = true;
+		}
+	}
+	else if (From.IsValid())
 	{
 		if (McHopper::MoveOne(From, Self))
 		{

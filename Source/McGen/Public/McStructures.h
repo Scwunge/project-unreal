@@ -78,6 +78,7 @@ private:
 
 	bool IsStartChunk(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	const FStructure* Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk, TFunctionRef<bool(const FStructure&)> Fits) const;
+	bool BiomeSuits(const FStructure& S, FMcBiomeId SurfaceBiome, FIntPoint Chunk) const;
 	bool StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool bInRegion, FMcBiomeId& Biome) const;
 	bool IsFlatEnough(FIntPoint Start) const;
 	bool SurroundFits(const FStructure& Structure, FIntPoint Chunk) const;

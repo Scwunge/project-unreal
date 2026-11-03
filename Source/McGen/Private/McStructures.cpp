@@ -1126,13 +1126,24 @@ void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, FMcBiomeId
 	{
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
-			const FStructure* Structure = Choose(*Set, Seed, Chunk, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; });
+			const FStructure* Structure = Choose(*Set, Seed, Chunk, [this, Biome, Chunk](const FStructure& S) { return BiomeSuits(S, Biome, Chunk); });
 			if (Structure)
 			{
 				Out.Add(Structure->Id);
 			}
 		}
 	}
+}
+
+// A start that sits underground at an absolute height (an ancient city at -27) takes the biome there, not the surface biome.
+bool FMcStructureLibrary::BiomeSuits(const FStructure& S, FMcBiomeId SurfaceBiome, FIntPoint Chunk) const
+{
+	FMcBiomeId Biome = SurfaceBiome;
+	if (BiomeSource && !S.bProject && S.StartHeightMax < SeaLevel - 16 && S.StartHeightMax > MinY)
+	{
+		Biome = BiomeSource(Chunk.X * 16 + 8, S.StartHeightMin, Chunk.Y * 16 + 8);
+	}
+	return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome];
 }
 
 bool FMcStructureLibrary::StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool bInRegion, FMcBiomeId& Biome) const
@@ -1225,7 +1236,7 @@ void FMcStructureLibrary::GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
 			FMcBiomeId Biome;
-			const FStructure* Structure = StartBiome(Region, Chunk, true, Biome) ? Choose(*Set, Seed, Chunk, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; }) : nullptr;
+			const FStructure* Structure = StartBiome(Region, Chunk, true, Biome) ? Choose(*Set, Seed, Chunk, [this, Biome, Chunk](const FStructure& S) { return BiomeSuits(S, Biome, Chunk); }) : nullptr;
 			if (Structure && SurroundFits(*Structure, Chunk))
 			{
 				Out.Add(Structure->Id);
@@ -1249,7 +1260,7 @@ void FMcStructureLibrary::Place(FMcGenRegion& Region, uint64 Seed) const
 				if (IsStartChunk(*Set, Seed, Start))
 				{
 					FMcBiomeId Biome;
-					const FStructure* Structure = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome) ? Choose(*Set, Seed, Start, [Biome](const FStructure& S) { return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome]; }) : nullptr;
+					const FStructure* Structure = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome) ? Choose(*Set, Seed, Start, [this, Biome, Start](const FStructure& S) { return BiomeSuits(S, Biome, Start); }) : nullptr;
 					if (Structure && SurroundFits(*Structure, Start))
 					{
 						Build(Region, *Structure, Seed, Start, Set->Salt);

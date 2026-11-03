@@ -641,7 +641,8 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 		}
 		return;
 	}
-	// It walks to an ingot within 8 blocks (the range is a guess: only a drop a block away was measured).
+	// It walks to a dropped ingot up to 8 blocks away and ignores one 10 or more away (barter3.txt, 3 runs each at 1.5, 3, 4, 6, 8, 10,
+	// 12 and 16 blocks: all took it up to 8, none at 10 and beyond; 9 untested). Needs mob griefing on in the game rules, which this does not check.
 	TArray<FMcEntity*> Near;
 	Manager.FindInBox(FBox(Body.Position - FVector(8.0, 2.0, 8.0), Body.Position + FVector(8.0, 3.0, 8.0)), Near);
 	for (FMcEntity* Other : Near)

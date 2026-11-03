@@ -57,6 +57,8 @@ struct MCENTITY_API FMcMobType
 	// both measured in nether1.txt). Such a flier stops HoverRange blocks from its target (a guess) and shoots from there.
 	int32 FireballKind = 0;
 	double HoverRange = 0.0;
+	// A phantom circles its target and dives at it (atk1.txt, 900 ticks: close passes 155 to 232 ticks apart, mean 189, n=4).
+	bool bSwoops = false;
 	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
 	bool bSwims = false;
 	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
@@ -116,6 +118,10 @@ public:
 	// A ghast or blaze: ticks to its next fireball, and how many of a blaze's burst are left. Not saved.
 	int32 FireCooldown = 0;
 	int32 BurstLeft = 0;
+	// A swooper: ticks left in this circling or diving, whether it is diving, and its place on the circle.
+	int32 SwoopTicks = 0;
+	bool bDiving = false;
+	float OrbitAngle = 0.0f;
 	// A dropped gold ingot it is walking to. Not saved.
 	FVector BarterGoal = FVector::ZeroVector;
 	bool bHasBarterGoal = false;

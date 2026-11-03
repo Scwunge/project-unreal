@@ -107,6 +107,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// is a plain flier that bites; the guardians' beam, spikes and water rules, so they only swim and never attack here.
 		FMcMobType& Phantom = Add(TEXT("minecraft:phantom"), 0.9f, 0.5f, 20.f, 0.7f, 2.f, 16.f, false, true);
 		Phantom.bFlies = true;
+		Phantom.bSwoops = true;
 		Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 0.f, false, false).bSwims = true;
 		Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 0.f, false, false).bSwims = true;
 		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
@@ -1200,7 +1201,38 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		FVector Velocity = FVector::ZeroVector;
 		if (bHasTarget)
 		{
-			const FVector To = Target - Body.Position;
+			FVector To = Target - Body.Position;
+			double FlySpeed = Type.Speed * BlocksPerSecondPerSpeed / 20.0;
+			if (Type.bSwoops && bChasing)
+			{
+				// Measured on the reference (900 ticks): it circles within 12 blocks of the player (mean 5.8 across) and 1 to 28 above the
+				// feet (mean 9.5), at about 0.24 a tick, and dives at up to 0.59 a tick every 155 to 232 ticks (mean 189). The circle's
+				// radius and rate are fitted to those ranges, not logged.
+				if (--SwoopTicks <= 0)
+				{
+					bDiving = !bDiving;
+					SwoopTicks = bDiving ? 50 : Random.RandRange(140, 190);
+					if (!bDiving)
+					{
+						OrbitAngle = Random.FRandRange(0.0f, 2.0f * PI);
+					}
+				}
+				if (bDiving)
+				{
+					FlySpeed = 0.4;
+					if (To.SizeSquared() < 1.5 * 1.5)
+					{
+						bDiving = false;
+						SwoopTicks = Random.RandRange(140, 190);
+					}
+				}
+				else
+				{
+					OrbitAngle += 0.05f;
+					To = Target + FVector(FMath::Cos(OrbitAngle) * 6.0, 9.0, FMath::Sin(OrbitAngle) * 6.0) - Body.Position;
+					FlySpeed = 0.24;
+				}
+			}
 			if (Type.HoverRange > 0.0 && bChasing && To.SizeSquared() < FMath::Square(Type.HoverRange))
 			{
 				// Close enough to shoot from: holds still, facing it.
@@ -1212,7 +1244,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 			else
 			{
-				Velocity = To.GetSafeNormal() * (Type.Speed * BlocksPerSecondPerSpeed / 20.0) * (SwiftTicks > 0 ? 1.3 : 1.0);
+				Velocity = To.GetSafeNormal() * FlySpeed * (SwiftTicks > 0 ? 1.3 : 1.0);
 				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
 			}
 		}

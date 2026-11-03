@@ -877,10 +877,11 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	{
 		return;
 	}
-	if (Kind == TEXT("minecraft:slime"))
+	if (Kind == TEXT("minecraft:slime") || Kind == TEXT("minecraft:magma_cube"))
 	{
-		// Only low down in a slime chunk, and of a size that fits the room there.
-		if (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+		// A slime comes only low down in a slime chunk; both are of a size that fits the room there. (Magma cube sizes 1, 2 and 4
+		// are the game's; their shares were not measured.)
+		if (Kind == TEXT("minecraft:slime") && (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z))))
 		{
 			return;
 		}

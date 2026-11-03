@@ -53,6 +53,10 @@ struct MCENTITY_API FMcMobType
 	bool bHops = false;
 	// Bees fly: no gravity, and they wander at different heights.
 	bool bFlies = false;
+	// 1 for a ghast (one fireball every 60 to 85 ticks), 2 for a blaze (three small ones 6 ticks apart, a burst every 178 ticks;
+	// both measured in nether1.txt). Such a flier stops HoverRange blocks from its target (a guess) and shoots from there.
+	int32 FireballKind = 0;
+	double HoverRange = 0.0;
 	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
 	bool bSwims = false;
 	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
@@ -103,6 +107,9 @@ public:
 	int32 OfferTicks = 0;
 	// A piglin that took a gold ingot: ticks left before it throws what it gives for it. Not saved.
 	int32 BarterTicks = 0;
+	// A ghast or blaze: ticks to its next fireball, and how many of a blaze's burst are left. Not saved.
+	int32 FireCooldown = 0;
+	int32 BurstLeft = 0;
 	// A dropped gold ingot it is walking to. Not saved.
 	FVector BarterGoal = FVector::ZeroVector;
 	bool bHasBarterGoal = false;

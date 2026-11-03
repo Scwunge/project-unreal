@@ -3,6 +3,7 @@
 #include "McEntityManager.h"
 #include "McMob.h"
 #include "McPotion.h"
+#include "McFireball.h"
 #include "McVillager.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
@@ -69,7 +70,14 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcThrownPotion::StaticType())
+	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType())
+	{
+		// Drawn as the fire charge item (the game's own picture for it); its size and spin are not matched.
+		Kind = FMcItemEntity::StaticType();
+		ItemId = FName(TEXT("minecraft:fire_charge"));
+		ItemCount = 1;
+	}
+	else if (Kind == FMcThrownPotion::StaticType())
 	{
 		// Drawn as the splash potion bottle in flight.
 		Kind = FMcItemEntity::StaticType();

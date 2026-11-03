@@ -28,8 +28,10 @@ public:
 		{
 			FString ImportName;
 			FParse::Value(FCommandLine::Get(), TEXT("-McImportName="), ImportName);
+			// The chunks are converted while the world is played, unless -McImportWhole asks for all of them first.
 			McJavaImport::FStats Stats;
-			const FString Folder = McJavaImport::ImportWorld(ImportFrom, ImportName, Stats);
+			const FString Folder = FParse::Param(FCommandLine::Get(), TEXT("McImportWhole")) ? McJavaImport::ImportWorld(ImportFrom, ImportName, Stats)
+				: McJavaImport::BeginImport(ImportFrom, ImportName);
 			FString Existing;
 			if (!Folder.IsEmpty() && !FParse::Value(FCommandLine::Get(), TEXT("-McWorld="), Existing))
 			{

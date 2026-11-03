@@ -770,9 +770,9 @@ void AMcHUD::DrawImportJava(int32 Width, int32 Height)
 	const bool bSelected = JavaRows.IsValidIndex(SelectedJava);
 	if (MenuButton(TEXT("Import Selected World"), CentreX - 154.0f, Height - 28.0f, 150.0f, 20.0f, bSelected))
 	{
-		// A copy goes into Saved/Worlds; the Java folder is only read. It can take a while for a big world.
-		McJavaImport::FStats Stats;
-		const FString Folder = McJavaImport::ImportWorld(JavaRows[SelectedJava].Folder, FString(), Stats);
+		// A copy goes into Saved/Worlds; the Java folder is only read. The world is there at once and its chunks are
+		// converted while it is played, the ones near the spawn first.
+		const FString Folder = McJavaImport::BeginImport(JavaRows[SelectedJava].Folder, FString());
 		OpenMenu(EMenu::Worlds);
 		const int32 Imported = WorldRows.IndexOfByPredicate([&Folder](const FWorldRow& Row) { return Row.Folder == Folder; });
 		if (Imported != INDEX_NONE)

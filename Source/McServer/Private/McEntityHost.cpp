@@ -738,7 +738,6 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 			TUniquePtr<FMcDecorEntity> Decor = MakeUnique<FMcDecorEntity>();
 			if (Decor->Serialize(DataReader))
 			{
-				UE_LOG(LogMcServer, Display, TEXT("Restored scenery %s at %s"), *Decor->Look, *Decor->Body.Position.ToString());
 				Manager.Add(MoveTemp(Decor));
 				++Restored;
 			}

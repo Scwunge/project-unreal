@@ -16,6 +16,7 @@
 #include "McItemRegistry.h"
 #include "McNbt.h"
 #include "McWorldSave.h"
+#include "McWorldStorage.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/FileManager.h"
 #include "Misc/Compression.h"
@@ -716,6 +717,60 @@ bool FMcJavaImportBuildTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("its first line is the text that was set"), Sign->SignSides[0].Lines[0].Contains(TEXT("Imported")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportLiveTest, "McClient.McServer.JavaImport.Live",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// A world begun with BeginImport has no chunks until the live import runs: a chunk is asked for before its turn and comes
+// at once, and the rest follow until the dimension is marked done.
+bool FMcJavaImportLiveTest::RunTest(const FString& Parameters)
+{
+	FString Source;
+	for (const TCHAR* Candidate : { TEXT("E:/mc-reference/run/saves/importflat"), TEXT("C:/mc-reference/run/saves/importflat") })
+	{
+		if (McJavaImport::IsJavaWorld(Candidate))
+		{
+			Source = Candidate;
+			break;
+		}
+	}
+	if (Source.IsEmpty())
+	{
+		AddInfo(TEXT("no reference world on this machine; skipped"));
+		return true;
+	}
+	const FString Folder = McJavaImport::BeginImport(Source, TEXT("JavaImportLiveTest"));
+	if (!TestFalse(TEXT("the import began"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
+	FMcLevelData Level;
+	TestTrue(TEXT("the level is there"), McWorldSave::LoadLevel(WorldDir, Level));
+	{
+		TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage = MakeShared<FMcWorldStorage, ESPMode::ThreadSafe>(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:overworld")));
+		TArray<uint8> Early;
+		TestFalse(TEXT("nothing is saved before the import runs"), Storage->Load(FIntPoint(0, 0), Early));
+		const TSharedPtr<McJavaImport::FLiveImport, ESPMode::ThreadSafe> Live = McJavaImport::FLiveImport::Start(WorldDir, TEXT("minecraft:overworld"), Storage, FIntPoint(0, 0));
+		if (TestTrue(TEXT("the live import starts"), Live.IsValid()))
+		{
+			TArray<uint8> Bytes;
+			TestTrue(TEXT("a chunk asked for before its turn comes at once"), Storage->Load(FIntPoint(0, 0), Bytes) && Bytes.Num() > 0);
+			const double Deadline = FPlatformTime::Seconds() + 120.0;
+			while (!Live->IsFinished() && FPlatformTime::Seconds() < Deadline)
+			{
+				FPlatformProcess::Sleep(0.05f);
+			}
+			TestTrue(TEXT("it finishes"), Live->IsFinished());
+			Live->Stop();
+			TestTrue(TEXT("it is marked done"), IFileManager::Get().FileExists(*(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:overworld")) / TEXT("javaimport.done"))));
+			TestTrue(TEXT("a chunk is in the save"), Storage->Contains(FIntPoint(0, 0)));
+		}
+		Storage->Flush();
+	}
+	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
 

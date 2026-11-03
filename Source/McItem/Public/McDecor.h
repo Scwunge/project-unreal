@@ -61,6 +61,8 @@ namespace McDecor
 		bool bBasePlate = true;
 		FVector3f Pose[static_cast<int32>(EPart::Count)];
 		FString Equipment[static_cast<int32>(ESlot::Count)];
+		// A piece's dye, 0xRRGGBB, or -1 for none (leather then wears the game's brown); only leather takes it.
+		int32 Dye[static_cast<int32>(ESlot::Count)];
 
 		FDecor();
 	};

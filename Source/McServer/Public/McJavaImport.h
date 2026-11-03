@@ -15,6 +15,7 @@
 class FMcChunk;
 class FMcEntityManager;
 class FMcNbt;
+class FMcWorldStorage;
 struct FMcLevelData;
 
 namespace McJavaImport
@@ -79,6 +80,36 @@ namespace McJavaImport
 	// Imports the world in Source into Saved/Worlds/<new folder>, named Name (the vanilla level name if empty). Returns
 	// the folder name made, or an empty string on failure.
 	MCSERVER_API FString ImportWorld(const FString& Source, const FString& Name, FStats& OutStats);
+	// Adds Other's counts to Stats.
+	MCSERVER_API void AddStats(FStats& Stats, const FStats& Other);
+	// A world to play at once: the same copy as ImportWorld, but only its level and a note of where the Java folder is are
+	// made now (a moment, whatever the size). The chunks follow while the world is open (FLiveImport), the ones near the
+	// spawn first and any the game asks for sooner at once. Returns the folder made, or an empty string on failure.
+	MCSERVER_API FString BeginImport(const FString& Source, const FString& Name);
+
+	struct FLiveState;
+
+	// The rest of a world begun with BeginImport, for one dimension of it, on a thread of its own: regions nearest the
+	// spawn first, each across all cores, into the dimension's storage. The storage also asks it for a chunk that is not
+	// saved yet, so a chunk the player walks to before its turn comes at once. Finishing is noted in the dimension's
+	// folder; a world closed before that picks up where it was left (chunks already saved are skipped).
+	class MCSERVER_API FLiveImport : public TSharedFromThis<FLiveImport, ESPMode::ThreadSafe>
+	{
+	public:
+		// Null when the world has no import going on for the dimension.
+		static TSharedPtr<FLiveImport, ESPMode::ThreadSafe> Start(const FString& WorldDir, const FString& Dimension,
+			TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage, FIntPoint SpawnChunk);
+		~FLiveImport();
+		// Ends the thread after its current region and stops answering for the storage. Call before the storage goes.
+		void Stop();
+		bool IsFinished() const;
+		// Chunks seen and to see, over every dimension being imported; false if nothing is.
+		static bool GetProgress(int32& OutDone, int32& OutTotal);
+
+	private:
+		FLiveImport();
+		TSharedPtr<FLiveState, ESPMode::ThreadSafe> State;
+	};
 	// ---- Using what was kept ----
 	// Stands a flag in every banner block of the chunk that has none yet, patterned as the imported banner was (the
 	// patterns of its kept block entity, which the game does not read otherwise). Returns how many it stood.

@@ -213,9 +213,15 @@ namespace McHand
 		return FTransform(FMatrix(Image(FVector(1, 0, 0)), Image(FVector(0, 1, 0)), Image(FVector(0, 0, 1)), Origin));
 	}
 
-	FHeldDisplay ReadHeldDisplay(FName Item)
+	FHeldDisplay ReadHeldDisplay(FName Item, const TCHAR* Key)
 	{
 		FHeldDisplay Result;
+		if (FCString::Strcmp(Key, TEXT("firstperson_righthand")) != 0)
+		{
+			Result.Rotation = FVector::ZeroVector;
+			Result.Translation = FVector::ZeroVector;
+			Result.Scale = 1.0;
+		}
 		FString Model = TEXT("item/") + McCache::PathOf(Item.ToString());
 		for (int32 Depth = 0; Depth < 6; ++Depth)
 		{
@@ -228,7 +234,7 @@ namespace McHand
 			const TSharedPtr<FJsonObject>* Display = nullptr;
 			const TSharedPtr<FJsonObject>* Displays = nullptr;
 			const TSharedPtr<FJsonObject>* Hand = nullptr;
-			if (Json->TryGetObjectField(TEXT("display"), Displays) && (*Displays)->TryGetObjectField(TEXT("firstperson_righthand"), Hand))
+			if (Json->TryGetObjectField(TEXT("display"), Displays) && (*Displays)->TryGetObjectField(Key, Hand))
 			{
 				auto Triple = [&Hand](const TCHAR* Name, FVector& Out)
 				{
@@ -243,6 +249,7 @@ namespace McHand
 				Triple(TEXT("translation"), Result.Translation);
 				Triple(TEXT("scale"), ScaleValues);
 				Result.Scale = ScaleValues.X;
+				Result.bFound = true;
 				break;
 			}
 			FString Parent;

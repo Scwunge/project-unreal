@@ -18,6 +18,7 @@
 
 class FMcFeatureLibrary;
 class FMcWorldStorage;
+namespace McJavaImport { class FLiveImport; }
 
 UCLASS()
 class MCSERVER_API AMcWorldActor : public AActor
@@ -350,6 +351,8 @@ private:
 	FMcLevelData Level;
 	// Shared with the worker tasks that read chunks from it, like the generator.
 	TSharedPtr<FMcWorldStorage, ESPMode::ThreadSafe> Storage;
+	// The rest of an imported Java world coming in, while its chunks are still being converted.
+	TSharedPtr<McJavaImport::FLiveImport, ESPMode::ThreadSafe> LiveImport;
 	// What a loaded chunk's save looks like, to tell whether it needs writing again.
 	struct FChunkState
 	{

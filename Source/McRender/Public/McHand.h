@@ -52,10 +52,13 @@ namespace McHand
 		FVector Rotation = FVector(0.0, -90.0, 25.0);
 		FVector Translation = FVector(1.13, 3.2, 1.13);
 		double Scale = 0.68;
+		// Whether the model gave the asked display (not the defaults).
+		bool bFound = false;
 	};
 
 	// The hand display of an item's model in the cache, following its parents (the flat-item default if it has none).
-	MCRENDER_API FHeldDisplay ReadHeldDisplay(FName Item);
+	// Key names another display ("thirdperson_righthand"); an item without it then has none (no turn, no shift, scale 1).
+	MCRENDER_API FHeldDisplay ReadHeldDisplay(FName Item, const TCHAR* Key = TEXT("firstperson_righthand"));
 
 	// Where the held thing sits when the arm is at rest, in the camera's space. Display is only for flat items.
 	MCRENDER_API FTransform GetHeldRestTransform(EHeld Kind, const FHeldDisplay& Display = FHeldDisplay());

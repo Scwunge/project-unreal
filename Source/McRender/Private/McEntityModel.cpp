@@ -665,19 +665,19 @@ namespace McEntityModel
 				Models.Add(Blaze.Kind, Blaze);
 			}
 			{
-				// A phantom, from the logged model (`phantom1.txt`, one frame): body, head, two wing pairs and a two-part tail on a 64 x 64 picture, all at their rest tilts. The wing flap and the tail sway are not fitted.
+				// A phantom, from the logged model (`phantom1.txt`, one frame): body, head, two wing pairs and a two-part tail on a 64 x 64 picture, all at their rest tilts. The wing flap and the tail sway are not fitted. Lowered 21 (1.3125 blocks) from the log's pivots to sit in the hitbox: the reference shows a phantom on the ground with its wings flat on it (pairshots1.txt); the exact lift is not measured.
 				FModel Phantom;
 				Phantom.Kind = TEXT("minecraft:phantom");
 				Phantom.TextureSize = FIntPoint(64, 64);
 				Phantom.Textures = { TEXT("phantom/phantom.png") };
-				Phantom.Parts.Add(Part(ERole::Static, FVector(2f, 26f, 8f), { Box(23, 12, 0f, -2f, -9f, 6f, 2f, 9f) }, 0f, 0, -0.1f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(7.97f, 25.4f, 8f), { Box(16, 24, 0f, -1f, -9f, 13f, 1f, 9f) }, 0f, 0, -0.2f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(-3f, 26f, 8f), { Box(23, 12, -6f, -2f, -9f, 6f, 2f, 9f) }, 0f, 0, 0.1f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(-8.97f, 25.4f, 8f), { Box(16, 24, -13f, -1f, -9f, 13f, 1f, 9f) }, 0f, 0, 0.2f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(0f, 26f, -1f), { Box(3, 20, -2f, -2f, -6f, 3f, 2f, 6f) }, 0f, 0, 0f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(0f, 25.5f, -7f), { Box(4, 29, -1f, -1f, -6f, 1f, 1f, 6f) }, 0f, 0, 0f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(0f, 24f, 0), { Box(0, 8, -3f, -1f, -1f, 5f, 3f, 9f) }, -0.1f, 0, 0f));
-				Phantom.Parts.Add(Part(ERole::Static, FVector(0f, 23.7f, 7.065f), { Box(0, 0, -4f, -1f, 0, 7f, 3f, 5f) }, 0.1f, 0, 0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(2.0f, 5.0f, 8.0f), { Box(23, 12, 0.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, -0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(7.97f, 4.4f, 8.0f), { Box(16, 24, 0.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, -0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.0f, 8.0f), { Box(23, 12, -6.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, 0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-8.97f, 4.4f, 8.0f), { Box(16, 24, -13.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, 0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.0f, -1.0f), { Box(3, 20, -2.0f, -2.0f, -6.0f, 3, 2, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.5f, -7.0f), { Box(4, 29, -1.0f, -1.0f, -6.0f, 1, 1, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, 0), { Box(0, 8, -3.0f, -1.0f, -1.0f, 5, 3, 9) }, -0.1f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.7f, 7.065f), { Box(0, 0, -4.0f, -1.0f, 0, 7, 3, 5) }, 0.1f, 0, 0.0f));
 				Models.Add(Phantom.Kind, Phantom);
 			}
 			{
@@ -686,23 +686,23 @@ namespace McEntityModel
 				Guardian.Kind = TEXT("minecraft:guardian");
 				Guardian.TextureSize = FIntPoint(64, 64);
 				Guardian.Textures = { TEXT("guardian/guardian.png") };
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 24f, 0), { Box(0, 0, -6f, -22f, -8f, 12f, 12f, 16f), Box(0, 28, -8f, -22f, -6f, 2f, 12f, 12f), Box(0, 28, 6f, -22f, -6f, 2f, 12f, 12f), Box(16, 40, -6f, -10f, -6f, 12f, 2f, 12f), Box(16, 40, -6f, -24f, -6f, 12f, 2f, 12f) }, 0f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(7.933f, 0.0671f, 0), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 0f, 0, -2.356f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-8f, -0.0004f, 0), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 0f, 0, 2.356f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(8.077f, 8f, -8.077f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, -1.571f, 0.7854f, 3.142f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.06f, 8f, -8.06f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, -1.571f, -0.7854f, 3.142f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 0.0116f, -7.988f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, -2.356f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 0.0729f, 7.927f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 2.356f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 24f, 8.25f), { Box(8, 0, -1f, -17f, -1f, 2f, 2f, 1f) }, 0f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 24f, 0), { Box(40, 0, -2f, -18f, -15f, 4f, 4f, 8f) }, 0f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.5f, 23.5f, -14f), { Box(0, 54, 0f, -17f, -7f, 3f, 3f, 7f) }, 0f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-1f, 23f, -20f), { Box(41, 32, 0f, -16f, -6f, 2f, 2f, 6f), Box(25, 19, 1f, -19.5f, -12f, 1f, 9f, 9f) }, 0f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 16.08f, -8.08f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, -0.7854f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(0f, 16.04f, 8.043f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 0.7854f, 0, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(7.967f, 15.97f, 0), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 0f, 0, -0.7854f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.921f, 15.92f, 0), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 0f, 0, 0.7854f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.948f, 8f, 7.948f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 1.571f, -0.7854f, 0f));
-				Guardian.Parts.Add(Part(ERole::Static, FVector(8.023f, 8f, 8.023f), { Box(0, 0, -1f, -4.5f, -1f, 2f, 9f, 2f) }, 1.571f, 0.7854f, 0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(0, 0, -6.0f, -22.0f, -8.0f, 12, 12, 16), Box(0, 28, -8.0f, -22.0f, -6.0f, 2, 12, 12), Box(0, 28, 6.0f, -22.0f, -6.0f, 2, 12, 12), Box(16, 40, -6.0f, -10.0f, -6.0f, 12, 2, 12), Box(16, 40, -6.0f, -24.0f, -6.0f, 12, 2, 12) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.933f, 0.0671f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.0f, -0.0004f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.077f, 8.0f, -8.077f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, 0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.06f, 8.0f, -8.06f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, -0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0116f, -7.988f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0729f, 7.927f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 8.25f), { Box(8, 0, -1.0f, -17.0f, -1.0f, 2, 2, 1) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(40, 0, -2.0f, -18.0f, -15.0f, 4, 4, 8) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.5f, 23.5f, -14.0f), { Box(0, 54, 0.0f, -17.0f, -7.0f, 3, 3, 7) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.0f, 23.0f, -20.0f), { Box(41, 32, 0.0f, -16.0f, -6.0f, 2, 2, 6), Box(25, 19, 1.0f, -19.5f, -12.0f, 1, 9, 9) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.08f, -8.08f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.04f, 8.043f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.967f, 15.97f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.921f, 15.92f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.948f, 8.0f, 7.948f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, -0.7854f, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.023f, 8.0f, 8.023f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, 0.7854f, 0.0f));
 				Models.Add(Guardian.Kind, Guardian);
 			}
 			{
@@ -726,7 +726,8 @@ namespace McEntityModel
 				Shulker.TextureSize = FIntPoint(64, 64);
 				Shulker.Textures = { TEXT("shulker/shulker.png") };
 				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 28, -8, 0, -8, 16, 8, 16) }));
-				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -8, 4, -8, 16, 12, 16) }));
+				// The lid is a hair bigger than the game's, so its notched lower edge shows the base through the gaps instead of fighting it for the depth.
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -8, 4, -8, 16, 12, 16, 0.02f) }));
 				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 52, -3, -6, -3, 6, 6, 6) }));
 				Models.Add(Shulker.Kind, Shulker);
 			}
@@ -738,15 +739,15 @@ namespace McEntityModel
 				Strider.Kind = TEXT("minecraft:strider");
 				Strider.TextureSize = FIntPoint(64, 128);
 				Strider.Textures = { TEXT("strider/strider.png") };
-				Strider.Parts.Add(Part(ERole::Static, FVector(0, 23, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
+				Strider.Parts.Add(Part(ERole::Static, FVector(0, 21.7f, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
 				Strider.Parts.Add(Part(ERole::LegRight, FVector(-4, 16, 0), { Box(0, 32, -2, -16, -2, 4, 16, 4) }));
 				Strider.Parts.Add(Part(ERole::LegLeft, FVector(4, 16, 0), { Box(0, 55, -2, -16, -2, 4, 16, 4) }));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19.0f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24.0f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28.0f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29.0f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25.0f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20.0f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
 				Models.Add(Strider.Kind, Strider);
 			}
 			{
@@ -758,15 +759,15 @@ namespace McEntityModel
 				Ghast.Scale = 4.5f;
 				Ghast.Textures = { TEXT("ghast/ghast.png") };
 				Ghast.Parts.Add(Part(ERole::Static, FVector(0, 6.4f, 0), { Box(0, 0, -8, -8, -8, 16, 16, 16) }));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5.0f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5.0f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0.0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
 				Models.Add(Ghast.Kind, Ghast);
 			}
 			{

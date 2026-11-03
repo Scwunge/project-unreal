@@ -401,6 +401,27 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
 	}
+	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
+	{
+		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Mob = AddMob(Manager, Kind, FVector(10.5, 1.0, 10.5));
+		const int32 Id = Mob->Id;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		bool bFound = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bFound |= Entity->Id == Id;
+		}
+		TestTrue(FString::Printf(TEXT("%s is still there after 200 ticks"), Kind), bFound);
+	}
 	return true;
 }
 

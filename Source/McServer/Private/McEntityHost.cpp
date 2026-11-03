@@ -1076,6 +1076,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
 					{
 						Spawned->bFrozen = true;
+						UE_LOG(LogMcServer, Display, TEXT("McMobRow: %s spawned at %.1f %d %d, id %d"), *Kinds[Index], X, Y.GetValue(), Z, Spawned->Id);
 						if (FParse::Param(FCommandLine::Get(), TEXT("McMobRowBaby")) && FMcMob::CanBeYoung(Spawned->GetType()))
 						{
 							Spawned->SetYoung(FMcMob::YoungSpan);

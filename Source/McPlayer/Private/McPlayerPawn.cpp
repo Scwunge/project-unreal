@@ -377,7 +377,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	if (UMcHandComponent* Arm = Hand.Get())
 	{
 		// Only the player at the keyboard sees their own hand, and not while dead.
-		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden);
+		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden && !bSpyLocal);
 		const FMcItemStack& Held = Data->GetSelected();
 		// A bow being drawn shows the picture of how far.
 		FName HeldName = Held.IsEmpty() ? NAME_None : Held.Item;
@@ -745,7 +745,36 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		Camera->SetFieldOfView(BowBaseFov);
 		BowBaseFov = 0.0f;
 	}
-	const bool bUsingNow = bEating || bDraw;
+	// A spyglass in hand is held to the eye by holding the use button.
+	const bool bScope = !bEating && !bDraw && !Held.IsEmpty() && Held.Item == TEXT("minecraft:spyglass") && Player.IsInputKeyDown(EKeys::RightMouseButton);
+	bSpyLocal = bScope;
+	SpyAcc += GetWorld()->GetDeltaSeconds();
+	while (SpyAcc >= 0.05f)
+	{
+		SpyAcc -= 0.05f;
+		SpyOld = SpyMod;
+		SpyMod += ((bScope ? 0.1f : 1.0f) - SpyMod) * 0.5f;
+		ScopeOld = ScopeNow;
+		ScopeNow = bScope ? ScopeNow + (1.122f - ScopeNow) * 0.5f : 0.5f;
+	}
+	if (!bScope && ScopeNow == 0.5f)
+	{
+		ScopeOld = 0.5f;
+	}
+	if (bScope || SpyMod < 0.9999f)
+	{
+		if (SpyBaseFov <= 0.0f)
+		{
+			SpyBaseFov = Camera->FieldOfView;
+		}
+		Camera->SetFieldOfView(SpyBaseFov * FMath::Lerp(SpyOld, SpyMod, FMath::Clamp(SpyAcc / 0.05f, 0.0f, 1.0f)));
+	}
+	else if (SpyBaseFov > 0.0f)
+	{
+		Camera->SetFieldOfView(SpyBaseFov);
+		SpyBaseFov = 0.0f;
+	}
+	const bool bUsingNow = bEating || bDraw || bScope;
 	if (bUsingNow != bUsingSent)
 	{
 		bUsingSent = bUsingNow;
@@ -2299,6 +2328,14 @@ void AMcPlayerPawn::ServerUseMob_Implementation(FVector Look)
 
 void AMcPlayerPawn::ServerSetUsing_Implementation(bool bUsing)
 {
+	if (bUsing != bServerUsing && Data && Data->GetSelected().Item == TEXT("minecraft:spyglass"))
+	{
+		// Volume and pitch are not measured.
+		if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
+		{
+			Entities->PlaySound(bUsing ? FName(TEXT("item.spyglass.use")) : FName(TEXT("item.spyglass.stop_using")), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 1.0f, 1.0f);
+		}
+	}
 	bServerUsing = bUsing;
 	if (!bUsing)
 	{

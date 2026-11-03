@@ -2052,6 +2052,16 @@ void AMcHUD::DrawHUD()
 				FLinearColor(1.0f, 1.0f, 1.0f, Player ? StepVignette(*Player) : 0.0f));
 		}
 	}
+	// A spyglass at the eye: a square scope picture, taller than the screen, with black beside it (GUI units).
+	if (Player && Player->IsScoping() && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead)
+	{
+		const float Side = Player->GetScopeScale() * static_cast<float>(Height);
+		const float Left = (static_cast<float>(Width) - Side) * 0.5f;
+		const float RightEdge = Left + Side;
+		DrawFill(0.0f, 0.0f, FMath::Max(Left, 0.0f), static_cast<float>(Height), FLinearColor::Black);
+		DrawFill(FMath::Min(RightEdge, static_cast<float>(Width)), 0.0f, FMath::Max(static_cast<float>(Width) - RightEdge, 0.0f), static_cast<float>(Height), FLinearColor::Black);
+		DrawSprite(LoadSprite(TEXT("textures/misc/spyglass_scope.png")), Left, (static_cast<float>(Height) - Side) * 0.5f, Side, Side);
+	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{

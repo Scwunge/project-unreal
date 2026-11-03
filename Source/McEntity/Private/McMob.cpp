@@ -102,6 +102,13 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Blaze.HoverRange = 16.0;
 		// Measured 2026-11-03 (endmobs1.txt, enddims1.txt): endermite 8 hp, speed 0.25, attack 2, follow 16, box 0.4 x 0.3; shulker 30 hp, speed 0.7 but it never walks,
 		// follow 16, box 1 x 1. The shulker's bullets, its peeking lid and the endermite's pearl spawn are not built, so the shulker only stands.
+		// Measured 2026-11-03 (phantom1.txt, enddims1.txt; NoAI summons): phantom 20 hp, speed 0.7, attack 2, follow 16, box 0.9 x 0.5; guardian 30 hp, 0.5, attack 6,
+		// follow 16, box 0.85; elder guardian 80 hp, 0.3, attack 8, follow 16, box 1.9975. NOT measured: the phantom's swoop (the one hunt run flew nowhere in the log) so it
+		// is a plain flier that bites; the guardians' beam, spikes and water rules, so they only swim and never attack here.
+		FMcMobType& Phantom = Add(TEXT("minecraft:phantom"), 0.9f, 0.5f, 20.f, 0.7f, 2.f, 16.f, false, true);
+		Phantom.bFlies = true;
+		Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 0.f, false, false).bSwims = true;
+		Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 0.f, false, false).bSwims = true;
 		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
 		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);

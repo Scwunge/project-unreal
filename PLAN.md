@@ -639,3 +639,11 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
   extracts too) is a fixed last row of Selected with no arrows. Titles and "(built-in)" come from the game's lang. Shot
   against vanilla's screen. The 1070 needs those cache files copied by hand (the cache is not synced). Not done: the
   in-world blur behind the screen.
+
+- **In-world menu background (2026-11-03, written, NOT built or shot yet).** The game blurs the world behind the pause menu,
+  Options and Resource Packs (three box-blur passes each way, the Menu Background Blur option, default 5; an edge goes soft
+  over about 12 pixels at 1280 x 720) and darkens it to exactly 0.748 of the plain view at every point (vanilla shots
+  `blur_plain`/`blur_options`, script `blur_edge.txt`). We drew a 0.45 black fill. Now `DrawWorldMenuDim` draws 0.252 and
+  `UpdateMenuBlur` turns on an unbound post volume with Gaussian depth of field that blurs everything (`-McMenuBlur=<%
+  of width>` tunes it, default 0.6, a guess). To do once builds are allowed: build, shoot the Options screen in a world and
+  compare the edge width (12 px) and the 0.748 with `ref_blur_options.png`.

@@ -1800,6 +1800,8 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 void AMcHUD::DrawHUD()
 {
 	Super::DrawHUD();
+	// Chat is the one world menu that leaves the world sharp.
+	UpdateMenuBlur(IsWorldMenu() && ActiveMenu != EMenu::Chat);
 #if !UE_BUILD_SHIPPING
 	// Development: -McReload=<seconds> asks for the reload (F3+T) that long into the run, once.
 	static double DevReloadAt = -1.0;

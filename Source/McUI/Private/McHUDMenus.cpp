@@ -4,6 +4,7 @@
 
 #include "McHUD.h"
 #include "McCache.h"
+#include "Engine/PostProcessVolume.h"
 #include "McLang.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
@@ -814,7 +815,7 @@ void AMcHUD::DrawMessage(int32 Width, int32 Height)
 void AMcHUD::DrawPause(int32 Width, int32 Height)
 {
 	// The world goes on behind (a server doesn't stop for one player, and a world of one doesn't stop yet either).
-	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+	DrawWorldMenuDim(Width, Height);
 	const float CentreX = Width / 2.0f;
 	DrawCentredText(TEXT("Game Menu"), CentreX, 40.0f, White);
 	const bool bClient = GetNetMode() == NM_Client;
@@ -855,7 +856,7 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	if (OptionsBack == EMenu::Pause)
 	{
 		// Over the world, like the pause menu it came from.
-		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+		DrawWorldMenuDim(Width, Height);
 	}
 	else
 	{
@@ -1017,6 +1018,56 @@ void AMcHUD::OpenResourcePacks()
 	OpenMenu(EMenu::ResourcePacks);
 }
 
+void AMcHUD::DrawWorldMenuDim(int32 Width, int32 Height)
+{
+	// Measured on the game's Options screen over a flat scene: every colour, at every height and side, is 0.748 of what the
+	// plain view shows (grass 85,110,55 -> 63,82,41; wool 232,235,237 -> 174,176,177).
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.252f));
+}
+
+void AMcHUD::UpdateMenuBlur(bool bOn)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	if (!MenuBlur.IsValid())
+	{
+		if (!bOn)
+		{
+			return;
+		}
+		// Everything beyond a hair's breadth from the camera is "out of focus", so the Gaussian depth of field blurs the
+		// whole picture; the HUD is drawn after it and stays sharp. The game blurs by three box passes in each direction
+		// (an edge turns from sharp to soft over about 12 pixels at 1280 x 720); -McMenuBlur=<percent of the width> tunes it.
+		APostProcessVolume* Volume = World->SpawnActor<APostProcessVolume>();
+		Volume->bUnbound = true;
+		Volume->Priority = 50.0f;
+		float Size = 0.6f;
+		FParse::Value(FCommandLine::Get(), TEXT("-McMenuBlur="), Size);
+		FPostProcessSettings& Settings = Volume->Settings;
+		Settings.bOverride_DepthOfFieldMethod = true;
+		Settings.DepthOfFieldMethod = DOFM_Gaussian;
+		Settings.bOverride_DepthOfFieldFocalDistance = true;
+		Settings.DepthOfFieldFocalDistance = 1.0f;
+		Settings.bOverride_DepthOfFieldFocalRegion = true;
+		Settings.DepthOfFieldFocalRegion = 0.0f;
+		Settings.bOverride_DepthOfFieldNearTransitionRegion = true;
+		Settings.DepthOfFieldNearTransitionRegion = 0.0f;
+		Settings.bOverride_DepthOfFieldFarTransitionRegion = true;
+		Settings.DepthOfFieldFarTransitionRegion = 1.0f;
+		Settings.bOverride_DepthOfFieldScale = true;
+		Settings.DepthOfFieldScale = 1.0f;
+		Settings.bOverride_DepthOfFieldNearBlurSize = true;
+		Settings.DepthOfFieldNearBlurSize = Size;
+		Settings.bOverride_DepthOfFieldFarBlurSize = true;
+		Settings.DepthOfFieldFarBlurSize = Size;
+		MenuBlur = Volume;
+	}
+	MenuBlur->bEnabled = bOn;
+}
+
 void AMcHUD::ClearPackCaches()
 {
 	// The menu pictures come from the packs too.
@@ -1104,7 +1155,7 @@ void AMcHUD::DrawResourcePacks(int32 Width, int32 Height)
 {
 	if (OptionsBack == EMenu::Pause)
 	{
-		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+		DrawWorldMenuDim(Width, Height);
 	}
 	else
 	{
@@ -1365,7 +1416,7 @@ void AMcHUD::DrawConfirmIncompatible(int32 Width, int32 Height)
 {
 	if (OptionsBack == EMenu::Pause)
 	{
-		DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 0.45f));
+		DrawWorldMenuDim(Width, Height);
 	}
 	else
 	{

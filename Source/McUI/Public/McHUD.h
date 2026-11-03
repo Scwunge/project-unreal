@@ -190,6 +190,10 @@ private:
 	void DrawResourcePacks(int32 Width, int32 Height);
 	void ApplyResourcePacks();
 	void ClearPackCaches();
+	// The world behind a menu that is open over it: blurred (a post volume) and darkened (DrawWorldMenuDim), as the game does.
+	void UpdateMenuBlur(bool bOn);
+	void DrawWorldMenuDim(int32 Width, int32 Height);
+	TWeakObjectPtr<class APostProcessVolume> MenuBlur;
 	void ReloadResources();
 	// Chat: the lines the player has been told, above the hotbar (the last ten, fading after ten seconds; with the
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go

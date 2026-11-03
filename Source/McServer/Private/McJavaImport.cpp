@@ -966,7 +966,6 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 						int32 Count = Here->Count;
 						CountWriter << Count;
 						Extras.Entities.Append(Here->Body);
-						UE_LOG(LogMcServer, Display, TEXT("Scenery in chunk %d, %d: %d, %d bytes"), Pos.X, Pos.Y, Here->Count, Extras.Entities.Num());
 					}
 					Storage.QueueSave(Pos, McChunkSave::Encode(Chunk, Extras));
 					++OutStats.Chunks;

@@ -979,6 +979,12 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 				const int32 Z = -8192 + J * 256;
 				const FMcClimate Climate = Generator.SampleClimate(X, 64, Z);
 				int32 Hint = INDEX_NONE;
+				{
+					// The same grid at y -27 (ancient cities start there): the biome only.
+					const FMcClimate Deep = Generator.SampleClimate(X, -27, Z);
+					int32 DeepHint = INDEX_NONE;
+					AddInfo(FString::Printf(TEXT("CBD %d %d %d %s"), SeedIndex, X, Z, *Registry.GetName(Source.Find(Deep, DeepHint)).ToString()));
+				}
 				AddInfo(FString::Printf(TEXT("CB %d %d %d %lld %lld %lld %lld %lld %lld %s"), SeedIndex, X, Z,
 					FMath::RoundToInt64(Climate.Values[0] * 10000), FMath::RoundToInt64(Climate.Values[1] * 10000), FMath::RoundToInt64(Climate.Values[2] * 10000),
 					FMath::RoundToInt64(Climate.Values[3] * 10000), FMath::RoundToInt64(Climate.Values[4] * 10000), FMath::RoundToInt64(Climate.Values[5] * 10000),

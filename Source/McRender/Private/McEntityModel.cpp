@@ -306,6 +306,18 @@ namespace McEntityModel
 				Models.Add(Zombie.Kind, Zombie);
 			}
 			{
+				// The drowned: the zombie's body with its own picture (the swimming pose, the second picture it wears over it and the
+				// trident's own hold are not done: the trident is drawn as its flat inventory picture).
+				FModel Drowned;
+				Drowned.Kind = TEXT("minecraft:drowned");
+				Drowned.TextureSize = FIntPoint(64, 64);
+				Drowned.Textures = { TEXT("zombie/drowned.png") };
+				Drowned.bArmsForward = true;
+				AddPerson(Drowned, false, true);
+				AddHeldItemInHand(Drowned, FVector(-5, 22, 0));
+				Models.Add(Drowned.Kind, Drowned);
+			}
+			{
 				struct FIllager { const TCHAR* Name; int32 Style; const TCHAR* Held; };
 				for (const FIllager& Each : { FIllager{ TEXT("pillager"), 1, TEXT("crossbow_standby") }, FIllager{ TEXT("vindicator"), 2, TEXT("iron_axe") }, FIllager{ TEXT("evoker"), 3, nullptr } })
 				{

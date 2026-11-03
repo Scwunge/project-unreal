@@ -21,6 +21,7 @@
 #include "McGameViewportClient.h"
 #include "McItemRegistry.h"
 #include "McLang.h"
+#include "McSound.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -1490,6 +1491,88 @@ void AMcHUD::DrawHUD()
 	else if (IsWorldMenu())
 	{
 		DrawMenus(Width, Height, false);
+	}
+	DrawToasts(Width, Height);
+}
+
+void AMcHUD::DrawToasts(int32 Width, int32 Height)
+{
+	TArray<UMcPlayerDataComponent::FToast>& Toasts = UMcPlayerDataComponent::GetToasts();
+	if (Toasts.IsEmpty())
+	{
+		return;
+	}
+	LoadFont();
+	// Measured against the reference client (toast1 and toast2 runs, an advancement granted with the command): the
+	// panel is the 160 by 32 toast sprite at the top right; `ui.toast.in` (volume 0.4, heard everywhere) plays as it
+	// arrives; it slides in over about 13 ticks, with the part still outside the screen 1 - s^2 of its width (s the
+	// share of the time gone, fitted to shots every two ticks), stays until tick 112 (5.6 seconds), then `ui.toast.out`
+	// plays and it slides out in 12 ticks, the part outside s^2 of its width (fitted the same way). The heading is at
+	// (30, 7) and the title at (30, 18), the icon at (8, 8). Slots below one another every 32 pixels, up to five.
+	constexpr double InSeconds = 13.0 / 20.0;
+	constexpr double HoldSeconds = 112.0 / 20.0;
+	constexpr double OutSeconds = 12.0 / 20.0;
+	constexpr int32 Slots = 5;
+	const double Now = FPlatformTime::Seconds();
+	FVector Eye = FVector::ZeroVector;
+	FRotator Look;
+	if (APlayerController* Player = GetOwningPlayerController())
+	{
+		Player->GetPlayerViewPoint(Eye, Look);
+	}
+	const auto Play = [&Eye](const TCHAR* Name)
+	{
+		FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(Name), McCoords::UnrealToBlock(Eye), 0.4f, 1.0f });
+	};
+	int32 Slot = 0;
+	for (int32 Index = 0; Index < Toasts.Num();)
+	{
+		UMcPlayerDataComponent::FToast& Toast = Toasts[Index];
+		// Only the first five show; the rest wait their turn (their clock starts when they get a slot).
+		if (Slot >= Slots)
+		{
+			Toast.Time = FMath::Max(Toast.Time, Now);
+			++Index;
+			continue;
+		}
+		const double Age = Now - Toast.Time;
+		if (Age >= HoldSeconds + OutSeconds)
+		{
+			Toasts.RemoveAt(Index);
+			continue;
+		}
+		if (!Toast.bInSounded)
+		{
+			Toast.bInSounded = true;
+			Play(TEXT("ui.toast.in"));
+		}
+		double Hidden = 0.0;
+		if (Age < InSeconds)
+		{
+			const double S = Age / InSeconds;
+			Hidden = 1.0 - S * S;
+		}
+		else if (Age >= HoldSeconds)
+		{
+			if (!Toast.bOutSounded)
+			{
+				Toast.bOutSounded = true;
+				Play(TEXT("ui.toast.out"));
+			}
+			const double S = (Age - HoldSeconds) / OutSeconds;
+			Hidden = S * S;
+		}
+		const float X = Width - 160.0f + static_cast<float>(Hidden) * 160.0f;
+		const float Y = Slot * 32.0f;
+		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/toast/advancement.png")), X, Y, 160, 32);
+		DrawGuiText(Toast.Heading, X + 30.0f, Y + 7.0f, Toast.HeadingRgb, false);
+		DrawGuiText(Toast.Title, X + 30.0f, Y + 18.0f, 0xFFFFFF, false);
+		if (Toast.Icon != NAME_None)
+		{
+			DrawStack(FMcItemStack(Toast.Icon, 1), X + 8.0f, Y + 8.0f);
+		}
+		++Slot;
+		++Index;
 	}
 }
 

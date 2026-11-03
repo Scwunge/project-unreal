@@ -1044,6 +1044,59 @@ namespace
 			return Found;
 		}
 
+		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			const FString Full = McCache::Namespaced(Id);
+			const TSharedPtr<FJsonObject> Def = McCache::LoadJsonObject(McCache::Data(FString::Printf(TEXT("advancement/%s.json"), *McCache::PathOf(Full))));
+			if (!Pawn || !Pawn->Data || !Def.IsValid())
+			{
+				return -1;
+			}
+			// Its display (the game's data): the title's lang key, the icon item and the frame (task, goal, challenge).
+			const TSharedPtr<FJsonObject>* Display = nullptr;
+			FString Title = Full;
+			FName Icon;
+			FString Frame = TEXT("task");
+			bool bToast = false;
+			if (Def->TryGetObjectField(TEXT("display"), Display))
+			{
+				const TSharedPtr<FJsonObject>* TitleObject = nullptr;
+				FString Key;
+				if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
+				{
+					Title = McLang::Get(Key);
+				}
+				const TSharedPtr<FJsonObject>* IconObject = nullptr;
+				FString IconId;
+				if ((*Display)->TryGetObjectField(TEXT("icon"), IconObject) && (*IconObject)->TryGetStringField(TEXT("id"), IconId))
+				{
+					Icon = FName(*IconId);
+				}
+				(*Display)->TryGetStringField(TEXT("frame"), Frame);
+				bToast = true;
+				(*Display)->TryGetBoolField(TEXT("show_toast"), bToast);
+			}
+			OutTitle = Def->HasField(TEXT("display")) ? TEXT("[") + Title + TEXT("]") : Full;
+			const FName Key(*Full);
+			if (!bGrant)
+			{
+				return Pawn->Data->Advancements.Remove(Key) > 0 ? 1 : 0;
+			}
+			if (Pawn->Data->Advancements.Contains(Key))
+			{
+				return 0;
+			}
+			Pawn->Data->Advancements.Add(Key);
+			if (bToast)
+			{
+				const bool bChallenge = Frame == TEXT("challenge");
+				// The challenge's heading colour is the wiki's purple (not measured).
+				Pawn->Data->ServerToast(McLang::Get(Frame == TEXT("goal") ? TEXT("advancements.toast.goal") : bChallenge ? TEXT("advancements.toast.challenge") : TEXT("advancements.toast.task")),
+					bChallenge ? 0xFF55FF : 0xFFFF00, Title, Icon);
+			}
+			return 1;
+		}
 		virtual bool IsEffect(FName Effect) const override
 		{
 			FName Parsed;

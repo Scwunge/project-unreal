@@ -43,6 +43,11 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 		Out.Stats.Add(TEXT("spawn_z"), Data.SpawnBed->Z);
 	}
 
+	for (const FName Advancement : Data.Advancements)
+	{
+		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
+	}
+
 	Out.Slots.Reset();
 	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::InventorySize; ++Slot)
 	{
@@ -118,6 +123,14 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		}
 	}
 	Data.Stats = Stats;
+	Data.Advancements.Reset();
+	for (const TPair<FString, double>& Stat : Saved.Stats)
+	{
+		if (Stat.Key.StartsWith(TEXT("advancement:")))
+		{
+			Data.Advancements.Add(FName(*Stat.Key.RightChop(12)));
+		}
+	}
 	Data.SpawnBed.Reset();
 	if (Saved.Stats.Contains(TEXT("spawn_x")) && Saved.Stats.Contains(TEXT("spawn_y")) && Saved.Stats.Contains(TEXT("spawn_z")))
 	{

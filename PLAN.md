@@ -173,6 +173,11 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     `Saved/Shots/carts.png` (`tools/scenes/carts.json`). Limits: the cargo is drawn as a plain box cut from the
     cart's texture; a hopper cart doesn't pull from containers above it (that is McBlockUse's); there is no
     primed TNT entity, so the cart keeps its own fuse.
+    Looks fitted to vanilla's (vehicle_look.txt, ref_side_*, `tools/scenes/vehicles_look.json`): a cart at rest lies
+    along its rail (it only turned when moving before); the furnace's and TNT's blocks stand 1.125 higher, the
+    hopper's block 3.75 lower than those, and the chest 2.875 higher. Not done: vanilla's cart sits about a unit
+    lower under its walls, and shows two dark marks along its foot (the floor's edge strip) and a soft shadow blob
+    under it (nothing draws entity shadows yet).
   - **Carts take and push mobs** (2026-10-30): a plain cart going along takes in the first mob it runs into (not an iron golem),
     which sits in it until an activator rail throws it out (and none get in for half a second after); any cart shoves the
     other mobs it touches aside, harder the faster it goes (`FMcMinecartEntity::PushMobs`). Shot:

@@ -267,14 +267,18 @@ namespace McEntityModel
 					if (Variant.Block)
 					{
 						Cart.Block = Variant.Block;
-						Cart.BlockOffset = FVector(0, 9, 0);
+						// Seen from the south with the cart at rest (vehicle_look.txt, ref_side_*): the furnace's and TNT's tops
+						// stand 36 px over the rim where the cart is 140 px long (7 px a unit), the hopper's 10 px: the hopper sits
+						// 3.75 (5 pixels of the block's 16, at three quarters) lower than the others.
+						Cart.BlockOffset = FVector(0, Variant.Block == FString(TEXT("minecraft:hopper[enabled=true,facing=down]")) ? 6.375f : 10.125f, 0);
 					}
 					else if (Cart.Kind == TEXT("minecraft:chest_minecart"))
 					{
 						// A chest has no block model (it is drawn from its own picture), so it is boxes on a second layer.
 						Cart.Textures.Add(TEXT("chest/normal.png"));
 						Cart.LayerTextureSizes = { FIntPoint(0, 0), FIntPoint(64, 64) };
-						AddChest(Cart, FVector(0, 3, 0), 0.75f, 1, 0);
+						// Its top stands 20 px higher over the rim than the blocks' had at first (ref_side_chest, 7 px a unit): 2.875 up.
+						AddChest(Cart, FVector(0, 5.875f, 0), 0.75f, 1, 0);
 					}
 					Models.Add(Cart.Kind, Cart);
 				}

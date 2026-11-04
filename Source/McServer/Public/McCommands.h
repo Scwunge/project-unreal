@@ -132,6 +132,9 @@ public:
 	virtual void SetTickFrozen(bool bFrozen) {}
 	virtual void StepTicks(int32 Count) {}
 	virtual double GetAverageTickMs() const { return 0.0; }
+	// /rotate: a player's yaw (Minecraft degrees), read and set.
+	virtual bool GetYaw(const FString& Player, double& OutYaw) const { return false; }
+	virtual void SetYaw(const FString& Player, double Yaw) {}
 	// /damage: hurts a player; false if nothing hurt them (creative).
 	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.

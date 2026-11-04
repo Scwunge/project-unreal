@@ -56,6 +56,8 @@ namespace
 		{ TEXT("setworldspawn"), 2, TEXT("/setworldspawn [<pos>] [<yaw> [<pitch>]]") },
 		{ TEXT("spawnpoint"), 2, TEXT("/spawnpoint [<targets>] [<pos>] [<yaw> [<pitch>]]") },
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
+		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
+		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -1403,7 +1405,7 @@ namespace
 		FString Error;
 		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
 		{
-			return { Fail(Error) };
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
 		}
 		TArray<FString> Hurt;
 		for (const FString& Player : Players)
@@ -1418,6 +1420,446 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.damage.invulnerable"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.damage.success"), { FString::SanitizeFloat(Amount, 1), Hurt.Num() == 1 ? Hurt[0] : FString::FromInt(Hurt.Num()) })) };
+	}
+
+	// /rotate <targets> <yaw> <pitch>: turns players. Only the yaw is applied (the pitch is told back but not set).
+	FReplies RunRotate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 4)
+		{
+			return BadArgument(Command);
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		for (const FString& Player : Players)
+		{
+			const bool bRelative = Words[2].StartsWith(TEXT("~"));
+			const FString Number = bRelative ? Words[2].Mid(1) : Words[2];
+			if (!Number.IsEmpty() && !Number.IsNumeric())
+			{
+				return BadArgument(Command);
+			}
+			double Yaw = Number.IsEmpty() ? 0.0 : FCString::Atod(*Number);
+			FVector Feet;
+			if (!Target.GetPosition(Player, Feet))
+			{
+				continue;
+			}
+			double Current = 0.0;
+			if (bRelative)
+			{
+				Target.GetYaw(Player, Current);
+				Yaw += Current;
+			}
+			Target.SetYaw(Player, Yaw);
+		}
+		return { Ok(McLang::Format(TEXT("commands.rotate.success"), { Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num()) })) };
+	}
+
+	// /scoreboard: objectives and scores, kept for the session (in the order made; the game lists them in an order of its own). Display slots are
+	// remembered but nothing draws a sidebar, list or below-name yet, and no criterion other than dummy and trigger changes by itself.
+	struct FObjective
+	{
+		FString Name;
+		FString Criteria;
+		FString Display;
+		FString RenderType = TEXT("integer");
+		TMap<FString, int32> Scores;
+		TSet<FString> Enabled;
+	};
+
+	TArray<FObjective>& Objectives()
+	{
+		static TArray<FObjective> All;
+		return All;
+	}
+
+	TMap<FString, FString>& DisplaySlots()
+	{
+		static TMap<FString, FString> Slots;
+		return Slots;
+	}
+
+	FObjective* FindObjective(const FString& Name)
+	{
+		return Objectives().FindByPredicate([&](const FObjective& O) { return O.Name == Name; });
+	}
+
+	// The text of a JSON text component ({"text":"x"} or "x"), else the words as typed.
+	FString PlainText(const FString& Json)
+	{
+		FString Text = Json.TrimStartAndEnd();
+		int32 At = Text.Find(TEXT("\"text\""));
+		if (Text.StartsWith(TEXT("{")) && At != INDEX_NONE)
+		{
+			int32 Open = Text.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, At + 6);
+			const int32 Close = Open == INDEX_NONE ? INDEX_NONE : Text.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, Open + 1);
+			if (Close != INDEX_NONE)
+			{
+				return Text.Mid(Open + 1, Close - Open - 1);
+			}
+		}
+		if (Text.Len() >= 2 && Text.StartsWith(TEXT("\"")) && Text.EndsWith(TEXT("\"")))
+		{
+			return Text.Mid(1, Text.Len() - 2);
+		}
+		return Text;
+	}
+
+	FString Shown(const FObjective& Objective)
+	{
+		return TEXT("[") + (Objective.Display.IsEmpty() ? Objective.Name : Objective.Display) + TEXT("]");
+	}
+
+	FReplies RunScoreboard(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const auto UnknownObjective = [](const FString& Name) { return FReplies{ Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *Name)) }; };
+		// Where the n-th word begins in the command.
+		const auto WordStart = [&](int32 Index)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Index; ++I)
+			{
+				At += Words[I].Len() + 1;
+			}
+			return At;
+		};
+		if (Words[1] == TEXT("objectives"))
+		{
+			const FString& Sub = Words[2];
+			if (Sub == TEXT("list") && Words.Num() == 3)
+			{
+				if (Objectives().IsEmpty())
+				{
+					return { Ok(McLang::Get(TEXT("commands.scoreboard.objectives.list.empty"))) };
+				}
+				TArray<FString> Names;
+				for (const FObjective& O : Objectives())
+				{
+					Names.Add(Shown(O));
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.list.success"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+			}
+			if (Sub == TEXT("add") && Words.Num() >= 5)
+			{
+				for (int32 I = 0; I < Words[3].Len(); ++I)
+				{
+					const TCHAR C = Words[3][I];
+					if (!(FChar::IsAlnum(C) || C == '_' || C == '.' || C == '+' || C == '-'))
+					{
+						return { Fail(McLang::Get(TEXT("command.expected.separator"))), Fail(BorderContext(Command, WordStart(3) + I)) };
+					}
+				}
+				if (FindObjective(Words[3]))
+				{
+					return { Fail(McLang::Get(TEXT("commands.scoreboard.objectives.add.duplicate"))) };
+				}
+				FObjective Made;
+				Made.Name = Words[3];
+				Made.Criteria = Words[4];
+				if (Words.Num() > 5)
+				{
+					TArray<FString> Rest(Words.GetData() + 5, Words.Num() - 5);
+					Made.Display = PlainText(FString::Join(Rest, TEXT(" ")));
+				}
+				Objectives().Add(Made);
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.add.success"), { Shown(Made) })) };
+			}
+			if (Sub == TEXT("remove") && Words.Num() == 4)
+			{
+				FObjective* O = FindObjective(Words[3]);
+				if (!O)
+				{
+					return UnknownObjective(Words[3]);
+				}
+				const FString Name = Shown(*O);
+				const FString Key = O->Name;
+				Objectives().RemoveAll([&](const FObjective& Each) { return Each.Name == Key; });
+				for (auto It = DisplaySlots().CreateIterator(); It; ++It)
+				{
+					if (It.Value() == Key)
+					{
+						It.RemoveCurrent();
+					}
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.remove.success"), { Name })) };
+			}
+			if (Sub == TEXT("setdisplay") && (Words.Num() == 4 || Words.Num() == 5))
+			{
+				if (Words.Num() == 5 && !FindObjective(Words[4]))
+				{
+					return UnknownObjective(Words[4]);
+				}
+				if (Words.Num() == 4)
+				{
+					DisplaySlots().Remove(Words[3]);
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.display.cleared"), { Words[3] })) };
+				}
+				DisplaySlots().Add(Words[3], Words[4]);
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.display.set"), { Words[3], Words[4] })) };
+			}
+			if (Sub == TEXT("modify") && Words.Num() >= 5)
+			{
+				FObjective* O = FindObjective(Words[3]);
+				if (!O)
+				{
+					return UnknownObjective(Words[3]);
+				}
+				if (Words[4] == TEXT("displayname") && Words.Num() >= 6)
+				{
+					TArray<FString> Rest(Words.GetData() + 5, Words.Num() - 5);
+					const FString Old = O->Name;
+					O->Display = PlainText(FString::Join(Rest, TEXT(" ")));
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.modify.displayname"), { Old, Shown(*O) })) };
+				}
+				if (Words[4] == TEXT("rendertype") && Words.Num() == 6 && (Words[5] == TEXT("integer") || Words[5] == TEXT("hearts")))
+				{
+					O->RenderType = Words[5];
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.modify.rendertype"), { Shown(*O) })) };
+				}
+				return BadArgument(Command);
+			}
+			return Unknown(Command, Command.Len());
+		}
+		if (Words[1] != TEXT("players"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Sub = Words[2];
+		// Who a target word names: players by selector or name, else a name the scoreboard tracks (a fake player).
+		const auto Resolve = [&](const FString& Token, TArray<FString>& Out, FString& Error)
+		{
+			if (Token == TEXT("*"))
+			{
+				Out.Reset();
+				for (const FObjective& O : Objectives())
+				{
+					for (const TPair<FString, int32>& Pair : O.Scores)
+					{
+						Out.AddUnique(Pair.Key);
+					}
+				}
+				return true;
+			}
+			if (Token.StartsWith(TEXT("@")))
+			{
+				return ResolvePlayers(Token, Sender, Target, Out, Error);
+			}
+			Out = { Token };
+			return true;
+		};
+		if (Sub == TEXT("list") && Words.Num() <= 4)
+		{
+			TArray<FString> Who;
+			FString Error;
+			if (Words.Num() == 3)
+			{
+				for (const FObjective& O : Objectives())
+				{
+					for (const TPair<FString, int32>& Pair : O.Scores)
+					{
+						Who.AddUnique(Pair.Key);
+					}
+				}
+				if (Who.IsEmpty())
+				{
+					return { Ok(McLang::Get(TEXT("commands.scoreboard.players.list.empty"))) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.success"), { FString::FromInt(Who.Num()), FString::Join(Who, TEXT(", ")) })) };
+			}
+			if (!Resolve(Words[3], Who, Error) || Who.IsEmpty())
+			{
+				return { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			}
+			TArray<FString> Lines;
+			for (const FObjective& O : Objectives())
+			{
+				if (const int32* Value = O.Scores.Find(Who[0]))
+				{
+					Lines.Add(McLang::Format(TEXT("commands.scoreboard.players.list.entity.entry"), { Shown(O), FString::FromInt(*Value) }));
+				}
+			}
+			if (Lines.IsEmpty())
+			{
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.entity.empty"), { Who[0] })) };
+			}
+			FReplies Replies = { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.entity.success"), { Who[0], FString::FromInt(Lines.Num()) })) };
+			for (const FString& Line : Lines)
+			{
+				Replies.Add(Ok(Line));
+			}
+			return Replies;
+		}
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Who;
+		FString Error;
+		if (!Resolve(Words[3], Who, Error))
+		{
+			return { Fail(Error) };
+		}
+		const auto Count = [&]() { return Who.Num() == 1 ? Who[0] : FString::FromInt(Who.Num()); };
+		if (Sub == TEXT("reset") && (Words.Num() == 4 || Words.Num() == 5))
+		{
+			FObjective* O = Words.Num() == 5 ? FindObjective(Words[4]) : nullptr;
+			if (Words.Num() == 5 && !O)
+			{
+				return UnknownObjective(Words[4]);
+			}
+			for (const FString& Name : Who)
+			{
+				for (FObjective& Each : Objectives())
+				{
+					if (!O || &Each == O)
+					{
+						Each.Scores.Remove(Name);
+					}
+				}
+			}
+			if (O)
+			{
+				return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.reset.specific.single") : TEXT("commands.scoreboard.players.reset.specific.multiple"), { Shown(*O), Count() })) };
+			}
+			return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.reset.all.single") : TEXT("commands.scoreboard.players.reset.all.multiple"), { Count() })) };
+		}
+		if (Words.Num() < 5)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FObjective* O = FindObjective(Words[4]);
+		if (!O)
+		{
+			return UnknownObjective(Words[4]);
+		}
+		if (Sub == TEXT("get") && Words.Num() == 5)
+		{
+			const int32* Value = O->Scores.Find(Who[0]);
+			if (!Value)
+			{
+				return { Fail(McLang::Format(TEXT("commands.scoreboard.players.get.null"), { O->Name, Who[0] })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.scoreboard.players.get.success"), { Who[0], FString::FromInt(*Value), Shown(*O) })) };
+		}
+		if (Sub == TEXT("enable") && Words.Num() == 5)
+		{
+			if (O->Criteria != TEXT("trigger"))
+			{
+				return { Fail(McLang::Get(TEXT("commands.scoreboard.players.enable.invalid"))) };
+			}
+			int32 Changed = 0;
+			for (const FString& Name : Who)
+			{
+				bool bAlready = false;
+				O->Enabled.Add(Name, &bAlready);
+				Changed += bAlready ? 0 : 1;
+			}
+			if (!Changed)
+			{
+				return { Fail(McLang::Get(TEXT("commands.scoreboard.players.enable.failed"))) };
+			}
+			return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.enable.success.single") : TEXT("commands.scoreboard.players.enable.success.multiple"), { Shown(*O), Count() })) };
+		}
+		if ((Sub == TEXT("set") || Sub == TEXT("add") || Sub == TEXT("remove")) && Words.Num() == 6)
+		{
+			if (!Words[5].IsNumeric() || Words[5].Contains(TEXT(".")))
+			{
+				return BadArgument(Command);
+			}
+			const int32 Amount = FCString::Atoi(*Words[5]);
+			if (Sub != TEXT("set") && Amount < 0)
+			{
+				return { Fail(FString::Printf(TEXT("Integer must not be less than 0: found %d"), Amount)), Fail(BorderContext(Command, WordStart(5))) };
+			}
+			int32 Last = 0;
+			for (const FString& Name : Who)
+			{
+				int32& Slot = O->Scores.FindOrAdd(Name);
+				Slot = Sub == TEXT("set") ? Amount : Sub == TEXT("add") ? Slot + Amount : Slot - Amount;
+				Last = Slot;
+			}
+			if (Sub == TEXT("set"))
+			{
+				return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.set.success.single") : TEXT("commands.scoreboard.players.set.success.multiple"),
+					Who.Num() == 1 ? TArray<FString>{ Shown(*O), Who[0], FString::FromInt(Amount) } : TArray<FString>{ Shown(*O), Count(), FString::FromInt(Amount) })) };
+			}
+			const bool bAdd = Sub == TEXT("add");
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(bAdd ? TEXT("commands.scoreboard.players.add.success.single") : TEXT("commands.scoreboard.players.remove.success.single"),
+					{ FString::FromInt(Amount), Shown(*O), Who[0], FString::FromInt(Last) })) };
+			}
+			return { Ok(McLang::Format(bAdd ? TEXT("commands.scoreboard.players.add.success.multiple") : TEXT("commands.scoreboard.players.remove.success.multiple"),
+				{ FString::FromInt(Amount), Shown(*O), Count() })) };
+		}
+		if (Sub == TEXT("operation") && Words.Num() == 8)
+		{
+			TArray<FString> Sources;
+			if (!Resolve(Words[6], Sources, Error) || Sources.IsEmpty())
+			{
+				return { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			}
+			FObjective* From = FindObjective(Words[7]);
+			if (!From)
+			{
+				return UnknownObjective(Words[7]);
+			}
+			const FString& Op = Words[5];
+			if (Op != TEXT("=") && Op != TEXT("+=") && Op != TEXT("-=") && Op != TEXT("*=") && Op != TEXT("/=") && Op != TEXT("%=") && Op != TEXT("<") && Op != TEXT(">") && Op != TEXT("><"))
+			{
+				return BadArgument(Command);
+			}
+			int32 Last = 0;
+			for (const FString& Name : Who)
+			{
+				const int32* Other = From->Scores.Find(Sources[0]);
+				if (!Other)
+				{
+					continue;
+				}
+				int32& Slot = O->Scores.FindOrAdd(Name);
+				if (Op == TEXT("=")) { Slot = *Other; }
+				else if (Op == TEXT("+=")) { Slot += *Other; }
+				else if (Op == TEXT("-=")) { Slot -= *Other; }
+				else if (Op == TEXT("*=")) { Slot *= *Other; }
+				else if (Op == TEXT("/=") || Op == TEXT("%="))
+				{
+					if (*Other == 0)
+					{
+						return { Fail(McLang::Get(TEXT("arguments.operation.div0"))) };
+					}
+					Slot = Op == TEXT("/=") ? int32(FMath::FloorToInt32(double(Slot) / *Other)) : Slot - *Other * FMath::FloorToInt32(double(Slot) / *Other);
+				}
+				else if (Op == TEXT("<")) { Slot = FMath::Min(Slot, *Other); }
+				else if (Op == TEXT(">")) { Slot = FMath::Max(Slot, *Other); }
+				else
+				{
+					// Swap.
+					int32& Theirs = From->Scores.FindOrAdd(Sources[0]);
+					Swap(Slot, Theirs);
+				}
+				Last = Slot;
+			}
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.operation.success.single"), { Shown(*O), Who[0], FString::FromInt(Last) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.scoreboard.players.operation.success.multiple"), { Shown(*O), Count() })) };
+		}
+		return Unknown(Command, Command.Len());
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -2484,6 +2926,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("rotate"))
+	{
+		return RunRotate(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("scoreboard"))
+	{
+		return RunScoreboard(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

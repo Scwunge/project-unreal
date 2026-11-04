@@ -1744,6 +1744,19 @@ namespace
 		virtual void SetTickFrozen(bool bFrozen) override { Mode.SetTickFrozen(bFrozen); }
 		virtual void StepTicks(int32 Count) override { Mode.StepTicks(Count); }
 		virtual double GetAverageTickMs() const override { return Mode.GetWorld() ? Mode.GetWorld()->GetDeltaSeconds() * 1000.0 / FMath::Max(0.0001, double(Mode.GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation())) : 0.0; }
+		virtual bool GetYaw(const FString& Player, double& OutYaw) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			OutYaw = Pawn ? Pawn->GetLookYaw() : 0.0;
+			return Pawn != nullptr;
+		}
+		virtual void SetYaw(const FString& Player, double Yaw) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerTeleport(Pawn->GetFeetPosition(), float(Yaw));
+			}
+		}
 		virtual bool Hurt(const FString& Player, float Amount, const FString& Type) override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);

@@ -341,6 +341,13 @@ private:
 	bool bSneakPose = false;
 	UPROPERTY(Replicated)
 	int32 RidingId = 0;
+	// The ridden mount's health in half hearts (0 max for none), and a horse's jump charge 0..1 (-1 for a mount that has no jump bar): the HUD draws them in place of the food row and the experience bar.
+	UPROPERTY(Replicated)
+	float MountHealth = 0.0f;
+	UPROPERTY(Replicated)
+	float MountMaxHealth = 0.0f;
+	UPROPERTY(Replicated)
+	float MountJump = -1.0f;
 	UPROPERTY(Replicated)
 	bool bSleeping = false;
 	UPROPERTY(Replicated)

@@ -1,6 +1,7 @@
 #include "McPlayerPawn.h"
 #include "McBundle.h"
 #include "McLeash.h"
+#include "McMob.h"
 #include "McMount.h"
 #include "McBanner.h"
 #include "McShulker.h"
@@ -144,6 +145,9 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, McLookPitch, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bSneakPose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, RidingId);
+	DOREPLIFETIME(AMcPlayerPawn, MountHealth);
+	DOREPLIFETIME(AMcPlayerPawn, MountMaxHealth);
+	DOREPLIFETIME(AMcPlayerPawn, MountJump);
 	DOREPLIFETIME(AMcPlayerPawn, bSleeping);
 	DOREPLIFETIME(AMcPlayerPawn, SleepTicks);
 	DOREPLIFETIME(AMcPlayerPawn, DeathScore);
@@ -210,6 +214,12 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 {
 	PreviousPosition = Body.Position;
 	PreviousEyeHeight = GetEyeHeight();
+	if (Data)
+	{
+		Data->Stats.MountHealth = RidingId != 0 ? MountHealth : 0.0f;
+		Data->Stats.MountMaxHealth = RidingId != 0 ? MountMaxHealth : 0.0f;
+		Data->Stats.MountJump = RidingId != 0 ? MountJump : -1.0f;
+	}
 
 	// Sitting in a minecart or boat: the vehicle carries the body (the server moves it); the keys steer it.
 	if (RidingId != 0)
@@ -1386,6 +1396,11 @@ void AMcPlayerPawn::ServerRide(int32 VehicleId)
 	bServerSprint = false;
 	ServerFall = McSurvival::FFallTracker();
 	Body.Velocity = FVector::ZeroVector;
+	if (Data)
+	{
+		// vanilla shot (ref_ride_horse.png): the action bar tells how to get off.
+		Data->ServerOverlay(TEXT("Press Left Shift to dismount"), false);
+	}
 }
 
 void AMcPlayerPawn::ServerDismount()
@@ -1440,6 +1455,13 @@ void AMcPlayerPawn::ServerTickRiding()
 		if (Found->Mount->RiderId == GetUniqueID())
 		{
 			McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump, Data ? Data->Inventory->Get(Data->SelectedSlot).Item : NAME_None);
+		}
+		if (Found->IsLiving())
+		{
+			const FMcMob& Ridden = static_cast<const FMcMob&>(*Found);
+			MountHealth = Ridden.Health;
+			MountMaxHealth = Ridden.Type.MaxHealth;
+			MountJump = McMount::IsRideable(*Found) && !McMount::IsStickMount(*Found) ? McMount::ChargeScale(Found->Mount->JumpHoldTicks) : -1.0f;
 		}
 		const FVector MountSeat = McMount::GetSeatFor(*Found, GetUniqueID());
 		Body.Position = MountSeat;

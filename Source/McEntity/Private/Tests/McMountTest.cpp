@@ -96,6 +96,7 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 	// Saddle, armour, chest, food and a seat.
 	FMcMob* Wild = MakeHorse(*HorseType, 90.5);
 	FMcItemStack Saddle(FName(TEXT("minecraft:saddle")), 1);
+	TestNearlyEqual(TEXT("the rider sits 0.84375 above a horse's feet (vehicle_log30)"), McMount::GetSeat(*Wild).Y - Wild->Body.Position.Y, 0.84375, 1e-6);
 	TestEqual(TEXT("a wild horse takes no saddle"), McMount::Use(Manager, *Wild, Saddle, 1, false, false), McMount::EUse::Mounted);
 	McMount::ClearRider(*Wild);
 	TestEqual(TEXT("and the saddle stays in the hand"), Saddle.Count, 1);

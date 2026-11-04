@@ -75,6 +75,22 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	Layout = ComputeHud(320, 240, Stats);
 	TestTrue(TEXT("food halves the same way"), Layout.Food[1].Fill == EIcon::Full && Layout.Food[2].Fill == EIcon::Half && Layout.Food[3].Fill == EIcon::Empty);
 
+	// Riding a horse (22 health, a charge half done): its 11 hearts take the food row's place, a second row above, and the jump bar the experience bar.
+	Stats.MountHealth = 15.0f;
+	Stats.MountMaxHealth = 22.0f;
+	Stats.MountJump = 0.5f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestEqual(TEXT("no food while riding"), Layout.Food.Num(), 0);
+	TestEqual(TEXT("eleven mount hearts"), Layout.Mount.Num(), 11);
+	TestPoint(TEXT("the first mount heart is where the food starts"), Layout.Mount[0].Pos, FIntPoint(242, 201));
+	TestPoint(TEXT("the eleventh opens a row above"), Layout.Mount[10].Pos, FIntPoint(242, 191));
+	TestTrue(TEXT("seven and a half hearts of health"), Layout.Mount[6].Fill == EIcon::Full && Layout.Mount[7].Fill == EIcon::Half && Layout.Mount[8].Fill == EIcon::Empty);
+	TestTrue(TEXT("the jump bar replaces the experience bar"), Layout.bShowJump && Layout.JumpFill == 91);
+	Stats.MountHealth = 0.0f;
+	Stats.MountMaxHealth = 0.0f;
+	Stats.MountJump = -1.0f;
+	Layout = ComputeHud(320, 240, Stats);
+
 	// The hurt flash.
 	TestFalse(TEXT("no flash when not hurt"), IsHurtBlink(0));
 	TestTrue(TEXT("flash"), IsHurtBlink(10));

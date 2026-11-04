@@ -117,6 +117,9 @@ public:
 	FMcEntityHost* GetEntityHost() const { return Entities.Get(); }
 	// The block simulation (fluids, redstone). Server only; null until the world starts.
 	FMcSimulation* GetSimulation() const { return Simulation.Get(); }
+	// Moves what pistons that started pushing sweep along; the server tick runs it after each simulation tick (tests that
+	// tick the simulation themselves call it too).
+	void MovePushedEntities();
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
 	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
 	// The id of the nearest vehicle along the ray, or 0.
@@ -306,6 +309,10 @@ private:
 	// and weighted plates feel every entity, stone ones only mobs and players).
 	void FeedPressurePlates();
 	TMap<FIntVector, int32> FedPlates;
+	// Entities a piston's pushed blocks sweep along: each job's shapes (cells at the start) move half a block a tick for
+	// two ticks and shove whatever they overlap along Dir (reference run pushent).
+	struct FPistonPush { TArray<FIntVector> Cells; FIntVector Dir; int32 Step = 0; };
+	TArray<FPistonPush> PistonPushes;
 	// Simulation falling block id -> entity id.
 	TMap<int32, int32> FallingEntities;
 	FRandomStream LightningRandom{ 31 };

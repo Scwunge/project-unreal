@@ -147,6 +147,9 @@ public:
 	TFunction<void(const FIntVector&, FMcStateId)> OnFallingBlockDropped;
 	// A falling block came to rest at the cell, having fallen the distance: for whoever hurts what is under an anvil.
 	TFunction<void(const FIntVector&, FMcStateId, double)> OnFallingBlockLanded;
+	// A piston started to push blocks (and its head) one cell along Dir: Cells are where the pushed shapes start. For two
+	// ticks each moves half a block a tick, shoving what is in its way (reference run pushent): for whoever moves entities.
+	TFunction<void(const TArray<FIntVector>&, const FIntVector&)> OnBlocksPushed;
 
 	// Where the simulation's sounds go: the server sends them on to the players.
 	TFunction<void(const FMcSoundEvent&)> OnSound;

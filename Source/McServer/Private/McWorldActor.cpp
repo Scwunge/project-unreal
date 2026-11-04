@@ -325,6 +325,12 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSpawnerCycled(Pos);
 	};
+	Simulation->OnBlocksPushed = [this](const TArray<FIntVector>& Cells, const FIntVector& Dir)
+	{
+		FPistonPush& Push = PistonPushes.AddDefaulted_GetRef();
+		Push.Cells = Cells;
+		Push.Dir = Dir;
+	};
 	// TNT lit by fire or redstone becomes a primed block.
 	Simulation->OnLightTnt = [this](const FIntVector& Pos)
 	{
@@ -880,6 +886,38 @@ void AMcWorldActor::SyncFallingBlocks()
 	}
 }
 
+void AMcWorldActor::MovePushedEntities()
+{
+	if (!Entities || PistonPushes.IsEmpty())
+	{
+		return;
+	}
+	for (FPistonPush& Push : PistonPushes)
+	{
+		++Push.Step;
+		const FVector Shift = FVector(Push.Dir) * (0.5 * Push.Step);
+		for (const FIntVector& Cell : Push.Cells)
+		{
+			const FBox Shape(FVector(Cell) + Shift, FVector(Cell) + FVector(1.0) + Shift);
+			TArray<FMcEntity*> Hit;
+			Entities->GetManager().FindInBox(Shape, Hit);
+			for (FMcEntity* Entity : Hit)
+			{
+				const FBox Box = Entity->Body.GetBox();
+				// Touching is not overlapping; what stands on a block moves only when the block rises.
+				if (Entity->bRemoved || Entity->IsVehicle() || Box.Min.X >= Shape.Max.X - UE_KINDA_SMALL_NUMBER || Box.Max.X <= Shape.Min.X + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Y >= Shape.Max.Y - UE_KINDA_SMALL_NUMBER || Box.Max.Y <= Shape.Min.Y + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Z >= Shape.Max.Z - UE_KINDA_SMALL_NUMBER || Box.Max.Z <= Shape.Min.Z + UE_KINDA_SMALL_NUMBER)
+				{
+					continue;
+				}
+				McPhysics::Move(*BlockWorld, Entity->Body, FVector(Push.Dir) * 0.5, false);
+			}
+		}
+	}
+	PistonPushes.RemoveAll([](const FPistonPush& Push) { return Push.Step >= 2; });
+}
+
 void AMcWorldActor::TickLightning()
 {
 	if (Weather != static_cast<uint8>(EMcWeather::Thunder) || !HasWeather() || !BlockWorld)
@@ -1210,6 +1248,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			MovePushedEntities();
 			SyncFallingBlocks();
 			FeedPressurePlates();
 			TickLightning();

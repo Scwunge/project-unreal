@@ -1012,6 +1012,12 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Options.Quality = McRenderMode::GetQuality();
 		Options.Save();
 	}
+	if (MenuButton(FMcClientOptions::Load().bShowSubtitles ? TEXT("Subtitles: ON") : TEXT("Subtitles: OFF"), Right, Top + 108.0f, 150.0f, 20.0f))
+	{
+		FMcClientOptions Options = FMcClientOptions::Load();
+		Options.bShowSubtitles = !Options.bShowSubtitles;
+		Options.Save();
+	}
 	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
 	{
 		FMcClientOptions Options = FMcClientOptions::Load();

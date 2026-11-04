@@ -83,6 +83,7 @@ bool FMcSoundRegistry::ParseInto(const FString& Json, bool bMerge)
 	if (!bMerge)
 	{
 		Events.Reset();
+		Subtitles.Reset();
 	}
 	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Root->Values)
 	{
@@ -97,6 +98,11 @@ bool FMcSoundRegistry::ParseInto(const FString& Json, bool bMerge)
 		if (bMerge && (*Object)->TryGetBoolField(TEXT("replace"), bReplace) && bReplace)
 		{
 			Variants.Reset();
+		}
+		FString Subtitle;
+		if ((*Object)->TryGetStringField(TEXT("subtitle"), Subtitle) && (bReplace || !Subtitles.Contains(FName(*Entry.Key))))
+		{
+			Subtitles.Add(FName(*Entry.Key), Subtitle);
 		}
 		for (const TSharedPtr<FJsonValue>& Sound : *Sounds)
 		{
@@ -142,6 +148,34 @@ bool FMcSoundRegistry::ParseInto(const FString& Json, bool bMerge)
 	}
 	bLoaded = true;
 	return true;
+}
+
+FString FMcSoundRegistry::FindSubtitle(FName Event) const
+{
+	const FString* Key = Subtitles.Find(Event);
+	return Key ? *Key : FString();
+}
+
+namespace McAudio
+{
+	static TArray<FMcPlayedSound> GRecent;
+
+	void NoteSound(FName Event, const FVector& Position, bool bPositional)
+	{
+		const double Now = FPlatformTime::Seconds();
+		GRecent.RemoveAll([Now](const FMcPlayedSound& Sound) { return Now - Sound.Time > 4.0; });
+		FMcPlayedSound Played;
+		Played.Event = Event;
+		Played.Position = Position;
+		Played.bPositional = bPositional;
+		Played.Time = Now;
+		GRecent.Add(Played);
+	}
+
+	const TArray<FMcPlayedSound>& GetRecentSounds()
+	{
+		return GRecent;
+	}
 }
 
 const TArray<FMcSoundVariant>* FMcSoundRegistry::Find(FName Event) const

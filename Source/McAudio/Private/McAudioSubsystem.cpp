@@ -290,12 +290,21 @@ bool UMcAudioSubsystem::PlayShaped(const FMcSoundEvent& Event, const FSpawn& Spa
 {
 	UWorld* World = GetWorld();
 	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
-	if (!GEngine || !GEngine->UseSound() || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded())
+	if (!GEngine || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded())
 	{
 		return false;
 	}
 	FMcSoundVariant Variant;
 	if (!FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Variant))
+	{
+		return false;
+	}
+	// Captions follow the events, with the sound on or not.
+	if (!Spawn.bEcho)
+	{
+		McAudio::NoteSound(Event.Name, Event.Position, true);
+	}
+	if (!GEngine->UseSound())
 	{
 		return false;
 	}
@@ -437,6 +446,7 @@ UAudioComponent* UMcAudioSubsystem::Play2D(FName EventName, float Volume, bool b
 	UAudioComponent* Component = UGameplayStatics::SpawnSound2D(World, MakeWave(this, *Sound), Play.Volume, Play.Pitch);
 	if (Component)
 	{
+		McAudio::NoteSound(EventName, FVector::ZeroVector, false);
 		FLive Entry;
 		Entry.Component = Component;
 		Entry.bAmbience = bAmbience;

@@ -33,6 +33,7 @@
 #include "McItemRegistry.h"
 #include "McLang.h"
 #include "McSound.h"
+#include "McSoundRegistry.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -2393,6 +2394,11 @@ void AMcHUD::DrawHUD()
 	{
 		DrawChat(Width, Height, ActiveMenu == EMenu::Chat);
 	}
+	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options
+		&& (FMcClientOptions::Load().bShowSubtitles || FParse::Param(FCommandLine::Get(), TEXT("McSubtitles"))))
+	{
+		DrawSubtitles(Width, Height);
+	}
 	if (!bDead && !Screen.IsValid() && ActiveMenu != EMenu::Pause && ActiveMenu != EMenu::Options)
 	{
 		DrawOverlay(Width, Height);
@@ -2561,6 +2567,85 @@ void AMcHUD::DrawChat(int32 Width, int32 Height, bool bOpen)
 			Y -= 9.0f;
 			DrawFill(2.0f, Y, ChatWidth + 10.0f, 9.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.5f * Alpha));
 			DrawGuiText(Wrapped[Part], 4.0f, Y + 1.0f, Entry.Rgb, true, Alpha);
+		}
+	}
+}
+
+void AMcHUD::DrawSubtitles(int32 Width, int32 Height)
+{
+	LoadFont();
+	struct FLine
+	{
+		FString Text;
+		FVector Position;
+		bool bPositional;
+		double Time;
+	};
+	TArray<FLine> Lines;
+	for (const McAudio::FMcPlayedSound& Sound : McAudio::GetRecentSounds())
+	{
+		const FString Key = FMcSoundRegistry::Get().FindSubtitle(Sound.Event);
+		if (Key.IsEmpty())
+		{
+			continue;
+		}
+		const FString Text = McLang::Get(Key);
+		FLine* Same = Lines.FindByPredicate([&Text](const FLine& Line) { return Line.Text == Text; });
+		if (Same)
+		{
+			// The same words are one line, kept fresh and pointing at the latest sound.
+			Same->Position = Sound.Position;
+			Same->bPositional = Sound.bPositional;
+			Same->Time = Sound.Time;
+		}
+		else
+		{
+			Lines.Add({ Text, Sound.Position, Sound.bPositional, Sound.Time });
+		}
+	}
+	APlayerController* Player = GetOwningPlayerController();
+	const double Now = FPlatformTime::Seconds();
+	// Three seconds on screen.
+	Lines.RemoveAll([Now](const FLine& Line) { return Now - Line.Time >= 3.0; });
+	if (Lines.IsEmpty() || !Player)
+	{
+		return;
+	}
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Player->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	const FVector Listener = McCoords::UnrealToBlock(ViewLocation);
+	const FVector Right = McCoords::UnrealToBlock(ViewRotation.RotateVector(FVector::RightVector)).GetSafeNormal();
+	const float ArrowWidth = GetTextWidth(TEXT("<")) + GetTextWidth(TEXT(" "));
+	float WideText = 0.0f;
+	for (const FLine& Line : Lines)
+	{
+		WideText = FMath::Max(WideText, GetTextWidth(Line.Text));
+	}
+	const float BoxWidth = WideText + ArrowWidth * 2.0f + 1.0f;
+	const float Left = static_cast<float>(Width) - BoxWidth;
+	// The newest on top; the box ends 30 above the bottom.
+	float Y = Height - 30.0f - 10.0f * Lines.Num();
+	for (int32 Index = Lines.Num() - 1; Index >= 0; --Index, Y += 10.0f)
+	{
+		const FLine& Line = Lines[Index];
+		const double Age = Now - Line.Time;
+		const uint32 Grey = static_cast<uint32>(FMath::Lerp(255.0, 75.0, Age / 3.0));
+		const uint32 Rgb = (Grey << 16) | (Grey << 8) | Grey;
+		DrawFill(Left, Y, BoxWidth, 10.0f, FLinearColor(0.0f, 0.0f, 0.0f, 0.8f));
+		DrawGuiText(Line.Text, Left + 1.0f + ArrowWidth, Y + 1.0f, Rgb, false);
+		if (Line.bPositional)
+		{
+			const FVector Toward = (Line.Position - Listener).GetSafeNormal();
+			const double Side = FVector::DotProduct(Toward, Right);
+			if (Side > 0.5)
+			{
+				DrawGuiText(TEXT(">"), Left + BoxWidth - ArrowWidth, Y + 1.0f, Rgb, false);
+			}
+			else if (Side < -0.5)
+			{
+				DrawGuiText(TEXT("<"), Left + 1.0f, Y + 1.0f, Rgb, false);
+			}
 		}
 	}
 }

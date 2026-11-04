@@ -33,6 +33,9 @@ public:
 
 	int32 NumEvents() const { return Events.Num(); }
 	const TArray<FMcSoundVariant>* Find(FName Event) const;
+	// The language key of an event's caption ("subtitles.block.generic.break"), empty for an event with none. The first
+	// definition keeps it; a pack's that says "replace": true takes it over.
+	FString FindSubtitle(FName Event) const;
 
 	// The variant an event plays for a draw in 0..1: by weight, with references to other events followed (up to 4 deep)
 	// and their volumes and pitches multiplied in. False if the event is unknown or empty.
@@ -48,6 +51,7 @@ public:
 
 private:
 	TMap<FName, TArray<FMcSoundVariant>> Events;
+	TMap<FName, FString> Subtitles;
 	bool bLoaded = false;
 	uint32 LoadedGeneration = 0;
 	bool ParseInto(const FString& Json, bool bMerge);
@@ -55,6 +59,20 @@ private:
 
 namespace McAudio
 {
+	// A sound that has played lately, for the closed captions.
+	struct FMcPlayedSound
+	{
+		FName Event;
+		// Blocks.
+		FVector Position = FVector::ZeroVector;
+		// False for a sound in the listener's head (no arrow).
+		bool bPositional = false;
+		double Time = 0.0;
+	};
+	// Notes a sound that started (FPlatformTime::Seconds); entries older than a few seconds are dropped.
+	MCAUDIO_API void NoteSound(FName Event, const FVector& Position, bool bPositional);
+	MCAUDIO_API const TArray<FMcPlayedSound>& GetRecentSounds();
+
 	// What to play of an event once a variant is picked: a sound's volume is the event's times the variant's, its pitch
 	// likewise (the game keeps it within 0.5 to 2), and it carries as far as the variant's attenuation distance times
 	// the volume (when that is over 1).

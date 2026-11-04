@@ -244,6 +244,9 @@ private:
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	// The closed captions at the bottom right: a line for each sound lately played that has a caption, the newest on top,
+	// fading over three seconds, with an arrow towards a sound off to the side.
+	void DrawSubtitles(int32 Width, int32 Height);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
 	// The /title text: the title at four times the size above the middle of the screen, the subtitle at twice below it.

@@ -152,6 +152,11 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 			return EUse::Fed;
 		}
 	}
+	if (State.RiderId != 0 && State.PassengerId == 0 && Mob.GetType() == TEXT("minecraft:camel") && !bSneaking && State.RiderId != PlayerId)
+	{
+		State.PassengerId = PlayerId;
+		return EUse::Mounted;
+	}
 	if (bSneaking || State.RiderId != 0 || ((IsStickMount(Mob) || Mob.GetType() == TEXT("minecraft:camel")) && !State.bSaddled))
 	{
 		return EUse::None;
@@ -227,7 +232,9 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 		if (bStick && State.bSaddled)
 		{
 			Input.Forward = 1.0f;
-			Input.Speed = State.Speed * BoostFactor(State);
+			// A strider on lava walks 2.4 times as fast as on land (vehicle_log29: 0.212 a tick against 0.089).
+			const float Base = Mob.GetType() == TEXT("minecraft:strider") && Mob.Body.bInLava ? Mob.Type.Speed * 0.5614f : State.Speed;
+			Input.Speed = Base * BoostFactor(State);
 			Input.Yaw = State.RiderYaw;
 			Mob.Yaw = State.RiderYaw;
 		}
@@ -300,5 +307,90 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 	}
 	Input.bJump = (Mob.Body.bInWater || Mob.Body.bInLava);
 	McPhysics::TickPlayer(Manager.GetWorld(), Mob.Body, Input);
+	if (Mob.GetType() == TEXT("minecraft:strider") && Mob.Body.bInLava)
+	{
+		// It walks on the lava: half a block into the source it stands on, not sinking.
+		Mob.Body.Position.Y = FMath::FloorToDouble(Mob.Body.Position.Y) + 0.5;
+		Mob.Body.Velocity.Y = 0.0;
+		Mob.Body.bOnGround = true;
+	}
 	return true;
+}
+
+void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
+{
+	if (Ar.IsLoading() && Ar.AtEnd())
+	{
+		return;
+	}
+	FMcMountState& State = Ensure(Mob);
+	FString Armor = State.Armor.ToString();
+	if (State.Armor.IsNone())
+	{
+		Armor.Reset();
+	}
+	Ar << Mob.bTamed << State.bSaddled << Armor << State.bChest << State.Temper << State.JumpStrength << State.Speed;
+	if (Ar.IsLoading())
+	{
+		State.Armor = Armor.IsEmpty() ? FName() : FName(*Armor);
+		State.Temper = FMath::Clamp(State.Temper, 0, MaxTemper);
+	}
+}
+
+int32 McMount::ArmorPoints(FName Item)
+{
+	const FString Name = Item.ToString();
+	if (Name.Contains(TEXT("leather"))) { return 3; }
+	if (Name.Contains(TEXT("copper"))) { return 4; }
+	if (Name.Contains(TEXT("iron"))) { return 5; }
+	if (Name.Contains(TEXT("golden"))) { return 7; }
+	if (Name.Contains(TEXT("diamond"))) { return 11; }
+	if (Name.Contains(TEXT("netherite"))) { return 19; }
+	return 0;
+}
+
+float McMount::ReduceDamage(const FMcMountState& State, float Damage)
+{
+	const float Armor = static_cast<float>(ArmorPoints(State.Armor));
+	const float Cut = FMath::Clamp(FMath::Max(Armor / 5.0f, Armor - Damage / 2.0f), 0.0f, 20.0f);
+	return Damage * (1.0f - Cut / 25.0f);
+}
+
+bool McMount::ClearPlayer(FMcEntity& Entity, uint32 PlayerId)
+{
+	if (!Entity.Mount.IsValid())
+	{
+		return false;
+	}
+	FMcMountState& State = *Entity.Mount;
+	if (State.PassengerId == PlayerId)
+	{
+		State.PassengerId = 0;
+		return true;
+	}
+	if (State.RiderId == PlayerId)
+	{
+		ClearRider(Entity);
+		State.RiderId = State.PassengerId;
+		State.PassengerId = 0;
+		return true;
+	}
+	return false;
+}
+
+bool McMount::HasPlayer(const FMcEntity& Entity, uint32 PlayerId)
+{
+	return Entity.Mount.IsValid() && PlayerId != 0 && (Entity.Mount->RiderId == PlayerId || Entity.Mount->PassengerId == PlayerId);
+}
+
+FVector McMount::GetSeatFor(const FMcEntity& Entity, uint32 PlayerId)
+{
+	FVector Seat = GetSeat(Entity);
+	if (Entity.Mount.IsValid() && Entity.Mount->PassengerId == PlayerId)
+	{
+		const double Radians = FMath::DegreesToRadians(static_cast<double>(Entity.Yaw));
+		Seat.X += FMath::Sin(Radians) * 0.9;
+		Seat.Z -= FMath::Cos(Radians) * 0.9;
+	}
+	return Seat;
 }

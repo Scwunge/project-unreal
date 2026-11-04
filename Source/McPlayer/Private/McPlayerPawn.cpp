@@ -1364,7 +1364,7 @@ void AMcPlayerPawn::ServerDismount()
 	RidingId = 0;
 	if (Found && Found->Mount.IsValid() && BlockWorld)
 	{
-		McMount::ClearRider(*Found);
+		McMount::ClearPlayer(*Found, GetUniqueID());
 	}
 	else if (!Found || !Found->IsVehicle() || !BlockWorld)
 	{
@@ -1397,13 +1397,16 @@ void AMcPlayerPawn::ServerTickRiding()
 	if (Found && Found->Mount.IsValid() && !Found->bRemoved)
 	{
 		// A horse, donkey or mule: the keys steer it, and a rider it has bucked off (or lost to someone else) is out.
-		if (Found->Mount->RiderId != GetUniqueID())
+		if (!McMount::HasPlayer(*Found, GetUniqueID()))
 		{
 			ServerDismount();
 			return;
 		}
-		McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump, Data ? Data->Inventory->Get(Data->SelectedSlot).Item : NAME_None);
-		const FVector MountSeat = McMount::GetSeat(*Found);
+		if (Found->Mount->RiderId == GetUniqueID())
+		{
+			McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump, Data ? Data->Inventory->Get(Data->SelectedSlot).Item : NAME_None);
+		}
+		const FVector MountSeat = McMount::GetSeatFor(*Found, GetUniqueID());
 		Body.Position = MountSeat;
 		Body.Velocity = FVector::ZeroVector;
 		Body.bOnGround = true;
@@ -1514,7 +1517,26 @@ void AMcPlayerPawn::ServerRideBoost_Implementation()
 	FMcEntity* Found = Entities && RidingId != 0 ? Entities->Find(RidingId) : nullptr;
 	if (Found && Found->Mount.IsValid() && Found->Mount->RiderId == GetUniqueID())
 	{
-		McMount::Boost(*Found);
+		if (McMount::Boost(*Found) && Data && !Data->bCreative)
+		{
+			// The stick wears 7 a use (25 for the carrot, 100 for the fungus); worn out, it turns into a fishing rod.
+			FMcItemStack& Stick = Data->Inventory->GetMutable(Data->SelectedSlot);
+			const bool bFungus = Stick.Item == TEXT("minecraft:warped_fungus_on_a_stick");
+			double Worn = 0.0;
+			if (const TSharedPtr<FJsonValue> Old = Stick.Get(TEXT("minecraft:damage")))
+			{
+				Old->TryGetNumber(Worn);
+			}
+			Worn += 7.0;
+			if (Worn >= (bFungus ? 100.0 : 25.0))
+			{
+				Stick = FMcItemStack(FName(TEXT("minecraft:fishing_rod")), 1);
+			}
+			else
+			{
+				Stick.Set(TEXT("minecraft:damage"), MakeShared<FJsonValueNumber>(Worn));
+			}
+		}
 	}
 }
 

@@ -1,4 +1,5 @@
 #include "McBlockUse.h"
+#include "McLeash.h"
 #include "McRecipe.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -1478,6 +1479,19 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (!Data || !Blocks || Data->HasWindow())
 	{
 		return false;
+	}
+	{
+		// A lead on a fence post ties the mobs the player leads to a knot there; a knot already there hands them back.
+		const FString FenceName = GetBlockName(*Blocks, Pos).ToString();
+		FMcEntityHost* LeadHost = WorldActor.GetEntityHost();
+		if (LeadHost && FenceName.EndsWith(TEXT("_fence")))
+		{
+			const FMcItemStack& HeldLead = Data->Inventory->Get(Data->SelectedSlot);
+			if (McLeash::UseFence(LeadHost->GetManager(), Pos, Player.GetFeetPosition(), !HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead")))
+			{
+				return true;
+			}
+		}
 	}
 	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
 	{

@@ -1,4 +1,5 @@
 #include "McEntityManager.h"
+#include "McLeash.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -188,6 +189,7 @@ void FMcEntityManager::Tick()
 		SetDetector(Pos, false);
 	}
 	Touched.Reset();
+	McLeash::Tick(*this);
 	// Entities added while ticking (a mob dropping an item) join the next tick.
 	const int32 Count = Entities.Num();
 	for (int32 Index = 0; Index < Count; ++Index)

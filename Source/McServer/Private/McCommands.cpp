@@ -522,7 +522,7 @@ namespace
 	// The name a data pack has in /datapack: "file/<name>" for one of the datapacks folder.
 	FString PackTitle(const FString& Name)
 	{
-		return TEXT("file/") + Name;
+		return TEXT("file/") + Name + TEXT(" (world)");
 	}
 
 	// /datapack list [available|enabled], enable <name> [first|last|before <pack>|after <pack>], disable <name>.
@@ -533,9 +533,13 @@ namespace
 			return Unknown(Command, Command.Len());
 		}
 		TArray<FString> Enabled = McData::GetSelectedNames();
+		if (!Enabled.Contains(TEXT("vanilla")))
+		{
+			Enabled.Insert(TEXT("vanilla"), 0);
+		}
 		const auto Find = [](const TArray<FString>& Names, const FString& Wanted) -> int32
 		{
-			return Names.IndexOfByPredicate([&Wanted](const FString& Name) { return PackTitle(Name) == Wanted || Name == Wanted; });
+			return Names.IndexOfByPredicate([&Wanted](const FString& Name) { return Name == Wanted || TEXT("file/") + Name == Wanted || PackTitle(Name) == Wanted; });
 		};
 		if (Words[1] == TEXT("list") && Words.Num() <= 3)
 		{
@@ -547,13 +551,12 @@ namespace
 			FReplies Replies;
 			if (Which != TEXT("available"))
 			{
-				// The highest priority first (the game lists them from the top), the game's own last.
+				// Lowest first, as the game lists them, the game's own pack among them.
 				TArray<FString> Shown;
-				for (int32 Index = Enabled.Num() - 1; Index >= 0; --Index)
+				for (const FString& Name : Enabled)
 				{
-					Shown.Add(TEXT("[") + PackTitle(Enabled[Index]) + TEXT("]"));
+					Shown.Add(Name == TEXT("vanilla") ? FString(TEXT("[vanilla (built-in)]")) : TEXT("[") + PackTitle(Name) + TEXT("]"));
 				}
-				Shown.Add(TEXT("[vanilla (built-in)]"));
 				Replies.Add(Ok(McLang::Format(TEXT("commands.datapack.list.enabled.success"), { FString::FromInt(Shown.Num()), FString::Join(Shown, TEXT(", ")) })));
 			}
 			if (Which != TEXT("enabled"))
@@ -576,6 +579,7 @@ namespace
 			FString Name = Words[2].TrimQuotes();
 			const bool bEnable = Words[1] == TEXT("enable");
 			Name.RemoveFromStart(TEXT("file/"));
+			Name = Name.Replace(TEXT(" (world)"), TEXT(""));
 			const int32 At = Find(Enabled, Name);
 			if (bEnable)
 			{
@@ -592,7 +596,8 @@ namespace
 				{
 					return { Fail(McLang::Format(TEXT("commands.datapack.enable.failed"), { PackTitle(Name) })) };
 				}
-				// Last is the top (the game's default); first is the bottom; before and after are relative to another pack.
+				// Last is the top (the game's default); first is the bottom, under the game's own pack; before and after are
+				// relative to another pack.
 				int32 Insert = Enabled.Num();
 				if (Words.Num() >= 4)
 				{
@@ -635,7 +640,7 @@ namespace
 			McData::ApplySelection(Enabled);
 			// The change is read in at once, as the game reloads its data after the command.
 			McData::Reload();
-			return { Ok(McLang::Format(bEnable ? TEXT("commands.datapack.modify.enable") : TEXT("commands.datapack.modify.disable"), { PackTitle(Name) })) };
+			return { Ok(McLang::Format(bEnable ? TEXT("commands.datapack.modify.enable") : TEXT("commands.datapack.modify.disable"), { TEXT("[") + PackTitle(Name) + TEXT("]") })) };
 		}
 		return BadArgument(Command);
 	}
@@ -704,7 +709,8 @@ namespace
 					continue;
 				}
 			}
-			Replies.Append(McCommands::Execute(Line, Sender, Target));
+			// What a function's commands answer is not shown (what they broadcast, like /say, is).
+			McCommands::Execute(Line, Sender, Target);
 			++Ran;
 		}
 		return Ran;
@@ -727,30 +733,31 @@ namespace
 		{
 			Ids.Add(McCache::Namespaced(Words[1]));
 		}
-		FReplies Replies;
-		int32 Total = 0;
-		int32 Found = 0;
-		FString First;
+		TArray<FString> Existing;
 		for (const FString& Id : Ids)
 		{
-			FReplies Inner;
-			const int32 Ran = RunFunctionLines(Id, Sender, Target, Inner, 0);
-			if (Ran >= 0)
+			if (!McData::PathOf(Id, TEXT("function"), TEXT(".mcfunction")).IsEmpty())
 			{
-				if (Found++ == 0)
-				{
-					First = Id;
-				}
-				Total += Ran;
-				Replies.Append(Inner);
+				Existing.Add(Id);
 			}
 		}
-		if (Found == 0)
+		if (Existing.IsEmpty())
 		{
-			return { Fail(McLang::Format(TEXT("argument.id.unknown"), { Words[1].RightChop(bTag ? 1 : 0) })) };
+			if (bTag)
+			{
+				return { Fail(McLang::Format(Ids.IsEmpty() ? TEXT("arguments.function.tag.unknown") : TEXT("commands.function.scheduled.no_functions"), { Words[1].RightChop(1) })) };
+			}
+			return { Fail(McLang::Format(TEXT("arguments.function.unknown"), { Words[1] })) };
 		}
-		Replies.Add(Ok(bTag && Found != 1 ? McLang::Format(TEXT("commands.function.success.multiple"), { FString::FromInt(Total), FString::FromInt(Found) })
-			: McLang::Format(TEXT("commands.function.success.single"), { FString::FromInt(Total), First })));
+		// The game says what it will run, then they run.
+		FReplies Replies;
+		Replies.Add(Ok(Existing.Num() == 1 ? McLang::Format(TEXT("commands.function.scheduled.single"), { Existing[0] })
+			: McLang::Format(TEXT("commands.function.scheduled.multiple"), { FString::Join(Existing, TEXT(", ")) })));
+		FReplies Ignored;
+		for (const FString& Id : Existing)
+		{
+			RunFunctionLines(Id, Sender, Target, Ignored, 0);
+		}
 		return Replies;
 	}
 

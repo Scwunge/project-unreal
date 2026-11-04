@@ -1262,7 +1262,7 @@ Numbers in the mounts code that did not come from a log (vehicle_log24-29), the 
 1. Temper: max 100, a buck once in 50 ticks, +5 on a buck, feed values 3 (sugar, wheat, apple) / 5 (golden carrot) / 10 (golden apple) - `McMount.h`, `TemperOf`.
 2. Horse stat rolls at first use: jump 0.4 + three 0.2 randoms, speed (0.45 + three 0.3 randoms) x 0.25 - `McMount.cpp` Ensure. Logs only used summoned values.
 3. (measured, vehicle_log30: back 0.1214 and strafe 0.2428 a tick against forward 0.4857 - kept.)
-4. Rider seat height 0.6875 x the mount's height for every mount but the horse (horse measured 0.84375 in vehicle_log30; donkey, mule, pig, strider, camel, llama unmeasured).
+4. (measured, vehicle_log30/31: seat above the mount's feet horse 0.84375, donkey 0.5125, mule 0.6125, pig 0.26875, strider 1.1, camel 1.4; other mobs still use 0.6875 x height, unmeasured.)
 5. Horse armour points (leather 3, copper 4, iron 5, golden 7, diamond 11, netherite 19) and the damage cut max(A/5, A - D/2), capped 20, divided by 25.
 6. Stick wear: 7 a use, 25 carrot, 100 fungus, worn-out stick becomes a fishing rod.
 7. Second camel rider 0.9 behind.
@@ -1270,4 +1270,4 @@ Numbers in the mounts code that did not come from a log (vehicle_log24-29), the 
 9. A strider on lava stands 0.5 above the source block's floor.
 10. A running horse jump carries 0.4 x the charge along the facing.
 
-Plan: measure 4 (other mounts), 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need the wiki or a log of many summons/feedings; remove or label any still unmeasured at integrate.
+Plan: measure 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need the wiki or a log of many summons/feedings; remove or label any still unmeasured at integrate.

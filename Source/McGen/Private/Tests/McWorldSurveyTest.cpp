@@ -1208,7 +1208,7 @@ bool FMcDeepDarkWideTest::RunTest(const FString& Parameters)
 {
 	FMcNoiseSettings Settings;
 	FMcBiomeSource Source;
-	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings) && Source.Load(TEXT("minecraft:overworld"))))
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings) && Source.Load(TEXT("minecraft:overworld"))))
 	{
 		return false;
 	}

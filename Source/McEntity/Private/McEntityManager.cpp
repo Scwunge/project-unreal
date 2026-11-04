@@ -403,7 +403,9 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		{
 			Mob.HurtTime = 0;
 			// No blow's knockback of its own: the reference mobs' push was exactly the blast's (1 - distance / 8), set below.
+			bInBlast = true;
 			Mob.Damage(Damage, nullptr);
+			bInBlast = false;
 			if (!Mob.bRemoved)
 			{
 				// Shoved away from the blast along the line to its eye, harder the closer and more open to it.

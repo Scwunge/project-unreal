@@ -66,6 +66,10 @@ bool FMcLecternTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the last reads 15"), McBook::GetComparatorSignal(4, 5), 15);
 	TestEqual(TEXT("page 2 of 3 reads 8"), McBook::GetComparatorSignal(1, 3), 8);
 	TestEqual(TEXT("page 2 of 4 reads 5"), McBook::GetComparatorSignal(1, 4), 5);
+	// All 40 spots of the reference run lectern2 (tools/refscripts/gen_lectern.py), a sample: (pages, page) -> signal.
+	const int32 Measured[][3] = { { 5, 1, 4 }, { 5, 3, 11 }, { 8, 1, 3 }, { 8, 4, 9 }, { 8, 6, 13 }, { 10, 1, 2 }, { 10, 5, 8 }, { 10, 8, 13 }, { 16, 1, 1 },
+		{ 16, 8, 8 }, { 16, 14, 14 }, { 20, 1, 1 }, { 20, 18, 14 }, { 100, 1, 1 }, { 100, 50, 8 }, { 100, 98, 14 }, { 100, 99, 15 } };
+	for (const int32* Row : Measured) TestEqual(*FString::Printf(TEXT("%d pages, page %d"), Row[0], Row[1]), McBook::GetComparatorSignal(Row[1], Row[0]), Row[2]);
 
 	// The menu turns pages within the book, opens at a page asked for, and takes the book; its state crosses the wire.
 	{

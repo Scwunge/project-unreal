@@ -1425,7 +1425,7 @@ void AMcPlayerPawn::ServerTickRiding()
 		{
 			const FMcMob& Ridden = static_cast<const FMcMob&>(*Found);
 			MountHealth = Ridden.Health;
-			MountMaxHealth = Ridden.MaxHealth;
+			MountMaxHealth = Ridden.Type.MaxHealth;
 			MountJump = McMount::IsRideable(*Found) && !McMount::IsStickMount(*Found) ? McMount::ChargeScale(Found->Mount->JumpHoldTicks) : -1.0f;
 		}
 		const FVector MountSeat = McMount::GetSeatFor(*Found, GetUniqueID());

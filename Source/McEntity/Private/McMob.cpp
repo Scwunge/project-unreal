@@ -138,6 +138,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Enderman = Add(TEXT("minecraft:enderman"), 0.6f, 2.9f, 40.f, 0.3f, 7.f, 64.f, false, false);
 		Enderman.bNeutral = true;
 		Enderman.bTeleports = true;
+		Enderman.bGazeAngers = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
 		// The magma cube (hogmagma1.txt): per size n (1, 2, 4 across the sizes the game makes) health n squared, attack n, armor 3n, speed
 		// 0.2 + 0.1n, box 0.52 n; it does not burn. Size 1: 1 hp, attack 1, follows 16. Armor and the speed rise are not done.
@@ -888,6 +889,22 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	if (AngerTicks > 0)
 	{
 		--AngerTicks;
+	}
+	if (Type.bGazeAngers)
+	{
+		// A player looking at its eyes from within 64 blocks with nothing between (ender2.txt: stared at from 10 blocks it teleported within 2 ticks;
+		// looked away from, it stood still for 200 ticks). The cone is the game's rule as remembered, not measured: it narrows with distance.
+		for (int32 Index = 0; Index < Manager.PlayerPositions.Num() && Index < Manager.PlayerLooks.Num(); ++Index)
+		{
+			const FVector Eye = Manager.PlayerPositions[Index] + FVector(0.0, 1.62, 0.0);
+			const FVector Mine = Body.Position + FVector(0.0, Type.Height * 0.88, 0.0);
+			const double Distance = FVector::Dist(Eye, Mine);
+			if (Distance < 64.0 && Distance > 0.1 && FVector::DotProduct(Manager.PlayerLooks[Index], (Mine - Eye) / Distance) > 1.0 - 0.025 / Distance
+				&& HasLineOfSight(Manager.GetWorld(), Eye, Mine))
+			{
+				AngerTicks = FMath::Max(AngerTicks, 2);
+			}
+		}
 	}
 	if (ShootCooldown > 0)
 	{

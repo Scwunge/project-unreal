@@ -1278,6 +1278,21 @@ bool McJavaImport::ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out)
 		}
 	};
 	AddItems(FindList(Root, TEXT("Inventory")), 0, true);
+	// The current layout keeps what is worn and the off hand in an equipment compound, not in the inventory list.
+	if (const FMcNbt* Equipment = Root.Find(TEXT("equipment")))
+	{
+		const struct { const TCHAR* Key; int32 Slot; } Pieces[] = { { TEXT("feet"), 100 }, { TEXT("legs"), 101 }, { TEXT("chest"), 102 }, { TEXT("head"), 103 }, { TEXT("offhand"), 150 } };
+		for (const auto& Piece : Pieces)
+		{
+			const FMcNbt* Item = Equipment->Find(Piece.Key);
+			const FMcItemStack Stack = Item ? MakeStack(*Item) : FMcItemStack();
+			if (!Stack.IsEmpty())
+			{
+				Out.Slots.RemoveAll([&Piece](const FMcSavedSlot& Saved) { return Saved.Slot == Piece.Slot; });
+				Out.Slots.Add({ Piece.Slot, Stack });
+			}
+		}
+	}
 	AddItems(FindList(Root, TEXT("EnderItems")), 200, false);
 	return true;
 }

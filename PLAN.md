@@ -1495,3 +1495,15 @@ Plan: measure 3, 4, 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need th
 - `/tag` capped a target at 1024 tags, a number I carried from memory of how the game behaves; no log, wiki page or cache file gave it. Removed (no cap; the lang text "has too many tags" is kept for when a measured limit exists).
 - Checked and sourced: subtitle timings and layout (shots in scripts/sub_pack.txt), /random messages and the 197 sequences (ref log of cmd_misc.txt), /version lines (same log), the stopsound source names (cache lang `soundCategory.*`), the /clone and /fill block limit 32768 (wiki gamerule table, `commandModificationBlockLimit`), the 0.05 s function tick (wiki), pack format 121 (ref log and `cache/`).
 - Not a measured number but a guess to remove when measured: `/random reset *` reports 197 on every run, but the game's real count changes with loaded loot tables; `/random` rolls with Unreal's FRand, not the game's generator.
+
+## Provenance gaps (import-java-world session, audit 2026-11-04)
+
+Numbers and format details in the Java import and export that did not come straight from a log, the wiki, a real save or `cache/`:
+
+1. Region file layout in `McJavaExport::MakeRegion` (8192-byte header, 4096-byte sectors, 3-byte offset plus 1-byte sector count, timestamp table, compression id 2 = zlib, 4-byte length including the type byte). Written from recall; the import reader reads real saves with the same layout, but the writer is not yet checked against the wiki page or a real file. To measure: dump a real r.X.Z.mca header and compare, then load our export in the vanilla client.
+2. Chunk NBT keys written by `MakeChunk` (xPos, zPos, yPos, Status "minecraft:full", isLightOn 0, LastUpdate, InhabitedTime, block_entities, sections Y/block_states/biomes). The import reads the same keys from real saves; the extra ones (LastUpdate, InhabitedTime) are recalled, unverified. To measure: dump a chunk from `ref`.
+3. Palette bit widths (blocks minimum 4 bits, biomes minimum 1, no `data` when there is a single entry) via `McJavaImport::GetBitsPerEntry`. Confirmed only by importing real saves successfully; the minimums for writing are not separately observed.
+4. level.dat: fields were checked against the `ref` save's level.dat on 2026-11-04. Found wrong from recall: DayTime does not exist in 26.3 (removed); `version` 19133 added as observed. Still unverified: where the day time lives now (likely a separate data file), so Time/time of day is not exported faithfully.
+5. Difficulty names (peaceful, easy, normal, hard): only "normal" observed; the others are recalled.
+6. Player import: equipment slot mapping (feet 100 ... head 103, off hand 150, ender 200+) is the port's own numbering; the NBT side (`equipment` compound, XpP, EnderItems) was read from the playerref save, so observed. The -106 off hand slot in old inventories is recalled and unverified.
+7. Dye order (white 0 ... black 15) for sheep: from the reference shots/save of sheep colours only for the colours that were shot; the full order is recalled.

@@ -1254,3 +1254,20 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 
 ### Maps, measured and partly written (2026-11-03, UNBUILT)
 Vanilla runs mapexp1 to mapexp4 (E:\mc-reference): palette and block colours dumped (McMapColorData.inc), centre rule, marker byte and rotation, scale 0 land shading (sign of the step to the north neighbour) and water shading by depth. Code in McMapColors / McMapData with tests Mc.Map.*; none of it built (no building on this PC). NOT fitted: land and water shading at scales 1+ (averaged heights gave a dithered, inconsistent pattern; the scaled rule is the scale 0 rule on averages), how maps fill while held, decorations beyond the player, locking, cloning, zoom, item use, saving, rendering.
+
+## Provenance gaps
+
+Numbers in the mounts code that did not come from a log (vehicle_log24-29), the wiki or `cache/`; each is from memory or a guess until measured. Vehicles session, 2026-11-04 (10 items):
+
+1. Temper: max 100, a buck once in 50 ticks, +5 on a buck, feed values 3 (sugar, wheat, apple) / 5 (golden carrot) / 10 (golden apple) - `McMount.h`, `TemperOf`.
+2. Horse stat rolls at first use: jump 0.4 + three 0.2 randoms, speed (0.45 + three 0.3 randoms) x 0.25 - `McMount.cpp` Ensure. Logs only used summoned values.
+3. Ridden backward 0.25 and strafe 0.5 multipliers (not in vehicle_log24).
+4. Rider seat height 0.6875 x the mount's height.
+5. Horse armour points (leather 3, copper 4, iron 5, golden 7, diamond 11, netherite 19) and the damage cut max(A/5, A - D/2), capped 20, divided by 25.
+6. Stick wear: 7 a use, 25 carrot, 100 fungus, worn-out stick becomes a fishing rod.
+7. Second camel rider 0.9 behind.
+8. Fallback speeds (0.225, 0.25, 0.175) and pack-animal jump 0.5 when no mob row is found.
+9. A strider on lava stands 0.5 above the source block's floor.
+10. A running horse jump carries 0.4 x the charge along the facing.
+
+Plan: measure 3, 4, 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need the wiki or a log of many summons/feedings; remove or label any still unmeasured at integrate.

@@ -561,6 +561,25 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("team empty"), First(TEXT("team empty red")), FString(TEXT("Nothing changed. That team is already empty")));
 	TestEqual(TEXT("team remove"), First(TEXT("team remove red")), FString(TEXT("Removed team [Reds]")));
 	TestEqual(TEXT("team removed"), First(TEXT("team remove red")), FString(TEXT("Unknown team 'red'")));
+	// Measured against the game: /bossbar.
+	TestEqual(TEXT("bossbar none"), First(TEXT("bossbar list")), FString(TEXT("There are no custom bossbars active")));
+	TestEqual(TEXT("bossbar add"), First(TEXT("bossbar add foo Foo")), FString(TEXT("Created custom bossbar [Foo]")));
+	TestEqual(TEXT("bossbar add component"), First(TEXT("bossbar add minecraft:bar {\"text\":\"Bar Name\"}")), FString(TEXT("Created custom bossbar [Bar Name]")));
+	TestEqual(TEXT("bossbar add again"), First(TEXT("bossbar add foo Again")), FString(TEXT("A bossbar already exists with the ID 'minecraft:foo'")));
+	TestEqual(TEXT("bossbar list"), First(TEXT("bossbar list")), FString(TEXT("There are 2 custom bossbar(s) active: [Bar Name], [Foo]")));
+	TestEqual(TEXT("bossbar get max"), First(TEXT("bossbar get foo max")), FString(TEXT("Custom bossbar [Foo] has a maximum of 100")));
+	TestEqual(TEXT("bossbar get players"), First(TEXT("bossbar get foo players")), FString(TEXT("Custom bossbar [Foo] has no players currently online")));
+	TestEqual(TEXT("bossbar set value"), First(TEXT("bossbar set foo value 50")), FString(TEXT("Custom bossbar [Foo] has changed value to 50")));
+	TestEqual(TEXT("bossbar set value same"), First(TEXT("bossbar set foo value 50")), FString(TEXT("Nothing changed. That's already the value of this bossbar")));
+	TestEqual(TEXT("bossbar set max 0"), First(TEXT("bossbar set foo max 0")), FString(TEXT("Integer must not be less than 1: found 0")));
+	TestEqual(TEXT("bossbar set color"), First(TEXT("bossbar set foo color red")), FString(TEXT("Custom bossbar [Foo] has changed color")));
+	TestEqual(TEXT("bossbar set name"), First(TEXT("bossbar set foo name {\"text\":\"New\"}")), FString(TEXT("Custom bossbar [New] has been renamed")));
+	TestEqual(TEXT("bossbar hide"), First(TEXT("bossbar set foo visible false")), FString(TEXT("Custom bossbar [New] is now hidden")));
+	TestEqual(TEXT("bossbar players"), First(TEXT("bossbar set foo players @s")), FString(TEXT("Custom bossbar [New] now has 1 player(s): Steve")));
+	TestEqual(TEXT("bossbar players none"), First(TEXT("bossbar set foo players")), FString(TEXT("Custom bossbar [New] no longer has any players")));
+	TestEqual(TEXT("bossbar unknown"), First(TEXT("bossbar get nope value")), FString(TEXT("No bossbar exists with the ID 'minecraft:nope'")));
+	TestEqual(TEXT("bossbar remove"), First(TEXT("bossbar remove foo")), FString(TEXT("Removed custom bossbar [New]")));
+	TestEqual(TEXT("bossbar remove last"), First(TEXT("bossbar remove bar")), FString(TEXT("Removed custom bossbar [Bar Name]")));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

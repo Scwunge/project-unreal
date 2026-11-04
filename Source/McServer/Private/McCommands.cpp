@@ -66,6 +66,7 @@ namespace
 		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
+		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
@@ -3182,6 +3183,244 @@ namespace
 		return BadArgument(Command);
 	}
 
+	// /bossbar: custom bars kept for the session (wording from a ref run, cmd_boss.txt). Nothing draws a bar on the screen yet.
+	struct FBossbar
+	{
+		FString Id;
+		FString Name;
+		int32 Value = 0;
+		int32 Max = 100;
+		bool bVisible = true;
+		FString Color = TEXT("white");
+		FString Style = TEXT("progress");
+		TArray<FString> Players;
+	};
+
+	TMap<FString, FBossbar>& Bossbars()
+	{
+		static TMap<FString, FBossbar> All;
+		return All;
+	}
+
+	FReplies RunBossbar(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const auto Qualified = [](const FString& Id) { return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id; };
+		const auto Shown = [](const FBossbar& Bar) { return TEXT("[") + Bar.Name + TEXT("]"); };
+		const auto NotFound = [&](const FString& Id) -> FReplies { return { Fail(McLang::Format(TEXT("commands.bossbar.unknown"), { Qualified(Id) })) }; };
+
+		if (Verb == TEXT("list"))
+		{
+			if (Bossbars().Num() == 0)
+			{
+				return { Ok(McLang::Get(TEXT("commands.bossbar.list.bars.none"))) };
+			}
+			TArray<FString> Keys;
+			Bossbars().GetKeys(Keys);
+			Keys.Sort();
+			TArray<FString> Names;
+			for (const FString& Key : Keys)
+			{
+				Names.Add(Shown(Bossbars()[Key]));
+			}
+			return { Ok(McLang::Format(TEXT("commands.bossbar.list.bars.some"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+		}
+		if (Verb == TEXT("add"))
+		{
+			if (Words.Num() < 4)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			const FString Id = Qualified(Words[2]);
+			if (Bossbars().Contains(Id))
+			{
+				return { Fail(McLang::Format(TEXT("commands.bossbar.create.failed"), { Id })) };
+			}
+			FBossbar Bar;
+			Bar.Id = Id;
+			TArray<FString> Rest;
+			for (int32 I = 3; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			Bar.Name = PlainText(FString::Join(Rest, TEXT(" ")));
+			Bossbars().Add(Id, Bar);
+			return { Ok(McLang::Format(TEXT("commands.bossbar.create.success"), { Shown(Bar) })) };
+		}
+		if (Verb != TEXT("get") && Verb != TEXT("set") && Verb != TEXT("remove"))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FBossbar* Bar = Bossbars().Find(Qualified(Words[2]));
+		if (!Bar)
+		{
+			return NotFound(Words[2]);
+		}
+		if (Verb == TEXT("remove"))
+		{
+			const FString Name = Shown(*Bar);
+			Bossbars().Remove(Qualified(Words[2]));
+			return { Ok(McLang::Format(TEXT("commands.bossbar.remove.success"), { Name })) };
+		}
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& What = Words[3];
+		if (Verb == TEXT("get"))
+		{
+			if (What == TEXT("value"))
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.value"), { Shown(*Bar), FString::FromInt(Bar->Value) })) };
+			}
+			if (What == TEXT("max"))
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.max"), { Shown(*Bar), FString::FromInt(Bar->Max) })) };
+			}
+			if (What == TEXT("visible"))
+			{
+				return { Ok(McLang::Format(Bar->bVisible ? TEXT("commands.bossbar.get.visible.visible") : TEXT("commands.bossbar.get.visible.hidden"), { Shown(*Bar) })) };
+			}
+			if (What == TEXT("players"))
+			{
+				if (Bar->Players.Num() == 0)
+				{
+					return { Ok(McLang::Format(TEXT("commands.bossbar.get.players.none"), { Shown(*Bar) })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.players.some"), { Shown(*Bar), FString::FromInt(Bar->Players.Num()), FString::Join(Bar->Players, TEXT(", ")) })) };
+			}
+			return BadArgument(Command);
+		}
+
+		// set
+		const FString Last = Words.Last();
+		const auto Whole = [&](const TCHAR* Key, int32& Field, int32 Minimum) -> FReplies
+		{
+			double Number = 0.0;
+			if (Words.Num() != 5 || !ParseNumber(Last, Number) || Number != FMath::FloorToDouble(Number))
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			if (Number < Minimum)
+			{
+				return { Fail(FString::Printf(TEXT("Integer must not be less than %d: found %d"), Minimum, FMath::RoundToInt32(Number))), Fail(BorderContext(Command, Command.Len() - Last.Len())) };
+			}
+			const FString Base = FString(TEXT("commands.bossbar.set.")) + Key;
+			if (FMath::RoundToInt32(Number) == Field)
+			{
+				return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+			}
+			Field = FMath::RoundToInt32(Number);
+			return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Bar), FString::FromInt(Field) })) };
+		};
+		const auto Choice = [&](FString& Field, const TCHAR* Key, std::initializer_list<const TCHAR*> Allowed) -> FReplies
+		{
+			bool bKnown = false;
+			for (const TCHAR* One : Allowed)
+			{
+				bKnown = bKnown || Last == One;
+			}
+			if (Words.Num() != 5 || !bKnown)
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			const FString Base = FString(TEXT("commands.bossbar.set.")) + Key;
+			if (Field == Last)
+			{
+				return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+			}
+			Field = Last;
+			return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Bar) })) };
+		};
+		if (What == TEXT("value"))
+		{
+			return Whole(TEXT("value"), Bar->Value, 0);
+		}
+		if (What == TEXT("max"))
+		{
+			return Whole(TEXT("max"), Bar->Max, 1);
+		}
+		if (What == TEXT("color"))
+		{
+			return Choice(Bar->Color, TEXT("color"), { TEXT("pink"), TEXT("blue"), TEXT("red"), TEXT("green"), TEXT("yellow"), TEXT("purple"), TEXT("white") });
+		}
+		if (What == TEXT("style"))
+		{
+			return Choice(Bar->Style, TEXT("style"), { TEXT("progress"), TEXT("notched_6"), TEXT("notched_10"), TEXT("notched_12"), TEXT("notched_20") });
+		}
+		if (What == TEXT("visible"))
+		{
+			if (Words.Num() != 5 || (Last != TEXT("true") && Last != TEXT("false")))
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			const bool bNew = Last == TEXT("true");
+			if (bNew == Bar->bVisible)
+			{
+				return { Fail(McLang::Get(bNew ? TEXT("commands.bossbar.set.visibility.unchanged.visible") : TEXT("commands.bossbar.set.visibility.unchanged.hidden"))) };
+			}
+			Bar->bVisible = bNew;
+			return { Ok(McLang::Format(bNew ? TEXT("commands.bossbar.set.visible.success.visible") : TEXT("commands.bossbar.set.visible.success.hidden"), { Shown(*Bar) })) };
+		}
+		if (What == TEXT("name"))
+		{
+			if (Words.Num() < 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			TArray<FString> Rest;
+			for (int32 I = 4; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			const FString New = PlainText(FString::Join(Rest, TEXT(" ")));
+			if (New == Bar->Name)
+			{
+				return { Fail(McLang::Get(TEXT("commands.bossbar.set.name.unchanged"))) };
+			}
+			Bar->Name = New;
+			return { Ok(McLang::Format(TEXT("commands.bossbar.set.name.success"), { Shown(*Bar) })) };
+		}
+		if (What == TEXT("players"))
+		{
+			TArray<FString> Who;
+			if (Words.Num() == 5)
+			{
+				FString Error;
+				if (!ResolvePlayers(Last, Sender, Target, Who, Error))
+				{
+					Who.Reset();
+				}
+			}
+			else if (Words.Num() != 4)
+			{
+				return BadArgument(Command);
+			}
+			Who.Sort();
+			TArray<FString> Old = Bar->Players;
+			Old.Sort();
+			if (Old == Who)
+			{
+				return { Fail(McLang::Get(TEXT("commands.bossbar.set.players.unchanged"))) };
+			}
+			Bar->Players = Who;
+			if (Who.Num() == 0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.set.players.success.none"), { Shown(*Bar) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.bossbar.set.players.success.some"), { Shown(*Bar), FString::FromInt(Who.Num()), FString::Join(Who, TEXT(", ")) })) };
+		}
+		return BadArgument(Command);
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -3872,6 +4111,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("team"))
 	{
 		return RunTeam(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("bossbar"))
+	{
+		return RunBossbar(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("forceload"))
 	{

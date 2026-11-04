@@ -112,6 +112,33 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("but not on a horse (it is a ride)"), McMount::Use(Manager, *Horse3, Chest2, 1, false, false), McMount::EUse::Mounted);
 	TestEqual(TEXT("a donkey is slower and jumps lower"), McMount::Ensure(*Donkey).JumpStrength, 0.5f);
 
+	// A camel walks at its attribute, 0.1943 a tick, and dashes: 0.8 for the weakest charge (hold 1), then 0.4368, 0.3975.
+	if (const FMcMobType* CamelType = FMcMobType::Find(FName(TEXT("minecraft:camel"))))
+	{
+		FMcMob* Camel = MakeHorse(*CamelType, 60.5);
+		FMcMountState& CamelState = McMount::Ensure(*Camel);
+		CamelState.bSaddled = true;
+		CamelState.RiderId = 6;
+		for (int32 Tick = 0; Tick < 5; ++Tick) { Manager.Tick(); }
+		double CamelLast = Camel->Body.Position.Z;
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			McMount::SetRiderInput(*Camel, 1.0f, 0.0f, 0.0f, false);
+			Manager.Tick();
+			Step = Camel->Body.Position.Z - CamelLast;
+			CamelLast = Camel->Body.Position.Z;
+		}
+		TestTrue(*FString::Printf(TEXT("a camel walks 0.1943, got %f"), Step), FMath::Abs(Step - 0.1943) < 0.005);
+		for (int32 Tick = 0; Tick < 40; ++Tick) { McMount::SetRiderInput(*Camel, 0.0f, 0.0f, 0.0f, false); Manager.Tick(); }
+		CamelLast = Camel->Body.Position.Z;
+		McMount::SetRiderInput(*Camel, 0.0f, 0.0f, 0.0f, true);
+		Manager.Tick();
+		McMount::SetRiderInput(*Camel, 0.0f, 0.0f, 0.0f, false);
+		Manager.Tick();
+		TestTrue(*FString::Printf(TEXT("the weakest dash steps 0.8, got %f"), Camel->Body.Position.Z - CamelLast), FMath::Abs((Camel->Body.Position.Z - CamelLast) - 0.8) < 0.03);
+		TestEqual(TEXT("and the next must wait 55 ticks"), CamelState.DashCooldown, 55);
+	}
+
 	// A pig with a carrot on a stick (vehicle_log26): 0.1239 a tick; a boost of 746 ticks adds 1.15 x sin(pi t/746): 0.1632 after 64 ticks.
 	if (const FMcMobType* PigType = FMcMobType::Find(FName(TEXT("minecraft:pig"))))
 	{

@@ -45,7 +45,7 @@ bool McMount::IsStickMount(const FMcEntity& Entity)
 
 bool McMount::IsRideable(const FMcEntity& Entity)
 {
-	return Entity.IsLiving() && (IsHorseKind(Entity.GetType()) || IsStickMount(Entity));
+	return Entity.IsLiving() && (IsHorseKind(Entity.GetType()) || IsStickMount(Entity) || Entity.GetType() == TEXT("minecraft:camel"));
 }
 
 bool McMount::Boost(FMcEntity& Entity, int32 TotalTicks)
@@ -127,7 +127,7 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 	};
 	if (!Held.IsEmpty())
 	{
-		if (Held.Item == TEXT("minecraft:saddle") && (Mob.bTamed || IsStickMount(Mob)) && !State.bSaddled)
+		if (Held.Item == TEXT("minecraft:saddle") && (Mob.bTamed || IsStickMount(Mob) || Mob.GetType() == TEXT("minecraft:camel")) && !State.bSaddled)
 		{
 			State.bSaddled = true;
 			Take();
@@ -152,7 +152,7 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 			return EUse::Fed;
 		}
 	}
-	if (bSneaking || State.RiderId != 0 || (IsStickMount(Mob) && !State.bSaddled))
+	if (bSneaking || State.RiderId != 0 || ((IsStickMount(Mob) || Mob.GetType() == TEXT("minecraft:camel")) && !State.bSaddled))
 	{
 		return EUse::None;
 	}
@@ -200,7 +200,8 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 		return false;
 	}
 	FMcMountState& State = *Mob.Mount;
-	if (!Mob.bTamed && !IsStickMount(Mob))
+	const bool bCamel = Mob.GetType() == TEXT("minecraft:camel");
+	if (!Mob.bTamed && !IsStickMount(Mob) && !bCamel)
 	{
 		// A wild one bucks about once in fifty ticks: a roll under its temper tames it, otherwise it grows 5 used to people and throws the rider.
 		if (FMath::RandRange(0, BuckOneIn - 1) == 0)
@@ -240,7 +241,7 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 			State.BoostTotal = 0;
 		}
 	}
-	else if (Mob.bTamed && State.bSaddled)
+	else if ((Mob.bTamed || bCamel) && State.bSaddled)
 	{
 		Input.Forward = State.Forward >= 0.0f ? State.Forward : State.Forward * 0.25f;
 		Input.Strafe = State.Strafe * 0.5f;
@@ -255,7 +256,31 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 			State.PendingJump = JumpFraction(State.JumpHoldTicks);
 			State.JumpHoldTicks = 0;
 		}
-		if (State.PendingJump > 0.0f && Mob.Body.bOnGround)
+		if (State.DashCooldown > 0)
+		{
+			--State.DashCooldown;
+		}
+		if (bCamel)
+		{
+			// A camel's charge is a dash: forward along the rider's yaw and a little up, then a pause of 55 ticks.
+			if (State.PendingJump > 0.0f && Mob.Body.bOnGround && State.DashCooldown == 0)
+			{
+				const double Amount = State.PendingJump;
+				const double Radians = FMath::DegreesToRadians(static_cast<double>(Input.Yaw));
+				const double Strength = 22.2222 * Amount * State.Speed;
+				Mob.Body.Velocity.X -= FMath::Sin(Radians) * Strength;
+				Mob.Body.Velocity.Z += FMath::Cos(Radians) * Strength;
+				Mob.Body.Velocity.Y = 0.162 + 0.6 * (Amount - 0.4);
+				Mob.Body.bOnGround = false;
+				State.DashCooldown = 55;
+				State.PendingJump = 0.0f;
+			}
+			else if (State.PendingJump > 0.0f && State.DashCooldown > 0)
+			{
+				State.PendingJump = 0.0f;
+			}
+		}
+		else if (State.PendingJump > 0.0f && Mob.Body.bOnGround)
 		{
 			Mob.Body.Velocity.Y = State.PendingJump * State.JumpStrength;
 			Mob.Body.bOnGround = false;

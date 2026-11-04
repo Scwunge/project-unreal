@@ -39,6 +39,8 @@ struct MCENTITY_API FMcMountState
 	// Ticks the jump key has been held, and the jump waiting for the ground (0 for none).
 	int32 JumpHoldTicks = 0;
 	float PendingJump = 0.0f;
+	// Camels: ticks until it may dash again.
+	int32 DashCooldown = 0;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.
 	FName RiderHeld;
 	int32 BoostTime = 0;

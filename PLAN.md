@@ -1293,3 +1293,9 @@ A compass used on a lodestone is tied to it (`minecraft:lodestone_tracker` with 
 
 ### Spyglass (2026-11-03)
 Measured with the new `log fov <ticks>` verb (scripts/spy1.txt, spy2.txt on the reference): while the glass is held up the camera's modifier moves half the way to 0.1 each game tick (1, 0.55, 0.325, 0.2125 ...; fov 7 degrees at 70), and back half the way to 1 on release; the frame shows the value between the last two ticks. The scope picture (textures/misc/spyglass_scope.png) is a square whose side grows by the same halving from 0.5 to about 1.122 screen heights (808 px at 720p, reference edges 968, 1019, 1034, 1040, 1043 at the first shots), black beside it, the hand hidden, the HUD kept. Ours: hold use with a spyglass (AMcPlayerPawn spy state), `McHUD` draws the scope; our shot Saved/Shots/spy_zoom.png has the same 808 px square. Sounds item.spyglass.use / stop_using play on the server (volume and pitch NOT measured). Not done: slower look while scoped (not measured), the spyglass advancements (spyglass_at_*), the first-tick scope scale is approximate.
+
+## Bundles (built; tests Mc.Bundle.*)
+- `McBundle` (McItem): contents in `minecraft:bundle_contents`, newest first; item weight 1/max stack (bundle 1/16 + contents, bee-holding hive/nest 1), capacity one whole, no shulker boxes (rules from minecraft.wiki "Bundle").
+- Menu clicks (`FMcMenu::Pickup`): left click bundle on cursor onto a stack, or items on cursor onto a bundle, inserts; right click a bundle with an empty cursor takes the newest stack; right click an empty slot with a bundle on the cursor places the newest stack.
+- Using a held bundle throws the newest stack along the look (`ServerUseBundle`).
+- Open: fullness bar on the slot, tooltip, open/closed icon, sounds, bundle recipes/dyeing check, in-world throw check.

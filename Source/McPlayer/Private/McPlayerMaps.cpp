@@ -5,6 +5,7 @@
 #include "McPlayerPawn.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
+#include "McBundle.h"
 #include "McEntityManager.h"
 #include "McMapStore.h"
 #include "McPlayerData.h"
@@ -116,4 +117,26 @@ void AMcPlayerPawn::GiveShotMap()
 	FMcItemStack Filled(FilledMapItem, 1);
 	McMapStore::SetId(Filled, Id);
 	Data->Inventory->GetMutable(Data->SelectedSlot) = Filled;
+}
+
+void AMcPlayerPawn::ServerUseBundle()
+{
+	FMcEntityManager* Manager = GetEntities ? GetEntities() : nullptr;
+	if (!Manager || !Data || bServerDead || !McBundle::IsBundle(Data->GetSelected().Item))
+	{
+		return;
+	}
+	FMcItemStack Bundle = Data->Inventory->Get(Data->SelectedSlot);
+	const FMcItemStack Thrown = McBundle::RemoveNewest(Bundle);
+	if (Thrown.IsEmpty())
+	{
+		return;
+	}
+	Data->Inventory->Set(Data->SelectedSlot, Bundle);
+	// Thrown as the Q key throws: from just under the eyes, along the look.
+	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
+	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
+	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	FMcItemEntity& Item = Manager->DropItem(Body.Position + FVector(0.0, GetEyeHeight() - 0.3, 0.0), Thrown, 40);
+	Item.Body.Velocity = Look * 0.3 + FVector(0.0, 0.1, 0.0);
 }

@@ -3,6 +3,7 @@
 
 #include "McPlayerPawn.h"
 #include "McBiomeRegistry.h"
+#include "McBundle.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
 #include "McEntityManager.h"
@@ -27,6 +28,11 @@ FMcFishingBobber* AMcPlayerPawn::FindBobber(FMcEntityManager& Entities) const
 void AMcPlayerPawn::ServerUseItem_Implementation()
 {
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (Data && McBundle::IsBundle(Data->GetSelected().Item))
+	{
+		ServerUseBundle();
+		return;
+	}
 	if (Data && Data->GetSelected().Item == FName("minecraft:map"))
 	{
 		ServerUseMap();

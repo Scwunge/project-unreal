@@ -367,6 +367,8 @@ private:
 	void ServerTickFishing(FMcEntityManager& Entities);
 	// Maps (McPlayerMaps.cpp): an empty map used makes a filled one; one held fills in, a row at a time.
 	void ServerUseMap();
+	// A bundle used throws out the newest stack it holds (minecraft.wiki "Bundle").
+	void ServerUseBundle();
 public:
 	// For screenshots (-McMapShot): puts a new filled map into the selected slot.
 	void GiveShotMap();

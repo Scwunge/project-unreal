@@ -686,6 +686,46 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	return Bytes;
 }
 
+TArray<uint8> FMcEntityHost::PackEntity(FMcEntity& Entity)
+{
+	TArray<uint8> Bytes;
+	if (Entity.bRemoved || !Entity.IsPersistent())
+	{
+		return Bytes;
+	}
+	TArray<uint8> Body;
+	FMemoryWriter Writer(Body);
+	FString Type = Entity.GetType().ToString();
+	TArray<uint8> Data;
+	FMemoryWriter DataWriter(Data);
+	Entity.Serialize(DataWriter);
+	if (Entity.IsLiving())
+	{
+		int32 Look = static_cast<FMcMob&>(Entity).LookSeed;
+		DataWriter << Look;
+		int32 Young = static_cast<FMcMob&>(Entity).YoungTicks;
+		DataWriter << Young;
+	}
+	Writer << Type << Data;
+	FMemoryWriter Out(Bytes);
+	int32 Count = 1;
+	Out << Count;
+	Bytes.Append(Body);
+	return Bytes;
+}
+
+FMcEntity* FMcEntityHost::UnpackEntity(TConstArrayView<uint8> Bytes, const FVector& Pos)
+{
+	const int32 Before = Manager.GetEntities().Num();
+	if (RestoreChunk(Bytes) < 1 || Manager.GetEntities().Num() <= Before)
+	{
+		return nullptr;
+	}
+	FMcEntity* Entity = Manager.GetEntities().Last().Get();
+	Entity->Body.Position = Pos;
+	return Entity;
+}
+
 int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 {
 	FMemoryReaderView Reader(Bytes);

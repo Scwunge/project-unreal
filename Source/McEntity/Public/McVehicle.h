@@ -305,6 +305,8 @@ private:
 	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
 	// Falling last tick, so landing in water stops it.
 	bool bWasInAir = false;
+	// Ticks of paddling in water since the last stroke sounded (not saved).
+	int32 PaddleTicks = 0;
 	// Ticks the hull has spent in the top block of a rising bubble column, under air (not saved).
 	int32 BubbleTime = 0;
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).

@@ -1487,6 +1487,7 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
 	// command script for a shot or sound run, like the reference client's "cmd").
 	FString Lines;
+	// A line "!respawn" presses Respawn on the death screen.
 	// -McChatFile=<path> reads the lines from a file, one a line, for text a command line can't carry (JSON with quotes).
 	FString ChatFile;
 	const bool bFromFile = FParse::Value(FCommandLine::Get(), TEXT("-McChatFile="), ChatFile) && FFileHelper::LoadFileToString(Lines, *ChatFile);
@@ -1503,7 +1504,12 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
 				[this, Player = TWeakObjectPtr<APlayerController>(NewPlayer), Line = Parts[Index]](float)
 				{
-					if (Player.IsValid())
+					if (Player.IsValid() && Line == TEXT("!respawn"))
+					{
+						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
+						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid())
 					{
 						HandleChat(Player.Get(), Line);
 					}

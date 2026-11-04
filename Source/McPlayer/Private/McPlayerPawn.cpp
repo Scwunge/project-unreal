@@ -1351,6 +1351,11 @@ void AMcPlayerPawn::ServerRide(int32 VehicleId)
 	bServerSprint = false;
 	ServerFall = McSurvival::FFallTracker();
 	Body.Velocity = FVector::ZeroVector;
+	if (Data)
+	{
+		// vanilla shot (ref_ride_horse.png): the action bar tells how to get off.
+		Data->ServerOverlay(TEXT("Press Left Shift to dismount"), false);
+	}
 }
 
 void AMcPlayerPawn::ServerDismount()

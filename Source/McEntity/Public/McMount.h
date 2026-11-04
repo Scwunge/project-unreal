@@ -39,6 +39,11 @@ struct MCENTITY_API FMcMountState
 	// Ticks the jump key has been held, and the jump waiting for the ground (0 for none).
 	int32 JumpHoldTicks = 0;
 	float PendingJump = 0.0f;
+	// Llamas (McLlama.h): the llama ahead in a caravan, the hurts seen, ticks left to spit and until the next spit.
+	int32 CaravanHead = 0;
+	int32 LastHurtEvents = 0;
+	int32 SpitMemory = 0;
+	int32 SpitCooldown = 0;
 	// Camels: ticks until it may dash again.
 	int32 DashCooldown = 0;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.

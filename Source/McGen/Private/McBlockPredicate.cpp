@@ -528,7 +528,8 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	}
 	if (Name == TEXT("minecraft:lily_pad"))
 	{
-		return Supports(TEXT("minecraft:supports_lily_pad")) && Shapes.GetFluid(Region.GetBlock(Pos)) == EMcFluid::None;
+		// Resting on water (a still source) or on ice; the tag lists only the ice.
+		return ((Shapes.GetFluid(Below) == EMcFluid::Water && Shapes.GetFluidLevel(Below) == 0) || Supports(TEXT("minecraft:supports_lily_pad"))) && Shapes.GetFluid(Region.GetBlock(Pos)) == EMcFluid::None;
 	}
 	if (Name == TEXT("minecraft:kelp") || Name == TEXT("minecraft:kelp_plant") || Name == TEXT("minecraft:seagrass") || Name == TEXT("minecraft:tall_seagrass"))
 	{
@@ -556,6 +557,11 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	if (Name == TEXT("minecraft:azalea") || Name == TEXT("minecraft:flowering_azalea"))
 	{
 		return Supports(TEXT("minecraft:supports_azalea"));
+	}
+	if (Name == TEXT("minecraft:spore_blossom"))
+	{
+		// Hangs from a ceiling with a sturdy underside (it is in the flowers tag, which would ask for ground).
+		return HasSturdyFace(Region.GetBlock(Pos + FIntVector(0, 1, 0)), FIntVector(0, -1, 0));
 	}
 	if (Name == TEXT("minecraft:mangrove_propagule"))
 	{

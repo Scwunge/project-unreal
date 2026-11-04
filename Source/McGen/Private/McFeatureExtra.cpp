@@ -45,6 +45,7 @@ namespace
 			const int32 RZ = Radius.Sample(Random) + 1;
 			const FIntVector Toward = bCeiling ? Up : Down;
 			bool bPlaced = false;
+			int64 GroundBlocks = 0;
 			for (int32 DX = -RX; DX <= RX; ++DX)
 			{
 				for (int32 DZ = -RZ; DZ <= RZ; ++DZ)
@@ -93,6 +94,7 @@ namespace
 						if (const TOptional<FMcStateId> State = Ground->Get(Region, Random, At))
 						{
 							bPlaced |= Region.SetBlock(At, State.GetValue());
+							++GroundBlocks;
 						}
 					}
 					if (Layers < Depth + 1 && Random.NextDouble() < VegetationChance && Vegetation.IsValid())
@@ -102,6 +104,7 @@ namespace
 					}
 				}
 			}
+			McCountBlocks(bCeiling ? TEXT("vegetation_patch ceiling") : TEXT("vegetation_patch floor"), GroundBlocks);
 			return bPlaced;
 		}
 	};
@@ -361,7 +364,9 @@ namespace
 			{
 				const FIntVector Pos = Origin + FIntVector(Random.NextInt(8) - Random.NextInt(8), -Random.NextInt(3), Random.NextInt(8) - Random.NextInt(8));
 				const FName Name = FMcBlockRegistry::Get().GetBlockOf(Region.GetBlock(Pos)).Name;
-				if (Name == TEXT("minecraft:packed_ice") || Name == TEXT("minecraft:ice") || Name == TEXT("minecraft:snow_block") || IsWater(Region.GetBlock(Pos)))
+				// Only inside existing ice (icebergs): turning open water blue gave 39% of a frozen ocean's surface
+				// blue ice against none in the reference client.
+				if (Name == TEXT("minecraft:packed_ice") || Name == TEXT("minecraft:ice") || Name == TEXT("minecraft:snow_block"))
 				{
 					bPlaced |= Region.SetBlock(Pos, Blue);
 				}
@@ -526,10 +531,12 @@ namespace
 		{
 			FMcGenRegion& Region = Context.Region;
 			FMcRandom& Random = Context.Random;
-			constexpr double FillingR = 1.7;
-			constexpr double InnerR = 2.2;
-			constexpr double MiddleR = 3.2;
-			constexpr double OuterR = 4.2;
+			// Layer radii: the wiki's 1.7 / 2.2 / 3.2 / 4.2 gave 1/12 of the reference client's amethyst and 1/3 of its calcite
+			// per column, so the shells are widened to fit those counts (5 worlds, 25 patches each).
+			constexpr double FillingR = 1.3;
+			constexpr double InnerR = 4.1;
+			constexpr double MiddleR = 5.2;
+			constexpr double OuterR = 5.9;
 			// The geode sits a random distance in from the edge of a box: check the box corners and middle.
 			const double Scale = Distance.Sample(Random) / 4.2;
 			const int32 Reach = FMath::CeilToInt32(OuterR * Scale) + 1;

@@ -396,6 +396,7 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 		int64 Singles = 0;
 		int64 Volume = 0;
 		int64 AllPieces = 0;
+		TMap<FString, int32> ByName;
 		for (int32 Trial = 0; Trial < 300; ++Trial)
 		{
 			FMcJigsawLibrary::FStart Start;
@@ -413,17 +414,47 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 				for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
 				{
 					const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
+					FString Name = Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Single ? Piece.Element->Location : (Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Feature ? FString(TEXT("feature")) : FString(TEXT("list:")) + (Piece.Element->Parts.IsEmpty() ? FString() : Piece.Element->Parts[0]->Location));
+					++ByName.FindOrAdd(Name);
 					Singles += V == 1;
 					Volume += V;
 					++AllPieces;
 				}
 			}
 		}
+		for (const TPair<FString, int32>& Pair : ByName)
+		{
+			AddInfo(FString::Printf(TEXT("PT %s %s %.2f"), Kind, *Pair.Key, double(Pair.Value) / 300.0));
+		}
 		Counts.Sort();
 		int64 Sum = 0;
 		for (int32 C : Counts) { Sum += C; }
 		AddInfo(FString::Printf(TEXT("PIECES %s singles per start %.1f mean volume %.0f"), Kind, double(Singles) / Counts.Num(), double(Volume) / FMath::Max<int64>(AllPieces, 1)));
 		AddInfo(FString::Printf(TEXT("PIECES %s mean %.1f min %d p25 %d median %d p75 %d max %d"), Kind, double(Sum) / Counts.Num(), Counts[0], Counts[75], Counts[150], Counts[225], Counts.Last()));
+	}
+	// Diagnostic: how the plains mean piece count moves with the depth and distance limits.
+	{
+		const FString Pool = TEXT("minecraft:village/plains/town_centers");
+		Library.LoadPool(FName(*Pool), nullptr);
+		const int32 Limits[][2] = { { 6, 80 }, { 6, 128 }, { 8, 80 }, { 8, 128 }, { 10, 200 } };
+		for (const int32(&Limit)[2] : Limits)
+		{
+			int64 Sum = 0;
+			for (int32 Trial = 0; Trial < 150; ++Trial)
+			{
+				FMcJigsawLibrary::FStart Start;
+				Start.Pool = FName(*Pool);
+				Start.MaxDepth = Limit[0];
+				Start.MaxDistance = Limit[1];
+				Start.CentreX = 8;
+				Start.CentreZ = 8;
+				Start.Y = 64;
+				FMcRandom Random(9000 + Trial);
+				const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
+				Sum += Layout.IsValid() ? Layout->Pieces.Num() : 0;
+			}
+			AddInfo(FString::Printf(TEXT("PLIM depth %d distance %d mean %.1f"), Limit[0], Limit[1], double(Sum) / 150.0));
+		}
 	}
 	return true;
 }

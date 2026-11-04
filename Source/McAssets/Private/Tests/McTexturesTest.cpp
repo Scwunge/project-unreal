@@ -243,7 +243,8 @@ bool FMcPackTileMapsTest::RunTest(const FString& Parameters)
 	};
 	// The picture is grey; the normal map's red is 200 in the top right tile (16..31, 0..15) and 50 elsewhere.
 	if (!TestTrue(TEXT("the pictures are written"), Write(TEXT("oak_sign.png"), [](int32, int32) { return FColor(120, 120, 120, 255); })
-		&& Write(TEXT("oak_sign_n.png"), [](int32 X, int32 Y) { return FColor(X >= 16 && Y < 16 ? 200 : 50, 128, 255, 255); })))
+		&& Write(TEXT("oak_sign_n.png"), [](int32 X, int32 Y) { return FColor(X >= 16 && Y < 16 ? 200 : 50, 128, 255, 255); })
+		&& Write(TEXT("stone.png"), [](int32, int32) { return FColor(120, 120, 120, 255); })))
 	{
 		return false;
 	}
@@ -261,6 +262,10 @@ bool FMcPackTileMapsTest::RunTest(const FString& Parameters)
 	Textures.Unload();
 	if (TestTrue(TEXT("textures load with the pack"), Textures.EnsureLoaded()))
 	{
+		// The pack's stone is 32 pixels but the game's is 16, so it is scaled to a layer, not cut into tiles (a 1024-pixel
+		// pack would otherwise bake 4096 quads a face); the 32-pixel sign stays 2 by 2.
+		TestEqual(TEXT("a pack's bigger stone is not tiled"), McTextureTiles::GetGrid(FName("minecraft:block/stone")), FIntPoint(1, 1));
+		TestEqual(TEXT("the sign is still two tiles by two"), McTextureTiles::GetGrid(FName("minecraft:block/oak_sign")), FIntPoint(2, 2));
 		const int32 TopRight = Textures.GetLayer(McTextureTiles::MakeTileId(FName("minecraft:block/oak_sign"), FIntPoint(1, 0), FIntPoint(2, 2)));
 		const int32 TopLeft = Textures.GetLayer(McTextureTiles::MakeTileId(FName("minecraft:block/oak_sign"), FIntPoint(0, 0), FIntPoint(2, 2)));
 		if (TestTrue(TEXT("the sign picture is cut into tiles"), TopRight > 0 && TopLeft > 0 && TopRight != TopLeft)

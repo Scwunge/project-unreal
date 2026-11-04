@@ -43,7 +43,15 @@ FIntPoint McTextureTiles::GetGrid(int32 Width, int32 Height, bool bAnimated)
 
 FIntPoint McTextureTiles::GetGrid(FName TextureId)
 {
-	const FString Path = McCache::AssetOf(TextureId.ToString(), TEXT("textures/"), TEXT(".png"));
+	// The grid follows the game's own picture, not a resource pack's: a pack's 1024-pixel stone is scaled to the layer size
+	// like any other pack picture (cutting it into 64 by 64 tiles baked 160 million quads), while a 32-pixel sign stays
+	// two tiles by two with a pack's finer picture cut to match. A picture only a pack has is read from the pack.
+	const FString Relative = McCache::RelativeOf(TextureId.ToString(), TEXT("textures/"), TEXT(".png"));
+	FString Path = McCache::Root() / TEXT("client/assets/minecraft") / Relative;
+	if (Relative.Contains(TEXT(":")) || !FPaths::FileExists(Path))
+	{
+		Path = McCache::Asset(Relative);
+	}
 	int32 Width = 0, Height = 0;
 	if (!ReadPngSize(Path, Width, Height))
 	{

@@ -1254,15 +1254,12 @@ bool FMcStructureLibrary::SurroundAllows(FName Id, FIntPoint Chunk, TFunctionRef
 		{
 			continue;
 		}
+		// A 29-block square round the start (minecraft.wiki, "Ocean Monument": every point of the square must be in a biome the structure's surround list allows); sampled on a 5 x 5 grid. The wiki's extra 16-block deep-ocean rule is not applied here.
 		static const int32 Steps[] = { -29, -15, 0, 15, 29 };
 		for (const int32 DZ : Steps)
 		{
 			for (const int32 DX : Steps)
 			{
-				if (DX * DX + DZ * DZ > 29 * 29)
-				{
-					continue;
-				}
 				const FMcBiomeId Biome = BiomeAt(Chunk.X * 16 + 8 + DX, Chunk.Y * 16 + 8 + DZ);
 				if (!Structure->Surround.IsValidIndex(Biome) || !Structure->Surround[Biome])
 				{

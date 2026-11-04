@@ -245,8 +245,8 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     moves, one in the air keeps 0.95 after (stone: 0.2886, 0.1443, 0.0721 ...; off a ledge 0.02 down, then 0.04 a tick).
     Curves and powered ascending rails already matched. Detector rails: on the tick a cart's box overlaps the sensor
     (middle 0.6 of the cell, 0.5 up), a look every 20 ticks made before entities move (so on the cart's last position),
-    on 40 ticks in all for a cart passing at 0.4. Not fitted: the log's slope-down bottom (my script built it a block
-    above the flat rails, the cart carries on in its line through the air until it lands).
+    on 40 ticks in all for a cart passing at 0.4. The log's slope-down bottom was only a script mistake (rails built a block too high);
+    vehicle_log23.txt rebuilt it and `McClient.McEntity.CartSlopeDown` replays a cart over the top and one from rest to 2e-3 with no code change.
     Activator rails and hopper carts against vehicle_log13.txt: a mob in a cart counts as a rider (moves 0.75, keeps 0.997,
     then 0.96 once thrown out); thrown out the tick after the cart's start is in the rail's cell, it is set down at the
     middle of the cell on the right of the cart's way (a cart going east: one south), on the ground, and neither shoves

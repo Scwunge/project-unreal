@@ -321,6 +321,8 @@ namespace McEntityModel
 				Sheep.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
+				// The wool takes the sheep's dye (white when it has none).
+				Sheep.TintedLayers = 2u;
 				Models.Add(Sheep.Kind, Sheep);
 			}
 			{

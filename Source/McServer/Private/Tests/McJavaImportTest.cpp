@@ -887,7 +887,6 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportTest, "McClient.McServer.JavaExport.RoundTrip",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
@@ -1526,3 +1525,4 @@ bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
+#endif

@@ -1263,7 +1263,7 @@ Numbers in the mounts code that did not come from a log (vehicle_log24-29), the 
 2. Horse stat rolls at first use: jump 0.4 + three 0.2 randoms, speed (0.45 + three 0.3 randoms) x 0.25 - `McMount.cpp` Ensure. Logs only used summoned values.
 3. (measured, vehicle_log30: back 0.1214 and strafe 0.2428 a tick against forward 0.4857 - kept.)
 4. (measured, vehicle_log30/31: seat above the mount's feet horse 0.84375, donkey 0.5125, mule 0.6125, pig 0.26875, strider 1.1, camel 1.4; other mobs still use 0.6875 x height, unmeasured.)
-5. Horse armour points (leather 3, copper 4, iron 5, golden 7, diamond 11, netherite 19) and the damage cut max(A/5, A - D/2), capped 20, divided by 25.
+5. Horse armour points (leather 3, copper 4, iron 5, golden 7, diamond 11, netherite 19) and the damage cut max(A/5, A - D/2), capped 20, divided by 25. MEASURED, KEPT WITH A FIX (vehicle_log35, a horse of 30 health hit by 10 and by 4 with `mob_attack`; `generic` bypasses armour): 10 left 20.24, 20.32, 20.40, 20.80, 22.80, 26.15 and 4 left 26.16, 26.32, 26.48, 26.80, 27.50, 28.81 for leather, copper, iron, golden, diamond, netherite. The points and the formula fit exactly with toughness added, A - D/(2 + T/4): T is 0 for the first four, 2 for diamond and 3 for netherite (the code had none, so diamond and netherite cut too little). `ReduceDamage` now has it; the test replays the 12 numbers.
 6. Stick wear: 7 a use, 25 carrot, 100 fungus, worn-out stick becomes a fishing rod.
 7. Second camel rider 0.9 behind.
 8. Fallback speeds (0.225, 0.25, 0.175) and pack-animal jump 0.5 when no mob row is found.

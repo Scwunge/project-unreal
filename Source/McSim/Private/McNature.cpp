@@ -602,9 +602,8 @@ bool FMcNature::Bonemeal(const FIntVector& Pos)
 	const FString Name = NameOf(State);
 	if (Tags.Has(TEXT("minecraft:saplings"), State))
 	{
-		// 17 of 30 saplings went from stage 0 to 1 in the reference run bonemeal2 (57%, so 0.45 is within two standard errors; a larger run
-		// would settle it).
-		if (Random.FRand() < 0.45f)
+		// Reference runs bonemeal2 and sapling: 84 of 210 saplings went from stage 0 to 1 (40%, standard error 3.4 points).
+		if (Random.FRand() < 0.40f)
 		{
 			GrowSapling(Pos, State);
 		}

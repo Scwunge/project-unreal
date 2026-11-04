@@ -6,13 +6,15 @@ SETS = {"a": [("snowy_plains", -61, 0), ("snowy_beach", -61, 0), ("stony_shore",
         "b": [("snowy_plains", -61, 8), ("snowy_plains", -61, 11), ("snowy_plains", -61, 12), ("snowy_plains", -61, 15)],
         "c": [("stony_shore", 60, 0), ("stony_shore", 100, 0), ("stony_shore", 130, 0), ("stony_shore", 160, 0)]}
 for key, CH in SETS.items():
-    L = ["cmd gamerule send_command_feedback false", "cmd gamemode spectator", "cmd execute in minecraft:overworld run tp @s 32 -50 8", "wait 200",
-         "cmd tick freeze", "wait 4", "cmd gamerule do_mob_spawning false"]
+    L = ["cmd gamerule send_command_feedback false", "cmd gamemode spectator", "cmd execute in minecraft:overworld run tp @s 8 -50 8", "wait 200",
+         "cmd tick freeze", "wait 4"]
     for y in range(-60, 320, 15):
         L.append(f"cmd fill 0 {y} 0 63 {min(y+14, 319)} 15 air")
     for c, (biome, H, light) in enumerate(CH):
         x0 = 16 * c
         L.append(f"cmd fill {x0} {H-1} 0 {x0+15} {H} 15 stone")
+    for c, (biome, H, light) in enumerate(CH):
+        x0 = 16 * c
         L.append(f"cmd fillbiome {x0} {max(H-4, -64)} 0 {x0+15} {H+8} 15 minecraft:{biome}")
         for x in range(x0, x0 + 16):
             for z in range(16):
@@ -29,4 +31,4 @@ for key, CH in SETS.items():
     for i in range(20):
         L += ["cmd tick step 100", "wait 150"]; snap()
     L.append("cmd tick unfreeze")
-    open(f"E:/mc-reference/scripts/freeze3{key}.txt", "w").write("\n".join(L) + "\n")
+    open(f"E:/mc-reference/scripts/freeze4{key}.txt", "w").write("\n".join(L) + "\n")

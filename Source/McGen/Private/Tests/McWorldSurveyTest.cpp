@@ -861,6 +861,13 @@ bool FMcStructureStartsTest::RunTest(const FString& Parameters)
 				{
 					continue;
 				}
+				for (const FName Name : Here)
+				{
+					if (Name == FName(TEXT("minecraft:ancient_city")))
+					{
+						AddInfo(FString::Printf(TEXT("ANC %d %d %d %s %s"), SeedIndex, X, Z, *FMcBiomeRegistry::Get().GetName(Generator.GetBiome(X * 16, -27, Z * 16)).ToString(), *FMcBiomeRegistry::Get().GetName(Generator.GetBiome(X * 16 + 8, -27, Z * 16 + 8)).ToString()));
+					}
+				}
 				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, Generator.FindSurfaceY(X * 16 + 8, Z * 16 + 8), Z * 16 + 8);
 				for (const FName Name : Here)
 				{
@@ -968,6 +975,7 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 		}
 	}
 	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	TMap<int32, int32> DeepDark;
 	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
 	{
 		const FMcNoiseGenerator Generator(Settings, Seeds[SeedIndex], TEXT("minecraft:overworld"));
@@ -980,10 +988,20 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 				const FMcClimate Climate = Generator.SampleClimate(X, 64, Z);
 				int32 Hint = INDEX_NONE;
 				{
-					// The same grid at y -27 (ancient cities start there): the biome only.
+					// The same grid at y -27 (ancient cities start there): the biome only; and the deep_dark count at other heights.
 					const FMcClimate Deep = Generator.SampleClimate(X, -27, Z);
 					int32 DeepHint = INDEX_NONE;
 					AddInfo(FString::Printf(TEXT("CBD %d %d %d %s"), SeedIndex, X, Z, *Registry.GetName(Source.Find(Deep, DeepHint)).ToString()));
+					for (int32 Slot = 0; Slot < 7; ++Slot)
+					{
+						const int32 DeepY = -8 - Slot * 8;
+						const FMcClimate Level = Generator.SampleClimate(X, DeepY, Z);
+						int32 LevelHint = INDEX_NONE;
+						if (Registry.GetName(Source.Find(Level, LevelHint)) == FName(TEXT("minecraft:deep_dark")))
+						{
+							++DeepDark.FindOrAdd(SeedIndex * 100 + Slot);
+						}
+					}
 				}
 				AddInfo(FString::Printf(TEXT("CB %d %d %d %lld %lld %lld %lld %lld %lld %s"), SeedIndex, X, Z,
 					FMath::RoundToInt64(Climate.Values[0] * 10000), FMath::RoundToInt64(Climate.Values[1] * 10000), FMath::RoundToInt64(Climate.Values[2] * 10000),
@@ -991,6 +1009,10 @@ bool FMcClimateGridTest::RunTest(const FString& Parameters)
 					*Registry.GetName(Source.Find(Climate, Hint)).ToString()));
 			}
 		}
+	}
+	for (const TPair<int32, int32>& Pair : DeepDark)
+	{
+		AddInfo(FString::Printf(TEXT("CBDY %d %d %d"), Pair.Key / 100, -8 - (Pair.Key % 100) * 8, Pair.Value));
 	}
 	// The Nether's biomes on the same grid (CBN lines), against `log cbiomes ... 64 nether` on the reference.
 	{

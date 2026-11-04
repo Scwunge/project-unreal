@@ -1,6 +1,7 @@
 #include "McPlayerPawn.h"
 #include "McBundle.h"
 #include "McLeash.h"
+#include "McMount.h"
 #include "McBanner.h"
 #include "McShulker.h"
 #include "McCache.h"
@@ -225,7 +226,7 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 		}
 		else
 		{
-			ServerRideInput(Input.Forward, Input.Strafe, Yaw);
+			ServerRideInput(Input.Forward, Input.Strafe, Yaw, Input.bJump);
 			if (Input.bSneak)
 			{
 				ServerWantDismount();
@@ -809,6 +810,12 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// Using the stick in hand while riding a pig or strider speeds it up.
+	if (RidingId != 0 && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
+	{
+		ServerRideBoost();
+	}
+
 	// A click on a minecart or boat in front of the block being looked at gets in.
 	if (RidingId == 0 && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
 	{
@@ -1385,11 +1392,18 @@ void AMcPlayerPawn::ServerDismount()
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 	FMcEntity* Found = Entities ? Entities->Find(RidingId) : nullptr;
 	RidingId = 0;
-	if (!Found || !Found->IsVehicle() || !BlockWorld)
+	if (Found && Found->Mount.IsValid() && BlockWorld)
+	{
+		McMount::ClearRider(*Found);
+	}
+	else if (!Found || !Found->IsVehicle() || !BlockWorld)
 	{
 		return;
 	}
-	static_cast<FMcVehicle*>(Found)->ClearRider(GetUniqueID());
+	else
+	{
+		static_cast<FMcVehicle*>(Found)->ClearRider(GetUniqueID());
+	}
 	// Out beside it, on whichever side has room; failing that, on top.
 	const FVector Centre = Found->Body.Position;
 	const FVector Spots[] = { FVector(1.1, 0.0, 0.0), FVector(-1.1, 0.0, 0.0), FVector(0.0, 0.0, 1.1), FVector(0.0, 0.0, -1.1), FVector(0.0, 0.0, 0.0) };
@@ -1410,6 +1424,29 @@ void AMcPlayerPawn::ServerTickRiding()
 {
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 	FMcEntity* Found = Entities ? Entities->Find(RidingId) : nullptr;
+	if (Found && Found->Mount.IsValid() && !Found->bRemoved)
+	{
+		// A horse, donkey or mule: the keys steer it, and a rider it has bucked off (or lost to someone else) is out.
+		if (Found->Mount->RiderId != GetUniqueID())
+		{
+			ServerDismount();
+			return;
+		}
+		McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump, Data ? Data->Inventory->Get(Data->SelectedSlot).Item : NAME_None);
+		const FVector MountSeat = McMount::GetSeat(*Found);
+		Body.Position = MountSeat;
+		Body.Velocity = FVector::ZeroVector;
+		Body.bOnGround = true;
+		ServerPreviousPosition = MountSeat;
+		ServerFall = McSurvival::FFallTracker();
+		if (!IsLocallyControlled())
+		{
+			LastLocation = McCoords::BlockToUnreal(MountSeat);
+			SetActorLocation(LastLocation);
+			ClientRideSeat(MountSeat);
+		}
+		return;
+	}
 	if (!Found || !Found->IsVehicle() || Found->bRemoved)
 	{
 		RidingId = 0;
@@ -1489,8 +1526,9 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 	}
 }
 
-void AMcPlayerPawn::ServerRideInput_Implementation(float Forward, float Strafe, float LookYaw)
+void AMcPlayerPawn::ServerRideInput_Implementation(float Forward, float Strafe, float LookYaw, bool bJump)
 {
+	bRideJump = bJump;
 	if (!FMath::IsFinite(Forward) || !FMath::IsFinite(Strafe) || !FMath::IsFinite(LookYaw))
 	{
 		return;
@@ -1498,6 +1536,16 @@ void AMcPlayerPawn::ServerRideInput_Implementation(float Forward, float Strafe, 
 	RideForward = FMath::Clamp(Forward, -1.0f, 1.0f);
 	RideStrafe = FMath::Clamp(Strafe, -1.0f, 1.0f);
 	McLookYaw = LookYaw - 90.0f;
+}
+
+void AMcPlayerPawn::ServerRideBoost_Implementation()
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	FMcEntity* Found = Entities && RidingId != 0 ? Entities->Find(RidingId) : nullptr;
+	if (Found && Found->Mount.IsValid() && Found->Mount->RiderId == GetUniqueID())
+	{
+		McMount::Boost(*Found);
+	}
 }
 
 void AMcPlayerPawn::ServerWantDismount_Implementation()

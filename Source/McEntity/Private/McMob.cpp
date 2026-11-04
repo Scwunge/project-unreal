@@ -1,4 +1,6 @@
 #include "McMob.h"
+#include "McMount.h"
+#include "McLlama.h"
 #include "McVillager.h"
 #include "McMobLook.h"
 #include "McArrow.h"
@@ -144,6 +146,9 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:donkey"), 1.3965f, 1.5f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:mule"), 1.3965f, 1.6f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:goat"), 0.9f, 1.3f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		// Rideable kinds (McMount.h): the camel (wiki: 1.7 x 2.375, 32 health, speed 0.09) and the strider (0.9 x 1.7, 20 health, 0.175).
+		Add(TEXT("minecraft:camel"), 1.7f, 2.375f, 32.f, 0.09f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		// The wandering trader's llamas are a llama in all but their blanket.
 		Add(TEXT("minecraft:trader_llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
@@ -888,6 +893,17 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			return;
 		}
 		RidingId = 0;
+	}
+	// A saddled mount with a player on its back goes where they steer it (McMount.h).
+	if ((Type.Name == TEXT("minecraft:llama") || Type.Name == TEXT("minecraft:trader_llama")) && McLlama::Tick(Manager, *this))
+	{
+		LastPosition = Body.Position;
+		return;
+	}
+	if (Mount.IsValid() && McMount::TickRidden(Manager, *this))
+	{
+		LastPosition = Body.Position;
+		return;
 	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{

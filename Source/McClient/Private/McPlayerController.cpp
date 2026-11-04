@@ -2,6 +2,7 @@
 #include "McItemFrames.h"
 #include "McSurvival.h"
 #include "McLeash.h"
+#include "McMount.h"
 #include "McMob.h"
 #include "ShaderCompiler.h"
 #include "McLaunch.h"
@@ -372,6 +373,20 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 				{
 					HeldLead.Clear();
 				}
+				return true;
+			}
+		}
+		// A horse, donkey or mule: saddle, armour, chest, food, or a seat on its back.
+		if (McMount::IsRideable(*Mob) && World->GetEntityHost())
+		{
+			FMcItemStack& HeldMount = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			const McMount::EUse Result = McMount::Use(World->GetEntityHost()->GetManager(), *Mob, HeldMount, User.GetUniqueID(), User.Data->bCreative, User.IsSneakPosed());
+			if (Result == McMount::EUse::Mounted)
+			{
+				User.ServerRide(Mob->Id);
+			}
+			if (Result != McMount::EUse::None)
+			{
 				return true;
 			}
 		}

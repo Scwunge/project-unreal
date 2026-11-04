@@ -52,6 +52,8 @@ public:
 	bool bLeashed = false;
 	int32 LeashKnot = 0;
 	FVector LeashPlayerPos = FVector::ZeroVector;
+	// Saddle, tamed state and rider of a mount (McMount.h); null for anything that isn't one. Not saved yet.
+	TSharedPtr<struct FMcMountState> Mount;
 	// Set to have the manager drop it at the end of the tick.
 	bool bRemoved = false;
 };

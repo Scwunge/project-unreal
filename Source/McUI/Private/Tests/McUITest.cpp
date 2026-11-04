@@ -157,6 +157,28 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("bundle bar width"), GetBundleBar(Fulls[Index]).Width, Widths[Index]);
 	}
+	// The bundle tooltip (ref runs bundletip, bundletip2): 4 columns, items in the last cells; the content
+	// is 12 (title and gap) + the body + 4 + 13 high: 47 for the description (2 lines), 101 for 3 rows of cells.
+	TestEqual(TEXT("always 4 columns"), GetBundleGrid(1).Columns, 4);
+	TestEqual(TEXT("1 item one row"), GetBundleGrid(1).Rows, 1);
+	TestEqual(TEXT("1 item 3 blanks"), GetBundleGrid(1).Blanks, 3);
+	TestEqual(TEXT("5 items 2 rows"), GetBundleGrid(5).Rows, 2);
+	TestEqual(TEXT("5 items 3 blanks"), GetBundleGrid(5).Blanks, 3);
+	TestEqual(TEXT("12 items 3 rows"), GetBundleGrid(12).Rows, 3);
+	TestEqual(TEXT("12 items no blanks"), GetBundleGrid(12).Blanks, 0);
+	TestEqual(TEXT("13 items hide 5"), GetBundleGrid(13).Hidden, 5);
+	TestEqual(TEXT("13 items show 8 after 3 blanks"), GetBundleGrid(13).Blanks, 3);
+	TestEqual(TEXT("16 items hide 5"), GetBundleGrid(16).Hidden, 5);
+	TestEqual(TEXT("16 items no blanks"), GetBundleGrid(16).Blanks, 0);
+	TestEqual(TEXT("17 items hide 9"), GetBundleGrid(17).Hidden, 9);
+	TestEqual(TEXT("17 items 3 blanks"), GetBundleGrid(17).Blanks, 3);
+	TestEqual(TEXT("24 items hide 13"), GetBundleGrid(24).Hidden, 13);
+	TestEqual(TEXT("12 items hide none"), GetBundleGrid(12).Hidden, 0);
+	TestEqual(TEXT("10 items 4 columns"), GetBundleGrid(10).Columns, 4);
+	TestEqual(TEXT("10 items 3 rows"), GetBundleGrid(10).Rows, 3);
+	TestEqual(TEXT("10 items 2 blanks"), GetBundleGrid(10).Blanks, 2);
+	TestEqual(TEXT("empty tooltip height"), GetBundleTipHeight(0, 2), 47);
+	TestEqual(TEXT("three rows tooltip height"), GetBundleTipHeight(3, 0), 101);
 	TestEqual(TEXT("blue while there is room"), GetBundleBar(0.5).Color, 0x7087FFu);
 	TestEqual(TEXT("red when full"), GetBundleBar(1.0).Color, 0xFF5454u);
 	TestEqual(TEXT("one point off, still full width"), GetDurabilityBar(1, 1561).Width, 13);

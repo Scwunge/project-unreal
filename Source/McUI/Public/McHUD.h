@@ -287,6 +287,8 @@ private:
 	// A GUI sprite (textures/gui/sprites/...) in the box, scaled the way its .png.mcmeta says: stretched (the default),
 	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
 	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
+	// The tooltip of a bundle held by the hovered slot, with the cursor at (CursorX, CursorY) in GUI pixels.
+	void DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight);
 	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
 	TMap<FString, FGuiScaling> GuiScalings;
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);

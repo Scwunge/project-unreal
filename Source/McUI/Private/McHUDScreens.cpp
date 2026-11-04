@@ -2198,6 +2198,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawStack(Menu.GetCarried(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
 	}
+	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item))
+	{
+		DrawBundleTooltip(Menu.GetStack(HoverSlot), static_cast<float>(GuiMouse.X), static_cast<float>(GuiMouse.Y), static_cast<float>(Width), static_cast<float>(Height));
+	}
 	else if ((HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && !Menu.GetStack(HoverSlot).IsEmpty()) || (Screen->bCreative && Screen->CreativeHover >= 0))
 	{
 		const FString Name = HoverSlot >= 0 ? GetItemName(Menu.GetStack(HoverSlot)) : DisplayName(Screen->CreativeItems[Screen->CreativeHover]);
@@ -2206,6 +2210,96 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
 		DrawFill(X - 3, Y - 3, Wide + 5, 14, FLinearColor(0.06f, 0.0f, 0.06f, 0.9f));
 		DrawGuiText(Name, X, Y, 0xFFFFFF, true);
+	}
+}
+
+void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight)
+{
+	namespace Gui = McGui;
+	const TArray<FMcItemStack> Contents = McBundle::GetContents(Bundle);
+	const Gui::FBundleGrid Grid = Gui::GetBundleGrid(Contents.Num());
+	// The empty bundle's description, wrapped to the content width.
+	TArray<FString> Lines;
+	if (Contents.IsEmpty())
+	{
+		FString Line;
+		TArray<FString> Words;
+		McLang::Get(TEXT("item.minecraft.bundle.empty.description")).ParseIntoArray(Words, TEXT(" "));
+		for (const FString& Word : Words)
+		{
+			const FString Next = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+			if (!Line.IsEmpty() && TextWidth(Next) > Gui::BundleTipWidth)
+			{
+				Lines.Add(Line);
+				Line = Word;
+			}
+			else
+			{
+				Line = Next;
+			}
+		}
+		Lines.Add(Line);
+	}
+	const float Wide = Gui::BundleTipWidth;
+	const float High = Gui::GetBundleTipHeight(Grid.Rows, Lines.Num());
+	float X = CursorX + 12.0f;
+	float Y = CursorY - 12.0f;
+	if (Y + High > ScreenHeight - 5.0f)
+	{
+		Y = ScreenHeight - 5.0f - High;
+	}
+	if (X + Wide + 12.0f > ScreenWidth)
+	{
+		X = CursorX - 12.0f - Wide;
+	}
+	const FString SpriteDir = TEXT("textures/gui/sprites/");
+	DrawGuiSprite(SpriteDir + TEXT("tooltip/background.png"), X - 12.0f, Y - 12.0f, Wide + 24.0f, High + 24.0f);
+	DrawGuiSprite(SpriteDir + TEXT("tooltip/frame.png"), X - 12.0f, Y - 12.0f, Wide + 24.0f, High + 24.0f);
+	DrawGuiText(GetItemName(Bundle), X, Y, 0xFFFFFF, true);
+	float Below = Y + Gui::BundleTipTitleHeight + Gui::BundleTipTitleGap;
+	if (Contents.IsEmpty())
+	{
+		for (const FString& Line : Lines)
+		{
+			DrawGuiText(Line, X, Below, 0xAAAAAA, true);
+			Below += Gui::BundleTipLineHeight;
+		}
+	}
+	else
+	{
+		const int32 Cells = Grid.Rows * Grid.Columns - (Grid.Hidden > 0 ? 1 : 0);
+		for (int32 Cell = Grid.Blanks; Cell < Cells; ++Cell)
+		{
+			const float CellX = X + (Cell % Grid.Columns) * Gui::BundleTipCell;
+			const float CellY = Below + (Cell / Grid.Columns) * Gui::BundleTipCell;
+			DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_background.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			DrawStack(Contents[Cell - Grid.Blanks], CellX + 4.0f, CellY + 4.0f);
+		}
+		if (Grid.Hidden > 0)
+		{
+			const FString More = FString::Printf(TEXT("+%d"), Grid.Hidden);
+			const float CellX = X + (Cells % Grid.Columns) * Gui::BundleTipCell;
+			const float CellY = Below + (Cells / Grid.Columns) * Gui::BundleTipCell;
+			DrawGuiText(More, CellX + (Gui::BundleTipCell - TextWidth(More)) * 0.5f, CellY + 8.0f, 0xFFFFFF, true);
+		}
+		Below += Grid.Rows * Gui::BundleTipCell;
+	}
+	// The fullness bar: a one pixel frame, the fill inside it and the word over it.
+	const double Fullness = McBundle::GetFullness(Bundle);
+	const float BarY = Below + Gui::BundleTipBarGap;
+	const bool bFull = Fullness >= 1.0 - 1.0e-9;
+	DrawGuiSprite(SpriteDir + TEXT("container/bundle/bundle_progressbar_border.png"), X, BarY, Wide, Gui::BundleTipBarHeight);
+	if (Fullness > 0.0)
+	{
+		// The fill is floor(94 f) pixels (bundletip2: 1 to 16 of 64), at least one.
+		const float Fill = FMath::Max(1.0f, FMath::FloorToFloat((Wide - 2.0f) * static_cast<float>(Fullness) + 1.0e-4f));
+		DrawGuiSprite(SpriteDir + TEXT("container/bundle/") + (bFull ? TEXT("bundle_progressbar_full.png") : TEXT("bundle_progressbar_fill.png")), X + 1.0f, BarY + 1.0f, Fill, Gui::BundleTipBarHeight - 2.0f);
+	}
+	// Only a full or an empty bundle has a word on its bar (bundletip2: none at 1 to 16 of 64).
+	if (bFull || Fullness <= 0.0)
+	{
+		const FString Label = McLang::Get(bFull ? TEXT("item.minecraft.bundle.full") : TEXT("item.minecraft.bundle.empty"));
+		DrawGuiText(Label, X + (Wide - TextWidth(Label)) * 0.5f, BarY + 3.0f, 0xFFFFFF, true);
 	}
 }
 

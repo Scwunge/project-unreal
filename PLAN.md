@@ -1524,3 +1524,6 @@ Forest fps on the 1070 (GTX 1070, DX11, 2026-11-04, seed 12, noon, clear, 45 s d
 Unreal Mode 12.4 fps, vanilla 13.6 fps over the last 3 s (instantaneous 24.4 / 19.0). The cost of Unreal Mode is about 9% here, but both are low
 for a forest on this card, so a forest at default draw distance is not playable on a 1070 in either mode; the gap is the terrain, not the look.
 Shots took turns with builds per Jeff's fix; I don't know whether another session's test ran beside them, so treat these as indicative.
+
+## Bundle tooltip (2026-11-04)
+Fitted from vanilla ref shots `bundletip*.txt` (n = 1 to 24): sprite origin (cursor, cursor-24), 96 px wide frame, white title, 24 px cells in 4 columns (ceil(n/4) rows up to 3, items in the last cells, blanks first), 13 px bar filled floor(94*fullness) (label only at Full/Empty). Over 12 items the last cell says +N with N = 4*ceil((n-12)/4)+1. Logic and tests in `GetBundleGrid` (McClient.McUI passes 10/10). NOT yet done: a shot of our own tooltip against the ref (needs a hover input in our shot harness); the bundle icon (open/closed with the selected item).

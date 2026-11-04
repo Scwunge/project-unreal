@@ -88,9 +88,10 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       (`flash_on` with `-McFlashHold -McStrike=20,-10` against `flash_off`, a night thunderstorm). The held shot used 1.5
       times the sun's lux; the shipped value is 1.0 (not re-shot). Seen but not fixed: at night the rain streaks stay
       bright blue (they are unlit particles), so lit rain still needs their material to take the sky factor.
-    - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
-      the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
-      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields). (Caustics and underwater fog are done: see "Caustics visible" and the underwater fog in `UMcSkyComponent`; checked 2026-11-04.)
+    - Still open (updated 2026-11-04): wind interaction with mobs, Lumen beyond the screen (distance fields), the volumetric
+      clouds material (renders black, see the cloud bisect notes), and ray tracing leftovers (a Shipping build, a machine without
+      SM6, the paired look on non-water surfaces). Done since: lit rain and snow (the streaks' tone follows the sky light,
+      2ee736a), lightning that lights the scene, the DX12 ray tracing path, a generated ocean, forest-scale fps (sweep notes).
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

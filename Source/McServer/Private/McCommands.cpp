@@ -26,6 +26,7 @@ namespace
 	const FCommandInfo Commands[] = {
 		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
+		{ TEXT("clone"), 2, TEXT("/clone <begin> <end> <destination> [replace|masked|filtered <filter>] [normal|force|move]") },
 		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
 		{ TEXT("defaultgamemode"), 2, TEXT("/defaultgamemode <gamemode>") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
@@ -923,6 +924,111 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.fill.failed"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.fill.success"), { FString::FromInt(Changed) })) };
+	}
+
+	// /clone <begin> <end> <destination> [replace|masked|filtered <block>] [normal|force|move]
+	FReplies RunClone(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 10)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		FIntVector A, B, Dest;
+		if (!ParseBlockPos(Words, 1, Base, A) || !ParseBlockPos(Words, 4, Base, B) || !ParseBlockPos(Words, 7, Base, Dest))
+		{
+			return BadArgument(Command);
+		}
+		int32 At = 10;
+		FString Filter = TEXT("replace");
+		TOptional<FMcStateId> Match;
+		if (At < Words.Num() && (Words[At] == TEXT("replace") || Words[At] == TEXT("masked") || Words[At] == TEXT("filtered")))
+		{
+			Filter = Words[At++];
+			if (Filter == TEXT("filtered"))
+			{
+				if (At >= Words.Num())
+				{
+					return Unknown(Command, Command.Len());
+				}
+				Match = ParseBlock(Words[At]);
+				if (!Match.IsSet())
+				{
+					return BadArgument(Command);
+				}
+				++At;
+			}
+		}
+		FString Mode = TEXT("normal");
+		// A mode follows a filter word; straight after the destination there is none.
+		if (At < Words.Num() && At == 10 && Filter == TEXT("replace") && !(At > 10))
+		{
+			return BadArgument(Command);
+		}
+		if (At < Words.Num())
+		{
+			Mode = Words[At++];
+			if ((Mode != TEXT("normal") && Mode != TEXT("force") && Mode != TEXT("move")) || At < Words.Num())
+			{
+				return BadArgument(Command);
+			}
+		}
+		const FIntVector Min(FMath::Min(A.X, B.X), FMath::Min(A.Y, B.Y), FMath::Min(A.Z, B.Z));
+		const FIntVector Max(FMath::Max(A.X, B.X), FMath::Max(A.Y, B.Y), FMath::Max(A.Z, B.Z));
+		const FIntVector Size = Max - Min + FIntVector(1);
+		const FIntVector DestMax = Dest + Size - FIntVector(1);
+		const int64 Volume = int64(Size.X) * Size.Y * Size.Z;
+		const FString LimitRule = Target.GetGameRule(TEXT("commandModificationBlockLimit"));
+		const int64 Limit = LimitRule.IsNumeric() ? FCString::Atoi64(*LimitRule) : 32768;
+		if (Volume > Limit)
+		{
+			return { Fail(McLang::Format(TEXT("commands.clone.toobig"), { LexToString(Limit), LexToString(Volume) })) };
+		}
+		const bool bOverlap = Dest.X <= Max.X && DestMax.X >= Min.X && Dest.Y <= Max.Y && DestMax.Y >= Min.Y && Dest.Z <= Max.Z && DestMax.Z >= Min.Z;
+		if (bOverlap && Mode == TEXT("normal"))
+		{
+			return { Fail(McLang::Get(TEXT("commands.clone.overlap"))) };
+		}
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		struct FCopy { FIntVector From; FIntVector To; FMcStateId State; };
+		TArray<FCopy> Copies;
+		for (int32 X = 0; X < Size.X; ++X)
+		{
+			for (int32 Y = 0; Y < Size.Y; ++Y)
+			{
+				for (int32 Z = 0; Z < Size.Z; ++Z)
+				{
+					const FIntVector From = Min + FIntVector(X, Y, Z);
+					FMcStateId State, Existing;
+					if (!Target.GetBlock(From, State) || !Target.GetBlock(Dest + FIntVector(X, Y, Z), Existing))
+					{
+						return { Fail(McLang::Get(TEXT("commands.clone.failed"))) };
+					}
+					if ((Filter == TEXT("masked") && Registry.IsAir(State)) || (Filter == TEXT("filtered") && State != *Match))
+					{
+						continue;
+					}
+					Copies.Add({ From, Dest + FIntVector(X, Y, Z), State });
+				}
+			}
+		}
+		if (Mode == TEXT("move"))
+		{
+			const TOptional<FMcStateId> Air = ParseBlock(TEXT("air"));
+			for (const FCopy& Copy : Copies)
+			{
+				Target.SetBlock(Copy.From, Air.Get(Copy.State));
+			}
+		}
+		for (const FCopy& Copy : Copies)
+		{
+			Target.SetBlock(Copy.To, Copy.State);
+		}
+		if (Copies.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.clone.failed"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.clone.success"), { FString::FromInt(Copies.Num()) })) };
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -1965,6 +2071,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("enchant"))
 	{
 		return RunEnchant(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("clone"))
+	{
+		return RunClone(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

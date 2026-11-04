@@ -31,6 +31,8 @@ struct MCENTITY_API FMcMountState
 	int32 Temper = 0;
 	// The player riding it (the pawn's unique id), 0 for none.
 	uint32 RiderId = 0;
+	// Camels carry a second rider behind the first, who steers.
+	uint32 PassengerId = 0;
 	// The rider's keys this tick.
 	float Forward = 0.0f;
 	float Strafe = 0.0f;
@@ -82,8 +84,20 @@ namespace McMount
 	MCENTITY_API void SetRiderInput(FMcEntity& Entity, float Forward, float Strafe, float Yaw, bool bJumpHeld, FName Held = NAME_None);
 	// Takes the rider off; true if there was one.
 	MCENTITY_API bool ClearRider(FMcEntity& Entity);
+	// Takes that player off, rider or passenger; the passenger moves up to steer when the rider goes.
+	MCENTITY_API bool ClearPlayer(FMcEntity& Entity, uint32 PlayerId);
+	// Whether that player sits on it, and whether they are the one who steers.
+	MCENTITY_API bool HasPlayer(const FMcEntity& Entity, uint32 PlayerId);
+	// Where a player riding it sits (the passenger of a camel sits 0.9 behind, not measured).
+	MCENTITY_API FVector GetSeatFor(const FMcEntity& Entity, uint32 PlayerId);
 	// Where the rider's feet sit.
 	MCENTITY_API FVector GetSeat(const FMcEntity& Entity);
+	// Armour points of a horse armour item (leather 3, copper 4, iron 5, golden 7, diamond 11, netherite 19; the game's tables), 0 for none.
+	MCENTITY_API int32 ArmorPoints(FName Item);
+	// The damage left after the armour: the game's formula, a cut of min(20, max(armor/5, armor - damage/2))/25 (no toughness).
+	MCENTITY_API float ReduceDamage(const FMcMountState& State, float Damage);
+	// Saves or loads the lasting part (tamed, saddle, armour, chest, temper, stats); a rider and the boost start afresh. Older saves end before it.
+	MCENTITY_API void Serialize(FArchive& Ar, FMcMob& Mob);
 	// Runs a mount that has a rider for a tick. False if it has none and the mob's own routine should run.
 	MCENTITY_API bool TickRidden(FMcEntityManager& Manager, FMcMob& Mob);
 }

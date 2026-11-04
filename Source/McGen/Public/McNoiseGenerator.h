@@ -41,6 +41,9 @@ struct MCGEN_API FMcNoiseSettings
 	static bool Load(const FString& Id, FMcNoiseSettings& Out);
 };
 
+// For ablation tests: skips the carvers when set.
+MCGEN_API extern bool bMcCarversOff;
+
 class MCGEN_API FMcNoiseGenerator : public FMcChunkGenerator
 {
 public:
@@ -53,6 +56,8 @@ public:
 
 	virtual void Generate(FMcChunk& Chunk) const override;
 	virtual int32 FindSurfaceY(int32 X, int32 Z) const override;
+	// The top solid block's Y by the final density alone, below the sea as well (the sea floor).
+	int32 FindSolidTopY(int32 X, int32 Z) const;
 	virtual int32 FindFloorY(int32 X, int32 Z, int32 BelowY) const override;
 
 	const FMcDensityGraph& GetGraph() const { return Graph; }

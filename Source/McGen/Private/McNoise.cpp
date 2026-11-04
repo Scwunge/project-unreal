@@ -181,8 +181,17 @@ FMcNoise::FMcNoise(FMcRandom& Random, const FMcNoiseParams& Params)
 	{
 		return;
 	}
-	// Expected amplitude is three standard deviations.
-	const double Scale = Params.BaseAmplitude / 3.0 / (FMath::Sqrt(SumSquares) * FMcImprovedNoise::StdDev);
+	// Expected amplitude is three standard deviations, with the spread following the octave weights summed linearly
+	// and scaled by 2^(n-1)/(2^n-1) for n octaves. Fitted to the reference client's measured spread of the five
+	// climate noises (measured/old ratios .93 .77 1.24 .89 1.21 against this factor .89 .76 1.22 .87 1.14).
+	double LinearSum = 0.0;
+	for (const FOctave& Octave : Octaves)
+	{
+		LinearSum += Octave.Weight;
+	}
+	const int32 OctaveCount = Params.Amplitudes.Num();
+	const double Spread = LinearSum * FMath::Pow(2.0, OctaveCount - 1) / (FMath::Pow(2.0, OctaveCount) - 1.0);
+	const double Scale = Params.BaseAmplitude / 3.0 * Spread / (FMath::Sqrt(SumSquares) * FMcImprovedNoise::StdDev);
 	for (FOctave& Octave : Octaves)
 	{
 		Octave.Weight *= Scale;

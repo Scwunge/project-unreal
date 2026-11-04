@@ -10,6 +10,8 @@
 #include "McMob.h"
 #include "McMount.h"
 #include "Misc/AutomationTest.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMountTest, "McClient.McEntity.Mount",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
@@ -139,6 +141,20 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and the next must wait 55 ticks"), CamelState.DashCooldown, 55);
 	}
 
+	// A camel takes a second rider; when the first gets off the second steers.
+	if (const FMcMobType* TwoType = FMcMobType::Find(FName(TEXT("minecraft:camel"))))
+	{
+		FMcMob* Two = MakeHorse(*TwoType, 75.5);
+		FMcMountState& TwoState = McMount::Ensure(*Two);
+		TwoState.bSaddled = true;
+		FMcItemStack Nothing;
+		TestEqual(TEXT("first rider"), McMount::Use(Manager, *Two, Nothing, 11, false, false), McMount::EUse::Mounted);
+		TestEqual(TEXT("second rider"), McMount::Use(Manager, *Two, Nothing, 12, false, false), McMount::EUse::Mounted);
+		TestEqual(TEXT("no third"), McMount::Use(Manager, *Two, Nothing, 13, false, false), McMount::EUse::None);
+		McMount::ClearPlayer(*Two, 11);
+		TestEqual(TEXT("the second steers now"), TwoState.RiderId, 12u);
+	}
+
 	// A pig with a carrot on a stick (vehicle_log26): 0.1239 a tick; a boost of 746 ticks adds 1.15 x sin(pi t/746): 0.1632 after 64 ticks.
 	if (const FMcMobType* PigType = FMcMobType::Find(FName(TEXT("minecraft:pig"))))
 	{
@@ -171,6 +187,24 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		const double Held = Pig->Body.Position.Z;
 		Manager.Tick();
 		TestTrue(TEXT("without the stick in hand it stops"), Pig->Body.Position.Z - Held < 0.05);
+	}
+
+	// Armour: iron (5 points) takes 4 off a 10-point hit.. 10 x (1 - max(1, 5 - 5)/25) = 9.6; diamond (11): 10 x (1 - 6/25) = 7.6.
+	FMcMountState Armored;
+	Armored.Armor = FName(TEXT("minecraft:iron_horse_armor"));
+	TestTrue(TEXT("iron armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 9.6f) < 0.01f);
+	Armored.Armor = FName(TEXT("minecraft:diamond_horse_armor"));
+	TestTrue(TEXT("diamond armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 7.6f) < 0.01f);
+
+	// Saved and loaded again: the saddle, the armour and the taming stay.
+	{
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		Wild->Serialize(Writer);
+		FMcMob Loaded(*HorseType);
+		FMemoryReader Reader(Bytes);
+		TestTrue(TEXT("it loads"), Loaded.Serialize(Reader));
+		TestTrue(TEXT("tame, saddled, armoured"), Loaded.bTamed && Loaded.Mount.IsValid() && Loaded.Mount->bSaddled && Loaded.Mount->Armor == FName(TEXT("minecraft:iron_horse_armor")));
 	}
 	return true;
 }

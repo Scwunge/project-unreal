@@ -247,7 +247,7 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("vanilla water layers are whole numbers"), bWhole);
 		TestTrue(TEXT("Unreal Mode water keeps its layers and surface kind"), bSameLayers);
 		TestTrue(TEXT("Unreal Mode water has the same shape"), bSameShape);
-		TestTrue(TEXT("a lone pond's top is all shore"), FMath::IsNearlyEqual(MostEdge, 0.4f, 0.001f));
+		TestTrue(TEXT("a lone pond's top is all shore (when shore foam is on, else nothing is flagged)"), FMath::IsNearlyEqual(MostEdge, McFluidMesher::bShoreFoam ? 0.4f : 0.0f, 0.001f));
 	}
 	return true;
 }

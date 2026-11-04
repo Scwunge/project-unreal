@@ -290,7 +290,7 @@ namespace
 			const FVector2D Light = LightFor(UpIndex);
 			// A water corner touching a side with no water beside it is on the shore (north-west, south-west, south-east, north-east).
 			float Edge[4] = { 0, 0, 0, 0 };
-			if (bWater && McRenderMode::IsEnhanced())
+			if (bShoreFoam && bWater && McRenderMode::IsEnhanced())
 			{
 				const bool West = InfoAt(X - 1, Y, Z).Kind != Kind, East = InfoAt(X + 1, Y, Z).Kind != Kind;
 				const bool North = InfoAt(X, Y, Z - 1).Kind != Kind, South = InfoAt(X, Y, Z + 1).Kind != Kind;

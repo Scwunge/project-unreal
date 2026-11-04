@@ -673,7 +673,6 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Pictur
 
 void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 {
-	if (FParse::Param(FCommandLine::Get(), TEXT("McRideMob"))) { DrawGuiText(FString::Printf(TEXT("DBG mh=%.1f mj=%.2f"), Data->Stats.MountMaxHealth, Data->Stats.MountJump), 4.0f, 4.0f, 0xFFFFFF, true); } // TEMP
 	const FMcPlayerStats& Stats = Data->Stats;
 	const McGui::FHudLayout Layout = McGui::ComputeHud(Width, Height, Stats, ShakeCounter / 3);
 	const FString Hud = FString(SpriteRoot) + TEXT("hud/");

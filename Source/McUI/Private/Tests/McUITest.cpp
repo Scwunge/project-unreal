@@ -81,6 +81,9 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	TestPoint(TEXT("the eleventh opens a row above"), Layout.Mount[10].Pos, FIntPoint(242, 191));
 	TestTrue(TEXT("seven and a half hearts of health"), Layout.Mount[6].Fill == EIcon::Full && Layout.Mount[7].Fill == EIcon::Half && Layout.Mount[8].Fill == EIcon::Empty);
 	TestTrue(TEXT("the jump bar replaces the experience bar"), Layout.bShowJump && Layout.JumpFill == 91);
+	Stats.MountJump = 0.0f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestFalse(TEXT("an idle mount leaves the experience bar"), Layout.bShowJump);
 	Stats.MountHealth = 0.0f;
 	Stats.MountMaxHealth = 0.0f;
 	Stats.MountJump = -1.0f;

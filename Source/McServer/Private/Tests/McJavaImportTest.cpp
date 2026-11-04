@@ -945,3 +945,61 @@ bool FMcJavaExportTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("other slots are empty"), McJavaImport::ReadChunkBytes(File, 0, 0, FString(), -3, 5, Read, bMissing));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportDimensionsTest, "McClient.McServer.JavaImport.Dimensions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
+{
+	// The ref save (a vanilla world with a Nether): its Nether is imported and written back out as a Java save.
+	FString Source;
+	for (const TCHAR* Candidate : { TEXT("E:/mc-reference/run/saves/ref"), TEXT("C:/mc-reference/run/saves/ref") })
+	{
+		if (McJavaImport::IsJavaWorld(Candidate))
+		{
+			Source = Candidate;
+			break;
+		}
+	}
+	if (Source.IsEmpty())
+	{
+		AddInfo(TEXT("no ref world on this machine; skipped"));
+		return true;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportDims"), Stats);
+	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	AddInfo(McJavaImport::Describe(Stats));
+	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
+	TArray<FString> Overworld, Nether, End;
+	IFileManager::Get().FindFiles(Overworld, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:overworld")) / TEXT("*.mcr")), true, false);
+	IFileManager::Get().FindFiles(Nether, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_nether")) / TEXT("*.mcr")), true, false);
+	IFileManager::Get().FindFiles(End, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_end")) / TEXT("*.mcr")), true, false);
+	AddInfo(FString::Printf(TEXT("region files: overworld %d, nether %d, end %d"), Overworld.Num(), Nether.Num(), End.Num()));
+	TestTrue(TEXT("overworld regions imported"), Overworld.Num() > 0);
+	TestTrue(TEXT("nether regions imported"), Nether.Num() > 0);
+	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
+
+	const FString Out = FPaths::ProjectSavedDir() / TEXT("Tests") / TEXT("JavaExportDims");
+	IFileManager::Get().DeleteDirectory(*Out, false, true);
+	McJavaExport::FStats Exported;
+	TestTrue(TEXT("exports"), McJavaExport::ExportWorld(WorldDir, Out, Exported));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions, %d failed"), Exported.Chunks, Exported.Regions, Exported.Failed));
+	TestEqual(TEXT("every chunk exported"), Exported.Chunks, Stats.Chunks);
+	TestTrue(TEXT("level.dat written"), IFileManager::Get().FileExists(*(Out / TEXT("level.dat"))));
+	TestTrue(TEXT("a nether region written"), IFileManager::Get().DirectoryExists(*(Out / TEXT("dimensions/minecraft/the_nether/region"))));
+	// The exported save reads as a Java world again.
+	TestTrue(TEXT("the export is a Java world"), McJavaImport::IsJavaWorld(Out));
+	McJavaImport::FStats Again;
+	const FString Second = McJavaImport::ImportWorld(Out, TEXT("JavaImportDims2"), Again);
+	TestFalse(TEXT("the export imports"), Second.IsEmpty());
+	TestEqual(TEXT("same chunks after the round trip"), Again.Chunks, Stats.Chunks);
+	TestEqual(TEXT("same blocks after the round trip"), Again.NonAirBlocks, Stats.NonAirBlocks);
+	IFileManager::Get().DeleteDirectory(*Out, false, true);
+	McWorldSave::DeleteWorld(Second);
+	McWorldSave::DeleteWorld(Folder);
+	return true;
+}

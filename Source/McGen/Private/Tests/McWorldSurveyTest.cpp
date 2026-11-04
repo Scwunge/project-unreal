@@ -1198,3 +1198,36 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+// Deep dark counts at y -27 on a wide grid (-24576 + 384 * i, 128 * 128 points) for the five survey seeds and 25 more, to compare
+// with `log cbiomes -24576 -24576 384 128 -27` on the five reference worlds: DDW <seed index> <deep_dark points> <points>.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDeepDarkWideTest, "McClient.McGen.DeepDarkWide",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcDeepDarkWideTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	FMcBiomeSource Source;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings) && Source.Load(TEXT("minecraft:overworld"))))
+	{
+		return false;
+	}
+	const FMcBiomeRegistry& Registry = FMcBiomeRegistry::Get();
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 30; ++SeedIndex)
+	{
+		const uint64 Seed = SeedIndex < 5 ? Seeds[SeedIndex] : 7919ull * SeedIndex + 13ull;
+		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+		int32 Deep = 0;
+		for (int32 J = 0; J < 128; ++J)
+		{
+			for (int32 I = 0; I < 128; ++I)
+			{
+				int32 Hint = INDEX_NONE;
+				Deep += Registry.GetName(Source.Find(Generator.SampleClimate(-24576 + I * 384, -27, -24576 + J * 384), Hint)) == FName(TEXT("minecraft:deep_dark")) ? 1 : 0;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("DDW %d %d %d"), SeedIndex, Deep, 128 * 128));
+	}
+	return true;
+}

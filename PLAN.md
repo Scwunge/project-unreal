@@ -1544,3 +1544,6 @@ The lit/HD materials keep the foam term (inert with no flag).
 Cloud shade shot, third try (2026-11-04, 1070): pitch DOES apply in a scene at y 197-199 (`cloud_side`, shots `cloud_side` pitch 22, `cloud_side2` pitch 60), so the earlier level shot was the y 204 platform scene, not the pitch code.
 But from above the layer neither shot shows any cloud: pitch 22 is a flat pale haze, pitch 60 looks straight down at the flat world's green square with only particles. So the clouds are not drawn,
 or are culled, when the camera is above them (or fog-hidden). Next: read McCloudComponent's visibility/culling for a camera above the layer, then redo this shot. Scenes `cloud_top` and `cloud_side` are in tools/scenes.
+
+**Cloud face shades verified** (2026-11-04, vanilla, 1070, scene `cloud_side` camera 48.5,200,-40.5 pitch 14, shot `cloud_van2`): the cloud shades are the vanilla slab's, and Unreal Mode hides those slabs (`McCloudComponent` SetVisibility(!IsEnhanced())), which is why every enhanced shot showed none.
+Pixels on one cloud block: top (244,248,255), north/south face (209,214,222) = 0.86 of the top, east/west face (227,231,238) = 0.93: the targets were 0.84 and 0.92 (a little distance fog lifts both). Matches `95b9c0d`. Closed.

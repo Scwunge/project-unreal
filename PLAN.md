@@ -610,3 +610,8 @@ Done: flake tone is now max(0.1, skylight^0.85) instead of sqrt(skylight) (McWea
 Nether vanilla re-check: two HEAD shots of the same Nether scene differ from each other (max 45, 4146 px >8, mean 0.11), so the earlier HEAD-vs-baseline Nether difference (mean 0.56) is
 run-to-run noise in the lower half (light updates / world state), not a vanilla regression.
 Cloud shade shot retried 2026-11-04 (local lane, `-McInput=look:0,40;wait:3` with `-McScene=cloud_top`): the shot came back level at the horizon, so the look input still isn't applied before the shot (the scene camera pitch is also ignored). Stays parked until the shot path honours pitch.
+
+## Forest-scale fps (this PC, local lane, 2026-11-04, seed 12, noon, clear, 40 s delay, default quality)
+Enhanced 17.5 fps, vanilla 19.7 fps (3 s window before the shot; 23.2 / 17.6 instantaneous). Both are low because a fresh world is still
+generating and meshing at the 40 s mark and other sessions share the machine, so this only says Unreal Mode costs roughly 10% at forest
+scale on top of the same load. Not a quality-preset number: redo on the 1070 with a pre-generated world (`-McWorld=` reused) and a 90 s delay.

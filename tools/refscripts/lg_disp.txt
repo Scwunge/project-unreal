@@ -1,7 +1,7 @@
 cmd gamerule send_command_feedback false
 cmd gamemode spectator
-cmd tp @s 5 -50 4
-wait 40
+cmd execute in minecraft:overworld run tp @s 5 -50 116
+wait 200
 cmd tick freeze
 cmd kill @e[type=!player]
 cmd fill -4 -60 -3 14 -55 240 air
@@ -11,13 +11,6 @@ cmd gamerule do_fire_tick false
 wait 10
 cmd setblock 2 -60 0 dispenser[facing=east]
 cmd item replace block 2 -60 0 container.0 with arrow 3
-cmd setblock 2 -60 4 dispenser[facing=east]
-cmd item replace block 2 -60 4 container.0 with water_bucket 1
-cmd setblock 2 -60 8 dispenser[facing=east]
-cmd item replace block 2 -60 8 container.0 with lava_bucket 1
-cmd setblock 2 -60 12 dispenser[facing=east]
-cmd item replace block 2 -60 12 container.0 with bucket 1
-cmd setblock 3 -60 12 water
 cmd setblock 2 -60 16 dispenser[facing=east]
 cmd item replace block 2 -60 16 container.0 with bucket 1
 cmd setblock 3 -60 16 lava
@@ -30,8 +23,6 @@ cmd setblock 3 -60 24 tnt
 cmd setblock 2 -60 28 dispenser[facing=east]
 cmd item replace block 2 -60 28 container.0 with flint_and_steel 1
 cmd setblock 3 -60 28 campfire[lit=false]
-cmd setblock 2 -60 32 dispenser[facing=east]
-cmd item replace block 2 -60 32 container.0 with flint_and_steel 1
 cmd setblock 2 -60 36 dispenser[facing=east]
 cmd item replace block 2 -60 36 container.0 with flint_and_steel 1
 cmd setblock 3 -60 36 candle
@@ -40,17 +31,6 @@ cmd item replace block 2 -60 40 container.0 with fire_charge 1
 cmd setblock 2 -60 44 dispenser[facing=east]
 cmd item replace block 2 -60 44 container.0 with fire_charge 1
 cmd setblock 3 -60 44 campfire[lit=false]
-cmd setblock 2 -60 48 dispenser[facing=east]
-cmd item replace block 2 -60 48 container.0 with bone_meal 1
-cmd setblock 3 -61 48 farmland
-cmd setblock 3 -60 48 wheat[age=0]
-cmd setblock 2 -60 52 dispenser[facing=east]
-cmd item replace block 2 -60 52 container.0 with bone_meal 1
-cmd setblock 3 -61 52 dirt
-cmd setblock 3 -60 52 oak_sapling
-cmd setblock 2 -60 56 dispenser[facing=east]
-cmd item replace block 2 -60 56 container.0 with bone_meal 1
-cmd setblock 3 -60 56 grass_block
 cmd setblock 2 -60 60 dispenser[facing=east]
 cmd item replace block 2 -60 60 container.0 with bone_meal 1
 cmd setblock 2 -60 64 dispenser[facing=east]
@@ -123,10 +103,6 @@ cmd item replace block 2 -60 168 container.0 with splash_potion 1
 cmd setblock 2 -60 172 dispenser[facing=east]
 cmd item replace block 2 -60 172 container.0 with brush 1
 cmd setblock 3 -60 172 suspicious_sand
-cmd setblock 2 -60 176 dispenser[facing=east]
-cmd item replace block 2 -60 176 container.0 with bone_meal 1
-cmd setblock 3 -61 176 farmland
-cmd setblock 3 -60 176 pumpkin_stem[age=0]
 cmd setblock 2 -60 180 dropper[facing=east]
 cmd item replace block 2 -60 180 container.0 with cobblestone 5
 cmd setblock 3 -60 180 chest
@@ -177,20 +153,13 @@ wait 4
 log states -1 -60 -2 8 -57 236
 log items -1 -60 -2 8 -57 236
 cmd setblock 1 -60 0 redstone_block
-cmd setblock 1 -60 4 redstone_block
-cmd setblock 1 -60 8 redstone_block
-cmd setblock 1 -60 12 redstone_block
 cmd setblock 1 -60 16 redstone_block
 cmd setblock 1 -60 20 redstone_block
 cmd setblock 1 -60 24 redstone_block
 cmd setblock 1 -60 28 redstone_block
-cmd setblock 1 -60 32 redstone_block
 cmd setblock 1 -60 36 redstone_block
 cmd setblock 1 -60 40 redstone_block
 cmd setblock 1 -60 44 redstone_block
-cmd setblock 1 -60 48 redstone_block
-cmd setblock 1 -60 52 redstone_block
-cmd setblock 1 -60 56 redstone_block
 cmd setblock 1 -60 60 redstone_block
 cmd setblock 1 -60 64 redstone_block
 cmd setblock 1 -60 68 redstone_block
@@ -220,7 +189,6 @@ cmd setblock 1 -60 160 redstone_block
 cmd setblock 1 -60 164 redstone_block
 cmd setblock 1 -60 168 redstone_block
 cmd setblock 1 -60 172 redstone_block
-cmd setblock 1 -60 176 redstone_block
 cmd setblock 1 -60 180 redstone_block
 cmd setblock 1 -60 184 redstone_block
 cmd setblock 1 -60 188 redstone_block
@@ -240,20 +208,13 @@ wait 4
 log states -1 -60 -2 8 -57 236
 log items -1 -60 -2 8 -57 236
 cmd setblock 1 -60 0 air
-cmd setblock 1 -60 4 air
-cmd setblock 1 -60 8 air
-cmd setblock 1 -60 12 air
 cmd setblock 1 -60 16 air
 cmd setblock 1 -60 20 air
 cmd setblock 1 -60 24 air
 cmd setblock 1 -60 28 air
-cmd setblock 1 -60 32 air
 cmd setblock 1 -60 36 air
 cmd setblock 1 -60 40 air
 cmd setblock 1 -60 44 air
-cmd setblock 1 -60 48 air
-cmd setblock 1 -60 52 air
-cmd setblock 1 -60 56 air
 cmd setblock 1 -60 60 air
 cmd setblock 1 -60 64 air
 cmd setblock 1 -60 68 air
@@ -283,7 +244,6 @@ cmd setblock 1 -60 160 air
 cmd setblock 1 -60 164 air
 cmd setblock 1 -60 168 air
 cmd setblock 1 -60 172 air
-cmd setblock 1 -60 176 air
 cmd setblock 1 -60 180 air
 cmd setblock 1 -60 184 air
 cmd setblock 1 -60 188 air

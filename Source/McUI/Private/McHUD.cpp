@@ -1,4 +1,5 @@
 #include "McHUD.h"
+#include "McMapStore.h"
 #include "McFontRaster.h"
 #include "McBanner.h"
 #include "McGuiLayout.h"
@@ -191,7 +192,7 @@ UTexture2D* AMcHUD::GetLayerTexture(FName TextureId)
 		return *Found;
 	}
 	// "minecraft:block/stone" -> textures/block/stone.png
-	UTexture2D* Texture = LoadPng(McCache::Asset(TEXT("textures/") + McCache::PathOf(TextureId.ToString()) + TEXT(".png")), true);
+	UTexture2D* Texture = LoadPng(McCache::AssetOf(TextureId.ToString(), TEXT("textures/"), TEXT(".png")), true);
 	LayerTextures.Add(TextureId, Texture);
 	return Texture;
 }
@@ -321,6 +322,41 @@ const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 	return BannerIcons.Add(Key, MoveTemp(Icon));
 }
 
+const AMcHUD::FIcon& AMcHUD::GetShieldIcon(const FMcItemStack& Shield)
+{
+	// A shield with no base colour shows the bare wooden face; one with a colour, the tinted base.
+	FString Colour;
+	if (const TSharedPtr<FJsonValue> Value = Shield.Get(TEXT("minecraft:base_color")); Value.IsValid())
+	{
+		Value->TryGetString(Colour);
+	}
+	const FString Key = TEXT("shield|") + Colour;
+	if (const FIcon* Found = StackIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	UTexture2D* Texture = GetLayerTexture(FName(Colour.IsEmpty() ? TEXT("minecraft:entity/shield/shield_base_nopattern") : TEXT("minecraft:entity/shield/shield_base")));
+	// Corners measured on the vanilla slot (top left, top right, bottom right, bottom left), in GUI pixels; the front
+	// plate is the 13 by 23 texels at the corner of the 64 square sheet.
+	const FVector2D Corners[4] = { FVector2D(3.3, 0.4), FVector2D(10.6, 1.8), FVector2D(9.4, 15.6), FVector2D(2.1, 13.9) };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(13.0 / 64, 0), FVector2D(13.0 / 64, 23.0 / 64), FVector2D(0, 23.0 / 64) };
+	const FLinearColor Tint = Colour.IsEmpty() ? FLinearColor::White : McBanner::GetDyeColour(Colour);
+	for (const int32 First : { 0, 2 })
+	{
+		FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+		const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+		for (int32 I = 0; I < 3; ++I)
+		{
+			Triangle.Positions[I] = Corners[Indices[I]];
+			Triangle.UVs[I] = UVs[Indices[I]];
+		}
+		Triangle.Color = Tint;
+		Triangle.Texture = Texture;
+	}
+	return StackIcons.Add(Key, MoveTemp(Icon));
+}
+
 void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint)
 {
 	UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
@@ -350,7 +386,7 @@ bool AMcHUD::BuildFlatIcon(const FString& Name, FIcon& Icon)
 		FString ModelId;
 		if (Item->TryGetObjectField(TEXT("model"), Model) && (*Model)->TryGetStringField(TEXT("model"), ModelId) && McCache::PathOf(ModelId).StartsWith(TEXT("item/")))
 		{
-			if (const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::Asset(TEXT("models/") + McCache::PathOf(ModelId) + TEXT(".json"))))
+			if (const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::AssetOf(ModelId, TEXT("models/"), TEXT(".json"))))
 			{
 				const TSharedPtr<FJsonObject>* Textures;
 				if (ItemModel->TryGetObjectField(TEXT("textures"), Textures))
@@ -410,7 +446,7 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSide
 		}
 		for (int32 Depth = 0; Depth < 8 && !ModelId.IsEmpty(); ++Depth)
 		{
-			const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::Asset(TEXT("models/") + McCache::PathOf(ModelId) + TEXT(".json")));
+			const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::AssetOf(ModelId, TEXT("models/"), TEXT(".json")));
 			const TSharedPtr<FJsonObject>* Display;
 			const TSharedPtr<FJsonObject>* Gui;
 			if (ItemModel && ItemModel->TryGetObjectField(TEXT("display"), Display) && (*Display)->TryGetObjectField(TEXT("gui"), Gui))
@@ -562,15 +598,148 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 	}
 }
 
+UTexture2D* AMcHUD::GetMapTexture(const FMcItemStack& Stack)
+{
+	GetMapIcon(Stack);
+	const TObjectPtr<UTexture2D>* Found = MapTextures.Find(McMapStore::GetId(Stack));
+	return Found ? Found->Get() : nullptr;
+}
+
+void AMcHUD::DrawTurnedSprite(UTexture2D* Texture, float CentreX, float CentreY, float Size, float Degrees)
+{
+	if (!Texture || !Texture->GetResource())
+	{
+		return;
+	}
+	const double Radians = FMath::DegreesToRadians(static_cast<double>(Degrees));
+	const FVector2D Right(FMath::Cos(Radians), FMath::Sin(Radians));
+	const FVector2D Down(-FMath::Sin(Radians), FMath::Cos(Radians));
+	const FVector2D Middle(CentreX, CentreY);
+	const double Half = Size * 0.5;
+	const FVector2D Corners[4] = { Middle - Right * Half - Down * Half, Middle + Right * Half - Down * Half, Middle + Right * Half + Down * Half, Middle - Right * Half + Down * Half };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+	for (const int32 First : { 0, 2 })
+	{
+		const int32 A = 0, B = First == 0 ? 1 : 2, C = First == 0 ? 2 : 3;
+		FCanvasTriangleItem Item(Corners[A] * Scale, Corners[B] * Scale, Corners[C] * Scale, UVs[A], UVs[B], UVs[C], Texture->GetResource());
+		Item.SetColor(FLinearColor::White);
+		Item.BlendMode = SE_BLEND_Translucent;
+		Canvas->DrawItem(Item);
+	}
+}
+
+void AMcHUD::DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch, const FVector& PlayerPosition, float PlayerYaw)
+{
+	UTexture2D* Picture = GetMapTexture(Stack);
+	if (!Picture)
+	{
+		return;
+	}
+	// Fitted from vanilla shots (ref run maphand2, one pitch every few degrees, 1280 x 720): the frame is 600 pixels wide
+	// (142 map pixels: the 128 of the picture and 7 round it), centred, and rises from its top at y 544 (pitch 7 and
+	// below) to y 30 (pitch 49.5 and above) along a smoothstep of the pitch.
+	const float Side = 600.0f / 720.0f * static_cast<float>(Height);
+	const float T = FMath::Clamp((Pitch - 7.0f) / (49.5f - 7.0f), 0.0f, 1.0f);
+	const float Rise = T * T * (3.0f - 2.0f * T);
+	const float Top = (30.0f + (544.0f - 30.0f) * (1.0f - Rise)) / 720.0f * static_cast<float>(Height);
+	if (Top >= static_cast<float>(Height))
+	{
+		return;
+	}
+	const float Left = (static_cast<float>(Width) - Side) * 0.5f;
+	DrawSprite(LoadSprite(TEXT("textures/map/map_background.png")), Left, Top, Side, Side);
+	const float Border = Side * 7.0f / 142.0f;
+	const float Inner = Side - 2.0f * Border;
+	DrawSprite(Picture, Left + Border, Top + Border, Inner, Inner);
+	// The holder's own marker (ref run maphand1, pitch 90): the 8 by 8 picture is one map pixel per texel, centred on the
+	// player's place, and shown turned by its step of a sixteenth of a turn plus half a turn (the picture points up and
+	// the step 0 is facing south, which the game shows pointing down).
+	const FMcMapData* Map = McMapStore::Find(McMapStore::GetId(Stack));
+	if (Map && !PlayerPosition.ContainsNaN())
+	{
+		bool bOffX = false, bOffZ = false;
+		const int8 MarkerX = Map->MarkerByte(PlayerPosition.X, Map->CenterX, bOffX);
+		const int8 MarkerZ = Map->MarkerByte(PlayerPosition.Z, Map->CenterZ, bOffZ);
+		if (!bOffX && !bOffZ)
+		{
+			const float Unit = Inner / 128.0f;
+			const float CentreX = Left + Border + (MarkerX * 0.5f + 64.0f) * Unit;
+			const float CentreY = Top + Border + (MarkerZ * 0.5f + 64.0f) * Unit;
+			DrawTurnedSprite(LoadSprite(TEXT("textures/map/decorations/player.png")), CentreX, CentreY, 8.0f * Unit,
+				FMcMapData::MarkerRotation(PlayerYaw) * 22.5f + 180.0f);
+		}
+	}
+}
+
+const AMcHUD::FIcon& AMcHUD::GetMapIcon(const FMcItemStack& Stack)
+{
+	const int32 Id = McMapStore::GetId(Stack);
+	const FMcMapData* Map = McMapStore::Find(Id);
+	static const FIcon None;
+	if (!Map)
+	{
+		return None;
+	}
+	TObjectPtr<UTexture2D>& Texture = MapTextures.FindOrAdd(Id);
+	if (!Texture)
+	{
+		Texture = UTexture2D::CreateTransient(FMcMapData::Size, FMcMapData::Size, PF_B8G8R8A8);
+		Texture->Filter = TF_Nearest;
+		Texture->SRGB = true;
+		MapIconRevisions.Remove(Id);
+		MapIcons.Remove(Id);
+	}
+	const int32* Seen = MapIconRevisions.Find(Id);
+	if (!Seen || *Seen != Map->Revision)
+	{
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		uint32* Out = static_cast<uint32*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+		for (int32 Index = 0; Index < FMcMapData::Size * FMcMapData::Size; ++Index)
+		{
+			Out[Index] = McMapColors::Argb(Map->Colors[Index]);
+		}
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+		MapIconRevisions.Add(Id, Map->Revision);
+	}
+	FIcon& Icon = MapIcons.FindOrAdd(Id);
+	if (Icon.Triangles.IsEmpty())
+	{
+		const FVector2D Corners[4] = { FVector2D(0, 0), FVector2D(16, 0), FVector2D(16, 16), FVector2D(0, 16) };
+		const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+		for (const int32 First : { 0, 2 })
+		{
+			FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+			const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+			for (int32 I = 0; I < 3; ++I)
+			{
+				Triangle.Positions[I] = Corners[Indices[I]];
+				Triangle.UVs[I] = UVs[Indices[I]];
+			}
+			Triangle.Color = FLinearColor::White;
+			Triangle.Texture = Texture;
+		}
+	}
+	return Icon;
+}
+
 const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
 {
+	if (Stack.Item == TEXT("minecraft:filled_map") && McMapStore::GetId(Stack) != INDEX_NONE)
+	{
+		return GetMapIcon(Stack);
+	}
 	if (Stack.Item.ToString().EndsWith(TEXT("_banner")))
 	{
 		return GetBannerIcon(Stack);
 	}
+	if (Stack.Item == TEXT("minecraft:shield"))
+	{
+		return GetShieldIcon(Stack);
+	}
 	if (!McItemDef::UsesPackModels(Stack))
 	{
-		return GetItemIcon(Stack.Item);
+		return GetItemIcon(McItemFrames::ResolveStack(Stack));
 	}
 	const TArray<McItemDef::FModelRef> Refs = McItemDef::Resolve(Stack, McItemDef::EContext::Gui);
 	FString Key;

@@ -44,6 +44,11 @@ public:
 	// Puts back what CaptureChunk wrote, with new ids; returns how many came back. Entities of kinds this version
 	// doesn't know, or whose bytes are damaged, are dropped.
 	int32 RestoreChunk(TConstArrayView<uint8> Bytes);
+	// One entity as bytes (the format of CaptureChunk with a count of one), to carry it to another dimension; empty if it
+	// is not kept in saves. UnpackEntity puts it back here with a new id, at Pos, and returns it (null if the bytes are no
+	// good). Added for portal travel (McTravel).
+	TArray<uint8> PackEntity(FMcEntity& Entity);
+	FMcEntity* UnpackEntity(TConstArrayView<uint8> Bytes, const FVector& Pos);
 	// A chunk that came from a save has had its turn at animals: don't give it a herd when it joins the world.
 	// Call before adding the chunk.
 	void MarkSeeded(FIntPoint Chunk) { Seeded.Add(Chunk); }

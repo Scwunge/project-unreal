@@ -168,6 +168,18 @@ public:
 	int32 SwiftTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
+	// The game's NoAI: it stands where it is and does nothing, but is saved and can be hurt (an imported world's).
+	bool bNoAI = false;
+	// A sheep's wool dye (0..15, the game's order), -1 for the plain one.
+	int32 DyeColor = -1;
+	// The name it was given (a name tag), empty for none. Kept and saved; not drawn yet.
+	FString CustomName;
+	// What it wears: head, chest, legs, feet (item names), None for nothing. Kept and saved; not drawn yet.
+	FName Armor[4];
+	// What the host keeps after the kind's own bytes: the coat, the youth, then the flags, dye, name and gear. A save without
+	// the later ones reads as before; SaveTrailer/LoadTrailer are the one place that says what order they come in.
+	void SaveTrailer(FArchive& Ar) const;
+	void LoadTrailer(FArchive& Ar);
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
 	int32 LookSeed = -1;
 	// A young animal: half the size, and grown up when the ticks run out. 0 for a grown one. (Villagers keep their own.)

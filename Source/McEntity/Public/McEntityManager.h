@@ -46,6 +46,14 @@ public:
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
 	int32 Age = 0;
+	// Ticks before a portal can take it again (McTravel; not saved).
+	int32 PortalCooldown = 0;
+	// Tied by a lead (McLeash.h): to a knot entity by id, or (id 0) to the player last seen near LeashPlayerPos. Not saved.
+	bool bLeashed = false;
+	int32 LeashKnot = 0;
+	FVector LeashPlayerPos = FVector::ZeroVector;
+	// Saddle, tamed state and rider of a mount (McMount.h); null for anything that isn't one. Not saved yet.
+	TSharedPtr<struct FMcMountState> Mount;
 	// Set to have the manager drop it at the end of the tick.
 	bool bRemoved = false;
 };

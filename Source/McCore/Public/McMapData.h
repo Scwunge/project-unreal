@@ -26,6 +26,8 @@ struct MCCORE_API FMcMapData
 	int32 CenterZ = 0;
 	FName Dimension = TEXT("minecraft:overworld");
 	bool bLocked = false;
+	// Counts the changes to the pixels, so a picture of the map knows when to be drawn again.
+	int32 Revision = 0;
 	TArray<uint8> Colors;
 	TArray<FMcMapMarker> Markers;
 

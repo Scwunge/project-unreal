@@ -45,6 +45,7 @@ public:
 
 	bool IsOnTrip(const AController* Controller) const;
 	int32 NumTrips() const { return Trips.Num(); }
+	int32 NumEntityTrips() const { return EntityTrips.Num(); }
 	// Runs the trips that can finish (a test calls it between loading chunks by hand).
 	void TickTrips();
 
@@ -82,6 +83,26 @@ private:
 	bool AddTrip(AMcPlayerController& Controller, AMcWorldActor& Dest, FTrip Trip);
 	void Finish(FTrip& Trip);
 	void TickPlayers();
+
+	// Everything but players that stands in a portal goes through (mobs, items, carts and boats without a player in them):
+	// at once, then not again for 300 ticks (10 while it still stands in one).
+	struct FEntityTrip
+	{
+		TWeakObjectPtr<AMcWorldActor> Dest;
+		int32 Anchor = 0;
+		EKind Kind = EKind::NetherPortal;
+		FIntPoint Chunk = FIntPoint::ZeroValue;
+		int32 ChunkRadius = 0;
+		FIntVector Target = FIntVector::ZeroValue;
+		bool bAlongX = true;
+		FVector Feet = FVector::ZeroVector;
+		TArray<uint8> Bytes;
+		double StartedAt = 0.0;
+	};
+	void TickEntities();
+	void TickEntityTrips();
+	TArray<FEntityTrip> EntityTrips;
+	int32 EntityTick = 0;
 
 	TArray<FTrip> Trips;
 	TMap<TWeakObjectPtr<AController>, FPortalState> States;

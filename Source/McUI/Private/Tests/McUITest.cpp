@@ -149,6 +149,16 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("an undamaged item has no bar"), GetDurabilityBar(0, 100).bShow);
 	TestFalse(TEXT("an item with no durability has none"), GetDurabilityBar(5, 0).bShow);
 	TestEqual(TEXT("half damaged, half the 13 pixels"), GetDurabilityBar(50, 100).Width, 7);
+	// Bundles (vanilla ref run bundle1): 1, 16, 32, 48, 63 and 64 of 64 sticks.
+	TestFalse(TEXT("an empty bundle has no bar"), GetBundleBar(0.0).bShow);
+	const double Fulls[] = {1.0 / 64, 16.0 / 64, 32.0 / 64, 48.0 / 64, 63.0 / 64, 1.0};
+	const int32 Widths[] = {1, 4, 7, 10, 12, 13};
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		TestEqual(TEXT("bundle bar width"), GetBundleBar(Fulls[Index]).Width, Widths[Index]);
+	}
+	TestEqual(TEXT("blue while there is room"), GetBundleBar(0.5).Color, 0x7087FFu);
+	TestEqual(TEXT("red when full"), GetBundleBar(1.0).Color, 0xFF5454u);
 	TestEqual(TEXT("one point off, still full width"), GetDurabilityBar(1, 1561).Width, 13);
 	TestEqual(TEXT("nearly broken, a pixel"), GetDurabilityBar(99, 100).Width, 0);
 	const uint32 Half = GetDurabilityBar(50, 100).Color;

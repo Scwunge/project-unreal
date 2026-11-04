@@ -1,6 +1,7 @@
 #include "McCache.h"
 #include "McCore.h"
 #include "McResourcePacks.h"
+#include "McDataPacks.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -27,6 +28,12 @@ namespace McCache
 
 	FString Data(const FString& RelativePath)
 	{
+		// A data pack that has the file (not a folder) wins over the cache.
+		FString FromPack;
+		if (!RelativePath.EndsWith(TEXT("/")) && FPaths::GetExtension(RelativePath).Len() > 0 && McData::TryResolveGame(RelativePath, FromPack))
+		{
+			return FromPack;
+		}
 		return Root() / TEXT("client/data/minecraft") / RelativePath;
 	}
 
@@ -38,7 +45,29 @@ namespace McCache
 		{
 			return FromPack;
 		}
+		// A namespace of a pack's own has no copy in the jar: the path that follows does not exist.
+		int32 Colon = INDEX_NONE;
+		const int32 Slash = RelativePath.Find(TEXT("/"));
+		if (RelativePath.FindChar(TEXT(':'), Colon) && (Slash == INDEX_NONE || Colon < Slash))
+		{
+			return Root() / TEXT("client/assets") / RelativePath.Left(Colon) / RelativePath.Mid(Colon + 1);
+		}
 		return Root() / TEXT("client/assets/minecraft") / RelativePath;
+	}
+
+	FString RelativeOf(const FString& Id, const FString& Directory, const FString& Extension)
+	{
+		int32 Colon = INDEX_NONE;
+		if (Id.FindChar(TEXT(':'), Colon) && Id.Left(Colon) != TEXT("minecraft"))
+		{
+			return Id.Left(Colon) + TEXT(":") + Directory + Id.Mid(Colon + 1) + Extension;
+		}
+		return Directory + PathOf(Id) + Extension;
+	}
+
+	FString AssetOf(const FString& Id, const FString& Directory, const FString& Extension)
+	{
+		return Asset(RelativeOf(Id, Directory, Extension));
 	}
 
 	TSharedPtr<FJsonObject> LoadJsonObject(const FString& Path)

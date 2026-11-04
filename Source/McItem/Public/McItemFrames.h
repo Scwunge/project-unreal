@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "McItem.h"
+#include "McItemStack.h"
 
 namespace McItemFrames
 {
@@ -25,6 +26,11 @@ namespace McItemFrames
 		bool bOverworld = true;
 		// Game ticks so far; the needles' springs step once per tick since the last call.
 		int64 GameTicks = 0;
+		// The dimension the player is in, and the place of their last death (a recovery compass points there, in that dimension).
+		FName Dimension = TEXT("minecraft:overworld");
+		bool bHasDeath = false;
+		FVector2D DeathPosition = FVector2D::ZeroVector;
+		FName DeathDimension;
 	};
 
 	// Sets the context and moves the needles on to now.
@@ -39,6 +45,16 @@ namespace McItemFrames
 	// The item whose picture to draw for Item: compass_NN or clock_NN or recovery_compass_NN for the three, Item itself for
 	// anything else.
 	MCITEM_API FName Resolve(FName Item);
+
+	// Like Resolve, but for a stack that may point somewhere of its own: a compass with a lodestone_tracker points at that
+	// lodestone (in its dimension), a recovery compass at the last death. Each target has its own needle, stepped once a
+	// game tick whenever it is asked for. Anything else is Resolve(Stack.Item).
+	MCITEM_API FName ResolveStack(const FMcItemStack& Stack);
+
+	// The lodestone a compass is tied to: its place and dimension; false if it isn't tied to one.
+	MCITEM_API bool GetLodestone(const FMcItemStack& Stack, FIntVector& OutPos, FName& OutDimension);
+	// Ties a compass to a lodestone ("minecraft:lodestone_tracker": the target's dimension and pos, tracked).
+	MCITEM_API void SetLodestone(FMcItemStack& Stack, const FIntVector& Pos, FName Dimension);
 
 	// Which of Count frames a 0 to 1 value falls on (the game's thresholds sit at half frames: 0, 0.5, 1.5 ... Count - 0.5).
 	MCITEM_API int32 FrameOf(double Value, int32 Count);

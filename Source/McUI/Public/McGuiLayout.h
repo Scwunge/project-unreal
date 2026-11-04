@@ -70,6 +70,9 @@ namespace McGui
 		uint32 Color = 0;
 	};
 	MCUI_API FDurabilityBar GetDurabilityBar(int32 Damage, int32 MaxDamage);
+	// The fullness bar under a bundle holding something (vanilla ref run bundle1: widths 1, 4, 7, 10, 12 and 13 of 13 for
+	// 1, 16, 32, 48, 63 and 64 of 64; blue 0x7087FF, red 0xFF5454 when full).
+	MCUI_API FDurabilityBar GetBundleBar(double Fullness);
 
 	// Whether a slot writes a count, and which. Stacks of one say nothing.
 	MCUI_API bool ShowsCount(int32 Count);

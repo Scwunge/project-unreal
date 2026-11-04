@@ -144,7 +144,8 @@ bool FMcJukeboxHopperTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("the song has ended"), Use->IsJukeboxPlaying(*Actor, Jukebox));
 	TestTrue(TEXT("with the disc still in"), HasRecord(Jukebox));
 
-	// A hopper under another takes its disc out, and the music stops.
+	// A hopper under another does not take its disc: the jukebox's signal locks the hopper and the disc stays (reference run
+	// lg_juke2: hopper enabled=false, disc still in after 24 ticks).
 	const FIntVector Second(6, 65, 2);
 	const FIntVector Below(6, 64, 2);
 	const FIntVector Chest(6, 63, 2);
@@ -156,11 +157,10 @@ bool FMcJukeboxHopperTest::RunTest(const FString& Parameters)
 	Chunk->SetBlockEntity(Second.X, Second.Y, Second.Z, Disc);
 	Blocks.SetBlock(Second, Registry.ParseState(TEXT("minecraft:jukebox[has_record=true]")).Get(0));
 	Tick(20);
-	TestFalse(TEXT("the jukebox is empty"), HasRecord(Second));
+	TestTrue(TEXT("the jukebox still holds its disc"), HasRecord(Second));
 	TArray<FMcItemStack> Out;
 	UMcBlockUseSubsystem::GetContents(*Actor, Chest, Out);
-	TestTrue(TEXT("the disc went down to the chest"), Out.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:music_disc_13"); }));
-	TestFalse(TEXT("nothing plays"), Use->IsJukeboxPlaying(*Actor, Second));
+	TestTrue(TEXT("the chest is empty"), Out.IsEmpty());
 
 	Finish();
 	return true;

@@ -1,4 +1,5 @@
 #include "McContainer.h"
+#include "McBundle.h"
 #include "McShulker.h"
 
 namespace
@@ -308,6 +309,47 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 		return;
 	}
 	FMcItemStack Stack = GetStack(Slot);
+	// Bundles (minecraft.wiki "Bundle"): a bundle on the cursor takes the stack clicked into itself with a left click, items
+	// on the cursor go into the bundle clicked with a left click, a right click on a bundle with an empty cursor takes its
+	// newest stack, and a right click on an empty slot with a bundle on the cursor puts the newest stack there.
+	if (Button == 0 && !Carried.IsEmpty() && McBundle::IsBundle(Carried.Item) && !Stack.IsEmpty() && MayPickup(Slot))
+	{
+		const int32 Put = McBundle::Insert(Carried, Stack);
+		BundleSound = FName(Put > 0 ? "item.bundle.insert" : "item.bundle.insert_fail");
+		if (Put > 0)
+		{
+			SetStack(Slot, Stack);
+		}
+		return;
+	}
+	if (Button == 0 && !Carried.IsEmpty() && !Stack.IsEmpty() && McBundle::IsBundle(Stack.Item) && MayPickup(Slot))
+	{
+		const int32 Put = McBundle::Insert(Stack, Carried);
+		BundleSound = FName(Put > 0 ? "item.bundle.insert" : "item.bundle.insert_fail");
+		if (Put > 0)
+		{
+			SetStack(Slot, Stack);
+		}
+		return;
+	}
+	if (Button == 1 && Carried.IsEmpty() && !Stack.IsEmpty() && McBundle::IsBundle(Stack.Item) && MayPickup(Slot) && !McBundle::GetContents(Stack).IsEmpty())
+	{
+		Carried = McBundle::RemoveNewest(Stack);
+		BundleSound = FName("item.bundle.remove_one");
+		SetStack(Slot, Stack);
+		return;
+	}
+	if (Button == 1 && !Carried.IsEmpty() && McBundle::IsBundle(Carried.Item) && Stack.IsEmpty() && !McBundle::GetContents(Carried).IsEmpty())
+	{
+		FMcItemStack Newest = McBundle::GetContents(Carried)[0];
+		if (MayPlace(Slot, Newest))
+		{
+			McBundle::RemoveNewest(Carried);
+			BundleSound = FName("item.bundle.remove_one");
+			SetStack(Slot, Newest);
+		}
+		return;
+	}
 	if (Stack.IsEmpty())
 	{
 		if (!Carried.IsEmpty() && MayPlace(Slot, Carried))

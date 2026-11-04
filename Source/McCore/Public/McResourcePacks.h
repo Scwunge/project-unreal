@@ -79,6 +79,9 @@ public:
 	bool Has(const FString& Relative) const;
 	// The file's bytes. Safe from any thread.
 	bool Read(const FString& Relative, TArray<uint8>& Out) const;
+	// The pack's files whose path starts with Prefix ("data/"), by path inside the pack with forward slashes. Overlays are
+	// not looked into.
+	void ListFiles(const FString& Prefix, TArray<FString>& Out) const;
 	// The folder pack's file on disk, or empty for a zip.
 	FString GetFolderFile(const FString& Relative) const;
 
@@ -162,6 +165,8 @@ namespace McPacks
 	MCCORE_API bool TakeReloadRequest();
 	MCCORE_API bool HasPacks();
 
+	// A name below may carry a namespace ("zz:textures/a.png" is assets/zz/textures/a.png); without one it is the game's
+	// ("minecraft"). A namespace other than the game's has nothing but the packs to give it.
 	// Looks for the file "assets/minecraft/<Relative>" in the packs. True with a path on disk when a pack has it (a folder
 	// pack's own file, or for a zip the file taken out into Saved/McPackCache, along with its .mcmeta); true with a
 	// path that doesn't exist when a pack's filter hides it. False when the vanilla copy applies.

@@ -1,7 +1,7 @@
 # Writes lg_disp.txt: what a dispenser (and a dropper) does with each kind of item, one pulse each, block states per tick and container item counts
 # (log items), plus server entities (log sents) for the ones that make entities. Replayed by McClient.McSim.RefScriptsLogistics once baked (bake_lg.py disp).
 Y = -60
-L = ["cmd gamerule send_command_feedback false", "cmd gamemode spectator", "cmd tp @s 5 -50 4", "wait 40", "cmd tick freeze",
+L = ["cmd gamerule send_command_feedback false", "cmd gamemode spectator", "cmd execute in minecraft:overworld run tp @s 5 -50 116", "wait 200", "cmd tick freeze",
      "cmd kill @e[type=!player]",
      "cmd fill -4 -60 -3 14 -55 240 air", "cmd fill -4 -61 -3 14 -61 240 stone", "cmd gamerule do_mob_spawning false", "cmd gamerule do_fire_tick false", "wait 10"]
 def c(s): L.append("cmd " + s)

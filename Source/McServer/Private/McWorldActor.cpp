@@ -181,6 +181,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			WorldDir = McWorldSave::GetWorldDir(WorldName);
 			bHaveLevel = McWorldSave::LoadLevel(WorldDir, Level);
+			McWorldSave::LoadMaps(WorldDir);
 			if (!bHaveLevel && IFileManager::Get().FileExists(*(WorldDir / TEXT("level.json"))))
 			{
 				// Starting a new world over this one's chunks would mix two seeds; leave it as it is.
@@ -324,6 +325,12 @@ void AMcWorldActor::BeginPlay()
 	Entities->GetSpawners().OnCycle = [this](const FIntVector& Pos)
 	{
 		MulticastSpawnerCycled(Pos);
+	};
+	Simulation->OnBlocksPushed = [this](const TArray<FIntVector>& Cells, const FIntVector& Dir)
+	{
+		FPistonPush& Push = PistonPushes.AddDefaulted_GetRef();
+		Push.Cells = Cells;
+		Push.Dir = Dir;
 	};
 	// TNT lit by fire or redstone becomes a primed block.
 	Simulation->OnLightTnt = [this](const FIntVector& Pos)
@@ -880,6 +887,38 @@ void AMcWorldActor::SyncFallingBlocks()
 	}
 }
 
+void AMcWorldActor::MovePushedEntities()
+{
+	if (!Entities || PistonPushes.IsEmpty())
+	{
+		return;
+	}
+	for (FPistonPush& Push : PistonPushes)
+	{
+		++Push.Step;
+		const FVector Shift = FVector(Push.Dir) * (0.5 * Push.Step);
+		for (const FIntVector& Cell : Push.Cells)
+		{
+			const FBox Shape(FVector(Cell) + Shift, FVector(Cell) + FVector(1.0) + Shift);
+			TArray<FMcEntity*> Hit;
+			Entities->GetManager().FindInBox(Shape, Hit);
+			for (FMcEntity* Entity : Hit)
+			{
+				const FBox Box = Entity->Body.GetBox();
+				// Touching is not overlapping; what stands on a block moves only when the block rises.
+				if (Entity->bRemoved || Entity->IsVehicle() || Box.Min.X >= Shape.Max.X - UE_KINDA_SMALL_NUMBER || Box.Max.X <= Shape.Min.X + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Y >= Shape.Max.Y - UE_KINDA_SMALL_NUMBER || Box.Max.Y <= Shape.Min.Y + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Z >= Shape.Max.Z - UE_KINDA_SMALL_NUMBER || Box.Max.Z <= Shape.Min.Z + UE_KINDA_SMALL_NUMBER)
+				{
+					continue;
+				}
+				McPhysics::Move(*BlockWorld, Entity->Body, FVector(Push.Dir) * 0.5, false);
+			}
+		}
+	}
+	PistonPushes.RemoveAll([](const FPistonPush& Push) { return Push.Step >= 2; });
+}
+
 void AMcWorldActor::TickLightning()
 {
 	if (Weather != static_cast<uint8>(EMcWeather::Thunder) || !HasWeather() || !BlockWorld)
@@ -949,6 +988,11 @@ void AMcWorldActor::Strike(const FVector& Position)
 {
 	UE_LOG(LogMcServer, Log, TEXT("Lightning struck %s at %s"), *Dimension, *Position.ToString());
 	MulticastLightning(FVector_NetQuantize10(Position), LightningRandom.RandHelper(MAX_int32));
+	if (Simulation)
+	{
+		const FVector Block = McCoords::UnrealToBlock(Position);
+		Simulation->LightningStruck(FIntVector(FMath::FloorToInt32(Block.X), FMath::FloorToInt32(Block.Y), FMath::FloorToInt32(Block.Z)));
+	}
 	// The thunder carries everywhere (its volume makes its range huge); the crack is near.
 	MulticastSound(FName("entity.lightning_bolt.thunder"), FVector_NetQuantize10(Position), 10000.0f, 0.8f + LightningRandom.FRand() * 0.2f);
 	MulticastSound(FName("entity.lightning_bolt.impact"), FVector_NetQuantize10(Position), 2.0f, 0.5f + LightningRandom.FRand() * 0.2f);
@@ -1101,6 +1145,7 @@ void AMcWorldActor::SaveWorld()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	// Whatever an autosave had left to look at is covered by this.
 	AutosaveQueue.Reset();
@@ -1125,6 +1170,7 @@ void AMcWorldActor::BeginAutosave()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	if (Entities)
 	{
@@ -1205,6 +1251,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			MovePushedEntities();
 			SyncFallingBlocks();
 			FeedPressurePlates();
 			TickLightning();

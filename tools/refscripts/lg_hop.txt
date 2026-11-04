@@ -19,8 +19,6 @@ cmd setblock 1 -59 12 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:iron_ore"
 cmd setblock 1 -60 12 furnace[lit=false]
 cmd setblock 1 -60 16 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:iron_ore",count:2},{Slot:1,id:"minecraft:coal",count:2},{Slot:2,id:"minecraft:oak_planks",count:2}]}
 cmd setblock 2 -60 16 furnace[lit=false]
-cmd setblock 1 -59 20 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:wheat_seeds",count:5}]}
-cmd setblock 1 -60 20 composter
 cmd setblock 1 -60 24 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:cobblestone",count:3}]}
 cmd setblock 2 -60 24 hopper[facing=east]
 cmd setblock 3 -60 24 hopper[facing=east]
@@ -42,8 +40,6 @@ cmd setblock 1 -60 52 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:cobblesto
 cmd setblock 2 -60 52 barrel[facing=up]
 cmd setblock 1 -59 56 hopper[facing=down]{Items:[{Slot:0,id:"minecraft:blaze_powder",count:3},{Slot:1,id:"minecraft:glass_bottle",count:2}]}
 cmd setblock 1 -60 56 brewing_stand
-cmd setblock 1 -60 60 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:blaze_powder",count:3},{Slot:1,id:"minecraft:glass_bottle",count:2}]}
-cmd setblock 2 -60 60 brewing_stand
 wait 10
 log states -1 -60 0 5 -59 60
 log items -1 -60 0 5 -59 60

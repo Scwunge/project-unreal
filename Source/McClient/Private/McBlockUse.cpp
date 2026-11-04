@@ -1,4 +1,5 @@
 #include "McBlockUse.h"
+#include "McLeash.h"
 #include "McRecipe.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -13,6 +14,7 @@
 #include "McLecternMenu.h"
 #include "McChunk.h"
 #include "McChestLink.h"
+#include "McCompost.h"
 #include "McEnchanting.h"
 #include "McEntityHost.h"
 #include "McTnt.h"
@@ -482,7 +484,38 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 	// Out through the spout: into the top of the block below, or the side of the one beside.
 	const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing"));
 	const FIntVector Target = Pos + FacingStep(Facing);
-	if (!Items->IsEmpty())
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	const auto ComposterLevel = [&](const FIntVector& At) -> int32
+	{
+		const FMcBlockWorld* Block = WorldActor.GetBlockWorld();
+		const FMcStateId At_ = Block->GetBlock(At);
+		return GetBlockName(*Block, At) == TEXT("minecraft:composter") ? FCString::Atoi(*Blocks.GetPropertyValue(At_, TEXT("level")).ToString()) : -1;
+	};
+	if (!Items->IsEmpty() && Facing == TEXT("down") && ComposterLevel(Target) >= 0)
+	{
+		// From above a composter takes the first compostable item whole, and goes up a level by its chance (reference runs
+		// lg_compost, lg_compost3: levels 0 to 6 take items, 7 and 8 refuse them; the hopper keeps trying each tick).
+		const int32 Level = ComposterLevel(Target);
+		for (int32 Slot = 0; Level < 7 && Slot < Items->Num(); ++Slot)
+		{
+			const int32 Chance = McCompostChance(Items->Get(Slot).Item);
+			if (Items->Get(Slot).IsEmpty() || Chance == 0)
+			{
+				continue;
+			}
+			FMcItemStack Rest = Items->Get(Slot);
+			Rest.Count -= 1;
+			Items->Set(Slot, Rest.Count > 0 ? Rest : FMcItemStack());
+			if (FMath::RandRange(1, 100) <= Chance)
+			{
+				WorldActor.SetBlock(Target, Blocks.ParseState(FString::Printf(TEXT("minecraft:composter[level=%d]"), Level + 1)).Get(0));
+			}
+			ContentsChanged(WorldActor, Pos);
+			bMoved = true;
+			break;
+		}
+	}
+	else if (!Items->IsEmpty())
 	{
 		const FMcSlotAccess Into = GetAccess(WorldActor, Target, Facing == TEXT("down") ? EFace::Top : EFace::Side);
 		if (McHopper::MoveOne(Self, Into))
@@ -504,7 +537,17 @@ bool UMcBlockUseSubsystem::TickHopper(AMcWorldActor& WorldActor, const FIntVecto
 	// In from above: out of the bottom of a container, or an item lying on the hopper.
 	const FIntVector Above = Pos + FIntVector(0, 1, 0);
 	const FMcSlotAccess From = GetAccess(WorldActor, Above, EFace::Bottom);
-	if (From.IsValid())
+	if (ComposterLevel(Above) == 8)
+	{
+		// A ready composter gives a bone meal to the hopper under it and empties.
+		FMcItemStack Meal(TEXT("minecraft:bone_meal"), 1);
+		if (McHopper::Insert(Self, Meal))
+		{
+			WorldActor.SetBlock(Above, Blocks.ParseState(TEXT("minecraft:composter[level=0]")).Get(0));
+			bMoved = true;
+		}
+	}
+	else if (From.IsValid())
 	{
 		if (McHopper::MoveOne(From, Self))
 		{
@@ -689,6 +732,11 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 		ContentsChanged(WorldActor, Pos);
 	};
 
+	if (bDropper && GetBlockName(*Blocks, Pos + Step) == TEXT("minecraft:composter"))
+	{
+		// A dropper facing a composter does nothing: the item stays (reference run lg_disp, wheat seeds).
+		return;
+	}
 	if (bDropper)
 	{
 		// Into a container in front, through the face it meets; a full one takes nothing and nothing falls out.
@@ -752,7 +800,91 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 			return;
 		}
 	}
-	else if (One.Item == TEXT("minecraft:fire_charge") || One.Item == TEXT("minecraft:flint_and_steel"))
+	else if (One.Item == TEXT("minecraft:fire_charge"))
+	{
+		// Launched as a small fireball: it does not light anything in front and is used up (reference run lg_disp: nothing in
+		// front changed, with air, a campfire or anything else there).
+		TakeOne();
+		Manager.PlaySound(FName("block.dispenser.launch"), Center, 1.0f, 1.2f);
+		return;
+	}
+	else if (One.Item == TEXT("minecraft:carved_pumpkin") || One.Item == TEXT("minecraft:brush") || One.Item.ToString().EndsWith(TEXT("_skull")) || One.Item.ToString().EndsWith(TEXT("_head")))
+	{
+		// Items that have a use at a dispenser (golems, mobs wearing it, brushing) and no other: when it does not apply the
+		// dispenser fails and keeps the item (reference run lg_disp: nothing dropped, nothing placed).
+		Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+		return;
+	}
+	else if (One.Item == TEXT("minecraft:glass_bottle") || One.Item == TEXT("minecraft:shears") || One.Item == TEXT("minecraft:honeycomb"))
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FIntVector Front = Pos + Step;
+		const FMcStateId FrontState = Blocks->GetBlock(Front);
+		const FString FrontName = GetBlockName(*Blocks, Front).ToString();
+		const bool bHive = (FrontName == TEXT("minecraft:beehive") || FrontName == TEXT("minecraft:bee_nest")) && Registry.GetPropertyValue(FrontState, TEXT("honey_level")) == TEXT("5");
+		const auto EmptyHive = [&]()
+		{
+			TMap<FName, FName> Props;
+			Props.Add(TEXT("facing"), Registry.GetPropertyValue(FrontState, TEXT("facing")));
+			Props.Add(TEXT("honey_level"), TEXT("0"));
+			WorldActor.SetBlock(Front, Registry.FindState(Registry.GetBlockOf(FrontState).Name, Props).Get(FrontState));
+		};
+		bool bDone = false;
+		if (One.Item == TEXT("minecraft:glass_bottle") && bHive)
+		{
+			// The hive gives its honey: the bottle in the slot becomes a honey bottle (reference run lg_disp).
+			EmptyHive();
+			if (Items->Get(Slot).Count <= 1)
+			{
+				Items->Set(Slot, FMcItemStack(TEXT("minecraft:honey_bottle")));
+				ContentsChanged(WorldActor, Pos);
+			}
+			else
+			{
+				TakeOne();
+				FMcItemStack Honey(TEXT("minecraft:honey_bottle"));
+				McHopper::Insert(McHopper::ForContainer(Items), Honey);
+				if (!Honey.IsEmpty())
+				{
+					Manager.DropItem(Center + Dir * 0.7, Honey);
+				}
+				ContentsChanged(WorldActor, Pos);
+			}
+			bDone = true;
+		}
+		else if (One.Item == TEXT("minecraft:shears") && bHive)
+		{
+			// Sheared: three honeycombs fall in front, the shears are worn by one and stay (reference run lg_disp).
+			EmptyHive();
+			Manager.DropItem(FVector(Front) + FVector(0.5), FMcItemStack(TEXT("minecraft:honeycomb"), 3));
+			FMcItemStack Worn = Items->Get(Slot);
+			Items->Set(Slot, Worn.HurtAndBreak(1) ? FMcItemStack() : Worn);
+			ContentsChanged(WorldActor, Pos);
+			bDone = true;
+		}
+		else if (One.Item == TEXT("minecraft:honeycomb") && (FrontName.Contains(TEXT("copper")) || FrontName.EndsWith(TEXT("lightning_rod"))) && !FrontName.Contains(TEXT("waxed_")))
+		{
+			// Waxes the copper in front and is used up (reference run lg_disp: copper_block became waxed_copper_block).
+			const TOptional<FMcStateId> Waxed = Registry.ParseState(Registry.Describe(FrontState).Replace(TEXT("minecraft:"), TEXT("minecraft:waxed_")));
+			if (Waxed.IsSet())
+			{
+				WorldActor.SetBlock(Front, Waxed.GetValue());
+				TakeOne();
+				bDone = true;
+			}
+		}
+		if (bDone)
+		{
+			Manager.PlaySound(FName("block.dispenser.dispense"), Center, 1.0f, 1.0f);
+			return;
+		}
+		if (One.Item != TEXT("minecraft:glass_bottle"))
+		{
+			Manager.PlaySound(FName("block.dispenser.fail"), Center, 1.0f, 1.2f);
+			return;
+		}
+	}
+	else if (One.Item == TEXT("minecraft:flint_and_steel"))
 	{
 		// Lights an unlit campfire or candle in front, or makes fire where the front is air and the fire can stay; a flint and
 		// steel is worn by one, a fire charge is used up.
@@ -811,7 +943,9 @@ void UMcBlockUseSubsystem::Dispense(AMcWorldActor& WorldActor, const FIntVector&
 	{
 		// Placed in front, facing the way the dispenser does, if there's room.
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		TOptional<FMcStateId> Box = Registry.ParseState(One.Item.ToString() + TEXT("[facing=") + Facing.ToString() + TEXT("]"));
+		// Facing the way the dispenser does if the cell under the box is empty, otherwise up (reference run lg_disp).
+		const bool bBelowEmpty = Registry.IsAir(Blocks->GetBlock(Pos + Step - FIntVector(0, 1, 0)));
+		TOptional<FMcStateId> Box = Registry.ParseState(One.Item.ToString() + TEXT("[facing=") + (bBelowEmpty ? Facing.ToString() : FString(TEXT("up"))) + TEXT("]"));
 		if (Box.IsSet() && Registry.IsAir(Blocks->GetBlock(Pos + Step)))
 		{
 			WorldActor.SetBlock(Pos + Step, Box.GetValue());
@@ -1484,6 +1618,19 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	{
 		return false;
 	}
+	{
+		// A lead on a fence post ties the mobs the player leads to a knot there; a knot already there hands them back.
+		const FString FenceName = GetBlockName(*Blocks, Pos).ToString();
+		FMcEntityHost* LeadHost = WorldActor.GetEntityHost();
+		if (LeadHost && FenceName.EndsWith(TEXT("_fence")))
+		{
+			const FMcItemStack& HeldLead = Data->Inventory->Get(Data->SelectedSlot);
+			if (McLeash::UseFence(LeadHost->GetManager(), Pos, Player.GetFeetPosition(), !HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead")))
+			{
+				return true;
+			}
+		}
+	}
 	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
 	{
 		return WorldActor.TuneNote(Pos);
@@ -1596,6 +1743,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (Name == TEXT("minecraft:grindstone"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::Grindstone, Pos, TEXT("Repair & Disenchant"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:cartography_table"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::CartographyTable, Pos, TEXT("Cartography Table"), nullptr, nullptr);
 		return true;
 	}
 	if (Name == TEXT("minecraft:smithing_table"))
@@ -1748,6 +1900,13 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	{
 		return false;
 	}
+	// A window on an animal or a cart or boat stays while that is within reach.
+	if (Window.EntityId != 0)
+	{
+		FMcEntityHost* Host = const_cast<AMcWorldActor&>(WorldActor).GetEntityHost();
+		const FMcEntity* Found = Host ? Host->GetManager().Find(Window.EntityId) : nullptr;
+		return Found && !Found->bRemoved && FVector::Dist(Player.GetFeetPosition(), Found->Body.Position) < AMcPlayerPawn::ServerReach + 1.0;
+	}
 	const FVector Eye = Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0);
 	if (FVector::Dist(Eye, FVector(Window.Pos) + FVector(0.5)) > AMcPlayerPawn::ServerReach + 1.0)
 	{
@@ -1783,10 +1942,15 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:smithing_table");
 	case EMcWindowKind::Grindstone:
 		return Name == TEXT("minecraft:grindstone");
+	case EMcWindowKind::CartographyTable:
+		return Name == TEXT("minecraft:cartography_table");
 	case EMcWindowKind::Anvil:
 		return IsAnvilName(Name);
 	case EMcWindowKind::BrewingStand:
 		return Name == TEXT("minecraft:brewing_stand");
+	case EMcWindowKind::Horse:
+		// Only on an entity, which is checked above.
+		return true;
 	case EMcWindowKind::Hopper:
 		return Name == TEXT("minecraft:hopper");
 	case EMcWindowKind::Dispenser:

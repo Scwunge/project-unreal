@@ -59,6 +59,9 @@ public:
 	// Puts the eyes at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
 	void SetView(const FVector& EyePos, float McYaw, float McPitch);
+	// Turns to Look (Unreal yaw and pitch, as a start transform carries them) without moving: for a player who joined before
+	// the world did and is placed afterwards, who would otherwise keep looking along +x.
+	void SetStartLook(const FRotator& Look);
 
 	// Changes blocks for the player. Until the server takes requests (M3's networking), the game mode points
 	// this straight at the world actor.
@@ -430,6 +433,8 @@ private:
 public:
 	// Ticks since this player's totem went off (its flight across their screen), or -1.
 	float GetTotemAge() const { return TotemAge; }
+	// Swings the arm drawn in first person (on the machine that draws it); for /swing.
+	void SwingArm();
 private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.

@@ -204,6 +204,16 @@ void AMcPlayerPawn::SetView(const FVector& EyePos, float McYaw, float McPitch)
 	}
 }
 
+void AMcPlayerPawn::SetStartLook(const FRotator& Look)
+{
+	Yaw = Look.Yaw;
+	Pitch = Look.Pitch;
+	if (AController* PawnController = GetController())
+	{
+		PawnController->SetControlRotation(FRotator(Pitch, Yaw, 0.0f));
+	}
+}
+
 float AMcPlayerPawn::GetEyeHeight() const
 {
 	// Lying down, the eyes are just above the mattress.
@@ -1698,6 +1708,14 @@ void AMcPlayerPawn::ServerDropSelected_Implementation(bool bWholeStack)
 void AMcPlayerPawn::ServerWantWake_Implementation()
 {
 	ServerWakeUp();
+}
+
+void AMcPlayerPawn::SwingArm()
+{
+	if (UMcHandComponent* Arm = Hand.Get())
+	{
+		Arm->Swing();
+	}
 }
 
 void AMcPlayerPawn::ServerRespawn_Implementation()

@@ -469,9 +469,12 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			bool bFlying = false;
-			Pawn->SetActorLocation(GetStartTransform(It->Get(), bFlying).GetLocation());
+			const FTransform Start = GetStartTransform(It->Get(), bFlying);
+			Pawn->SetActorLocation(Start.GetLocation());
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
+				// (The place alone was set before, so a saved world's player looked along +x whatever way they faced.)
+				McPawn->SetStartLook(Start.Rotator());
 				McPawn->SetGameRules(GetGameRules());
 				McPawn->SetFlying(bFlying);
 				if (!RestoreSurvival(It->Get(), *McPawn))
@@ -1853,6 +1856,13 @@ namespace
 				}
 			}
 			return Best < TNumericLimits<double>::Max();
+		}
+		virtual void SwingArm(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->SwingArm();
+			}
 		}
 		virtual bool GetYaw(const FString& Player, double& OutYaw) const override
 		{

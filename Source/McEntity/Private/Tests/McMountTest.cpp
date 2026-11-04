@@ -90,8 +90,55 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(*FString::Printf(TEXT("a hold of %d ticks peaks %.3f above the floor (reference %.3f)"), Holds[Row], Peak, Peaks[Row]), FMath::Abs(Peak - Peaks[Row]) < 0.02);
 	}
+	// Rearing (vehicle_log34: a standing jump set the rider back 0.315, 0.504, 0.6174, 0.6854 then 0.7 along the facing, and forward again by 0.119, 0.1915,
+	// 0.2108, 0.1366, 0.0421 after the landing; 0.0675 = 0.15 x 0.45 higher on the first tick).
+	for (const double Yaw : { 0.0, 90.0 })
+	{
+		FMcMob* Rearer = MakeHorse(*HorseType, 80.5 + Yaw / 30.0);
+		Rearer->bTamed = true;
+		FMcMountState& Rearing = McMount::Ensure(*Rearer);
+		Rearing.Speed = 0.225f;
+		Rearing.JumpStrength = 0.7f;
+		Rearing.bSaddled = true;
+		Rearing.RiderId = 40;
+		for (int32 Tick = 0; Tick < 5; ++Tick) { Manager.Tick(); }
+		const double Facing = FMath::DegreesToRadians(Yaw);
+		double MostBack = 0.0;
+		double FirstBack = 0.0;
+		double FirstRise = 0.0;
+		for (int32 Tick = 0; Tick < 90; ++Tick)
+		{
+			McMount::SetRiderInput(*Rearer, 0.0f, 0.0f, static_cast<float>(Yaw), Tick < 10);
+			Manager.Tick();
+			const FVector Offset = McMount::GetSeat(*Rearer) - Rearer->Body.Position - FVector(0.0, 0.84375, 0.0);
+			const double Back = Offset.X * FMath::Sin(Facing) - Offset.Z * FMath::Cos(Facing);
+			if (FirstBack == 0.0 && Back > 0.0)
+			{
+				FirstBack = Back;
+				FirstRise = Offset.Y;
+			}
+			MostBack = FMath::Max(MostBack, Back);
+		}
+		TestNearlyEqual(*FString::Printf(TEXT("facing %.0f the first rear tick sets the rider back 0.315"), Yaw), FirstBack, 0.315, 1e-3);
+		TestNearlyEqual(TEXT("and 0.0675 up"), FirstRise, 0.0675, 1e-3);
+		TestNearlyEqual(TEXT("at the most 0.7 back"), MostBack, 0.7, 1e-3);
+		TestNearlyEqual(TEXT("and back in place after the landing"), (McMount::GetSeat(*Rearer) - Rearer->Body.Position).Size(), 0.84375, 1e-3);
+	}
 	TestEqual(TEXT("hold 10 is a full charge"), McMount::JumpFraction(10), 1.0f);
 	TestEqual(TEXT("hold 1 is 0.4"), McMount::JumpFraction(1), 0.4f);
+
+	// Feeding a wild horse (vehicle_log40/41): temper after each food, in the logged order.
+	{
+		FMcMob* Fed = MakeHorse(*HorseType, 96.5);
+		const TCHAR* Foods[] = {TEXT("minecraft:hay_block"), TEXT("minecraft:golden_apple"), TEXT("minecraft:sugar"), TEXT("minecraft:hay_block"), TEXT("minecraft:golden_carrot"), TEXT("minecraft:wheat"), TEXT("minecraft:apple")};
+		const int32 Temper[] = {0, 10, 13, 13, 18, 21, 24};
+		for (int32 I = 0; I < 7; I++)
+		{
+			FMcItemStack Food{FName(Foods[I]), 16};
+			McMount::Use(Manager, *Fed, Food, 1, false, false);
+			TestEqual(*FString::Printf(TEXT("temper after %s"), Foods[I]), Fed->Mount->Temper, Temper[I]);
+		}
+	}
 
 	// Saddle, armour, chest, food and a seat.
 	FMcMob* Wild = MakeHorse(*HorseType, 90.5);
@@ -157,6 +204,11 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("no third"), McMount::Use(Manager, *Two, Nothing, 13, false, false), McMount::EUse::None);
 		McMount::ClearPlayer(*Two, 11);
 		TestEqual(TEXT("the second steers now"), TwoState.RiderId, 12u);
+		// Seats (vehicle_log39, camel at yaw 28.125: the player 0.500 ahead of its centre, a villager put on behind it 0.700 behind).
+		Two->Yaw = 0.0f;
+		TestNearlyEqual(TEXT("the first rider sits 0.5 ahead of the camel's centre"), McMount::GetSeat(*Two).Z - Two->Body.Position.Z, 0.5, 1e-6);
+		TwoState.PassengerId = 99;
+		TestNearlyEqual(TEXT("a passenger sits 0.7 behind it"), McMount::GetSeatFor(*Two, 99).Z - Two->Body.Position.Z, -0.7, 1e-6);
 	}
 
 	// A pig with a carrot on a stick (vehicle_log26): 0.1239 a tick; a boost of 746 ticks adds 1.15 x sin(pi t/746): 0.1632 after 64 ticks.

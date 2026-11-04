@@ -1237,3 +1237,76 @@ bool FMcJavaImportCampfireDumpTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("a campfire reads back as it was saved"), Loaded == Source);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportRegionDumpTest, "McClient.McServer.JavaImport.RegionLayoutInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportRegionDumpTest::RunTest(const FString& Parameters)
+{
+	// A real region file of the campref save (1070 only): the header and the first chunks' root keys, to fit the export.
+	const FString Folder = TEXT("C:/mc-reference/run/saves/campref/dimensions/minecraft/overworld/region");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Folder / TEXT("*.mca")), true, false);
+	if (Files.IsEmpty())
+	{
+		AddInfo(TEXT("no campref save on this machine; skipped"));
+		return true;
+	}
+	TArray<uint8> Region;
+	if (!FFileHelper::LoadFileToArray(Region, *(Folder / Files[0])))
+	{
+		return true;
+	}
+	AddInfo(FString::Printf(TEXT("region dump: file %s, %d bytes (%d sectors of 4096)"), *Files[0], Region.Num(), Region.Num() / 4096));
+	int32 Shown = 0, NumChunks = 0, MaxEnd = 0;
+	for (int32 Slot = 0; Slot < 1024; ++Slot)
+	{
+		const int32 Offset = (Region[Slot * 4] << 16) | (Region[Slot * 4 + 1] << 8) | Region[Slot * 4 + 2];
+		const int32 Count = Region[Slot * 4 + 3];
+		if (Offset == 0 && Count == 0)
+		{
+			continue;
+		}
+		++NumChunks;
+		MaxEnd = FMath::Max(MaxEnd, Offset + Count);
+		const int32 Stamp = (Region[4096 + Slot * 4] << 24) | (Region[4096 + Slot * 4 + 1] << 16) | (Region[4096 + Slot * 4 + 2] << 8) | Region[4096 + Slot * 4 + 3];
+		if (Shown < 4 && Offset * 4096 + 5 <= Region.Num())
+		{
+			++Shown;
+			const int32 At = Offset * 4096;
+			const int32 Length = (Region[At] << 24) | (Region[At + 1] << 16) | (Region[At + 2] << 8) | Region[At + 3];
+			AddInfo(FString::Printf(TEXT("region dump: slot %d offset %d sectors %d stamp %d length %d type %d (length+4 -> %d sectors)"), Slot, Offset, Count, Stamp, Length, Region[At + 4], (Length + 4 + 4095) / 4096));
+		}
+	}
+	AddInfo(FString::Printf(TEXT("region dump: %d chunks, last sector used ends at %d"), NumChunks, MaxEnd));
+	int32 Looked = 0;
+	for (int32 Slot = 0; Slot < 1024 && Looked < 3; ++Slot)
+	{
+		TArray<uint8> Bytes;
+		bool bMissing = false;
+		FMcNbt Root;
+		if (!McJavaImport::ReadChunkBytes(Region, Slot % 32, Slot / 32, Folder, 0, 0, Bytes, bMissing) || !FMcNbt::Parse(Bytes, Root))
+		{
+			continue;
+		}
+		++Looked;
+		FString Keys;
+		for (int32 Index = 0; Index < Root.Keys.Num(); ++Index)
+		{
+			const FMcNbt& Value = Root.Values[Index];
+			Keys += FString::Printf(TEXT("%s(t%d%s) "), *Root.Keys[Index], static_cast<int32>(Value.Type), Value.Type == FMcNbt::EType::Int || Value.Type == FMcNbt::EType::Long ? *FString::Printf(TEXT("=%lld"), Value.Integer) : Value.Type == FMcNbt::EType::String ? *(TEXT("=") + Value.String) : TEXT(""));
+		}
+		AddInfo(FString::Printf(TEXT("region dump chunk %d keys: %s"), Slot, *Keys));
+		if (const FMcNbt* List = Root.Find(TEXT("sections")); List && !List->Values.IsEmpty())
+		{
+			FString SectionKeys;
+			for (int32 Index = 0; Index < List->Values[0].Keys.Num(); ++Index)
+			{
+				SectionKeys += List->Values[0].Keys[Index] + TEXT(" ");
+			}
+			AddInfo(FString::Printf(TEXT("region dump chunk %d first section keys: %s"), Slot, *SectionKeys));
+		}
+	}
+	TestTrue(TEXT("chunks were found"), NumChunks > 0);
+	return true;
+}

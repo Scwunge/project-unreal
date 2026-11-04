@@ -253,7 +253,22 @@ FVector McMount::GetSeat(const FMcEntity& Entity)
 	{
 		if (Entity.GetType() == Seat.Type)
 		{
-			return Entity.Body.Position + FVector(0.0, Seat.Height, 0.0);
+			FVector Result = Entity.Body.Position + FVector(0.0, Seat.Height, 0.0);
+			const double Facing = FMath::DegreesToRadians(static_cast<double>(Entity.Yaw));
+			if (Entity.GetType() == TEXT("minecraft:camel"))
+			{
+				// The camel's first rider sits 0.5 ahead of its centre (vehicle_log39: 0.500 along the facing, none to the side).
+				Result.X -= FMath::Sin(Facing) * 0.5;
+				Result.Z += FMath::Cos(Facing) * 0.5;
+			}
+			if (Entity.Mount.IsValid() && Entity.Mount->Rear > 0.0f)
+			{
+				// Rearing for a jump sets the rider back along the facing and up (vehicle_log34: 0.7 and 0.15 at the most).
+				Result.X += FMath::Sin(Facing) * 0.7 * Entity.Mount->Rear;
+				Result.Z -= FMath::Cos(Facing) * 0.7 * Entity.Mount->Rear;
+				Result.Y += 0.15 * Entity.Mount->Rear;
+			}
+			return Result;
 		}
 	}
 	return Entity.Body.Position + FVector(0.0, Entity.Body.Height * 0.6875, 0.0);
@@ -360,6 +375,34 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 				Mob.Body.Velocity.Z += FMath::Cos(Radians) * 0.4 * State.PendingJump;
 			}
 			State.PendingJump = 0.0f;
+			State.RearStep = 0;
+			State.RearFall = -1;
+		}
+		if (!bCamel)
+		{
+			if (State.RearStep >= 0)
+			{
+				if (!Mob.Body.bOnGround || State.RearStep == 0)
+				{
+					State.Rear = FMath::Min(1.0f, State.Rear + 0.45f * FMath::Pow(0.6f, static_cast<float>(State.RearStep)));
+					++State.RearStep;
+				}
+				else
+				{
+					State.RearStep = -1;
+					State.RearFall = 0;
+				}
+			}
+			if (State.RearFall >= 0)
+			{
+				// What is left of the rear on each tick after the landing (vehicle_log34: the rider slides forward 0.119, 0.1915, 0.2108, 0.1366, 0.0421 of the 0.7).
+				static const float Left[] = { 0.83f, 0.5564f, 0.2553f, 0.0602f, 0.0f };
+				State.Rear = Left[State.RearFall];
+				if (++State.RearFall >= 5)
+				{
+					State.RearFall = -1;
+				}
+			}
 		}
 	}
 	else
@@ -463,8 +506,9 @@ FVector McMount::GetSeatFor(const FMcEntity& Entity, uint32 PlayerId)
 	if (Entity.Mount.IsValid() && Entity.Mount->PassengerId == PlayerId)
 	{
 		const double Radians = FMath::DegreesToRadians(static_cast<double>(Entity.Yaw));
-		Seat.X += FMath::Sin(Radians) * 0.9;
-		Seat.Z -= FMath::Cos(Radians) * 0.9;
+		// The second rider sits 0.7 behind the centre, 1.2 behind the first (vehicle_log39, a villager put on behind the player).
+		Seat.X += FMath::Sin(Radians) * 1.2;
+		Seat.Z -= FMath::Cos(Radians) * 1.2;
 	}
 	return Seat;
 }

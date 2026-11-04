@@ -139,6 +139,8 @@ public:
 	virtual void SetYaw(const FString& Player, double Yaw) {}
 	// /locate biome: the nearest loaded spot of a biome (id), from a position.
 	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
+	// /swing: a player swings their arm.
+	virtual void SwingArm(const FString& Player) {}
 	// /damage: hurts a player; false if nothing hurt them (creative).
 	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.

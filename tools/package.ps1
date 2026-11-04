@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$EngineRoot = 'E:\Epic Games\UE_5.8\Engine'
+$EngineRoot = @('E:\Epic Games\UE_5.8\Engine', 'C:\UE_5.8\Engine') | Where-Object { Test-Path $_ } | Select-Object -First 1
 $Project = Join-Path (Split-Path $PSScriptRoot) 'McClient.uproject'
 $Stage = Join-Path $OutDir "stage-$Date"
 $Zip = Join-Path $OutDir "McUnreal-$Date.zip"

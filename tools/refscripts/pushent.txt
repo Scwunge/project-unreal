@@ -1,0 +1,106 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 20 -50 20
+wait 200
+cmd kill @e[type=!player]
+cmd tick freeze
+wait 4
+cmd fill -2 -60 -2 40 -55 60 air
+cmd fill -2 -61 -2 40 -61 60 stone
+cmd gamerule do_mob_spawning false
+wait 10
+cmd setblock 3 -60 0 piston[facing=up]
+cmd summon pig 3.5 -59 0.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 6 piston[facing=east]
+cmd summon pig 4.5 -60 6.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 12 piston[facing=east]
+cmd setblock 4 -60 12 stone
+cmd summon pig 4.5 -59 12.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 18 piston[facing=east]
+cmd summon item 4.5 -60 18.5 {Item:{id:"minecraft:stone",count:1},Age:-32768s,PickupDelay:32767s}
+cmd setblock 3 -60 24 piston[facing=up]
+cmd setblock 3 -59 24 stone
+cmd summon pig 3.5 -58 24.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 30 piston[facing=east]
+cmd setblock 4 -60 30 slime_block
+cmd summon pig 4.5 -59 30.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 36 sticky_piston[facing=east]
+cmd setblock 4 -60 36 stone
+cmd setblock 3 -60 42 piston[facing=east]
+cmd summon pig 4.5 -60 43.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd setblock 3 -60 48 piston[facing=up]
+cmd summon armor_stand 3.5 -59 48.5
+wait 10
+log sents minecraft: 90
+cmd setblock 3 -61 36 redstone_block
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd setblock 3 -61 0 redstone_block
+cmd setblock 3 -61 6 redstone_block
+cmd setblock 3 -61 12 redstone_block
+cmd setblock 3 -61 18 redstone_block
+cmd setblock 3 -61 24 redstone_block
+cmd setblock 3 -61 30 redstone_block
+cmd setblock 3 -61 42 redstone_block
+cmd setblock 3 -61 48 redstone_block
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd summon pig 5.5 -59 36.5 {NoAI:1b,Silent:1b,PersistenceRequired:1b}
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd setblock 3 -61 36 stone
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick step 1
+wait 4
+log sents minecraft: 90
+cmd tick unfreeze

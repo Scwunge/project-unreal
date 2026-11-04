@@ -148,6 +148,55 @@ McGui::FScreenLayout McGui::MakeStonecutterLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeTradingLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Trading;
+	Layout.Texture = TEXT("villager.png");
+	Layout.Size = FIntPoint(276, 166);
+	Layout.Slots.Add(FIntPoint(136, 37));
+	Layout.Slots.Add(FIntPoint(162, 37));
+	Layout.Slots.Add(FIntPoint(220, 37));
+	for (int32 Index = 0; Index < 27; ++Index)
+	{
+		Layout.Slots.Add(FIntPoint(108 + 18 * (Index % 9), 84 + 18 * (Index / 9)));
+	}
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		Layout.Slots.Add(FIntPoint(108 + 18 * Index, 142));
+	}
+	return Layout;
+}
+
+int32 McGui::Trading::FindRow(FIntPoint Local, int32 Scroll, int32 Count)
+{
+	const int32 X = Local.X - ListX;
+	const int32 Y = Local.Y - ListY;
+	if (X < 0 || Y < 0 || X >= RowWidth || Y >= Rows * RowHeight)
+	{
+		return -1;
+	}
+	const int32 Index = Scroll + Y / RowHeight;
+	return Index < Count ? Index : -1;
+}
+
+int32 McGui::Trading::MaxScroll(int32 Count)
+{
+	return FMath::Max(0, Count - Rows);
+}
+
+float McGui::Trading::GetBarFill(int32 Level, int32 Xp)
+{
+	if (Level >= 5)
+	{
+		return 1.0f;
+	}
+	static const int32 LevelXp[] = { 0, 10, 70, 150, 250 };
+	const int32 From = LevelXp[FMath::Clamp(Level, 1, 5) - 1];
+	const int32 To = LevelXp[FMath::Clamp(Level, 1, 5)];
+	return FMath::Clamp(static_cast<float>(Xp - From) / static_cast<float>(To - From), 0.0f, 1.0f);
+}
+
 McGui::FScreenLayout McGui::MakeLoomLayout()
 {
 	FScreenLayout Layout;
@@ -214,6 +263,22 @@ McGui::FScreenLayout McGui::MakeHopperLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeHorseLayout(int32 ContainerSlots, bool bArmor)
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Horse;
+	Layout.Texture = TEXT("horse.png");
+	// vanilla shot of a donkey: the saddle at the top left, the armour under it, the chest 5 x 3 from x 80.
+	Layout.Slots.Add(FIntPoint(8, 18));
+	Layout.Slots.Add(bArmor ? FIntPoint(8, 36) : FIntPoint(FScreenLayout::Hidden, FScreenLayout::Hidden));
+	for (int32 Slot = 2; Slot < ContainerSlots; ++Slot)
+	{
+		Layout.Slots.Add(FIntPoint(80 + 18 * ((Slot - 2) % 5), 18 + 18 * ((Slot - 2) / 5)));
+	}
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
 McGui::FScreenLayout McGui::MakeDispenserLayout()
 {
 	FScreenLayout Layout;
@@ -223,6 +288,20 @@ McGui::FScreenLayout McGui::MakeDispenserLayout()
 	{
 		Layout.Slots.Add(FIntPoint(62 + 18 * (Slot % 3), 17 + 18 * (Slot / 3)));
 	}
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
+// Slots measured from the texture: the two inputs' 18 pixel boxes start at (14, 14) and (14, 51), the result's 24 pixel
+// well at (141, 35).
+McGui::FScreenLayout McGui::MakeCartographyLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Cartography;
+	Layout.Texture = TEXT("cartography_table.png");
+	Layout.Slots.Add(FIntPoint(15, 15));
+	Layout.Slots.Add(FIntPoint(15, 52));
+	Layout.Slots.Add(FIntPoint(145, 39));
 	AddPlayerSlots(Layout, 84, 142);
 	return Layout;
 }

@@ -44,6 +44,9 @@ public:
 	virtual bool IsDedicated() const = 0;
 	virtual void SendTo(const FString& Player, const FMcCommandReply& Line) = 0;
 	virtual void Broadcast(const FString& Line) = 0;
+	// /title: what to show a player. Kind is 0 title, 1 subtitle, 2 action bar, 3 clear, 4 reset, 5 times (the three tick counts);
+	// Text is legacy text (McText::ToLegacy of the component).
+	virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) {}
 
 	virtual bool IsCreative(const FString& Player) const = 0;
 	virtual void SetCreative(const FString& Player, bool bCreative) = 0;
@@ -92,6 +95,9 @@ public:
 	virtual bool IsEffect(FName Effect) const = 0;
 	// False if the player has a stronger one already.
 	virtual bool GiveEffect(const FString& Player, FName Effect, int32 Amplifier, int32 DurationTicks) = 0;
+	// Grants or revokes an advancement for a player (showing its toast on a grant): -1 if there is no such advancement,
+	// 0 if it changed nothing (already had it, or hadn't), 1 if it did. OutTitle is its name as the game's replies show it.
+	virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) { return -1; }
 	// Takes one (every one, if None) from the player; how many there were.
 	virtual int32 ClearEffects(const FString& Player, FName Effect) = 0;
 
@@ -100,6 +106,14 @@ public:
 	enum class EEnchantResult : uint8 { Done, NoItem, Unsupported };
 	// Puts it on the item in the player's main hand, replacing a level it already has there.
 	virtual EEnchantResult Enchant(const FString& Player, FName Enchantment, int32 Level) = 0;
+
+	// Plays a sounds.json event for everyone, at a position in blocks (volume over 1 carries further).
+	virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) {}
+
+	// /defaultgamemode: what new players start in.
+	virtual void SetDefaultGameMode(const FString& Mode) {}
+	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).
+	virtual void StopSounds(const FString& Player, const FString& Source, const FString& Sound) {}
 
 	virtual FMcServerAccess LoadAccess() const = 0;
 	virtual void SaveAccess(const FMcServerAccess& Access) = 0;
@@ -114,6 +128,10 @@ namespace McCommands
 	MCSERVER_API TArray<FMcCommandReply> HandleChat(const FString& Line, const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	// A command without its '/'.
 	MCSERVER_API TArray<FMcCommandReply> Execute(const FString& Command, const FMcCommandSender& Sender, IMcCommandTarget& Target);
+	// The functions of a function tag ("minecraft:tick", with or without the '#'), in order, tags inside it followed.
+	MCSERVER_API TArray<FString> GetFunctionTag(const FString& Tag);
+	// Runs these functions (ids) as the sender; the replies they gave.
+	MCSERVER_API TArray<FMcCommandReply> RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	// The level a player has: the host of a world of their own has 4, otherwise their ops.json level (0 if not an op).
 	MCSERVER_API int32 GetPermissionLevel(const FString& Player, bool bHost, const FMcServerAccess& Access);
 	// A time as /time and /weather take it: ticks, or a number with d (days), s (seconds) or t. -1 if it isn't one.
@@ -129,4 +147,6 @@ namespace McCommands
 	MCSERVER_API const FGameRule* FindGameRule(const FString& Name);
 	// The longest chat line the game accepts.
 	constexpr int32 MaxChatLength = 256;
+	// A command line (it starts with a slash) may be far longer: JSON text in /tellraw and /title runs past a chat line.
+	constexpr int32 MaxCommandLength = 32500;
 }

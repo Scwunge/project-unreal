@@ -1,0 +1,462 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd tp @s 5 -50 2
+wait 40
+cmd tick freeze
+cmd fill -2 -60 -2 14 -50 8 air
+cmd fill -2 -61 -2 14 -61 8 stone
+wait 10
+cmd tp @s 111.5 205 2.5
+wait 60
+cmd weather clear 1000000
+cmd time set 6000
+cmd fill 44 200 -4 174 215 8 air
+wait 4
+cmd fill 44 200 -4 174 200 8 stone
+wait 4
+cmd setblock 48 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 48 201 4 daylight_detector[inverted=true,power=0]
+cmd setblock 58 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 58 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 58 202 0 58 202 0 stone
+cmd fill 58 202 4 58 202 4 stone
+cmd setblock 68 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 68 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 67 202 -1 69 202 1 stone
+cmd fill 67 202 3 69 202 5 stone
+wait 3
+cmd setblock 78 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 78 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 76 202 -2 80 202 2 stone
+cmd fill 76 202 2 80 202 6 stone
+cmd setblock 88 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 88 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 85 202 -3 91 202 3 stone
+cmd fill 85 202 1 91 202 7 stone
+cmd setblock 98 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 98 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 97 202 -1 99 202 1 glass
+cmd fill 97 202 3 99 202 5 glass
+wait 3
+cmd setblock 108 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 108 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 108 202 0 108 202 0 oak_leaves[persistent=true]
+cmd fill 108 202 4 108 202 4 oak_leaves[persistent=true]
+cmd setblock 118 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 118 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 117 202 -1 119 202 1 ice
+cmd fill 117 202 3 119 202 5 ice
+cmd setblock 128 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 128 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 127 202 -1 129 202 1 stone_slab[type=top]
+cmd fill 127 202 3 129 202 5 stone_slab[type=top]
+wait 3
+cmd setblock 138 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 138 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 137 202 -1 139 202 1 stone_slab[type=bottom]
+cmd fill 137 202 3 139 202 5 stone_slab[type=bottom]
+cmd setblock 148 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 148 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 147 202 -1 149 202 1 cobweb
+cmd fill 147 202 3 149 202 5 cobweb
+cmd setblock 158 201 0 daylight_detector[inverted=false,power=0]
+cmd setblock 158 201 4 daylight_detector[inverted=true,power=0]
+cmd fill 157 203 -1 159 203 1 stone
+cmd fill 157 203 3 159 203 5 stone
+wait 3
+wait 40
+cmd tick step 45
+wait 10
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd time set 13000
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick step 1
+wait 4
+log states 44 200 -4 174 203 8
+cmd tick unfreeze

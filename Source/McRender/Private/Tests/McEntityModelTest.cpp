@@ -31,13 +31,26 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		// creeper), a spider's legs well past it. And the hitbox height: the model is nearly as tall.
 		double MaxWidth;
 		double Height;
+		// How far below the feet the drawing may hang (a ghast's tentacles hang 3.6 blocks), and how far past 1 the pictures' UVs may run
+		// (a strider's flat bristles have a 72 wide net on a 64 wide picture, as in the game).
+		double Below = 0.07;
+		double UVSlack = 0.0;
 	};
 	const FExpectation Expectations[] = {
 		{ TEXT("minecraft:creeper"), 1, 0.8, 1.7 },
 		{ TEXT("minecraft:spider"), 2, 2.5, 0.9 },
-		{ TEXT("minecraft:skeleton"), 1, 0.8, 1.99 },
+		{ TEXT("minecraft:skeleton"), 2, 1.2, 1.99 },  // its picture and the one for what it holds (a held item is 0.85 across, tilted 35 degrees up to 1.17)
 		{ TEXT("minecraft:enderman"), 2, 0.8, 2.9 },
 		{ TEXT("minecraft:slime"), 2, 0.55, 0.52 },
+		{ TEXT("minecraft:hoglin"), 1, 2.6, 1.95 },
+		{ TEXT("minecraft:magma_cube"), 1, 0.6, 0.52 },
+		{ TEXT("minecraft:blaze"), 1, 1.6, 1.8 },
+		{ TEXT("minecraft:strider"), 1, 2.4, 1.95, 0.07, 0.15 },
+		{ TEXT("minecraft:ghast"), 1, 5.3, 4.05, 3.7 },
+		{ TEXT("minecraft:endermite"), 1, 0.6, 0.25 },
+		{ TEXT("minecraft:shulker"), 1, 1.1, 1.0 },
+		{ TEXT("minecraft:phantom"), 1, 3.2, 0.4 },
+		{ TEXT("minecraft:guardian"), 1, 3.0, 1.25, 0.3 },
 	};
 	for (const FExpectation& Expect : Expectations)
 	{
@@ -52,15 +65,15 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 			const ::FBox Bounds = LayerBounds(*Model, Layer);
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
-			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide"), Expect.Kind, Layer), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
-			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height"), Expect.Kind, Layer), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -0.07);
+			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide (%.3f by %.3f)"), Expect.Kind, Layer, Bounds.GetSize().X, Bounds.GetSize().Y), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
+			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height (%.3f to %.3f)"), Expect.Kind, Layer, Bounds.Min.Z, Bounds.Max.Z), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -Expect.Below);
 			// UVs stay on the picture.
 			McPlayerModel::FMeshData Data;
 			BuildMesh(*Model, FAnim(), Layer, Data);
 			bool bOnPicture = true;
 			for (const FVector2D& UV : Data.UV0)
 			{
-				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 && UV.Y >= 0.0 && UV.Y <= 1.0;
+				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 + Expect.UVSlack && UV.Y >= 0.0 && UV.Y <= 1.0;
 			}
 			TestTrue(FString::Printf(TEXT("%s layer %d UVs are on the picture"), Expect.Kind, Layer), bOnPicture);
 		}
@@ -70,7 +83,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{
 			Top = FMath::Max(Top, LayerBounds(*Model, Layer).Max.Z);
 		}
-		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox"), Expect.Kind), Top >= Expect.Height * 0.85);
+		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox (%.3f of %.3f)"), Expect.Kind, Top, Expect.Height), Top >= Expect.Height * 0.85);
 	}
 
 	// A slime is see-through on its outer shell only; the eyes of a spider and an enderman glow.
@@ -188,6 +201,61 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		const ::FBox Tipped(Data.Positions);
 		TestTrue(TEXT("a diving arrow is taller than it is wide"), Tipped.GetSize().Z > 40.0);
 	}
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcHorsePoseTest, "McClient.McRender.HorsePose",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcHorsePoseTest::RunTest(const FString& Parameters)
+{
+	using namespace McEntityModel;
+	const FModel* Horse = Find(TEXT("minecraft:horse"));
+	if (!TestNotNull(TEXT("The horse has a model"), Horse))
+	{
+		return false;
+	}
+	// One box of one part alone in the rest pose; its faces come in the order south, north, east, west, up, down, four
+	// vertices each. The mesh is in Unreal units with the game's z as y and its y as z.
+	const auto FaceCentre = [&](int32 PartIndex, int32 BoxIndex, int32 Face)
+	{
+		FModel Alone = *Horse;
+		Alone.Parts = { Horse->Parts[PartIndex] };
+		Alone.Parts[0].Boxes = { Horse->Parts[PartIndex].Boxes[BoxIndex] };
+		Alone.Parts[0].Role = ERole::Static;
+		McPlayerModel::FMeshData Data;
+		BuildMesh(Alone, FAnim(), 0, Data);
+		FVector Sum = FVector::ZeroVector;
+		for (int32 Corner = 0; Corner < 4; ++Corner)
+		{
+			Sum += Data.Positions[Face * 4 + Corner];
+		}
+		return Sum / 4.0;
+	};
+
+	// The head (part 2, box 1) lies along z: its nose end (the south face) is further forward and lower than its back end,
+	// which is how a neck leaning forward carries it.
+	const FVector Nose = FaceCentre(2, 1, 0);
+	const FVector Back = FaceCentre(2, 1, 1);
+	TestTrue(TEXT("The nose is further forward than the back of the head"), Nose.Y > Back.Y);
+	TestTrue(TEXT("The nose is lower than the back of the head"), Nose.Z < Back.Z);
+	// The tail hangs from its root (the top face) with its tip (the bottom) lower and further back.
+	const FVector Root = FaceCentre(1, 0, 4);
+	const FVector Tip = FaceCentre(1, 0, 5);
+	TestTrue(TEXT("The tail's tip is lower than its root"), Tip.Z < Root.Z);
+	TestTrue(TEXT("The tail's tip is further back than its root"), Tip.Y < Root.Y);
+
+	// The mane runs up the back of the neck: its top is above the neck's top and behind the ears, and its foot is not in
+	// front of the neck's front.
+	const FVector ManeTop = FaceCentre(2, 3, 4);
+	const FVector ManeFoot = FaceCentre(2, 3, 5);
+	const FVector NeckTop = FaceCentre(2, 0, 4);
+	const FVector NeckFront = FaceCentre(2, 0, 0);
+	const FVector Ear = FaceCentre(2, 4, 4);
+	TestTrue(TEXT("The mane's top is above the neck's top"), ManeTop.Z > NeckTop.Z - 1.0);
+	TestTrue(TEXT("The mane's top is behind the ears"), ManeTop.Y < Ear.Y);
+	TestTrue(TEXT("The mane's foot is behind the neck's front"), ManeFoot.Y < NeckFront.Y);
 	return true;
 }
 

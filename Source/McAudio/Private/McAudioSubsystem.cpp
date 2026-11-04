@@ -49,8 +49,27 @@ void UMcAudioSubsystem::OnSound(const FMcSoundEvent& Event)
 	if (bLogSounds)
 	{
 		UE_LOG(LogMcAudio, Display, TEXT("Sound: %s %.2f %.2f"), *Event.Name.ToString(), Event.Volume, Event.Pitch);
+		// What the lookup makes of it (the game's listener prints the same: volume and pitch with the chosen file's, the range, the file).
+		FMcSoundVariant Chosen;
+		if (FMcSoundRegistry::Get().EnsureLoaded() && FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Chosen))
+		{
+			const McAudio::FMcSoundPlay Settings = McAudio::Resolve(Event, Chosen);
+			UE_LOG(LogMcAudio, Display, TEXT("SoundPick: %s vol %.4f pitch %.4f range %.1f file %s"), *Event.Name.ToString(),
+				Event.Volume * Chosen.Volume, Settings.Pitch, Settings.Range, *Chosen.Name);
+		}
 	}
-	Play(Event);
+	if (Event.bStop)
+	{
+		StopRecord(Event);
+	}
+	else if (Event.Name.ToString().StartsWith(TEXT("music_disc.")))
+	{
+		PlayRecord(Event);
+	}
+	else
+	{
+		Play(Event);
+	}
 }
 
 void UMcAudioSubsystem::PlayMusic(FName Event)
@@ -64,7 +83,7 @@ void UMcAudioSubsystem::PlayMusic(FName Event)
 	MusicEvent = Event;
 	bMusicDecoding = true;
 	const int32 Request = ++MusicRequest;
-	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Variant.Name + TEXT(".ogg"));
+	const FString Path = FMcSoundRegistry::ResolveSoundFile(Variant.Name);
 	const McAudio::FMcSoundPlay Settings = McAudio::Resolve(FMcSoundEvent{ Event, FVector::ZeroVector, 1.0f, 1.0f }, Variant);
 	UE_LOG(LogMcAudio, Log, TEXT("Music: %s (%s)"), *Event.ToString(), *Variant.Name);
 	// A track is minutes long: decoded off the game thread, and not kept afterwards.
@@ -144,7 +163,7 @@ const McAudio::FDecodedSound* UMcAudioSubsystem::GetDecoded(const FString& Name)
 	}
 	TOptional<McAudio::FDecodedSound>& Slot = Decoded.Add(Name);
 	TArray<uint8> File;
-	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Name + TEXT(".ogg"));
+	const FString Path = FMcSoundRegistry::ResolveSoundFile(Name);
 	McAudio::FDecodedSound Sound;
 	if (!FFileHelper::LoadFileToArray(File, *Path))
 	{
@@ -193,6 +212,75 @@ namespace
 	}
 }
 
+void UMcAudioSubsystem::PlayRecord(const FMcSoundEvent& Event)
+{
+	UWorld* World = GetWorld();
+	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
+	FMcSoundVariant Variant;
+	if (!GEngine || !GEngine->UseSound() || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded() || !FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Variant))
+	{
+		return;
+	}
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	Player->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	const McAudio::FMcSoundPlay Settings = McAudio::Resolve(Event, Variant);
+	if (FVector::Dist(McCoords::UnrealToBlock(ViewLocation), Event.Position) > Settings.Range)
+	{
+		return;
+	}
+	const FIntVector Cell = ToCell(Event.Position);
+	StopRecord(FMcSoundEvent{ Event.Name, Event.Position, 1.0f, 1.0f, true });
+	const int32 Request = ++RecordRequest;
+	Records.Add(Cell).Request = Request;
+	const FString Path = FPaths::Combine(FMcSoundRegistry::GetSoundsDir(), Variant.Name + TEXT(".ogg"));
+	Async(EAsyncExecution::ThreadPool, [WeakThis = TWeakObjectPtr<UMcAudioSubsystem>(this), Path, Request, Cell, Event, Settings]()
+	{
+		TSharedPtr<McAudio::FDecodedSound> Sound = MakeShared<McAudio::FDecodedSound>();
+		TArray<uint8> File;
+		if (!FFileHelper::LoadFileToArray(File, *Path) || !McAudio::DecodeOgg(File, *Sound))
+		{
+			UE_LOG(LogMcAudio, Warning, TEXT("Can't play record file %s."), *Path);
+			Sound.Reset();
+		}
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, Sound, Request, Cell, Event, Settings]()
+		{
+			UMcAudioSubsystem* Self = WeakThis.Get();
+			UWorld* World = Self ? Self->GetWorld() : nullptr;
+			FRecord* Record = Self ? Self->Records.Find(Cell) : nullptr;
+			if (!Sound || !World || !Record || Record->Request != Request)
+			{
+				return;
+			}
+			USoundAttenuation* Attenuation = NewObject<USoundAttenuation>(Self);
+			FSoundAttenuationSettings& Falloff = Attenuation->Attenuation;
+			Falloff.bAttenuate = true;
+			Falloff.bSpatialize = true;
+			Falloff.bEnableOcclusion = false;
+			Falloff.DistanceAlgorithm = EAttenuationDistanceModel::Linear;
+			Falloff.AttenuationShape = EAttenuationShape::Sphere;
+			Falloff.AttenuationShapeExtents = FVector(1.0);
+			Falloff.FalloffDistance = Settings.Range * McCoords::UnitsPerBlock;
+			USoundWaveProcedural* Wave = MakeWave(Self, *Sound);
+			Wave->SoundGroup = SOUNDGROUP_Music;
+			Record->Component = UGameplayStatics::SpawnSoundAtLocation(World, Wave, McCoords::BlockToUnreal(Event.Position),
+				FRotator::ZeroRotator, Settings.Volume, Settings.Pitch, 0.0f, Attenuation);
+		});
+	});
+}
+
+void UMcAudioSubsystem::StopRecord(const FMcSoundEvent& Event)
+{
+	if (const FRecord* Record = Records.Find(ToCell(Event.Position)))
+	{
+		if (UAudioComponent* Component = Record->Component.Get())
+		{
+			Component->Stop();
+		}
+		Records.Remove(ToCell(Event.Position));
+	}
+}
+
 bool UMcAudioSubsystem::Play(const FMcSoundEvent& Event)
 {
 	return PlayShaped(Event, FSpawn());
@@ -202,12 +290,21 @@ bool UMcAudioSubsystem::PlayShaped(const FMcSoundEvent& Event, const FSpawn& Spa
 {
 	UWorld* World = GetWorld();
 	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
-	if (!GEngine || !GEngine->UseSound() || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded())
+	if (!GEngine || !World || !Player || !FMcSoundRegistry::Get().EnsureLoaded())
 	{
 		return false;
 	}
 	FMcSoundVariant Variant;
 	if (!FMcSoundRegistry::Get().Pick(Event.Name, Random.FRand(), Variant))
+	{
+		return false;
+	}
+	// Captions follow the events, with the sound on or not.
+	if (!Spawn.bEcho)
+	{
+		McAudio::NoteSound(Event.Name, Event.Position, true);
+	}
+	if (!GEngine->UseSound())
 	{
 		return false;
 	}
@@ -349,6 +446,7 @@ UAudioComponent* UMcAudioSubsystem::Play2D(FName EventName, float Volume, bool b
 	UAudioComponent* Component = UGameplayStatics::SpawnSound2D(World, MakeWave(this, *Sound), Play.Volume, Play.Pitch);
 	if (Component)
 	{
+		McAudio::NoteSound(EventName, FVector::ZeroVector, false);
 		FLive Entry;
 		Entry.Component = Component;
 		Entry.bAmbience = bAmbience;
@@ -495,7 +593,8 @@ void UMcAudioSubsystem::TickImmersive(float DeltaTime, const FVector& Head)
 	bImmersive = true;
 
 	// Under water everything is dull, and the sea has its own sounds.
-	const bool bWet = GetBlockName(GetBlockAt(ToCell(Head))) == WaterName;
+	const FName HeadBlock = GetBlockName(GetBlockAt(ToCell(Head)));
+	const bool bWet = HeadBlock == WaterName || HeadBlock == TEXT("minecraft:bubble_column");
 	if (bWet != bUnderwater)
 	{
 		bUnderwater = bWet;

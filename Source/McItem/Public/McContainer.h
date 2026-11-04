@@ -96,6 +96,8 @@ public:
 	// Experience points the player earned from the menu since last asked (a grindstone's), which the caller
 	// gives them.
 	virtual int32 TakeExperience() { return 0; }
+	// The bundle sound the last click made (item.bundle.insert, insert_fail or remove_one), or none; read once.
+	FName TakeBundleSound() { const FName Out = BundleSound; BundleSound = NAME_None; return Out; }
 	// Levels the player spent in the menu since last asked (an anvil's), which the caller takes from them.
 	virtual int32 TakeLevelsSpent() { return 0; }
 	// The player's levels and game mode, for menus whose slots depend on them (an anvil's result). Set before
@@ -105,6 +107,7 @@ public:
 	virtual bool SetText(const FString& Text) { return false; }
 
 protected:
+	FName BundleSound;
 	// ---- What subclasses decide ----
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const { return true; }
 	virtual bool MayPickup(int32 Slot) const { return true; }

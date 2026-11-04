@@ -9,6 +9,7 @@
 #include "McPoolAliases.h"
 #include "McProceduralStructures.h"
 #include "McRandom.h"
+#include "McStructureSpawns.h"
 #include "McStructureTemplate.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -36,6 +37,7 @@ struct FMcStructureLibrary::FStructure
 	FString Type;
 	FString Variant;  // a mineshaft's "normal" or "mesa"
 	TBitArray<> Biomes;
+	TBitArray<> Surround;  // a monument also wants ocean or river biomes all round it
 	bool bBeached = false;
 	bool bWarm = false;
 	float Cluster = 0.9f;
@@ -54,6 +56,12 @@ struct FMcStructureLibrary::FStructure
 	bool bBeard = false;
 	TArray<TSharedPtr<FJsonValue>> PoolAliases;
 	bool bSupported = false;
+
+	// Mobs that spawn here instead of the biome's (spawn_overrides): by category, and whether the box is the whole
+	// structure ("full") or each piece ("piece").
+	TArray<FMcSpawnEntry> OverrideMonsters;
+	TArray<FMcSpawnEntry> OverrideCreatures;
+	bool bMonstersPerPiece = false;
 };
 
 struct FMcStructureLibrary::FSet
@@ -204,6 +212,9 @@ namespace
 		int32 MinY;
 
 		FIntVector Centre() const { return FIntVector(Start.X * 16 + 8, 0, Start.Y * 16 + 8); }
+		// Where a swamp hut stood, set by building one: its box and the middle of its floor.
+		TOptional<TPair<FIntVector, FIntVector>> HutBox;
+		FVector HutFloor = FVector::ZeroVector;
 		FMcTemplatePlaceSettings Settings() const
 		{
 			FMcTemplatePlaceSettings Result;
@@ -460,6 +471,9 @@ namespace
 		B.Set(1, 2, 1, TEXT("minecraft:crafting_table"));
 		B.Set(5, 2, 1, TEXT("minecraft:cauldron"));
 		B.Set(5, 2, 5, TEXT("minecraft:potted_red_mushroom"));
+		// Whoever lives there: a witch and her cat, standing in the middle of the room (the game's too).
+		Context.HutBox = TPair<FIntVector, FIntVector>(FIntVector(Centre.X - 3, BaseY, Centre.Z - 3), FIntVector(Centre.X + 3, BaseY + 6, Centre.Z + 3));
+		Context.HutFloor = FVector(Centre.X + 0.5, BaseY + 2, Centre.Z + 0.5);
 	}
 
 	void BuildBuriedTreasure(FCtx& Context)
@@ -797,6 +811,67 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 				}
 			}
 		}
+		if (Structure->Type == TEXT("ocean_monument"))
+		{
+			Structure->Surround.Init(false, NumBiomes);
+			ResolveTag(TEXT("#minecraft:is_ocean"), Structure->Surround, 0);
+			ResolveTag(TEXT("#minecraft:is_river"), Structure->Surround, 0);
+		}
+		const TSharedPtr<FJsonObject>* Overrides = nullptr;
+		if (Json->TryGetObjectField(TEXT("spawn_overrides"), Overrides))
+		{
+			const auto ReadCategory = [&](const TCHAR* Category, TArray<FMcSpawnEntry>& Out, bool* bPiece)
+			{
+				const TSharedPtr<FJsonObject>* Entry = nullptr;
+				if (!(*Overrides)->TryGetObjectField(Category, Entry))
+				{
+					return;
+				}
+				FString Box;
+				if (bPiece)
+				{
+					*bPiece = (*Entry)->TryGetStringField(TEXT("bounding_box"), Box) && Box == TEXT("piece");
+				}
+				const TArray<TSharedPtr<FJsonValue>>* Spawns = nullptr;
+				if (!(*Entry)->TryGetArrayField(TEXT("spawns"), Spawns))
+				{
+					return;
+				}
+				for (const TSharedPtr<FJsonValue>& Value : *Spawns)
+				{
+					const TSharedPtr<FJsonObject> Object = Value->AsObject();
+					FString Type;
+					if (Object.IsValid() && Object->TryGetStringField(TEXT("type"), Type))
+					{
+						FMcSpawnEntry Spawn;
+						Spawn.Kind = FName(*Type);
+						double Weight = 1.0;
+						Object->TryGetNumberField(TEXT("weight"), Weight);
+						Spawn.Weight = static_cast<int32>(Weight);
+						// The group size is a number, or a uniform range ({"min_inclusive", "max_inclusive"}).
+						Spawn.MinCount = Spawn.MaxCount = 1;
+						double Count = 1.0;
+						const TSharedPtr<FJsonObject>* Range = nullptr;
+						if (Object->TryGetNumberField(TEXT("count"), Count))
+						{
+							Spawn.MinCount = Spawn.MaxCount = static_cast<int32>(Count);
+						}
+						else if (Object->TryGetObjectField(TEXT("count"), Range))
+						{
+							double Low = 1.0;
+							double High = 1.0;
+							(*Range)->TryGetNumberField(TEXT("min_inclusive"), Low);
+							(*Range)->TryGetNumberField(TEXT("max_inclusive"), High);
+							Spawn.MinCount = static_cast<int32>(Low);
+							Spawn.MaxCount = static_cast<int32>(High);
+						}
+						Out.Add(Spawn);
+					}
+				}
+			};
+			ReadCategory(TEXT("monster"), Structure->OverrideMonsters, &Structure->bMonstersPerPiece);
+			ReadCategory(TEXT("creature"), Structure->OverrideCreatures, nullptr);
+		}
 		Json->TryGetBoolField(TEXT("is_beached"), Structure->bBeached);
 		FString Temperature;
 		Structure->bWarm = Json->TryGetStringField(TEXT("biome_temp"), Temperature) && Temperature == TEXT("warm");
@@ -1070,19 +1145,36 @@ bool FMcStructureLibrary::IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chu
 	return false;
 }
 
-const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const
+// The weighted pick among the set's structures that the biome allows; a set tries its entries until one fits.
+const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk, TFunctionRef<bool(const FStructure&)> Fits) const
 {
 	FMcRandom Random = FMcRandom(Seed).Fork(Chunk.X, Set.Salt + 1, Chunk.Y);
-	int32 Pick = Random.NextInt(FMath::Max(1, Set.TotalWeight));
+	int32 Total = 0;
 	for (const TPair<int32, int32>& Entry : Set.Entries)
 	{
+		if (Fits(*Structures[Entry.Key]))
+		{
+			Total += Entry.Value;
+		}
+	}
+	if (Total <= 0)
+	{
+		return nullptr;
+	}
+	int32 Pick = Random.NextInt(Total);
+	for (const TPair<int32, int32>& Entry : Set.Entries)
+	{
+		if (!Fits(*Structures[Entry.Key]))
+		{
+			continue;
+		}
 		if (Pick < Entry.Value)
 		{
 			return Structures[Entry.Key].Get();
 		}
 		Pick -= Entry.Value;
 	}
-	return Structures[Set.Entries.Last().Key].Get();
+	return nullptr;
 }
 
 void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const
@@ -1091,16 +1183,42 @@ void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FNa
 	{
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
-			Out.Add(Choose(*Set, Seed, Chunk)->Id);
+			Out.Add(Choose(*Set, Seed, Chunk, [](const FStructure&) { return true; })->Id);
 		}
 	}
 }
 
-bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk, bool bInRegion) const
+void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, FMcBiomeId Biome, TArray<FName>& Out) const
+{
+	for (const TSharedPtr<FSet>& Set : Sets)
+	{
+		if (IsStartChunk(*Set, Seed, Chunk))
+		{
+			const FStructure* Structure = Choose(*Set, Seed, Chunk, [this, Biome, Chunk](const FStructure& S) { return BiomeSuits(S, Biome, Chunk); });
+			if (Structure)
+			{
+				Out.Add(Structure->Id);
+			}
+		}
+	}
+}
+
+// A start that sits underground at an absolute height (an ancient city at -27) takes the biome there, not the surface biome.
+bool FMcStructureLibrary::BiomeSuits(const FStructure& S, FMcBiomeId SurfaceBiome, FIntPoint Chunk) const
+{
+	FMcBiomeId Biome = SurfaceBiome;
+	if (BiomeSource && !S.bProject && S.StartHeightMax < SeaLevel - 16 && S.StartHeightMax > MinY)
+	{
+		Biome = BiomeSource(Chunk.X * 16 + 8, S.StartHeightMin, Chunk.Y * 16 + 8);
+	}
+	return S.Biomes.IsValidIndex(Biome) && S.Biomes[Biome];
+}
+
+bool FMcStructureLibrary::StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool bInRegion, FMcBiomeId& Biome) const
 {
 	const int32 X = Chunk.X * 16 + 8;
 	const int32 Z = Chunk.Y * 16 + 8;
-	FMcBiomeId Biome = 0;
+	Biome = 0;
 	if (BiomeSource && HeightSource)
 	{
 		// The same answer from every chunk that looks.
@@ -1115,7 +1233,45 @@ bool FMcStructureLibrary::BiomeFits(FMcGenRegion& Region, const FStructure& Stru
 	{
 		return false;
 	}
-	return Structure.Biomes.IsValidIndex(Biome) && Structure.Biomes[Biome];
+	return true;
+}
+
+// Whether the biomes round a start suit a structure that wants them to; the circle is sampled the way a monument's is.
+bool FMcStructureLibrary::SurroundFits(const FStructure& Structure, FIntPoint Chunk) const
+{
+	if (Structure.Surround.IsEmpty() || !BiomeSource || !HeightSource)
+	{
+		return true;
+	}
+	return SurroundAllows(Structure.Id, Chunk, [this](int32 X, int32 Z) { return BiomeSource(X, HeightSource(X, Z) - 1, Z); });
+}
+
+bool FMcStructureLibrary::SurroundAllows(FName Id, FIntPoint Chunk, TFunctionRef<FMcBiomeId(int32, int32)> BiomeAt) const
+{
+	for (const TSharedPtr<FStructure>& Structure : Structures)
+	{
+		if (Structure->Id != Id || Structure->Surround.IsEmpty())
+		{
+			continue;
+		}
+		static const int32 Steps[] = { -29, -15, 0, 15, 29 };
+		for (const int32 DZ : Steps)
+		{
+			for (const int32 DX : Steps)
+			{
+				if (DX * DX + DZ * DZ > 29 * 29)
+				{
+					continue;
+				}
+				const FMcBiomeId Biome = BiomeAt(Chunk.X * 16 + 8 + DX, Chunk.Y * 16 + 8 + DZ);
+				if (!Structure->Surround.IsValidIndex(Biome) || !Structure->Surround[Biome])
+				{
+					return false;
+				}
+			}
+		}
+	}
+	return true;
 }
 
 // A village wants dry ground without much of a slope round its centre.
@@ -1147,8 +1303,9 @@ void FMcStructureLibrary::GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint
 	{
 		if (IsStartChunk(*Set, Seed, Chunk))
 		{
-			const FStructure* Structure = Choose(*Set, Seed, Chunk);
-			if (BiomeFits(Region, *Structure, Chunk, true))
+			FMcBiomeId Biome;
+			const FStructure* Structure = StartBiome(Region, Chunk, true, Biome) ? Choose(*Set, Seed, Chunk, [this, Biome, Chunk](const FStructure& S) { return BiomeSuits(S, Biome, Chunk); }) : nullptr;
+			if (Structure && SurroundFits(*Structure, Chunk))
 			{
 				Out.Add(Structure->Id);
 			}
@@ -1170,8 +1327,9 @@ void FMcStructureLibrary::Place(FMcGenRegion& Region, uint64 Seed) const
 				const FIntPoint Start(Centre.X + DX, Centre.Y + DZ);
 				if (IsStartChunk(*Set, Seed, Start))
 				{
-					const FStructure* Structure = Choose(*Set, Seed, Start);
-					if (BiomeFits(Region, *Structure, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1))
+					FMcBiomeId Biome;
+					const FStructure* Structure = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome) ? Choose(*Set, Seed, Start, [this, Biome, Start](const FStructure& S) { return BiomeSuits(S, Biome, Start); }) : nullptr;
+					if (Structure && SurroundFits(*Structure, Start))
 					{
 						Build(Region, *Structure, Seed, Start, Set->Salt);
 					}
@@ -1202,6 +1360,28 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 	else if (Type == TEXT("swamp_hut"))
 	{
 		BuildSwampHut(Context);
+		if (Context.HutBox.IsSet())
+		{
+			FMcStructureZone Zone;
+			Zone.Structure = Structure.Id;
+			Zone.Min = Context.HutBox->Key;
+			Zone.Max = Context.HutBox->Value;
+			Zone.Monsters = Structure.OverrideMonsters;
+			Zone.Creatures = Structure.OverrideCreatures;
+			FMcStructureSpawns::Get().AddZone(Zone);
+			// The first of each kind the structure names lives there from the start.
+			const FString Key = FString::Printf(TEXT("%llu/%d/%d/%s"), Seed, Start.X, Start.Y, *Structure.Id.ToString());
+			for (const TArray<FMcSpawnEntry>* List : { &Structure.OverrideMonsters, &Structure.OverrideCreatures })
+			{
+				if (!List->IsEmpty())
+				{
+					FMcStructureMob Mob;
+					Mob.Kind = (*List)[0].Kind;
+					Mob.Position = Context.HutFloor;
+					FMcStructureSpawns::Get().AddMob(Key, Mob);
+				}
+			}
+		}
 	}
 	else if (Type == TEXT("buried_treasure"))
 	{
@@ -1260,12 +1440,62 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 		}
 		const FMcRandom PlaceBase = FMcRandom(Seed).Fork(Start.X, Salt + 3, Start.Y);
 		Jigsaws->Place(Region, *Layout, Context.ClipMin, Context.ClipMax, PlaceBase, Structure.bBeard, FeatureLibrary, SeaLevel);
+		// Its own mobs spawn through the whole of its box, or inside each piece (the bounding_box setting).
+		if (!Layout->Pieces.IsEmpty() && (!Structure.OverrideMonsters.IsEmpty() || !Structure.OverrideCreatures.IsEmpty()))
+		{
+			FMcStructureZone Zone;
+			Zone.Structure = Structure.Id;
+			Zone.Monsters = Structure.OverrideMonsters;
+			Zone.Creatures = Structure.OverrideCreatures;
+			Zone.Min = Layout->Pieces[0].Min;
+			Zone.Max = Layout->Pieces[0].Max;
+			for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+			{
+				if (Structure.bMonstersPerPiece)
+				{
+					Zone.Min = Piece.Min;
+					Zone.Max = Piece.Max;
+					FMcStructureSpawns::Get().AddZone(Zone);
+				}
+				else
+				{
+					Zone.Min = FIntVector(FMath::Min(Zone.Min.X, Piece.Min.X), FMath::Min(Zone.Min.Y, Piece.Min.Y), FMath::Min(Zone.Min.Z, Piece.Min.Z));
+					Zone.Max = FIntVector(FMath::Max(Zone.Max.X, Piece.Max.X), FMath::Max(Zone.Max.Y, Piece.Max.Y), FMath::Max(Zone.Max.Z, Piece.Max.Z));
+				}
+			}
+			if (!Structure.bMonstersPerPiece)
+			{
+				FMcStructureSpawns::Get().AddZone(Zone);
+			}
+		}
 	}
 	else if (Type == TEXT("mineshaft") || Type == TEXT("stronghold") || Type == TEXT("ocean_monument") || Type == TEXT("fortress") || Type == TEXT("woodland_mansion")
 		|| Type == TEXT("end_city") || Type == TEXT("nether_fossil"))
 	{
 		McProcedural::FEnv Env{ Region, Start, Context.ClipMin, Context.ClipMax, MinY, Region.GetMaxY(), SeaLevel,
-			[this, &Context](int32 X, int32 Z) { return HeightSource ? HeightSource(X, Z) : Context.Ground.Floor(X, Z); } };
+			[this, &Context](int32 X, int32 Z)
+			{
+				if (!HeightSource)
+				{
+					return Context.Ground.Floor(X, Z);
+				}
+				const int64 Key = (static_cast<int64>(X) << 32) ^ static_cast<uint32>(Z);
+				{
+					FScopeLock Guard(&GroundLock);
+					if (const int32* Found = GroundCache.Find(Key))
+					{
+						return *Found;
+					}
+				}
+				const int32 Height = HeightSource(X, Z);
+				FScopeLock Guard(&GroundLock);
+				if (GroundCache.Num() > 4000000)
+				{
+					GroundCache.Reset();
+				}
+				GroundCache.Add(Key, Height);
+				return Height;
+			} };
 		Env.LootSeed = Random.Fork(TEXT("loot")).NextLong();
 		if (Type == TEXT("mineshaft"))
 		{

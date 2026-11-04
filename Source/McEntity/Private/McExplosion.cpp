@@ -216,5 +216,30 @@ float McExplosion::GetDamage(float Power, float Distance, float Exposure)
 		return 0.0f;
 	}
 	const float Impact = (1.0f - Distance / Radius) * Exposure;
-	return FMath::FloorToFloat((Impact * Impact + Impact) * 0.5f * 7.0f * Radius + 1.0f);
+	return (Impact * Impact + Impact) * 0.5f * 7.0f * Radius + 1.0f;
+}
+
+float McExplosion::GetBlastPitch(float RollA, float RollB)
+{
+	return 0.699f + 0.131f * (RollA - RollB);
+}
+
+float McExplosion::GetMobEyeHeight(FName Mob, float BodyHeight)
+{
+	static const TMap<FName, float> Measured = {
+		{ FName(TEXT("minecraft:pig")), 0.77f }, { FName(TEXT("minecraft:cow")), 1.31f },
+		{ FName(TEXT("minecraft:chicken")), 0.65f }, { FName(TEXT("minecraft:sheep")), 1.24f } };
+	const float* Found = Measured.Find(Mob);
+	return Found ? *Found : BodyHeight * 0.9f;
+}
+
+FVector McExplosion::GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure)
+{
+	const float Radius = Power * 2.0f;
+	const float Distance = static_cast<float>(FVector::Dist(Position, Center));
+	if (Radius <= 0.0f || Distance >= Radius || Exposure <= 0.0f)
+	{
+		return FVector::ZeroVector;
+	}
+	return (Eye - Center).GetSafeNormal() * ((1.0f - Distance / Radius) * Exposure);
 }

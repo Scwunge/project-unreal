@@ -22,6 +22,9 @@ namespace McClouds
 	constexpr float Thickness = 4.0f;
 	// Blocks a tick the clouds drift west.
 	constexpr double DriftPerTick = 0.03;
+	// How far the pattern's rows sit past the world's z origin, measured under the reference (cloudph: the row boundary
+	// crossed at z -3.9 +- 0.3 blocks, about a third of a cell).
+	constexpr double ZOffset = 3.9;
 	// Cells drawn out from the camera's, each way.
 	constexpr int32 Radius = 24;
 

@@ -207,6 +207,8 @@ bool UMcWorldRenderComponent::HasAllNeighbours(FIntPoint Pos) const
 	return true;
 }
 
+static double AnimTickOverride = 0.0;
+
 void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -215,8 +217,9 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		return;
 	}
 
-	// Texture animations run on game time, 20 ticks a second.
-	FMcBlockTextures::Get().Tick(GetWorld()->GetTimeSeconds() * 20.0);
+	// Texture animations run on game time, 20 ticks a second. -McAnimTick=<n> holds them at tick n (for comparing a frame with the game's).
+	static const bool bAnimTickGiven = FParse::Value(FCommandLine::Get(), TEXT("-McAnimTick="), AnimTickOverride);
+	FMcBlockTextures::Get().Tick(bAnimTickGiven ? AnimTickOverride : GetWorld()->GetTimeSeconds() * 20.0);
 
 	if (MaterialGeneration != McRenderMode::GetGeneration())
 	{

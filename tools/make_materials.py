@@ -1,4 +1,4 @@
-﻿"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
+"""Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
 
     "E:/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" McClient.uproject
         -run=pythonscript -script="<abs path>/tools/make_materials.py" -unattended -nopause -NullRHI
@@ -328,6 +328,14 @@ if (k == 1.0)
     o = max(o, 0.4 + 0.55 * saturate(1.0 - exp(-max(Depth, 0.0) / 300.0)));
     return max(o, foam * 0.9);
 }
+return A;
+"""
+
+# Water is not drawn inside a boat's hull: the hull's mask (McEntityModel::HullStencil, drawn only into custom depth)
+# marks the pixels, and water farther than the mask there is left out. Nothing else writes this stencil value.
+HULL_STENCIL = 77
+HULL_MASK_HLSL = KIND_HLSL + f"""
+if (k == 1.0 && abs(Stencil - {HULL_STENCIL}.0) < 0.5 && Depth > Mask) return 0.0;
 return A;
 """
 
@@ -666,11 +674,20 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
         mel.connect_material_expressions(vertex_color, "A", opacity, "B")
         mel.connect_material_property(opacity, "", unreal.MaterialProperty.MP_OPACITY)
     elif blend_mode == unreal.BlendMode.BLEND_TRANSLUCENT:
+        stencil = mel.create_material_expression(material, unreal.MaterialExpressionSceneTexture, -350, 2000)
+        stencil.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_CUSTOM_STENCIL)
+        mask_depth = mel.create_material_expression(material, unreal.MaterialExpressionSceneTexture, -350, 2100)
+        mask_depth.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_CUSTOM_DEPTH)
+        depth = mel.create_material_expression(material, unreal.MaterialExpressionPixelDepth, -350, 2200)
+        hull = add_custom(material, 100, 300, "McHullMask", HULL_MASK_HLSL,
+                          {"Kind": (kind, ""), "A": opacity_source, "Stencil": (add_mask(material, -200, 2000, stencil, "r"), ""),
+                           "Mask": (add_mask(material, -200, 2100, mask_depth, "r"), ""), "Depth": (depth, "")}, scalar=True)
+        mel.connect_material_property(hull, "", unreal.MaterialProperty.MP_OPACITY)
         # The game blends see-through blocks in sRGB, where Unreal blends in linear light: a texture's 40% glass looks
         # about 56% as strong there. Raising the opacity (alpha ** 0.63) makes the blend the same for glass, ice, water,
-        # slime and honey (measured against the game's own shots; the 0.4 of stained glass lands on 0.56).
-        srgb = add_custom(material, -100, 350, "McSrgbOpacity", "return pow(saturate(A), 0.63);",
-                          {"A": (opacity_source[0], opacity_source[1])}, scalar=True)
+        # slime and honey (measured against the game's own shots; the 0.4 of stained glass lands on 0.56). The hull
+        # mask's 0 stays 0.
+        srgb = add_custom(material, 300, 350, "McSrgbOpacity", "return pow(saturate(A), 0.63);", {"A": (hull, "")}, scalar=True)
         mel.connect_material_property(srgb, "", unreal.MaterialProperty.MP_OPACITY)
 
     mel.recompile_material(material)

@@ -7,6 +7,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McItem.h"
 #include "Misc/ScopeLock.h"
 #include "Misc/Paths.h"
@@ -61,32 +62,10 @@ FMcItemRegistry& FMcItemRegistry::Get()
 
 void FMcItemRegistry::LoadTags(const FString& Folder, TMap<FName, TSet<FName>>& Out)
 {
-	const FString Root = McCache::Data(Folder);
-	TArray<FString> Files;
-	IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
 	TMap<FName, TArray<FString>> Pending;
-	for (const FString& File : Files)
+	for (const McData::FFile& File : McData::List(Folder.LeftChop(1)))
 	{
-		FString Relative = File;
-		FPaths::MakePathRelativeTo(Relative, *Root);
-		Relative = FPaths::ChangeExtension(Relative, TEXT("")).Replace(TEXT("\\"), TEXT("/"));
-		TArray<FString> Values;
-		if (const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File))
-		{
-			const TArray<TSharedPtr<FJsonValue>>* List;
-			if (Json->TryGetArrayField(TEXT("values"), List))
-			{
-				for (const TSharedPtr<FJsonValue>& Value : *List)
-				{
-					FString Entry;
-					if (ReadTagEntry(Value, Entry))
-					{
-						Values.Add(Entry);
-					}
-				}
-			}
-		}
-		Pending.Add(FName(*McCache::Namespaced(Relative)), MoveTemp(Values));
+		Pending.Add(FName(*File.Id), McData::ReadTagValues(File.Paths));
 	}
 	// Tags include other tags; resolve depth first, each once.
 	TSet<FName> Visiting;
@@ -191,6 +170,20 @@ bool FMcItemRegistry::EnsureLoaded()
 
 	LoadTags(TEXT("tags/item/"), ItemTags);
 	LoadTags(TEXT("tags/enchantment/"), EnchantmentTags);
+	static bool bHooked = false;
+	if (!bHooked)
+	{
+		// /reload reads the tags again, a data pack's files added.
+		bHooked = true;
+		McData::OnReload().AddLambda([]()
+		{
+			FMcItemRegistry& Registry = FMcItemRegistry::Get();
+			Registry.ItemTags.Reset();
+			Registry.EnchantmentTags.Reset();
+			Registry.LoadTags(TEXT("tags/item/"), Registry.ItemTags);
+			Registry.LoadTags(TEXT("tags/enchantment/"), Registry.EnchantmentTags);
+		});
+	}
 
 	TArray<FString> Files;
 	IFileManager::Get().FindFiles(Files, *McCache::Data(TEXT("enchantment/*.json")), true, false);

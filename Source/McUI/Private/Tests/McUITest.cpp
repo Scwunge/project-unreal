@@ -1,13 +1,24 @@
 #include "McContainer.h"
 #include "McCraftingMenu.h"
+#include "McFontRaster.h"
 #include "McFurnace.h"
 #include "McGuiLayout.h"
+#include "McHUD.h"
+#include "McItemDefinition.h"
+#include "McItemStack.h"
 #include "McItemRegistry.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
+#include "McResourcePacks.h"
 #include "McRecipe.h"
 #include "McScreenLayout.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -21,9 +32,14 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(FString::Printf(TEXT("%s: (%d, %d), expected (%d, %d)"), What, Actual.X, Actual.Y, Expected.X, Expected.Y), Actual == Expected);
 	};
-	// The vignette is a little stronger by day than at night.
-	TestTrue(TEXT("noon vignette strength"), FMath::IsNearlyEqual(GetVignetteStrength(1.0f), 0.356f, 1e-4f));
-	TestTrue(TEXT("night vignette is weaker"), GetVignetteStrength(0.24f) < GetVignetteStrength(1.0f));
+	// The vignette is full in the dark and gone in full light, in between as measured, and eases about 0.9 percent a tick.
+	TestEqual(TEXT("dark vignette"), GetVignetteTarget(0.0f), 1.0f);
+	TestEqual(TEXT("no vignette in full light"), GetVignetteTarget(15.0f), 0.0f);
+	TestTrue(TEXT("light 13 measured"), FMath::IsNearlyEqual(GetVignetteTarget(13.0f), 0.378f, 1e-4f));
+	TestTrue(TEXT("between levels it is interpolated"), FMath::IsNearlyEqual(GetVignetteTarget(10.5f), 0.5f * (0.621f + 0.572f), 1e-4f));
+	TestTrue(TEXT("never stronger in more light"), GetVignetteTarget(8.0f) > GetVignetteTarget(9.0f) && GetVignetteTarget(3.0f) > GetVignetteTarget(4.0f));
+	TestTrue(TEXT("a tick moves it a little"), FMath::IsNearlyEqual(EaseVignette(0.2f, 0.7f, 1.0f), 0.2f + 0.5f * 0.0087f, 1e-4f));
+	TestTrue(TEXT("a hundred ticks about halfway"), FMath::IsNearlyEqual(EaseVignette(0.2f, 0.7f, 100.0f), 0.2f + 0.5f * (1.0f - FMath::Pow(1.0f - 0.0087f, 100.0f)), 1e-4f));
 
 	// The GUI scale: the largest that keeps 320 x 240, or the setting if smaller.
 	TestEqual(TEXT("1080p is scale 4"), GetGuiScale(1920, 1080), 4);
@@ -133,6 +149,16 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("an undamaged item has no bar"), GetDurabilityBar(0, 100).bShow);
 	TestFalse(TEXT("an item with no durability has none"), GetDurabilityBar(5, 0).bShow);
 	TestEqual(TEXT("half damaged, half the 13 pixels"), GetDurabilityBar(50, 100).Width, 7);
+	// Bundles (vanilla ref run bundle1): 1, 16, 32, 48, 63 and 64 of 64 sticks.
+	TestFalse(TEXT("an empty bundle has no bar"), GetBundleBar(0.0).bShow);
+	const double Fulls[] = {1.0 / 64, 16.0 / 64, 32.0 / 64, 48.0 / 64, 63.0 / 64, 1.0};
+	const int32 Widths[] = {1, 4, 7, 10, 12, 13};
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		TestEqual(TEXT("bundle bar width"), GetBundleBar(Fulls[Index]).Width, Widths[Index]);
+	}
+	TestEqual(TEXT("blue while there is room"), GetBundleBar(0.5).Color, 0x7087FFu);
+	TestEqual(TEXT("red when full"), GetBundleBar(1.0).Color, 0xFF5454u);
 	TestEqual(TEXT("one point off, still full width"), GetDurabilityBar(1, 1561).Width, 13);
 	TestEqual(TEXT("nearly broken, a pixel"), GetDurabilityBar(99, 100).Width, 0);
 	const uint32 Half = GetDurabilityBar(50, 100).Color;
@@ -473,6 +499,523 @@ bool FMcCreativeScreenTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no search, everything"), Creative::Filter(Items, TEXT("  "), Name).Num(), 3);
 	TestEqual(TEXT("one word"), Creative::Filter(Items, TEXT("LOG"), Name).Num(), 2);
 	TestEqual(TEXT("every word"), Creative::Filter(Items, TEXT("log oak"), Name), TArray<FName>{ TEXT("minecraft:oak_log") });
+	return true;
+}
+
+// The providers that make their characters on demand: a Unifont .hex line is cut to the columns it uses and drawn at half size;
+// a TrueType font is rendered with its advance; the provider earlier in the definition has the character.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcRasterFontsTest, "McClient.McUI.RasterFonts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcRasterFontsTest::RunTest(const FString& Parameters)
+{
+	// 0041: eight pixels wide, rows 4 to 11 with the columns 2 to 5 set; 4E00: sixteen wide, the top row all set.
+	FString Hex = TEXT("0041:00000000") TEXT("3C3C3C3C3C3C3C3C") TEXT("00000000") TEXT("\n4E00:FFFF") + FString::ChrN(60, TEXT('0')) + TEXT("\n1F600:") + FString::ChrN(32, TEXT('F')) + TEXT("\n");
+	TArray<uint8> Bytes;
+	Bytes.Append(reinterpret_cast<const uint8*>(TCHAR_TO_ANSI(*Hex)), Hex.Len());
+
+	FMcRasterFonts Fonts;
+	Fonts.AddUnihex(2, Bytes, {});
+	FMcRasterGlyph Glyph;
+	if (TestTrue(TEXT("A is in the file"), Fonts.Make(TEXT('A'), MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("A is cut to its columns"), Glyph.Width, 4);
+		TestEqual(TEXT("sixteen rows"), Glyph.Height, 16);
+		TestEqual(TEXT("half size"), Glyph.DrawWidth, 2.0f);
+		TestEqual(TEXT("drawn from the pen, as the vanilla client logs its ink box"), Glyph.OffsetX, 0.0f);
+		TestEqual(TEXT("advance is half the columns and one"), Glyph.Advance, 3.0f);
+		TestEqual(TEXT("a pixel of the glyph"), static_cast<int32>(Glyph.Bgra[(4 * Glyph.Width) * 4 + 3]), 255);
+		TestEqual(TEXT("a pixel above it"), static_cast<int32>(Glyph.Bgra[3]), 0);
+	}
+	if (TestTrue(TEXT("a wide one"), Fonts.Make(TEXT('\x4E00'), MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("sixteen columns"), Glyph.Width, 16);
+		TestEqual(TEXT("advance 9"), Glyph.Advance, 9.0f);
+	}
+	if (TestTrue(TEXT("a character beyond the basic plane"), Fonts.Make(0x1F600, MAX_int32, Glyph)))
+	{
+		TestEqual(TEXT("eight columns"), Glyph.Width, 8);
+	}
+	TestFalse(TEXT("not a character of the file"),Fonts.Make(TEXT('B'), MAX_int32, Glyph));
+	TestFalse(TEXT("a provider after the limit is not asked"), Fonts.Make(TEXT('A'), 2, Glyph));
+
+	const FString Roboto = FPaths::EngineContentDir() / TEXT("Slate/Fonts/Roboto-Regular.ttf");
+	TArray<uint8> File;
+	if (TestTrue(TEXT("the engine's font is there"), FFileHelper::LoadFileToArray(File, *Roboto)))
+	{
+		FMcRasterFonts Type;
+		Type.AddTrueType(0, File, 16.0f, 2.0f, FVector2D::ZeroVector, TEXT("B"));
+		if (TestTrue(TEXT("a glyph of the ttf"), Type.Make(TEXT('A'), MAX_int32, Glyph)))
+		{
+			TestTrue(TEXT("it has a picture"), Glyph.Width > 0 && Glyph.Height > 0 && Glyph.Bgra.Num() == Glyph.Width * Glyph.Height * 4);
+			TestTrue(TEXT("scaled down by the oversample"), FMath::IsNearlyEqual(Glyph.DrawWidth, Glyph.Width / 2.0f));
+			TestTrue(TEXT("it advances"), Glyph.Advance > 3.0f && Glyph.Advance < 16.0f);
+			TestTrue(TEXT("it sits on the baseline"), Glyph.OffsetY + Glyph.DrawHeight < 7.5f && Glyph.OffsetY + Glyph.DrawHeight > 6.0f);
+		}
+		TestFalse(TEXT("a skipped character"), Type.Make(TEXT('B'), MAX_int32, Glyph));
+		if (TestTrue(TEXT("the space"), Type.Make(TEXT(' '), MAX_int32, Glyph)))
+		{
+			TestEqual(TEXT("has no picture"), Glyph.Width, 0);
+			TestTrue(TEXT("but room"), Glyph.Advance > 0.0f);
+		}
+	}
+	return true;
+}
+
+// The font against the vanilla client's own numbers: the advance, shadow offset and ink box of each character of a fixed string
+// (ASCII, the accented and symbol sheets, Cyrillic, Greek, Unifont CJK and Hangul), read with the reference's
+// "log glyphs" verb (scripts/respack_metrics.txt), and the width of the whole string.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFontMetricsTest, "McClient.McUI.FontMetrics",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcFontMetricsTest::RunTest(const FString& Parameters)
+{
+	struct FRow { int32 Char; float Advance; float Shadow; };
+	static const FRow Vanilla[] = {
+		{ 0x0041, 6.0f, 1.0f },
+		{ 0x0062, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x0057, 6.0f, 1.0f },
+		{ 0x0069, 2.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x0030, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x002E, 2.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x002C, 2.0f, 1.0f },
+		{ 0x0069, 2.0f, 1.0f },
+		{ 0x00DC, 6.0f, 1.0f },
+		{ 0x006E, 6.0f, 1.0f },
+		{ 0x00EF, 4.0f, 1.0f },
+		{ 0x0063, 6.0f, 1.0f },
+		{ 0x00F6, 6.0f, 1.0f },
+		{ 0x0064, 6.0f, 1.0f },
+		{ 0x00E9, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x00F1, 6.0f, 1.0f },
+		{ 0x00DF, 6.0f, 1.0f },
+		{ 0x00E6, 10.0f, 1.0f },
+		{ 0x00F8, 6.0f, 1.0f },
+		{ 0x20AC, 7.0f, 1.0f },
+		{ 0x00A3, 6.0f, 1.0f },
+		{ 0x00A9, 8.0f, 1.0f },
+		{ 0x00B1, 6.0f, 1.0f },
+		{ 0x00D7, 6.0f, 1.0f },
+		{ 0x2026, 8.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x041F, 6.0f, 1.0f },
+		{ 0x0440, 6.0f, 1.0f },
+		{ 0x0438, 6.0f, 1.0f },
+		{ 0x0432, 6.0f, 1.0f },
+		{ 0x0435, 6.0f, 1.0f },
+		{ 0x0442, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x03B1, 6.0f, 1.0f },
+		{ 0x03B2, 6.0f, 1.0f },
+		{ 0x03B3, 6.0f, 1.0f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x65E5, 9.0f, 0.5f },
+		{ 0x672C, 9.0f, 0.5f },
+		{ 0x8A9E, 9.0f, 0.5f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0xD55C, 8.0f, 0.5f },
+		{ 0xAD6D, 8.0f, 0.5f },
+		{ 0xC5B4, 8.0f, 0.5f },
+		{ 0x0020, 4.0f, 1.0f },
+		{ 0x2603, 8.0f, 1.0f },
+		{ 0x2605, 8.0f, 1.0f },
+		{ 0x2665, 6.0f, 1.0f }
+	};
+	AMcHUD* Hud = NewObject<AMcHUD>(GetTransientPackage());
+	FString Text;
+	for (const FRow& Row : Vanilla)
+	{
+		Text.AppendChar(static_cast<TCHAR>(Row.Char));
+		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	struct FInk { int32 Char; float Left; float Right; float Up; float Down; };
+	static const FInk DefaultInk[] = {
+		{ 0x0041, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0062, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0057, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0069, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0030, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x002E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x002C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00DC, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x006E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00EF, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x0063, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00F6, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x0064, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00E9, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00F1, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00DF, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00E6, 0.0f, 9.0f, -3.0f, 9.0f },
+		{ 0x00F8, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x20AC, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00A3, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00A9, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00B1, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x00D7, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2026, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x041F, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0440, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0438, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0432, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0435, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x0442, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B1, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B2, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x03B3, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x65E5, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x672C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x8A9E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0xD55C, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xAD6D, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xC5B4, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0x2603, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2605, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2665, 0.0f, 8.0f, 0.0f, 8.0f }
+	};
+	AMcHUD* InkHud = Hud;
+	for (const FInk& Ink : DefaultInk)
+	{
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		const bool bInk = InkHud->GetGlyphInk(Ink.Char, Left, Right, Up, Down);
+		TestTrue(*FString::Printf(TEXT("U+%04X has a picture"), Ink.Char), bInk);
+		const FString Name = FString::Printf(TEXT("U+%04X"), Ink.Char);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, Ink.Left, 0.01f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Ink.Right, 0.01f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, Ink.Up, 0.01f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, Ink.Down, 0.01f));
+	}
+	TestTrue(TEXT("the whole string is 308 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 308.0f, 1.0f));
+
+	// More characters the vanilla client was asked about (scripts/respack_unihex.txt): some come from Unifont and are cut to
+	// their columns (Thai, braille), the rest from the sheets. Every picture is drawn from the pen, and its left is 0.
+	struct FMore { int32 Char; float Advance; float Shadow; float Right; };
+	static const FMore More[] = {
+		{ 0x0250, 6.0f, 1.0f, 8.0f },
+		{ 0x2200, 8.0f, 1.0f, 8.0f },
+		{ 0x0E01, 4.0f, 0.5f, 3.0f },
+		{ 0x0561, 6.0f, 1.0f, 8.0f },
+		{ 0x283F, 3.0f, 0.5f, 2.5f },
+		{ 0x10D0, 6.0f, 1.0f, 8.0f },
+		{ 0x0500, 6.0f, 1.0f, 8.0f },
+		{ 0x4E00, 9.0f, 0.5f, 8.0f },
+		{ 0x3042, 9.0f, 0.5f, 8.0f },
+		{ 0x0928, 9.0f, 0.5f, 8.0f }
+	};
+	for (const FMore& Row : More)
+	{
+		const FString Name = FString::Printf(TEXT("U+%04X"), Row.Char);
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		TestTrue(*(Name + TEXT(" has a picture")), Hud->GetGlyphInk(Row.Char, Left, Right, Up, Down));
+		TestEqual(*(Name + TEXT(" advance")), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*(Name + TEXT(" shadow")), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, 0.0f, 0.01f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Row.Right, 0.01f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, 0.0f, 0.01f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, 8.0f, 0.01f));
+	}
+	return true;
+}
+
+// The same with the ttf pack the reference tests use (Cascadia Mono, size 10, oversample 4): the advances are whole
+// pixels of the oversampled glyph. Skipped where that pack is not in the resourcepacks folder (it lives on the 1070).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcFontMetricsTrueTypeTest, "McClient.McUI.FontMetricsTrueType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcFontMetricsTrueTypeTest::RunTest(const FString& Parameters)
+{
+	bool bHasPack = false;
+	for (const McPacks::FFolderEntry& Entry : McPacks::ScanFolder())
+	{
+		bHasPack |= Entry.Name == TEXT("zz_test_ttf") && Entry.Pack.IsValid();
+	}
+	if (!bHasPack)
+	{
+		AddInfo(TEXT("zz_test_ttf is not in the resourcepacks folder: skipped"));
+		return true;
+	}
+	struct FRow { int32 Char; float Advance; float Shadow; };
+	static const FRow Vanilla[] = {
+		{ 0x0041, 5.75f, 1.0f },
+		{ 0x0062, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x0057, 5.75f, 1.0f },
+		{ 0x0069, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x0030, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x002E, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x002C, 5.75f, 1.0f },
+		{ 0x0069, 5.75f, 1.0f },
+		{ 0x00DC, 5.75f, 1.0f },
+		{ 0x006E, 5.75f, 1.0f },
+		{ 0x00EF, 5.75f, 1.0f },
+		{ 0x0063, 5.75f, 1.0f },
+		{ 0x00F6, 5.75f, 1.0f },
+		{ 0x0064, 5.75f, 1.0f },
+		{ 0x00E9, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x00F1, 5.75f, 1.0f },
+		{ 0x00DF, 5.75f, 1.0f },
+		{ 0x00E6, 5.75f, 1.0f },
+		{ 0x00F8, 5.75f, 1.0f },
+		{ 0x20AC, 5.75f, 1.0f },
+		{ 0x00A3, 5.75f, 1.0f },
+		{ 0x00A9, 5.75f, 1.0f },
+		{ 0x00B1, 5.75f, 1.0f },
+		{ 0x00D7, 5.75f, 1.0f },
+		{ 0x2026, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x041F, 5.75f, 1.0f },
+		{ 0x0440, 5.75f, 1.0f },
+		{ 0x0438, 5.75f, 1.0f },
+		{ 0x0432, 5.75f, 1.0f },
+		{ 0x0435, 5.75f, 1.0f },
+		{ 0x0442, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x03B1, 5.75f, 1.0f },
+		{ 0x03B2, 5.75f, 1.0f },
+		{ 0x03B3, 5.75f, 1.0f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x65E5, 9.00f, 0.5f },
+		{ 0x672C, 9.00f, 0.5f },
+		{ 0x8A9E, 9.00f, 0.5f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0xD55C, 8.00f, 0.5f },
+		{ 0xAD6D, 8.00f, 0.5f },
+		{ 0xC5B4, 8.00f, 0.5f },
+		{ 0x0020, 5.75f, 1.0f },
+		{ 0x2603, 8.00f, 1.0f },
+		{ 0x2605, 8.00f, 1.0f },
+		{ 0x2665, 5.75f, 1.0f }
+	};
+	const TArray<FString> Before = McPacks::GetSelectedNames();
+	McPacks::ApplySelection({ TEXT("zz_test_ttf") });
+	AMcHUD* Hud = NewObject<AMcHUD>(GetTransientPackage());
+	FString Text;
+	for (const FRow& Row : Vanilla)
+	{
+		Text.AppendChar(static_cast<TCHAR>(Row.Char));
+		TestEqual(*FString::Printf(TEXT("advance of U+%04X"), Row.Char), Hud->GetGlyphAdvance(Row.Char), Row.Advance);
+		TestEqual(*FString::Printf(TEXT("shadow of U+%04X"), Row.Char), Hud->GetGlyphShadowOffset(Row.Char), Row.Shadow);
+	}
+	struct FInk { int32 Char; float Left; float Right; float Up; float Down; };
+	static const FInk TrueTypeInk[] = {
+		{ 0x0041, 0.0f, 5.75f, 0.0f, 7.0f },
+		{ 0x0062, 0.75f, 5.5f, -0.25f, 7.0f },
+		{ 0x0057, 0.0f, 6.0f, 0.0f, 7.0f },
+		{ 0x0069, 0.75f, 5.5f, -0.5f, 7.0f },
+		{ 0x0030, 0.5f, 5.5f, 0.0f, 7.0f },
+		{ 0x002E, 2.0f, 3.75f, 5.5f, 7.0f },
+		{ 0x002C, 2.0f, 3.75f, 5.75f, 9.25f },
+		{ 0x00DC, 0.5f, 5.25f, -2.25f, 7.0f },
+		{ 0x006E, 0.75f, 5.25f, 1.75f, 7.0f },
+		{ 0x00EF, 0.75f, 5.5f, -0.5f, 7.0f },
+		{ 0x0063, 0.5f, 5.5f, 1.75f, 7.0f },
+		{ 0x00F6, 0.5f, 5.25f, -0.5f, 7.0f },
+		{ 0x0064, 0.25f, 5.25f, -0.25f, 7.25f },
+		{ 0x00E9, 0.5f, 5.25f, -1.0f, 7.0f },
+		{ 0x00F1, 0.75f, 5.25f, -1.0f, 7.0f },
+		{ 0x00DF, 0.25f, 5.75f, -0.25f, 7.0f },
+		{ 0x00E6, 0.0f, 5.75f, 1.75f, 7.0f },
+		{ 0x00F8, 0.5f, 5.25f, 1.25f, 7.5f },
+		{ 0x20AC, 0.25f, 5.75f, 0.0f, 7.0f },
+		{ 0x00A3, 0.5f, 5.5f, 0.0f, 7.0f },
+		{ 0x00A9, 0.0f, 5.75f, 0.25f, 7.25f },
+		{ 0x00B1, 0.25f, 5.5f, 1.0f, 6.25f },
+		{ 0x00D7, 0.5f, 5.5f, 1.25f, 6.25f },
+		{ 0x2026, 0.0f, 5.75f, 5.5f, 7.0f },
+		{ 0x041F, 0.5f, 5.25f, 0.0f, 7.0f },
+		{ 0x0440, 0.75f, 5.5f, 1.75f, 9.25f },
+		{ 0x0438, 0.75f, 5.25f, 1.75f, 7.0f },
+		{ 0x0432, 0.75f, 5.5f, 1.75f, 7.0f },
+		{ 0x0435, 0.5f, 5.25f, 1.75f, 7.0f },
+		{ 0x0442, 0.25f, 5.5f, 1.75f, 7.0f },
+		{ 0x03B1, 0.25f, 5.75f, 1.75f, 7.25f },
+		{ 0x03B2, 0.75f, 5.25f, 0.0f, 9.25f },
+		{ 0x03B3, 0.0f, 5.75f, 1.75f, 9.25f },
+		{ 0x65E5, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x672C, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x8A9E, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0xD55C, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xAD6D, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0xC5B4, 0.0f, 7.5f, 0.0f, 8.0f },
+		{ 0x2603, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2605, 0.0f, 8.0f, 0.0f, 8.0f },
+		{ 0x2665, 0.25f, 5.75f, 0.75f, 6.75f }
+	};
+	AMcHUD* InkHud = Hud;
+	for (const FInk& Ink : TrueTypeInk)
+	{
+		float Left = 0, Right = 0, Up = 0, Down = 0;
+		const bool bInk = InkHud->GetGlyphInk(Ink.Char, Left, Right, Up, Down);
+		TestTrue(*FString::Printf(TEXT("U+%04X has a picture"), Ink.Char), bInk);
+		const FString Name = FString::Printf(TEXT("U+%04X"), Ink.Char);
+		TestTrue(*(Name + TEXT(" left ") + FString::SanitizeFloat(Left)), FMath::IsNearlyEqual(Left, Ink.Left, 0.3f));
+		TestTrue(*(Name + TEXT(" right ") + FString::SanitizeFloat(Right)), FMath::IsNearlyEqual(Right, Ink.Right, 0.3f));
+		TestTrue(*(Name + TEXT(" up ") + FString::SanitizeFloat(Up)), FMath::IsNearlyEqual(Up, Ink.Up, 0.3f));
+		TestTrue(*(Name + TEXT(" down ") + FString::SanitizeFloat(Down)), FMath::IsNearlyEqual(Down, Ink.Down, 0.3f));
+	}
+	TestTrue(TEXT("the whole string is 326 wide, as the game measures it"), FMath::IsNearlyEqual(Hud->GetTextWidth(Text), 326.0f, 1.0f));
+	McPacks::ApplySelection(Before);
+	return true;
+}
+
+// The title screen's splash text comes from texts/splashes.txt, and a pack's copy replaces the game's; three days have a
+// splash of their own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcSplashTest, "McClient.McUI.Splash",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcSplashTest::RunTest(const FString& Parameters)
+{
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const TArray<FString> Vanilla = AMcHUD::LoadSplashTexts();
+	if (TestTrue(TEXT("the game has splashes"), Vanilla.Num() > 100))
+	{
+		TestFalse(TEXT("none of them empty"), Vanilla.ContainsByPredicate([](const FString& Line) { return Line.IsEmpty(); }));
+	}
+
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McSplashTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Root / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("First splash \r\n\r\n  Second one\r\nThird!\r\n"), *(Root / TEXT("assets/minecraft/texts/splashes.txt")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	const TArray<FString> FromPack = AMcHUD::LoadSplashTexts();
+	if (TestEqual(TEXT("the pack's file replaces the game's"), FromPack.Num(), 3))
+	{
+		TestEqual(TEXT("lines are trimmed"), FromPack[0], FString(TEXT("First splash")));
+		TestEqual(TEXT("empty lines are dropped"), FromPack[1], FString(TEXT("Second one")));
+		TestEqual(TEXT("first by a low roll"), AMcHUD::PickSplash(FromPack, 6, 15, 0.0f), FString(TEXT("First splash")));
+		TestEqual(TEXT("last by a high roll"), AMcHUD::PickSplash(FromPack, 6, 15, 0.999f), FString(TEXT("Third!")));
+		TestEqual(TEXT("a roll of 1 stays in the list"), AMcHUD::PickSplash(FromPack, 6, 15, 1.0f), FString(TEXT("Third!")));
+		TestEqual(TEXT("Christmas Eve"), AMcHUD::PickSplash(FromPack, 12, 24, 0.0f), FString(TEXT("Merry X-mas!")));
+		TestEqual(TEXT("New Year's Day"), AMcHUD::PickSplash(FromPack, 1, 1, 0.0f), FString(TEXT("Happy new year!")));
+		TestEqual(TEXT("Halloween"), AMcHUD::PickSplash(FromPack, 10, 31, 0.0f), FString(TEXT("OOoooOOOoooo! Spooky!")));
+	}
+	TestEqual(TEXT("no lines, no splash"), AMcHUD::PickSplash(TArray<FString>(), 6, 15, 0.5f), FString());
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestEqual(TEXT("without the pack the game's again"), AMcHUD::LoadSplashTexts().Num(), Vanilla.Num());
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// A sprite's .png.mcmeta "gui.scaling": stretch (the default), tile, and nine_slice with one border or four. And the title
+// panorama, which the game reads from the asset index, is replaced by a pack's copy of the same path.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackGuiTest, "McClient.McUI.PackGui",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackGuiTest::RunTest(const FString& Parameters)
+{
+	using FScaling = AMcHUD::FGuiScaling;
+	const FScaling None = AMcHUD::ParseGuiScaling(TEXT("{}"), 200.0f, 20.0f);
+	TestTrue(TEXT("no gui section stretches"), None.Type == FScaling::EType::Stretch);
+	const FScaling Plain = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"stretch\"}}}"), 200.0f, 20.0f);
+	TestTrue(TEXT("stretch"), Plain.Type == FScaling::EType::Stretch);
+	const FScaling Tile = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"tile\",\"width\":16,\"height\":8}}}"), 64.0f, 64.0f);
+	TestTrue(TEXT("tile"), Tile.Type == FScaling::EType::Tile);
+	TestEqual(TEXT("tile width"), Tile.Width, 16.0f);
+	TestEqual(TEXT("tile height"), Tile.Height, 8.0f);
+	const FScaling One = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"minecraft:nine_slice\",\"width\":200,\"height\":20,\"border\":3}}}"), 400.0f, 40.0f);
+	TestTrue(TEXT("nine slice, namespaced type"), One.Type == FScaling::EType::NineSlice);
+	TestEqual(TEXT("declared size, not the picture's"), One.Width, 200.0f);
+	TestEqual(TEXT("the one border is all four"), One.Left + One.Top + One.Right + One.Bottom, 12.0f);
+	const FScaling Four = AMcHUD::ParseGuiScaling(TEXT("{\"gui\":{\"scaling\":{\"type\":\"nine_slice\",\"border\":{\"left\":1,\"top\":2,\"right\":3,\"bottom\":4}}}}"), 32.0f, 24.0f);
+	TestEqual(TEXT("border left"), Four.Left, 1.0f);
+	TestEqual(TEXT("border top"), Four.Top, 2.0f);
+	TestEqual(TEXT("border right"), Four.Right, 3.0f);
+	TestEqual(TEXT("border bottom"), Four.Bottom, 4.0f);
+	TestEqual(TEXT("size defaults to the picture's"), Four.Width, 32.0f);
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	const FString Panorama = TEXT("resources:textures/gui/title/background/panorama_0.png");
+	const FString GamePath = AMcHUD::SpritePath(Panorama);
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackGuiTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Root / TEXT("pack.mcmeta")));
+	const TArray<uint8> Bytes = { 0x89, 'P', 'N', 'G' };
+	FFileHelper::SaveArrayToFile(Bytes, *(Root / TEXT("assets/minecraft/textures/gui/title/background/panorama_0.png")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Root, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+	const FString PackPath = AMcHUD::SpritePath(Panorama);
+	TestNotEqual(TEXT("the pack's panorama replaces the game's"), PackPath, GamePath);
+	TestTrue(TEXT("and is read from the pack"), PackPath.Contains(TEXT("McPackGuiTest")));
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestEqual(TEXT("without the pack the game's again"), AMcHUD::SpritePath(Panorama), GamePath);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// An item definition picks its model from the stack: select and range_dispatch on custom_model_data, condition on damaged,
+// composite giving two models, tints read, an unknown property taking the fallback.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcItemDefinitionTest, "McClient.McUI.ItemDefinition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcItemDefinitionTest::RunTest(const FString& Parameters)
+{
+	const auto Parse = [](const TCHAR* Text)
+	{
+		TSharedPtr<FJsonObject> Json;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(Text)), Json);
+		return Json;
+	};
+	const auto Models = [](const TArray<McItemDef::FModelRef>& Refs)
+	{
+		FString Text;
+		for (const McItemDef::FModelRef& Ref : Refs)
+		{
+			Text += Ref.Model + TEXT(";");
+		}
+		return Text;
+	};
+	const auto WithData = [](const TCHAR* DataJson)
+	{
+		FMcItemStack Stack(TEXT("minecraft:stick"), 1);
+		TSharedPtr<FJsonValue> Value;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(DataJson)), Value);
+		Stack.Set(TEXT("minecraft:custom_model_data"), Value);
+		return Stack;
+	};
+	const TSharedPtr<FJsonObject> Select = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:custom_model_data\",\"cases\":[{\"when\":\"blue\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:blue\",\"tints\":[{\"type\":\"minecraft:constant\",\"value\":255}]}},{\"when\":[\"a\",\"b\"],\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:ab\"}}],"
+		"\"fallback\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:custom_model_data\",\"entries\":[{\"threshold\":1,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:one\"}},{\"threshold\":2,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:two\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:none\"}}}}"));
+	using McItemDef::EContext;
+	TestEqual(TEXT("a string case"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui)), FString(TEXT("m:blue;")));
+	const TArray<McItemDef::FModelRef> Blue = McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui);
+	TestTrue(TEXT("its constant tint, opaque blue"), Blue.Num() == 1 && Blue[0].Tints.Num() == 1 && Blue[0].Tints[0] == 0xFF0000FFu);
+	TestEqual(TEXT("a case with a list"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"b\"]}")), EContext::Gui)), FString(TEXT("m:ab;")));
+	TestEqual(TEXT("no string: range_dispatch, float 1"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.0]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 1.5 takes the lower threshold"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.5]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 2"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[2.0]}")), EContext::Gui)), FString(TEXT("m:two;")));
+	TestEqual(TEXT("float below every threshold: the fallback"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[0.5]}")), EContext::Gui)), FString(TEXT("m:none;")));
+	TestEqual(TEXT("no data: the fallback"), Models(McItemDef::ResolveJson(Select, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:none;")));
+
+	const TSharedPtr<FJsonObject> Condition = Parse(TEXT("{\"model\":{\"type\":\"minecraft:condition\",\"property\":\"minecraft:custom_model_data\",\"index\":1,\"on_true\":{\"type\":\"minecraft:composite\",\"models\":[{\"type\":\"minecraft:model\",\"model\":\"m:a\"},{\"type\":\"minecraft:model\",\"model\":\"m:b\"}]},\"on_false\":{\"type\":\"minecraft:empty\"}}}"));
+	TestEqual(TEXT("a flag set: the composite's two models"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[false,true]}")), EContext::Gui)), FString(TEXT("m:a;m:b;")));
+	TestEqual(TEXT("a flag unset: empty"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[true,false]}")), EContext::Gui)), FString());
+
+	const TSharedPtr<FJsonObject> Context = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:display_context\",\"cases\":[{\"when\":\"gui\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:gui\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:other\"}}}"));
+	TestEqual(TEXT("display_context gui"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:gui;")));
+	TestEqual(TEXT("display_context hand"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::FirstPersonRightHand)), FString(TEXT("m:other;")));
+
+	const TSharedPtr<FJsonObject> Unknown = Parse(TEXT("{\"model\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:compass\",\"entries\":[{\"threshold\":0.5,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:never\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:fallback\"}}}"));
+	TestEqual(TEXT("an unread property reads 0: the fallback"), Models(McItemDef::ResolveJson(Unknown, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:fallback;")));
 	return true;
 }
 

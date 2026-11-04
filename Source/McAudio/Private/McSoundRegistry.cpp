@@ -1,6 +1,7 @@
 #include "McSoundRegistry.h"
 #include "McAudio.h"
 #include "McCache.h"
+#include "McResourcePacks.h"
 #include "AudioDecompress.h"
 #include "Interfaces/IAudioFormat.h"
 #include "Decoders/VorbisAudioInfo.h"
@@ -22,9 +23,19 @@ FString FMcSoundRegistry::GetSoundsDir()
 	return FPaths::Combine(McCache::Root(), TEXT("assets/minecraft/sounds"));
 }
 
+FString FMcSoundRegistry::ResolveSoundFile(const FString& Name)
+{
+	FString FromPack;
+	if (McPacks::HasPacks() && McPacks::TryResolve(TEXT("sounds/") + Name + TEXT(".ogg"), FromPack))
+	{
+		return FromPack;
+	}
+	return FPaths::Combine(GetSoundsDir(), Name + TEXT(".ogg"));
+}
+
 bool FMcSoundRegistry::EnsureLoaded()
 {
-	if (bLoaded)
+	if (bLoaded && LoadedGeneration == McPacks::GetGeneration())
 	{
 		return true;
 	}
@@ -35,10 +46,32 @@ bool FMcSoundRegistry::EnsureLoaded()
 		UE_LOG(LogMcAudio, Warning, TEXT("No sounds.json at %s: there will be no sound. Run tools/fetch_cache.py."), *Path);
 		return false;
 	}
-	return Parse(Text);
+	LoadedGeneration = McPacks::GetGeneration();
+	if (!Parse(Text))
+	{
+		return false;
+	}
+	TArray<TArray<uint8>> FromPacks;
+	McPacks::ReadAll(TEXT("sounds.json"), FromPacks);
+	for (const TArray<uint8>& Bytes : FromPacks)
+	{
+		const FUTF8ToTCHAR Converted(reinterpret_cast<const ANSICHAR*>(Bytes.GetData()), Bytes.Num());
+		Merge(FString(Converted.Length(), Converted.Get()));
+	}
+	return true;
 }
 
 bool FMcSoundRegistry::Parse(const FString& Json)
+{
+	return ParseInto(Json, false);
+}
+
+bool FMcSoundRegistry::Merge(const FString& Json)
+{
+	return ParseInto(Json, true);
+}
+
+bool FMcSoundRegistry::ParseInto(const FString& Json, bool bMerge)
 {
 	TSharedPtr<FJsonObject> Root;
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
@@ -47,7 +80,11 @@ bool FMcSoundRegistry::Parse(const FString& Json)
 		UE_LOG(LogMcAudio, Warning, TEXT("sounds.json is not a JSON object."));
 		return false;
 	}
-	Events.Reset();
+	if (!bMerge)
+	{
+		Events.Reset();
+		Subtitles.Reset();
+	}
 	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Root->Values)
 	{
 		const TSharedPtr<FJsonObject>* Object = nullptr;
@@ -57,6 +94,16 @@ bool FMcSoundRegistry::Parse(const FString& Json)
 			continue;
 		}
 		TArray<FMcSoundVariant>& Variants = Events.FindOrAdd(FName(*Entry.Key));
+		bool bReplace = false;
+		if (bMerge && (*Object)->TryGetBoolField(TEXT("replace"), bReplace) && bReplace)
+		{
+			Variants.Reset();
+		}
+		FString Subtitle;
+		if ((*Object)->TryGetStringField(TEXT("subtitle"), Subtitle) && (bReplace || !Subtitles.Contains(FName(*Entry.Key))))
+		{
+			Subtitles.Add(FName(*Entry.Key), Subtitle);
+		}
 		for (const TSharedPtr<FJsonValue>& Sound : *Sounds)
 		{
 			FMcSoundVariant Variant;
@@ -101,6 +148,34 @@ bool FMcSoundRegistry::Parse(const FString& Json)
 	}
 	bLoaded = true;
 	return true;
+}
+
+FString FMcSoundRegistry::FindSubtitle(FName Event) const
+{
+	const FString* Key = Subtitles.Find(Event);
+	return Key ? *Key : FString();
+}
+
+namespace McAudio
+{
+	static TArray<FMcPlayedSound> GRecent;
+
+	void NoteSound(FName Event, const FVector& Position, bool bPositional)
+	{
+		const double Now = FPlatformTime::Seconds();
+		GRecent.RemoveAll([Now](const FMcPlayedSound& Sound) { return Now - Sound.Time > 4.0; });
+		FMcPlayedSound Played;
+		Played.Event = Event;
+		Played.Position = Position;
+		Played.bPositional = bPositional;
+		Played.Time = Now;
+		GRecent.Add(Played);
+	}
+
+	const TArray<FMcPlayedSound>& GetRecentSounds()
+	{
+		return GRecent;
+	}
 }
 
 const TArray<FMcSoundVariant>* FMcSoundRegistry::Find(FName Event) const

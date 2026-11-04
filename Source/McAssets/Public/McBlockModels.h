@@ -66,6 +66,29 @@ struct FMcBakeStats
 	TArray<FString> Problems;      // the first few distinct failure messages
 };
 
+// A model's "display" transform for one context (gui, firstperson_righthand, ground, fixed ...): rotation in degrees,
+// translation in sixteenths of a block, scale.
+struct FMcModelDisplay
+{
+	FVector Rotation = FVector::ZeroVector;
+	FVector Translation = FVector::ZeroVector;
+	FVector Scale = FVector::OneVector;
+};
+
+// A model by id ("minecraft:item/foo", "minecraft:block/bar"), read through the packs with its parents folded in, for what
+// is not a block state: an item's icon, the item in the hand. Quads are in the model's own frame (0..1, x east, y up, z
+// south) without any rotation of a state. A "builtin/generated" model (flat items) has no quads but its texture layers.
+struct FMcItemModel
+{
+	TArray<FMcBakedQuad> Quads;
+	TArray<FName> Layers;  // layer0, layer1 ... of a generated model, as texture ids
+	TMap<FString, FMcModelDisplay> Display;
+	bool bGenerated = false;
+	bool bFailed = false;
+	bool bGuiFront = false;  // "gui_light": "front": flat lit in the inventory, not from above
+};
+MCASSETS_API FMcItemModel McBakeItemModel(const FString& ModelId);
+
 // Loaded once on the game thread, then read only, so mesher threads may read it freely.
 class MCASSETS_API FMcBlockModels
 {
@@ -83,6 +106,10 @@ public:
 	const TArray<FName>& GetTextures() const { return Textures; }
 
 	const FMcBakeStats& GetStats() const { return Stats; }
+
+	// Forgets the baked models, so the next EnsureBaked reads the files again (a resource pack changed). Only while no
+	// world is using them: nothing may be meshing.
+	void Unload() { Models.Empty(); Textures.Empty(); Stats = FMcBakeStats(); }
 
 private:
 	TArray<FMcBakedModel> Models;  // indexed by state id

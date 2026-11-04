@@ -5,7 +5,9 @@
 #include "McChunkSave.h"
 #include "McDimensionType.h"
 #include "McEntityHost.h"
+#include "McMapStore.h"
 #include "McMob.h"
+#include "McTnt.h"
 #include "McRegionFile.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
@@ -37,7 +39,7 @@ namespace
 		return Bytes;
 	}
 
-	bool LoadRegistries()
+	bool LoadSaveRegistries()
 	{
 		return FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded();
 	}
@@ -184,7 +186,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcChunkSaveTest, "McClient.McServer.SaveChunkC
 
 bool FMcChunkSaveTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -243,7 +245,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcWorldStorageTest, "McClient.McServer.SaveUnl
 
 bool FMcWorldStorageTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -294,6 +296,35 @@ bool FMcWorldStorageTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a far chunk, in another region file, too"), Storage.Contains(Far));
 		TestFalse(TEXT("a chunk never saved"), Storage.Contains(FIntPoint(0, 0)));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMapsFileTest, "McClient.McServer.SaveMaps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcMapsFileTest::RunTest(const FString& Parameters)
+{
+	FTempFolder Folder;
+	McMapStore::Reset();
+	const int32 Id = McMapStore::Create(1, 3040, 0, TEXT("minecraft:overworld"));
+	McMapStore::Find(Id)->Colors[5] = 123;
+	McMapStore::Lock(Id);
+	TestTrue(TEXT("the maps are written"), McWorldSave::SaveMaps(Folder.Path));
+	McMapStore::Reset();
+	TestEqual(TEXT("the store is empty"), McMapStore::Num(), 0);
+	TestTrue(TEXT("and read back"), McWorldSave::LoadMaps(Folder.Path));
+	const FMcMapData* Map = McMapStore::Find(Id);
+	TestNotNull(TEXT("with the same id"), Map);
+	if (Map)
+	{
+		TestEqual(TEXT("scale"), Map->Scale, 1);
+		TestEqual(TEXT("a colour"), static_cast<int32>(Map->Colors[5]), 123);
+		TestTrue(TEXT("locked"), Map->bLocked);
+	}
+	// A world with no maps file starts with none.
+	FTempFolder Other;
+	TestFalse(TEXT("no file"), McWorldSave::LoadMaps(Other.Path));
+	TestEqual(TEXT("an empty store"), McMapStore::Num(), 0);
 	return true;
 }
 
@@ -365,7 +396,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcEntitySaveTest, "McClient.McServer.SaveEntit
 
 bool FMcEntitySaveTest::RunTest(const FString& Parameters)
 {
-	if (!TestTrue(TEXT("registries load"), LoadRegistries()))
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
 	{
 		return false;
 	}
@@ -421,6 +452,42 @@ bool FMcEntitySaveTest::RunTest(const FString& Parameters)
 	FMcItemEntity& Lost = Host.GetManager().DropItem(FVector(500.5, 70.0, 500.5), FMcItemStack(TEXT("minecraft:stick"), 1));
 	TestEqual(TEXT("one stray"), Host.RemoveStrays(), 1);
 	TestTrue(TEXT("and it's the one outside"), Lost.bRemoved);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPrimedTntSaveTest, "McClient.McServer.SavePrimedTnt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPrimedTntSaveTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), LoadSaveRegistries()))
+	{
+		return false;
+	}
+	FMcBlockWorld World{FMcDimensionType()};
+	World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+	FMcEntityHost Host(World, 1);
+	// A TNT with 37 ticks of fuse left, a little way off the ground and moving, as a world saved mid-fuse holds it.
+	FMcPrimedTnt* Lit = new FMcPrimedTnt();
+	Lit->Fuse = 37;
+	Lit->Body.Position = FVector(4.5, 70.5, 9.5);
+	Lit->Body.Velocity = FVector(0.01, 0.1, -0.02);
+	Host.GetManager().Add(TUniquePtr<FMcEntity>(Lit));
+	const TArray<uint8> Bytes = Host.CaptureChunk(FIntPoint(0, 0));
+	TestFalse(TEXT("a lit TNT is saved"), Bytes.IsEmpty());
+
+	FMcEntityHost Fresh(World, 1);
+	TestEqual(TEXT("it comes back"), Fresh.RestoreChunk(Bytes), 1);
+	bool bSame = false;
+	for (const TUniquePtr<FMcEntity>& Entity : Fresh.GetManager().GetEntities())
+	{
+		if (Entity->GetType() == FMcPrimedTnt::StaticType())
+		{
+			const FMcPrimedTnt& Back = static_cast<const FMcPrimedTnt&>(*Entity);
+			bSame = Back.Fuse == 37 && Back.Body.Position.Equals(Lit->Body.Position) && Back.Body.Velocity.Equals(Lit->Body.Velocity);
+		}
+	}
+	TestTrue(TEXT("with the same fuse, place and motion"), bSame);
 	return true;
 }
 

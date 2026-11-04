@@ -1,0 +1,17 @@
+#vt 1
+44|1,-60,0|tripwire[attached=false,disarmed=false,east=true,north=false,powered=true,south=false,west=true]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]
+44|1,-60,3|tripwire[attached=false,disarmed=false,east=true,north=false,powered=true,south=false,west=true]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]
+4|1,-60,0|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=true,south=false,west=true]
+4|1,-60,3|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=true,south=false,west=true]
+63|1,-60,6|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=true]
+63|2,-60,6|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|-
+63|3,-60,6|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=false]
+83|0,-60,9|tripwire_hook[attached=false,facing=east,powered=false]|tripwire_hook[attached=true,facing=east,powered=true]
+83|1,-60,9|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=true]
+83|2,-60,9|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|-
+83|3,-60,9|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=true]|tripwire[attached=true,disarmed=false,east=true,north=false,powered=false,south=false,west=false]
+83|4,-60,9|tripwire_hook[attached=false,facing=west,powered=false]|tripwire_hook[attached=true,facing=west,powered=true]
+92|0,-60,9|tripwire_hook[attached=true,facing=east,powered=true]|tripwire_hook[attached=false,facing=east,powered=false]
+92|1,-60,9|tripwire[attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=true]|tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=true]
+92|3,-60,9|tripwire[attached=true,disarmed=false,east=true,north=false,powered=false,south=false,west=false]|tripwire[attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=false]
+92|4,-60,9|tripwire_hook[attached=true,facing=west,powered=true]|tripwire_hook[attached=false,facing=west,powered=false]

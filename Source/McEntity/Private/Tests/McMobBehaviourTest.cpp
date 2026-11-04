@@ -4,6 +4,8 @@
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McMob.h"
 #include "McThrown.h"
 #include "Misc/AutomationTest.h"
@@ -12,7 +14,7 @@
 
 namespace
 {
-	void FillBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
+	void FillMobBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
 	{
 		for (int32 X = X0; X <= X1; ++X)
 		{
@@ -36,7 +38,7 @@ namespace
 				World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 			}
 		}
-		FillBox(World, -16, 0, -16, 31, 0, 31, Stone);
+		FillMobBox(World, -16, 0, -16, 31, 0, 31, Stone);
 	}
 
 	FMcMob* AddMob(FMcEntityManager& Manager, const TCHAR* Kind, const FVector& Pos)
@@ -66,7 +68,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		// A zombie walks round a wall to bite a player behind it: a straight line would leave it standing at the stone.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
-		FillBox(World, 3, 1, -5, 3, 2, 5, Stone);
+		FillMobBox(World, 3, 1, -5, 3, 2, 5, Stone);
 		FMcEntityManager Manager(World);
 		Manager.bDaylight = false;
 		Manager.PlayerPositions = { FVector(7.5, 1.0, 0.5) };
@@ -200,7 +202,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("at night it bites without being hurt"), NightBites > 0);
 
 		// A wall four high between it and the player: it goes up and over.
-		FillBox(World, 14, 1, -16, 14, 4, 31, Stone);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Stone);
 		FMcEntityManager Climb(World);
 		Climb.bDaylight = false;
 		Climb.PlayerPositions = { FVector(18.5, 1.0, 8.5) };
@@ -215,7 +217,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("the spider climbs the wall"), Highest > 4.5);
 		TestTrue(TEXT("and bites the player on the other side"), bBit);
-		FillBox(World, 14, 1, -16, 14, 4, 31, Air);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Air);
 	}
 	{
 		// Skeleton: stops at a distance and shoots; the arrow flies in an arc and hurts the player.
@@ -242,7 +244,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("while it keeps its distance (10 blocks)"), FMath::Abs(Skeleton->Body.Position.Z - Player.Z) >= 7.0);
 
 		// An arrow into a wall sticks there and is gone after a minute.
-		FillBox(World, 8, 1, 10, 9, 3, 10, Stone);
+		FillMobBox(World, 8, 1, 10, 9, 3, 10, Stone);
 		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
 		Arrow->Body.Position = FVector(8.5, 2.0, 5.5);
 		Arrow->Body.Velocity = FVector(0.0, 0.0, 1.0);
@@ -305,7 +307,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("one in thirty-two of those make four"), FMcThrownEntity::GetChickCount(0.1f, 0.01f), 4);
 		TestEqual(TEXT("and over an eighth makes none"), FMcThrownEntity::GetChickCount(0.2f, 0.01f), 0);
 
-		FillBox(World, 8, 1, 14, 9, 3, 14, Stone);
+		FillMobBox(World, 8, 1, 14, 9, 3, 14, Stone);
 		TUniquePtr<FMcThrownEntity> Pearl = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderPearl);
 		Pearl->Body.Position = FVector(8.5, 3.5, 5.8);
 		Pearl->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
@@ -389,7 +391,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("open sky by day is 15"), Manager.EstimateSkyLight(Open), 15);
 		TestFalse(TEXT("too bright to spawn"), Manager.IsDarkEnoughToSpawn(Open));
 		// Under a roof 21 across, by day: dark.
-		FillBox(World, 0, 3, 0, 20, 3, 20, Stone);
+		FillMobBox(World, 0, 3, 0, 20, 3, 20, Stone);
 		TestEqual(TEXT("under a wide roof the sky is out"), Manager.EstimateSkyLight(FIntVector(10, 1, 10)), 0);
 		TestTrue(TEXT("so mobs spawn there by day"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
 		TestTrue(TEXT("though near the edge, light creeps in"), Manager.EstimateSkyLight(FIntVector(1, 1, 10)) >= 8);
@@ -399,6 +401,177 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("five blocks: 9"), Manager.EstimateBlockLight(FIntVector(10, 1, 6)), 9);
 		TestEqual(TEXT("fifteen blocks: dark"), Manager.EstimateBlockLight(FIntVector(10, 1, -4)), 0);
 		TestFalse(TEXT("no spawning beside it, roof or not"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
+	}
+	{
+		// In a pool (logged in the reference, drownswim.txt): a drowned swims at its target at about 0.0485 blocks a tick and a zombie
+		// only sinks.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		const FMcStateId Water = State(TEXT("minecraft:water"));
+		FillMobBox(World, 0, 1, -4, 30, 12, 4, Water);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		Manager.PlayerPositions = { FVector(0.5, 5.0, 0.5) };
+		FMcMob* Drowned = AddMob(Manager, TEXT("minecraft:drowned"), FVector(20.5, 5.0, 0.5));
+		FMcMob* Zombie = AddMob(Manager, TEXT("minecraft:zombie"), FVector(20.5, 9.0, 3.5));
+		for (int32 Tick = 0; Tick < 100; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the drowned has swum 3 to 6 blocks toward the player"), Drowned->Body.Position.X < 20.5 - 3.0 && Drowned->Body.Position.X > 20.5 - 6.0);
+		TestTrue(TEXT("the zombie has sunk, not risen"), Zombie->Body.Position.Y < 8.0);
+	}
+	{
+		// Bartering (barter1.txt, 50 runs): a piglin takes a gold ingot dropped by it and throws one item about 120 ticks later.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		FMcMob* Piglin = AddMob(Manager, TEXT("minecraft:piglin"), FVector(10.5, 1.0, 10.5));
+		Manager.DropItem(FVector(10.5, 1.0, 14.5), FMcItemStack(TEXT("minecraft:gold_ingot"), 1), 0);
+		int32 Items = 0;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		for (const TUniquePtr<FMcEntity>& Each : Manager.GetEntities())
+		{
+			if (Each->GetType() == FMcItemEntity::StaticType() && static_cast<FMcItemEntity*>(Each.Get())->Stack.Item != TEXT("minecraft:gold_ingot"))
+			{
+				++Items;
+			}
+		}
+		TestEqual(TEXT("one item thrown for the ingot"), Items, 1);
+		TestEqual(TEXT("and the piglin is ready again"), Piglin->BarterTicks, 0);
+	}
+	{
+		// A blaze in sight of a player shoots three small fireballs 6 ticks apart then rests until 178 ticks after the first (nether1.txt),
+		// and a fireball's speed climbs 0.1, 0.19, 0.2755 (v = 0.95 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:blaze"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SmallType())
+				{
+					FireTicks.Add(Tick);
+				}
+			}
+		}
+		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
+	}
+	{
+		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		float Hurt = 0.0f;
+		Manager.OnPlayerHurt = [&Hurt](const FVector&, float Damage) { Hurt += Damage; };
+		AddMob(Manager, TEXT("minecraft:shulker"), FVector(10.5, 1.0, 10.5));
+		int32 Bullets = 0;
+		for (int32 Tick = 0; Tick < 300; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				Bullets += Manager.GetEntities()[Index]->GetType() == FMcShulkerBullet::StaticType() ? 1 : 0;
+			}
+		}
+		TestTrue(TEXT("a shulker fires at least 2 bullets in 300 ticks"), Bullets >= 2);
+		TestTrue(TEXT("and one reaches the player"), Hurt >= FMcShulkerBullet::Damage);
+		TestTrue(TEXT("bullet speed climbs"), FMcShulkerBullet::SpeedAt(10) > FMcShulkerBullet::SpeedAt(2));
+	}
+	{
+		// A guardian with a player in sight hurts them for 6 once every 89 ticks (guard1.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 14.5) };
+		TArray<int32> Hits;
+		int32 Now = 0;
+		Manager.OnPlayerHurt = [this, &Hits, &Now](const FVector&, float Damage) { Hits.Add(Now); TestEqual(TEXT("a beam hits for 6"), Damage, 6.0f); };
+		AddMob(Manager, TEXT("minecraft:guardian"), FVector(10.5, 1.0, 10.5));
+		for (; Now < 300; ++Now)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
+	}
+	for (const bool bLooking : { true, false })
+	{
+		// An enderman stares back only when the player's look falls on its eyes (ender2.txt: stared at it teleported at once, looked away from it stood).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+		const FVector Eye(10.5, 2.62, 20.5);
+		Manager.PlayerLooks = { bLooking ? (FVector(10.5, 1.0 + 2.9 * 0.88, 10.5) - Eye).GetSafeNormal() : FVector(0.0, 0.0, 1.0) };
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			Manager.Tick();
+		}
+		const bool bMoved = FVector::Dist(Enderman->Body.Position, FVector(10.5, 1.0, 10.5)) > 1.0;
+		TestEqual(bLooking ? TEXT("an enderman stared at comes for the player") : TEXT("an enderman not looked at stays"), bMoved, bLooking);
+	}
+	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
+	{
+		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Mob = AddMob(Manager, Kind, FVector(10.5, 1.0, 10.5));
+		const int32 Id = Mob->Id;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		bool bFound = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bFound |= Entity->Id == Id;
+		}
+		TestTrue(FString::Printf(TEXT("%s is still there after 200 ticks"), Kind), bFound);
+	}
+	{
+		// A phantom circles above a player and dives at it: over 900 ticks it passes within 3 blocks at least twice and climbs above 6.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		const FVector Player(10.5, 1.0, 10.5);
+		Manager.PlayerPositions = { Player };
+		FMcMob* Phantom = AddMob(Manager, TEXT("minecraft:phantom"), FVector(10.5, 9.0, 0.5));
+		int32 Passes = 0;
+		bool bNear = false;
+		double Highest = 0.0;
+		for (int32 Tick = 0; Tick < 900; ++Tick)
+		{
+			Manager.Tick();
+			const double Distance = FVector::Dist(Phantom->Body.Position, Player + FVector(0, 0.9, 0));
+			Highest = FMath::Max(Highest, Phantom->Body.Position.Y - Player.Y);
+			if (Distance < 3.0 && !bNear)
+			{
+				++Passes;
+			}
+			bNear = Distance < 3.0;
+		}
+		TestTrue(FString::Printf(TEXT("a phantom dives at least twice in 900 ticks (%d) and climbs (%.1f)"), Passes, Highest), Passes >= 2 && Highest > 6.0);
 	}
 	return true;
 }

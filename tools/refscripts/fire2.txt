@@ -1,0 +1,1039 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd gamerule fire_spread_radius_around_player 128
+cmd tp @s 62 -50 6
+wait 60
+cmd tick freeze
+cmd weather clear 1000000
+cmd fill -2 -61 -2 128 -50 16 air
+cmd fill -2 -62 -2 128 -61 16 stone
+wait 60
+cmd setblock 0 -61 0 netherrack
+cmd setblock 0 -60 0 fire
+cmd setblock 0 -61 4 netherrack
+cmd setblock 0 -60 4 fire
+cmd setblock 4 -61 0 netherrack
+cmd setblock 4 -60 0 fire
+cmd setblock 4 -61 4 netherrack
+cmd setblock 4 -60 4 fire
+cmd setblock 8 -61 0 netherrack
+cmd setblock 8 -60 0 fire
+cmd setblock 8 -61 4 netherrack
+cmd setblock 8 -60 4 fire
+cmd setblock 12 -61 0 netherrack
+cmd setblock 12 -60 0 fire
+cmd setblock 12 -61 4 netherrack
+cmd setblock 12 -60 4 fire
+cmd setblock 16 -61 0 netherrack
+cmd setblock 16 -60 0 fire
+cmd setblock 16 -61 4 netherrack
+cmd setblock 16 -60 4 fire
+cmd setblock 20 -61 0 netherrack
+cmd setblock 20 -60 0 fire
+cmd setblock 20 -61 4 netherrack
+cmd setblock 20 -60 4 fire
+cmd setblock 24 -61 0 netherrack
+cmd setblock 24 -60 0 fire
+cmd setblock 24 -61 4 netherrack
+cmd setblock 24 -60 4 fire
+cmd setblock 28 -61 0 netherrack
+cmd setblock 28 -60 0 fire
+cmd setblock 28 -61 4 netherrack
+cmd setblock 28 -60 4 fire
+cmd setblock 32 -61 0 netherrack
+cmd setblock 32 -60 0 fire
+cmd setblock 32 -61 4 netherrack
+cmd setblock 32 -60 4 fire
+cmd setblock 36 -61 0 netherrack
+cmd setblock 36 -60 0 fire
+cmd setblock 36 -61 4 netherrack
+cmd setblock 36 -60 4 fire
+cmd setblock 40 -61 0 netherrack
+cmd setblock 40 -60 0 fire
+cmd setblock 40 -61 4 netherrack
+cmd setblock 40 -60 4 fire
+cmd setblock 44 -61 0 netherrack
+cmd setblock 44 -60 0 fire
+cmd setblock 44 -61 4 netherrack
+cmd setblock 44 -60 4 fire
+cmd setblock 48 -61 0 netherrack
+cmd setblock 48 -60 0 fire
+cmd setblock 48 -61 4 netherrack
+cmd setblock 48 -60 4 fire
+cmd setblock 52 -61 0 netherrack
+cmd setblock 52 -60 0 fire
+cmd setblock 52 -61 4 netherrack
+cmd setblock 52 -60 4 fire
+cmd setblock 56 -61 0 netherrack
+cmd setblock 56 -60 0 fire
+cmd setblock 56 -61 4 netherrack
+cmd setblock 56 -60 4 fire
+cmd setblock 60 -61 0 netherrack
+cmd setblock 60 -60 0 fire
+cmd setblock 60 -61 4 netherrack
+cmd setblock 60 -60 4 fire
+cmd setblock 64 -61 0 netherrack
+cmd setblock 64 -60 0 fire
+cmd setblock 64 -61 4 netherrack
+cmd setblock 64 -60 4 fire
+cmd setblock 68 -61 0 netherrack
+cmd setblock 68 -60 0 fire
+cmd setblock 68 -61 4 netherrack
+cmd setblock 68 -60 4 fire
+cmd setblock 72 -61 0 netherrack
+cmd setblock 72 -60 0 fire
+cmd setblock 72 -61 4 netherrack
+cmd setblock 72 -60 4 fire
+cmd setblock 76 -61 0 netherrack
+cmd setblock 76 -60 0 fire
+cmd setblock 76 -61 4 netherrack
+cmd setblock 76 -60 4 fire
+cmd setblock 80 -61 0 netherrack
+cmd setblock 80 -60 0 fire
+cmd setblock 80 -61 4 netherrack
+cmd setblock 80 -60 4 fire
+cmd setblock 84 -61 0 netherrack
+cmd setblock 84 -60 0 fire
+cmd setblock 84 -61 4 netherrack
+cmd setblock 84 -60 4 fire
+cmd setblock 88 -61 0 netherrack
+cmd setblock 88 -60 0 fire
+cmd setblock 88 -61 4 netherrack
+cmd setblock 88 -60 4 fire
+cmd setblock 92 -61 0 netherrack
+cmd setblock 92 -60 0 fire
+cmd setblock 92 -61 4 netherrack
+cmd setblock 92 -60 4 fire
+cmd setblock 96 -61 0 netherrack
+cmd setblock 96 -60 0 fire
+cmd setblock 96 -61 4 netherrack
+cmd setblock 96 -60 4 fire
+cmd setblock 100 -61 0 netherrack
+cmd setblock 100 -60 0 fire
+cmd setblock 100 -61 4 netherrack
+cmd setblock 100 -60 4 fire
+cmd setblock 104 -61 0 netherrack
+cmd setblock 104 -60 0 fire
+cmd setblock 104 -61 4 netherrack
+cmd setblock 104 -60 4 fire
+cmd setblock 108 -61 0 netherrack
+cmd setblock 108 -60 0 fire
+cmd setblock 108 -61 4 netherrack
+cmd setblock 108 -60 4 fire
+cmd setblock 112 -61 0 netherrack
+cmd setblock 112 -60 0 fire
+cmd setblock 112 -61 4 netherrack
+cmd setblock 112 -60 4 fire
+cmd setblock 116 -61 0 netherrack
+cmd setblock 116 -60 0 fire
+cmd setblock 116 -61 4 netherrack
+cmd setblock 116 -60 4 fire
+cmd setblock 120 -61 0 netherrack
+cmd setblock 120 -60 0 fire
+cmd setblock 120 -61 4 netherrack
+cmd setblock 120 -60 4 fire
+cmd setblock 124 -61 0 netherrack
+cmd setblock 124 -60 0 fire
+cmd setblock 124 -61 4 netherrack
+cmd setblock 124 -60 4 fire
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick step 1
+wait 2
+log box 0 -60 0 128 -60 4
+cmd tick unfreeze

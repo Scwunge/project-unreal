@@ -112,6 +112,9 @@ void FMcNature::NextThunder()
 
 void FMcNature::Tick()
 {
+	// Rain and thunder come on and go off over 100 ticks, 0.01 a tick (the reference client's detector series, rs_daylight_weather, agrees within one 20-tick step except the thunder onset and recovery, cause not found; its expect file is held back in tools/refscripts/expect_pending_*).
+	RainLevel = FMath::Clamp(RainLevel + (bRaining ? 0.01f : -0.01f), 0.0f, 1.0f);
+	ThunderLevel = FMath::Clamp(ThunderLevel + (bThundering ? 0.01f : -0.01f), 0.0f, 1.0f);
 	if (!bWeatherCycle)
 	{
 		return;
@@ -152,26 +155,26 @@ void FMcNature::SetWeather(EMcWeather Weather, int32 Duration)
 
 int32 FMcNature::GetSunLight() const
 {
-	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.2);
+	// 0.53 is a fit: the reference client's inverted detector over 25 readings at 7 times of day (rs_world) is right for any value from 0.516 to 0.555, and the wiki's daylight detector table stays within a tick of it (0.505 was 1 off at tick 13535).
+	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.53);
 	Level = 1.0 - FMath::Clamp(Level, 0.0, 1.0);
-	if (bRaining)
-	{
-		Level *= 1.0 - 5.0 / 16.0;
-		if (bThundering)
-		{
-			Level *= 1.0 - 5.0 / 16.0;
-		}
-	}
+	Level *= 1.0 - RainLevel * 5.0 / 16.0;
+	Level *= 1.0 - ThunderLevel * RainLevel * 5.0 / 16.0;
 	return 15 - static_cast<int32>((1.0 - Level) * 11.0);
+}
+
+double FMcNature::GetDetectorScale() const
+{
+	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
+	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
+	Angle += (Target - Angle) * 0.2;
+	return FMath::Cos(Angle);
 }
 
 int32 FMcNature::GetDetectorLevel() const
 {
 	// The sky's light, scaled by how high the sun is: noon reads full, dusk and night nothing.
-	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
-	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
-	Angle += (Target - Angle) * 0.2;
-	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * FMath::Cos(Angle)), 0, 15);
+	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * GetDetectorScale()), 0, 15);
 }
 
 // ---- Biomes and light ----
@@ -278,8 +281,9 @@ bool FMcNature::RandomTick(const FIntVector& Pos, FMcStateId State)
 	const FString Name = NameOf(State);
 	if (Name == TEXT("minecraft:ice"))
 	{
-		// Light bright enough thaws it, into water that can flow again.
-		if (BlockLightAt(Pos) > 11)
+		// Light bright enough thaws it, into water that can flow again: ice dims light by 1, so it goes at 11, a snow layer at
+		// 12 (reference run icemelt: a light block of level 12 beside melted the ice and not the snow, 13 melted both).
+		if (BlockLightAt(Pos) > 10)
 		{
 			World.SetBlock(Pos, StateOf(TEXT("minecraft:water")));
 		}
@@ -596,9 +600,21 @@ bool FMcNature::Bonemeal(const FIntVector& Pos)
 		{
 			return false;
 		}
-		// Beetroot grows a stage at a time; the others two to five.
-		const int32 Gain = Name == TEXT("minecraft:beetroots") ? 1 : Random.RandRange(2, 5);
+		// The others gain two to five stages, uniformly (reference run bonemeal: wheat, carrots, potatoes and both stems). Beetroot gains one
+		// stage on about two meals in three (26 of 40 grew, none by more; the exact chance is not pinned down).
+		const int32 Gain = Name == TEXT("minecraft:beetroots") ? (Random.FRand() < 0.65f ? 1 : 0) : Random.RandRange(2, 5);
 		World.SetBlock(Pos, WithNumber(State, TEXT("age"), FMath::Min(Age + Gain, Max)));
+		return true;
+	}
+	if (Name == TEXT("minecraft:sweet_berry_bush"))
+	{
+		// One stage a meal (reference run bonemeal: 40 of 40 went from age 0 to 1; the cap at 3 is the block's own).
+		const int32 Age = NumberProperty(State, TEXT("age"));
+		if (Age < 0 || Age >= 3)
+		{
+			return false;
+		}
+		World.SetBlock(Pos, WithNumber(State, TEXT("age"), Age + 1));
 		return true;
 	}
 	if (Name == TEXT("minecraft:grass_block"))

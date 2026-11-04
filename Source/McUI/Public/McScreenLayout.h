@@ -13,7 +13,7 @@
 
 namespace McGui
 {
-	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Anvil, BrewingStand, Hopper, Dispenser, Loom };
+	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Cartography, Anvil, BrewingStand, Hopper, Dispenser, Loom, Trading, Horse };
 
 	using FPlayerMenuSlots = ::FMcPlayerMenuSlots;
 
@@ -51,10 +51,40 @@ namespace McGui
 	MCUI_API FScreenLayout MakeLoomLayout();
 	MCUI_API FScreenLayout MakeSmithingLayout();
 	MCUI_API FScreenLayout MakeGrindstoneLayout();
+	MCUI_API FScreenLayout MakeCartographyLayout();
 	MCUI_API FScreenLayout MakeAnvilLayout();
 	MCUI_API FScreenLayout MakeBrewingStandLayout();
 	MCUI_API FScreenLayout MakeHopperLayout();
 	MCUI_API FScreenLayout MakeDispenserLayout();
+	// A tamed horse, donkey or mule: Slots is the container's (the saddle, the armour, the chest) then the player's. The armour slot is shown for
+	// a horse only, the chest's 5 x 3 slots when there are 17 container slots.
+	MCUI_API FScreenLayout MakeHorseLayout(int32 ContainerSlots, bool bArmor);
+	// A trader's window: 276 wide, the offers in a list on the left and the player's slots on the right.
+	MCUI_API FScreenLayout MakeTradingLayout();
+
+	namespace Trading
+	{
+		// The offers, one to a row (88 x 20), seven showing, and the scroll bar's track beside them.
+		constexpr int32 Rows = 7;
+		constexpr int32 ListX = 5;
+		constexpr int32 ListY = 18;
+		constexpr int32 RowWidth = 88;
+		constexpr int32 RowHeight = 20;
+		constexpr int32 ScrollX = 94;
+		constexpr int32 ScrollY = 18;
+		constexpr int32 ScrollHeight = 140;
+		// The experience bar over the right part.
+		constexpr int32 BarX = 136;
+		constexpr int32 BarY = 16;
+		constexpr int32 BarWidth = 102;
+
+		// The offer (an index into the menu list) under a point from the screen top left, with the list scrolled down
+		// Scroll rows; -1 if none (Count offers in all).
+		MCUI_API int32 FindRow(FIntPoint Local, int32 Scroll, int32 Count);
+		MCUI_API int32 MaxScroll(int32 Count);
+		// How full the experience bar is, 0 to 1, for a villager of Level with Xp (a master has it full).
+		MCUI_API float GetBarFill(int32 Level, int32 Xp);
+	}
 
 	namespace Stonecutter
 	{

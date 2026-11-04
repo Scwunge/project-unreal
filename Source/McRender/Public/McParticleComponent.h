@@ -20,6 +20,8 @@
 #include "McParticleComponent.generated.h"
 
 class FMcBlockWorld;
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UMcWorldRenderComponent;
 
 UCLASS(ClassGroup = (Mc))
@@ -42,6 +44,13 @@ public:
 	void BlockBroken(const FIntVector& Pos, FMcStateId State);
 	// The block at Pos is being dug on its Face side (a unit step out of it).
 	void BlockHit(const FIntVector& Pos, const FIntVector& Face);
+	// A fish bit at a bobber floating at Pos: a splash of drops and bubbles on the water.
+	void FishingSplash(const FVector& Pos);
+	// The wake of a fish swimming under the surface at Pos (each tick it is on its way to a bobber).
+	void FishingWake(const FVector& Pos);
+	// One tick of a Totem of Undying going off round a body Height tall with its feet at Feet: green and yellow sparks
+	// thrown out every way, slowing and drifting down as they fade.
+	void TotemBurst(const FVector& Feet, float Height);
 
 	// Food being eaten: a few bits of its picture fly from the mouth at Eye (blocks) looking along Forward. Colours are the opaque pixels
 	// of the food's sprite; each bit takes one at random.
@@ -72,6 +81,11 @@ private:
 		Spark,     // a tiny glowing fleck off lava (Unreal Mode)
 		Leaf,
 		Crumb,     // a bit of eaten food: one colour, falls and lands
+		Note,      // a music note rising off a note block or jukebox, in the colour of its note
+		Splash,  // a drop thrown up off water, falling back
+		Bubble,  // the game's bubble.png, drawn a texel at a time: a bubble column's, and one rising a little and bursting
+		Wake,    // a fleck of foam over a swimming fish
+		Totem,   // a spark off a Totem of Undying
 	};
 
 	struct FParticle
@@ -100,6 +114,8 @@ private:
 	void Ambient();
 	void AmbientAt(const FIntVector& Pos);
 	void Draw(float Partial);
+	// A music note rises at Pos (the bus's OnNote); Note is 0 to 24.
+	void OnNote(const FVector& Pos, int32 Note);
 
 	// The texture layer and tint bits of State are drawn with.
 	bool GetTexture(FMcStateId State, uint16& Layer, FColor& Tint) const;
@@ -107,7 +123,7 @@ private:
 	float SkyLightAt(const FIntVector& Pos) const;
 
 	// What each state does when picked near the player.
-	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater };
+	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown };
 	void BuildEmitters();
 	TArray<EEmitter> Emitters;  // by state id
 	TArray<FIntVector> Facing;  // by state id: a wall torch's or furnace's facing
@@ -119,4 +135,17 @@ private:
 	double TickTime = 0.0;  // ticks run, and the part of one since
 	FVector CameraBlock = FVector::ZeroVector;
 	uint32 MaterialGeneration = 0;
+	FDelegateHandle NoteHandle;
+
+	// The totem's sparks are drawn from their own sprites (particles/totem_of_undying.json: glitter_7 down to
+	// glitter_0 over a spark's life), the eight frames side by side in one picture, on a second section.
+	static constexpr int32 GlitterFrames = 8;
+	UMaterialInstanceDynamic* EnsureGlitter();
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> GlitterMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2DArray> Glitter;
+	bool bGlitterFailed = false;
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SpriteBase;
 };

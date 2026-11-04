@@ -386,7 +386,11 @@ bool FMcSurfaceRules::Test(int32 Index, FMcSurfacePoint& Point) const
 		return Point.Y + (Condition.bAddStoneDepth ? Point.StoneDepthAbove : 0) >= Condition.AnchorA + Point.SurfaceDepth * Condition.SurfaceDepthMultiplier;
 	case ECondition::Water:
 		return Point.WaterHeight == MIN_int32
-			|| Point.Y + Condition.Offset + Point.SurfaceDepth * Condition.SurfaceDepthMultiplier + (Condition.bAddStoneDepth ? Point.StoneDepthAbove : 0) >= Point.WaterHeight;
+			// The offset and surface depth move the water line, not the block: not_underwater (offset -1) holds for a
+			// floor with one block of water over it, and not_under_deep_water (offset -6, depth x -1) for floors up
+			// to six blocks plus the surface depth below the water. Measured: shallow ocean floors are dirt, sand
+			// and gravel (disks), deep ones gravel.
+			|| Point.Y + (Condition.bAddStoneDepth ? Point.StoneDepthAbove : 0) >= Point.WaterHeight + Condition.Offset + Point.SurfaceDepth * Condition.SurfaceDepthMultiplier;
 	case ECondition::StoneDepth:
 	{
 		const int32 Depth = Condition.bCeiling ? Point.StoneDepthBelow : Point.StoneDepthAbove;

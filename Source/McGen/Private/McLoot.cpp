@@ -3,6 +3,7 @@
 #include "Dom/JsonValue.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McGen.h"
 #include "McItemRegistry.h"
 #include "McNbt.h"
@@ -18,6 +19,10 @@ namespace
 
 	// The block being rolled for, if a block's table is (set for the length of RollBlock on its thread).
 	thread_local const McLoot::FBlockContext* GBlock = nullptr;
+	// The catch being rolled for, likewise for RollFishing.
+	thread_local const McLoot::FFishingContext* GFishing = nullptr;
+	// Whether the mob whose table is being rolled leads a raid party: 1 or 0, -1 when the roll is for no mob.
+	thread_local int32 GCaptain = -1;
 
 	TSharedPtr<FJsonObject> FindTable(const FString& Id)
 	{
@@ -28,10 +33,18 @@ namespace
 			return *Found;
 		}
 		TSharedPtr<FJsonObject> Table;
-		const FString Path = McCache::Data(TEXT("loot_table/") + McCache::PathOf(Key) + TEXT(".json"));
-		if (IFileManager::Get().FileExists(*Path))
+		// A data pack's table of the id (any namespace) wins over the game's.
+		const FString Path = McData::PathOf(Key, TEXT("loot_table"), TEXT(".json"));
+		if (!Path.IsEmpty())
 		{
 			Table = McCache::LoadJsonObject(Path);
+		}
+		static bool bHooked = false;
+		if (!bHooked)
+		{
+			// /reload drops what was read.
+			bHooked = true;
+			McData::OnReload().AddLambda([]() { FScopeLock Lock(&TablesLock); Tables.Empty(); });
 		}
 		if (!Table.IsValid())
 		{
@@ -198,6 +211,52 @@ namespace
 				}
 			}
 			return 1;
+		}
+		if (GFishing && Type == TEXT("entity_properties"))
+		{
+			// The bobber's own properties: only whether it is in open water is asked.
+			const TSharedPtr<FJsonObject>* Predicate;
+			const TSharedPtr<FJsonObject>* Hook;
+			bool bWantOpen = true;
+			if (Object->TryGetObjectField(TEXT("predicate"), Predicate) && (*Predicate)->TryGetObjectField(TEXT("minecraft:type_specific/fishing_hook"), Hook)
+				&& (*Hook)->TryGetBoolField(TEXT("in_open_water"), bWantOpen))
+			{
+				return GFishing->bOpenWater == bWantOpen ? 1 : 0;
+			}
+			return -1;
+		}
+		if (GFishing && Type == TEXT("location_check"))
+		{
+			const TSharedPtr<FJsonObject>* Predicate;
+			const TArray<TSharedPtr<FJsonValue>>* Biomes;
+			if (GFishing->Biome.IsNone() || !Object->TryGetObjectField(TEXT("predicate"), Predicate) || !(*Predicate)->TryGetArrayField(TEXT("biomes"), Biomes))
+			{
+				return -1;
+			}
+			for (const TSharedPtr<FJsonValue>& Biome : *Biomes)
+			{
+				if (Biome->AsString().StartsWith(TEXT("#")))
+				{
+					return -1;
+				}
+				if (FName(*McCache::Namespaced(Biome->AsString())) == GFishing->Biome)
+				{
+					return 1;
+				}
+			}
+			return 0;
+		}
+		if (GCaptain >= 0 && Type == TEXT("entity_properties"))
+		{
+			// Only the raider's captain flag is known; any other predicate can't be told here.
+			const TSharedPtr<FJsonObject>* Predicate;
+			const TSharedPtr<FJsonObject>* Raider;
+			bool bWanted = false;
+			if (Object->TryGetObjectField(TEXT("predicate"), Predicate) && (*Predicate)->TryGetObjectField(TEXT("minecraft:type_specific/raider"), Raider) && (*Raider)->TryGetBoolField(TEXT("is_captain"), bWanted))
+			{
+				return (GCaptain != 0) == bWanted ? 1 : 0;
+			}
+			return -1;
 		}
 		if (Type == TEXT("inverted"))
 		{
@@ -813,6 +872,13 @@ namespace
 					}
 					double Weight = 1.0;
 					Entry->TryGetNumberField(TEXT("weight"), Weight);
+					if (GFishing)
+					{
+						// Luck moves an entry's weight by its quality for each point.
+						double Quality = 0.0;
+						Entry->TryGetNumberField(TEXT("quality"), Quality);
+						Weight = FMath::FloorToDouble(Weight + Quality * GFishing->Luck);
+					}
 					Open.Add(Entry.Get());
 					Weights.Add(FMath::Max(0, static_cast<int32>(Weight)));
 					Total += Weights.Last();
@@ -844,6 +910,11 @@ namespace
 	}
 }
 
+void McLoot::ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack)
+{
+	Modify(Modifier, Random, Stack);
+}
+
 bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>& Out)
 {
 	const TSharedPtr<FJsonObject> Json = FindTable(Table);
@@ -865,6 +936,15 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 	return true;
 }
 
+bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out)
+{
+	const int32 Previous = GCaptain;
+	GCaptain = bCaptain ? 1 : 0;
+	const bool bRolled = Roll(Table, Random, Out);
+	GCaptain = Previous;
+	return bRolled;
+}
+
 bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out)
 {
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
@@ -873,7 +953,7 @@ bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<F
 		return false;
 	}
 	const FString Table = TEXT("blocks/") + McCache::PathOf(Registry.GetBlockOf(Context.State).Name.ToString());
-	if (!IFileManager::Get().FileExists(*McCache::Data(TEXT("loot_table/") + Table + TEXT(".json"))))
+	if (McData::PathOf(Table, TEXT("loot_table"), TEXT(".json")).IsEmpty())
 	{
 		// Air, bedrock and the like drop nothing; no warning for that.
 		return false;
@@ -882,6 +962,15 @@ bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<F
 	GBlock = &Context;
 	const bool bRolled = Roll(Table, Random, Out);
 	GBlock = Previous;
+	return bRolled;
+}
+
+bool McLoot::RollFishing(const FFishingContext& Context, FMcRandom& Random, TArray<FMcItemStack>& Out)
+{
+	const FFishingContext* const Previous = GFishing;
+	GFishing = &Context;
+	const bool bRolled = Roll(TEXT("minecraft:gameplay/fishing"), Random, Out);
+	GFishing = Previous;
 	return bRolled;
 }
 

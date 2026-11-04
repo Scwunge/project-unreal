@@ -1,0 +1,9 @@
+{
+  "description": "Light calibration: flat strips of grass, stone and white wool seen straight down, to split the grass-top gap into texture, tint, light and exposure. Camera y is the eye.",
+  "camera": [207.5, -45.0, 0.0, 0.0, 90.0],
+  "blocks": [
+    { "from": [188, -61, -14], "to": [200, -61, 14], "state": "minecraft:grass_block[snowy=false]" },
+    { "from": [201, -61, -14], "to": [213, -61, 14], "state": "minecraft:stone" },
+    { "from": [214, -61, -14], "to": [226, -61, 14], "state": "minecraft:white_wool" }
+  ]
+}

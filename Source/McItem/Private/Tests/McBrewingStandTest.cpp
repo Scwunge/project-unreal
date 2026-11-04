@@ -73,7 +73,10 @@ bool FMcBrewingStandTest::RunTest(const FString& Parameters)
 		Stand->Tick();
 	}
 	TestEqual(TEXT("one tick to go"), Stand->GetBrewTimeLeft(), 1);
+	TestFalse(TEXT("no finish sound yet"), Stand->TakeFinished());
 	Stand->Tick();
+	TestTrue(TEXT("the finish is signalled once"), Stand->TakeFinished());
+	TestFalse(TEXT("and not twice"), Stand->TakeFinished());
 	TestFalse(TEXT("done"), Stand->IsBrewing());
 	TestEqual(TEXT("first bottle awkward"), PotionOf(Stand->GetItems()->Get(0)), FString(TEXT("minecraft:awkward")));
 	TestEqual(TEXT("third bottle awkward"), PotionOf(Stand->GetItems()->Get(2)), FString(TEXT("minecraft:awkward")));

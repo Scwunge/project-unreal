@@ -1,0 +1,364 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd tp @s 20 -57 8
+wait 40
+cmd tick freeze
+cmd fill -4 -60 -3 26 -55 130 air
+cmd fill -4 -61 -3 26 -61 130 stone
+cmd gamerule do_mob_spawning false
+wait 10
+cmd setblock 2 -60 0 piston[facing=east]
+cmd setblock 3 -60 0 stone
+cmd setblock 2 -59 0 stone
+cmd setblock 2 -60 4 piston[facing=east]
+cmd setblock 3 -60 4 stone
+cmd setblock 2 -60 8 piston[facing=east]
+cmd setblock 3 -60 8 stone
+cmd setblock 2 -59 8 stone
+cmd setblock 2 -60 12 piston[facing=east]
+cmd setblock 3 -60 12 stone
+cmd setblock 2 -60 16 piston[facing=east]
+cmd setblock 3 -60 16 stone
+cmd setblock 2 -60 20 piston[facing=east]
+cmd setblock 3 -60 20 stone
+cmd setblock 2 -60 24 piston[facing=east]
+cmd setblock 3 -60 24 stone
+cmd setblock 2 -60 24 piston[facing=east]
+cmd setblock 2 -60 28 piston[facing=east]
+cmd setblock 3 -60 28 air
+cmd setblock 2 -60 32 piston[facing=east]
+cmd setblock 3 -60 32 stone
+cmd setblock 2 -59 32 stone
+cmd setblock 2 -60 36 sticky_piston[facing=east]
+cmd setblock 3 -60 36 stone
+cmd setblock 2 -59 36 stone
+cmd setblock 2 -60 40 piston[facing=east]
+cmd setblock 3 -60 40 stone
+cmd setblock 2 -59 40 stone
+cmd setblock 2 -60 44 sticky_piston[facing=east]
+cmd setblock 3 -60 44 stone
+cmd setblock 2 -59 44 stone
+cmd setblock 2 -60 48 piston[facing=east]
+cmd setblock 3 -60 48 stone
+cmd setblock 2 -59 48 stone
+cmd setblock 2 -60 52 sticky_piston[facing=east]
+cmd setblock 3 -60 52 stone
+cmd setblock 2 -59 52 stone
+cmd setblock 2 -60 56 piston[facing=east]
+cmd setblock 3 -60 56 stone
+cmd setblock 4 -60 56 stone
+cmd setblock 5 -60 56 stone
+cmd setblock 6 -60 56 stone
+cmd setblock 7 -60 56 stone
+cmd setblock 8 -60 56 stone
+cmd setblock 9 -60 56 stone
+cmd setblock 10 -60 56 stone
+cmd setblock 11 -60 56 stone
+cmd setblock 12 -60 56 stone
+cmd setblock 13 -60 56 stone
+cmd setblock 14 -60 56 stone
+cmd setblock 2 -60 60 piston[facing=east]
+cmd setblock 3 -60 60 stone
+cmd setblock 4 -60 60 stone
+cmd setblock 5 -60 60 stone
+cmd setblock 6 -60 60 stone
+cmd setblock 7 -60 60 stone
+cmd setblock 8 -60 60 stone
+cmd setblock 9 -60 60 stone
+cmd setblock 10 -60 60 stone
+cmd setblock 11 -60 60 stone
+cmd setblock 12 -60 60 stone
+cmd setblock 13 -60 60 stone
+cmd setblock 14 -60 60 stone
+cmd setblock 15 -60 60 stone
+cmd setblock 2 -60 64 piston[facing=east]
+cmd setblock 3 -60 64 obsidian
+cmd setblock 3 -61 64 dirt
+cmd setblock 2 -60 68 piston[facing=east]
+cmd setblock 3 -60 68 chest
+cmd setblock 3 -61 68 dirt
+cmd setblock 2 -60 72 piston[facing=east]
+cmd setblock 3 -60 72 furnace
+cmd setblock 3 -61 72 dirt
+cmd setblock 2 -60 76 piston[facing=east]
+cmd setblock 3 -60 76 white_glazed_terracotta
+cmd setblock 3 -61 76 dirt
+cmd setblock 2 -60 80 piston[facing=east]
+cmd setblock 3 -60 80 torch
+cmd setblock 3 -61 80 dirt
+cmd setblock 2 -60 84 piston[facing=east]
+cmd setblock 3 -60 84 dandelion
+cmd setblock 3 -61 84 dirt
+cmd setblock 2 -60 88 piston[facing=east]
+cmd setblock 3 -60 88 sand
+cmd setblock 3 -61 88 dirt
+cmd setblock 2 -60 92 piston[facing=east]
+cmd setblock 3 -60 92 bell
+cmd setblock 3 -61 92 dirt
+cmd setblock 2 -60 96 piston[facing=east]
+cmd setblock 3 -60 96 hopper
+cmd setblock 3 -61 96 dirt
+cmd setblock 2 -60 100 piston[facing=east]
+cmd setblock 3 -60 100 piston[facing=east]
+cmd setblock 3 -61 100 dirt
+cmd setblock 2 -60 104 sticky_piston[facing=east]
+cmd setblock 3 -60 104 slime_block
+cmd setblock 4 -60 104 stone
+cmd setblock 3 -59 104 stone
+cmd setblock 3 -60 105 stone
+cmd setblock 2 -60 108 sticky_piston[facing=east]
+cmd setblock 3 -60 108 honey_block
+cmd setblock 4 -60 108 slime_block
+cmd setblock 5 -60 108 stone
+wait 10
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -58 0 redstone_block
+cmd setblock 2 -58 4 redstone_block
+cmd setblock 3 -59 8 redstone_block
+cmd setblock 3 -59 12 redstone_block
+cmd setblock 3 -60 16 redstone_block
+cmd setblock 1 -60 20 redstone_block
+cmd setblock 2 -61 24 redstone_block
+cmd setblock 3 -60 28 redstone_block
+cmd setblock 2 -58 32 redstone_block
+cmd setblock 2 -58 36 redstone_block
+cmd setblock 2 -58 40 redstone_block
+cmd setblock 2 -58 44 redstone_block
+cmd setblock 2 -58 48 redstone_block
+cmd setblock 2 -58 52 redstone_block
+cmd setblock 1 -60 56 redstone_block
+cmd setblock 1 -60 60 redstone_block
+cmd setblock 1 -60 64 redstone_block
+cmd setblock 1 -60 68 redstone_block
+cmd setblock 1 -60 72 redstone_block
+cmd setblock 1 -60 76 redstone_block
+cmd setblock 1 -60 80 redstone_block
+cmd setblock 1 -60 84 redstone_block
+cmd setblock 1 -60 88 redstone_block
+cmd setblock 1 -60 92 redstone_block
+cmd setblock 1 -60 96 redstone_block
+cmd setblock 1 -60 100 redstone_block
+cmd setblock 1 -60 104 redstone_block
+cmd setblock 1 -60 108 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -58 32 air
+cmd setblock 2 -58 36 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -58 40 air
+cmd setblock 2 -58 44 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -58 48 air
+cmd setblock 2 -58 52 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -58 0 air
+cmd setblock 2 -58 4 air
+cmd setblock 3 -59 8 air
+cmd setblock 3 -59 12 air
+cmd setblock 3 -60 16 air
+cmd setblock 1 -60 20 air
+cmd setblock 2 -61 24 air
+cmd setblock 3 -60 28 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 1 -60 56 air
+cmd setblock 1 -60 60 air
+cmd setblock 1 -60 64 air
+cmd setblock 1 -60 68 air
+cmd setblock 1 -60 72 air
+cmd setblock 1 -60 76 air
+cmd setblock 1 -60 80 air
+cmd setblock 1 -60 84 air
+cmd setblock 1 -60 88 air
+cmd setblock 1 -60 92 air
+cmd setblock 1 -60 96 air
+cmd setblock 1 -60 100 air
+cmd setblock 1 -60 104 air
+cmd setblock 1 -60 108 air
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -60 31 stone
+cmd setblock 2 -60 35 stone
+cmd setblock 2 -60 39 stone
+cmd setblock 2 -60 43 stone
+cmd setblock 2 -60 47 stone
+cmd setblock 2 -60 51 stone
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd setblock 2 -60 -1 stone
+cmd setblock 2 -60 3 stone
+cmd setblock 2 -60 7 stone
+cmd setblock 2 -60 11 stone
+cmd setblock 2 -60 15 stone
+cmd setblock 2 -60 19 stone
+cmd setblock 2 -60 23 stone
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick step 1
+wait 4
+log states -1 -60 -2 22 -58 112
+cmd tick unfreeze

@@ -20,6 +20,7 @@ namespace McData
 	{
 		FCriticalSection GLock;
 		TSharedPtr<const FMcPackStack> GStack;
+		TArray<FString> GSelected;
 		bool GStackRead = false;
 		uint32 GGeneration = 1;
 		FCriticalSection GExtractLock;
@@ -44,6 +45,11 @@ namespace McData
 			TArray<TSharedPtr<FMcResourcePack>> Packs;
 			for (const FString& Name : Names)
 			{
+				// The game's own pack takes a place in the order (a pack under it is read first) but is not a folder.
+				if (Name == TEXT("vanilla"))
+				{
+					continue;
+				}
 				const FString Path = ResolveName(Name);
 				FString Error;
 				TSharedPtr<FMcResourcePack> Pack = Path.IsEmpty() ? nullptr : FMcResourcePack::Open(Path, &Error);
@@ -153,6 +159,7 @@ namespace McData
 		FScopeLock Lock(&GLock);
 		if (!GStackRead)
 		{
+			GSelected = Names;
 			GStack = Made;
 			GStackRead = true;
 		}
@@ -175,21 +182,21 @@ namespace McData
 
 	TArray<FString> GetSelectedNames()
 	{
-		const TSharedRef<const FMcPackStack> Stack = GetStack();
-		TArray<FString> Names;
-		for (int32 Index = 0; Index < Stack->Num(); ++Index)
-		{
-			Names.Add(Stack->Get(Index).GetInfo().Name);
-		}
-		return Names;
+		GetStack();
+		FScopeLock Lock(&GLock);
+		return GSelected;
 	}
 
 	void ApplySelection(const TArray<FString>& Names)
 	{
 		SetStack(OpenNames(Names));
+		{
+			FScopeLock Lock(&GLock);
+			GSelected = Names;
+		}
 		TSharedRef<FJsonObject> Json = MakeShared<FJsonObject>();
 		TArray<TSharedPtr<FJsonValue>> Packs;
-		for (const FString& Name : GetSelectedNames())
+		for (const FString& Name : Names)
 		{
 			Packs.Add(MakeShared<FJsonValueString>(Name));
 		}

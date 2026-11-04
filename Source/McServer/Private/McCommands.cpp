@@ -3883,6 +3883,60 @@ namespace
 		return All;
 	}
 
+	// Storage lives in <world>/data/command_storage.snbt: one compound, a child per storage id. It is read when the world's folder first
+	// meets a /data command, and written after each command that could change it.
+	FString& StorageFolder()
+	{
+		static FString Folder;
+		return Folder;
+	}
+
+	FString StoragePath(const FString& Folder)
+	{
+		return Folder / TEXT("data") / TEXT("command_storage.snbt");
+	}
+
+	void LoadStorage(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder == StorageFolder())
+		{
+			return;
+		}
+		StorageFolder() = Folder;
+		DataStorage().Reset();
+		FString Text;
+		if (Folder.IsEmpty() || !FFileHelper::LoadFileToString(Text, *StoragePath(Folder)))
+		{
+			return;
+		}
+		FNbtParser Parser(Text);
+		FNbt Root;
+		if (Parser.Value(Root) && Root.Type == FNbt::EType::Compound)
+		{
+			for (int32 I = 0; I < Root.Keys.Num(); ++I)
+			{
+				DataStorage().Add(Root.Keys[I], Root.Items[I]);
+			}
+		}
+	}
+
+	void SaveStorage(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder.IsEmpty())
+		{
+			return;
+		}
+		FNbt Root;
+		for (const TPair<FString, FNbt>& Pair : DataStorage())
+		{
+			Root.Keys.Add(Pair.Key);
+			Root.Items.Add(Pair.Value);
+		}
+		FFileHelper::SaveStringToFile(PrintNbt(Root), *StoragePath(Folder));
+	}
+
 	FReplies RunData(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3)
@@ -4930,7 +4984,13 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	}
 	if (Name == TEXT("data"))
 	{
-		return RunData(Command, Words, Sender, Target);
+		LoadStorage(Target);
+		FReplies Replies = RunData(Command, Words, Sender, Target);
+		if (Words.Num() > 1 && Words[1] != TEXT("get"))
+		{
+			SaveStorage(Target);
+		}
+		return Replies;
 	}
 	if (Name == TEXT("forceload"))
 	{
@@ -5095,6 +5155,24 @@ TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, con
 		RunFunctionLines(Id, Sender, Target, Replies, 0);
 	}
 	return Replies;
+}
+
+FString McCommands::BossbarLines(const FString& Player)
+{
+	TArray<FString> Keys;
+	Bossbars().GetKeys(Keys);
+	Keys.Sort();
+	TArray<FString> Lines;
+	for (const FString& Key : Keys)
+	{
+		const FBossbar& Bar = Bossbars()[Key];
+		if (Bar.bVisible && Bar.Players.Contains(Player))
+		{
+			const float Fraction = Bar.Max > 0 ? FMath::Clamp(float(Bar.Value) / float(Bar.Max), 0.0f, 1.0f) : 0.0f;
+			Lines.Add(Bar.Name + TEXT("\t") + FString::SanitizeFloat(Fraction) + TEXT("\t") + Bar.Color + TEXT("\t") + Bar.Style);
+		}
+	}
+	return FString::Join(Lines, TEXT("\n"));
 }
 
 FMcWorldBorderState& McCommands::GetWorldBorder()

@@ -831,6 +831,11 @@ void UMcPlayerDataComponent::ServerTick()
 		SentRaidTitle = RaidBarTitle;
 		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
 	}
+	if (CustomBars != SentCustomBars)
+	{
+		SentCustomBars = CustomBars;
+		ClientSetCustomBars(CustomBars);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -1037,6 +1042,16 @@ void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
 {
 	RaidBarFraction = Fraction;
 	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::SetCustomBars(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::ClientSetCustomBars_Implementation(const FString& Lines)
+{
+	CustomBars = Lines;
 }
 
 void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)

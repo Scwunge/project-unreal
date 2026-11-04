@@ -1223,6 +1223,7 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
+			Pawn->Data->SetCustomBars(McCommands::BossbarLines(GetPlayerName(It->Get())));
 		}
 	}
 }
@@ -1535,6 +1536,11 @@ namespace
 			return Controller ? Cast<AMcPlayerPawn>(Controller->GetPawn()) : nullptr;
 		}
 
+		virtual FString GetWorldFolder() const override
+		{
+			const AMcWorldActor* Overworld = Mode.FindWorld(TEXT("minecraft:overworld"));
+			return Overworld ? Overworld->GetWorldDir() : FString();
+		}
 		virtual TArray<FString> GetPlayerNames() const override
 		{
 			TArray<FString> Names;

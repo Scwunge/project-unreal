@@ -1,6 +1,8 @@
 #include "McCommands.h"
 #include "McLang.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -58,6 +60,8 @@ namespace
 		{
 			Titles.Add(FString::Printf(TEXT("%s:%d:%s:%d,%d,%d"), *Player, Kind, *Text, FadeIn, Stay, FadeOut));
 		}
+		FString WorldFolder;
+		virtual FString GetWorldFolder() const override { return WorldFolder; }
 		virtual bool IsCreative(const FString& Player) const override { return Find(Player) && Find(Player)->bCreative; }
 		virtual void SetCreative(const FString& Player, bool bCreative) override
 		{
@@ -598,6 +602,13 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("data merge value"), First(TEXT("data get storage test:a w")), FString(TEXT("Storage test:a has the following contents: {a: 1b, b: 2.5d, c: 3}")));
 	TestEqual(TEXT("data remove"), First(TEXT("data remove storage test:a y")), FString(TEXT("Modified storage test:a")));
 	TestEqual(TEXT("data remove again"), First(TEXT("data remove storage test:a y")), FString(TEXT("Nothing changed. The specified properties already have these values")));
+	// Storage is written to the world's folder after a change.
+	const FString StorageFolder = FPaths::ProjectSavedDir() / TEXT("McCommandsTestWorld");
+	Target.WorldFolder = StorageFolder;
+	First(TEXT("data merge storage test:saved {n:7}"));
+	FString StorageText;
+	TestTrue(TEXT("storage file written"), FFileHelper::LoadFileToString(StorageText, *(StorageFolder / TEXT("data") / TEXT("command_storage.snbt"))) && StorageText.Contains(TEXT("n: 7")));
+	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
 	// Measured against the game: /forceload.

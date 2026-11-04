@@ -141,6 +141,8 @@ public:
 	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
 	// /swing: a player swings their arm.
 	virtual void SwingArm(const FString& Player) {}
+	// The folder of the world being played, where /data storage is kept (empty: nowhere to keep it).
+	virtual FString GetWorldFolder() const { return FString(); }
 	// /damage: hurts a player; false if nothing hurt them (creative).
 	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.
@@ -158,6 +160,8 @@ namespace McCommands
 {
 	// The world border /worldborder sets (the game reads it to keep players inside).
 	MCSERVER_API FMcWorldBorderState& GetWorldBorder();
+	// The custom boss bars (/bossbar) a player is shown: one line each, "title<TAB>fraction<TAB>color<TAB>style", in id order.
+	MCSERVER_API FString BossbarLines(const FString& Player);
 	// A line typed into chat: a command if it starts with '/', else said to everyone as "<Name> text". Replies for the
 	// sender come back; what everyone sees goes through Target.Broadcast.
 	MCSERVER_API TArray<FMcCommandReply> HandleChat(const FString& Line, const FMcCommandSender& Sender, IMcCommandTarget& Target);

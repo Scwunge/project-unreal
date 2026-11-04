@@ -1018,23 +1018,55 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 }
 
+void AMcHUD::DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style)
+{
+	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
+	DrawGuiText(Title, (static_cast<float>(Width) - TextWidth(Title)) * 0.5f, Y - 9.0f, 0xFFFFFF, true);
+	const FString Base = FString(SpriteRoot) + TEXT("boss_bar/");
+	const bool bNotched = Style != TEXT("progress");
+	DrawSprite(LoadSprite(Base + Color + TEXT("_background.png")), X, Y, 182, 5);
+	if (bNotched)
+	{
+		DrawSprite(LoadSprite(Base + Style + TEXT("_background.png")), X, Y, 182, 5);
+	}
+	const float Filled = FMath::Clamp(Fraction, 0.0f, 1.0f);
+	if (Filled > 0.0f)
+	{
+		// The progress pictures are 182 wide; only the filled part of them is shown.
+		const float Part = 182.0f * Filled;
+		DrawRegion(LoadSprite(Base + Color + TEXT("_progress.png")), X, Y, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		if (bNotched)
+		{
+			DrawRegion(LoadSprite(Base + Style + TEXT("_progress.png")), X, Y, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		}
+	}
+}
+
 void AMcHUD::DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data)
 {
 	if (Data->RaidBarFraction < 0.0f)
 	{
 		return;
 	}
-	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
-	DrawGuiText(Data->RaidBarTitle, (static_cast<float>(Width) - TextWidth(Data->RaidBarTitle)) * 0.5f, 3.0f, 0xFFFFFF, true);
-	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_background.png")), X, 12.0f, 182, 5);
-	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_background.png")), X, 12.0f, 182, 5);
-	const float Filled = FMath::Clamp(Data->RaidBarFraction, 0.0f, 1.0f);
-	if (Filled > 0.0f)
+	DrawBossBar(Width, 12.0f, Data->RaidBarTitle, Data->RaidBarFraction, TEXT("red"), TEXT("notched_10"));
+}
+
+void AMcHUD::DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data)
+{
+	// Bars stack 19 pixels apart from the top, the raid bar first.
+	float Y = Data->RaidBarFraction < 0.0f ? 12.0f : 31.0f;
+	TArray<FString> Lines;
+	Data->CustomBars.ParseIntoArray(Lines, TEXT("\n"), true);
+	for (const FString& Line : Lines)
 	{
-		// The progress pictures are 182 wide; only the filled part of them is shown.
-		const float Part = 182.0f * Filled;
-		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
-		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		TArray<FString> Parts;
+		Line.ParseIntoArray(Parts, TEXT("\t"), false);
+		if (Parts.Num() < 4)
+		{
+			continue;
+		}
+		DrawBossBar(Width, Y, Parts[0], FCString::Atof(*Parts[1]), Parts[2], Parts[3]);
+		Y += 19.0f;
 	}
 }
 
@@ -2382,6 +2414,7 @@ void AMcHUD::DrawHUD()
 		}
 		DrawEffects(Width, Height, Data);
 		DrawRaidBar(Width, Data);
+		DrawCustomBars(Width, Data);
 		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
 		if (!Data->bCreative)
 		{

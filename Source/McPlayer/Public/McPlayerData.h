@@ -298,6 +298,9 @@ public:
 	float RaidBarFraction = -1.0f;
 	FString RaidBarTitle;
 	void SetRaidBar(float Fraction, const FString& Title);
+	// The custom boss bars below it (/bossbar), one per line: "title<TAB>fraction<TAB>color<TAB>style".
+	FString CustomBars;
+	void SetCustomBars(const FString& Lines);
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -306,6 +309,8 @@ protected:
 	void ClientSetStats(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Unreliable)
 	void ClientSetRaidBar(float Fraction, const FString& Title);
+	UFUNCTION(Client, Reliable)
+	void ClientSetCustomBars(const FString& Lines);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -370,6 +375,7 @@ private:
 	TArray<uint8> SentStats;
 	float SentRaidFraction = -1.0f;
 	FString SentRaidTitle;
+	FString SentCustomBars;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

@@ -1204,6 +1204,113 @@ bool McJavaImport::IsJavaWorld(const FString& Folder)
 	return IFileManager::Get().FileExists(*(Folder / TEXT("level.dat")));
 }
 
+bool McJavaImport::ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out)
+{
+	const FMcNbt* Pos = FindList(Root, TEXT("Pos"));
+	if (!Pos || Pos->Num() != 3)
+	{
+		return false;
+	}
+	Out = FMcPlayerData();
+	Out.Position = FVector(Pos->Values[0].GetReal(), Pos->Values[1].GetReal(), Pos->Values[2].GetReal());
+	if (Out.Position.ContainsNaN())
+	{
+		return false;
+	}
+	if (const FMcNbt* Rotation = FindList(Root, TEXT("Rotation")))
+	{
+		if (Rotation->Num() >= 2)
+		{
+			Out.Yaw = static_cast<float>(Rotation->Values[0].GetReal());
+			Out.Pitch = static_cast<float>(Rotation->Values[1].GetReal());
+		}
+	}
+	const FString Dimension = Root.GetString(TEXT("Dimension"));
+	if (!Dimension.IsEmpty())
+	{
+		Out.Dimension = Dimension;
+	}
+	const FMcNbt* Abilities = Root.Find(TEXT("abilities"));
+	Out.bFlying = Abilities && Abilities->GetInt(TEXT("flying")) != 0;
+	Out.bHasSurvival = true;
+	Out.bCreative = Root.GetInt(TEXT("playerGameType")) == 1;
+	Out.SelectedSlot = FMath::Clamp(static_cast<int32>(Root.GetInt(TEXT("SelectedItemSlot"))), 0, 8);
+	const auto Real = [&Root](const TCHAR* Key, double Default)
+	{
+		const FMcNbt* Tag = Root.Find(Key);
+		return Tag && Tag->IsNumber() ? Tag->GetReal() : Default;
+	};
+	Out.Stats.Add(TEXT("health"), FMath::Clamp(Real(TEXT("Health"), 20.0), 1.0, 20.0));
+	Out.Stats.Add(TEXT("food"), FMath::Clamp(Real(TEXT("foodLevel"), 20.0), 0.0, 20.0));
+	Out.Stats.Add(TEXT("saturation"), FMath::Max(0.0, Real(TEXT("foodSaturationLevel"), 5.0)));
+	Out.Stats.Add(TEXT("exhaustion"), FMath::Max(0.0, Real(TEXT("foodExhaustionLevel"), 0.0)));
+	Out.Stats.Add(TEXT("absorption"), FMath::Max(0.0, Real(TEXT("AbsorptionAmount"), 0.0)));
+	Out.Stats.Add(TEXT("xp_level"), FMath::Max(0.0, Real(TEXT("XpLevel"), 0.0)));
+	Out.Stats.Add(TEXT("xp_progress"), FMath::Clamp(Real(TEXT("XpP"), 0.0), 0.0, 1.0));
+	// The inventory's slots are the game's own numbers (the off hand is -106 there, 150 here); the ender chest's 0 to 26 follow
+	// the game's numbering at 200.
+	const auto AddItems = [&Out](const FMcNbt* List, int32 Base, bool bInventory)
+	{
+		if (!List)
+		{
+			return;
+		}
+		for (const FMcNbt& Entry : List->Values)
+		{
+			int32 Slot = static_cast<int32>(Entry.GetInt(TEXT("Slot")));
+			if (bInventory)
+			{
+				Slot = Slot == -106 ? 150 : Slot;
+				if (!((Slot >= 0 && Slot <= 35) || (Slot >= 100 && Slot <= 103) || Slot == 150))
+				{
+					continue;
+				}
+			}
+			else if (Slot < 0 || Slot > 26)
+			{
+				continue;
+			}
+			const FMcItemStack Stack = MakeStack(Entry);
+			if (!Stack.IsEmpty())
+			{
+				Out.Slots.Add({ Base + Slot, Stack });
+			}
+		}
+	};
+	AddItems(FindList(Root, TEXT("Inventory")), 0, true);
+	AddItems(FindList(Root, TEXT("EnderItems")), 200, false);
+	return true;
+}
+
+bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
+{
+	FMcNbt Root;
+	FString Newest;
+	FDateTime NewestTime = FDateTime::MinValue();
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Source / TEXT("players") / TEXT("data") / TEXT("*.dat")), true, false);
+	for (const FString& File : Files)
+	{
+		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(Source / TEXT("players") / TEXT("data") / File));
+		if (Time > NewestTime)
+		{
+			NewestTime = Time;
+			Newest = Source / TEXT("players") / TEXT("data") / File;
+		}
+	}
+	FMcPlayerData Player;
+	bool bFound = !Newest.IsEmpty() && FMcNbt::LoadFile(Newest, Root) && ConvertPlayer(Root, Player);
+	if (!bFound)
+	{
+		// The older layout kept the one player in level.dat.
+		FMcNbt Level;
+		const FMcNbt* Data = FMcNbt::LoadFile(Source / TEXT("level.dat"), Level) ? Level.Find(TEXT("Data")) : nullptr;
+		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
+		bFound = Old && ConvertPlayer(*Old, Player);
+	}
+	return bFound && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Player);
+}
+
 bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 {
 	FMcNbt Level;
@@ -1526,6 +1633,7 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
 		return FString();
 	}
+	ImportPlayer(Source, WorldDir);
 	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s' in %.1f s: %s"), *Source, *Folder, FPlatformTime::Seconds() - Start, *Describe(OutStats));
 	return Folder;
 }
@@ -1545,6 +1653,7 @@ FString McJavaImport::BeginImport(const FString& Source, const FString& Name)
 		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
 		return FString();
 	}
+	ImportPlayer(Source, WorldDir);
 	UE_LOG(LogMcServer, Log, TEXT("Began importing '%s' as '%s'; its chunks come in while it is played."), *Source, *Folder);
 	return Folder;
 }

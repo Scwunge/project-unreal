@@ -812,4 +812,70 @@ bool FMcJavaImportRealWorldTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportPlayerTest, "McClient.McServer.JavaImport.Player",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
+{
+	// A player file as the game saves it: place, mode, hunger, experience, a hotbar stone, the off hand and an ender chest item.
+	FNbtWriter Writer;
+	Writer.Compound(TEXT(""));
+	Writer.List(TEXT("Pos"), 6, 3);
+	Writer.Doubles({ 12.5, 70.0, -3.5 });
+	Writer.List(TEXT("Rotation"), 5, 2);
+	Writer.Floats({ 90.0f, 15.0f });
+	Writer.Str(TEXT("Dimension"), TEXT("minecraft:overworld"));
+	Writer.Int(TEXT("playerGameType"), 1);
+	Writer.Int(TEXT("SelectedItemSlot"), 4);
+	Writer.Int(TEXT("foodLevel"), 12);
+	Writer.Int(TEXT("XpLevel"), 7);
+	Writer.List(TEXT("Inventory"), 10, 2);
+	Writer.Byte(TEXT("Slot"), 3);
+	Writer.Str(TEXT("id"), TEXT("minecraft:stone"));
+	Writer.Int(TEXT("count"), 20);
+	Writer.End();
+	Writer.Byte(TEXT("Slot"), -106);
+	Writer.Str(TEXT("id"), TEXT("minecraft:shield"));
+	Writer.Int(TEXT("count"), 1);
+	Writer.End();
+	Writer.List(TEXT("EnderItems"), 10, 1);
+	Writer.Byte(TEXT("Slot"), 5);
+	Writer.Str(TEXT("id"), TEXT("minecraft:diamond"));
+	Writer.Int(TEXT("count"), 9);
+	Writer.End();
+	Writer.End();
+	FMcNbt Root;
+	if (!TestTrue(TEXT("the player parses"), FMcNbt::Parse(Writer.Bytes, Root)))
+	{
+		return false;
+	}
+	FMcPlayerData Player;
+	if (!TestTrue(TEXT("it converts"), McJavaImport::ConvertPlayer(Root, Player)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("x"), Player.Position.X, 12.5);
+	TestEqual(TEXT("z"), Player.Position.Z, -3.5);
+	TestEqual(TEXT("yaw"), Player.Yaw, 90.0f);
+	TestTrue(TEXT("creative"), Player.bCreative);
+	TestEqual(TEXT("selected slot"), Player.SelectedSlot, 4);
+	TestEqual(TEXT("food"), Player.Stats.FindRef(TEXT("food")), 12.0);
+	TestEqual(TEXT("experience level"), Player.Stats.FindRef(TEXT("xp_level")), 7.0);
+	const auto Count = [&Player](int32 Slot, const TCHAR* Item) -> int32
+	{
+		for (const FMcSavedSlot& Saved : Player.Slots)
+		{
+			if (Saved.Slot == Slot && Saved.Stack.Item == FName(Item))
+			{
+				return Saved.Stack.Count;
+			}
+		}
+		return 0;
+	};
+	TestEqual(TEXT("hotbar stone"), Count(3, TEXT("minecraft:stone")), 20);
+	TestEqual(TEXT("off hand shield at 150"), Count(150, TEXT("minecraft:shield")), 1);
+	TestEqual(TEXT("ender chest slot 5 at 205"), Count(205, TEXT("minecraft:diamond")), 9);
+	return true;
+}
+
 #endif

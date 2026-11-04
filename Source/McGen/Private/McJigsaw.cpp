@@ -198,6 +198,7 @@ TSharedPtr<const FMcJigsawLibrary::FElement> FMcJigsawLibrary::ParseElement(cons
 		}
 		// A one block piece with a single jigsaw pointing down, so it hangs under the jigsaw it's put on.
 		FJigsaw& Jigsaw = Result->Jigsaws.AddDefaulted_GetRef();
+		Jigsaw.Pos = FIntVector::ZeroValue;  // FIntVector leaves its parts unset, which put every feature piece at a random distance
 		Jigsaw.Name = TEXT("minecraft:bottom");
 		Jigsaw.Target = TEXT("minecraft:bottom");
 		Jigsaw.Pool = TEXT("minecraft:empty");

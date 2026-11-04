@@ -3,6 +3,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McChunk.h"
+#include "McFeature.h"
 #include "McGenRegion.h"
 #include "McJigsaw.h"
 #include "McNoiseGenerator.h"
@@ -383,59 +384,99 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const TCHAR* Pools[] = { TEXT("plains"), TEXT("desert"), TEXT("savanna"), TEXT("snowy"), TEXT("taiga") };
+	FMcFeatureLibrary Features;
+	if (!TestTrue(TEXT("features load"), Features.LoadBiomes()))
+	{
+		return false;
+	}
 	FMcJigsawLibrary Library;
+	{
+		FMcJigsawLibrary DecorLibrary;
+		DecorLibrary.LoadPool(FName(TEXT("minecraft:village/plains/town_centers")), &Features);
+		if (const FMcJigsawLibrary::FPool* StreetPool = DecorLibrary.GetPool(FName(TEXT("minecraft:village/plains/streets"))))
+		{
+			for (const TPair<TSharedPtr<const FMcJigsawLibrary::FElement>, int32>& Entry : StreetPool->Elements)
+			{
+				for (const FMcJigsawLibrary::FJigsaw& J : Entry.Key->Jigsaws)
+				{
+					AddInfo(FString::Printf(TEXT("STREETJ %s name %s target %s pool %s front %d top %d roll %d"), *Entry.Key->Location, *J.Name.ToString(), *J.Target.ToString(), *J.Pool.ToString(), J.Front, J.Top, J.bRollable ? 1 : 0));
+				}
+			}
+		}
+		for (const TCHAR* Id : { TEXT("minecraft:village/plains/decor"), TEXT("minecraft:village/plains/trees") })
+		{
+			if (const FMcJigsawLibrary::FPool* DecorPool = DecorLibrary.GetPool(FName(Id)))
+			{
+				for (const TPair<TSharedPtr<const FMcJigsawLibrary::FElement>, int32>& Entry : DecorPool->Elements)
+				{
+					for (const FMcJigsawLibrary::FJigsaw& J : Entry.Key->Jigsaws)
+					{
+						AddInfo(FString::Printf(TEXT("DECORJ %s name %s target %s pool %s front %d top %d roll %d"), *Entry.Key->Location, *J.Name.ToString(), *J.Target.ToString(), *J.Pool.ToString(), J.Front, J.Top, J.bRollable ? 1 : 0));
+					}
+					AddInfo(FString::Printf(TEXT("DECOR %s kind %d weight %d jigsaws %d %s"), Id, int32(Entry.Key->Kind), Entry.Value, Entry.Key->Jigsaws.Num(), *Entry.Key->Location));
+				}
+			}
+			else
+			{
+				AddInfo(FString::Printf(TEXT("DECOR %s pool missing"), Id));
+			}
+		}
+	}
 	for (const TCHAR* Kind : Pools)
 	{
 		const FString Pool = FString::Printf(TEXT("minecraft:village/%s/town_centers"), Kind);
-		if (!Library.LoadPool(FName(*Pool), nullptr))
+		if (!Library.LoadPool(FName(*Pool), &Features))
 		{
 			AddError(Pool);
 			continue;
 		}
-		TArray<int32> Counts;
-		int64 Singles = 0;
-		int64 Volume = 0;
-		int64 AllPieces = 0;
-		TMap<FString, int32> ByName;
-		for (int32 Trial = 0; Trial < 300; ++Trial)
+		for (const int32 Depth : { 6, 7, 8, 9, 10 })
 		{
-			FMcJigsawLibrary::FStart Start;
-			Start.Pool = FName(*Pool);
-			Start.MaxDepth = 6;
-			Start.MaxDistance = 80;
-			Start.CentreX = 8;
-			Start.CentreZ = 8;
-			Start.Y = 64;
-			FMcRandom Random(5000 + Trial);
-			const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
-			Counts.Add(Layout.IsValid() ? Layout->Pieces.Num() : 0);
-			if (Layout.IsValid())
+			TArray<int32> Counts;
+			int64 Singles = 0;
+			int64 Volume = 0;
+			int64 AllPieces = 0;
+			TMap<FString, int32> ByName;
+			for (int32 Trial = 0; Trial < 300; ++Trial)
 			{
-				for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+				FMcJigsawLibrary::FStart Start;
+				Start.Pool = FName(*Pool);
+				Start.MaxDepth = Depth;
+				Start.MaxDistance = 80;
+				Start.CentreX = 8;
+				Start.CentreZ = 8;
+				Start.Y = 64;
+				FMcRandom Random(5000 + Trial);
+				const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
+				Counts.Add(Layout.IsValid() ? Layout->Pieces.Num() : 0);
+				if (Layout.IsValid())
 				{
-					const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
-					FString Name = Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Single ? Piece.Element->Location : (Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Feature ? FString(TEXT("feature")) : FString(TEXT("list:")) + (Piece.Element->Parts.IsEmpty() ? FString() : Piece.Element->Parts[0]->Location));
-					++ByName.FindOrAdd(Name);
-					Singles += V == 1;
-					Volume += V;
-					++AllPieces;
+					for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+					{
+						const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
+						FString Name = Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Single ? Piece.Element->Location : (Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Feature ? FString(TEXT("feature")) : FString(TEXT("list:")) + (Piece.Element->Parts.IsEmpty() ? FString() : Piece.Element->Parts[0]->Location));
+						++ByName.FindOrAdd(Name);
+						Singles += V == 1;
+						Volume += V;
+						++AllPieces;
+					}
 				}
 			}
+			for (const TPair<FString, int32>& Pair : ByName)
+			{
+				AddInfo(FString::Printf(TEXT("PT %s d%d %s %.2f"), Kind, Depth, *Pair.Key, double(Pair.Value) / 300.0));
+			}
+			Counts.Sort();
+			int64 Sum = 0;
+			for (int32 C : Counts) { Sum += C; }
+			AddInfo(FString::Printf(TEXT("PIECES %s d%d singles per start %.1f mean volume %.0f"), Kind, Depth, double(Singles) / Counts.Num(), double(Volume) / FMath::Max<int64>(AllPieces, 1)));
+			AddInfo(FString::Printf(TEXT("PIECES %s d%d mean %.1f min %d p25 %d median %d p75 %d max %d"), Kind, Depth, double(Sum) / Counts.Num(), Counts[0], Counts[75], Counts[150], Counts[225], Counts.Last()));
 		}
-		for (const TPair<FString, int32>& Pair : ByName)
-		{
-			AddInfo(FString::Printf(TEXT("PT %s %s %.2f"), Kind, *Pair.Key, double(Pair.Value) / 300.0));
-		}
-		Counts.Sort();
-		int64 Sum = 0;
-		for (int32 C : Counts) { Sum += C; }
-		AddInfo(FString::Printf(TEXT("PIECES %s singles per start %.1f mean volume %.0f"), Kind, double(Singles) / Counts.Num(), double(Volume) / FMath::Max<int64>(AllPieces, 1)));
-		AddInfo(FString::Printf(TEXT("PIECES %s mean %.1f min %d p25 %d median %d p75 %d max %d"), Kind, double(Sum) / Counts.Num(), Counts[0], Counts[75], Counts[150], Counts[225], Counts.Last()));
 	}
 	// Diagnostic: how the plains mean piece count moves with the depth and distance limits.
 	{
 		const FString Pool = TEXT("minecraft:village/plains/town_centers");
-		Library.LoadPool(FName(*Pool), nullptr);
+		Library.LoadPool(FName(*Pool), &Features);
 		const int32 Limits[][2] = { { 6, 80 }, { 6, 128 }, { 8, 80 }, { 8, 128 }, { 10, 200 } };
 		for (const int32(&Limit)[2] : Limits)
 		{

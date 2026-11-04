@@ -13,7 +13,7 @@
 
 namespace McGui
 {
-	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Anvil, BrewingStand, Hopper, Dispenser, Loom, Trading };
+	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Cartography, Anvil, BrewingStand, Hopper, Dispenser, Loom, Trading };
 
 	using FPlayerMenuSlots = ::FMcPlayerMenuSlots;
 
@@ -51,6 +51,7 @@ namespace McGui
 	MCUI_API FScreenLayout MakeLoomLayout();
 	MCUI_API FScreenLayout MakeSmithingLayout();
 	MCUI_API FScreenLayout MakeGrindstoneLayout();
+	MCUI_API FScreenLayout MakeCartographyLayout();
 	MCUI_API FScreenLayout MakeAnvilLayout();
 	MCUI_API FScreenLayout MakeBrewingStandLayout();
 	MCUI_API FScreenLayout MakeHopperLayout();

@@ -78,6 +78,20 @@ namespace McMapStore
 		}
 	}
 
+	int32 LockedCopy(int32 Id)
+	{
+		const FMcMapData* Source = Maps.Find(Id);
+		if (!Source)
+		{
+			return INDEX_NONE;
+		}
+		FMcMapData Copy = *Source;
+		Copy.bLocked = true;
+		const int32 New = NextId++;
+		Maps.Add(New, MoveTemp(Copy));
+		return New;
+	}
+
 	void Reset()
 	{
 		Maps.Empty();

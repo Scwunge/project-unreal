@@ -1745,6 +1745,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 		Data->OpenBlockWindow(EMcWindowKind::Grindstone, Pos, TEXT("Repair & Disenchant"), nullptr, nullptr);
 		return true;
 	}
+	if (Name == TEXT("minecraft:cartography_table"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::CartographyTable, Pos, TEXT("Cartography Table"), nullptr, nullptr);
+		return true;
+	}
 	if (Name == TEXT("minecraft:smithing_table"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::SmithingTable, Pos, TEXT("Upgrade Gear"), nullptr, nullptr);
@@ -1930,6 +1935,8 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:smithing_table");
 	case EMcWindowKind::Grindstone:
 		return Name == TEXT("minecraft:grindstone");
+	case EMcWindowKind::CartographyTable:
+		return Name == TEXT("minecraft:cartography_table");
 	case EMcWindowKind::Anvil:
 		return IsAnvilName(Name);
 	case EMcWindowKind::BrewingStand:

@@ -86,6 +86,8 @@ enum class EMcWindowKind : uint8
 	Stonecutter,
 	SmithingTable,
 	Grindstone,
+	// The map slot, the material slot and the result: an FMcCartographyMenu.
+	CartographyTable,
 	Anvil,
 	BrewingStand,
 	Hopper,

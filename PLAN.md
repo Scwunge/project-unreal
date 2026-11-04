@@ -1411,6 +1411,10 @@ Vanilla ref runs `maphand1/2.txt` (21 pitches): the frame (map_background.png st
 
 Cloud shade shot retried 2026-11-04 (local lane, `-McInput=look:0,40;wait:3` with `-McScene=cloud_top`): the shot came back level at the horizon, so the look input still isn't applied before the shot (the scene camera pitch is also ignored). Stays parked until the shot path honours pitch.
 
+### Cartography table (2026-11-04)
+`FMcCartographyMenu` (McWorkstationMenus): map slot (filled maps only), material slot (paper, empty map, glass pane), result. Rules from minecraft.wiki "Cartography Table": paper zooms an unlocked map out one scale (max 4, `McMapStore::Zoom`, cached per source); an empty map gives two maps sharing the id; a glass pane gives a locked copy as a new map (`McMapStore::LockedCopy`; the original stays unlocked; a locked map cannot be locked or zoomed again but can be copied). Taking the result (click, shift-click) uses one of each input and gives the whole result whatever part the click split off. Block use opens it (`minecraft:cartography_table`), layout slots measured from `cartography_table.png` (boxes at 14,14 and 14,51, result well at 141,35). Tests Mc.Cartography.Rules and .Clicks.
+**Not done:** the map preview frame, the three status sprites (`scaled_map`, `duplicated_map`, `locked`, `error` in `container/cartography_table/`) and the title position are not drawn: their positions are not in the texture and need a vanilla ref shot of the open table (no ref script yet). The take-result sound (`ui.cartography_table.take_result`) is not played; the wiki's figures are not read yet. The map data is not sent to remote clients.
+
 ## Provenance gaps
 Numbers in the code that did not come from a logged vanilla run, the wiki or `cache/` (clean-room audit, 2026-11-04). Each says whether it is to be measured or removed.
 

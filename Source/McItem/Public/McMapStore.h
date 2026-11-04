@@ -23,6 +23,8 @@ namespace McMapStore
 	// True if the map item can be zoomed out (it exists, is unlocked and is below scale 4).
 	MCITEM_API bool CanZoom(const FMcItemStack& Stack);
 	MCITEM_API void Lock(int32 Id);
+	// A new locked map with the picture, scale, centre and markers of Id (the cartography table's glass pane); INDEX_NONE if gone.
+	MCITEM_API int32 LockedCopy(int32 Id);
 
 	MCITEM_API void Reset();
 	MCITEM_API int32 Num();

@@ -276,6 +276,20 @@ McGui::FScreenLayout McGui::MakeDispenserLayout()
 	return Layout;
 }
 
+// Slots measured from the texture: the two inputs' 18 pixel boxes start at (14, 14) and (14, 51), the result's 24 pixel
+// well at (141, 35).
+McGui::FScreenLayout McGui::MakeCartographyLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Cartography;
+	Layout.Texture = TEXT("cartography_table.png");
+	Layout.Slots.Add(FIntPoint(15, 15));
+	Layout.Slots.Add(FIntPoint(15, 52));
+	Layout.Slots.Add(FIntPoint(145, 39));
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
 McGui::FScreenLayout McGui::MakeGrindstoneLayout()
 {
 	FScreenLayout Layout;

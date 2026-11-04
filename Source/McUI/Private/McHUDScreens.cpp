@@ -1151,6 +1151,9 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Grindstone:
 		State->Layout = McGui::MakeGrindstoneLayout();
 		break;
+	case EMcWindowKind::CartographyTable:
+		State->Layout = McGui::MakeCartographyLayout();
+		break;
 	case EMcWindowKind::Anvil:
 		State->Layout = McGui::MakeAnvilLayout();
 		State->Anvil = static_cast<FMcAnvilMenu*>(Window.Menu.Get());
@@ -2056,6 +2059,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		DrawGuiText(Screen->Title, Origin.X + 176 / 2.0f - TextWidth(Screen->Title) / 2.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
+	case McGui::EScreen::Cartography:
 	case McGui::EScreen::Grindstone:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);

@@ -227,6 +227,9 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 	case EMcWindowKind::Grindstone:
 		Made.Menu = MakeShared<FMcGrindstoneMenu>(Inventory);
 		break;
+	case EMcWindowKind::CartographyTable:
+		Made.Menu = MakeShared<FMcCartographyMenu>(Inventory);
+		break;
 	case EMcWindowKind::Anvil:
 		Made.Menu = MakeShared<FMcAnvilMenu>(Inventory);
 		break;
@@ -433,6 +436,7 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	case EMcWindowKind::Loom:
 	case EMcWindowKind::SmithingTable:
 	case EMcWindowKind::Grindstone:
+	case EMcWindowKind::CartographyTable:
 	case EMcWindowKind::Anvil:
 		break;
 	case EMcWindowKind::Chest:

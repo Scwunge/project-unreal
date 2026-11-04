@@ -386,7 +386,6 @@ public:
 private:
 	void ServerTickMaps();
 	int32 MapTicks = 0;
-	int32 MapRow = 0;
 	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
 	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
 	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;

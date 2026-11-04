@@ -16,8 +16,6 @@ namespace
 	const FName EmptyMapItem(TEXT("minecraft:map"));
 	const FName FilledMapItem(TEXT("minecraft:filled_map"));
 	const FName WaterBlock(TEXT("minecraft:water"));
-	// A row every four ticks: 128 rows in 512 ticks.
-	constexpr int32 TicksPerRow = 4;
 
 	// What the sky sees in one block column: the topmost block that has a map colour, and the water over the floor.
 	FMcMapData::FColumn SampleColumn(const FMcBlockWorld& World, int32 X, int32 Z)
@@ -98,13 +96,25 @@ void AMcPlayerPawn::ServerTickMaps()
 	{
 		return;
 	}
-	if (++MapTicks % TicksPerRow != 0)
+	// Measured (ref runs mapfill1 and mapfill2, scales 0 to 4): a held map is complete at once but for its column 0, which
+	// follows 11 to 22 ticks later; the same fill reaches column 0 as every 16th column is gone over each tick (the first
+	// tick all of them but column 0). Ours: the first tick every column but 0, then the columns with x mod 16 equal to
+	// the tick mod 16 (so column 0 at tick 16, and the others are refreshed every 16 ticks).
+	const int32 Step = ++MapTicks;
+	const FMcBlockWorld& World = *BlockWorld;
+	const auto Sample = [&World](int32 X, int32 Z) { return SampleColumn(World, X, Z); };
+	if (Step == 1)
 	{
+		for (int32 PixelX = 1; PixelX < FMcMapData::Size; ++PixelX)
+		{
+			Map->UpdateColumn(PixelX, Sample);
+		}
 		return;
 	}
-	MapRow = (MapRow + 1) % FMcMapData::Size;
-	const FMcBlockWorld& World = *BlockWorld;
-	Map->UpdateRow(MapRow, [&World](int32 X, int32 Z) { return SampleColumn(World, X, Z); });
+	for (int32 PixelX = Step & 15; PixelX < FMcMapData::Size; PixelX += 16)
+	{
+		Map->UpdateColumn(PixelX, Sample);
+	}
 }
 
 void AMcPlayerPawn::GiveShotMap()

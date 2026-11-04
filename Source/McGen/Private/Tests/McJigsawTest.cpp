@@ -372,4 +372,60 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJigsawPieceCountTest, "McClient.McGen.JigsawPieceCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// Piece counts of villages on flat ground, 300 assemblies per kind, to set beside the reference's "mcref piece" lines.
+bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	const TCHAR* Pools[] = { TEXT("plains"), TEXT("desert"), TEXT("savanna"), TEXT("snowy"), TEXT("taiga") };
+	FMcJigsawLibrary Library;
+	for (const TCHAR* Kind : Pools)
+	{
+		const FString Pool = FString::Printf(TEXT("minecraft:village/%s/town_centers"), Kind);
+		if (!Library.LoadPool(FName(*Pool), nullptr))
+		{
+			AddError(Pool);
+			continue;
+		}
+		TArray<int32> Counts;
+		int64 Singles = 0;
+		int64 Volume = 0;
+		int64 AllPieces = 0;
+		for (int32 Trial = 0; Trial < 300; ++Trial)
+		{
+			FMcJigsawLibrary::FStart Start;
+			Start.Pool = FName(*Pool);
+			Start.MaxDepth = 6;
+			Start.MaxDistance = 80;
+			Start.CentreX = 8;
+			Start.CentreZ = 8;
+			Start.Y = 64;
+			FMcRandom Random(5000 + Trial);
+			const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
+			Counts.Add(Layout.IsValid() ? Layout->Pieces.Num() : 0);
+			if (Layout.IsValid())
+			{
+				for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+				{
+					const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
+					Singles += V == 1;
+					Volume += V;
+					++AllPieces;
+				}
+			}
+		}
+		Counts.Sort();
+		int64 Sum = 0;
+		for (int32 C : Counts) { Sum += C; }
+		AddInfo(FString::Printf(TEXT("PIECES %s singles per start %.1f mean volume %.0f"), Kind, double(Singles) / Counts.Num(), double(Volume) / FMath::Max<int64>(AllPieces, 1)));
+		AddInfo(FString::Printf(TEXT("PIECES %s mean %.1f min %d p25 %d median %d p75 %d max %d"), Kind, double(Sum) / Counts.Num(), Counts[0], Counts[75], Counts[150], Counts[225], Counts.Last()));
+	}
+	return true;
+}
+
 #endif

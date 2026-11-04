@@ -61,6 +61,9 @@ namespace
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
+		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
+		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
+		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -2261,6 +2264,222 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.locate.biome.success"), { Id, FString::Printf(TEXT("[%d, %d, %d]"), Found.X, Found.Y, Found.Z), FString::FromInt(Away) })) };
 	}
 
+	// /swing <targets> [mainhand|offhand]: players swing their arm (what is drawn is the first-person arm on the machine playing them).
+	FReplies RunSwing(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 3 || (Words.Num() == 3 && Words[2] != TEXT("mainhand") && Words[2] != TEXT("offhand")))
+		{
+			return BadArgument(Command);
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		if (Players.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.swing.failed.notliving"))) };
+		}
+		for (const FString& Player : Players)
+		{
+			Target.SwingArm(Player);
+		}
+		return { Ok(Players.Num() == 1 ? McLang::Format(TEXT("commands.swing.success.single"), { Players[0] }) : McLang::Format(TEXT("commands.swing.success.multiple"), { FString::FromInt(Players.Num()) })) };
+	}
+
+	// /forceload add|remove|query: the chunks marked to stay loaded, kept for the session (nothing keeps them loaded yet).
+	TSet<FIntPoint>& ForceLoaded()
+	{
+		static TSet<FIntPoint> Chunks;
+		return Chunks;
+	}
+
+	FReplies RunSpreadPlayers(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>
+		const bool bUnder = Words.Num() == 9 && Words[5] == TEXT("under");
+		if (Words.Num() != 7 && !bUnder)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FVector Here = SenderFeet(Sender, Target);
+		double CentreX = 0.0, CentreZ = 0.0, Spread = 0.0, Range = 0.0, MaxHeight = 319.0;
+		if (!ParseCoordinate(Words[1], Here.X, true, CentreX) || !ParseCoordinate(Words[2], Here.Z, true, CentreZ)
+			|| !ParseNumber(Words[3], Spread) || !ParseNumber(Words[4], Range) || (bUnder && !ParseNumber(Words[6], MaxHeight)))
+		{
+			return BadArgument(Command);
+		}
+		if (Spread < 0.0)
+		{
+			return { Fail(FString::Printf(TEXT("Float must not be less than 0.0: found %s"), *JavaDouble(Spread))) };
+		}
+		if (Range < Spread + 1.0)
+		{
+			return { Fail(FString::Printf(TEXT("Float must not be less than %s: found %s"), *JavaDouble(Spread + 1.0), *JavaDouble(Range))) };
+		}
+		const int32 TeamsWord = bUnder ? 7 : 5;
+		const FString& Teams = Words[TeamsWord];
+		if (Teams != TEXT("true") && Teams != TEXT("false"))
+		{
+			return BadArgument(Command);
+		}
+		TArray<FString> Who;
+		FString Error;
+		if (!ResolvePlayers(Words.Last(), Sender, Target, Who, Error))
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		TArray<FVector> Spots;
+		for (int32 Index = 0; Index < Who.Num(); ++Index)
+		{
+			FVector Spot = FVector::ZeroVector;
+			bool bFound = false;
+			for (int32 Try = 0; Try < 10000 && !bFound; ++Try)
+			{
+				const double X = FMath::FloorToDouble(CentreX + FMath::FRandRange(-Range, Range)) + 0.5;
+				const double Z = FMath::FloorToDouble(CentreZ + FMath::FRandRange(-Range, Range)) + 0.5;
+				bool bFar = true;
+				for (const FVector& Other : Spots)
+				{
+					bFar = bFar && FVector2D::Distance(FVector2D(X, Z), FVector2D(Other.X, Other.Z)) >= Spread;
+				}
+				if (!bFar)
+				{
+					continue;
+				}
+				for (int32 Y = FMath::FloorToInt(MaxHeight); Y >= -64; --Y)
+				{
+					FMcStateId State;
+					if (Target.GetBlock(FIntVector(FMath::FloorToInt(X), Y, FMath::FloorToInt(Z)), State) && !Registry.IsAir(State))
+					{
+						Spot = FVector(X, Y + 1.0, Z);
+						bFound = true;
+						break;
+					}
+				}
+			}
+			if (!bFound)
+			{
+				return { Fail(McLang::Format(TEXT("commands.spreadplayers.failed.entities"), { FString::FromInt(Who.Num()), JavaDouble(CentreX), JavaDouble(CentreZ), FString::Printf(TEXT("%.0f"), Spread) })) };
+			}
+			Spots.Add(Spot);
+		}
+		double Total = 0.0;
+		for (int32 Index = 0; Index < Spots.Num(); ++Index)
+		{
+			Target.Teleport(Who[Index], Spots[Index]);
+			double Nearest = 0.0;
+			bool bAny = false;
+			for (int32 Other = 0; Other < Spots.Num(); ++Other)
+			{
+				const double Distance = FVector2D::Distance(FVector2D(Spots[Index].X, Spots[Index].Z), FVector2D(Spots[Other].X, Spots[Other].Z));
+				if (Other != Index && (!bAny || Distance < Nearest))
+				{
+					Nearest = Distance;
+					bAny = true;
+				}
+			}
+			Total += Nearest;
+		}
+		const FString Key = Teams == TEXT("true") ? TEXT("commands.spreadplayers.success.teams") : TEXT("commands.spreadplayers.success.entities");
+		return { Ok(McLang::Format(Key, { FString::FromInt(Who.Num()), JavaDouble(CentreX), JavaDouble(CentreZ), FString::Printf(TEXT("%.2f"), Total / FMath::Max(1, Spots.Num())) })) };
+	}
+
+	FReplies RunForceLoad(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString Dimension = TEXT("minecraft:overworld");
+		const auto Chunk = [](const FIntPoint& P) { return FString::Printf(TEXT("[%d, %d]"), P.X, P.Y); };
+		const FString& Sub = Words[1];
+		TSet<FIntPoint>& Chunks = ForceLoaded();
+		if (Sub == TEXT("remove") && Words.Num() == 3 && Words[2] == TEXT("all"))
+		{
+			Chunks.Reset();
+			return { Ok(McLang::Format(TEXT("commands.forceload.removed.all"), { Dimension })) };
+		}
+		if (Sub == TEXT("query") && Words.Num() == 2)
+		{
+			TArray<FIntPoint> All = Chunks.Array();
+			All.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.Y != B.Y ? A.Y < B.Y : A.X < B.X; });
+			if (All.IsEmpty())
+			{
+				return { Ok(McLang::Format(TEXT("commands.forceload.added.none"), { Dimension })) };
+			}
+			TArray<FString> Shown;
+			for (const FIntPoint& P : All)
+			{
+				Shown.Add(Chunk(P));
+			}
+			return { Ok(All.Num() == 1 ? McLang::Format(TEXT("commands.forceload.list.single"), { Dimension, Shown[0] })
+				: McLang::Format(TEXT("commands.forceload.list.multiple"), { FString::FromInt(All.Num()), Dimension, FString::Join(Shown, TEXT(", ")) })) };
+		}
+		const bool bAdd = Sub == TEXT("add");
+		const bool bRemove = Sub == TEXT("remove");
+		const bool bQuery = Sub == TEXT("query");
+		if (!(bAdd || bRemove || bQuery) || (Words.Num() != 4 && Words.Num() != 6) || (bQuery && Words.Num() != 4))
+		{
+			return (bAdd || bRemove || bQuery) ? Unknown(Command, Command.Len()) : BadArgument(Command);
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		double X1, Z1, X2, Z2;
+		if (!ParseCoordinate(Words[2], Base.X, false, X1) || !ParseCoordinate(Words[3], Base.Z, false, Z1))
+		{
+			return BadArgument(Command);
+		}
+		X2 = X1;
+		Z2 = Z1;
+		if (Words.Num() == 6 && (!ParseCoordinate(Words[4], Base.X, false, X2) || !ParseCoordinate(Words[5], Base.Z, false, Z2)))
+		{
+			return BadArgument(Command);
+		}
+		if (FMath::Abs(X1) >= 30000000.0 || FMath::Abs(Z1) >= 30000000.0 || FMath::Abs(X2) >= 30000000.0 || FMath::Abs(Z2) >= 30000000.0)
+		{
+			return { Fail(McLang::Get(TEXT("argument.pos.outofworld"))) };
+		}
+		const FIntPoint Low(FMath::FloorToInt32(FMath::Min(X1, X2) / 16.0), FMath::FloorToInt32(FMath::Min(Z1, Z2) / 16.0));
+		const FIntPoint High(FMath::FloorToInt32(FMath::Max(X1, X2) / 16.0), FMath::FloorToInt32(FMath::Max(Z1, Z2) / 16.0));
+		if (bQuery)
+		{
+			const FIntPoint At(FMath::FloorToInt32(X1 / 16.0), FMath::FloorToInt32(Z1 / 16.0));
+			return { Ok(McLang::Format(Chunks.Contains(At) ? TEXT("commands.forceload.query.success") : TEXT("commands.forceload.query.failure"), { Chunk(At), Dimension })) };
+		}
+		const int64 Count = int64(High.X - Low.X + 1) * (High.Y - Low.Y + 1);
+		if (Count > 256)
+		{
+			return { Fail(McLang::Format(TEXT("commands.forceload.toobig"), { TEXT("256"), LexToString(Count) })) };
+		}
+		int32 Changed = 0;
+		for (int32 X = Low.X; X <= High.X; ++X)
+		{
+			for (int32 Z = Low.Y; Z <= High.Y; ++Z)
+			{
+				if (bAdd ? !Chunks.Contains(FIntPoint(X, Z)) : Chunks.Contains(FIntPoint(X, Z)))
+				{
+					++Changed;
+					if (bAdd) { Chunks.Add(FIntPoint(X, Z)); } else { Chunks.Remove(FIntPoint(X, Z)); }
+				}
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bAdd ? TEXT("commands.forceload.added.failure") : TEXT("commands.forceload.removed.failure"))) };
+		}
+		if (Low == High)
+		{
+			return { Ok(McLang::Format(bAdd ? TEXT("commands.forceload.added.single") : TEXT("commands.forceload.removed.single"), { Chunk(Low), Dimension })) };
+		}
+		return { Ok(McLang::Format(bAdd ? TEXT("commands.forceload.added.multiple") : TEXT("commands.forceload.removed.multiple"), { FString::FromInt(Changed), Dimension, Chunk(Low), Chunk(High) })) };
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -3341,6 +3560,18 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("locate"))
 	{
 		return RunLocate(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("swing"))
+	{
+		return RunSwing(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("spreadplayers"))
+	{
+		return RunSpreadPlayers(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("forceload"))
+	{
+		return RunForceLoad(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

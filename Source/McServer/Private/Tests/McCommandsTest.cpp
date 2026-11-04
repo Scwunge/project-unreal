@@ -534,6 +534,20 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	// Measured against the game: /locate biome.
 	TestEqual(TEXT("locate unknown biome"), First(TEXT("locate biome minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:worldgen/biome'")));
 	TestEqual(TEXT("locate needs a biome"), First(TEXT("locate biome")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("swing"), First(TEXT("swing Steve")), FString(TEXT("Made Steve swing an arm")));
+	// Measured against the game: /spreadplayers (one entity lands on its own: distance 0.00).
+	First(TEXT("fill -20 0 -20 20 0 20 stone"));
+	TestEqual(TEXT("spreadplayers"), First(TEXT("spreadplayers 0 0 5 20 false @s")), FString(TEXT("Spread 1 entity/entities around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
+	TestEqual(TEXT("spreadplayers teams"), First(TEXT("spreadplayers 0 0 5 20 true @s")), FString(TEXT("Spread 1 team(s) around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
+	TestEqual(TEXT("spreadplayers nobody"), First(TEXT("spreadplayers 0 0 5 20 false Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /forceload.
+	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
+	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));
+	TestEqual(TEXT("forceload add again"), First(TEXT("forceload add 0 0")), FString(TEXT("No chunks were marked for force loading")));
+	TestEqual(TEXT("forceload range"), First(TEXT("forceload add 0 0 32 32")), FString(TEXT("Marked 8 chunks in minecraft:overworld from [0, 0] to [2, 2] to be force loaded")));
+	TestEqual(TEXT("forceload too big"), First(TEXT("forceload add 0 0 300 300")), FString(TEXT("Too many chunks in the specified area (maximum 256, but specified 361)")));
+	TestEqual(TEXT("forceload query one"), First(TEXT("forceload query 100 100")), FString(TEXT("Chunk at [6, 6] in minecraft:overworld is not marked for force loading")));
+	TestEqual(TEXT("forceload remove all"), First(TEXT("forceload remove all")), FString(TEXT("Unmarked all force loaded chunks in minecraft:overworld")));
 	return true;
 }
 

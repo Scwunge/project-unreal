@@ -212,6 +212,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
     (`-McScene=boats`, boats summoned with `-McChat`, see `tools/scenes/boats.json`). The bamboo raft has its own
     flat deck model. Water inside a hull is not masked (the pond shows through the boat); that needs a depth
     pass and is left.
+  - **Entity portal travel** (2026-11-04, vehicles session): mobs, items, carts and boats with nobody in them go through nether and end portals. Add-only changes for integrate: `FMcEntity::PortalCooldown` (McEntityManager.h); `FMcEntityHost::PackEntity/UnpackEntity` (McEntityHost.h/.cpp, one entity in CaptureChunk's format); `UMcTravelSubsystem::TickEntities/TickEntityTrips` and `FEntityTrip` (McTravel.h/.cpp, run beside the player trips, 300-tick cooldown after arriving, 10 while still standing in a portal). Test `McClient.McServer.EntityTransfer` covers pack/unpack only; the walk through a portal was not run in a game. Not done: a ridden vehicle or a mob in one goes nowhere (a rider should take its vehicle along), and the velocity and yaw are reset on arrival.
   - **Minecart variants** (2026-10-29): chest (27 slots), furnace, hopper (5 slots) and TNT carts
     (`minecraft:chest_minecart` and so on, placed by item or `/summon`). A chest or hopper cart opens as its
     window when clicked sneaking. A furnace cart burns coal or charcoal (3600 ticks an item) and drives itself at

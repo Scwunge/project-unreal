@@ -46,6 +46,8 @@ public:
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
 	int32 Age = 0;
+	// Ticks before a portal can take it again (McTravel; not saved).
+	int32 PortalCooldown = 0;
 	// Set to have the manager drop it at the end of the tick.
 	bool bRemoved = false;
 };

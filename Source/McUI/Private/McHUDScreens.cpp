@@ -23,6 +23,7 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
+#include "McMapStore.h"
 #include "Algo/Reverse.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -71,6 +72,7 @@ struct AMcHUD::FScreenState
 	FMcEnchantMenu* Enchanting = nullptr;
 	// The stonecutter's menu and how far down its recipes are scrolled.
 	FMcStonecutterMenu* Stonecutter = nullptr;
+	FMcCartographyMenu* Cartography = nullptr;
 	int32 RecipeScroll = 0;
 	// The loom's menu (Input holds it), its patterns scrolled the same way.
 	FMcLoomMenu* Loom = nullptr;
@@ -1153,6 +1155,7 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		break;
 	case EMcWindowKind::CartographyTable:
 		State->Layout = McGui::MakeCartographyLayout();
+		State->Cartography = static_cast<FMcCartographyMenu*>(Window.Menu.Get());
 		break;
 	case EMcWindowKind::Anvil:
 		State->Layout = McGui::MakeAnvilLayout();
@@ -2115,6 +2118,13 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Cartography:
+		if (Screen->Cartography)
+		{
+			DrawCartographyPreview(Origin, *Screen->Cartography);
+		}
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		break;
 	case McGui::EScreen::Grindstone:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
@@ -2252,6 +2262,47 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
 		DrawFill(X - 3, Y - 3, Wide + 5, 14, FLinearColor(0.06f, 0.0f, 0.06f, 0.9f));
 		DrawGuiText(Name, X, Y, 0xFFFFFF, true);
+	}
+}
+
+// The cartography table's preview (ref run carto1, vanilla, measured in gui pixels from the panel's corner): a 66 square paper
+// at (67, 13) holding the map at 0.45 (at (71, 17)); zooming out shows it at 0.225 centred on the paper with a dashed edge
+// (scaled_map); copying shows two 50 wide papers, the back at (83, 13) and the front at (67, 29), the map at 0.35 inset 3;
+// a glass pane adds the lock at (118, 60); a map and material that do nothing show the crossed arrow at (35, 31).
+void AMcHUD::DrawCartographyPreview(FIntPoint Origin, const FMcCartographyMenu& Menu)
+{
+	const FMcItemStack Map = Menu.GetStack(FMcCartographyMenu::MapSlot);
+	const FMcItemStack Material = Menu.GetStack(FMcCartographyMenu::MaterialSlot);
+	const FMcCartographyMenu::EOperation Op = FMcCartographyMenu::GetOperation(Map, Material);
+	const FString Dir = TEXT("textures/gui/sprites/container/cartography_table/");
+	const float X = static_cast<float>(Origin.X);
+	const float Y = static_cast<float>(Origin.Y);
+	UTexture2D* Picture = Map.IsEmpty() ? nullptr : GetMapTexture(Map);
+	const FMcMapData* Data = Map.IsEmpty() ? nullptr : McMapStore::Find(McMapStore::GetId(Map));
+	const float Full = static_cast<float>(FMcMapData::Size);
+	if (Op == FMcCartographyMenu::EOperation::Copy)
+	{
+		DrawGuiSprite(Dir + TEXT("duplicated_map.png"), X + 83.0f, Y + 13.0f, 50.0f, 66.0f);
+		DrawSprite(Picture, X + 86.0f, Y + 16.0f, Full * 0.35f, Full * 0.35f);
+		DrawGuiSprite(Dir + TEXT("duplicated_map.png"), X + 67.0f, Y + 29.0f, 50.0f, 66.0f);
+		DrawSprite(Picture, X + 70.0f, Y + 32.0f, Full * 0.35f, Full * 0.35f);
+		return;
+	}
+	if (Op == FMcCartographyMenu::EOperation::Zoom)
+	{
+		DrawGuiSprite(Dir + TEXT("scaled_map.png"), X + 67.0f, Y + 13.0f, 66.0f, 66.0f);
+		DrawSprite(Picture, X + 85.4f, Y + 31.4f, Full * 0.225f, Full * 0.225f);
+		return;
+	}
+	DrawGuiSprite(Dir + TEXT("map.png"), X + 67.0f, Y + 13.0f, 66.0f, 66.0f);
+	DrawSprite(Picture, X + 71.0f, Y + 17.0f, Full * 0.45f, Full * 0.45f);
+	if (Op == FMcCartographyMenu::EOperation::Lock || (Data && Data->bLocked))
+	{
+		DrawGuiSprite(Dir + TEXT("locked.png"), X + 118.0f, Y + 60.0f, 10.0f, 14.0f);
+	}
+	if (!Map.IsEmpty() && !Material.IsEmpty() && Op == FMcCartographyMenu::EOperation::None)
+	{
+		DrawGuiSprite(Dir + TEXT("error.png"), X + 35.0f, Y + 31.0f, 28.0f, 21.0f);
 	}
 }
 

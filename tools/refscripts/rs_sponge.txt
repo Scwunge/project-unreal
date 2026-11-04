@@ -1,0 +1,103 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 20 -50 20
+wait 200
+cmd tick freeze
+wait 4
+cmd fill -2 -60 -2 60 -55 40 air
+cmd fill -2 -61 -2 60 -61 40 stone
+cmd gamerule do_mob_spawning false
+wait 10
+cmd fill 0 -60 0 5 -57 5 stone
+cmd fill 1 -60 1 4 -58 4 water
+cmd fill 1 -57 1 4 -57 4 air
+cmd fill 10 -59 1 29 -59 1 air
+cmd setblock 35 -60 3 sponge
+cmd fill 39 -60 0 44 -58 5 stone
+cmd fill 40 -60 1 43 -59 4 water
+cmd fill 40 -58 1 43 -58 4 air
+cmd fill 0 -60 9 5 -58 14 stone
+cmd fill 1 -60 10 4 -59 13 water
+cmd fill 1 -58 10 4 -58 13 air
+cmd fill 10 -61 10 30 -61 12 stone
+wait 10
+log states 0 -60 0 45 -58 14
+cmd setblock 10 -60 11 water
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd setblock 2 -59 2 sponge
+cmd setblock 41 -60 2 wet_sponge
+cmd setblock 2 -59 11 sponge
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd setblock 36 -60 3 water
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd setblock 14 -60 11 sponge
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick step 1
+wait 4
+log states 0 -60 0 45 -58 14
+cmd tick unfreeze

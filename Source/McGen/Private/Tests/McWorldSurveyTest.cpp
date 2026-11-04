@@ -1093,3 +1093,108 @@ bool FMcWorldStatsAtTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+// Nether block counts on the patches `log nstats -256 -256 64 8` reads on the reference (8 * 8 patches of 4 * 4 chunks, 64
+// chunks apart), per 8-block band and per biome at y 64: NSTAT A / B / C lines in the reference's format.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStatsTest, "McClient.McGen.NetherStats",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcNetherStatsTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	FString SeedFilter;
+	FParse::Value(FCommandLine::Get(), TEXT("McNetherSeed="), SeedFilter);
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		if (!SeedFilter.IsEmpty() && FCString::Atoi(*SeedFilter) != SeedIndex)
+		{
+			continue;
+		}
+		const TSharedRef<FMcNoiseGenerator> Generator = MakeShared<FMcNoiseGenerator>(Settings, Seeds[SeedIndex], TEXT("minecraft:nether"));
+		FMcFeatureLibrary Features(Settings.SeaLevel, Settings.MinY, Settings.Height);
+		Features.LoadBiomes();
+		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
+		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
+		TMap<FString, TArray<int64>> Bands;
+		TMap<FString, int64> PerBiome, Columns;
+		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
+		{
+			for (int32 PatchX = 0; PatchX < 8; ++PatchX)
+			{
+				const FIntPoint Corner(-256 + PatchX * 64, -256 + PatchZ * 64);
+				constexpr int32 Side = 6;
+				TArray<TUniquePtr<FMcChunk>> Chunks;
+				for (int32 Index = 0; Index < Side * Side; ++Index)
+				{
+					Chunks.Add(MakeUnique<FMcChunk>(FIntPoint(Corner.X - 1 + Index % Side, Corner.Y - 1 + Index / Side), Settings.MinY, Settings.Height / 16));
+					Generator->Generate(*Chunks.Last());
+				}
+				auto Around = [&](int32 CX, int32 CZ, FMcChunk** Out)
+				{
+					for (int32 Index = 0; Index < 9; ++Index)
+					{
+						Out[Index] = Chunks[(CZ - 1 + Index / 3) * Side + (CX - 1 + Index % 3)].Get();
+					}
+				};
+				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
+				{
+					for (int32 CX = 1; CX < Side - 1; ++CX)
+					{
+						FMcChunk* Nine[9];
+						Around(CX, CZ, Nine);
+						FMcGenRegion Region(FIntPoint(Corner.X - 1 + CX, Corner.Y - 1 + CZ), Nine);
+						Features.Decorate(Region, Seeds[SeedIndex]);
+					}
+				}
+				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
+				{
+					for (int32 CX = 1; CX < Side - 1; ++CX)
+					{
+						const FMcChunk& Chunk = *Chunks[CZ * Side + CX];
+						for (int32 LZ = 0; LZ < 16; ++LZ)
+						{
+							for (int32 LX = 0; LX < 16; ++LX)
+							{
+								const FString Biome = FMcBiomeRegistry::Get().GetName(Generator->GetBiome(Chunk.GetPos().X * 16 + LX, 64, Chunk.GetPos().Y * 16 + LZ)).ToString();
+								++Columns.FindOrAdd(Biome);
+								for (int32 Y = 0; Y < 128; ++Y)
+								{
+									const FString Name = Blocks.GetBlockOf(Chunk.GetBlock(LX, Y, LZ)).Name.ToString();
+									TArray<int64>& Band = Bands.FindOrAdd(Name);
+									Band.SetNumZeroed(16);
+									++Band[Y >> 3];
+									++PerBiome.FindOrAdd(Biome + TEXT(" ") + Name);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		for (const TPair<FString, TArray<int64>>& Pair : Bands)
+		{
+			for (int32 Band = 0; Band < 16; ++Band)
+			{
+				if (Pair.Value[Band] > 0)
+				{
+					AddInfo(FString::Printf(TEXT("NSTAT %d A %d %s %lld"), SeedIndex, Band, *Pair.Key, Pair.Value[Band]));
+				}
+			}
+		}
+		for (const TPair<FString, int64>& Pair : PerBiome)
+		{
+			AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : Columns)
+		{
+			AddInfo(FString::Printf(TEXT("NSTAT %d C %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+	}
+	return true;
+}

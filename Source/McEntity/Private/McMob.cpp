@@ -291,6 +291,10 @@ bool FMcMob::Serialize(FArchive& Ar)
 			SetSize(Saved, false);
 		}
 	}
+	if (McMount::IsRideable(*this) && !Ar.IsError())
+	{
+		McMount::Serialize(Ar, *this);
+	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
 }
 
@@ -408,6 +412,11 @@ bool FMcMob::IsPrey(const FMcEntity& Other) const
 
 bool FMcMob::Damage(float Amount, const FVector* Source)
 {
+	// Horse armour takes its share (McMount.h).
+	if (Mount.IsValid() && !Mount->Armor.IsNone())
+	{
+		Amount = McMount::ReduceDamage(*Mount, Amount);
+	}
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.
 	if (HurtTime > 0 || Health <= 0.0f)
 	{

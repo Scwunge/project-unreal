@@ -542,12 +542,12 @@ void UMcPlayerDataComponent::NotifyClick(int32 Slot, int32 Button, EMcClickType 
 	{
 		// The menu the screen clicked is the server's own: only the follow-ups remain.
 		McSurvival::AddXp(Stats, Window.Menu->TakeExperience());
-	// Volumes from minecraft.wiki "Bundle" (0.8, failing 1.0); the pitch of the varied ones is not measured: 0.8 to 1.2.
+	// Measured (ref run bundlesound, 20 clicks): insert and remove_one volume 0.8, pitch 0.8 + 0.5 * random (0.82 to 1.28 seen); insert_fail 1.0 and 1.0.
 	const FName BundleSound = Window.Menu->TakeBundleSound();
 	if (!BundleSound.IsNone() && ServerSound)
 	{
 		const bool bFail = BundleSound == FName("item.bundle.insert_fail");
-		ServerSound(BundleSound, bFail ? 1.0f : 0.8f, bFail ? 1.0f : 0.8f + FMath::FRand() * 0.4f);
+		ServerSound(BundleSound, bFail ? 1.0f : 0.8f, bFail ? 1.0f : 0.8f + FMath::FRand() * 0.5f);
 	}
 		Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Window.Menu->TakeLevelsSpent());
 		if (Window.OnChanged)

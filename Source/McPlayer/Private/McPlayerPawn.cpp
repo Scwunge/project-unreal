@@ -2425,7 +2425,7 @@ void AMcPlayerPawn::ServerSetUsing_Implementation(bool bUsing)
 		// Volume and pitch are not measured.
 		if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
 		{
-			Entities->PlaySound(bUsing ? FName(TEXT("item.spyglass.use")) : FName(TEXT("item.spyglass.stop_using")), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 1.0f, 1.0f);
+			Entities->PlaySound(bUsing ? FName(TEXT("item.spyglass.use")) : FName(TEXT("item.spyglass.stop_using")), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, bUsing ? 1.15f : 1.0f);
 		}
 	}
 	bServerUsing = bUsing;

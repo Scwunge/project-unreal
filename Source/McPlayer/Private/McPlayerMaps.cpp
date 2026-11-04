@@ -139,5 +139,5 @@ void AMcPlayerPawn::ServerUseBundle()
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
 	FMcItemEntity& Item = Manager->DropItem(Body.Position + FVector(0.0, GetEyeHeight() - 0.3, 0.0), Thrown, 40);
 	Item.Body.Velocity = Look * 0.3 + FVector(0.0, 0.1, 0.0);
-	Manager->PlaySound(FName("item.bundle.drop_contents"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.8f, 0.8f + FMath::FRand() * 0.4f);
+	Manager->PlaySound(FName("item.bundle.drop_contents"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.8f, 0.8f + FMath::FRand() * 0.5f);
 }

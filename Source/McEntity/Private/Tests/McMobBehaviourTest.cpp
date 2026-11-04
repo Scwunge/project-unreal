@@ -511,6 +511,29 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
 	}
 	{
+		// An enderman is angered by a player whose view stays on its eyes (ender13/14.txt): aimed at them, 1 block off them, and looking away.
+		const FVector Player(10.5, 1.0, 20.5);
+		const FVector Eyes(10.5, 1.0 + 2.9 * 0.879, 10.5);
+		const FVector ToEyes = Eyes - (Player + FVector(0.0, 1.62, 0.0));
+		const FVector Looks[3] = { ToEyes.GetSafeNormal(), (ToEyes + FVector(0.0, 1.0, 0.0)).GetSafeNormal(), FVector(0.0, 0.0, 1.0) };
+		const bool bExpected[3] = { true, false, false };
+		for (int32 Case = 0; Case < 3; ++Case)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.PlayerPositions = { Player };
+			Manager.PlayerLooks = { Looks[Case] };
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 8; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(*FString::Printf(TEXT("stare case %d"), Case), Enderman->AngerTicks > 0, bExpected[Case]);
+		}
+	}
+	{
 		// An enderman among flowers at its feet takes one (ender6.txt: all three did within about 600 ticks) and takes none with mob griefing off.
 		for (const bool bGriefing : { true, false })
 		{

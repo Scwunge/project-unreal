@@ -136,7 +136,8 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Enderman = Add(TEXT("minecraft:enderman"), 0.6f, 2.9f, 40.f, 0.3f, 7.f, 64.f, false, false);
 		Enderman.bNeutral = true;
 		Enderman.bTeleports = true;
-		// Its stare trigger (anger when looked at) is NOT built: see PLAN.md, ender2.txt and ender9.txt disagree.
+		// Stare trigger: fitted from ender13/ender14 (see the Tick block); it is on.
+		Enderman.bGazeAngers = true;
 		Enderman.bCarriesBlocks = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
 		// The magma cube (hogmagma1.txt): per size n (1, 2, 4 across the sizes the game makes) health n squared, attack n, armor 3n, speed
@@ -802,6 +803,31 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	if (AngerTicks > 0)
 	{
 		--AngerTicks;
+	}
+	if (Type.bGazeAngers)
+	{
+		// Stare trigger, fitted from vanilla logs (ender13.txt, ender14.txt: survival player, enderman alone in the End, anger_end_time read back,
+		// aim swept off its eyes, n=2 at 10 blocks and n=1 at 3 and 20): it was angered when the view passed within 0.5 blocks of its eyes at 10 blocks
+		// (13 of 14 aimed within 0.5), never at 1 block or more, nor looking away; the edge sat between 0.25 and 0.4 at 3 blocks, 0.5 and 0.75 at
+		// 10 and 1.0 and 1.25 at 20. That fits "1 - cos(angle) < k / distance" with k between 0.0125 and 0.0195 (0.016 used). Eyes: 2.55 above its
+		// feet (2.9 tall, measured as the aim that worked), player eyes 1.62. Held for 5 ticks (the wiki's figure; the logs sampled at 12 ticks).
+		// One unexplained miss: a 0.1 offset at 3 blocks did not anger it. Anger length 1200 is the hurt value, not measured here.
+		bool bLooked = false;
+		for (int32 PlayerIndex = 0; PlayerIndex < Manager.PlayerPositions.Num() && PlayerIndex < Manager.PlayerLooks.Num(); ++PlayerIndex)
+		{
+			const FVector ToEnderman = (Body.Position + FVector(0.0, Type.Height * 0.879, 0.0)) - (Manager.PlayerPositions[PlayerIndex] + FVector(0.0, 1.62, 0.0));
+			const double Distance = ToEnderman.Size();
+			if (Distance > 0.01 && Distance < Type.FollowRange)
+			{
+				const double CosAngle = FVector::DotProduct(Manager.PlayerLooks[PlayerIndex].GetSafeNormal(), ToEnderman / Distance);
+				bLooked = bLooked || (1.0 - CosAngle) < 0.016 / Distance;
+			}
+		}
+		StareTicks = bLooked ? StareTicks + 1 : 0;
+		if (StareTicks >= 5)
+		{
+			AngerTicks = 1200;
+		}
 	}
 	if (Type.bCarriesBlocks)
 	{

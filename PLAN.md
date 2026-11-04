@@ -1414,7 +1414,7 @@ Cloud shade shot retried 2026-11-04 (local lane, `-McInput=look:0,40;wait:3` wit
 ## Provenance gaps
 Numbers in the code that did not come from a logged vanilla run, the wiki or `cache/` (clean-room audit, 2026-11-04). Each says whether it is to be measured or removed.
 
-### Maps, compasses, spyglass, bundles (m1 session; 10 gaps)
+### Maps, compasses, spyglass, bundles (m1 session; 9 gaps)
 1. Compass spin needle (`McItemFrames.cpp`): the chance 0.05 a tick of picking a new random spin target, the seed 1234 and using the compass's own Pull 0.1 and Damping 0.8 for it. Not from a log (origin: assumed when the code was first written; treat as recalled). To measure: log a compass in the Nether over a few hundred ticks. Same for the recovery compass without a death place and the lodestone compass with no lodestone.
 2. Bundle sounds: pitch range 0.8 to 1.2 for insert, remove_one and drop_contents is a guess ("varied" on the wiki); volumes 0.8 and 1.0 are the wiki's. To measure: `log sounds`.
 3. Bundle throw (`ServerUseBundle`): pickup delay 40 and velocity 0.3 along the look + 0.1 up are the Q-key drop's, assumed for the bundle. To measure: a ref run using a bundle in hand, log item entities.
@@ -1424,5 +1424,5 @@ Numbers in the code that did not come from a logged vanilla run, the wiki or `ca
 7. Spyglass sounds (use and stop): volume and pitch 1.0, 1.0 are defaults, unmeasured. To measure with `log sounds`.
 8. Held map (`DrawHeldMap`): the frame is assumed square (only its width and top were measured); the pitch dependence is a smoothstep fitted to 21 shots (an interpolation, not a known rule); arms, off hand and tilt not modelled.
 9. Lodestone/recovery compass needle spin when the target is in another dimension or gone: unmeasured (follows the compass spin of gap 1).
-10. Bundle fullness bar and the map slot: measured (bundle1, mapshot): no gap, listed to show they were checked.
+(Not gaps, checked: the bundle fullness bar (bundle1), the map slot picture (mapshot), the spyglass FOV and scope (log fov, spy1/spy2).)
 

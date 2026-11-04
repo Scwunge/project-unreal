@@ -1122,7 +1122,7 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove;
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
 		{
 			for (int32 PatchX = 0; PatchX < 8; ++PatchX)
@@ -1173,6 +1173,10 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 									Band.SetNumZeroed(16);
 									++Band[Y >> 3];
 									++PerBiome.FindOrAdd(Biome + TEXT(" ") + Name);
+									if (Y >= 32 && Name == TEXT("minecraft:lava"))
+									{
+										++LavaAbove.FindOrAdd(Biome);
+									}
 								}
 							}
 						}
@@ -1193,6 +1197,10 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		for (const TPair<FString, int64>& Pair : PerBiome)
 		{
 			Test.AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : LavaAbove)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : Columns)
 		{

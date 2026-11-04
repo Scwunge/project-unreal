@@ -27,6 +27,7 @@ namespace
 		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("clone"), 2, TEXT("/clone <begin> <end> <destination> [replace|masked|filtered <filter>] [normal|force|move]") },
+		{ TEXT("damage"), 2, TEXT("/damage <target> <amount> [<damageType>]") },
 		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
 		{ TEXT("defaultgamemode"), 2, TEXT("/defaultgamemode <gamemode>") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
@@ -65,6 +66,8 @@ namespace
 		{ TEXT("tp"), 2, TEXT("/tp -> teleport") },
 		{ TEXT("w"), 0, TEXT("/w -> msg") },
 		{ TEXT("version"), 0, TEXT("/version") },
+		{ TEXT("worldborder"), 2, TEXT("/worldborder (add|center|damage|get|set|warning) ...") },
+		{ TEXT("tick"), 3, TEXT("/tick (query|rate|freeze|unfreeze|step|sprint) ...") },
 		{ TEXT("weather"), 2, TEXT("/weather (clear|rain|thunder) [<duration>]") },
 		{ TEXT("whitelist"), 3, TEXT("/whitelist (add|list|off|on|reload|remove) ...") },
 		{ TEXT("xp"), 2, TEXT("/xp -> experience") },
@@ -1095,6 +1098,326 @@ namespace
 		const FString Who = Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num());
 		return { Ok(McLang::Format(Players.Num() == 1 ? TEXT("commands.spawnpoint.success.single.new") : TEXT("commands.spawnpoint.success.multiple.new"),
 			{ FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z), ShownAngle(Words, 5), ShownAngle(Words, 6), TEXT("minecraft:overworld"), Who })) };
+	}
+
+	// /worldborder: the state is kept for the session; nothing enforces it in the world yet, and a change over a time lands at once.
+	FMcWorldBorderState& BorderState()
+	{
+		return McCommands::GetWorldBorder();
+	}
+
+	// A number the way the game prints a double: 5.9999968E7 from ten million up, else with at least one decimal.
+	FString JavaDouble(double Value)
+	{
+		if (FMath::Abs(Value) >= 1e7)
+		{
+			int32 Exponent = 0;
+			double Mantissa = Value;
+			while (FMath::Abs(Mantissa) >= 10.0)
+			{
+				Mantissa /= 10.0;
+				++Exponent;
+			}
+			FString Digits = FString::Printf(TEXT("%.9f"), Mantissa);
+			while (Digits.EndsWith(TEXT("0")) && !Digits.EndsWith(TEXT(".0")))
+			{
+				Digits.LeftChopInline(1);
+			}
+			return Digits + TEXT("E") + FString::FromInt(Exponent);
+		}
+		FString Text = FString::SanitizeFloat(Value, 1);
+		return Text;
+	}
+
+	// The game's "...tail<--[HERE]" context line, from where the failing argument begins.
+	FString BorderContext(const FString& Command, int32 From)
+	{
+		const FString Before = Command.Left(From);
+		return (Before.Len() > 10 ? TEXT("...") + Before.Right(10) : Before) + Command.Mid(From) + McLang::Get(TEXT("command.context.here"));
+	}
+
+	bool ParseNumber(const FString& Word, double& Out)
+	{
+		if (Word.IsEmpty() || !Word.IsNumeric())
+		{
+			return false;
+		}
+		Out = FCString::Atod(*Word);
+		return true;
+	}
+
+	// A time: ticks, or with t, s or d after the number.
+	bool ParseTicks(const FString& Word, double& Ticks)
+	{
+		FString Number = Word;
+		double Unit = 1.0;
+		if (Number.EndsWith(TEXT("t"))) { Number.LeftChopInline(1); }
+		else if (Number.EndsWith(TEXT("s"))) { Number.LeftChopInline(1); Unit = 20.0; }
+		else if (Number.EndsWith(TEXT("d"))) { Number.LeftChopInline(1); Unit = 24000.0; }
+		double Value;
+		if (!ParseNumber(Number, Value))
+		{
+			return false;
+		}
+		Ticks = Value * Unit;
+		return true;
+	}
+
+	FReplies RunWorldBorder(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		constexpr double MaxSize = 59999968.0;
+		constexpr double MaxCentre = 29999984.0;
+		FMcWorldBorderState& State = BorderState();
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		// Where the n-th word begins in the command.
+		const auto WordStart = [&](int32 Index)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Index; ++I)
+			{
+				At += Words[I].Len() + 1;
+			}
+			return At;
+		};
+		const FString& Sub = Words[1];
+		if (Sub == TEXT("get") && Words.Num() == 2)
+		{
+			return { Ok(McLang::Format(TEXT("commands.worldborder.get"), { LexToString(int64(FMath::FloorToDouble(State.Size + 0.5))) })) };
+		}
+		if ((Sub == TEXT("set") || Sub == TEXT("add")) && (Words.Num() == 3 || Words.Num() == 4))
+		{
+			double Value;
+			if (!ParseNumber(Words[2], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value > MaxSize)
+			{
+				return { Fail(FString::Printf(TEXT("Double must not be more than %s: found %s"), *JavaDouble(MaxSize), *JavaDouble(Value))), Fail(BorderContext(Command, WordStart(2))) };
+			}
+			double Ticks = 0.0;
+			if (Words.Num() == 4)
+			{
+				if (!ParseTicks(Words[3], Ticks))
+				{
+					return BadArgument(Command);
+				}
+				if (Ticks < 0.0)
+				{
+					return { Fail(FString::Printf(TEXT("The tick count must not be less than 0: found %d"), FMath::RoundToInt32(Ticks))), Fail(BorderContext(Command, WordStart(2))) };
+				}
+			}
+			const double NewSize = Sub == TEXT("add") ? State.Size + Value : Value;
+			if (NewSize > MaxSize)
+			{
+				return { Fail(McLang::Format(TEXT("commands.worldborder.set.failed.big"), { JavaDouble(MaxSize) })) };
+			}
+			if (NewSize < 1.0)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.set.failed.small"))) };
+			}
+			if (NewSize == State.Size)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.set.failed.nochange"))) };
+			}
+			const FString Shown = JavaDouble(NewSize);
+			const bool bGrow = NewSize > State.Size;
+			State.Size = NewSize;
+			if (Ticks <= 0.0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.worldborder.set.immediate"), { Shown })) };
+			}
+			return { Ok(McLang::Format(bGrow ? TEXT("commands.worldborder.set.grow") : TEXT("commands.worldborder.set.shrink"),
+				{ Shown, FString::Printf(TEXT("%.2f"), Ticks / 20.0) })) };
+		}
+		if (Sub == TEXT("center") && Words.Num() == 4)
+		{
+			double X, Z;
+			if (!ParseNumber(Words[2], X) || !ParseNumber(Words[3], Z))
+			{
+				return BadArgument(Command);
+			}
+			if (FMath::Abs(X) > MaxCentre || FMath::Abs(Z) > MaxCentre)
+			{
+				return { Fail(McLang::Format(TEXT("commands.worldborder.set.failed.far"), { JavaDouble(MaxCentre) })) };
+			}
+			// A whole number names the block's middle.
+			if (!Words[2].Contains(TEXT("."))) { X += 0.5; }
+			if (!Words[3].Contains(TEXT("."))) { Z += 0.5; }
+			X = FMath::Clamp(X, -MaxCentre, MaxCentre);
+			Z = FMath::Clamp(Z, -MaxCentre, MaxCentre);
+			if (X == State.CentreX && Z == State.CentreZ)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.center.failed"))) };
+			}
+			State.CentreX = X;
+			State.CentreZ = Z;
+			return { Ok(McLang::Format(TEXT("commands.worldborder.center.success"), { FString::Printf(TEXT("%.2f"), X), FString::Printf(TEXT("%.2f"), Z) })) };
+		}
+		if (Sub == TEXT("damage") && Words.Num() == 4 && (Words[2] == TEXT("amount") || Words[2] == TEXT("buffer")))
+		{
+			double Value;
+			if (!ParseNumber(Words[3], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value < 0.0)
+			{
+				return { Fail(FString::Printf(TEXT("Float must not be less than 0.0: found %s"), *JavaDouble(Value))), Fail(BorderContext(Command, WordStart(3))) };
+			}
+			const bool bAmount = Words[2] == TEXT("amount");
+			double& Slot = bAmount ? State.DamageAmount : State.DamageBuffer;
+			const FString Key = bAmount ? TEXT("commands.worldborder.damage.amount") : TEXT("commands.worldborder.damage.buffer");
+			if (Slot == Value)
+			{
+				return { Fail(McLang::Get(Key + TEXT(".failed"))) };
+			}
+			Slot = Value;
+			return { Ok(McLang::Format(Key + TEXT(".success"), { FString::Printf(TEXT("%.2f"), Value) })) };
+		}
+		if (Sub == TEXT("warning") && Words.Num() == 4 && (Words[2] == TEXT("distance") || Words[2] == TEXT("time")))
+		{
+			const bool bDistance = Words[2] == TEXT("distance");
+			double Value;
+			if (bDistance ? !ParseNumber(Words[3], Value) : !ParseTicks(Words[3], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value < 0.0)
+			{
+				return { Fail(FString::Printf(TEXT("%s must not be less than 0: found %d"), bDistance ? TEXT("Integer") : TEXT("The tick count"), FMath::RoundToInt32(Value))),
+					Fail(BorderContext(Command, WordStart(3))) };
+			}
+			double& Slot = bDistance ? State.WarningDistance : State.WarningTicks;
+			const FString Key = bDistance ? TEXT("commands.worldborder.warning.distance") : TEXT("commands.worldborder.warning.time");
+			if (Slot == Value)
+			{
+				return { Fail(McLang::Get(Key + TEXT(".failed"))) };
+			}
+			Slot = Value;
+			return { Ok(McLang::Format(Key + TEXT(".success"), { bDistance ? FString::FromInt(FMath::RoundToInt32(Value)) : FString::Printf(TEXT("%.2f"), Value / 20.0) })) };
+		}
+		return Unknown(Command, Command.Len());
+	}
+
+	// /tick query|rate <n>|freeze|unfreeze|step [<n>]: the speed the world runs at (the target rate scales its clock).
+	FReplies RunTick(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Sub = Words[1];
+		if (Sub == TEXT("query") && Words.Num() == 2)
+		{
+			const double Rate = Target.GetTickRate();
+			FReplies Replies = { Ok(McLang::Get(Target.IsTickFrozen() ? TEXT("commands.tick.status.frozen") : TEXT("commands.tick.status.running"))) };
+			Replies.Add(Ok(McLang::Format(TEXT("commands.tick.query.rate.running"), { FString::SanitizeFloat(Rate, 1), FString::Printf(TEXT("%.1f"), Target.GetAverageTickMs()),
+				FString::Printf(TEXT("%.1f"), 1000.0 / Rate) })));
+			return Replies;
+		}
+		if (Sub == TEXT("rate") && Words.Num() == 3)
+		{
+			if (!Words[2].IsNumeric())
+			{
+				return BadArgument(Command);
+			}
+			const double Rate = FCString::Atod(*Words[2]);
+			if (Rate < 1.0 || Rate > 10000.0)
+			{
+				return BadArgument(Command);
+			}
+			Target.SetTickRate(Rate);
+			return { Ok(McLang::Format(TEXT("commands.tick.rate.success"), { FString::SanitizeFloat(Rate, 1) })) };
+		}
+		if (Sub == TEXT("freeze") && Words.Num() == 2)
+		{
+			Target.SetTickFrozen(true);
+			return { Ok(McLang::Get(TEXT("commands.tick.status.frozen"))) };
+		}
+		if (Sub == TEXT("unfreeze") && Words.Num() == 2)
+		{
+			Target.SetTickFrozen(false);
+			return { Ok(McLang::Get(TEXT("commands.tick.status.running"))) };
+		}
+		if (Sub == TEXT("step") && Words.Num() <= 3)
+		{
+			int32 Count = 1;
+			if (Words.Num() == 3)
+			{
+				if (!Words[2].IsNumeric())
+				{
+					return BadArgument(Command);
+				}
+				Count = FCString::Atoi(*Words[2]);
+				if (Count < 1)
+				{
+					return BadArgument(Command);
+				}
+			}
+			if (!Target.IsTickFrozen())
+			{
+				return { Fail(McLang::Get(TEXT("commands.tick.step.fail"))) };
+			}
+			Target.StepTicks(Count);
+			return { Ok(McLang::Format(TEXT("commands.tick.step.success"), { FString::FromInt(Count) })) };
+		}
+		return Unknown(Command, Command.Len());
+	}
+
+	// /damage <targets> <amount> [<damage type>]: players only. A type the game has but this port has no kind for hurts as generic damage.
+	FReplies RunDamage(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 4)
+		{
+			return BadArgument(Command);
+		}
+		if (!Words[2].IsNumeric())
+		{
+			return BadArgument(Command);
+		}
+		const double Amount = FCString::Atod(*Words[2]);
+		if (Amount < 0.0)
+		{
+			return { Fail(FString::Printf(TEXT("Float must not be less than 0.0: found %s"), *FString::SanitizeFloat(Amount, 1))), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+		}
+		FString Type = TEXT("generic");
+		if (Words.Num() == 4)
+		{
+			Type = Words[3];
+			Type.RemoveFromStart(TEXT("minecraft:"));
+			if (!IFileManager::Get().FileExists(*(McCache::Root() / TEXT("client/data/minecraft/damage_type") / Type + TEXT(".json"))))
+			{
+				return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:damage_type'"), *(Words[3].Contains(TEXT(":")) ? Words[3] : TEXT("minecraft:") + Words[3]))),
+					Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+			}
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		TArray<FString> Hurt;
+		for (const FString& Player : Players)
+		{
+			if (Target.Hurt(Player, float(Amount), Type))
+			{
+				Hurt.Add(Player);
+			}
+		}
+		if (Hurt.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.damage.invulnerable"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.damage.success"), { FString::SanitizeFloat(Amount, 1), Hurt.Num() == 1 ? Hurt[0] : FString::FromInt(Hurt.Num()) })) };
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -2150,6 +2473,18 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunSpawnPoint(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("worldborder"))
+	{
+		return RunWorldBorder(Command, Words, Target);
+	}
+	if (Name == TEXT("tick"))
+	{
+		return RunTick(Command, Words, Target);
+	}
+	if (Name == TEXT("damage"))
+	{
+		return RunDamage(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("random"))
 	{
 		return RunRandom(Command, Words, Sender);
@@ -2309,4 +2644,10 @@ TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, con
 		RunFunctionLines(Id, Sender, Target, Replies, 0);
 	}
 	return Replies;
+}
+
+FMcWorldBorderState& McCommands::GetWorldBorder()
+{
+	static FMcWorldBorderState State;
+	return State;
 }

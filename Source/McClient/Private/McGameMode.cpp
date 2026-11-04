@@ -1339,6 +1339,35 @@ bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& 
 	return false;
 }
 
+void AMcGameMode::ApplyTickSpeed()
+{
+	// The world's clock runs at Rate/20 of normal; frozen, as slow as the engine lets it (a few steps of ticks run through it).
+	if (AWorldSettings* Settings = GetWorld() ? GetWorld()->GetWorldSettings() : nullptr)
+	{
+		Settings->SetTimeDilation(bTickFrozen ? 0.0001f : float(TickRate / 20.0));
+	}
+}
+
+void AMcGameMode::SetTickRate(double Rate)
+{
+	TickRate = Rate;
+	ApplyTickSpeed();
+}
+
+void AMcGameMode::SetTickFrozen(bool bFrozen)
+{
+	bTickFrozen = bFrozen;
+	ApplyTickSpeed();
+}
+
+void AMcGameMode::StepTicks(int32 Count)
+{
+	// Unfreezes for Count ticks of game time (real time at the target rate), then freezes again.
+	bTickFrozen = false;
+	ApplyTickSpeed();
+	GetWorldTimerManager().SetTimer(StepTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { SetTickFrozen(true); }), float(Count) / 20.0f, false);
+}
+
 void AMcGameMode::SetDefaultGameMode(const FString& NewMode)
 {
 	// Kept for the session (not written to the world).
@@ -1722,6 +1751,28 @@ namespace
 				}
 			}
 		}
+		virtual double GetTickRate() const override { return Mode.TickRate; }
+		virtual void SetTickRate(double Rate) override { Mode.SetTickRate(Rate); }
+		virtual bool IsTickFrozen() const override { return Mode.bTickFrozen; }
+		virtual void SetTickFrozen(bool bFrozen) override { Mode.SetTickFrozen(bFrozen); }
+		virtual void StepTicks(int32 Count) override { Mode.StepTicks(Count); }
+		virtual double GetAverageTickMs() const override { return Mode.GetWorld() ? Mode.GetWorld()->GetDeltaSeconds() * 1000.0 / FMath::Max(0.0001, double(Mode.GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation())) : 0.0; }
+		virtual bool Hurt(const FString& Player, float Amount, const FString& Type) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data || Pawn->Data->bCreative || Pawn->IsServerDead())
+			{
+				return false;
+			}
+			using McSurvival::EDamage;
+			const EDamage Kind = Type == TEXT("fall") ? EDamage::Fall : Type == TEXT("drown") ? EDamage::Drown : Type == TEXT("in_fire") ? EDamage::InFire
+				: Type == TEXT("on_fire") ? EDamage::OnFire : Type == TEXT("lava") ? EDamage::Lava : Type == TEXT("starve") ? EDamage::Starve
+				: Type == TEXT("out_of_world") ? EDamage::Void : Type == TEXT("magic") || Type == TEXT("indirect_magic") ? EDamage::Magic
+				: Type == TEXT("wither") ? EDamage::Wither : Type == TEXT("explosion") || Type == TEXT("player_explosion") ? EDamage::Explosion
+				: Type == TEXT("mob_attack") ? EDamage::Mob : EDamage::Generic;
+			Pawn->ServerHurt(Amount, Kind, nullptr, false);
+			return true;
+		}
 		virtual void SetWorldSpawn(const FIntVector& Pos) override
 		{
 			Mode.WorldSpawnOverride = Pos;
@@ -1963,6 +2014,27 @@ void AMcGameMode::RunFunctionTag(const FString& Tag)
 
 void AMcGameMode::TickFunctions()
 {
+	// The world border is a wall: a player past it is put back on its edge (the damage and warning it also has are not done).
+	const FMcWorldBorderState& Border = McCommands::GetWorldBorder();
+	if (Border.Size < 59999968.0)
+	{
+		const double Half = Border.Size * 0.5;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(It->Get() ? It->Get()->GetPawn() : nullptr);
+			if (!Pawn)
+			{
+				continue;
+			}
+			const FVector Feet = Pawn->GetFeetPosition();
+			const double X = FMath::Clamp(Feet.X, Border.CentreX - Half, Border.CentreX + Half);
+			const double Z = FMath::Clamp(Feet.Z, Border.CentreZ - Half, Border.CentreZ + Half);
+			if (X != Feet.X || Z != Feet.Z)
+			{
+				Pawn->ServerTeleport(FVector(X, Feet.Y, Z), Pawn->GetLookYaw());
+			}
+		}
+	}
 	if (TickFunctionIds.IsEmpty())
 	{
 		return;

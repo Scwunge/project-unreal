@@ -257,7 +257,17 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	{
 		return false;
 	}
-	const TSharedPtr<FJsonObject> Object = ReadJson(WorldDir / TEXT("playerdata") / Id + TEXT(".json"));
+	// A world imported from a Java save holds the player it had as "imported-player"; whoever has no file of their own takes it.
+	FString File = WorldDir / TEXT("playerdata") / Id + TEXT(".json");
+	if (!IFileManager::Get().FileExists(*File))
+	{
+		const FString Imported = WorldDir / TEXT("playerdata") / TEXT("imported-player.json");
+		if (IFileManager::Get().FileExists(*Imported))
+		{
+			File = Imported;
+		}
+	}
+	const TSharedPtr<FJsonObject> Object = ReadJson(File);
 	const TArray<TSharedPtr<FJsonValue>>* Pos = nullptr;
 	if (!Object || !Object->TryGetArrayField(TEXT("pos"), Pos) || Pos->Num() != 3)
 	{

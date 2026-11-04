@@ -2323,6 +2323,10 @@ void FMcRedstone::MoveBlocks(const TArray<FIntVector>& Move, const TArray<FIntVe
 		World.SetBlock(Dest, Moving);
 		Sim.ScheduleTick(Dest, 2);
 	}
+	if (Sim.OnBlocksPushed && Move.Num() > 0)
+	{
+		Sim.OnBlocksPushed(Move, Vec[Toward]);
+	}
 }
 
 bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, bool bSticky)
@@ -2333,6 +2337,10 @@ bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, 
 		return false;
 	}
 	MoveBlocks(Move, Destroy, Facing, Facing);
+	if (Sim.OnBlocksPushed)
+	{
+		Sim.OnBlocksPushed(TArray<FIntVector>{ Pos }, Vec[Facing]);
+	}
 	// The head is a moving piston of the piston's own type for 2 ticks, then the head itself.
 	TMap<FName, FName> Properties;
 	Properties.Add(TEXT("facing"), DirName[Facing]);

@@ -423,7 +423,7 @@ namespace
 		}
 		else
 		{
-			const FString File = McCache::Asset(TEXT("models/") + ModelPath + TEXT(".json"));
+			const FString File = McCache::AssetOf(Id, TEXT("models/"), TEXT(".json"));
 			const TSharedPtr<FJsonObject> Json = FPaths::FileExists(File) ? McCache::LoadJsonObject(File) : nullptr;
 			if (!Json.IsValid())
 			{
@@ -767,7 +767,7 @@ namespace
 	FBlockStateDef FBaker::LoadBlockState(const FMcBlock& Block)
 	{
 		FBlockStateDef Def;
-		const FString File = McCache::Asset(TEXT("blockstates/") + McCache::PathOf(Block.Name.ToString()) + TEXT(".json"));
+		const FString File = McCache::AssetOf(Block.Name.ToString(), TEXT("blockstates/"), TEXT(".json"));
 		const TSharedPtr<FJsonObject> Json = FPaths::FileExists(File) ? McCache::LoadJsonObject(File) : nullptr;
 		if (!Json.IsValid())
 		{

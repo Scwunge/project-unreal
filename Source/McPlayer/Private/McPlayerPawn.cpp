@@ -1,5 +1,6 @@
 #include "McPlayerPawn.h"
 #include "McBundle.h"
+#include "McLeash.h"
 #include "McBanner.h"
 #include "McShulker.h"
 #include "McCache.h"
@@ -1452,7 +1453,21 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 		FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 		FMcEntity* Found = Entities ? Entities->Find(Id) : nullptr;
 		FMcVehicle* Vehicle = Found && Found->IsVehicle() ? static_cast<FMcVehicle*>(Found) : nullptr;
-		if (Vehicle && Vehicle->OpensOnUse(bSneakPose))
+		if (Vehicle && Entities && !Data->Inventory->Get(Data->SelectedSlot).IsEmpty() && Data->Inventory->Get(Data->SelectedSlot).Item == TEXT("minecraft:lead")
+			&& McLeash::Attach(*Vehicle, Body.Position))
+		{
+			// A lead ties a boat to the player.
+			FMcItemStack& Lead = Data->Inventory->GetMutable(Data->SelectedSlot);
+			if (!Data->bCreative && --Lead.Count <= 0)
+			{
+				Lead.Clear();
+			}
+		}
+		else if (Vehicle && Entities && Vehicle->bLeashed && Vehicle->LeashKnot == 0)
+		{
+			McLeash::Detach(*Entities, *Vehicle, !Data->bCreative);
+		}
+		else if (Vehicle && Vehicle->OpensOnUse(bSneakPose))
 		{
 			// A chest cart or boat opens like a chest instead of taking a rider.
 			const FIntVector Where(FMath::FloorToInt32(Vehicle->Body.Position.X), FMath::FloorToInt32(Vehicle->Body.Position.Y), FMath::FloorToInt32(Vehicle->Body.Position.Z));

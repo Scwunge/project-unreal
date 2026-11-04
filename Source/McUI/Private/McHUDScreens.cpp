@@ -315,8 +315,7 @@ namespace
 					FString Id;
 					if ((*Provider)->TryGetStringField(TEXT("id"), Id))
 					{
-						Id.RemoveFromStart(TEXT("minecraft:"));
-						CollectProviders(TEXT("font/") + Id + TEXT(".json"), Depth + 1, Out);
+						CollectProviders(McCache::RelativeOf(Id, TEXT("font/"), TEXT(".json")), Depth + 1, Out);
 					}
 				}
 				else
@@ -375,6 +374,8 @@ namespace
 	{
 		int32 Rgb = -1;
 		bool bBold = false, bItalic = false, bUnderline = false, bStrike = false, bObfuscated = false;
+		// A font id set by the code §{id}; empty is the default font.
+		FString Font;
 	};
 
 	// Reads the code at Text[At] (the section sign) into Style and moves At past it.
@@ -392,7 +393,9 @@ namespace
 		const int32 Digit = FChar::IsHexDigit(Code) ? FParse::HexDigit(Code) : -1;
 		if (Digit >= 0)
 		{
+			const FString Font = Style.Font;
 			Style = FTextStyle();
+			Style.Font = Font;
 			Style.Rgb = Colours[Digit];
 			return;
 		}
@@ -404,6 +407,17 @@ namespace
 		case TEXT('n'): Style.bUnderline = true; break;
 		case TEXT('o'): Style.bItalic = true; break;
 		case TEXT('r'): Style = FTextStyle(); break;
+		case TEXT('{'):
+		{
+			// A font: the id up to the closing brace.
+			const int32 Close = Text.Find(TEXT("}"), ESearchCase::CaseSensitive, ESearchDir::FromStart, At);
+			if (Close != INDEX_NONE)
+			{
+				Style.Font = Text.Mid(At, Close - At);
+				At = Close + 1;
+			}
+			break;
+		}
 		case TEXT('x'):
 		{
 			int32 Rgb = 0, Read = 0;
@@ -416,7 +430,9 @@ namespace
 			}
 			if (Read == 6)
 			{
+				const FString Font = Style.Font;
 				Style = FTextStyle();
+				Style.Font = Font;
 				Style.Rgb = Rgb;
 				At = Scan;
 			}
@@ -439,6 +455,7 @@ namespace
 				Out.AppendChar(Digit);
 			}
 		}
+		if (!Style.Font.IsEmpty()) Out += TEXT("§{") + Style.Font + TEXT("}");
 		if (Style.bObfuscated) Out += TEXT("§k");
 		if (Style.bBold) Out += TEXT("§l");
 		if (Style.bStrike) Out += TEXT("§m");
@@ -477,11 +494,16 @@ void AMcHUD::LoadFont()
 		return;
 	}
 	McFont::ReadGlyphWidths(TEXT("textures/font/ascii_sga.png"), GalacticWidths);
+	LoadFontTable(TEXT("minecraft:default"), Glyphs, RasterFonts, RasterAsked);
+}
 
+// One font id's glyph table, from font/<id>.json (the namespace of the id says whose files).
+void AMcHUD::LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& G, TSharedPtr<FMcRasterFonts>& R, TSet<int32>& A)
+{
 	TArray<TSharedPtr<FJsonObject>> Providers;
-	CollectProviders(TEXT("font/default.json"), 0, Providers);
-	RasterFonts = MakeShared<FMcRasterFonts>();
-	RasterAsked.Reset();
+	CollectProviders(McCache::RelativeOf(FontId, TEXT("font/"), TEXT(".json")), 0, Providers);
+	R = MakeShared<FMcRasterFonts>();
+	A.Reset();
 	bool bHasUnihex = false;
 	for (int32 Priority = 0; Priority < Providers.Num(); ++Priority)
 	{
@@ -515,7 +537,7 @@ void AMcHUD::LoadFont()
 							}
 						}
 					}
-					RasterFonts->AddUnihex(Priority, MoveTemp(Hex), MoveTemp(Overrides));
+					R->AddUnihex(Priority, MoveTemp(Hex), MoveTemp(Overrides));
 					bHasUnihex = true;
 				}
 			}
@@ -532,7 +554,7 @@ void AMcHUD::LoadFont()
 				Template = TEXT("textures/") + Template;
 				if (FFileHelper::LoadFileToArray(Sizes, *McCache::Asset(SizesFile)))
 				{
-					RasterFonts->AddLegacyUnicode(Priority, MoveTemp(Sizes), Template);
+					R->AddLegacyUnicode(Priority, MoveTemp(Sizes), Template);
 				}
 			}
 		}
@@ -564,11 +586,10 @@ void AMcHUD::LoadFont()
 			TArray<uint8> Data;
 			if (Provider->TryGetStringField(TEXT("file"), File))
 			{
-				File.RemoveFromStart(TEXT("minecraft:"));
 				// The font file is relative to font/ ("minecraft:mojangles.ttf" is assets/minecraft/font/mojangles.ttf).
-				if (FFileHelper::LoadFileToArray(Data, *McCache::Asset(TEXT("font/") + File)) || FFileHelper::LoadFileToArray(Data, *McCache::Asset(File)))
+				if (FFileHelper::LoadFileToArray(Data, *McCache::AssetOf(File, TEXT("font/"), TEXT(""))) || FFileHelper::LoadFileToArray(Data, *McCache::AssetOf(File, TEXT(""), TEXT(""))))
 				{
-					RasterFonts->AddTrueType(Priority, MoveTemp(Data), static_cast<float>(Size), static_cast<float>(Oversample), Shift, Skip);
+					R->AddTrueType(Priority, MoveTemp(Data), static_cast<float>(Size), static_cast<float>(Oversample), Shift, Skip);
 				}
 			}
 		}
@@ -582,9 +603,9 @@ void AMcHUD::LoadFont()
 					double Advance = 0.0;
 					int32 KeyAt = 0;
 					const int32 KeyChar = Entry.Key.IsEmpty() ? 0 : NextCodePoint(Entry.Key, KeyAt);
-					if (KeyChar != 0 && KeyAt == Entry.Key.Len() && Entry.Value->TryGetNumber(Advance) && !Glyphs.Contains(KeyChar))
+					if (KeyChar != 0 && KeyAt == Entry.Key.Len() && Entry.Value->TryGetNumber(Advance) && !G.Contains(KeyChar))
 					{
-						FGlyph& Glyph = Glyphs.Add(KeyChar);
+						FGlyph& Glyph = G.Add(KeyChar);
 						Glyph.Priority = Priority;
 						Glyph.Advance = static_cast<float>(Advance);
 					}
@@ -602,8 +623,7 @@ void AMcHUD::LoadFont()
 			}
 			Provider->TryGetNumberField(TEXT("height"), Height);
 			Provider->TryGetNumberField(TEXT("ascent"), Ascent);
-			File.RemoveFromStart(TEXT("minecraft:"));
-			const FString Sprite = TEXT("textures/") + File;
+			const FString Sprite = McCache::RelativeOf(File, TEXT("textures/"), TEXT(""));
 			FSheet Sheet;
 			if (!ReadSheet(McCache::Asset(Sprite), Sheet))
 			{
@@ -634,7 +654,7 @@ void AMcHUD::LoadFont()
 				for (int32 Column = 0; Column < Rows[Row].Num(); ++Column)
 				{
 					const int32 Char = Rows[Row][Column];
-					if (Char == 0 || Char == 0xffff || Glyphs.Contains(Char))
+					if (Char == 0 || Char == 0xffff || G.Contains(Char))
 					{
 						continue;
 					}
@@ -650,7 +670,7 @@ void AMcHUD::LoadFont()
 							}
 						}
 					}
-					FGlyph& Glyph = Glyphs.Add(Char);
+					FGlyph& Glyph = G.Add(Char);
 					Glyph.Priority = Priority;
 					Glyph.Sprite = Sprite;
 					Glyph.U = static_cast<float>(Column * CellWidth);
@@ -665,7 +685,8 @@ void AMcHUD::LoadFont()
 			}
 		}
 	}
-	if (!bHasUnihex)
+	const bool bUnifontFont = FontId == TEXT("minecraft:default") || FontId == TEXT("minecraft:uniform");
+	if (!bHasUnihex && bUnifontFont)
 	{
 		// The jar's include/unifont.json lists no providers (the launcher builds it); the data is in the asset files.
 		for (const TCHAR* Zip : { TEXT("font/unifont.zip"), TEXT("font/unifont_pua.zip") })
@@ -673,47 +694,100 @@ void AMcHUD::LoadFont()
 			TArray<uint8> Hex;
 			if (ReadHexZip(Zip, Hex))
 			{
-				RasterFonts->AddUnihex(Providers.Num(), MoveTemp(Hex), {});
+				R->AddUnihex(Providers.Num(), MoveTemp(Hex), {});
 			}
 		}
 	}
-	if (!Glyphs.Contains(TEXT(' ')))
+	if (FontId == TEXT("minecraft:default") && !G.Contains(TEXT(' ')))
 	{
-		Glyphs.Add(TEXT(' ')).Advance = 4.0f;
+		G.Add(TEXT(' ')).Advance = 4.0f;
 	}
 }
 
 // The character's glyph: from the sheet providers read at once, unless a provider before that one draws it itself, which
 // happens the first time it is asked for. A character nothing has shows as "?".
-const AMcHUD::FGlyph* AMcHUD::FindGlyph(int32 Char) const
+const AMcHUD::FGlyph* AMcHUD::FindGlyph(int32 Char, const FString& Font) const
 {
-	const FGlyph* Found = Glyphs.Find(Char);
-	if (RasterFonts.IsValid() && !RasterAsked.Contains(Char))
+	AMcHUD* Self = const_cast<AMcHUD*>(this);
+	const FString Id = Font.IsEmpty() ? FString(TEXT("minecraft:default")) : McCache::Namespaced(Font);
+	const bool bDefault = Id == TEXT("minecraft:default");
+	TMap<int32, FGlyph>* Table = &Self->Glyphs;
+	TSharedPtr<FMcRasterFonts>* Raster = &Self->RasterFonts;
+	TSet<int32>* Asked = &Self->RasterAsked;
+	if (!bDefault)
 	{
-		AMcHUD* Self = const_cast<AMcHUD*>(this);
-		Self->RasterAsked.Add(Char);
-		FMcRasterGlyph Raster;
-		if (RasterFonts->Make(Char, Found ? Found->Priority : MAX_int32, Raster))
+		FFontTable* Other = Self->OtherFonts.Find(Id);
+		if (!Other)
+		{
+			Other = &Self->OtherFonts.Add(Id);
+			Self->LoadFontTable(Id, Other->Glyphs, Other->Raster, Other->Asked);
+		}
+		Table = &Other->Glyphs;
+		Raster = &Other->Raster;
+		Asked = &Other->Asked;
+	}
+	const FGlyph* Found = Table->Find(Char);
+	if (Raster->IsValid() && !Asked->Contains(Char))
+	{
+		Asked->Add(Char);
+		FMcRasterGlyph Made;
+		if ((*Raster)->Make(Char, Found ? Found->Priority : MAX_int32, Made))
 		{
 			FGlyph Glyph;
-			Glyph.Texture = Raster.Width > 0 ? Self->MakeGlyphTexture(Raster) : nullptr;
-			Glyph.CellWidth = static_cast<float>(Raster.Width);
-			Glyph.CellHeight = static_cast<float>(Raster.Height);
-			Glyph.DrawWidth = Raster.DrawWidth;
-			Glyph.DrawHeight = Raster.DrawHeight;
-			Glyph.OffsetX = Raster.OffsetX;
-			Glyph.OffsetY = Raster.OffsetY;
-			Glyph.Advance = Raster.Advance;
-			Glyph.ShadowOffset = Raster.ShadowOffset;
+			Glyph.Texture = Made.Width > 0 ? Self->MakeGlyphTexture(Made) : nullptr;
+			Glyph.CellWidth = static_cast<float>(Made.Width);
+			Glyph.CellHeight = static_cast<float>(Made.Height);
+			Glyph.DrawWidth = Made.DrawWidth;
+			Glyph.DrawHeight = Made.DrawHeight;
+			Glyph.OffsetX = Made.OffsetX;
+			Glyph.OffsetY = Made.OffsetY;
+			Glyph.Advance = Made.Advance;
+			Glyph.ShadowOffset = Made.ShadowOffset;
 			Glyph.Priority = -1;
-			Found = &Self->Glyphs.Add(Char, Glyph);
+			Found = &Table->Add(Char, Glyph);
 		}
 	}
 	if (Found)
 	{
 		return Found;
 	}
-	return Char == TEXT('?') ? nullptr : FindGlyph(TEXT('?'));
+	if (!bDefault)
+	{
+		// A font of its own lacks a character: the game draws its missing glyph, a hollow box 5 wide and 8 tall with an advance
+		// of 6 (the vanilla client's numbers for the pack font zz:pix), kept in the table under -1.
+		if (const FGlyph* Missing = Table->Find(-1))
+		{
+			return Missing;
+		}
+		FMcRasterGlyph Box;
+		Box.Width = 5;
+		Box.Height = 8;
+		Box.Bgra.Init(0, 5 * 8 * 4);
+		for (int32 Y = 0; Y < 8; ++Y)
+		{
+			for (int32 X = 0; X < 5; ++X)
+			{
+				if (X == 0 || X == 4 || Y == 0 || Y == 7)
+				{
+					for (int32 Channel = 0; Channel < 4; ++Channel)
+					{
+						Box.Bgra[(Y * 5 + X) * 4 + Channel] = 255;
+					}
+				}
+			}
+		}
+		FGlyph Glyph;
+		Glyph.Texture = Self->MakeGlyphTexture(Box);
+		Glyph.CellWidth = 5.0f;
+		Glyph.CellHeight = 8.0f;
+		Glyph.DrawWidth = 5.0f;
+		Glyph.DrawHeight = 8.0f;
+		Glyph.OffsetY = 0.0f;
+		Glyph.Advance = 6.0f;
+		Glyph.Priority = -1;
+		return &Table->Add(-1, Glyph);
+	}
+	return Char == TEXT('?') ? nullptr : FindGlyph(TEXT('?'), Font);
 }
 
 float AMcHUD::GetGlyphAdvance(int32 Char)
@@ -762,7 +836,7 @@ float AMcHUD::TextWidth(const FString& Text) const
 			ReadStyleCode(Text, At, Style);
 			continue;
 		}
-		const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, At));
+		const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, At), Style.Font);
 		// A bold glyph is wider by its bold offset (1, half for Unifont: the shadow's).
 		Width += (Glyph ? Glyph->Advance : 6.0f) + (Style.bBold ? (Glyph ? Glyph->ShadowOffset : 1.0f) : 0.0f);
 	}
@@ -784,7 +858,7 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 				ReadStyleCode(Text, CharAt, Style);
 				continue;
 			}
-			const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, CharAt));
+			const FGlyph* Glyph = FindGlyph(NextCodePoint(Text, CharAt), Style.Font);
 			if (Glyph && Style.bObfuscated)
 			{
 				// A glyph of the same advance, picked anew every frame.
@@ -805,7 +879,7 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 				const TArray<int32>* Same = Pool.Find(FMath::RoundToInt(Glyph->Advance));
 				if (Same && Same->Num() > 0)
 				{
-					Glyph = FindGlyph((*Same)[FMath::RandRange(0, Same->Num() - 1)]);
+					Glyph = FindGlyph((*Same)[FMath::RandRange(0, Same->Num() - 1)], FString());
 				}
 			}
 			if (!Glyph)

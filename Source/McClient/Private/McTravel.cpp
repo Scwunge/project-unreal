@@ -3,6 +3,8 @@
 #include "McBlockWorld.h"
 #include "McClient.h"
 #include "McEntityHost.h"
+#include "McMob.h"
+#include "McVehicle.h"
 #include "McGameMode.h"
 #include "McPlayerController.h"
 #include "McPlayerData.h"
@@ -46,8 +48,10 @@ void UMcTravelSubsystem::Tick(float DeltaSeconds)
 	for (; Accumulator >= 0.05f; Accumulator -= 0.05f)
 	{
 		TickPlayers();
+		TickEntities();
 	}
 	TickTrips();
+	TickEntityTrips();
 }
 
 bool UMcTravelSubsystem::IsOnTrip(const AController* Controller) const
@@ -286,5 +290,172 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 		{
 			Host->GetManager().PlaySound(FName("block.portal.travel"), Feet + FVector(0.0, 1.0, 0.0), 0.25f, FMath::FRand() * 0.4f + 0.8f);
 		}
+	}
+}
+
+void UMcTravelSubsystem::TickEntities()
+{
+	AMcGameMode* Mode = GetWorld()->GetAuthGameMode<AMcGameMode>();
+	if (!Mode)
+	{
+		return;
+	}
+	++EntityTick;
+	for (const TCHAR* Dimension : { Overworld, Nether, End })
+	{
+		AMcWorldActor* Here = Mode->FindWorld(Dimension);
+		FMcEntityHost* Host = Here ? Here->GetEntityHost() : nullptr;
+		FMcBlockWorld* Blocks = Here ? Here->GetBlockWorld() : nullptr;
+		if (!Host || !Blocks)
+		{
+			continue;
+		}
+		TArray<FMcEntity*> Going;
+		for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+		{
+			if (Entity->bRemoved)
+			{
+				continue;
+			}
+			const FIntVector Cell = GetCell(Entity->Body.Position);
+			bool bInNether = false;
+			bool bInEnd = false;
+			for (const int32 Rise : { 0, 1 })
+			{
+				const FMcStateId State = Blocks->GetBlock(Cell + FIntVector(0, Rise, 0));
+				bInNether |= McPortal::IsPortalBlock(State);
+				bInEnd |= FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:end_portal");
+			}
+			if (!bInNether && !bInEnd)
+			{
+				Entity->PortalCooldown = FMath::Max(0, Entity->PortalCooldown - 1);
+				continue;
+			}
+			if (Entity->PortalCooldown > 0)
+			{
+				Entity->PortalCooldown = 10;
+				continue;
+			}
+			// Carrying a rider (or riding): it goes with the one that carries it, which is not done yet; left where it is.
+			if (Entity->IsVehicle())
+			{
+				if (static_cast<FMcVehicle&>(*Entity).GetPassengerCount() > 0)
+				{
+					continue;
+				}
+			}
+			else if (Entity->IsLiving() && static_cast<FMcMob&>(*Entity).RidingId != 0)
+			{
+				continue;
+			}
+			Going.Add(Entity.Get());
+		}
+		for (FMcEntity* Entity : Going)
+		{
+			const FIntVector Cell = GetCell(Entity->Body.Position);
+			const bool bEnd = FMcBlockRegistry::Get().GetBlockOf(Blocks->GetBlock(Cell)).Name == TEXT("minecraft:end_portal")
+				|| FMcBlockRegistry::Get().GetBlockOf(Blocks->GetBlock(Cell + FIntVector(0, 1, 0))).Name == TEXT("minecraft:end_portal");
+			FEntityTrip Trip;
+			AMcWorldActor* Dest = nullptr;
+			if (bEnd)
+			{
+				if (Here->Dimension == End)
+				{
+					Dest = Mode->GetPrimaryWorld();
+					if (!Dest || Dest == Here)
+					{
+						Dest = Mode->GetOrCreateWorld(Overworld);
+					}
+					Trip.Kind = EKind::Exact;
+					Trip.Feet = McCoords::UnrealToBlock(Mode->GetSpawnTransform().GetLocation());
+					Trip.Target = GetCell(Trip.Feet);
+					Trip.ChunkRadius = 3;
+				}
+				else
+				{
+					Dest = Mode->GetOrCreateWorld(End);
+					Trip.Kind = EKind::EndPlatform;
+					Trip.Target = FIntVector(McPortal::EndPlatformX, McPortal::EndPlatformY + 1, McPortal::EndPlatformZ);
+					Trip.ChunkRadius = 3;
+				}
+			}
+			else
+			{
+				Dest = Mode->GetOrCreateWorld(McTravel::GetPortalDestination(Here->Dimension));
+				if (Dest && Dest->GetBlockWorld())
+				{
+					const FMcDimensionType& From = Blocks->GetDimension();
+					const FMcDimensionType& To = Dest->GetBlockWorld()->GetDimension();
+					const FIntVector At = McPortal::IsPortalBlock(Blocks->GetBlock(Cell)) ? Cell : Cell + FIntVector(0, 1, 0);
+					Trip.Kind = EKind::NetherPortal;
+					Trip.Target = McPortal::ScalePosition(At, From.CoordinateScale, To.CoordinateScale);
+					Trip.Target.Y = FMath::Clamp(Trip.Target.Y, To.MinY + 1, To.MinY + To.LogicalHeight - 2);
+					Trip.bAlongX = McPortal::IsAlongX(Blocks->GetBlock(At));
+					Trip.ChunkRadius = GetChunkRadius(To.CoordinateScale);
+				}
+			}
+			if (!Dest || !Dest->GetBlockWorld() || !Dest->GetEntityHost())
+			{
+				Entity->PortalCooldown = 10;
+				continue;
+			}
+			Trip.Bytes = Host->PackEntity(*Entity);
+			if (Trip.Bytes.IsEmpty())
+			{
+				Entity->PortalCooldown = 300;
+				continue;
+			}
+			Entity->bRemoved = true;
+			Trip.Dest = Dest;
+			Trip.StartedAt = GetWorld()->GetTimeSeconds();
+			Trip.Chunk = FIntPoint(McCoords::BlockToChunk(Trip.Target.X), McCoords::BlockToChunk(Trip.Target.Z));
+			Trip.Anchor = Dest->AddAnchor(Trip.Chunk, Trip.ChunkRadius);
+			EntityTrips.Add(MoveTemp(Trip));
+		}
+	}
+}
+
+void UMcTravelSubsystem::TickEntityTrips()
+{
+	const double Now = GetWorld()->GetTimeSeconds();
+	for (int32 Index = EntityTrips.Num() - 1; Index >= 0; --Index)
+	{
+		FEntityTrip& Trip = EntityTrips[Index];
+		AMcWorldActor* Dest = Trip.Dest.Get();
+		if (!Dest || Now - Trip.StartedAt > TripTimeoutSeconds)
+		{
+			if (Dest)
+			{
+				Dest->RemoveAnchor(Trip.Anchor);
+			}
+			EntityTrips.RemoveAt(Index);
+			continue;
+		}
+		if (!Dest->AreChunksLoaded(Trip.Chunk, Trip.ChunkRadius))
+		{
+			continue;
+		}
+		FMcBlockWorld& Blocks = *Dest->GetBlockWorld();
+		const McPortal::FSetBlock Place = [Dest](const FIntVector& At, FMcStateId State) { Dest->SetBlock(At, State, false); };
+		FVector Feet = Trip.Feet;
+		if (Trip.Kind == EKind::NetherPortal)
+		{
+			bool bBuilt = false;
+			const McPortal::FFound Portal = McPortal::FindOrBuildPortal(Blocks, Trip.Target, Trip.bAlongX, Place, bBuilt);
+			Feet = McPortal::GetStandingPoint(Portal);
+		}
+		else if (Trip.Kind == EKind::EndPlatform)
+		{
+			McPortal::BuildEndPlatform(Blocks, Place);
+			Feet = FVector(McPortal::EndPlatformX + 0.5, McPortal::EndPlatformY + 1, McPortal::EndPlatformZ + 0.5);
+		}
+		if (FMcEntity* Arrived = Dest->GetEntityHost()->UnpackEntity(Trip.Bytes, Feet))
+		{
+			Arrived->PortalCooldown = 300;
+			Arrived->Body.Velocity = FVector::ZeroVector;
+			Arrived->Body.bOnGround = false;
+		}
+		Dest->RemoveAnchor(Trip.Anchor);
+		EntityTrips.RemoveAt(Index);
 	}
 }

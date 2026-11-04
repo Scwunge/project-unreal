@@ -326,7 +326,7 @@ namespace
 
 	FString DefinitionPath(FName Item)
 	{
-		return TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json");
+		return McCache::RelativeOf(Item.ToString(), TEXT("items/"), TEXT(".json"));
 	}
 }
 
@@ -361,7 +361,7 @@ namespace McItemDef
 		}
 		for (const FModelRef& Ref : Resolve(Stack, EContext::Gui))
 		{
-			if (McPacks::IsFromPack(TEXT("models/") + McCache::PathOf(Ref.Model) + TEXT(".json")))
+			if (McPacks::IsFromPack(McCache::RelativeOf(Ref.Model, TEXT("models/"), TEXT(".json"))))
 			{
 				return true;
 			}

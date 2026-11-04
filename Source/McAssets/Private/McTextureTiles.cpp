@@ -43,7 +43,7 @@ FIntPoint McTextureTiles::GetGrid(int32 Width, int32 Height, bool bAnimated)
 
 FIntPoint McTextureTiles::GetGrid(FName TextureId)
 {
-	const FString Path = McCache::Asset(TEXT("textures/") + McCache::PathOf(TextureId.ToString()) + TEXT(".png"));
+	const FString Path = McCache::AssetOf(TextureId.ToString(), TEXT("textures/"), TEXT(".png"));
 	int32 Width = 0, Height = 0;
 	if (!ReadPngSize(Path, Width, Height))
 	{

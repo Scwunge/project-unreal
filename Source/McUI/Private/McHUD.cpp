@@ -192,7 +192,7 @@ UTexture2D* AMcHUD::GetLayerTexture(FName TextureId)
 		return *Found;
 	}
 	// "minecraft:block/stone" -> textures/block/stone.png
-	UTexture2D* Texture = LoadPng(McCache::Asset(TEXT("textures/") + McCache::PathOf(TextureId.ToString()) + TEXT(".png")), true);
+	UTexture2D* Texture = LoadPng(McCache::AssetOf(TextureId.ToString(), TEXT("textures/"), TEXT(".png")), true);
 	LayerTextures.Add(TextureId, Texture);
 	return Texture;
 }
@@ -351,7 +351,7 @@ bool AMcHUD::BuildFlatIcon(const FString& Name, FIcon& Icon)
 		FString ModelId;
 		if (Item->TryGetObjectField(TEXT("model"), Model) && (*Model)->TryGetStringField(TEXT("model"), ModelId) && McCache::PathOf(ModelId).StartsWith(TEXT("item/")))
 		{
-			if (const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::Asset(TEXT("models/") + McCache::PathOf(ModelId) + TEXT(".json"))))
+			if (const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::AssetOf(ModelId, TEXT("models/"), TEXT(".json"))))
 			{
 				const TSharedPtr<FJsonObject>* Textures;
 				if (ItemModel->TryGetObjectField(TEXT("textures"), Textures))
@@ -411,7 +411,7 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSide
 		}
 		for (int32 Depth = 0; Depth < 8 && !ModelId.IsEmpty(); ++Depth)
 		{
-			const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::Asset(TEXT("models/") + McCache::PathOf(ModelId) + TEXT(".json")));
+			const TSharedPtr<FJsonObject> ItemModel = McCache::LoadJsonObject(McCache::AssetOf(ModelId, TEXT("models/"), TEXT(".json")));
 			const TSharedPtr<FJsonObject>* Display;
 			const TSharedPtr<FJsonObject>* Gui;
 			if (ItemModel && ItemModel->TryGetObjectField(TEXT("display"), Display) && (*Display)->TryGetObjectField(TEXT("gui"), Gui))

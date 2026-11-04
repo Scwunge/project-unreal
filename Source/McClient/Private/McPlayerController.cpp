@@ -1,6 +1,7 @@
 #include "McPlayerController.h"
 #include "McItemFrames.h"
 #include "McSurvival.h"
+#include "McLeash.h"
 #include "McMob.h"
 #include "ShaderCompiler.h"
 #include "McLaunch.h"
@@ -355,6 +356,24 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		if (!Mob)
 		{
 			return false;
+		}
+		// A lead ties it to the player, or a tied one is let go.
+		if (FMcEntityHost* LeadHost = World->GetEntityHost())
+		{
+			FMcItemStack& HeldLead = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			if (Mob->bLeashed && Mob->LeashKnot == 0)
+			{
+				McLeash::Detach(LeadHost->GetManager(), *Mob, !User.Data->bCreative);
+				return true;
+			}
+			if (!HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead") && McLeash::Attach(*Mob, User.GetFeetPosition()))
+			{
+				if (!User.Data->bCreative && --HeldLead.Count <= 0)
+				{
+					HeldLead.Clear();
+				}
+				return true;
+			}
 		}
 		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
 		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;

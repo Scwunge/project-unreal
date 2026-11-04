@@ -671,10 +671,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		if (Entity->IsLiving())
 		{
 			// After what the kind itself keeps, so an older save without it still reads.
-			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
-			DataWriter << Look;
-			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
-			DataWriter << Young;
+			static_cast<FMcMob&>(*Entity).SaveTrailer(DataWriter);
 		}
 		Writer << Type << Data;
 		++Count;
@@ -687,6 +684,46 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	Out << Count;
 	Bytes.Append(Body);
 	return Bytes;
+}
+
+TArray<uint8> FMcEntityHost::PackEntity(FMcEntity& Entity)
+{
+	TArray<uint8> Bytes;
+	if (Entity.bRemoved || !Entity.IsPersistent())
+	{
+		return Bytes;
+	}
+	TArray<uint8> Body;
+	FMemoryWriter Writer(Body);
+	FString Type = Entity.GetType().ToString();
+	TArray<uint8> Data;
+	FMemoryWriter DataWriter(Data);
+	Entity.Serialize(DataWriter);
+	if (Entity.IsLiving())
+	{
+		int32 Look = static_cast<FMcMob&>(Entity).LookSeed;
+		DataWriter << Look;
+		int32 Young = static_cast<FMcMob&>(Entity).YoungTicks;
+		DataWriter << Young;
+	}
+	Writer << Type << Data;
+	FMemoryWriter Out(Bytes);
+	int32 Count = 1;
+	Out << Count;
+	Bytes.Append(Body);
+	return Bytes;
+}
+
+FMcEntity* FMcEntityHost::UnpackEntity(TConstArrayView<uint8> Bytes, const FVector& Pos)
+{
+	const int32 Before = Manager.GetEntities().Num();
+	if (RestoreChunk(Bytes) < 1 || Manager.GetEntities().Num() <= Before)
+	{
+		return nullptr;
+	}
+	FMcEntity* Entity = Manager.GetEntities().Last().Get();
+	Entity->Body.Position = Pos;
+	return Entity;
 }
 
 int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
@@ -755,24 +792,7 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
-				if (!DataReader.AtEnd())
-				{
-					int32 Look = -1;
-					DataReader << Look;
-					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
-					{
-						Mob->LookSeed = Look;
-					}
-					int32 Young = 0;
-					if (!DataReader.AtEnd())
-					{
-						DataReader << Young;
-						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
-						{
-							Mob->SetYoung(Young);
-						}
-					}
-				}
+				Mob->LoadTrailer(DataReader);
 				++Restored;
 			}
 			else

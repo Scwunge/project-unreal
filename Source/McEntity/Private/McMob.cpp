@@ -1,7 +1,9 @@
 #include "McMob.h"
 #include "McVillager.h"
+#include "McMobLook.h"
 #include "McArrow.h"
 #include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McPotion.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -111,7 +113,7 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 0.f, false, false).bSwims = true;
 		Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 0.f, false, false).bSwims = true;
 		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
-		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 16.f, false, false).bBullets = true;
 		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
 		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;
@@ -276,6 +278,80 @@ bool FMcMob::Serialize(FArchive& Ar)
 		}
 	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
+}
+
+void FMcMob::SaveTrailer(FArchive& Ar) const
+{
+	int32 Look = LookSeed;
+	int32 Young = YoungTicks;
+	Ar << Look << Young;
+	uint8 Flags = bNoAI ? 1 : 0;
+	int32 Dye = DyeColor;
+	FString Name = CustomName;
+	FString Held = HeldItem.IsNone() ? FString() : HeldItem.ToString();
+	Ar << Flags << Dye << Name << Held;
+	for (const FName& Piece : Armor)
+	{
+		FString Text = Piece.IsNone() ? FString() : Piece.ToString();
+		Ar << Text;
+	}
+}
+
+void FMcMob::LoadTrailer(FArchive& Ar)
+{
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Look = -1;
+	Ar << Look;
+	if (!Ar.IsError() && Look >= 0 && Look < McMobLook::GetCount(Type.Name))
+	{
+		LookSeed = Look;
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Young = 0;
+	Ar << Young;
+	if (!Ar.IsError() && Young > 0 && CanBeYoung(Type.Name))
+	{
+		SetYoung(Young);
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	uint8 Flags = 0;
+	int32 Dye = -1;
+	FString Name, Held;
+	Ar << Flags << Dye << Name << Held;
+	if (Ar.IsError())
+	{
+		return;
+	}
+	bNoAI = (Flags & 1) != 0;
+	DyeColor = Dye >= 0 && Dye <= 15 ? Dye : -1;
+	CustomName = Name;
+	if (!Held.IsEmpty())
+	{
+		HeldItem = FName(*Held);
+	}
+	for (FName& Piece : Armor)
+	{
+		FString Text;
+		Ar << Text;
+		if (Ar.IsError())
+		{
+			return;
+		}
+		Piece = Text.IsEmpty() ? FName() : FName(*Text);
+	}
+	if (Type.Name == FName(TEXT("minecraft:sheep")) && DyeColor >= 0)
+	{
+		ArmPose = DyeColor << 8;
+	}
 }
 
 void FMcMob::UpdateWolfPose()
@@ -729,7 +805,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		UpdateWolfPose();
 	}
-	if (bFrozen)
+	if (bFrozen || bNoAI)
 	{
 		return;
 	}
@@ -1138,6 +1214,26 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 					BurstLeft = 2;
 					FireCooldown = 6;
 				}
+			}
+		}
+	}
+	if (Type.bBullets && bChasing)
+	{
+		// A bullet from the top of the shulker at a player in sight. Fired at ticks 0, 30, 140, 210, 290 of atk1.txt (gaps 30, 110, 70, 80:
+		// n=4, so a random gap in 30 to 110).
+		if (FireCooldown > 0)
+		{
+			--FireCooldown;
+		}
+		else
+		{
+			const FVector From = Body.Position + FVector(0.0, Type.Height, 0.0);
+			if (FMath::Sqrt(PreyDistSq) <= 16.0 && HasLineOfSight(World, From, Target + FVector(0.0, 1.0, 0.0)))
+			{
+				TUniquePtr<FMcShulkerBullet> Bullet = MakeUnique<FMcShulkerBullet>();
+				Bullet->Body.Position = From;
+				Manager.Add(MoveTemp(Bullet));
+				FireCooldown = Random.RandRange(30, 110);
 			}
 		}
 	}

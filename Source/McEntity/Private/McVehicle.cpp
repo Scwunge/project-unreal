@@ -609,6 +609,19 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 	}
 	TouchDetectors(Manager, World);
 	TickVariant(Manager);
+	// Rolling: every 10 ticks a rumble, 0.7 of the speed up to 0.5 (a rider hears the inside one at 0.75), vehicle_sounds.txt.
+	{
+		const double Rolling = FVector2D(Body.Velocity.X, Body.Velocity.Z).Size();
+		if (Rolling >= 0.01 && Age % 10 == 3)
+		{
+			const float Part = static_cast<float>(FMath::Min(Rolling, 0.5) / 0.5);
+			Manager.PlaySound(FName("entity.minecart.riding"), Body.Position, 0.35f * Part, 1.0f);
+			if (GetPassengerCount() > 0)
+			{
+				Manager.PlaySound(FName("entity.minecart.inside"), Body.Position, 0.75f * Part, 1.0f);
+			}
+		}
+	}
 	TickPassengers(Manager);
 	PushMobs(Manager);
 }
@@ -1228,6 +1241,21 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		{
 			Push = 0.005;
 		}
+	}
+	// Paddling in water splashes twice every 16 ticks, at 0.8 and a pitch of 0.8 to 1.2 (vehicle_sounds.txt: pairs at ticks 166,
+	// 167, then 182, 262, 263, 278, 294 ...).
+	if (Push != 0.0 && (Where == ESurface::Water || Where == ESurface::Underwater || Where == ESurface::UnderFlowing))
+	{
+		if (PaddleTicks % 16 == 0)
+		{
+			Manager.PlaySound(FName("entity.boat.paddle_water"), Body.Position, 0.8f, 0.8f + FMath::FRand() * 0.4f);
+			Manager.PlaySound(FName("entity.boat.paddle_water"), Body.Position, 0.8f, 0.8f + FMath::FRand() * 0.4f);
+		}
+		++PaddleTicks;
+	}
+	else
+	{
+		PaddleTicks = 0;
 	}
 	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
 	// The block's friction first, then the paddles' push (vehicle_log15.txt, a driven boat on ice: 0.04, then

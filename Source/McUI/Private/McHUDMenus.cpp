@@ -1333,6 +1333,7 @@ void AMcHUD::ClearPackCaches()
 	Glyphs.Reset();
 	RasterFonts.Reset();
 	RasterAsked.Reset();
+	OtherFonts.Empty();
 	GlyphTextures.Reset();
 	GalacticWidths.Reset();
 	McFont::ClearCache();

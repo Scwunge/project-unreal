@@ -98,6 +98,8 @@ enum class EMcWindowKind : uint8
 	Lectern,
 	// A villager's or wandering trader's trades; Pos is where the trader stands.
 	Trading,
+	// A tamed horse, donkey or mule: the saddle, armour and chest slots of the animal (an FMcMountMenu), EntityId says which.
+	Horse,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -117,6 +119,8 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
+	// Non-zero for a window on an entity (a chest cart or boat, a horse): it stays open while that is near, instead of while a block is there.
+	int32 EntityId = 0;
 	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
@@ -171,6 +175,8 @@ public:
 	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr, const TSharedPtr<FMcContainer>& SecondContainer = nullptr);
 	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
 	void CloseWindow();
+	// Server: the window just opened is on this entity.
+	void MarkWindowOnEntity(int32 EntityId);
 	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where
 	// this is the server).
 	void NotifyClick(int32 Slot, int32 Button, EMcClickType Type);

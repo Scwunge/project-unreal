@@ -108,6 +108,9 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 	Donkey->bTamed = true;
 	FMcItemStack Chest(FName(TEXT("minecraft:chest")), 1);
 	TestEqual(TEXT("a chest goes on a donkey"), McMount::Use(Manager, *Donkey, Chest, 1, false, false), McMount::EUse::Chested);
+	TestEqual(TEXT("the window holds the saddle, armour and 15 slots"), McMount::GetInventory(*Donkey->Mount)->Num(), 17);
+	FMcItemStack Sneak;
+	TestEqual(TEXT("sneaking on a tame one opens its window"), McMount::Use(Manager, *Donkey, Sneak, 1, false, true), McMount::EUse::Inventory);
 	FMcItemStack Chest2(FName(TEXT("minecraft:chest")), 1);
 	FMcMob* Horse3 = MakeHorse(*HorseType, 97.5);
 	Horse3->bTamed = true;

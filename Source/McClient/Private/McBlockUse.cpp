@@ -1895,6 +1895,13 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	{
 		return false;
 	}
+	// A window on an animal or a cart or boat stays while that is within reach.
+	if (Window.EntityId != 0)
+	{
+		FMcEntityHost* Host = const_cast<AMcWorldActor&>(WorldActor).GetEntityHost();
+		const FMcEntity* Found = Host ? Host->GetManager().Find(Window.EntityId) : nullptr;
+		return Found && !Found->bRemoved && FVector::Dist(Player.GetFeetPosition(), Found->Body.Position) < AMcPlayerPawn::ServerReach + 1.0;
+	}
 	const FVector Eye = Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0);
 	if (FVector::Dist(Eye, FVector(Window.Pos) + FVector(0.5)) > AMcPlayerPawn::ServerReach + 1.0)
 	{
@@ -1934,6 +1941,9 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return IsAnvilName(Name);
 	case EMcWindowKind::BrewingStand:
 		return Name == TEXT("minecraft:brewing_stand");
+	case EMcWindowKind::Horse:
+		// Only on an entity, which is checked above.
+		return true;
 	case EMcWindowKind::Hopper:
 		return Name == TEXT("minecraft:hopper");
 	case EMcWindowKind::Dispenser:

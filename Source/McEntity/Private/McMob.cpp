@@ -414,6 +414,10 @@ bool FMcMob::IsPrey(const FMcEntity& Other) const
 bool FMcMob::Damage(float Amount, const FVector* Source)
 {
 	// Horse armour takes its share (McMount.h).
+	if (Mount.IsValid())
+	{
+		McMount::Sync(*Mount);
+	}
 	if (Mount.IsValid() && !Mount->Armor.IsNone())
 	{
 		Amount = McMount::ReduceDamage(*Mount, Amount);

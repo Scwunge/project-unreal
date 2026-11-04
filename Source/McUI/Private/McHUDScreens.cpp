@@ -1167,6 +1167,9 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Hopper:
 		State->Layout = McGui::MakeHopperLayout();
 		break;
+	case EMcWindowKind::Horse:
+		State->Layout = McGui::MakeHorseLayout(Window.Menu.IsValid() ? Window.Menu->NumSlots() - 36 : 2, Window.Title == TEXT("Horse"));
+		break;
 	case EMcWindowKind::Dispenser:
 		State->Layout = McGui::MakeDispenserLayout();
 		break;
@@ -1329,6 +1332,16 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
 			}
 		}
+		// -McRideMob right-clicks the mount that -McSpawnMobs=horse,1 -McMobSaddled put two blocks south, six seconds in.
+		static bool bDevRideDone = false;
+		if (!bDevRideDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McRideMob")))
+		{
+			bDevRideDone = true;
+			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+			{
+				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
+			}
+		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
 		static bool bDevInventoryDone = false;
 		FString DevSearch;
@@ -1336,6 +1349,20 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		{
 			bDevInventoryDone = true;
 			Data->OpenInventoryWindow();
+			return;
+		}
+		// -McHorseWindow opens a donkey's window (the saddle, an apple and diamonds in the chest slots) for a shot.
+		static bool bDevHorseDone = false;
+		if (!bDevHorseDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McHorseWindow")))
+		{
+			bDevHorseDone = true;
+			const TSharedPtr<FMcContainer> Slots = MakeShared<FMcContainer>(17);
+			Slots->Set(0, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+			Slots->Set(4, FMcItemStack(FName(TEXT("minecraft:apple")), 5));
+			Slots->Set(7, FMcItemStack(FName(TEXT("minecraft:diamond")), 3));
+			const AMcPlayerPawn* DevPawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+			const FVector Feet = DevPawn ? DevPawn->GetFeetPosition() : FVector::ZeroVector;
+			Data->OpenBlockWindow(EMcWindowKind::Horse, FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z)), TEXT("Donkey"), Slots, nullptr);
 			return;
 		}
 #endif
@@ -1961,6 +1988,20 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawRegion(Background, Origin.X, Origin.Y, Layout.Size.X, Layout.Size.Y, 0, 0, Layout.Size.X, Layout.Size.Y);
 	}
+	if (Layout.Kind == McGui::EScreen::Horse)
+	{
+		// The slot frames the picture leaves out: the saddle's, the armour's (a horse's only) and the chest's 5 x 3.
+		const FString HorseParts = TEXT("textures/gui/sprites/container/");
+		DrawRegion(LoadSprite(HorseParts + TEXT("slot.png")), Origin.X + 7, Origin.Y + 17, 18, 18, 0, 0, 18, 18);
+		if (Layout.IsShown(1))
+		{
+			DrawRegion(LoadSprite(HorseParts + TEXT("slot.png")), Origin.X + 7, Origin.Y + 35, 18, 18, 0, 0, 18, 18);
+		}
+		if (Layout.Slots.Num() - 36 > 2)
+		{
+			DrawRegion(LoadSprite(HorseParts + TEXT("horse/chest_slots.png")), Origin.X + 79, Origin.Y + 17, 90, 54, 0, 0, 90, 54);
+		}
+	}
 	if (Layout.Kind == McGui::EScreen::Furnace && Screen->Furnace.IsValid())
 	{
 		const FMcFurnace& Furnace = *Screen->Furnace;
@@ -2046,6 +2087,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		{
 			DrawAnvil(Origin);
 		}
+		break;
+	case McGui::EScreen::Horse:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Hopper:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);

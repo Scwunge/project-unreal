@@ -5,6 +5,7 @@
 #include "McDimensionType.h"
 #include "McEntityManager.h"
 #include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McMob.h"
 #include "McThrown.h"
 #include "Misc/AutomationTest.h"
@@ -466,6 +467,30 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 			}
 		}
 		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
+	}
+	{
+		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		float Hurt = 0.0f;
+		Manager.OnPlayerHurt = [&Hurt](const FVector&, float Damage) { Hurt += Damage; };
+		AddMob(Manager, TEXT("minecraft:shulker"), FVector(10.5, 1.0, 10.5));
+		int32 Bullets = 0;
+		for (int32 Tick = 0; Tick < 300; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				Bullets += Manager.GetEntities()[Index]->GetType() == FMcShulkerBullet::StaticType() ? 1 : 0;
+			}
+		}
+		TestTrue(TEXT("a shulker fires at least 2 bullets in 300 ticks"), Bullets >= 2);
+		TestTrue(TEXT("and one reaches the player"), Hurt >= FMcShulkerBullet::Damage);
+		TestTrue(TEXT("bullet speed climbs"), FMcShulkerBullet::SpeedAt(10) > FMcShulkerBullet::SpeedAt(2));
 	}
 	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
 	{

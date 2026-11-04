@@ -489,6 +489,9 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("tag remove twice"), First(TEXT("tag Steve remove foo")), FString(TEXT("Target does not have this tag")));
 	TestEqual(TEXT("stopsound"), First(TEXT("stopsound Steve master pig")), FString(TEXT("Stopped sound 'minecraft:pig' on source 'master'")));
 	TestEqual(TEXT("defaultgamemode"), First(TEXT("defaultgamemode creative")), FString(TEXT("The default game mode is now Creative Mode")));
+	// Measured against the game: /setworldspawn and /spawnpoint.
+	TestEqual(TEXT("setworldspawn"), First(TEXT("setworldspawn 1 2 3")), FString(TEXT("Set the world spawn point to 1, 2, 3 [0.0, 0.0] in minecraft:overworld")));
+	TestEqual(TEXT("spawnpoint"), First(TEXT("spawnpoint Steve 4 5 6")), FString(TEXT("Set spawn point to 4, 5, 6 [0.0, 0.0] in minecraft:overworld for Steve")));
 	return true;
 }
 

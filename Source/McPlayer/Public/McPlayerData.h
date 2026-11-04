@@ -144,6 +144,8 @@ public:
 	bool bCreative = false;
 	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
 	TOptional<FIntVector> SpawnBed;
+	// Server: where /spawnpoint put them (a block); a bed slept in later takes over. Kept in the save.
+	TOptional<FIntVector> SpawnPoint;
 	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
 	TSet<FName> Advancements;
 

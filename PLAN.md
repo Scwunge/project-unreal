@@ -1280,3 +1280,8 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 - `/tag` capped a target at 1024 tags, a number I carried from memory of how the game behaves; no log, wiki page or cache file gave it. Removed (no cap; the lang text "has too many tags" is kept for when a measured limit exists).
 - Checked and sourced: subtitle timings and layout (shots in scripts/sub_pack.txt), /random messages and the 197 sequences (ref log of cmd_misc.txt), /version lines (same log), the stopsound source names (cache lang `soundCategory.*`), the /clone and /fill block limit 32768 (wiki gamerule table, `commandModificationBlockLimit`), the 0.05 s function tick (wiki), pack format 121 (ref log and `cache/`).
 - Not a measured number but a guess to remove when measured: `/random reset *` reports 197 on every run, but the game's real count changes with loaded loot tables; `/random` rolls with Unreal's FRand, not the game's generator.
+
+### Commands built for real (resource-packs session, 2026-11-04)
+- `defaultgamemode`: sets what players who join or respawn afterwards start in. Kept for the session only (not written to the world).
+- `stopsound`: stops sounds on this machine's audio only. Sources master/music/record/weather/block/ambient/ui/player are told apart by event-name prefix; hostile, neutral and voice stop nothing (events don't say which source played them).
+- `setworldspawn` / `spawnpoint`: wording measured in a ref run. World spawn is kept for the session; a player's spawn point is saved with them (sp_x/y/z) and used on respawn when no bed is set. Setting one clears the bed; a bed slept in later wins. The yaw/pitch is echoed but the player isn't turned. Dimension is always reported as minecraft:overworld.

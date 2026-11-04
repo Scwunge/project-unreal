@@ -52,6 +52,8 @@ namespace
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
+		{ TEXT("setworldspawn"), 2, TEXT("/setworldspawn [<pos>] [<yaw> [<pitch>]]") },
+		{ TEXT("spawnpoint"), 2, TEXT("/spawnpoint [<targets>] [<pos>] [<yaw> [<pitch>]]") },
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
@@ -1029,6 +1031,70 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.clone.failed"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.clone.success"), { FString::FromInt(Copies.Num()) })) };
+	}
+
+	// /setworldspawn [<pos>] [<yaw> [<pitch>]] and /spawnpoint [<targets>] [<pos>] [<yaw> [<pitch>]]: where new and dead players
+	// come back. The angle is told back as given (0.0 without one); nothing turns the player at the spawn yet.
+	FString ShownAngle(const TArray<FString>& Words, int32 At)
+	{
+		return At < Words.Num() && Words[At].IsNumeric() ? FString::SanitizeFloat(FCString::Atod(*Words[At]), 1) : FString(TEXT("0.0"));
+	}
+
+	FReplies RunSetWorldSpawn(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() == 3 || Words.Num() > 6)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		FIntVector Pos(FMath::FloorToInt32(Base.X), FMath::FloorToInt32(Base.Y), FMath::FloorToInt32(Base.Z));
+		if (Words.Num() >= 4 && !ParseBlockPos(Words, 1, Base, Pos))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() == 1 && Sender.IsConsole())
+		{
+			return { Fail(McLang::Get(TEXT("permissions.requires.player"))) };
+		}
+		Target.SetWorldSpawn(Pos);
+		return { Ok(McLang::Format(TEXT("commands.setworldspawn.success.new"), { FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z),
+			ShownAngle(Words, 4), ShownAngle(Words, 5), TEXT("minecraft:overworld") })) };
+	}
+
+	FReplies RunSpawnPoint(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() > 8 || Words.Num() == 3 || Words.Num() == 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words.Num() >= 2 ? Words[1] : FString(TEXT("@s")), Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		FIntVector Pos(FMath::FloorToInt32(Base.X), FMath::FloorToInt32(Base.Y), FMath::FloorToInt32(Base.Z));
+		if (Words.Num() >= 5 && !ParseBlockPos(Words, 2, Base, Pos))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() < 5 && Players.Num() == 1)
+		{
+			// Without a position the spawn is where that player stands.
+			FVector Feet;
+			if (Target.GetPosition(Players[0], Feet))
+			{
+				Pos = FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+			}
+		}
+		for (const FString& Player : Players)
+		{
+			Target.SetPlayerSpawn(Player, Pos);
+		}
+		const FString Who = Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num());
+		return { Ok(McLang::Format(Players.Num() == 1 ? TEXT("commands.spawnpoint.success.single.new") : TEXT("commands.spawnpoint.success.multiple.new"),
+			{ FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z), ShownAngle(Words, 5), ShownAngle(Words, 6), TEXT("minecraft:overworld"), Who })) };
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -2075,6 +2141,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("clone"))
 	{
 		return RunClone(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("setworldspawn"))
+	{
+		return RunSetWorldSpawn(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("spawnpoint"))
+	{
+		return RunSpawnPoint(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

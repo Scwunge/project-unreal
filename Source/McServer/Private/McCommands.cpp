@@ -65,6 +65,7 @@ namespace
 		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
 		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
+		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
@@ -2882,6 +2883,305 @@ namespace
 		return Tags;
 	}
 
+	// /team: teams and who is on them, kept for the session (wording from a ref run, cmd_team.txt). The game's team effects on play (colours of
+	// names, friendly fire, nametags, collision) are not drawn or applied.
+	struct FTeam
+	{
+		FString Name;
+		FString Display;
+		FString Color;
+		FString Prefix;
+		FString Suffix;
+		bool bFriendlyFire = true;
+		bool bSeeInvisible = true;
+		FString Nametag = TEXT("always");
+		FString DeathMessage = TEXT("always");
+		FString Collision = TEXT("always");
+		TArray<FString> Members;
+	};
+
+	TMap<FString, FTeam>& Teams()
+	{
+		static TMap<FString, FTeam> All;
+		return All;
+	}
+
+	FReplies RunTeam(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const auto Shown = [](const FTeam& Team) { return TEXT("[") + (Team.Display.IsEmpty() ? Team.Name : Team.Display) + TEXT("]"); };
+		const auto Joined = [&](int32 From)
+		{
+			TArray<FString> Rest;
+			for (int32 I = From; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			return FString::Join(Rest, TEXT(" "));
+		};
+		const auto Find = [&](const FString& Name) -> FTeam* { return Teams().Find(Name); };
+		const auto NotFound = [&](const FString& Name) -> FReplies { return { Fail(McLang::Format(TEXT("team.notFound"), { Name })) }; };
+
+		if (Verb == TEXT("list"))
+		{
+			if (Words.Num() == 2)
+			{
+				if (Teams().Num() == 0)
+				{
+					return { Ok(McLang::Get(TEXT("commands.team.list.teams.empty"))) };
+				}
+				TArray<FString> Keys;
+				Teams().GetKeys(Keys);
+				Keys.Sort();
+				TArray<FString> Names;
+				for (const FString& Key : Keys)
+				{
+					Names.Add(Shown(Teams()[Key]));
+				}
+				return { Ok(McLang::Format(TEXT("commands.team.list.teams.success"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			if (Team->Members.Num() == 0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.list.members.empty"), { Shown(*Team) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.list.members.success"), { Shown(*Team), FString::FromInt(Team->Members.Num()), FString::Join(Team->Members, TEXT(", ")) })) };
+		}
+		if (Verb == TEXT("add"))
+		{
+			if (Words.Num() < 3)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			if (Find(Words[2]))
+			{
+				return { Fail(McLang::Get(TEXT("commands.team.add.duplicate"))) };
+			}
+			FTeam Team;
+			Team.Name = Words[2];
+			Team.Display = Words.Num() > 3 ? PlainText(Joined(3)) : FString();
+			Teams().Add(Team.Name, Team);
+			return { Ok(McLang::Format(TEXT("commands.team.add.success"), { Shown(Team) })) };
+		}
+		if (Verb == TEXT("remove") || Verb == TEXT("empty"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			const FString Name = Shown(*Team);
+			if (Verb == TEXT("remove"))
+			{
+				Teams().Remove(Words[2]);
+				return { Ok(McLang::Format(TEXT("commands.team.remove.success"), { Name })) };
+			}
+			if (Team->Members.Num() == 0)
+			{
+				return { Fail(McLang::Get(TEXT("commands.team.empty.unchanged"))) };
+			}
+			const int32 Count = Team->Members.Num();
+			Team->Members.Reset();
+			return { Ok(McLang::Format(TEXT("commands.team.empty.success"), { FString::FromInt(Count), Name })) };
+		}
+
+		// Members are player selectors or plain names.
+		const auto Members = [&](const FString& Word, TArray<FString>& Out) -> bool
+		{
+			FString Error;
+			if (Word.StartsWith(TEXT("@")))
+			{
+				return ResolvePlayers(Word, Sender, Target, Out, Error);
+			}
+			Out.Add(Word);
+			return true;
+		};
+		const auto LeaveAll = [&](const FString& Member)
+		{
+			bool bWas = false;
+			for (TPair<FString, FTeam>& Pair : Teams())
+			{
+				bWas = Pair.Value.Members.Remove(Member) > 0 || bWas;
+			}
+			return bWas;
+		};
+
+		if (Verb == TEXT("join"))
+		{
+			if (Words.Num() < 3 || Words.Num() > 4)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			TArray<FString> Who;
+			if (!Members(Words.Num() == 4 ? Words[3] : TEXT("@s"), Who))
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			for (const FString& Member : Who)
+			{
+				LeaveAll(Member);
+				Team->Members.Add(Member);
+			}
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.join.success.single"), { Team->Prefix + Who[0] + Team->Suffix, Shown(*Team) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.join.success.multiple"), { FString::FromInt(Who.Num()), Shown(*Team) })) };
+		}
+		if (Verb == TEXT("leave"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			TArray<FString> Who;
+			if (!Members(Words[2], Who))
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			TArray<FString> Left;
+			for (const FString& Member : Who)
+			{
+				if (LeaveAll(Member))
+				{
+					Left.Add(Member);
+				}
+			}
+			if (Left.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.leave.success.single"), { Left[0] })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.leave.success.multiple"), { FString::FromInt(Left.Num()) })) };
+		}
+		if (Verb == TEXT("modify"))
+		{
+			if (Words.Num() < 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			const FString& Option = Words[3];
+			const FString& Value = Words[4];
+			const auto Flag = [&](bool& bState, const TCHAR* Key) -> FReplies
+			{
+				if (Value != TEXT("true") && Value != TEXT("false"))
+				{
+					return BadArgument(Command);
+				}
+				const bool bNew = Value == TEXT("true");
+				const FString Base = FString(TEXT("commands.team.option.")) + Key;
+				if (bNew == bState)
+				{
+					return { Fail(McLang::Get(Base + (bNew ? TEXT(".alreadyEnabled") : TEXT(".alreadyDisabled")))) };
+				}
+				bState = bNew;
+				return { Ok(McLang::Format(Base + (bNew ? TEXT(".enabled") : TEXT(".disabled")), { Shown(*Team) })) };
+			};
+			const auto Choice = [&](FString& State, const TCHAR* Key, const TCHAR* LangGroup, std::initializer_list<const TCHAR*> Allowed) -> FReplies
+			{
+				bool bKnown = false;
+				for (const TCHAR* One : Allowed)
+				{
+					bKnown = bKnown || Value == One;
+				}
+				if (!bKnown)
+				{
+					return BadArgument(Command);
+				}
+				const FString Base = FString(TEXT("commands.team.option.")) + Key;
+				if (State == Value)
+				{
+					return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+				}
+				State = Value;
+				return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Team), McLang::Get(FString(LangGroup) + Value) })) };
+			};
+			if (Option == TEXT("color"))
+			{
+				static const TCHAR* Colors[] = { TEXT("black"), TEXT("dark_blue"), TEXT("dark_green"), TEXT("dark_aqua"), TEXT("dark_red"), TEXT("dark_purple"), TEXT("gold"), TEXT("gray"), TEXT("dark_gray"), TEXT("blue"), TEXT("green"), TEXT("aqua"), TEXT("red"), TEXT("light_purple"), TEXT("yellow"), TEXT("white"), TEXT("reset") };
+				bool bKnown = false;
+				for (const TCHAR* One : Colors)
+				{
+					bKnown = bKnown || Value == One;
+				}
+				if (!bKnown)
+				{
+					return { Fail(McLang::Format(TEXT("argument.color.invalid"), { Value })), Fail(BorderContext(Command, Command.Len() - Value.Len())) };
+				}
+				const FString New = Value == TEXT("reset") ? FString() : Value;
+				if (New == Team->Color)
+				{
+					return { Fail(McLang::Get(TEXT("commands.team.option.color.unchanged"))) };
+				}
+				Team->Color = New;
+				if (New.IsEmpty())
+				{
+					return { Ok(McLang::Format(TEXT("commands.team.option.color.clear.success"), { Shown(*Team) })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.team.option.color.success"), { Shown(*Team), New })) };
+			}
+			if (Option == TEXT("friendlyFire"))
+			{
+				return Flag(Team->bFriendlyFire, TEXT("friendlyfire"));
+			}
+			if (Option == TEXT("seeFriendlyInvisibles"))
+			{
+				return Flag(Team->bSeeInvisible, TEXT("seeFriendlyInvisibles"));
+			}
+			if (Option == TEXT("nametagVisibility"))
+			{
+				return Choice(Team->Nametag, TEXT("nametagVisibility"), TEXT("team.visibility."), { TEXT("always"), TEXT("never"), TEXT("hideForOtherTeams"), TEXT("hideForOwnTeam") });
+			}
+			if (Option == TEXT("deathMessageVisibility"))
+			{
+				return Choice(Team->DeathMessage, TEXT("deathMessageVisibility"), TEXT("team.visibility."), { TEXT("always"), TEXT("never"), TEXT("hideForOtherTeams"), TEXT("hideForOwnTeam") });
+			}
+			if (Option == TEXT("collisionRule"))
+			{
+				return Choice(Team->Collision, TEXT("collisionRule"), TEXT("team.collision."), { TEXT("always"), TEXT("never"), TEXT("pushOtherTeams"), TEXT("pushOwnTeam") });
+			}
+			if (Option == TEXT("displayName"))
+			{
+				const FString New = PlainText(Joined(4));
+				if (New == (Team->Display.IsEmpty() ? Team->Name : Team->Display))
+				{
+					return { Fail(McLang::Get(TEXT("commands.team.option.name.unchanged"))) };
+				}
+				Team->Display = New;
+				return { Ok(McLang::Format(TEXT("commands.team.option.name.success"), { Shown(*Team) })) };
+			}
+			if (Option == TEXT("prefix") || Option == TEXT("suffix"))
+			{
+				const FString New = PlainText(Joined(4));
+				(Option == TEXT("prefix") ? Team->Prefix : Team->Suffix) = New;
+				return { Ok(McLang::Format(Option == TEXT("prefix") ? TEXT("commands.team.option.prefix.success") : TEXT("commands.team.option.suffix.success"), { New })) };
+			}
+			return BadArgument(Command);
+		}
+		return BadArgument(Command);
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -3568,6 +3868,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("spreadplayers"))
 	{
 		return RunSpreadPlayers(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("team"))
+	{
+		return RunTeam(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("forceload"))
 	{

@@ -540,6 +540,27 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("spreadplayers"), First(TEXT("spreadplayers 0 0 5 20 false @s")), FString(TEXT("Spread 1 entity/entities around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
 	TestEqual(TEXT("spreadplayers teams"), First(TEXT("spreadplayers 0 0 5 20 true @s")), FString(TEXT("Spread 1 team(s) around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
 	TestEqual(TEXT("spreadplayers nobody"), First(TEXT("spreadplayers 0 0 5 20 false Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /team.
+	TestEqual(TEXT("team none"), First(TEXT("team list")), FString(TEXT("There are no teams")));
+	TestEqual(TEXT("team add"), First(TEXT("team add red")), FString(TEXT("Created team [red]")));
+	TestEqual(TEXT("team add again"), First(TEXT("team add red")), FString(TEXT("A team already exists by that name")));
+	TestEqual(TEXT("team add display"), First(TEXT("team add blue {\"text\":\"Blue Team\"}")), FString(TEXT("Created team [Blue Team]")));
+	TestEqual(TEXT("team list"), First(TEXT("team list")), FString(TEXT("There are 2 team(s): [Blue Team], [red]")));
+	TestEqual(TEXT("team empty list"), First(TEXT("team list red")), FString(TEXT("There are no members on team [red]")));
+	TestEqual(TEXT("team join"), First(TEXT("team join red @s")), FString(TEXT("Added Steve to team [red]")));
+	TestEqual(TEXT("team members"), First(TEXT("team list red")), FString(TEXT("Team [red] has 1 member(s): Steve")));
+	TestEqual(TEXT("team join unknown"), First(TEXT("team join nope @s")), FString(TEXT("Unknown team 'nope'")));
+	TestEqual(TEXT("team leave"), First(TEXT("team leave @s")), FString(TEXT("Removed Steve from any team")));
+	TestEqual(TEXT("team leave none"), First(TEXT("team leave @s")), FString(TEXT("Removed 0 members from any team")));
+	TestEqual(TEXT("team color"), First(TEXT("team modify red color red")), FString(TEXT("Updated the color for team [red] to red")));
+	TestEqual(TEXT("team color same"), First(TEXT("team modify red color red")), FString(TEXT("Nothing changed. That team already has that color")));
+	TestEqual(TEXT("team color nonsense"), First(TEXT("team modify red color nonsense")), FString(TEXT("Unknown color 'nonsense'")));
+	TestEqual(TEXT("team friendly fire"), First(TEXT("team modify red friendlyFire false")), FString(TEXT("Disabled friendly fire for team [red]")));
+	TestEqual(TEXT("team nametag"), First(TEXT("team modify red nametagVisibility never")), FString(TEXT("Nametag visibility for team [red] is now \"Never\"")));
+	TestEqual(TEXT("team display name"), First(TEXT("team modify red displayName {\"text\":\"Reds\"}")), FString(TEXT("Updated the name of team [Reds]")));
+	TestEqual(TEXT("team empty"), First(TEXT("team empty red")), FString(TEXT("Nothing changed. That team is already empty")));
+	TestEqual(TEXT("team remove"), First(TEXT("team remove red")), FString(TEXT("Removed team [Reds]")));
+	TestEqual(TEXT("team removed"), First(TEXT("team remove red")), FString(TEXT("Unknown team 'red'")));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

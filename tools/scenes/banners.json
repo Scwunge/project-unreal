@@ -1,0 +1,155 @@
+{
+  "description": "Banners as in the vanilla ref run banner1: on classic_flat (stone floor y=-61), a white banner with a red downright stripe, blue border and yellow circle at x=0, a red banner with a black cross and white flower at x=2 turned a quarter, a black plain one at x=-2, and a blue wall banner with a lime creeper and orange globe on stone at x=4.",
+  "camera": [
+    0.5,
+    -58.38,
+    1.5,
+    0.0,
+    0.0
+  ],
+  "blocks": [
+    {
+      "from": [
+        -6,
+        -61,
+        -2
+      ],
+      "to": [
+        8,
+        -61,
+        8
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "from": [
+        0,
+        -60,
+        4
+      ],
+      "to": [
+        0,
+        -60,
+        4
+      ],
+      "state": "minecraft:white_banner[rotation=0]"
+    },
+    {
+      "from": [
+        2,
+        -60,
+        4
+      ],
+      "to": [
+        2,
+        -60,
+        4
+      ],
+      "state": "minecraft:red_banner[rotation=4]"
+    },
+    {
+      "from": [
+        -2,
+        -60,
+        4
+      ],
+      "to": [
+        -2,
+        -60,
+        4
+      ],
+      "state": "minecraft:black_banner[rotation=8]"
+    },
+    {
+      "from": [
+        4,
+        -59,
+        5
+      ],
+      "to": [
+        4,
+        -57,
+        5
+      ],
+      "state": "minecraft:stone"
+    },
+    {
+      "from": [
+        4,
+        -58,
+        4
+      ],
+      "to": [
+        4,
+        -58,
+        4
+      ],
+      "state": "minecraft:blue_wall_banner[facing=north]"
+    }
+  ],
+  "banners": [
+    {
+      "at": [
+        0,
+        -60,
+        4
+      ],
+      "patterns": [
+        {
+          "pattern": "minecraft:stripe_downright",
+          "color": "red"
+        },
+        {
+          "pattern": "minecraft:border",
+          "color": "blue"
+        },
+        {
+          "pattern": "minecraft:circle",
+          "color": "yellow"
+        }
+      ]
+    },
+    {
+      "at": [
+        2,
+        -60,
+        4
+      ],
+      "patterns": [
+        {
+          "pattern": "minecraft:cross",
+          "color": "black"
+        },
+        {
+          "pattern": "minecraft:flower",
+          "color": "white"
+        }
+      ]
+    },
+    {
+      "at": [
+        -2,
+        -60,
+        4
+      ],
+      "patterns": []
+    },
+    {
+      "at": [
+        4,
+        -58,
+        4
+      ],
+      "patterns": [
+        {
+          "pattern": "minecraft:creeper",
+          "color": "lime"
+        },
+        {
+          "pattern": "minecraft:globe",
+          "color": "orange"
+        }
+      ]
+    }
+  ]
+}

@@ -32,6 +32,9 @@
 #include "McSimulation.h"
 #include "McConduitHunt.h"
 #include "McEntityManager.h"
+#include "McBannerEntity.h"
+#include "McBanner.h"
+#include "McCache.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -827,6 +830,65 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
 			Item.Body.Velocity = FVector::ZeroVector;
 		}
+	}
+	// Banners' patterns: { "at": [x, y, z], "patterns": [{ "pattern": "minecraft:border", "color": "blue" }, ...] }. The banner
+	// block is placed by "blocks"; its flag stands once the chunk is there.
+	struct FSceneBanner
+	{
+		FIntVector Pos;
+		TArray<McBanner::FLayer> Layers;
+	};
+	TSharedRef<TArray<FSceneBanner>> Banners = MakeShared<TArray<FSceneBanner>>();
+	const TArray<TSharedPtr<FJsonValue>>* BannerValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("banners"), BannerValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *BannerValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a banner needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			FSceneBanner& Banner = Banners->Emplace_GetRef();
+			Banner.Pos = ToBlock(*At);
+			const TArray<TSharedPtr<FJsonValue>>* Patterns = nullptr;
+			if (Object->TryGetArrayField(TEXT("patterns"), Patterns))
+			{
+				for (const TSharedPtr<FJsonValue>& Pattern : *Patterns)
+				{
+					const TSharedPtr<FJsonObject> Layer = Pattern->AsObject();
+					FString Id, Colour;
+					if (Layer.IsValid() && Layer->TryGetStringField(TEXT("pattern"), Id) && Layer->TryGetStringField(TEXT("color"), Colour))
+					{
+						Banner.Layers.Add({ McCache::PathOf(Id), Colour });
+					}
+				}
+			}
+		}
+	}
+	if (Host && Banners->Num() > 0)
+	{
+		TSharedRef<FTimerHandle> BannerTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*BannerTimer, FTimerDelegate::CreateWeakLambda(this, [this, Banners, BannerTimer]()
+		{
+			FMcEntityHost* EntityHost = WorldActor ? WorldActor->GetEntityHost() : nullptr;
+			FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+			for (int32 Index = Banners->Num() - 1; EntityHost && Blocks && Index >= 0; --Index)
+			{
+				const FSceneBanner& Banner = (*Banners)[Index];
+				if (Blocks->FindChunk(FIntPoint(Banner.Pos.X >> 4, Banner.Pos.Z >> 4)))
+				{
+					FMcBannerEntity::Stand(EntityHost->GetManager(), Banner.Pos, Banner.Layers);
+					Banners->RemoveAt(Index);
+				}
+			}
+			if (Banners->Num() == 0)
+			{
+				GetWorldTimerManager().ClearTimer(*BannerTimer);
+			}
+		}), 0.5f, true);
 	}
 	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;

@@ -400,7 +400,7 @@ bool FMcBlockTextures::EnsureLoaded()
 		FName Picture = Ids[Index];
 		FIntPoint Tile, Grid;
 		const bool bTile = McTextureTiles::ParseTileId(Ids[Index], Picture, Tile, Grid);
-		const FString Relative = TEXT("textures/") + McCache::PathOf(Picture.ToString()) + TEXT(".png");
+		const FString Relative = McCache::RelativeOf(Picture.ToString(), TEXT("textures/"), TEXT(".png"));
 		FProbe& Probe = Probes[Index];
 		Probe.Path = McCache::Asset(Relative);
 		Probe.bFromPack = McPacks::IsFromPack(Relative);
@@ -547,7 +547,7 @@ bool FMcBlockTextures::EnsureLoaded()
 		// have them; the files of other packs under this one are not mixed in.
 		if (bPbr && Probe.bFromPack && !Probe.bTile)
 		{
-			const FString Base = TEXT("textures/") + McCache::PathOf(Ids[Index].ToString());
+			const FString Base = McCache::RelativeOf(Ids[Index].ToString(), TEXT("textures/"), TEXT(""));
 			for (int32 Kind = 0; Kind < 2; ++Kind)
 			{
 				const FString Relative = Base + (Kind == 0 ? TEXT("_n.png") : TEXT("_s.png"));

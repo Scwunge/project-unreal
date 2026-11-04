@@ -147,7 +147,22 @@ namespace
 					Plain.Pixels[Y * Plain.Width + X] = Pixels[Y * Step * Source + X * Step];
 				}
 			}
-			return McHd::Generate(Id, Plain, Size / FMcBlockTextures::TextureSize, Class, bEmissive, true);
+			McHd::FMaps Generated = McHd::Generate(Id, Plain, Size / FMcBlockTextures::TextureSize, Class, bEmissive, true);
+			// A pack's picture is cut into 16 pixel tiles (one layer each) whatever its size, so a pack layer is 16 wide here
+			// too: its own normal and specular maps, when it brought them, replace the generated ones (enlarged without
+			// smoothing, which would bend the normals).
+			if (Blocks.IsFromPack(Layer))
+			{
+				if (Blocks.GetNormalPixels(Layer).Num() > 0)
+				{
+					Generated.Normal = McHd::ScaleNearest(MakeSource(Blocks.GetNormalPixels(Layer), Source), Size, Size);
+				}
+				if (Blocks.GetSpecularPixels(Layer).Num() > 0)
+				{
+					Generated.Specular = McHd::ScaleNearest(MakeSource(Blocks.GetSpecularPixels(Layer), Source), Size, Size);
+				}
+			}
+			return Generated;
 		}
 
 		auto ToSize = [Source, Size](TConstArrayView<FColor> From, bool bPlain)

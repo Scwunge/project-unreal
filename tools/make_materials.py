@@ -153,7 +153,8 @@ return normalize(N - s * (dh.x * T + dh.y * B) * inv);
 # ("BlocksHdN": normal x and y in red and green, occlusion in blue, height in alpha) and a specular map ("BlocksHdS":
 # smoothness in red, F0 in green with 230 and up meaning metal, emission in alpha), the LabPBR layout. They are
 # filtered with mips and anisotropy, and opaque blocks get parallax occlusion mapping from the height.
-# The normal: water and particles as above; blocks from the normal map, put on the face with the same frame.
+# The normal: water and particles as above; blocks from the normal map, put on the face with the same frame. LabPBR normals
+# are DirectX (Y-: green low is up the picture, high is down), and B points down the picture (v grows downwards), hence + xy.y * B.
 LIT_NORMAL_HD_HLSL = LIT_NORMAL_HLSL[:LIT_NORMAL_HLSL.index("float3 luma")] + """
 float2 xy = (NMap.rg * 2.0 - 1.0) * Strength * (k == 2.0 ? 0.5 : 1.0);
 float z = sqrt(max(1.0 - dot(xy, xy), 0.05));
@@ -171,7 +172,7 @@ if (max(dot(T, T), dot(B, B)) < 1e-12)
 }
 T *= rsqrt(max(dot(T, T), 1e-12));
 B *= rsqrt(max(dot(B, B), 1e-12));
-return normalize(xy.x * T - xy.y * B + z * N);
+return normalize(xy.x * T + xy.y * B + z * N);
 """
 
 # Where the view ray, going into a block's surface, comes out in the picture: the whole shift in UV over the full depth

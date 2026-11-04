@@ -1321,3 +1321,6 @@ Measured with the new `log fov <ticks>` verb (scripts/spy1.txt, spy2.txt on the 
 
 - Phantom swoop (atk1.txt, one 900-tick run, n=1; 2026-11-03): it circles the player within 12 blocks horizontally (mean 5.8), 1 to 28 above the feet (mean 9.5), mean speed 0.237, dive peak 0.59; close passes 155 to 232 ticks apart (mean 189, n=4). Built as circle (radius 6, offset 9 up, 0.05 rad/tick, speed 0.24) for 140-190 ticks then a 50-tick dive at 0.4, with a 900-tick test (at least 2 passes, climbs above 6). FITTED, not logged: orbit radius, rate, dive length. Dry-world rerun still wanted.
 - Shulker bullets (atk1.txt, not built yet): fire at ticks 0, 30, 140, 210, 290; homing, speed rising to about 0.15-0.41, life 42-88 ticks; hits cost 2.5, 2.5, 3, 3 hp (vanilla 4 plus levitation, unreconciled). Guardian beam: damage 6 matches the attribute; charge time and cadence unmeasured.
+
+### Maps in the world save (2026-11-04)
+`McWorldSave::SaveMaps/LoadMaps` write `maps.json` (McMapStore::ToJson) beside level.json on save and autosave and read it when the world opens; a world without the file starts with an empty store. Test McClient.McServer.SaveMaps. Maps are not yet sent to remote clients (only the owner/listen server sees the data).

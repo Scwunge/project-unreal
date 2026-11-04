@@ -181,6 +181,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			WorldDir = McWorldSave::GetWorldDir(WorldName);
 			bHaveLevel = McWorldSave::LoadLevel(WorldDir, Level);
+			McWorldSave::LoadMaps(WorldDir);
 			if (!bHaveLevel && IFileManager::Get().FileExists(*(WorldDir / TEXT("level.json"))))
 			{
 				// Starting a new world over this one's chunks would mix two seeds; leave it as it is.
@@ -1106,6 +1107,7 @@ void AMcWorldActor::SaveWorld()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	// Whatever an autosave had left to look at is covered by this.
 	AutosaveQueue.Reset();
@@ -1130,6 +1132,7 @@ void AMcWorldActor::BeginAutosave()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	if (Entities)
 	{

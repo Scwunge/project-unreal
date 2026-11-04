@@ -460,11 +460,21 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 						{
 							continue;
 						}
+						// A piece whose parent sits inside a bigger piece (a house over a street's margin) stays inside that
+						// grandparent too, and does not count the grandparent as in its way (minecraft.wiki, "Jigsaw structure").
+						if (Parent.Container >= 0)
+						{
+							const FPiece& Grand = Layout->Pieces[Parent.Container];
+							if (Min.X < Grand.Min.X || Max.X > Grand.Max.X || Min.Z < Grand.Min.Z || Max.Z > Grand.Max.Z)
+							{
+								continue;
+							}
+						}
 						bool bFree = true;
 						for (int32 OtherIndex = 0; OtherIndex < Layout->Pieces.Num(); ++OtherIndex)
 						{
 							const FPiece& Other = Layout->Pieces[OtherIndex];
-							if (bInside && OtherIndex == Current.Piece)
+							if (bInside && (OtherIndex == Current.Piece || OtherIndex == Parent.Container))
 							{
 								continue;
 							}
@@ -486,6 +496,7 @@ TSharedPtr<FMcJigsawLibrary::FLayout> FMcJigsawLibrary::Assemble(const FStart& S
 						Child.Max = Max;
 						Child.Depth = Parent.Depth + 1;
 						Child.Parent = Current.Piece;
+						Child.Container = bInside ? Current.Piece : -1;
 						Layout->Pieces.Add(Child);
 						Queue.Add({ Layout->Pieces.Num() - 1, Source.Source->Placement, Sequence++ });
 						bAttached = true;

@@ -137,7 +137,9 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				for (int32 J = I + 1; J < A->Pieces.Num(); ++J)
 				{
 					// A piece may sit over the margin of the piece it grows from.
-					Overlaps += (A->Pieces[J].Parent != I && Piece.Parent != J && BoxesTouch(Piece, A->Pieces[J])) ? 1 : 0;
+					const int32 ParentOfJ = A->Pieces[J].Parent;
+						const bool bGrand = (ParentOfJ >= 0 && A->Pieces[ParentOfJ].Container == I) || (Piece.Parent >= 0 && A->Pieces[Piece.Parent].Container == J);
+						Overlaps += (A->Pieces[J].Parent != I && Piece.Parent != J && !bGrand && BoxesTouch(Piece, A->Pieces[J])) ? 1 : 0;
 				}
 			}
 			TestEqual(FString::Printf(TEXT("%s pieces within the distance"), Case.Pool), Outside, 0);
@@ -390,6 +392,37 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	FMcJigsawLibrary Library;
+	for (const TCHAR* Kind : { TEXT("desert"), TEXT("plains") })
+	{
+		FMcJigsawLibrary HouseLibrary;
+		HouseLibrary.LoadPool(FName(*FString::Printf(TEXT("minecraft:village/%s/town_centers"), Kind)), &Features);
+		for (const TCHAR* PoolName : { TEXT("houses"), TEXT("town_centers") })
+		{
+			if (const FMcJigsawLibrary::FPool* HousePool = HouseLibrary.GetPool(FName(*FString::Printf(TEXT("minecraft:village/%s/%s"), Kind, PoolName))))
+			{
+				for (const TPair<TSharedPtr<const FMcJigsawLibrary::FElement>, int32>& Entry : HousePool->Elements)
+				{
+					for (const FMcJigsawLibrary::FJigsaw& J : Entry.Key->Jigsaws)
+					{
+						if (J.Pool.ToString().Contains(TEXT("villagers")))
+						{
+							AddInfo(FString::Printf(TEXT("HOUSEJ %s %s size %d,%d,%d pos %d,%d,%d front %d top %d roll %d target %s"), Kind, *Entry.Key->Location, Entry.Key->Size.X, Entry.Key->Size.Y, Entry.Key->Size.Z, J.Pos.X, J.Pos.Y, J.Pos.Z, J.Front, J.Top, J.bRollable ? 1 : 0, *J.Target.ToString()));
+						}
+					}
+				}
+			}
+		}
+		if (const FMcJigsawLibrary::FPool* VillagerPool = HouseLibrary.GetPool(FName(*FString::Printf(TEXT("minecraft:village/%s/villagers"), Kind))))
+		{
+			for (const TPair<TSharedPtr<const FMcJigsawLibrary::FElement>, int32>& Entry : VillagerPool->Elements)
+			{
+				for (const FMcJigsawLibrary::FJigsaw& J : Entry.Key->Jigsaws)
+				{
+					AddInfo(FString::Printf(TEXT("VILLJ %s %s size %d,%d,%d pos %d,%d,%d front %d top %d name %s"), Kind, *Entry.Key->Location, Entry.Key->Size.X, Entry.Key->Size.Y, Entry.Key->Size.Z, J.Pos.X, J.Pos.Y, J.Pos.Z, J.Front, J.Top, *J.Name.ToString()));
+				}
+			}
+		}
+	}
 	{
 		FMcJigsawLibrary DecorLibrary;
 		DecorLibrary.LoadPool(FName(TEXT("minecraft:village/plains/town_centers")), &Features);
@@ -437,6 +470,8 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 			int64 Volume = 0;
 			int64 AllPieces = 0;
 			TMap<FString, int32> ByName;
+		TMap<FString, int32> VillagersByParent;
+		TMap<FString, int32> ParentCount;
 			for (int32 Trial = 0; Trial < 300; ++Trial)
 			{
 				FMcJigsawLibrary::FStart Start;
@@ -456,6 +491,14 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 						const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
 						FString Name = Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Single ? Piece.Element->Location : (Piece.Element->Kind == FMcJigsawLibrary::FElement::EKind::Feature ? FString(TEXT("feature")) : FString(TEXT("list:")) + (Piece.Element->Parts.IsEmpty() ? FString() : Piece.Element->Parts[0]->Location));
 						++ByName.FindOrAdd(Name);
+					if (Name.Contains(TEXT("/villagers/")) && Piece.Parent >= 0)
+					{
+						++VillagersByParent.FindOrAdd(Layout->Pieces[Piece.Parent].Element->Location);
+					}
+					if (Name.Contains(TEXT("/houses/")))
+					{
+						++ParentCount.FindOrAdd(Name);
+					}
 						Singles += V == 1;
 						Volume += V;
 						++AllPieces;
@@ -465,6 +508,10 @@ bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
 			for (const TPair<FString, int32>& Pair : ByName)
 			{
 				AddInfo(FString::Printf(TEXT("PT %s d%d %s %.2f"), Kind, Depth, *Pair.Key, double(Pair.Value) / 300.0));
+			}
+			for (const TPair<FString, int32>& Pair : ParentCount)
+			{
+				AddInfo(FString::Printf(TEXT("VP %s d%d %s houses %.2f villagers %.2f"), Kind, Depth, *Pair.Key, double(Pair.Value) / 300.0, double(VillagersByParent.FindRef(Pair.Key)) / 300.0));
 			}
 			Counts.Sort();
 			int64 Sum = 0;

@@ -89,10 +89,16 @@ namespace
 		return FMcBlockRegistry::Get().FindState(Block, Properties).Get(0);
 	}
 
-	// A block a fluid pushes aside: nothing to collide with (air, plants, torches).
+	// A block a fluid pushes aside: nothing to collide with (air, plants, torches). A light block holds its ground against flowing water
+	// (reference run icemelt: they stayed waterlogged=false while melt water flowed around them). Other waterloggable blocks (signs,
+	// lava against anything) are NOT measured, so they behave as before.
 	bool IsDisplaceable(FMcStateId State)
 	{
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		if (Registry.GetBlockOf(State).Name == TEXT("minecraft:light"))
+		{
+			return false;
+		}
 		return Registry.IsAir(State) || (FluidOf(State) == EMcFluid::None && !FMcBlockShapes::Get().HasCollision(State) && !FMcBlockTags::Get().Has(TEXT("minecraft:climbable"), State)
 			&& !FMcBlockTags::Get().Has(TEXT("minecraft:portals"), State));
 	}

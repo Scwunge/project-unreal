@@ -23,6 +23,8 @@ struct FMcCommandSender
 	// The player's name; empty for the server console.
 	FString Name;
 	int32 PermissionLevel = 0;
+	// Where the command runs from, when /execute moved it (else the sender's own feet).
+	TOptional<FVector> Position;
 	bool IsConsole() const { return Name.IsEmpty(); }
 };
 
@@ -132,6 +134,11 @@ public:
 	virtual void SetTickFrozen(bool bFrozen) {}
 	virtual void StepTicks(int32 Count) {}
 	virtual double GetAverageTickMs() const { return 0.0; }
+	// /rotate: a player's yaw (Minecraft degrees), read and set.
+	virtual bool GetYaw(const FString& Player, double& OutYaw) const { return false; }
+	virtual void SetYaw(const FString& Player, double Yaw) {}
+	// /locate biome: the nearest loaded spot of a biome (id), from a position.
+	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
 	// /damage: hurts a player; false if nothing hurt them (creative).
 	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.

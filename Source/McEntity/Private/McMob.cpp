@@ -1,5 +1,6 @@
 #include "McMob.h"
 #include "McVillager.h"
+#include "McMobLook.h"
 #include "McArrow.h"
 #include "McFireball.h"
 #include "McShulkerBullet.h"
@@ -277,6 +278,80 @@ bool FMcMob::Serialize(FArchive& Ar)
 		}
 	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
+}
+
+void FMcMob::SaveTrailer(FArchive& Ar) const
+{
+	int32 Look = LookSeed;
+	int32 Young = YoungTicks;
+	Ar << Look << Young;
+	uint8 Flags = bNoAI ? 1 : 0;
+	int32 Dye = DyeColor;
+	FString Name = CustomName;
+	FString Held = HeldItem.IsNone() ? FString() : HeldItem.ToString();
+	Ar << Flags << Dye << Name << Held;
+	for (const FName& Piece : Armor)
+	{
+		FString Text = Piece.IsNone() ? FString() : Piece.ToString();
+		Ar << Text;
+	}
+}
+
+void FMcMob::LoadTrailer(FArchive& Ar)
+{
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Look = -1;
+	Ar << Look;
+	if (!Ar.IsError() && Look >= 0 && Look < McMobLook::GetCount(Type.Name))
+	{
+		LookSeed = Look;
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Young = 0;
+	Ar << Young;
+	if (!Ar.IsError() && Young > 0 && CanBeYoung(Type.Name))
+	{
+		SetYoung(Young);
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	uint8 Flags = 0;
+	int32 Dye = -1;
+	FString Name, Held;
+	Ar << Flags << Dye << Name << Held;
+	if (Ar.IsError())
+	{
+		return;
+	}
+	bNoAI = (Flags & 1) != 0;
+	DyeColor = Dye >= 0 && Dye <= 15 ? Dye : -1;
+	CustomName = Name;
+	if (!Held.IsEmpty())
+	{
+		HeldItem = FName(*Held);
+	}
+	for (FName& Piece : Armor)
+	{
+		FString Text;
+		Ar << Text;
+		if (Ar.IsError())
+		{
+			return;
+		}
+		Piece = Text.IsEmpty() ? FName() : FName(*Text);
+	}
+	if (Type.Name == FName(TEXT("minecraft:sheep")) && DyeColor >= 0)
+	{
+		ArmPose = DyeColor << 8;
+	}
 }
 
 void FMcMob::UpdateWolfPose()
@@ -730,7 +805,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		UpdateWolfPose();
 	}
-	if (bFrozen)
+	if (bFrozen || bNoAI)
 	{
 		return;
 	}

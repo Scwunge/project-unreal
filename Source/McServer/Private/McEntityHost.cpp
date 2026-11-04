@@ -671,10 +671,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		if (Entity->IsLiving())
 		{
 			// After what the kind itself keeps, so an older save without it still reads.
-			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
-			DataWriter << Look;
-			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
-			DataWriter << Young;
+			static_cast<FMcMob&>(*Entity).SaveTrailer(DataWriter);
 		}
 		Writer << Type << Data;
 		++Count;
@@ -755,24 +752,7 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
-				if (!DataReader.AtEnd())
-				{
-					int32 Look = -1;
-					DataReader << Look;
-					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
-					{
-						Mob->LookSeed = Look;
-					}
-					int32 Young = 0;
-					if (!DataReader.AtEnd())
-					{
-						DataReader << Young;
-						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
-						{
-							Mob->SetYoung(Young);
-						}
-					}
-				}
+				Mob->LoadTrailer(DataReader);
 				++Restored;
 			}
 			else

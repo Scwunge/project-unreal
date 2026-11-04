@@ -529,6 +529,7 @@ namespace
 			Live.Pitch = Pitch;
 		};
 		TUniquePtr<FMcEntity> Live;
+		FMcMob* LiveMob = nullptr;
 		if (Id == TEXT("minecraft:item"))
 		{
 			const FMcNbt* Held = Entity.Find(TEXT("Item"));
@@ -645,6 +646,55 @@ namespace
 			{
 				Mob->MakeBaby();
 			}
+			Mob->bNoAI = Entity.GetInt(TEXT("NoAI")) != 0;
+			if (Type->Name == FName(TEXT("minecraft:sheep")) && Entity.Find(TEXT("Color")))
+			{
+				Mob->DyeColor = FMath::Clamp(static_cast<int32>(Entity.GetInt(TEXT("Color"))), 0, 15);
+				Mob->ArmPose = Mob->DyeColor << 8;
+			}
+			if (const FMcNbt* Name = Entity.Find(TEXT("CustomName")))
+			{
+				// A text component: a plain string, or a compound with the text in it.
+				Mob->CustomName = Name->Type == FMcNbt::EType::String ? Name->String : Name->GetString(TEXT("text"));
+			}
+			// What it wears and holds: the equipment compound (head, chest, legs, feet, mainhand), or the older ArmorItems
+			// (feet first) and HandItems lists.
+			const auto ItemNamed = [](const FMcNbt* Slot) -> FName
+			{
+				const FString Id = Slot ? Slot->GetString(TEXT("id")) : FString();
+				return Id.IsEmpty() ? FName() : FName(*Id);
+			};
+			if (const FMcNbt* Equipment = Entity.Find(TEXT("equipment")))
+			{
+				Mob->Armor[0] = ItemNamed(Equipment->Find(TEXT("head")));
+				Mob->Armor[1] = ItemNamed(Equipment->Find(TEXT("chest")));
+				Mob->Armor[2] = ItemNamed(Equipment->Find(TEXT("legs")));
+				Mob->Armor[3] = ItemNamed(Equipment->Find(TEXT("feet")));
+				const FName Main = ItemNamed(Equipment->Find(TEXT("mainhand")));
+				if (!Main.IsNone())
+				{
+					Mob->HeldItem = Main;
+				}
+			}
+			else
+			{
+				if (const FMcNbt* Worn = FindList(Entity, TEXT("ArmorItems")))
+				{
+					for (int32 Slot = 0; Slot < 4 && Slot < Worn->Num(); ++Slot)
+					{
+						Mob->Armor[3 - Slot] = ItemNamed(&Worn->Values[Slot]);
+					}
+				}
+				if (const FMcNbt* Hands = FindList(Entity, TEXT("HandItems")))
+				{
+					const FName Main = Hands->Num() > 0 ? ItemNamed(&Hands->Values[0]) : FName();
+					if (!Main.IsNone())
+					{
+						Mob->HeldItem = Main;
+					}
+				}
+			}
+			LiveMob = Mob.Get();
 			Live = MoveTemp(Mob);
 		}
 		else if (Id.EndsWith(TEXT("minecart")) && Id != TEXT("minecraft:command_block_minecart") && Id != TEXT("minecraft:spawner_minecart"))
@@ -673,7 +723,16 @@ namespace
 		Place(*Live);
 		OutType = Live->GetType().ToString();
 		FMemoryWriter DataWriter(OutData);
-		return Live->Serialize(DataWriter);
+		if (!Live->Serialize(DataWriter))
+		{
+			return false;
+		}
+		if (LiveMob)
+		{
+			// What a world's host keeps after a mob's own bytes (youth, flags, dye, name, gear).
+			LiveMob->SaveTrailer(DataWriter);
+		}
+		return true;
 	}
 
 	// What an entity file turned into scenery, by chunk: the entities' count and bytes as a chunk's save keeps them.

@@ -11,6 +11,7 @@
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McChunk.h"
+#include "McJavaExport.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
 #include "McItemRegistry.h"
@@ -886,3 +887,61 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 }
 
 #endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportTest, "McClient.McServer.JavaExport.RoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportTest::RunTest(const FString& Parameters)
+{
+	// Packing is the inverse of unpacking.
+	TArray<int32> Indexes;
+	for (int32 Index = 0; Index < 4096; ++Index)
+	{
+		Indexes.Add((Index * 7 + 3) % 20);
+	}
+	TArray<int64> Longs;
+	McJavaExport::PackIndices(Indexes, 5, Longs);
+	TestEqual(TEXT("342 longs for 4096 entries at 5 bits"), Longs.Num(), 342);
+	TArray<int32> Back;
+	TestTrue(TEXT("unpacks"), McJavaImport::UnpackIndices(Longs, 5, 4096, Back));
+	TestTrue(TEXT("packed entries come back"), Back == Indexes);
+
+	if (!LoadRegistries())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId Stone = Registry.ParseState(TEXT("minecraft:stone")).Get(0);
+	const FMcStateId Stairs = Registry.ParseState(TEXT("minecraft:oak_stairs[facing=east,half=top]")).Get(0);
+	FMcChunk Source(FIntPoint(-3, 5), -64, 24);
+	Source.SetBlock(0, -64, 0, Stone);
+	Source.SetBlock(7, -40, 9, Stairs);
+	Source.SetBlock(15, 100, 15, Stone);
+
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Source, Root);
+	FIntPoint Pos;
+	TestTrue(TEXT("position is written"), McJavaImport::GetChunkPos(Root, Pos) && Pos == FIntPoint(-3, 5));
+	FMcChunk Result(FIntPoint(-3, 5), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("our own chunk converts back"), McJavaImport::ConvertChunk(Root, Result, Stats));
+	TestTrue(TEXT("stone"), Result.GetBlock(0, -64, 0) == Stone);
+	TestTrue(TEXT("stairs with properties"), Result.GetBlock(7, -40, 9) == Stairs);
+	TestTrue(TEXT("stone high up"), Result.GetBlock(15, 100, 15) == Stone);
+	TestTrue(TEXT("air elsewhere"), Registry.IsAir(Result.GetBlock(1, 0, 1)));
+
+	// A region file made of it reads back through the importer's reader.
+	TArray<uint8> Bytes;
+	Root.WriteRoot(Bytes);
+	TMap<FIntPoint, TArray<uint8>> Chunks;
+	Chunks.Add(FIntPoint(-3, 5), Bytes);
+	TArray<uint8> File;
+	McJavaExport::MakeRegion(Chunks, File);
+	TArray<uint8> Read;
+	bool bMissing = false;
+	TestTrue(TEXT("chunk is in the region"), McJavaImport::ReadChunkBytes(File, 29, 5, FString(), -3, 5, Read, bMissing));
+	TestTrue(TEXT("region holds the chunk's bytes"), Read.Num() >= Bytes.Num() && FMemory::Memcmp(Read.GetData(), Bytes.GetData(), Bytes.Num()) == 0);
+	TestFalse(TEXT("other slots are empty"), McJavaImport::ReadChunkBytes(File, 0, 0, FString(), -3, 5, Read, bMissing));
+	return true;
+}

@@ -1256,3 +1256,15 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 - Mob extras from saves (77ebf86): NoAI, sheep dye, custom name, armour and held item are imported and saved (FMcMob::SaveTrailer/LoadTrailer). Not drawn yet, rendering work for the mobs/render session: name tags above named mobs (CustomName), armour on zombies, skeletons and other humanoids (FMcMob::Armor, head/chest/legs/feet; the armor stand model in McEntityModel.cpp is the starting point), and a held item on zombies (HeldItem is drawn for skeletons only).
 
 - Player data from saves: ImportPlayer writes the newest players/data file (or the old level.dat Player) as playerdata/imported-player.json (position, look, mode, health, food, xp, inventory, off hand, ender chest); LoadPlayer gives it to anyone with no file of their own. Built, tested (McClient.McServer.JavaImport.Player), not yet seen in game. Not carried: potion effects, recipe book, advancements, stats.
+
+## Provenance gaps (import-java-world session, audit 2026-11-04)
+
+Numbers and format details in the Java import and export that did not come straight from a log, the wiki, a real save or `cache/`:
+
+1. Region file layout in `McJavaExport::MakeRegion` (8192-byte header, 4096-byte sectors, 3-byte offset plus 1-byte sector count, timestamp table, compression id 2 = zlib, 4-byte length including the type byte). Written from recall; the import reader reads real saves with the same layout, but the writer is not yet checked against the wiki page or a real file. To measure: dump a real r.X.Z.mca header and compare, then load our export in the vanilla client.
+2. Chunk NBT keys written by `MakeChunk` (xPos, zPos, yPos, Status "minecraft:full", isLightOn 0, LastUpdate, InhabitedTime, block_entities, sections Y/block_states/biomes). The import reads the same keys from real saves; the extra ones (LastUpdate, InhabitedTime) are recalled, unverified. To measure: dump a chunk from `ref`.
+3. Palette bit widths (blocks minimum 4 bits, biomes minimum 1, no `data` when there is a single entry) via `McJavaImport::GetBitsPerEntry`. Confirmed only by importing real saves successfully; the minimums for writing are not separately observed.
+4. level.dat: fields were checked against the `ref` save's level.dat on 2026-11-04. Found wrong from recall: DayTime does not exist in 26.3 (removed); `version` 19133 added as observed. Still unverified: where the day time lives now (likely a separate data file), so Time/time of day is not exported faithfully.
+5. Difficulty names (peaceful, easy, normal, hard): only "normal" observed; the others are recalled.
+6. Player import: equipment slot mapping (feet 100 ... head 103, off hand 150, ender 200+) is the port's own numbering; the NBT side (`equipment` compound, XpP, EnderItems) was read from the playerref save, so observed. The -106 off hand slot in old inventories is recalled and unverified.
+7. Dye order (white 0 ... black 15) for sheep: from the reference shots/save of sheep colours only for the colours that were shot; the full order is recalled.

@@ -98,6 +98,8 @@ void UMcPlayerDataComponent::FillCreativeHotbar()
 
 void UMcPlayerDataComponent::UpdateArmor()
 {
+	// The registry may not be loaded yet when a saved player comes back (an imported one in the first frames).
+	FMcItemRegistry::Get().EnsureLoaded();
 	float Points = 0.0f, Toughness = 0.0f;
 	McSurvival::GetArmorValues(*Armor, Points, Toughness);
 	Stats.Armor = FMath::RoundToInt32(Points);

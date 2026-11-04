@@ -1568,3 +1568,12 @@ Unreal Mode 31.0 fps, vanilla 65.8 fps over the last 3 s (instantaneous 32.8 / 1
 | block lights | 32.5 | 35.3 | none |
 | god rays | 38.9 | 35.8 | +7% |
 Reading: with this noise only volumetric fog (+10%) and the screen percentage (+16% at 70) stand out; nothing is a single big spender, so the 31 vs 66 gap is the sum of many modest costs plus the heavier lit/HD materials and shadow work (Lumen GI cannot be switched off for a comparison). Proposed defaults for a better frame rate at nearly the same look: keep volumetric fog on Ultra/High only (Medium and below off), and make Medium (the default) render at screen percentage 75 with TSR upscaling. These are NOT applied yet: a repeat sweep on a quiet machine (the user is gaming now, so this PC is off limits) must confirm them first. A 1070 rerun would not answer this (different GPU, and it is terrain/CPU bound there).
+
+**Fog / screen percentage confirmation on the RTX 4060** (2026-11-04, local lane, same scene and args as the sweep above, interleaved, fps since start / last 3 s). A `javaw.exe` (the user's Minecraft) was running only for the first two 30 s samples (the warm-up shot); after that none was seen. The Unreal process name did not match my sampler, so the other samples only say no javaw:
+| run | fps | 3 s |
+|---|---|---|
+| warm-up | 34.8 | 40.0 |
+| base 1 / base 2 | 44.8 / 47.0 | 44.1 / 45.8 |
+| volumetric fog off 1 / 2 | 44.7 / 44.4 | 45.2 / 42.2 |
+| screen percentage 75, 1 / 2 | 17.3 / 36.3 | 33.3 / 32.1 |
+Result: the earlier sweep's +10% for fog and +16% for 70% scale did NOT hold. On a quiet machine the base is about 45 fps (not 31-36), fog off gives no gain, and setting `r.ScreenPercentage=75` reads slower than base (probably it fights the TSR/preset upscale setting, or a resolution change stalls); the two scale runs disagree widely (17 vs 36), so that one is unreliable. The proposed defaults are therefore NOT applied; the earlier 31 vs 66 forest gap was largely a loaded machine. Next, if this matters: a vanilla and an Unreal Mode pair on this quiet PC, and `stat gpu` in the scene.

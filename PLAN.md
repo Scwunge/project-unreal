@@ -936,6 +936,17 @@ Numbers or rules in McGen with no wiki page, log, or `cache/` JSON recorded as t
 12. `McFeatureTypes.cpp` / `McFeatureExtra.cpp` / `McFeatureWorld.cpp`: the placement behaviours of the feature types (spring, lake, disk, vegetation patches, ore veins, deltas, basalt columns, the end spikes); parameters are JSON, behaviours partly measured (ore veins, stats), the rest memory.
 13. `McBiomeSource.cpp`: the parameter-space nearest-point search is data (`MaxLeafSize` 8 is an implementation choice); the climate noise scales are JSON.
 14. Lava, sea and the aquifer-less fluid rule fixed today (McNoiseGenerator.cpp: `Y < SeaLevel` default fluid): from the shipped nether noise settings plus the reference block counts; this one is sourced.
+Status of the 14 groups after the 2026-11-04 work (what measures each; no constant was removed, because every one that is not a published algorithm still decides a measured share):
+- 1 aquifer: `McClient.McGen.AquiferSweep` (sea and lava shares per y) against `log` data; stays measured-only.
+- 2 carvers: `McClient.McGen.CaveBands` (cave share per y band) against the reference; measured-only.
+- 3 noise: `McClient.McGen.NoiseSpectrum` and the climate grid (`ClimateGrid`, `DeepDarkWide` today: deep_dark 1.07x over a wide grid); the amplitude factor stays fitted, and the raw copper shortage (0.38x) is the one result that may trace back to it.
+- 4 random and 5 hand-offs: published algorithms and the lava sea rule (group 14, sourced).
+- 6 density functions and 7 surface rules: `WorldStats0..4` (ground and ore shares), `NetherStats` (five-seed Nether block shares, within 0.8 to 1.2 for the common blocks after the delta fix).
+- 8 structures: monument now follows the wiki's square and deep-ocean rules and the jar's surround tag, the ancient city start is measured (`ANC`, `CBDY`), Nether starts are compared (`NetherStarts`); open ratios are monument about 2x and nether fossils 1.78x.
+- 9 procedural pieces, 10 jigsaw, 11 trees, 12 feature behaviours: shares only (`StructureStarts`, `log trees`, `STATF`); the delta feature (12) was rewritten to the wiki rule today, roots and sprouts (12) to the jar's support tags; weeping vines (12) at 0.1x still open.
+- 13 biome search: data, no gap.
+Still to do under this list: replace the group 9 and 10 layouts and expansion with measured shapes where a share is off, one structure at a time, starting with the monument (group 8 above); each needs a reference log of piece boxes, which `log starts` does not give yet.
+
 Next: for groups 1 to 3 and 8 to 10, replace unexplained constants with reference measurements or delete the rule; the group list is the work list. A first action each time one is touched: add the source (wiki page, log, or JSON path) to the comment.
 1. **Random and noise** (McGen): a seeded random (Xoroshiro128++), improved Perlin noise, octave noise per
    the noise JSON, and simplex noise for the End.

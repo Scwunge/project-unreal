@@ -383,6 +383,16 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			{
 				User.ServerRide(Mob->Id);
 			}
+			if (Result == McMount::EUse::Inventory && Mob->Mount.IsValid())
+			{
+				// Sneaking on a tamed animal opens its saddle, armour and chest slots; the title is its name.
+				FString Name = Mob->GetType().ToString();
+				Name.RemoveFromStart(TEXT("minecraft:"));
+				Name = Name.Left(1).ToUpper() + Name.Mid(1);
+				User.Data->OpenBlockWindow(EMcWindowKind::Horse, FIntVector(FMath::FloorToInt32(Mob->Body.Position.X), FMath::FloorToInt32(Mob->Body.Position.Y), FMath::FloorToInt32(Mob->Body.Position.Z)),
+					Name, McMount::GetInventory(*Mob->Mount), nullptr);
+				User.Data->MarkWindowOnEntity(Mob->Id);
+			}
 			if (Result != McMount::EUse::None)
 			{
 				return true;

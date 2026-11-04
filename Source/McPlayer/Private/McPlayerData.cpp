@@ -1,4 +1,5 @@
 #include "McPlayerData.h"
+#include "McMountMenu.h"
 #include "McSignMenu.h"
 #include "McLecternMenu.h"
 #include "McCraftingMenu.h"
@@ -208,6 +209,13 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		{
 			Made.Container = MakeShared<FMcContainer>(Aux);
 			Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
+		}
+		break;
+	case EMcWindowKind::Horse:
+		if (Aux >= 2 && Aux <= 17)
+		{
+			Made.Container = MakeShared<FMcContainer>(Aux);
+			Made.Menu = MakeShared<FMcMountMenu>(Made.Container, Inventory);
 		}
 		break;
 	case EMcWindowKind::Hopper:
@@ -435,6 +443,15 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	case EMcWindowKind::Grindstone:
 	case EMcWindowKind::Anvil:
 		break;
+	case EMcWindowKind::Horse:
+		if (!Container.IsValid() || Container->Num() < 2 || Container->Num() > 17)
+		{
+			return;
+		}
+		Aux = Container->Num();
+		Made.Container = Container;
+		Made.Menu = MakeShared<FMcMountMenu>(Container, Inventory);
+		break;
 	case EMcWindowKind::Chest:
 	case EMcWindowKind::Hopper:
 	case EMcWindowKind::Dispenser:
@@ -481,6 +498,14 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	Made.Pos = Pos;
 	Made.OnChanged = MoveTemp(OnChanged);
 	OpenServerWindow(MoveTemp(Made), Aux);
+}
+
+void UMcPlayerDataComponent::MarkWindowOnEntity(int32 EntityId)
+{
+	if (Window.IsOpen())
+	{
+		Window.EntityId = EntityId;
+	}
 }
 
 void UMcPlayerDataComponent::CloseWindow()

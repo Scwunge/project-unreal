@@ -284,8 +284,8 @@ if (k == 1.0)
     // Shore foam: the mesher puts 0.4 * (closeness to the water's edge) after the layer number in UV1.x, so a white fringe
     // fades in over the last half block before the shore and breathes slowly.
     float edge = saturate(frac(Layer.x + 0.001) / 0.4);
-    float foam = smoothstep(0.45, 1.0, edge) * (0.7 + 0.3 * sin(Time * 1.4 + Pos.x * 0.011 + Pos.y * 0.009));
-    e += float3(0.85, 0.92, 1.0) * pow(b.x, 2.2) * SkyFactor * foam * 0.55;
+    float foam = smoothstep(0.1, 1.0, edge) * (0.7 + 0.3 * sin(Time * 1.4 + Pos.x * 0.011 + Pos.y * 0.009));
+    e += float3(0.85, 0.92, 1.0) * pow(b.x, 2.2) * SkyFactor * foam * 1.6;
 }
 if (puddle > 0.01 && k != 1.0 && k < 9.0)
 {

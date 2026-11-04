@@ -2137,6 +2137,26 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		break;
 	}
 
+	// The wheel over a bundle picks one of its stacks, from the last shown one back (bundleicon ref run); leaving drops it.
+	const bool bOverBundle = Menu.GetCarried().IsEmpty() && HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item);
+	if (!bOverBundle || BundleSelectedSlot != HoverSlot)
+	{
+		BundleSelectedSlot = bOverBundle ? HoverSlot : INDEX_NONE;
+		BundleSelected = -1;
+	}
+	if (bOverBundle)
+	{
+		APlayerController* Wheel = GetOwningPlayerController();
+		const McGui::FBundleGrid WheelGrid = McGui::GetBundleGrid(McBundle::GetContents(Menu.GetStack(HoverSlot)).Num());
+		const int32 Shown = WheelGrid.Rows * WheelGrid.Columns - (WheelGrid.Hidden > 0 ? 1 : 0) - WheelGrid.Blanks;
+		const int32 Step = Wheel ? (Wheel->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0) - (Wheel->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) : 0;
+		if (Step != 0 && Shown > 0)
+		{
+			BundleSelected = BundleSelected - Step;
+			BundleSelected = BundleSelected < 0 ? Shown - 1 : (BundleSelected >= Shown ? 0 : BundleSelected);
+		}
+	}
+
 	for (int32 Slot = 0; Slot < Menu.NumSlots() && Slot < Layout.Slots.Num(); ++Slot)
 	{
 		if (!Layout.IsShown(Slot))
@@ -2144,7 +2164,19 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 			continue;
 		}
 		const FIntPoint At = Origin + Layout.Slots[Slot];
-		DrawStack(Menu.GetStack(Slot), static_cast<float>(At.X), static_cast<float>(At.Y));
+		const TArray<FMcItemStack> Held = Slot == BundleSelectedSlot && BundleSelected >= 0 ? McBundle::GetContents(Menu.GetStack(Slot)) : TArray<FMcItemStack>();
+		if (Held.IsValidIndex(BundleSelected))
+		{
+			// The open bundle: the back of the bag, the picked stack, then the front over its lower part.
+			const FString Colour = Menu.GetStack(Slot).Item.ToString().Replace(TEXT("minecraft:"), TEXT(""));
+			DrawGuiSprite(TEXT("textures/item/") + Colour + TEXT("_open_back.png"), static_cast<float>(At.X), static_cast<float>(At.Y), 16.0f, 16.0f);
+			DrawStack(Held[BundleSelected], static_cast<float>(At.X), static_cast<float>(At.Y));
+			DrawGuiSprite(TEXT("textures/item/") + Colour + TEXT("_open_front.png"), static_cast<float>(At.X), static_cast<float>(At.Y), 16.0f, 16.0f);
+		}
+		else
+		{
+			DrawStack(Menu.GetStack(Slot), static_cast<float>(At.X), static_cast<float>(At.Y));
+		}
 		if (Slot == HoverSlot)
 		{
 			DrawFill(static_cast<float>(At.X), static_cast<float>(At.Y), 16, 16, FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
@@ -2210,7 +2242,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item))
 	{
-		DrawBundleTooltip(Menu.GetStack(HoverSlot), static_cast<float>(GuiMouse.X), static_cast<float>(GuiMouse.Y), static_cast<float>(Width), static_cast<float>(Height));
+		DrawBundleTooltip(Menu.GetStack(HoverSlot), static_cast<float>(GuiMouse.X), static_cast<float>(GuiMouse.Y), static_cast<float>(Width), static_cast<float>(Height), BundleSelected);
 	}
 	else if ((HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && !Menu.GetStack(HoverSlot).IsEmpty()) || (Screen->bCreative && Screen->CreativeHover >= 0))
 	{
@@ -2223,7 +2255,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 }
 
-void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight)
+void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight, int32 Selected)
 {
 	namespace Gui = McGui;
 	const TArray<FMcItemStack> Contents = McBundle::GetContents(Bundle);
@@ -2283,7 +2315,16 @@ void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float 
 			const float CellX = X + (Cell % Grid.Columns) * Gui::BundleTipCell;
 			const float CellY = Below + (Cell / Grid.Columns) * Gui::BundleTipCell;
 			DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_background.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			const bool bPicked = Cell - Grid.Blanks == Selected;
+			if (bPicked)
+			{
+				DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_highlight_back.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			}
 			DrawStack(Contents[Cell - Grid.Blanks], CellX + 4.0f, CellY + 4.0f);
+			if (bPicked)
+			{
+				DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_highlight_front.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			}
 		}
 		if (Grid.Hidden > 0)
 		{
@@ -2293,6 +2334,17 @@ void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float 
 			DrawGuiText(More, CellX + (Gui::BundleTipCell - TextWidth(More)) * 0.5f, CellY + 8.0f, 0xFFFFFF, true);
 		}
 		Below += Grid.Rows * Gui::BundleTipCell;
+	}
+	// The picked stack's name in a tooltip of its own, centred over this one with its bottom edge on this one's top (bundleicon ref run).
+	if (Selected >= 0 && Contents.IsValidIndex(Selected))
+	{
+		const FString Name = GetItemName(Contents[Selected]);
+		const float NameWide = TextWidth(Name);
+		const float NameX = X + (Wide - NameWide) * 0.5f;
+		const float NameY = Y - 16.0f;
+		DrawGuiSprite(SpriteDir + TEXT("tooltip/background.png"), NameX - 12.0f, NameY - 12.0f, NameWide + 24.0f, 9.0f + 24.0f);
+		DrawGuiSprite(SpriteDir + TEXT("tooltip/frame.png"), NameX - 12.0f, NameY - 12.0f, NameWide + 24.0f, 9.0f + 24.0f);
+		DrawGuiText(Name, NameX, NameY, 0xFFFFFF, true);
 	}
 	// The fullness bar: a one pixel frame, the fill inside it and the word over it.
 	const double Fullness = McBundle::GetFullness(Bundle);

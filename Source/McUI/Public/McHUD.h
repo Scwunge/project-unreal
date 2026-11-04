@@ -294,7 +294,8 @@ private:
 	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
 	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
 	// The tooltip of a bundle held by the hovered slot, with the cursor at (CursorX, CursorY) in GUI pixels.
-	void DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight);
+	// Selected is the cell picked with the wheel (an index into the shown stacks), or -1.
+	void DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight, int32 Selected = -1);
 	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
 	TMap<FString, FGuiScaling> GuiScalings;
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
@@ -430,6 +431,9 @@ private:
 	// Where the mouse was, in GUI pixels, and the slot it is over.
 	FVector2D GuiMouse = FVector2D::ZeroVector;
 	int32 HoverSlot = INDEX_NONE;
+	// The bundle under the cursor and the stack the wheel has picked in it (bundleicon ref run); reset when the cursor leaves.
+	int32 BundleSelectedSlot = INDEX_NONE;
+	int32 BundleSelected = -1;
 	bool bDeathShown = false;
 	// When the death screen came up: its buttons wake a second later.
 	double DeathShownTime = 0.0;

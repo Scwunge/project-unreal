@@ -507,6 +507,10 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("tick rate"), First(TEXT("tick rate 30")), FString(TEXT("Set the target tick rate to 30.0 per second")));
 	TestEqual(TEXT("tick step needs a freeze"), First(TEXT("tick step 2")), FString(TEXT("Unable to step the game - the game must be frozen first")));
 	TestEqual(TEXT("tick freeze"), First(TEXT("tick freeze")), FString(TEXT("The game is frozen")));
+	// Measured against the game: /damage.
+	TestEqual(TEXT("damage negative"), First(TEXT("damage Steve -1")), FString(TEXT("Float must not be less than 0.0: found -1.0")));
+	TestEqual(TEXT("damage type"), First(TEXT("damage Steve 1 minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:damage_type'")));
+	TestEqual(TEXT("damage nobody"), First(TEXT("damage Nobody 1")), FString(TEXT("No entity was found")));
 	return true;
 }
 

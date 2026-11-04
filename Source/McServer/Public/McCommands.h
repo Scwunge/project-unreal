@@ -132,6 +132,8 @@ public:
 	virtual void SetTickFrozen(bool bFrozen) {}
 	virtual void StepTicks(int32 Count) {}
 	virtual double GetAverageTickMs() const { return 0.0; }
+	// /damage: hurts a player; false if nothing hurt them (creative).
+	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.
 	virtual void SetDefaultGameMode(const FString& Mode) {}
 	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).

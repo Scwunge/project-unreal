@@ -1744,6 +1744,22 @@ namespace
 		virtual void SetTickFrozen(bool bFrozen) override { Mode.SetTickFrozen(bFrozen); }
 		virtual void StepTicks(int32 Count) override { Mode.StepTicks(Count); }
 		virtual double GetAverageTickMs() const override { return Mode.GetWorld() ? Mode.GetWorld()->GetDeltaSeconds() * 1000.0 / FMath::Max(0.0001, double(Mode.GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation())) : 0.0; }
+		virtual bool Hurt(const FString& Player, float Amount, const FString& Type) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data || Pawn->Data->bCreative || Pawn->IsServerDead())
+			{
+				return false;
+			}
+			using McSurvival::EDamage;
+			const EDamage Kind = Type == TEXT("fall") ? EDamage::Fall : Type == TEXT("drown") ? EDamage::Drown : Type == TEXT("in_fire") ? EDamage::InFire
+				: Type == TEXT("on_fire") ? EDamage::OnFire : Type == TEXT("lava") ? EDamage::Lava : Type == TEXT("starve") ? EDamage::Starve
+				: Type == TEXT("out_of_world") ? EDamage::Void : Type == TEXT("magic") || Type == TEXT("indirect_magic") ? EDamage::Magic
+				: Type == TEXT("wither") ? EDamage::Wither : Type == TEXT("explosion") || Type == TEXT("player_explosion") ? EDamage::Explosion
+				: Type == TEXT("mob_attack") ? EDamage::Mob : EDamage::Generic;
+			Pawn->ServerHurt(Amount, Kind, nullptr, false);
+			return true;
+		}
 		virtual void SetWorldSpawn(const FIntVector& Pos) override
 		{
 			Mode.WorldSpawnOverride = Pos;

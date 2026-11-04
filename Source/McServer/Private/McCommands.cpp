@@ -27,6 +27,7 @@ namespace
 		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("clone"), 2, TEXT("/clone <begin> <end> <destination> [replace|masked|filtered <filter>] [normal|force|move]") },
+		{ TEXT("damage"), 2, TEXT("/damage <target> <amount> [<damageType>]") },
 		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
 		{ TEXT("defaultgamemode"), 2, TEXT("/defaultgamemode <gamemode>") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
@@ -1367,6 +1368,58 @@ namespace
 		return Unknown(Command, Command.Len());
 	}
 
+	// /damage <targets> <amount> [<damage type>]: players only. A type the game has but this port has no kind for hurts as generic damage.
+	FReplies RunDamage(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 4)
+		{
+			return BadArgument(Command);
+		}
+		if (!Words[2].IsNumeric())
+		{
+			return BadArgument(Command);
+		}
+		const double Amount = FCString::Atod(*Words[2]);
+		if (Amount < 0.0)
+		{
+			return { Fail(FString::Printf(TEXT("Float must not be less than 0.0: found %s"), *FString::SanitizeFloat(Amount, 1))), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+		}
+		FString Type = TEXT("generic");
+		if (Words.Num() == 4)
+		{
+			Type = Words[3];
+			Type.RemoveFromStart(TEXT("minecraft:"));
+			if (!IFileManager::Get().FileExists(*(McCache::Root() / TEXT("client/data/minecraft/damage_type") / Type + TEXT(".json"))))
+			{
+				return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:damage_type'"), *(Words[3].Contains(TEXT(":")) ? Words[3] : TEXT("minecraft:") + Words[3]))),
+					Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+			}
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		TArray<FString> Hurt;
+		for (const FString& Player : Players)
+		{
+			if (Target.Hurt(Player, float(Amount), Type))
+			{
+				Hurt.Add(Player);
+			}
+		}
+		if (Hurt.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.damage.invulnerable"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.damage.success"), { FString::SanitizeFloat(Amount, 1), Hurt.Num() == 1 ? Hurt[0] : FString::FromInt(Hurt.Num()) })) };
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -2427,6 +2480,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("tick"))
 	{
 		return RunTick(Command, Words, Target);
+	}
+	if (Name == TEXT("damage"))
+	{
+		return RunDamage(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

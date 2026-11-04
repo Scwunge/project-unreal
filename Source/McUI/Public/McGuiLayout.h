@@ -29,6 +29,7 @@ namespace McGui
 		TArray<FBarIcon> Absorption;     // golden hearts, after the red ones
 		TArray<FBarIcon> Armor;
 		TArray<FBarIcon> Food;           // right to left from the right edge of the bar
+		TArray<FBarIcon> Mount;          // the ridden mount's hearts, right to left from the right edge, rows stacking up; they replace the food
 		TArray<FBarIcon> Air;            // only while breath is short of full: Full, Half is the one bursting
 		FIntPoint XpBar;                 // top left of the 182 x 5 bar
 		int32 XpFill = 0;                // pixels of the bar that are filled, 0 to 182
@@ -36,6 +37,9 @@ namespace McGui
 		bool bShowLevel = false;
 		bool bShowArmor = false;
 		bool bShowAir = false;
+		// A horse's jump bar in place of the experience bar, filled to JumpFill pixels.
+		bool bShowJump = false;
+		int32 JumpFill = 0;
 	};
 
 	// The largest whole GUI scale the screen allows (at least 320 x 240 GUI pixels), or Setting if that is smaller.

@@ -48,6 +48,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks left of the hurt flash on the hearts; set to 10 when damage lands.
 	int32 HurtTime = 0;
 	bool bHardcore = false;
+	// The ridden mount's health and a horse's jump charge, copied from the pawn each tick (not saved): the HUD swaps the food row and the experience bar for them.
+	float MountHealth = 0.0f;
+	float MountMaxHealth = 0.0f;
+	float MountJump = -1.0f;
 
 	// ---- What the rules keep between ticks ----
 	// Ticks of immunity left after a hit (20 at the hit; within the first 10 only a bigger hit gets through, by the

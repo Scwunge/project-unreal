@@ -470,6 +470,36 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
 	}
 	{
+		// A wither in sight of a player fires a skull, another 45 ticks later, then a pair every 239 ticks (wither1.txt); a skull's speed climbs
+		// 0.1, 0.146, 0.18 (v = 0.73 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:wither"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		TArray<double> Speeds;
+		for (int32 Tick = 0; Tick < 520; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SkullType())
+				{
+					FireTicks.Add(Tick);
+					if (Speeds.Num() == 0)
+					{
+						Speeds.Add(Manager.GetEntities()[Index]->Body.Velocity.Size());
+					}
+				}
+			}
+		}
+		TestTrue(TEXT("pairs 45 apart then 239 from the first"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 45 && FireTicks[2] - FireTicks[0] == 239);
+		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
+	}
+	{
 		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);

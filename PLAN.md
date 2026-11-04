@@ -1268,7 +1268,7 @@ Numbers in the mounts code that did not come from a log (vehicle_log24-29), the 
 7. Second camel rider 0.9 behind.
 8. Fallback speeds (0.225, 0.25, 0.175) and pack-animal jump 0.5 when no mob row is found.
 9. (measured, vehicle_log32: a strider on a lava source at y -62 stands at y -61.5, half a block into it - kept.)
-10. A running horse jump carries 0.4 x the charge along the facing.
+10. A running horse jump carries 0.4 x the charge along the facing. MEASURED, DOES NOT CONFIRM (vehicle_log33, rider's feet per tick, jump key held 10 ticks, strength 0.7): the first tick of a jump rises 0.7675 whether standing or running; a STANDING jump also kicks the rider 0.315 along z (-0.315, then x0.6 each tick), so a carry exists without forward input, and 0.315 is not 0.4 x the charge (0.4); a running jump at 0.4857 a tick goes to 0.5707 on the jump tick (+0.085) then 0.3166, 0.3688, 0.3928, 0.4268. The direction and size are not explained yet (the horse also drifted +x at 0.07 a tick before the jump), so the code's 0.4 x the charge only when forward is held stays an unmeasured guess until log33 is read against the horse's own yaw (log sents on the horse, not the player).
 
 Plan: measure 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need the wiki or a log of many summons/feedings; remove or label any still unmeasured at integrate.
 

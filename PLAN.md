@@ -1271,3 +1271,5 @@ Numbers in the mounts code that did not come from a log (vehicle_log24-29), the 
 10. A running horse jump carries 0.4 x the charge along the facing.
 
 Plan: measure 6, 7, 9, 10 with ref.sh scripts (1070 only); 1, 2, 5 need the wiki or a log of many summons/feedings; remove or label any still unmeasured at integrate.
+
+Ride shot vs vanilla (ref_ride_horse.png from vehicle_shot_ride.txt, mine ride_horse2.png): camera height, horizon, the empty hand and the action-bar dismount hint match. Differences still to build: while riding a living mount vanilla replaces the food row with the mount's health hearts (10 a row, rows stacking up) and a horse's jump charge bar replaces the experience bar; the client has no mount health or jump charge (needs replicating to the rider's client: `RidingId` plus health and `JumpHoldTicks`). Provenance gaps still open after vehicle_log30/31: items 1, 2, 5, 6, 7, 9, 10.

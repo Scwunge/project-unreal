@@ -66,6 +66,7 @@ namespace
 		{ TEXT("w"), 0, TEXT("/w -> msg") },
 		{ TEXT("version"), 0, TEXT("/version") },
 		{ TEXT("worldborder"), 2, TEXT("/worldborder (add|center|damage|get|set|warning) ...") },
+		{ TEXT("tick"), 3, TEXT("/tick (query|rate|freeze|unfreeze|step|sprint) ...") },
 		{ TEXT("weather"), 2, TEXT("/weather (clear|rain|thunder) [<duration>]") },
 		{ TEXT("whitelist"), 3, TEXT("/whitelist (add|list|off|on|reload|remove) ...") },
 		{ TEXT("xp"), 2, TEXT("/xp -> experience") },
@@ -1101,8 +1102,7 @@ namespace
 	// /worldborder: the state is kept for the session; nothing enforces it in the world yet, and a change over a time lands at once.
 	FMcWorldBorderState& BorderState()
 	{
-		static FMcWorldBorderState State;
-		return State;
+		return McCommands::GetWorldBorder();
 	}
 
 	// A number the way the game prints a double: 5.9999968E7 from ten million up, else with at least one decimal.
@@ -1298,6 +1298,71 @@ namespace
 			}
 			Slot = Value;
 			return { Ok(McLang::Format(Key + TEXT(".success"), { bDistance ? FString::FromInt(FMath::RoundToInt32(Value)) : FString::Printf(TEXT("%.2f"), Value / 20.0) })) };
+		}
+		return Unknown(Command, Command.Len());
+	}
+
+	// /tick query|rate <n>|freeze|unfreeze|step [<n>]: the speed the world runs at (the target rate scales its clock).
+	FReplies RunTick(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Sub = Words[1];
+		if (Sub == TEXT("query") && Words.Num() == 2)
+		{
+			const double Rate = Target.GetTickRate();
+			FReplies Replies = { Ok(McLang::Get(Target.IsTickFrozen() ? TEXT("commands.tick.status.frozen") : TEXT("commands.tick.status.running"))) };
+			Replies.Add(Ok(McLang::Format(TEXT("commands.tick.query.rate.running"), { FString::SanitizeFloat(Rate, 1), FString::Printf(TEXT("%.1f"), Target.GetAverageTickMs()),
+				FString::Printf(TEXT("%.1f"), 1000.0 / Rate) })));
+			return Replies;
+		}
+		if (Sub == TEXT("rate") && Words.Num() == 3)
+		{
+			if (!Words[2].IsNumeric())
+			{
+				return BadArgument(Command);
+			}
+			const double Rate = FCString::Atod(*Words[2]);
+			if (Rate < 1.0 || Rate > 10000.0)
+			{
+				return BadArgument(Command);
+			}
+			Target.SetTickRate(Rate);
+			return { Ok(McLang::Format(TEXT("commands.tick.rate.success"), { FString::SanitizeFloat(Rate, 1) })) };
+		}
+		if (Sub == TEXT("freeze") && Words.Num() == 2)
+		{
+			Target.SetTickFrozen(true);
+			return { Ok(McLang::Get(TEXT("commands.tick.status.frozen"))) };
+		}
+		if (Sub == TEXT("unfreeze") && Words.Num() == 2)
+		{
+			Target.SetTickFrozen(false);
+			return { Ok(McLang::Get(TEXT("commands.tick.status.running"))) };
+		}
+		if (Sub == TEXT("step") && Words.Num() <= 3)
+		{
+			int32 Count = 1;
+			if (Words.Num() == 3)
+			{
+				if (!Words[2].IsNumeric())
+				{
+					return BadArgument(Command);
+				}
+				Count = FCString::Atoi(*Words[2]);
+				if (Count < 1)
+				{
+					return BadArgument(Command);
+				}
+			}
+			if (!Target.IsTickFrozen())
+			{
+				return { Fail(McLang::Get(TEXT("commands.tick.step.fail"))) };
+			}
+			Target.StepTicks(Count);
+			return { Ok(McLang::Format(TEXT("commands.tick.step.success"), { FString::FromInt(Count) })) };
 		}
 		return Unknown(Command, Command.Len());
 	}
@@ -2359,6 +2424,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunWorldBorder(Command, Words, Target);
 	}
+	if (Name == TEXT("tick"))
+	{
+		return RunTick(Command, Words, Target);
+	}
 	if (Name == TEXT("random"))
 	{
 		return RunRandom(Command, Words, Sender);
@@ -2518,4 +2587,10 @@ TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, con
 		RunFunctionLines(Id, Sender, Target, Replies, 0);
 	}
 	return Replies;
+}
+
+FMcWorldBorderState& McCommands::GetWorldBorder()
+{
+	static FMcWorldBorderState State;
+	return State;
 }

@@ -500,9 +500,13 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("border add"), First(TEXT("worldborder add 10")), FString(TEXT("Set the world border to 210.0 block(s) wide")));
 	TestEqual(TEXT("border centre"), First(TEXT("worldborder center 5 6")), FString(TEXT("Set the center of the world border to 5.50, 6.50")));
 	TestEqual(TEXT("border too small"), First(TEXT("worldborder set 0")), FString(TEXT("World border cannot be smaller than 1 block wide")));
-	TestEqual(TEXT("border too big"), First(TEXT("worldborder add 99999999")), FString(TEXT("World border cannot be bigger than 5.9999968E7 blocks wide")));
+	TestEqual(TEXT("border too big"), First(TEXT("worldborder add 59999900")), FString(TEXT("World border cannot be bigger than 5.9999968E7 blocks wide")));
 	TestEqual(TEXT("border too far"), First(TEXT("worldborder center 30000000 0")), FString(TEXT("World border cannot be further out than 2.9999984E7 blocks")));
 	TestEqual(TEXT("border warning time"), First(TEXT("worldborder warning time 5")), FString(TEXT("Set the world border warning time to 0.25 second(s)")));
+	// Measured against the game: /tick.
+	TestEqual(TEXT("tick rate"), First(TEXT("tick rate 30")), FString(TEXT("Set the target tick rate to 30.0 per second")));
+	TestEqual(TEXT("tick step needs a freeze"), First(TEXT("tick step 2")), FString(TEXT("Unable to step the game - the game must be frozen first")));
+	TestEqual(TEXT("tick freeze"), First(TEXT("tick freeze")), FString(TEXT("The game is frozen")));
 	return true;
 }
 

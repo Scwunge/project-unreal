@@ -125,6 +125,13 @@ public:
 	// /setworldspawn and /spawnpoint, at a block (the feet position of where players come back).
 	virtual void SetWorldSpawn(const FIntVector& Pos) {}
 	virtual void SetPlayerSpawn(const FString& Player, const FIntVector& Pos) {}
+	// /tick: the world's target ticks per second, whether it is frozen, a number of ticks to run while frozen, and the time a frame takes.
+	virtual double GetTickRate() const { return 20.0; }
+	virtual void SetTickRate(double Rate) {}
+	virtual bool IsTickFrozen() const { return false; }
+	virtual void SetTickFrozen(bool bFrozen) {}
+	virtual void StepTicks(int32 Count) {}
+	virtual double GetAverageTickMs() const { return 0.0; }
 	// /defaultgamemode: what new players start in.
 	virtual void SetDefaultGameMode(const FString& Mode) {}
 	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).
@@ -138,6 +145,8 @@ public:
 
 namespace McCommands
 {
+	// The world border /worldborder sets (the game reads it to keep players inside).
+	MCSERVER_API FMcWorldBorderState& GetWorldBorder();
 	// A line typed into chat: a command if it starts with '/', else said to everyone as "<Name> text". Replies for the
 	// sender come back; what everyone sees goes through Target.Broadcast.
 	MCSERVER_API TArray<FMcCommandReply> HandleChat(const FString& Line, const FMcCommandSender& Sender, IMcCommandTarget& Target);

@@ -1149,3 +1149,91 @@ bool FMcJavaImportEndTest::RunTest(const FString& Parameters)
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportCampfireDumpTest, "McClient.McServer.JavaImport.CampfireInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportCampfireDumpTest::RunTest(const FString& Parameters)
+{
+	// The campref save (1070 only): what a vanilla campfire block entity holds, key by key.
+	const FString Folder = TEXT("C:/mc-reference/run/saves/campref/dimensions/minecraft/overworld/region");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Folder / TEXT("*.mca")), true, false);
+	if (Files.IsEmpty())
+	{
+		AddInfo(TEXT("no campref save on this machine; skipped"));
+		return true;
+	}
+	int32 Found = 0;
+	const auto Describe = [](const FMcNbt& Tag, auto&& Self, int32 Depth) -> FString
+	{
+		if (Tag.Type == FMcNbt::EType::Compound)
+		{
+			FString Out = TEXT("{");
+			for (int32 Index = 0; Index < Tag.Keys.Num(); ++Index)
+			{
+				Out += Tag.Keys[Index] + TEXT("=") + Self(Tag.Values[Index], Self, Depth + 1) + TEXT(" ");
+			}
+			return Out + TEXT("}");
+		}
+		if (Tag.Type == FMcNbt::EType::List || Tag.Type == FMcNbt::EType::IntArray)
+		{
+			FString Out = FString::Printf(TEXT("[type %d:"), static_cast<int32>(Tag.Type));
+			for (const FMcNbt& Value : Tag.Values)
+			{
+				Out += TEXT(" ") + Self(Value, Self, Depth + 1);
+			}
+			return Out + TEXT("]");
+		}
+		return Tag.Type == FMcNbt::EType::String ? Tag.String : FString::Printf(TEXT("%lld(t%d)"), Tag.Integer, static_cast<int32>(Tag.Type));
+	};
+	for (const FString& File : Files)
+	{
+		TArray<uint8> Region;
+		if (!FFileHelper::LoadFileToArray(Region, *(Folder / File)))
+		{
+			continue;
+		}
+		for (int32 Slot = 0; Slot < 1024; ++Slot)
+		{
+			TArray<uint8> Bytes;
+			bool bMissing = false;
+			FMcNbt Root;
+			if (!McJavaImport::ReadChunkBytes(Region, Slot % 32, Slot / 32, Folder, 0, 0, Bytes, bMissing) || !FMcNbt::Parse(Bytes, Root))
+			{
+				continue;
+			}
+			const FMcNbt* List = Root.Find(TEXT("block_entities"));
+			if (!List)
+			{
+				continue;
+			}
+			for (const FMcNbt& Entity : List->Values)
+			{
+				if (Entity.GetString(TEXT("id")).Contains(TEXT("campfire")))
+				{
+					++Found;
+					AddInfo(TEXT("campfire block entity: ") + Describe(Entity, Describe, 0));
+				}
+			}
+		}
+	}
+	TestTrue(TEXT("campfires were found"), Found > 0);
+
+	// The logged campfire at 3,260,3 holds beef (spot 0, 212 of 600) and porkchop (spot 1, 402 of 600): imported, it keeps both.
+	FMcBlockEntity Source = FMcBlockEntity::MakeCampfire();
+	Source.Slots[0] = FMcItemStack(TEXT("minecraft:beef"), 1);
+	Source.Slots[3] = FMcItemStack(TEXT("minecraft:salmon"), 1);
+	Source.CookingTimes[0] = 212;
+	Source.CookingTotals[0] = 600;
+	Source.CookingTimes[3] = 232;
+	Source.CookingTotals[3] = 600;
+	TArray<uint8> Bytes;
+	FMemoryWriter Writer(Bytes);
+	Source.Serialize(Writer);
+	FMcBlockEntity Loaded;
+	FMemoryReader Reader(Bytes);
+	TestTrue(TEXT("a campfire reads back"), Loaded.Serialize(Reader));
+	TestTrue(TEXT("a campfire reads back as it was saved"), Loaded == Source);
+	return true;
+}

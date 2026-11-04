@@ -1500,6 +1500,7 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
 	// command script for a shot or sound run, like the reference client's "cmd").
 	FString Lines;
+	// A line "!respawn" presses Respawn on the death screen.
 	// -McChatFile=<path> reads the lines from a file, one a line, for text a command line can't carry (JSON with quotes).
 	FString ChatFile;
 	const bool bFromFile = FParse::Value(FCommandLine::Get(), TEXT("-McChatFile="), ChatFile) && FFileHelper::LoadFileToString(Lines, *ChatFile);
@@ -1516,7 +1517,12 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
 				[this, Player = TWeakObjectPtr<APlayerController>(NewPlayer), Line = Parts[Index]](float)
 				{
-					if (Player.IsValid())
+					if (Player.IsValid() && Line == TEXT("!respawn"))
+					{
+						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
+						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid())
 					{
 						HandleChat(Player.Get(), Line);
 					}
@@ -1757,6 +1763,48 @@ namespace
 		virtual void SetTickFrozen(bool bFrozen) override { Mode.SetTickFrozen(bFrozen); }
 		virtual void StepTicks(int32 Count) override { Mode.StepTicks(Count); }
 		virtual double GetAverageTickMs() const override { return Mode.GetWorld() ? Mode.GetWorld()->GetDeltaSeconds() * 1000.0 / FMath::Max(0.0001, double(Mode.GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation())) : 0.0; }
+		virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+			if (!Blocks)
+			{
+				return false;
+			}
+			double Best = TNumericLimits<double>::Max();
+			for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Pair : Blocks->GetChunks())
+			{
+				// A sample every 4 blocks (a biome cell) at the height asked from.
+				for (int32 LX = 0; LX < 16; LX += 4)
+				{
+					for (int32 LZ = 0; LZ < 16; LZ += 4)
+					{
+						const int32 X = Pair.Key.X * 16 + LX + 2;
+						const int32 Z = Pair.Key.Y * 16 + LZ + 2;
+						const double Distance = FMath::Square(X - From.X) + FMath::Square(Z - From.Z);
+						if (Distance < Best && Pair.Value->GetBiome(LX, FMath::FloorToInt32(From.Y), LZ) == Biome)
+						{
+							Best = Distance;
+							OutPos = FIntVector(X, FMath::FloorToInt32(From.Y), Z);
+						}
+					}
+				}
+			}
+			return Best < TNumericLimits<double>::Max();
+		}
+		virtual bool GetYaw(const FString& Player, double& OutYaw) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			OutYaw = Pawn ? Pawn->GetLookYaw() : 0.0;
+			return Pawn != nullptr;
+		}
+		virtual void SetYaw(const FString& Player, double Yaw) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerTeleport(Pawn->GetFeetPosition(), float(Yaw));
+			}
+		}
 		virtual bool Hurt(const FString& Player, float Amount, const FString& Type) override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);

@@ -194,7 +194,8 @@ McGui::FHudLayout McGui::ComputeHud(int32 Width, int32 Height, const FMcPlayerSt
 
 	Layout.XpBar = FIntPoint(Width / 2 - 91, Height - 32 + 3);
 	Layout.XpFill = FMath::Clamp(static_cast<int32>(Stats.XpProgress * 183.0f), 0, HotbarWidth);
-	Layout.bShowJump = Stats.MountJump >= 0.0f;
+	// Vanilla draws the jump bar only while a charge is building (vehicle ride shot: idle, the experience bar and level stay).
+	Layout.bShowJump = Stats.MountJump > 0.0f;
 	Layout.JumpFill = FMath::Clamp(static_cast<int32>(Stats.MountJump * 183.0f), 0, HotbarWidth);
 	Layout.bShowLevel = Stats.XpLevel > 0 && !Layout.bShowJump;
 	Layout.LevelText = FIntPoint(Width / 2, Height - 31 - 4);

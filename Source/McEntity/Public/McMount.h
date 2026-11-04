@@ -49,6 +49,11 @@ struct MCENTITY_API FMcMountState
 	int32 LastHurtEvents = 0;
 	int32 SpitMemory = 0;
 	int32 SpitCooldown = 0;
+	// The rear a horse makes on a jump, 0..1 (vehicle_log34): the rider sits 0.7 x it back along the facing and 0.15 x it higher. Rises by 0.45 x 0.6^n a tick
+	// from the jump (RearStep n, -1 for none) until the landing, then falls away over five ticks (RearFall, -1 for none).
+	float Rear = 0.0f;
+	int32 RearStep = -1;
+	int32 RearFall = -1;
 	// Camels: ticks until it may dash again.
 	int32 DashCooldown = 0;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.

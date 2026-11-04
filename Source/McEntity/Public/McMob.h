@@ -60,6 +60,7 @@ struct MCENTITY_API FMcMobType
 	bool bBullets = false;
 	// Turns on a player who looks at its eyes (the enderman).
 	bool bGazeAngers = false;
+	bool bDragon = false;
 	// Picks up and sets down blocks (the enderman).
 	bool bCarriesBlocks = false;
 	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
@@ -119,6 +120,7 @@ public:
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
 	int32 AngerTicks = 0;
 	int32 StareTicks = 0;
+	FVector DragonGoal = FVector::ZeroVector;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.

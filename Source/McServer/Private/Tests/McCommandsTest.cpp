@@ -511,6 +511,29 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("damage negative"), First(TEXT("damage Steve -1")), FString(TEXT("Float must not be less than 0.0: found -1.0")));
 	TestEqual(TEXT("damage type"), First(TEXT("damage Steve 1 minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:damage_type'")));
 	TestEqual(TEXT("damage nobody"), First(TEXT("damage Nobody 1")), FString(TEXT("No entity was found")));
+	TestEqual(TEXT("rotate"), First(TEXT("rotate Steve 90 0")), FString(TEXT("Rotated Steve")));
+	// Measured against the game: /scoreboard.
+	TestEqual(TEXT("objective list empty"), First(TEXT("scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("objective add"), First(TEXT("scoreboard objectives add kills dummy")), FString(TEXT("Created new objective [kills]")));
+	TestEqual(TEXT("objective twice"), First(TEXT("scoreboard objectives add kills dummy")), FString(TEXT("An objective already exists by that name")));
+	TestEqual(TEXT("score set"), First(TEXT("scoreboard players set Foo kills 5")), FString(TEXT("Set [kills] for Foo to 5")));
+	TestEqual(TEXT("score add"), First(TEXT("scoreboard players add Foo kills 3")), FString(TEXT("Added 3 to [kills] for Foo (now 8)")));
+	TestEqual(TEXT("score remove"), First(TEXT("scoreboard players remove Foo kills 2")), FString(TEXT("Removed 2 from [kills] for Foo (now 6)")));
+	TestEqual(TEXT("score get"), First(TEXT("scoreboard players get Foo kills")), FString(TEXT("Foo has 6 [kills]")));
+	TestEqual(TEXT("score operation"), First(TEXT("scoreboard players operation Foo kills += Foo kills")), FString(TEXT("Set [kills] for Foo to 12")));
+	TestEqual(TEXT("score enable"), First(TEXT("scoreboard players enable Foo kills")), FString(TEXT("Enable only works on trigger-objectives")));
+	TestEqual(TEXT("unknown objective"), First(TEXT("scoreboard players set Foo nope 1")), FString(TEXT("Unknown scoreboard objective 'nope'")));
+	TestEqual(TEXT("score reset"), First(TEXT("scoreboard players reset Foo kills")), FString(TEXT("Reset [kills] for Foo")));
+	TestEqual(TEXT("objective remove"), First(TEXT("scoreboard objectives remove kills")), FString(TEXT("Removed objective [kills]")));
+	// Measured against the game: /execute.
+	TestEqual(TEXT("execute needs more"), First(TEXT("execute")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("execute run"), First(TEXT("execute run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute as"), First(TEXT("execute as Steve at Steve run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute if entity"), First(TEXT("execute if entity Steve")), FString(TEXT("Test passed. Count: 1")));
+	TestEqual(TEXT("execute unless entity"), First(TEXT("execute unless entity Steve")), FString(TEXT("Test failed. Count: 1")));
+	// Measured against the game: /locate biome.
+	TestEqual(TEXT("locate unknown biome"), First(TEXT("locate biome minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:worldgen/biome'")));
+	TestEqual(TEXT("locate needs a biome"), First(TEXT("locate biome")), FString(TEXT("Unknown or incomplete command. See below for error")));
 	return true;
 }
 

@@ -6,6 +6,7 @@
 #include "McTextComponent.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McBiomeRegistry.h"
 #include "McVehicle.h"
 
 namespace
@@ -56,6 +57,10 @@ namespace
 		{ TEXT("setworldspawn"), 2, TEXT("/setworldspawn [<pos>] [<yaw> [<pitch>]]") },
 		{ TEXT("spawnpoint"), 2, TEXT("/spawnpoint [<targets>] [<pos>] [<yaw> [<pitch>]]") },
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
+		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
+		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
+		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
+		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -510,6 +515,10 @@ namespace
 	FVector SenderFeet(const FMcCommandSender& Sender, const IMcCommandTarget& Target)
 	{
 		FVector Feet = FVector::ZeroVector;
+		if (Sender.Position.IsSet())
+		{
+			return *Sender.Position;
+		}
 		if (!Sender.IsConsole())
 		{
 			Target.GetPosition(Sender.Name, Feet);
@@ -1403,12 +1412,7 @@ namespace
 		FString Error;
 		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
 		{
-			// /damage takes an entity selector: a name nobody carries is "No entity was found" (the test's measured wording).
-			if (Error == McLang::Get(TEXT("argument.player.unknown")))
-			{
-				Error = McLang::Get(TEXT("argument.entity.notfound.entity"));
-			}
-			return { Fail(Error) };
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
 		}
 		TArray<FString> Hurt;
 		for (const FString& Player : Players)
@@ -1423,6 +1427,838 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.damage.invulnerable"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.damage.success"), { FString::SanitizeFloat(Amount, 1), Hurt.Num() == 1 ? Hurt[0] : FString::FromInt(Hurt.Num()) })) };
+	}
+
+	// /rotate <targets> <yaw> <pitch>: turns players. Only the yaw is applied (the pitch is told back but not set).
+	FReplies RunRotate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 4)
+		{
+			return BadArgument(Command);
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		for (const FString& Player : Players)
+		{
+			const bool bRelative = Words[2].StartsWith(TEXT("~"));
+			const FString Number = bRelative ? Words[2].Mid(1) : Words[2];
+			if (!Number.IsEmpty() && !Number.IsNumeric())
+			{
+				return BadArgument(Command);
+			}
+			double Yaw = Number.IsEmpty() ? 0.0 : FCString::Atod(*Number);
+			FVector Feet;
+			if (!Target.GetPosition(Player, Feet))
+			{
+				continue;
+			}
+			double Current = 0.0;
+			if (bRelative)
+			{
+				Target.GetYaw(Player, Current);
+				Yaw += Current;
+			}
+			Target.SetYaw(Player, Yaw);
+		}
+		return { Ok(McLang::Format(TEXT("commands.rotate.success"), { Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num()) })) };
+	}
+
+	// /scoreboard: objectives and scores, kept for the session (in the order made; the game lists them in an order of its own). Display slots are
+	// remembered but nothing draws a sidebar, list or below-name yet, and no criterion other than dummy and trigger changes by itself.
+	struct FObjective
+	{
+		FString Name;
+		FString Criteria;
+		FString Display;
+		FString RenderType = TEXT("integer");
+		TMap<FString, int32> Scores;
+		TSet<FString> Enabled;
+	};
+
+	TArray<FObjective>& Objectives()
+	{
+		static TArray<FObjective> All;
+		return All;
+	}
+
+	TMap<FString, FString>& DisplaySlots()
+	{
+		static TMap<FString, FString> Slots;
+		return Slots;
+	}
+
+	FObjective* FindObjective(const FString& Name)
+	{
+		return Objectives().FindByPredicate([&](const FObjective& O) { return O.Name == Name; });
+	}
+
+	// The text of a JSON text component ({"text":"x"} or "x"), else the words as typed.
+	FString PlainText(const FString& Json)
+	{
+		FString Text = Json.TrimStartAndEnd();
+		int32 At = Text.Find(TEXT("\"text\""));
+		if (Text.StartsWith(TEXT("{")) && At != INDEX_NONE)
+		{
+			int32 Open = Text.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, At + 6);
+			const int32 Close = Open == INDEX_NONE ? INDEX_NONE : Text.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, Open + 1);
+			if (Close != INDEX_NONE)
+			{
+				return Text.Mid(Open + 1, Close - Open - 1);
+			}
+		}
+		if (Text.Len() >= 2 && Text.StartsWith(TEXT("\"")) && Text.EndsWith(TEXT("\"")))
+		{
+			return Text.Mid(1, Text.Len() - 2);
+		}
+		return Text;
+	}
+
+	FString Shown(const FObjective& Objective)
+	{
+		return TEXT("[") + (Objective.Display.IsEmpty() ? Objective.Name : Objective.Display) + TEXT("]");
+	}
+
+	FReplies RunScoreboard(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const auto UnknownObjective = [](const FString& Name) { return FReplies{ Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *Name)) }; };
+		// Where the n-th word begins in the command.
+		const auto WordStart = [&](int32 Index)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Index; ++I)
+			{
+				At += Words[I].Len() + 1;
+			}
+			return At;
+		};
+		if (Words[1] == TEXT("objectives"))
+		{
+			const FString& Sub = Words[2];
+			if (Sub == TEXT("list") && Words.Num() == 3)
+			{
+				if (Objectives().IsEmpty())
+				{
+					return { Ok(McLang::Get(TEXT("commands.scoreboard.objectives.list.empty"))) };
+				}
+				TArray<FString> Names;
+				for (const FObjective& O : Objectives())
+				{
+					Names.Add(Shown(O));
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.list.success"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+			}
+			if (Sub == TEXT("add") && Words.Num() >= 5)
+			{
+				for (int32 I = 0; I < Words[3].Len(); ++I)
+				{
+					const TCHAR C = Words[3][I];
+					if (!(FChar::IsAlnum(C) || C == '_' || C == '.' || C == '+' || C == '-'))
+					{
+						return { Fail(McLang::Get(TEXT("command.expected.separator"))), Fail(BorderContext(Command, WordStart(3) + I)) };
+					}
+				}
+				if (FindObjective(Words[3]))
+				{
+					return { Fail(McLang::Get(TEXT("commands.scoreboard.objectives.add.duplicate"))) };
+				}
+				FObjective Made;
+				Made.Name = Words[3];
+				Made.Criteria = Words[4];
+				if (Words.Num() > 5)
+				{
+					TArray<FString> Rest(Words.GetData() + 5, Words.Num() - 5);
+					Made.Display = PlainText(FString::Join(Rest, TEXT(" ")));
+				}
+				Objectives().Add(Made);
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.add.success"), { Shown(Made) })) };
+			}
+			if (Sub == TEXT("remove") && Words.Num() == 4)
+			{
+				FObjective* O = FindObjective(Words[3]);
+				if (!O)
+				{
+					return UnknownObjective(Words[3]);
+				}
+				const FString Name = Shown(*O);
+				const FString Key = O->Name;
+				Objectives().RemoveAll([&](const FObjective& Each) { return Each.Name == Key; });
+				for (auto It = DisplaySlots().CreateIterator(); It; ++It)
+				{
+					if (It.Value() == Key)
+					{
+						It.RemoveCurrent();
+					}
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.remove.success"), { Name })) };
+			}
+			if (Sub == TEXT("setdisplay") && (Words.Num() == 4 || Words.Num() == 5))
+			{
+				if (Words.Num() == 5 && !FindObjective(Words[4]))
+				{
+					return UnknownObjective(Words[4]);
+				}
+				if (Words.Num() == 4)
+				{
+					DisplaySlots().Remove(Words[3]);
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.display.cleared"), { Words[3] })) };
+				}
+				DisplaySlots().Add(Words[3], Words[4]);
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.display.set"), { Words[3], Words[4] })) };
+			}
+			if (Sub == TEXT("modify") && Words.Num() >= 5)
+			{
+				FObjective* O = FindObjective(Words[3]);
+				if (!O)
+				{
+					return UnknownObjective(Words[3]);
+				}
+				if (Words[4] == TEXT("displayname") && Words.Num() >= 6)
+				{
+					TArray<FString> Rest(Words.GetData() + 5, Words.Num() - 5);
+					const FString Old = O->Name;
+					O->Display = PlainText(FString::Join(Rest, TEXT(" ")));
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.modify.displayname"), { Old, Shown(*O) })) };
+				}
+				if (Words[4] == TEXT("rendertype") && Words.Num() == 6 && (Words[5] == TEXT("integer") || Words[5] == TEXT("hearts")))
+				{
+					O->RenderType = Words[5];
+					return { Ok(McLang::Format(TEXT("commands.scoreboard.objectives.modify.rendertype"), { Shown(*O) })) };
+				}
+				return BadArgument(Command);
+			}
+			return Unknown(Command, Command.Len());
+		}
+		if (Words[1] != TEXT("players"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Sub = Words[2];
+		// Who a target word names: players by selector or name, else a name the scoreboard tracks (a fake player).
+		const auto Resolve = [&](const FString& Token, TArray<FString>& Out, FString& Error)
+		{
+			if (Token == TEXT("*"))
+			{
+				Out.Reset();
+				for (const FObjective& O : Objectives())
+				{
+					for (const TPair<FString, int32>& Pair : O.Scores)
+					{
+						Out.AddUnique(Pair.Key);
+					}
+				}
+				return true;
+			}
+			if (Token.StartsWith(TEXT("@")))
+			{
+				return ResolvePlayers(Token, Sender, Target, Out, Error);
+			}
+			Out = { Token };
+			return true;
+		};
+		if (Sub == TEXT("list") && Words.Num() <= 4)
+		{
+			TArray<FString> Who;
+			FString Error;
+			if (Words.Num() == 3)
+			{
+				for (const FObjective& O : Objectives())
+				{
+					for (const TPair<FString, int32>& Pair : O.Scores)
+					{
+						Who.AddUnique(Pair.Key);
+					}
+				}
+				if (Who.IsEmpty())
+				{
+					return { Ok(McLang::Get(TEXT("commands.scoreboard.players.list.empty"))) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.success"), { FString::FromInt(Who.Num()), FString::Join(Who, TEXT(", ")) })) };
+			}
+			if (!Resolve(Words[3], Who, Error) || Who.IsEmpty())
+			{
+				return { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			}
+			TArray<FString> Lines;
+			for (const FObjective& O : Objectives())
+			{
+				if (const int32* Value = O.Scores.Find(Who[0]))
+				{
+					Lines.Add(McLang::Format(TEXT("commands.scoreboard.players.list.entity.entry"), { Shown(O), FString::FromInt(*Value) }));
+				}
+			}
+			if (Lines.IsEmpty())
+			{
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.entity.empty"), { Who[0] })) };
+			}
+			FReplies Replies = { Ok(McLang::Format(TEXT("commands.scoreboard.players.list.entity.success"), { Who[0], FString::FromInt(Lines.Num()) })) };
+			for (const FString& Line : Lines)
+			{
+				Replies.Add(Ok(Line));
+			}
+			return Replies;
+		}
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Who;
+		FString Error;
+		if (!Resolve(Words[3], Who, Error))
+		{
+			return { Fail(Error) };
+		}
+		const auto Count = [&]() { return Who.Num() == 1 ? Who[0] : FString::FromInt(Who.Num()); };
+		if (Sub == TEXT("reset") && (Words.Num() == 4 || Words.Num() == 5))
+		{
+			FObjective* O = Words.Num() == 5 ? FindObjective(Words[4]) : nullptr;
+			if (Words.Num() == 5 && !O)
+			{
+				return UnknownObjective(Words[4]);
+			}
+			for (const FString& Name : Who)
+			{
+				for (FObjective& Each : Objectives())
+				{
+					if (!O || &Each == O)
+					{
+						Each.Scores.Remove(Name);
+					}
+				}
+			}
+			if (O)
+			{
+				return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.reset.specific.single") : TEXT("commands.scoreboard.players.reset.specific.multiple"), { Shown(*O), Count() })) };
+			}
+			return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.reset.all.single") : TEXT("commands.scoreboard.players.reset.all.multiple"), { Count() })) };
+		}
+		if (Words.Num() < 5)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FObjective* O = FindObjective(Words[4]);
+		if (!O)
+		{
+			return UnknownObjective(Words[4]);
+		}
+		if (Sub == TEXT("get") && Words.Num() == 5)
+		{
+			const int32* Value = O->Scores.Find(Who[0]);
+			if (!Value)
+			{
+				return { Fail(McLang::Format(TEXT("commands.scoreboard.players.get.null"), { O->Name, Who[0] })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.scoreboard.players.get.success"), { Who[0], FString::FromInt(*Value), Shown(*O) })) };
+		}
+		if (Sub == TEXT("enable") && Words.Num() == 5)
+		{
+			if (O->Criteria != TEXT("trigger"))
+			{
+				return { Fail(McLang::Get(TEXT("commands.scoreboard.players.enable.invalid"))) };
+			}
+			int32 Changed = 0;
+			for (const FString& Name : Who)
+			{
+				bool bAlready = false;
+				O->Enabled.Add(Name, &bAlready);
+				Changed += bAlready ? 0 : 1;
+			}
+			if (!Changed)
+			{
+				return { Fail(McLang::Get(TEXT("commands.scoreboard.players.enable.failed"))) };
+			}
+			return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.enable.success.single") : TEXT("commands.scoreboard.players.enable.success.multiple"), { Shown(*O), Count() })) };
+		}
+		if ((Sub == TEXT("set") || Sub == TEXT("add") || Sub == TEXT("remove")) && Words.Num() == 6)
+		{
+			if (!Words[5].IsNumeric() || Words[5].Contains(TEXT(".")))
+			{
+				return BadArgument(Command);
+			}
+			const int32 Amount = FCString::Atoi(*Words[5]);
+			if (Sub != TEXT("set") && Amount < 0)
+			{
+				return { Fail(FString::Printf(TEXT("Integer must not be less than 0: found %d"), Amount)), Fail(BorderContext(Command, WordStart(5))) };
+			}
+			int32 Last = 0;
+			for (const FString& Name : Who)
+			{
+				int32& Slot = O->Scores.FindOrAdd(Name);
+				Slot = Sub == TEXT("set") ? Amount : Sub == TEXT("add") ? Slot + Amount : Slot - Amount;
+				Last = Slot;
+			}
+			if (Sub == TEXT("set"))
+			{
+				return { Ok(McLang::Format(Who.Num() == 1 ? TEXT("commands.scoreboard.players.set.success.single") : TEXT("commands.scoreboard.players.set.success.multiple"),
+					Who.Num() == 1 ? TArray<FString>{ Shown(*O), Who[0], FString::FromInt(Amount) } : TArray<FString>{ Shown(*O), Count(), FString::FromInt(Amount) })) };
+			}
+			const bool bAdd = Sub == TEXT("add");
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(bAdd ? TEXT("commands.scoreboard.players.add.success.single") : TEXT("commands.scoreboard.players.remove.success.single"),
+					{ FString::FromInt(Amount), Shown(*O), Who[0], FString::FromInt(Last) })) };
+			}
+			return { Ok(McLang::Format(bAdd ? TEXT("commands.scoreboard.players.add.success.multiple") : TEXT("commands.scoreboard.players.remove.success.multiple"),
+				{ FString::FromInt(Amount), Shown(*O), Count() })) };
+		}
+		if (Sub == TEXT("operation") && Words.Num() == 8)
+		{
+			TArray<FString> Sources;
+			if (!Resolve(Words[6], Sources, Error) || Sources.IsEmpty())
+			{
+				return { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			}
+			FObjective* From = FindObjective(Words[7]);
+			if (!From)
+			{
+				return UnknownObjective(Words[7]);
+			}
+			const FString& Op = Words[5];
+			if (Op != TEXT("=") && Op != TEXT("+=") && Op != TEXT("-=") && Op != TEXT("*=") && Op != TEXT("/=") && Op != TEXT("%=") && Op != TEXT("<") && Op != TEXT(">") && Op != TEXT("><"))
+			{
+				return BadArgument(Command);
+			}
+			int32 Last = 0;
+			for (const FString& Name : Who)
+			{
+				const int32* Other = From->Scores.Find(Sources[0]);
+				if (!Other)
+				{
+					continue;
+				}
+				int32& Slot = O->Scores.FindOrAdd(Name);
+				if (Op == TEXT("=")) { Slot = *Other; }
+				else if (Op == TEXT("+=")) { Slot += *Other; }
+				else if (Op == TEXT("-=")) { Slot -= *Other; }
+				else if (Op == TEXT("*=")) { Slot *= *Other; }
+				else if (Op == TEXT("/=") || Op == TEXT("%="))
+				{
+					if (*Other == 0)
+					{
+						return { Fail(McLang::Get(TEXT("arguments.operation.div0"))) };
+					}
+					Slot = Op == TEXT("/=") ? int32(FMath::FloorToInt32(double(Slot) / *Other)) : Slot - *Other * FMath::FloorToInt32(double(Slot) / *Other);
+				}
+				else if (Op == TEXT("<")) { Slot = FMath::Min(Slot, *Other); }
+				else if (Op == TEXT(">")) { Slot = FMath::Max(Slot, *Other); }
+				else
+				{
+					// Swap.
+					int32& Theirs = From->Scores.FindOrAdd(Sources[0]);
+					Swap(Slot, Theirs);
+				}
+				Last = Slot;
+			}
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.scoreboard.players.operation.success.single"), { Shown(*O), Who[0], FString::FromInt(Last) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.scoreboard.players.operation.success.multiple"), { Shown(*O), Count() })) };
+		}
+		return Unknown(Command, Command.Len());
+	}
+
+	// /execute: as, at, positioned (a position, or as <players>), if/unless (score, entity, block, loaded, dimension), store (result|success) score, run, and
+	// rotated/facing/in/align/anchored (taken and ignored). Entities are the players (nothing else is selected); no on, summon, data, bossbar, blocks, predicate forms.
+	bool ParseRange(const FString& Text, int32& Min, int32& Max)
+	{
+		Min = MIN_int32;
+		Max = MAX_int32;
+		int32 At = INDEX_NONE;
+		if (Text.FindChar(TEXT('.'), At) && Text.Mid(At).StartsWith(TEXT("..")))
+		{
+			const FString Low = Text.Left(At);
+			const FString High = Text.Mid(At + 2);
+			if ((!Low.IsEmpty() && !Low.IsNumeric()) || (!High.IsEmpty() && !High.IsNumeric()) || (Low.IsEmpty() && High.IsEmpty()))
+			{
+				return false;
+			}
+			if (!Low.IsEmpty()) { Min = FCString::Atoi(*Low); }
+			if (!High.IsEmpty()) { Max = FCString::Atoi(*High); }
+			return true;
+		}
+		if (!Text.IsNumeric() || Text.Contains(TEXT(".")))
+		{
+			return false;
+		}
+		Min = Max = FCString::Atoi(*Text);
+		return true;
+	}
+
+	struct FExecCondition
+	{
+		bool bHas = false;
+		bool bPass = false;
+		bool bCount = false;
+		int32 Count = 0;
+	};
+
+	FReplies ExecuteFrom(const FString& Original, const TArray<FString>& W, int32 I, const FMcCommandSender& Sender, IMcCommandTarget& Target, const FExecCondition& Last)
+	{
+		const auto Incomplete = [&]() { return Unknown(Original, Original.Len()); };
+		if (I >= W.Num())
+		{
+			if (!Last.bHas)
+			{
+				return Incomplete();
+			}
+			const bool bCount = Last.bCount && (Last.bPass || true);
+			if (Last.bPass)
+			{
+				return { Ok(bCount ? McLang::Format(TEXT("commands.execute.conditional.pass_count"), { FString::FromInt(Last.Count) }) : McLang::Get(TEXT("commands.execute.conditional.pass"))) };
+			}
+			return { Ok(bCount ? McLang::Format(TEXT("commands.execute.conditional.fail_count"), { FString::FromInt(Last.Count) }) : McLang::Get(TEXT("commands.execute.conditional.fail"))) };
+		}
+		const FString& Key = W[I];
+		const auto Merge = [](FReplies& Into, const FReplies& More) { Into.Append(More); };
+		if (Key == TEXT("run"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			TArray<FString> Rest(W.GetData() + I + 1, W.Num() - I - 1);
+			return McCommands::Execute(FString::Join(Rest, TEXT(" ")), Sender, Target);
+		}
+		if (Key == TEXT("as") || Key == TEXT("at"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			TArray<FString> Players;
+			FString Error;
+			if (!ResolvePlayers(W[I + 1], Sender, Target, Players, Error))
+			{
+				return {};
+			}
+			FReplies All;
+			for (const FString& Player : Players)
+			{
+				FMcCommandSender Next = Sender;
+				FVector Feet;
+				const bool bHave = Target.GetPosition(Player, Feet);
+				if (Key == TEXT("as"))
+				{
+					Next.Name = Player;
+				}
+				if (bHave)
+				{
+					Next.Position = Feet;
+				}
+				Merge(All, ExecuteFrom(Original, W, I + 2, Next, Target, FExecCondition()));
+			}
+			return All;
+		}
+		if (Key == TEXT("positioned"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			FMcCommandSender Next = Sender;
+			if (W[I + 1] == TEXT("as"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				TArray<FString> Players;
+				FString Error;
+				if (!ResolvePlayers(W[I + 2], Sender, Target, Players, Error))
+				{
+					return {};
+				}
+				FReplies All;
+				for (const FString& Player : Players)
+				{
+					FVector Feet;
+					FMcCommandSender Each = Sender;
+					if (Target.GetPosition(Player, Feet))
+					{
+						Each.Position = Feet;
+					}
+					Merge(All, ExecuteFrom(Original, W, I + 3, Each, Target, FExecCondition()));
+				}
+				return All;
+			}
+			const FVector Base = SenderFeet(Sender, Target);
+			FVector Pos = Base;
+			if (I + 3 >= W.Num() || !ParseCoordinate(W[I + 1], Base.X, true, Pos.X) || !ParseCoordinate(W[I + 2], Base.Y, false, Pos.Y) || !ParseCoordinate(W[I + 3], Base.Z, true, Pos.Z))
+			{
+				return I + 3 >= W.Num() ? Incomplete() : BadArgument(Original);
+			}
+			Next.Position = Pos;
+			return ExecuteFrom(Original, W, I + 4, Next, Target, FExecCondition());
+		}
+		if (Key == TEXT("rotated") || Key == TEXT("facing") || Key == TEXT("in") || Key == TEXT("align") || Key == TEXT("anchored"))
+		{
+			// Taken and ignored: the arguments each form has.
+			int32 Skip = Key == TEXT("rotated") ? (I + 1 < W.Num() && W[I + 1] == TEXT("as") ? 2 : 2) : Key == TEXT("facing") ? (I + 1 < W.Num() && W[I + 1] == TEXT("entity") ? 3 : 3) : 1;
+			if (Key == TEXT("rotated") && I + 1 < W.Num() && W[I + 1] == TEXT("as")) { Skip = 2; }
+			if (I + Skip >= W.Num())
+			{
+				return Incomplete();
+			}
+			return ExecuteFrom(Original, W, I + 1 + Skip, Sender, Target, FExecCondition());
+		}
+		if (Key == TEXT("store"))
+		{
+			if (I + 4 >= W.Num() || (W[I + 1] != TEXT("result") && W[I + 1] != TEXT("success")) || W[I + 2] != TEXT("score"))
+			{
+				return I + 4 >= W.Num() ? Incomplete() : BadArgument(Original);
+			}
+			FObjective* O = FindObjective(W[I + 4]);
+			if (!O)
+			{
+				return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 4])) };
+			}
+			TArray<FString> Holders;
+			FString Error;
+			if (W[I + 3].StartsWith(TEXT("@")))
+			{
+				if (!ResolvePlayers(W[I + 3], Sender, Target, Holders, Error))
+				{
+					return {};
+				}
+			}
+			else
+			{
+				Holders = { W[I + 3] };
+			}
+			FReplies Got = ExecuteFrom(Original, W, I + 5, Sender, Target, FExecCondition());
+			bool bSuccess = false;
+			for (const FMcCommandReply& Reply : Got)
+			{
+				bSuccess |= !Reply.bError;
+			}
+			int32 Value = bSuccess ? 1 : 0;
+			if (W[I + 1] == TEXT("result") && !Got.IsEmpty())
+			{
+				// The number the command reported: "Count: n", "has n", "now n".
+				const FString& Text = Got[0].Text;
+				for (const TCHAR* Marker : { TEXT("Count: "), TEXT(" has "), TEXT("(now ") })
+				{
+					int32 At = Text.Find(Marker);
+					if (At != INDEX_NONE)
+					{
+						Value = FCString::Atoi(*Text.Mid(At + FCString::Strlen(Marker)));
+						break;
+					}
+				}
+			}
+			for (const FString& Holder : Holders)
+			{
+				O->Scores.FindOrAdd(Holder) = Value;
+			}
+			return Got;
+		}
+		if (Key == TEXT("if") || Key == TEXT("unless"))
+		{
+			const bool bUnless = Key == TEXT("unless");
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			const FString& Kind = W[I + 1];
+			FExecCondition Next;
+			Next.bHas = true;
+			int32 End = I + 2;
+			bool bPass = false;
+			if (Kind == TEXT("score"))
+			{
+				if (I + 5 >= W.Num())
+				{
+					return Incomplete();
+				}
+				FObjective* O = FindObjective(W[I + 3]);
+				if (!O)
+				{
+					return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 3])) };
+				}
+				TArray<FString> Who;
+				FString Error;
+				if (W[I + 2].StartsWith(TEXT("@")) ? !ResolvePlayers(W[I + 2], Sender, Target, Who, Error) : (Who = { W[I + 2] }, false))
+				{
+					return {};
+				}
+				const FString& Op = W[I + 4];
+				if (Op == TEXT("matches"))
+				{
+					int32 Min, Max;
+					if (!ParseRange(W[I + 5], Min, Max))
+					{
+						return BadArgument(Original);
+					}
+					const int32* Value = Who.IsEmpty() ? nullptr : O->Scores.Find(Who[0]);
+					bPass = Value && *Value >= Min && *Value <= Max;
+					End = I + 6;
+				}
+				else
+				{
+					if (I + 6 >= W.Num())
+					{
+						return Incomplete();
+					}
+					FObjective* P = FindObjective(W[I + 6]);
+					if (!P)
+					{
+						return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 6])) };
+					}
+					TArray<FString> Others;
+					if (W[I + 5].StartsWith(TEXT("@")) ? !ResolvePlayers(W[I + 5], Sender, Target, Others, Error) : (Others = { W[I + 5] }, false))
+					{
+						return {};
+					}
+					const int32* A = Who.IsEmpty() ? nullptr : O->Scores.Find(Who[0]);
+					const int32* B = Others.IsEmpty() ? nullptr : P->Scores.Find(Others[0]);
+					if (Op != TEXT("<") && Op != TEXT("<=") && Op != TEXT("=") && Op != TEXT(">=") && Op != TEXT(">"))
+					{
+						return BadArgument(Original);
+					}
+					bPass = A && B && (Op == TEXT("<") ? *A < *B : Op == TEXT("<=") ? *A <= *B : Op == TEXT("=") ? *A == *B : Op == TEXT(">=") ? *A >= *B : *A > *B);
+					End = I + 7;
+				}
+			}
+			else if (Kind == TEXT("entity"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				// The players that match; a selector with filters other than a player type matches none (mobs are not selected).
+				TArray<FString> Who;
+				FString Error;
+				const FString& Token = W[I + 2];
+				const int32 Bracket = Token.Find(TEXT("["));
+				if (Bracket != INDEX_NONE)
+				{
+					const FString Filters = Token.Mid(Bracket);
+					if (Token.StartsWith(TEXT("@e")) && (Filters.Contains(TEXT("type=minecraft:player")) || Filters.Contains(TEXT("type=player"))))
+					{
+						Who = Target.GetPlayerNames();
+					}
+				}
+				else if (Token == TEXT("@e"))
+				{
+					Who = Target.GetPlayerNames();
+				}
+				else if (!ResolvePlayers(Token, Sender, Target, Who, Error))
+				{
+					Who.Reset();
+				}
+				Next.bCount = true;
+				Next.Count = Who.Num();
+				bPass = Who.Num() > 0;
+				End = I + 3;
+			}
+			else if (Kind == TEXT("block"))
+			{
+				if (I + 5 >= W.Num())
+				{
+					return Incomplete();
+				}
+				const FVector Base = SenderFeet(Sender, Target);
+				FIntVector Pos;
+				if (!ParseBlockPos(W, I + 2, Base, Pos))
+				{
+					return BadArgument(Original);
+				}
+				const TOptional<FMcStateId> Wanted = ParseBlock(W[I + 5]);
+				if (!Wanted.IsSet())
+				{
+					return BadArgument(Original);
+				}
+				FMcStateId Have;
+				bPass = Target.GetBlock(Pos, Have) && Have == *Wanted;
+				End = I + 6;
+			}
+			else if (Kind == TEXT("loaded"))
+			{
+				if (I + 4 >= W.Num())
+				{
+					return Incomplete();
+				}
+				const FVector Base = SenderFeet(Sender, Target);
+				FIntVector Pos;
+				if (!ParseBlockPos(W, I + 2, Base, Pos))
+				{
+					return BadArgument(Original);
+				}
+				FMcStateId Have;
+				bPass = Target.GetBlock(Pos, Have);
+				End = I + 5;
+			}
+			else if (Kind == TEXT("dimension"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				bPass = W[I + 2] == TEXT("minecraft:overworld") || W[I + 2] == TEXT("overworld");
+				End = I + 3;
+			}
+			else
+			{
+				return BadArgument(Original);
+			}
+			Next.bPass = bUnless ? !bPass : bPass;
+			if (!Next.bPass && End < W.Num())
+			{
+				// A failed test stops this branch; nothing more is said.
+				return {};
+			}
+			return ExecuteFrom(Original, W, End, Sender, Target, Next);
+		}
+		return BadArgument(Original);
+	}
+
+	FReplies RunExecute(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		return ExecuteFrom(Command, Words, 1, Sender, Target, FExecCondition());
+	}
+
+	// /locate biome <biome>: the nearest loaded part of the world with that biome (the game searches further, generating as it goes; structures and
+	// points of interest are not built).
+	FReplies RunLocate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("biome"))
+		{
+			return Unknown(Command, Words.Num() < 3 ? Command.Len() : Command.Len());
+		}
+		if (Words.Num() > 3)
+		{
+			return BadArgument(Command);
+		}
+		FString Id = Words[2];
+		const FString Bare = Id.StartsWith(TEXT("minecraft:")) ? Id.Mid(10) : Id;
+		Id = TEXT("minecraft:") + Bare;
+		FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+		Biomes.EnsureLoaded();
+		const TOptional<FMcBiomeId> Wanted = Biomes.Find(FName(*Id));
+		if (!Wanted.IsSet())
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:worldgen/biome'"), *Id)), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+		}
+		const FVector From = SenderFeet(Sender, Target);
+		FIntVector Found;
+		if (!Target.FindBiome(*Wanted, From, Found))
+		{
+			return { Fail(FString::Printf(TEXT("Could not find a biome of type \"%s\" within a reasonable distance"), *Id)) };
+		}
+		const int32 Away = FMath::RoundToInt32(FMath::Sqrt(FMath::Square(double(Found.X) - From.X) + FMath::Square(double(Found.Z) - From.Z)));
+		return { Ok(McLang::Format(TEXT("commands.locate.biome.success"), { Id, FString::Printf(TEXT("[%d, %d, %d]"), Found.X, Found.Y, Found.Z), FString::FromInt(Away) })) };
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -2489,6 +3325,22 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("rotate"))
+	{
+		return RunRotate(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("scoreboard"))
+	{
+		return RunScoreboard(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("execute"))
+	{
+		return RunExecute(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("locate"))
+	{
+		return RunLocate(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

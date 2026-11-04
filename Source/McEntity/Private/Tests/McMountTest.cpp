@@ -193,12 +193,20 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("without the stick in hand it stops"), Pig->Body.Position.Z - Held < 0.05);
 	}
 
-	// Armour: iron (5 points) takes 4 off a 10-point hit.. 10 x (1 - max(1, 5 - 5)/25) = 9.6; diamond (11): 10 x (1 - 6/25) = 7.6.
-	FMcMountState Armored;
-	Armored.Armor = FName(TEXT("minecraft:iron_horse_armor"));
-	TestTrue(TEXT("iron armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 9.6f) < 0.01f);
-	Armored.Armor = FName(TEXT("minecraft:diamond_horse_armor"));
-	TestTrue(TEXT("diamond armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 7.6f) < 0.01f);
+	// Armour (vehicle_log35, a horse of 30 health hit by 10 and by 4 in each armour): health left after the 10 hit and the 4 hit.
+	struct FArmorRow { const TCHAR* Item; float After10; float After4; };
+	const FArmorRow Rows[] = {
+		{TEXT("minecraft:leather_horse_armor"), 20.24f, 26.16f}, {TEXT("minecraft:copper_horse_armor"), 20.32f, 26.32f},
+		{TEXT("minecraft:iron_horse_armor"), 20.40f, 26.48f}, {TEXT("minecraft:golden_horse_armor"), 20.80f, 26.80f},
+		{TEXT("minecraft:diamond_horse_armor"), 22.80f, 27.50f}, {TEXT("minecraft:netherite_horse_armor"), 26.15f, 28.81f},
+	};
+	for (const FArmorRow& Row : Rows)
+	{
+		FMcMountState Armored;
+		Armored.Armor = FName(Row.Item);
+		TestTrue(*FString::Printf(TEXT("%s on a 10 hit leaves %.2f (got %.2f)"), Row.Item, Row.After10, 30.0f - McMount::ReduceDamage(Armored, 10.0f)), FMath::Abs(30.0f - McMount::ReduceDamage(Armored, 10.0f) - Row.After10) < 0.01f);
+		TestTrue(*FString::Printf(TEXT("%s on a 4 hit leaves %.2f (got %.2f)"), Row.Item, Row.After4, 30.0f - McMount::ReduceDamage(Armored, 4.0f)), FMath::Abs(30.0f - McMount::ReduceDamage(Armored, 4.0f) - Row.After4) < 0.01f);
+	}
 
 	// Saved and loaded again: the saddle, the armour and the taming stay.
 	{

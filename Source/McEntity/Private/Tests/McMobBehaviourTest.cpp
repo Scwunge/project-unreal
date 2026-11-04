@@ -500,6 +500,24 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
 	}
 	{
+		// An ender dragon starts at 126 and flies down to 65-79 within 1000 ticks, staying within 63 blocks of the middle (dragon6.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 126.0, 0.5));
+		TestEqual(TEXT("200 hp"), Dragon->Health, 200.0f);
+		double MaxRadius = 0.0;
+		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		{
+			Manager.Tick();
+			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
+		}
+		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
+		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+	}
+	{
 		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);

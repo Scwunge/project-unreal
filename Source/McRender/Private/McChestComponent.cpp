@@ -299,7 +299,8 @@ void UMcChestComponent::SetWorld(FMcBlockWorld* InWorld)
 			|| McBell::IsBell(static_cast<FMcStateId>(Id)) || IsEnchantingTable(static_cast<FMcStateId>(Id))
 			|| GetLecternBook(static_cast<FMcStateId>(Id), Centre, Rotation) || !GetHeadModel(static_cast<FMcStateId>(Id), Centre, Yaw).IsNone()
 			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:decorated_pot")) || McConduit::IsConduit(static_cast<FMcStateId>(Id))
-			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:spawner"));
+			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:spawner"))
+			|| IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:campfire")) || IsNamed(static_cast<FMcStateId>(Id), TEXT("minecraft:soul_campfire"));
 	}
 	AddedHandle = World->OnChunkAdded.AddUObject(this, &UMcChestComponent::Scan);
 	ChangedHandle = World->OnChunkChanged.AddUObject(this, &UMcChestComponent::Scan);
@@ -357,6 +358,69 @@ void UMcChestComponent::EntityChanged(const FIntVector& Pos)
 	{
 		(*Model)->SetKind(GetSpawnerMob(Pos), NAME_None, 0);
 	}
+	if (Known && Known->Shape == EShape::Campfire)
+	{
+		UpdateGrill(Pos, Known->State);
+	}
+}
+
+void UMcChestComponent::DropGrill(const FIntVector& Pos)
+{
+	FMcGrillFood Gone;
+	if (Grills.RemoveAndCopyValue(Pos, Gone))
+	{
+		for (UMcEntityModelComponent* Piece : Gone.Spots)
+		{
+			if (Piece)
+			{
+				Piece->DestroyComponent();
+			}
+		}
+	}
+}
+
+void UMcChestComponent::UpdateGrill(const FIntVector& Pos, FMcStateId State)
+{
+	const FMcChunk* Chunk = World ? World->FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) : nullptr;
+	const FMcBlockEntity* Entity = Chunk ? Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15) : nullptr;
+	const bool bFood = Entity && Entity->Kind == EMcBlockEntityKind::Campfire;
+	const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing"));
+	const int32 Turns = Facing == TEXT("east") ? 1 : Facing == TEXT("south") ? 2 : Facing == TEXT("west") ? 3 : 0;
+	FMcGrillFood& Grill = Grills.FindOrAdd(Pos);
+	Grill.Spots.SetNum(FMcBlockEntity::NumCampfireSpots);
+	for (int32 Spot = 0; Spot < FMcBlockEntity::NumCampfireSpots; ++Spot)
+	{
+		const bool bHere = bFood && Entity->Slots.IsValidIndex(Spot) && !Entity->Slots[Spot].IsEmpty();
+		TObjectPtr<UMcEntityModelComponent>& Piece = Grill.Spots[Spot];
+		if (!bHere)
+		{
+			if (Piece)
+			{
+				Piece->DestroyComponent();
+				Piece = nullptr;
+			}
+			continue;
+		}
+		// North-facing corners of slots 0 to 3 as (x, z) from the middle: south-east, south-west, north-west, north-east.
+		static const int32 Corners[4][2] = { { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } };
+		int32 Dx = Corners[Spot][0], Dz = Corners[Spot][1];
+		for (int32 Turn = 0; Turn < Turns; ++Turn)
+		{
+			const int32 NewDx = -Dz;
+			Dz = Dx;
+			Dx = NewDx;
+		}
+		if (!Piece)
+		{
+			Piece = NewObject<UMcEntityModelComponent>(GetOwner());
+			Piece->SetupAttachment(this);
+			Piece->SetUsingAbsoluteLocation(true);
+			Piece->SetUsingAbsoluteRotation(true);
+			Piece->RegisterComponent();
+		}
+		Piece->SetWorldLocationAndRotation(McCoords::BlockToUnreal(FVector(Pos) + FVector(0.5 + Dx * 0.3125, 0.4375, 0.5 + Dz * 0.3125)), FRotator::ZeroRotator);
+		Piece->SetKind(FName(TEXT("mc:grillfood")), Entity->Slots[Spot].Item, 0);
+	}
 }
 
 void UMcChestComponent::SpawnerCycled(const FIntVector& Pos)
@@ -380,6 +444,7 @@ void UMcChestComponent::Clear(FIntPoint ChunkPos)
 	for (const FIntVector& Pos : Gone)
 	{
 		Chests.Remove(Pos);
+		DropGrill(Pos);
 		TObjectPtr<UMcEntityModelComponent> Model;
 		if (Models.RemoveAndCopyValue(Pos, Model) && Model)
 		{
@@ -423,6 +488,7 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 		if (!Found.Contains(Listed[Index]))
 		{
 			Chests.Remove(Listed[Index]);
+			DropGrill(Listed[Index]);
 			TObjectPtr<UMcEntityModelComponent> Model;
 			if (Models.RemoveAndCopyValue(Listed[Index], Model) && Model)
 			{
@@ -486,6 +552,13 @@ void UMcChestComponent::Scan(FIntPoint ChunkPos)
 			Known->SpawnerDelay = 20;
 			Kind = GetSpawnerMob(Pair.Key);
 			Centre = FVector(0.5);
+		}
+		else if (IsNamed(Pair.Value, TEXT("minecraft:campfire")) || IsNamed(Pair.Value, TEXT("minecraft:soul_campfire")))
+		{
+			// No model of its own: the food on its grill is drawn.
+			Known->Shape = EShape::Campfire;
+			UpdateGrill(Pair.Key, Pair.Value);
+			continue;
 		}
 		else if (McConduit::IsConduit(Pair.Value))
 		{

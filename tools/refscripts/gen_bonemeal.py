@@ -35,5 +35,5 @@ for i in range(len(KINDS)):
         L.append(f"cmd setblock {3*c+2} -59 {z} redstone_block")
 L += ["cmd tick step 10", "wait 100"]
 snap()
-L.append("cmd tick unfreeze")
+L += ["cmd tick unfreeze", "cmd gamerule random_tick_speed 3"]
 open("E:/mc-reference/scripts/bonemeal.txt", "w").write("\n".join(L) + "\n")

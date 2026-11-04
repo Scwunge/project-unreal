@@ -509,6 +509,26 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("burning"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 12)), TEXT("lit")), FName(TEXT("true")));
 	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
 	TestEqual(TEXT("which burns"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 3)), TEXT("lit")), FName(TEXT("true")));
+	// Food on the lit campfire cooks for its recipe's time (600 ticks, as in a real save), then is done and leaves its spot.
+	{
+		FMcBlockEntity Grill = FMcBlockEntity::MakeCampfire();
+		Grill.Slots[1] = FMcItemStack(TEXT("minecraft:beef"), 1);
+		Grill.CookingTimes[1] = 598;
+		Grill.CookingTotals[1] = 600;
+		Grill.Slots[2] = FMcItemStack(TEXT("minecraft:porkchop"), 1);
+		Grill.CookingTimes[2] = 10;
+		Grill.CookingTotals[2] = 600;
+		Chunk->SetBlockEntity(15, 64, 12, Grill);
+		Use->Tick(0.05f + 1e-4f);
+		TestEqual(TEXT("one tick cooks the food one tick"), Chunk->FindBlockEntity(15, 64, 12)->CookingTimes[2], 11);
+		TestFalse(TEXT("and the beef is not done yet"), Chunk->FindBlockEntity(15, 64, 12)->Slots[1].IsEmpty());
+		Use->Tick(0.05f + 1e-4f);
+		TestTrue(TEXT("two ticks on, the beef is done and gone from its spot"), Chunk->FindBlockEntity(15, 64, 12)->Slots[1].IsEmpty());
+		TestFalse(TEXT("the pork still cooks"), Chunk->FindBlockEntity(15, 64, 12)->Slots[2].IsEmpty());
+		TArray<FMcItemStack> OnGrill;
+		UMcBlockUseSubsystem::GetContents(*Actor, FIntVector(15, 64, 12), OnGrill);
+		TestTrue(TEXT("what is left on the grill drops when it is broken"), OnGrill.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:porkchop"); }));
+	}
 	// A dropper into a double chest fills the other half once the first is full.
 	{
 		const FIntVector RightHalf(3, 64, 14), LeftHalf(4, 64, 14), Dropper(2, 64, 14);

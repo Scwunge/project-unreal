@@ -87,7 +87,7 @@ public:
 	void SetSeaLevel(int32 Level);
 	bool IsRainingAt(const FIntVector& Pos) const;
 
-	// Bone meal on the block at Pos: grows a sapling (45% of the time), a crop or stem, spreads grass over grass
+	// Bone meal on the block at Pos: grows a sapling (40% of the time, measured), a crop or stem, spreads grass over grass
 	// blocks, doubles short grass. True if the item is used up.
 	bool Bonemeal(const FIntVector& Pos);
 

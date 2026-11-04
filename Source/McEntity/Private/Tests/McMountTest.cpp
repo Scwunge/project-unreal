@@ -127,6 +127,19 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("hold 10 is a full charge"), McMount::JumpFraction(10), 1.0f);
 	TestEqual(TEXT("hold 1 is 0.4"), McMount::JumpFraction(1), 0.4f);
 
+	// Feeding a wild horse (vehicle_log40/41): temper after each food, in the logged order.
+	{
+		FMcMob* Fed = MakeHorse(*HorseType, 96.5);
+		const TCHAR* Foods[] = {TEXT("minecraft:hay_block"), TEXT("minecraft:golden_apple"), TEXT("minecraft:sugar"), TEXT("minecraft:hay_block"), TEXT("minecraft:golden_carrot"), TEXT("minecraft:wheat"), TEXT("minecraft:apple")};
+		const int32 Temper[] = {0, 10, 13, 13, 18, 21, 24};
+		for (int32 I = 0; I < 7; I++)
+		{
+			FMcItemStack Food{FName(Foods[I]), 16};
+			McMount::Use(Manager, *Fed, Food, 1, false, false);
+			TestEqual(*FString::Printf(TEXT("temper after %s"), Foods[I]), Fed->Mount->Temper, Temper[I]);
+		}
+	}
+
 	// Saddle, armour, chest, food and a seat.
 	FMcMob* Wild = MakeHorse(*HorseType, 90.5);
 	FMcItemStack Saddle(FName(TEXT("minecraft:saddle")), 1);

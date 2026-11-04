@@ -1552,3 +1552,19 @@ Forest fps on this PC's RTX 4060 (2026-11-04, local lane, seed 12, noon, clear, 
 Unreal Mode 31.0 fps, vanilla 65.8 fps over the last 3 s (instantaneous 32.8 / 112.6). So the cost is about half the frame rate here, far more than the ~9% measured on the 1070, where the terrain
 (both modes 12-14 fps) hid it. Unreal Mode at a forest is therefore GPU/CPU-heavy on a fast card too: worth profiling (`stat gpu` / `stat unit` in a forest shot) for the big spenders
 (Lumen, virtual shadow maps, volumetric fog, translucent water/leaves) before the next look change. Vanilla's window is noisy (65.8 vs 112.6 instantaneous), so repeat for a tighter number.
+
+**Forest fps cost sweep on the RTX 4060** (2026-11-04, local lane, `-McWorld=fpsfloc -McSeed=12 -McCreative -McEnhanced -McTime=6000 -McWeather=clear -McShotDelay=45`, default quality, one setting off at a time through the new dev arg `-McCvars=name=value,...`, which is applied after the quality preset and is not in Shipping). Figures are "fps since start / fps over the last 3 s". The user started gaming on this PC during the sweep, so the numbers are noisy (`base` 20.6 was the first run, with shader compile and the first-load stall; `base2` at the end read 36.4):
+| setting off | fps | 3 s | gain over base2 (36.4) |
+|---|---|---|---|
+| base (first run) | 20.6 | 15.0 | n/a (warm-up) |
+| Lumen GI (`r.DynamicGlobalIlluminationMethod=0`) | 6.5 | 24.4 | none; GI off is worse (the fallback is costly or the run stalled) |
+| Lumen reflections | 27.0 | 25.3 | below base2 (noise) |
+| virtual shadow maps | 32.8 | 30.0 | below base2 (noise) |
+| volumetric fog | 39.9 | 40.4 | +10% |
+| bloom, DOF, motion blur | 40.9 | 34.7 | +12% / -5% (noise) |
+| TSR (`r.AntiAliasingMethod=0`) | 36.4 | 33.1 | 0% |
+| screen percentage 70 | 42.1 | 38.3 | +16% |
+| puddles | 37.8 | 36.3 | +4% (noise) |
+| block lights | 32.5 | 35.3 | none |
+| god rays | 38.9 | 35.8 | +7% |
+Reading: with this noise only volumetric fog (+10%) and the screen percentage (+16% at 70) stand out; nothing is a single big spender, so the 31 vs 66 gap is the sum of many modest costs plus the heavier lit/HD materials and shadow work (Lumen GI cannot be switched off for a comparison). Proposed defaults for a better frame rate at nearly the same look: keep volumetric fog on Ultra/High only (Medium and below off), and make Medium (the default) render at screen percentage 75 with TSR upscaling. These are NOT applied yet: a repeat sweep on a quiet machine (the user is gaming now, so this PC is off limits) must confirm them first. A 1070 rerun would not answer this (different GPU, and it is terrain/CPU bound there).

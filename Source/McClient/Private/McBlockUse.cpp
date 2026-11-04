@@ -1407,6 +1407,7 @@ bool UMcBlockUseSubsystem::UseCampfire(AMcPlayerPawn& Player, AMcWorldActor& Wor
 				Held.Clear();
 			}
 			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			WorldActor.GetBlockWorld()->OnBlockEntityChanged.Broadcast(Pos);
 			return true;
 		}
 	}
@@ -1474,6 +1475,7 @@ void UMcBlockUseSubsystem::TickCampfires()
 				if (bChanged)
 				{
 					It->MarkChunkDirty(ChunkPos);
+					Blocks->OnBlockEntityChanged.Broadcast(Pos);
 				}
 			}
 		}

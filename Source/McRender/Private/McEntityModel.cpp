@@ -2619,6 +2619,41 @@ namespace McEntityModel
 		}
 	}
 
+	void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const double Half = Width * 0.5 * Units;
+		const FVector Centre(0.0, 0.0, Height * Units);
+		// The picture's top edge towards -Y (north), its left towards -X, as it reads looking down on it.
+		const FVector Corners[4] = { Centre + FVector(-Half, Half, 0), Centre + FVector(Half, Half, 0), Centre + FVector(Half, -Half, 0), Centre + FVector(-Half, -Half, 0) };
+		const FVector2D UVs[4] = { FVector2D(0, VMax), FVector2D(1, VMax), FVector2D(1, 0), FVector2D(0, 0) };
+		for (const bool bBack : { false, true })
+		{
+			const FVector Normal(0.0, 0.0, bBack ? -1.0 : 1.0);
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(Corners[Corner]);
+				Out.Normals.Add(Normal);
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(FColor::White);
+			}
+			if (bBack)
+			{
+				Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+			}
+			else
+			{
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -2777,7 +2812,8 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	VariantSeed = INT32_MIN;
 	WolfTextureState = 0;
 	bBabyLook = false;
-	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsGrillFood = Kind == TEXT("mc:grillfood");
+	bIsItem = bIsGrillFood || Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
 	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
 	PotSides = NAME_None;
 	if (bIsPotItem)
@@ -3426,6 +3462,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		else if (bIsThrown)
 		{
 			McEntityModel::BuildThrownMesh(ItemVMax, Data);
+		}
+		else if (bIsGrillFood)
+		{
+			McEntityModel::BuildFlatItemMesh(0.375f, 0.0f, ItemVMax, Data);
 		}
 		else
 		{

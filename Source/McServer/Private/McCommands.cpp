@@ -62,6 +62,7 @@ namespace
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
+		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -2290,6 +2291,102 @@ namespace
 		return { Ok(Players.Num() == 1 ? McLang::Format(TEXT("commands.swing.success.single"), { Players[0] }) : McLang::Format(TEXT("commands.swing.success.multiple"), { FString::FromInt(Players.Num()) })) };
 	}
 
+	// /forceload add|remove|query: the chunks marked to stay loaded, kept for the session (nothing keeps them loaded yet).
+	TSet<FIntPoint>& ForceLoaded()
+	{
+		static TSet<FIntPoint> Chunks;
+		return Chunks;
+	}
+
+	FReplies RunForceLoad(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString Dimension = TEXT("minecraft:overworld");
+		const auto Chunk = [](const FIntPoint& P) { return FString::Printf(TEXT("[%d, %d]"), P.X, P.Y); };
+		const FString& Sub = Words[1];
+		TSet<FIntPoint>& Chunks = ForceLoaded();
+		if (Sub == TEXT("remove") && Words.Num() == 3 && Words[2] == TEXT("all"))
+		{
+			Chunks.Reset();
+			return { Ok(McLang::Format(TEXT("commands.forceload.removed.all"), { Dimension })) };
+		}
+		if (Sub == TEXT("query") && Words.Num() == 2)
+		{
+			TArray<FIntPoint> All = Chunks.Array();
+			All.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.Y != B.Y ? A.Y < B.Y : A.X < B.X; });
+			if (All.IsEmpty())
+			{
+				return { Ok(McLang::Format(TEXT("commands.forceload.added.none"), { Dimension })) };
+			}
+			TArray<FString> Shown;
+			for (const FIntPoint& P : All)
+			{
+				Shown.Add(Chunk(P));
+			}
+			return { Ok(All.Num() == 1 ? McLang::Format(TEXT("commands.forceload.list.single"), { Dimension, Shown[0] })
+				: McLang::Format(TEXT("commands.forceload.list.multiple"), { FString::FromInt(All.Num()), Dimension, FString::Join(Shown, TEXT(", ")) })) };
+		}
+		const bool bAdd = Sub == TEXT("add");
+		const bool bRemove = Sub == TEXT("remove");
+		const bool bQuery = Sub == TEXT("query");
+		if (!(bAdd || bRemove || bQuery) || (Words.Num() != 4 && Words.Num() != 6) || (bQuery && Words.Num() != 4))
+		{
+			return (bAdd || bRemove || bQuery) ? Unknown(Command, Command.Len()) : BadArgument(Command);
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		double X1, Z1, X2, Z2;
+		if (!ParseCoordinate(Words[2], Base.X, false, X1) || !ParseCoordinate(Words[3], Base.Z, false, Z1))
+		{
+			return BadArgument(Command);
+		}
+		X2 = X1;
+		Z2 = Z1;
+		if (Words.Num() == 6 && (!ParseCoordinate(Words[4], Base.X, false, X2) || !ParseCoordinate(Words[5], Base.Z, false, Z2)))
+		{
+			return BadArgument(Command);
+		}
+		if (FMath::Abs(X1) >= 30000000.0 || FMath::Abs(Z1) >= 30000000.0 || FMath::Abs(X2) >= 30000000.0 || FMath::Abs(Z2) >= 30000000.0)
+		{
+			return { Fail(McLang::Get(TEXT("argument.pos.outofworld"))) };
+		}
+		const FIntPoint Low(FMath::FloorToInt32(FMath::Min(X1, X2) / 16.0), FMath::FloorToInt32(FMath::Min(Z1, Z2) / 16.0));
+		const FIntPoint High(FMath::FloorToInt32(FMath::Max(X1, X2) / 16.0), FMath::FloorToInt32(FMath::Max(Z1, Z2) / 16.0));
+		if (bQuery)
+		{
+			const FIntPoint At(FMath::FloorToInt32(X1 / 16.0), FMath::FloorToInt32(Z1 / 16.0));
+			return { Ok(McLang::Format(Chunks.Contains(At) ? TEXT("commands.forceload.query.success") : TEXT("commands.forceload.query.failure"), { Chunk(At), Dimension })) };
+		}
+		const int64 Count = int64(High.X - Low.X + 1) * (High.Y - Low.Y + 1);
+		if (Count > 256)
+		{
+			return { Fail(McLang::Format(TEXT("commands.forceload.toobig"), { TEXT("256"), LexToString(Count) })) };
+		}
+		int32 Changed = 0;
+		for (int32 X = Low.X; X <= High.X; ++X)
+		{
+			for (int32 Z = Low.Y; Z <= High.Y; ++Z)
+			{
+				if (bAdd ? !Chunks.Contains(FIntPoint(X, Z)) : Chunks.Contains(FIntPoint(X, Z)))
+				{
+					++Changed;
+					if (bAdd) { Chunks.Add(FIntPoint(X, Z)); } else { Chunks.Remove(FIntPoint(X, Z)); }
+				}
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bAdd ? TEXT("commands.forceload.added.failure") : TEXT("commands.forceload.removed.failure"))) };
+		}
+		if (Low == High)
+		{
+			return { Ok(McLang::Format(bAdd ? TEXT("commands.forceload.added.single") : TEXT("commands.forceload.removed.single"), { Chunk(Low), Dimension })) };
+		}
+		return { Ok(McLang::Format(bAdd ? TEXT("commands.forceload.added.multiple") : TEXT("commands.forceload.removed.multiple"), { FString::FromInt(Changed), Dimension, Chunk(Low), Chunk(High) })) };
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -3374,6 +3471,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("swing"))
 	{
 		return RunSwing(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("forceload"))
+	{
+		return RunForceLoad(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

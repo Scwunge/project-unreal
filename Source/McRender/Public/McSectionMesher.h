@@ -131,6 +131,8 @@ struct MCRENDER_API FMcRenderPalette
 		int32 FirstQuad = 0;          // into Quads, one entry per quad of the state's baked model, in order
 		int32 Block = INDEX_NONE;     // registry index of the state's block
 		uint8 OpaqueFaces = 0;        // bit per EMcDirection: opaque quads cover that whole side of the block
+		// The light engine treats the block as opaque (no light in its own cell), whatever a pack model made of its shape.
+		bool bOpaqueToLight = false;
 		bool bOccludes = false;       // an opaque full cube: darkens corners next to it (ambient occlusion)
 		bool bHidesOwnBlock = false;  // glass and the like: faces against the same block are not drawn
 		FColor Tint = FColor::White;  // for quads with a tint index when TintSource is Fixed, in sRGB

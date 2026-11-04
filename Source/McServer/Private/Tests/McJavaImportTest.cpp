@@ -931,6 +931,29 @@ bool FMcJavaExportTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("stairs with properties"), Result.GetBlock(7, -40, 9) == Stairs);
 	TestTrue(TEXT("stone high up"), Result.GetBlock(15, 100, 15) == Stone);
 	TestTrue(TEXT("air elsewhere"), Registry.IsAir(Result.GetBlock(1, 0, 1)));
+	// Heightmaps: 37 longs each (256 columns of 9 bits, 7 to a long); column (0,0) tops out one above the world's bottom
+	// (height 1), column (15,15) one above y 100 (height 165), an empty column is 0.
+	const FMcNbt* Maps = Root.Find(TEXT("Heightmaps"));
+	TestTrue(TEXT("heightmaps are written"), Maps != nullptr);
+	if (Maps)
+	{
+		const FMcNbt* Surface = Maps->Find(TEXT("WORLD_SURFACE"));
+		TestTrue(TEXT("37 longs"), Surface && Surface->Values.Num() == 37);
+		TArray<int64> HeightLongs;
+		for (const FMcNbt& Value : Surface->Values)
+		{
+			HeightLongs.Add(Value.Integer);
+		}
+		TArray<int32> Columns;
+		TestTrue(TEXT("heights unpack"), McJavaImport::UnpackIndices(HeightLongs, 9, 256, Columns));
+		if (Columns.Num() == 256)
+		{
+			TestEqual(TEXT("column 0,0"), Columns[0], 1);
+			TestEqual(TEXT("column 15,15"), Columns[255], 165);
+			TestEqual(TEXT("empty column"), Columns[1], 0);
+		}
+	}
+	TestTrue(TEXT("structures, ticks and post processing are written"), Root.Find(TEXT("structures")) && Root.Find(TEXT("block_ticks")) && Root.Find(TEXT("fluid_ticks")) && Root.Find(TEXT("PostProcessing")) && Root.Find(TEXT("PostProcessing"))->Values.Num() == 24);
 
 	// A region file made of it reads back through the importer's reader.
 	TArray<uint8> Bytes;
@@ -1308,5 +1331,165 @@ bool FMcJavaImportRegionDumpTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestTrue(TEXT("chunks were found"), NumChunks > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportExtrasDumpTest, "McClient.McServer.JavaImport.ChunkExtrasInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportExtrasDumpTest::RunTest(const FString& Parameters)
+{
+	// What a real chunk keeps beside its blocks (heightmaps, structures, ticks, post processing) and what a player head
+	// carries, from the playerref save (1070 only).
+	const FString Folder = TEXT("C:/mc-reference/run/saves/playerref/dimensions/minecraft/overworld/region");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Folder / TEXT("*.mca")), true, false);
+	if (Files.IsEmpty())
+	{
+		AddInfo(TEXT("no playerref save on this machine; skipped"));
+		return true;
+	}
+	const auto Describe = [](const FMcNbt& Tag, auto&& Self, int32 Depth) -> FString
+	{
+		if (Tag.Type == FMcNbt::EType::Compound)
+		{
+			FString Out = TEXT("{");
+			for (int32 Index = 0; Index < Tag.Keys.Num(); ++Index)
+			{
+				Out += Tag.Keys[Index] + TEXT("=") + Self(Tag.Values[Index], Self, Depth + 1) + TEXT(" ");
+			}
+			return Out + TEXT("}");
+		}
+		if (Tag.IsList())
+		{
+			FString Out = FString::Printf(TEXT("[t%d n=%d:"), static_cast<int32>(Tag.Type), Tag.Values.Num());
+			for (int32 Index = 0; Index < FMath::Min(Tag.Values.Num(), 4); ++Index)
+			{
+				Out += TEXT(" ") + Self(Tag.Values[Index], Self, Depth + 1);
+			}
+			return Out + TEXT("]");
+		}
+		return Tag.Type == FMcNbt::EType::String ? Tag.String : FString::Printf(TEXT("%lld(t%d)"), Tag.Integer, static_cast<int32>(Tag.Type));
+	};
+	int32 Shown = 0, Skulls = 0;
+	for (const FString& File : Files)
+	{
+		TArray<uint8> Region;
+		if (!FFileHelper::LoadFileToArray(Region, *(Folder / File)))
+		{
+			continue;
+		}
+		for (int32 Slot = 0; Slot < 1024 && (Shown < 2 || Skulls < 3); ++Slot)
+		{
+			TArray<uint8> Bytes;
+			bool bMissing = false;
+			FMcNbt Root;
+			if (!McJavaImport::ReadChunkBytes(Region, Slot % 32, Slot / 32, Folder, 0, 0, Bytes, bMissing) || !FMcNbt::Parse(Bytes, Root))
+			{
+				continue;
+			}
+			if (Shown < 2)
+			{
+				++Shown;
+				for (const TCHAR* Key : { TEXT("Heightmaps"), TEXT("structures"), TEXT("block_ticks"), TEXT("fluid_ticks"), TEXT("PostProcessing") })
+				{
+					if (const FMcNbt* Value = Root.Find(Key))
+					{
+						AddInfo(FString::Printf(TEXT("extras chunk %d %s: %s"), Slot, Key, *Describe(*Value, Describe, 0).Left(700)));
+					}
+				}
+				if (const FMcNbt* List = Root.Find(TEXT("sections")); List && List->Values.Num() > 4)
+				{
+					AddInfo(FString::Printf(TEXT("extras chunk %d section 4: %s"), Slot, *Describe(List->Values[4], Describe, 0).Left(500)));
+				}
+			}
+			if (const FMcNbt* List = Root.Find(TEXT("block_entities")))
+			{
+				for (const FMcNbt& Entity : List->Values)
+				{
+					if (Entity.GetString(TEXT("id")).Contains(TEXT("skull")) && Skulls < 3)
+					{
+						++Skulls;
+						AddInfo(TEXT("skull block entity: ") + Describe(Entity, Describe, 0).Left(900));
+					}
+				}
+			}
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportHeightmapsTest, "McClient.McServer.JavaExport.HeightmapsAgainstRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportHeightmapsTest::RunTest(const FString& Parameters)
+{
+	// The heightmaps we compute from a real chunk's blocks against the ones the game saved with it (campref, 1070 only).
+	const FString Folder = TEXT("C:/mc-reference/run/saves/campref/dimensions/minecraft/overworld/region");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Folder / TEXT("*.mca")), true, false);
+	if (Files.IsEmpty())
+	{
+		AddInfo(TEXT("no campref save on this machine; skipped"));
+		return true;
+	}
+	if (!LoadRegistries())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	TArray<uint8> Region;
+	if (!FFileHelper::LoadFileToArray(Region, *(Folder / Files[0])))
+	{
+		return true;
+	}
+	int32 Checked = 0, Different = 0, WorldGenOnly = 0;
+	for (int32 Slot = 0; Slot < 1024; ++Slot)
+	{
+		TArray<uint8> Bytes;
+		bool bMissing = false;
+		FMcNbt Root;
+		FIntPoint Pos;
+		if (!McJavaImport::ReadChunkBytes(Region, Slot % 32, Slot / 32, Folder, 0, 0, Bytes, bMissing) || !FMcNbt::Parse(Bytes, Root) || !McJavaImport::GetChunkPos(Root, Pos))
+		{
+			continue;
+		}
+		const FMcNbt* Real = Root.Find(TEXT("Heightmaps"));
+		FMcChunk Chunk(Pos, -64, 24);
+		McJavaImport::FStats Stats;
+		if (!Real || !McJavaImport::ConvertChunk(Root, Chunk, Stats))
+		{
+			continue;
+		}
+		FMcNbt Made;
+		McJavaExport::MakeChunk(Chunk, Made, 0);
+		const FMcNbt* Ours = Made.Find(TEXT("Heightmaps"));
+		++Checked;
+		for (int32 Index = 0; Index < Real->Keys.Num(); ++Index)
+		{
+			const FMcNbt* Other = Ours ? Ours->Find(*Real->Keys[Index]) : nullptr;
+			bool bSame = Other && Other->Values.Num() == Real->Values[Index].Values.Num();
+			for (int32 Long = 0; bSame && Long < Other->Values.Num(); ++Long)
+			{
+				bSame = Other->Values[Long].Integer == Real->Values[Index].Values[Long].Integer;
+			}
+			if (!bSame && Real->Keys[Index].EndsWith(TEXT("_WG")))
+			{
+				// Saved with the chunk by the game, kept as they were when it generated: not ours to compute.
+				++WorldGenOnly;
+			}
+			else if (!bSame)
+			{
+				++Different;
+				if (Different <= 6)
+				{
+					AddInfo(FString::Printf(TEXT("heightmap %s of chunk %d,%d differs"), *Real->Keys[Index], Pos.X, Pos.Y));
+				}
+			}
+		}
+	}
+	AddInfo(FString::Printf(TEXT("heightmaps: %d chunks compared, %d maps differ, %d _WG maps not written"), Checked, Different, WorldGenOnly));
+	TestTrue(TEXT("chunks were compared"), Checked > 0);
+	TestEqual(TEXT("our heightmaps are the game's"), Different, 0);
 	return true;
 }

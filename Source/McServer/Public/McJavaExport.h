@@ -23,7 +23,7 @@ namespace McJavaExport
 	};
 
 	// A chunk as the game's chunk NBT: sections with palettes of block states and biomes, packed as the game packs them.
-	MCSERVER_API void MakeChunk(const FMcChunk& Chunk, FMcNbt& Out);
+	MCSERVER_API void MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate = 0);
 
 	// Packs Indexes (each below the palette's size) into longs of Bits bits, none spanning two longs; the inverse of
 	// McJavaImport::UnpackIndices.

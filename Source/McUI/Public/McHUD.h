@@ -381,7 +381,17 @@ private:
 		int32 Priority = 0;
 	};
 	TMap<int32, FGlyph> Glyphs;   // by code point
-	const FGlyph* FindGlyph(int32 Char) const;
+	// The glyph of Char in a font ("minecraft:uniform", "zz:pix"; empty is the default font, whose table is Glyphs). A font id
+	// of its own is read from font/<id>.json when it is first asked for, and a character it lacks shows as the missing box.
+	const FGlyph* FindGlyph(int32 Char, const FString& Font = FString()) const;
+	struct FFontTable
+	{
+		TMap<int32, FGlyph> Glyphs;
+		TSharedPtr<FMcRasterFonts> Raster;
+		TSet<int32> Asked;
+	};
+	TMap<FString, FFontTable> OtherFonts;
+	void LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& OutGlyphs, TSharedPtr<FMcRasterFonts>& OutRaster, TSet<int32>& OutAsked);
 	UTexture2D* MakeGlyphTexture(const FMcRasterGlyph& Glyph);
 	// The providers that draw their characters when they are first needed, and the characters they were already asked for.
 	TSharedPtr<FMcRasterFonts> RasterFonts;

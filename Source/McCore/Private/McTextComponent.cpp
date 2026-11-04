@@ -296,7 +296,9 @@ FString McText::ToLegacy(const TArray<FSpan>& Spans)
 	bool bPrevStyled = false;
 	for (const FSpan& Span : Spans)
 	{
-		const bool bStyled = Span.Rgb >= 0 || Span.bBold || Span.bItalic || Span.bUnderlined || Span.bStrikethrough || Span.bObfuscated;
+		// A font of a span rides in the text as the section sign, an opening brace, its id and a closing brace.
+		const bool bFont = !Span.Font.IsEmpty() && Span.Font != TEXT("minecraft:default");
+		const bool bStyled = Span.Rgb >= 0 || Span.bBold || Span.bItalic || Span.bUnderlined || Span.bStrikethrough || Span.bObfuscated || bFont;
 		if (bPrevStyled)
 		{
 			Out += TEXT("§r");
@@ -318,6 +320,10 @@ FString McText::ToLegacy(const TArray<FSpan>& Spans)
 					Out.AppendChar(Digit);
 				}
 			}
+		}
+		if (bFont)
+		{
+			Out += TEXT("§{") + Span.Font + TEXT("}");
 		}
 		// A colour code ends the styles before it, so the styles come after it.
 		if (Span.bObfuscated) Out += TEXT("§k");

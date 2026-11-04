@@ -47,6 +47,9 @@ bool FMcTextComponentTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the fallback"), McText::ToPlain(Spans), FString(TEXT("fb x")));
 	TestTrue(TEXT("a font"), McText::Parse(TEXT("{\"text\":\"a\",\"font\":\"uniform\"}"), Spans));
 	TestEqual(TEXT("with its namespace"), Spans.Num() == 1 ? Spans[0].Font : FString(), FString(TEXT("minecraft:uniform")));
+	TestEqual(TEXT("a font rides in the legacy text"), McText::ToLegacy(Spans), FString(TEXT("§{minecraft:uniform}a")));
+	TestTrue(TEXT("the default font needs no code"), McText::Parse(TEXT("{\"text\":\"a\",\"font\":\"minecraft:default\"}"), Spans));
+	TestEqual(TEXT("so none is written"), McText::ToLegacy(Spans), FString(TEXT("a")));
 	TestTrue(TEXT("click and hover"), McText::Parse(TEXT("{\"text\":\"link\",\"click_event\":{\"action\":\"open_url\",\"url\":\"https://example.com\"},\"hover_event\":{\"action\":\"show_text\",\"value\":{\"text\":\"tip\",\"color\":\"red\"}}}"), Spans));
 	if (Spans.Num() == 1)
 	{

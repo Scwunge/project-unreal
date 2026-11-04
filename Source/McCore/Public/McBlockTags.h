@@ -35,5 +35,8 @@ private:
 	TMap<FString, int32> Ids;
 	TArray<TBitArray<>> Members;  // by tag, indexed by block index
 	TMap<FString, TArray<FString>> Pending;
+	// The tags read since the last (re)load, and whether /reload is hooked.
+	TSet<FString> Resolved;
+	bool bHooked = false;
 	bool bLoaded = false;
 };

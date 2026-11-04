@@ -1,6 +1,7 @@
 #include "McCache.h"
 #include "McCore.h"
 #include "McResourcePacks.h"
+#include "McDataPacks.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -27,6 +28,12 @@ namespace McCache
 
 	FString Data(const FString& RelativePath)
 	{
+		// A data pack that has the file (not a folder) wins over the cache.
+		FString FromPack;
+		if (!RelativePath.EndsWith(TEXT("/")) && FPaths::GetExtension(RelativePath).Len() > 0 && McData::TryResolveGame(RelativePath, FromPack))
+		{
+			return FromPack;
+		}
 		return Root() / TEXT("client/data/minecraft") / RelativePath;
 	}
 

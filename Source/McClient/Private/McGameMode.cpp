@@ -40,6 +40,9 @@
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
+#include "McTextComponent.h"
+#include "Serialization/JsonWriter.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -70,7 +73,11 @@ namespace
 	int32 AwardAdvancement(AMcPlayerPawn* Pawn, const FString& Id, bool bGrant, FString& OutTitle)
 	{
 		const FString Full = McCache::Namespaced(Id);
-		const TSharedPtr<FJsonObject> Def = McCache::LoadJsonObject(McCache::Data(FString::Printf(TEXT("advancement/%s.json"), *McCache::PathOf(Full))));
+		const TSharedPtr<FJsonObject> Def = [&Full]() -> TSharedPtr<FJsonObject>
+		{
+			const FString Path = McData::PathOf(Full, TEXT("advancement"), TEXT(".json"));
+			return Path.IsEmpty() ? nullptr : McCache::LoadJsonObject(Path);
+		}();
 		if (!Pawn || !Pawn->Data || !Def.IsValid())
 		{
 			return -1;
@@ -85,9 +92,25 @@ namespace
 		{
 			const TSharedPtr<FJsonObject>* TitleObject = nullptr;
 			FString Key;
-			if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
+			FString Plain;
+			if ((*Display)->TryGetStringField(TEXT("title"), Plain))
+			{
+				Title = Plain;
+			}
+			else if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
 			{
 				Title = McLang::Get(Key);
+			}
+			else if (TitleObject)
+			{
+				// Any other text component: its words.
+				FString Json;
+				FJsonSerializer::Serialize(TitleObject->ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+				TArray<McText::FSpan> Spans;
+				if (McText::Parse(Json, Spans))
+				{
+					Title = McText::ToPlain(Spans);
+				}
 			}
 			const TSharedPtr<FJsonObject>* IconObject = nullptr;
 			FString IconId;
@@ -136,17 +159,17 @@ namespace
 	const TArray<FInventoryTrigger>& InventoryTriggers()
 	{
 		static TArray<FInventoryTrigger> Triggers;
-		static bool bLoaded = false;
-		if (bLoaded)
+		static uint32 LoadedGeneration = 0;
+		// Read again after /reload or a change of data packs.
+		if (LoadedGeneration == McData::GetGeneration())
 		{
 			return Triggers;
 		}
-		bLoaded = true;
-		const FString Root = McCache::Data(TEXT("advancement"));
-		TArray<FString> Files;
-		IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
-		for (const FString& File : Files)
+		LoadedGeneration = McData::GetGeneration();
+		Triggers.Reset();
+		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
+			const FString& File = Listed.Paths.Last();
 			TSharedPtr<FJsonObject> Def;
 			FString Text;
 			if (!FFileHelper::LoadFileToString(Text, *File) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Def) || !Def.IsValid())
@@ -226,9 +249,7 @@ namespace
 				continue;
 			}
 			FInventoryTrigger Trigger;
-			FString Relative = File;
-			FPaths::MakePathRelativeTo(Relative, *(Root + TEXT("/")));
-			Trigger.Id = TEXT("minecraft:") + FPaths::ChangeExtension(Relative, TEXT(""));
+			Trigger.Id = Listed.Id;
 			const TArray<TSharedPtr<FJsonValue>>* Requirements = nullptr;
 			if (Def->TryGetArrayField(TEXT("requirements"), Requirements))
 			{
@@ -340,6 +361,15 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
+	ReadFunctionTags();
+	GetWorldTimerManager().SetTimer(FunctionTimer, this, &AMcGameMode::TickFunctions, 0.05f, true);
+	ReloadHandle = McData::OnReload().AddWeakLambda(this, [this]()
+	{
+		ReadFunctionTags();
+		RunFunctionTag(TEXT("minecraft:load"));
+	});
+	// The world has players a moment after it starts.
+	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]() { RunFunctionTag(TEXT("minecraft:load")); }));
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		const FMcServerProperties& Properties = FMcServerProperties::Get();
@@ -1869,6 +1899,32 @@ void AMcGameMode::BroadcastChat(const FString& Text, uint32 Rgb)
 			Pawn->Data->TellOwner(Text, Rgb);
 		}
 	}
+}
+
+void AMcGameMode::ReadFunctionTags()
+{
+	TickFunctionIds = McCommands::GetFunctionTag(TEXT("minecraft:tick"));
+}
+
+void AMcGameMode::RunFunctionTag(const FString& Tag)
+{
+	// As the console: every command, no name.
+	FMcCommandSender Sender;
+	Sender.PermissionLevel = 4;
+	FGameCommandTarget Target(*this);
+	McCommands::RunFunctions(McCommands::GetFunctionTag(Tag), Sender, Target);
+}
+
+void AMcGameMode::TickFunctions()
+{
+	if (TickFunctionIds.IsEmpty())
+	{
+		return;
+	}
+	FMcCommandSender Sender;
+	Sender.PermissionLevel = 4;
+	FGameCommandTarget Target(*this);
+	McCommands::RunFunctions(TickFunctionIds, Sender, Target);
 }
 
 void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)

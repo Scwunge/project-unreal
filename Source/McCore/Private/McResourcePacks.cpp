@@ -566,6 +566,29 @@ bool FMcResourcePack::Has(const FString& Relative) const
 	return HasExact(Resolve(Relative));
 }
 
+void FMcResourcePack::ListFiles(const FString& Prefix, TArray<FString>& Out) const
+{
+	if (Info.bZip)
+	{
+		for (const TPair<FString, FZipEntry>& Entry : Entries)
+		{
+			if (Entry.Key.StartsWith(Prefix) && !Entry.Key.EndsWith(TEXT("/")))
+			{
+				Out.Add(Entry.Key);
+			}
+		}
+		return;
+	}
+	TArray<FString> Files;
+	IFileManager::Get().FindFilesRecursive(Files, *(Info.Path / Prefix), TEXT("*"), true, false);
+	for (const FString& File : Files)
+	{
+		FString Relative = File;
+		FPaths::MakePathRelativeTo(Relative, *(Info.Path + TEXT("/")));
+		Out.Add(Relative.Replace(TEXT("\\"), TEXT("/")));
+	}
+}
+
 FString FMcResourcePack::GetFolderFile(const FString& Relative) const
 {
 	return Info.bZip ? FString() : Info.Path / Resolve(Relative);

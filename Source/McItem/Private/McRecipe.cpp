@@ -4,6 +4,7 @@
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McItem.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
@@ -180,26 +181,17 @@ bool FMcRecipeBook::EnsureLoaded()
 	{
 		return false;
 	}
-	const FString Root = McCache::Data(TEXT("recipe"));
-	TArray<FString> Files;
-	IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
+	// The game's recipes with a data pack's added: a pack's file of the same id replaces the game's.
+	const TArray<McData::FFile> Files = McData::List(TEXT("recipe"));
 	if (Files.IsEmpty())
 	{
-		UE_LOG(LogMcItem, Error, TEXT("No recipes in %s; run tools/fetch_cache.py."), *Root);
+		UE_LOG(LogMcItem, Error, TEXT("No recipes in %s; run tools/fetch_cache.py."), *McCache::Data(TEXT("recipe")));
 		return false;
 	}
-	Files.Sort();
-	for (const FString& File : Files)
+	for (const McData::FFile& File : Files)
 	{
-		FString Relative = File;
-		FPaths::MakePathRelativeTo(Relative, *(Root + TEXT("/")));
-		Relative = FPaths::ChangeExtension(Relative, TEXT("")).Replace(TEXT("\\"), TEXT("/"));
-		if (Relative.EndsWith(TEXT(".")))
-		{
-			Relative.LeftChopInline(1);
-		}
-		const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File);
-		if (!Json.IsValid() || !LoadOne(Relative, *Json))
+		const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File.Paths.Last());
+		if (!Json.IsValid() || !LoadOne(File.Id, *Json))
 		{
 			++Skipped;
 		}
@@ -210,6 +202,18 @@ bool FMcRecipeBook::EnsureLoaded()
 		Ids.Add(Recipes[Index].Id, Index);
 	}
 	UE_LOG(LogMcItem, Log, TEXT("Loaded %d recipes (%d skipped)"), Recipes.Num(), Skipped);
+	static bool bHooked = false;
+	if (!bHooked)
+	{
+		// /reload reads them again.
+		bHooked = true;
+		McData::OnReload().AddLambda([]()
+		{
+			FMcRecipeBook& Book = FMcRecipeBook::Get();
+			Book.bLoaded = false;
+			Book.EnsureLoaded();
+		});
+	}
 	bLoaded = true;
 	return true;
 }

@@ -79,6 +79,9 @@ public:
 	bool Has(const FString& Relative) const;
 	// The file's bytes. Safe from any thread.
 	bool Read(const FString& Relative, TArray<uint8>& Out) const;
+	// The pack's files whose path starts with Prefix ("data/"), by path inside the pack with forward slashes. Overlays are
+	// not looked into.
+	void ListFiles(const FString& Prefix, TArray<FString>& Out) const;
 	// The folder pack's file on disk, or empty for a zip.
 	FString GetFolderFile(const FString& Relative) const;
 

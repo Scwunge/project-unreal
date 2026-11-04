@@ -29,6 +29,8 @@ struct MCUI_API FMcClientOptions
 	// Unreal Mode's quality, 0 Low to 3 Ultra, and the frames-per-second readout.
 	int32 Quality = 2;
 	bool bShowFps = false;
+	// Closed captions for sounds (off, as in the game, until chosen).
+	bool bShowSubtitles = false;
 	// Hardware ray tracing, on top of Unreal Mode, where the card can.
 	bool bRayTracing = false;
 	// The video, mouse and sound settings of the Options screen. Field of View is in degrees (30 to 110), render

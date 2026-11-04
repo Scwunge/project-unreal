@@ -2,6 +2,7 @@
 #include "HAL/FileManager.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McCore.h"
 #include "Misc/Paths.h"
 
@@ -22,38 +23,24 @@ bool FMcBlockTags::EnsureLoaded()
 	{
 		return false;
 	}
-	// Tags can sit in subfolders (e.g. mineable/pickaxe); their names keep the folder.
-	const FString Root = McCache::Data(TEXT("tags/block/"));
-	TArray<FString> Files;
-	IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
+	// Tags can sit in subfolders (e.g. mineable/pickaxe); their names keep the folder. A data pack's files add to the game's.
+	Pending.Empty();
+	Resolved.Empty();
+	const TArray<McData::FFile> Files = McData::List(TEXT("tags/block"));
 	if (Files.IsEmpty())
 	{
-		UE_LOG(LogMcCore, Error, TEXT("No block tags in %s; run tools/fetch_cache.py."), *Root);
+		UE_LOG(LogMcCore, Error, TEXT("No block tags in %s; run tools/fetch_cache.py."), *McCache::Data(TEXT("tags/block")));
 		return false;
 	}
-	for (const FString& File : Files)
+	for (const McData::FFile& File : Files)
 	{
-		FString Relative = File;
-		FPaths::MakePathRelativeTo(Relative, *Root);
-		Relative = FPaths::ChangeExtension(Relative, TEXT("")).Replace(TEXT("\\"), TEXT("/"));
-		TArray<FString> Values;
-		if (const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File))
-		{
-			// Entries are names, or { "id": name, "required": false } for optional ones.
-			const TArray<TSharedPtr<FJsonValue>>* List;
-			if (Json->TryGetArrayField(TEXT("values"), List))
-			{
-				for (const TSharedPtr<FJsonValue>& Value : *List)
-				{
-					FString Entry;
-					if (Value->TryGetString(Entry) || (Value->Type == EJson::Object && Value->AsObject()->TryGetStringField(TEXT("id"), Entry)))
-					{
-						Values.Add(Entry);
-					}
-				}
-			}
-		}
-		Pending.Add(McCache::Namespaced(Relative), MoveTemp(Values));
+		Pending.Add(File.Id, McData::ReadTagValues(File.Paths));
+	}
+	if (!bHooked)
+	{
+		// /reload reads them again; a tag keeps its index.
+		bHooked = true;
+		McData::OnReload().AddLambda([]() { FMcBlockTags::Get().bLoaded = false; FMcBlockTags::Get().EnsureLoaded(); });
 	}
 	TArray<FString> Names;
 	Pending.GetKeys(Names);
@@ -69,9 +56,9 @@ bool FMcBlockTags::EnsureLoaded()
 
 bool FMcBlockTags::Resolve(const FString& Name, TSet<FString>& Visiting)
 {
-	if (Ids.Contains(Name))
+	if (Resolved.Contains(Name))
 	{
-		return true;
+		return Ids.Contains(Name);
 	}
 	const TArray<FString>* Values = Pending.Find(Name);
 	if (!Values || Visiting.Contains(Name))
@@ -96,7 +83,15 @@ bool FMcBlockTags::Resolve(const FString& Name, TSet<FString>& Visiting)
 			Bits[Block->Index] = true;
 		}
 	}
-	Ids.Add(Name, Members.Add(MoveTemp(Bits)));
+	Resolved.Add(Name);
+	if (const int32* Existing = Ids.Find(Name))
+	{
+		Members[*Existing] = MoveTemp(Bits);
+	}
+	else
+	{
+		Ids.Add(Name, Members.Add(MoveTemp(Bits)));
+	}
 	return true;
 }
 

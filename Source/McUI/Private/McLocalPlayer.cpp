@@ -43,6 +43,7 @@ FMcClientOptions FMcClientOptions::Load()
 		Options.bEnhancedGraphics = Object->TryGetStringField(TEXT("graphics"), Graphics) && Graphics == TEXT("enhanced");
 		Object->TryGetBoolField(TEXT("hdTextures"), Options.bHdTextures);
 		Object->TryGetBoolField(TEXT("showFps"), Options.bShowFps);
+		Object->TryGetBoolField(TEXT("showSubtitles"), Options.bShowSubtitles);
 		Object->TryGetBoolField(TEXT("rayTracing"), Options.bRayTracing);
 		double Number = 0.0;
 		if (Object->TryGetNumberField(TEXT("quality"), Number)) { Options.Quality = FMath::Clamp(static_cast<int32>(Number), 0, 3); }
@@ -62,6 +63,7 @@ void FMcClientOptions::Save() const
 	Object->SetStringField(TEXT("graphics"), bEnhancedGraphics ? TEXT("enhanced") : TEXT("vanilla"));
 	Object->SetBoolField(TEXT("hdTextures"), bHdTextures);
 	Object->SetBoolField(TEXT("showFps"), bShowFps);
+	Object->SetBoolField(TEXT("showSubtitles"), bShowSubtitles);
 	Object->SetBoolField(TEXT("rayTracing"), bRayTracing);
 	Object->SetNumberField(TEXT("quality"), Quality);
 	Object->SetNumberField(TEXT("fov"), FieldOfView);

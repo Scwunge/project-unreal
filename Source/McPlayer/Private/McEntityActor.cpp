@@ -83,7 +83,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType())
+	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType() || Kind == FMcFireball::SkullType())
 	{
 		// Drawn as the fire charge item (the game's own picture for it); its size and spin are not matched.
 		Kind = FMcItemEntity::StaticType();

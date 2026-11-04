@@ -167,7 +167,14 @@ McGui::FHudLayout McGui::ComputeHud(int32 Width, int32 Height, const FMcPlayerSt
 		}
 	}
 
-	for (int32 Index = 0; Index < IconsPerRow; ++Index)
+	// Riding a living mount, its hearts take the food row's place, ten to a row and rows going up.
+	const int32 MountHearts = Stats.MountMaxHealth > 0.0f ? FMath::CeilToInt(Stats.MountMaxHealth / 2.0f) : 0;
+	const int32 MountRows = FMath::DivideAndRoundUp(MountHearts, IconsPerRow);
+	for (int32 Index = 0; Index < MountHearts; ++Index)
+	{
+		Layout.Mount.Add({ FIntPoint(Right - (Index % IconsPerRow) * IconSpacing - IconSize, BaseY - (Index / IconsPerRow) * 10), IconFor(Index, Stats.MountHealth), false });
+	}
+	for (int32 Index = 0; Index < (MountHearts > 0 ? 0 : IconsPerRow); ++Index)
 	{
 		Layout.Food.Add({ FIntPoint(Right - Index * IconSpacing - IconSize, BaseY), IconFor(Index, static_cast<float>(Stats.Food)), false });
 	}
@@ -181,13 +188,15 @@ McGui::FHudLayout McGui::ComputeHud(int32 Width, int32 Height, const FMcPlayerSt
 		const int32 Shown = FMath::Clamp(FMath::DivideAndRoundUp(Air * IconsPerRow, Stats.MaxAir), 0, IconsPerRow);
 		for (int32 Index = 0; Index < Shown; ++Index)
 		{
-			Layout.Air.Add({ FIntPoint(Right - Index * IconSpacing - IconSize, BaseY - 10), Index < Whole ? EIcon::Full : EIcon::Half, false });
+			Layout.Air.Add({ FIntPoint(Right - Index * IconSpacing - IconSize, BaseY - 10 - FMath::Max(MountRows - 1, 0) * 10), Index < Whole ? EIcon::Full : EIcon::Half, false });
 		}
 	}
 
 	Layout.XpBar = FIntPoint(Width / 2 - 91, Height - 32 + 3);
 	Layout.XpFill = FMath::Clamp(static_cast<int32>(Stats.XpProgress * 183.0f), 0, HotbarWidth);
-	Layout.bShowLevel = Stats.XpLevel > 0;
+	Layout.bShowJump = Stats.MountJump >= 0.0f;
+	Layout.JumpFill = FMath::Clamp(static_cast<int32>(Stats.MountJump * 183.0f), 0, HotbarWidth);
+	Layout.bShowLevel = Stats.XpLevel > 0 && !Layout.bShowJump;
 	Layout.LevelText = FIntPoint(Width / 2, Height - 31 - 4);
 	return Layout;
 }

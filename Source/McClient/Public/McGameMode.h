@@ -59,6 +59,14 @@ public:
 	AMcWorldActor* GetOrCreateWorld(const FString& Dimension);
 	// Where new and returning players start, in the first world.
 	FTransform GetSpawnTransform() const;
+	// /tick: the target rate, and a freeze (kept for the session).
+	double TickRate = 20.0;
+	bool bTickFrozen = false;
+	FTimerHandle StepTimer;
+	void ApplyTickSpeed();
+	void SetTickRate(double Rate);
+	void SetTickFrozen(bool bFrozen);
+	void StepTicks(int32 Count);
 	// /defaultgamemode: what players who join (or respawn) after this start in; kept for the session.
 	void SetDefaultGameMode(const FString& NewMode);
 	FString DefaultGameModeOverride;

@@ -101,6 +101,14 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Ghast.bFlies = true;
 		Ghast.FireballKind = 1;
 		Ghast.HoverRange = 20.0;
+		// The wither (wither1.txt, normal difficulty, a summoned one, n=1 run): 300 hp (full for 1800 ticks, nobody hit it). It holds about 10 blocks from the
+		// player (one run; guess for the range), fires a skull from a side head about 1.3 either side of its middle, the second 45 ticks (gaps 31-62, 7 pairs) after
+		// the first, a pair every 239 ticks (6 gaps 226-247). Its box 0.9 x 3.5 and speed are the wiki's / guesses (box not logged), the 64 block shooting range is a
+		// guess. Its other attack (the blue skull, charging at half health), flying, armor, and the 220 tick spawn shield are NOT built.
+		FMcMobType& Wither = Add(TEXT("minecraft:wither"), 0.9f, 3.5f, 300.f, 0.6f, 0.f, 64.f, false, false);
+		Wither.bFlies = true;
+		Wither.FireballKind = 3;
+		Wither.HoverRange = 10.0;
 		FMcMobType& Blaze = Add(TEXT("minecraft:blaze"), 0.6f, 1.8f, 20.f, 0.23f, 6.f, 48.f, false, false);
 		Blaze.bFlies = true;
 		Blaze.FireballKind = 2;
@@ -1292,14 +1300,23 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		{
 			--FireCooldown;
 		}
-		const FVector From = Body.Position + FVector(0.0, Type.Height * 0.5, 0.0);
+		const double Side = (Type.FireballKind == 3) ? ((BurstLeft == 0) ? -1.3 : 1.3) : 0.0;
+		const FVector From = Body.Position + FVector(0.0, Type.Height * (Type.FireballKind == 3 ? 0.9 : 0.5), 0.0) + FVector(0.0, 0.0, 0.0)
+			+ (Type.FireballKind == 3 ? FVector(Side, 0.0, 0.0) : FVector::ZeroVector);
 		const FVector At = Target + FVector(0.0, 1.0, 0.0);
 		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Target.X - Body.Position.X), Target.Z - Body.Position.Z));
 		const auto Fire = [&]()
 		{
 			TUniquePtr<FMcFireball> Ball = MakeUnique<FMcFireball>();
 			Ball->Body.Position = From;
-			Ball->Launch(At - From, Type.FireballKind == 2);
+			if (Type.FireballKind == 3)
+			{
+				Ball->LaunchSkull(At - From);
+			}
+			else
+			{
+				Ball->Launch(At - From, Type.FireballKind == 2);
+			}
 			Manager.Add(MoveTemp(Ball));
 		};
 		if (FMath::Sqrt(PreyDistSq) <= (Type.FireballKind == 1 ? 64.0 : 48.0) && HasLineOfSight(World, From, At))
@@ -1307,7 +1324,12 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			if (FireCooldown <= 0)
 			{
 				Fire();
-				if (Type.FireballKind == 1)
+				if (Type.FireballKind == 3)
+				{
+					BurstLeft = (BurstLeft == 0) ? 1 : 0;
+					FireCooldown = (BurstLeft == 1) ? 45 : 239 - 45;
+				}
+				else if (Type.FireballKind == 1)
 				{
 					FireCooldown = Random.RandRange(60, 85);
 				}

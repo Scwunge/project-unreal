@@ -11,6 +11,7 @@
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McChunk.h"
+#include "McChunkSave.h"
 #include "McJavaExport.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
@@ -1101,6 +1102,50 @@ bool FMcJavaImportPlayerRealTest::RunTest(const FString& Parameters)
 		bOffHand |= Slot.Slot == 150;
 	}
 	TestTrue(TEXT("the off hand slot (150) is in the loaded player"), bOffHand);
+	McWorldSave::DeleteWorld(Folder);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportEndTest, "McClient.McServer.JavaImport.EndInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportEndTest::RunTest(const FString& Parameters)
+{
+	// The endref save (1070 only): a vanilla world whose End was visited, so it has End chunks.
+	const FString Source = TEXT("C:/mc-reference/run/saves/endref");
+	if (!McJavaImport::IsJavaWorld(Source))
+	{
+		AddInfo(TEXT("no endref save on this machine; skipped"));
+		return true;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportEnd"), Stats);
+	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	AddInfo(McJavaImport::Describe(Stats));
+	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
+	TArray<FString> End;
+	IFileManager::Get().FindFiles(End, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_end")) / TEXT("*.mcr")), true, false);
+	AddInfo(FString::Printf(TEXT("End region files: %d"), End.Num()));
+	TestTrue(TEXT("End regions imported"), End.Num() > 0);
+	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
+	TestEqual(TEXT("no unknown block states"), Stats.UnknownStates.Num(), 0);
+
+	// The End's chunks load: the island's centre has end stone and our two placed blocks are where they were put.
+	FMcDimensionType Type;
+	TestTrue(TEXT("End dimension type"), FMcDimensionType::Load(TEXT("minecraft:the_end"), Type));
+	FMcWorldStorage Storage(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_end")));
+	FMcChunk Chunk(FIntPoint(0, 0), Type.MinY, Type.Height / 16);
+	FMcChunkSaveExtras Extras;
+	TArray<uint8> Payload;
+	if (TestTrue(TEXT("chunk 0,0 is saved"), Storage.Load(FIntPoint(0, 0), Payload)) && TestTrue(TEXT("it decodes"), McChunkSave::Decode(Payload, Chunk, Extras)))
+	{
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		TestEqual(TEXT("purpur block where it was set"), Registry.GetBlockOf(Chunk.GetBlock(3, 75, 3)).Name, FName(TEXT("minecraft:purpur_block")));
+		TestEqual(TEXT("end rod above it"), Registry.GetBlockOf(Chunk.GetBlock(3, 76, 3)).Name, FName(TEXT("minecraft:end_rod")));
+	}
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }

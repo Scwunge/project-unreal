@@ -243,6 +243,19 @@ bool McMount::ClearRider(FMcEntity& Entity)
 
 FVector McMount::GetSeat(const FMcEntity& Entity)
 {
+	// The rider's feet above the mount's: horse from vehicle_log30 (player y -60.15625 on a floor at -61), the rest from vehicle_log31.
+	struct FSeat { const TCHAR* Type; double Height; };
+	static const FSeat Seats[] = {
+		{TEXT("minecraft:horse"), 0.84375}, {TEXT("minecraft:donkey"), 0.5125}, {TEXT("minecraft:mule"), 0.6125},
+		{TEXT("minecraft:pig"), 0.26875}, {TEXT("minecraft:strider"), 1.1}, {TEXT("minecraft:camel"), 1.4},
+	};
+	for (const FSeat& Seat : Seats)
+	{
+		if (Entity.GetType() == Seat.Type)
+		{
+			return Entity.Body.Position + FVector(0.0, Seat.Height, 0.0);
+		}
+	}
 	return Entity.Body.Position + FVector(0.0, Entity.Body.Height * 0.6875, 0.0);
 }
 

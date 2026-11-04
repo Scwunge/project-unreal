@@ -89,18 +89,31 @@ namespace
 		return FMcBlockRegistry::Get().FindState(Block, Properties).Get(0);
 	}
 
-	// A block a fluid pushes aside: nothing to collide with (air, plants, torches). A light block holds its ground against flowing water
-	// (reference run icemelt: they stayed waterlogged=false while melt water flowed around them). Other waterloggable blocks (signs,
-	// lava against anything) are NOT measured, so they behave as before.
+	// What flowing water and lava replace (reference run displace, 50 blocks beside a source): torches, redstone dust, levers and
+	// buttons, carpets, snow layers, pots, plants, fire, cobweb, repeaters, comparators, tripwire, and the end rod. They leave
+	// every block that can be waterlogged (signs, slabs, stairs, bars, panes, fences, trapdoors, chests, lanterns, candles,
+	// scaffolding, lights, barriers), and also rails, pressure plates, doors, hoppers, cauldrons and pots (those have a shape).
 	bool IsDisplaceable(FMcStateId State)
 	{
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		if (Registry.GetBlockOf(State).Name == TEXT("minecraft:light"))
+		if (Registry.IsAir(State))
+		{
+			return true;
+		}
+		if (FluidOf(State) != EMcFluid::None || Registry.GetPropertyValue(State, TEXT("waterlogged")) != NAME_None)
 		{
 			return false;
 		}
-		return Registry.IsAir(State) || (FluidOf(State) == EMcFluid::None && !FMcBlockShapes::Get().HasCollision(State) && !FMcBlockTags::Get().Has(TEXT("minecraft:climbable"), State)
-			&& !FMcBlockTags::Get().Has(TEXT("minecraft:portals"), State));
+		// These have a small shape but were still replaced (measured; not generalised to similar blocks).
+		const FString Name = Registry.GetBlockOf(State).Name.ToString();
+		if (Name == TEXT("minecraft:end_rod") || Name == TEXT("minecraft:repeater") || Name == TEXT("minecraft:comparator") || Name == TEXT("minecraft:flower_pot")
+			|| Name.EndsWith(TEXT("_carpet")))
+		{
+			return true;
+		}
+		const FMcBlockTags& Tags = FMcBlockTags::Get();
+		return !FMcBlockShapes::Get().HasCollision(State) && !Tags.Has(TEXT("minecraft:climbable"), State) && !Tags.Has(TEXT("minecraft:portals"), State)
+			&& !Tags.Has(TEXT("minecraft:rails"), State) && !Tags.Has(TEXT("minecraft:pressure_plates"), State);
 	}
 }
 

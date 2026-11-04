@@ -996,6 +996,14 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("food_full.png") : TEXT("food_half.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
 		}
 	}
+	for (const McGui::FBarIcon& Icon : Layout.Mount)
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("heart/vehicle_container.png")), Icon.Pos.X, Icon.Pos.Y, 9, 9);
+		if (Icon.Fill != McGui::EIcon::Empty)
+		{
+			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("heart/vehicle_full.png") : TEXT("heart/vehicle_half.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
+		}
+	}
 	if (Layout.bShowAir)
 	{
 		for (const McGui::FBarIcon& Icon : Layout.Air)
@@ -1003,8 +1011,19 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("air.png") : TEXT("air_bursting.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
 		}
 	}
-	DrawSprite(LoadSprite(Hud + TEXT("experience_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
-	if (Layout.XpFill > 0)
+	if (Layout.bShowJump)
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("jump_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
+		if (Layout.JumpFill > 0)
+		{
+			DrawRegion(LoadSprite(Hud + TEXT("jump_bar_progress.png")), Layout.XpBar.X, Layout.XpBar.Y, static_cast<float>(Layout.JumpFill), 5, 0, 0, static_cast<float>(Layout.JumpFill), 5);
+		}
+	}
+	else
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("experience_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
+	}
+	if (!Layout.bShowJump && Layout.XpFill > 0)
 	{
 		DrawRegion(LoadSprite(Hud + TEXT("experience_bar_progress.png")), Layout.XpBar.X, Layout.XpBar.Y, static_cast<float>(Layout.XpFill), 5, 0, 0, static_cast<float>(Layout.XpFill), 5);
 	}

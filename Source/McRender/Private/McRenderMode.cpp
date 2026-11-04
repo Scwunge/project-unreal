@@ -80,7 +80,8 @@ static void ApplyQuality()
 	const bool bRays = McRenderMode::IsRayTracing();
 	SetConsoleVariable(TEXT("r.Lumen.HardwareRayTracing"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Shadows"), bRays ? 1 : 0);
-	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), bRays ? 1 : 0);
+	// Off even with rays: ray traced translucency makes the water opaque and mirror-like (the bed no longer shows through).
+	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Reflections"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Geometry.ProceduralMeshes"), bRays ? 1 : 0);
 	if (!GEnhanced)

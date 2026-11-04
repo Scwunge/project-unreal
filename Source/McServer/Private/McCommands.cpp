@@ -1403,6 +1403,11 @@ namespace
 		FString Error;
 		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
 		{
+			// /damage takes an entity selector: a name nobody carries is "No entity was found" (the test's measured wording).
+			if (Error == McLang::Get(TEXT("argument.player.unknown")))
+			{
+				Error = McLang::Get(TEXT("argument.entity.notfound.entity"));
+			}
 			return { Fail(Error) };
 		}
 		TArray<FString> Hurt;

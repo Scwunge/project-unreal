@@ -1314,7 +1314,10 @@ Measured with the new `log fov <ticks>` verb (scripts/spy1.txt, spy2.txt on the 
 - `McBundle` (McItem): contents in `minecraft:bundle_contents`, newest first; item weight 1/max stack (bundle 1/16 + contents, bee-holding hive/nest 1), capacity one whole, no shulker boxes (rules from minecraft.wiki "Bundle").
 - Menu clicks (`FMcMenu::Pickup`): left click bundle on cursor onto a stack, or items on cursor onto a bundle, inserts; right click a bundle with an empty cursor takes the newest stack; right click an empty slot with a bundle on the cursor places the newest stack.
 - Using a held bundle throws the newest stack along the look (`ServerUseBundle`).
-- Open: fullness bar on the slot, tooltip, open/closed icon, sounds, bundle recipes/dyeing check, in-world throw check.
+- Fullness bar on the slot, fitted from vanilla ref run `bundle1.txt` (widths 1/4/7/10/12/13 for 1/16/32/48/63/64 of 64 sticks = floor(1+12f); blue 0x7087FF, red 0xFF5454 when full; shot compared pixel for pixel). Test McClient.McUI.
+- Sounds: insert/insert_fail/remove_one on menu clicks, drop_contents on throw; volumes from the wiki (0.8, failing 1.0), pitch 0.8 to 1.2 is a guess (not measured).
+- Recipes: string over leather and the dye transmutes work (McItemTest).
+- Open: tooltip (Empty/Full and the item grid), open/closed icon with the selected item, in-world throw check, pitch of the sounds.
 
 - Phantom swoop (atk1.txt, one 900-tick run, n=1; 2026-11-03): it circles the player within 12 blocks horizontally (mean 5.8), 1 to 28 above the feet (mean 9.5), mean speed 0.237, dive peak 0.59; close passes 155 to 232 ticks apart (mean 189, n=4). Built as circle (radius 6, offset 9 up, 0.05 rad/tick, speed 0.24) for 140-190 ticks then a 50-tick dive at 0.4, with a 900-tick test (at least 2 passes, climbs above 6). FITTED, not logged: orbit radius, rate, dive length. Dry-world rerun still wanted.
 - Shulker bullets (atk1.txt, not built yet): fire at ticks 0, 30, 140, 210, 290; homing, speed rising to about 0.15-0.41, life 42-88 ticks; hits cost 2.5, 2.5, 3, 3 hp (vanilla 4 plus levitation, unreconciled). Guardian beam: damage 6 matches the attribute; charge time and cadence unmeasured.

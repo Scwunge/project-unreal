@@ -78,6 +78,19 @@ McGui::FDurabilityBar McGui::GetDurabilityBar(int32 Damage, int32 MaxDamage)
 	return Bar;
 }
 
+McGui::FDurabilityBar McGui::GetBundleBar(double Fullness)
+{
+	FDurabilityBar Bar;
+	if (Fullness <= 0.0)
+	{
+		return Bar;
+	}
+	Bar.bShow = true;
+	Bar.Width = FMath::Clamp(FMath::FloorToInt32(1.0 + 12.0 * Fullness + 1.0e-9), 1, 13);
+	Bar.Color = Fullness >= 1.0 - 1.0e-9 ? 0xFF5454 : 0x7087FF;
+	return Bar;
+}
+
 bool McGui::ShowsCount(int32 Count)
 {
 	return Count != 1;

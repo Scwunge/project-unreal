@@ -223,6 +223,7 @@ bool FMcRecipeTest::RunTest(const FString& Parameters)
 	Dyeing[0].SetCustomName(TEXT("Mine"));
 	TestTrue(TEXT("dyeing a bundle (transmute)"), Book.FindCraftingMatch(Dyeing, 2, 2, Match) && Match.Result.Item == FName("minecraft:black_bundle"));
 	TestEqual(TEXT("it keeps its name"), Match.Result.GetCustomName(), FString(TEXT("Mine")));
+	TestTrue(TEXT("string over leather makes a bundle"), Book.FindCraftingMatch(Grid(2, { TEXT("minecraft:string"), TEXT(""), TEXT("minecraft:leather") }), 2, 2, Match) && Match.Result.Item == FName("minecraft:bundle"));
 
 	// Remainders: a cake leaves its buckets.
 	TArray<FMcItemStack> Cake = Grid(3, { TEXT("minecraft:milk_bucket"), TEXT("minecraft:milk_bucket"), TEXT("minecraft:milk_bucket"), TEXT("minecraft:sugar"), TEXT("minecraft:egg"), TEXT("minecraft:sugar"), TEXT("minecraft:wheat"), TEXT("minecraft:wheat"), TEXT("minecraft:wheat") });

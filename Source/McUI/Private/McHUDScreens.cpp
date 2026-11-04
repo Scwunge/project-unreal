@@ -2,6 +2,7 @@
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
 #include "Kismet/GameplayStatics.h"
+#include "McBundle.h"
 #include "McHUD.h"
 #include "McItemDefinition.h"
 #include "McTextComponent.h"
@@ -860,7 +861,8 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Pictur
 	}
 	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item == TEXT("minecraft:decorated_pot") && !McItemDef::UsesPackModels(Stack)
 		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y);
-	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
+	const McGui::FDurabilityBar Bar = McBundle::IsBundle(Stack.Item) ? McGui::GetBundleBar(McBundle::GetFullness(Stack))
+		: McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{
 		DrawFill(X + 2, Y + 13, 13, 2, FLinearColor::Black);

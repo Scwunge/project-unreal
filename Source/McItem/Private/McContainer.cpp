@@ -314,7 +314,9 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 	// newest stack, and a right click on an empty slot with a bundle on the cursor puts the newest stack there.
 	if (Button == 0 && !Carried.IsEmpty() && McBundle::IsBundle(Carried.Item) && !Stack.IsEmpty() && MayPickup(Slot))
 	{
-		if (McBundle::Insert(Carried, Stack) > 0)
+		const int32 Put = McBundle::Insert(Carried, Stack);
+		BundleSound = FName(Put > 0 ? "item.bundle.insert" : "item.bundle.insert_fail");
+		if (Put > 0)
 		{
 			SetStack(Slot, Stack);
 		}
@@ -322,7 +324,9 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 	}
 	if (Button == 0 && !Carried.IsEmpty() && !Stack.IsEmpty() && McBundle::IsBundle(Stack.Item) && MayPickup(Slot))
 	{
-		if (McBundle::Insert(Stack, Carried) > 0)
+		const int32 Put = McBundle::Insert(Stack, Carried);
+		BundleSound = FName(Put > 0 ? "item.bundle.insert" : "item.bundle.insert_fail");
+		if (Put > 0)
 		{
 			SetStack(Slot, Stack);
 		}
@@ -331,6 +335,7 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 	if (Button == 1 && Carried.IsEmpty() && !Stack.IsEmpty() && McBundle::IsBundle(Stack.Item) && MayPickup(Slot) && !McBundle::GetContents(Stack).IsEmpty())
 	{
 		Carried = McBundle::RemoveNewest(Stack);
+		BundleSound = FName("item.bundle.remove_one");
 		SetStack(Slot, Stack);
 		return;
 	}
@@ -340,6 +345,7 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 		if (MayPlace(Slot, Newest))
 		{
 			McBundle::RemoveNewest(Carried);
+			BundleSound = FName("item.bundle.remove_one");
 			SetStack(Slot, Newest);
 		}
 		return;

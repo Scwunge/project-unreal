@@ -580,6 +580,26 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("bossbar unknown"), First(TEXT("bossbar get nope value")), FString(TEXT("No bossbar exists with the ID 'minecraft:nope'")));
 	TestEqual(TEXT("bossbar remove"), First(TEXT("bossbar remove foo")), FString(TEXT("Removed custom bossbar [New]")));
 	TestEqual(TEXT("bossbar remove last"), First(TEXT("bossbar remove bar")), FString(TEXT("Removed custom bossbar [Bar Name]")));
+	// Measured against the game: /data (storage; entity Pos).
+	TestEqual(TEXT("data empty"), First(TEXT("data get storage test:a")), FString(TEXT("Storage test:a has the following contents: {}")));
+	TestEqual(TEXT("data merge"), First(TEXT("data merge storage test:a {x:1,y:\"hi\",z:[1,2,3],w:{a:1b,b:2.5d}}")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data get all"), First(TEXT("data get storage test:a")), FString(TEXT("Storage test:a has the following contents: {w: {a: 1b, b: 2.5d}, x: 1, y: \"hi\", z: [1, 2, 3]}")));
+	TestEqual(TEXT("data get path"), First(TEXT("data get storage test:a z[1]")), FString(TEXT("Storage test:a has the following contents: 2")));
+	TestEqual(TEXT("data get scaled"), First(TEXT("data get storage test:a w.b 2")), FString(TEXT("w.b in storage test:a after scale factor of 2.00 is 5")));
+	TestEqual(TEXT("data get none"), First(TEXT("data get storage test:a nope")), FString(TEXT("Found no elements matching nope")));
+	TestEqual(TEXT("data set"), First(TEXT("data modify storage test:a x set value 5")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data set same"), First(TEXT("data modify storage test:a x set value 5")), FString(TEXT("Nothing changed. The specified properties already have these values")));
+	First(TEXT("data modify storage test:a z append value 4"));
+	First(TEXT("data modify storage test:a z prepend value 0"));
+	First(TEXT("data modify storage test:a z insert 1 value 9"));
+	TestEqual(TEXT("data list ops"), First(TEXT("data get storage test:a z")), FString(TEXT("Storage test:a has the following contents: [0, 9, 1, 2, 3, 4]")));
+	First(TEXT("data modify storage test:a q set from storage test:a x"));
+	First(TEXT("data modify storage test:a w merge value {c:3}"));
+	TestEqual(TEXT("data merge value"), First(TEXT("data get storage test:a w")), FString(TEXT("Storage test:a has the following contents: {a: 1b, b: 2.5d, c: 3}")));
+	TestEqual(TEXT("data remove"), First(TEXT("data remove storage test:a y")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data remove again"), First(TEXT("data remove storage test:a y")), FString(TEXT("Nothing changed. The specified properties already have these values")));
+	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
+	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

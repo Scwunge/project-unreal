@@ -109,6 +109,10 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Wither.bFlies = true;
 		Wither.FireballKind = 3;
 		Wither.HoverRange = 10.0;
+		// The ender dragon (dragon1/2/6.txt, normal difficulty, one dragon each): 200 hp (read back); it flies a loose circuit round the middle of the island,
+		// see FMcMob::Tick for the fitted path. Box 16 x 8 is the wiki's, contact damage 6 / 10 / 15 on easy / normal / hard is the wiki's. NOT built: the end crystals and
+		// their healing, the perch, breath and charge, fireballs, the 10 hp from crystal blasts, the death sequence and the exit portal.
+		Add(TEXT("minecraft:ender_dragon"), 16.f, 8.f, 200.f, 0.7f, 0.f, 150.f, false, false).bDragon = true;
 		FMcMobType& Blaze = Add(TEXT("minecraft:blaze"), 0.6f, 1.8f, 20.f, 0.23f, 6.f, 48.f, false, false);
 		Blaze.bFlies = true;
 		Blaze.FireballKind = 2;
@@ -846,6 +850,40 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	if (bFrozen || bNoAI)
 	{
+		return;
+	}
+	if (Type.bDragon)
+	{
+		// dragon6.txt (4000 ticks after the crystals started a fight, sampled every 5 ticks, the player ignored): it came in at height 126 and settled to
+		// 65-79 (mean 71) by about tick 1000 (126 at 0, 96 at 375, 86 at 500, 82 at 625), and ranged 1 to 63 blocks from the middle of the island (mean 26),
+		// at a median 0.95 a tick (90th percentile 1.28). Modelled as drifting to a new random point (radius 0 to 55, height 71 +-6, settling from 126 over
+		// 1000 ticks) each time it gets within 8 blocks, turning gently towards it. The circuit is not otherwise measured (n=1 fight, coarse samples).
+		const double Settle = FMath::Max(0.0, 1.0 - Age / 1000.0);
+		if (Age == 1 || (Body.Position - DragonGoal).SizeSquared() < 64.0)
+		{
+			const double Angle = Random.FRandRange(0.0f, 2.0f * PI);
+			const double Radius = Random.FRandRange(0.0f, 55.0f);
+			DragonGoal = FVector(FMath::Cos(Angle) * Radius, 71.0 + 55.0 * Settle + Random.FRandRange(-6.0f, 6.0f), FMath::Sin(Angle) * Radius);
+		}
+		// Past 50 blocks out (63 was the farthest seen; it overshoots by ~12 turning) it is steered back in.
+		const bool bFar = FMath::Square(Body.Position.X) + FMath::Square(Body.Position.Z) > 50.0 * 50.0;
+		const FVector Want = ((bFar ? FVector(0.0, DragonGoal.Y, 0.0) : DragonGoal) - Body.Position).GetSafeNormal() * 0.95;
+		Body.Velocity = FMath::Lerp(Body.Velocity, Want, 0.1);
+		Body.Position += Body.Velocity;
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Body.Velocity.X, Body.Velocity.Z));
+		// Touching a player hurts them (the wiki's figures; the 20 tick gap is a guess).
+		if (AttackCooldown == 0)
+		{
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				if (FMath::Abs(Player.X - Body.Position.X) < 8.0 && FMath::Abs(Player.Z - Body.Position.Z) < 8.0 && Player.Y + 1.0 > Body.Position.Y && Player.Y < Body.Position.Y + 8.0)
+				{
+					Manager.HurtPlayer(Player, Manager.Difficulty <= 1 ? 6.0f : (Manager.Difficulty == 2 ? 10.0f : 15.0f));
+					AttackCooldown = 20;
+				}
+			}
+		}
+		LastPosition = Body.Position;
 		return;
 	}
 	if (Type.bIsFangs)

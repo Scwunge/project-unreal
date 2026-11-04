@@ -83,6 +83,8 @@ public:
 	// The doWeatherCycle rule: with it off the weather never changes by itself.
 	void SetWeatherCycle(bool bCycle);
 	void SetSnowAccumulation(int32 Layers);
+	// The sea level cold is measured from (63; a superflat world has -63).
+	void SetSeaLevel(int32 Level);
 	bool IsRainingAt(const FIntVector& Pos) const;
 
 	// Bone meal on the block at Pos: grows a sapling (45% of the time), a crop or stem, spreads grass over grass

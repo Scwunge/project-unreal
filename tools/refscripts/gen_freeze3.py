@@ -4,9 +4,12 @@
 #  c: stony_shore (0.2) with the floor at y=60, 100, 130, 160                   -- height
 SETS = {"a": [("snowy_plains", -61, 0), ("snowy_beach", -61, 0), ("stony_shore", -61, 0), ("taiga", -61, 0)],
         "b": [("snowy_plains", -61, 8), ("snowy_plains", -61, 11), ("snowy_plains", -61, 12), ("snowy_plains", -61, 15)],
+        "d": [("taiga", -61, 0), ("taiga", -10, 0), ("taiga", 30, 0), ("taiga", 60, 0)],
+        "e": [("taiga", 100, 0), ("taiga", 160, 0), ("taiga", 200, 0), ("taiga", 260, 0)],
+        "f": [("plains", 120, 0), ("plains", 180, 0), ("plains", 240, 0), ("plains", 300, 0)],
         "c": [("stony_shore", 60, 0), ("stony_shore", 100, 0), ("stony_shore", 130, 0), ("stony_shore", 160, 0)]}
 for key, CH in SETS.items():
-    L = ["cmd gamerule send_command_feedback false", "cmd gamemode spectator", "cmd execute in minecraft:overworld run tp @s 8 -50 8", "wait 200",
+    L = ["cmd gamerule send_command_feedback false", "cmd gamerule random_tick_speed 3", "cmd gamerule do_weather_cycle true", "cmd gamemode spectator", "cmd execute in minecraft:overworld run tp @s 8 -50 8", "wait 200",
          "cmd tick freeze", "wait 4"]
     for y in range(-60, 320, 15):
         L.append(f"cmd fill 0 {y} 0 63 {min(y+14, 319)} 15 air")

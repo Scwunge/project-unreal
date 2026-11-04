@@ -1569,7 +1569,17 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	{
 		if (Player->WasInputKeyJustPressed(Buttons[Button]) && !(bInside && Slot < 0) && !bTaken)
 		{
+			// Taking the cartography table's result uses up its inputs and plays ui.cartography_table.take_result.
+			const auto Inputs = [this]() { return Screen->Cartography ? Screen->Cartography->GetStack(FMcCartographyMenu::MapSlot).Count + Screen->Cartography->GetStack(FMcCartographyMenu::MaterialSlot).Count : 0; };
+			const int32 InputsBefore = Inputs();
 			Input.MouseDown(Slot, Button, bShift, Time);
+			if (Screen->Cartography && Slot == FMcCartographyMenu::ResultSlot && InputsBefore > 0 && Inputs() < InputsBefore)
+			{
+				FVector Eye = FVector::ZeroVector;
+				FRotator Look;
+				Player->GetPlayerViewPoint(Eye, Look);
+				FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(TEXT("ui.cartography_table.take_result")), McCoords::UnrealToBlock(Eye), 1.0f, 1.0f });
+			}
 		}
 		if (Player->WasInputKeyJustReleased(Buttons[Button]))
 		{

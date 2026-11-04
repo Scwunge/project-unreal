@@ -38,10 +38,9 @@ if (\$LASTEXITCODE -eq 0) {
 "RUN_DONE"
 EOF
 $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/run-package.ps1\"" < /tmp/run-package.ps1
-echo "Remove-Item '$WO\\package.log' -ErrorAction SilentlyContinue; Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','$WO\\run-package.ps1' -RedirectStandardOutput '$WO\\package.log' -RedirectStandardError '$WO\\package.err'" | ps
-echo "== started on the 1070, log $OUT/package.log"
-while sleep 30; do
-  $SSH "powershell -NoProfile -Command \"if (Test-Path $OUT/package.log) { Get-Content $OUT/package.log -Tail 3 }\"" 2>/dev/null | tail -2
-  $SSH "powershell -NoProfile -Command \"Select-String -Path $OUT/package.log -Pattern RUN_DONE -Quiet\"" 2>/dev/null | grep -q True && break
-done
+# Foreground ssh: Windows OpenSSH ends a session's children when it closes, so a Start-Process there dies (2026-11-04).
+echo "== running on the 1070 (keep this connection open), log $OUT/package.log"
+$SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\run-package.ps1 > $WO\package.log 2> $WO\package.err"
+echo "ssh ended: $?"
+$SSH "powershell -NoProfile -Command \"Select-String -Path $OUT/package.log -Pattern 'RUN_DONE' -Quiet\"" | grep -q True || echo "run did not finish: the connection dropped or the run died"
 $SSH "powershell -NoProfile -Command \"Select-String -Path $OUT/package.log -Pattern '_EXIT=|Mojang|failed|ERROR:' | Select -Last 12 | % Line\""

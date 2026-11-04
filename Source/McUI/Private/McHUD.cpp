@@ -322,6 +322,41 @@ const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 	return BannerIcons.Add(Key, MoveTemp(Icon));
 }
 
+const AMcHUD::FIcon& AMcHUD::GetShieldIcon(const FMcItemStack& Shield)
+{
+	// A shield with no base colour shows the bare wooden face; one with a colour, the tinted base.
+	FString Colour;
+	if (const TSharedPtr<FJsonValue> Value = Shield.Get(TEXT("minecraft:base_color")); Value.IsValid())
+	{
+		Value->TryGetString(Colour);
+	}
+	const FString Key = TEXT("shield|") + Colour;
+	if (const FIcon* Found = StackIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	UTexture2D* Texture = GetLayerTexture(FName(Colour.IsEmpty() ? TEXT("minecraft:entity/shield/shield_base_nopattern") : TEXT("minecraft:entity/shield/shield_base")));
+	// Corners measured on the vanilla slot (top left, top right, bottom right, bottom left), in GUI pixels; the front
+	// plate is the 13 by 23 texels at the corner of the 64 square sheet.
+	const FVector2D Corners[4] = { FVector2D(3.3, 0.4), FVector2D(10.6, 1.8), FVector2D(9.4, 15.6), FVector2D(2.1, 13.9) };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(13.0 / 64, 0), FVector2D(13.0 / 64, 23.0 / 64), FVector2D(0, 23.0 / 64) };
+	const FLinearColor Tint = Colour.IsEmpty() ? FLinearColor::White : McBanner::GetDyeColour(Colour);
+	for (const int32 First : { 0, 2 })
+	{
+		FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+		const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+		for (int32 I = 0; I < 3; ++I)
+		{
+			Triangle.Positions[I] = Corners[Indices[I]];
+			Triangle.UVs[I] = UVs[Indices[I]];
+		}
+		Triangle.Color = Tint;
+		Triangle.Texture = Texture;
+	}
+	return StackIcons.Add(Key, MoveTemp(Icon));
+}
+
 void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint)
 {
 	UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
@@ -697,6 +732,10 @@ const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
 	if (Stack.Item.ToString().EndsWith(TEXT("_banner")))
 	{
 		return GetBannerIcon(Stack);
+	}
+	if (Stack.Item == TEXT("minecraft:shield"))
+	{
+		return GetShieldIcon(Stack);
 	}
 	if (!McItemDef::UsesPackModels(Stack))
 	{

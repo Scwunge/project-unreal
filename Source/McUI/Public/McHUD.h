@@ -117,6 +117,9 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// The shield's slot picture (its model is special, with no flat texture): the front plate of the entity texture on the
+	// slanted quad the vanilla slot shows (ref run shieldhud).
+	const FIcon& GetShieldIcon(const FMcItemStack& Shield);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).

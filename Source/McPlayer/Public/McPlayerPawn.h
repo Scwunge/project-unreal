@@ -255,7 +255,7 @@ protected:
 	void ServerTryRide(FVector Look);
 	// A riding owner's keys (forward and strafe, as in FMcMoveInput) and where they look (the camera yaw), once a tick.
 	UFUNCTION(Server, Unreliable)
-	void ServerRideInput(float Forward, float Strafe, float LookYaw);
+	void ServerRideInput(float Forward, float Strafe, float LookYaw, bool bJump);
 	// A riding owner wants out.
 	UFUNCTION(Server, Reliable)
 	void ServerWantDismount();
@@ -356,6 +356,7 @@ private:
 	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.
 	float RideForward = 0.0f;
 	float RideStrafe = 0.0f;
+	bool bRideJump = false;
 	void ServerTickRiding();
 
 	// ---- Fishing (McPlayerFishing.cpp) ----

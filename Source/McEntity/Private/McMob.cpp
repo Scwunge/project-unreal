@@ -1,4 +1,5 @@
 #include "McMob.h"
+#include "McMount.h"
 #include "McVillager.h"
 #include "McArrow.h"
 #include "McPotion.h"
@@ -779,6 +780,12 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			return;
 		}
 		RidingId = 0;
+	}
+	// A saddled mount with a player on its back goes where they steer it (McMount.h).
+	if (Mount.IsValid() && McMount::TickRidden(Manager, *this))
+	{
+		LastPosition = Body.Position;
+		return;
 	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{

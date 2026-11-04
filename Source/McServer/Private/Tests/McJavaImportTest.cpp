@@ -1493,3 +1493,36 @@ bool FMcJavaExportHeightmapsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("our heightmaps are the game's"), Different, 0);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportRefSaveTest, "McClient.McServer.JavaExport.WriteRefSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
+{
+	// Imports the reference world importflat and writes it back as the save exportflat (1070 only), for opening in the
+	// vanilla client through ref.sh. Only its own output folder is replaced; no other save is touched.
+	const FString Source = TEXT("C:/mc-reference/run/saves/importflat");
+	const FString Target = TEXT("C:/mc-reference/run/saves/exportflat");
+	if (!McJavaImport::IsJavaWorld(Source))
+	{
+		AddInfo(TEXT("no importflat save on this machine; skipped"));
+		return true;
+	}
+	if (!LoadRegistries())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaExportRefSave"), Stats);
+	if (!TestFalse(TEXT("the import ran"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	IFileManager::Get().DeleteDirectory(*Target, false, true);
+	McJavaExport::FStats Out;
+	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(McWorldSave::GetWorldDir(Folder), Target, Out));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s"), Out.Chunks, Out.Regions, Out.Failed, *Target));
+	McWorldSave::DeleteWorld(Folder);
+	return true;
+}

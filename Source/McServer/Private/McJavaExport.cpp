@@ -390,6 +390,18 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	Add(Difficulty, TEXT("hardcore"), Int(0, EType::Byte));
 	Add(Difficulty, TEXT("locked"), Int(0, EType::Byte));
 	Add(Data, TEXT("difficulty_settings"), MoveTemp(Difficulty));
+	// Packs, as in a real 26.3 level.dat: the vanilla one enabled, the experimental ones disabled.
+	FMcNbt Packs = MakeTag(EType::Compound);
+	FMcNbt Enabled = MakeTag(EType::List);
+	Enabled.Values.Add(Str(TEXT("vanilla")));
+	FMcNbt Disabled = MakeTag(EType::List);
+	for (const TCHAR* Name : { TEXT("minecart_improvements"), TEXT("redstone_experiments"), TEXT("trade_rebalance") })
+	{
+		Disabled.Values.Add(Str(Name));
+	}
+	Add(Packs, TEXT("Enabled"), MoveTemp(Enabled));
+	Add(Packs, TEXT("Disabled"), MoveTemp(Disabled));
+	Add(Data, TEXT("DataPacks"), MoveTemp(Packs));
 	FMcNbt Root = MakeTag(EType::Compound);
 	Add(Root, TEXT("Data"), MoveTemp(Data));
 	TArray<uint8> Raw, Zipped;
@@ -399,5 +411,49 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 		return false;
 	}
 	Files.MakeDirectory(*OutFolder, true);
-	return FFileHelper::SaveArrayToFile(Zipped, *(OutFolder / TEXT("level.dat")));
+	if (!FFileHelper::SaveArrayToFile(Zipped, *(OutFolder / TEXT("level.dat"))))
+	{
+		return false;
+	}
+	// data/minecraft/world_gen_settings.dat: the seed and each dimension's generator. Without it the game stops with
+	// "Overworld settings missing" while loading the level (observed). Shape as in real 26.3 saves: every dimension has a
+	// type and a generator; ours are the noise generators with the standard presets.
+	auto Dimension = [](const TCHAR* Type, const TCHAR* Settings, const TCHAR* Preset)
+	{
+		FMcNbt Generator = MakeTag(EType::Compound);
+		Add(Generator, TEXT("settings"), Str(Settings));
+		FMcNbt Biomes = MakeTag(EType::Compound);
+		if (Preset)
+		{
+			Add(Biomes, TEXT("preset"), Str(Preset));
+		}
+		Add(Biomes, TEXT("type"), Str(Preset ? TEXT("minecraft:multi_noise") : TEXT("minecraft:the_end")));
+		Add(Generator, TEXT("biome_source"), MoveTemp(Biomes));
+		Add(Generator, TEXT("type"), Str(TEXT("minecraft:noise")));
+		FMcNbt Entry = MakeTag(EType::Compound);
+		Add(Entry, TEXT("generator"), MoveTemp(Generator));
+		Add(Entry, TEXT("type"), Str(Type));
+		return Entry;
+	};
+	FMcNbt Dimensions = MakeTag(EType::Compound);
+	Add(Dimensions, TEXT("minecraft:overworld"), Dimension(TEXT("minecraft:overworld"), TEXT("minecraft:overworld"), TEXT("minecraft:overworld")));
+	Add(Dimensions, TEXT("minecraft:the_nether"), Dimension(TEXT("minecraft:the_nether"), TEXT("minecraft:nether"), TEXT("minecraft:nether")));
+	Add(Dimensions, TEXT("minecraft:the_end"), Dimension(TEXT("minecraft:the_end"), TEXT("minecraft:end"), nullptr));
+	FMcNbt Settings = MakeTag(EType::Compound);
+	Add(Settings, TEXT("bonus_chest"), Int(0, EType::Byte));
+	Add(Settings, TEXT("seed"), Int(Level.Seed, EType::Long));
+	Add(Settings, TEXT("generate_structures"), Int(1, EType::Byte));
+	Add(Settings, TEXT("dimensions"), MoveTemp(Dimensions));
+	FMcNbt GenRoot = MakeTag(EType::Compound);
+	Add(GenRoot, TEXT("data"), MoveTemp(Settings));
+	Add(GenRoot, TEXT("DataVersion"), Int(DataVersion));
+	TArray<uint8> GenRaw, GenZipped;
+	GenRoot.WriteRoot(GenRaw);
+	if (!Compress(NAME_Gzip, GenRaw, GenZipped))
+	{
+		return false;
+	}
+	const FString DataFolder = OutFolder / TEXT("data") / TEXT("minecraft");
+	Files.MakeDirectory(*DataFolder, true);
+	return FFileHelper::SaveArrayToFile(GenZipped, *(DataFolder / TEXT("world_gen_settings.dat")));
 }

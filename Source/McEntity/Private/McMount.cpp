@@ -423,7 +423,10 @@ int32 McMount::ArmorPoints(FName Item)
 float McMount::ReduceDamage(const FMcMountState& State, float Damage)
 {
 	const float Armor = static_cast<float>(ArmorPoints(State.Armor));
-	const float Cut = FMath::Clamp(FMath::Max(Armor / 5.0f, Armor - Damage / 2.0f), 0.0f, 20.0f);
+	// Diamond armour carries toughness 2 and netherite 3 (vehicle_log35: a 10 hit left a horse 22.8 and 26.15, a 4 hit 27.5 and 28.81); the rest none.
+	const FString Name = State.Armor.ToString();
+	const float Toughness = Name.Contains(TEXT("netherite")) ? 3.0f : Name.Contains(TEXT("diamond")) ? 2.0f : 0.0f;
+	const float Cut = FMath::Clamp(FMath::Max(Armor / 5.0f, Armor - Damage / (2.0f + Toughness / 4.0f)), 0.0f, 20.0f);
 	return Damage * (1.0f - Cut / 25.0f);
 }
 

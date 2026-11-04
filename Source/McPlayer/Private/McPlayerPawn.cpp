@@ -1577,7 +1577,7 @@ void AMcPlayerPawn::ServerRideBoost_Implementation()
 	{
 		if (McMount::Boost(*Found) && Data && !Data->bCreative)
 		{
-			// The stick wears 7 a use (25 for the carrot, 100 for the fungus); worn out, it turns into a fishing rod.
+			// A use wears the carrot stick 7 of its 25 and the fungus stick 1 of its 100 (vehicle_log38); worn out, it turns into a fishing rod.
 			FMcItemStack& Stick = Data->Inventory->GetMutable(Data->SelectedSlot);
 			const bool bFungus = Stick.Item == TEXT("minecraft:warped_fungus_on_a_stick");
 			double Worn = 0.0;
@@ -1585,7 +1585,7 @@ void AMcPlayerPawn::ServerRideBoost_Implementation()
 			{
 				Old->TryGetNumber(Worn);
 			}
-			Worn += 7.0;
+			Worn += bFungus ? 1.0 : 7.0;
 			if (Worn >= (bFungus ? 100.0 : 25.0))
 			{
 				Stick = FMcItemStack(FName(TEXT("minecraft:fishing_rod")), 1);

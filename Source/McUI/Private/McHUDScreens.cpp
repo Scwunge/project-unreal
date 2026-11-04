@@ -1364,7 +1364,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			bDevRideDone = true;
 			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
 			{
-				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
+				User->RequestUseMob(FVector(0.0, -0.3, 1.0));
 			}
 		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).

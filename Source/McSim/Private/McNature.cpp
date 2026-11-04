@@ -207,8 +207,11 @@ const FMcNature::FBiomeInfo& FMcNature::InfoAt(const FIntVector& Pos) const
 
 float FMcNature::GetTemperature(const FIntVector& Pos) const
 {
-	// It falls by 0.00125 a block above y 80.
-	return InfoAt(Pos).Temperature - (Pos.Y > 80 ? (Pos.Y - 80) * 0.00125f : 0.0f);
+	// It falls by 0.00125 a block above 17 over the sea level. Reference runs freeze4a-e/f on a superflat (sea level -63):
+	// taiga (0.25) froze at y 60 and up, partly at 30, not at -10; stony shore (0.2) at 60 but not -61; plains (0.8) never,
+	// even at y 300. The 0.00125 and the 17 are from those fits, not read from a source.
+	const int32 Start = SeaLevel + 17;
+	return InfoAt(Pos).Temperature - (Pos.Y > Start ? (Pos.Y - Start) * 0.00125f : 0.0f);
 }
 
 FMcNature::EPrecipitation FMcNature::GetPrecipitation(const FIntVector& Pos) const

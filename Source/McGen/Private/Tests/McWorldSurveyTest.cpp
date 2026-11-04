@@ -1099,10 +1099,10 @@ bool FMcWorldStatsAtTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStatsTest, "McClient.McGen.NetherStats",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
 
-bool FMcNetherStatsTest::RunTest(const FString& Parameters)
+static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 {
 	FMcNoiseSettings Settings;
-	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
+	if (!Test.TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
 	{
 		return false;
 	}
@@ -1122,7 +1122,7 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove;
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
 		{
 			for (int32 PatchX = 0; PatchX < 8; ++PatchX)
@@ -1149,7 +1149,10 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 						FMcChunk* Nine[9];
 						Around(CX, CZ, Nine);
 						FMcGenRegion Region(FIntPoint(Corner.X - 1 + CX, Corner.Y - 1 + CZ), Nine);
-						Features.Decorate(Region, Seeds[SeedIndex]);
+						if (!bNoDecor)
+						{
+							Features.Decorate(Region, Seeds[SeedIndex]);
+						}
 					}
 				}
 				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
@@ -1170,6 +1173,10 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 									Band.SetNumZeroed(16);
 									++Band[Y >> 3];
 									++PerBiome.FindOrAdd(Biome + TEXT(" ") + Name);
+									if (Y >= 32 && Name == TEXT("minecraft:lava"))
+									{
+										++LavaAbove.FindOrAdd(Biome);
+									}
 								}
 							}
 						}
@@ -1183,20 +1190,38 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 			{
 				if (Pair.Value[Band] > 0)
 				{
-					AddInfo(FString::Printf(TEXT("NSTAT %d A %d %s %lld"), SeedIndex, Band, *Pair.Key, Pair.Value[Band]));
+					Test.AddInfo(FString::Printf(TEXT("NSTAT %d A %d %s %lld"), SeedIndex, Band, *Pair.Key, Pair.Value[Band]));
 				}
 			}
 		}
 		for (const TPair<FString, int64>& Pair : PerBiome)
 		{
-			AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : LavaAbove)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : Columns)
 		{
-			AddInfo(FString::Printf(TEXT("NSTAT %d C %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d C %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 	}
 	return true;
+}
+
+bool FMcNetherStatsTest::RunTest(const FString& Parameters)
+{
+	return RunNetherStats(*this, false);
+}
+
+// The same counts with terrain and carvers only (no decoration), to see which blocks the features add.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStatsTerrainTest, "McClient.McGen.NetherStatsTerrain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcNetherStatsTerrainTest::RunTest(const FString& Parameters)
+{
+	return RunNetherStats(*this, true);
 }
 
 // Deep dark counts at y -27 on a wide grid (-24576 + 384 * i, 128 * 128 points) for the five survey seeds and 25 more, to compare

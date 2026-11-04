@@ -138,6 +138,8 @@ public:
 	const FVector& GetAlarmPos() const { return AlarmPos; }
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
+	// The mob griefing game rule (endermen take blocks, villagers..): on unless the host says otherwise.
+	bool bMobGriefing = true;
 	// Where each player looks (unit vectors from their eyes, parallel to PlayerPositions); empty where the host doesn't know.
 	TArray<FVector> PlayerLooks;
 	// Whether nothing solid is over the block, so rain and sun reach it.

@@ -831,12 +831,9 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 	{
 		return;
 	}
-	// The same chunk gets the same animals for a seed, whenever it arrives. Unsigned, so the mixing wraps rather than
-	// overflowing.
-	const uint64 Mixed = static_cast<uint64>(Seed) * 31ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.X)) * 341873128712ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.Y)) * 132897987541ull;
-	FRandomStream Local(static_cast<int32>(static_cast<uint32>(Mixed)));
+	// The same chunk gets the same animals for a seed, whenever it arrives. The mix is our own (Unreal's hash combine), not the
+	// game's, so unvisited chunks of an old world may get other animals than they would have.
+	FRandomStream Local(static_cast<int32>(HashCombineFast(GetTypeHash(static_cast<int64>(Seed)), HashCombineFast(GetTypeHash(Chunk.X), GetTypeHash(Chunk.Y)))));
 	if (Local.FRand() > 0.10f)
 	{
 		return;
@@ -1011,6 +1008,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 	Manager.Difficulty = Rules.Difficulty;
+	Manager.bMobGriefing = Rules.bMobGriefing;
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;

@@ -59,6 +59,11 @@ public:
 	AMcWorldActor* GetOrCreateWorld(const FString& Dimension);
 	// Where new and returning players start, in the first world.
 	FTransform GetSpawnTransform() const;
+	// /defaultgamemode: what players who join (or respawn) after this start in; kept for the session.
+	void SetDefaultGameMode(const FString& NewMode);
+	FString DefaultGameModeOverride;
+	// /setworldspawn: kept for the session.
+	TOptional<FIntVector> WorldSpawnOverride;
 	// What a player left behind in a world with a save: the dimension, place and look they were last in. False if the world
 	// has nothing for them.
 	bool LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const;

@@ -281,6 +281,11 @@ if (k == 1.0)
     float3 zenith = float3(0.12, 0.3, 0.75);
     float3 skycol = lerp(horizon, zenith, saturate(r.z * 1.5)) * pow(b.x, 2.2) * SkyFactor;
     e += skycol * fres * WaterSky;
+    // Shore foam: the mesher puts 0.4 * (closeness to the water's edge) after the layer number in UV1.x, so a white fringe
+    // fades in over the last half block before the shore and breathes slowly.
+    float edge = saturate(frac(Layer.x + 0.001) / 0.4);
+    float foam = smoothstep(0.1, 1.0, edge) * (0.7 + 0.3 * sin(Time * 1.4 + Pos.x * 0.011 + Pos.y * 0.009));
+    e += float3(0.85, 0.92, 1.0) * pow(b.x, 2.2) * SkyFactor * foam * 1.6;
 }
 if (puddle > 0.01 && k != 1.0 && k < 9.0)
 {
@@ -605,7 +610,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
-                           "Time": (time, ""), "Pos": (absolute, ""),
+                           "Time": (time, ""), "Pos": (absolute, ""), "Layer": (uv1, ""),
                            "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), ""),
                            "View": (camera, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, ""), "Puddles": (puddles, ""),
                            "WaterSky": (add_scalar(material, -350, 1900, "WaterSky", 1.0), "")})

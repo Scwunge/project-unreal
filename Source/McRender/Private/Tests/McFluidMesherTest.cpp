@@ -2,6 +2,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McFluidMesher.h"
+#include "McRenderMode.h"
 #include "McSectionMesher.h"
 #include "Misc/AutomationTest.h"
 
@@ -223,6 +224,30 @@ bool FMcFluidMesherTest::RunTest(const FString& Parameters)
 		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
 		PlaceFluid(Snapshot, -1, 4, 4, Water);
 		TestTrue(TEXT("border water draws nothing"), BuildFluids(Snapshot, *Fluids, *Blocks).IsEmpty());
+	}
+	{
+		// Shore foam's edge flag rides on the layer number in Unreal Mode only. Vanilla keeps whole layer numbers; Unreal Mode
+		// adds up to 0.4, so the layer still truncates to itself and the vanilla sides stay as they were.
+		FMcSectionSnapshot Snapshot = EmptyFluidSnapshot();
+		PlaceFluid(Snapshot, 4, 4, 4, Water);
+		const bool bWasEnhanced = McRenderMode::IsEnhanced();
+		McRenderMode::SetEnhanced(false);
+		const FMcMeshBuffers Vanilla = BuildFluids(Snapshot, *Fluids, *Blocks).Passes[static_cast<int32>(EMcRenderPass::Water)];
+		McRenderMode::SetEnhanced(true);
+		const FMcMeshBuffers Enhanced = BuildFluids(Snapshot, *Fluids, *Blocks).Passes[static_cast<int32>(EMcRenderPass::Water)];
+		McRenderMode::SetEnhanced(bWasEnhanced);
+		bool bWhole = true, bSameLayers = Vanilla.UV1.Num() == Enhanced.UV1.Num(), bSameShape = Vanilla.Positions == Enhanced.Positions && Vanilla.Triangles == Enhanced.Triangles;
+		float MostEdge = 0.0f;
+		for (int32 Vertex = 0; Vertex < Vanilla.UV1.Num() && bSameLayers; ++Vertex)
+		{
+			bWhole &= Vanilla.UV1[Vertex].X == FMath::FloorToFloat(Vanilla.UV1[Vertex].X);
+			bSameLayers &= static_cast<uint16>(Enhanced.UV1[Vertex].X) == static_cast<uint16>(Vanilla.UV1[Vertex].X) && Enhanced.UV1[Vertex].Y == Vanilla.UV1[Vertex].Y;
+			MostEdge = FMath::Max(MostEdge, Enhanced.UV1[Vertex].X - Vanilla.UV1[Vertex].X);
+		}
+		TestTrue(TEXT("vanilla water layers are whole numbers"), bWhole);
+		TestTrue(TEXT("Unreal Mode water keeps its layers and surface kind"), bSameLayers);
+		TestTrue(TEXT("Unreal Mode water has the same shape"), bSameShape);
+		TestTrue(TEXT("a lone pond's top is all shore (when shore foam is on, else nothing is flagged)"), FMath::IsNearlyEqual(MostEdge, McFluidMesher::bShoreFoam ? 0.4f : 0.0f, 0.001f));
 	}
 	return true;
 }

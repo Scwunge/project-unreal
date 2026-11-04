@@ -47,6 +47,10 @@ public:
 	void StopMusic();
 	// The event of the track playing (or being decoded), or none.
 	FName GetMusic();
+	// /stopsound: stops sounds of a source ("" or "master" for all; "music", "record", or one named for the events it plays:
+	// "weather" weather.*, "block" block.*, "ambient" ambient.*, "ui" ui.*, "player" entity.player.*; the game's hostile, neutral and voice
+	// sources are not told apart by the event name, so those stop nothing) and, if Event is not none, only that event. Returns how many.
+	int32 StopSounds(const FString& Source, FName Event);
 
 	// The blocks the listener is in, for the mood sound and Unreal Mode's acoustics. Null when there is no world; set
 	// again with the player's view.
@@ -57,6 +61,7 @@ private:
 	struct FLive
 	{
 		TWeakObjectPtr<UAudioComponent> Component;
+		FName Event;
 		FVector Position = FVector::ZeroVector;
 		bool bPositional = false;
 		// The part of the world's ambience (rain, the cave): music-like, it ducks for a blast.

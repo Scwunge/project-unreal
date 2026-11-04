@@ -23,6 +23,7 @@
 #include "McWorldSave.h"
 #include "McLaunch.h"
 #include "McCommands.h"
+#include "McAudioSubsystem.h"
 #include "McItemRegistry.h"
 #include "McPot.h"
 #include "McLang.h"
@@ -1042,11 +1043,13 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		int32 KeptSlot = 0;
 		bool bKeep = false;
 		TOptional<FIntVector> Bed;
+		TOptional<FIntVector> Point;
 		if (const AMcPlayerPawn* Dead = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
 			if (Dead->Data)
 			{
 				Bed = Dead->Data->SpawnBed;
+				Point = Dead->Data->SpawnPoint;
 			}
 			bKeep = Dead->Data && Dead->GetGameRules().bKeepInventory;
 			if (bKeep)
@@ -1095,6 +1098,10 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 			{
 				bBedMissing = true;
 			}
+		}
+		if (!Bed.IsSet() && Point.IsSet())
+		{
+			Spawn.SetLocation(McCoords::BlockToUnreal(FVector(Point->X + 0.5, Point->Y, Point->Z + 0.5)));
 		}
 		RestartPlayerAtTransform(Who, Spawn);
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
@@ -1332,6 +1339,12 @@ bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& 
 	return false;
 }
 
+void AMcGameMode::SetDefaultGameMode(const FString& NewMode)
+{
+	// Kept for the session (not written to the world).
+	DefaultGameModeOverride = NewMode;
+}
+
 void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 {
 	if (!Pawn.Data || Pawn.Data->bCreative)
@@ -1340,7 +1353,7 @@ void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 		return;
 	}
 	// A dedicated server's gamemode setting is for everyone new, whatever the world was made with.
-	const FString Mode = GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
+	const FString Mode = !DefaultGameModeOverride.IsEmpty() ? DefaultGameModeOverride : GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
 		: WorldActor ? WorldActor->GetLevel().GameMode : FString();
 	if (McLaunch::IsCreativeMode(Mode))
 	{
@@ -1696,6 +1709,39 @@ namespace
 				World->SetBlock(Pos, State);
 			}
 		}
+		virtual void StopSounds(const FString& Player, const FString& Source, const FString& Sound) override
+		{
+			// This machine's own sounds (a player on another machine hears theirs).
+			if (UGameInstance* Instance = Mode.GetGameInstance())
+			{
+				if (UMcAudioSubsystem* Audio = Instance->GetSubsystem<UMcAudioSubsystem>())
+				{
+					FString Name = Sound;
+					Name.RemoveFromStart(TEXT("minecraft:"));
+					Audio->StopSounds(Source, Name.IsEmpty() ? NAME_None : FName(*Name));
+				}
+			}
+		}
+		virtual void SetWorldSpawn(const FIntVector& Pos) override
+		{
+			Mode.WorldSpawnOverride = Pos;
+		}
+		virtual void SetPlayerSpawn(const FString& Player, const FIntVector& Pos) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				if (Pawn->Data)
+				{
+					// A spawn point is one place: it replaces a bed, and a bed slept in later replaces it.
+					Pawn->Data->SpawnPoint = Pos;
+					Pawn->Data->SpawnBed.Reset();
+				}
+			}
+		}
+		virtual void SetDefaultGameMode(const FString& Mode_) override
+		{
+			Mode.SetDefaultGameMode(Mode_);
+		}
 		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override
 		{
 			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
@@ -1967,7 +2013,12 @@ FTransform AMcGameMode::GetSpawnTransform() const
 	const bool bWorld = WorldActor && WorldActor->GetBlockWorld();
 	const int32 SurfaceY = bWorld ? WorldActor->GetSurfaceY() : -61;
 	const FIntPoint Column = bWorld ? WorldActor->GetSpawnColumn() : FIntPoint::ZeroValue;
-	const FVector Block(Column.X + 0.5, SurfaceY + 1 + SpawnHeightAboveSurface, Column.Y + 0.5);
+	FVector Block(Column.X + 0.5, SurfaceY + 1 + SpawnHeightAboveSurface, Column.Y + 0.5);
+	if (WorldSpawnOverride.IsSet())
+	{
+		// /setworldspawn: the block's feet position.
+		Block = FVector(WorldSpawnOverride->X + 0.5, WorldSpawnOverride->Y, WorldSpawnOverride->Z + 0.5);
+	}
 	return FTransform(FRotator::ZeroRotator, McCoords::BlockToUnreal(Block));
 }
 

@@ -362,16 +362,28 @@ namespace
 		{
 			FMcGenRegion& Region = Context.Region;
 			FMcRandom& Random = Context.Random;
-			// The pool sits in the ground the origin stands over.
-			const int32 Floor = FindSolid(Region, Origin, -1, 6);
-			if (Floor == INDEX_NONE)
-			{
-				return false;
-			}
+			// Per the wiki's Delta page: every target block (here the one under the origin, so one layer for the whole
+			// pool) needs air above it and no horizontally adjacent air; the interior takes the contents and the
+			// edge the rim.
 			const int32 SX = Size.Sample(Random);
 			const int32 SZ = Size.Sample(Random);
 			const int32 RX = RimSize.Sample(Random);
 			const int32 RZ = RimSize.Sample(Random);
+			const auto Valid = [&](const FIntVector& Target)
+			{
+				if (!Region.IsAir(Region.GetBlock(Target + Up)))
+				{
+					return false;
+				}
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					if (Region.IsAir(Region.GetBlock(Target + Sides[Side])))
+					{
+						return false;
+					}
+				}
+				return true;
+			};
 			bool bPlaced = false;
 			for (int32 DX = -SX - RX; DX <= SX + RX; ++DX)
 			{
@@ -383,29 +395,10 @@ namespace
 					{
 						continue;
 					}
-					const FIntVector Column(Origin.X + DX, Origin.Y, Origin.Z + DZ);
-					const int32 Top = FindSolid(Region, Column, -1, 8);
-					if (Top == INDEX_NONE)
+					const FIntVector Target(Origin.X + DX, Origin.Y - 1, Origin.Z + DZ);
+					if (Valid(Target))
 					{
-						continue;
-					}
-					const FIntVector Surface(Column.X, Top, Column.Z);
-					if (Inner <= 1.0)
-					{
-						// Don't open the pool onto a drop.
-						bool bEnclosed = true;
-						for (int32 Side = 0; Side < 4 && bEnclosed; ++Side)
-						{
-							bEnclosed = !IsOpen(Region, Surface + Sides[Side] + Down);
-						}
-						if (bEnclosed)
-						{
-							bPlaced |= Region.SetBlock(Surface, Contents);
-						}
-					}
-					else if (!IsOpen(Region, Surface))
-					{
-						bPlaced |= Region.SetBlock(Surface, Rim);
+						bPlaced |= Region.SetBlock(Target, Inner <= 1.0 ? Contents : Rim);
 					}
 				}
 			}

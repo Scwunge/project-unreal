@@ -110,6 +110,9 @@ public:
 	// Plays a sounds.json event for everyone, at a position in blocks (volume over 1 carries further).
 	virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) {}
 
+	// /setworldspawn and /spawnpoint, at a block (the feet position of where players come back).
+	virtual void SetWorldSpawn(const FIntVector& Pos) {}
+	virtual void SetPlayerSpawn(const FString& Player, const FIntVector& Pos) {}
 	// /defaultgamemode: what new players start in.
 	virtual void SetDefaultGameMode(const FString& Mode) {}
 	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).

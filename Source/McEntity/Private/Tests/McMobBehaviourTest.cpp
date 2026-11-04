@@ -1,5 +1,6 @@
 #include "McArrow.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
@@ -509,23 +510,59 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
 	}
-	for (const bool bLooking : { true, false })
 	{
-		// An enderman stares back only when the player's look falls on its eyes (ender2.txt: stared at it teleported at once, looked away from it stood).
-		FMcBlockWorld World{FMcDimensionType()};
-		MakeFlatWorld(World, Stone);
-		FMcEntityManager Manager(World);
-		Manager.Difficulty = 2;
-		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
-		FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
-		const FVector Eye(10.5, 2.62, 20.5);
-		Manager.PlayerLooks = { bLooking ? (FVector(10.5, 1.0 + 2.9 * 0.88, 10.5) - Eye).GetSafeNormal() : FVector(0.0, 0.0, 1.0) };
-		for (int32 Tick = 0; Tick < 40; ++Tick)
+		// An enderman is angered by a player whose view stays on its eyes (ender13/14.txt): aimed at them, 1 block off them, and looking away.
+		const FVector Player(10.5, 1.0, 20.5);
+		const FVector Eyes(10.5, 1.0 + 2.9 * 0.879, 10.5);
+		const FVector ToEyes = Eyes - (Player + FVector(0.0, 1.62, 0.0));
+		const FVector Looks[3] = { ToEyes.GetSafeNormal(), (ToEyes + FVector(0.0, 1.0, 0.0)).GetSafeNormal(), FVector(0.0, 0.0, 1.0) };
+		const bool bExpected[3] = { true, false, false };
+		for (int32 Case = 0; Case < 3; ++Case)
 		{
-			Manager.Tick();
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.PlayerPositions = { Player };
+			Manager.PlayerLooks = { Looks[Case] };
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 8; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(*FString::Printf(TEXT("stare case %d"), Case), Enderman->AngerTicks > 0, bExpected[Case]);
 		}
-		const bool bMoved = FVector::Dist(Enderman->Body.Position, FVector(10.5, 1.0, 10.5)) > 1.0;
-		TestEqual(bLooking ? TEXT("an enderman stared at comes for the player") : TEXT("an enderman not looked at stays"), bMoved, bLooking);
+	}
+	{
+		// An enderman among flowers at its feet takes one (ender6.txt: all three did within about 600 ticks) and takes none with mob griefing off.
+		for (const bool bGriefing : { true, false })
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.bMobGriefing = bGriefing;
+			Manager.PlayerPositions = { FVector(10.5, 1.0, 22.5) };
+			const FMcStateId Flower = FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:dandelion")).Get(0);
+			for (int32 X = -14; X < 30; ++X)
+			{
+				for (int32 Z = -14; Z < 30; ++Z)
+				{
+					World.SetBlock(FIntVector(X, 1, Z), Flower);
+				}
+			}
+			FMcBlockTags& Tags = FMcBlockTags::Get();
+			TestTrue(TEXT("tags load"), Tags.EnsureLoaded());
+			TestTrue(TEXT("the holdable tag exists"), Tags.Find(TEXT("minecraft:enderman_holdable")) != INDEX_NONE);
+			TestTrue(TEXT("a dandelion is holdable"), Tags.Has(Tags.Find(TEXT("minecraft:enderman_holdable")), Flower));
+			TestTrue(TEXT("a dandelion has no collision"), !FMcBlockShapes::Get().HasCollision(Flower));
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 1500; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(bGriefing ? TEXT("an enderman in flowers picks one") : TEXT("with griefing off it takes nothing"), Enderman->Carried.IsSet(), bGriefing);
+		}
 	}
 	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
 	{

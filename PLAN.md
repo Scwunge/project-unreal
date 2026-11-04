@@ -90,7 +90,7 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
       bright blue (they are unlit particles), so lit rain still needs their material to take the sky factor.
     - Still open: the ray tracing path on a DX12 RTX machine (untested; the 1070 is DX11), forest-scale fps at Medium on
       the 1070, a generated (not block-built) ocean, and the roadmap items not started: lit rain and snow, lightning that
-      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields), caustics and underwater fog.
+      lights the scene, wind interaction with mobs, Lumen beyond the screen (distance fields). (Caustics and underwater fog are done: see "Caustics visible" and the underwater fog in `UMcSkyComponent`; checked 2026-11-04.)
     - `-McShot` now waits for the shaders still compiling (up to 3 minutes) before saving: a changed translucent
       material is skipped until compiled, which made new water look missing in shots.
     - Lumen traces the screen only, because the procedural meshes have no distance fields.

@@ -8,6 +8,9 @@
 #include "McBlockRegistry.h"
 #include "McBiomeRegistry.h"
 #include "McDimensionType.h"
+#include "McGenRegion.h"
+#include "McBlockTags.h"
+#include "McBlockShapes.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -123,7 +126,7 @@ void McJavaExport::PackIndices(TConstArrayView<int32> Indexes, int32 Bits, TArra
 	}
 }
 
-void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out)
+void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate)
 {
 	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
 	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
@@ -133,7 +136,7 @@ void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out)
 	Add(Out, TEXT("zPos"), Int(Chunk.GetPos().Y));
 	Add(Out, TEXT("yPos"), Int(Chunk.GetMinY() / McCoords::SectionSize));
 	Add(Out, TEXT("Status"), Str(TEXT("minecraft:full")));
-	Add(Out, TEXT("LastUpdate"), Int(0, EType::Long));
+	Add(Out, TEXT("LastUpdate"), Int(LastUpdate, EType::Long));
 	Add(Out, TEXT("InhabitedTime"), Int(0, EType::Long));
 	// The game relights a chunk that says its light isn't on.
 	Add(Out, TEXT("isLightOn"), Int(0, EType::Byte));
@@ -207,6 +210,51 @@ void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out)
 	}
 	Add(Out, TEXT("sections"), MoveTemp(Sections));
 	Add(Out, TEXT("block_entities"), MakeTag(EType::List));
+	// Heightmaps (observed in a real 26.3 save): four long arrays, each column's height above the world's bottom in
+	// 9 bits, 7 to a long, columns in z then x order.
+	FMcNbt Heightmaps = MakeTag(EType::Compound);
+	FMcBlockTags::Get().EnsureLoaded();
+	FMcBlockShapes::Get().EnsureLoaded();
+	FMcChunk* Middle = const_cast<FMcChunk*>(&Chunk);
+	FMcChunk* Nine[9] = {};
+	Nine[4] = Middle;
+	FMcGenRegion Region(Chunk.GetPos(), Nine);
+	const struct { const TCHAR* Name; EMcHeightmap Map; } Maps[] = {
+		{ TEXT("OCEAN_FLOOR"), EMcHeightmap::OceanFloor },
+		{ TEXT("MOTION_BLOCKING_NO_LEAVES"), EMcHeightmap::MotionBlockingNoLeaves },
+		{ TEXT("MOTION_BLOCKING"), EMcHeightmap::MotionBlocking },
+		{ TEXT("WORLD_SURFACE"), EMcHeightmap::WorldSurface },
+	};
+	for (const auto& Entry : Maps)
+	{
+		TArray<int32> Columns;
+		Columns.SetNumUninitialized(256);
+		for (int32 Z = 0; Z < 16; ++Z)
+		{
+			for (int32 X = 0; X < 16; ++X)
+			{
+				Columns[Z * 16 + X] = Region.GetHeight(Entry.Map, Chunk.GetPos().X * 16 + X, Chunk.GetPos().Y * 16 + Z) - Chunk.GetMinY();
+			}
+		}
+		TArray<int64> Longs;
+		PackIndices(Columns, 9, Longs);
+		Add(Heightmaps, Entry.Name, LongArray(Longs));
+	}
+	Add(Out, TEXT("Heightmaps"), MoveTemp(Heightmaps));
+	// Structures: none are kept; the game wants both keys. Pending ticks: none are kept. PostProcessing: one list per
+	// section, empty.
+	FMcNbt Structures = MakeTag(EType::Compound);
+	Add(Structures, TEXT("References"), MakeTag(EType::Compound));
+	Add(Structures, TEXT("starts"), MakeTag(EType::Compound));
+	Add(Out, TEXT("structures"), MoveTemp(Structures));
+	Add(Out, TEXT("block_ticks"), MakeTag(EType::List));
+	Add(Out, TEXT("fluid_ticks"), MakeTag(EType::List));
+	FMcNbt PostProcessing = MakeTag(EType::List);
+	for (int32 Section = 0; Section < Chunk.NumSections(); ++Section)
+	{
+		PostProcessing.Values.Add(MakeTag(EType::List));
+	}
+	Add(Out, TEXT("PostProcessing"), MoveTemp(PostProcessing));
 }
 
 void McJavaExport::MakeRegion(const TMap<FIntPoint, TArray<uint8>>& Chunks, TArray<uint8>& OutFile)
@@ -291,7 +339,7 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 					continue;
 				}
 				FMcNbt Root;
-				MakeChunk(Chunk, Root);
+				MakeChunk(Chunk, Root, static_cast<int64>(Level.DayTime));
 				TArray<uint8> Bytes;
 				Root.WriteRoot(Bytes);
 				Chunks.Add(Pos, MoveTemp(Bytes));

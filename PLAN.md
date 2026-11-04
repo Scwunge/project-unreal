@@ -607,3 +607,5 @@ cave: 252 px differ (17x16 box, a particle). end: identical. village/forest/shor
 Scene-free snowy flat (-McFlatPreset=minecraft:snowy_kingdom, no -McScene: scenes overwrite the biome so you get rain). Flakes show at night
 against a dim blue ground; they are unlit so they read a little bright. Acceptable; a dimmer night flake tint is a possible follow-up.
 Done: flake tone is now max(0.1, skylight^0.85) instead of sqrt(skylight) (McWeatherComponent.cpp), so night flakes are dim; shot snown_night4 (before: snown_night3). Day unchanged (factor 1).
+Nether vanilla re-check: two HEAD shots of the same Nether scene differ from each other (max 45, 4146 px >8, mean 0.11), so the earlier HEAD-vs-baseline Nether difference (mean 0.56) is
+run-to-run noise in the lower half (light updates / world state), not a vanilla regression.

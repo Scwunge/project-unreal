@@ -112,6 +112,52 @@ UMaterialInstanceDynamic* UMcParticleComponent::EnsureGlitter()
 	return GlitterMaterial;
 }
 
+UMaterialInstanceDynamic* UMcParticleComponent::EnsureCosySmoke()
+{
+	if (CosyMaterial && CosyMaterial->Parent == McRenderMode::Pick(SpriteBase.Get()))
+	{
+		return CosyMaterial;
+	}
+	if (bCosyFailed || !SpriteBase)
+	{
+		return nullptr;
+	}
+	if (!CosySheet)
+	{
+		constexpr int32 Frame = 16;
+		TArray<FColor> Strip;
+		Strip.Init(FColor(0, 0, 0, 0), Frame * CosyFrames * Frame);
+		for (int32 Index = 0; Index < CosyFrames; ++Index)
+		{
+			TArray<FColor> Pixels;
+			int32 Width = 0, Height = 0;
+			const FString Path = McCache::Asset(FString::Printf(TEXT("textures/particle/big_smoke_%d.png"), Index));
+			if (!McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width != Frame || Height != Frame)
+			{
+				UE_LOG(LogMcRender, Error, TEXT("Can't use %s (a 16x16 png); campfire smoke stays hidden"), *Path);
+				bCosyFailed = true;
+				return nullptr;
+			}
+			for (int32 Y = 0; Y < Frame; ++Y)
+			{
+				for (int32 X = 0; X < Frame; ++X)
+				{
+					Strip[Y * Frame * CosyFrames + Index * Frame + X] = Pixels[Y * Frame + X];
+				}
+			}
+		}
+		CosySheet = McRenderTextures::MakeArray(this, Strip, Frame * CosyFrames, Frame);
+		if (!CosySheet)
+		{
+			bCosyFailed = true;
+			return nullptr;
+		}
+	}
+	CosyMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(SpriteBase.Get()), this);
+	CosyMaterial->SetTextureParameterValue(TEXT("Blocks"), CosySheet);
+	return CosyMaterial;
+}
+
 UMcParticleComponent* UMcParticleComponent::FindFor(const FMcBlockWorld* InWorld)
 {
 	for (const TWeakObjectPtr<UMcParticleComponent>& Live : GetLive())
@@ -519,11 +565,8 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		{
 			Say(TEXT("block.campfire.crackle"), 0.5f + Random.FRand(), Random.FRand() * 0.7f + 0.6f);
 		}
-		if (Random.RandRange(0, 9) < (bUnreal ? 6 : 3))
-		{
-			// Over a hay bale the smoke is the signal's: it climbs for three times as long (vanilla shot ref_camp_b).
-			Smoke(Centre + FVector(Random.FRandRange(-0.33f, 0.33f), 0.0, Random.FRandRange(-0.33f, 0.33f)), true, FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("signal_fire")) == TEXT("true"));
-		}
+		// Its smoke is made every tick for the campfires found so far (TickCampfires).
+		Campfires.Add(Pos);
 		if (Random.RandRange(0, 4) == 0)
 		{
 			Flame(Centre + FVector(Random.FRandRange(-0.3f, 0.3f), -0.1, Random.FRandRange(-0.3f, 0.3f)), Emitters[State] == EEmitter::SoulCampfire);
@@ -651,6 +694,40 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 	}
 }
 
+void UMcParticleComponent::TickCampfires()
+{
+	for (auto It = Campfires.CreateIterator(); It; ++It)
+	{
+		const FIntVector Pos = *It;
+		const FMcStateId State = World->GetBlock(Pos);
+		if (!Emitters.IsValidIndex(State) || (Emitters[State] != EEmitter::Campfire && Emitters[State] != EEmitter::SoulCampfire))
+		{
+			It.RemoveCurrent();
+			continue;
+		}
+		// Rising at 0.0717 a tick without slowing (the signal column of vanilla run camp_a, built 205 ticks before the shot, stood
+		// 14.7 blocks tall); a plain campfire's column tops out near 7 blocks (camp_b), so its puffs live about 90 ticks.
+		// The rest (the odds, the spread, the size, how many puffs) is fitted by eye to those shots.
+		if (FVector::DistSquared(FVector(Pos), CameraBlock) > 64.0 * 64.0 || Random.FRand() >= 0.11f)
+		{
+			continue;
+		}
+		const bool bSignal = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("signal_fire")) == TEXT("true");
+		const int32 Puffs = Random.RandRange(2, 3);
+		for (int32 Puff = 0; Puff < Puffs; ++Puff)
+		{
+			const FVector At = FVector(Pos) + FVector(0.5 + Random.FRandRange(-0.33f, 0.33f), 0.5 + Random.FRand() * 0.5, 0.5 + Random.FRandRange(-0.33f, 0.33f));
+			FParticle& Smoke = Add(EStyle::BigSmoke, At, FVector(0.0, 0.0717, 0.0));
+			Smoke.Gravity = 0.0f;
+			Smoke.Friction = 1.0f;
+			Smoke.Life = bSignal ? Random.FRandRange(280.0f, 330.0f) : Random.FRandRange(80.0f, 100.0f);
+			Smoke.Size = Random.FRandRange(0.25f, 0.45f);
+			Smoke.Phase = static_cast<float>(Random.RandRange(0, CosyFrames - 1));
+			Smoke.Light = FVector2f(SkyLightAt(Pos), 0.6f);
+		}
+	}
+}
+
 void UMcParticleComponent::Step()
 {
 	for (int32 Index = Particles.Num() - 1; Index >= 0; --Index)
@@ -665,6 +742,12 @@ void UMcParticleComponent::Step()
 			continue;
 		}
 		Particle.Velocity.Y -= Particle.Gravity;
+		if (Particle.Style == EStyle::BigSmoke)
+		{
+			// A campfire's smoke wanders a little sideways.
+			Particle.Velocity.X += Random.FRand() / 5000.0f * (Random.RandRange(0, 1) ? 1.0f : -1.0f);
+			Particle.Velocity.Z += Random.FRand() / 5000.0f * (Random.RandRange(0, 1) ? 1.0f : -1.0f);
+		}
 		if (Particle.Style == EStyle::Leaf && !Particle.bOnGround)
 		{
 			// Swinging side to side as it falls.
@@ -729,6 +812,20 @@ void UMcParticleComponent::Draw(float Partial)
 		TArray<FColor> Colours;
 		TArray<int32> Triangles;
 	} Sprites;
+	struct
+	{
+		TArray<FVector> Positions;
+		TArray<FVector> Normals;
+		TArray<FVector2D> UV0, UV1, UV2;
+		TArray<FColor> Colours;
+		TArray<int32> Triangles;
+	} Cosy;
+	UMaterialInstanceDynamic* CosySprites = EnsureCosySmoke();
+	if (CosySprites)
+	{
+		CosySprites->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		CosySprites->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+	}
 	UMaterialInstanceDynamic* GlitterSprites = EnsureGlitter();
 	if (GlitterSprites)
 	{
@@ -813,8 +910,9 @@ void UMcParticleComponent::Draw(float Partial)
 			Colour = Mix(Colour, FColor(190, 205, 230), T * T);
 			break;
 		case EStyle::BigSmoke:
-			Size *= (1.0f + T * 1.2f) * FMath::Clamp((1.0f - T) * 2.0f, 0.0f, 1.0f);
-			Colour = Mix(Colour, FColor(190, 205, 230), T);
+			// Same size for most of its life, then it thins away.
+			Size *= FMath::Clamp((1.0f - T) * 5.0f, 0.0f, 1.0f);
+			Colour = FColor::White;
 			break;
 		}
 		if (Size <= 0.001f)
@@ -872,6 +970,26 @@ void UMcParticleComponent::Draw(float Partial)
 		const double Half = Size * McCoords::UnitsPerBlock;
 		const FVector Corners[4] = { -Right + Up, -Right - Up, Right - Up, Right + Up };
 		const FVector2D CornerUV[4] = { FVector2D(0, 0), FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0) };
+		if (Particle.Style == EStyle::BigSmoke)
+		{
+			if (!CosySprites)
+			{
+				continue;
+			}
+			const int32 Frame = FMath::Clamp(static_cast<int32>(Particle.Phase), 0, CosyFrames - 1);
+			const int32 SpriteFirst = Cosy.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Cosy.Positions.Add(Centre + Corners[Corner] * Half);
+				Cosy.Normals.Add(ViewFacing);
+				Cosy.UV0.Add(FVector2D((Frame + CornerUV[Corner].X) / CosyFrames, CornerUV[Corner].Y));
+				Cosy.UV1.Add(FVector2D::ZeroVector);
+				Cosy.UV2.Add(FVector2D(Particle.Light));
+				Cosy.Colours.Add(Colour);
+			}
+			Cosy.Triangles.Append({ SpriteFirst, SpriteFirst + 1, SpriteFirst + 2, SpriteFirst, SpriteFirst + 2, SpriteFirst + 3 });
+			continue;
+		}
 		if (Particle.Style == EStyle::Totem)
 		{
 			if (!GlitterSprites)
@@ -915,6 +1033,11 @@ void UMcParticleComponent::Draw(float Partial)
 	{
 		SetMaterial(1, GlitterSprites);
 	}
+	CreateMeshSection(2, Cosy.Positions, Cosy.Triangles, Cosy.Normals, Cosy.UV0, Cosy.UV1, Cosy.UV2, TArray<FVector2D>(), Cosy.Colours, TArray<FProcMeshTangent>(), false);
+	if (CosySprites && GetMaterial(2) != CosySprites)
+	{
+		SetMaterial(2, CosySprites);
+	}
 }
 
 void UMcParticleComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -937,6 +1060,7 @@ void UMcParticleComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 	{
 		TickTime -= 1.0;
 		Ambient();
+		TickCampfires();
 		Step();
 	}
 	Draw(static_cast<float>(TickTime));

@@ -1572,6 +1572,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			// Taking the cartography table's result uses up its inputs and plays ui.cartography_table.take_result.
 			const auto Inputs = [this]() { return Screen->Cartography ? Screen->Cartography->GetStack(FMcCartographyMenu::MapSlot).Count + Screen->Cartography->GetStack(FMcCartographyMenu::MaterialSlot).Count : 0; };
 			const int32 InputsBefore = Inputs();
+			Input.GetMenu().SetBundlePick(Slot == BundleSelectedSlot ? BundleSelected : -1);
 			Input.MouseDown(Slot, Button, bShift, Time);
 			if (Screen->Cartography && Slot == FMcCartographyMenu::ResultSlot && InputsBefore > 0 && Inputs() < InputsBefore)
 			{

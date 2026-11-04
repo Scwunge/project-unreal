@@ -1003,3 +1003,104 @@ bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportTradesTest, "McClient.McServer.JavaImport.TradesInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportTradesTest::RunTest(const FString& Parameters)
+{
+	// The playerref save (1070 only) has a farmer with an Offers recipe: the field names the importer reads are the ones in it
+	// (a fresh recipe has maxUses buy sell xp uses priceMultiplier; demand and buyB appear only when they apply).
+	const FString Folder = TEXT("C:/mc-reference/run/saves/playerref/dimensions/minecraft/overworld/entities");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Folder / TEXT("*.mca")), true, false);
+	if (Files.IsEmpty())
+	{
+		AddInfo(TEXT("no playerref save on this machine; skipped"));
+		return true;
+	}
+	int32 Found = 0;
+	for (const FString& File : Files)
+	{
+		TArray<uint8> Region;
+		if (!FFileHelper::LoadFileToArray(Region, *(Folder / File)))
+		{
+			continue;
+		}
+		for (int32 Slot = 0; Slot < 1024; ++Slot)
+		{
+			TArray<uint8> Bytes;
+			bool bMissing = false;
+			FMcNbt Root;
+			if (!McJavaImport::ReadChunkBytes(Region, Slot % 32, Slot / 32, Folder, 0, 0, Bytes, bMissing) || !FMcNbt::Parse(Bytes, Root))
+			{
+				continue;
+			}
+			const FMcNbt* List = Root.Find(TEXT("Entities"));
+			if (!List)
+			{
+				List = Root.Find(TEXT("entities"));
+			}
+			if (!List)
+			{
+				continue;
+			}
+			for (const FMcNbt& Entity : List->Values)
+			{
+				const FMcNbt* Offers = Entity.Find(TEXT("Offers"));
+				const FMcNbt* Recipes = Offers ? Offers->Find(TEXT("Recipes")) : nullptr;
+				if (!Recipes || Recipes->Values.IsEmpty())
+				{
+					continue;
+				}
+				++Found;
+				const FMcNbt& Recipe = Recipes->Values[0];
+				FString Keys;
+				for (const FString& Key : Recipe.Keys)
+				{
+					Keys += Key + TEXT(" ");
+				}
+				AddInfo(FString::Printf(TEXT("%s: %d recipes, first has: %s"), *Entity.GetString(TEXT("id")), Recipes->Values.Num(), *Keys));
+				for (const TCHAR* Key : { TEXT("buy"), TEXT("sell"), TEXT("uses"), TEXT("maxUses"), TEXT("xp"), TEXT("priceMultiplier") })
+				{
+					TestNotNull(*FString::Printf(TEXT("recipe has %s"), Key), Recipe.Find(Key));
+				}
+			}
+		}
+	}
+	TestTrue(TEXT("a villager with offers was found"), Found > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportPlayerRealTest, "McClient.McServer.JavaImport.PlayerInRealSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportPlayerRealTest::RunTest(const FString& Parameters)
+{
+	// The playerref save (1070 only): what the importer made of its player file.
+	const FString Source = TEXT("C:/mc-reference/run/saves/playerref");
+	if (!McJavaImport::IsJavaWorld(Source))
+	{
+		AddInfo(TEXT("no playerref save on this machine; skipped"));
+		return true;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportPlayerReal"), Stats);
+	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	FString Json;
+	FFileHelper::LoadFileToString(Json, *(McWorldSave::GetWorldDir(Folder) / TEXT("playerdata") / TEXT("imported-player.json")));
+	AddInfo(TEXT("imported-player.json: ") + Json);
+	FMcPlayerData Player;
+	TestTrue(TEXT("the player loads"), McWorldSave::LoadPlayer(McWorldSave::GetWorldDir(Folder), TEXT("some-other-name"), Player));
+	bool bOffHand = false;
+	for (const FMcSavedSlot& Slot : Player.Slots)
+	{
+		bOffHand |= Slot.Slot == 150;
+	}
+	TestTrue(TEXT("the off hand slot (150) is in the loaded player"), bOffHand);
+	McWorldSave::DeleteWorld(Folder);
+	return true;
+}

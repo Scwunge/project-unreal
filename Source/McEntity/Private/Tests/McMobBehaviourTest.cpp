@@ -492,6 +492,23 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("and one reaches the player"), Hurt >= FMcShulkerBullet::Damage);
 		TestTrue(TEXT("bullet speed climbs"), FMcShulkerBullet::SpeedAt(10) > FMcShulkerBullet::SpeedAt(2));
 	}
+	{
+		// A guardian with a player in sight hurts them for 6 once every 89 ticks (guard1.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 14.5) };
+		TArray<int32> Hits;
+		int32 Now = 0;
+		Manager.OnPlayerHurt = [this, &Hits, &Now](const FVector&, float Damage) { Hits.Add(Now); TestEqual(TEXT("a beam hits for 6"), Damage, 6.0f); };
+		AddMob(Manager, TEXT("minecraft:guardian"), FVector(10.5, 1.0, 10.5));
+		for (; Now < 300; ++Now)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
+	}
 	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
 	{
 		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).

@@ -109,8 +109,17 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Phantom = Add(TEXT("minecraft:phantom"), 0.9f, 0.5f, 20.f, 0.7f, 2.f, 16.f, false, true);
 		Phantom.bFlies = true;
 		Phantom.bSwoops = true;
-		Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 0.f, false, false).bSwims = true;
-		Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 0.f, false, false).bSwims = true;
+		// Beams (guard1.txt, normal difficulty, 3 and 3 gaps, health sampled every 4 ticks): the player lost 6 hp per hit from both; the guardian's hits came 112, then
+		// 92, 76, 100 ticks apart (mean 89, first 112); the elder's 56, then 68, 64, 60 (mean 64). Each is taken as one period of the timer; mining fatigue and the
+		// beam's picture are not built.
+		FMcMobType& Guardian = Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 16.f, false, false);
+		Guardian.bSwims = true;
+		Guardian.BeamTicks = 89;
+		Guardian.BeamDamage = 6.0f;
+		FMcMobType& Elder = Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 16.f, false, false);
+		Elder.bSwims = true;
+		Elder.BeamTicks = 64;
+		Elder.BeamDamage = 6.0f;
 		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
 		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 16.f, false, false).bBullets = true;
 		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);
@@ -1140,6 +1149,23 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 					FireCooldown = 6;
 				}
 			}
+		}
+	}
+	if (Type.BeamTicks > 0)
+	{
+		// The beam: kept on a player in sight for BeamTicks, then it hurts them and starts over; out of sight it drops back to nothing.
+		const FVector From = Body.Position + FVector(0.0, Type.Height * 0.5, 0.0);
+		if (bChasing && HasLineOfSight(World, From, Target + FVector(0.0, 1.0, 0.0)))
+		{
+			if (++BeamCharge >= Type.BeamTicks)
+			{
+				BeamCharge = 0;
+				Manager.HurtPlayer(Target, Type.BeamDamage);
+			}
+		}
+		else
+		{
+			BeamCharge = 0;
 		}
 	}
 	if (Type.bBullets && bChasing)

@@ -58,6 +58,9 @@ struct MCENTITY_API FMcMobType
 	int32 FireballKind = 0;
 	// Fires homing bullets at a player in sight (the shulker).
 	bool bBullets = false;
+	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
+	int32 BeamTicks = 0;
+	float BeamDamage = 0.0f;
 	double HoverRange = 0.0;
 	// A phantom circles its target and dives at it (atk1.txt, 900 ticks: close passes 155 to 232 ticks apart, mean 189, n=4).
 	bool bSwoops = false;
@@ -120,6 +123,7 @@ public:
 	// A ghast or blaze: ticks to its next fireball, and how many of a blaze's burst are left. Not saved.
 	int32 FireCooldown = 0;
 	int32 BurstLeft = 0;
+	int32 BeamCharge = 0;
 	// A swooper: ticks left in this circling or diving, whether it is diving, and its place on the circle.
 	int32 SwoopTicks = 0;
 	bool bDiving = false;

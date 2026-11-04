@@ -242,6 +242,8 @@ namespace McEntityModel
 
 	// A flat picture of an item standing up, two-sided, spinning and bobbing: Count copies stacked a little apart.
 	// Width is in blocks. The picture's V runs 0..VMax (an animated item's strip is cut to its first frame).
+	// An item's picture lying flat (a campfire's food), two-sided, Width blocks across, its middle at the origin and Height blocks up.
+	MCRENDER_API void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out);
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
 
 	// A block of picture on every side, one block big, standing on the feet (a falling block). Layer 0 is every side (all six when
@@ -368,6 +370,8 @@ private:
 	float ItemVMax = 1.0f;
 	bool bItemFailed = false;
 	bool bIsItem = false;
+	// An item lying flat, still ("mc:grillfood": the food on a campfire); also bIsItem.
+	bool bIsGrillFood = false;
 	bool bIsArrow = false;
 	// A falling block: a cube with the block's picture, drawn smoothly between the 20 positions a second it is sent.
 	bool bIsFalling = false;

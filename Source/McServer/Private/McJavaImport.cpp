@@ -886,6 +886,22 @@ namespace
 			{
 				Chunk.SetBlockEntity(X, Y, Z, MakePot(Entity));
 			}
+			else if (Id == TEXT("minecraft:campfire") || Id == TEXT("minecraft:soul_campfire"))
+			{
+				FMcBlockEntity Campfire = FMcBlockEntity::MakeCampfire();
+				Campfire.Slots = ReadItems(Entity, FMcBlockEntity::NumCampfireSpots);
+				const auto ReadInts = [&Entity](const TCHAR* Key, int32* Out)
+				{
+					const FMcNbt* Array = Entity.Find(Key);
+					for (int32 Spot = 0; Array && Array->Type == FMcNbt::EType::IntArray && Spot < FMcBlockEntity::NumCampfireSpots && Spot < Array->Num(); ++Spot)
+					{
+						Out[Spot] = static_cast<int32>(Array->Values[Spot].Integer);
+					}
+				};
+				ReadInts(TEXT("CookingTimes"), Campfire.CookingTimes);
+				ReadInts(TEXT("CookingTotalTimes"), Campfire.CookingTotals);
+				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Campfire));
+			}
 			else if (Id == TEXT("minecraft:lectern"))
 			{
 				// Book, the item on it, and Page, the page it lies open at. A lectern without a book has no block entity of ours

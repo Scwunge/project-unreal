@@ -602,3 +602,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 cave: 252 px differ (17x16 box, a particle). end: identical. village/forest/shore: differences only in the cloud/horizon band
 (the intentional cloud face shades). nether: mean diff 0.56/255, max 70, lower half only; looks like chunk light-update timing
 (block tints differ in the warped patch), not a code path I changed for vanilla. Not re-run; worth one repeat if it matters.
+
+## Snow at night (Unreal Mode, shot snown_night3)
+Scene-free snowy flat (-McFlatPreset=minecraft:snowy_kingdom, no -McScene: scenes overwrite the biome so you get rain). Flakes show at night
+against a dim blue ground; they are unlit so they read a little bright. Acceptable; a dimmer night flake tint is a possible follow-up.

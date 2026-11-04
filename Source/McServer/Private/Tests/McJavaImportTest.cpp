@@ -838,6 +838,12 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	Writer.Str(TEXT("id"), TEXT("minecraft:shield"));
 	Writer.Int(TEXT("count"), 1);
 	Writer.End();
+	Writer.Compound(TEXT("equipment"));
+	Writer.Compound(TEXT("head"));
+	Writer.Str(TEXT("id"), TEXT("minecraft:iron_helmet"));
+	Writer.Int(TEXT("count"), 1);
+	Writer.End();
+	Writer.End();
 	Writer.List(TEXT("EnderItems"), 10, 1);
 	Writer.Byte(TEXT("Slot"), 5);
 	Writer.Str(TEXT("id"), TEXT("minecraft:diamond"));
@@ -874,6 +880,7 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	};
 	TestEqual(TEXT("hotbar stone"), Count(3, TEXT("minecraft:stone")), 20);
 	TestEqual(TEXT("off hand shield at 150"), Count(150, TEXT("minecraft:shield")), 1);
+	TestEqual(TEXT("helmet at 103"), Count(103, TEXT("minecraft:iron_helmet")), 1);
 	TestEqual(TEXT("ender chest slot 5 at 205"), Count(205, TEXT("minecraft:diamond")), 9);
 	return true;
 }

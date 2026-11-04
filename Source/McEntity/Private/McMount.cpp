@@ -243,6 +243,12 @@ bool McMount::ClearRider(FMcEntity& Entity)
 
 FVector McMount::GetSeat(const FMcEntity& Entity)
 {
+	if (Entity.GetType() == TEXT("minecraft:horse"))
+	{
+		// vehicle_log30: the rider's feet are 0.84375 above a horse's (player y -60.15625 on a floor at -61).
+		return Entity.Body.Position + FVector(0.0, 0.84375, 0.0);
+	}
+	// The other mounts are unmeasured (PLAN, provenance gaps).
 	return Entity.Body.Position + FVector(0.0, Entity.Body.Height * 0.6875, 0.0);
 }
 

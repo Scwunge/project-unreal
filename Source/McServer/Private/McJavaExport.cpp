@@ -53,7 +53,8 @@ namespace
 		Compound.Values.Add(MoveTemp(Value));
 	}
 
-	// "minecraft:oak_stairs[facing=north,half=top]" as the game's palette entry: Name, and Properties when there are any.
+	// "minecraft:oak_stairs[facing=north,half=top]" as the game's palette entry: id, and properties when there are any (26.3
+	// saves write a plain string for a state with none; the game reads this compound too, observed).
 	FMcNbt MakeBlockEntry(const FString& Described)
 	{
 		FMcNbt Entry = MakeTag(EType::Compound);
@@ -65,7 +66,7 @@ namespace
 			Props = Described.Mid(Bracket + 1);
 			Props.RemoveFromEnd(TEXT("]"));
 		}
-		Add(Entry, TEXT("Name"), Str(Name));
+		Add(Entry, TEXT("id"), Str(Name));
 		if (!Props.IsEmpty())
 		{
 			FMcNbt Properties = MakeTag(EType::Compound);
@@ -80,7 +81,7 @@ namespace
 					Properties.Values.Add(Str(Value));
 				}
 			}
-			Add(Entry, TEXT("Properties"), MoveTemp(Properties));
+			Add(Entry, TEXT("properties"), MoveTemp(Properties));
 		}
 		return Entry;
 	}

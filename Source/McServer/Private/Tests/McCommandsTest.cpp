@@ -492,6 +492,17 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	// Measured against the game: /setworldspawn and /spawnpoint.
 	TestEqual(TEXT("setworldspawn"), First(TEXT("setworldspawn 1 2 3")), FString(TEXT("Set the world spawn point to 1, 2, 3 [0.0, 0.0] in minecraft:overworld")));
 	TestEqual(TEXT("spawnpoint"), First(TEXT("spawnpoint Steve 4 5 6")), FString(TEXT("Set spawn point to 4, 5, 6 [0.0, 0.0] in minecraft:overworld for Steve")));
+	// Measured against the game: /worldborder.
+	TestEqual(TEXT("border get"), First(TEXT("worldborder get")), FString(TEXT("The world border is currently 59999968 block(s) wide")));
+	TestEqual(TEXT("border set"), First(TEXT("worldborder set 100")), FString(TEXT("Set the world border to 100.0 block(s) wide")));
+	TestEqual(TEXT("border same"), First(TEXT("worldborder set 100")), FString(TEXT("Nothing changed. The world border is already that size")));
+	TestEqual(TEXT("border grow"), First(TEXT("worldborder set 200 10")), FString(TEXT("Growing the world border to 200.0 block(s) wide over 0.50 second(s)")));
+	TestEqual(TEXT("border add"), First(TEXT("worldborder add 10")), FString(TEXT("Set the world border to 210.0 block(s) wide")));
+	TestEqual(TEXT("border centre"), First(TEXT("worldborder center 5 6")), FString(TEXT("Set the center of the world border to 5.50, 6.50")));
+	TestEqual(TEXT("border too small"), First(TEXT("worldborder set 0")), FString(TEXT("World border cannot be smaller than 1 block wide")));
+	TestEqual(TEXT("border too big"), First(TEXT("worldborder add 99999999")), FString(TEXT("World border cannot be bigger than 5.9999968E7 blocks wide")));
+	TestEqual(TEXT("border too far"), First(TEXT("worldborder center 30000000 0")), FString(TEXT("World border cannot be further out than 2.9999984E7 blocks")));
+	TestEqual(TEXT("border warning time"), First(TEXT("worldborder warning time 5")), FString(TEXT("Set the world border warning time to 0.25 second(s)")));
 	return true;
 }
 

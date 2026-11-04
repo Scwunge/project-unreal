@@ -32,6 +32,18 @@ struct FMcCommandReply
 	bool bError = false;
 };
 
+// /worldborder's state, kept for the session. Values the game never showed before a command set them start at -1, so the first set always counts as a change.
+struct FMcWorldBorderState
+{
+	double Size = 59999968.0;
+	double CentreX = 0.0;
+	double CentreZ = 0.0;
+	double DamageAmount = -1.0;
+	double DamageBuffer = -1.0;
+	double WarningDistance = -1.0;
+	double WarningTicks = -1.0;
+};
+
 // What a command can do. Players are named as they joined; names match ignoring case.
 class MCSERVER_API IMcCommandTarget
 {

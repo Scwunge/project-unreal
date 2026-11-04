@@ -65,6 +65,7 @@ namespace
 		{ TEXT("tp"), 2, TEXT("/tp -> teleport") },
 		{ TEXT("w"), 0, TEXT("/w -> msg") },
 		{ TEXT("version"), 0, TEXT("/version") },
+		{ TEXT("worldborder"), 2, TEXT("/worldborder (add|center|damage|get|set|warning) ...") },
 		{ TEXT("weather"), 2, TEXT("/weather (clear|rain|thunder) [<duration>]") },
 		{ TEXT("whitelist"), 3, TEXT("/whitelist (add|list|off|on|reload|remove) ...") },
 		{ TEXT("xp"), 2, TEXT("/xp -> experience") },
@@ -1095,6 +1096,210 @@ namespace
 		const FString Who = Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num());
 		return { Ok(McLang::Format(Players.Num() == 1 ? TEXT("commands.spawnpoint.success.single.new") : TEXT("commands.spawnpoint.success.multiple.new"),
 			{ FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z), ShownAngle(Words, 5), ShownAngle(Words, 6), TEXT("minecraft:overworld"), Who })) };
+	}
+
+	// /worldborder: the state is kept for the session; nothing enforces it in the world yet, and a change over a time lands at once.
+	FMcWorldBorderState& BorderState()
+	{
+		static FMcWorldBorderState State;
+		return State;
+	}
+
+	// A number the way the game prints a double: 5.9999968E7 from ten million up, else with at least one decimal.
+	FString JavaDouble(double Value)
+	{
+		if (FMath::Abs(Value) >= 1e7)
+		{
+			int32 Exponent = 0;
+			double Mantissa = Value;
+			while (FMath::Abs(Mantissa) >= 10.0)
+			{
+				Mantissa /= 10.0;
+				++Exponent;
+			}
+			FString Digits = FString::Printf(TEXT("%.9f"), Mantissa);
+			while (Digits.EndsWith(TEXT("0")) && !Digits.EndsWith(TEXT(".0")))
+			{
+				Digits.LeftChopInline(1);
+			}
+			return Digits + TEXT("E") + FString::FromInt(Exponent);
+		}
+		FString Text = FString::SanitizeFloat(Value, 1);
+		return Text;
+	}
+
+	// The game's "...tail<--[HERE]" context line, from where the failing argument begins.
+	FString BorderContext(const FString& Command, int32 From)
+	{
+		const FString Before = Command.Left(From);
+		return (Before.Len() > 10 ? TEXT("...") + Before.Right(10) : Before) + Command.Mid(From) + McLang::Get(TEXT("command.context.here"));
+	}
+
+	bool ParseNumber(const FString& Word, double& Out)
+	{
+		if (Word.IsEmpty() || !Word.IsNumeric())
+		{
+			return false;
+		}
+		Out = FCString::Atod(*Word);
+		return true;
+	}
+
+	// A time: ticks, or with t, s or d after the number.
+	bool ParseTicks(const FString& Word, double& Ticks)
+	{
+		FString Number = Word;
+		double Unit = 1.0;
+		if (Number.EndsWith(TEXT("t"))) { Number.LeftChopInline(1); }
+		else if (Number.EndsWith(TEXT("s"))) { Number.LeftChopInline(1); Unit = 20.0; }
+		else if (Number.EndsWith(TEXT("d"))) { Number.LeftChopInline(1); Unit = 24000.0; }
+		double Value;
+		if (!ParseNumber(Number, Value))
+		{
+			return false;
+		}
+		Ticks = Value * Unit;
+		return true;
+	}
+
+	FReplies RunWorldBorder(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		constexpr double MaxSize = 59999968.0;
+		constexpr double MaxCentre = 29999984.0;
+		FMcWorldBorderState& State = BorderState();
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		// Where the n-th word begins in the command.
+		const auto WordStart = [&](int32 Index)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Index; ++I)
+			{
+				At += Words[I].Len() + 1;
+			}
+			return At;
+		};
+		const FString& Sub = Words[1];
+		if (Sub == TEXT("get") && Words.Num() == 2)
+		{
+			return { Ok(McLang::Format(TEXT("commands.worldborder.get"), { LexToString(int64(FMath::FloorToDouble(State.Size + 0.5))) })) };
+		}
+		if ((Sub == TEXT("set") || Sub == TEXT("add")) && (Words.Num() == 3 || Words.Num() == 4))
+		{
+			double Value;
+			if (!ParseNumber(Words[2], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value > MaxSize)
+			{
+				return { Fail(FString::Printf(TEXT("Double must not be more than %s: found %s"), *JavaDouble(MaxSize), *JavaDouble(Value))), Fail(BorderContext(Command, WordStart(2))) };
+			}
+			double Ticks = 0.0;
+			if (Words.Num() == 4)
+			{
+				if (!ParseTicks(Words[3], Ticks))
+				{
+					return BadArgument(Command);
+				}
+				if (Ticks < 0.0)
+				{
+					return { Fail(FString::Printf(TEXT("The tick count must not be less than 0: found %d"), FMath::RoundToInt32(Ticks))), Fail(BorderContext(Command, WordStart(2))) };
+				}
+			}
+			const double NewSize = Sub == TEXT("add") ? State.Size + Value : Value;
+			if (NewSize > MaxSize)
+			{
+				return { Fail(McLang::Format(TEXT("commands.worldborder.set.failed.big"), { JavaDouble(MaxSize) })) };
+			}
+			if (NewSize < 1.0)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.set.failed.small"))) };
+			}
+			if (NewSize == State.Size)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.set.failed.nochange"))) };
+			}
+			const FString Shown = JavaDouble(NewSize);
+			const bool bGrow = NewSize > State.Size;
+			State.Size = NewSize;
+			if (Ticks <= 0.0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.worldborder.set.immediate"), { Shown })) };
+			}
+			return { Ok(McLang::Format(bGrow ? TEXT("commands.worldborder.set.grow") : TEXT("commands.worldborder.set.shrink"),
+				{ Shown, FString::Printf(TEXT("%.2f"), Ticks / 20.0) })) };
+		}
+		if (Sub == TEXT("center") && Words.Num() == 4)
+		{
+			double X, Z;
+			if (!ParseNumber(Words[2], X) || !ParseNumber(Words[3], Z))
+			{
+				return BadArgument(Command);
+			}
+			if (FMath::Abs(X) > MaxCentre || FMath::Abs(Z) > MaxCentre)
+			{
+				return { Fail(McLang::Format(TEXT("commands.worldborder.set.failed.far"), { JavaDouble(MaxCentre) })) };
+			}
+			// A whole number names the block's middle.
+			if (!Words[2].Contains(TEXT("."))) { X += 0.5; }
+			if (!Words[3].Contains(TEXT("."))) { Z += 0.5; }
+			X = FMath::Clamp(X, -MaxCentre, MaxCentre);
+			Z = FMath::Clamp(Z, -MaxCentre, MaxCentre);
+			if (X == State.CentreX && Z == State.CentreZ)
+			{
+				return { Fail(McLang::Get(TEXT("commands.worldborder.center.failed"))) };
+			}
+			State.CentreX = X;
+			State.CentreZ = Z;
+			return { Ok(McLang::Format(TEXT("commands.worldborder.center.success"), { FString::Printf(TEXT("%.2f"), X), FString::Printf(TEXT("%.2f"), Z) })) };
+		}
+		if (Sub == TEXT("damage") && Words.Num() == 4 && (Words[2] == TEXT("amount") || Words[2] == TEXT("buffer")))
+		{
+			double Value;
+			if (!ParseNumber(Words[3], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value < 0.0)
+			{
+				return { Fail(FString::Printf(TEXT("Float must not be less than 0.0: found %s"), *JavaDouble(Value))), Fail(BorderContext(Command, WordStart(3))) };
+			}
+			const bool bAmount = Words[2] == TEXT("amount");
+			double& Slot = bAmount ? State.DamageAmount : State.DamageBuffer;
+			const FString Key = bAmount ? TEXT("commands.worldborder.damage.amount") : TEXT("commands.worldborder.damage.buffer");
+			if (Slot == Value)
+			{
+				return { Fail(McLang::Get(Key + TEXT(".failed"))) };
+			}
+			Slot = Value;
+			return { Ok(McLang::Format(Key + TEXT(".success"), { FString::Printf(TEXT("%.2f"), Value) })) };
+		}
+		if (Sub == TEXT("warning") && Words.Num() == 4 && (Words[2] == TEXT("distance") || Words[2] == TEXT("time")))
+		{
+			const bool bDistance = Words[2] == TEXT("distance");
+			double Value;
+			if (bDistance ? !ParseNumber(Words[3], Value) : !ParseTicks(Words[3], Value))
+			{
+				return BadArgument(Command);
+			}
+			if (Value < 0.0)
+			{
+				return { Fail(FString::Printf(TEXT("%s must not be less than 0: found %d"), bDistance ? TEXT("Integer") : TEXT("The tick count"), FMath::RoundToInt32(Value))),
+					Fail(BorderContext(Command, WordStart(3))) };
+			}
+			double& Slot = bDistance ? State.WarningDistance : State.WarningTicks;
+			const FString Key = bDistance ? TEXT("commands.worldborder.warning.distance") : TEXT("commands.worldborder.warning.time");
+			if (Slot == Value)
+			{
+				return { Fail(McLang::Get(Key + TEXT(".failed"))) };
+			}
+			Slot = Value;
+			return { Ok(McLang::Format(Key + TEXT(".success"), { bDistance ? FString::FromInt(FMath::RoundToInt32(Value)) : FString::Printf(TEXT("%.2f"), Value / 20.0) })) };
+		}
+		return Unknown(Command, Command.Len());
 	}
 
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -2149,6 +2354,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("spawnpoint"))
 	{
 		return RunSpawnPoint(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("worldborder"))
+	{
+		return RunWorldBorder(Command, Words, Target);
 	}
 	if (Name == TEXT("random"))
 	{

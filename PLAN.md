@@ -609,3 +609,4 @@ against a dim blue ground; they are unlit so they read a little bright. Acceptab
 Done: flake tone is now max(0.1, skylight^0.85) instead of sqrt(skylight) (McWeatherComponent.cpp), so night flakes are dim; shot snown_night4 (before: snown_night3). Day unchanged (factor 1).
 Nether vanilla re-check: two HEAD shots of the same Nether scene differ from each other (max 45, 4146 px >8, mean 0.11), so the earlier HEAD-vs-baseline Nether difference (mean 0.56) is
 run-to-run noise in the lower half (light updates / world state), not a vanilla regression.
+Cloud shade shot retried 2026-11-04 (local lane, `-McInput=look:0,40;wait:3` with `-McScene=cloud_top`): the shot came back level at the horizon, so the look input still isn't applied before the shot (the scene camera pitch is also ignored). Stays parked until the shot path honours pitch.

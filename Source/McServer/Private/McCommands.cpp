@@ -1474,7 +1474,7 @@ namespace
 		for (const FString& Player : Players)
 		{
 			TArray<FString>& Tags = PlayerTags().FindOrAdd(Player);
-			if (bAdd ? (!Tags.Contains(Words[3]) && Tags.Num() < 1024) : Tags.Contains(Words[3]))
+			if (bAdd ? !Tags.Contains(Words[3]) : Tags.Contains(Words[3]))
 			{
 				if (bAdd)
 				{

@@ -281,8 +281,9 @@ bool FMcNature::RandomTick(const FIntVector& Pos, FMcStateId State)
 	const FString Name = NameOf(State);
 	if (Name == TEXT("minecraft:ice"))
 	{
-		// Light bright enough thaws it, into water that can flow again.
-		if (BlockLightAt(Pos) > 11)
+		// Light bright enough thaws it, into water that can flow again: ice dims light by 1, so it goes at 11, a snow layer at
+		// 12 (reference run icemelt: a light block of level 12 beside melted the ice and not the snow, 13 melted both).
+		if (BlockLightAt(Pos) > 10)
 		{
 			World.SetBlock(Pos, StateOf(TEXT("minecraft:water")));
 		}

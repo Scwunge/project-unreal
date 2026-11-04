@@ -55,7 +55,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language, Statistics, Advancements };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -225,10 +225,16 @@ private:
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
 	void DrawPause(int32 Width, int32 Height);
+	// From the pause menu: the Statistics screen (General tab: every statistic of the language's text, by name; Items and Mobs
+	// have no tab content yet) and the Advancements screen (the empty window; no advancement tree is drawn yet).
+	void DrawStatistics(int32 Width, int32 Height);
+	void DrawAdvancements(int32 Width, int32 Height);
+	int32 StatsTab = 0;
+	int32 StatsScroll = 0;
 	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
 	void DrawOptions(int32 Width, int32 Height);
 	// The menus drawn over a world being played (the rest replace the screen).
-	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ActiveMenu == EMenu::Statistics || ActiveMenu == EMenu::Advancements || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
 	void OpenOptions(EMenu Back);
 	// The resource packs screen (from the options): the packs in the packs folder in two lists, available and selected
 	// (the top of the selected list wins), moved between them and up and down by the arrows over a pack's icon.

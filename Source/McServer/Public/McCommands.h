@@ -23,6 +23,8 @@ struct FMcCommandSender
 	// The player's name; empty for the server console.
 	FString Name;
 	int32 PermissionLevel = 0;
+	// Where the command runs from, when /execute moved it (else the sender's own feet).
+	TOptional<FVector> Position;
 	bool IsConsole() const { return Name.IsEmpty(); }
 };
 

@@ -58,6 +58,7 @@ namespace
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
+		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -512,6 +513,10 @@ namespace
 	FVector SenderFeet(const FMcCommandSender& Sender, const IMcCommandTarget& Target)
 	{
 		FVector Feet = FVector::ZeroVector;
+		if (Sender.Position.IsSet())
+		{
+			return *Sender.Position;
+		}
 		if (!Sender.IsConsole())
 		{
 			Target.GetPosition(Sender.Name, Feet);
@@ -1862,6 +1867,366 @@ namespace
 		return Unknown(Command, Command.Len());
 	}
 
+	// /execute: as, at, positioned (a position, or as <players>), if/unless (score, entity, block, loaded, dimension), store (result|success) score, run, and
+	// rotated/facing/in/align/anchored (taken and ignored). Entities are the players (nothing else is selected); no on, summon, data, bossbar, blocks, predicate forms.
+	bool ParseRange(const FString& Text, int32& Min, int32& Max)
+	{
+		Min = MIN_int32;
+		Max = MAX_int32;
+		int32 At = INDEX_NONE;
+		if (Text.FindChar(TEXT('.'), At) && Text.Mid(At).StartsWith(TEXT("..")))
+		{
+			const FString Low = Text.Left(At);
+			const FString High = Text.Mid(At + 2);
+			if ((!Low.IsEmpty() && !Low.IsNumeric()) || (!High.IsEmpty() && !High.IsNumeric()) || (Low.IsEmpty() && High.IsEmpty()))
+			{
+				return false;
+			}
+			if (!Low.IsEmpty()) { Min = FCString::Atoi(*Low); }
+			if (!High.IsEmpty()) { Max = FCString::Atoi(*High); }
+			return true;
+		}
+		if (!Text.IsNumeric() || Text.Contains(TEXT(".")))
+		{
+			return false;
+		}
+		Min = Max = FCString::Atoi(*Text);
+		return true;
+	}
+
+	struct FExecCondition
+	{
+		bool bHas = false;
+		bool bPass = false;
+		bool bCount = false;
+		int32 Count = 0;
+	};
+
+	FReplies ExecuteFrom(const FString& Original, const TArray<FString>& W, int32 I, const FMcCommandSender& Sender, IMcCommandTarget& Target, const FExecCondition& Last)
+	{
+		const auto Incomplete = [&]() { return Unknown(Original, Original.Len()); };
+		if (I >= W.Num())
+		{
+			if (!Last.bHas)
+			{
+				return Incomplete();
+			}
+			const bool bCount = Last.bCount && (Last.bPass || true);
+			if (Last.bPass)
+			{
+				return { Ok(bCount ? McLang::Format(TEXT("commands.execute.conditional.pass_count"), { FString::FromInt(Last.Count) }) : McLang::Get(TEXT("commands.execute.conditional.pass"))) };
+			}
+			return { Ok(bCount ? McLang::Format(TEXT("commands.execute.conditional.fail_count"), { FString::FromInt(Last.Count) }) : McLang::Get(TEXT("commands.execute.conditional.fail"))) };
+		}
+		const FString& Key = W[I];
+		const auto Merge = [](FReplies& Into, const FReplies& More) { Into.Append(More); };
+		if (Key == TEXT("run"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			TArray<FString> Rest(W.GetData() + I + 1, W.Num() - I - 1);
+			return McCommands::Execute(FString::Join(Rest, TEXT(" ")), Sender, Target);
+		}
+		if (Key == TEXT("as") || Key == TEXT("at"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			TArray<FString> Players;
+			FString Error;
+			if (!ResolvePlayers(W[I + 1], Sender, Target, Players, Error))
+			{
+				return {};
+			}
+			FReplies All;
+			for (const FString& Player : Players)
+			{
+				FMcCommandSender Next = Sender;
+				FVector Feet;
+				const bool bHave = Target.GetPosition(Player, Feet);
+				if (Key == TEXT("as"))
+				{
+					Next.Name = Player;
+				}
+				if (bHave)
+				{
+					Next.Position = Feet;
+				}
+				Merge(All, ExecuteFrom(Original, W, I + 2, Next, Target, FExecCondition()));
+			}
+			return All;
+		}
+		if (Key == TEXT("positioned"))
+		{
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			FMcCommandSender Next = Sender;
+			if (W[I + 1] == TEXT("as"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				TArray<FString> Players;
+				FString Error;
+				if (!ResolvePlayers(W[I + 2], Sender, Target, Players, Error))
+				{
+					return {};
+				}
+				FReplies All;
+				for (const FString& Player : Players)
+				{
+					FVector Feet;
+					FMcCommandSender Each = Sender;
+					if (Target.GetPosition(Player, Feet))
+					{
+						Each.Position = Feet;
+					}
+					Merge(All, ExecuteFrom(Original, W, I + 3, Each, Target, FExecCondition()));
+				}
+				return All;
+			}
+			const FVector Base = SenderFeet(Sender, Target);
+			FVector Pos = Base;
+			if (I + 3 >= W.Num() || !ParseCoordinate(W[I + 1], Base.X, true, Pos.X) || !ParseCoordinate(W[I + 2], Base.Y, false, Pos.Y) || !ParseCoordinate(W[I + 3], Base.Z, true, Pos.Z))
+			{
+				return I + 3 >= W.Num() ? Incomplete() : BadArgument(Original);
+			}
+			Next.Position = Pos;
+			return ExecuteFrom(Original, W, I + 4, Next, Target, FExecCondition());
+		}
+		if (Key == TEXT("rotated") || Key == TEXT("facing") || Key == TEXT("in") || Key == TEXT("align") || Key == TEXT("anchored"))
+		{
+			// Taken and ignored: the arguments each form has.
+			int32 Skip = Key == TEXT("rotated") ? (I + 1 < W.Num() && W[I + 1] == TEXT("as") ? 2 : 2) : Key == TEXT("facing") ? (I + 1 < W.Num() && W[I + 1] == TEXT("entity") ? 3 : 3) : 1;
+			if (Key == TEXT("rotated") && I + 1 < W.Num() && W[I + 1] == TEXT("as")) { Skip = 2; }
+			if (I + Skip >= W.Num())
+			{
+				return Incomplete();
+			}
+			return ExecuteFrom(Original, W, I + 1 + Skip, Sender, Target, FExecCondition());
+		}
+		if (Key == TEXT("store"))
+		{
+			if (I + 4 >= W.Num() || (W[I + 1] != TEXT("result") && W[I + 1] != TEXT("success")) || W[I + 2] != TEXT("score"))
+			{
+				return I + 4 >= W.Num() ? Incomplete() : BadArgument(Original);
+			}
+			FObjective* O = FindObjective(W[I + 4]);
+			if (!O)
+			{
+				return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 4])) };
+			}
+			TArray<FString> Holders;
+			FString Error;
+			if (W[I + 3].StartsWith(TEXT("@")))
+			{
+				if (!ResolvePlayers(W[I + 3], Sender, Target, Holders, Error))
+				{
+					return {};
+				}
+			}
+			else
+			{
+				Holders = { W[I + 3] };
+			}
+			FReplies Got = ExecuteFrom(Original, W, I + 5, Sender, Target, FExecCondition());
+			bool bSuccess = false;
+			for (const FMcCommandReply& Reply : Got)
+			{
+				bSuccess |= !Reply.bError;
+			}
+			int32 Value = bSuccess ? 1 : 0;
+			if (W[I + 1] == TEXT("result") && !Got.IsEmpty())
+			{
+				// The number the command reported: "Count: n", "has n", "now n".
+				const FString& Text = Got[0].Text;
+				for (const TCHAR* Marker : { TEXT("Count: "), TEXT(" has "), TEXT("(now ") })
+				{
+					int32 At = Text.Find(Marker);
+					if (At != INDEX_NONE)
+					{
+						Value = FCString::Atoi(*Text.Mid(At + FCString::Strlen(Marker)));
+						break;
+					}
+				}
+			}
+			for (const FString& Holder : Holders)
+			{
+				O->Scores.FindOrAdd(Holder) = Value;
+			}
+			return Got;
+		}
+		if (Key == TEXT("if") || Key == TEXT("unless"))
+		{
+			const bool bUnless = Key == TEXT("unless");
+			if (I + 1 >= W.Num())
+			{
+				return Incomplete();
+			}
+			const FString& Kind = W[I + 1];
+			FExecCondition Next;
+			Next.bHas = true;
+			int32 End = I + 2;
+			bool bPass = false;
+			if (Kind == TEXT("score"))
+			{
+				if (I + 5 >= W.Num())
+				{
+					return Incomplete();
+				}
+				FObjective* O = FindObjective(W[I + 3]);
+				if (!O)
+				{
+					return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 3])) };
+				}
+				TArray<FString> Who;
+				FString Error;
+				if (W[I + 2].StartsWith(TEXT("@")) ? !ResolvePlayers(W[I + 2], Sender, Target, Who, Error) : (Who = { W[I + 2] }, false))
+				{
+					return {};
+				}
+				const FString& Op = W[I + 4];
+				if (Op == TEXT("matches"))
+				{
+					int32 Min, Max;
+					if (!ParseRange(W[I + 5], Min, Max))
+					{
+						return BadArgument(Original);
+					}
+					const int32* Value = Who.IsEmpty() ? nullptr : O->Scores.Find(Who[0]);
+					bPass = Value && *Value >= Min && *Value <= Max;
+					End = I + 6;
+				}
+				else
+				{
+					if (I + 6 >= W.Num())
+					{
+						return Incomplete();
+					}
+					FObjective* P = FindObjective(W[I + 6]);
+					if (!P)
+					{
+						return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *W[I + 6])) };
+					}
+					TArray<FString> Others;
+					if (W[I + 5].StartsWith(TEXT("@")) ? !ResolvePlayers(W[I + 5], Sender, Target, Others, Error) : (Others = { W[I + 5] }, false))
+					{
+						return {};
+					}
+					const int32* A = Who.IsEmpty() ? nullptr : O->Scores.Find(Who[0]);
+					const int32* B = Others.IsEmpty() ? nullptr : P->Scores.Find(Others[0]);
+					if (Op != TEXT("<") && Op != TEXT("<=") && Op != TEXT("=") && Op != TEXT(">=") && Op != TEXT(">"))
+					{
+						return BadArgument(Original);
+					}
+					bPass = A && B && (Op == TEXT("<") ? *A < *B : Op == TEXT("<=") ? *A <= *B : Op == TEXT("=") ? *A == *B : Op == TEXT(">=") ? *A >= *B : *A > *B);
+					End = I + 7;
+				}
+			}
+			else if (Kind == TEXT("entity"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				// The players that match; a selector with filters other than a player type matches none (mobs are not selected).
+				TArray<FString> Who;
+				FString Error;
+				const FString& Token = W[I + 2];
+				const int32 Bracket = Token.Find(TEXT("["));
+				if (Bracket != INDEX_NONE)
+				{
+					const FString Filters = Token.Mid(Bracket);
+					if (Token.StartsWith(TEXT("@e")) && (Filters.Contains(TEXT("type=minecraft:player")) || Filters.Contains(TEXT("type=player"))))
+					{
+						Who = Target.GetPlayerNames();
+					}
+				}
+				else if (Token == TEXT("@e"))
+				{
+					Who = Target.GetPlayerNames();
+				}
+				else if (!ResolvePlayers(Token, Sender, Target, Who, Error))
+				{
+					Who.Reset();
+				}
+				Next.bCount = true;
+				Next.Count = Who.Num();
+				bPass = Who.Num() > 0;
+				End = I + 3;
+			}
+			else if (Kind == TEXT("block"))
+			{
+				if (I + 5 >= W.Num())
+				{
+					return Incomplete();
+				}
+				const FVector Base = SenderFeet(Sender, Target);
+				FIntVector Pos;
+				if (!ParseBlockPos(W, I + 2, Base, Pos))
+				{
+					return BadArgument(Original);
+				}
+				const TOptional<FMcStateId> Wanted = ParseBlock(W[I + 5]);
+				if (!Wanted.IsSet())
+				{
+					return BadArgument(Original);
+				}
+				FMcStateId Have;
+				bPass = Target.GetBlock(Pos, Have) && Have == *Wanted;
+				End = I + 6;
+			}
+			else if (Kind == TEXT("loaded"))
+			{
+				if (I + 4 >= W.Num())
+				{
+					return Incomplete();
+				}
+				const FVector Base = SenderFeet(Sender, Target);
+				FIntVector Pos;
+				if (!ParseBlockPos(W, I + 2, Base, Pos))
+				{
+					return BadArgument(Original);
+				}
+				FMcStateId Have;
+				bPass = Target.GetBlock(Pos, Have);
+				End = I + 5;
+			}
+			else if (Kind == TEXT("dimension"))
+			{
+				if (I + 2 >= W.Num())
+				{
+					return Incomplete();
+				}
+				bPass = W[I + 2] == TEXT("minecraft:overworld") || W[I + 2] == TEXT("overworld");
+				End = I + 3;
+			}
+			else
+			{
+				return BadArgument(Original);
+			}
+			Next.bPass = bUnless ? !bPass : bPass;
+			if (!Next.bPass && End < W.Num())
+			{
+				// A failed test stops this branch; nothing more is said.
+				return {};
+			}
+			return ExecuteFrom(Original, W, End, Sender, Target, Next);
+		}
+		return BadArgument(Original);
+	}
+
+	FReplies RunExecute(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		return ExecuteFrom(Command, Words, 1, Sender, Target, FExecCondition());
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -2934,6 +3299,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("scoreboard"))
 	{
 		return RunScoreboard(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("execute"))
+	{
+		return RunExecute(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

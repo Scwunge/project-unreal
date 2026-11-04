@@ -525,6 +525,12 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("unknown objective"), First(TEXT("scoreboard players set Foo nope 1")), FString(TEXT("Unknown scoreboard objective 'nope'")));
 	TestEqual(TEXT("score reset"), First(TEXT("scoreboard players reset Foo kills")), FString(TEXT("Reset [kills] for Foo")));
 	TestEqual(TEXT("objective remove"), First(TEXT("scoreboard objectives remove kills")), FString(TEXT("Removed objective [kills]")));
+	// Measured against the game: /execute.
+	TestEqual(TEXT("execute needs more"), First(TEXT("execute")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("execute run"), First(TEXT("execute run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute as"), First(TEXT("execute as Steve at Steve run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute if entity"), First(TEXT("execute if entity Steve")), FString(TEXT("Test passed. Count: 1")));
+	TestEqual(TEXT("execute unless entity"), First(TEXT("execute unless entity Steve")), FString(TEXT("Test failed. Count: 1")));
 	return true;
 }
 

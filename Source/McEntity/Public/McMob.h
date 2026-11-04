@@ -58,6 +58,8 @@ struct MCENTITY_API FMcMobType
 	int32 FireballKind = 0;
 	// Fires homing bullets at a player in sight (the shulker).
 	bool bBullets = false;
+	// Turns on a player who looks at its eyes (the enderman).
+	bool bGazeAngers = false;
 	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
 	int32 BeamTicks = 0;
 	float BeamDamage = 0.0f;

@@ -509,6 +509,24 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
 	}
+	for (const bool bLooking : { true, false })
+	{
+		// An enderman stares back only when the player's look falls on its eyes (ender2.txt: stared at it teleported at once, looked away from it stood).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+		const FVector Eye(10.5, 2.62, 20.5);
+		Manager.PlayerLooks = { bLooking ? (FVector(10.5, 1.0 + 2.9 * 0.88, 10.5) - Eye).GetSafeNormal() : FVector(0.0, 0.0, 1.0) };
+		for (int32 Tick = 0; Tick < 40; ++Tick)
+		{
+			Manager.Tick();
+		}
+		const bool bMoved = FVector::Dist(Enderman->Body.Position, FVector(10.5, 1.0, 10.5)) > 1.0;
+		TestEqual(bLooking ? TEXT("an enderman stared at comes for the player") : TEXT("an enderman not looked at stays"), bMoved, bLooking);
+	}
 	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
 	{
 		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).

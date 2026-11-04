@@ -1517,6 +1517,7 @@ void AMcPlayerPawn::ServerTryRide_Implementation(FVector Look)
 			// A chest cart or boat opens like a chest instead of taking a rider.
 			const FIntVector Where(FMath::FloorToInt32(Vehicle->Body.Position.X), FMath::FloorToInt32(Vehicle->Body.Position.Y), FMath::FloorToInt32(Vehicle->Body.Position.Z));
 			Data->OpenBlockWindow(Vehicle->GetInventorySlots() == 5 ? EMcWindowKind::Hopper : EMcWindowKind::Chest, Where, Vehicle->GetInventoryTitle(), Vehicle->GetInventory(), nullptr);
+			Data->MarkWindowOnEntity(Vehicle->Id);
 		}
 		else if (Vehicle && !Vehicle->CanRide())
 		{

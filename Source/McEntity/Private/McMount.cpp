@@ -68,6 +68,47 @@ float McMount::BoostFactor(const FMcMountState& State)
 	return 1.0f + 1.15f * FMath::Sin(UE_PI * static_cast<float>(State.BoostTime) / static_cast<float>(State.BoostTotal));
 }
 
+namespace FMcMountMenuSlots
+{
+	constexpr int32 Saddle = 0;
+	constexpr int32 Armor = 1;
+	constexpr int32 ChestStart = 2;
+	constexpr int32 ChestSlots = 15;
+}
+
+const TSharedPtr<FMcContainer>& McMount::GetInventory(FMcMountState& State)
+{
+	const int32 Want = FMcMountMenuSlots::ChestStart + (State.bChest ? FMcMountMenuSlots::ChestSlots : 0);
+	if (!State.Inventory.IsValid())
+	{
+		State.Inventory = MakeShared<FMcContainer>(Want);
+		if (State.bSaddled)
+		{
+			State.Inventory->Set(FMcMountMenuSlots::Saddle, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+		}
+		if (!State.Armor.IsNone())
+		{
+			State.Inventory->Set(FMcMountMenuSlots::Armor, FMcItemStack(State.Armor, 1));
+		}
+	}
+	else if (State.Inventory->Num() < Want)
+	{
+		State.Inventory->GetAll().SetNum(Want);
+	}
+	return State.Inventory;
+}
+
+void McMount::Sync(FMcMountState& State)
+{
+	if (!State.Inventory.IsValid())
+	{
+		return;
+	}
+	State.bSaddled = State.Inventory->Get(FMcMountMenuSlots::Saddle).Item == TEXT("minecraft:saddle");
+	State.Armor = State.Inventory->Get(FMcMountMenuSlots::Armor).IsEmpty() ? FName() : State.Inventory->Get(FMcMountMenuSlots::Armor).Item;
+	State.bChest = State.Inventory->Num() > FMcMountMenuSlots::ChestStart;
+}
+
 FMcMountState& McMount::Ensure(FMcEntity& Entity)
 {
 	if (!Entity.Mount.IsValid())
@@ -129,19 +170,22 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 	{
 		if (Held.Item == TEXT("minecraft:saddle") && (Mob.bTamed || IsStickMount(Mob) || Mob.GetType() == TEXT("minecraft:camel")) && !State.bSaddled)
 		{
-			State.bSaddled = true;
+			GetInventory(State)->Set(FMcMountMenuSlots::Saddle, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+			Sync(State);
 			Take();
 			return EUse::Saddled;
 		}
 		if (IsHorseArmor(Held.Item) && Mob.bTamed && Mob.GetType() == TEXT("minecraft:horse") && State.Armor.IsNone())
 		{
-			State.Armor = Held.Item;
+			GetInventory(State)->Set(FMcMountMenuSlots::Armor, FMcItemStack(Held.Item, 1));
+			Sync(State);
 			Take();
 			return EUse::Armored;
 		}
 		if (Held.Item == TEXT("minecraft:chest") && Mob.bTamed && IsPackKind(Mob.GetType()) && !State.bChest)
 		{
 			State.bChest = true;
+			GetInventory(State);
 			Take();
 			return EUse::Chested;
 		}
@@ -156,6 +200,10 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 	{
 		State.PassengerId = PlayerId;
 		return EUse::Mounted;
+	}
+	if (bSneaking && Mob.bTamed)
+	{
+		return EUse::Inventory;
 	}
 	if (bSneaking || State.RiderId != 0 || ((IsStickMount(Mob) || Mob.GetType() == TEXT("minecraft:camel")) && !State.bSaddled))
 	{
@@ -324,16 +372,26 @@ void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
 		return;
 	}
 	FMcMountState& State = Ensure(Mob);
-	FString Armor = State.Armor.ToString();
-	if (State.Armor.IsNone())
+	if (Ar.IsSaving() && !State.Inventory.IsValid())
 	{
-		Armor.Reset();
+		State.Inventory = MakeShared<FMcContainer>(2);
 	}
-	Ar << Mob.bTamed << State.bSaddled << Armor << State.bChest << State.Temper << State.JumpStrength << State.Speed;
+	Ar << Mob.bTamed << State.Temper << State.JumpStrength << State.Speed;
+	int32 Count = State.Inventory.IsValid() ? State.Inventory->Num() : 2;
+	Ar << Count;
 	if (Ar.IsLoading())
 	{
-		State.Armor = Armor.IsEmpty() ? FName() : FName(*Armor);
+		Count = FMath::Clamp(Count, 2, FMcMountMenuSlots::ChestStart + FMcMountMenuSlots::ChestSlots);
+		State.Inventory = MakeShared<FMcContainer>(Count);
 		State.Temper = FMath::Clamp(State.Temper, 0, MaxTemper);
+	}
+	for (int32 Slot = 0; Slot < Count; ++Slot)
+	{
+		State.Inventory->GetMutable(Slot).Serialize(Ar);
+	}
+	if (Ar.IsLoading())
+	{
+		Sync(State);
 	}
 }
 

@@ -110,6 +110,11 @@ public:
 	// Plays a sounds.json event for everyone, at a position in blocks (volume over 1 carries further).
 	virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) {}
 
+	// /defaultgamemode: what new players start in.
+	virtual void SetDefaultGameMode(const FString& Mode) {}
+	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).
+	virtual void StopSounds(const FString& Player, const FString& Source, const FString& Sound) {}
+
 	virtual FMcServerAccess LoadAccess() const = 0;
 	virtual void SaveAccess(const FMcServerAccess& Access) = 0;
 	virtual bool IsAllowlistOn() const = 0;

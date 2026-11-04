@@ -13,6 +13,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McContainer.h"
 #include "McEntityManager.h"
 
 class FMcMob;
@@ -27,6 +28,8 @@ struct MCENTITY_API FMcMountState
 	FName Armor;
 	// Donkeys and mules: carrying a chest (the 15 slots are the inventory's to open).
 	bool bChest = false;
+	// The window's slots: the saddle (0), the armour (1) and the chest's 15 from 2. bSaddled, Armor and bChest follow it (McMount::Sync).
+	TSharedPtr<FMcContainer> Inventory;
 	// How used to people it is, 0..100; a rider tames it when a roll under the max beats it.
 	int32 Temper = 0;
 	// The player riding it (the pawn's unique id), 0 for none.
@@ -76,7 +79,7 @@ namespace McMount
 	// The part of the jump strength a charge of HeldTicks makes: 0.4 + 0.4 x scale/0.9, 1 from 0.9 up.
 	MCENTITY_API float JumpFraction(int32 HeldTicks);
 
-	enum class EUse : uint8 { None, Mounted, Tamed, Saddled, Armored, Chested, Fed, Bucked };
+	enum class EUse : uint8 { None, Mounted, Tamed, Saddled, Armored, Chested, Fed, Bucked, Inventory };
 	// A right click on it with Held in the hand (the player Rider, sneaking or not). Takes what it uses from Held (unless creative).
 	// Returns what happened; Mounted means the player now rides it (the caller sets the pawn's RidingId).
 	MCENTITY_API EUse Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack& Held, uint32 PlayerId, bool bCreative, bool bSneaking);
@@ -96,6 +99,10 @@ namespace McMount
 	MCENTITY_API int32 ArmorPoints(FName Item);
 	// The damage left after the armour: the game's formula, a cut of min(20, max(armor/5, armor - damage/2))/25 (no toughness).
 	MCENTITY_API float ReduceDamage(const FMcMountState& State, float Damage);
+	// The window's container, made on first use (2 slots, 17 with a chest).
+	MCENTITY_API const TSharedPtr<FMcContainer>& GetInventory(FMcMountState& State);
+	// Reads the saddle, armour and chest back from the container after a player moved things in the window.
+	MCENTITY_API void Sync(FMcMountState& State);
 	// Saves or loads the lasting part (tamed, saddle, armour, chest, temper, stats); a rider and the boost start afresh. Older saves end before it.
 	MCENTITY_API void Serialize(FArchive& Ar, FMcMob& Mob);
 	// Runs a mount that has a rider for a tick. False if it has none and the mob's own routine should run.

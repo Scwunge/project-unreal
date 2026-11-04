@@ -1343,19 +1343,29 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		static bool bDevPauseDone = false;
 		FString DevMenu;
 		bool bDevOptions = false, bDevPacks = false, bDevLanguage = false;
-		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language")))
+		FString DevScreen;
+		if (!bDevPauseDone && FParse::Value(FCommandLine::Get(), TEXT("-McMenu="), DevMenu) && (DevMenu == TEXT("pause") || DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language") || DevMenu == TEXT("stats") || DevMenu == TEXT("advancements")))
 		{
 			bDevPauseDone = true;
 			bPause = true;
 			bDevOptions = DevMenu == TEXT("options") || DevMenu == TEXT("packs") || DevMenu == TEXT("language");
 			bDevLanguage = DevMenu == TEXT("language");
 			bDevPacks = DevMenu == TEXT("packs");
+			DevScreen = DevMenu;
 		}
 #endif
 		if (bPause)
 		{
 			OpenMenu(EMenu::Pause);
 #if !UE_BUILD_SHIPPING
+			if (DevScreen == TEXT("stats"))
+			{
+				OpenMenu(EMenu::Statistics);
+			}
+			else if (DevScreen == TEXT("advancements"))
+			{
+				OpenMenu(EMenu::Advancements);
+			}
 			if (bDevOptions)
 			{
 				OpenOptions(EMenu::Pause);

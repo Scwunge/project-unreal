@@ -117,18 +117,18 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		FMcMountState& State = *Entity.Mount;
 		const FName Kind = Entity.GetType();
 		const FMcMobType* Type = FMcMobType::Find(Kind);
-		State.Speed = Type ? Type->Speed : 0.225f;
+		State.Speed = Type ? Type->Speed : 0.0f;
 		if (IsPackKind(Kind))
 		{
 			State.JumpStrength = 0.5f;
 		}
 		else if (Kind == TEXT("minecraft:pig"))
 		{
-			State.Speed = (Type ? Type->Speed : 0.25f) * 0.2296f;
+			State.Speed = (Type ? Type->Speed : 0.0f) * 0.2296f;
 		}
 		else if (Kind == TEXT("minecraft:strider"))
 		{
-			State.Speed = (Type ? Type->Speed : 0.175f) * 0.2357f;
+			State.Speed = (Type ? Type->Speed : 0.0f) * 0.2357f;
 		}
 		else if (Kind == TEXT("minecraft:horse"))
 		{

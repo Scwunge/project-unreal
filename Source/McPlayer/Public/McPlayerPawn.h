@@ -259,6 +259,9 @@ protected:
 	// A riding owner wants out.
 	UFUNCTION(Server, Reliable)
 	void ServerWantDismount();
+	// A riding owner uses the stick in their hand (carrot on a stick, warped fungus on a stick): the pig or strider speeds up.
+	UFUNCTION(Server, Reliable)
+	void ServerRideBoost();
 	// A sleeping owner presses to get up.
 	UFUNCTION(Server, Reliable)
 	void ServerWantWake();

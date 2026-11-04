@@ -111,5 +111,39 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 	Horse3->bTamed = true;
 	TestEqual(TEXT("but not on a horse (it is a ride)"), McMount::Use(Manager, *Horse3, Chest2, 1, false, false), McMount::EUse::Mounted);
 	TestEqual(TEXT("a donkey is slower and jumps lower"), McMount::Ensure(*Donkey).JumpStrength, 0.5f);
+
+	// A pig with a carrot on a stick (vehicle_log26): 0.1239 a tick; a boost of 746 ticks adds 1.15 x sin(pi t/746): 0.1632 after 64 ticks.
+	if (const FMcMobType* PigType = FMcMobType::Find(FName(TEXT("minecraft:pig"))))
+	{
+		FMcMob* Pig = MakeHorse(*PigType, 40.5);
+		FMcMountState& PigState = McMount::Ensure(*Pig);
+		PigState.bSaddled = true;
+		PigState.RiderId = 5;
+		const FName Stick(TEXT("minecraft:carrot_on_a_stick"));
+		for (int32 Tick = 0; Tick < 5; ++Tick) { Manager.Tick(); }
+		double PigLast = Pig->Body.Position.Z;
+		for (int32 Tick = 0; Tick < 30; ++Tick)
+		{
+			McMount::SetRiderInput(*Pig, 0.0f, 0.0f, 0.0f, false, Stick);
+			Manager.Tick();
+			Step = Pig->Body.Position.Z - PigLast;
+			PigLast = Pig->Body.Position.Z;
+		}
+		TestTrue(*FString::Printf(TEXT("a pig on a stick walks 0.1239, got %f"), Step), FMath::Abs(Step - 0.1239) < 0.004);
+		TestTrue(TEXT("the boost starts"), McMount::Boost(*Pig, 746));
+		for (int32 Tick = 0; Tick < 64; ++Tick)
+		{
+			McMount::SetRiderInput(*Pig, 0.0f, 0.0f, 0.0f, false, Stick);
+			Manager.Tick();
+			Step = Pig->Body.Position.Z - PigLast;
+			PigLast = Pig->Body.Position.Z;
+		}
+		TestTrue(*FString::Printf(TEXT("64 ticks into the boost the step is about 0.162, got %f"), Step), FMath::Abs(Step - 0.1625) < 0.01);
+		McMount::SetRiderInput(*Pig, 0.0f, 0.0f, 0.0f, false, FName(TEXT("minecraft:stick")));
+		Manager.Tick();
+		const double Held = Pig->Body.Position.Z;
+		Manager.Tick();
+		TestTrue(TEXT("without the stick in hand it stops"), Pig->Body.Position.Z - Held < 0.05);
+	}
 	return true;
 }

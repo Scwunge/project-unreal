@@ -780,6 +780,12 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 
+	// Using the stick in hand while riding a pig or strider speeds it up.
+	if (RidingId != 0 && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
+	{
+		ServerRideBoost();
+	}
+
 	// A click on a minecart or boat in front of the block being looked at gets in.
 	if (RidingId == 0 && Player.WasInputKeyJustPressed(EKeys::RightMouseButton))
 	{
@@ -1396,7 +1402,7 @@ void AMcPlayerPawn::ServerTickRiding()
 			ServerDismount();
 			return;
 		}
-		McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump);
+		McMount::SetRiderInput(*Found, RideForward, RideStrafe, McLookYaw, bRideJump, Data ? Data->Inventory->Get(Data->SelectedSlot).Item : NAME_None);
 		const FVector MountSeat = McMount::GetSeat(*Found);
 		Body.Position = MountSeat;
 		Body.Velocity = FVector::ZeroVector;
@@ -1500,6 +1506,16 @@ void AMcPlayerPawn::ServerRideInput_Implementation(float Forward, float Strafe, 
 	RideForward = FMath::Clamp(Forward, -1.0f, 1.0f);
 	RideStrafe = FMath::Clamp(Strafe, -1.0f, 1.0f);
 	McLookYaw = LookYaw - 90.0f;
+}
+
+void AMcPlayerPawn::ServerRideBoost_Implementation()
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	FMcEntity* Found = Entities && RidingId != 0 ? Entities->Find(RidingId) : nullptr;
+	if (Found && Found->Mount.IsValid() && Found->Mount->RiderId == GetUniqueID())
+	{
+		McMount::Boost(*Found);
+	}
 }
 
 void AMcPlayerPawn::ServerWantDismount_Implementation()

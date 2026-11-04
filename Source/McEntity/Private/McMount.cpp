@@ -38,9 +38,34 @@ namespace
 	}
 }
 
+bool McMount::IsStickMount(const FMcEntity& Entity)
+{
+	return Entity.IsLiving() && (Entity.GetType() == TEXT("minecraft:pig") || Entity.GetType() == TEXT("minecraft:strider"));
+}
+
 bool McMount::IsRideable(const FMcEntity& Entity)
 {
-	return Entity.IsLiving() && IsHorseKind(Entity.GetType());
+	return Entity.IsLiving() && (IsHorseKind(Entity.GetType()) || IsStickMount(Entity));
+}
+
+bool McMount::Boost(FMcEntity& Entity, int32 TotalTicks)
+{
+	if (!IsStickMount(Entity) || !Entity.Mount.IsValid() || Entity.Mount->RiderId == 0 || Entity.Mount->BoostTotal > 0)
+	{
+		return false;
+	}
+	Entity.Mount->BoostTime = 0;
+	Entity.Mount->BoostTotal = TotalTicks > 0 ? TotalTicks : FMath::RandRange(140, 980);
+	return true;
+}
+
+float McMount::BoostFactor(const FMcMountState& State)
+{
+	if (State.BoostTotal <= 0)
+	{
+		return 1.0f;
+	}
+	return 1.0f + 1.15f * FMath::Sin(UE_PI * static_cast<float>(State.BoostTime) / static_cast<float>(State.BoostTotal));
 }
 
 FMcMountState& McMount::Ensure(FMcEntity& Entity)
@@ -55,6 +80,14 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		if (IsPackKind(Kind))
 		{
 			State.JumpStrength = 0.5f;
+		}
+		else if (Kind == TEXT("minecraft:pig"))
+		{
+			State.Speed = (Type ? Type->Speed : 0.25f) * 0.2296f;
+		}
+		else if (Kind == TEXT("minecraft:strider"))
+		{
+			State.Speed = (Type ? Type->Speed : 0.175f) * 0.2357f;
 		}
 		else if (Kind == TEXT("minecraft:horse"))
 		{
@@ -94,7 +127,7 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 	};
 	if (!Held.IsEmpty())
 	{
-		if (Held.Item == TEXT("minecraft:saddle") && Mob.bTamed && !State.bSaddled)
+		if (Held.Item == TEXT("minecraft:saddle") && (Mob.bTamed || IsStickMount(Mob)) && !State.bSaddled)
 		{
 			State.bSaddled = true;
 			Take();
@@ -119,7 +152,7 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 			return EUse::Fed;
 		}
 	}
-	if (bSneaking || State.RiderId != 0)
+	if (bSneaking || State.RiderId != 0 || (IsStickMount(Mob) && !State.bSaddled))
 	{
 		return EUse::None;
 	}
@@ -130,7 +163,7 @@ McMount::EUse McMount::Use(FMcEntityManager& Manager, FMcMob& Mob, FMcItemStack&
 	return EUse::Mounted;
 }
 
-void McMount::SetRiderInput(FMcEntity& Entity, float Forward, float Strafe, float Yaw, bool bJumpHeld)
+void McMount::SetRiderInput(FMcEntity& Entity, float Forward, float Strafe, float Yaw, bool bJumpHeld, FName Held)
 {
 	if (Entity.Mount.IsValid())
 	{
@@ -139,6 +172,7 @@ void McMount::SetRiderInput(FMcEntity& Entity, float Forward, float Strafe, floa
 		State.Strafe = Strafe;
 		State.RiderYaw = Yaw;
 		State.bJumpHeld = bJumpHeld;
+		State.RiderHeld = Held;
 	}
 }
 
@@ -166,7 +200,7 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 		return false;
 	}
 	FMcMountState& State = *Mob.Mount;
-	if (!Mob.bTamed)
+	if (!Mob.bTamed && !IsStickMount(Mob))
 	{
 		// A wild one bucks about once in fifty ticks: a roll under its temper tames it, otherwise it grows 5 used to people and throws the rider.
 		if (FMath::RandRange(0, BuckOneIn - 1) == 0)
@@ -185,7 +219,28 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 	}
 	FMcMoveInput Input;
 	Input.Speed = State.Speed;
-	if (Mob.bTamed && State.bSaddled)
+	if (IsStickMount(Mob))
+	{
+		// Goes straight where the rider looks while the stick is in their hand, faster for a boost.
+		const bool bStick = State.RiderHeld == (Mob.GetType() == TEXT("minecraft:pig") ? FName(TEXT("minecraft:carrot_on_a_stick")) : FName(TEXT("minecraft:warped_fungus_on_a_stick")));
+		if (bStick && State.bSaddled)
+		{
+			Input.Forward = 1.0f;
+			Input.Speed = State.Speed * BoostFactor(State);
+			Input.Yaw = State.RiderYaw;
+			Mob.Yaw = State.RiderYaw;
+		}
+		else
+		{
+			Input.Speed = 0.0f;
+		}
+		if (State.BoostTotal > 0 && ++State.BoostTime >= State.BoostTotal)
+		{
+			State.BoostTime = 0;
+			State.BoostTotal = 0;
+		}
+	}
+	else if (Mob.bTamed && State.bSaddled)
 	{
 		Input.Forward = State.Forward >= 0.0f ? State.Forward : State.Forward * 0.25f;
 		Input.Strafe = State.Strafe * 0.5f;

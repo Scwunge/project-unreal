@@ -1231,6 +1231,66 @@ bool FMcNetherStatsTerrainTest::RunTest(const FString& Parameters)
 	return RunNetherStats(*this, true);
 }
 
+// Structure starts in the Nether on the 256 x 256 chunks from (-128, -128), the same cells as `log starts -128 -128 256 nether`
+// on the reference: STARTSN <seed index> <structure> <count>. The biome is taken at y 64.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStartsTest, "McClient.McGen.NetherStarts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcNetherStartsTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
+	{
+		return false;
+	}
+	FMcStructureLibrary Structures(Settings.SeaLevel, Settings.MinY);
+	if (!TestTrue(TEXT("structure sets load"), Structures.Load()))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		const uint64 Seed = Seeds[SeedIndex];
+		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:nether"));
+		Structures.SetHeightSource([&Generator](int32 X, int32 Z) { return 64; });
+		Structures.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
+		TMap<FName, int64> Counts, Candidates;
+		for (int32 Z = -128; Z < 128; ++Z)
+		{
+			for (int32 X = -128; X < 128; ++X)
+			{
+				TArray<FName> Here;
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Here);
+				if (Here.IsEmpty())
+				{
+					continue;
+				}
+				for (const FName Name : Here)
+				{
+					Candidates.FindOrAdd(Name)++;
+				}
+				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, 64, Z * 16 + 8);
+				Here.Reset();
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Biome, Here);
+				for (const FName Name : Here)
+				{
+					Counts.FindOrAdd(Name)++;
+				}
+			}
+		}
+		for (const TPair<FName, int64>& Pair : Candidates)
+		{
+			AddInfo(FString::Printf(TEXT("STARTSNALL %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+		}
+		for (const TPair<FName, int64>& Pair : Counts)
+		{
+			AddInfo(FString::Printf(TEXT("STARTSN %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+		}
+	}
+	return true;
+}
+
 // Deep dark counts at y -27 on a wide grid (-24576 + 384 * i, 128 * 128 points) for the five survey seeds and 25 more, to compare
 // with `log cbiomes -24576 -24576 384 128 -27` on the five reference worlds: DDW <seed index> <deep_dark points> <points>.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDeepDarkWideTest, "McClient.McGen.DeepDarkWide",

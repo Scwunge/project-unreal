@@ -96,7 +96,7 @@ namespace McMount
 	MCENTITY_API bool ClearPlayer(FMcEntity& Entity, uint32 PlayerId);
 	// Whether that player sits on it, and whether they are the one who steers.
 	MCENTITY_API bool HasPlayer(const FMcEntity& Entity, uint32 PlayerId);
-	// Where a player riding it sits (the passenger of a camel sits 0.9 behind, not measured).
+	// Where a player riding it sits (a camel's first rider sits 0.5 ahead of its centre and the passenger 0.7 behind it).
 	MCENTITY_API FVector GetSeatFor(const FMcEntity& Entity, uint32 PlayerId);
 	// Where the rider's feet sit.
 	MCENTITY_API FVector GetSeat(const FMcEntity& Entity);

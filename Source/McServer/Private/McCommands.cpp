@@ -1,5 +1,8 @@
 #include "McCommands.h"
 #include "McLang.h"
+#include "McDataPacks.h"
+#include "McCache.h"
+#include "Misc/FileHelper.h"
 #include "McTextComponent.h"
 #include "McCache.h"
 #include "McMob.h"
@@ -23,12 +26,14 @@ namespace
 	const FCommandInfo Commands[] = {
 		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
+		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
 		{ TEXT("effect"), 2, TEXT("/effect (clear|give) ...") },
 		{ TEXT("enchant"), 2, TEXT("/enchant <targets> <enchantment> [<level>]") },
 		{ TEXT("experience"), 2, TEXT("/experience (add|query|set) ...") },
 		{ TEXT("fill"), 2, TEXT("/fill <from> <to> <block> [destroy|hollow|keep|outline|replace]") },
+		{ TEXT("function"), 2, TEXT("/function <name>") },
 		{ TEXT("gamemode"), 2, TEXT("/gamemode <gamemode> [<target>]") },
 		{ TEXT("gamerule"), 2, TEXT("/gamerule <rule> [<value>]") },
 		{ TEXT("give"), 2, TEXT("/give <targets> <item> [<count>]") },
@@ -40,6 +45,7 @@ namespace
 		{ TEXT("msg"), 0, TEXT("/msg <targets> <message>") },
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
 		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
+		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -511,6 +517,241 @@ namespace
 		const int32 Bracket = Token.Find(TEXT("["));
 		const FString Id = Bracket == INDEX_NONE ? Token : Token.Left(Bracket);
 		return Registry.ParseState((Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id).ToLower() + (Bracket == INDEX_NONE ? FString() : Token.Mid(Bracket)));
+	}
+
+	// The name a data pack has in /datapack: "file/<name>" for one of the datapacks folder.
+	FString PackTitle(const FString& Name)
+	{
+		return TEXT("file/") + Name;
+	}
+
+	// /datapack list [available|enabled], enable <name> [first|last|before <pack>|after <pack>], disable <name>.
+	FReplies RunDataPack(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Enabled = McData::GetSelectedNames();
+		const auto Find = [](const TArray<FString>& Names, const FString& Wanted) -> int32
+		{
+			return Names.IndexOfByPredicate([&Wanted](const FString& Name) { return PackTitle(Name) == Wanted || Name == Wanted; });
+		};
+		if (Words[1] == TEXT("list") && Words.Num() <= 3)
+		{
+			const FString Which = Words.Num() == 3 ? Words[2] : FString();
+			if (!Which.IsEmpty() && Which != TEXT("available") && Which != TEXT("enabled"))
+			{
+				return BadArgument(Command);
+			}
+			FReplies Replies;
+			if (Which != TEXT("available"))
+			{
+				// The highest priority first (the game lists them from the top), the game's own last.
+				TArray<FString> Shown;
+				for (int32 Index = Enabled.Num() - 1; Index >= 0; --Index)
+				{
+					Shown.Add(TEXT("[") + PackTitle(Enabled[Index]) + TEXT("]"));
+				}
+				Shown.Add(TEXT("[vanilla (built-in)]"));
+				Replies.Add(Ok(McLang::Format(TEXT("commands.datapack.list.enabled.success"), { FString::FromInt(Shown.Num()), FString::Join(Shown, TEXT(", ")) })));
+			}
+			if (Which != TEXT("enabled"))
+			{
+				TArray<FString> Shown;
+				for (const McData::FFolderEntry& Entry : McData::ScanFolder())
+				{
+					if (Entry.Pack.IsValid() && Find(Enabled, Entry.Name) == INDEX_NONE)
+					{
+						Shown.Add(TEXT("[") + PackTitle(Entry.Name) + TEXT("]"));
+					}
+				}
+				Replies.Add(Shown.IsEmpty() ? Ok(McLang::Get(TEXT("commands.datapack.list.available.none")))
+					: Ok(McLang::Format(TEXT("commands.datapack.list.available.success"), { FString::FromInt(Shown.Num()), FString::Join(Shown, TEXT(", ")) })));
+			}
+			return Replies;
+		}
+		if ((Words[1] == TEXT("enable") || Words[1] == TEXT("disable")) && Words.Num() >= 3)
+		{
+			FString Name = Words[2].TrimQuotes();
+			const bool bEnable = Words[1] == TEXT("enable");
+			Name.RemoveFromStart(TEXT("file/"));
+			const int32 At = Find(Enabled, Name);
+			if (bEnable)
+			{
+				bool bKnown = false;
+				for (const McData::FFolderEntry& Entry : McData::ScanFolder())
+				{
+					bKnown |= Entry.Pack.IsValid() && Entry.Name == Name;
+				}
+				if (!bKnown)
+				{
+					return { Fail(McLang::Format(TEXT("commands.datapack.unknown"), { PackTitle(Name) })) };
+				}
+				if (At != INDEX_NONE)
+				{
+					return { Fail(McLang::Format(TEXT("commands.datapack.enable.failed"), { PackTitle(Name) })) };
+				}
+				// Last is the top (the game's default); first is the bottom; before and after are relative to another pack.
+				int32 Insert = Enabled.Num();
+				if (Words.Num() >= 4)
+				{
+					const FString Place = Words[3];
+					if (Place == TEXT("first"))
+					{
+						Insert = 0;
+					}
+					else if (Place == TEXT("last"))
+					{
+						Insert = Enabled.Num();
+					}
+					else if ((Place == TEXT("before") || Place == TEXT("after")) && Words.Num() == 5)
+					{
+						FString Other = Words[4].TrimQuotes();
+						Other.RemoveFromStart(TEXT("file/"));
+						const int32 OtherAt = Find(Enabled, Other);
+						if (OtherAt == INDEX_NONE)
+						{
+							return { Fail(McLang::Format(TEXT("commands.datapack.unknown"), { PackTitle(Other) })) };
+						}
+						// "before" in the game's list is above (higher priority), so after it in ours.
+						Insert = Place == TEXT("before") ? OtherAt + 1 : OtherAt;
+					}
+					else
+					{
+						return BadArgument(Command);
+					}
+				}
+				Enabled.Insert(Name, Insert);
+			}
+			else
+			{
+				if (At == INDEX_NONE)
+				{
+					return { Fail(McLang::Format(TEXT("commands.datapack.disable.failed"), { PackTitle(Name) })) };
+				}
+				Enabled.RemoveAt(At);
+			}
+			McData::ApplySelection(Enabled);
+			// The change is read in at once, as the game reloads its data after the command.
+			McData::Reload();
+			return { Ok(McLang::Format(bEnable ? TEXT("commands.datapack.modify.enable") : TEXT("commands.datapack.modify.disable"), { PackTitle(Name) })) };
+		}
+		return BadArgument(Command);
+	}
+
+	// The functions of a function tag ("minecraft:tick"), in order, tags inside it followed.
+	void CollectTagFunctions(const FString& Tag, TArray<FString>& Out, int32 Depth)
+	{
+		if (Depth > 8)
+		{
+			return;
+		}
+		const FString Full = McCache::Namespaced(Tag);
+		for (const McData::FFile& File : McData::List(TEXT("tags/function")))
+		{
+			if (File.Id != Full)
+			{
+				continue;
+			}
+			for (const FString& Value : McData::ReadTagValues(File.Paths))
+			{
+				if (Value.StartsWith(TEXT("#")))
+				{
+					CollectTagFunctions(Value.RightChop(1), Out, Depth + 1);
+				}
+				else
+				{
+					Out.AddUnique(McCache::Namespaced(Value));
+				}
+			}
+		}
+	}
+
+	// Runs the lines of a function as the sender; the count of commands run, or -1 for a function that isn't there.
+	int32 RunFunctionLines(const FString& Id, const FMcCommandSender& Sender, IMcCommandTarget& Target, FReplies& Replies, int32 Depth)
+	{
+		const FString Path = McData::PathOf(Id, TEXT("function"), TEXT(".mcfunction"));
+		FString Text;
+		if (Path.IsEmpty() || !FFileHelper::LoadFileToString(Text, *Path))
+		{
+			return -1;
+		}
+		TArray<FString> Lines;
+		Text.ParseIntoArrayLines(Lines, false);
+		int32 Ran = 0;
+		for (int32 Index = 0; Index < Lines.Num(); ++Index)
+		{
+			FString Line = Lines[Index].TrimStartAndEnd();
+			// A line that ends in a backslash goes on in the next.
+			while (Line.EndsWith(TEXT("\\")) && Index + 1 < Lines.Num())
+			{
+				Line.LeftChopInline(1);
+				Line += Lines[++Index].TrimStartAndEnd();
+			}
+			if (Line.IsEmpty() || Line.StartsWith(TEXT("#")) || Line.StartsWith(TEXT("$")))
+			{
+				continue;
+			}
+			Line.RemoveFromStart(TEXT("/"));
+			TArray<FString> Words;
+			Line.ParseIntoArrayWS(Words);
+			if (Words.Num() == 2 && Words[0] == TEXT("function") && Depth < 16)
+			{
+				if (RunFunctionLines(McCache::Namespaced(Words[1]), Sender, Target, Replies, Depth + 1) >= 0)
+				{
+					++Ran;
+					continue;
+				}
+			}
+			Replies.Append(McCommands::Execute(Line, Sender, Target));
+			++Ran;
+		}
+		return Ran;
+	}
+
+	// /function <name>: a function, or every function of a #tag.
+	FReplies RunFunction(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() != 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Ids;
+		const bool bTag = Words[1].StartsWith(TEXT("#"));
+		if (bTag)
+		{
+			CollectTagFunctions(Words[1].RightChop(1), Ids, 0);
+		}
+		else
+		{
+			Ids.Add(McCache::Namespaced(Words[1]));
+		}
+		FReplies Replies;
+		int32 Total = 0;
+		int32 Found = 0;
+		FString First;
+		for (const FString& Id : Ids)
+		{
+			FReplies Inner;
+			const int32 Ran = RunFunctionLines(Id, Sender, Target, Inner, 0);
+			if (Ran >= 0)
+			{
+				if (Found++ == 0)
+				{
+					First = Id;
+				}
+				Total += Ran;
+				Replies.Append(Inner);
+			}
+		}
+		if (Found == 0)
+		{
+			return { Fail(McLang::Format(TEXT("argument.id.unknown"), { Words[1].RightChop(bTag ? 1 : 0) })) };
+		}
+		Replies.Add(Ok(bTag && Found != 1 ? McLang::Format(TEXT("commands.function.success.multiple"), { FString::FromInt(Total), FString::FromInt(Found) })
+			: McLang::Format(TEXT("commands.function.success.single"), { FString::FromInt(Total), First })));
+		return Replies;
 	}
 
 	// /playsound <sound> <source> [<targets>] [<x> <y> <z>] [<volume>] [<pitch>]: the event plays for everyone (the targets are
@@ -1461,6 +1702,19 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunAccess(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("datapack"))
+	{
+		return RunDataPack(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("function"))
+	{
+		return RunFunction(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("reload"))
+	{
+		McData::Reload();
+		return { Ok(McLang::Get(TEXT("commands.reload.success"))) };
+	}
 	if (Name == TEXT("playsound"))
 	{
 		return RunPlaySound(Command, Words, Sender, Target);
@@ -1619,4 +1873,21 @@ int32 McCommands::ParseTime(const FString& Text)
 		return -1;
 	}
 	return FMath::RoundToInt(FCString::Atod(*Number) * Scale);
+}
+
+TArray<FString> McCommands::GetFunctionTag(const FString& Tag)
+{
+	TArray<FString> Ids;
+	CollectTagFunctions(Tag.StartsWith(TEXT("#")) ? Tag.RightChop(1) : Tag, Ids, 0);
+	return Ids;
+}
+
+TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+{
+	FReplies Replies;
+	for (const FString& Id : Ids)
+	{
+		RunFunctionLines(Id, Sender, Target, Replies, 0);
+	}
+	return Replies;
 }

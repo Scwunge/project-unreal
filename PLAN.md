@@ -1268,3 +1268,10 @@ Numbers and format details in the Java import and export that did not come strai
 5. Difficulty names (peaceful, easy, normal, hard): only "normal" observed; the others are recalled.
 6. Player import: equipment slot mapping (feet 100 ... head 103, off hand 150, ender 200+) is the port's own numbering; the NBT side (`equipment` compound, XpP, EnderItems) was read from the playerref save, so observed. The -106 off hand slot in old inventories is recalled and unverified.
 7. Dye order (white 0 ... black 15) for sheep: from the reference shots/save of sheep colours only for the colours that were shot; the full order is recalled.
+
+### Import checks against vanilla shots (import-java-world, 2026-11-04)
+
+- Skull heads: skeleton skull, creeper head and player head from an imported save match vanilla (ref_player_ref.png vs the same camera, -McCam=12,261.8,12,180,15). The type is in the block name, so nothing is lost on import; a player head's owner (profile) is not read, it draws as the default player.
+- Campfire food: the save's campfire Items (and CookingTimes) are kept whole as the block entity's Raw data, but nothing in the port reads them: a vanilla campfire with beef, porkchop, potato and a soul campfire with salmon (ref_campfood_ref.png, from scripts/campfood_ref.txt, save campref on the 1070) draws with an empty grill in ours. Cooking itself (campfire_cooking recipes, the food items on the grill, the burn-time counters) is a feature of its own for the block-entity session.
+- Campfire smoke: ours draws a few grey squares where vanilla draws tall smoke columns (particles). Particles session.
+- The imported player's saved yaw/pitch: a shot with no -McCam faces another way than vanilla's (villager on the left, not the right). With an explicit -McCam=12,261.8,12,180,15 the view matches vanilla, so the saved yaw 180 is right; it is the shot start's view that differs (GetStartTransform vs the shot harness), unconfirmed which.

@@ -6,6 +6,7 @@
 #include "McTextComponent.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McBiomeRegistry.h"
 #include "McVehicle.h"
 
 namespace
@@ -59,6 +60,7 @@ namespace
 		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
+		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -2227,6 +2229,38 @@ namespace
 		return ExecuteFrom(Command, Words, 1, Sender, Target, FExecCondition());
 	}
 
+	// /locate biome <biome>: the nearest loaded part of the world with that biome (the game searches further, generating as it goes; structures and
+	// points of interest are not built).
+	FReplies RunLocate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("biome"))
+		{
+			return Unknown(Command, Words.Num() < 3 ? Command.Len() : Command.Len());
+		}
+		if (Words.Num() > 3)
+		{
+			return BadArgument(Command);
+		}
+		FString Id = Words[2];
+		const FString Bare = Id.StartsWith(TEXT("minecraft:")) ? Id.Mid(10) : Id;
+		Id = TEXT("minecraft:") + Bare;
+		FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+		Biomes.EnsureLoaded();
+		const TOptional<FMcBiomeId> Wanted = Biomes.Find(FName(*Id));
+		if (!Wanted.IsSet())
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:worldgen/biome'"), *Id)), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+		}
+		const FVector From = SenderFeet(Sender, Target);
+		FIntVector Found;
+		if (!Target.FindBiome(*Wanted, From, Found))
+		{
+			return { Fail(FString::Printf(TEXT("Could not find a biome of type \"%s\" within a reasonable distance"), *Id)) };
+		}
+		const int32 Away = FMath::RoundToInt32(FMath::Sqrt(FMath::Square(double(Found.X) - From.X) + FMath::Square(double(Found.Z) - From.Z)));
+		return { Ok(McLang::Format(TEXT("commands.locate.biome.success"), { Id, FString::Printf(TEXT("[%d, %d, %d]"), Found.X, Found.Y, Found.Z), FString::FromInt(Away) })) };
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -3303,6 +3337,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("execute"))
 	{
 		return RunExecute(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("locate"))
+	{
+		return RunLocate(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

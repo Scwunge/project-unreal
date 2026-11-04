@@ -531,6 +531,9 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("execute as"), First(TEXT("execute as Steve at Steve run scoreboard objectives list")), FString(TEXT("There are no objectives")));
 	TestEqual(TEXT("execute if entity"), First(TEXT("execute if entity Steve")), FString(TEXT("Test passed. Count: 1")));
 	TestEqual(TEXT("execute unless entity"), First(TEXT("execute unless entity Steve")), FString(TEXT("Test failed. Count: 1")));
+	// Measured against the game: /locate biome.
+	TestEqual(TEXT("locate unknown biome"), First(TEXT("locate biome minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:worldgen/biome'")));
+	TestEqual(TEXT("locate needs a biome"), First(TEXT("locate biome")), FString(TEXT("Unknown or incomplete command. See below for error")));
 	return true;
 }
 

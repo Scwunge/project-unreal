@@ -137,6 +137,8 @@ public:
 	// /rotate: a player's yaw (Minecraft degrees), read and set.
 	virtual bool GetYaw(const FString& Player, double& OutYaw) const { return false; }
 	virtual void SetYaw(const FString& Player, double Yaw) {}
+	// /locate biome: the nearest loaded spot of a biome (id), from a position.
+	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
 	// /damage: hurts a player; false if nothing hurt them (creative).
 	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.

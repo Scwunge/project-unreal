@@ -570,7 +570,30 @@ UTexture2D* AMcHUD::GetMapTexture(const FMcItemStack& Stack)
 	return Found ? Found->Get() : nullptr;
 }
 
-void AMcHUD::DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch)
+void AMcHUD::DrawTurnedSprite(UTexture2D* Texture, float CentreX, float CentreY, float Size, float Degrees)
+{
+	if (!Texture || !Texture->GetResource())
+	{
+		return;
+	}
+	const double Radians = FMath::DegreesToRadians(static_cast<double>(Degrees));
+	const FVector2D Right(FMath::Cos(Radians), FMath::Sin(Radians));
+	const FVector2D Down(-FMath::Sin(Radians), FMath::Cos(Radians));
+	const FVector2D Middle(CentreX, CentreY);
+	const double Half = Size * 0.5;
+	const FVector2D Corners[4] = { Middle - Right * Half - Down * Half, Middle + Right * Half - Down * Half, Middle + Right * Half + Down * Half, Middle - Right * Half + Down * Half };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(1, 0), FVector2D(1, 1), FVector2D(0, 1) };
+	for (const int32 First : { 0, 2 })
+	{
+		const int32 A = 0, B = First == 0 ? 1 : 2, C = First == 0 ? 2 : 3;
+		FCanvasTriangleItem Item(Corners[A] * Scale, Corners[B] * Scale, Corners[C] * Scale, UVs[A], UVs[B], UVs[C], Texture->GetResource());
+		Item.SetColor(FLinearColor::White);
+		Item.BlendMode = SE_BLEND_Translucent;
+		Canvas->DrawItem(Item);
+	}
+}
+
+void AMcHUD::DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch, const FVector& PlayerPosition, float PlayerYaw)
 {
 	UTexture2D* Picture = GetMapTexture(Stack);
 	if (!Picture)
@@ -591,7 +614,26 @@ void AMcHUD::DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, f
 	const float Left = (static_cast<float>(Width) - Side) * 0.5f;
 	DrawSprite(LoadSprite(TEXT("textures/map/map_background.png")), Left, Top, Side, Side);
 	const float Border = Side * 7.0f / 142.0f;
-	DrawSprite(Picture, Left + Border, Top + Border, Side - 2.0f * Border, Side - 2.0f * Border);
+	const float Inner = Side - 2.0f * Border;
+	DrawSprite(Picture, Left + Border, Top + Border, Inner, Inner);
+	// The holder's own marker (ref run maphand1, pitch 90): the 8 by 8 picture is one map pixel per texel, centred on the
+	// player's place, and shown turned by its step of a sixteenth of a turn plus half a turn (the picture points up and
+	// the step 0 is facing south, which the game shows pointing down).
+	const FMcMapData* Map = McMapStore::Find(McMapStore::GetId(Stack));
+	if (Map && !PlayerPosition.ContainsNaN())
+	{
+		bool bOffX = false, bOffZ = false;
+		const int8 MarkerX = Map->MarkerByte(PlayerPosition.X, Map->CenterX, bOffX);
+		const int8 MarkerZ = Map->MarkerByte(PlayerPosition.Z, Map->CenterZ, bOffZ);
+		if (!bOffX && !bOffZ)
+		{
+			const float Unit = Inner / 128.0f;
+			const float CentreX = Left + Border + (MarkerX * 0.5f + 64.0f) * Unit;
+			const float CentreY = Top + Border + (MarkerZ * 0.5f + 64.0f) * Unit;
+			DrawTurnedSprite(LoadSprite(TEXT("textures/map/decorations/player.png")), CentreX, CentreY, 8.0f * Unit,
+				FMcMapData::MarkerRotation(PlayerYaw) * 22.5f + 180.0f);
+		}
+	}
 }
 
 const AMcHUD::FIcon& AMcHUD::GetMapIcon(const FMcItemStack& Stack)

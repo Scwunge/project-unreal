@@ -124,7 +124,9 @@ private:
 	// The picture of a filled map's data, kept current; null if the map is unknown.
 	UTexture2D* GetMapTexture(const FMcItemStack& Stack);
 	// The filled map in the main hand, held up in front of the view (frame and picture).
-	void DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch);
+	void DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch, const FVector& PlayerPosition, float PlayerYaw);
+	// A picture of Size (GUI units) square centred on (X, Y), turned clockwise by Degrees.
+	void DrawTurnedSprite(UTexture2D* Texture, float CentreX, float CentreY, float Size, float Degrees);
 	TMap<int32, FIcon> MapIcons;
 	TMap<int32, int32> MapIconRevisions;
 	UPROPERTY(Transient)

@@ -2345,7 +2345,7 @@ void AMcHUD::DrawHUD()
 	// A filled map in the main hand is held up before the view (under the crosshair and the rest of the HUD).
 	if (Player && Data && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead && !Player->IsScoping() && Data->GetSelected().Item == TEXT("minecraft:filled_map"))
 	{
-		DrawHeldMap(Width, Height, Data->GetSelected(), Player->GetLookPitch());
+		DrawHeldMap(Width, Height, Data->GetSelected(), Player->GetLookPitch(), Player->GetFeetPosition(), Player->GetLookYaw());
 	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)

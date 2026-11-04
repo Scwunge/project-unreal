@@ -1425,4 +1425,5 @@ Numbers in the code that did not come from a logged vanilla run, the wiki or `ca
 8. Held map (`DrawHeldMap`): the frame is assumed square (only its width and top were measured); the pitch dependence is a smoothstep fitted to 21 shots (an interpolation, not a known rule); arms, off hand and tilt not modelled.
 9. Lodestone/recovery compass needle spin when the target is in another dimension or gone: unmeasured (follows the compass spin of gap 1).
 (Not gaps, checked: the bundle fullness bar (bundle1), the map slot picture (mapshot), the spyglass FOV and scope (log fov, spy1/spy2).)
+Held map, player marker: the 8x8 `map/decorations/player.png` centred on the holder's marker byte (`MarkerByte`, in the picture at one texel per map pixel), turned by `MarkerRotation * 22.5` + 180 degrees (the picture points up; step 0 is facing south, which vanilla shows pointing down: ref_mh_p90). Position and size agree with the vanilla shot; the turn was checked only for facing south in the ref and by eye in ours. Not done: markers for other players, item frames, banners, structure icons, off-map edge markers.
 

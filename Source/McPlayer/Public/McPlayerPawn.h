@@ -409,6 +409,8 @@ private:
 public:
 	// Ticks since this player's totem went off (its flight across their screen), or -1.
 	float GetTotemAge() const { return TotemAge; }
+	// Swings the arm drawn in first person (on the machine that draws it); for /swing.
+	void SwingArm();
 private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.

@@ -1557,6 +1557,14 @@ void AMcPlayerPawn::ServerWantWake_Implementation()
 	ServerWakeUp();
 }
 
+void AMcPlayerPawn::SwingArm()
+{
+	if (UMcHandComponent* Arm = Hand.Get())
+	{
+		Arm->Swing();
+	}
+}
+
 void AMcPlayerPawn::ServerRespawn_Implementation()
 {
 	if (bServerDead && OnRespawnRequest)

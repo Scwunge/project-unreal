@@ -61,6 +61,7 @@ namespace
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
+		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
@@ -2261,6 +2262,34 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.locate.biome.success"), { Id, FString::Printf(TEXT("[%d, %d, %d]"), Found.X, Found.Y, Found.Z), FString::FromInt(Away) })) };
 	}
 
+	// /swing <targets> [mainhand|offhand]: players swing their arm (what is drawn is the first-person arm on the machine playing them).
+	FReplies RunSwing(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 3 || (Words.Num() == 3 && Words[2] != TEXT("mainhand") && Words[2] != TEXT("offhand")))
+		{
+			return BadArgument(Command);
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		if (Players.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.swing.failed.notliving"))) };
+		}
+		for (const FString& Player : Players)
+		{
+			Target.SwingArm(Player);
+		}
+		return { Ok(Players.Num() == 1 ? McLang::Format(TEXT("commands.swing.success.single"), { Players[0] }) : McLang::Format(TEXT("commands.swing.success.multiple"), { FString::FromInt(Players.Num()) })) };
+	}
+
 	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() != 2 && Words.Num() != 5)
@@ -3341,6 +3370,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("locate"))
 	{
 		return RunLocate(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("swing"))
+	{
+		return RunSwing(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("random"))
 	{

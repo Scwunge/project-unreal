@@ -1779,6 +1779,13 @@ namespace
 			}
 			return Best < TNumericLimits<double>::Max();
 		}
+		virtual void SwingArm(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->SwingArm();
+			}
+		}
 		virtual bool GetYaw(const FString& Player, double& OutYaw) const override
 		{
 			const AMcPlayerPawn* Pawn = FindPawn(Player);

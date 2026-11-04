@@ -534,6 +534,7 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	// Measured against the game: /locate biome.
 	TestEqual(TEXT("locate unknown biome"), First(TEXT("locate biome minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:worldgen/biome'")));
 	TestEqual(TEXT("locate needs a biome"), First(TEXT("locate biome")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("swing"), First(TEXT("swing Steve")), FString(TEXT("Made Steve swing an arm")));
 	return true;
 }
 

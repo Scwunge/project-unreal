@@ -1540,3 +1540,7 @@ material intact; the likely cause is that proc-mesh UVs are half floats by defau
 the flag in vertex colour alpha on a separate water material (water uses the no-vertex-alpha path today), or switch the section to full-precision UVs (shared file).
 Vanilla is unchanged either way: with the flag off the mesh is what it was, and the FluidMesher test (passes on the 1070) checks whole layer numbers with Unreal Mode off and identical layers/shape on.
 The lit/HD materials keep the foam term (inert with no flag).
+
+Cloud shade shot, third try (2026-11-04, 1070): pitch DOES apply in a scene at y 197-199 (`cloud_side`, shots `cloud_side` pitch 22, `cloud_side2` pitch 60), so the earlier level shot was the y 204 platform scene, not the pitch code.
+But from above the layer neither shot shows any cloud: pitch 22 is a flat pale haze, pitch 60 looks straight down at the flat world's green square with only particles. So the clouds are not drawn,
+or are culled, when the camera is above them (or fog-hidden). Next: read McCloudComponent's visibility/culling for a camera above the layer, then redo this shot. Scenes `cloud_top` and `cloud_side` are in tools/scenes.

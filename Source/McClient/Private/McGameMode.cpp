@@ -1428,10 +1428,17 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
 	// command script for a shot or sound run, like the reference client's "cmd").
 	FString Lines;
-	if (FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
+	// -McChatFile=<path> reads the lines from a file, one a line, for text a command line can't carry (JSON with quotes).
+	FString ChatFile;
+	const bool bFromFile = FParse::Value(FCommandLine::Get(), TEXT("-McChatFile="), ChatFile) && FFileHelper::LoadFileToString(Lines, *ChatFile);
+	if (bFromFile || FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
 	{
 		TArray<FString> Parts;
-		Lines.ParseIntoArray(Parts, TEXT("|"));
+		Lines.ParseIntoArray(Parts, bFromFile ? TEXT("\n") : TEXT("|"));
+		for (FString& Part : Parts)
+		{
+			Part.TrimEndInline();
+		}
 		for (int32 Index = 0; Index < Parts.Num(); ++Index)
 		{
 			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
@@ -1494,6 +1501,14 @@ namespace
 			}
 		}
 		virtual void Broadcast(const FString& Line) override { Mode.BroadcastChat(Line); }
+		virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				Pawn->Data->ServerTitle(static_cast<UMcPlayerDataComponent::ETitleKind>(Kind), Text, FadeIn, Stay, FadeOut);
+			}
+		}
 
 		virtual bool IsCreative(const FString& Player) const override
 		{

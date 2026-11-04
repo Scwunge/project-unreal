@@ -134,6 +134,11 @@ void FMcSimulation::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration
 	Redstone->HitTarget(Pos, Power, Duration);
 }
 
+void FMcSimulation::LightningStruck(const FIntVector& Pos)
+{
+	Redstone->LightningStruck(Pos);
+}
+
 void FMcSimulation::PlayerPlaced(const FIntVector& Pos)
 {
 	Redstone->PlayerPlaced(Pos);

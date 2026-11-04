@@ -46,6 +46,8 @@ public:
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
 	void PlayerPlaced(const FIntVector& Pos);
+	// A lightning bolt hit Pos (or the cell above a lightning rod).
+	void LightningStruck(const FIntVector& Pos);
 	// A player broke the block that was at Pos (its kind in State): a vibration of 12.
 	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
 
@@ -155,6 +157,8 @@ private:
 	// A moving block is landing: its neighbours hear of it after this tick's block events, so a piston acts next tick.
 	bool bLanding = false;
 	TArray<FIntVector> NextPistonEvents;
+	// Composters at level 7 with their turn to 8 scheduled.
+	TSet<FIntVector> ComposterPending;
 	TArray<FIntVector> PistonEvents;
 	// Set while an observer changes its own state, which is not a new observer.
 	bool bObserverSelf = false;

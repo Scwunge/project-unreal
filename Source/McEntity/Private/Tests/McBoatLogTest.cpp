@@ -111,5 +111,53 @@ bool FMcBoatLogTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("4 then 0.5 breaks it"), Hits({ 4.0f, 0.5f }));
 		TestFalse(TEXT("six hits of 1, four ticks apart, don't"), Hits({ 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f }));
 	}
+	// Driven on the water surface (vehicle_log19.txt): friction 0.9, so 0.04, 0.076, 0.1084 a tick, and the turn steps 1, 1.9, 2.71.
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		for (int32 Z = -1; Z <= 2; ++Z) { for (int32 X = -1; X <= 3; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+		for (int32 X = 0; X < 40; ++X) { for (int32 Z = -2; Z <= 2; ++Z) { for (int32 Y = 0; Y < 5; ++Y) { World.SetBlock(FIntVector(X, Y, Z), State(Y == 0 ? TEXT("minecraft:stone") : TEXT("minecraft:water"))); } } }
+		FMcEntityManager Manager(World);
+		FMcBoatEntity* Boat = new FMcBoatEntity(false);
+		Boat->Body.Position = FVector(2.5, 4.5, 0.5);
+		Boat->Yaw = -90.0f;
+		Manager.Add(TUniquePtr<FMcEntity>(Boat));
+		for (int32 Tick = 0; Tick < 20; ++Tick) { Boat->SetRider(0.0f, 0.0f, -90.0f, 7); Manager.Tick(); }
+		const double Start = Boat->Body.Position.X;
+		const double Expected[] = { 0.04, 0.076, 0.1084 };
+		for (int32 Tick = 0; Tick < 3; ++Tick)
+		{
+			const double Before = Boat->Body.Position.X;
+			Boat->SetRider(1.0f, 0.0f, -90.0f, 7);
+			Manager.Tick();
+			TestTrue(*FString::Printf(TEXT("surface step %d: %f vs %f"), Tick, Boat->Body.Position.X - Before, Expected[Tick]), FMath::Abs(Boat->Body.Position.X - Before - Expected[Tick]) < 5e-4);
+		}
+		(void)Start;
+	}
+	return true;
+}
+
+// A TNT cart goes off landing from a fall of 3 or more, not 2 (vehicle_log20.txt: dropped from 2, 3, 4, 6, 10 blocks).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcTntCartFallTest, "McClient.McEntity.TntCartFall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcTntCartFallTest::RunTest(const FString& Parameters)
+{
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	for (const int32 Drop : { 2, 3, 6 })
+	{
+		FMcBlockWorld World{FMcDimensionType()};
+		World.AddChunk(World.MakeChunk(FIntPoint(0, 0)));
+		for (int32 X = 0; X < 16; ++X) { for (int32 Z = 0; Z < 16; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:dirt")).Get(0)); } }
+		FMcEntityManager Manager(World);
+		FMcMinecartEntity* Cart = new FMcMinecartEntity(FMcMinecartEntity::EVariant::Tnt);
+		Cart->Body.Position = FVector(8.5, 1.0 + Drop, 8.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Cart));
+		for (int32 Tick = 0; Tick < 40; ++Tick) { Manager.Tick(); }
+		TestEqual(*FString::Printf(TEXT("drop %d goes off"), Drop), Cart->bRemoved, Drop >= 3);
+	}
 	return true;
 }

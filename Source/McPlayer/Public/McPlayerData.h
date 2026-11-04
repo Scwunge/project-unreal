@@ -245,6 +245,25 @@ public:
 	static void ShowOverlay(const FString& Text, bool bRainbow);
 	static constexpr double OverlaySeconds = 3.0;
 
+	// The big text in the middle of the screen (/title): a title at four times the size, a subtitle at twice, which fade in,
+	// stay and fade out (in ticks; 10, 70 and 20 until /title times sets others). Both are legacy text.
+	struct FTitle
+	{
+		FString Title;
+		FString Subtitle;
+		int32 FadeIn = 10;
+		int32 Stay = 70;
+		int32 FadeOut = 20;
+		double Time = -1000.0;  // FPlatformTime::Seconds when it was shown
+	};
+	enum class ETitleKind : uint8 { Title, Subtitle, ActionBar, Clear, Reset, Times };
+	static FTitle& GetTitle();
+	// What /title does on this machine: the text for Title, Subtitle and ActionBar (a title or subtitle starts the show; the
+	// action bar is the overlay), Clear hides what is up, Reset also puts the times back, Times sets the three.
+	static void ApplyTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+	// Server: sends this player a /title.
+	void ServerTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+
 	// The small panels that slide in at the top right (an advancement made). A client list: each has the time it
 	// arrived and drops out of it once it has gone.
 	struct FToast
@@ -302,6 +321,8 @@ protected:
 	void ClientChat(const FString& Text, int32 Rgb);
 	UFUNCTION(Client, Reliable)
 	void ClientOverlay(const FString& Text, bool bRainbow);
+	UFUNCTION(Client, Reliable)
+	void ClientTitle(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
 	UFUNCTION(Client, Reliable)
 	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)

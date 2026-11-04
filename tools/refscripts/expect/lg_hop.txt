@@ -4,7 +4,6 @@
 16|i:2,-60,24|cobblestone=1|-
 16|i:3,-60,24|-|cobblestone=1
 17|i:1,-59,12|coal=2,iron_ore=1|coal=2
-17|i:1,-59,20|wheat_seeds=3|wheat_seeds=2
 17|i:1,-59,4|cobblestone=3|cobblestone=2
 17|i:1,-59,56|blaze_powder=1,glass_bottle=2|glass_bottle=2
 17|i:1,-60,0|cobblestone=3|cobblestone=2
@@ -14,7 +13,6 @@
 17|i:1,-60,40|cobblestone=1|-
 17|i:1,-60,52|cobblestone=1|-
 17|i:1,-60,56|blaze_powder=2|blaze_powder=3
-17|i:1,-60,60|blaze_powder=1,glass_bottle=2|glass_bottle=2
 17|i:1,-60,8|dirt=3,stick=1|dirt=2,stick=1
 17|i:2,-60,0|cobblestone=2|cobblestone=3
 17|i:2,-60,24|-|cobblestone=1
@@ -22,11 +20,8 @@
 17|i:2,-60,40|cobblestone=2|cobblestone=3
 17|i:2,-60,4|cobblestone=1|cobblestone=2
 17|i:2,-60,52|cobblestone=2|cobblestone=3
-17|i:2,-60,60|blaze_powder=1|blaze_powder=2
 17|i:2,-60,8|cobblestone=2|cobblestone=2,dirt=1
-1|1,-60,20|composter[level=0]|composter[level=1]
 1|i:1,-59,12|coal=2,iron_ore=3|coal=2,iron_ore=2
-1|i:1,-59,20|wheat_seeds=5|wheat_seeds=4
 1|i:1,-59,4|cobblestone=5|cobblestone=4
 1|i:1,-59,56|blaze_powder=3,glass_bottle=2|blaze_powder=2,glass_bottle=2
 1|i:1,-60,0|cobblestone=5|cobblestone=4
@@ -39,7 +34,6 @@
 1|i:1,-60,4|-|cobblestone=1
 1|i:1,-60,52|cobblestone=3|cobblestone=2
 1|i:1,-60,56|-|blaze_powder=1
-1|i:1,-60,60|blaze_powder=3,glass_bottle=2|blaze_powder=2,glass_bottle=2
 1|i:1,-60,8|cobblestone=2,dirt=3,stick=1|cobblestone=1,dirt=3,stick=1
 1|i:2,-60,0|-|cobblestone=1
 1|i:2,-60,16|-|coal=1
@@ -57,27 +51,21 @@
 24|i:2,-60,24|cobblestone=1|-
 24|i:2,-60,28|-|cobblestone=1
 24|i:3,-60,24|-|cobblestone=1
-25|i:1,-59,20|wheat_seeds=2|wheat_seeds=1
 25|i:1,-59,4|cobblestone=2|cobblestone=1
 25|i:1,-60,0|cobblestone=2|cobblestone=1
-25|i:1,-60,60|glass_bottle=2|glass_bottle=1
 25|i:1,-60,8|dirt=2,stick=1|dirt=1,stick=1
 25|i:2,-60,0|cobblestone=3|cobblestone=4
 25|i:2,-60,4|cobblestone=2|cobblestone=3
-25|i:2,-60,60|blaze_powder=2|blaze_powder=2,glass_bottle=1
 25|i:2,-60,8|cobblestone=2,dirt=1|cobblestone=2,dirt=2
 31|i:3,-60,24|cobblestone=1|-
 31|i:4,-60,24|cobblestone=2|cobblestone=3
 32|i:1,-60,28|cobblestone=2|cobblestone=1
 32|i:2,-60,28|cobblestone=1|cobblestone=2
-33|i:1,-59,20|wheat_seeds=1|-
 33|i:1,-59,4|cobblestone=1|-
 33|i:1,-60,0|cobblestone=1|-
-33|i:1,-60,60|glass_bottle=1|-
 33|i:1,-60,8|dirt=1,stick=1|dirt=1
 33|i:2,-60,0|cobblestone=4|cobblestone=5
 33|i:2,-60,4|cobblestone=3|cobblestone=4
-33|i:2,-60,60|blaze_powder=2,glass_bottle=1|blaze_powder=2,glass_bottle=2
 33|i:2,-60,8|cobblestone=2,dirt=2|cobblestone=2,dirt=2,stick=1
 40|i:1,-60,28|cobblestone=1|-
 40|i:2,-60,28|cobblestone=2|cobblestone=3
@@ -87,9 +75,7 @@
 41|i:2,-60,8|cobblestone=2,dirt=2,stick=1|cobblestone=2,dirt=3,stick=1
 8|i:2,-60,24|cobblestone=1|-
 8|i:3,-60,24|-|cobblestone=1
-9|1,-60,20|composter[level=1]|composter[level=2]
 9|i:1,-59,12|coal=2,iron_ore=2|coal=2,iron_ore=1
-9|i:1,-59,20|wheat_seeds=4|wheat_seeds=3
 9|i:1,-59,4|cobblestone=4|cobblestone=3
 9|i:1,-59,56|blaze_powder=2,glass_bottle=2|blaze_powder=1,glass_bottle=2
 9|i:1,-60,0|cobblestone=4|cobblestone=3
@@ -101,7 +87,6 @@
 9|i:1,-60,40|cobblestone=2|cobblestone=1
 9|i:1,-60,52|cobblestone=2|cobblestone=1
 9|i:1,-60,56|blaze_powder=1|blaze_powder=2
-9|i:1,-60,60|blaze_powder=2,glass_bottle=2|blaze_powder=1,glass_bottle=2
 9|i:1,-60,8|cobblestone=1,dirt=3,stick=1|dirt=3,stick=1
 9|i:2,-60,0|cobblestone=1|cobblestone=2
 9|i:2,-60,16|coal=1|coal=2
@@ -111,5 +96,4 @@
 9|i:2,-60,40|cobblestone=1|cobblestone=2
 9|i:2,-60,4|-|cobblestone=1
 9|i:2,-60,52|cobblestone=1|cobblestone=2
-9|i:2,-60,60|-|blaze_powder=1
 9|i:2,-60,8|cobblestone=1|cobblestone=2

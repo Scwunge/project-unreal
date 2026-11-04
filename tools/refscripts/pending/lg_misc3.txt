@@ -1,0 +1,177 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 10 -50 20
+wait 200
+cmd tick freeze
+wait 4
+cmd fill -2 -60 -2 30 -58 60 air
+cmd fill -2 -61 -2 30 -61 60 stone
+wait 10
+cmd setblock 1 -60 0 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_cat",count:1}]}
+cmd setblock 2 -60 0 jukebox
+cmd setblock 3 -60 0 comparator[facing=east]
+cmd setblock 4 -60 0 redstone_wire
+cmd setblock 1 -60 4 hopper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_cat",count:1}]}
+cmd setblock 2 -60 4 jukebox
+cmd setblock 3 -60 4 comparator[facing=east]
+cmd setblock 4 -60 4 redstone_wire
+cmd setblock 2 -60 8 jukebox{RecordItem:{id:"minecraft:music_disc_cat",count:1}}
+cmd setblock 3 -60 8 comparator[facing=east]
+cmd setblock 4 -60 8 redstone_wire
+cmd setblock 2 -60 12 jukebox{record_item:{id:"minecraft:music_disc_cat",count:1}}
+cmd setblock 3 -60 12 comparator[facing=east]
+cmd setblock 4 -60 12 redstone_wire
+cmd setblock 1 -60 16 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_13",count:1}]}
+cmd setblock 2 -60 16 jukebox
+cmd setblock 3 -60 16 comparator[facing=east]
+cmd setblock 4 -60 16 redstone_wire
+cmd setblock 0 -60 24 lightning_rod[facing=up]
+cmd setblock 0 -60 25 copper
+cmd setblock 1 -60 24 redstone_lamp
+cmd setblock 2 -60 24 redstone_wire
+cmd setblock 4 -60 24 weathered_lightning_rod[facing=up]
+cmd setblock 4 -60 25 weathered_copper
+cmd setblock 5 -60 24 redstone_lamp
+cmd setblock 6 -60 24 redstone_wire
+cmd setblock 8 -60 24 oxidized_lightning_rod[facing=up]
+cmd setblock 8 -60 25 oxidized_copper
+cmd setblock 9 -60 24 redstone_lamp
+cmd setblock 10 -60 24 redstone_wire
+cmd setblock 12 -60 24 exposed_lightning_rod[facing=up]
+cmd setblock 12 -60 25 exposed_copper
+cmd setblock 13 -60 24 redstone_lamp
+cmd setblock 14 -60 24 redstone_wire
+wait 10
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd setblock 1 -59 0 redstone_block
+cmd setblock 1 -59 16 redstone_block
+cmd summon lightning_bolt 0.5 -60 24.5
+cmd summon lightning_bolt 4.5 -60 24.5
+cmd summon lightning_bolt 8.5 -60 24.5
+cmd summon lightning_bolt 12.5 -60 24.5
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd setblock 3 -60 1 stone
+cmd setblock 3 -60 5 stone
+cmd setblock 3 -60 9 stone
+cmd setblock 3 -60 13 stone
+cmd setblock 3 -60 17 stone
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick step 1
+wait 4
+log states -1 -60 -1 20 -59 30
+cmd tick unfreeze

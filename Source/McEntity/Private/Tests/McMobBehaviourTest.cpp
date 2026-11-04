@@ -467,6 +467,52 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
 	}
+	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
+	{
+		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Mob = AddMob(Manager, Kind, FVector(10.5, 1.0, 10.5));
+		const int32 Id = Mob->Id;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		bool bFound = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bFound |= Entity->Id == Id;
+		}
+		TestTrue(FString::Printf(TEXT("%s is still there after 200 ticks"), Kind), bFound);
+	}
+	{
+		// A phantom circles above a player and dives at it: over 900 ticks it passes within 3 blocks at least twice and climbs above 6.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		const FVector Player(10.5, 1.0, 10.5);
+		Manager.PlayerPositions = { Player };
+		FMcMob* Phantom = AddMob(Manager, TEXT("minecraft:phantom"), FVector(10.5, 9.0, 0.5));
+		int32 Passes = 0;
+		bool bNear = false;
+		double Highest = 0.0;
+		for (int32 Tick = 0; Tick < 900; ++Tick)
+		{
+			Manager.Tick();
+			const double Distance = FVector::Dist(Phantom->Body.Position, Player + FVector(0, 0.9, 0));
+			Highest = FMath::Max(Highest, Phantom->Body.Position.Y - Player.Y);
+			if (Distance < 3.0 && !bNear)
+			{
+				++Passes;
+			}
+			bNear = Distance < 3.0;
+		}
+		TestTrue(FString::Printf(TEXT("a phantom dives at least twice in 900 ticks (%d) and climbs (%.1f)"), Passes, Highest), Passes >= 2 && Highest > 6.0);
+	}
 	return true;
 }
 

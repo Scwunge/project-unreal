@@ -8,6 +8,7 @@
 #include "McShulkerBullet.h"
 #include "McPotion.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McPathfinding.h"
@@ -138,7 +139,9 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Enderman = Add(TEXT("minecraft:enderman"), 0.6f, 2.9f, 40.f, 0.3f, 7.f, 64.f, false, false);
 		Enderman.bNeutral = true;
 		Enderman.bTeleports = true;
+		// Stare trigger: fitted from ender13/ender14 (see the Tick block); it is on.
 		Enderman.bGazeAngers = true;
+		Enderman.bCarriesBlocks = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
 		// The magma cube (hogmagma1.txt): per size n (1, 2, 4 across the sizes the game makes) health n squared, attack n, armor 3n, speed
 		// 0.2 + 0.1n, box 0.52 n; it does not burn. Size 1: 1 hp, attack 1, follows 16. Armor and the speed rise are not done.
@@ -896,17 +899,66 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	if (Type.bGazeAngers)
 	{
-		// A player looking at its eyes from within 64 blocks with nothing between (ender2.txt: stared at from 10 blocks it teleported within 2 ticks;
-		// looked away from, it stood still for 200 ticks). The cone is the game's rule as remembered, not measured: it narrows with distance.
-		for (int32 Index = 0; Index < Manager.PlayerPositions.Num() && Index < Manager.PlayerLooks.Num(); ++Index)
+		// Stare trigger, fitted from vanilla logs (ender13.txt, ender14.txt: survival player, enderman alone in the End, anger_end_time read back,
+		// aim swept off its eyes, n=2 at 10 blocks and n=1 at 3 and 20): it was angered when the view passed within 0.5 blocks of its eyes at 10 blocks
+		// (13 of 14 aimed within 0.5), never at 1 block or more, nor looking away; the edge sat between 0.25 and 0.4 at 3 blocks, 0.5 and 0.75 at
+		// 10 and 1.0 and 1.25 at 20. That fits "1 - cos(angle) < k / distance" with k between 0.0125 and 0.0195 (0.016 used). Eyes: 2.55 above its
+		// feet (2.9 tall, measured as the aim that worked), player eyes 1.62. Held for 5 ticks (the wiki's figure; the logs sampled at 12 ticks).
+		// One unexplained miss: a 0.1 offset at 3 blocks did not anger it. Anger length 1200 is the hurt value, not measured here.
+		bool bLooked = false;
+		for (int32 PlayerIndex = 0; PlayerIndex < Manager.PlayerPositions.Num() && PlayerIndex < Manager.PlayerLooks.Num(); ++PlayerIndex)
 		{
-			const FVector Eye = Manager.PlayerPositions[Index] + FVector(0.0, 1.62, 0.0);
-			const FVector Mine = Body.Position + FVector(0.0, Type.Height * 0.88, 0.0);
-			const double Distance = FVector::Dist(Eye, Mine);
-			if (Distance < 64.0 && Distance > 0.1 && FVector::DotProduct(Manager.PlayerLooks[Index], (Mine - Eye) / Distance) > 1.0 - 0.025 / Distance
-				&& HasLineOfSight(Manager.GetWorld(), Eye, Mine))
+			const FVector ToEnderman = (Body.Position + FVector(0.0, Type.Height * 0.879, 0.0)) - (Manager.PlayerPositions[PlayerIndex] + FVector(0.0, 1.62, 0.0));
+			const double Distance = ToEnderman.Size();
+			if (Distance > 0.01 && Distance < Type.FollowRange)
 			{
-				AngerTicks = FMath::Max(AngerTicks, 2);
+				const double CosAngle = FVector::DotProduct(Manager.PlayerLooks[PlayerIndex].GetSafeNormal(), ToEnderman / Distance);
+				bLooked = bLooked || (1.0 - CosAngle) < 0.016 / Distance;
+			}
+		}
+		StareTicks = bLooked ? StareTicks + 1 : 0;
+		if (StareTicks >= 5)
+		{
+			AngerTicks = 1200;
+		}
+	}
+	if (Type.bCarriesBlocks)
+	{
+		// Block carrying (ender6.txt: 3 endermen in a field of dandelions at their feet each picked one up, after about 100, 120 and 617 ticks (n=3),
+		// then held it for the 3000 ticks left; mob griefing was on). A pick-up tries a random cell within 2 across and 0 to 2 up from its feet
+		// with a chance fitted so the field gives the measured mean of 270 ticks (1 in 90 a tick; a third of tries land on the flowers' layer).
+		// Which blocks it may take is the game's own tag minecraft:enderman_holdable (cache/client/data). Setting one down: ender7.txt, 6 endermen
+		// carrying dirt on open ground, the carriers fell from 6 to 4 within 717 ticks (2 set-downs in about 3800 carrying enderman-ticks, so 1 in
+		// 1900 a tick, with n=2 that is only good to a factor of two or three). Where it puts the block (a free cell beside its feet over solid ground)
+		// was not measured.
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		FMcBlockWorld& BlockWorld = Manager.GetWorld();
+		const FIntVector Feet(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+		if (!Carried.IsSet() && Manager.bMobGriefing && Random.FRand() < 1.0f / 90.0f)
+		{
+			const FIntVector Cell(Feet.X + Random.RandRange(-2, 1), Feet.Y + Random.RandRange(0, 2), Feet.Z + Random.RandRange(-2, 1));
+			FMcBlockTags& Tags = FMcBlockTags::Get();
+			Tags.EnsureLoaded();
+			const int32 HoldableTag = Tags.Find(TEXT("minecraft:enderman_holdable"));
+			if (BlockWorld.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)))
+			{
+				const FMcStateId State = BlockWorld.GetBlock(Cell);
+				if (Tags.Has(HoldableTag, State)
+					&& HasLineOfSight(BlockWorld, Body.Position + FVector(0.0, Type.Height * 0.88, 0.0), FVector(Cell.X + 0.5, Cell.Y + 0.5, Cell.Z + 0.5)))
+				{
+					Carried = State;
+					BlockWorld.SetBlock(Cell, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
+				}
+			}
+		}
+		else if (Carried.IsSet() && Manager.bMobGriefing && Random.RandRange(0, 1899) == 0)
+		{
+			const FIntVector Cell(Feet.X + Random.RandRange(-1, 1), Feet.Y, Feet.Z + Random.RandRange(-1, 1));
+			if (BlockWorld.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)) && Registry.IsAir(BlockWorld.GetBlock(Cell))
+				&& FMcBlockShapes::Get().HasCollision(BlockWorld.GetBlock(Cell + FIntVector(0, -1, 0))))
+			{
+				BlockWorld.SetBlock(Cell, Carried.GetValue());
+				Carried.Reset();
 			}
 		}
 	}

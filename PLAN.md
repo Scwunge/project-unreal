@@ -1345,3 +1345,7 @@ Done: flake tone is now max(0.1, skylight^0.85) instead of sqrt(skylight) (McWea
 - Player data from saves: ImportPlayer writes the newest players/data file (or the old level.dat Player) as playerdata/imported-player.json (position, look, mode, health, food, xp, inventory, off hand, ender chest); LoadPlayer gives it to anyone with no file of their own. Built, tested (McClient.McServer.JavaImport.Player), not yet seen in game. Not carried: potion effects, recipe book, advancements, stats.
 Nether vanilla re-check: two HEAD shots of the same Nether scene differ from each other (max 45, 4146 px >8, mean 0.11), so the earlier HEAD-vs-baseline Nether difference (mean 0.56) is
 run-to-run noise in the lower half (light updates / world state), not a vanilla regression.
+
+### Filled map held in the main hand (2026-11-04, shot pending)
+Vanilla ref runs `maphand1/2.txt` (21 pitches): the frame (map_background.png stretched over 142 map pixels: the 128 of the picture plus 7 round it) is 600 of 720 pixels wide, centred; its top is at y 544 (of 720) for pitch up to 7 degrees, rises along a smoothstep to y 30 at pitch 49.5 and stays there (3 px rms fit). Drawn by the HUD (`AMcHUD::DrawHeldMap`, under the crosshair and bars) from `GetLookPitch()`; the hand shows nothing (`mc:held_map`). Not modelled: the arms holding it, the off hand, the perspective tilt, the item frame (frames have no player interaction yet, only imported ones). The shot compare against ref_mh2_p60 is not done yet (1070 shot lane busy).
+

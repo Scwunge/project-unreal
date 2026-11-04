@@ -2342,6 +2342,11 @@ void AMcHUD::DrawHUD()
 		DrawFill(FMath::Min(RightEdge, static_cast<float>(Width)), 0.0f, FMath::Max(static_cast<float>(Width) - RightEdge, 0.0f), static_cast<float>(Height), FLinearColor::Black);
 		DrawSprite(LoadSprite(TEXT("textures/misc/spyglass_scope.png")), Left, (static_cast<float>(Height) - Side) * 0.5f, Side, Side);
 	}
+	// A filled map in the main hand is held up before the view (under the crosshair and the rest of the HUD).
+	if (Player && Data && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead && !Player->IsScoping() && Data->GetSelected().Item == TEXT("minecraft:filled_map"))
+	{
+		DrawHeldMap(Width, Height, Data->GetSelected(), Player->GetLookPitch());
+	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{

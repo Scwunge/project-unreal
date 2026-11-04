@@ -388,6 +388,11 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		{
 			HeldName = FName(*FString::Printf(TEXT("minecraft:bow_pulling_%d"), BowSecondsLocal >= 0.9f ? 2 : BowSecondsLocal >= 0.65f ? 1 : 0));
 		}
+		if (HeldName == FName("minecraft:filled_map"))
+		{
+			// Held up by the HUD (AMcHUD::DrawHeldMap); the hand shows nothing of its own.
+			HeldName = FName("mc:held_map");
+		}
 		Arm->SetHeld(HeldName, Held.Count);
 		Arm->SetEating(bEatingLocal && !Held.IsEmpty(), EatSecondsLocal);
 		Arm->SetDrawing(bBowLocal && !Held.IsEmpty(), BowSecondsLocal);

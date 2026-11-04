@@ -563,6 +563,37 @@ void AMcHUD::BuildBlockIcon(FMcStateId State, FIcon& Icon)
 	}
 }
 
+UTexture2D* AMcHUD::GetMapTexture(const FMcItemStack& Stack)
+{
+	GetMapIcon(Stack);
+	const TObjectPtr<UTexture2D>* Found = MapTextures.Find(McMapStore::GetId(Stack));
+	return Found ? Found->Get() : nullptr;
+}
+
+void AMcHUD::DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch)
+{
+	UTexture2D* Picture = GetMapTexture(Stack);
+	if (!Picture)
+	{
+		return;
+	}
+	// Fitted from vanilla shots (ref run maphand2, one pitch every few degrees, 1280 x 720): the frame is 600 pixels wide
+	// (142 map pixels: the 128 of the picture and 7 round it), centred, and rises from its top at y 544 (pitch 7 and
+	// below) to y 30 (pitch 49.5 and above) along a smoothstep of the pitch.
+	const float Side = 600.0f / 720.0f * static_cast<float>(Height);
+	const float T = FMath::Clamp((Pitch - 7.0f) / (49.5f - 7.0f), 0.0f, 1.0f);
+	const float Rise = T * T * (3.0f - 2.0f * T);
+	const float Top = (30.0f + (544.0f - 30.0f) * (1.0f - Rise)) / 720.0f * static_cast<float>(Height);
+	if (Top >= static_cast<float>(Height))
+	{
+		return;
+	}
+	const float Left = (static_cast<float>(Width) - Side) * 0.5f;
+	DrawSprite(LoadSprite(TEXT("textures/map/map_background.png")), Left, Top, Side, Side);
+	const float Border = Side * 7.0f / 142.0f;
+	DrawSprite(Picture, Left + Border, Top + Border, Side - 2.0f * Border, Side - 2.0f * Border);
+}
+
 const AMcHUD::FIcon& AMcHUD::GetMapIcon(const FMcItemStack& Stack)
 {
 	const int32 Id = McMapStore::GetId(Stack);

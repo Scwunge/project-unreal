@@ -121,6 +121,10 @@ private:
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).
 	const FIcon& GetMapIcon(const FMcItemStack& Stack);
+	// The picture of a filled map's data, kept current; null if the map is unknown.
+	UTexture2D* GetMapTexture(const FMcItemStack& Stack);
+	// The filled map in the main hand, held up in front of the view (frame and picture).
+	void DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch);
 	TMap<int32, FIcon> MapIcons;
 	TMap<int32, int32> MapIconRevisions;
 	UPROPERTY(Transient)

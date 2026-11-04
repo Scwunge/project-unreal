@@ -1410,3 +1410,19 @@ Vanilla ref runs `maphand1/2.txt` (21 pitches): the frame (map_background.png st
 
 
 Cloud shade shot retried 2026-11-04 (local lane, `-McInput=look:0,40;wait:3` with `-McScene=cloud_top`): the shot came back level at the horizon, so the look input still isn't applied before the shot (the scene camera pitch is also ignored). Stays parked until the shot path honours pitch.
+
+## Provenance gaps
+Numbers in the code that did not come from a logged vanilla run, the wiki or `cache/` (clean-room audit, 2026-11-04). Each says whether it is to be measured or removed.
+
+### Maps, compasses, spyglass, bundles (m1 session; 10 gaps)
+1. Compass spin needle (`McItemFrames.cpp`): the chance 0.05 a tick of picking a new random spin target, the seed 1234 and using the compass's own Pull 0.1 and Damping 0.8 for it. Not from a log (origin: assumed when the code was first written; treat as recalled). To measure: log a compass in the Nether over a few hundred ticks. Same for the recovery compass without a death place and the lodestone compass with no lodestone.
+2. Bundle sounds: pitch range 0.8 to 1.2 for insert, remove_one and drop_contents is a guess ("varied" on the wiki); volumes 0.8 and 1.0 are the wiki's. To measure: `log sounds`.
+3. Bundle throw (`ServerUseBundle`): pickup delay 40 and velocity 0.3 along the look + 0.1 up are the Q-key drop's, assumed for the bundle. To measure: a ref run using a bundle in hand, log item entities.
+4. Bundle weights and rules (nested bundle 1/16 + contents, bee-holding beehive/nest = 1, same stack merging and moving to the front, no shulker boxes): taken from the wiki page read in an earlier part of this session and not re-checked against it since. To re-check against minecraft.wiki/w/Bundle (and fullness 1/64 per stick by the ref run bundle1, which did agree).
+5. Map fill speed (one row every 4 ticks while held) and order: measured only coarsely (a 128-row map took about 500 ticks, mapexp2/3). To measure: per-tick `log mapdata`.
+6. Map shading at scales 1 and 2 on sloped terrain (thresholds +-0.75 with the parity term) was fitted on flat rows only; scaled water shading is unverified; averaging of heights over a scaled pixel is unverified.
+7. Spyglass sounds (use and stop): volume and pitch 1.0, 1.0 are defaults, unmeasured. To measure with `log sounds`.
+8. Held map (`DrawHeldMap`): the frame is assumed square (only its width and top were measured); the pitch dependence is a smoothstep fitted to 21 shots (an interpolation, not a known rule); arms, off hand and tilt not modelled.
+9. Lodestone/recovery compass needle spin when the target is in another dimension or gone: unmeasured (follows the compass spin of gap 1).
+10. Bundle fullness bar and the map slot: measured (bundle1, mapshot): no gap, listed to show they were checked.
+

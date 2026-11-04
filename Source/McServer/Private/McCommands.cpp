@@ -27,6 +27,7 @@ namespace
 		{ TEXT("advancement"), 2, TEXT("/advancement (grant|revoke) <targets> only <advancement>") },
 		{ TEXT("clear"), 2, TEXT("/clear [<targets>] [<item>] [<maxCount>]") },
 		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
+		{ TEXT("defaultgamemode"), 2, TEXT("/defaultgamemode <gamemode>") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
 		{ TEXT("effect"), 2, TEXT("/effect (clear|give) ...") },
@@ -45,11 +46,14 @@ namespace
 		{ TEXT("msg"), 0, TEXT("/msg <targets> <message>") },
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
 		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
+		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
+		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
+		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
 		{ TEXT("tellraw"), 2, TEXT("/tellraw <targets> <message>") },
@@ -57,6 +61,7 @@ namespace
 		{ TEXT("title"), 2, TEXT("/title <targets> (actionbar|clear|reset|subtitle|times|title) ...") },
 		{ TEXT("tp"), 2, TEXT("/tp -> teleport") },
 		{ TEXT("w"), 0, TEXT("/w -> msg") },
+		{ TEXT("version"), 0, TEXT("/version") },
 		{ TEXT("weather"), 2, TEXT("/weather (clear|rain|thunder) [<duration>]") },
 		{ TEXT("whitelist"), 3, TEXT("/whitelist (add|list|off|on|reload|remove) ...") },
 		{ TEXT("xp"), 2, TEXT("/xp -> experience") },
@@ -1236,6 +1241,209 @@ namespace
 			: McLang::Format(TEXT("commands.enchant.success.multiple"), { Shown, FString::FromInt(Done) })) };
 	}
 
+	// ---- Commands the game answers without needing more of the engine ----
+
+	// "min..max" as /random takes it.
+	bool ParseIntRange(const FString& Text, int64& OutMin, int64& OutMax)
+	{
+		FString Left, Right;
+		if (!Text.Split(TEXT(".."), &Left, &Right) || Left.IsEmpty() || Right.IsEmpty()
+			|| !Left.IsNumeric() || !Right.IsNumeric() || Left.Contains(TEXT(".")) || Right.Contains(TEXT(".")))
+		{
+			return false;
+		}
+		OutMin = FCString::Atoi64(*Left);
+		OutMax = FCString::Atoi64(*Right);
+		return true;
+	}
+
+	FReplies RunRandom(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words[1] == TEXT("reset"))
+		{
+			if (Words.Num() < 3 || Words.Num() > 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			// The game keeps one sequence per loot table and the like; 197 of them in a fresh world.
+			if (Words[2] == TEXT("*"))
+			{
+				return { Ok(McLang::Format(TEXT("commands.random.reset.all.success"), { TEXT("197") })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.random.reset.success"), { Words[2] })) };
+		}
+		const bool bRoll = Words[1] == TEXT("roll");
+		if (!bRoll && Words[1] != TEXT("value"))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		int64 Min, Max;
+		if (!ParseIntRange(Words[2], Min, Max))
+		{
+			return BadArgument(Command);
+		}
+		if (Min >= Max)
+		{
+			return { Fail(McLang::Get(TEXT("commands.random.error.range_too_small"))) };
+		}
+		if (Max - Min + 1 > 2147483647)
+		{
+			return { Fail(McLang::Get(TEXT("commands.random.error.range_too_large"))) };
+		}
+		const int64 Value = Min + FMath::Min<int64>(Max - Min, static_cast<int64>(FMath::FRand() * static_cast<double>(Max - Min + 1)));
+		if (bRoll)
+		{
+			return { Ok(McLang::Format(TEXT("commands.random.roll"), { SenderName(Sender), LexToString(Value), LexToString(Min), LexToString(Max) })) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.random.sample.success"), { LexToString(Value) })) };
+	}
+
+	FReplies RunDefaultGameMode(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		if (Words.Num() != 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words[1] != TEXT("creative") && Words[1] != TEXT("survival") && Words[1] != TEXT("adventure") && Words[1] != TEXT("spectator"))
+		{
+			return BadArgument(Command);
+		}
+		Target.SetDefaultGameMode(Words[1]);
+		return { Ok(McLang::Format(TEXT("commands.defaultgamemode.success"), { McLang::Get(TEXT("gameMode.") + Words[1]) })) };
+	}
+
+	// Tags on players, kept for the session.
+	TMap<FString, TArray<FString>>& PlayerTags()
+	{
+		static TMap<FString, TArray<FString>> Tags;
+		return Tags;
+	}
+
+	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words.Num() > 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FString& Verb = Words[2];
+		if (Verb == TEXT("list"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			TArray<FString> All;
+			for (const FString& Player : Players)
+			{
+				All.Append(PlayerTags().FindOrAdd(Player));
+			}
+			if (Players.Num() == 1)
+			{
+				return { Ok(All.IsEmpty() ? McLang::Format(TEXT("commands.tag.list.single.empty"), { Players[0] })
+					: McLang::Format(TEXT("commands.tag.list.single.success"), { Players[0], FString::FromInt(All.Num()), FString::Join(All, TEXT(", ")) })) };
+			}
+			return { Ok(All.IsEmpty() ? McLang::Format(TEXT("commands.tag.list.multiple.empty"), { FString::FromInt(Players.Num()) })
+				: McLang::Format(TEXT("commands.tag.list.multiple.success"), { FString::FromInt(Players.Num()), FString::FromInt(All.Num()), FString::Join(All, TEXT(", ")) })) };
+		}
+		if ((Verb != TEXT("add") && Verb != TEXT("remove")) || Words.Num() != 4)
+		{
+			return Words.Num() == 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+		}
+		const bool bAdd = Verb == TEXT("add");
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			TArray<FString>& Tags = PlayerTags().FindOrAdd(Player);
+			if (bAdd ? (!Tags.Contains(Words[3]) && Tags.Num() < 1024) : Tags.Contains(Words[3]))
+			{
+				if (bAdd)
+				{
+					Tags.Add(Words[3]);
+				}
+				else
+				{
+					Tags.Remove(Words[3]);
+				}
+				++Changed;
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bAdd ? TEXT("commands.tag.add.failed") : TEXT("commands.tag.remove.failed"))) };
+		}
+		const TCHAR* Key = bAdd ? (Changed == 1 ? TEXT("commands.tag.add.success.single") : TEXT("commands.tag.add.success.multiple"))
+			: (Changed == 1 ? TEXT("commands.tag.remove.success.single") : TEXT("commands.tag.remove.success.multiple"));
+		return { Ok(McLang::Format(Key, { Words[3], Changed == 1 ? Players[0] : FString::FromInt(Changed) })) };
+	}
+
+	FReplies RunStopSound(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2 || Words.Num() > 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		static const TCHAR* Sources[] = { TEXT("master"), TEXT("music"), TEXT("record"), TEXT("weather"), TEXT("block"), TEXT("hostile"),
+			TEXT("neutral"), TEXT("player"), TEXT("ambient"), TEXT("voice"), TEXT("ui") };
+		FString Source;
+		if (Words.Num() >= 3 && Words[2] != TEXT("*"))
+		{
+			bool bKnown = false;
+			for (const TCHAR* Each : Sources)
+			{
+				bKnown |= Words[2] == Each;
+			}
+			if (!bKnown)
+			{
+				return BadArgument(Command);
+			}
+			Source = Words[2];
+		}
+		FString Sound = Words.Num() == 4 ? Words[3] : FString();
+		if (!Sound.IsEmpty() && !Sound.Contains(TEXT(":")))
+		{
+			Sound = TEXT("minecraft:") + Sound;
+		}
+		for (const FString& Player : Players)
+		{
+			Target.StopSounds(Player, Source, Sound);
+		}
+		if (Source.IsEmpty())
+		{
+			return { Ok(Sound.IsEmpty() ? McLang::Get(TEXT("commands.stopsound.success.sourceless.any"))
+				: McLang::Format(TEXT("commands.stopsound.success.sourceless.sound"), { Sound })) };
+		}
+		return { Ok(Sound.IsEmpty() ? McLang::Format(TEXT("commands.stopsound.success.source.any"), { Source })
+			: McLang::Format(TEXT("commands.stopsound.success.source.sound"), { Sound, Source })) };
+	}
+
+	FReplies RunVersion()
+	{
+		return {
+			Ok(TEXT("Server version info:")), Ok(TEXT("id = 26.3")), Ok(TEXT("name = 26.3")), Ok(TEXT("data = 5023")), Ok(TEXT("series = main")),
+			Ok(TEXT("protocol = 777 (0x309)")), Ok(TEXT("pack_resource = 97.1")), Ok(TEXT("pack_data = 121.0")), Ok(TEXT("stable = yes")),
+		};
+	}
+
 	FReplies RunDifficulty(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
 	{
 		static const TCHAR* Names[] = { TEXT("peaceful"), TEXT("easy"), TEXT("normal"), TEXT("hard") };
@@ -1757,6 +1965,26 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("enchant"))
 	{
 		return RunEnchant(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("random"))
+	{
+		return RunRandom(Command, Words, Sender);
+	}
+	if (Name == TEXT("defaultgamemode"))
+	{
+		return RunDefaultGameMode(Command, Words, Target);
+	}
+	if (Name == TEXT("tag"))
+	{
+		return RunTag(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("stopsound"))
+	{
+		return RunStopSound(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("version"))
+	{
+		return RunVersion();
 	}
 	if (Name == TEXT("difficulty"))
 	{

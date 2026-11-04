@@ -476,6 +476,19 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	}
 	const TArray<FMcCommandReply> Cleared = McCommands::Execute(TEXT("title Steve clear"), Op(TEXT("Steve")), Target);
 	TestEqual(TEXT("clear's reply"), Cleared.Num() == 1 ? Cleared[0].Text : FString(), FString(TEXT("Cleared titles for Steve")));
+
+	// Measured against the game: /random, /tag, /stopsound, /defaultgamemode.
+	const auto First = [&](const TCHAR* Line) { const TArray<FMcCommandReply> Got = McCommands::Execute(Line, Op(TEXT("Steve")), Target); return Got.Num() ? Got[0].Text : FString(); };
+	TestEqual(TEXT("an empty range"), First(TEXT("random roll 1..1")), FString(TEXT("The range of the random value must be at least 1")));
+	TestTrue(TEXT("a roll names who rolled"), First(TEXT("random roll 1..6")).StartsWith(TEXT("Steve rolled ")));
+	TestEqual(TEXT("reset one"), First(TEXT("random reset minecraft:foo")), FString(TEXT("Reset random sequence minecraft:foo")));
+	TestEqual(TEXT("tag add"), First(TEXT("tag Steve add foo")), FString(TEXT("Added tag 'foo' to Steve")));
+	TestEqual(TEXT("tag twice"), First(TEXT("tag Steve add foo")), FString(TEXT("Target either already has the tag or has too many tags")));
+	TestEqual(TEXT("tag list"), First(TEXT("tag Steve list")), FString(TEXT("Steve has 1 tag(s): foo")));
+	TestEqual(TEXT("tag remove"), First(TEXT("tag Steve remove foo")), FString(TEXT("Removed tag 'foo' from Steve")));
+	TestEqual(TEXT("tag remove twice"), First(TEXT("tag Steve remove foo")), FString(TEXT("Target does not have this tag")));
+	TestEqual(TEXT("stopsound"), First(TEXT("stopsound Steve master pig")), FString(TEXT("Stopped sound 'minecraft:pig' on source 'master'")));
+	TestEqual(TEXT("defaultgamemode"), First(TEXT("defaultgamemode creative")), FString(TEXT("The default game mode is now Creative Mode")));
 	return true;
 }
 

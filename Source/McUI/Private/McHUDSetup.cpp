@@ -3,6 +3,8 @@
 #include "McHUD.h"
 #include "McCache.h"
 #include "McCacheSetup.h"
+#include "McLang.h"
+#include "McFont.h"
 #include "McGameViewportClient.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -28,8 +30,14 @@ void AMcHUD::FinishSetup()
 	// The pictures and font that were looked for before they existed are looked for again.
 	Sprites.Reset();
 	LayerTextures.Reset();
-	GlyphWidths.Reset();
+	Glyphs.Reset();
+	OtherFonts.Reset();
+	RasterFonts.Reset();
+	RasterAsked.Reset();
+	GlyphTextures.Reset();
 	GalacticWidths.Reset();
+	McLang::Reload();
+	McFont::ClearCache();
 	bCacheReady = true;
 	CacheBuild.Reset();
 	OpenMenu(EMenu::Title);

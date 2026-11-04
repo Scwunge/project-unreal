@@ -24,6 +24,18 @@ struct MCENTITY_API FMcMobType
 	bool bPanics = false;
 	// Burns in daylight.
 	bool bBurnsInSun = false;
+	// Zombies chase and bite villagers as well as players.
+	bool bHuntsVillagers = false;
+	// Iron golems go for the hostile mobs near them (not creepers), and leave players be unless hurt.
+	bool bHuntsHostiles = false;
+	// Evokers cast: fangs along the ground at their target, and vexes when none are about.
+	bool bCastsSpells = false;
+	// The evoker's fangs: they come up after a delay, bite what stands there once and go.
+	bool bIsFangs = false;
+	// The illagers that raid: pillager, vindicator, evoker, ravager and witch. A patrol or a raid has them, one a captain.
+	bool bIsRaider = false;
+	// Witches throw potions at their target from up to 10 blocks (and drink their own when they need to).
+	bool bThrowsPotions = false;
 
 	// Creepers walk up to a player, swell for 1.5 seconds and explode.
 	bool bSwells = false;
@@ -41,9 +53,30 @@ struct MCENTITY_API FMcMobType
 	bool bHops = false;
 	// Bees fly: no gravity, and they wander at different heights.
 	bool bFlies = false;
+	// 1 for a ghast (one fireball every 60 to 85 ticks), 2 for a blaze (three small ones 6 ticks apart, a burst every 178 ticks;
+	// both measured in nether1.txt). Such a flier stops HoverRange blocks from its target (a guess) and shoots from there.
+	int32 FireballKind = 0;
+	// Fires homing bullets at a player in sight (the shulker).
+	bool bBullets = false;
+	// Turns on a player who looks at its eyes (the enderman).
+	bool bGazeAngers = false;
+	bool bDragon = false;
+	// Picks up and sets down blocks (the enderman).
+	bool bCarriesBlocks = false;
+	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
+	int32 BeamTicks = 0;
+	float BeamDamage = 0.0f;
+	double HoverRange = 0.0;
+	// A phantom circles its target and dives at it (atk1.txt, 900 ticks: close passes 155 to 232 ticks apart, mean 189, n=4).
+	bool bSwoops = false;
+	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
+	bool bSwims = false;
+	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
+	bool bSinks = false;
 
 	// Mobs that go after players: what the spawner caps, and what despawns far from everyone.
-	bool IsHostile() const { return AttackDamage > 0.0f || bSwells; }
+	// The golem fights hostile mobs rather than being one.
+	bool IsHostile() const { return (AttackDamage > 0.0f || bSwells || bCastsSpells) && !bHuntsHostiles; }
 
 	static const FMcMobType* Find(FName Name);
 	static const TArray<FMcMobType>& GetAll();
@@ -60,6 +93,11 @@ public:
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
+	// Whether this mob goes for that entity as its prey (zombies: villagers; golems: hostile mobs but the creeper).
+	bool IsPrey(const FMcEntity& Other) const;
+
+	// A chick: half the size, and grown up after twenty minutes (the baby's age counts up from -24000): SetYoung(YoungSpan).
+	void MakeBaby();
 
 	// Slimes only: 1, 2 or 4. Sets the size of the body and (with bHeal) the health, size squared.
 	void SetSize(int32 InSize, bool bHeal = true);
@@ -74,10 +112,85 @@ public:
 	// Counts up with every hit that gets through, so a watcher can tell a new hit from the last without having to
 	// catch HurtTime at its peak (it has already counted down once by the time the tick is over).
 	int32 HurtEvents = 0;
+	// The id of the vehicle it sits in (a boat picks up what it bumps into), or 0. A mob that sits does nothing and is
+	// moved by its vehicle; it gets out when that goes. Not saved.
+	int32 RidingId = 0;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
 	int32 AngerTicks = 0;
+	int32 StareTicks = 0;
+	FVector DragonGoal = FVector::ZeroVector;
+	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
+	int32 LeashHolderId = 0;
+	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
+	int32 OfferTicks = 0;
+	// A piglin that took a gold ingot: ticks left before it throws what it gives for it. Not saved.
+	int32 BarterTicks = 0;
+	// A ghast or blaze: ticks to its next fireball, and how many of a blaze's burst are left. Not saved.
+	int32 FireCooldown = 0;
+	int32 BurstLeft = 0;
+	int32 BeamCharge = 0;
+	// The block it carries (the enderman), or none.
+	TOptional<FMcStateId> Carried;
+	// A swooper: ticks left in this circling or diving, whether it is diving, and its place on the circle.
+	int32 SwoopTicks = 0;
+	bool bDiving = false;
+	float OrbitAngle = 0.0f;
+	// A dropped gold ingot it is walking to. Not saved.
+	FVector BarterGoal = FVector::ZeroVector;
+	bool bHasBarterGoal = false;
+	// The item in its right hand (drawn on the model), None for nothing.
+	FName HeldItem;
+	// Fangs: ticks before they bite. A vex: ticks of life left (it starts to waste away when they run out), 0 for no limit.
+	int32 SpellDelay = 0;
+	int32 SpellCooldown = 0;
+	int32 LifeTicks = 0;
+	// The one leading a patrol or a wave of a raid: it carries the ominous banner and drops an ominous bottle. Not saved.
+	bool bCaptain = false;
+	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
+	int32 GlowTicks = 0;
+	int32 RaidId = 0;
+	// Never despawns for being far from everyone (a swamp hut's witch).
+	bool bPersistent = false;
+	// Wolves: tamed by a player (the name is who), told to sit (it stays put, and stands again when told), and the dye of the collar (0..15, red 14).
+	bool bTamed = false;
+	bool bSitting = false;
+	int32 CollarColor = 14;
+	FString OwnerName;
+	// Sets the wolf's ArmPose, which is how its look reaches the screen: bit 1 sitting, 2 angry, 4 tame, the collar from bit 8 up.
+	void UpdateWolfPose();
+	// What the arms are doing, for how it is drawn: 0 idle, 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
+	int32 ArmPose = 0;
+	// A witch drinking: ticks left of the drink and what is in it ("healing"), and ticks until it may drink again.
+	int32 DrinkTicks = 0;
+	int32 DrinkCooldown = 0;
+	FName DrinkEffect;
+	// A witch's speed potion: ticks of the swift legs it gives.
+	int32 SwiftTicks = 0;
+	// Development: stands where it was put, doing nothing (for a picture).
+	bool bFrozen = false;
+	// The game's NoAI: it stands where it is and does nothing, but is saved and can be hurt (an imported world's).
+	bool bNoAI = false;
+	// A sheep's wool dye (0..15, the game's order), -1 for the plain one.
+	int32 DyeColor = -1;
+	// The name it was given (a name tag), empty for none. Kept and saved; not drawn yet.
+	FString CustomName;
+	// What it wears: head, chest, legs, feet (item names), None for nothing. Kept and saved; not drawn yet.
+	FName Armor[4];
+	// What the host keeps after the kind's own bytes: the coat, the youth, then the flags, dye, name and gear. A save without
+	// the later ones reads as before; SaveTrailer/LoadTrailer are the one place that says what order they come in.
+	void SaveTrailer(FArchive& Ar) const;
+	void LoadTrailer(FArchive& Ar);
+	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
+	int32 LookSeed = -1;
+	// A young animal: half the size, and grown up when the ticks run out. 0 for a grown one. (Villagers keep their own.)
+	int32 YoungTicks = 0;
+	static constexpr int32 YoungSpan = 24000;
+	bool IsYoung() const { return YoungTicks > 0; }
+	void SetYoung(int32 Ticks);
+	// The animals that breed, and so have young.
+	static bool CanBeYoung(FName Kind);
 
 	// Creepers: ticks the fuse has burned (it explodes at FuseTicks), and whether it is burning now.
 	int32 SwellTicks = 0;
@@ -109,6 +222,8 @@ public:
 
 	// Where the mob is walking, if anywhere.
 	TOptional<FVector> Goal;
+	// Set by a mob's routine while it works or sleeps: it stays where it is instead of wandering off.
+	bool bStayPut = false;
 	// Called with the damage when the mob bites a player at that position.
 	TFunction<void(const FVector&, float)> OnAttackPlayer;
 	// Called when the mob dies, to drop its loot.
@@ -123,6 +238,11 @@ private:
 	// has moved or the mob is stuck; Dest itself when it is near or there is no path.
 	FVector NextWaypoint(FMcEntityManager& Manager, const FVector& Dest);
 	void Shoot(FMcEntityManager& Manager, const FVector& TargetFeet);
+	// Throws a potion at the target: harming or poison at a player, slowness from far and weakness from close.
+	void ThrowPotion(FMcEntityManager& Manager, const FVector& TargetFeet);
+	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
+	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
+	void TickBarter(FMcEntityManager& Manager);
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

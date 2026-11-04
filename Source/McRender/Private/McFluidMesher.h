@@ -12,6 +12,10 @@ class FMcBlockTextures;
 
 namespace McFluidMesher
 {
+	// Shore foam's edge flag (see FBuilder::EdgeWeights) is switched off: the white fringe in the water material did not read
+	// on the sand or the deepslate shore (shots foam_new2, foam_dark). Set this true to write the flag again; see PLAN.md.
+	inline constexpr bool bShoreFoam = false;
+
 	enum class EFluid : uint8
 	{
 		None,
@@ -34,6 +38,9 @@ namespace McFluidMesher
 		uint16 WaterFlow = 0;
 		uint16 LavaStill = 0;
 		uint16 LavaFlow = 0;
+		// The quarter of the flowing pictures a side shows, unscaled ("<id>#side", FMcBlockTextures).
+		uint16 WaterFlowSide = 0;
+		uint16 LavaFlowSide = 0;
 		FColor WaterTint = FColor::White;  // plains'; meshes take the biome's from the snapshot
 	};
 

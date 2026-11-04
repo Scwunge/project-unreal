@@ -53,6 +53,11 @@ namespace
 			}
 		}
 		virtual void Broadcast(const FString& Line) override { Broadcasts.Add(Line); }
+		TArray<FString> Titles;
+		virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) override
+		{
+			Titles.Add(FString::Printf(TEXT("%s:%d:%s:%d,%d,%d"), *Player, Kind, *Text, FadeIn, Stay, FadeOut));
+		}
 		virtual bool IsCreative(const FString& Player) const override { return Find(Player) && Find(Player)->bCreative; }
 		virtual void SetCreative(const FString& Player, bool bCreative) override
 		{
@@ -117,6 +122,8 @@ namespace
 
 		virtual int32 GetDifficulty() const override { return Difficulty; }
 		virtual void SetDifficulty(int32 InDifficulty) override { Difficulty = InDifficulty; }
+		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override { Played = Event.ToString() + FString::Printf(TEXT(" %.1f %.1f %.1f %.1f"), Position.X, Volume, Pitch, Position.Z); }
+		FString Played;
 		virtual FString GetGameRule(const FString& Rule) const override { const FString* Value = Rules.Find(Rule); return Value ? *Value : FString(); }
 		virtual void SetGameRule(const FString& Rule, const FString& Value) override { Rules.Add(Rule, Value); }
 		virtual bool GetBlock(const FIntVector& Pos, FMcStateId& OutState) const override
@@ -157,6 +164,26 @@ namespace
 			}
 			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
 			return true;
+		}
+		TSet<FString> Advancements;
+		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
+		{
+			if (Id != TEXT("story/mine_stone"))
+			{
+				return -1;
+			}
+			OutTitle = TEXT("[Stone Age]");
+			const FString Key = Player + Id;
+			if (!bGrant)
+			{
+				return Advancements.Remove(Key) > 0 ? 1 : 0;
+			}
+			if (Advancements.Contains(Key))
+			{
+				return 0;
+			}
+			Advancements.Add(Key);
+			return 1;
 		}
 		virtual int32 ClearEffects(const FString& Player, FName Effect) override
 		{
@@ -268,6 +295,12 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("gamemode creative"), Target.Find(TEXT("Steve"))->bCreative);
 	McCommands::HandleChat(TEXT("/gamemode survival @a"), Op(TEXT("Steve")), Target);
 	TestFalse(TEXT("gamemode @a"), Target.Find(TEXT("Steve"))->bCreative || Target.Find(TEXT("Alex"))->bCreative);
+
+	// /playsound: the event without its namespace, the position (the sender's feet by default), volume and pitch
+	Replies = McCommands::HandleChat(TEXT("/playsound minecraft:zz.add master @s 4 70 5 2 1.5"), Op(TEXT("Steve")), Target);
+	TestFalse(TEXT("playsound ok"), AnyError(Replies));
+	TestEqual(TEXT("playsound passes its arguments on"), Target.Played, FString(TEXT("zz.add 4.5 2.0 1.5 5.5")));
+	TestTrue(TEXT("playsound with a bad source"), AnyError(McCommands::HandleChat(TEXT("/playsound zz.add nowhere"), Op(TEXT("Steve")), Target)));
 
 	// /time
 	McCommands::HandleChat(TEXT("/time set night"), Op(TEXT("Steve")), Target);
@@ -383,6 +416,12 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("clear one"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve speed"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed effect Speed from Steve")));
 	TestTrue(TEXT("clear all"), Joined(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)).Contains(TEXT("Removed every effect from Steve")));
 	TestTrue(TEXT("nothing to clear"), AnyError(McCommands::HandleChat(TEXT("/effect clear Steve"), Op(TEXT("Steve")), Target)));
+
+	// /advancement
+	TestTrue(TEXT("grant"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Granted the advancement [Stone Age] to Steve")));
+	TestTrue(TEXT("already made"), AnyError(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("revoke"), Joined(McCommands::HandleChat(TEXT("/advancement revoke Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Revoked the advancement [Stone Age] from Steve")));
+	TestTrue(TEXT("unknown"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/nothing"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown advancement")));
 	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
 	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
 	Target.HeldItem = TEXT("minecraft:diamond_sword");
@@ -399,6 +438,116 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	McCommands::HandleChat(TEXT("/kick Alex"), Console, Target);
 	TestTrue(TEXT("kick from the console"), Target.Kicked.Contains(TEXT("Alex")));
 	TestTrue(TEXT("@s from the console"), AnyError(McCommands::HandleChat(TEXT("/kill @s"), Console, Target)));
+	return true;
+}
+
+// /tellraw sends JSON text to the players as legacy text and says nothing back; /title sends titles, subtitles, action bars,
+// clears, resets and times, with the game's replies.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcTitleCommandsTest, "McClient.McServer.TextCommands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
+{
+	FFakeTarget Target;
+	Target.Players.Add({ TEXT("Steve") });
+	const auto Op = [](const TCHAR* Name) { FMcCommandSender Sender; Sender.Name = Name; Sender.PermissionLevel = 4; return Sender; };
+	const TArray<FMcCommandReply> Tell = McCommands::Execute(TEXT("tellraw Steve {\"text\":\"a  b\",\"color\":\"red\"}"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("tellraw says nothing back"), Tell.Num(), 0);
+	TestEqual(TEXT("the player was told, spaces kept"), Target.Players[0].Told.Num() == 1 ? Target.Players[0].Told[0].Text : FString(), FString(TEXT("\u00a7ca  b")));
+	const TArray<FMcCommandReply> Bad = McCommands::Execute(TEXT("tellraw Steve {\"text\":"), Op(TEXT("Steve")), Target);
+	TestTrue(TEXT("bad JSON is an error"), Bad.Num() == 1 && Bad[0].bError);
+
+	const TArray<FMcCommandReply> Shown = McCommands::Execute(TEXT("title Steve title {\"text\":\"Hi\",\"color\":\"gold\"}"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("title sent"), Target.Titles.Num() == 1 ? Target.Titles[0] : FString(), FString(TEXT("Steve:0:\u00a76Hi:0,0,0")));
+	TestEqual(TEXT("its reply"), Shown.Num() == 1 ? Shown[0].Text : FString(), FString(TEXT("Showing new title for Steve")));
+	McCommands::Execute(TEXT("title Steve subtitle \"sub\""), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve actionbar \"bar\""), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve times 5 40 10"), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve clear"), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve reset"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("six titles in all"), Target.Titles.Num(), 6);
+	if (Target.Titles.Num() == 6)
+	{
+		TestEqual(TEXT("subtitle"), Target.Titles[1], FString(TEXT("Steve:1:sub:0,0,0")));
+		TestEqual(TEXT("action bar"), Target.Titles[2], FString(TEXT("Steve:2:bar:0,0,0")));
+		TestEqual(TEXT("times"), Target.Titles[3], FString(TEXT("Steve:5::5,40,10")));
+		TestEqual(TEXT("clear"), Target.Titles[4], FString(TEXT("Steve:3::0,0,0")));
+		TestEqual(TEXT("reset"), Target.Titles[5], FString(TEXT("Steve:4::0,0,0")));
+	}
+	const TArray<FMcCommandReply> Cleared = McCommands::Execute(TEXT("title Steve clear"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("clear's reply"), Cleared.Num() == 1 ? Cleared[0].Text : FString(), FString(TEXT("Cleared titles for Steve")));
+
+	// Measured against the game: /random, /tag, /stopsound, /defaultgamemode.
+	const auto First = [&](const TCHAR* Line) { const TArray<FMcCommandReply> Got = McCommands::Execute(Line, Op(TEXT("Steve")), Target); return Got.Num() ? Got[0].Text : FString(); };
+	TestEqual(TEXT("an empty range"), First(TEXT("random roll 1..1")), FString(TEXT("The range of the random value must be at least 1")));
+	TestTrue(TEXT("a roll names who rolled"), First(TEXT("random roll 1..6")).StartsWith(TEXT("Steve rolled ")));
+	TestEqual(TEXT("reset one"), First(TEXT("random reset minecraft:foo")), FString(TEXT("Reset random sequence minecraft:foo")));
+	TestEqual(TEXT("tag add"), First(TEXT("tag Steve add foo")), FString(TEXT("Added tag 'foo' to Steve")));
+	TestEqual(TEXT("tag twice"), First(TEXT("tag Steve add foo")), FString(TEXT("Target either already has the tag or has too many tags")));
+	TestEqual(TEXT("tag list"), First(TEXT("tag Steve list")), FString(TEXT("Steve has 1 tag(s): foo")));
+	TestEqual(TEXT("tag remove"), First(TEXT("tag Steve remove foo")), FString(TEXT("Removed tag 'foo' from Steve")));
+	TestEqual(TEXT("tag remove twice"), First(TEXT("tag Steve remove foo")), FString(TEXT("Target does not have this tag")));
+	TestEqual(TEXT("stopsound"), First(TEXT("stopsound Steve master pig")), FString(TEXT("Stopped sound 'minecraft:pig' on source 'master'")));
+	TestEqual(TEXT("defaultgamemode"), First(TEXT("defaultgamemode creative")), FString(TEXT("The default game mode is now Creative Mode")));
+	// Measured against the game: /setworldspawn and /spawnpoint.
+	TestEqual(TEXT("setworldspawn"), First(TEXT("setworldspawn 1 2 3")), FString(TEXT("Set the world spawn point to 1, 2, 3 [0.0, 0.0] in minecraft:overworld")));
+	TestEqual(TEXT("spawnpoint"), First(TEXT("spawnpoint Steve 4 5 6")), FString(TEXT("Set spawn point to 4, 5, 6 [0.0, 0.0] in minecraft:overworld for Steve")));
+	// Measured against the game: /worldborder.
+	TestEqual(TEXT("border get"), First(TEXT("worldborder get")), FString(TEXT("The world border is currently 59999968 block(s) wide")));
+	TestEqual(TEXT("border set"), First(TEXT("worldborder set 100")), FString(TEXT("Set the world border to 100.0 block(s) wide")));
+	TestEqual(TEXT("border same"), First(TEXT("worldborder set 100")), FString(TEXT("Nothing changed. The world border is already that size")));
+	TestEqual(TEXT("border grow"), First(TEXT("worldborder set 200 10")), FString(TEXT("Growing the world border to 200.0 block(s) wide over 0.50 second(s)")));
+	TestEqual(TEXT("border add"), First(TEXT("worldborder add 10")), FString(TEXT("Set the world border to 210.0 block(s) wide")));
+	TestEqual(TEXT("border centre"), First(TEXT("worldborder center 5 6")), FString(TEXT("Set the center of the world border to 5.50, 6.50")));
+	TestEqual(TEXT("border too small"), First(TEXT("worldborder set 0")), FString(TEXT("World border cannot be smaller than 1 block wide")));
+	TestEqual(TEXT("border too big"), First(TEXT("worldborder add 59999900")), FString(TEXT("World border cannot be bigger than 5.9999968E7 blocks wide")));
+	TestEqual(TEXT("border too far"), First(TEXT("worldborder center 30000000 0")), FString(TEXT("World border cannot be further out than 2.9999984E7 blocks")));
+	TestEqual(TEXT("border warning time"), First(TEXT("worldborder warning time 5")), FString(TEXT("Set the world border warning time to 0.25 second(s)")));
+	// Measured against the game: /tick.
+	TestEqual(TEXT("tick rate"), First(TEXT("tick rate 30")), FString(TEXT("Set the target tick rate to 30.0 per second")));
+	TestEqual(TEXT("tick step needs a freeze"), First(TEXT("tick step 2")), FString(TEXT("Unable to step the game - the game must be frozen first")));
+	TestEqual(TEXT("tick freeze"), First(TEXT("tick freeze")), FString(TEXT("The game is frozen")));
+	// Measured against the game: /damage.
+	TestEqual(TEXT("damage negative"), First(TEXT("damage Steve -1")), FString(TEXT("Float must not be less than 0.0: found -1.0")));
+	TestEqual(TEXT("damage type"), First(TEXT("damage Steve 1 minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:damage_type'")));
+	TestEqual(TEXT("damage nobody"), First(TEXT("damage Nobody 1")), FString(TEXT("No entity was found")));
+	TestEqual(TEXT("rotate"), First(TEXT("rotate Steve 90 0")), FString(TEXT("Rotated Steve")));
+	// Measured against the game: /scoreboard.
+	TestEqual(TEXT("objective list empty"), First(TEXT("scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("objective add"), First(TEXT("scoreboard objectives add kills dummy")), FString(TEXT("Created new objective [kills]")));
+	TestEqual(TEXT("objective twice"), First(TEXT("scoreboard objectives add kills dummy")), FString(TEXT("An objective already exists by that name")));
+	TestEqual(TEXT("score set"), First(TEXT("scoreboard players set Foo kills 5")), FString(TEXT("Set [kills] for Foo to 5")));
+	TestEqual(TEXT("score add"), First(TEXT("scoreboard players add Foo kills 3")), FString(TEXT("Added 3 to [kills] for Foo (now 8)")));
+	TestEqual(TEXT("score remove"), First(TEXT("scoreboard players remove Foo kills 2")), FString(TEXT("Removed 2 from [kills] for Foo (now 6)")));
+	TestEqual(TEXT("score get"), First(TEXT("scoreboard players get Foo kills")), FString(TEXT("Foo has 6 [kills]")));
+	TestEqual(TEXT("score operation"), First(TEXT("scoreboard players operation Foo kills += Foo kills")), FString(TEXT("Set [kills] for Foo to 12")));
+	TestEqual(TEXT("score enable"), First(TEXT("scoreboard players enable Foo kills")), FString(TEXT("Enable only works on trigger-objectives")));
+	TestEqual(TEXT("unknown objective"), First(TEXT("scoreboard players set Foo nope 1")), FString(TEXT("Unknown scoreboard objective 'nope'")));
+	TestEqual(TEXT("score reset"), First(TEXT("scoreboard players reset Foo kills")), FString(TEXT("Reset [kills] for Foo")));
+	TestEqual(TEXT("objective remove"), First(TEXT("scoreboard objectives remove kills")), FString(TEXT("Removed objective [kills]")));
+	// Measured against the game: /execute.
+	TestEqual(TEXT("execute needs more"), First(TEXT("execute")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("execute run"), First(TEXT("execute run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute as"), First(TEXT("execute as Steve at Steve run scoreboard objectives list")), FString(TEXT("There are no objectives")));
+	TestEqual(TEXT("execute if entity"), First(TEXT("execute if entity Steve")), FString(TEXT("Test passed. Count: 1")));
+	TestEqual(TEXT("execute unless entity"), First(TEXT("execute unless entity Steve")), FString(TEXT("Test failed. Count: 1")));
+	// Measured against the game: /locate biome.
+	TestEqual(TEXT("locate unknown biome"), First(TEXT("locate biome minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:worldgen/biome'")));
+	TestEqual(TEXT("locate needs a biome"), First(TEXT("locate biome")), FString(TEXT("Unknown or incomplete command. See below for error")));
+	TestEqual(TEXT("swing"), First(TEXT("swing Steve")), FString(TEXT("Made Steve swing an arm")));
+	// Measured against the game: /spreadplayers (one entity lands on its own: distance 0.00).
+	First(TEXT("fill -20 0 -20 20 0 20 stone"));
+	TestEqual(TEXT("spreadplayers"), First(TEXT("spreadplayers 0 0 5 20 false @s")), FString(TEXT("Spread 1 entity/entities around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
+	TestEqual(TEXT("spreadplayers teams"), First(TEXT("spreadplayers 0 0 5 20 true @s")), FString(TEXT("Spread 1 team(s) around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
+	TestEqual(TEXT("spreadplayers nobody"), First(TEXT("spreadplayers 0 0 5 20 false Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /forceload.
+	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
+	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));
+	TestEqual(TEXT("forceload add again"), First(TEXT("forceload add 0 0")), FString(TEXT("No chunks were marked for force loading")));
+	TestEqual(TEXT("forceload range"), First(TEXT("forceload add 0 0 32 32")), FString(TEXT("Marked 8 chunks in minecraft:overworld from [0, 0] to [2, 2] to be force loaded")));
+	TestEqual(TEXT("forceload too big"), First(TEXT("forceload add 0 0 300 300")), FString(TEXT("Too many chunks in the specified area (maximum 256, but specified 361)")));
+	TestEqual(TEXT("forceload query one"), First(TEXT("forceload query 100 100")), FString(TEXT("Chunk at [6, 6] in minecraft:overworld is not marked for force loading")));
+	TestEqual(TEXT("forceload remove all"), First(TEXT("forceload remove all")), FString(TEXT("Unmarked all force loaded chunks in minecraft:overworld")));
 	return true;
 }
 

@@ -3,6 +3,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McGameRules.h"
+#include "McArrow.h"
 #include "McEntityManager.h"
 #include "McXpOrb.h"
 #include "McItemRegistry.h"
@@ -10,9 +11,9 @@
 
 bool FMcPlayerStats::Serialize(FArchive& Ar)
 {
-	int32 Version = 2;
+	int32 Version = 3;
 	Ar << Version;
-	if (Ar.IsLoading() && Version != 1 && Version != 2)
+	if (Ar.IsLoading() && Version != 1 && Version != 2 && Version != 3)
 	{
 		return false;
 	}
@@ -34,6 +35,10 @@ bool FMcPlayerStats::Serialize(FArchive& Ar)
 		{
 			Ar << Effect.Id << Effect.Amplifier << Effect.Duration;
 		}
+	}
+	if (Version >= 3)
+	{
+		Ar << bHasDeath << DeathPos << DeathDimension;
 	}
 	return !Ar.IsError();
 }
@@ -130,6 +135,7 @@ namespace McSurvival
 		case EDamage::InFire:
 		case EDamage::Lava:
 		case EDamage::Mob:
+		case EDamage::Explosion:
 			return 0.1f;
 		default:
 			return 0.0f;
@@ -177,6 +183,7 @@ namespace McSurvival
 			Stats.InvulnTicks = 20;
 		}
 		Stats.HurtTime = 10;
+		Stats.LastHurtKind = static_cast<uint8>(Kind);
 
 		float Taken = Dealt;
 		if (!BypassesArmor(Kind))
@@ -186,12 +193,13 @@ namespace McSurvival
 			if (Worn)
 			{
 				GetArmorValues(*Worn, ArmorPoints, Toughness);
-				// Every piece takes some wear from the blow, and one may break.
+				// Every piece takes some wear from the blow, and one may break. Elytra aren't armour: only flying wears them.
 				const int32 Wear = FMath::Max(1, FMath::FloorToInt32(Dealt / 4.0f));
+				static const FName Elytra(TEXT("minecraft:elytra"));
 				for (int32 Slot = 0; Slot < Worn->Num(); ++Slot)
 				{
 					FMcItemStack& Piece = Worn->GetMutable(Slot);
-					if (!Piece.IsEmpty() && Piece.HurtAndBreak(Wear))
+					if (!Piece.IsEmpty() && Piece.Item != Elytra && Piece.HurtAndBreak(Wear))
 					{
 						Piece.Clear();
 					}
@@ -264,7 +272,8 @@ namespace McSurvival
 		}
 
 		// Breath: 1 a tick under water, and each time it runs 20 ticks past empty, 2 damage; 4 a tick back in the air.
-		if (Environment.bHeadInWater)
+		// Water Breathing and Conduit Power fill it under water too (minecraft.wiki, "Conduit Power").
+		if (Environment.bHeadInWater && !McEffects::Find(Stats, TEXT("water_breathing")) && !McEffects::Find(Stats, TEXT("conduit_power")))
 		{
 			if (--Stats.Air <= -20)
 			{
@@ -456,6 +465,27 @@ namespace McSurvival
 			else
 			{
 				Item->Stack = Left;
+			}
+		}
+		return Taken;
+	}
+
+	int32 CollectArrows(FMcEntityManager& Entities, const FBox& PlayerBox, FMcContainer& Inventory)
+	{
+		int32 Taken = 0;
+		TArray<FMcEntity*> Near;
+		Entities.FindInBox(PlayerBox.ExpandBy(FVector(1.0, 0.5, 1.0)), Near);
+		for (FMcEntity* Entity : Near)
+		{
+			if (Entity->GetType() != FMcArrowEntity::StaticType() || Entity->bRemoved)
+			{
+				continue;
+			}
+			FMcArrowEntity* Arrow = static_cast<FMcArrowEntity*>(Entity);
+			if (Arrow->bPickup && Arrow->bStuck && Inventory.AddItem(FMcItemStack(TEXT("minecraft:arrow"), 1)).IsEmpty())
+			{
+				Arrow->bRemoved = true;
+				++Taken;
 			}
 		}
 		return Taken;

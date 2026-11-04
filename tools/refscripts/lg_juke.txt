@@ -1,0 +1,204 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 10 -50 40
+wait 200
+cmd tick freeze
+wait 4
+cmd fill -2 -60 -2 12 -58 92 air
+cmd fill -2 -61 -2 12 -61 92 stone
+wait 10
+cmd setblock 1 -60 0 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_11",count:1}]}
+cmd setblock 2 -60 0 jukebox
+cmd setblock 3 -60 0 comparator[facing=west]
+cmd setblock 4 -60 0 redstone_wire
+cmd setblock 1 -60 4 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_13",count:1}]}
+cmd setblock 2 -60 4 jukebox
+cmd setblock 3 -60 4 comparator[facing=west]
+cmd setblock 4 -60 4 redstone_wire
+cmd setblock 1 -60 8 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_5",count:1}]}
+cmd setblock 2 -60 8 jukebox
+cmd setblock 3 -60 8 comparator[facing=west]
+cmd setblock 4 -60 8 redstone_wire
+cmd setblock 1 -60 12 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_blocks",count:1}]}
+cmd setblock 2 -60 12 jukebox
+cmd setblock 3 -60 12 comparator[facing=west]
+cmd setblock 4 -60 12 redstone_wire
+cmd setblock 1 -60 16 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_bounce",count:1}]}
+cmd setblock 2 -60 16 jukebox
+cmd setblock 3 -60 16 comparator[facing=west]
+cmd setblock 4 -60 16 redstone_wire
+cmd setblock 1 -60 20 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_cat",count:1}]}
+cmd setblock 2 -60 20 jukebox
+cmd setblock 3 -60 20 comparator[facing=west]
+cmd setblock 4 -60 20 redstone_wire
+cmd setblock 1 -60 24 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_chirp",count:1}]}
+cmd setblock 2 -60 24 jukebox
+cmd setblock 3 -60 24 comparator[facing=west]
+cmd setblock 4 -60 24 redstone_wire
+cmd setblock 1 -60 28 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_creator",count:1}]}
+cmd setblock 2 -60 28 jukebox
+cmd setblock 3 -60 28 comparator[facing=west]
+cmd setblock 4 -60 28 redstone_wire
+cmd setblock 1 -60 32 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_creator_music_box",count:1}]}
+cmd setblock 2 -60 32 jukebox
+cmd setblock 3 -60 32 comparator[facing=west]
+cmd setblock 4 -60 32 redstone_wire
+cmd setblock 1 -60 36 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_far",count:1}]}
+cmd setblock 2 -60 36 jukebox
+cmd setblock 3 -60 36 comparator[facing=west]
+cmd setblock 4 -60 36 redstone_wire
+cmd setblock 1 -60 40 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_lava_chicken",count:1}]}
+cmd setblock 2 -60 40 jukebox
+cmd setblock 3 -60 40 comparator[facing=west]
+cmd setblock 4 -60 40 redstone_wire
+cmd setblock 1 -60 44 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_mall",count:1}]}
+cmd setblock 2 -60 44 jukebox
+cmd setblock 3 -60 44 comparator[facing=west]
+cmd setblock 4 -60 44 redstone_wire
+cmd setblock 1 -60 48 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_mellohi",count:1}]}
+cmd setblock 2 -60 48 jukebox
+cmd setblock 3 -60 48 comparator[facing=west]
+cmd setblock 4 -60 48 redstone_wire
+cmd setblock 1 -60 52 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_otherside",count:1}]}
+cmd setblock 2 -60 52 jukebox
+cmd setblock 3 -60 52 comparator[facing=west]
+cmd setblock 4 -60 52 redstone_wire
+cmd setblock 1 -60 56 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_pigstep",count:1}]}
+cmd setblock 2 -60 56 jukebox
+cmd setblock 3 -60 56 comparator[facing=west]
+cmd setblock 4 -60 56 redstone_wire
+cmd setblock 1 -60 60 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_precipice",count:1}]}
+cmd setblock 2 -60 60 jukebox
+cmd setblock 3 -60 60 comparator[facing=west]
+cmd setblock 4 -60 60 redstone_wire
+cmd setblock 1 -60 64 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_relic",count:1}]}
+cmd setblock 2 -60 64 jukebox
+cmd setblock 3 -60 64 comparator[facing=west]
+cmd setblock 4 -60 64 redstone_wire
+cmd setblock 1 -60 68 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_stal",count:1}]}
+cmd setblock 2 -60 68 jukebox
+cmd setblock 3 -60 68 comparator[facing=west]
+cmd setblock 4 -60 68 redstone_wire
+cmd setblock 1 -60 72 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_strad",count:1}]}
+cmd setblock 2 -60 72 jukebox
+cmd setblock 3 -60 72 comparator[facing=west]
+cmd setblock 4 -60 72 redstone_wire
+cmd setblock 1 -60 76 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_tears",count:1}]}
+cmd setblock 2 -60 76 jukebox
+cmd setblock 3 -60 76 comparator[facing=west]
+cmd setblock 4 -60 76 redstone_wire
+cmd setblock 1 -60 80 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_wait",count:1}]}
+cmd setblock 2 -60 80 jukebox
+cmd setblock 3 -60 80 comparator[facing=west]
+cmd setblock 4 -60 80 redstone_wire
+cmd setblock 1 -60 84 dropper[facing=east]{Items:[{Slot:0,id:"minecraft:music_disc_ward",count:1}]}
+cmd setblock 2 -60 84 jukebox
+cmd setblock 3 -60 84 comparator[facing=west]
+cmd setblock 4 -60 84 redstone_wire
+wait 10
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd setblock 1 -59 0 redstone_block
+cmd setblock 1 -59 4 redstone_block
+cmd setblock 1 -59 8 redstone_block
+cmd setblock 1 -59 12 redstone_block
+cmd setblock 1 -59 16 redstone_block
+cmd setblock 1 -59 20 redstone_block
+cmd setblock 1 -59 24 redstone_block
+cmd setblock 1 -59 28 redstone_block
+cmd setblock 1 -59 32 redstone_block
+cmd setblock 1 -59 36 redstone_block
+cmd setblock 1 -59 40 redstone_block
+cmd setblock 1 -59 44 redstone_block
+cmd setblock 1 -59 48 redstone_block
+cmd setblock 1 -59 52 redstone_block
+cmd setblock 1 -59 56 redstone_block
+cmd setblock 1 -59 60 redstone_block
+cmd setblock 1 -59 64 redstone_block
+cmd setblock 1 -59 68 redstone_block
+cmd setblock 1 -59 72 redstone_block
+cmd setblock 1 -59 76 redstone_block
+cmd setblock 1 -59 80 redstone_block
+cmd setblock 1 -59 84 redstone_block
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd setblock 1 -59 0 air
+cmd setblock 1 -59 4 air
+cmd setblock 1 -59 8 air
+cmd setblock 1 -59 12 air
+cmd setblock 1 -59 16 air
+cmd setblock 1 -59 20 air
+cmd setblock 1 -59 24 air
+cmd setblock 1 -59 28 air
+cmd setblock 1 -59 32 air
+cmd setblock 1 -59 36 air
+cmd setblock 1 -59 40 air
+cmd setblock 1 -59 44 air
+cmd setblock 1 -59 48 air
+cmd setblock 1 -59 52 air
+cmd setblock 1 -59 56 air
+cmd setblock 1 -59 60 air
+cmd setblock 1 -59 64 air
+cmd setblock 1 -59 68 air
+cmd setblock 1 -59 72 air
+cmd setblock 1 -59 76 air
+cmd setblock 1 -59 80 air
+cmd setblock 1 -59 84 air
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick step 1
+wait 4
+log states -1 -60 -1 6 -60 88
+cmd tick unfreeze

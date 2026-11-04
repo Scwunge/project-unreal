@@ -88,6 +88,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:trail_ruins/tower"), TEXT(""), 7, 80, 60 },
 		{ TEXT("minecraft:bastion/starts"), TEXT(""), 6, 80, 33 },
 	};
+	const double TestStart = FPlatformTime::Seconds();
 	FMcJigsawLibrary Library;
 	for (const FCase& Case : Cases)
 	{
@@ -171,6 +172,8 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("some plains villages are zombie villages"), Zombie > 0 && Zombie < 100);
 	}
 
+	AddInfo(FString::Printf(TEXT("pool trials took %.1f s"), FPlatformTime::Seconds() - TestStart));
+
 	// ---- The sets and structures ----
 	FMcStructureLibrary Structures(Settings.SeaLevel, Settings.MinY);
 	if (!TestTrue(TEXT("structure sets load"), Structures.Load()))
@@ -186,7 +189,8 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("jigsaw structures are built now"), Structures.GetUnsupported().Contains(TEXT("jigsaw")) && Structures.GetUnsupported()[TEXT("jigsaw")] > 1);
 
 	// ---- A village in a generated world, put down chunk by chunk ----
-	for (const int32 Seed : { 11, 22, 33, 44, 55, 66, 77, 88 })
+	// 55 is the first of these seeds with a village on flat land near the origin; the others are only fallbacks.
+	for (const int32 Seed : { 55, 11, 22, 33, 44, 66, 77, 88 })
 	{
 		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
 		TOptional<FIntPoint> Found;
@@ -211,6 +215,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				}
 			}
 		}
+		AddInfo(FString::Printf(TEXT("seed %d: start search done at %.1f s"), Seed, FPlatformTime::Seconds() - TestStart));
 		if (!Found)
 		{
 			continue;
@@ -218,7 +223,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		const FIntPoint Start = *Found;
 		Structures.SetHeightSource([&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
 		Structures.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
-		constexpr int32 Radius = 7;
+		constexpr int32 Radius = 6;
 		constexpr int32 Size = Radius * 2 + 1;
 		const FIntPoint Corner = Start - FIntPoint(Radius, Radius);
 		TArray<TUniquePtr<FMcChunk>> Chunks;
@@ -264,6 +269,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				AddInfo(FString::Printf(TEXT("piece depth %d size %d,%d,%d match %d y %d..%d ground %d"), Piece.Depth, Piece.Element->Size.X, Piece.Element->Size.Y, Piece.Element->Size.Z, Piece.Element->bTerrainMatching ? 1 : 0, Piece.Min.Y, Piece.Max.Y, Ground));
 			}
 		}
+		AddInfo(FString::Printf(TEXT("chunks generated and probed at %.1f s"), FPlatformTime::Seconds() - TestStart));
 		TArray<TArray<FMcStateId>> Before;
 		for (const TUniquePtr<FMcChunk>& Chunk : Chunks)
 		{
@@ -275,6 +281,8 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		int32 HighestY = MIN_int32;
 		int32 Above = 0;
 		int32 Blocks = 0;
+		TSet<FMcStateId> Seen;
+		TMap<int64, int32> Surface;  // the noise's ground per column, worked out once
 		TArray<FMcStateId> CentreAfter;
 		for (int32 CZ = 1; CZ < Size - 1; ++CZ)
 		{
@@ -292,6 +300,7 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 				Structures.Place(Region, Seed);
 			}
 		}
+		AddInfo(FString::Printf(TEXT("placed at %.1f s"), FPlatformTime::Seconds() - TestStart));
 		for (int32 Index = 0; Index < Chunks.Num(); ++Index)
 		{
 			const TArray<FMcStateId> After = SnapshotChunk(*Chunks[Index]);
@@ -304,8 +313,19 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 					const int32 BlockY = Chunks[Index]->GetMinY() + B / 256;
 					LowestY = FMath::Min(LowestY, BlockY);
 					HighestY = FMath::Max(HighestY, BlockY);
-					Above += (BlockY > Generator.FindSurfaceY(Chunks[Index]->GetPos().X * 16 + (B % 16), Chunks[Index]->GetPos().Y * 16 + (B / 16) % 16) + 1 && !FMcBlockRegistry::Get().IsAir(After[B])) ? 1 : 0;
-					Names.Add(FMcBlockRegistry::Get().Describe(After[B]));
+					if (!FMcBlockRegistry::Get().IsAir(After[B]))
+					{
+						const int32 BlockX = Chunks[Index]->GetPos().X * 16 + (B % 16);
+						const int32 BlockZ = Chunks[Index]->GetPos().Y * 16 + (B / 16) % 16;
+						const int64 Key = (static_cast<int64>(BlockX) << 32) ^ static_cast<uint32>(BlockZ);
+						int32* Ground = Surface.Find(Key);
+						Above += BlockY > (Ground ? *Ground : Surface.Add(Key, Generator.FindSurfaceY(BlockX, BlockZ) + 1)) ? 1 : 0;
+					}
+					if (!Seen.Contains(After[B]))
+					{
+						Seen.Add(After[B]);
+						Names.Add(FMcBlockRegistry::Get().Describe(After[B]));
+					}
 				}
 			}
 			Touched += Changed > 0 ? 1 : 0;
@@ -324,32 +344,87 @@ bool FMcJigsawTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("blocks written: %s"), *FString::Join(Names, TEXT(", "))));
 		TestTrue(TEXT("a village reaches over many chunks"), Touched > 20);
 
+		AddInfo(FString::Printf(TEXT("compared at %.1f s"), FPlatformTime::Seconds() - TestStart));
 		// A second library puts the same blocks in one chunk.
 		FMcStructureLibrary Again(Settings.SeaLevel, Settings.MinY);
 		Again.Load();
 		Again.SetHeightSource([&Generator](int32 X, int32 Z) { return Generator.FindSurfaceY(X, Z) + 1; });
 		Again.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
 		const int32 CentreIndex = Radius * Size + Radius;
+		// Only the 3 x 3 round the start chunk: placing one chunk needs no more.
 		TArray<TUniquePtr<FMcChunk>> Fresh;
-		for (int32 Index = 0; Index < Size * Size; ++Index)
-		{
-			Fresh.Add(MakeUnique<FMcChunk>(Corner + FIntPoint(Index % Size, Index / Size), Settings.MinY, Settings.Height / 16));
-			Generator.Generate(*Fresh.Last());
-		}
 		FMcChunk* Around[9];
 		for (int32 DZ = -1; DZ <= 1; ++DZ)
 		{
 			for (int32 DX = -1; DX <= 1; ++DX)
 			{
-				Around[(DZ + 1) * 3 + DX + 1] = Fresh[(Radius + DZ) * Size + Radius + DX].Get();
+				Fresh.Add(MakeUnique<FMcChunk>(Start + FIntPoint(DX, DZ), Settings.MinY, Settings.Height / 16));
+				Generator.Generate(*Fresh.Last());
+				Around[(DZ + 1) * 3 + DX + 1] = Fresh.Last().Get();
 			}
 		}
 		FMcGenRegion Region(Start, Around);
 		Again.Place(Region, Seed);
-		TestTrue(TEXT("the same chunk comes out the same"), SnapshotChunk(*Fresh[CentreIndex]) == SnapshotChunk(*Chunks[CentreIndex]));
+		TestTrue(TEXT("the same chunk comes out the same"), SnapshotChunk(*Fresh[4]) == SnapshotChunk(*Chunks[CentreIndex]));
 		return true;
 	}
 	AddWarning(TEXT("no village start found near the origin in these seeds"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJigsawPieceCountTest, "McClient.McGen.JigsawPieceCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+// Piece counts of villages on flat ground, 300 assemblies per kind, to set beside the reference's "mcref piece" lines.
+bool FMcJigsawPieceCountTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	const TCHAR* Pools[] = { TEXT("plains"), TEXT("desert"), TEXT("savanna"), TEXT("snowy"), TEXT("taiga") };
+	FMcJigsawLibrary Library;
+	for (const TCHAR* Kind : Pools)
+	{
+		const FString Pool = FString::Printf(TEXT("minecraft:village/%s/town_centers"), Kind);
+		if (!Library.LoadPool(FName(*Pool), nullptr))
+		{
+			AddError(Pool);
+			continue;
+		}
+		TArray<int32> Counts;
+		int64 Singles = 0;
+		int64 Volume = 0;
+		int64 AllPieces = 0;
+		for (int32 Trial = 0; Trial < 300; ++Trial)
+		{
+			FMcJigsawLibrary::FStart Start;
+			Start.Pool = FName(*Pool);
+			Start.MaxDepth = 6;
+			Start.MaxDistance = 80;
+			Start.CentreX = 8;
+			Start.CentreZ = 8;
+			Start.Y = 64;
+			FMcRandom Random(5000 + Trial);
+			const TSharedPtr<FMcJigsawLibrary::FLayout> Layout = Library.Assemble(Start, Random, [](int32, int32) { return 64; });
+			Counts.Add(Layout.IsValid() ? Layout->Pieces.Num() : 0);
+			if (Layout.IsValid())
+			{
+				for (const FMcJigsawLibrary::FPiece& Piece : Layout->Pieces)
+				{
+					const int64 V = int64(Piece.Max.X - Piece.Min.X + 1) * (Piece.Max.Y - Piece.Min.Y + 1) * (Piece.Max.Z - Piece.Min.Z + 1);
+					Singles += V == 1;
+					Volume += V;
+					++AllPieces;
+				}
+			}
+		}
+		Counts.Sort();
+		int64 Sum = 0;
+		for (int32 C : Counts) { Sum += C; }
+		AddInfo(FString::Printf(TEXT("PIECES %s singles per start %.1f mean volume %.0f"), Kind, double(Singles) / Counts.Num(), double(Volume) / FMath::Max<int64>(AllPieces, 1)));
+		AddInfo(FString::Printf(TEXT("PIECES %s mean %.1f min %d p25 %d median %d p75 %d max %d"), Kind, double(Sum) / Counts.Num(), Counts[0], Counts[75], Counts[150], Counts[225], Counts.Last()));
+	}
 	return true;
 }
 

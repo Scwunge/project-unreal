@@ -34,6 +34,26 @@ namespace McExplosion
 	MCENTITY_API float GetExposure(const FMcBlockWorld& World, const FVector& Center, const FBox& Box);
 
 	// The damage to something Distance blocks from a blast of this power (0 beyond twice the power) of which
-	// Exposure is open to it: 43 for a creeper's blast point blank (power 3).
+	// Exposure is open to it: 43 for a creeper's blast point blank (power 3). Not rounded: a player 7 blocks from a
+	// power 4 blast at normal difficulty lost 4.94 health, 6.265 blocks 8.39, 5.725 blocks 11.23, 5.324 blocks 13.5 and 5.167 blocks
+	// 14.43 in the reference client (the five fit 1 + 56 * (I*I + I) / 2, I = 1 - Distance / 8, to 0.001).
 	MCENTITY_API float GetDamage(float Power, float Distance, float Exposure);
+
+	// The pitch of the blast's sound from two rolls in [0, 1): 537 blasts of the reference client (scripts tnt3.txt,
+	// tnt4.txt, tnt5.txt; `log sounds`), all at volume 4, ran 0.5776 to 0.8298 with mean 0.6992 and standard deviation
+	// 0.0538, peaking in the middle and thinning to both ends: a triangle (the difference of two flat rolls), centre
+	// 0.699, half-width 0.131 from the standard deviation (0.0538 * sqrt(6)); the edges that gives, 0.568 and 0.830,
+	// lie where the 537 samples put them (the sample minimum 0.5776 plus the expected edge gap, 0.008).
+	MCENTITY_API float GetBlastPitch(float RollA, float RollB);
+
+	// The push on something at Position whose eye (or the point the blast pushes from) is at Eye: along the line from
+	// the centre to the eye, as strong as the impact (1 - Distance / (2 * Power)) * Exposure, in blocks a tick before
+	// friction. The same five reference blasts read x speeds of 0.0666, 0.1149, 0.1498, 0.1752 and 0.1851 a tick later,
+	// which is this times the ground's friction (0.546).
+	// How high above its feet a mob's eye is, which the push points at. Read from the reference client's blasts (scripts
+	// tnt8.txt and tnt9.txt, `log ents`: each mob 2 to 3 blocks off a power 4 blast, the push's up-to-sideways ratio): a
+	// pig 0.77, a cow 1.31, a chicken 0.65, a sheep 1.24 (its push was exactly 1 - Distance / 8 along that line). Other
+	// mobs take 0.9 of their height, which is where those four average (0.85 to 0.95).
+	MCENTITY_API float GetMobEyeHeight(FName Mob, float BodyHeight);
+	MCENTITY_API FVector GetKnockback(float Power, const FVector& Center, const FVector& Position, const FVector& Eye, float Exposure);
 }

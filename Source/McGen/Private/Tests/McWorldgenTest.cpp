@@ -18,7 +18,7 @@
 
 namespace
 {
-	FMcStateId Parse(const TCHAR* Text)
+	FMcStateId ParseState(const TCHAR* Text)
 	{
 		return FMcBlockRegistry::Get().ParseState(Text).Get(0);
 	}
@@ -42,13 +42,13 @@ namespace
 
 		FScene(const FMcNoiseSettings& Settings, EScene Kind, int32 InSize, FIntPoint InBase) : Size(InSize), Base(InBase)
 		{
-			const FMcStateId Dirt = Parse(TEXT("minecraft:dirt"));
-			const FMcStateId Grass = Parse(TEXT("minecraft:grass_block"));
-			const FMcStateId Sand = Parse(TEXT("minecraft:sand"));
-			const FMcStateId Water = Parse(TEXT("minecraft:water"));
-			const FMcStateId Stone = Parse(TEXT("minecraft:stone"));
-			const FMcStateId Netherrack = Parse(TEXT("minecraft:netherrack"));
-			const FMcStateId EndStone = Parse(TEXT("minecraft:end_stone"));
+			const FMcStateId Dirt = ParseState(TEXT("minecraft:dirt"));
+			const FMcStateId Grass = ParseState(TEXT("minecraft:grass_block"));
+			const FMcStateId Sand = ParseState(TEXT("minecraft:sand"));
+			const FMcStateId Water = ParseState(TEXT("minecraft:water"));
+			const FMcStateId Stone = ParseState(TEXT("minecraft:stone"));
+			const FMcStateId Netherrack = ParseState(TEXT("minecraft:netherrack"));
+			const FMcStateId EndStone = ParseState(TEXT("minecraft:end_stone"));
 			const FMcBiomeId Biome = FMcBiomeRegistry::Get().GetPlains();
 			for (int32 Index = 0; Index < Size * Size; ++Index)
 			{
@@ -224,6 +224,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:basalt_pillar"), EScene::Nether, FIntPoint(0, 0), FIntVector(24, 60, 24), TEXT("minecraft:basalt"), 1 },
 		{ TEXT("minecraft:sculk_patch_deep_dark"), EScene::Cave, FIntPoint(0, 0), FIntVector(24, 45, 24), TEXT("minecraft:sculk"), 4 },
 		{ TEXT("minecraft:rooted_azalea_tree"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:azalea_leaves"), 6 },
+		{ TEXT("minecraft:spore_blossom"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:spore_blossom"), 4 },
 		{ TEXT("minecraft:warm_ocean_vegetation"), EScene::Sea, FIntPoint(0, 0), FIntVector(24, 46, 24), TEXT("coral_block"), 40 },
 	};
 	for (const FCase& Case : Cases)
@@ -245,7 +246,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 			{
 				for (int32 DZ = 0; DZ < 3; ++DZ)
 				{
-					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), Parse(Case.FloorBlock));
+					Region.SetBlock(Case.Origin + FIntVector(DX, -1, DZ), ParseState(Case.FloorBlock));
 				}
 			}
 		}
@@ -268,6 +269,67 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 			bMarker = bMarker || Name.Contains(Case.Marker);
 		}
 		TestTrue(FString::Printf(TEXT("%s leaves %s"), Case.Feature, Case.Marker), bMarker);
+	}
+	return true;
+}
+
+// ICEBERG <feature> <runs> <mean columns whose top block is above the water> <mean top y>: for fitting the iceberg size
+// to the reference client's share of packed ice in frozen oceans.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcIcebergAreaTest, "McClient.McGen.IcebergArea",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcIcebergAreaTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("overworld settings load"), FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	FMcFeatureLibrary Library(Settings.SeaLevel, Settings.MinY, Settings.Height);
+	TestTrue(TEXT("biome features load"), Library.LoadBiomes());
+	for (const TCHAR* Id : { TEXT("minecraft:iceberg_packed"), TEXT("minecraft:iceberg_blue") })
+	{
+		const TSharedPtr<const FMcFeature> Feature = Library.ParseFeature(MakeShared<FJsonValueString>(Id));
+		if (!TestTrue(FString::Printf(TEXT("%s parses"), Id), Feature.IsValid()))
+		{
+			continue;
+		}
+		constexpr int32 Runs = 80;
+		int64 Columns = 0;
+		int64 TopSum = 0;
+		int32 Placed = 0;
+		for (int32 Run = 0; Run < Runs; ++Run)
+		{
+			FScene Scene(Settings, EScene::Sea, 3, FIntPoint(0, 0));
+			FMcChunk* Around[9];
+			Scene.Around(1, 1, Around);
+			FMcGenRegion Region(FIntPoint(1, 1), Around);
+			FMcRandom Random(1000 + Run);
+			FMcFeatureContext Context{ Region, Random, Library, Settings.SeaLevel, nullptr };
+			Placed += Feature->Place(Context, FIntVector(24, 62, 24)) ? 1 : 0;
+			int32 Top = 0;
+			for (int32 X = 0; X < 48; ++X)
+			{
+				for (int32 Z = 0; Z < 48; ++Z)
+				{
+					for (int32 Y = 200; Y >= Settings.SeaLevel; --Y)
+					{
+						if (!Region.IsAir(Region.GetBlock(FIntVector(X, Y, Z))))
+						{
+							++Columns;
+							Top = FMath::Max(Top, Y);
+							break;
+						}
+					}
+				}
+			}
+			TopSum += Top;
+		}
+		AddInfo(FString::Printf(TEXT("ICEBERG %s placed %d of %d, mean columns above the water %.1f, mean top y %.1f"), Id, Placed, Runs, static_cast<double>(Columns) / Runs, static_cast<double>(TopSum) / Runs));
 	}
 	return true;
 }
@@ -444,6 +506,33 @@ bool FMcWorldStructureTest::RunTest(const FString& Parameters)
 		TArray<FString> Sorted = AllNames.Array();
 		Sorted.Sort();
 		AddInfo(FString::Printf(TEXT("%s: best %d blocks changed; blocks: %s"), Case.Id, BestChanged, *FString::Join(Sorted, TEXT(" ")).Left(400)));
+	}
+
+	// ---- A mineshaft's pieces hanging in the air are not made (minecraft.wiki, "Mineshaft") ----
+	{
+		const auto Build = [&](TFunction<int32(int32, int32)> Height)
+		{
+			Structures.SetHeightSource(Height);
+			FScene Scene(Settings, EScene::Land, Size, FIntPoint(0, 0));
+			const TArray<TArray<FMcStateId>> Before = Scene.Snapshot();
+			for (int32 Index = 0; Index < 13 * 13; ++Index)
+			{
+				FMcChunk* Around[9];
+				const int32 CX = 1 + Index % 13;
+				const int32 CZ = 1 + Index / 13;
+				Scene.Around(CX, CZ, Around);
+				FMcGenRegion Region(FIntPoint(CX, CZ), Around);
+				Structures.PlaceStructure(Region, TEXT("minecraft:mineshaft_mesa"), 1, Start);
+			}
+			int32 Changed = 0;
+			Scene.Names(Before, Changed);
+			return Changed;
+		};
+		const int32 Whole = Build([](int32, int32) { return 64; });
+		// The ground drops away to 20 beyond a few blocks of the start: what is made out there would hang over it.
+		const int32 Hanging = Build([](int32 X, int32 Z) { return FMath::Abs(X - 120) <= 6 && FMath::Abs(Z - 120) <= 6 ? 64 : 20; });
+		AddInfo(FString::Printf(TEXT("mesa mineshaft blocks changed: %d over ground, %d with the ground dropped away round the start"), Whole, Hanging));
+		TestTrue(TEXT("a mineshaft's pieces that would hang in the air are left out"), Hanging < Whole);
 	}
 
 	// ---- Trial chambers: their spawner pools come through the aliases ----

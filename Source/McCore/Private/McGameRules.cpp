@@ -35,12 +35,14 @@ FMcGameRules FMcGameRules::FromLevel(const TMap<FString, FString>& Rules, int32 
 	Result.bDoMobSpawning = GetBool(Rules, TEXT("doMobSpawning"), Result.bDoMobSpawning);
 	Result.bDoMobLoot = GetBool(Rules, TEXT("doMobLoot"), Result.bDoMobLoot);
 	Result.bDoTileDrops = GetBool(Rules, TEXT("doTileDrops"), Result.bDoTileDrops);
+	Result.bMobGriefing = GetBool(Rules, TEXT("mobGriefing"), Result.bMobGriefing);
 	Result.bKeepInventory = GetBool(Rules, TEXT("keepInventory"), Result.bKeepInventory);
 	Result.bNaturalRegeneration = GetBool(Rules, TEXT("naturalRegeneration"), Result.bNaturalRegeneration);
 	Result.bFallDamage = GetBool(Rules, TEXT("fallDamage"), Result.bFallDamage);
 	Result.bFireDamage = GetBool(Rules, TEXT("fireDamage"), Result.bFireDamage);
 	Result.bDrowningDamage = GetBool(Rules, TEXT("drowningDamage"), Result.bDrowningDamage);
 	Result.bDoWeatherCycle = GetBool(Rules, TEXT("doWeatherCycle"), Result.bDoWeatherCycle);
+	Result.bSpawnerBlocksWork = GetBool(Rules, TEXT("spawnerBlocksWork"), Result.bSpawnerBlocksWork);
 	Result.RandomTickSpeed = FMath::Max(0, GetInt(Rules, TEXT("randomTickSpeed"), Result.RandomTickSpeed));
 	return Result;
 }

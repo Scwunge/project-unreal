@@ -1,0 +1,33 @@
+{
+  "description": "Shulker boxes on classic_flat (surface y=-61, stone floor): along x=0..16 at z=4 the plain box and the 16 colours facing up; behind at z=1 a plain box facing north, south, east and west, and one facing down under a stone block; on the left at x=-2 an oak sign and a straw bed whose 32- and 64-pixel pictures are drawn in tiles.",
+  "camera": [8.5, -56.5, 13.5, 180.0, 22.0],
+  "blocks": [
+    { "from": [-3, -61, -2], "to": [18, -61, 8], "state": "minecraft:stone" },
+    { "from": [0, -60, 4], "to": [0, -60, 4], "state": "minecraft:shulker_box[facing=up]" },
+    { "from": [1, -60, 4], "to": [1, -60, 4], "state": "minecraft:white_shulker_box[facing=up]" },
+    { "from": [2, -60, 4], "to": [2, -60, 4], "state": "minecraft:orange_shulker_box[facing=up]" },
+    { "from": [3, -60, 4], "to": [3, -60, 4], "state": "minecraft:magenta_shulker_box[facing=up]" },
+    { "from": [4, -60, 4], "to": [4, -60, 4], "state": "minecraft:light_blue_shulker_box[facing=up]" },
+    { "from": [5, -60, 4], "to": [5, -60, 4], "state": "minecraft:yellow_shulker_box[facing=up]" },
+    { "from": [6, -60, 4], "to": [6, -60, 4], "state": "minecraft:lime_shulker_box[facing=up]" },
+    { "from": [7, -60, 4], "to": [7, -60, 4], "state": "minecraft:pink_shulker_box[facing=up]" },
+    { "from": [8, -60, 4], "to": [8, -60, 4], "state": "minecraft:gray_shulker_box[facing=up]" },
+    { "from": [9, -60, 4], "to": [9, -60, 4], "state": "minecraft:light_gray_shulker_box[facing=up]" },
+    { "from": [10, -60, 4], "to": [10, -60, 4], "state": "minecraft:cyan_shulker_box[facing=up]" },
+    { "from": [11, -60, 4], "to": [11, -60, 4], "state": "minecraft:purple_shulker_box[facing=up]" },
+    { "from": [12, -60, 4], "to": [12, -60, 4], "state": "minecraft:blue_shulker_box[facing=up]" },
+    { "from": [13, -60, 4], "to": [13, -60, 4], "state": "minecraft:brown_shulker_box[facing=up]" },
+    { "from": [14, -60, 4], "to": [14, -60, 4], "state": "minecraft:green_shulker_box[facing=up]" },
+    { "from": [15, -60, 4], "to": [15, -60, 4], "state": "minecraft:red_shulker_box[facing=up]" },
+    { "from": [16, -60, 4], "to": [16, -60, 4], "state": "minecraft:black_shulker_box[facing=up]" },
+    { "from": [2, -60, 1], "to": [2, -60, 1], "state": "minecraft:shulker_box[facing=north]" },
+    { "from": [4, -60, 1], "to": [4, -60, 1], "state": "minecraft:shulker_box[facing=south]" },
+    { "from": [6, -60, 1], "to": [6, -60, 1], "state": "minecraft:shulker_box[facing=east]" },
+    { "from": [8, -60, 1], "to": [8, -60, 1], "state": "minecraft:shulker_box[facing=west]" },
+    { "from": [10, -59, 1], "to": [10, -59, 1], "state": "minecraft:shulker_box[facing=down]" },
+    { "from": [10, -58, 1], "to": [10, -58, 1], "state": "minecraft:stone" },
+    { "from": [-2, -60, 4], "to": [-2, -60, 4], "state": "minecraft:oak_sign[rotation=0]" },
+    { "from": [-2, -60, 1], "to": [-2, -60, 1], "state": "minecraft:straw_bed[facing=north,part=head]" },
+    { "from": [-2, -60, 2], "to": [-2, -60, 2], "state": "minecraft:straw_bed[facing=north,part=foot]" }
+  ]
+}

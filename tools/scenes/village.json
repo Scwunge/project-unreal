@@ -1,0 +1,571 @@
+{
+ "description": "Three small houses on a path with torches, for the village showcase shot.",
+ "camera": [
+  5.0,
+  -59.4,
+  -6.0,
+  0.0,
+  3.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    0,
+    -61,
+    6
+   ],
+   "to": [
+    6,
+    -61,
+    11
+   ],
+   "state": "minecraft:cobblestone"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    6
+   ],
+   "to": [
+    6,
+    -57,
+    11
+   ],
+   "state": "minecraft:oak_planks"
+  },
+  {
+   "from": [
+    1,
+    -60,
+    7
+   ],
+   "to": [
+    5,
+    -57,
+    10
+   ],
+   "state": "minecraft:air"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    6
+   ],
+   "to": [
+    0,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    6
+   ],
+   "to": [
+    0,
+    -57,
+    6
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    6
+   ],
+   "to": [
+    6,
+    -57,
+    6
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    11
+   ],
+   "to": [
+    0,
+    -57,
+    11
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    11
+   ],
+   "to": [
+    6,
+    -57,
+    11
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -1,
+    -56,
+    5
+   ],
+   "to": [
+    7,
+    -56,
+    12
+   ],
+   "state": "minecraft:spruce_planks"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    6
+   ],
+   "to": [
+    3,
+    -59,
+    6
+   ],
+   "state": "minecraft:oak_door[facing=north,half=lower,hinge=left,open=false,powered=false]"
+  },
+  {
+   "from": [
+    2,
+    -58,
+    6
+   ],
+   "to": [
+    2,
+    -58,
+    6
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    4,
+    -58,
+    6
+   ],
+   "to": [
+    4,
+    -58,
+    6
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    2,
+    -59,
+    5
+   ],
+   "to": [
+    2,
+    -59,
+    5
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    10,
+    -61,
+    8
+   ],
+   "to": [
+    15,
+    -61,
+    14
+   ],
+   "state": "minecraft:cobblestone"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    8
+   ],
+   "to": [
+    15,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_planks"
+  },
+  {
+   "from": [
+    11,
+    -60,
+    9
+   ],
+   "to": [
+    14,
+    -57,
+    13
+   ],
+   "state": "minecraft:air"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    8
+   ],
+   "to": [
+    10,
+    -60,
+    8
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    8
+   ],
+   "to": [
+    10,
+    -57,
+    8
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    15,
+    -60,
+    8
+   ],
+   "to": [
+    15,
+    -57,
+    8
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    14
+   ],
+   "to": [
+    10,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    15,
+    -60,
+    14
+   ],
+   "to": [
+    15,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    9,
+    -56,
+    7
+   ],
+   "to": [
+    16,
+    -56,
+    15
+   ],
+   "state": "minecraft:spruce_planks"
+  },
+  {
+   "from": [
+    12,
+    -59,
+    8
+   ],
+   "to": [
+    12,
+    -59,
+    8
+   ],
+   "state": "minecraft:oak_door[facing=north,half=lower,hinge=left,open=false,powered=false]"
+  },
+  {
+   "from": [
+    12,
+    -58,
+    8
+   ],
+   "to": [
+    12,
+    -58,
+    8
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    13,
+    -58,
+    8
+   ],
+   "to": [
+    13,
+    -58,
+    8
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    11,
+    -59,
+    7
+   ],
+   "to": [
+    11,
+    -59,
+    7
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -9,
+    -61,
+    9
+   ],
+   "to": [
+    -4,
+    -61,
+    14
+   ],
+   "state": "minecraft:cobblestone"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    9
+   ],
+   "to": [
+    -4,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_planks"
+  },
+  {
+   "from": [
+    -8,
+    -60,
+    10
+   ],
+   "to": [
+    -5,
+    -57,
+    13
+   ],
+   "state": "minecraft:air"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    9
+   ],
+   "to": [
+    -9,
+    -60,
+    9
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    9
+   ],
+   "to": [
+    -9,
+    -57,
+    9
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -4,
+    -60,
+    9
+   ],
+   "to": [
+    -4,
+    -57,
+    9
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    14
+   ],
+   "to": [
+    -9,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -4,
+    -60,
+    14
+   ],
+   "to": [
+    -4,
+    -57,
+    14
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -10,
+    -56,
+    8
+   ],
+   "to": [
+    -3,
+    -56,
+    15
+   ],
+   "state": "minecraft:spruce_planks"
+  },
+  {
+   "from": [
+    -7,
+    -59,
+    9
+   ],
+   "to": [
+    -7,
+    -59,
+    9
+   ],
+   "state": "minecraft:oak_door[facing=north,half=lower,hinge=left,open=false,powered=false]"
+  },
+  {
+   "from": [
+    -7,
+    -58,
+    9
+   ],
+   "to": [
+    -7,
+    -58,
+    9
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    -6,
+    -58,
+    9
+   ],
+   "to": [
+    -6,
+    -58,
+    9
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    -8,
+    -59,
+    8
+   ],
+   "to": [
+    -8,
+    -59,
+    8
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    -3,
+    -61,
+    0
+   ],
+   "to": [
+    14,
+    -61,
+    5
+   ],
+   "state": "minecraft:dirt_path"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    2
+   ],
+   "to": [
+    4,
+    -60,
+    2
+   ],
+   "state": "minecraft:oak_fence"
+  },
+  {
+   "from": [
+    4,
+    -59,
+    2
+   ],
+   "to": [
+    4,
+    -59,
+    2
+   ],
+   "state": "minecraft:torch"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    3
+   ],
+   "to": [
+    8,
+    -60,
+    3
+   ],
+   "state": "minecraft:hay_block"
+  }
+ ]
+}

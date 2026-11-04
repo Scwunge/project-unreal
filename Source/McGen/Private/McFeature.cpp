@@ -629,6 +629,7 @@ bool FMcFeatureLibrary::LoadBiomes()
 	Steps.Reset();
 	Biomes.Reset();
 	Temperatures.Init(0.8f, Registry.NumBiomes());
+	FrozenTemperature.Init(false, Registry.NumBiomes());
 	TArray<TSet<const FMcPlacedFeature*>> Seen;
 	bool bOk = true;
 	for (int32 Biome = 0; Biome < Registry.NumBiomes(); ++Biome)
@@ -643,6 +644,8 @@ bool FMcFeatureLibrary::LoadBiomes()
 		double Temperature = 0.8;
 		Object->TryGetNumberField(TEXT("temperature"), Temperature);
 		Temperatures[Biome] = static_cast<float>(Temperature);
+		FString Modifier;
+		FrozenTemperature[Biome] = Object->TryGetStringField(TEXT("temperature_modifier"), Modifier) && Modifier == TEXT("frozen");
 		const TArray<TSharedPtr<FJsonValue>>* StepLists;
 		if (!Object->TryGetArrayField(TEXT("features"), StepLists))
 		{
@@ -697,6 +700,20 @@ float FMcFeatureLibrary::GetTemperature(FMcBiomeId Biome, int32 Y) const
 	return Y > 80 ? Base - (Y - 80) * 0.00125f : Base;
 }
 
+static constexpr float FrozenNoiseSigma = 0.4f;
+
+float FMcFeatureLibrary::GetTemperature(FMcBiomeId Biome, int32 X, int32 Y, int32 Z) const
+{
+	float Temperature = GetTemperature(Biome, Y);
+	if (FrozenTemperature.IsValidIndex(Biome) && FrozenTemperature[Biome])
+	{
+		// The "frozen" modifier moves the temperature up and down in patches (fitted to the reference client: about
+		// 61% of a frozen ocean's surface freezes, and about 18% of a deep frozen ocean, whose own temperature is 0.5).
+		Temperature += 0.033f + 0.42f * static_cast<float>(InfoNoise->Sample(X * 0.05, 0.0, Z * 0.05) / FrozenNoiseSigma);
+	}
+	return Temperature;
+}
+
 void FMcFeatureLibrary::SetHeightSource(TFunction<int32(int32, int32)> Source)
 {
 	if (Structures.IsValid())
@@ -710,6 +727,21 @@ void FMcFeatureLibrary::SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)
 	if (Structures.IsValid())
 	{
 		Structures->SetBiomeSource(MoveTemp(Source));
+	}
+}
+
+FCriticalSection McFeatureStatsLock;
+TMap<FString, TPair<int64, int64>> McFeatureStats;
+bool bMcFeatureStatsOn = false;
+
+void McCountBlocks(const TCHAR* Key, int64 Blocks)
+{
+	if (bMcFeatureStatsOn)
+	{
+		FScopeLock Lock(&McFeatureStatsLock);
+		TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(FString(TEXT("BLOCKS ")) + Key, TPair<int64, int64>(0, 0));
+		Stat.Key++;
+		Stat.Value += Blocks;
 	}
 }
 
@@ -774,7 +806,15 @@ bool FMcPlacedFeature::Place(FMcFeatureContext& Context, const FIntVector& Origi
 	bool bPlaced = false;
 	for (const FIntVector& Pos : Positions)
 	{
-		bPlaced |= Feature->Place(Context, Pos);
+		const bool bThis = Feature->Place(Context, Pos);
+		bPlaced |= bThis;
+		if (bMcFeatureStatsOn && !Id.IsEmpty())
+		{
+			FScopeLock Lock(&McFeatureStatsLock);
+			TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(Id, TPair<int64, int64>(0, 0));
+			Stat.Key++;
+			Stat.Value += bThis ? 1 : 0;
+		}
 	}
 	return bPlaced;
 }

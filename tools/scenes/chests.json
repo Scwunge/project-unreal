@@ -1,0 +1,24 @@
+{
+  "description": "Placed chests on classic_flat (surface y=-61), seen from above at 45 degrees. Front row, facing the camera (north): chest, trapped, ender and the four copper chests. Middle row: double chest, trapped and copper doubles facing north. Back row: a chest facing east, south and west, and a double facing south. -McChestsOpen opens every lid (see PLAN.md, Chests).",
+  "camera": [6.5, -53.5, -6.0, 0.0, 45.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [0, -60, 0], "state": "minecraft:chest[facing=north,type=single]" },
+    { "from": [2, -60, 0], "to": [2, -60, 0], "state": "minecraft:trapped_chest[facing=north,type=single]" },
+    { "from": [4, -60, 0], "to": [4, -60, 0], "state": "minecraft:ender_chest[facing=north]" },
+    { "from": [6, -60, 0], "to": [6, -60, 0], "state": "minecraft:copper_chest[facing=north,type=single]" },
+    { "from": [8, -60, 0], "to": [8, -60, 0], "state": "minecraft:exposed_copper_chest[facing=north,type=single]" },
+    { "from": [10, -60, 0], "to": [10, -60, 0], "state": "minecraft:weathered_copper_chest[facing=north,type=single]" },
+    { "from": [12, -60, 0], "to": [12, -60, 0], "state": "minecraft:oxidized_copper_chest[facing=north,type=single]" },
+    { "from": [0, -60, 3], "to": [0, -60, 3], "state": "minecraft:chest[facing=north,type=right]" },
+    { "from": [1, -60, 3], "to": [1, -60, 3], "state": "minecraft:chest[facing=north,type=left]" },
+    { "from": [4, -60, 3], "to": [4, -60, 3], "state": "minecraft:trapped_chest[facing=north,type=right]" },
+    { "from": [5, -60, 3], "to": [5, -60, 3], "state": "minecraft:trapped_chest[facing=north,type=left]" },
+    { "from": [8, -60, 3], "to": [8, -60, 3], "state": "minecraft:copper_chest[facing=north,type=right]" },
+    { "from": [9, -60, 3], "to": [9, -60, 3], "state": "minecraft:copper_chest[facing=north,type=left]" },
+    { "from": [0, -60, 6], "to": [0, -60, 6], "state": "minecraft:chest[facing=east,type=single]" },
+    { "from": [2, -60, 6], "to": [2, -60, 6], "state": "minecraft:chest[facing=south,type=single]" },
+    { "from": [4, -60, 6], "to": [4, -60, 6], "state": "minecraft:chest[facing=west,type=single]" },
+    { "from": [7, -60, 6], "to": [7, -60, 6], "state": "minecraft:chest[facing=south,type=right]" },
+    { "from": [8, -60, 6], "to": [8, -60, 6], "state": "minecraft:chest[facing=south,type=left]" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "description": "Decorated pots with sherds on classic_flat (surface y=-61), as vanilla's heads_pots.txt places them at z=88: x 0, 2, 6 and 10 facing south, x 4 west and x 8 north; each pot's sides back, left, right and front. Its cameras: front 5.5 -56.78 93.5 180 15, corner 12.5 -56.78 93.5 135 20, back 5.5 -56.78 82.5 0 15 (vanilla's spectator at feet y -58.4).",
+  "camera": [5.5, -56.78, 93.5, 180.0, 15.0],
+  "blocks": [
+    { "from": [-4, -61, 80], "to": [14, -61, 96], "state": "minecraft:grass_block[snowy=false]" },
+    { "from": [0, -60, 88], "to": [0, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=south,waterlogged=false]" },
+    { "from": [2, -60, 88], "to": [2, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=south,waterlogged=false]" },
+    { "from": [4, -60, 88], "to": [4, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=west,waterlogged=false]" },
+    { "from": [6, -60, 88], "to": [6, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=south,waterlogged=false]" },
+    { "from": [8, -60, 88], "to": [8, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=north,waterlogged=false]" },
+    { "from": [10, -60, 88], "to": [10, -60, 88], "state": "minecraft:decorated_pot[cracked=false,facing=south,waterlogged=false]" }
+  ],
+  "pots": [
+    { "at": [0, -60, 88], "sides": ["minecraft:angler_pottery_sherd", "minecraft:archer_pottery_sherd", "minecraft:arms_up_pottery_sherd", "minecraft:blade_pottery_sherd"] },
+    { "at": [2, -60, 88], "sides": ["minecraft:brewer_pottery_sherd", "minecraft:burn_pottery_sherd", "minecraft:danger_pottery_sherd", "minecraft:explorer_pottery_sherd"] },
+    { "at": [4, -60, 88], "sides": ["minecraft:flow_pottery_sherd", "minecraft:friend_pottery_sherd", "minecraft:guster_pottery_sherd", "minecraft:heart_pottery_sherd"] },
+    { "at": [6, -60, 88], "sides": ["minecraft:brick", "minecraft:howl_pottery_sherd", "minecraft:brick", "minecraft:miner_pottery_sherd"] },
+    { "at": [8, -60, 88], "sides": ["minecraft:mourner_pottery_sherd", "minecraft:plenty_pottery_sherd", "minecraft:prize_pottery_sherd", "minecraft:scrape_pottery_sherd"] },
+    { "at": [10, -60, 88], "sides": ["minecraft:sheaf_pottery_sherd", "minecraft:shelter_pottery_sherd", "minecraft:skull_pottery_sherd", "minecraft:snort_pottery_sherd"] }
+  ]
+}

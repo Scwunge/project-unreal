@@ -1,17 +1,21 @@
 #include "McArrow.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McMob.h"
+#include "McThrown.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 namespace
 {
-	void FillBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
+	void FillMobBox(FMcBlockWorld& World, int32 X0, int32 Y0, int32 Z0, int32 X1, int32 Y1, int32 Z1, FMcStateId Block)
 	{
 		for (int32 X = X0; X <= X1; ++X)
 		{
@@ -35,7 +39,7 @@ namespace
 				World.AddChunk(World.MakeChunk(FIntPoint(X, Z)));
 			}
 		}
-		FillBox(World, -16, 0, -16, 31, 0, 31, Stone);
+		FillMobBox(World, -16, 0, -16, 31, 0, 31, Stone);
 	}
 
 	FMcMob* AddMob(FMcEntityManager& Manager, const TCHAR* Kind, const FVector& Pos)
@@ -65,7 +69,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		// A zombie walks round a wall to bite a player behind it: a straight line would leave it standing at the stone.
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
-		FillBox(World, 3, 1, -5, 3, 2, 5, Stone);
+		FillMobBox(World, 3, 1, -5, 3, 2, 5, Stone);
 		FMcEntityManager Manager(World);
 		Manager.bDaylight = false;
 		Manager.PlayerPositions = { FVector(7.5, 1.0, 0.5) };
@@ -199,7 +203,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("at night it bites without being hurt"), NightBites > 0);
 
 		// A wall four high between it and the player: it goes up and over.
-		FillBox(World, 14, 1, -16, 14, 4, 31, Stone);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Stone);
 		FMcEntityManager Climb(World);
 		Climb.bDaylight = false;
 		Climb.PlayerPositions = { FVector(18.5, 1.0, 8.5) };
@@ -214,7 +218,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("the spider climbs the wall"), Highest > 4.5);
 		TestTrue(TEXT("and bites the player on the other side"), bBit);
-		FillBox(World, 14, 1, -16, 14, 4, 31, Air);
+		FillMobBox(World, 14, 1, -16, 14, 4, 31, Air);
 	}
 	{
 		// Skeleton: stops at a distance and shoots; the arrow flies in an arc and hurts the player.
@@ -241,7 +245,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("while it keeps its distance (10 blocks)"), FMath::Abs(Skeleton->Body.Position.Z - Player.Z) >= 7.0);
 
 		// An arrow into a wall sticks there and is gone after a minute.
-		FillBox(World, 8, 1, 10, 9, 3, 10, Stone);
+		FillMobBox(World, 8, 1, 10, 9, 3, 10, Stone);
 		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
 		Arrow->Body.Position = FVector(8.5, 2.0, 5.5);
 		Arrow->Body.Velocity = FVector(0.0, 0.0, 1.0);
@@ -255,6 +259,71 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("an arrow sticks in a wall"), Shot->bStuck);
 		TestTrue(TEXT("just inside it"), Shot->Body.Position.Z >= 10.0 &&Shot->Body.Position.Z < 10.5);
 		TestFalse(TEXT("arrows are not kept in a chunk's save"), Shot->IsPersistent());
+	}
+	{
+		// A player's arrow at full draw (3 blocks a tick) hurts a mob in its way by 6, and passes players.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 12.5));
+		const float Before = Pig->Health;
+		TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
+		Arrow->Body.Position = FVector(8.5, 1.4, 5.8);
+		Arrow->Body.Velocity = FVector(0.0, 0.0, 3.0);
+		Arrow->PlayerBase = 2.0f;
+		Arrow->bPickup = true;
+		FMcArrowEntity* Shot = Arrow.Get();
+		Manager.Add(MoveTemp(Arrow));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a player's arrow hurts the pig it hits by 6"), FMath::IsNearlyEqual(Before - Pig->Health, 6.0f, 0.01f));
+		TestFalse(TEXT("the hit arrow is spent"), Shot != nullptr && !Manager.GetEntities().IsEmpty() && Manager.GetEntities().Last().Get() == Shot);
+	}
+	{
+		// A snowball knocks a pig back without hurting it; an egg breaks into a chick one time in eight; a pearl comes
+		// down in front of the wall it hits and tells where.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = true;
+		Manager.PlayerPositions = { FVector(8.5, 1.0, 5.5) };
+		FMcMob* Pig = AddMob(Manager, TEXT("minecraft:pig"), FVector(8.5, 1.0, 9.5));
+		const float Health = Pig->Health;
+		TUniquePtr<FMcThrownEntity> Ball = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::Snowball);
+		Ball->Body.Position = FVector(8.5, 1.4, 5.8);
+		Ball->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		Manager.Add(MoveTemp(Ball));
+		for (int32 Tick = 0; Tick < 6; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestEqual(TEXT("a snowball flinches the pig it hits"), Pig->HurtEvents, 1);
+		TestEqual(TEXT("without taking health"), Pig->Health, Health);
+
+		TestEqual(TEXT("an egg rolling under an eighth makes a chick"), FMcThrownEntity::GetChickCount(0.1f, 0.5f), 1);
+		TestEqual(TEXT("one in thirty-two of those make four"), FMcThrownEntity::GetChickCount(0.1f, 0.01f), 4);
+		TestEqual(TEXT("and over an eighth makes none"), FMcThrownEntity::GetChickCount(0.2f, 0.01f), 0);
+
+		FillMobBox(World, 8, 1, 14, 9, 3, 14, Stone);
+		TUniquePtr<FMcThrownEntity> Pearl = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderPearl);
+		Pearl->Body.Position = FVector(8.5, 3.5, 5.8);
+		Pearl->Body.Velocity = FVector(0.0, 0.0, FMcThrownEntity::Speed);
+		FVector Landed = FVector::ZeroVector;
+		Pearl->OnPearlLanded = [&Landed](const FVector& At) { Landed = At; };
+		Manager.Add(MoveTemp(Pearl));
+		for (int32 Tick = 0; Tick < 12; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("a pearl lands in front of the wall"), Landed.Z > 12.0 && Landed.Z < 14.0);
+		// A baby chicken is half the size and grows up.
+		FMcMob* Chick = AddMob(Manager, TEXT("minecraft:chicken"), FVector(2.5, 1.0, 2.5));
+		Chick->MakeBaby();
+		TestTrue(TEXT("a chick is half a chicken's size"), FMath::IsNearlyEqual(Chick->Body.Width, 0.2f, 0.001f));
 	}
 	{
 		// Enderman: neutral until hurt; a hit teleports it off.
@@ -323,7 +392,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("open sky by day is 15"), Manager.EstimateSkyLight(Open), 15);
 		TestFalse(TEXT("too bright to spawn"), Manager.IsDarkEnoughToSpawn(Open));
 		// Under a roof 21 across, by day: dark.
-		FillBox(World, 0, 3, 0, 20, 3, 20, Stone);
+		FillMobBox(World, 0, 3, 0, 20, 3, 20, Stone);
 		TestEqual(TEXT("under a wide roof the sky is out"), Manager.EstimateSkyLight(FIntVector(10, 1, 10)), 0);
 		TestTrue(TEXT("so mobs spawn there by day"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
 		TestTrue(TEXT("though near the edge, light creeps in"), Manager.EstimateSkyLight(FIntVector(1, 1, 10)) >= 8);
@@ -333,6 +402,261 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("five blocks: 9"), Manager.EstimateBlockLight(FIntVector(10, 1, 6)), 9);
 		TestEqual(TEXT("fifteen blocks: dark"), Manager.EstimateBlockLight(FIntVector(10, 1, -4)), 0);
 		TestFalse(TEXT("no spawning beside it, roof or not"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
+	}
+	{
+		// In a pool (logged in the reference, drownswim.txt): a drowned swims at its target at about 0.0485 blocks a tick and a zombie
+		// only sinks.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		const FMcStateId Water = State(TEXT("minecraft:water"));
+		FillMobBox(World, 0, 1, -4, 30, 12, 4, Water);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		Manager.PlayerPositions = { FVector(0.5, 5.0, 0.5) };
+		FMcMob* Drowned = AddMob(Manager, TEXT("minecraft:drowned"), FVector(20.5, 5.0, 0.5));
+		FMcMob* Zombie = AddMob(Manager, TEXT("minecraft:zombie"), FVector(20.5, 9.0, 3.5));
+		for (int32 Tick = 0; Tick < 100; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("the drowned has swum 3 to 6 blocks toward the player"), Drowned->Body.Position.X < 20.5 - 3.0 && Drowned->Body.Position.X > 20.5 - 6.0);
+		TestTrue(TEXT("the zombie has sunk, not risen"), Zombie->Body.Position.Y < 8.0);
+	}
+	{
+		// Bartering (barter1.txt, 50 runs): a piglin takes a gold ingot dropped by it and throws one item about 120 ticks later.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.bDaylight = false;
+		FMcMob* Piglin = AddMob(Manager, TEXT("minecraft:piglin"), FVector(10.5, 1.0, 10.5));
+		Manager.DropItem(FVector(10.5, 1.0, 14.5), FMcItemStack(TEXT("minecraft:gold_ingot"), 1), 0);
+		int32 Items = 0;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		for (const TUniquePtr<FMcEntity>& Each : Manager.GetEntities())
+		{
+			if (Each->GetType() == FMcItemEntity::StaticType() && static_cast<FMcItemEntity*>(Each.Get())->Stack.Item != TEXT("minecraft:gold_ingot"))
+			{
+				++Items;
+			}
+		}
+		TestEqual(TEXT("one item thrown for the ingot"), Items, 1);
+		TestEqual(TEXT("and the piglin is ready again"), Piglin->BarterTicks, 0);
+	}
+	{
+		// A blaze in sight of a player shoots three small fireballs 6 ticks apart then rests until 178 ticks after the first (nether1.txt),
+		// and a fireball's speed climbs 0.1, 0.19, 0.2755 (v = 0.95 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:blaze"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SmallType())
+				{
+					FireTicks.Add(Tick);
+				}
+			}
+		}
+		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
+	}
+	{
+		// A wither in sight of a player fires a skull, another 45 ticks later, then a pair every 239 ticks (wither1.txt); a skull's speed climbs
+		// 0.1, 0.146, 0.18 (v = 0.73 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:wither"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		TArray<double> Speeds;
+		for (int32 Tick = 0; Tick < 520; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SkullType())
+				{
+					FireTicks.Add(Tick);
+					if (Speeds.Num() == 0)
+					{
+						Speeds.Add(Manager.GetEntities()[Index]->Body.Velocity.Size());
+					}
+				}
+			}
+		}
+		TestTrue(TEXT("pairs 45 apart then 239 from the first"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 45 && FireTicks[2] - FireTicks[0] == 239);
+		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
+	}
+	{
+		// An ender dragon starts at 126 and flies down to 65-79 within 1000 ticks, staying within 63 blocks of the middle (dragon6.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 126.0, 0.5));
+		TestEqual(TEXT("200 hp"), Dragon->Health, 200.0f);
+		double MaxRadius = 0.0;
+		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		{
+			Manager.Tick();
+			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
+		}
+		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
+		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+	}
+	{
+		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		float Hurt = 0.0f;
+		Manager.OnPlayerHurt = [&Hurt](const FVector&, float Damage) { Hurt += Damage; };
+		AddMob(Manager, TEXT("minecraft:shulker"), FVector(10.5, 1.0, 10.5));
+		int32 Bullets = 0;
+		for (int32 Tick = 0; Tick < 300; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				Bullets += Manager.GetEntities()[Index]->GetType() == FMcShulkerBullet::StaticType() ? 1 : 0;
+			}
+		}
+		TestTrue(TEXT("a shulker fires at least 2 bullets in 300 ticks"), Bullets >= 2);
+		TestTrue(TEXT("and one reaches the player"), Hurt >= FMcShulkerBullet::Damage);
+		TestTrue(TEXT("bullet speed climbs"), FMcShulkerBullet::SpeedAt(10) > FMcShulkerBullet::SpeedAt(2));
+	}
+	{
+		// A guardian with a player in sight hurts them for 6 once every 89 ticks (guard1.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 14.5) };
+		TArray<int32> Hits;
+		int32 Now = 0;
+		Manager.OnPlayerHurt = [this, &Hits, &Now](const FVector&, float Damage) { Hits.Add(Now); TestEqual(TEXT("a beam hits for 6"), Damage, 6.0f); };
+		AddMob(Manager, TEXT("minecraft:guardian"), FVector(10.5, 1.0, 10.5));
+		for (; Now < 300; ++Now)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
+	}
+	{
+		// An enderman is angered by a player whose view stays on its eyes (ender13/14.txt): aimed at them, 1 block off them, and looking away.
+		const FVector Player(10.5, 1.0, 20.5);
+		const FVector Eyes(10.5, 1.0 + 2.9 * 0.879, 10.5);
+		const FVector ToEyes = Eyes - (Player + FVector(0.0, 1.62, 0.0));
+		const FVector Looks[3] = { ToEyes.GetSafeNormal(), (ToEyes + FVector(0.0, 1.0, 0.0)).GetSafeNormal(), FVector(0.0, 0.0, 1.0) };
+		const bool bExpected[3] = { true, false, false };
+		for (int32 Case = 0; Case < 3; ++Case)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.PlayerPositions = { Player };
+			Manager.PlayerLooks = { Looks[Case] };
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 8; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(*FString::Printf(TEXT("stare case %d"), Case), Enderman->AngerTicks > 0, bExpected[Case]);
+		}
+	}
+	{
+		// An enderman among flowers at its feet takes one (ender6.txt: all three did within about 600 ticks) and takes none with mob griefing off.
+		for (const bool bGriefing : { true, false })
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.bMobGriefing = bGriefing;
+			Manager.PlayerPositions = { FVector(10.5, 1.0, 22.5) };
+			const FMcStateId Flower = FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:dandelion")).Get(0);
+			for (int32 X = -14; X < 30; ++X)
+			{
+				for (int32 Z = -14; Z < 30; ++Z)
+				{
+					World.SetBlock(FIntVector(X, 1, Z), Flower);
+				}
+			}
+			FMcBlockTags& Tags = FMcBlockTags::Get();
+			TestTrue(TEXT("tags load"), Tags.EnsureLoaded());
+			TestTrue(TEXT("the holdable tag exists"), Tags.Find(TEXT("minecraft:enderman_holdable")) != INDEX_NONE);
+			TestTrue(TEXT("a dandelion is holdable"), Tags.Has(Tags.Find(TEXT("minecraft:enderman_holdable")), Flower));
+			TestTrue(TEXT("a dandelion has no collision"), !FMcBlockShapes::Get().HasCollision(Flower));
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 1500; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(bGriefing ? TEXT("an enderman in flowers picks one") : TEXT("with griefing off it takes nothing"), Enderman->Carried.IsSet(), bGriefing);
+		}
+	}
+	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
+	{
+		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Mob = AddMob(Manager, Kind, FVector(10.5, 1.0, 10.5));
+		const int32 Id = Mob->Id;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		bool bFound = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bFound |= Entity->Id == Id;
+		}
+		TestTrue(FString::Printf(TEXT("%s is still there after 200 ticks"), Kind), bFound);
+	}
+	{
+		// A phantom circles above a player and dives at it: over 900 ticks it passes within 3 blocks at least twice and climbs above 6.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		const FVector Player(10.5, 1.0, 10.5);
+		Manager.PlayerPositions = { Player };
+		FMcMob* Phantom = AddMob(Manager, TEXT("minecraft:phantom"), FVector(10.5, 9.0, 0.5));
+		int32 Passes = 0;
+		bool bNear = false;
+		double Highest = 0.0;
+		for (int32 Tick = 0; Tick < 900; ++Tick)
+		{
+			Manager.Tick();
+			const double Distance = FVector::Dist(Phantom->Body.Position, Player + FVector(0, 0.9, 0));
+			Highest = FMath::Max(Highest, Phantom->Body.Position.Y - Player.Y);
+			if (Distance < 3.0 && !bNear)
+			{
+				++Passes;
+			}
+			bNear = Distance < 3.0;
+		}
+		TestTrue(FString::Printf(TEXT("a phantom dives at least twice in 900 ticks (%d) and climbs (%.1f)"), Passes, Highest), Passes >= 2 && Highest > 6.0);
 	}
 	return true;
 }

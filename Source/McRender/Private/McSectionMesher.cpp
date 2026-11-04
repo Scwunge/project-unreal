@@ -413,6 +413,7 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 			Info.TintSource = McBlockMesher::GetTintSource(Registry, static_cast<FMcStateId>(Id));
 		}
 		const FMcBlockLight& BlockLight = FMcBlockLight::Get();
+		Info.bOpaqueToLight = BlockLight.IsLoaded() && BlockLight.GetDampening(static_cast<FMcStateId>(Id)) >= 15;
 		Info.Surface = McSurface::ForBlock(Registry.GetBlockOf(static_cast<FMcStateId>(Id)).Name,
 			BlockLight.IsLoaded() ? BlockLight.GetEmission(static_cast<FMcStateId>(Id)) : 0);
 	}
@@ -428,6 +429,48 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 		}
 	}
 	return Palette;
+}
+
+namespace McTranslucent
+{
+	void SortQuadsBackToFront(FMcMeshBuffers& Buffers, const FVector& View)
+	{
+		const int32 NumQuads = Buffers.Triangles.Num() / 6;
+		if (NumQuads < 2)
+		{
+			return;
+		}
+		struct FKey
+		{
+			double Distance;
+			int32 Quad;
+		};
+		TArray<FKey> Keys;
+		Keys.Reserve(NumQuads);
+		for (int32 Quad = 0; Quad < NumQuads; ++Quad)
+		{
+			// The quad's vertices are the four from the lowest index its triangles use.
+			int32 First = MAX_int32;
+			for (int32 Index = 0; Index < 6; ++Index)
+			{
+				First = FMath::Min(First, Buffers.Triangles[Quad * 6 + Index]);
+			}
+			const FVector Middle = (Buffers.Positions[First] + Buffers.Positions[First + 1] + Buffers.Positions[First + 2] + Buffers.Positions[First + 3]) * 0.25;
+			Keys.Add({ FVector::DistSquared(Middle, View), Quad });
+		}
+		Keys.StableSort([](const FKey& A, const FKey& B) { return A.Distance > B.Distance; });
+		TArray<int32> Sorted;
+		Sorted.SetNumUninitialized(Buffers.Triangles.Num());
+		for (int32 Slot = 0; Slot < NumQuads; ++Slot)
+		{
+			FMemory::Memcpy(&Sorted[Slot * 6], &Buffers.Triangles[Keys[Slot].Quad * 6], sizeof(int32) * 6);
+		}
+		for (int32 Index = NumQuads * 6; Index < Buffers.Triangles.Num(); ++Index)
+		{
+			Sorted[Index] = Buffers.Triangles[Index];
+		}
+		Buffers.Triangles = MoveTemp(Sorted);
+	}
 }
 
 FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FMcRenderPalette& Palette)
@@ -497,7 +540,9 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 					// side, the block's own cell for faces inside it (a slab's top, a torch).
 					const EMcDirection LightFrom = Quad.Face != EMcDirection::None ? Quad.Face : NearestDirection(ModelNormal);
 					FIntVector Front(X, Y, Z);
-					if (IsOnSide(Quad, LightFrom))
+					// An opaque block holds no light in its own cell, so a pack model's quad inside one takes the light of the
+					// cell it faces (the vanilla client shows such a quad lit; the shot zz_test_model).
+					if (IsOnSide(Quad, LightFrom) || Info.bOpaqueToLight)
 					{
 						Front += DirectionOffsets[DirectionIndex(LightFrom)];
 					}
@@ -539,7 +584,10 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						float Occlusion = 0.0f;
 						for (int32 Index = 0; Index < 4; ++Index)
 						{
-							const uint8 Packed = bOccluded[Index] ? FrontLight : Snapshot.Light[FMcSectionSnapshot::Index(Cells[Index].X, Cells[Index].Y, Cells[Index].Z)];
+							// A cell the light engine holds opaque has no light of its own, even when a pack's model for it is not a full cube.
+							const FMcStateId BesideState = Snapshot.Get(Cells[Index].X, Cells[Index].Y, Cells[Index].Z);
+							const bool bNoLight = bOccluded[Index] || (Palette.States.IsValidIndex(BesideState) && Palette.States[BesideState].bOpaqueToLight);
+							const uint8 Packed = bNoLight ? FrontLight : Snapshot.Light[FMcSectionSnapshot::Index(Cells[Index].X, Cells[Index].Y, Cells[Index].Z)];
 							Sum += FVector2D(Packed >> 4, Packed & 15);
 							Occlusion += bOccluded[Index] ? 0.2f : 1.0f;
 						}

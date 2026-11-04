@@ -59,6 +59,19 @@ public:
 	AMcWorldActor* GetOrCreateWorld(const FString& Dimension);
 	// Where new and returning players start, in the first world.
 	FTransform GetSpawnTransform() const;
+	// /tick: the target rate, and a freeze (kept for the session).
+	double TickRate = 20.0;
+	bool bTickFrozen = false;
+	FTimerHandle StepTimer;
+	void ApplyTickSpeed();
+	void SetTickRate(double Rate);
+	void SetTickFrozen(bool bFrozen);
+	void StepTicks(int32 Count);
+	// /defaultgamemode: what players who join (or respawn) after this start in; kept for the session.
+	void SetDefaultGameMode(const FString& NewMode);
+	FString DefaultGameModeOverride;
+	// /setworldspawn: kept for the session.
+	TOptional<FIntVector> WorldSpawnOverride;
 	// What a player left behind in a world with a save: the dimension, place and look they were last in. False if the world
 	// has nothing for them.
 	bool LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const;
@@ -70,6 +83,8 @@ public:
 	void ApplyGameRules();
 
 private:
+	FTimerHandle AdvancementTimer;
+	FTimerHandle ItemFrameTimer;
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
 	// flying when saved.
 	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
@@ -82,6 +97,25 @@ private:
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
 	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	void BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center);
+	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
+	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);
+	// Gives the player at the position a status effect (a witch's splash potion).
+	void EffectPlayerNear(const AMcWorldActor& World, const FVector& Position, FName Effect, int32 Amplifier, int32 Duration);
+	// Once a second: a player with Bad Omen in a village calls a raid on it (the omen turns into Raid Omen, 30 seconds
+	// before the first wave), and the players near a raid are shown its bar.
+	// The load and tick function tags of the data packs: load runs when the world starts and after a reload, tick every
+	// game tick (the lists are read again after a reload, not every tick).
+	void RunFunctionTag(const FString& Tag);
+	void ReadFunctionTags();
+	void TickFunctions();
+	TArray<FString> TickFunctionIds;
+	FTimerHandle FunctionTimer;
+	FDelegateHandle ReloadHandle;
+	void TickVillages();
+	FTimerHandle VillageTimer;
+	// A raid on a village was won: the players round it become Heroes of the Village.
+	void HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level);
 	// Everything a world needs to be played in: its mobs show, hurt and sound, and its saves take the players with them.
 	void SetUpWorld(AMcWorldActor& World);
 	// Every player with a pawn; called whenever the world saves.

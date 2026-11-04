@@ -1,9 +1,10 @@
-#include "McWorldRenderComponent.h"
+﻿#include "McWorldRenderComponent.h"
 #include "McBlockModels.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McBlockWorld.h"
+#include "McBlockTags.h"
 #include "McFluidMesher.h"
 #include "McLightEngine.h"
 #include "McRender.h"
@@ -59,7 +60,7 @@ void UMcWorldRenderComponent::MakePassMaterials()
 {
 	UTexture2DArray* Blocks = FMcBlockTextures::Get().EnsureLoaded() ? FMcBlockTextures::Get().GetTextureArray() : nullptr;
 	PassMaterials.Reset();
-	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get() })
+	for (UMaterialInterface* Base : { OpaqueMaterial.Get(), CutoutMaterial.Get(), TranslucentMaterial.Get(), TranslucentMaterial.Get() })
 	{
 		if (!Base)
 		{
@@ -77,14 +78,17 @@ void UMcWorldRenderComponent::MakePassMaterials()
 	MaterialGeneration = McRenderMode::GetGeneration();
 
 	// Meshes already drawn take the new ones: mesh section SectionIndex * passes + pass is that pass.
-	for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : Meshes)
+	for (const TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>* Map : { &Meshes, &WaterMeshes })
 	{
-		if (UProceduralMeshComponent* Mesh = Pair.Value)
+		for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : *Map)
 		{
-			for (int32 MeshSection = 0; MeshSection < Mesh->GetNumSections(); ++MeshSection)
+			if (UProceduralMeshComponent* Mesh = Pair.Value)
 			{
-				const int32 Pass = MeshSection % McNumRenderPasses;
-				Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+				for (int32 MeshSection = 0; MeshSection < Mesh->GetNumSections(); ++MeshSection)
+				{
+					const int32 Pass = MeshSection % McNumRenderPasses;
+					Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+				}
 			}
 		}
 	}
@@ -104,14 +108,19 @@ void UMcWorldRenderComponent::SetWorld(FMcBlockWorld* InWorld)
 		World->OnChunkRemoved.Remove(RemovedHandle);
 		World->OnChunkChanged.Remove(ChangedHandle);
 	}
-	for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Mesh : Meshes)
+	for (const TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>* Map : { &Meshes, &WaterMeshes })
 	{
-		if (Mesh.Value)
+		for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Mesh : *Map)
 		{
-			Mesh.Value->DestroyComponent();
+			if (Mesh.Value)
+			{
+				Mesh.Value->DestroyComponent();
+			}
 		}
 	}
 	Meshes.Reset();
+	WaterMeshes.Reset();
+	TranslucentChunks.Reset();
 	Chunks.Reset();
 
 	World = InWorld;
@@ -163,8 +172,13 @@ void UMcWorldRenderComponent::HandleChunkAdded(FIntPoint Pos)
 void UMcWorldRenderComponent::HandleChunkRemoved(FIntPoint Pos)
 {
 	Chunks.Remove(Pos);
+	TranslucentChunks.Remove(Pos);
 	TObjectPtr<UProceduralMeshComponent> Mesh;
 	if (Meshes.RemoveAndCopyValue(Pos, Mesh) && Mesh)
+	{
+		Mesh->DestroyComponent();
+	}
+	if (WaterMeshes.RemoveAndCopyValue(Pos, Mesh) && Mesh)
 	{
 		Mesh->DestroyComponent();
 	}
@@ -193,6 +207,8 @@ bool UMcWorldRenderComponent::HasAllNeighbours(FIntPoint Pos) const
 	return true;
 }
 
+static double AnimTickOverride = 0.0;
+
 void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -201,8 +217,9 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		return;
 	}
 
-	// Texture animations run on game time, 20 ticks a second.
-	FMcBlockTextures::Get().Tick(GetWorld()->GetTimeSeconds() * 20.0);
+	// Texture animations run on game time, 20 ticks a second. -McAnimTick=<n> holds them at tick n (for comparing a frame with the game's).
+	static const bool bAnimTickGiven = FParse::Value(FCommandLine::Get(), TEXT("-McAnimTick="), AnimTickOverride);
+	FMcBlockTextures::Get().Tick(bAnimTickGiven ? AnimTickOverride : GetWorld()->GetTimeSeconds() * 20.0);
 
 	if (MaterialGeneration != McRenderMode::GetGeneration())
 	{
@@ -213,12 +230,48 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// Mode what the rain falls on goes wet in about five seconds, and dries in about thirty once it stops.
 	const float Rain = GetRain ? FMath::Clamp(GetRain(), 0.0f, 1.0f) : 0.0f;
 	Wetness = Rain > Wetness ? FMath::Min(Rain, Wetness + DeltaTime / 5.0f) : FMath::Max(Rain, Wetness - DeltaTime / 30.0f);
+	// How open to the sky the camera is: nothing but air (or leaves, which let half through) in the 24 blocks above it.
+	if (World)
+	{
+		const FVector Eye = McCoords::UnrealToBlock(GetViewLocation());
+		const FIntVector Pos(FMath::FloorToInt(Eye.X), FMath::FloorToInt(Eye.Y), FMath::FloorToInt(Eye.Z));
+		static const int32 Leaves = FMcBlockTags::Get().Find(TEXT("leaves"));
+		float Open = 1.0f;
+		for (int32 Up = 1; Up <= 24 && Open > 0.0f; ++Up)
+		{
+			const FMcStateId Above = World->GetBlock(Pos + FIntVector(0, Up, 0));
+			if (Above != 0 && !FMcBlockTags::Get().Has(Leaves, Above))
+			{
+				Open = 0.0f;
+			}
+		}
+		McSky::SetCameraOpen(Open);
+		// Eyes in a water block: the sea's fog and dim light.
+		const FMcStateId Here = World->GetBlock(Pos);
+		const bool bWet = FluidPalette.IsValid() && FluidPalette->States.IsValidIndex(Here) && FluidPalette->States[Here].Kind == McFluidMesher::EFluid::Water;
+		Underwater = FMath::FInterpTo(Underwater, bWet ? 1.0f : 0.0f, DeltaTime, 8.0f);
+		McSky::SetCameraUnderwater(Underwater);
+	}
+#if !UE_BUILD_SHIPPING
+	// For tuning: -McWaterIor= and -McWaterSky= (the water's index of refraction, and its mirrored-sky strength).
+	static const float WaterIor = [] { float V = 1.33f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterIor="), V); return V; }();
+	static const float WaterSky = [] { float V = 0.5f; FParse::Value(FCommandLine::Get(), TEXT("-McWaterSky="), V); return V; }();
+	static const float Puddles = [] { float V = 1.0f; FParse::Value(FCommandLine::Get(), TEXT("-McPuddles="), V); return V; }();  // 0 is none
+#else
+	constexpr float WaterIor = 1.33f;
+	constexpr float WaterSky = 0.5f;
+	constexpr float Puddles = 1.0f;
+#endif
 	for (UMaterialInterface* Material : PassMaterials)
 	{
 		if (UMaterialInstanceDynamic* Instance = Cast<UMaterialInstanceDynamic>(Material))
 		{
 			Instance->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Instance->SetScalarParameterValue(TEXT("Wetness"), Wetness);
+				Instance->SetScalarParameterValue(TEXT("Underwater"), Underwater);
+				Instance->SetScalarParameterValue(TEXT("WaterIor"), WaterIor);
+				Instance->SetScalarParameterValue(TEXT("WaterSky"), WaterSky);
+				Instance->SetScalarParameterValue(TEXT("Puddles"), Puddles);
 		}
 	}
 
@@ -233,6 +286,67 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	LaunchMeshTasks();
 	UploadResults();
+	ResortTranslucent();
+}
+
+FVector UMcWorldRenderComponent::GetViewLocation() const
+{
+	if (const APlayerController* Controller = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
+	{
+		if (Controller->PlayerCameraManager)
+		{
+			return Controller->PlayerCameraManager->GetCameraLocation();
+		}
+	}
+	return FVector::ZeroVector;
+}
+
+void UMcWorldRenderComponent::ResortTranslucent()
+{
+	if (TranslucentChunks.Num() == 0)
+	{
+		return;
+	}
+	// One chunk a frame: the one whose order is the most out of date, once the camera has gone a block and a half.
+	const FVector View = GetViewLocation();
+	const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+	FIntPoint Worst(0, 0);
+	double WorstMoved = FMath::Square(1.5 * McCoords::UnitsPerBlock);
+	bool bFound = false;
+	for (const TPair<FIntPoint, FTranslucentChunk>& Entry : TranslucentChunks)
+	{
+		const double Moved = FVector::DistSquared(View, Entry.Value.SortedFor);
+		if (Moved > WorstMoved)
+		{
+			WorstMoved = Moved;
+			Worst = Entry.Key;
+			bFound = true;
+		}
+	}
+	if (!bFound)
+	{
+		return;
+	}
+	FTranslucentChunk& Chunk = TranslucentChunks[Worst];
+	const TObjectPtr<UProceduralMeshComponent>* Found = Meshes.Find(Worst);
+	if (!Found || !Found->Get())
+	{
+		TranslucentChunks.Remove(Worst);
+		return;
+	}
+	UProceduralMeshComponent* Mesh = Found->Get();
+	const TArray<FVector2D> NoUVs;
+	const TArray<FProcMeshTangent> NoTangents;
+	const FVector Local = View - FVector(Worst.X * ChunkUnits, Worst.Y * ChunkUnits, 0.0);
+	for (FTranslucentSection& Section : Chunk.Sections)
+	{
+		McTranslucent::SortQuadsBackToFront(Section.Buffers, Local);
+		const FMcMeshBuffers& Buffers = Section.Buffers;
+		Mesh->CreateMeshSection(Section.MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
+		const int32 Pass = static_cast<int32>(EMcRenderPass::Translucent);
+		Mesh->SetMaterial(Section.MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
+	}
+	Chunk.SortedFor = View;
 }
 
 void UMcWorldRenderComponent::LaunchMeshTasks()
@@ -332,45 +446,103 @@ void UMcWorldRenderComponent::UploadResults()
 	}
 }
 
+UProceduralMeshComponent* UMcWorldRenderComponent::MakeMesh(TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map, FIntPoint Pos, int32 SortPriority)
+{
+	if (const TObjectPtr<UProceduralMeshComponent>* Existing = Map.Find(Pos))
+	{
+		if (UProceduralMeshComponent* Mesh = Existing->Get())
+		{
+			Mesh->ClearAllMeshSections();
+			return Mesh;
+		}
+	}
+	UProceduralMeshComponent* Mesh = NewObject<UProceduralMeshComponent>(GetOwner());
+	Mesh->SetupAttachment(this);
+	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Mesh->SetTranslucentSortPriority(SortPriority);
+	Mesh->RegisterComponent();
+	const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+	Mesh->SetWorldLocation(FVector(Pos.X * ChunkUnits, Pos.Y * ChunkUnits, 0.0));
+	Map.Add(Pos, Mesh);
+	return Mesh;
+}
+
 void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 {
-	TObjectPtr<UProceduralMeshComponent>* Existing = Meshes.Find(Result.ChunkPos);
+	auto Destroy = [&Result](TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Map)
+	{
+		TObjectPtr<UProceduralMeshComponent> Mesh;
+		if (Map.RemoveAndCopyValue(Result.ChunkPos, Mesh) && Mesh)
+		{
+			Mesh->DestroyComponent();
+		}
+	};
+	TranslucentChunks.Remove(Result.ChunkPos);
 	if (Result.Sections.Num() == 0)
 	{
-		if (Existing && *Existing)
-		{
-			(*Existing)->DestroyComponent();
-		}
-		Meshes.Remove(Result.ChunkPos);
+		Destroy(Meshes);
+		Destroy(WaterMeshes);
 		return;
 	}
 
-	UProceduralMeshComponent* Mesh = Existing ? Existing->Get() : nullptr;
-	if (!Mesh)
+	// Mesh section SectionIndex * passes + pass holds that pass of that chunk section; the water pass is in the
+	// chunk's water mesh, the other passes in its block mesh.
+	bool bAnyWater = false, bAnyBlocks = false;
+	for (const FMcSectionMesh& Section : Result.Sections)
 	{
-		Mesh = NewObject<UProceduralMeshComponent>(GetOwner());
-		Mesh->SetupAttachment(this);
-		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Mesh->RegisterComponent();
-		const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
-		Mesh->SetWorldLocation(FVector(Result.ChunkPos.X * ChunkUnits, Result.ChunkPos.Y * ChunkUnits, 0.0));
-		Meshes.Add(Result.ChunkPos, Mesh);
+		for (int32 Pass = 0; Pass < McNumRenderPasses; ++Pass)
+		{
+			if (!Section.Passes[Pass].IsEmpty())
+			{
+				(Pass == static_cast<int32>(EMcRenderPass::Water) ? bAnyWater : bAnyBlocks) = true;
+			}
+		}
+	}
+	UProceduralMeshComponent* BlockMesh = nullptr;
+	UProceduralMeshComponent* WaterMesh = nullptr;
+	if (bAnyBlocks)
+	{
+		BlockMesh = MakeMesh(Meshes, Result.ChunkPos, 0);
+	}
+	else
+	{
+		Destroy(Meshes);
+	}
+	if (bAnyWater)
+	{
+		WaterMesh = MakeMesh(WaterMeshes, Result.ChunkPos, -1);
+	}
+	else
+	{
+		Destroy(WaterMeshes);
 	}
 
-	// Mesh section SectionIndex * passes + pass holds that pass of that chunk section.
-	Mesh->ClearAllMeshSections();
 	const TArray<FVector2D> NoUVs;
 	const TArray<FProcMeshTangent> NoTangents;
 	for (const FMcSectionMesh& Section : Result.Sections)
 	{
 		for (int32 Pass = 0; Pass < McNumRenderPasses; ++Pass)
 		{
-			const FMcMeshBuffers& Buffers = Section.Passes[Pass];
-			if (Buffers.IsEmpty())
+			const FMcMeshBuffers& Built = Section.Passes[Pass];
+			if (Built.IsEmpty())
 			{
 				continue;
 			}
+			UProceduralMeshComponent* Mesh = Pass == static_cast<int32>(EMcRenderPass::Water) ? WaterMesh : BlockMesh;
 			const int32 MeshSection = Section.SectionIndex * McNumRenderPasses + Pass;
+			FMcMeshBuffers Ordered;
+			if (Pass == static_cast<int32>(EMcRenderPass::Translucent))
+			{
+				// Glass and ice go in farthest first, and are kept to be put in order again as the camera moves.
+				const double ChunkUnits = McCoords::SectionSize * McCoords::UnitsPerBlock;
+				const FVector View = GetViewLocation();
+				Ordered = Built;
+				McTranslucent::SortQuadsBackToFront(Ordered, View - FVector(Result.ChunkPos.X * ChunkUnits, Result.ChunkPos.Y * ChunkUnits, 0.0));
+				FTranslucentChunk& Kept = TranslucentChunks.FindOrAdd(Result.ChunkPos);
+				Kept.SortedFor = View;
+				Kept.Sections.Add({ MeshSection, Ordered });
+			}
+			const FMcMeshBuffers& Buffers = Pass == static_cast<int32>(EMcRenderPass::Translucent) ? Ordered : Built;
 			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
 			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
 		}

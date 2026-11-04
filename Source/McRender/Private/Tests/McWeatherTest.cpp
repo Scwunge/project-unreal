@@ -56,6 +56,7 @@ bool FMcWeatherRenderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no drift at the start"), McClouds::GetDrift(0.0, 256), 0.0);
 	TestEqual(TEXT("a day's drift"), McClouds::GetDrift(24000.0, 256), 720.0, 1e-6);
 	TestEqual(TEXT("back round after the picture"), McClouds::GetDrift(3072.0 / 0.03, 256), 0.0, 1e-6);
+	TestTrue(TEXT("rows sit a third of a cell past z 0 (cloudph, 3.9 +- 0.3)"), FMath::Abs(McClouds::ZOffset - 3.9) < 0.3);
 	TestEqual(TEXT("a cell past the edge"), McClouds::WrapCell(FIntPoint(256, 3), 256, 256), FIntPoint(0, 3));
 	TestEqual(TEXT("a cell before the corner"), McClouds::WrapCell(FIntPoint(-1, -257), 256, 256), FIntPoint(255, 255));
 

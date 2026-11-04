@@ -4,6 +4,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McChunk.h"
+#include "McRenderMode.h"
 
 namespace McFluidMesher
 {
@@ -90,6 +91,11 @@ namespace
 		// those axes, which is clockwise once swapped to Unreal's, as the block mesher does it.
 		void Emit(EMcRenderPass Pass, int32 BlockX, int32 BlockY, int32 BlockZ, const FVector (&Corners)[4], const FVector2D (&UVs)[4],
 			int32 Direction, bool bBack, FVector2D Light, uint16 Layer, FColor Tint);
+
+		// Unreal Mode only: how close each corner of the next top face is to the water's edge (0 inside, 1 at a shore side),
+		// carried as a fraction of the layer number in UV1.x (at most 0.4, so the layer still rounds to itself). Left null,
+		// every vertex is exactly what it always was.
+		const float* EdgeWeights = nullptr;
 	};
 
 	float FBuilder::CornerHeight(EFluid Kind, int32 X, int32 Y, int32 Z, int32 CornerX, int32 CornerZ) const
@@ -165,7 +171,7 @@ namespace
 			Buffers.Positions.Add(FVector(Block.X, Block.Z, Block.Y) * McCoords::UnitsPerBlock);
 			Buffers.Normals.Add(Normal);
 			Buffers.UV0.Add(UVs[Corner]);
-			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Translucent ? McSurface::Water : McSurface::Lava));
+			Buffers.UV1.Add(FVector2D(Layer + (EdgeWeights ? 0.4f * EdgeWeights[Corner] : 0.0f), Pass == EMcRenderPass::Water ? McSurface::Water : McSurface::Lava));
 			Buffers.UV2.Add(Light);
 			Buffers.Colors.Add(Color);
 		}
@@ -188,10 +194,11 @@ namespace
 			return;
 		}
 		const bool bWater = Kind == EFluid::Water;
-		const EMcRenderPass Pass = bWater ? EMcRenderPass::Translucent : EMcRenderPass::Opaque;
+		const EMcRenderPass Pass = bWater ? EMcRenderPass::Water : EMcRenderPass::Opaque;
 		const FColor Tint = bWater ? Snapshot.GetTint(EMcTintSource::Water, X, Z) : FColor::White;
 		const uint16 StillLayer = bWater ? Fluids.WaterStill : Fluids.LavaStill;
 		const uint16 FlowLayer = bWater ? Fluids.WaterFlow : Fluids.LavaFlow;
+		const uint16 SideLayer = bWater ? Fluids.WaterFlowSide : Fluids.LavaFlowSide;
 		const uint8 OwnFaces = OpaqueFacesAt(X, Y, Z);
 		const FVector2D OwnLight = LightAt(X, Y, Z);
 
@@ -217,7 +224,8 @@ namespace
 			}
 		}
 
-		// Sides. They use the flowing texture, which covers a half-size piece of the sprite.
+		// Sides. They show the top left quarter of the flowing picture, which is a layer of its own, the fluid's height
+		// cut from the bottom of it.
 		for (int32 Direction = 2; Direction < NumDirections; ++Direction)
 		{
 			const FIntVector& Offset = Offsets[Direction];
@@ -235,9 +243,9 @@ namespace
 				FVector(Left.X, LeftHeight, Left.Y), FVector(Left.X, 0.0, Left.Y), FVector(Right.X, 0.0, Right.Y), FVector(Right.X, RightHeight, Right.Y),
 			};
 			const FVector2D UVs[4] = {
-				FVector2D(0.0, 0.5 - LeftHeight * 0.5), FVector2D(0.0, 0.5), FVector2D(0.5, 0.5), FVector2D(0.5, 0.5 - RightHeight * 0.5),
+				FVector2D(0.0, 1.0 - LeftHeight), FVector2D(0.0, 1.0), FVector2D(1.0, 1.0), FVector2D(1.0, 1.0 - RightHeight),
 			};
-			Emit(Pass, X, Y, Z, Corners, UVs, Direction, false, LightFor(Direction), FlowLayer, Tint);
+			Emit(Pass, X, Y, Z, Corners, UVs, Direction, false, LightFor(Direction), SideLayer, Tint);
 		}
 
 		// Bottom.
@@ -280,7 +288,20 @@ namespace
 				UVs[3] = FVector2D(1, 0);
 			}
 			const FVector2D Light = LightFor(UpIndex);
+			// A water corner touching a side with no water beside it is on the shore (north-west, south-west, south-east, north-east).
+			float Edge[4] = { 0, 0, 0, 0 };
+			if (bShoreFoam && bWater && McRenderMode::IsEnhanced())
+			{
+				const bool West = InfoAt(X - 1, Y, Z).Kind != Kind, East = InfoAt(X + 1, Y, Z).Kind != Kind;
+				const bool North = InfoAt(X, Y, Z - 1).Kind != Kind, South = InfoAt(X, Y, Z + 1).Kind != Kind;
+				Edge[0] = (West || North) ? 1.0f : 0.0f;
+				Edge[1] = (West || South) ? 1.0f : 0.0f;
+				Edge[2] = (East || South) ? 1.0f : 0.0f;
+				Edge[3] = (East || North) ? 1.0f : 0.0f;
+				EdgeWeights = Edge;
+			}
 			Emit(Pass, X, Y, Z, Corners, UVs, UpIndex, false, Light, Layer, Tint);
+			EdgeWeights = nullptr;
 			if (bWater)
 			{
 				const FVector BackCorners[4] = { Corners[0], Corners[3], Corners[2], Corners[1] };
@@ -331,6 +352,8 @@ TSharedRef<const FFluidPalette> BuildPalette(const FMcBlockRegistry& Registry, c
 	Palette->WaterFlow = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/water_flow")));
 	Palette->LavaStill = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_still")));
 	Palette->LavaFlow = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_flow")));
+	Palette->WaterFlowSide = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/water_flow#side")));
+	Palette->LavaFlowSide = static_cast<uint16>(Textures.GetLayer(TEXT("minecraft:block/lava_flow#side")));
 
 	FMcBiomeColorTable& Biomes = FMcBiomeColorTable::Get();
 	Biomes.EnsureLoaded();

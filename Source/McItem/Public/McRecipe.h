@@ -60,6 +60,10 @@ struct MCITEM_API FMcRecipe
 	FMcIngredient Addition;
 	FMcIngredient Input;
 	FMcIngredient Material;
+	// Transmute: how many of the material one craft takes (min to max), and whether the result's count grows by that many.
+	int32 MaterialMin = 1;
+	int32 MaterialMax = 1;
+	bool bAddMaterialCount = false;
 	// Special recipes keep their own ingredient slots by name (the jar's keys: "banner", "dye", "target").
 	TMap<FName, FMcIngredient> Named;
 	// Brewing: the potion the input bottle must hold (None for any), and the one the output gets.
@@ -84,6 +88,11 @@ struct MCITEM_API FMcCraftingMatch
 	const FMcRecipe* Recipe = nullptr;
 	FMcItemStack Result;
 };
+
+// One craft of a crafter: the 3x3 slots (row by row) are matched against the crafting recipes; on a match one item is
+// taken from each filled slot (a remainder such as a bucket goes back to its slot) and Result is what it made.
+// False, with Slots untouched, if no recipe fits.
+MCITEM_API bool McCrafterCraft(TArray<FMcItemStack>& Slots, FMcItemStack& Result);
 
 class MCITEM_API FMcRecipeBook
 {

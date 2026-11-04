@@ -33,6 +33,8 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_VERSION = "26.3"
 # assets/ is models, textures, fonts and lang; data/ is recipes, loot tables, tags, structures and worldgen.
 CLIENT_JAR_FOLDERS = ("assets", "data")
+# The jar's root file that is the Default resource pack's icon.
+CLIENT_JAR_FILES = ("pack.png",)
 
 
 def log(msg: str) -> None:
@@ -188,7 +190,7 @@ def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path, expl
     out = cache / "client"
     stamp_path = out / ".stamp.json"
     stamp = read_stamp(stamp_path)
-    if stamp.get("client_sha1") == jar_sha1 and stamp.get("folders") == list(CLIENT_JAR_FOLDERS):
+    if stamp.get("client_sha1") == jar_sha1 and stamp.get("folders") == list(CLIENT_JAR_FOLDERS) and stamp.get("files_extra") == list(CLIENT_JAR_FILES):
         log("client jar: up to date")
         return True
     if out.exists():
@@ -207,7 +209,7 @@ def step_client_jar(mc_dir: Path, version: str, profile: dict, cache: Path, expl
             with z.open(entry) as src, dest.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
             counts[folder] += 1
-    write_json(stamp_path, {"client_sha1": jar_sha1, "folders": list(CLIENT_JAR_FOLDERS), "files": counts})
+    write_json(stamp_path, {"client_sha1": jar_sha1, "folders": list(CLIENT_JAR_FOLDERS), "files_extra": list(CLIENT_JAR_FILES), "files": counts})
     log("client jar: extracted " + ", ".join(f"{n} files from {f}/" for f, n in counts.items()))
     return True
 

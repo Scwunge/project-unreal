@@ -112,6 +112,9 @@ void FMcNature::NextThunder()
 
 void FMcNature::Tick()
 {
+	// Rain and thunder come on and go off over 100 ticks, 0.01 a tick (the reference client's detector series, rs_daylight_weather, agrees within one 20-tick step except the thunder onset and recovery, cause not found; its expect file is held back in tools/refscripts/expect_pending_*).
+	RainLevel = FMath::Clamp(RainLevel + (bRaining ? 0.01f : -0.01f), 0.0f, 1.0f);
+	ThunderLevel = FMath::Clamp(ThunderLevel + (bThundering ? 0.01f : -0.01f), 0.0f, 1.0f);
 	if (!bWeatherCycle)
 	{
 		return;
@@ -152,26 +155,26 @@ void FMcNature::SetWeather(EMcWeather Weather, int32 Duration)
 
 int32 FMcNature::GetSunLight() const
 {
-	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.2);
+	// 0.53 is a fit: the reference client's inverted detector over 25 readings at 7 times of day (rs_world) is right for any value from 0.516 to 0.555, and the wiki's daylight detector table stays within a tick of it (0.505 was 1 off at tick 13535).
+	double Level = 1.0 - (FMath::Cos(CelestialAngle(Sim.GetDayTime()) * 2.0 * PI) * 2.0 + 0.53);
 	Level = 1.0 - FMath::Clamp(Level, 0.0, 1.0);
-	if (bRaining)
-	{
-		Level *= 1.0 - 5.0 / 16.0;
-		if (bThundering)
-		{
-			Level *= 1.0 - 5.0 / 16.0;
-		}
-	}
+	Level *= 1.0 - RainLevel * 5.0 / 16.0;
+	Level *= 1.0 - ThunderLevel * RainLevel * 5.0 / 16.0;
 	return 15 - static_cast<int32>((1.0 - Level) * 11.0);
+}
+
+double FMcNature::GetDetectorScale() const
+{
+	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
+	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
+	Angle += (Target - Angle) * 0.2;
+	return FMath::Cos(Angle);
 }
 
 int32 FMcNature::GetDetectorLevel() const
 {
 	// The sky's light, scaled by how high the sun is: noon reads full, dusk and night nothing.
-	double Angle = CelestialAngle(Sim.GetDayTime()) * 2.0 * PI;
-	const double Target = Angle < PI ? 0.0 : 2.0 * PI;
-	Angle += (Target - Angle) * 0.2;
-	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * FMath::Cos(Angle)), 0, 15);
+	return FMath::Clamp(FMath::RoundToInt(GetSunLight() * GetDetectorScale()), 0, 15);
 }
 
 // ---- Biomes and light ----
@@ -204,8 +207,11 @@ const FMcNature::FBiomeInfo& FMcNature::InfoAt(const FIntVector& Pos) const
 
 float FMcNature::GetTemperature(const FIntVector& Pos) const
 {
-	// It falls by 0.00125 a block above y 80.
-	return InfoAt(Pos).Temperature - (Pos.Y > 80 ? (Pos.Y - 80) * 0.00125f : 0.0f);
+	// It falls by 0.00125 a block above 17 over the sea level. Reference runs freeze4a-e/f on a superflat (sea level -63):
+	// taiga (0.25) froze at y 60 and up, partly at 30, not at -10; stony shore (0.2) at 60 but not -61; plains (0.8) never,
+	// even at y 300. The 0.00125 and the 17 are from those fits, not read from a source.
+	const int32 Start = SeaLevel + 17;
+	return InfoAt(Pos).Temperature - (Pos.Y > Start ? (Pos.Y - Start) * 0.00125f : 0.0f);
 }
 
 FMcNature::EPrecipitation FMcNature::GetPrecipitation(const FIntVector& Pos) const
@@ -278,8 +284,9 @@ bool FMcNature::RandomTick(const FIntVector& Pos, FMcStateId State)
 	const FString Name = NameOf(State);
 	if (Name == TEXT("minecraft:ice"))
 	{
-		// Light bright enough thaws it, into water that can flow again.
-		if (BlockLightAt(Pos) > 11)
+		// Light bright enough thaws it into water: the ice's own cell reads 11 or more (reference run icemelt: a light block of level 12
+		// beside melted the ice and not the snow layer, 13 melted both). Why the two differ by one is not established.
+		if (BlockLightAt(Pos) > 10)
 		{
 			World.SetBlock(Pos, StateOf(TEXT("minecraft:water")));
 		}
@@ -554,8 +561,9 @@ bool FMcNature::GrowTree(const FIntVector& Pos, FMcStateId State)
 
 void FMcNature::SpreadGrass(const FIntVector& Start)
 {
-	// As the game does it: 128 tries, each wandering further from Start than the last, and a plant lands where it
-	// stops on grass with room above.
+	// 128 tries, each wandering further from Start than the last, and a plant lands where it stops on grass with room above. The
+	// walk is recalled, not read; what it makes was checked against the reference run bonemeal2 (20 meals: plants by distance
+	// 0 to 5 were 31, 137, 128, 61, 21, 5 there and 20, 126, 147, 58, 22, 9 here, 383 in all against 382).
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	for (int32 Try = 0; Try < 128; ++Try)
 	{
@@ -568,7 +576,19 @@ void FMcNature::SpreadGrass(const FIntVector& Start)
 		}
 		if (bOk && Registry.IsAir(World.GetBlock(At)) && NameOf(World.GetBlock(At + Down)) == TEXT("minecraft:grass_block"))
 		{
-			const TCHAR* Plant = Random.RandHelper(8) == 0 ? (Random.RandHelper(2) == 0 ? TEXT("minecraft:dandelion") : TEXT("minecraft:poppy")) : TEXT("minecraft:short_grass");
+			// What lands (reference run bonemeal2, 20 meals on plains, 358 plants): short grass 78%, a flower 15% (dandelion 67%, cornflower 13%,
+			// azure bluet 7%, poppy 7%, oxeye daisy 5%), tall grass 7% when there is room. The mix is plains' and not measured elsewhere.
+			const int32 Roll = Random.RandHelper(1000);
+			if (Roll >= 931 && Registry.IsAir(World.GetBlock(At + Up)))
+			{
+				World.SetBlock(At, StateWith(TEXT("minecraft:tall_grass"), { { TEXT("half"), TEXT("lower") } }));
+				World.SetBlock(At + Up, StateWith(TEXT("minecraft:tall_grass"), { { TEXT("half"), TEXT("upper") } }));
+				continue;
+			}
+			const int32 Flower = Random.RandHelper(100);
+			const TCHAR* Plant = Roll < 777 || Roll >= 931 ? TEXT("minecraft:short_grass")
+				: Flower < 67 ? TEXT("minecraft:dandelion") : Flower < 80 ? TEXT("minecraft:cornflower") : Flower < 87 ? TEXT("minecraft:azure_bluet")
+				: Flower < 94 ? TEXT("minecraft:poppy") : TEXT("minecraft:oxeye_daisy");
 			World.SetBlock(At, StateOf(Plant));
 		}
 	}
@@ -582,7 +602,8 @@ bool FMcNature::Bonemeal(const FIntVector& Pos)
 	const FString Name = NameOf(State);
 	if (Tags.Has(TEXT("minecraft:saplings"), State))
 	{
-		if (Random.FRand() < 0.45f)
+		// Reference runs bonemeal2 and sapling: 84 of 210 saplings went from stage 0 to 1 (40%, standard error 3.4 points).
+		if (Random.FRand() < 0.40f)
 		{
 			GrowSapling(Pos, State);
 		}
@@ -596,9 +617,33 @@ bool FMcNature::Bonemeal(const FIntVector& Pos)
 		{
 			return false;
 		}
-		// Beetroot grows a stage at a time; the others two to five.
-		const int32 Gain = Name == TEXT("minecraft:beetroots") ? 1 : Random.RandRange(2, 5);
+		// The others gain two to five stages, uniformly (reference run bonemeal: wheat, carrots, potatoes and both stems). Beetroot gains one
+		// stage on about two meals in three (26 of 40 grew, none by more; the exact chance is not pinned down).
+		const int32 Gain = Name == TEXT("minecraft:beetroots") ? (Random.FRand() < 0.65f ? 1 : 0) : Random.RandRange(2, 5);
 		World.SetBlock(Pos, WithNumber(State, TEXT("age"), FMath::Min(Age + Gain, Max)));
+		return true;
+	}
+	if (Name == TEXT("minecraft:cocoa"))
+	{
+		// One stage a meal (reference run bonemeal2: 27 of 30 pods went from age 0 to 1, none further; the three that did not were
+		// not told apart from a missed dispenser shot).
+		const int32 Age = NumberProperty(State, TEXT("age"));
+		if (Age < 0 || Age >= 2)
+		{
+			return false;
+		}
+		World.SetBlock(Pos, WithNumber(State, TEXT("age"), Age + 1));
+		return true;
+	}
+	if (Name == TEXT("minecraft:sweet_berry_bush"))
+	{
+		// One stage a meal (reference run bonemeal: 40 of 40 went from age 0 to 1; the cap at 3 is the block's own).
+		const int32 Age = NumberProperty(State, TEXT("age"));
+		if (Age < 0 || Age >= 3)
+		{
+			return false;
+		}
+		World.SetBlock(Pos, WithNumber(State, TEXT("age"), Age + 1));
 		return true;
 	}
 	if (Name == TEXT("minecraft:grass_block"))

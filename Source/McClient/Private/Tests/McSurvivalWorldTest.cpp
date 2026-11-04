@@ -1,3 +1,4 @@
+#include "McShulker.h"
 #include "McChestLink.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -9,6 +10,7 @@
 #include "McRails.h"
 #include "McChunk.h"
 #include "McCombat.h"
+#include "McArrow.h"
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McFurnace.h"
@@ -44,6 +46,46 @@ bool FMcCombatTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a swing at once is a tenth charged"), McCombat::GetStrength(0, 4.0f), 0.1f, 0.001f);
 	TestEqual(TEXT("a recharged swing is whole"), McCombat::GetStrength(20, 4.0f), 1.0f);
 	TestEqual(TEXT("a full charge does the full damage"), McCombat::GetDamage(7.0f, 1.0f, false), 7.0f, 0.001f);
+
+	// The bow: a quarter second of drawing is too weak to shoot, a second is a full draw.
+	TestTrue(TEXT("a draw of 2 ticks is under a tenth"), McCombat::GetBowPower(2) < 0.1f);
+	TestEqual(TEXT("a draw of 10 ticks has power 0.5"), McCombat::GetBowPower(10), (0.25f + 1.0f) / 3.0f, 0.001f);
+	TestEqual(TEXT("a draw of a second is full"), McCombat::GetBowPower(20), 1.0f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowPower(100), 1.0f, 0.001f);
+	{
+		// The aim's spread: 0.0085 on each component, centred on the look.
+		FRandomStream Random(5);
+		double Sum = 0.0;
+		double SumSquares = 0.0;
+		const int32 Count = 4000;
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Off = McCombat::GetBowAim(FVector(0.0, 0.0, 1.0), Random).X;
+			Sum += Off;
+			SumSquares += Off * Off;
+		}
+		const double Mean = Sum / Count;
+		TestTrue(TEXT("the aim is centred on the look"), FMath::Abs(Mean) < 0.0008);
+		TestEqual(TEXT("with a spread of 0.0085"), FMath::Sqrt(SumSquares / Count - Mean * Mean), 0.0085, 0.0006);
+		TestEqual(TEXT("an arrow starts 0.1 under the eye"), McCombat::GetBowLaunchDrop(), 0.1, 1.0e-9);
+	}
+	TestEqual(TEXT("a full draw shoots from 1.12"), McCombat::GetBowShootPitch(0.0f, 1.0f), 1.12f, 0.001f);
+	TestEqual(TEXT("to 1.33"), McCombat::GetBowShootPitch(1.0f, 1.0f), 1.33f, 0.001f);
+	TestTrue(TEXT("a weaker draw sounds lower"), McCombat::GetBowShootPitch(0.5f, 0.3f) < McCombat::GetBowShootPitch(0.5f, 1.0f));
+	TestEqual(TEXT("a hit sounds between 1.09"), FMcArrowEntity::GetHitPitch(0.0f), 1.09f, 0.001f);
+	TestEqual(TEXT("and 1.33"), FMcArrowEntity::GetHitPitch(1.0f), 1.33f, 0.001f);
+	TestEqual(TEXT("the first hurt frame rolls 16.5 degrees"), McCombat::GetHurtTilt(10.0f), 16.5f, 0.3f);
+	TestEqual(TEXT("at 5 ticks 2.4"), McCombat::GetHurtTilt(5.0f), 41.1f * FMath::Pow(0.5f, 4.08f), 0.01f);
+	TestEqual(TEXT("and none at the end"), McCombat::GetHurtTilt(0.0f), 0.0f, 0.001f);
+	TestEqual(TEXT("a hit from the left (+x facing +z) is +1"), McCombat::GetHurtSide(0.0f, 5.0, 0.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("from the right -1"), McCombat::GetHurtSide(0.0f, -5.0, 0.0, true), -1.0f, 0.001f);
+	TestEqual(TEXT("from the front 0"), McCombat::GetHurtSide(0.0f, 0.0, 5.0, true), 0.0f, 0.001f);
+	TestEqual(TEXT("facing west (yaw 90), +z is the left"), McCombat::GetHurtSide(90.0f, 0.0, 5.0, true), 1.0f, 0.001f);
+	TestEqual(TEXT("no source is +1"), McCombat::GetHurtSide(0.0f, 0.0, 0.0, false), 1.0f, 0.001f);
+	TestEqual(TEXT("no zoom at the start of a draw"), McCombat::GetBowFovScale(0.0f), 1.0f, 0.001f);
+	TestEqual(TEXT("half a second in, 1 - 0.15 / 4"), McCombat::GetBowFovScale(0.5f), 0.9625f, 0.001f);
+	TestEqual(TEXT("a full draw closes the view by 15 percent"), McCombat::GetBowFovScale(1.0f), 0.85f, 0.001f);
+	TestEqual(TEXT("and no more after"), McCombat::GetBowFovScale(3.0f), 0.85f, 0.001f);
 	TestEqual(TEXT("a critical does half as much again"), McCombat::GetDamage(7.0f, 1.0f, true), 10.5f, 0.001f);
 	TestEqual(TEXT("a tenth charge does 0.2 + 0.8 * 0.01"), McCombat::GetDamage(7.0f, 0.1f, false), 7.0f * 0.208f, 0.001f);
 
@@ -210,6 +252,35 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	Use->ReleaseBlock(*Actor, ChestPos);
 	TestEqual(TEXT("and nothing drops twice"), Actor->GetEntityHost()->GetManager().GetEntities().Num() - Before, 2);
 
+	// A shulker box keeps its things in the item it drops, and gives them to the box that item becomes.
+	const FIntVector BoxPos(4, 64, 2);
+	const FIntVector BoxPos2(8, 64, 2);
+	Blocks.SetBlock(BoxPos, Registry.ParseState(TEXT("minecraft:red_shulker_box")).Get(0));
+	Blocks.SetBlock(BoxPos2, Registry.ParseState(TEXT("minecraft:red_shulker_box")).Get(0));
+	FMcBlockEntity Box = FMcBlockEntity::MakeContainer(27);
+	Box.Slots[3] = FMcItemStack(TEXT("minecraft:emerald"), 12);
+	FMcItemStack Sword(TEXT("minecraft:iron_sword"));
+	Sword.SetDamage(5);
+	Box.Slots[26] = Sword;
+	Chunk->SetBlockEntity(BoxPos.X, BoxPos.Y, BoxPos.Z, Box);
+	const int32 BeforeBox = Actor->GetEntityHost()->GetManager().GetEntities().Num();
+	Use->ReleaseBlock(*Actor, BoxPos);
+	TestEqual(TEXT("breaking a box doesn't spill it"), Actor->GetEntityHost()->GetManager().GetEntities().Num(), BeforeBox);
+	TArray<FMcItemStack> BoxDrops = { FMcItemStack(TEXT("minecraft:red_shulker_box")) };
+	Use->PackBoxDrops(*Actor, BoxPos, BoxDrops);
+	TestTrue(TEXT("the item carries a container"), BoxDrops[0].Has(TEXT("minecraft:container")));
+	TestNull(TEXT("the block entity is gone"), Chunk->FindBlockEntity(BoxPos.X, BoxPos.Y, BoxPos.Z));
+	const TArray<FMcItemStack> Carried = McShulker::Unpack(BoxDrops[0]);
+	TestEqual(TEXT("an emerald stack in slot 3"), Carried[3].Count, 12);
+	TestEqual(TEXT("and a worn sword in the last"), Carried[26].GetDamage(), 5);
+	TestTrue(TEXT("nothing else"), Carried[0].IsEmpty() && Carried[4].IsEmpty());
+	Use->FillBox(*Actor, BoxPos2, BoxDrops[0]);
+	TArray<FMcItemStack> Placed;
+	UMcBlockUseSubsystem::GetContents(*Actor, BoxPos2, Placed);
+	TestTrue(TEXT("a placed box has its things back"), Placed.Num() == 27 && Placed[3].Item == TEXT("minecraft:emerald") && Placed[26].Item == TEXT("minecraft:iron_sword"));
+	Use->ReleaseBlock(*Actor, BoxPos2);
+	TestEqual(TEXT("still nothing spilled"), Actor->GetEntityHost()->GetManager().GetEntities().Num(), BeforeBox);
+
 	// A furnace keeps what is in it through a save and a restart.
 	const TSharedPtr<FMcFurnace> Furnace = Use->GetFurnace(*Actor, FurnacePos, true);
 	if (TestTrue(TEXT("a furnace"), Furnace.IsValid()))
@@ -263,6 +334,79 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TArray<FMcItemStack> Left;
 	UMcBlockUseSubsystem::GetContents(*Actor, Top, Left);
 	TestTrue(TEXT("the upper one is empty"), !Left.ContainsByPredicate([](const FMcItemStack& Stack) { return !Stack.IsEmpty(); }));
+
+	// Hopper timing held to the reference client's per-tick item counts (log_hopper1): a hopper sends one item, then waits 8
+	// ticks. One that was handed an item waits 8 as well, but counted from before its own turn that tick when it comes
+	// later in the order the hoppers were placed, so each hop down a chain takes 7 ticks, and the first hopper's next item
+	// goes at 8. Under a chest, the upper hopper takes an item and the one below takes it on from it in the same tick.
+	{
+		const auto Total = [&](const FIntVector& At, const TCHAR* Item)
+		{
+			TArray<FMcItemStack> Stacks;
+			UMcBlockUseSubsystem::GetContents(*Actor, At, Stacks);
+			int32 Count = 0;
+			for (const FMcItemStack& Stack : Stacks) Count += Stack.Item == Item ? Stack.Count : 0;
+			return Count;
+		};
+		const FString Hopper = TEXT("minecraft:hopper[facing=");
+		FIntVector Chain[4];
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			Chain[Index] = FIntVector(1 + Index, 70, 1);
+			Blocks.SetBlock(Chain[Index], Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		}
+		const FIntVector ChainEnd(5, 70, 1);
+		Blocks.SetBlock(ChainEnd, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Stock = FMcBlockEntity::MakeContainer(McHopper::NumSlots);
+		Stock.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 12);
+		Stock.Slots[1] = FMcItemStack(TEXT("minecraft:stick"), 5);
+		Chunk->SetBlockEntity(Chain[0].X, Chain[0].Y, Chain[0].Z, Stock);
+		const FIntVector Source(1, 73, 5), Upper(1, 72, 5), Lower(1, 71, 5), Sink(1, 71, 6);
+		Blocks.SetBlock(Source, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		Blocks.SetBlock(Upper, Registry.ParseState(*(Hopper + TEXT("down]"))).Get(0));
+		Blocks.SetBlock(Lower, Registry.ParseState(*(Hopper + TEXT("south]"))).Get(0));
+		Blocks.SetBlock(Sink, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Pile = FMcBlockEntity::MakeContainer(27);
+		Pile.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 20);
+		Chunk->SetBlockEntity(Source.X, Source.Y, Source.Z, Pile);
+		TArray<int32> ChainArrivals, SinkArrivals;
+		int32 ChainSeen = 0, SinkSeen = 0;
+		for (int32 Step = 1; Step <= 170; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			const int32 ChainNow = Total(ChainEnd, TEXT("minecraft:cobblestone")) + Total(ChainEnd, TEXT("minecraft:stick"));
+			const int32 SinkNow = Total(Sink, TEXT("minecraft:cobblestone"));
+			for (; ChainSeen < ChainNow; ++ChainSeen) ChainArrivals.Add(Step);
+			for (; SinkSeen < SinkNow; ++SinkSeen) SinkArrivals.Add(Step);
+			if (Step == 1)
+			{
+				TestEqual(TEXT("hopper chain: the first item moves on the first tick"), Total(Chain[1], TEXT("minecraft:cobblestone")), 1);
+				TestEqual(TEXT("hopper under a chest: the item falls through both hoppers in one tick"), Total(Lower, TEXT("minecraft:cobblestone")), 1);
+			}
+		}
+		// The vanilla run's first arrivals, one every 8 ticks: at 22 along the chain (4 hops of 7 less the first), at 9 into the sink.
+		TestEqual(TEXT("hopper chain: all 17 items arrive"), ChainArrivals.Num(), 17);
+		TestEqual(TEXT("hopper under a chest: all 20 items arrive"), SinkArrivals.Num(), 20);
+		for (int32 Index = 0; Index < ChainArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper chain: item %d arrives"), Index), ChainArrivals[Index], 22 + 8 * Index);
+		for (int32 Index = 0; Index < SinkArrivals.Num(); ++Index) TestEqual(*FString::Printf(TEXT("hopper under a chest: item %d arrives"), Index), SinkArrivals[Index], 9 + 8 * Index);
+		TestEqual(TEXT("hopper chain: the cobblestone goes first, then the sticks"), Total(ChainEnd, TEXT("minecraft:stick")), 5);
+		// A dropper that hands a hopper an item sets its wait too: it sends on 7 ticks later (log_dropper1).
+		const FIntVector Dropper(1, 70, 9), Between(2, 70, 9), Catch(3, 70, 9);
+		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
+		Blocks.SetBlock(Between, Registry.ParseState(*(Hopper + TEXT("east]"))).Get(0));
+		Blocks.SetBlock(Catch, Registry.ParseState(TEXT("minecraft:chest")).Get(0));
+		FMcBlockEntity Loaded = FMcBlockEntity::MakeContainer(9);
+		Loaded.Slots[0] = FMcItemStack(TEXT("minecraft:cobblestone"), 3);
+		Chunk->SetBlockEntity(Dropper.X, Dropper.Y, Dropper.Z, Loaded);
+		Use->Dispense(*Actor, Dropper);
+		int32 Landed = 0;
+		for (int32 Step = 1; Step <= 12 && !Landed; ++Step)
+		{
+			Use->Tick(0.05f + 1e-4f);
+			Landed = Total(Catch, TEXT("minecraft:cobblestone")) > 0 ? Step : 0;
+		}
+		TestEqual(TEXT("dropper into a hopper: the item reaches the chest on the 8th tick"), Landed, 8);
+	}
 
 	const FIntVector Open(12, 64, 12);
 	Blocks.SetBlock(Open, Registry.ParseState(TEXT("minecraft:hopper[facing=down]")).Get(0));
@@ -324,7 +468,7 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("a full bucket won't go into a furnace"), McBuckets::Pour(*Actor, TEXT("minecraft:lava_bucket"), FurnacePos));
 
 	// Fire and shulker boxes: each in a dispenser of its own, so the random slot doesn't matter.
-	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain, bool bSupported = true)
+	const auto Fire = [&](int32 Z, const TCHAR* ItemName, const TCHAR* FrontBlock, FMcItemStack& Remain, bool bSupported = true, const FMcItemStack* Exact = nullptr)
 	{
 		const FIntVector Gun(14, 64, Z);
 		const FIntVector Muzzle(15, 64, Z);
@@ -332,7 +476,7 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		Blocks.SetBlock(Muzzle, Registry.ParseState(FrontBlock).Get(0));
 		Blocks.SetBlock(Muzzle - FIntVector(0, 1, 0), bSupported ? Registry.ParseState(TEXT("minecraft:stone")).Get(0) : Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
 		FMcBlockEntity Loaded2 = FMcBlockEntity::MakeContainer(9);
-		Loaded2.Slots[0] = FMcItemStack(ItemName);
+		Loaded2.Slots[0] = Exact ? *Exact : FMcItemStack(ItemName);
 		Chunk->SetBlockEntity(Gun.X, Gun.Y, Gun.Z, Loaded2);
 		Use->Dispense(*Actor, Gun);
 		TArray<FMcItemStack> After;
@@ -341,22 +485,50 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		return Registry.GetBlockOf(Blocks.GetBlock(Muzzle)).Name.ToString();
 	};
 	FMcItemStack Remain;
-	TestEqual(TEXT("a fire charge lights the air in front"), Fire(0, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
+	// A fire charge is launched as a small fireball and lights nothing in front (reference run lg_disp).
+	TestEqual(TEXT("a fire charge does not light the air in front"), Fire(0, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:air")));
 	TestTrue(TEXT("and is used up"), Remain.IsEmpty());
 	TestEqual(TEXT("a flint and steel lights it too"), Fire(2, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
 	TestEqual(TEXT("and is worn by one"), Remain.GetDamage(), 1);
 	TestEqual(TEXT("no fire on stone"), Fire(6, TEXT("minecraft:fire_charge"), TEXT("minecraft:stone"), Remain), FString(TEXT("minecraft:stone")));
-	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
 	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
 	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
+	// A box that carries things keeps them when a dispenser places it.
+	FMcItemStack FullBox(TEXT("minecraft:red_shulker_box"));
+	TArray<FMcItemStack> Kept;
+	Kept.Add(FMcItemStack(TEXT("minecraft:gold_ingot"), 9));
+	FullBox.Set(TEXT("minecraft:container"), McShulker::Pack(Kept));
+	Fire(5, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain, true, &FullBox);
+	TArray<FMcItemStack> InBox;
+	UMcBlockUseSubsystem::GetContents(*Actor, FIntVector(15, 64, 5), InBox);
+	TestTrue(TEXT("the placed box holds its gold"), !InBox.IsEmpty() && InBox[0].Item == TEXT("minecraft:gold_ingot") && InBox[0].Count == 9);
 	// Fire only where it can stay; a campfire or candle in front is lit instead.
-	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
-	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
+	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
+	TestEqual(TEXT("and the flint is kept"), Remain.Count, 1);
 	TestEqual(TEXT("an unlit campfire is lit"), Fire(12, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:campfire[lit=false]"), Remain), FString(TEXT("minecraft:campfire")));
 	TestEqual(TEXT("burning"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 12)), TEXT("lit")), FName(TEXT("true")));
-	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:fire_charge"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
+	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
 	TestEqual(TEXT("which burns"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 3)), TEXT("lit")), FName(TEXT("true")));
-	TestTrue(TEXT("using up the charge"), Remain.IsEmpty());
+	// Food on the lit campfire cooks for its recipe's time (600 ticks, as in a real save), then is done and leaves its spot.
+	{
+		FMcBlockEntity Grill = FMcBlockEntity::MakeCampfire();
+		Grill.Slots[1] = FMcItemStack(TEXT("minecraft:beef"), 1);
+		Grill.CookingTimes[1] = 598;
+		Grill.CookingTotals[1] = 600;
+		Grill.Slots[2] = FMcItemStack(TEXT("minecraft:porkchop"), 1);
+		Grill.CookingTimes[2] = 10;
+		Grill.CookingTotals[2] = 600;
+		Chunk->SetBlockEntity(15, 64, 12, Grill);
+		Use->Tick(0.05f + 1e-4f);
+		TestEqual(TEXT("one tick cooks the food one tick"), Chunk->FindBlockEntity(15, 64, 12)->CookingTimes[2], 11);
+		TestFalse(TEXT("and the beef is not done yet"), Chunk->FindBlockEntity(15, 64, 12)->Slots[1].IsEmpty());
+		Use->Tick(0.05f + 1e-4f);
+		TestTrue(TEXT("two ticks on, the beef is done and gone from its spot"), Chunk->FindBlockEntity(15, 64, 12)->Slots[1].IsEmpty());
+		TestFalse(TEXT("the pork still cooks"), Chunk->FindBlockEntity(15, 64, 12)->Slots[2].IsEmpty());
+		TArray<FMcItemStack> OnGrill;
+		UMcBlockUseSubsystem::GetContents(*Actor, FIntVector(15, 64, 12), OnGrill);
+		TestTrue(TEXT("what is left on the grill drops when it is broken"), OnGrill.ContainsByPredicate([](const FMcItemStack& Stack) { return Stack.Item == TEXT("minecraft:porkchop"); }));
+	}
 	// A dropper into a double chest fills the other half once the first is full.
 	{
 		const FIntVector RightHalf(3, 64, 14), LeftHalf(4, 64, 14), Dropper(2, 64, 14);

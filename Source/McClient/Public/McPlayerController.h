@@ -13,6 +13,7 @@ class AMcWorldActor;
 class AMcPlayerPawn;
 class UActorComponent;
 class UMcChunkStreamComponent;
+class FMcDevInput;
 
 UCLASS()
 class AMcPlayerController : public APlayerController
@@ -63,6 +64,8 @@ private:
 	bool bStreamConnected = false;
 	bool bViewSetUp = false;
 	bool bMenuShotStarted = false;
+	// Development: the -McInput script being played (null otherwise).
+	TSharedPtr<FMcDevInput> DevInput;
 	bool bEnvironmentSpawned = false;
 	FString WantedDimension;
 	float ViewSyncTimer = 0.0f;
@@ -70,6 +73,8 @@ private:
 	TWeakObjectPtr<UActorComponent> Sky;
 	TWeakObjectPtr<UActorComponent> Particles;
 	TWeakObjectPtr<UActorComponent> BlockLights;
+	TWeakObjectPtr<UActorComponent> Chests;
+	TWeakObjectPtr<UActorComponent> Signs;
 	TWeakObjectPtr<UActorComponent> Weather;
 	TWeakObjectPtr<UActorComponent> Clouds;
 	float NetLogTimer = 0.0f;

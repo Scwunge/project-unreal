@@ -1,0 +1,8 @@
+{
+  "description": "Boats of every wood on a pond on classic_flat (surface y=-61), plain in the near row and chest boats in the far one. Summon them with -McChat (see PLAN.md, Vehicles).",
+  "camera": [13.0, -52.0, -14.0, 0.0, 27.0],
+  "blocks": [
+    { "from": [0, -60, 0], "to": [26, -60, 8], "state": "minecraft:stone" },
+    { "from": [1, -60, 1], "to": [25, -60, 7], "state": "minecraft:water[level=0]" }
+  ]
+}

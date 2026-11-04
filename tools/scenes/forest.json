@@ -1,0 +1,1429 @@
+{
+ "description": "A small oak forest on classic_flat, for the sunset showcase shot.",
+ "camera": [
+  4.5,
+  -59.4,
+  -3.5,
+  10.0,
+  4.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    6,
+    -60,
+    6
+   ],
+   "to": [
+    6,
+    -56,
+    6
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    4,
+    -57,
+    4
+   ],
+   "to": [
+    8,
+    -56,
+    8
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    5,
+    -55,
+    5
+   ],
+   "to": [
+    7,
+    -54,
+    7
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    4
+   ],
+   "to": [
+    -11,
+    -55,
+    4
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -13,
+    -56,
+    2
+   ],
+   "to": [
+    -9,
+    -55,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -54,
+    3
+   ],
+   "to": [
+    -10,
+    -53,
+    5
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -8,
+    -60,
+    13
+   ],
+   "to": [
+    -8,
+    -55,
+    13
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -10,
+    -56,
+    11
+   ],
+   "to": [
+    -6,
+    -55,
+    15
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -9,
+    -54,
+    12
+   ],
+   "to": [
+    -7,
+    -53,
+    14
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    18
+   ],
+   "to": [
+    -11,
+    -57,
+    18
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -13,
+    -58,
+    16
+   ],
+   "to": [
+    -9,
+    -57,
+    20
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -56,
+    17
+   ],
+   "to": [
+    -10,
+    -55,
+    19
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    4
+   ],
+   "to": [
+    -12,
+    -56,
+    4
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -14,
+    -57,
+    2
+   ],
+   "to": [
+    -10,
+    -56,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -13,
+    -55,
+    3
+   ],
+   "to": [
+    -11,
+    -54,
+    5
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    4
+   ],
+   "to": [
+    12,
+    -57,
+    4
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    10,
+    -58,
+    2
+   ],
+   "to": [
+    14,
+    -57,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    11,
+    -56,
+    3
+   ],
+   "to": [
+    13,
+    -55,
+    5
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    19
+   ],
+   "to": [
+    -9,
+    -56,
+    19
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -11,
+    -57,
+    17
+   ],
+   "to": [
+    -7,
+    -56,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -10,
+    -55,
+    18
+   ],
+   "to": [
+    -8,
+    -54,
+    20
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    28
+   ],
+   "to": [
+    -11,
+    -55,
+    28
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -13,
+    -56,
+    26
+   ],
+   "to": [
+    -9,
+    -55,
+    30
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -54,
+    27
+   ],
+   "to": [
+    -10,
+    -53,
+    29
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -7,
+    -60,
+    9
+   ],
+   "to": [
+    -7,
+    -55,
+    9
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -9,
+    -56,
+    7
+   ],
+   "to": [
+    -5,
+    -55,
+    11
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -8,
+    -54,
+    8
+   ],
+   "to": [
+    -6,
+    -53,
+    10
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    20
+   ],
+   "to": [
+    -11,
+    -55,
+    20
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -13,
+    -56,
+    18
+   ],
+   "to": [
+    -9,
+    -55,
+    22
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -54,
+    19
+   ],
+   "to": [
+    -10,
+    -53,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    11,
+    -60,
+    3
+   ],
+   "to": [
+    11,
+    -57,
+    3
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    9,
+    -58,
+    1
+   ],
+   "to": [
+    13,
+    -57,
+    5
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    10,
+    -56,
+    2
+   ],
+   "to": [
+    12,
+    -55,
+    4
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -12,
+    -60,
+    19
+   ],
+   "to": [
+    -12,
+    -57,
+    19
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -14,
+    -58,
+    17
+   ],
+   "to": [
+    -10,
+    -57,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -13,
+    -56,
+    18
+   ],
+   "to": [
+    -11,
+    -55,
+    20
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    15
+   ],
+   "to": [
+    4,
+    -57,
+    15
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    2,
+    -58,
+    13
+   ],
+   "to": [
+    6,
+    -57,
+    17
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    3,
+    -56,
+    14
+   ],
+   "to": [
+    5,
+    -55,
+    16
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    20,
+    -60,
+    5
+   ],
+   "to": [
+    20,
+    -55,
+    5
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    18,
+    -56,
+    3
+   ],
+   "to": [
+    22,
+    -55,
+    7
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    19,
+    -54,
+    4
+   ],
+   "to": [
+    21,
+    -53,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    5,
+    -60,
+    19
+   ],
+   "to": [
+    5,
+    -55,
+    19
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    3,
+    -56,
+    17
+   ],
+   "to": [
+    7,
+    -55,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    4,
+    -54,
+    18
+   ],
+   "to": [
+    6,
+    -53,
+    20
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    5
+   ],
+   "to": [
+    -3,
+    -55,
+    5
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -5,
+    -56,
+    3
+   ],
+   "to": [
+    -1,
+    -55,
+    7
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -4,
+    -54,
+    4
+   ],
+   "to": [
+    -2,
+    -53,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    22,
+    -60,
+    22
+   ],
+   "to": [
+    22,
+    -57,
+    22
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    20,
+    -58,
+    20
+   ],
+   "to": [
+    24,
+    -57,
+    24
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    21,
+    -56,
+    21
+   ],
+   "to": [
+    23,
+    -55,
+    23
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    5
+   ],
+   "to": [
+    9,
+    -55,
+    5
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    7,
+    -56,
+    3
+   ],
+   "to": [
+    11,
+    -55,
+    7
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    8,
+    -54,
+    4
+   ],
+   "to": [
+    10,
+    -53,
+    6
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -10,
+    -60,
+    20
+   ],
+   "to": [
+    -10,
+    -57,
+    20
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -12,
+    -58,
+    18
+   ],
+   "to": [
+    -8,
+    -57,
+    22
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -11,
+    -56,
+    19
+   ],
+   "to": [
+    -9,
+    -55,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -1,
+    -60,
+    17
+   ],
+   "to": [
+    -1,
+    -55,
+    17
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -3,
+    -56,
+    15
+   ],
+   "to": [
+    1,
+    -55,
+    19
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -2,
+    -54,
+    16
+   ],
+   "to": [
+    0,
+    -53,
+    18
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    20,
+    -60,
+    15
+   ],
+   "to": [
+    20,
+    -56,
+    15
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    18,
+    -57,
+    13
+   ],
+   "to": [
+    22,
+    -56,
+    17
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    19,
+    -55,
+    14
+   ],
+   "to": [
+    21,
+    -54,
+    16
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    15,
+    -60,
+    20
+   ],
+   "to": [
+    15,
+    -56,
+    20
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    13,
+    -57,
+    18
+   ],
+   "to": [
+    17,
+    -56,
+    22
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    14,
+    -55,
+    19
+   ],
+   "to": [
+    16,
+    -54,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    11
+   ],
+   "to": [
+    9,
+    -57,
+    11
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    7,
+    -58,
+    9
+   ],
+   "to": [
+    11,
+    -57,
+    13
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    8,
+    -56,
+    10
+   ],
+   "to": [
+    10,
+    -55,
+    12
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    24
+   ],
+   "to": [
+    -3,
+    -57,
+    24
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -5,
+    -58,
+    22
+   ],
+   "to": [
+    -1,
+    -57,
+    26
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -4,
+    -56,
+    23
+   ],
+   "to": [
+    -2,
+    -55,
+    25
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    20
+   ],
+   "to": [
+    -9,
+    -56,
+    20
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    -11,
+    -57,
+    18
+   ],
+   "to": [
+    -7,
+    -56,
+    22
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    -10,
+    -55,
+    19
+   ],
+   "to": [
+    -8,
+    -54,
+    21
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    19,
+    -60,
+    17
+   ],
+   "to": [
+    19,
+    -56,
+    17
+   ],
+   "state": "minecraft:oak_log[axis=y]"
+  },
+  {
+   "from": [
+    17,
+    -57,
+    15
+   ],
+   "to": [
+    21,
+    -56,
+    19
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    18,
+    -55,
+    16
+   ],
+   "to": [
+    20,
+    -54,
+    18
+   ],
+   "state": "minecraft:oak_leaves[distance=1,persistent=true,waterlogged=false]"
+  },
+  {
+   "from": [
+    14,
+    -60,
+    9
+   ],
+   "to": [
+    14,
+    -60,
+    9
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    -7,
+    -60,
+    16
+   ],
+   "to": [
+    -7,
+    -60,
+    16
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    -4,
+    -60,
+    24
+   ],
+   "to": [
+    -4,
+    -60,
+    24
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    -5,
+    -60,
+    29
+   ],
+   "to": [
+    -5,
+    -60,
+    29
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    12,
+    -60,
+    1
+   ],
+   "to": [
+    12,
+    -60,
+    1
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    21,
+    -60,
+    18
+   ],
+   "to": [
+    21,
+    -60,
+    18
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    7,
+    -60,
+    22
+   ],
+   "to": [
+    7,
+    -60,
+    22
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    17,
+    -60,
+    18
+   ],
+   "to": [
+    17,
+    -60,
+    18
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    -10,
+    -60,
+    26
+   ],
+   "to": [
+    -10,
+    -60,
+    26
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    15
+   ],
+   "to": [
+    3,
+    -60,
+    15
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    -11,
+    -60,
+    23
+   ],
+   "to": [
+    -11,
+    -60,
+    23
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    22,
+    -60,
+    21
+   ],
+   "to": [
+    22,
+    -60,
+    21
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    22
+   ],
+   "to": [
+    4,
+    -60,
+    22
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    0
+   ],
+   "to": [
+    8,
+    -60,
+    0
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    5
+   ],
+   "to": [
+    8,
+    -60,
+    5
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    17,
+    -60,
+    1
+   ],
+   "to": [
+    17,
+    -60,
+    1
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    4
+   ],
+   "to": [
+    4,
+    -60,
+    4
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    11,
+    -60,
+    12
+   ],
+   "to": [
+    11,
+    -60,
+    12
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    -9,
+    -60,
+    5
+   ],
+   "to": [
+    -9,
+    -60,
+    5
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    11,
+    -60,
+    17
+   ],
+   "to": [
+    11,
+    -60,
+    17
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    26
+   ],
+   "to": [
+    -6,
+    -60,
+    26
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    21,
+    -60,
+    8
+   ],
+   "to": [
+    21,
+    -60,
+    8
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    21
+   ],
+   "to": [
+    8,
+    -60,
+    21
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    4
+   ],
+   "to": [
+    0,
+    -60,
+    4
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    4
+   ],
+   "to": [
+    -3,
+    -60,
+    4
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    0,
+    -60,
+    0
+   ],
+   "to": [
+    0,
+    -60,
+    0
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    -3,
+    -60,
+    8
+   ],
+   "to": [
+    -3,
+    -60,
+    8
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    -14,
+    -60,
+    4
+   ],
+   "to": [
+    -14,
+    -60,
+    4
+   ],
+   "state": "minecraft:dandelion"
+  },
+  {
+   "from": [
+    20,
+    -60,
+    11
+   ],
+   "to": [
+    20,
+    -60,
+    11
+   ],
+   "state": "minecraft:poppy"
+  },
+  {
+   "from": [
+    -6,
+    -60,
+    22
+   ],
+   "to": [
+    -6,
+    -60,
+    22
+   ],
+   "state": "minecraft:short_grass"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    0
+   ],
+   "to": [
+    3,
+    -60,
+    0
+   ],
+   "state": "minecraft:torch"
+  }
+ ]
+}

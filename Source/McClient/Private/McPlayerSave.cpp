@@ -6,6 +6,8 @@ namespace
 {
 	constexpr int32 ArmorFirstSlot = 100;
 	constexpr int32 OffhandSlot = 150;
+	// The ender chest's slots, after everything the game numbers itself (it keeps them in a list of their own).
+	constexpr int32 EnderFirstSlot = 200;
 
 	// The armour container runs head to feet; the game's numbers run feet to head.
 	int32 ArmorIndexToSlot(int32 Index) { return ArmorFirstSlot + (UMcPlayerDataComponent::NumArmorSlots - 1 - Index); }
@@ -34,6 +36,24 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	Out.Stats.Add(TEXT("xp_progress"), Stats.XpProgress);
 	Out.Stats.Add(TEXT("fire_ticks"), Stats.OnFireTicks);
 	Out.Stats.Add(TEXT("food_timer"), Stats.FoodTimer);
+	if (Data.SpawnBed.IsSet())
+	{
+		Out.Stats.Add(TEXT("spawn_x"), Data.SpawnBed->X);
+		Out.Stats.Add(TEXT("spawn_y"), Data.SpawnBed->Y);
+		Out.Stats.Add(TEXT("spawn_z"), Data.SpawnBed->Z);
+	}
+
+	if (Data.SpawnPoint.IsSet())
+	{
+		Out.Stats.Add(TEXT("sp_x"), Data.SpawnPoint->X);
+		Out.Stats.Add(TEXT("sp_y"), Data.SpawnPoint->Y);
+		Out.Stats.Add(TEXT("sp_z"), Data.SpawnPoint->Z);
+	}
+
+	for (const FName Advancement : Data.Advancements)
+	{
+		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
+	}
 
 	Out.Slots.Reset();
 	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::InventorySize; ++Slot)
@@ -53,6 +73,13 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	if (!Data.Offhand->Get(0).IsEmpty())
 	{
 		Out.Slots.Add({ OffhandSlot, Data.Offhand->Get(0) });
+	}
+	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::EnderChestSize; ++Slot)
+	{
+		if (!Data.EnderChest->Get(Slot).IsEmpty())
+		{
+			Out.Slots.Add({ EnderFirstSlot + Slot, Data.EnderChest->Get(Slot) });
+		}
 	}
 }
 
@@ -82,6 +109,7 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	Data.Inventory->Clear();
 	Data.Armor->Clear();
 	Data.Offhand->Clear();
+	Data.EnderChest->Clear();
 	for (const FMcSavedSlot& Slot : Saved.Slots)
 	{
 		if (Slot.Slot >= 0 && Slot.Slot < UMcPlayerDataComponent::InventorySize)
@@ -96,8 +124,32 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		{
 			Data.Offhand->Set(0, Slot.Stack);
 		}
+		else if (Slot.Slot >= EnderFirstSlot && Slot.Slot < EnderFirstSlot + UMcPlayerDataComponent::EnderChestSize)
+		{
+			Data.EnderChest->Set(Slot.Slot - EnderFirstSlot, Slot.Stack);
+		}
 	}
 	Data.Stats = Stats;
+	Data.Advancements.Reset();
+	for (const TPair<FString, double>& Stat : Saved.Stats)
+	{
+		if (Stat.Key.StartsWith(TEXT("advancement:")))
+		{
+			Data.Advancements.Add(FName(*Stat.Key.RightChop(12)));
+		}
+	}
+	Data.SpawnBed.Reset();
+	if (Saved.Stats.Contains(TEXT("spawn_x")) && Saved.Stats.Contains(TEXT("spawn_y")) && Saved.Stats.Contains(TEXT("spawn_z")))
+	{
+		Data.SpawnBed = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_y"))),
+			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_z"))));
+	}
+	Data.SpawnPoint.Reset();
+	if (Saved.Stats.Contains(TEXT("sp_x")) && Saved.Stats.Contains(TEXT("sp_y")) && Saved.Stats.Contains(TEXT("sp_z")))
+	{
+		Data.SpawnPoint = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_y"))),
+			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_z"))));
+	}
 	// The mode stays what the server was started with (-McCreative); only what the player carried comes back.
 	Data.SelectedSlot = FMath::Clamp(Saved.SelectedSlot, 0, 8);
 	Data.UpdateArmor();

@@ -27,11 +27,14 @@ public:
 	void SetWeather(EMcWeather Weather, int32 Duration);
 	// How many layers of snow a snowfall piles up (the game's snowAccumulationHeight rule, default 1).
 	void SetSnowAccumulation(int32 Layers) { SnowAccumulation = Layers; }
+	void SetSeaLevel(int32 Level) { SeaLevel = Level; }
 
 	// The sun's light level from the day clock and the weather: 15 at noon, 4 on a clear night.
 	int32 GetSunLight() const;
 	// What a daylight detector reads, 0 to 15: it follows the sun's height as well, so night reads 0.
 	int32 GetDetectorLevel() const;
+	// The factor GetDetectorLevel scales the sky's light by (the cosine of the sun's blended angle), for a detector that sees less than the open sky.
+	double GetDetectorScale() const;
 
 	// Biome the block at Pos is in, its temperature there and what falls from the sky.
 	enum class EPrecipitation : uint8 { None, Rain, Snow };
@@ -76,9 +79,13 @@ private:
 	bool bWeatherCycle = true;
 	bool bRaining = false;
 	bool bThundering = false;
+	// How much rain and thunder the sky shows, 0 to 1: they follow the flags by 0.01 a tick.
+	float RainLevel = 0.0f;
+	float ThunderLevel = 0.0f;
 	int32 RainTime = 0;
 	int32 ThunderTime = 0;
 	int32 SnowAccumulation = 1;
+	int32 SeaLevel = 63;
 	mutable TMap<FMcBiomeId, FBiomeInfo> Biomes;
 	TUniquePtr<FMcFeatureLibrary> Features;
 };

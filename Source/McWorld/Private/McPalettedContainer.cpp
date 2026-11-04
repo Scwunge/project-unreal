@@ -74,6 +74,22 @@ void FMcPalettedContainer::CopyTo(TArrayView<FMcStateId> Out) const
 	}
 }
 
+bool FMcPalettedContainer::MayContain(TFunctionRef<bool(FMcStateId)> Match) const
+{
+	if (IsDirect())
+	{
+		return true;
+	}
+	for (const FMcStateId State : Palette)
+	{
+		if (Match(State))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 uint32 FMcPalettedContainer::ReadRaw(int32 Index) const
 {
 	const int32 Shift = (Index % EntriesPerWord) * Bits;

@@ -1,7 +1,10 @@
 #include "McRecipe.h"
+#include "McMapStore.h"
+#include "McPot.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McItem.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
@@ -178,26 +181,17 @@ bool FMcRecipeBook::EnsureLoaded()
 	{
 		return false;
 	}
-	const FString Root = McCache::Data(TEXT("recipe"));
-	TArray<FString> Files;
-	IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
+	// The game's recipes with a data pack's added: a pack's file of the same id replaces the game's.
+	const TArray<McData::FFile> Files = McData::List(TEXT("recipe"));
 	if (Files.IsEmpty())
 	{
-		UE_LOG(LogMcItem, Error, TEXT("No recipes in %s; run tools/fetch_cache.py."), *Root);
+		UE_LOG(LogMcItem, Error, TEXT("No recipes in %s; run tools/fetch_cache.py."), *McCache::Data(TEXT("recipe")));
 		return false;
 	}
-	Files.Sort();
-	for (const FString& File : Files)
+	for (const McData::FFile& File : Files)
 	{
-		FString Relative = File;
-		FPaths::MakePathRelativeTo(Relative, *(Root + TEXT("/")));
-		Relative = FPaths::ChangeExtension(Relative, TEXT("")).Replace(TEXT("\\"), TEXT("/"));
-		if (Relative.EndsWith(TEXT(".")))
-		{
-			Relative.LeftChopInline(1);
-		}
-		const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File);
-		if (!Json.IsValid() || !LoadOne(Relative, *Json))
+		const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(File.Paths.Last());
+		if (!Json.IsValid() || !LoadOne(File.Id, *Json))
 		{
 			++Skipped;
 		}
@@ -208,6 +202,18 @@ bool FMcRecipeBook::EnsureLoaded()
 		Ids.Add(Recipes[Index].Id, Index);
 	}
 	UE_LOG(LogMcItem, Log, TEXT("Loaded %d recipes (%d skipped)"), Recipes.Num(), Skipped);
+	static bool bHooked = false;
+	if (!bHooked)
+	{
+		// /reload reads them again.
+		bHooked = true;
+		McData::OnReload().AddLambda([]()
+		{
+			FMcRecipeBook& Book = FMcRecipeBook::Get();
+			Book.bLoaded = false;
+			Book.EnsureLoaded();
+		});
+	}
 	bLoaded = true;
 	return true;
 }
@@ -282,6 +288,16 @@ bool FMcRecipeBook::LoadOne(const FString& Id, const FJsonObject& Json)
 		Recipe.Type = EMcRecipeType::CraftingTransmute;
 		Recipe.Input = ParseIngredient(Field(TEXT("input")));
 		Recipe.Material = ParseIngredient(Field(TEXT("material")));
+		const TSharedPtr<FJsonObject>* Count;
+		if (Json.TryGetObjectField(TEXT("material_count"), Count))
+		{
+			double Min = 1.0, Max = 1.0;
+			(*Count)->TryGetNumberField(TEXT("min"), Min);
+			(*Count)->TryGetNumberField(TEXT("max"), Max);
+			Recipe.MaterialMin = static_cast<int32>(Min);
+			Recipe.MaterialMax = static_cast<int32>(Max);
+		}
+		Json.TryGetBoolField(TEXT("add_material_count_to_result"), Recipe.bAddMaterialCount);
 	}
 	else if (TypeName == TEXT("crafting_decorated_pot"))
 	{
@@ -618,7 +634,27 @@ bool FMcRecipeBook::MatchSpecial(const FMcRecipe& Recipe, const TArray<FMcItemSt
 		}
 		return true;
 	}
-	// Fireworks and map extending are not done; see the gaps in the report.
+	if (Special == TEXT("crafting_special_mapextending"))
+	{
+		// A map in the middle of eight paper zooms out one scale: a new map with the same centre.
+		const FMcIngredient* MapIngredient = Named("map");
+		const FMcIngredient* Paper = Named("material");
+		if (!MapIngredient || !Paper || Width != 3 || Height != 3 || Items.Num() != 9 || !MapIngredient->Test(Grid[4]) || !McMapStore::CanZoom(Grid[4]))
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < 9; ++Index)
+		{
+			if (Index != 4 && !Paper->Test(Grid[Index]))
+			{
+				return false;
+			}
+		}
+		Out = Single(Grid[4]);
+		McMapStore::SetId(Out, McMapStore::Zoom(McMapStore::GetId(Grid[4])));
+		return true;
+	}
+	// Fireworks are not done; see the gaps in the report.
 	return false;
 }
 
@@ -650,15 +686,31 @@ bool FMcRecipeBook::FindCraftingMatch(const TArray<FMcItemStack>& Grid, int32 Wi
 			}
 			break;
 		case EMcRecipeType::CraftingTransmute:
-			if (Items.Num() == 2)
+			if (Items.Num() >= 1 + Recipe.MaterialMin && Items.Num() <= 1 + Recipe.MaterialMax)
 			{
-				for (const int32 First : { 0, 1 })
+				for (int32 First = 0; First < Items.Num(); ++First)
 				{
-					if (Recipe.Input.Test(*Items[First]) && Recipe.Material.Test(*Items[1 - First]))
+					if (!Recipe.Input.Test(*Items[First]))
 					{
-						// The result is the new kind of item with the old one's components.
+						continue;
+					}
+					bool bMaterials = true;
+					for (int32 Other = 0; Other < Items.Num() && bMaterials; ++Other)
+					{
+						bMaterials = Other == First || Recipe.Material.Test(*Items[Other]);
+					}
+					if (bMaterials)
+					{
+						// The result is the new kind of item (the same one if the recipe names none) with the old one's components.
 						FMcItemStack Result = Single(*Items[First]);
-						Result.Item = Recipe.Result.Item;
+						if (!Recipe.Result.Item.IsNone())
+						{
+							Result.Item = Recipe.Result.Item;
+						}
+						if (Recipe.bAddMaterialCount)
+						{
+							Result.Count += Items.Num() - 1;
+						}
 						Result.Normalize();
 						Out = { &Recipe, Result };
 						return true;
@@ -669,20 +721,19 @@ bool FMcRecipeBook::FindCraftingMatch(const TArray<FMcItemStack>& Grid, int32 Wi
 		case EMcRecipeType::CraftingDecoratedPot:
 			if (Width == 3 && Height == 3 && Items.Num() == 4)
 			{
-				// Four sides in a diamond; a brick where there's no sherd.
-				const int32 Slots[4] = { 1, 3, 5, 7 };
-				const TCHAR* Sides[4] = { TEXT("back"), TEXT("left"), TEXT("right"), TEXT("front") };
+				// Four sides in a diamond (back at the top, front at the bottom); a brick where there's no sherd.
+				const int32 Slots[McPot::NumSides] = { 1, 3, 5, 7 };
 				bool bFits = true;
-				TArray<TSharedPtr<FJsonValue>> Decorations;
-				for (int32 Side = 0; Side < 4 && bFits; ++Side)
+				TArray<FName> Decorations;
+				for (int32 Side = 0; Side < McPot::NumSides && bFits; ++Side)
 				{
-					bFits = Recipe.Named[FName(Sides[Side])].Test(Grid[Slots[Side]]);
-					Decorations.Add(MakeShared<FJsonValueString>(Grid[Slots[Side]].Item.ToString()));
+					bFits = Recipe.Named[FName(McPot::GetSideName(Side))].Test(Grid[Slots[Side]]);
+					Decorations.Add(Grid[Slots[Side]].Item);
 				}
 				if (bFits)
 				{
 					FMcItemStack Result = Recipe.Result;
-					Result.Set(TEXT("minecraft:pot_decorations"), MakeShared<FJsonValueArray>(Decorations));
+					McPot::SetSides(Result, Decorations);
 					Out = { &Recipe, Result };
 					return true;
 				}
@@ -823,4 +874,35 @@ bool FMcRecipeBook::IsBrewingReagent(const FMcItemStack& Stack) const
 		}
 	}
 	return false;
+}
+
+bool McCrafterCraft(TArray<FMcItemStack>& Slots, FMcItemStack& Result)
+{
+	Slots.SetNum(9);
+	FMcRecipeBook& Book = FMcRecipeBook::Get();
+	Book.EnsureLoaded();
+	FMcCraftingMatch Match;
+	if (!Book.FindCraftingMatch(Slots, 3, 3, Match) || Match.Result.IsEmpty())
+	{
+		return false;
+	}
+	TArray<FMcItemStack> Left;
+	FMcRecipeBook::GetRemainders(Match.Recipe, Slots, Left);
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		if (Slots[Index].IsEmpty())
+		{
+			continue;
+		}
+		if (--Slots[Index].Count <= 0)
+		{
+			Slots[Index].Clear();
+		}
+		if (Slots[Index].IsEmpty() && Left.IsValidIndex(Index) && !Left[Index].IsEmpty())
+		{
+			Slots[Index] = Left[Index];
+		}
+	}
+	Result = Match.Result;
+	return true;
 }

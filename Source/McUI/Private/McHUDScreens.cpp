@@ -1051,6 +1051,16 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
 			}
 		}
+		// -McRideMob right-clicks the mount that -McSpawnMobs=horse,1 -McMobSaddled put two blocks south, six seconds in.
+		static bool bDevRideDone = false;
+		if (!bDevRideDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McRideMob")))
+		{
+			bDevRideDone = true;
+			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+			{
+				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
+			}
+		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
 		static bool bDevInventoryDone = false;
 		FString DevSearch;

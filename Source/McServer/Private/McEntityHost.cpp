@@ -1,4 +1,5 @@
 #include "McEntityHost.h"
+#include "McMount.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -1223,9 +1224,22 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						X = FMath::FloorToInt32(Players[0].X + (Index - (N - 1) * 0.5) * 1.8);
 						Z = FMath::FloorToInt32(Players[0].Z + (FParse::Param(FCommandLine::Get(), TEXT("McTrade")) ? 2.0 : 6.5));
 					}
+					if (FParse::Param(FCommandLine::Get(), TEXT("McMobSaddled")))
+					{
+						// -McMobSaddled: a tamed, saddled mount two blocks south, for -McRideMob to climb on.
+						X = FMath::FloorToInt32(Players[0].X);
+						Z = FMath::FloorToInt32(Players[0].Z + 2.0);
+					}
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
 						FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						if (Spawned && FParse::Param(FCommandLine::Get(), TEXT("McMobSaddled")) && McMount::IsRideable(*Spawned))
+						{
+							Spawned->bTamed = true;
+							FMcMountState& Mount = McMount::Ensure(*Spawned);
+							McMount::GetInventory(Mount)->Set(0, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+							McMount::Sync(Mount);
+						}
 						if (Spawned && Spawned->GetType() == FMcVillager::StaticType())
 						{
 							// A ring of villagers shows every biome type, and every fifth one is a baby.

@@ -176,7 +176,7 @@ void FMcNoiseGenerator::Generate(FMcChunk& Chunk) const
 				{
 					State = Lava;
 				}
-				else if (Y < Settings.SeaLevel && Y > Surface)
+				else if (Y < Settings.SeaLevel)  // aquifers off: every open cell under the sea level holds the default fluid (the Nether's lava sea)
 				{
 					State = Settings.DefaultFluid;
 				}
@@ -323,7 +323,8 @@ void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>
 			{
 				return;
 			}
-			FMcStateId Fill = Y < LavaLevel ? Lava : Air;
+			// Without aquifers a carved cell under the sea level holds the default fluid (the Nether's cave floors flood with lava).
+			FMcStateId Fill = Y < LavaLevel ? Lava : (!bAquifers && Y < Settings.SeaLevel ? Settings.DefaultFluid : Air);
 			if (bAquifers)
 			{
 				Fill = Aquifer.Compute(ChunkX * 16 + X, Y, ChunkZ * 16 + Z, 0.0, AquiferContext, AquiferCache);

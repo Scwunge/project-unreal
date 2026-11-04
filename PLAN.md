@@ -1534,3 +1534,9 @@ the 1070 (absolute `-script=` path; the relative one resolves inside the engine 
 (same scene and time, before): the mechanism works but the effect is faint on `shore_down`: the shallows are already pale over bright sand, so a white fringe
 a half block wide has little contrast, and from standing height it is a few pixels tall. Judge it on a darker shore (grass or stone bank, evening) before
 raising it further.
+Shore foam is now SWITCHED OFF (`McFluidMesher::bShoreFoam = false`, 5c73093). Tuning pass done (fringe 0.1..1 at x1.6) and a darker scene (`shore_dark`: deepslate bank and bed,
+shot `foam_dark`): still no white fringe at the bank edge. Since an x1.6 white emissive would blow out wherever the flag arrived, the flag probably does not reach the
+material intact; the likely cause is that proc-mesh UVs are half floats by default, so `layer + 0.4` loses its fraction for layers above a few hundred. Next try if wanted: carry
+the flag in vertex colour alpha on a separate water material (water uses the no-vertex-alpha path today), or switch the section to full-precision UVs (shared file).
+Vanilla is unchanged either way: with the flag off the mesh is what it was, and the FluidMesher test (passes on the 1070) checks whole layer numbers with Unreal Mode off and identical layers/shape on.
+The lit/HD materials keep the foam term (inert with no flag).

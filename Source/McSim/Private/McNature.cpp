@@ -600,9 +600,21 @@ bool FMcNature::Bonemeal(const FIntVector& Pos)
 		{
 			return false;
 		}
-		// Beetroot grows a stage at a time; the others two to five.
-		const int32 Gain = Name == TEXT("minecraft:beetroots") ? 1 : Random.RandRange(2, 5);
+		// The others gain two to five stages, uniformly (reference run bonemeal: wheat, carrots, potatoes and both stems). Beetroot gains one
+		// stage on about two meals in three (26 of 40 grew, none by more; the exact chance is not pinned down).
+		const int32 Gain = Name == TEXT("minecraft:beetroots") ? (Random.FRand() < 0.65f ? 1 : 0) : Random.RandRange(2, 5);
 		World.SetBlock(Pos, WithNumber(State, TEXT("age"), FMath::Min(Age + Gain, Max)));
+		return true;
+	}
+	if (Name == TEXT("minecraft:sweet_berry_bush"))
+	{
+		// One stage a meal (reference run bonemeal: 40 of 40 went from age 0 to 1; the cap at 3 is the block's own).
+		const int32 Age = NumberProperty(State, TEXT("age"));
+		if (Age < 0 || Age >= 3)
+		{
+			return false;
+		}
+		World.SetBlock(Pos, WithNumber(State, TEXT("age"), Age + 1));
 		return true;
 	}
 	if (Name == TEXT("minecraft:grass_block"))

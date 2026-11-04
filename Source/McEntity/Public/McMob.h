@@ -56,6 +56,8 @@ struct MCENTITY_API FMcMobType
 	// 1 for a ghast (one fireball every 60 to 85 ticks), 2 for a blaze (three small ones 6 ticks apart, a burst every 178 ticks;
 	// both measured in nether1.txt). Such a flier stops HoverRange blocks from its target (a guess) and shoots from there.
 	int32 FireballKind = 0;
+	// Fires homing bullets at a player in sight (the shulker).
+	bool bBullets = false;
 	double HoverRange = 0.0;
 	// A phantom circles its target and dives at it (atk1.txt, 900 ticks: close passes 155 to 232 ticks apart, mean 189, n=4).
 	bool bSwoops = false;

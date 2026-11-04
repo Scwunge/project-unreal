@@ -206,6 +206,11 @@ void FMcSimulation::SetWeather(EMcWeather Weather, int32 Duration)
 	Nature->SetWeather(Weather, Duration);
 }
 
+void FMcSimulation::SetSeaLevel(int32 Level)
+{
+	Nature->SetSeaLevel(Level);
+}
+
 void FMcSimulation::SetSnowAccumulation(int32 Layers)
 {
 	Nature->SetSnowAccumulation(Layers);

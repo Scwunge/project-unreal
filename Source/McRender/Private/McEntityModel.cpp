@@ -904,6 +904,37 @@ namespace McEntityModel
 				DragonJaw.Scale = 0.75f;
 				Dragon.Parts.Add(DragonJaw);
 				Models.Add(Dragon.Kind, Dragon);
+				// The whole dragon, APPROXIMATE: its proportions are read off a vanilla frozen dragon seen from above and the side
+				// (dragon_shot1, ref_dr_top and ref_dr_side: about 13.5 blocks nose to tail, wings about 14 across) and its
+				// parts are the familiar ones (a body, five neck pieces, the head above, eight tail pieces, two wings with a
+				// membrane). The texture cuts (UVs) of everything but the head are guesses, the wings do not beat, and neck and
+				// tail do not follow the dragon's turns. The front is -z, as for the other mobs.
+				{
+					FModel Full;
+					Full.Kind = FName(TEXT("minecraft:ender_dragon"));
+					Full.TextureSize = FIntPoint(256, 256);
+					Full.Textures = { TEXT("enderdragon/dragon.png") };
+					Full.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 0, -12, -12, -20, 24, 24, 64) }));
+					for (int32 Piece = 0; Piece < 5; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 - Piece, -20 - 10 * Piece), { Box(192, 104, -5, -5, -10, 10, 10, 10) }, -0.04f * Piece));
+					}
+					for (int32 Piece = 0; Piece < 8; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 + Piece, 44 + 10 * Piece), { Box(192, 104, -5, -5, 0, 10, 10, 10) }, 0.03f * Piece));
+					}
+					for (const FPart& Source : Dragon.Parts)
+					{
+						FPart Moved = Source;
+						Moved.Pivot += FVector(0, 7, -86);
+						Moved.RestYaw = PI;
+						Full.Parts.Add(Moved);
+					}
+					// Wings: a bone 96 long, a membrane behind it; raised a little (0.25) from level.
+					Full.Parts.Add(Part(ERole::Static, FVector(-12, 2, -4), { Box(0, 88, -96, -4, -4, 96, 8, 8), Box(0, 152, -96, 0, 4, 96, 0, 56) }, 0.0f, 0.0f, 0.25f));
+					Full.Parts.Add(Part(ERole::Static, FVector(12, 2, -4), { Box(0, 88, 0, -4, -4, 96, 8, 8, 0.0f, true), Box(0, 152, 0, 0, 4, 96, 0, 56, 0.0f, true) }, 0.0f, 0.0f, -0.25f));
+					Models.Add(Full.Kind, Full);
+				}
 				// A carved pumpkin worn on a head (McPlayerModel): its block model 10.1 pixels across (the block at 0.63),
 				// its middle on the head's, 4 over the neck, its face forward (measured in vanilla, ref_wh_pumpkin against
 				// ref_wh_bare, from the front: 82 pixels to the bare head's 64, its top 1 pixel over the head's).

@@ -55,6 +55,7 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			if (Box.IsInside(Local))
 			{
 				bStuck = true;
+				Manager.GameEvent(FName("projectile_land"), Next);
 				if (Manager.OnArrowHit)
 				{
 					Manager.OnArrowHit(Cell, Next, Body.Velocity);

@@ -85,6 +85,15 @@ public:
 	// The shrieker at Pos has shrieked at warning level 4 for this player: a warden should try to emerge within 11x13x11 of it
 	// (20 tries, none if another warden is within 24 blocks); for whoever owns the warden.
 	TFunction<void(const FIntVector& Pos, int32 PlayerId)> OnWardenSummon;
+	// ---- The creaking heart (the redstone side runs the block; whoever owns the mobs runs the creaking) ----
+	// The heart at Pos wants a creaking within 16 across and 8 up and down of it; true if one was put there (and is now tied to it).
+	TFunction<bool(const FIntVector& Heart)> OnCreakingSpawn;
+	// The creaking tied to the heart should go: it twitched and dies when the heart was broken (bBroken), or despawns at daybreak.
+	TFunction<void(const FIntVector& Heart, bool bBroken)> OnCreakingRelease;
+	// How far the creaking tied to the heart is from it, or below 0 for none.
+	TFunction<double(const FIntVector& Heart)> GetCreakingDistance;
+	// A player or tamed wolf hit the creaking tied to the heart.
+	void CreakingHit(const FIntVector& Heart);
 	// (Used by the redstone side.)
 	bool CanShriekFor(int32 PlayerId, bool bCanSummon) const;
 	void ShriekerActivated(const FIntVector& Pos, int32 PlayerId, bool bCanSummon);

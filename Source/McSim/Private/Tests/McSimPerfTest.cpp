@@ -203,6 +203,8 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 		double Total = 0.0;
 		double Worst = 0.0;
 		double First = 0.0;
+		int32 WorstAt = 0, Over20 = 0;
+		TArray<double> All;
 		for (int32 Tick = 0; Tick < Scene.Ticks; ++Tick)
 		{
 			const double Start = FPlatformTime::Seconds();
@@ -217,10 +219,17 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 				First = Ms;
 			}
 			Total += Ms;
-			Worst = FMath::Max(Worst, Ms);
+			All.Add(Ms);
+			Over20 += Ms > 20.0;
+			if (Ms > Worst)
+			{
+				Worst = Ms;
+				WorstAt = Tick;
+			}
 		}
 		const double Avg = Total / Scene.Ticks;
-		UE_LOG(LogTemp, Display, TEXT("SIMPERF %s: build %.1f ms, tick avg %.3f ms, first %.3f ms, worst %.3f ms, scheduled left %d"), *Scene.Name, BuildMs, Avg, First, Worst, Sim.NumScheduled());
+		All.Sort();
+		UE_LOG(LogTemp, Display, TEXT("SIMPERF %s: build %.1f ms, tick avg %.3f ms, first %.3f ms, worst %.3f ms at tick %d, median %.3f ms, p95 %.3f ms, %d ticks over 20 ms, scheduled left %d"), *Scene.Name, BuildMs, Avg, First, Worst, WorstAt, All[All.Num() / 2], All[All.Num() * 95 / 100], Over20, Sim.NumScheduled());
 		TestTrue(*FString::Printf(TEXT("%s averages under 25 ms a tick (%.2f)"), *Scene.Name, Avg), Avg < 25.0);
 	}
 	return true;

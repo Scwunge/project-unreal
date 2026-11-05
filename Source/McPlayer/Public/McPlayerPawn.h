@@ -175,6 +175,8 @@ public:
 	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
 	void ServerRide(int32 VehicleId);
 	void ServerDismount();
+	// A game event this player made at a place (what sculk sensors and wardens hear): sneaking and the game mode are told with it.
+	void ServerGameEvent(FName Name, const FVector& At);
 	// How far the server lets a player reach for blocks, eyes to the block's middle.
 	static constexpr double ServerReach = 6.5;
 

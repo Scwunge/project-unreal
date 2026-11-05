@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McSculkMobs.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
 #include "McJavaImport.h"
@@ -419,6 +420,25 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	// What the entities and players do that can be heard as vibrations goes to the simulation (sculk sensors, shriekers, listeners).
+	Entities->GetManager().OnGameEvent = [this](FName Name, const FVector& At, const FMcEntityManager::FGameEventTag& Tag)
+	{
+		if (!Simulation)
+		{
+			return;
+		}
+		FMcGameEventSource Source;
+		Source.bPlayer = Tag.bPlayer;
+		Source.bSneaking = Tag.bSneaking;
+		Source.bWarden = Tag.bWarden;
+		Source.bProjectile = Tag.bProjectile;
+		Source.bDying = Tag.bDying;
+		Source.bCreativeOrSpectator = Tag.bCreativeOrSpectator;
+		Source.PlayerId = Tag.PlayerId;
+		Simulation->EmitGameEvent(Name, FIntVector(FMath::FloorToInt32(At.X), FMath::FloorToInt32(At.Y), FMath::FloorToInt32(At.Z)), Source);
+	};
+	// Wardens hear the events, shriekers call them, creaking hearts raise creakings.
+	McSculkMobs::Connect(*Simulation, *Entities, *BlockWorld);
 	// Development: -McWeather=clear|rain|thunder, at full strength from the start (for screenshots).
 	FString WeatherArg;
 	if (!bSecondary && FParse::Value(CommandLine, TEXT("-McWeather="), WeatherArg))

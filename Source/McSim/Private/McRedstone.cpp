@@ -29,6 +29,7 @@ namespace
 		Sculk,
 		CalibratedSculk,
 		Shrieker,
+		CreakingHeart,
 		Observer,
 		Piston,
 		StickyPiston,
@@ -115,6 +116,7 @@ namespace
 				else if (Name == TEXT("minecraft:sculk_sensor")) Kind = Sculk;
 				else if (Name == TEXT("minecraft:calibrated_sculk_sensor")) Kind = CalibratedSculk;
 				else if (Name == TEXT("minecraft:sculk_shrieker")) Kind = Shrieker;
+				else if (Name == TEXT("minecraft:creaking_heart")) Kind = CreakingHeart;
 				else if (Name == TEXT("minecraft:observer")) Kind = Observer;
 				else if (Name == TEXT("minecraft:piston")) Kind = Piston;
 				else if (Name == TEXT("minecraft:sticky_piston")) Kind = StickyPiston;
@@ -538,6 +540,12 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return BookshelfSignal.FindRef(Pos);
 		}
+		// A creaking heart with a creaking out gives 15 less the distance to it over 32 times 15, rounded down (minecraft.wiki, "Creaking Heart").
+		if (Name == TEXT("minecraft:creaking_heart"))
+		{
+			const double Distance = Sim.GetCreakingDistance ? Sim.GetCreakingDistance(Pos) : -1.0;
+			return Distance < 0.0 ? 0 : FMath::Clamp(15 - FMath::FloorToInt32(Distance / 32.0 * 15.0), 0, 15);
+		}
 		if (Name == TEXT("minecraft:jukebox"))
 		{
 			// The disc inside gives its own level (reference run lg_juke, every disc put in by a dropper).
@@ -753,6 +761,17 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	{
 		Notify(Pos + Vec[Dir]);
 	}
+	if (!Hearts.IsEmpty() && Hearts.Contains(Pos) && KindOf(State) != CreakingHeart)
+	{
+		// The heart was broken or replaced: the creaking tied to it twitches and dies.
+		Hearts.Remove(Pos);
+		HeartLevel.Remove(Pos);
+		SpawnReady.Remove(Pos);
+		if (Sim.OnCreakingRelease)
+		{
+			Sim.OnCreakingRelease(Pos, true);
+		}
+	}
 	if (!BookshelfSignal.IsEmpty() && BookshelfSignal.Contains(Pos) && Reg().IsValidState(State) && Reg().GetBlockOf(State).Name != TEXT("minecraft:chiseled_bookshelf"))
 	{
 		BookshelfSignal.Remove(Pos);
@@ -939,6 +958,10 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 	}
 	switch (Kind)
 	{
+	case CreakingHeart:
+		Hearts.Add(Pos);
+		Sim.ScheduleTick(Pos, 2);
+		break;
 	case Dust:
 		DirtyDust.Add(Pos);
 		break;
@@ -1267,6 +1290,9 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 		break;
 	case Shrieker:
 		TickShrieker(Pos, State);
+		break;
+	case CreakingHeart:
+		TickCreakingHeart(Pos, State);
 		break;
 	case Tripwire:
 		TickTripwire(Pos, State);
@@ -2230,6 +2256,158 @@ void FMcRedstone::TickShrieker(const FIntVector& Pos, FMcStateId State)
 		Set(Pos, { FChange(TEXT("shrieking"), TEXT("false")) });
 		Sim.ShriekerFinished(Pos, Flag(State, TEXT("can_summon")));
 	}
+}
+
+// A creaking heart (minecraft.wiki, "Creaking Heart", all numbers unverified: the reference client can place one but nothing in its
+// logs shows the state the game gives it at which tick). Between two pale oak logs of its own axis it is dormant by day and awake
+// at night (12600 to 23400); awake and without a creaking it tries to spawn one (about 24 ticks after it woke); with a creaking out it
+// stays as it is until broken; in the Overworld only.
+void FMcRedstone::TickCreakingHeart(const FIntVector& Pos, FMcStateId State)
+{
+	static const FName AxisName(TEXT("axis"));
+	static const FName HeartState(TEXT("creaking_heart_state"));
+	Hearts.Add(Pos);
+	const FMcDimensionType& Dim = World.GetDimension();
+	const bool bOverworld = Dim.bHasSkylight && !Dim.bHasFixedTime && !Dim.bHasCeiling;
+	const int64 Time = Sim.GetDayTime();
+	const bool bNight = bOverworld && Time >= 12600 && Time < 23400;
+	const FName Axis = Reg().GetPropertyValue(State, AxisName);
+	const int32 AxisIndex = Axis == FName(TEXT("x")) ? 0 : (Axis == FName(TEXT("z")) ? 2 : 1);
+	FIntVector Step = FIntVector::ZeroValue;
+	Step[AxisIndex] = 1;
+	const auto IsLog = [&](const FIntVector& Cell)
+	{
+		const FMcStateId Other = World.GetBlock(Cell);
+		if (!Reg().IsValidState(Other))
+		{
+			return false;
+		}
+		const FString Name = Reg().GetBlockOf(Other).Name.ToString();
+		return (Name == TEXT("minecraft:pale_oak_log") || Name == TEXT("minecraft:pale_oak_wood") || Name == TEXT("minecraft:stripped_pale_oak_log")
+			|| Name == TEXT("minecraft:stripped_pale_oak_wood")) && Reg().GetPropertyValue(Other, AxisName) == Axis;
+	};
+	const bool bAligned = bOverworld && IsLog(Pos + Step) && IsLog(Pos - Step);
+	const double Distance = Sim.GetCreakingDistance ? Sim.GetCreakingDistance(Pos) : -1.0;
+	const bool bLinked = Distance >= 0.0;
+	FName Want = TEXT("uprooted");
+	if (bLinked)
+	{
+		Want = bNight ? FName(TEXT("awake")) : FName(TEXT("dormant"));
+		if (!bNight && Sim.OnCreakingRelease)
+		{
+			// Day: it goes (the game unlinks it and it despawns).
+			Sim.OnCreakingRelease(Pos, false);
+		}
+	}
+	else if (bAligned)
+	{
+		Want = bNight ? FName(TEXT("awake")) : FName(TEXT("dormant"));
+	}
+	if (Reg().GetPropertyValue(State, HeartState) != Want)
+	{
+		Set(Pos, { FChange(TEXT("creaking_heart_state"), *Want.ToString()) });
+	}
+	if (!bLinked && bAligned && bNight)
+	{
+		const int64 Now = Sim.GetGameTime();
+		int64* Ready = SpawnReady.Find(Pos);
+		if (!Ready)
+		{
+			SpawnReady.Add(Pos, Now + 24);
+		}
+		else if (Now >= *Ready)
+		{
+			if (Sim.OnCreakingSpawn && Sim.OnCreakingSpawn(Pos))
+			{
+				SpawnReady.Remove(Pos);
+			}
+			else
+			{
+				*Ready = Now + 20;
+			}
+		}
+	}
+	else
+	{
+		SpawnReady.Remove(Pos);
+	}
+	// The comparator beside it follows the creaking as it moves.
+	const int32 Level = bLinked ? FMath::Clamp(15 - FMath::FloorToInt32(Distance / 32.0 * 15.0), 0, 15) : 0;
+	int32& Last = HeartLevel.FindOrAdd(Pos, 0);
+	if (Last != Level)
+	{
+		Last = Level;
+		NotifyContainerChanged(Pos);
+	}
+	if (bLinked)
+	{
+		Sim.ScheduleTick(Pos, 5);
+	}
+	else if (bAligned)
+	{
+		Sim.ScheduleTick(Pos, SpawnReady.Contains(Pos) ? 4 : 20);
+	}
+}
+
+// A player or tamed wolf hit the creaking tied to the heart at Pos: at night, a resin clump grows on a pale oak log near it, at most
+// once in 5 seconds (minecraft.wiki, "Creaking Heart"; "nearby" is taken as 4 blocks, UNVERIFIED).
+void FMcRedstone::CreakingHit(const FIntVector& Pos)
+{
+	const int64 Time = Sim.GetDayTime();
+	const int64 Now = Sim.GetGameTime();
+	if (Time < 12600 || Time >= 23400 || ResinNext.FindRef(Pos) > Now)
+	{
+		return;
+	}
+	const FMcBlockRegistry& Registry = Reg();
+	const TOptional<FMcStateId> Clump = Registry.FindDefaultState(TEXT("minecraft:resin_clump"));
+	if (!Clump)
+	{
+		return;
+	}
+	struct FSpot { FIntVector Log; int32 Dir; };
+	TArray<FSpot> Spots;
+	for (int32 DX = -4; DX <= 4; ++DX)
+		for (int32 DY = -4; DY <= 4; ++DY)
+			for (int32 DZ = -4; DZ <= 4; ++DZ)
+			{
+				const FIntVector Cell = Pos + FIntVector(DX, DY, DZ);
+				const FMcStateId Block = World.GetBlock(Cell);
+				if (!Registry.IsValidState(Block))
+				{
+					continue;
+				}
+				const FString Name = Registry.GetBlockOf(Block).Name.ToString();
+				if (!Name.Contains(TEXT("pale_oak_")) || !(Name.EndsWith(TEXT("_log")) || Name.EndsWith(TEXT("_wood"))))
+				{
+					continue;
+				}
+				for (int32 Dir = 0; Dir < 6; ++Dir)
+				{
+					if (Registry.IsAir(World.GetBlock(Cell + Vec[Dir])))
+					{
+						Spots.Add({ Cell, Dir });
+					}
+				}
+			}
+	ResinNext.Add(Pos, Now + 100);
+	if (Spots.IsEmpty())
+	{
+		return;
+	}
+	const FSpot& Pick = Spots[ResinRandom.RandHelper(Spots.Num())];
+	// The clump grows on the log's face, so its own face property is the one toward the log.
+	const TCHAR* Face = TEXT("down");
+	switch (Opposite(Pick.Dir))
+	{
+	case Up: Face = TEXT("up"); break;
+	case Down: Face = TEXT("down"); break;
+	case North: Face = TEXT("north"); break;
+	case South: Face = TEXT("south"); break;
+	case West: Face = TEXT("west"); break;
+	default: Face = TEXT("east"); break;
+	}
+	World.SetBlock(Pick.Log + Vec[Pick.Dir], With(*Clump, { FChange(Face, TEXT("true")) }));
 }
 
 void FMcRedstone::TickSculk(const FIntVector& Pos, FMcStateId State)

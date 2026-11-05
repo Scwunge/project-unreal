@@ -215,6 +215,12 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Ravager = Add(TEXT("minecraft:ravager"), 1.95f, 2.2f, 100.f, 0.3f, 12.f, 32.f, false, false);
 		Ravager.bHuntsVillagers = true;
 		Ravager.bIsRaider = true;
+		// The warden (minecraft.wiki, "Warden"; box, health and Normal damage 30 from the page; health 500 also read in warden.txt):
+		// blind, so it follows no one by sight (FollowRange 0): FMcWarden steers it by what it hears and smells. Speed 0.33: warden.txt
+		// (log_warden.log) shows 0.165 to 0.17 blocks a tick while it chases, and this table walks 10 blocks a second per point of speed.
+		Add(TEXT("minecraft:warden"), 0.9f, 2.9f, 500.f, 0.33f, 30.f, 0.f, false, false);
+		// The creaking ("Creaking": 1 health, 2.7 by 0.9, speed 0.3, damage 3 on Normal): FMcCreaking moves it only while no player looks at it.
+		Add(TEXT("minecraft:creaking"), 0.9f, 2.7f, 1.f, 0.3f, 3.f, 0.f, false, false);
 		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.
 		FMcMobType& Witch = Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false);
 		Witch.bShoots = true;
@@ -471,6 +477,15 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		return false;
 	}
+	if (bInvulnerable)
+	{
+		HurtTime = 10;
+		if (OnShielded)
+		{
+			OnShielded(*this, Source);
+		}
+		return false;
+	}
 	Health -= Amount;
 	HurtTime = 10;
 	++HurtEvents;
@@ -483,7 +498,8 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		bTeleportPending = true;
 	}
-	if (Source)
+	OnHurt(Amount, Source);
+	if (Source && !bNoKnockback)
 	{
 		// Knockback: 0.4 away from the hitter, and a hop.
 		FVector Away = Body.Position - *Source;
@@ -500,6 +516,16 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		// The dragon does not drop dead: it takes 200 ticks to die (see Tick).
 		DeathTicks = FMath::Max(DeathTicks, 1);
 		return true;
+	}
+	if (Owner)
+	{
+		Owner->GameEvent(FName("entity_damage"), Body.Position);
+		if (Health <= 0.0f)
+		{
+			FMcEntityManager::FGameEventTag Dying;
+			Dying.bDying = true;
+			Owner->GameEvent(FName("entity_die"), Body.Position, Dying);
+		}
 	}
 	if (Health <= 0.0f)
 	{
@@ -557,6 +583,11 @@ void FMcMob::UpdateSteps(FMcEntityManager& Manager)
 		return;
 	}
 	NextStep = StepDistance + 1.0;
+	{
+		FMcEntityManager::FGameEventTag Tag;
+		Tag.bWarden = Type.Name == FName(TEXT("minecraft:warden"));
+		Manager.GameEvent(FName("step"), Body.Position, Tag);
+	}
 	const FMcBlockWorld& World = Manager.GetWorld();
 	const FIntVector Below(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.2), FMath::FloorToInt32(Body.Position.Z));
 	const FMcStateId State = World.GetBlock(Below);
@@ -588,6 +619,7 @@ bool FMcMob::TryTeleport(FMcEntityManager& Manager)
 				// Heard where it went from and where it came to.
 				Manager.PlaySound(FName("entity.enderman.teleport"), Origin);
 				Manager.PlaySound(FName("entity.enderman.teleport"), Body.Position);
+				Manager.GameEvent(FName("teleport"), Body.Position);
 				return true;
 			}
 		}
@@ -627,6 +659,7 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 		Arrow->EffectDuration = 100;
 	}
 	Manager.Add(MoveTemp(Arrow));
+	Manager.GameEvent(FName("projectile_shoot"), Eye);
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
 }
 

@@ -182,6 +182,9 @@ public:
 	// Called with the position of a player (as in PlayerPositions): whether they wear any gold armour. Piglins leave
 	// such a player alone. Left unset, nobody does.
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Called with the position of a player (as in PlayerPositions) and a point: whether that player, in Survival or Adventure, has the
+	// point within 60 degrees of where they face (both yaw and pitch). A creaking holds still while this is true. Left unset, nobody looks.
+	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
 	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
 	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.
@@ -200,6 +203,29 @@ public:
 		if (OnPlayerHurt)
 		{
 			OnPlayerHurt(Position, Damage);
+		}
+	}
+
+	// ---- Game events (what sculk sensors and wardens hear: minecraft.wiki, "Vibration") ----
+	// Who made it: a player (sneaking or not, in Creative or Spectator), a warden, a mob that is dying.
+	struct FGameEventTag
+	{
+		bool bPlayer = false;
+		bool bSneaking = false;
+		bool bWarden = false;
+		bool bProjectile = false;
+		bool bDying = false;
+		bool bCreativeOrSpectator = false;
+		int32 PlayerId = 0;
+	};
+	// Called with the event's name ("step", "entity_damage", "explode"), where it happened and who made it, for whoever runs
+	// the simulation. Left unset, events are dropped.
+	TFunction<void(FName, const FVector&, const FGameEventTag&)> OnGameEvent;
+	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag = FGameEventTag()) const
+	{
+		if (OnGameEvent)
+		{
+			OnGameEvent(Name, Position, Tag);
 		}
 	}
 

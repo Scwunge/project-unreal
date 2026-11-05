@@ -2846,6 +2846,57 @@ namespace McEntityModel
 		}
 	}
 
+	// The dropped item's numbers, fitted from 16 same-camera shots 4 ticks apart (itemdrop1): the width of a diamond's picture followed
+	// |cos| of a turn of 0.05 radian a tick; its middle rose and fell 0.096 of a block about 0.385 above the floor with a period of
+	// 63 ticks. -McDrop=lift,radius,cubescale overrides the base height, the spread of a stack and a block's size while they are being fitted.
+	namespace
+	{
+		float GetDropArg(int32 Index, float Default)
+		{
+			static FString Text;
+			static bool bRead = FParse::Value(FCommandLine::Get(), TEXT("-McDrop="), Text, false);
+			TArray<FString> Parts;
+			Text.ParseIntoArray(Parts, TEXT(","));
+			return Parts.IsValidIndex(Index) ? FCString::Atof(*Parts[Index]) : Default;
+		}
+	}
+
+	float GetDroppedHeight(float Age, float Lift)
+	{
+		return GetDropArg(0, 0.26f) + 0.096f * FMath::Sin(Age * 2.0f) + Lift;
+	}
+
+	void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const FQuat Turn(FVector::ZAxisVector, Age * 1.0f);
+		const FVector Up(0.0, 0.0, GetDroppedHeight(Age, Lift));
+		const int32 Copies = GetItemCopies(Count);
+		const double Spread = GetDropArg(1, 0.12f);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			// The copies are scattered a little around the middle, and turn with it.
+			const FVector Offset = Copies == 1 ? FVector::ZeroVector : FVector(FMath::Sin(Copy * 2.4) * Spread, FMath::Cos(Copy * 2.4) * Spread, (FMath::Frac(Copy * 0.618) - 0.5) * 0.2);
+			const int32 First = Out.Positions.Num();
+			for (int32 Index = 0; Index < Unit.Positions.Num(); ++Index)
+			{
+				Out.Positions.Add(Up * Units + Turn.RotateVector(Unit.Positions[Index] * Scale + Offset * Units));
+				Out.Normals.Add(Turn.RotateVector(Unit.Normals[Index]));
+				Out.UV0.Add(Unit.UV0[Index]);
+				Out.Colors.Add(Unit.Colors[Index]);
+			}
+			for (const int32 Index : Unit.Triangles)
+			{
+				Out.Triangles.Add(First + Index);
+			}
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -3021,6 +3072,8 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsFalling = Kind == TEXT("minecraft:falling_block");
 	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsDropped = bIsItem && !bIsThrown && !bIsGrillFood;
+	bDropReady = false;
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
 	bIsDecor = Kind == TEXT("mc:decor") && McDecor::Decode(Item.ToString(), Decor);
@@ -3279,6 +3332,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	{
 		return FindTopTexture(Item);
 	}
+	if (bIsDropped && bDropCube)
+	{
+		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+		return Layer == 1 ? Pictures.Top : Pictures.Side;
+	}
 	if (bIsItem || bIsFalling)
 	{
 		return FindItemTexture(Item);
@@ -3440,6 +3498,35 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	return Material;
 }
 
+void UMcEntityModelComponent::PrepareDropped()
+{
+	bDropReady = true;
+	DropUnit = McPlayerModel::FMeshData();
+	DropTop = McPlayerModel::FMeshData();
+	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+	bDropCube = Pictures.Kind == McHand::EHeld::Cube;
+	// The model's own ground display where the cache has it, else what the shots gave: a picture half a block, 0.125 up; a block a quarter.
+	const McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(bDropCube ? FName(TEXT("block/block")) : Item, TEXT("ground"));
+	DropScale = Display.bFound ? static_cast<float>(Display.Scale) : (bDropCube ? McEntityModel::GetDropArg(2, 0.25f) : 0.5f);
+	DropLift = (Display.bFound ? static_cast<float>(Display.Translation.Y) : (bDropCube ? 3.0f : 2.0f)) / 16.0f;
+	if (bDropCube)
+	{
+		McHand::BuildCubeSidesMesh(Pictures.SideTint, 1.0f, DropUnit);
+		McHand::BuildCubeTopMesh(Pictures.TopTint, 1.0f, DropTop);
+		return;
+	}
+	TArray<FColor> Pixels;
+	int32 Width = 0, Height = 0;
+	const FString Path = GetTexturePath(0);
+	if (Path.IsEmpty() || !McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width <= 0 || Height < Width)
+	{
+		// No picture to cut out: the two-sided flat picture as before.
+		McHand::BuildFlatMesh(1.0f, DropUnit);
+		return;
+	}
+	McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, DropUnit);
+}
+
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -3577,6 +3664,10 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		SetRelativeScale3D(FVector(Scale));
 	}
 
+	if (bIsDropped && !bDropReady)
+	{
+		PrepareDropped();
+	}
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
@@ -3658,6 +3749,41 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		else if (bIsGrillFood)
 		{
 			McEntityModel::BuildFlatItemMesh(0.375f, 0.0f, ItemVMax, Data);
+		}
+		else if (bIsDropped && bDropCube)
+		{
+			// A block: the sides, then the top, each its own picture.
+			for (int32 Part = 0; Part < 2; ++Part)
+			{
+				UMaterialInstanceDynamic* Material = GetMaterial(Part);
+				if (!Material)
+				{
+					bItemFailed = true;
+					return;
+				}
+				Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+				Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+				McPlayerModel::FMeshData Cube;
+				McEntityModel::BuildDroppedMesh(Part == 0 ? DropUnit : DropTop, Anim.Age, Count, DropScale, DropLift, Cube);
+				TArray<FVector2D> CubeUV1, CubeUV2;
+				CubeUV1.Init(FVector2D::ZeroVector, Cube.Positions.Num());
+				CubeUV2.Init(FVector2D(1.0, 0.0), Cube.Positions.Num());
+				if (NumSections <= Part)
+				{
+					CreateMeshSection(Part, Cube.Positions, Cube.Triangles, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>(), false);
+					SetMaterial(Part, Material);
+					NumSections = Part + 1;
+				}
+				else
+				{
+					UpdateMeshSection(Part, Cube.Positions, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>());
+				}
+			}
+			return;
+		}
+		else if (bIsDropped)
+		{
+			McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, Data);
 		}
 		else
 		{

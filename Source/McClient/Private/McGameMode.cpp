@@ -804,7 +804,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Pot.Entity = FMcBlockEntity::MakePot(Sides);
 		}
 	}
-	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "sides": [pot sides] }.
+	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "count": n, "sides": [pot sides] }.
 	const TArray<TSharedPtr<FJsonValue>>* ItemValues = nullptr;
 	FMcEntityHost* Host = WorldActor ? WorldActor->GetEntityHost() : nullptr;
 	if (Host && Scene->TryGetArrayField(TEXT("items"), ItemValues))
@@ -820,6 +820,11 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 				continue;
 			}
 			FMcItemStack Stack{ FName(*Id) };
+			double CountValue = 1.0;
+			if (Object->TryGetNumberField(TEXT("count"), CountValue))
+			{
+				Stack.Count = FMath::Max(1, static_cast<int32>(CountValue));
+			}
 			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
 			if (Object->TryGetArrayField(TEXT("sides"), SideValues))
 			{

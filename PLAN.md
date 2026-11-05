@@ -599,6 +599,13 @@ Status: **M0 to M3 done; M4 world generation started** (2026-10-26, branch `m1/b
 - **Banner sway** (2026-11-05), FITTED from 40 vanilla shots 3 ticks apart: the flag tilts about its bar by
   `0.058 + 0.033*cos(2pi*(t+32)/100)` rad (period 100 ticks, no x dependence), foot swinging back; flag raised 2 px.
   The phase offset is measured at one position only; y/z dependence and the wall banner raise are unmeasured.
+- **Dropped items in 3D** (2026-11-05), FITTED from vanilla run itemdrop1 (16 same-camera shots, 4 ticks apart): a flat item is
+  its picture cut out one pixel thick (`BuildExtrudedMesh`), 0.5 block across; a full block is a cube (`BuildCubeSidesMesh` and
+  `BuildCubeTopMesh`, two sections) at the model's own `ground` display scale (fallback 0.25). Spin 0.05 rad per tick; the middle
+  bobs 0.096 about 0.385 above the floor with period 63 ticks; stacks show 2 to 5 copies spread about 0.12 across and 0.1 up. Scene
+  `dropped_items`, test `Mc.EntityModel.Dropped`, `-McDrop=lift,spread,cubescale` to refit. NOT DONE: blocks that are not full cubes
+  (stairs, slabs, fences) draw nothing (as before) where vanilla shows the block's real model, which needs the baked block model path;
+  a block's cube size is unchecked against a vanilla shot of a cube alone; the cost with hundreds of drops is not measured.
 - **Placed banners** (2026-10-29): a banner block carries a flag entity (`mc:banner`, `FMcBannerEntity`) holding its base,
   wall/standing and layers, drawn as pole, bar and one tinted layer per pattern; placing keeps the item's patterns, breaking
   drops them back. `/give` takes `item[component=json]`.

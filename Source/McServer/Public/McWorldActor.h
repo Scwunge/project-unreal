@@ -359,6 +359,9 @@ private:
 	TSet<FIntPoint> DecorateBusy;
 	TArray<UE::Tasks::FTask> DecorateTasks;
 	TSharedPtr<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe> DecorateDone = MakeShared<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
+	// The chunks the players and anchors are in, as of the last look.
+	TArray<FIntPoint> StreamCentres;
+	UE::Tasks::ETaskPriority WorldTaskPriority() const;
 	// Waits for the decorating jobs: the chunks they use are the actor's.
 	void WaitForDecorating();
 

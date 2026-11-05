@@ -90,6 +90,15 @@ run)
       done
       echo "$NAME perf $$" > "$lane/owner"; held="$held $lane"
     done
+    # And nothing else working the machine, whoever's it is. Looks twice, since a single reading can catch a passing spike.
+    waited=0
+    while :; do
+      busy="$(echo "\$c=(Get-CimInstance Win32_Processor).LoadPercentage; \$g=(& nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits).Trim(); Start-Sleep 8; \$c2=(Get-CimInstance Win32_Processor).LoadPercentage; \$g2=(& nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits).Trim(); if ([math]::Min(\$c,\$c2) -gt 25 -or [math]::Min([int]\$g,[int]\$g2) -gt 25) { \"cpu \$c \$c2 gpu \$g \$g2: \" + ((Get-Process | Sort-Object CPU -Descending | Select-Object -First 4 | % Name) -join ' ') }" | ps | tr -d '\r')"
+      [ -z "$busy" ] && break
+      waited=$((waited + 18))
+      [ "$waited" -gt 120 ] && { echo "RUN_NOT_ALONE: machine busy, $busy"; exit 3; }
+      sleep 10
+    done
   fi
   echo "== run $run: $script, up to $MINUTES min"
   $SSH "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force $OUT/runs/$run | Out-Null; \$input | Set-Content $OUT/runs/$run/script.txt\"" < "$ROOT/tools/perf/$script.txt"

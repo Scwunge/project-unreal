@@ -485,7 +485,7 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 					}
 				}
 				Results->Enqueue(MoveTemp(Result));
-			}, UE::Tasks::ETaskPriority::BackgroundHigh);  // Ahead of making new chunks, behind the frame's own tasks.
+			});
 	}
 }
 

@@ -68,6 +68,7 @@ namespace
 		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
 		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
 		{ TEXT("data"), 2, TEXT("/data (get|merge|modify|remove) ...") },
+		{ TEXT("trigger"), 0, TEXT("/trigger <objective> [add|set <value>]") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
@@ -4287,6 +4288,54 @@ namespace
 		return { Ok(Modified) };
 	}
 
+	// /trigger <objective> [add|set <value>]: a player changes their own score on a trigger objective they were enabled for (wording from a ref run).
+	FReplies RunTrigger(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() != 2 && Words.Num() != 4)
+		{
+			return Words.Num() < 2 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+		}
+		FObjective* Objective = FindObjective(Words[1]);
+		if (!Objective)
+		{
+			return { Fail(FString::Printf(TEXT("Unknown scoreboard objective '%s'"), *Words[1])) };
+		}
+		int32 Amount = 1;
+		bool bSet = false;
+		if (Words.Num() == 4)
+		{
+			double Number = 0.0;
+			if ((Words[2] != TEXT("add") && Words[2] != TEXT("set")) || !ParseNumber(Words[3], Number) || Number != FMath::FloorToDouble(Number))
+			{
+				return BadArgument(Command);
+			}
+			bSet = Words[2] == TEXT("set");
+			Amount = FMath::RoundToInt32(Number);
+		}
+		TArray<FString> Who;
+		FString Error;
+		if (!ResolvePlayers(TEXT("@s"), Sender, Target, Who, Error) || Who.Num() != 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		if (Objective->Criteria != TEXT("trigger"))
+		{
+			return { Fail(McLang::Get(TEXT("commands.trigger.failed.invalid"))) };
+		}
+		if (!Objective->Enabled.Contains(Who[0]))
+		{
+			return { Fail(McLang::Get(TEXT("commands.trigger.failed.unprimed"))) };
+		}
+		int32& Score = Objective->Scores.FindOrAdd(Who[0]);
+		Score = bSet ? Amount : Score + Amount;
+		Objective->Enabled.Remove(Who[0]);
+		if (Words.Num() == 2)
+		{
+			return { Ok(McLang::Format(TEXT("commands.trigger.simple.success"), { Shown(*Objective) })) };
+		}
+		return { Ok(McLang::Format(bSet ? TEXT("commands.trigger.set.success") : TEXT("commands.trigger.add.success"), { Shown(*Objective), FString::FromInt(Amount) })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -4981,6 +5030,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("bossbar"))
 	{
 		return RunBossbar(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("trigger"))
+	{
+		return RunTrigger(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("data"))
 	{

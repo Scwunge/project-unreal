@@ -14,12 +14,17 @@ public:
 	FMcFireball();
 	static const FName& GhastType();
 	static const FName& SmallType();
-	virtual FName GetType() const override { return bSmall ? SmallType() : GhastType(); }
+	static const FName& SkullType();
+	virtual FName GetType() const override { return bSkull ? SkullType() : (bSmall ? SmallType() : GhastType()); }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool IsPersistent() const override { return false; }
 
 	// Fires along Direction (unit) from where it is.
 	void Launch(const FVector& Direction, bool bInSmall);
+	// A wither's skull (wither1.txt, normal difficulty, 12 skulls identical): speed 0.1, 0.146, 0.18, 0.204 ... settling at 0.27, which is
+	// speed = (speed + 0.1) * 0.73 along the aim, no gravity. Blast power 1 is the game's value and NOT measured (the player lost a net 2 hp
+	// beyond a steady drain in the 20 ticks of each hit, which does not settle it).
+	void LaunchSkull(const FVector& Direction);
 
 	static constexpr double Acceleration = 0.1;
 	static constexpr double Inertia = 0.95;
@@ -31,5 +36,6 @@ private:
 	void Hit(FMcEntityManager& Manager, const FVector* PlayerFeet);
 
 	bool bSmall = false;
+	bool bSkull = false;
 	FVector Aim = FVector::ForwardVector;
 };

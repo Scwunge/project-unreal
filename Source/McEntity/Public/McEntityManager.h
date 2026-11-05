@@ -46,6 +46,14 @@ public:
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
 	int32 Age = 0;
+	// Ticks before a portal can take it again (McTravel; not saved).
+	int32 PortalCooldown = 0;
+	// Tied by a lead (McLeash.h): to a knot entity by id, or (id 0) to the player last seen near LeashPlayerPos. Not saved.
+	bool bLeashed = false;
+	int32 LeashKnot = 0;
+	FVector LeashPlayerPos = FVector::ZeroVector;
+	// Saddle, tamed state and rider of a mount (McMount.h); null for anything that isn't one. Not saved yet.
+	TSharedPtr<struct FMcMountState> Mount;
 	// Set to have the manager drop it at the end of the tick.
 	bool bRemoved = false;
 };
@@ -130,6 +138,10 @@ public:
 	const FVector& GetAlarmPos() const { return AlarmPos; }
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
+	// The mob griefing game rule (endermen take blocks, villagers..): on unless the host says otherwise.
+	bool bMobGriefing = true;
+	// Where each player looks (unit vectors from their eyes, parallel to PlayerPositions); empty where the host doesn't know.
+	TArray<FVector> PlayerLooks;
 	// Whether nothing solid is over the block, so rain and sun reach it.
 	bool IsSkyExposed(const FIntVector& Pos) const;
 
@@ -154,6 +166,10 @@ public:
 	// the rays reach (calling OnBlocksDestroyed with them, after the items were dealt with, so the drops they leave
 	// are safe).
 	void Explode(const FVector& Center, float Power);
+	// True while an explosion is hurting the mobs it reaches (an end crystal hit by one vanishes instead of going off).
+	bool bInBlast = false;
+	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
+	bool bDragonKilledBefore = false;
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;

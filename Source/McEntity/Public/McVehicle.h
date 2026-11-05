@@ -192,6 +192,7 @@ public:
 	FVector2D PushDirection = FVector2D::ZeroVector;
 	// A TNT cart: ticks until it goes off, or -1 while it isn't lit.
 	int32 Fuse = -1;
+	double FallDistance = 0.0;
 	// A hopper cart on a powered activator rail picks nothing up.
 	bool bHopperLocked = false;
 	// Lit, it shows 79 that tick, counts down to 0, waits at 0 a tick and goes off the tick after (vehicle_log8.txt: lit
@@ -304,6 +305,8 @@ private:
 	enum class ESurface : uint8 { Air, Water, Underwater, UnderFlowing, Ground };
 	// Falling last tick, so landing in water stops it.
 	bool bWasInAir = false;
+	// Ticks of paddling in water since the last stroke sounded (not saved).
+	int32 PaddleTicks = 0;
 	// Ticks the hull has spent in the top block of a rising bubble column, under air (not saved).
 	int32 BubbleTime = 0;
 	// What the boat floats or rests on; fills the friction its glide keeps (0.9 water, 0.6 stone, more on ice).

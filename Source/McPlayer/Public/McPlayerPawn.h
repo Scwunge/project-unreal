@@ -257,10 +257,13 @@ protected:
 	void ServerTryRide(FVector Look);
 	// A riding owner's keys (forward and strafe, as in FMcMoveInput) and where they look (the camera yaw), once a tick.
 	UFUNCTION(Server, Unreliable)
-	void ServerRideInput(float Forward, float Strafe, float LookYaw);
+	void ServerRideInput(float Forward, float Strafe, float LookYaw, bool bJump);
 	// A riding owner wants out.
 	UFUNCTION(Server, Reliable)
 	void ServerWantDismount();
+	// A riding owner uses the stick in their hand (carrot on a stick, warped fungus on a stick): the pig or strider speeds up.
+	UFUNCTION(Server, Reliable)
+	void ServerRideBoost();
 	// A sleeping owner presses to get up.
 	UFUNCTION(Server, Reliable)
 	void ServerWantWake();
@@ -358,6 +361,7 @@ private:
 	// Server: the riding owner's keys, as the last RPC (or the local keys) had them.
 	float RideForward = 0.0f;
 	float RideStrafe = 0.0f;
+	bool bRideJump = false;
 	void ServerTickRiding();
 
 	// ---- Fishing (McPlayerFishing.cpp) ----
@@ -367,6 +371,17 @@ private:
 	bool bRodCast = false;
 	// Server: keeps the bobber told where the angler is, and takes it away when the rod is put down or left too far behind.
 	void ServerTickFishing(FMcEntityManager& Entities);
+	// Maps (McPlayerMaps.cpp): an empty map used makes a filled one; one held fills in, a row at a time.
+	void ServerUseMap();
+	// A bundle used throws out the newest stack it holds (minecraft.wiki "Bundle").
+	void ServerUseBundle();
+public:
+	// For screenshots (-McMapShot): puts a new filled map into the selected slot.
+	void GiveShotMap();
+private:
+	void ServerTickMaps();
+	int32 MapTicks = 0;
+	int32 MapRow = 0;
 	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
 	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
 	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;
@@ -474,6 +489,21 @@ private:
 	// The side of the last hit on the owner, for the view's roll while the hurt time runs down.
 	float HurtSide = 0.0f;
 	float BowBaseFov = 0.0f;
+	// The spyglass (measured: ref run spy1/spy2): each game tick the view's modifier moves half the way to 0.1 while it is
+	// held up (to 1 when it is not) and the frame shows the value between the last two ticks; the scope picture's size
+	// (in screen heights) does the same from 0.5 to about 1.122 and is gone when the glass is down.
+	float SpyMod = 1.0f;
+	float SpyOld = 1.0f;
+	float SpyAcc = 0.0f;
+	float SpyBaseFov = 0.0f;
+	float ScopeNow = 0.5f;
+	float ScopeOld = 0.5f;
+	bool bSpyLocal = false;
+public:
+	bool IsScoping() const { return bSpyLocal; }
+	// The scope picture's side as a multiple of the screen height, between ticks.
+	float GetScopeScale() const { return FMath::Lerp(ScopeOld, ScopeNow, FMath::Clamp(SpyAcc / 0.05f, 0.0f, 1.0f)); }
+private:
 	// Lets the arrow go after DrawTicks of drawing.
 	void ServerShootBow(int32 DrawTicks);
 	FName EatCrumbItem;

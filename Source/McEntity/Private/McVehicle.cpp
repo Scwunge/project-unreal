@@ -580,14 +580,48 @@ void FMcMinecartEntity::Tick(FMcEntityManager& Manager)
 		{
 			Body.Velocity *= 0.5;
 		}
+		const double HeightBefore = Body.Position.Y;
 		McPhysics::Move(World, Body, Body.Velocity, false);
 		if (!Body.bOnGround)
 		{
 			Body.Velocity *= 0.95;
+			FallDistance += FMath::Max(0.0, HeightBefore - Body.Position.Y);
 		}
+		else
+		{
+			FallDistance += FMath::Max(0.0, HeightBefore - Body.Position.Y);
+			// A TNT cart landing after a fall of 3 or more goes off, with a power of 4 plus up to 1.5 times a tenth of the
+			// fall (vehicle_log20.txt: dropped from 2 it lands, from 3, 4, 6 and 10 it blows on landing; a cart running
+			// into a wall at up to 0.4 on rails doesn't, vehicle_log21.txt).
+			if (Variant == EVariant::Tnt && FallDistance >= 3.0)
+			{
+				const double Tenth = FMath::Min(FallDistance / 10.0, 5.0);
+				Manager.Explode(Body.Position + FVector(0.0, 0.5, 0.0), 4.0f + FMath::FRand() * 1.5f * static_cast<float>(Tenth));
+				bRemoved = true;
+				return;
+			}
+			FallDistance = 0.0;
+		}
+	}
+	else
+	{
+		FallDistance = 0.0;
 	}
 	TouchDetectors(Manager, World);
 	TickVariant(Manager);
+	// Rolling: every 10 ticks a rumble, 0.7 of the speed up to 0.5 (a rider hears the inside one at 0.75), vehicle_sounds.txt.
+	{
+		const double Rolling = FVector2D(Body.Velocity.X, Body.Velocity.Z).Size();
+		if (Rolling >= 0.01 && Age % 10 == 3)
+		{
+			const float Part = static_cast<float>(FMath::Min(Rolling, 0.5) / 0.5);
+			Manager.PlaySound(FName("entity.minecart.riding"), Body.Position, 0.35f * Part, 1.0f);
+			if (GetPassengerCount() > 0)
+			{
+				Manager.PlaySound(FName("entity.minecart.inside"), Body.Position, 0.75f * Part, 1.0f);
+			}
+		}
+	}
 	TickPassengers(Manager);
 	PushMobs(Manager);
 }
@@ -1024,6 +1058,8 @@ FMcBoatEntity::ESurface FMcBoatEntity::Sense(FMcBlockWorld& World, double& OutSu
 			return ESurface::Water;
 		}
 		const FMcStateId Over = World.GetBlock(FIntVector(X, FMath::FloorToInt32(Body.Position.Y + Body.Height), Z));
+		// With water over its hull the drag is a half (vehicle_log18.txt: driven under water it tops out at 0.0727 = 0.04 / (1 - 0.45)).
+		OutFriction = 0.45;
 		const FName Level = Registry.GetPropertyValue(Over, TEXT("level"));
 		return HasWater(Over) && !Level.IsNone() && Level != FName(TEXT("0")) ? ESurface::UnderFlowing : ESurface::Underwater;
 	}
@@ -1192,7 +1228,9 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 	const float Turn = bRiding ? -RiderStrafe : 0.0f;
 	// A degree more each tick a key is held, and nine tenths of it kept (paddle_log.txt: the yaw goes -1, -1.9, -2.71,
 	// -3.439 a tick turning left, and 7.46, 6.72, 6.04 coasting after).
-	TurnRate = TurnRate * 0.9f + Turn;
+	// The turn decays with the same friction as the way it moves (vehicle_log18.txt, under water: the yaw steps go 1.0, 1.45,
+	// 1.65, 1.74, 1.78 ...).
+	TurnRate = TurnRate * static_cast<float>(Slip) + Turn;
 	Yaw += TurnRate;
 	double Push = 0.0;
 	if (bRiding)
@@ -1203,6 +1241,21 @@ void FMcBoatEntity::Tick(FMcEntityManager& Manager)
 		{
 			Push = 0.005;
 		}
+	}
+	// Paddling in water splashes twice every 16 ticks, at 0.8 and a pitch of 0.8 to 1.2 (vehicle_sounds.txt: pairs at ticks 166,
+	// 167, then 182, 262, 263, 278, 294 ...).
+	if (Push != 0.0 && (Where == ESurface::Water || Where == ESurface::Underwater || Where == ESurface::UnderFlowing))
+	{
+		if (PaddleTicks % 16 == 0)
+		{
+			Manager.PlaySound(FName("entity.boat.paddle_water"), Body.Position, 0.8f, 0.8f + FMath::FRand() * 0.4f);
+			Manager.PlaySound(FName("entity.boat.paddle_water"), Body.Position, 0.8f, 0.8f + FMath::FRand() * 0.4f);
+		}
+		++PaddleTicks;
+	}
+	else
+	{
+		PaddleTicks = 0;
 	}
 	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
 	// The block's friction first, then the paddles' push (vehicle_log15.txt, a driven boat on ice: 0.04, then

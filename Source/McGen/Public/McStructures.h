@@ -56,6 +56,8 @@ public:
 	// The structures (by id, "minecraft:igloo") whose set starts one in this chunk, whatever the biome and ground
 	// (a chunk can have several).
 	void GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const;
+	// Only the structures the start chunk's biome allows; a set falls back to another of its entries.
+	void GetCandidates(uint64 Seed, FIntPoint Chunk, FMcBiomeId Biome, TArray<FName>& Out) const;
 	// The same with the biome checked at the chunk's middle, using the region's biomes (the chunk must be in it).
 	void GetStarts(FMcGenRegion& Region, uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const;
 
@@ -64,6 +66,8 @@ public:
 	bool PlaceStructure(FMcGenRegion& Region, FName Structure, uint64 Seed, FIntPoint Start) const;
 	// Whether the structure's biome tag lists the biome.
 	bool BiomeAllows(FName Structure, FMcBiomeId Biome) const;
+	// Structures that want suitable biomes all round them (monuments) check a circle through this.
+	bool SurroundAllows(FName Structure, FIntPoint Chunk, TFunctionRef<FMcBiomeId(int32, int32)> BiomeAt) const;
 
 	// The jigsaw layout last made for a structure starting here (null if none was), for tests and tools.
 	TSharedPtr<FMcJigsawLibrary::FLayout> FindLayout(FName Structure, uint64 Seed, FIntPoint Start) const;
@@ -78,9 +82,11 @@ private:
 	struct FSet;
 
 	bool IsStartChunk(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
-	const FStructure* Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
-	bool BiomeFits(FMcGenRegion& Region, const FStructure& Structure, FIntPoint Chunk, bool bInRegion) const;
+	const FStructure* Choose(const FSet& Set, uint64 Seed, FIntPoint Chunk, TFunctionRef<bool(const FStructure&)> Fits) const;
+	bool BiomeSuits(const FStructure& S, FMcBiomeId SurfaceBiome, FIntPoint Chunk) const;
+	bool StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool bInRegion, FMcBiomeId& Biome) const;
 	bool IsFlatEnough(FIntPoint Start) const;
+	bool SurroundFits(const FStructure& Structure, FIntPoint Chunk) const;
 	void Build(FMcGenRegion& Region, const FStructure& Structure, uint64 Seed, FIntPoint Start, int32 Salt) const;
 	bool IsExcluded(const FSet& Set, uint64 Seed, FIntPoint Chunk) const;
 	bool ResolveTag(const FString& Tag, TBitArray<>& Out, int32 Depth) const;

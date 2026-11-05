@@ -1,4 +1,5 @@
 #include "McBlockUse.h"
+#include "McLeash.h"
 #include "McRecipe.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -1734,6 +1735,19 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	{
 		return false;
 	}
+	{
+		// A lead on a fence post ties the mobs the player leads to a knot there; a knot already there hands them back.
+		const FString FenceName = GetBlockName(*Blocks, Pos).ToString();
+		FMcEntityHost* LeadHost = WorldActor.GetEntityHost();
+		if (LeadHost && FenceName.EndsWith(TEXT("_fence")))
+		{
+			const FMcItemStack& HeldLead = Data->Inventory->Get(Data->SelectedSlot);
+			if (McLeash::UseFence(LeadHost->GetManager(), Pos, Player.GetFeetPosition(), !HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead")))
+			{
+				return true;
+			}
+		}
+	}
 	if (GetBlockName(*Blocks, Pos) == TEXT("minecraft:note_block"))
 	{
 		return WorldActor.TuneNote(Pos);
@@ -1850,6 +1864,11 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (Name == TEXT("minecraft:grindstone"))
 	{
 		Data->OpenBlockWindow(EMcWindowKind::Grindstone, Pos, TEXT("Repair & Disenchant"), nullptr, nullptr);
+		return true;
+	}
+	if (Name == TEXT("minecraft:cartography_table"))
+	{
+		Data->OpenBlockWindow(EMcWindowKind::CartographyTable, Pos, TEXT("Cartography Table"), nullptr, nullptr);
 		return true;
 	}
 	if (Name == TEXT("minecraft:smithing_table"))
@@ -2002,6 +2021,13 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 	{
 		return false;
 	}
+	// A window on an animal or a cart or boat stays while that is within reach.
+	if (Window.EntityId != 0)
+	{
+		FMcEntityHost* Host = const_cast<AMcWorldActor&>(WorldActor).GetEntityHost();
+		const FMcEntity* Found = Host ? Host->GetManager().Find(Window.EntityId) : nullptr;
+		return Found && !Found->bRemoved && FVector::Dist(Player.GetFeetPosition(), Found->Body.Position) < AMcPlayerPawn::ServerReach + 1.0;
+	}
 	const FVector Eye = Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0);
 	if (FVector::Dist(Eye, FVector(Window.Pos) + FVector(0.5)) > AMcPlayerPawn::ServerReach + 1.0)
 	{
@@ -2037,10 +2063,15 @@ bool UMcBlockUseSubsystem::IsWindowValid(const AMcPlayerPawn& Player, const AMcW
 		return Name == TEXT("minecraft:smithing_table");
 	case EMcWindowKind::Grindstone:
 		return Name == TEXT("minecraft:grindstone");
+	case EMcWindowKind::CartographyTable:
+		return Name == TEXT("minecraft:cartography_table");
 	case EMcWindowKind::Anvil:
 		return IsAnvilName(Name);
 	case EMcWindowKind::BrewingStand:
 		return Name == TEXT("minecraft:brewing_stand");
+	case EMcWindowKind::Horse:
+		// Only on an entity, which is checked above.
+		return true;
 	case EMcWindowKind::Hopper:
 		return Name == TEXT("minecraft:hopper");
 	case EMcWindowKind::Dispenser:

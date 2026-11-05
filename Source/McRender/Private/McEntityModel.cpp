@@ -305,6 +305,13 @@ namespace McEntityModel
 				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true), Box(1, 33, -3, -4, 6, 6, 3, 1) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
+				// Mooshroom: the cow's body and head in its own pictures (red; brown is a variant). The mushrooms on its back
+				// are not drawn yet (open, see PLAN.md "Missing mobs").
+				FModel Moo = Cow;
+				Moo.Kind = TEXT("minecraft:mooshroom");
+				Moo.Textures = { TEXT("cow/mooshroom_red.png") };
+				Moo.Variants = { { TEXT("cow/mooshroom_red.png") }, { TEXT("cow/mooshroom_brown.png") } };
+				Models.Add(Moo.Kind, Moo);
 			}
 			{
 				FModel Sheep;
@@ -321,6 +328,8 @@ namespace McEntityModel
 				Sheep.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
+				// The wool takes the sheep's dye (white when it has none).
+				Sheep.TintedLayers = 2u;
 				Models.Add(Sheep.Kind, Sheep);
 			}
 			{
@@ -1010,6 +1019,73 @@ namespace McEntityModel
 				Models.Add(Blaze.Kind, Blaze);
 			}
 			{
+				// A phantom, from the logged model (`phantom1.txt`, one frame): body, head, two wing pairs and a two-part tail on a 64 x 64 picture, all at their rest tilts. The wing flap and the tail sway are not fitted. Lowered 21 (1.3125 blocks) from the log's pivots to sit in the hitbox: the reference shows a phantom on the ground with its wings flat on it (pairshots1.txt); the exact lift is not measured.
+				FModel Phantom;
+				Phantom.Kind = TEXT("minecraft:phantom");
+				Phantom.TextureSize = FIntPoint(64, 64);
+				Phantom.Textures = { TEXT("phantom/phantom.png") };
+				Phantom.Parts.Add(Part(ERole::Static, FVector(2.0f, 5.0f, 8.0f), { Box(23, 12, 0.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, -0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(7.97f, 4.4f, 8.0f), { Box(16, 24, 0.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, -0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.0f, 8.0f), { Box(23, 12, -6.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, 0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-8.97f, 4.4f, 8.0f), { Box(16, 24, -13.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, 0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.0f, -1.0f), { Box(3, 20, -2.0f, -2.0f, -6.0f, 3, 2, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.5f, -7.0f), { Box(4, 29, -1.0f, -1.0f, -6.0f, 1, 1, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, 0), { Box(0, 8, -3.0f, -1.0f, -1.0f, 5, 3, 9) }, -0.1f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.7f, 7.065f), { Box(0, 0, -4.0f, -1.0f, 0, 7, 3, 5) }, 0.1f, 0, 0.0f));
+				Models.Add(Phantom.Kind, Phantom);
+			}
+			{
+				// A guardian, from the logged model (`phantom1.txt`, one frame): the 12 x 12 x 16 head with its side and top plates, twelve spikes at rest, the eye and a three-part tail, on a 64 x 64 picture. Spike extension, the eye's look and the tail swish are not fitted.
+				FModel Guardian;
+				Guardian.Kind = TEXT("minecraft:guardian");
+				Guardian.TextureSize = FIntPoint(64, 64);
+				Guardian.Textures = { TEXT("guardian/guardian.png") };
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(0, 0, -6.0f, -22.0f, -8.0f, 12, 12, 16), Box(0, 28, -8.0f, -22.0f, -6.0f, 2, 12, 12), Box(0, 28, 6.0f, -22.0f, -6.0f, 2, 12, 12), Box(16, 40, -6.0f, -10.0f, -6.0f, 12, 2, 12), Box(16, 40, -6.0f, -24.0f, -6.0f, 12, 2, 12) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.933f, 0.0671f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.0f, -0.0004f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.077f, 8.0f, -8.077f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, 0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.06f, 8.0f, -8.06f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, -0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0116f, -7.988f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0729f, 7.927f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 8.25f), { Box(8, 0, -1.0f, -17.0f, -1.0f, 2, 2, 1) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(40, 0, -2.0f, -18.0f, -15.0f, 4, 4, 8) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.5f, 23.5f, -14.0f), { Box(0, 54, 0.0f, -17.0f, -7.0f, 3, 3, 7) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.0f, 23.0f, -20.0f), { Box(41, 32, 0.0f, -16.0f, -6.0f, 2, 2, 6), Box(25, 19, 1.0f, -19.5f, -12.0f, 1, 9, 9) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.08f, -8.08f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.04f, 8.043f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.967f, 15.97f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.921f, 15.92f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.948f, 8.0f, 7.948f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, -0.7854f, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.023f, 8.0f, 8.023f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, 0.7854f, 0.0f));
+				Models.Add(Guardian.Kind, Guardian);
+			}
+			{
+				// An endermite, from the logged model (`endmobs1.txt`): four stacked segments on a 64 x 32 picture, front to back
+				// 4 x 3 x 2, 6 x 4 x 5, 3 x 3 x 1 and 1 x 2 x 1. The wriggle (each segment swings sideways) is not fitted.
+				FModel Endermite;
+				Endermite.Kind = TEXT("minecraft:endermite");
+				Endermite.TextureSize = FIntPoint(64, 32);
+				Endermite.Textures = { TEXT("endermite/endermite.png") };
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, 3.5f), { Box(0, 0, -2, -3, -1, 4, 3, 2) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 4, 0), { Box(0, 5, -3, -4, -2.5f, 6, 4, 5) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, -3), { Box(0, 14, -1.5f, -3, -0.5f, 3, 3, 1) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 2, -4), { Box(0, 18, -0.5f, -2, -0.5f, 1, 2, 1) }));
+				Models.Add(Endermite.Kind, Endermite);
+			}
+			{
+				// A shulker, from the logged model (`endmobs1.txt`, closed): a 16 x 8 x 16 base, a 16 x 12 x 16 lid overlapping it, and
+				// a 6 cube head standing 12 up, on a 64 x 64 picture. The lid's opening and the head's turn are not built.
+				FModel Shulker;
+				Shulker.Kind = TEXT("minecraft:shulker");
+				Shulker.TextureSize = FIntPoint(64, 64);
+				Shulker.Textures = { TEXT("shulker/shulker.png") };
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 28, -8, 0, -8, 16, 8, 16) }));
+				// The lid is a hair bigger than the game's, so its notched lower edge shows the base through the gaps instead of fighting it for the depth.
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -8, 4, -8, 16, 12, 16, 0.02f) }));
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 52, -3, -6, -3, 6, 6, 6) }));
+				Models.Add(Shulker.Kind, Shulker);
+			}
+			{
 				// A strider, from the logged model (`stridermodel1.txt`; the adult): a 16 x 14 x 16 body 1 above the middle, two 4 x 16 x 4 legs,
 				// and three bristles each side (flat 12 x 16 fins, children of the body, at their rest rolls). 64 x 128 picture. The legs' swing
 				// and the bristles' sway are not fitted.
@@ -1017,15 +1093,15 @@ namespace McEntityModel
 				Strider.Kind = TEXT("minecraft:strider");
 				Strider.TextureSize = FIntPoint(64, 128);
 				Strider.Textures = { TEXT("strider/strider.png") };
-				Strider.Parts.Add(Part(ERole::Static, FVector(0, 23, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
+				Strider.Parts.Add(Part(ERole::Static, FVector(0, 21.7f, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
 				Strider.Parts.Add(Part(ERole::LegRight, FVector(-4, 16, 0), { Box(0, 32, -2, -16, -2, 4, 16, 4) }));
 				Strider.Parts.Add(Part(ERole::LegLeft, FVector(4, 16, 0), { Box(0, 55, -2, -16, -2, 4, 16, 4) }));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
-				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19.0f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24.0f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28.0f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29.0f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25.0f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20.0f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
 				Models.Add(Strider.Kind, Strider);
 			}
 			{
@@ -1037,15 +1113,15 @@ namespace McEntityModel
 				Ghast.Scale = 4.5f;
 				Ghast.Textures = { TEXT("ghast/ghast.png") };
 				Ghast.Parts.Add(Part(ERole::Static, FVector(0, 6.4f, 0), { Box(0, 0, -8, -8, -8, 16, 16, 16) }));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
-				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5.0f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5.0f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0.0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
 				Models.Add(Ghast.Kind, Ghast);
 			}
 			{
@@ -2109,8 +2185,8 @@ namespace McEntityModel
 			const FVector RotU = U * FMath::Cos(Angle) + V * FMath::Sin(Angle);
 			const FVector RotV = V * FMath::Cos(Angle) - U * FMath::Sin(Angle);
 			const FVector4 Rect(0, 0, 1, ItemVMax);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
 			return;
 		}
 		if (Decor.bInvisible)

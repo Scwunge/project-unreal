@@ -1,4 +1,5 @@
 #include "McEntityManager.h"
+#include "McLeash.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -188,6 +189,7 @@ void FMcEntityManager::Tick()
 		SetDetector(Pos, false);
 	}
 	Touched.Reset();
+	McLeash::Tick(*this);
 	// Entities added while ticking (a mob dropping an item) join the next tick.
 	const int32 Count = Entities.Num();
 	for (int32 Index = 0; Index < Count; ++Index)
@@ -402,7 +404,9 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		{
 			Mob.HurtTime = 0;
 			// No blow's knockback of its own: the reference mobs' push was exactly the blast's (1 - distance / 8), set below.
+			bInBlast = true;
 			Mob.Damage(Damage, nullptr);
+			bInBlast = false;
 			if (!Mob.bRemoved)
 			{
 				// Shoved away from the blast along the line to its eye, harder the closer and more open to it.

@@ -117,8 +117,23 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// The shield's slot picture (its model is special, with no flat texture): the front plate of the entity texture on the
+	// slanted quad the vanilla slot shows (ref run shieldhud).
+	const FIcon& GetShieldIcon(const FMcItemStack& Shield);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
+	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).
+	const FIcon& GetMapIcon(const FMcItemStack& Stack);
+	// The picture of a filled map's data, kept current; null if the map is unknown.
+	UTexture2D* GetMapTexture(const FMcItemStack& Stack);
+	// The filled map in the main hand, held up in front of the view (frame and picture).
+	void DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch, const FVector& PlayerPosition, float PlayerYaw);
+	// A picture of Size (GUI units) square centred on (X, Y), turned clockwise by Degrees.
+	void DrawTurnedSprite(UTexture2D* Texture, float CentreX, float CentreY, float Size, float Degrees);
+	TMap<int32, FIcon> MapIcons;
+	TMap<int32, int32> MapIconRevisions;
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
@@ -136,6 +151,8 @@ private:
 	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
 	UTexture2D* LoadVignette();
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
+	// The same with the top edge moved right by TopShift and the bottom edge by BottomShift (italic text).
+	void DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift);
 	void DrawIcon(const FIcon& Icon, float X, float Y);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);
 
@@ -242,8 +259,13 @@ private:
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	// The closed captions at the bottom right: a line for each sound lately played that has a caption, the newest on top,
+	// fading over three seconds, with an arrow towards a sound off to the side.
+	void DrawSubtitles(int32 Width, int32 Height);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
+	// The /title text: the title at four times the size above the middle of the screen, the subtitle at twice below it.
+	void DrawTitleText(int32 Width, int32 Height);
 	// The toasts at the top right, over everything.
 	void DrawToasts(int32 Width, int32 Height);
 	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
@@ -252,7 +274,7 @@ private:
 	FString HeldNameText;
 	double HeldNameTime = -100.0;
 	void DrawChatInput(int32 Width, int32 Height);
-	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
+	TArray<FString> WrapText(const FString& Text, float MaxWidth, bool bKeepSpace = false) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
 	// focused; a click focuses it, Tab moves on).
 	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);
@@ -377,7 +399,17 @@ private:
 		int32 Priority = 0;
 	};
 	TMap<int32, FGlyph> Glyphs;   // by code point
-	const FGlyph* FindGlyph(int32 Char) const;
+	// The glyph of Char in a font ("minecraft:uniform", "zz:pix"; empty is the default font, whose table is Glyphs). A font id
+	// of its own is read from font/<id>.json when it is first asked for, and a character it lacks shows as the missing box.
+	const FGlyph* FindGlyph(int32 Char, const FString& Font = FString()) const;
+	struct FFontTable
+	{
+		TMap<int32, FGlyph> Glyphs;
+		TSharedPtr<FMcRasterFonts> Raster;
+		TSet<int32> Asked;
+	};
+	TMap<FString, FFontTable> OtherFonts;
+	void LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& OutGlyphs, TSharedPtr<FMcRasterFonts>& OutRaster, TSet<int32>& OutAsked);
 	UTexture2D* MakeGlyphTexture(const FMcRasterGlyph& Glyph);
 	// The providers that draw their characters when they are first needed, and the characters they were already asked for.
 	TSharedPtr<FMcRasterFonts> RasterFonts;

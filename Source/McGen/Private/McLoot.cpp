@@ -3,6 +3,7 @@
 #include "Dom/JsonValue.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McGen.h"
 #include "McItemRegistry.h"
 #include "McNbt.h"
@@ -32,10 +33,18 @@ namespace
 			return *Found;
 		}
 		TSharedPtr<FJsonObject> Table;
-		const FString Path = McCache::Data(TEXT("loot_table/") + McCache::PathOf(Key) + TEXT(".json"));
-		if (IFileManager::Get().FileExists(*Path))
+		// A data pack's table of the id (any namespace) wins over the game's.
+		const FString Path = McData::PathOf(Key, TEXT("loot_table"), TEXT(".json"));
+		if (!Path.IsEmpty())
 		{
 			Table = McCache::LoadJsonObject(Path);
+		}
+		static bool bHooked = false;
+		if (!bHooked)
+		{
+			// /reload drops what was read.
+			bHooked = true;
+			McData::OnReload().AddLambda([]() { FScopeLock Lock(&TablesLock); Tables.Empty(); });
 		}
 		if (!Table.IsValid())
 		{
@@ -944,7 +953,7 @@ bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<F
 		return false;
 	}
 	const FString Table = TEXT("blocks/") + McCache::PathOf(Registry.GetBlockOf(Context.State).Name.ToString());
-	if (!IFileManager::Get().FileExists(*McCache::Data(TEXT("loot_table/") + Table + TEXT(".json"))))
+	if (McData::PathOf(Table, TEXT("loot_table"), TEXT(".json")).IsEmpty())
 	{
 		// Air, bedrock and the like drop nothing; no warning for that.
 		return false;

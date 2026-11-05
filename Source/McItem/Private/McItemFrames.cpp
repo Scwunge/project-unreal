@@ -1,4 +1,5 @@
 #include "McItemFrames.h"
+#include "Dom/JsonObject.h"
 
 namespace
 {
@@ -39,7 +40,15 @@ namespace
 		}
 	};
 
-	McItemFrames::FContext Current;
+	// The needles of compasses that point at a place of their own, by place (a lodestone or a death).
+	struct FTracked
+	{
+		FNeedle Needle;
+		int64 LastTicks = INT64_MIN;
+	};
+	TMap<uint64, FTracked> Tracked;
+
+McItemFrames::FContext Current;
 	FNeedle CompassNeedle;
 	FNeedle ClockNeedle = []() { FNeedle Needle; Needle.Pull = 0.115; Needle.Damping = 0.895; return Needle; }();
 	// A spinning needle (another dimension, or no target): a random drift. Not measured at all: a placeholder
@@ -130,5 +139,86 @@ namespace McItemFrames
 			return FName(*FString::Printf(TEXT("minecraft:clock_%02d"), FrameOf(Value, 64)));
 		}
 		return Item;
+	}
+
+	bool GetLodestone(const FMcItemStack& Stack, FIntVector& OutPos, FName& OutDimension)
+	{
+		const TSharedPtr<FJsonValue> Value = Stack.Get(TEXT("minecraft:lodestone_tracker"));
+		if (!Value.IsValid() || Value->Type != EJson::Object)
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Target;
+		if (!Value->AsObject()->TryGetObjectField(TEXT("target"), Target))
+		{
+			return false;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Pos;
+		FString Dimension;
+		if (!(*Target)->TryGetArrayField(TEXT("pos"), Pos) || Pos->Num() != 3 || !(*Target)->TryGetStringField(TEXT("dimension"), Dimension))
+		{
+			return false;
+		}
+		OutPos = FIntVector(static_cast<int32>((*Pos)[0]->AsNumber()), static_cast<int32>((*Pos)[1]->AsNumber()), static_cast<int32>((*Pos)[2]->AsNumber()));
+		OutDimension = FName(*Dimension);
+		return true;
+	}
+
+	void SetLodestone(FMcItemStack& Stack, const FIntVector& Pos, FName Dimension)
+	{
+		const TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> Place;
+		Place.Add(MakeShared<FJsonValueNumber>(Pos.X));
+		Place.Add(MakeShared<FJsonValueNumber>(Pos.Y));
+		Place.Add(MakeShared<FJsonValueNumber>(Pos.Z));
+		Target->SetArrayField(TEXT("pos"), Place);
+		Target->SetStringField(TEXT("dimension"), Dimension.ToString());
+		const TSharedRef<FJsonObject> Tracker = MakeShared<FJsonObject>();
+		Tracker->SetObjectField(TEXT("target"), Target);
+		Tracker->SetBoolField(TEXT("tracked"), true);
+		Stack.Set(TEXT("minecraft:lodestone_tracker"), MakeShared<FJsonValueObject>(Tracker));
+	}
+
+	FName ResolveStack(const FMcItemStack& Stack)
+	{
+		const bool bRecovery = Stack.Item == TEXT("minecraft:recovery_compass");
+		if (Stack.Item != TEXT("minecraft:compass") && !bRecovery)
+		{
+			return Resolve(Stack.Item);
+		}
+		FIntVector Place;
+		FName Dimension;
+		bool bPointed = false;
+		FVector2D Target = FVector2D::ZeroVector;
+		if (bRecovery)
+		{
+			bPointed = Current.bHasDeath && Current.DeathDimension == Current.Dimension;
+			Target = Current.DeathPosition;
+		}
+		else if (GetLodestone(Stack, Place, Dimension))
+		{
+			bPointed = Dimension == Current.Dimension;
+			Target = FVector2D(Place.X + 0.5, Place.Z + 0.5);
+		}
+		else
+		{
+			return Resolve(Stack.Item);
+		}
+		const FString Prefix = bRecovery ? TEXT("recovery_compass") : TEXT("compass");
+		if (!bPointed)
+		{
+			// Nowhere to point in this dimension: the needle drifts about (not measured, see SpinNeedle).
+			return FName(*FString::Printf(TEXT("minecraft:%s_%02d"), *Prefix, (16 + FrameOf(SpinNeedle.Value, 32)) % 32));
+		}
+		const uint64 Key = (static_cast<uint64>(GetTypeHash(Target.X)) << 32) ^ GetTypeHash(Target.Y) ^ (bRecovery ? 1ull : 0ull);
+		FTracked& Needle = Tracked.FindOrAdd(Key);
+		const int64 Steps = !Needle.Needle.bSet ? 1 : FMath::Clamp<int64>(Current.GameTicks - Needle.LastTicks, 0, 20);
+		Needle.LastTicks = Current.GameTicks;
+		const double Value = CompassValue(Current.Position, Current.Yaw, Target);
+		for (int64 Step = 0; Step < Steps; ++Step)
+		{
+			Needle.Needle.Step(Value, true);
+		}
+		return FName(*FString::Printf(TEXT("minecraft:%s_%02d"), *Prefix, (16 + FrameOf(Needle.Needle.Value, 32)) % 32));
 	}
 }

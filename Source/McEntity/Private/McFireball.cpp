@@ -14,6 +14,21 @@ const FName& FMcFireball::SmallType()
 	return Name;
 }
 
+const FName& FMcFireball::SkullType()
+{
+	static const FName Name(TEXT("minecraft:wither_skull"));
+	return Name;
+}
+
+void FMcFireball::LaunchSkull(const FVector& Direction)
+{
+	bSkull = true;
+	Aim = Direction.GetSafeNormal();
+	Body.Velocity = Aim * 0.1;
+	Body.Width = 0.3125f;
+	Body.Height = 0.3125f;
+}
+
 FMcFireball::FMcFireball()
 {
 	Body.Width = 1.0f;
@@ -88,5 +103,5 @@ void FMcFireball::Tick(FMcEntityManager& Manager)
 		}
 		Body.Position = Next;
 	}
-	Body.Velocity = (Body.Velocity + Aim * Acceleration) * Inertia;
+	Body.Velocity = bSkull ? (Body.Velocity + Aim * 0.1) * 0.73 : (Body.Velocity + Aim * Acceleration) * Inertia;
 }

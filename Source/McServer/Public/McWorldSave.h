@@ -86,6 +86,10 @@ namespace McWorldSave
 	// False if there is no level file or it can't be read.
 	MCSERVER_API bool LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel);
 
+	// The world's maps (McMapStore) in WorldDir/maps.json. Loading replaces the store; a world with no file gets an empty one.
+	MCSERVER_API bool SaveMaps(const FString& WorldDir);
+	MCSERVER_API bool LoadMaps(const FString& WorldDir);
+
 	// A saved world as the world list shows it, newest played first.
 	struct FWorldSummary
 	{

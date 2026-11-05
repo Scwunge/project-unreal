@@ -11,6 +11,7 @@
 #include "McEntityHost.h"
 #include "McEntityManager.h"
 #include "McChunk.h"
+#include "McJavaExport.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
 #include "McItemRegistry.h"
@@ -812,4 +813,193 @@ bool FMcJavaImportRealWorldTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportPlayerTest, "McClient.McServer.JavaImport.Player",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
+{
+	// A player file as the game saves it: place, mode, hunger, experience, a hotbar stone, the off hand and an ender chest item.
+	FNbtWriter Writer;
+	Writer.Compound(TEXT(""));
+	Writer.List(TEXT("Pos"), 6, 3);
+	Writer.Doubles({ 12.5, 70.0, -3.5 });
+	Writer.List(TEXT("Rotation"), 5, 2);
+	Writer.Floats({ 90.0f, 15.0f });
+	Writer.Str(TEXT("Dimension"), TEXT("minecraft:overworld"));
+	Writer.Int(TEXT("playerGameType"), 1);
+	Writer.Int(TEXT("SelectedItemSlot"), 4);
+	Writer.Int(TEXT("foodLevel"), 12);
+	Writer.Int(TEXT("XpLevel"), 7);
+	Writer.List(TEXT("Inventory"), 10, 2);
+	Writer.Byte(TEXT("Slot"), 3);
+	Writer.Str(TEXT("id"), TEXT("minecraft:stone"));
+	Writer.Int(TEXT("count"), 20);
+	Writer.End();
+	Writer.Byte(TEXT("Slot"), -106);
+	Writer.Str(TEXT("id"), TEXT("minecraft:shield"));
+	Writer.Int(TEXT("count"), 1);
+	Writer.End();
+	Writer.Compound(TEXT("equipment"));
+	Writer.Compound(TEXT("head"));
+	Writer.Str(TEXT("id"), TEXT("minecraft:iron_helmet"));
+	Writer.Int(TEXT("count"), 1);
+	Writer.End();
+	Writer.End();
+	Writer.List(TEXT("EnderItems"), 10, 1);
+	Writer.Byte(TEXT("Slot"), 5);
+	Writer.Str(TEXT("id"), TEXT("minecraft:diamond"));
+	Writer.Int(TEXT("count"), 9);
+	Writer.End();
+	Writer.End();
+	FMcNbt Root;
+	if (!TestTrue(TEXT("the player parses"), FMcNbt::Parse(Writer.Bytes, Root)))
+	{
+		return false;
+	}
+	FMcPlayerData Player;
+	if (!TestTrue(TEXT("it converts"), McJavaImport::ConvertPlayer(Root, Player)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("x"), Player.Position.X, 12.5);
+	TestEqual(TEXT("z"), Player.Position.Z, -3.5);
+	TestEqual(TEXT("yaw"), Player.Yaw, 90.0f);
+	TestTrue(TEXT("creative"), Player.bCreative);
+	TestEqual(TEXT("selected slot"), Player.SelectedSlot, 4);
+	TestEqual(TEXT("food"), Player.Stats.FindRef(TEXT("food")), 12.0);
+	TestEqual(TEXT("experience level"), Player.Stats.FindRef(TEXT("xp_level")), 7.0);
+	const auto Count = [&Player](int32 Slot, const TCHAR* Item) -> int32
+	{
+		for (const FMcSavedSlot& Saved : Player.Slots)
+		{
+			if (Saved.Slot == Slot && Saved.Stack.Item == FName(Item))
+			{
+				return Saved.Stack.Count;
+			}
+		}
+		return 0;
+	};
+	TestEqual(TEXT("hotbar stone"), Count(3, TEXT("minecraft:stone")), 20);
+	TestEqual(TEXT("off hand shield at 150"), Count(150, TEXT("minecraft:shield")), 1);
+	TestEqual(TEXT("helmet at 103"), Count(103, TEXT("minecraft:iron_helmet")), 1);
+	TestEqual(TEXT("ender chest slot 5 at 205"), Count(205, TEXT("minecraft:diamond")), 9);
+	return true;
+}
+
 #endif
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportTest, "McClient.McServer.JavaExport.RoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportTest::RunTest(const FString& Parameters)
+{
+	// Packing is the inverse of unpacking.
+	TArray<int32> Indexes;
+	for (int32 Index = 0; Index < 4096; ++Index)
+	{
+		Indexes.Add((Index * 7 + 3) % 20);
+	}
+	TArray<int64> Longs;
+	McJavaExport::PackIndices(Indexes, 5, Longs);
+	TestEqual(TEXT("342 longs for 4096 entries at 5 bits"), Longs.Num(), 342);
+	TArray<int32> Back;
+	TestTrue(TEXT("unpacks"), McJavaImport::UnpackIndices(Longs, 5, 4096, Back));
+	TestTrue(TEXT("packed entries come back"), Back == Indexes);
+
+	if (!LoadRegistries())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId Stone = Registry.ParseState(TEXT("minecraft:stone")).Get(0);
+	const FMcStateId Stairs = Registry.ParseState(TEXT("minecraft:oak_stairs[facing=east,half=top]")).Get(0);
+	FMcChunk Source(FIntPoint(-3, 5), -64, 24);
+	Source.SetBlock(0, -64, 0, Stone);
+	Source.SetBlock(7, -40, 9, Stairs);
+	Source.SetBlock(15, 100, 15, Stone);
+
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Source, Root);
+	FIntPoint Pos;
+	TestTrue(TEXT("position is written"), McJavaImport::GetChunkPos(Root, Pos) && Pos == FIntPoint(-3, 5));
+	FMcChunk Result(FIntPoint(-3, 5), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("our own chunk converts back"), McJavaImport::ConvertChunk(Root, Result, Stats));
+	TestTrue(TEXT("stone"), Result.GetBlock(0, -64, 0) == Stone);
+	TestTrue(TEXT("stairs with properties"), Result.GetBlock(7, -40, 9) == Stairs);
+	TestTrue(TEXT("stone high up"), Result.GetBlock(15, 100, 15) == Stone);
+	TestTrue(TEXT("air elsewhere"), Registry.IsAir(Result.GetBlock(1, 0, 1)));
+
+	// A region file made of it reads back through the importer's reader.
+	TArray<uint8> Bytes;
+	Root.WriteRoot(Bytes);
+	TMap<FIntPoint, TArray<uint8>> Chunks;
+	Chunks.Add(FIntPoint(-3, 5), Bytes);
+	TArray<uint8> File;
+	McJavaExport::MakeRegion(Chunks, File);
+	TArray<uint8> Read;
+	bool bMissing = false;
+	TestTrue(TEXT("chunk is in the region"), McJavaImport::ReadChunkBytes(File, 29, 5, FString(), -3, 5, Read, bMissing));
+	TestTrue(TEXT("region holds the chunk's bytes"), Read.Num() >= Bytes.Num() && FMemory::Memcmp(Read.GetData(), Bytes.GetData(), Bytes.Num()) == 0);
+	TestFalse(TEXT("other slots are empty"), McJavaImport::ReadChunkBytes(File, 0, 0, FString(), -3, 5, Read, bMissing));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaImportDimensionsTest, "McClient.McServer.JavaImport.Dimensions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
+{
+	// The ref save (a vanilla world with a Nether): its Nether is imported and written back out as a Java save.
+	FString Source;
+	for (const TCHAR* Candidate : { TEXT("E:/mc-reference/run/saves/ref"), TEXT("C:/mc-reference/run/saves/ref") })
+	{
+		if (McJavaImport::IsJavaWorld(Candidate))
+		{
+			Source = Candidate;
+			break;
+		}
+	}
+	if (Source.IsEmpty())
+	{
+		AddInfo(TEXT("no ref world on this machine; skipped"));
+		return true;
+	}
+	McJavaImport::FStats Stats;
+	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportDims"), Stats);
+	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
+	{
+		return false;
+	}
+	AddInfo(McJavaImport::Describe(Stats));
+	const FString WorldDir = McWorldSave::GetWorldDir(Folder);
+	TArray<FString> Overworld, Nether, End;
+	IFileManager::Get().FindFiles(Overworld, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:overworld")) / TEXT("*.mcr")), true, false);
+	IFileManager::Get().FindFiles(Nether, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_nether")) / TEXT("*.mcr")), true, false);
+	IFileManager::Get().FindFiles(End, *(WorldDir / McWorldSave::GetDimensionFolder(TEXT("minecraft:the_end")) / TEXT("*.mcr")), true, false);
+	AddInfo(FString::Printf(TEXT("region files: overworld %d, nether %d, end %d"), Overworld.Num(), Nether.Num(), End.Num()));
+	TestTrue(TEXT("overworld regions imported"), Overworld.Num() > 0);
+	TestTrue(TEXT("nether regions imported"), Nether.Num() > 0);
+	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
+
+	const FString Out = FPaths::ProjectSavedDir() / TEXT("Tests") / TEXT("JavaExportDims");
+	IFileManager::Get().DeleteDirectory(*Out, false, true);
+	McJavaExport::FStats Exported;
+	TestTrue(TEXT("exports"), McJavaExport::ExportWorld(WorldDir, Out, Exported));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions, %d failed"), Exported.Chunks, Exported.Regions, Exported.Failed));
+	TestEqual(TEXT("every chunk exported"), Exported.Chunks, Stats.Chunks);
+	TestTrue(TEXT("level.dat written"), IFileManager::Get().FileExists(*(Out / TEXT("level.dat"))));
+	TestTrue(TEXT("a nether region written"), IFileManager::Get().DirectoryExists(*(Out / TEXT("dimensions/minecraft/the_nether/region"))));
+	// The exported save reads as a Java world again.
+	TestTrue(TEXT("the export is a Java world"), McJavaImport::IsJavaWorld(Out));
+	McJavaImport::FStats Again;
+	const FString Second = McJavaImport::ImportWorld(Out, TEXT("JavaImportDims2"), Again);
+	TestFalse(TEXT("the export imports"), Second.IsEmpty());
+	TestEqual(TEXT("same chunks after the round trip"), Again.Chunks, Stats.Chunks);
+	TestEqual(TEXT("same blocks after the round trip"), Again.NonAirBlocks, Stats.NonAirBlocks);
+	IFileManager::Get().DeleteDirectory(*Out, false, true);
+	McWorldSave::DeleteWorld(Second);
+	McWorldSave::DeleteWorld(Folder);
+	return true;
+}

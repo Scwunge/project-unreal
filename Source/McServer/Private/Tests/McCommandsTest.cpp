@@ -53,6 +53,11 @@ namespace
 			}
 		}
 		virtual void Broadcast(const FString& Line) override { Broadcasts.Add(Line); }
+		TArray<FString> Titles;
+		virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) override
+		{
+			Titles.Add(FString::Printf(TEXT("%s:%d:%s:%d,%d,%d"), *Player, Kind, *Text, FadeIn, Stay, FadeOut));
+		}
 		virtual bool IsCreative(const FString& Player) const override { return Find(Player) && Find(Player)->bCreative; }
 		virtual void SetCreative(const FString& Player, bool bCreative) override
 		{
@@ -433,6 +438,57 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	McCommands::HandleChat(TEXT("/kick Alex"), Console, Target);
 	TestTrue(TEXT("kick from the console"), Target.Kicked.Contains(TEXT("Alex")));
 	TestTrue(TEXT("@s from the console"), AnyError(McCommands::HandleChat(TEXT("/kill @s"), Console, Target)));
+	return true;
+}
+
+// /tellraw sends JSON text to the players as legacy text and says nothing back; /title sends titles, subtitles, action bars,
+// clears, resets and times, with the game's replies.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcTitleCommandsTest, "McClient.McServer.TextCommands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
+{
+	FFakeTarget Target;
+	Target.Players.Add({ TEXT("Steve") });
+	const auto Op = [](const TCHAR* Name) { FMcCommandSender Sender; Sender.Name = Name; Sender.PermissionLevel = 4; return Sender; };
+	const TArray<FMcCommandReply> Tell = McCommands::Execute(TEXT("tellraw Steve {\"text\":\"a  b\",\"color\":\"red\"}"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("tellraw says nothing back"), Tell.Num(), 0);
+	TestEqual(TEXT("the player was told, spaces kept"), Target.Players[0].Told.Num() == 1 ? Target.Players[0].Told[0].Text : FString(), FString(TEXT("\u00a7ca  b")));
+	const TArray<FMcCommandReply> Bad = McCommands::Execute(TEXT("tellraw Steve {\"text\":"), Op(TEXT("Steve")), Target);
+	TestTrue(TEXT("bad JSON is an error"), Bad.Num() == 1 && Bad[0].bError);
+
+	const TArray<FMcCommandReply> Shown = McCommands::Execute(TEXT("title Steve title {\"text\":\"Hi\",\"color\":\"gold\"}"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("title sent"), Target.Titles.Num() == 1 ? Target.Titles[0] : FString(), FString(TEXT("Steve:0:\u00a76Hi:0,0,0")));
+	TestEqual(TEXT("its reply"), Shown.Num() == 1 ? Shown[0].Text : FString(), FString(TEXT("Showing new title for Steve")));
+	McCommands::Execute(TEXT("title Steve subtitle \"sub\""), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve actionbar \"bar\""), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve times 5 40 10"), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve clear"), Op(TEXT("Steve")), Target);
+	McCommands::Execute(TEXT("title Steve reset"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("six titles in all"), Target.Titles.Num(), 6);
+	if (Target.Titles.Num() == 6)
+	{
+		TestEqual(TEXT("subtitle"), Target.Titles[1], FString(TEXT("Steve:1:sub:0,0,0")));
+		TestEqual(TEXT("action bar"), Target.Titles[2], FString(TEXT("Steve:2:bar:0,0,0")));
+		TestEqual(TEXT("times"), Target.Titles[3], FString(TEXT("Steve:5::5,40,10")));
+		TestEqual(TEXT("clear"), Target.Titles[4], FString(TEXT("Steve:3::0,0,0")));
+		TestEqual(TEXT("reset"), Target.Titles[5], FString(TEXT("Steve:4::0,0,0")));
+	}
+	const TArray<FMcCommandReply> Cleared = McCommands::Execute(TEXT("title Steve clear"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("clear's reply"), Cleared.Num() == 1 ? Cleared[0].Text : FString(), FString(TEXT("Cleared titles for Steve")));
+
+	// Measured against the game: /random, /tag, /stopsound, /defaultgamemode.
+	const auto First = [&](const TCHAR* Line) { const TArray<FMcCommandReply> Got = McCommands::Execute(Line, Op(TEXT("Steve")), Target); return Got.Num() ? Got[0].Text : FString(); };
+	TestEqual(TEXT("an empty range"), First(TEXT("random roll 1..1")), FString(TEXT("The range of the random value must be at least 1")));
+	TestTrue(TEXT("a roll names who rolled"), First(TEXT("random roll 1..6")).StartsWith(TEXT("Steve rolled ")));
+	TestEqual(TEXT("reset one"), First(TEXT("random reset minecraft:foo")), FString(TEXT("Reset random sequence minecraft:foo")));
+	TestEqual(TEXT("tag add"), First(TEXT("tag Steve add foo")), FString(TEXT("Added tag 'foo' to Steve")));
+	TestEqual(TEXT("tag twice"), First(TEXT("tag Steve add foo")), FString(TEXT("Target either already has the tag or has too many tags")));
+	TestEqual(TEXT("tag list"), First(TEXT("tag Steve list")), FString(TEXT("Steve has 1 tag(s): foo")));
+	TestEqual(TEXT("tag remove"), First(TEXT("tag Steve remove foo")), FString(TEXT("Removed tag 'foo' from Steve")));
+	TestEqual(TEXT("tag remove twice"), First(TEXT("tag Steve remove foo")), FString(TEXT("Target does not have this tag")));
+	TestEqual(TEXT("stopsound"), First(TEXT("stopsound Steve master pig")), FString(TEXT("Stopped sound 'minecraft:pig' on source 'master'")));
+	TestEqual(TEXT("defaultgamemode"), First(TEXT("defaultgamemode creative")), FString(TEXT("The default game mode is now Creative Mode")));
 	return true;
 }
 

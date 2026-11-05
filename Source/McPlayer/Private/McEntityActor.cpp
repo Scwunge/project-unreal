@@ -14,6 +14,7 @@
 #include "McVehicle.h"
 #include "McPotion.h"
 #include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McVillager.h"
 #include "Components/StaticMeshComponent.h"
 #if MC_WITH_RENDER
@@ -82,11 +83,18 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType())
+	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType() || Kind == FMcFireball::SkullType())
 	{
 		// Drawn as the fire charge item (the game's own picture for it); its size and spin are not matched.
 		Kind = FMcItemEntity::StaticType();
 		ItemId = FName(TEXT("minecraft:fire_charge"));
+		ItemCount = 1;
+	}
+	else if (Kind == FMcShulkerBullet::StaticType())
+	{
+		// Stand-in picture (the end rod item); the bullet's own model is not matched.
+		Kind = FMcItemEntity::StaticType();
+		ItemId = FName(TEXT("minecraft:end_rod"));
 		ItemCount = 1;
 	}
 	else if (Kind == FMcThrownPotion::StaticType())

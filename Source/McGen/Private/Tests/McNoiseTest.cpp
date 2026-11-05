@@ -108,7 +108,14 @@ bool FMcNoiseTest::RunTest(const FString& Parameters)
 		// Spread wide enough to cover the lowest octave several times over.
 		const double Spread = 8.0 / FMath::Pow(2.0, Params.BaseOctave);
 		const FStats Stats = Measure(Points, Spread, 4000, [&](double X, double Y, double Z) { return Noise.Sample(X, Y, Z); });
-		const double Expected = Params.BaseAmplitude / 3.0;
+		// The reference client's measured spread, not the wiki's base_amplitude / 3 (see FMcNoise).
+		double LinearSum = 0.0;
+		for (int32 Index = 0; Index < Params.Amplitudes.Num(); ++Index)
+		{
+			LinearSum += Params.Amplitudes[Index] * FMath::Pow(0.5, Index);
+		}
+		const int32 Octaves = Params.Amplitudes.Num();
+		const double Expected = Params.BaseAmplitude / 3.0 * LinearSum * FMath::Pow(2.0, Octaves - 1) / (FMath::Pow(2.0, Octaves) - 1.0);
 		TestTrue(FString::Printf(TEXT("%s deviation %.3f is near %.3f"), *Id, Stats.StdDev, Expected), Stats.StdDev > Expected * 0.6 && Stats.StdDev < Expected * 1.4);
 		TestTrue(FString::Printf(TEXT("%s stays under its maximum"), *Id), Stats.MaxAbs <= Noise.GetMaxValue());
 	}

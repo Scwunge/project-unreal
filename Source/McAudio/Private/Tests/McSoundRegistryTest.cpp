@@ -41,6 +41,18 @@ bool FMcSoundRegistryTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// Captions: the first definition's subtitle key stays unless the pack replaces the event.
+	{
+		FMcSoundRegistry Captions;
+		Captions.Parse(TEXT(R"({ "a": { "subtitle": "subtitles.a", "sounds": ["one"] }, "b": { "subtitle": "subtitles.b", "sounds": ["x"] }, "n": { "sounds": ["q"] } })"));
+		Captions.Merge(TEXT(R"({ "a": { "subtitle": "pack.a", "sounds": ["two"] }, "b": { "replace": true, "subtitle": "pack.b", "sounds": ["y"] }, "c": { "subtitle": "pack.c", "sounds": ["z"] }, "n": { "subtitle": "pack.n", "sounds": ["r"] } })"));
+		TestEqual(TEXT("the game's key wins over a plain redefinition"), Captions.FindSubtitle(FName("a")), FString(TEXT("subtitles.a")));
+		TestEqual(TEXT("a replacing pack's key wins"), Captions.FindSubtitle(FName("b")), FString(TEXT("pack.b")));
+		TestEqual(TEXT("a pack-only event has the pack's key"), Captions.FindSubtitle(FName("c")), FString(TEXT("pack.c")));
+		TestEqual(TEXT("a key given by a pack to an event without one"), Captions.FindSubtitle(FName("n")), FString(TEXT("pack.n")));
+		TestTrue(TEXT("an unknown event has none"), Captions.FindSubtitle(FName("zz")).IsEmpty());
+	}
+
 	// Plain list: the draw picks an equal share each.
 	FMcSoundVariant Variant;
 	TestTrue(TEXT("stone break"), Registry.Pick(FName("block.stone.break"), 0.0f, Variant));

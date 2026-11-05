@@ -182,6 +182,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			WorldDir = McWorldSave::GetWorldDir(WorldName);
 			bHaveLevel = McWorldSave::LoadLevel(WorldDir, Level);
+			McWorldSave::LoadMaps(WorldDir);
 			if (!bHaveLevel && IFileManager::Get().FileExists(*(WorldDir / TEXT("level.json"))))
 			{
 				// Starting a new world over this one's chunks would mix two seeds; leave it as it is.
@@ -1164,6 +1165,7 @@ void AMcWorldActor::SaveWorld()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	// Whatever an autosave had left to look at is covered by this.
 	AutosaveQueue.Reset();
@@ -1188,6 +1190,7 @@ void AMcWorldActor::BeginAutosave()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	if (Entities)
 	{
@@ -1289,13 +1292,17 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 				}
 			}
 			TArray<FVector> Players;
+			TArray<FVector> Looks;
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{
 				if (const APawn* Pawn = It->IsValid() && IsPlayerHere(*It->Get()) ? It->Get()->GetPawn() : nullptr)
 				{
 					Players.Add(McCoords::UnrealToBlock(Pawn->GetActorLocation()));
+					const FVector EyeUnreal = Pawn->GetActorLocation();
+					Looks.Add((McCoords::UnrealToBlock(EyeUnreal + It->Get()->GetControlRotation().Vector()) - McCoords::UnrealToBlock(EyeUnreal)).GetSafeNormal());
 				}
 			}
+			Entities->GetManager().PlayerLooks = Looks;
 			// The actors made for this world's mobs and items are its own (clients hide the ones of the dimension they are not in).
 			const FDelegateHandle Claim = GetWorld()->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateWeakLambda(this, [this](AActor* Spawned)
 			{

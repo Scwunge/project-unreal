@@ -704,4 +704,55 @@ bool FMcPackBuiltInTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A pack's own namespace: "zz:textures/a.png" is assets/zz/textures/a.png, found in the packs alone; the game's namespace
+// needs no prefix, and a namespace the jar has no copy of reads as a file that is not there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackNamespaceTest, "McClient.McCore.PackNamespace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackNamespaceTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackNamespaceTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("ns");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Dir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("zz font"), *(Dir / TEXT("assets/zz/font/pix.json")));
+	FFileHelper::SaveStringToFile(TEXT("mc model"), *(Dir / TEXT("assets/minecraft/models/item/zz_own.json")));
+	FFileHelper::SaveStringToFile(TEXT("zz model"), *(Dir / TEXT("assets/zz/models/item/own.json")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Dir, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+
+	FString Path;
+	TestTrue(TEXT("a namespaced file is found"), McPacks::TryResolve(TEXT("zz:font/pix.json"), Path));
+	FString Text;
+	FFileHelper::LoadFileToString(Text, *Path);
+	TestEqual(TEXT("its contents"), Text, FString(TEXT("zz font")));
+	TestTrue(TEXT("it is from a pack"), McPacks::IsFromPack(TEXT("zz:font/pix.json")));
+	TestFalse(TEXT("another namespace's file is not found"), McPacks::TryResolve(TEXT("yy:font/pix.json"), Path));
+	TestFalse(TEXT("the game's namespace does not see it"), McPacks::IsFromPack(TEXT("font/pix.json")));
+	TestTrue(TEXT("the game's namespace, written out"), McPacks::IsFromPack(TEXT("minecraft:models/item/zz_own.json")));
+	TestTrue(TEXT("and without the prefix"), McPacks::IsFromPack(TEXT("models/item/zz_own.json")));
+	TArray<TArray<uint8>> All;
+	McPacks::ReadAll(TEXT("zz:font/pix.json"), All);
+	TestEqual(TEXT("read in all"), All.Num(), 1);
+
+	TestEqual(TEXT("an id of the game"), McCache::RelativeOf(TEXT("minecraft:item/a"), TEXT("models/"), TEXT(".json")), FString(TEXT("models/item/a.json")));
+	TestEqual(TEXT("an id without a namespace"), McCache::RelativeOf(TEXT("item/a"), TEXT("models/"), TEXT(".json")), FString(TEXT("models/item/a.json")));
+	TestEqual(TEXT("an id of a pack"), McCache::RelativeOf(TEXT("zz:item/own"), TEXT("models/"), TEXT(".json")), FString(TEXT("zz:models/item/own.json")));
+	FFileHelper::LoadFileToString(Text, *McCache::AssetOf(TEXT("zz:item/own"), TEXT("models/"), TEXT(".json")));
+	TestEqual(TEXT("AssetOf finds the pack's file"), Text, FString(TEXT("zz model")));
+	FFileHelper::LoadFileToString(Text, *McCache::AssetOf(TEXT("minecraft:item/zz_own"), TEXT("models/"), TEXT(".json")));
+	TestEqual(TEXT("and the game's namespace's"), Text, FString(TEXT("mc model")));
+	TestFalse(TEXT("a namespace no pack has is a file that is not there"), IFileManager::Get().FileExists(*McCache::AssetOf(TEXT("zz:item/none"), TEXT("models/"), TEXT(".json"))));
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestFalse(TEXT("without the pack nothing is found"), McPacks::IsFromPack(TEXT("zz:font/pix.json")));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 #endif

@@ -1,4 +1,5 @@
 #include "McGameMode.h"
+#include "McMob.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -1301,7 +1302,20 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
-			Pawn->Data->SetCustomBars(McCommands::BossbarLines(GetPlayerName(It->Get())));
+			FString Bars = McCommands::BossbarLines(GetPlayerName(It->Get()));
+			// The ender dragon's bar (wiki: light purple, shown to players within 192 blocks of (0, 128, 0); the colour name is unverified).
+			for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+			{
+				if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+				{
+					const FMcMob& Dragon = static_cast<const FMcMob&>(*Entity);
+					if (FVector::DistSquared(Feet, FVector(0.0, 128.0, 0.0)) < 192.0 * 192.0)
+					{
+						Bars += FString::Printf(TEXT("Ender Dragon\t%.4f\tpink\tprogress\n"), FMath::Clamp(Dragon.Health / Dragon.Type.MaxHealth, 0.0f, 1.0f));
+					}
+				}
+			}
+			Pawn->Data->SetCustomBars(Bars);
 		}
 	}
 }

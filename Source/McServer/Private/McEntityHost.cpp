@@ -1,4 +1,6 @@
 #include "McEntityHost.h"
+#include "McWarden.h"
+#include "McCreaking.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -129,6 +131,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 		{
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
+	};
+	Manager.PlayerLooksAt = [this](const FVector& PlayerPos, const FVector& Point)
+	{
+		return PlayerLooksAt && PlayerLooksAt(PlayerPos, Point);
 	};
 	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
 	{
@@ -352,6 +358,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	else if (Kind == FMcWanderingTrader::StaticType())
 	{
 		Mob = new FMcWanderingTrader(*Type);
+	}
+	else if (Kind == FMcWarden::StaticType())
+	{
+		FMcWarden* Warden = new FMcWarden(*Type);
+		Warden->FindPlayer = [this](int32 Id, FVector& Out) { return FindPlayerById && FindPlayerById(Id, Out); };
+		Warden->IdOfPlayerAt = [this](const FVector& Feet) { return PlayerIdAt ? PlayerIdAt(Feet) : 0; };
+		Mob = Warden;
+	}
+	else if (Kind == FMcCreaking::StaticType())
+	{
+		Mob = new FMcCreaking(*Type);
 	}
 	else
 	{

@@ -81,6 +81,13 @@ public:
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
+	// Takes no damage at all (a creaking tied to its heart); OnShielded hears of each hit that was turned away.
+	bool bInvulnerable = false;
+	// Is not pushed by a hit (the warden: knockback resistance 100%).
+	bool bNoKnockback = false;
+	TFunction<void(FMcMob&, const FVector*)> OnShielded;
+	// A hit got through (after the health went down); Source as in Damage. For the mobs that remember who hurt them.
+	virtual void OnHurt(float Amount, const FVector* Source) {}
 	// Whether this mob goes for that entity as its prey (zombies: villagers; golems: hostile mobs but the creeper).
 	bool IsPrey(const FMcEntity& Other) const;
 

@@ -222,6 +222,11 @@ void FMcSimulation::BookshelfUsed(const FIntVector& Pos, int32 Slot)
 	Redstone->BookshelfUsed(Pos, Slot);
 }
 
+void FMcSimulation::CreakingHit(const FIntVector& Heart)
+{
+	Redstone->CreakingHit(Heart);
+}
+
 int32 FMcSimulation::GetWarningLevel(int32 PlayerId) const
 {
 	const FWarning* Warning = Warnings.Find(PlayerId);

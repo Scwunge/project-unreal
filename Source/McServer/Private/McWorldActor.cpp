@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McSculkMobs.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
 #include "McJavaImport.h"
@@ -435,6 +436,8 @@ void AMcWorldActor::BeginPlay()
 		Source.PlayerId = Tag.PlayerId;
 		Simulation->EmitGameEvent(Name, FIntVector(FMath::FloorToInt32(At.X), FMath::FloorToInt32(At.Y), FMath::FloorToInt32(At.Z)), Source);
 	};
+	// Wardens hear the events, shriekers call them, creaking hearts raise creakings.
+	McSculkMobs::Connect(*Simulation, *Entities, *BlockWorld);
 	// Development: -McWeather=clear|rain|thunder, at full strength from the start (for screenshots).
 	FString WeatherArg;
 	if (!bSecondary && FParse::Value(CommandLine, TEXT("-McWeather="), WeatherArg))

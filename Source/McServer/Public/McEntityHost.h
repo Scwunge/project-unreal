@@ -58,6 +58,12 @@ public:
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Whether the player at the feet position, in Survival or Adventure, faces the point within 60 degrees (yaw and pitch); a creaking holds still.
+	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
+	// A player by the id the game events carry: where their feet are; false if gone, dead or in Creative or Spectator mode (a warden forgets them).
+	TFunction<bool(int32, FVector&)> FindPlayerById;
+	// The id of the player at those feet, 0 if none.
+	TFunction<int32(const FVector&)> PlayerIdAt;
 	// A splash potion's effect on the player at the position (name, level less one, ticks).
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 

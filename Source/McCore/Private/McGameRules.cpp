@@ -33,6 +33,7 @@ FMcGameRules FMcGameRules::FromLevel(const TMap<FString, FString>& Rules, int32 
 	FMcGameRules Result;
 	Result.Difficulty = FMath::Clamp(InDifficulty, 0, 3);
 	Result.bDoMobSpawning = GetBool(Rules, TEXT("doMobSpawning"), Result.bDoMobSpawning);
+	Result.bDoWardenSpawning = GetBool(Rules, TEXT("doWardenSpawning"), Result.bDoWardenSpawning);
 	Result.bDoMobLoot = GetBool(Rules, TEXT("doMobLoot"), Result.bDoMobLoot);
 	Result.bDoTileDrops = GetBool(Rules, TEXT("doTileDrops"), Result.bDoTileDrops);
 	Result.bKeepInventory = GetBool(Rules, TEXT("keepInventory"), Result.bKeepInventory);

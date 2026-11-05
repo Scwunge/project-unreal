@@ -1310,3 +1310,66 @@ Count: 6 (2 unmeasured numbers, 1 recalled reason, 2 unmeasured generalisations,
 - **Chiseled bookshelf** (2026-11-05, run `bookshelf`, 21 cases of last interacted slot -1 to 5 against full, empty and one-book shelves): the comparator reads last slot + 1 (0 when none was used), whatever the shelf holds. Done: `FMcSimulation::BookshelfUsed(pos, slot)` (also a block_change vibration, 11); the player side that puts a book in or takes one out (slot from where the hand points, the `slot_N_occupied` flags and the item) is not done and is for the player/inventory work to call. **Creaking heart**: not simulated; it needs the creaking mob (awake/dormant/uprooted states by night, the creaking tied to the heart, resin) and belongs to the mob side; its creaking_heart_state/natural properties exist in the registry. Passing it back.
 
 - **Game events wired, bookshelf use, spikes traced** (2026-11-05). Wired through `FMcEntityManager::GameEvent` / `OnGameEvent` (McWorldActor hands it to `FMcSimulation::EmitGameEvent`): step (mobs on each footstep mark, players with the footstep sound), splash and swim (players, with their sounds), entity_damage (mobs in `Damage`, players in `ServerHurt` and fall damage), hit_ground (player fall damage only; a landing that does not hurt is not signalled), entity_die (mobs, players), explode (`Explode`), projectile_shoot (skeleton-type mobs, player bow), projectile_land (arrow stuck in a block), entity_mount / entity_dismount (player on a vehicle), eat (with item_interact_finish) and drink (ominous bottle only; no drinkable potions yet), container_open / container_close (chest-kind windows), teleport (enderman). **Not wired**: flap (no bats), equip/unequip (armour slots change in the menus), bounce, projectile_land for thrown items and tridents, mob mount/dismount, entity_action, elytra_glide, shear, entity_interact, instrument_play, entity_place, drink for potions and milk, player teleport (chorus fruit), fluid_pickup/fluid_place (buckets), block_change for the other blocks. **Chiseled bookshelf use** (`UseBookshelf` in McBlockUse.cpp): a book in hand goes into an empty slot, an occupied slot gives its book back (also with a book in hand), sound `block.chiseled_bookshelf.insert|pickup[.enchanted]`, `slot_N_occupied` set, `BookshelfUsed(pos, slot)` told. **Unverified** (the wiki page does not give them and the reference client cannot click): which part of the front face is which slot (reading order, upper row first, left to right as seen), the sound volume 0.8 and pitch 1.0, the list of books (book, writable_book, written_book, enchanted_book, knowledge_book; from the wiki prose, not a tag file). Not done: the last used slot is not saved with the world, books do not drop when the shelf is broken, hoppers and droppers do not use it. **Spikes** (SimPerf, with median, p95 and tick of the worst, on the busy 1070): the slow ticks are the ticks where the scene changes all at once, not noise or a slow path: 400 pistons toggled in one tick cost 28 to 32 ms (the median tick is 0.004 ms), 4000 observers firing together 11 ms median with p95 37 ms, a 100-source water front up to 55 ms, 31 dust lines flipped every tick a steady 21 ms. A single piston, observer or dust line costs microseconds to a fraction of a millisecond; a burst scales linearly with the number of parts moving in the same tick. The first random tick (51 to 90 ms) is a one-time start-up cost in the first call of random ticking (it happens once per process, in the first tick of a new world); not traced further.
+
+## Warden, creaking and creaking heart (redstone session, taken from mc-villagers-e by Jeff's order)
+
+Code: `McEntity/McWarden.*` (FMcWardenBrain = anger table, FMcWarden = the mob), `McEntity/McCreaking.*`, the heart in `McSim/McRedstone.cpp`
+(`TickCreakingHeart`, `CreakingHit`), the glue in `McServer/McSculkMobs.*` (wardens hear `AddGameEventListener`, `OnWardenSummon`,
+`OnShriek` darkness, `OnCreakingSpawn/Release`, `GetCreakingDistance`), hooks in McMob (`bInvulnerable`, `bNoKnockback`, `OnShielded`, `OnHurt`),
+`FMcEntityManager::PlayerLooksAt`, `FMcEntityHost::PlayerLooksAt/FindPlayerById/PlayerIdAt` (filled in McGameMode), rule `doWardenSpawning`.
+Tests: `McClient.McEntity.Warden`, `McClient.McEntity.Creaking`, `McClient.McSim.CreakingHeart`.
+
+**Provenance: every number below is the wiki's (minecraft.wiki "Warden", "Creaking", "Creaking Heart", read 2026-11-05 through a fetch
+whose long pages arrive partly summarised) unless it says "ref". NONE is verified against the reference client yet.** Block state names
+(`creaking_heart_state` uprooted/dormant/awake, `axis`, `natural`) come from the game's own report (`cache/data/reports/blocks.json`).
+The reference run `tools/refscripts/warden.txt` (`log sents warden`, a survival player standing 5 blocks off) is the first measurement;
+see "Warden ref results" below when it has run.
+
+Warden, UNVERIFIED unless noted:
+- Table: 0.9 x 2.9, 500 health, melee 30 on Normal (Easy 16, Hard 45), speed 0.3 (**not on the wiki page; vanilla's value from memory, UNVERIFIED**), no follow range (blind).
+  100% knockback resistance (`bNoKnockback`). Fire/lava immunity is not modelled (nothing in the mob code burns it yet).
+- Hearing: sphere of 15 (wiki says ovoid), not wardens, armor stands, dying mobs, Creative/Spectator players; sneaking players are hidden at
+  frequency 1-3 (shared with sensors; the wiki's wording for wardens is "moving, jumping, falling, shooting" and differs: **open**).
+  Wool in the way blocks it (`IsVibrationOccluded`, from the sensor's rule: **assumed the same for wardens**). 2 s wait between vibrations. No hearing while emerging or digging.
+- Anger: 0-150, hostile at 80, -1 per second, vibration +35, projectile +10 (+35 if a second within 5 s; none beyond 30 blocks but it still counts as the first),
+  contact +35 with a 1 s wait, attack +100, turning hostile +20 with a 4.2 s roar (skipped if hit from within 5), sniff (4.2 s, wait 5-10 s) +35 to the nearest within
+  6 across / 20 up and down. Target = angriest, players before mobs. Anger at a player clears when they leave, die or go Creative.
+  Contact anger (`Touch`) exists in the brain but **nothing calls it yet** (no bump detection).
+- Attacks: melee every 36 ticks within ~1.85 blocks across / 2 up; sonic boom when 10 s since it noticed the target, 5 s since its last attack,
+  within 14 across / 20 up and down: 1.7 s charge, 3 s total, 10 damage on Normal (6 / 15) **but `OnAttackPlayer` does not ignore armor yet** (sonic boom is meant to), and it is not stopped by walls (instant).
+- Despawn: 60 s with no suspects -> digs for 60 ticks (dig time **guessed**) and is removed. Darkness (13 s, within 20 blocks, every 6 s) via `OnPlayerEffect("darkness")`;
+  heartbeat sound 30 bpm calm / 120 angry. Emerging takes 134 ticks (**guess**, the wiki gives none), no hearing meanwhile.
+- Summon: `OnWardenSummon` at shrieker warning level 4: 20 tries in 11 x 13 x 11, highest standing spot of the column, none if another within 24, not if `doWardenSpawning` is false.
+  The "~4.5 s after warning 4 / at once if the shrieker is broken" timing: the sim calls it when the shriek ends (~90 ticks after the 4th shriek, **not the 4.5 s, UNVERIFIED**); breaking the shrieker is not handled.
+  The shrieker's Darkness: 12 s (240 ticks) to players within 40 blocks on every shriek (wiki, unverified).
+- Not done: pathing through rails/cacti/magma specifics, slow in water, leashing, spawn egg, `Brain` NBT save (a saved warden forgets who it hated), deep dark natural spawn (none exists on the wiki page), hurt/death/roar animations in the proxy, XP 5 and the sculk catalyst drop.
+
+Creaking, UNVERIFIED:
+- Table: 0.9 x 2.7, 1 health, speed 0.3, bite 3 on Normal (2.5 Easy; Hard 4 per the body text, the infobox says 4.5: **open**).
+- Frozen while a Survival/Adventure player faces it within 60 degrees (yaw and pitch both) with no solid block between (`PlayerLooksAt`; the player's side is in McGameMode
+  and uses a 1.62 eye height even when sneaking). It becomes alerted when someone within 12 sees it, loses interest when nobody is within 32 (**the loss range is a guess**).
+  Third person, FOV and carved pumpkins (which should let it move) are **not** modelled. Invisible players alert it (no special case, matches the wiki).
+- Linked to a heart: invulnerable (hits answer with `OnShielded` -> `Sim.CreakingHit` -> resin), never past 32 of the heart (Heart page says 34: **open**),
+  gone after 5 s in a player's block (the heart makes another). Bite interval 20 ticks (**guess**).
+- Heart (`TickCreakingHeart`): dormant/awake between two pale oak logs/wood (stripped too) on its axis, awake 12600-23400 (day time), Overworld only; unlinked and
+  awake it sets a spawn due 24 ticks later, then asks the host for a spot within 16 across / 8 up and down (non-leaf solid floor, 2 free blocks; the wiki says 2.7 tall, 2 are checked), retrying every 20 ticks;
+  linked it ignores missing logs; at day the creaking is released; broken -> twitch and removal. Comparator = 15 - floor(distance / 32 x 15) (wiki). Resin: at night, one clump per 5 s on a random free face of a pale oak log within 4 blocks (**the 4 is a guess**).
+  Not done: sounds of the heart itself, particle trail, XP (20-24 from a natural heart in Survival), drops (1-3 resin, Silk Touch), crafting, natural generation in pale oak trees,
+  pistons refusing to move it, the Bedrock differences, `natural=false` hearts (no difference is modelled), nametag persistence.
+- The creaking is still absent from the proxy/render side: it needs a model and a look. Spawn eggs and `/summon creaking` give an unlinked, damageable one (the mob works unlinked).
+
+What new ref verbs would settle the unverified numbers (Script.java is off limits for now):
+1. `log sents warden` (exists) shows speed, emerge/dig timing and when it turns to chase; `log mobs` shows health only.
+2. A verb that dumps a mob's `Brain` memories / anger table (`log anger warden ticks`) would give the exact anger arithmetic, the sniff target and the 2 s wait.
+3. `log player` (health, effects) is needed to see the bite per difficulty, Darkness and the sonic-boom damage through armor: today only mob health is logged.
+4. A verb that makes the player's yaw/pitch settable and logs a creaking each tick (`face yaw pitch`) gives the freeze cone; `look` exists only through `shot`.
+5. A verb that makes a fake vibration (`/playsound` does not; a note block, a placed block and a dropped item at known distances do) is available through commands already: place blocks at set distances in a script and read the warden's `log sents` turn.
+6. Time for the shrieker: `log states` on the shrieker plus `log sents warden` from a `summon` is not enough, a `shriek` needs a real player step on a natural shrieker (`data merge block` can set `can_summon`, the player's step needs a teleport onto it).
+
+**Warden ref results (tools/refscripts/warden.txt, `log sents warden` + `log mobs`, E:/mc-reference/run/log_warden.log, survival player with Resistance V standing at 0,-60,0, Normal, warden summoned at 5.5,-60,0 by `/summon warden`):**
+- A command-summoned warden does not emerge (no long still spell at the start: 13 still ticks, then it walks), so the 134-tick emerge is for shrieker/spawn-egg only, and is still a guess.
+- Health 500. Chasing it moves 0.165-0.17 blocks a tick (3.3-3.4 blocks/s) in bursts of ~15 ticks with ~4 ticks still between (the pattern repeats from tick 330 to 640 and on): table speed raised from 0.3 to 0.33 to match. The 15 on / 4 off cycle is **not modelled** (ours moves continuously).
+- A still spell of exactly **84 ticks** (ticks 246-329 after the first log) sits where the roar should: matches `RoarTicks` 84 (4.2 s).
+- Before it: wander 38 ticks, still 149 ticks, walk 43 ticks to 1.9 blocks from the player, then the roar. So it took ~246 ticks (12 s) from summon to roar with a motionless player 5.5 blocks off, which fits "sniff 35 + more sniffs/contact", but the anger arithmetic cannot be read from sents. **Not reproduced by our model** (ours sniffs after 100 ticks, +35 per sniff, 5-10 s apart, so ~3 sniffs = 20+ s to reach 80). Needs `log anger`.
+- After the roar the warden keeps chasing at the same speed for 1700+ ticks and ended 165 blocks away: the player was being pushed along by its hits (the player's position is not in the log, so this is a guess); a `log player` verb would show it.
+- Sonic boom, melee damage and Darkness could not be read: the log has no player health or effects.

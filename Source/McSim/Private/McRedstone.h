@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "McGameEvent.h"
 #include "CoreMinimal.h"
 #include "McCore.h"
 
@@ -38,7 +39,11 @@ public:
 	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Something at Source made a vibration of the given frequency (1 to 15): sculk sensors within range hear it after a delay
 	// of one tick a block (minecraft.wiki, "Sculk Sensor"; reference run rs_sculk).
-	void Vibrate(const FIntVector& Source, int32 Frequency);
+	void Vibrate(const FMcGameEvent& Event);
+	// A wool or carpet block on the ray between the centres of the two cells.
+	bool IsOccluded(const FIntVector& From, const FIntVector& To) const;
+	// A player stands on the shrieker at Pos.
+	void ShriekerTouched(const FIntVector& Pos, int32 PlayerId);
 	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
 	void SetDetector(const FIntVector& Pos, bool bOccupied);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
@@ -177,9 +182,13 @@ private:
 	TMap<FIntVector, int32> Plates;
 	TMap<FIntVector, int64> TargetUntil;
 	// A vibration on its way to a sensor: when it arrives and the strength it gives.
-	struct FVibration { int64 Arrive; int32 Power; };
+	struct FVibration { int64 Arrive; int32 Power; bool bPlayer = false; int32 PlayerId = 0; FIntVector Source = FIntVector::ZeroValue; };
 	TMap<FIntVector, FVibration> Vibrations;
 	void TickSculk(const FIntVector& Pos, FMcStateId State);
+	void TickShrieker(const FIntVector& Pos, FMcStateId State);
+	void Shriek(const FIntVector& Pos, int32 PlayerId);
+	void HearVibration(const FIntVector& Cell, const FMcGameEvent& Event);
+	void Emit(const TCHAR* Name, const FIntVector& Pos, bool bPlayer = false);
 	TSet<FIntVector> Detectors;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;

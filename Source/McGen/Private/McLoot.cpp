@@ -7,6 +7,7 @@
 #include "McItemRegistry.h"
 #include "McNbt.h"
 #include "McRandom.h"
+#include "McRecipe.h"
 #include "Misc/ScopeLock.h"
 
 namespace
@@ -22,6 +23,8 @@ namespace
 	thread_local const McLoot::FFishingContext* GFishing = nullptr;
 	// Whether the mob whose table is being rolled leads a raid party: 1 or 0, -1 when the roll is for no mob.
 	thread_local int32 GCaptain = -1;
+	// The mob being rolled for, if its context is set (McLoot::FMobScope).
+	thread_local const McLoot::FMobContext* GMob = nullptr;
 
 	TSharedPtr<FJsonObject> FindTable(const FString& Id)
 	{
@@ -100,6 +103,185 @@ namespace
 			return Min + Random.NextDouble() * (Max - Min);
 		}
 		return Count(Value, Random);
+	}
+
+	// Whether an entity type (a name, or a "#tag" of entity_type) holds the name.
+	bool EntityTypeIs(const FString& Wanted, FName Name, int32 Depth = 0)
+	{
+		if (!Wanted.StartsWith(TEXT("#")))
+		{
+			return FName(*McCache::Namespaced(Wanted)) == Name;
+		}
+		const TSharedPtr<FJsonObject> Tag = Depth < MaxDepth ? McCache::LoadJsonObject(McCache::Data(TEXT("tags/entity_type/") + McCache::PathOf(Wanted.Mid(1)) + TEXT(".json"))) : nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Values;
+		if (Tag.IsValid() && Tag->TryGetArrayField(TEXT("values"), Values))
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *Values)
+			{
+				FString Text;
+				if (Value->TryGetString(Text) && EntityTypeIs(Text, Name, Depth + 1))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// A "minecraft:entity_type" field of a predicate against an entity's type: 1 or 0 (0 when there is no entity), -1 if the predicate has none.
+	int32 EntityTypeMatches(const TSharedPtr<FJsonObject>& Predicate, FName Type)
+	{
+		FString Wanted;
+		if (!Predicate->TryGetStringField(TEXT("minecraft:entity_type"), Wanted))
+		{
+			return -1;
+		}
+		return !Type.IsNone() && EntityTypeIs(Wanted, Type) ? 1 : 0;
+	}
+
+	// The dye number of a colour name, from the order the sheep's own table lists them in (white first).
+	int32 DyeIndex(const FString& Colour)
+	{
+		static TArray<FString> Order;
+		if (Order.IsEmpty())
+		{
+			if (const TSharedPtr<FJsonObject> Sheep = McCache::LoadJsonObject(McCache::Data(TEXT("loot_table/entities/sheep.json"))))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Pools;
+				if (Sheep->TryGetArrayField(TEXT("pools"), Pools) && Pools->Num() > 1)
+				{
+					const TArray<TSharedPtr<FJsonValue>>* Entries;
+					const TArray<TSharedPtr<FJsonValue>>* Children;
+					if ((*Pools)[1]->AsObject()->TryGetArrayField(TEXT("entries"), Entries) && !Entries->IsEmpty() && (*Entries)[0]->AsObject()->TryGetArrayField(TEXT("children"), Children))
+					{
+						for (const TSharedPtr<FJsonValue>& Child : *Children)
+						{
+							// "minecraft:entities/sheep/<colour>".
+							Order.Add(McCache::PathOf(Child->AsObject()->GetStringField(TEXT("value"))).RightChop(FString(TEXT("entities/sheep/")).Len()));
+						}
+					}
+				}
+			}
+			if (Order.IsEmpty())
+			{
+				Order.Add(TEXT("?"));
+			}
+		}
+		return Order.IndexOfByKey(Colour);
+	}
+
+	// The conditions about a mob: killed_by_player, entity_properties of the mob, its killer and its vehicle, and
+	// damage_source_properties. 1 passes, 0 fails, -1 can't be told (a predicate this doesn't know).
+	int32 CheckMob(const FString& Type, const FJsonObject& Object)
+	{
+		const McLoot::FMobContext& Mob = *GMob;
+		if (Type == TEXT("killed_by_player"))
+		{
+			return Mob.bKilledByPlayer ? 1 : 0;
+		}
+		const TSharedPtr<FJsonObject>* Predicate;
+		if (!Object.TryGetObjectField(TEXT("predicate"), Predicate))
+		{
+			return -1;
+		}
+		int32 Result = 1;
+		const auto Fold = [&Result](int32 Each)
+		{
+			if (Each == 0)
+			{
+				Result = 0;
+			}
+			else if (Each < 0 && Result == 1)
+			{
+				Result = -1;
+			}
+		};
+		if (Type == TEXT("damage_source_properties"))
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicate)->Values)
+			{
+				const TSharedPtr<FJsonObject>* Inner;
+				if ((Entry.Key == TEXT("source_entity") || Entry.Key == TEXT("direct_entity")) && Entry.Value->TryGetObject(Inner))
+				{
+					Fold(EntityTypeMatches(*Inner, Entry.Key == TEXT("source_entity") ? Mob.Killer : (Mob.DirectKiller.IsNone() ? Mob.Killer : Mob.DirectKiller)));
+				}
+				else if (Entry.Key == TEXT("tags") && Entry.Value->Type == EJson::Array)
+				{
+					for (const TSharedPtr<FJsonValue>& Tag : Entry.Value->AsArray())
+					{
+						const TSharedPtr<FJsonObject> Wanted = Tag->AsObject();
+						const FString Id = McCache::PathOf(Wanted->GetStringField(TEXT("id")).Mid(1));
+						const bool bExpected = !Wanted->HasField(TEXT("expected")) || Wanted->GetBoolField(TEXT("expected"));
+						if (Id == TEXT("is_projectile") || Id == TEXT("is_lightning"))
+						{
+							Fold((Id == TEXT("is_projectile") ? Mob.bProjectile : Mob.bLightning) == bExpected ? 1 : 0);
+						}
+						else
+						{
+							Fold(-1);
+						}
+					}
+				}
+				else
+				{
+					Fold(-1);
+				}
+			}
+			return Result;
+		}
+		// entity_properties: of the mob, or of whoever killed it.
+		const FString Entity = Object.GetStringField(TEXT("entity"));
+		const bool bThis = Entity == TEXT("this");
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicate)->Values)
+		{
+			const TSharedPtr<FJsonObject>* Inner;
+			const bool bObject = Entry.Value->TryGetObject(Inner);
+			if (!bThis && Entry.Key == TEXT("minecraft:entity_type") && Entry.Value->Type == EJson::String)
+			{
+				const FName Who = Entity == TEXT("direct_attacker") && !Mob.DirectKiller.IsNone() ? Mob.DirectKiller : Mob.Killer;
+				Fold(!Who.IsNone() && EntityTypeIs(Entry.Value->AsString(), Who) ? 1 : 0);
+			}
+			else if (!bThis && Entry.Key == TEXT("minecraft:equipment"))
+			{
+				// What the killer holds: only whether it smelts is asked.
+				Fold(Mob.bWeaponSmelts ? -1 : 0);
+			}
+			else if (bThis && Entry.Key == TEXT("minecraft:flags") && bObject)
+			{
+				bool bWanted;
+				if ((*Inner)->Values.Num() == 1 && (*Inner)->TryGetBoolField(TEXT("is_on_fire"), bWanted))
+				{
+					Fold(Mob.bOnFire == bWanted ? 1 : 0);
+				}
+				else
+				{
+					Fold(-1);
+				}
+			}
+			else if (bThis && Entry.Key == TEXT("minecraft:vehicle") && bObject)
+			{
+				Fold(Mob.Vehicle.IsNone() ? 0 : EntityTypeMatches(*Inner, Mob.Vehicle));
+			}
+			else if (bThis && Entry.Key == TEXT("minecraft:type_specific/cube_mob") && bObject)
+			{
+				int32 Size;
+				Fold((*Inner)->TryGetNumberField(TEXT("size"), Size) ? (Mob.CubeSize == Size ? 1 : 0) : -1);
+			}
+			else if (bThis && Entry.Key == TEXT("minecraft:type_specific/sheep") && bObject)
+			{
+				bool bSheared;
+				Fold((*Inner)->TryGetBoolField(TEXT("sheared"), bSheared) ? (Mob.bSheared == bSheared ? 1 : 0) : -1);
+			}
+			else if (bThis && Entry.Key == TEXT("minecraft:components") && bObject && (*Inner)->HasField(TEXT("minecraft:sheep/color")) && Mob.DyeColor >= 0)
+			{
+				Fold(DyeIndex(McCache::PathOf((*Inner)->GetStringField(TEXT("minecraft:sheep/color")))) == Mob.DyeColor ? 1 : 0);
+			}
+			else
+			{
+				Fold(-1);
+			}
+		}
+		return Result;
 	}
 
 	// 1 passes, 0 fails, -1 can't be told at generation (which passes, but not when inverted).
@@ -202,6 +384,15 @@ namespace
 				}
 			}
 			return 1;
+		}
+		if (GMob && (Type == TEXT("killed_by_player") || Type == TEXT("damage_source_properties") || Type == TEXT("entity_properties")))
+		{
+			// A raider's captain flag is the raid code's own (below).
+			const TSharedPtr<FJsonObject>* Predicate;
+			if (!(Type == TEXT("entity_properties") && Object->TryGetObjectField(TEXT("predicate"), Predicate) && (*Predicate)->HasField(TEXT("minecraft:type_specific/raider"))))
+			{
+				return CheckMob(Type, *Object);
+			}
 		}
 		if (GFishing && Type == TEXT("entity_properties"))
 		{
@@ -736,11 +927,41 @@ namespace
 			}
 			Modify(bPasses ? Object->TryGetField(TEXT("on_pass")) : Object->TryGetField(TEXT("on_fail")), Random, Stack);
 		}
+		else if (Type == TEXT("furnace_smelt"))
+		{
+			// What its own conditions let through (a burning mob, a smelting weapon) is cooked as a furnace would: the item
+			// the smelting recipe makes, as many times as there were items. No recipe, no change.
+			FMcRecipeBook& Book = FMcRecipeBook::Get();
+			const FMcRecipe* Recipe = Book.EnsureLoaded() ? Book.FindCooking(EMcRecipeType::Smelting, Stack) : nullptr;
+			if (Recipe && !Recipe->Result.IsEmpty())
+			{
+				Stack = FMcItemStack(Recipe->Result.Item, Stack.Count * Recipe->Result.Count);
+			}
+		}
+		else if (Type == TEXT("copy_state") && GBlock)
+		{
+			// The block's own properties named here, kept on the item as its block_state.
+			const TArray<TSharedPtr<FJsonValue>>* Names;
+			const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+			if (Object->TryGetArrayField(TEXT("properties"), Names) && Registry.IsValidState(GBlock->State))
+			{
+				const TSharedPtr<FJsonObject> State = MakeShared<FJsonObject>();
+				for (const TSharedPtr<FJsonValue>& Name : *Names)
+				{
+					const FName Value = Registry.GetPropertyValue(GBlock->State, FName(*Name->AsString()));
+					if (!Value.IsNone())
+					{
+						State->SetStringField(Name->AsString(), Value.ToString());
+					}
+				}
+				Stack.Set(TEXT("minecraft:block_state"), MakeShared<FJsonValueObject>(State));
+			}
+		}
 		else if (Type == TEXT("discard"))
 		{
 			Stack.Clear();
 		}
-		// Anything else (maps that point at structures, loot that needs a player) leaves the item as it is.
+		// Anything else (maps that point at structures; copy_components, which needs the block entity) leaves the item as it is.
 	}
 
 	void RollTable(const FJsonObject& Table, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Depth);
@@ -1086,4 +1307,15 @@ TOptional<FMcBlockEntity> McBlockEntities::FromTemplate(const FMcNbt& Nbt, FName
 		return FMcBlockEntity::MakeSpawner(Id.IsEmpty() ? FName() : FName(*McCache::Namespaced(Id)));
 	}
 	return {};
+}
+
+McLoot::FMobScope::FMobScope(const FMobContext& Context)
+	: Previous(GMob)
+{
+	GMob = &Context;
+}
+
+McLoot::FMobScope::~FMobScope()
+{
+	GMob = Previous;
 }

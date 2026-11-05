@@ -349,6 +349,8 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 	McExplosion::Collect(World, Center, Power, Random, Cells);
 	// Loud (carries 64 blocks) and low, a little different each time.
 	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McExplosion::GetBlastPitch(Random.FRand(), Random.FRand()));
+	// The blast's cloud (the vanilla run qb4: 8 ticks of one 16 frame picture, three quarters of a block wide).
+	SpawnParticle(FName("minecraft:explosion"), Center);
 
 	// Everything standing near is hurt first, by the blocks as they were: the ones about to go still shield.
 	const double Radius = Power * 2.0;

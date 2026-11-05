@@ -419,6 +419,10 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Entities->GetManager().OnParticle = [this](FName Name, const FVector& Position, const FVector& Delta, float Speed, int32 Count)
+	{
+		MulticastParticle(Name, FVector_NetQuantize10(Position), FVector_NetQuantize10(Delta), Speed, Count);
+	};
 	// Development: -McWeather=clear|rain|thunder, at full strength from the start (for screenshots).
 	FString WeatherArg;
 	if (!bSecondary && FParse::Value(CommandLine, TEXT("-McWeather="), WeatherArg))

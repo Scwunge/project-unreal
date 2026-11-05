@@ -219,6 +219,18 @@ public:
 		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
 	}
 
+	// ---- Particles ----
+	// Called with each effect the entities make that the players see (a blast's cloud), for whoever sends it to them; unset, dropped.
+	// Name as /particle writes it, Position in blocks, Delta the spread, Speed, Count.
+	TFunction<void(FName, const FVector&, const FVector&, float, int32)> OnParticle;
+	void SpawnParticle(FName Name, const FVector& Position, const FVector& Delta = FVector::ZeroVector, float Speed = 0.0f, int32 Count = 1) const
+	{
+		if (OnParticle)
+		{
+			OnParticle(Name, Position, Delta, Speed, Count);
+		}
+	}
+
 	// ---- Detector rails ----
 	// Called when a minecart is on a detector rail (true, every tick) or has left it (false), for whoever runs the
 	// redstone. Left unset, rails don't hear.

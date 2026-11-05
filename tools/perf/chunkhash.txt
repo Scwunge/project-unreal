@@ -1,0 +1,4 @@
+# A new world filled at the default render distance and nothing else. For comparing runs of a seed: add -McChunkHash.
+mark:fill
+settle:120
+end

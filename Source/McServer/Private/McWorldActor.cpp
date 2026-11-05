@@ -1059,6 +1059,25 @@ void AMcWorldActor::ApplyEdits(FMcChunk& Chunk)
 void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 {
 	const FIntPoint Pos = Arrived.Chunk->GetPos();
+	// -McChunkHash: what each new chunk came to, so two runs of a seed can be compared (tools/perf_chunks.py).
+	static const bool bHashChunks = FParse::Param(FCommandLine::Get(), TEXT("McChunkHash"));
+	if (bHashChunks && McPerf::IsOn() && !Arrived.bFromDisk)
+	{
+		const FMcChunk& Chunk = *Arrived.Chunk;
+		TArray<FMcStateId> States;
+		States.Reserve((Chunk.GetMaxY() - Chunk.GetMinY() + 1) * 256);
+		for (int32 Y = Chunk.GetMinY(); Y <= Chunk.GetMaxY(); ++Y)
+		{
+			for (int32 Z = 0; Z < 16; ++Z)
+			{
+				for (int32 X = 0; X < 16; ++X)
+				{
+					States.Add(Chunk.GetBlock(X, Y, Z));
+				}
+			}
+		}
+		McPerf::Event(FString::Printf(TEXT("CHUNK %d,%d %08x %d"), Pos.X, Pos.Y, FCrc::MemCrc32(States.GetData(), States.Num() * States.GetTypeSize()), Chunk.GetBlockEntities().Num()));
+	}
 	// Before the edits, so a chunk that only changes by them counts as changed.
 	const uint32 LoadedRevision = Arrived.Chunk->GetRevision();
 	ApplyEdits(*Arrived.Chunk);

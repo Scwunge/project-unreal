@@ -13,7 +13,7 @@
 #   bash tools/perf-remote.sh symbols <name>          names the frames of a run's stacks
 #
 # A run takes its turn in the desktop queue, so no vanilla client or shot shares the card, and notes what else was running.
-# MC_PERF_MINUTES sets a run's time limit (default 8). Runs of up to MC_PERF_HOLD_MINUTES (default 10) also hold the
+# MC_PERF_ALONE=1 also holds the 1070's test lanes. MC_PERF_MINUTES sets a run's time limit (default 8). Runs of up to MC_PERF_HOLD_MINUTES (default 10) also hold the
 # build lane like a shot does, since a build beside a run spoils the numbers; longer runs (a soak) don't.
 set -u
 HOST=Glenn@100.106.142.98
@@ -76,6 +76,8 @@ run)
   if [ "${MC_PERF_SHARED:-0}" = 1 ]; then rm -f "$T1"; else take "$Q" /e/mc-remote/lock; rm -f "$T1"; fi
   take "$SQ" /e/mc-remote/lock-s1070; rm -f "$T2"
   [ "$MINUTES" -le "${MC_PERF_HOLD_MINUTES:-10}" ] && take "" "$BLOCK"
+  # MC_PERF_ALONE=1: the 1070's test lanes too, for numbers with nothing beside them. Other sessions' tests go to this PC meanwhile.
+  if [ "${MC_PERF_ALONE:-0}" = 1 ]; then for l in d c b ""; do take "" "/e/mc-remote/lock-t1070$l"; done; fi
   echo "== run $run: $script, up to $MINUTES min"
   $SSH "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force $OUT/runs/$run | Out-Null; \$input | Set-Content $OUT/runs/$run/script.txt\"" < "$ROOT/tools/perf/$script.txt"
   printf '%s' "$args" | $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/runs/$run/args.txt\""

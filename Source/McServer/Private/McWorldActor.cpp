@@ -1394,9 +1394,25 @@ void AMcWorldActor::StreamChunks()
 	// the mobs), only to generate it all again when the first pawn appears (a listen server's start, a death).
 	const bool bAnyone = !Centres.IsEmpty();
 
+	// Nothing at all around a player: a new or opened world, a long teleport. Only their own chunk missing: they're
+	// outrunning the world (flying), and it has to keep up without taking the frame's workers.
+	bOutrunning = false;
 	for (int32 Index = 0; Index < NumPlayers; ++Index)
 	{
-		if (!BlockWorld->HasChunk(Centres[Index]))
+		if (BlockWorld->HasChunk(Centres[Index]))
+		{
+			continue;
+		}
+		bOutrunning = true;
+		bool bAnyNear = false;
+		for (int32 DZ = -2; DZ <= 2 && !bAnyNear; ++DZ)
+		{
+			for (int32 DX = -2; DX <= 2 && !bAnyNear; ++DX)
+			{
+				bAnyNear = BlockWorld->HasChunk(Centres[Index] + FIntPoint(DX, DZ));
+			}
+		}
+		if (!bAnyNear)
 		{
 			BlockWorld->SetFilling(true);
 		}
@@ -1576,7 +1592,7 @@ bool AMcWorldActor::AddGeneratedChunks()
 UE::Tasks::ETaskPriority AMcWorldActor::WorldTaskPriority() const
 {
 	// Behind the frame's own tasks, which would otherwise wait for a free worker, unless there's nothing yet to look at.
-	return BlockWorld->IsFilling() ? UE::Tasks::ETaskPriority::Normal : UE::Tasks::ETaskPriority::BackgroundNormal;
+	return BlockWorld->IsFilling() ? UE::Tasks::ETaskPriority::Normal : bOutrunning ? UE::Tasks::ETaskPriority::BackgroundHigh : UE::Tasks::ETaskPriority::BackgroundNormal;
 }
 
 bool AMcWorldActor::DecorateChunks()

@@ -24,6 +24,10 @@ namespace McJavaExport
 		// Seconds spent in all, and of those lighting chunks.
 		double Seconds = 0.0;
 		double LightSeconds = 0.0;
+		// Of the rest: building the chunk's tags (with lighting counted within), writing them out, and compressing a region.
+		double MakeSeconds = 0.0;
+		double WriteSeconds = 0.0;
+		double RegionSeconds = 0.0;
 	};
 
 	// A chunk as the game's chunk NBT: sections with palettes of block states and biomes, packed as the game packs them.

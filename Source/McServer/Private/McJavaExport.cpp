@@ -440,21 +440,37 @@ void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdat
 		FMcNbt Entry = MakeTag(EType::Compound);
 		Add(Entry, TEXT("Y"), Int(Chunk.GetMinY() / McCoords::SectionSize + Section, EType::Byte));
 		// Blocks: a palette of the states used, and an index for each of the 4096 (y, then z, then x).
-		TMap<FMcStateId, int32> Used;
+		// (A flat array by state with a stamp per section stands in for a map: this runs for 4096 blocks of every section.)
+		static thread_local TArray<int32> Slot;
+		static thread_local TArray<uint32> Stamp;
+		static thread_local uint32 Epoch = 0;
+		if (Slot.Num() != 65536)
+		{
+			Slot.SetNumZeroed(65536);
+			Stamp.SetNumZeroed(65536);
+		}
+		++Epoch;
 		TArray<FMcStateId> Order;
 		TArray<int32> Indexes;
-		Indexes.SetNumUninitialized(4096);
 		const FMcChunkSection& Source = Chunk.GetSection(Section);
-		for (int32 Block = 0; Block < 4096; ++Block)
+		if (Source.Blocks.IsUniform())
 		{
-			const FMcStateId State = Source.Blocks.Get(Block);
-			int32* Found = Used.Find(State);
-			if (!Found)
+			Order.Add(Source.Blocks.Get(0));
+		}
+		else
+		{
+			Indexes.SetNumUninitialized(4096);
+			for (int32 Block = 0; Block < 4096; ++Block)
 			{
-				Found = &Used.Add(State, Order.Num());
-				Order.Add(State);
+				const FMcStateId State = Source.Blocks.Get(Block);
+				if (Stamp[State] != Epoch)
+				{
+					Stamp[State] = Epoch;
+					Slot[State] = Order.Num();
+					Order.Add(State);
+				}
+				Indexes[Block] = Slot[State];
 			}
-			Indexes[Block] = *Found;
 		}
 		FMcNbt BlockStates = MakeTag(EType::Compound);
 		FMcNbt Palette = MakeTag(EType::List);
@@ -700,6 +716,7 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 					++OutStats.Failed;
 					continue;
 				}
+				const double MakeStarted = FPlatformTime::Seconds();
 				FMcNbt Root;
 				if (bWriteLight)
 				{
@@ -713,8 +730,11 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 				{
 					MakeChunk(*Chunk, Root, static_cast<int64>(Level.DayTime));
 				}
+				const double WriteStarted = FPlatformTime::Seconds();
+				OutStats.MakeSeconds += WriteStarted - MakeStarted;
 				TArray<uint8> Bytes;
 				Root.WriteRoot(Bytes);
+				OutStats.WriteSeconds += FPlatformTime::Seconds() - WriteStarted;
 				Chunks.Add(Pos, MoveTemp(Bytes));
 				++OutStats.Chunks;
 			}
@@ -723,7 +743,9 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 				continue;
 			}
 			TArray<uint8> File;
+			const double RegionStarted = FPlatformTime::Seconds();
 			MakeRegion(Chunks, File);
+			OutStats.RegionSeconds += FPlatformTime::Seconds() - RegionStarted;
 			Files.MakeDirectory(*Target, true);
 			if (!FFileHelper::SaveArrayToFile(File, *(Target / FString::Printf(TEXT("r.%d.%d.mca"), Key.X, Key.Y))))
 			{

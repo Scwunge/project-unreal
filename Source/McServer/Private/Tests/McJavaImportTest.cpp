@@ -19,6 +19,7 @@
 #include "McFurnace.h"
 #include "McItemRegistry.h"
 #include "McNbt.h"
+#include "McRegionFile.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
 #include "Misc/AutomationTest.h"
@@ -1524,7 +1525,7 @@ bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
 	IFileManager::Get().DeleteDirectory(*Target, false, true);
 	McJavaExport::FStats Out;
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(McWorldSave::GetWorldDir(Folder), Target, Out));
-	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s in %.2f s (%.2f s of it lighting)"), Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds, Out.LightSeconds));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s in %.2f s (%.2f s of it lighting; tags %.2f s, writing %.2f s, regions %.2f s)"), Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds, Out.LightSeconds, Out.MakeSeconds, Out.WriteSeconds, Out.RegionSeconds));
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
@@ -1685,5 +1686,179 @@ bool FMcJavaExportLightTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("what is written parses"), FMcNbt::Parse(Bytes, Back));
 	const FMcNbt* BackSections = Back.Find(TEXT("sections"));
 	TestTrue(TEXT("with its light"), BackSections && BackSections->Num() == 25 && BackSections->Values[5].Find(TEXT("SkyLight")) && BackSections->Values[5].Find(TEXT("SkyLight"))->Num() == 2048);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaRoundTripRealSavesTest, "McClient.McServer.JavaExport.RoundTripInRealSaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+namespace
+{
+	// Compares the chunks of one dimension folder of two of our worlds: the same chunks, the same blocks and block entities.
+	// Every Step-th chunk has its blocks looked at in full. Returns the number of chunks compared.
+	int32 CompareDimension(FAutomationTestBase& Test, const FString& FolderA, const FString& FolderB, const TCHAR* Dimension, int32 Step, int32& OutBad)
+	{
+		FMcDimensionType Type;
+		if (!FMcDimensionType::Load(Dimension, Type))
+		{
+			return 0;
+		}
+		TArray<FString> Names;
+		IFileManager::Get().FindFiles(Names, *(FolderA / TEXT("*.mcr")), true, false);
+		int32 Compared = 0;
+		int32 Counter = 0;
+		FMcBlockWorld World(Type);
+		for (const FString& Name : Names)
+		{
+			FMcRegionFile RegionA(FolderA / Name);
+			FMcRegionFile RegionB(FolderB / Name);
+			TBitArray<> PresentA;
+			TBitArray<> PresentB;
+			RegionA.GetPresent(PresentA);
+			if (IFileManager::Get().FileExists(*(FolderB / Name)))
+			{
+				RegionB.GetPresent(PresentB);
+			}
+			TArray<FString> Parts;
+			Name.ParseIntoArray(Parts, TEXT("."), true);
+			const int32 RX = FCString::Atoi(*Parts[1]);
+			const int32 RZ = FCString::Atoi(*Parts[2]);
+			for (int32 Index = 0; Index < PresentA.Num(); ++Index)
+			{
+				if (!PresentA[Index])
+				{
+					continue;
+				}
+				const FIntPoint Pos(RX * 32 + Index % 32, RZ * 32 + Index / 32);
+				if (!PresentB.IsValidIndex(Index) || !PresentB[Index])
+				{
+					++OutBad;
+					Test.AddError(FString::Printf(TEXT("%s chunk %d,%d is missing after the round trip"), Dimension, Pos.X, Pos.Y));
+					continue;
+				}
+				TArray<uint8> PayloadA;
+				TArray<uint8> PayloadB;
+				TUniquePtr<FMcChunk> A = World.MakeChunk(Pos);
+				TUniquePtr<FMcChunk> B = World.MakeChunk(Pos);
+				FMcChunkSaveExtras Extras;
+				if (!RegionA.Read(Pos, PayloadA) || !RegionB.Read(Pos, PayloadB) || !McChunkSave::Decode(PayloadA, *A, Extras) || !McChunkSave::Decode(PayloadB, *B, Extras))
+				{
+					++OutBad;
+					continue;
+				}
+				++Compared;
+				bool bSame = A->GetBlockEntities().Num() == B->GetBlockEntities().Num();
+				if ((Counter++ % Step) == 0)
+				{
+					for (int32 Y = A->GetMinY(); bSame && Y <= A->GetMaxY(); ++Y)
+					{
+						for (int32 Z = 0; bSame && Z < 16; ++Z)
+						{
+							for (int32 X = 0; X < 16; ++X)
+							{
+								if (A->GetBlock(X, Y, Z) != B->GetBlock(X, Y, Z))
+								{
+									bSame = false;
+									break;
+								}
+							}
+						}
+					}
+				}
+				if (bSame)
+				{
+					for (const TPair<FIntVector, FMcBlockEntity>& Pair : A->GetBlockEntities())
+					{
+						const FMcBlockEntity* Other = B->FindBlockEntity(Pair.Key.X, Pair.Key.Y, Pair.Key.Z);
+						// A raw record keeps its own id and position inside its bytes; those are put right on the way out, so only the kind is compared.
+						if (!Other || Other->Kind != Pair.Value.Kind || (Pair.Value.Kind != EMcBlockEntityKind::Raw && !(*Other == Pair.Value)))
+						{
+							bSame = false;
+							break;
+						}
+					}
+				}
+				if (!bSame)
+				{
+					++OutBad;
+					if (OutBad <= 5)
+					{
+						Test.AddError(FString::Printf(TEXT("%s chunk %d,%d differs after the round trip"), Dimension, Pos.X, Pos.Y));
+					}
+				}
+			}
+		}
+		return Compared;
+	}
+}
+
+bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
+{
+	// Each real save (read only) is imported, written back out as a Java world in a temporary folder, imported again, and the
+	// two imports compared; times are logged. Only saves that this machine has are used.
+	if (!LoadRegistries() || !FMcBlockLight::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	const FString Only = Parameters;
+	for (const TCHAR* Name : { TEXT("campref"), TEXT("endref"), TEXT("terrain3"), TEXT("importflat") })
+	{
+		if (!Only.IsEmpty() && Only != Name)
+		{
+			continue;
+		}
+		FString Source;
+		for (const TCHAR* Root : { TEXT("E:/mc-reference/run/saves/"), TEXT("C:/mc-reference/run/saves/") })
+		{
+			if (McJavaImport::IsJavaWorld(FString(Root) + Name))
+			{
+				Source = FString(Root) + Name;
+				break;
+			}
+		}
+		if (Source.IsEmpty())
+		{
+			AddInfo(FString::Printf(TEXT("%s: not on this machine; skipped"), Name));
+			continue;
+		}
+		McJavaImport::FStats First;
+		double Start = FPlatformTime::Seconds();
+		const FString FolderA = McJavaImport::ImportWorld(Source, TEXT("RoundTripA"), First);
+		const double ImportSeconds = FPlatformTime::Seconds() - Start;
+		if (TestFalse(*FString::Printf(TEXT("%s: the import ran"), Name), FolderA.IsEmpty()))
+		{
+			AddInfo(FString::Printf(TEXT("%s: imported %d chunks (%d failed) in %.1f s = %.0f chunks/s"), Name, First.Chunks, First.ChunksFailed, ImportSeconds, First.Chunks / FMath::Max(ImportSeconds, 0.001)));
+			const FString Out = FPaths::ProjectSavedDir() / TEXT("RoundTripOut") / Name;
+			IFileManager::Get().DeleteDirectory(*Out, false, true);
+			McJavaExport::FStats Exported;
+			Start = FPlatformTime::Seconds();
+			const bool bExported = McJavaExport::ExportWorld(McWorldSave::GetWorldDir(FolderA), Out, Exported);
+			const double ExportSeconds = FPlatformTime::Seconds() - Start;
+			TestTrue(*FString::Printf(TEXT("%s: the export ran"), Name), bExported);
+			AddInfo(FString::Printf(TEXT("%s: exported %d chunks in %d regions (%d failed) in %.1f s (%.1f s lighting)"), Name, Exported.Chunks, Exported.Regions, Exported.Failed, ExportSeconds, Exported.LightSeconds));
+			McJavaImport::FStats Second;
+			Start = FPlatformTime::Seconds();
+			const FString FolderB = McJavaImport::ImportWorld(Out, TEXT("RoundTripB"), Second);
+			AddInfo(FString::Printf(TEXT("%s: re-imported %d chunks (%d failed) in %.1f s"), Name, Second.Chunks, Second.ChunksFailed, FPlatformTime::Seconds() - Start));
+			if (TestFalse(*FString::Printf(TEXT("%s: the re-import ran"), Name), FolderB.IsEmpty()))
+			{
+				TestEqual(*FString::Printf(TEXT("%s: same number of chunks"), Name), Second.Chunks, First.Chunks);
+				int32 Bad = 0;
+				int32 Compared = 0;
+				const FString DirA = McWorldSave::GetWorldDir(FolderA);
+				const FString DirB = McWorldSave::GetWorldDir(FolderB);
+				for (const TCHAR* Dimension : { TEXT("minecraft:overworld"), TEXT("minecraft:the_nether"), TEXT("minecraft:the_end") })
+				{
+					Compared += CompareDimension(*this, DirA / McWorldSave::GetDimensionFolder(Dimension), DirB / McWorldSave::GetDimensionFolder(Dimension), Dimension, 4, Bad);
+				}
+				AddInfo(FString::Printf(TEXT("%s: compared %d chunks, %d differ"), Name, Compared, Bad));
+				TestEqual(*FString::Printf(TEXT("%s: no chunk differs"), Name), Bad, 0);
+				McWorldSave::DeleteWorld(FolderB);
+			}
+			IFileManager::Get().DeleteDirectory(*Out, false, true);
+			McWorldSave::DeleteWorld(FolderA);
+		}
+	}
 	return true;
 }

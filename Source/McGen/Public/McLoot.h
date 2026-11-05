@@ -25,8 +25,43 @@ namespace McLoot
 	// trade does to what it gives.
 	MCGEN_API void ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack);
 
-	// Rolls a mob's table; bCaptain answers the raider predicate (is_captain) that decides the ominous bottle.
-	MCGEN_API bool RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out);
+	// Rolls a mob's table, for a kill with a weapon of that Looting level; bCaptain answers the raider predicate (is_captain) that decides the ominous bottle.
+	MCGEN_API bool RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Looting = 0);
+
+	// What an entity's loot table can ask about the mob and how it died (killed_by_player, entity_properties of the mob,
+	// its killer and its vehicle, damage_source_properties). A roll made while a scope is alive uses it; with none, those
+	// conditions can't be told and pass, as before.
+	struct FMobContext
+	{
+		// A player killed it, or hurt it in the last five seconds.
+		bool bKilledByPlayer = false;
+		// Burning when it died (smelts what it drops, with furnace_smelt).
+		bool bOnFire = false;
+		// The killing weapon's enchantments smelt loot (Fire Aspect does; nothing here holds one yet).
+		bool bWeaponSmelts = false;
+		// Slime and magma cube: the size (1 smallest), 0 for any other mob.
+		int32 CubeSize = 0;
+		// A sheep's wool dye in the game's order (-1 for none) and whether it was sheared.
+		int32 DyeColor = -1;
+		bool bSheared = false;
+		// The entity it rode, None for none.
+		FName Vehicle;
+		// What killed it ("minecraft:player", "minecraft:skeleton"), None for no entity, and what struck the blow
+		// (the arrow or fireball that was shot), None if the killer struck it.
+		FName Killer;
+		FName DirectKiller;
+		bool bProjectile = false;
+		bool bLightning = false;
+	};
+	// Holds a mob's context for the rolls made on this thread while it lives.
+	class MCGEN_API FMobScope
+	{
+	public:
+		explicit FMobScope(const FMobContext& Context);
+		~FMobScope();
+	private:
+		const FMobContext* Previous;
+	};
 
 	// What a block's loot table can ask about its being broken: the block state (match_block), and the power of the
 	// blast that broke it, if one did (survives_explosion and explosion_decay each keep an item with a chance of 1

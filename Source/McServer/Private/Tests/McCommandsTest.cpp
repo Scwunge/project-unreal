@@ -1,6 +1,8 @@
 #include "McCommands.h"
 #include "McLang.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -27,6 +29,13 @@ namespace
 		FMcServerAccess Access;
 		bool bAllowlist = false;
 		bool bDedicated = false;
+		struct FParticleCall { FName Name; FVector Pos; FVector Delta; double Speed; int32 Count; };
+		TArray<FParticleCall> Particles;
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			Particles.Add({ Name, Pos, Delta, Speed, Count });
+			return true;
+		}
 
 		FPlayer* Find(const FString& Name)
 		{
@@ -58,6 +67,8 @@ namespace
 		{
 			Titles.Add(FString::Printf(TEXT("%s:%d:%s:%d,%d,%d"), *Player, Kind, *Text, FadeIn, Stay, FadeOut));
 		}
+		FString WorldFolder;
+		virtual FString GetWorldFolder() const override { return WorldFolder; }
 		virtual bool IsCreative(const FString& Player) const override { return Find(Player) && Find(Player)->bCreative; }
 		virtual void SetCreative(const FString& Player, bool bCreative) override
 		{
@@ -288,6 +299,20 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no permission is an error"), AnyError(Replies));
 	TestFalse(TEXT("and changes nothing"), Target.Find(TEXT("Steve"))->bCreative);
 	TestTrue(TEXT("unknown command"), Joined(McCommands::HandleChat(TEXT("/fly"), Op(TEXT("Steve")), Target)).Contains(TEXT("<--[HERE]")));
+
+	// /particle
+	Replies = McCommands::HandleChat(TEXT("/particle minecraft:heart 1 2 3 0.5 0.25 0.5 0.1 7 force"), Op(TEXT("Steve")), Target);
+	TestFalse(TEXT("particle ok"), AnyError(Replies));
+	TestEqual(TEXT("one particle call"), Target.Particles.Num(), 1);
+	if (Target.Particles.Num() == 1)
+	{
+		TestEqual(TEXT("name"), Target.Particles[0].Name, FName(TEXT("minecraft:heart")));
+		TestEqual(TEXT("position y"), Target.Particles[0].Pos.Y, 2.0, 1e-6);
+		TestEqual(TEXT("delta x"), Target.Particles[0].Delta.X, 0.5, 1e-6);
+		TestEqual(TEXT("count"), Target.Particles[0].Count, 7);
+	}
+	TestTrue(TEXT("a particle with no definition is refused"), AnyError(McCommands::HandleChat(TEXT("/particle minecraft:nonsense"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("a half given command is refused"), AnyError(McCommands::HandleChat(TEXT("/particle heart 1 2"), Op(TEXT("Steve")), Target)));
 
 	// /gamemode
 	Replies = McCommands::HandleChat(TEXT("/gamemode creative"), Op(TEXT("Steve")), Target);
@@ -540,6 +565,86 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("spreadplayers"), First(TEXT("spreadplayers 0 0 5 20 false @s")), FString(TEXT("Spread 1 entity/entities around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
 	TestEqual(TEXT("spreadplayers teams"), First(TEXT("spreadplayers 0 0 5 20 true @s")), FString(TEXT("Spread 1 team(s) around 0.5, 0.5 with an average distance of 0.00 block(s) apart")));
 	TestEqual(TEXT("spreadplayers nobody"), First(TEXT("spreadplayers 0 0 5 20 false Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /team.
+	TestEqual(TEXT("team none"), First(TEXT("team list")), FString(TEXT("There are no teams")));
+	TestEqual(TEXT("team add"), First(TEXT("team add red")), FString(TEXT("Created team [red]")));
+	TestEqual(TEXT("team add again"), First(TEXT("team add red")), FString(TEXT("A team already exists by that name")));
+	TestEqual(TEXT("team add display"), First(TEXT("team add blue {\"text\":\"Blue Team\"}")), FString(TEXT("Created team [Blue Team]")));
+	TestEqual(TEXT("team list"), First(TEXT("team list")), FString(TEXT("There are 2 team(s): [Blue Team], [red]")));
+	TestEqual(TEXT("team empty list"), First(TEXT("team list red")), FString(TEXT("There are no members on team [red]")));
+	TestEqual(TEXT("team join"), First(TEXT("team join red @s")), FString(TEXT("Added Steve to team [red]")));
+	TestEqual(TEXT("team members"), First(TEXT("team list red")), FString(TEXT("Team [red] has 1 member(s): Steve")));
+	TestEqual(TEXT("team join unknown"), First(TEXT("team join nope @s")), FString(TEXT("Unknown team 'nope'")));
+	TestEqual(TEXT("team leave"), First(TEXT("team leave @s")), FString(TEXT("Removed Steve from any team")));
+	TestEqual(TEXT("team leave none"), First(TEXT("team leave @s")), FString(TEXT("Removed 0 members from any team")));
+	TestEqual(TEXT("team color"), First(TEXT("team modify red color red")), FString(TEXT("Updated the color for team [red] to red")));
+	TestEqual(TEXT("team color same"), First(TEXT("team modify red color red")), FString(TEXT("Nothing changed. That team already has that color")));
+	TestEqual(TEXT("team color nonsense"), First(TEXT("team modify red color nonsense")), FString(TEXT("Unknown color 'nonsense'")));
+	TestEqual(TEXT("team friendly fire"), First(TEXT("team modify red friendlyFire false")), FString(TEXT("Disabled friendly fire for team [red]")));
+	TestEqual(TEXT("team nametag"), First(TEXT("team modify red nametagVisibility never")), FString(TEXT("Nametag visibility for team [red] is now \"Never\"")));
+	TestEqual(TEXT("team display name"), First(TEXT("team modify red displayName {\"text\":\"Reds\"}")), FString(TEXT("Updated the name of team [Reds]")));
+	TestEqual(TEXT("team empty"), First(TEXT("team empty red")), FString(TEXT("Nothing changed. That team is already empty")));
+	TestEqual(TEXT("team remove"), First(TEXT("team remove red")), FString(TEXT("Removed team [Reds]")));
+	TestEqual(TEXT("team removed"), First(TEXT("team remove red")), FString(TEXT("Unknown team 'red'")));
+	// Measured against the game: /bossbar.
+	TestEqual(TEXT("bossbar none"), First(TEXT("bossbar list")), FString(TEXT("There are no custom bossbars active")));
+	TestEqual(TEXT("bossbar add"), First(TEXT("bossbar add foo Foo")), FString(TEXT("Created custom bossbar [Foo]")));
+	TestEqual(TEXT("bossbar add component"), First(TEXT("bossbar add minecraft:bar {\"text\":\"Bar Name\"}")), FString(TEXT("Created custom bossbar [Bar Name]")));
+	TestEqual(TEXT("bossbar add again"), First(TEXT("bossbar add foo Again")), FString(TEXT("A bossbar already exists with the ID 'minecraft:foo'")));
+	TestEqual(TEXT("bossbar list"), First(TEXT("bossbar list")), FString(TEXT("There are 2 custom bossbar(s) active: [Bar Name], [Foo]")));
+	TestEqual(TEXT("bossbar get max"), First(TEXT("bossbar get foo max")), FString(TEXT("Custom bossbar [Foo] has a maximum of 100")));
+	TestEqual(TEXT("bossbar get players"), First(TEXT("bossbar get foo players")), FString(TEXT("Custom bossbar [Foo] has no players currently online")));
+	TestEqual(TEXT("bossbar set value"), First(TEXT("bossbar set foo value 50")), FString(TEXT("Custom bossbar [Foo] has changed value to 50")));
+	TestEqual(TEXT("bossbar set value same"), First(TEXT("bossbar set foo value 50")), FString(TEXT("Nothing changed. That's already the value of this bossbar")));
+	TestEqual(TEXT("bossbar set max 0"), First(TEXT("bossbar set foo max 0")), FString(TEXT("Integer must not be less than 1: found 0")));
+	TestEqual(TEXT("bossbar set color"), First(TEXT("bossbar set foo color red")), FString(TEXT("Custom bossbar [Foo] has changed color")));
+	TestEqual(TEXT("bossbar set name"), First(TEXT("bossbar set foo name {\"text\":\"New\"}")), FString(TEXT("Custom bossbar [New] has been renamed")));
+	TestEqual(TEXT("bossbar hide"), First(TEXT("bossbar set foo visible false")), FString(TEXT("Custom bossbar [New] is now hidden")));
+	TestEqual(TEXT("bossbar players"), First(TEXT("bossbar set foo players @s")), FString(TEXT("Custom bossbar [New] now has 1 player(s): Steve")));
+	TestEqual(TEXT("bossbar players none"), First(TEXT("bossbar set foo players")), FString(TEXT("Custom bossbar [New] no longer has any players")));
+	TestEqual(TEXT("bossbar unknown"), First(TEXT("bossbar get nope value")), FString(TEXT("No bossbar exists with the ID 'minecraft:nope'")));
+	TestEqual(TEXT("bossbar remove"), First(TEXT("bossbar remove foo")), FString(TEXT("Removed custom bossbar [New]")));
+	TestEqual(TEXT("bossbar remove last"), First(TEXT("bossbar remove bar")), FString(TEXT("Removed custom bossbar [Bar Name]")));
+	// Measured against the game: /data (storage; entity Pos).
+	TestEqual(TEXT("data empty"), First(TEXT("data get storage test:a")), FString(TEXT("Storage test:a has the following contents: {}")));
+	TestEqual(TEXT("data merge"), First(TEXT("data merge storage test:a {x:1,y:\"hi\",z:[1,2,3],w:{a:1b,b:2.5d}}")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data get all"), First(TEXT("data get storage test:a")), FString(TEXT("Storage test:a has the following contents: {w: {a: 1b, b: 2.5d}, x: 1, y: \"hi\", z: [1, 2, 3]}")));
+	TestEqual(TEXT("data get path"), First(TEXT("data get storage test:a z[1]")), FString(TEXT("Storage test:a has the following contents: 2")));
+	TestEqual(TEXT("data get scaled"), First(TEXT("data get storage test:a w.b 2")), FString(TEXT("w.b in storage test:a after scale factor of 2.00 is 5")));
+	TestEqual(TEXT("data get none"), First(TEXT("data get storage test:a nope")), FString(TEXT("Found no elements matching nope")));
+	TestEqual(TEXT("data set"), First(TEXT("data modify storage test:a x set value 5")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data set same"), First(TEXT("data modify storage test:a x set value 5")), FString(TEXT("Nothing changed. The specified properties already have these values")));
+	First(TEXT("data modify storage test:a z append value 4"));
+	First(TEXT("data modify storage test:a z prepend value 0"));
+	First(TEXT("data modify storage test:a z insert 1 value 9"));
+	TestEqual(TEXT("data list ops"), First(TEXT("data get storage test:a z")), FString(TEXT("Storage test:a has the following contents: [0, 9, 1, 2, 3, 4]")));
+	First(TEXT("data modify storage test:a q set from storage test:a x"));
+	First(TEXT("data modify storage test:a w merge value {c:3}"));
+	TestEqual(TEXT("data merge value"), First(TEXT("data get storage test:a w")), FString(TEXT("Storage test:a has the following contents: {a: 1b, b: 2.5d, c: 3}")));
+	TestEqual(TEXT("data remove"), First(TEXT("data remove storage test:a y")), FString(TEXT("Modified storage test:a")));
+	TestEqual(TEXT("data remove again"), First(TEXT("data remove storage test:a y")), FString(TEXT("Nothing changed. The specified properties already have these values")));
+	// Storage is written to the world's folder after a change.
+	const FString StorageFolder = FPaths::ProjectSavedDir() / TEXT("McCommandsTestWorld");
+	Target.WorldFolder = StorageFolder;
+	First(TEXT("data merge storage test:saved {n:7}"));
+	FString StorageText;
+	TestTrue(TEXT("storage file written"), FFileHelper::LoadFileToString(StorageText, *(StorageFolder / TEXT("data") / TEXT("command_storage.snbt"))) && StorageText.Contains(TEXT("n: 7")));
+	Target.WorldFolder.Reset();
+	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
+	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /trigger.
+	TestEqual(TEXT("trigger unknown"), First(TEXT("trigger nope")), FString(TEXT("Unknown scoreboard objective 'nope'")));
+	First(TEXT("scoreboard objectives add trg trigger"));
+	TestEqual(TEXT("trigger unprimed"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger"), First(TEXT("trigger trg")), FString(TEXT("Triggered [trg]")));
+	TestEqual(TEXT("trigger once"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger add"), First(TEXT("trigger trg add 5")), FString(TEXT("Triggered [trg] (added 5 to value)")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger set"), First(TEXT("trigger trg set 3")), FString(TEXT("Triggered [trg] (set value to 3)")));
+	TestEqual(TEXT("trigger value"), First(TEXT("scoreboard players get Steve trg")), FString(TEXT("Steve has 3 [trg]")));
+	First(TEXT("scoreboard objectives remove trg"));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

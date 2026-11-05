@@ -1041,23 +1041,55 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	}
 }
 
+void AMcHUD::DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style)
+{
+	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
+	DrawGuiText(Title, (static_cast<float>(Width) - TextWidth(Title)) * 0.5f, Y - 9.0f, 0xFFFFFF, true);
+	const FString Base = FString(SpriteRoot) + TEXT("boss_bar/");
+	const bool bNotched = Style != TEXT("progress");
+	DrawSprite(LoadSprite(Base + Color + TEXT("_background.png")), X, Y, 182, 5);
+	if (bNotched)
+	{
+		DrawSprite(LoadSprite(Base + Style + TEXT("_background.png")), X, Y, 182, 5);
+	}
+	const float Filled = FMath::Clamp(Fraction, 0.0f, 1.0f);
+	if (Filled > 0.0f)
+	{
+		// The progress pictures are 182 wide; only the filled part of them is shown.
+		const float Part = 182.0f * Filled;
+		DrawRegion(LoadSprite(Base + Color + TEXT("_progress.png")), X, Y, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		if (bNotched)
+		{
+			DrawRegion(LoadSprite(Base + Style + TEXT("_progress.png")), X, Y, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		}
+	}
+}
+
 void AMcHUD::DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data)
 {
 	if (Data->RaidBarFraction < 0.0f)
 	{
 		return;
 	}
-	const float X = (static_cast<float>(Width) - 182.0f) * 0.5f;
-	DrawGuiText(Data->RaidBarTitle, (static_cast<float>(Width) - TextWidth(Data->RaidBarTitle)) * 0.5f, 3.0f, 0xFFFFFF, true);
-	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_background.png")), X, 12.0f, 182, 5);
-	DrawSprite(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_background.png")), X, 12.0f, 182, 5);
-	const float Filled = FMath::Clamp(Data->RaidBarFraction, 0.0f, 1.0f);
-	if (Filled > 0.0f)
+	DrawBossBar(Width, 12.0f, Data->RaidBarTitle, Data->RaidBarFraction, TEXT("red"), TEXT("notched_10"));
+}
+
+void AMcHUD::DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data)
+{
+	// Bars stack 19 pixels apart from the top, the raid bar first.
+	float Y = Data->RaidBarFraction < 0.0f ? 12.0f : 31.0f;
+	TArray<FString> Lines;
+	Data->CustomBars.ParseIntoArray(Lines, TEXT("\n"), true);
+	for (const FString& Line : Lines)
 	{
-		// The progress pictures are 182 wide; only the filled part of them is shown.
-		const float Part = 182.0f * Filled;
-		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/red_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
-		DrawRegion(LoadSprite(FString(SpriteRoot) + TEXT("boss_bar/notched_10_progress.png")), X, 12.0f, Part, 5.0f, 0.0f, 0.0f, Part, 5.0f);
+		TArray<FString> Parts;
+		Line.ParseIntoArray(Parts, TEXT("\t"), false);
+		if (Parts.Num() < 4)
+		{
+			continue;
+		}
+		DrawBossBar(Width, Y, Parts[0], FCString::Atof(*Parts[1]), Parts[2], Parts[3]);
+		Y += 19.0f;
 	}
 }
 
@@ -2136,6 +2168,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		break;
 	case McGui::EScreen::Horse:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawMobPreview(FName(*(FString(TEXT("minecraft:")) + Screen->Title.ToLower())), Origin);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Hopper:
@@ -2675,6 +2708,7 @@ void AMcHUD::DrawHUD()
 		}
 		DrawEffects(Width, Height, Data);
 		DrawRaidBar(Width, Data);
+		DrawCustomBars(Width, Data);
 		// Creative has no health, hunger, armour, air or experience to show (minecraft.wiki: Creative).
 		if (!Data->bCreative)
 		{
@@ -2717,6 +2751,10 @@ void AMcHUD::DrawHUD()
 	else if (IsWorldMenu())
 	{
 		DrawMenus(Width, Height, false);
+	}
+	if (bCreditsOn)
+	{
+		DrawCredits(Width, Height);
 	}
 	DrawToasts(Width, Height);
 }
@@ -3571,4 +3609,149 @@ void AMcHUD::DrawLectern(int32 Width, int32 Height)
 	};
 	Button(TEXT("Done"), Width / 2.0f - 100.0f, BookView::IsOverDone(GuiMouse, Width));
 	Button(TEXT("Take Book"), Width / 2.0f + 2.0f, BookView::IsOverTake(GuiMouse, Width));
+}
+
+void AMcHUD::StartCredits(const FString& PlayerNameForPoem, TFunction<void()> Done)
+{
+	CreditLines.Reset();
+	const auto ColourOf = [](TCHAR Code) -> uint32
+	{
+		static const uint32 Colours[16] = { 0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+			0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF };
+		const int32 Index = FChar::IsDigit(Code) ? Code - TEXT('0') : (FChar::ToLower(Code) - TEXT('a') + 10);
+		return Index >= 0 && Index < 16 ? Colours[Index] : 0xFFFFFF;
+	};
+	const auto Wrap = [this](const FString& Text, uint32 Rgb, TArray<TPair<FString, uint32>>& Out)
+	{
+		if (Text.IsEmpty())
+		{
+			Out.Emplace(FString(), Rgb);
+			return;
+		}
+		FString Line;
+		TArray<FString> Words;
+		Text.ParseIntoArray(Words, TEXT(" "), true);
+		for (const FString& Word : Words)
+		{
+			const FString Try = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+			if (!Line.IsEmpty() && TextWidth(Try) > 274.0f)
+			{
+				Out.Emplace(Line, Rgb);
+				Line = Word;
+			}
+			else
+			{
+				Line = Try;
+			}
+		}
+		Out.Emplace(Line, Rgb);
+	};
+	FString Poem;
+	if (FFileHelper::LoadFileToString(Poem, *McCache::Asset(TEXT("texts/end.txt"))))
+	{
+		Poem = Poem.Replace(TEXT("PLAYERNAME"), *PlayerNameForPoem).Replace(TEXT("\r"), TEXT(""));
+		TArray<FString> Lines;
+		Poem.ParseIntoArray(Lines, TEXT("\n"), false);
+		for (FString Line : Lines)
+		{
+			uint32 Rgb = 0xFFFFFF;
+			if (Line.Len() >= 2 && Line[0] == 0x00A7)
+			{
+				Rgb = ColourOf(Line[1]);
+				Line = Line.Mid(2);
+			}
+			Wrap(Line, Rgb, CreditLines);
+		}
+	}
+	for (int32 Index = 0; Index < 24; ++Index)
+	{
+		CreditLines.Emplace(FString(), 0xFFFFFF);
+	}
+	FString Json;
+	TArray<TSharedPtr<FJsonValue>> Sections;
+	if (FFileHelper::LoadFileToString(Json, *McCache::Asset(TEXT("texts/credits.json")))
+		&& FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Sections))
+	{
+		for (const TSharedPtr<FJsonValue>& SectionValue : Sections)
+		{
+			const TSharedPtr<FJsonObject> Section = SectionValue->AsObject();
+			if (!Section.IsValid())
+			{
+				continue;
+			}
+			CreditLines.Emplace(FString(), 0xFFFFFF);
+			CreditLines.Emplace(Section->GetStringField(TEXT("section")), 0xFFFF55);
+			CreditLines.Emplace(FString(), 0xFFFFFF);
+			const TArray<TSharedPtr<FJsonValue>>* Disciplines = nullptr;
+			if (!Section->TryGetArrayField(TEXT("disciplines"), Disciplines))
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& DisciplineValue : *Disciplines)
+			{
+				const TSharedPtr<FJsonObject> Discipline = DisciplineValue->AsObject();
+				if (!Discipline.IsValid())
+				{
+					continue;
+				}
+				CreditLines.Emplace(Discipline->GetStringField(TEXT("discipline")), 0xFFFFFF);
+				const TArray<TSharedPtr<FJsonValue>>* Titles = nullptr;
+				if (!Discipline->TryGetArrayField(TEXT("titles"), Titles))
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& TitleValue : *Titles)
+				{
+					const TSharedPtr<FJsonObject> Title = TitleValue->AsObject();
+					if (!Title.IsValid())
+					{
+						continue;
+					}
+					CreditLines.Emplace(Title->GetStringField(TEXT("title")), 0xAAAAAA);
+					const TArray<TSharedPtr<FJsonValue>>* Names = nullptr;
+					if (Title->TryGetArrayField(TEXT("names"), Names))
+					{
+						for (const TSharedPtr<FJsonValue>& Name : *Names)
+						{
+							CreditLines.Emplace(Name->AsString(), 0xFFFFFF);
+						}
+					}
+				}
+				CreditLines.Emplace(FString(), 0xFFFFFF);
+			}
+		}
+	}
+	CreditsDone = MoveTemp(Done);
+	CreditsStart = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	bCreditsOn = true;
+}
+
+void AMcHUD::DrawCredits(int32 Width, int32 Height)
+{
+	// Unmeasured: the scroll speed and line gap are a guess (30 GUI pixels a second, 12 apart) until a reference recording.
+	APlayerController* Player = GetOwningPlayerController();
+	const double Elapsed = (GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0) - CreditsStart;
+	const float Offset = static_cast<float>(Elapsed) * 30.0f;
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 1.0f));
+	const float Top = Height - Offset;
+	for (int32 Index = 0; Index < CreditLines.Num(); ++Index)
+	{
+		const float Y = Top + Index * 12.0f;
+		if (Y > -12.0f && Y < Height && !CreditLines[Index].Key.IsEmpty())
+		{
+			DrawGuiText(CreditLines[Index].Key, FMath::RoundToFloat(Width / 2.0f - TextWidth(CreditLines[Index].Key) / 2.0f), Y, CreditLines[Index].Value, true);
+		}
+	}
+	const bool bEnded = Top + CreditLines.Num() * 12.0f < 0.0f;
+	if (bEnded || (Player && Player->WasInputKeyJustPressed(EKeys::Escape)))
+	{
+		bCreditsOn = false;
+		CreditLines.Reset();
+		if (CreditsDone)
+		{
+			TFunction<void()> Done = MoveTemp(CreditsDone);
+			CreditsDone = nullptr;
+			Done();
+		}
+	}
 }

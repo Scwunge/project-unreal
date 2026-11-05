@@ -55,6 +55,7 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			if (Box.IsInside(Local))
 			{
 				bStuck = true;
+				Manager.GameEvent(FName("projectile_land"), Next);
 				if (Manager.OnArrowHit)
 				{
 					Manager.OnArrowHit(Cell, Next, Body.Velocity);
@@ -80,6 +81,8 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 					Hit += static_cast<float>(Manager.GetRandom().RandRange(0, static_cast<int32>(Hit / 2.0f) + 1));
 				}
 				const FVector From = Next - Body.Velocity.GetSafeNormal() * 2.0;
+				static_cast<FMcMob*>(Other.Get())->PlayerHitAge = Other->Age;
+				static_cast<FMcMob*>(Other.Get())->bPlayerHitWasShot = true;
 				static_cast<FMcMob*>(Other.Get())->Damage(Hit, &From);
 				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				bRemoved = true;

@@ -231,7 +231,12 @@ namespace McEntityModel
 
 	// A placed banner (McBanner): its pole and crossbar (bFlag false) or its flag (true), facing Minecraft yaw BodyYaw, at
 	// the size the game draws it. The flag is cut from whichever 64 square picture is laid over it.
-	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out);
+	// Tilt: how far the flag swings about its bar, in radians (see GetBannerTilt).
+	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out, float Tilt = 0.0f);
+	// The flag's swing at a time in ticks. Fitted to a vanilla run (banner3, 40 shots 4 ticks apart over a standing banner):
+	// the foot of the flag moves on a 100 tick cycle, 0.033 rad either way of a rest 0.058 rad back; the phase is given
+	// for the one position measured (a second banner 2 blocks away swung in step, so none is taken from x).
+	MCRENDER_API float GetBannerTilt(double Ticks);
 
 	// An item frame, painting or armor stand from an imported world (McDecor), at its entity's position: how many pictures
 	// (layers) it is drawn from, and one layer's mesh. A painting's layer 0 is its picture (PictureBlocks across and up) and 1 the
@@ -245,6 +250,27 @@ namespace McEntityModel
 	// An item's picture lying flat (a campfire's food), two-sided, Width blocks across, its middle at the origin and Height blocks up.
 	MCRENDER_API void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out);
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
+
+	// A dropped item as the game shows it (fitted from same-camera shots of the game): Count copies of Unit (a mesh one block across with its middle at the origin,
+	// thickness along x: a picture stood one pixel thick, or a cube), each Scale big, turning 1 radian a second and bobbing 0.096 of a block
+	// (a sine of period 63 ticks) about a height Lift above the usual 0.26. Age is in seconds.
+	MCRENDER_API float GetDroppedHeight(float Age, float Lift);
+
+	// What a dropped item is made of: a picture cut out one pixel thick (Sides), a full block (Sides and Top, the cube's two pictures),
+	// or a block that is not a full cube (stairs, slabs, fences) as its baked model (Sides, with LayerUV the block texture layer of
+	// each vertex). Scale and Lift (blocks) place it as the model's ground display does. False only for a name with no picture and no block.
+	struct FDroppedUnit
+	{
+		bool bCube = false;
+		bool bModel = false;
+		McPlayerModel::FMeshData Sides;
+		McPlayerModel::FMeshData Top;
+		TArray<FVector2D> LayerUV;
+		float Scale = 0.5f;
+		float Lift = 0.0f;
+	};
+	MCRENDER_API bool BuildDroppedUnit(FName Item, FDroppedUnit& Out);
+	MCRENDER_API void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out);
 
 	// A block of picture on every side, one block big, standing on the feet (a falling block). Layer 0 is every side (all six when
 	// there is no separate top picture, otherwise all but the top), layer 1 the top alone.
@@ -372,6 +398,17 @@ private:
 	bool bIsItem = false;
 	// An item lying flat, still ("mc:grillfood": the food on a campfire); also bIsItem.
 	bool bIsGrillFood = false;
+	// A dropped item (bIsItem, not thrown, not food on a grill): its picture stood thick, or its block as a small cube, spinning and bobbing.
+	bool bIsDropped = false;
+	bool bDropReady = false;
+	bool bDropCube = false;
+	bool bDropModel = false;
+	TArray<FVector2D> DropLayerUV;
+	float DropScale = 0.5f;
+	float DropLift = 0.0f;
+	McPlayerModel::FMeshData DropUnit;
+	McPlayerModel::FMeshData DropTop;
+	void PrepareDropped();
 	bool bIsArrow = false;
 	// A falling block: a cube with the block's picture, drawn smoothly between the 20 positions a second it is sent.
 	bool bIsFalling = false;

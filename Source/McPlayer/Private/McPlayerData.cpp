@@ -407,7 +407,13 @@ void UMcPlayerDataComponent::CloseServerWindow(bool bTellOwner)
 		Window.OnChanged();
 	}
 	const int32 ClosedId = Window.Id;
+	const bool bWasChest = Window.Kind == EMcWindowKind::Chest;
+	const FIntVector ClosedPos = Window.Pos;
 	Window = FMcWindow();
+	if (bWasChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(ClosedPos, false);
+	}
 	SentWindow.Reset();
 	// The window's changes were sent inside it; now the containers need sending in full.
 	SentInventory.Reset();
@@ -503,7 +509,12 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	Made.Title = Title;
 	Made.Pos = Pos;
 	Made.OnChanged = MoveTemp(OnChanged);
+	const bool bIsChest = Kind == EMcWindowKind::Chest;
 	OpenServerWindow(MoveTemp(Made), Aux);
+	if (bIsChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(Pos, true);
+	}
 }
 
 void UMcPlayerDataComponent::MarkWindowOnEntity(int32 EntityId)
@@ -869,6 +880,22 @@ void UMcPlayerDataComponent::ServerTick()
 		SentRaidTitle = RaidBarTitle;
 		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
 	}
+	if (CustomBars != SentCustomBars)
+	{
+		SentCustomBars = CustomBars;
+		ClientSetCustomBars(CustomBars);
+	}
+	if (bCountersChanged && ++TicksSinceCounters >= 20)
+	{
+		bCountersChanged = false;
+		TicksSinceCounters = 0;
+		FString Text;
+		for (const TPair<FString, int64>& Counter : Counters)
+		{
+			Text += FString::Printf(TEXT("%s=%lld\n"), *Counter.Key, Counter.Value);
+		}
+		ClientSetCounters(Text);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -1075,6 +1102,41 @@ void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
 {
 	RaidBarFraction = Fraction;
 	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::SetCustomBars(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::ClientSetCustomBars_Implementation(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::AddStat(const FString& Id, int64 Amount)
+{
+	if (Amount != 0)
+	{
+		Counters.FindOrAdd(Id) += Amount;
+		bCountersChanged = true;
+	}
+}
+
+void UMcPlayerDataComponent::ClientSetCounters_Implementation(const FString& Text)
+{
+	Counters.Reset();
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines);
+	for (const FString& Line : Lines)
+	{
+		FString Key;
+		FString Value;
+		if (Line.Split(TEXT("="), &Key, &Value, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+		{
+			Counters.Add(Key, FCString::Atoi64(*Value));
+		}
+	}
 }
 
 void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)

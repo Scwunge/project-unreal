@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McSculkMobs.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
 #include "McJavaImport.h"
@@ -419,6 +420,29 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Entities->GetManager().OnParticle = [this](FName Name, const FVector& Position, const FVector& Delta, float Speed, int32 Count)
+	{
+		MulticastParticle(Name, FVector_NetQuantize10(Position), FVector_NetQuantize10(Delta), Speed, Count);
+	};
+	// What the entities and players do that can be heard as vibrations goes to the simulation (sculk sensors, shriekers, listeners).
+	Entities->GetManager().OnGameEvent = [this](FName Name, const FVector& At, const FMcEntityManager::FGameEventTag& Tag)
+	{
+		if (!Simulation)
+		{
+			return;
+		}
+		FMcGameEventSource Source;
+		Source.bPlayer = Tag.bPlayer;
+		Source.bSneaking = Tag.bSneaking;
+		Source.bWarden = Tag.bWarden;
+		Source.bProjectile = Tag.bProjectile;
+		Source.bDying = Tag.bDying;
+		Source.bCreativeOrSpectator = Tag.bCreativeOrSpectator;
+		Source.PlayerId = Tag.PlayerId;
+		Simulation->EmitGameEvent(Name, FIntVector(FMath::FloorToInt32(At.X), FMath::FloorToInt32(At.Y), FMath::FloorToInt32(At.Z)), Source);
+	};
+	// Wardens hear the events, shriekers call them, creaking hearts raise creakings.
+	McSculkMobs::Connect(*Simulation, *Entities, *BlockWorld);
 	// Development: -McWeather=clear|rain|thunder, at full strength from the start (for screenshots).
 	FString WeatherArg;
 	if (!bSecondary && FParse::Value(CommandLine, TEXT("-McWeather="), WeatherArg))
@@ -595,9 +619,9 @@ void AMcWorldActor::SetEntityProxyClass(TSubclassOf<AActor> Class)
 	}
 }
 
-bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative)
+bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative, const FMcItemStack* Weapon, float Strength)
 {
-	return Entities && Entities->Attack(Eye, Look, Reach, Damage, bCreative);
+	return Entities && Entities->Attack(Eye, Look, Reach, Damage, bCreative, Weapon, Strength);
 }
 
 int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float Reach)
@@ -792,6 +816,14 @@ void AMcWorldActor::MulticastNote_Implementation(FVector_NetQuantize10 Position,
 	if (bViewed)
 	{
 		FMcSoundBus::Get().OnNote.Broadcast(FVector(Position), Note);
+	}
+}
+
+void AMcWorldActor::MulticastParticle_Implementation(FName Name, FVector_NetQuantize10 Position, FVector_NetQuantize10 Delta, float Speed, int32 Count)
+{
+	if (bViewed)
+	{
+		FMcSoundBus::Get().OnParticle.Broadcast(Name, FVector(Position), FVector(Delta), Speed, Count);
 	}
 }
 
@@ -1607,4 +1639,82 @@ bool AMcWorldActor::DecorateChunks()
 		bChanged = true;
 	}
 	return bChanged;
+}
+
+bool AMcWorldActor::FindNearestStronghold(const FVector& From, FVector2D& OutCorner) const
+{
+	FIntPoint Corner;
+	if (!Features.IsValid() || !BlockWorld || BlockWorld->GetDimension().Name != TEXT("minecraft:overworld")
+		|| !Features->FindNearestStronghold(static_cast<uint64>(Seed), From.X, From.Z, Corner))
+	{
+		return false;
+	}
+	OutCorner = FVector2D(Corner.X, Corner.Y);
+	return true;
+}
+
+bool AMcWorldActor::FindGatewayExit(int32 X, int32 Z, FVector& OutFeet) const
+{
+	if (!Generator.IsValid())
+	{
+		return false;
+	}
+	const double Length = FMath::Sqrt(static_cast<double>(X) * X + static_cast<double>(Z) * Z);
+	if (Length < 1.0)
+	{
+		return false;
+	}
+	const double Dx = X / Length, Dz = Z / Length;
+	const auto HasBlocksAbove15 = [&](double Dist)
+	{
+		const int32 Cx = FMath::FloorToInt32(Dx * Dist) >> 4, Cz = FMath::FloorToInt32(Dz * Dist) >> 4;
+		for (int32 Bx = 0; Bx < 16; Bx += 3)
+		{
+			for (int32 Bz = 0; Bz < 16; Bz += 3)
+			{
+				if (Generator->FindSolidTopY(Cx * 16 + Bx, Cz * 16 + Bz) > 15)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	double Dist = 1024.0;
+	if (HasBlocksAbove15(Dist))
+	{
+		while (Dist > 768.0 && HasBlocksAbove15(Dist))
+		{
+			Dist -= 16.0;
+		}
+	}
+	else
+	{
+		while (Dist < 1280.0 && !HasBlocksAbove15(Dist))
+		{
+			Dist += 16.0;
+		}
+	}
+	const int32 Cx = FMath::FloorToInt32(Dx * Dist) >> 4, Cz = FMath::FloorToInt32(Dz * Dist) >> 4;
+	int32 BestY = INT32_MIN, BestX = 0, BestZ = 0;
+	for (int32 Bx = 0; Bx < 16; ++Bx)
+	{
+		for (int32 Bz = 0; Bz < 16; ++Bz)
+		{
+			const int32 Top = Generator->FindSolidTopY(Cx * 16 + Bx, Cz * 16 + Bz);
+			if (Top > BestY)
+			{
+				BestY = Top;
+				BestX = Cx * 16 + Bx;
+				BestZ = Cz * 16 + Bz;
+			}
+		}
+	}
+	if (BestY < 30)
+	{
+		// No island in reach: a small one would be made at height 75 in the game; here the middle of the chunk, high, to be landed on.
+		return false;
+	}
+	OutFeet = FVector(BestX + 0.5, BestY + 1.0, BestZ + 0.5);
+	return true;
 }

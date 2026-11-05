@@ -4,6 +4,8 @@
 
 #include "McEntityHost.h"
 #include "McMob.h"
+#include "McBlockRegistry.h"
+#include "McBlockWorld.h"
 #include "McVillager.h"
 
 namespace
@@ -50,6 +52,45 @@ namespace
 	{
 		return !Entity.bRemoved && Entity.GetType() == FMcVillager::StaticType() && !static_cast<const FMcVillager&>(Entity).IsBaby();
 	}
+}
+
+bool FMcEntityHost::CountVillagePoi(const FVector& Center) const
+{
+	// Beds, bells and the job blocks, within 48 blocks of the raid's middle and 16 up or down (the game counts points of interest within 64).
+	static TSet<FName> Names;
+	static TMap<FName, bool> Seen;
+	if (Names.IsEmpty())
+	{
+		for (const TCHAR* Name : { TEXT("minecraft:bell"), TEXT("minecraft:composter"), TEXT("minecraft:barrel"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:brewing_stand"),
+			TEXT("minecraft:cartography_table"), TEXT("minecraft:cauldron"), TEXT("minecraft:fletching_table"), TEXT("minecraft:grindstone"), TEXT("minecraft:lectern"),
+			TEXT("minecraft:loom"), TEXT("minecraft:smithing_table"), TEXT("minecraft:smoker"), TEXT("minecraft:stonecutter") })
+		{
+			Names.Add(Name);
+		}
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcBlockWorld& Blocks = Manager.GetWorld();
+	const FIntVector Middle(FMath::FloorToInt32(Center.X), FMath::FloorToInt32(Center.Y), FMath::FloorToInt32(Center.Z));
+	for (int32 DY = -16; DY <= 16; ++DY)
+	{
+		for (int32 DX = -48; DX <= 48; ++DX)
+		{
+			for (int32 DZ = -48; DZ <= 48; ++DZ)
+			{
+				const FName Name = Registry.GetBlockOf(Blocks.GetBlock(Middle + FIntVector(DX, DY, DZ))).Name;
+				bool* Known = Seen.Find(Name);
+				if (!Known)
+				{
+					Known = &Seen.Add(Name, Names.Contains(Name) || Name.ToString().EndsWith(TEXT("_bed")));
+				}
+				if (*Known)
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 int32 FMcEntityHost::GetWaveCount(int32 Difficulty, int32 Level)
@@ -255,6 +296,8 @@ void FMcEntityHost::SpawnWave(FRaid& Raid)
 	TArray<TPair<FName, int32>> Kinds;
 	FRandomStream Wave(static_cast<int32>(Seed) ^ (Raid.Id * 7919) ^ (Raid.Wave * 104729));
 	RollWave(Rules.Difficulty, Raid.Wave, Wave, Kinds);
+	// Hard bonus raiders: measured in vanilla (raid7-9, Hard, 44 waves, 3 raids at omen 0/1/4): every wave sat inside the wiki table ranges (riders included) except one
+	// (wave 8 had 9 vindicators, table max 8), so no bonus on top of the table is added; a bonus rate of at most about 1 in 30 waves is unfitted (provenance gap).
 	Raid.Raiders.Reset();
 	Raid.WaveHealth = 0.0f;
 	bool bCaptainMade = false;
@@ -288,6 +331,7 @@ void FMcEntityHost::SpawnWave(FRaid& Raid)
 			if (!bCaptainMade)
 			{
 				Raider->bCaptain = true;
+				Raid.CaptainId = Raider->Id;
 				bCaptainMade = true;
 			}
 			Raid.Raiders.Add(Raider->Id);
@@ -363,6 +407,63 @@ void FMcEntityHost::TickRaids()
 			const FMcEntity* Found = Manager.Find(Id);
 			return !Found || Found->bRemoved || static_cast<const FMcMob&>(*Found).Health <= 0.0f;
 		});
+		if (Ticks % 20 == 0)
+		{
+			// Raiders that strayed more than 112 blocks are removed.
+			for (const int32 Id : Raid.Raiders)
+			{
+				FMcEntity* Found = Manager.Find(Id);
+				if (Found && FVector::Dist(Found->Body.Position, Raid.Center) > RaiderLeashRange)
+				{
+					Found->bRemoved = true;
+				}
+			}
+			Raid.Raiders.RemoveAll([this](int32 Id) { const FMcEntity* Found = Manager.Find(Id); return !Found || Found->bRemoved; });
+		}
+		// When the captain falls, the nearest raider takes up the ominous banner (wiki, Raid; the pick-up itself is not built, the banner drops with the dead one).
+		if (Raid.CaptainId != 0 && !Raid.Raiders.Contains(Raid.CaptainId))
+		{
+			const FMcEntity* Old = Manager.Find(Raid.CaptainId);
+			const FVector From = Old ? Old->Body.Position : Raid.Center;
+			Raid.CaptainId = 0;
+			FMcMob* Best = nullptr;
+			double BestDistance = TNumericLimits<double>::Max();
+			for (const int32 Id : Raid.Raiders)
+			{
+				FMcMob* Candidate = static_cast<FMcMob*>(Manager.Find(Id));
+				const double Distance = Candidate ? FVector::DistSquared(Candidate->Body.Position, From) : BestDistance;
+				if (Candidate && Distance < BestDistance)
+				{
+					BestDistance = Distance;
+					Best = Candidate;
+				}
+			}
+			if (Best)
+			{
+				Best->bCaptain = true;
+				Raid.CaptainId = Best->Id;
+			}
+		}
+		// A village with no bed, bell or job block left (that once had one) is no village (wiki, Raid), whatever is alive in it.
+		if (Raid.Age % 200 == 0)
+		{
+			if (CountVillagePoi(Raid.Center))
+			{
+				Raid.bSawPoi = true;
+			}
+			else if (Raid.bSawPoi)
+			{
+				Finish(FRaid::EStatus::Defeat);
+				for (const int32 Id : Raid.Raiders)
+				{
+					if (FMcEntity* Found = Manager.Find(Id))
+					{
+						static_cast<FMcMob*>(Found)->RaidId = 0;
+					}
+				}
+				continue;
+			}
+		}
 		if (Raid.Raiders.IsEmpty())
 		{
 			if (Raid.Timer > 0)

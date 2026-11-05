@@ -49,6 +49,8 @@ public:
 	// The player of that name (as they joined, ignoring case), or null.
 	APlayerController* FindPlayer(const FString& Name) const;
 	static FString GetPlayerName(const AController* Controller);
+	// An advancement trigger fired for a player: criteria that wait for it are met, and advancements whose criteria are all met are made.
+	static void FireTrigger(class AMcPlayerPawn& Pawn, const struct FMcTriggerEvent& Event);
 
 	// ---- Dimensions ----
 	// The first world: the Overworld unless the world was saved in (or started with -McDimension in) another.

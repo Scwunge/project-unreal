@@ -1,4 +1,6 @@
 #include "McGameMode.h"
+#include "McSound.h"
+#include "McMob.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -283,6 +285,177 @@ namespace
 	}
 
 	// Once a second: whatever a player carries that an advancement asks for grants it (parents are not needed, as in the game).
+	struct FCriterionDef
+	{
+		FString Advancement;
+		FString Name;
+		TSharedPtr<FJsonObject> Conditions;
+	};
+
+	struct FTriggerTable
+	{
+		// By trigger id.
+		TMap<FString, TArray<FCriterionDef>> ByTrigger;
+		// By advancement: the groups of criteria names, a group being met by any one of them.
+		TMap<FString, TArray<TArray<FString>>> Requirements;
+	};
+
+	// Every advancement's criteria that wait on an event (the inventory ones are polled, see InventoryTriggers).
+	const FTriggerTable& EventTriggers()
+	{
+		static FTriggerTable Table;
+		static uint32 LoadedGeneration = 0;
+		if (LoadedGeneration == McData::GetGeneration())
+		{
+			return Table;
+		}
+		LoadedGeneration = McData::GetGeneration();
+		Table = FTriggerTable();
+		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
+		{
+			TSharedPtr<FJsonObject> Def;
+			FString Text;
+			const TSharedPtr<FJsonObject>* Criteria = nullptr;
+			if (!FFileHelper::LoadFileToString(Text, *Listed.Paths.Last()) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Def) || !Def.IsValid()
+				|| !Def->TryGetObjectField(TEXT("criteria"), Criteria))
+			{
+				continue;
+			}
+			bool bAny = false;
+			for (const auto& Entry : (*Criteria)->Values)
+			{
+				const TSharedPtr<FJsonObject>* Criterion = nullptr;
+				FString Trigger;
+				if (!Entry.Value->TryGetObject(Criterion) || !(*Criterion)->TryGetStringField(TEXT("trigger"), Trigger) || Trigger == TEXT("minecraft:inventory_changed"))
+				{
+					continue;
+				}
+				FCriterionDef Out;
+				Out.Advancement = Listed.Id;
+				Out.Name = FString(Entry.Key);
+				const TSharedPtr<FJsonObject>* Conditions = nullptr;
+				Out.Conditions = (*Criterion)->TryGetObjectField(TEXT("conditions"), Conditions) ? *Conditions : MakeShared<FJsonObject>();
+				Table.ByTrigger.FindOrAdd(Trigger).Add(MoveTemp(Out));
+				bAny = true;
+			}
+			if (!bAny)
+			{
+				continue;
+			}
+			TArray<TArray<FString>>& Groups = Table.Requirements.Add(Listed.Id);
+			const TArray<TSharedPtr<FJsonValue>>* Requirements = nullptr;
+			if (Def->TryGetArrayField(TEXT("requirements"), Requirements))
+			{
+				for (const TSharedPtr<FJsonValue>& Group : *Requirements)
+				{
+					TArray<FString>& Names = Groups.AddDefaulted_GetRef();
+					for (const TSharedPtr<FJsonValue>& Name : Group->AsArray())
+					{
+						Names.Add(Name->AsString());
+					}
+				}
+			}
+			else
+			{
+				for (const auto& Entry : (*Criteria)->Values)
+				{
+					Groups.Add(TArray<FString>{ FString(Entry.Key) });
+				}
+			}
+		}
+		return Table;
+	}
+
+	bool NameIn(const TSharedPtr<FJsonValue>& Wanted, const FName& Name)
+	{
+		if (Name.IsNone() || !Wanted.IsValid())
+		{
+			return false;
+		}
+		FString One;
+		if (Wanted->TryGetString(One))
+		{
+			return !One.StartsWith(TEXT("#")) && McCache::Namespaced(One) == Name.ToString();
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+		if (Wanted->TryGetArray(Many))
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *Many)
+			{
+				if (NameIn(Value, Name))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// An entity predicate in a condition: only the entity type is understood; anything else (components, equipment, flags)
+	// counts as not met, so no advancement is made that the game would not have made.
+	bool EntityMatches(const TSharedPtr<FJsonValue>& Value, const FName& Entity)
+	{
+		const TSharedPtr<FJsonObject>* Object = nullptr;
+		if (!Value.IsValid() || !Value->TryGetObject(Object))
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Predicate = nullptr;
+		if (!(*Object)->TryGetObjectField(TEXT("predicate"), Predicate) || (*Predicate)->Values.Num() != 1 || !(*Predicate)->HasField(TEXT("minecraft:entity_type")))
+		{
+			return false;
+		}
+		return NameIn((*Predicate)->TryGetField(TEXT("minecraft:entity_type")), Entity);
+	}
+
+	bool ConditionsMatch(const FJsonObject& Conditions, const FMcTriggerEvent& Event)
+	{
+		for (const auto& Entry : Conditions.Values)
+		{
+			const FString Key(Entry.Key);
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			if (Key == TEXT("item"))
+			{
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				FString Reference;
+				if (!Entry.Value->TryGetObject(Item) || (*Item)->Values.Num() != 1 || !(*Item)->TryGetStringField(TEXT("items"), Reference)
+					|| Event.Item.IsNone() || !FMcItemRegistry::Get().Matches(Event.Item, Reference))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("entity") || Key == TEXT("child"))
+			{
+				if (!EntityMatches(Entry.Value, Event.Entity))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("recipes"))
+			{
+				if (!NameIn(Entry.Value, Event.Recipe))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("location"))
+			{
+				// A block placed: match_block with plain block names, no state.
+				FString Type;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetStringField(TEXT("type"), Type) || Type != TEXT("minecraft:match_block")
+					|| (*Object)->HasField(TEXT("state")) || (*Object)->HasField(TEXT("nbt")) || !NameIn((*Object)->TryGetField(TEXT("blocks")), Event.Block))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	void PollInventoryTriggers(UWorld* World)
 	{
 		if (!World)
@@ -353,6 +526,44 @@ namespace
 					AwardAdvancement(Pawn, Trigger.Id, true, Title);
 				}
 			}
+		}
+	}
+}
+
+void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
+{
+	if (!Pawn.Data || Event.Trigger.IsNone())
+	{
+		return;
+	}
+	const FTriggerTable& Table = EventTriggers();
+	const TArray<FCriterionDef>* Waiting = Table.ByTrigger.Find(Event.Trigger.ToString());
+	if (!Waiting)
+	{
+		return;
+	}
+	for (const FCriterionDef& Criterion : *Waiting)
+	{
+		const FName Done(*(Criterion.Advancement + TEXT("/") + Criterion.Name));
+		if (Pawn.Data->Advancements.Contains(FName(*Criterion.Advancement)) || Pawn.Data->Criteria.Contains(Done) || !ConditionsMatch(*Criterion.Conditions, Event))
+		{
+			continue;
+		}
+		Pawn.Data->Criteria.Add(Done);
+		bool bAll = true;
+		for (const TArray<FString>& Group : Table.Requirements.FindRef(Criterion.Advancement))
+		{
+			bool bAny = false;
+			for (const FString& Name : Group)
+			{
+				bAny = bAny || Pawn.Data->Criteria.Contains(FName(*(Criterion.Advancement + TEXT("/") + Name)));
+			}
+			bAll = bAll && bAny;
+		}
+		if (bAll)
+		{
+			FString Title;
+			AwardAdvancement(&Pawn, Criterion.Advancement, true, Title);
 		}
 	}
 }
@@ -531,6 +742,68 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				}
 			}
 			return false;
+		};
+		Host->PlayerLooksAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& PlayerPos, const FVector& Point)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (!McPawn || !McPawn->Data || McPawn->Data->bCreative || FVector::Dist(McPawn->GetFeetPosition(), PlayerPos) >= 0.5)
+				{
+					continue;
+				}
+				// Both the yaw and the pitch of the way they face must be within 60 degrees of the way to the point.
+				const FVector Eye = PlayerPos + FVector(0.0, 1.62, 0.0);
+				const FVector To = (Point - Eye).GetSafeNormal();
+				const double WantYaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+				const double WantPitch = FMath::RadiansToDegrees(FMath::Asin(-FMath::Clamp(To.Y, -1.0, 1.0)));
+				return FMath::Abs(FMath::FindDeltaAngleDegrees(WantYaw, McPawn->GetLookYaw())) <= 60.0 && FMath::Abs(WantPitch - McPawn->GetLookPitch()) <= 60.0;
+			}
+			return false;
+		};
+		Host->FindPlayerById = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](int32 Id, FVector& OutFeet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && static_cast<int32>(McPawn->GetUniqueID()) == Id)
+				{
+					if (!McPawn->Data || McPawn->Data->bCreative)
+					{
+						return false;
+					}
+					OutFeet = McPawn->GetFeetPosition();
+					return true;
+				}
+			}
+			return false;
+		};
+		Host->PlayerIdAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Feet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && FVector::Dist(McPawn->GetFeetPosition(), Feet) < 0.5)
+				{
+					return static_cast<int32>(McPawn->GetUniqueID());
+				}
+			}
+			return 0;
 		};
 		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
 		{
@@ -804,7 +1077,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Pot.Entity = FMcBlockEntity::MakePot(Sides);
 		}
 	}
-	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "sides": [pot sides] }.
+	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "count": n, "sides": [pot sides] }.
 	const TArray<TSharedPtr<FJsonValue>>* ItemValues = nullptr;
 	FMcEntityHost* Host = WorldActor ? WorldActor->GetEntityHost() : nullptr;
 	if (Host && Scene->TryGetArrayField(TEXT("items"), ItemValues))
@@ -820,6 +1093,11 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 				continue;
 			}
 			FMcItemStack Stack{ FName(*Id) };
+			double CountValue = 1.0;
+			if (Object->TryGetNumberField(TEXT("count"), CountValue))
+			{
+				Stack.Count = FMath::Max(1, static_cast<int32>(CountValue));
+			}
 			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
 			if (Object->TryGetArrayField(TEXT("sides"), SideValues))
 			{
@@ -832,6 +1110,40 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			}
 			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
 			Item.Body.Velocity = FVector::ZeroVector;
+		}
+	}
+	// Particles repeated for a shot: { "name": "minecraft:heart", "at": [x, y, z], "delta": [dx, dy, dz], "speed": 0, "count": 1, "every": 40 }
+	// emits the particle every "every" ticks (default 20), starting at once, as /particle would.
+	const TArray<TSharedPtr<FJsonValue>>* ParticleValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("particles"), ParticleValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *ParticleValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Id;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("name"), Id))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a particle needs \"at\": [x, y, z] and \"name\""), *Path);
+				continue;
+			}
+			FVector Delta = FVector::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* DeltaValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("delta"), DeltaValues) && DeltaValues->Num() == 3)
+			{
+				Delta = FVector((*DeltaValues)[0]->AsNumber(), (*DeltaValues)[1]->AsNumber(), (*DeltaValues)[2]->AsNumber());
+			}
+			double Speed = 0.0, Count = 1.0, Every = 20.0;
+			Object->TryGetNumberField(TEXT("speed"), Speed);
+			Object->TryGetNumberField(TEXT("count"), Count);
+			Object->TryGetNumberField(TEXT("every"), Every);
+			const FVector At3((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber());
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[Name = FName(*Id), At3, Delta, Speed, Count](float)
+				{
+					FMcSoundBus::Get().OnParticle.Broadcast(Name, At3, Delta, static_cast<float>(Speed), static_cast<int32>(Count));
+					return true;
+				}), static_cast<float>(FMath::Max(1.0, Every) / 20.0));
 		}
 	}
 	// Banners' patterns: { "at": [x, y, z], "patterns": [{ "pattern": "minecraft:border", "color": "blue" }, ...] }. The banner
@@ -1301,6 +1613,20 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
+			FString Bars = McCommands::BossbarLines(GetPlayerName(It->Get()));
+			// The ender dragon's bar (wiki: light purple, shown to players within 192 blocks of (0, 128, 0); the colour name is unverified).
+			for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+			{
+				if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+				{
+					const FMcMob& Dragon = static_cast<const FMcMob&>(*Entity);
+					if (FVector::DistSquared(Feet, FVector(0.0, 128.0, 0.0)) < 192.0 * 192.0)
+					{
+						Bars += FString::Printf(TEXT("Ender Dragon\t%.4f\tpink\tprogress\n"), FMath::Clamp(Dragon.Health / Dragon.Type.MaxHealth, 0.0f, 1.0f));
+					}
+				}
+			}
+			Pawn->Data->SetCustomBars(Bars);
 		}
 	}
 }
@@ -1613,6 +1939,11 @@ namespace
 			return Controller ? Cast<AMcPlayerPawn>(Controller->GetPawn()) : nullptr;
 		}
 
+		virtual FString GetWorldFolder() const override
+		{
+			const AMcWorldActor* Overworld = Mode.FindWorld(TEXT("minecraft:overworld"));
+			return Overworld ? Overworld->GetWorldDir() : FString();
+		}
 		virtual TArray<FString> GetPlayerNames() const override
 		{
 			TArray<FString> Names;
@@ -1939,6 +2270,17 @@ namespace
 				return true;
 			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
+		}
+
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			if (!World)
+			{
+				return false;
+			}
+			World->MulticastParticle(Name, FVector_NetQuantize10(Pos), FVector_NetQuantize10(Delta), static_cast<float>(Speed), Count);
+			return true;
 		}
 
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override

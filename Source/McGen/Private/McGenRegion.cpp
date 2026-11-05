@@ -147,6 +147,12 @@ int32 FMcGenRegion::GetHeight(EMcHeightmap Heightmap, int32 X, int32 Z)
 		Height = MinY;
 		for (int32 Y = MaxY; Y >= MinY; --Y)
 		{
+			// A section with nothing in it has nothing to count: jump to its bottom.
+			if (Chunk->IsInHeight(Y) && Chunk->GetSection(Chunk->SectionIndexOfY(Y)).IsEmpty())
+			{
+				Y = Chunk->SectionMinY(Chunk->SectionIndexOfY(Y));
+				continue;
+			}
 			if (Counts(Heightmap, Chunk->GetBlock(X & 15, Y, Z & 15)))
 			{
 				Height = Y + 1;

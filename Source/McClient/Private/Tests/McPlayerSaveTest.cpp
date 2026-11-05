@@ -30,6 +30,8 @@ bool FMcPlayerSaveTest::RunTest(const FString& Parameters)
 	Before->Stats.XpLevel = 17;
 	Before->Stats.XpProgress = 0.25f;
 	Before->SelectedSlot = 4;
+	Before->AddStat(TEXT("custom:jump"), 12);
+	Before->AddStat(TEXT("mined:minecraft:stone"), 3);
 	Before->Inventory->Set(0, FMcItemStack(TEXT("minecraft:diamond_pickaxe"), 1));
 	Before->Inventory->Set(8, FMcItemStack(TEXT("minecraft:cobblestone"), 64));
 	Before->Inventory->Set(20, FMcItemStack(TEXT("minecraft:bread"), 3));
@@ -71,6 +73,8 @@ bool FMcPlayerSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("level"), After->Stats.XpLevel, 17);
 	TestEqual(TEXT("progress"), After->Stats.XpProgress, 0.25f);
 	TestEqual(TEXT("selected slot"), After->SelectedSlot, 4);
+	TestEqual(TEXT("jumps counted"), After->GetStat(TEXT("custom:jump")), static_cast<int64>(12));
+	TestEqual(TEXT("blocks mined counted"), After->GetStat(TEXT("mined:minecraft:stone")), static_cast<int64>(3));
 	TestEqual(TEXT("pickaxe"), After->Inventory->Get(0).Item, FName(TEXT("minecraft:diamond_pickaxe")));
 	TestEqual(TEXT("cobblestone"), After->Inventory->Get(8).Count, 64);
 	TestEqual(TEXT("bread"), After->Inventory->Get(20).Count, 3);

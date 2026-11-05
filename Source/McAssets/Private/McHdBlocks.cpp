@@ -253,8 +253,9 @@ UTexture2DArray* FMcHdBlocks::MakeArray(int32 Width, int32 Height, int32 NumLaye
 		MipMap->BulkData.Unlock();
 	}
 	Array->SRGB = bSrgb;
-	// The project's own filter (trilinear, anisotropic by r.MaxAnisotropy), not nearest.
-	Array->Filter = TF_Default;
+	// Nearest, like the game's own pictures: trilinear softened every 16 pixel texel edge into a blur (the generated detail
+	// sits inside each texel, so nearest keeps the edges crisp and the detail). -McHdSmooth brings the project's filter back.
+	Array->Filter = FParse::Param(FCommandLine::Get(), TEXT("McHdSmooth")) ? TF_Default : TF_Nearest;
 	Array->AddressX = TA_Wrap;
 	Array->AddressY = TA_Wrap;
 	Array->NeverStream = true;

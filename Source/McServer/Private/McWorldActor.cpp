@@ -556,9 +556,9 @@ void AMcWorldActor::SetEntityProxyClass(TSubclassOf<AActor> Class)
 	}
 }
 
-bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative)
+bool AMcWorldActor::AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative, const FMcItemStack* Weapon, float Strength)
 {
-	return Entities && Entities->Attack(Eye, Look, Reach, Damage, bCreative);
+	return Entities && Entities->Attack(Eye, Look, Reach, Damage, bCreative, Weapon, Strength);
 }
 
 int32 AMcWorldActor::FindVehicle(const FVector& Eye, const FVector& Look, float Reach)

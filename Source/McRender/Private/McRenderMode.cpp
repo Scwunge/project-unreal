@@ -68,12 +68,12 @@ void McRenderMode::SetEnhanced(bool bEnhanced)
 // Quality presets are listed Low to Ultra. Vanilla (Unreal Mode off) goes back to the plain full-scale picture.
 static void ApplyQuality()
 {
-	struct FPreset { float Scale; int32 Probe; int32 Reflections; float ShadowBias; int32 Fog; int32 Post; };
+	struct FPreset { float Scale; int32 Probe; int32 Reflections; float ShadowBias; int32 Fog; int32 Post; int32 Tsr; };
 	static const FPreset Presets[4] = {
-		{ 70.0f, 32, 0, 2.0f, 0, 0 },
-		{ 85.0f, 16, 1, 1.0f, 1, 1 },
-		{ 100.0f, 16, 1, 0.0f, 1, 2 },
-		{ 100.0f, 8, 1, -0.5f, 1, 3 },
+		{ 70.0f, 32, 0, 2.0f, 0, 0, 1 },
+		{ 85.0f, 16, 1, 1.0f, 1, 1, 1 },
+		{ 100.0f, 16, 1, 0.0f, 1, 2, 2 },
+		{ 100.0f, 8, 1, -0.5f, 1, 3, 3 },
 	};
 	const FPreset& P = Presets[FMath::Clamp(GQuality, 0, 3)];
 	// Hardware ray tracing: Lumen traces the real scene (the procedural meshes included), and translucent surfaces get rays.
@@ -92,6 +92,8 @@ static void ApplyQuality()
 	}
 	// TSR smooths the edges and fills out the lower render scales; vanilla keeps the crisp unfiltered pixels (none).
 	SetConsoleVariable(TEXT("r.AntiAliasingMethod"), 4);
+	// TSR's own quality: at the engine's default (3) it was the biggest GPU cost, 3.5 of 11 ms at 720p on a GTX 1070.
+	SetConsoleVariable(TEXT("sg.AntiAliasingQuality"), P.Tsr);
 	SetConsoleFloat(TEXT("r.ScreenPercentage"), P.Scale);
 	SetConsoleVariable(TEXT("r.Lumen.ScreenProbeGather.DownsampleFactor"), P.Probe);
 	SetConsoleVariable(TEXT("r.Lumen.Reflections.Allow"), P.Reflections);

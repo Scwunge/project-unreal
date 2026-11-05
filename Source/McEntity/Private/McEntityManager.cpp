@@ -344,6 +344,7 @@ bool FMcEntityManager::IsDarkEnoughToSpawn(const FIntVector& Cell) const
 
 void FMcEntityManager::Explode(const FVector& Center, float Power)
 {
+	GameEvent(FName("explode"), Center);
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	TArray<FIntVector> Cells;
 	McExplosion::Collect(World, Center, Power, Random, Cells);

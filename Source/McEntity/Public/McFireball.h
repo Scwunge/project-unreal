@@ -15,7 +15,8 @@ public:
 	static const FName& GhastType();
 	static const FName& SmallType();
 	static const FName& SkullType();
-	virtual FName GetType() const override { return bSkull ? SkullType() : (bSmall ? SmallType() : GhastType()); }
+	static const FName& DragonType();
+	virtual FName GetType() const override { return bDragon ? DragonType() : bSkull ? SkullType() : (bSmall ? SmallType() : GhastType()); }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool IsPersistent() const override { return false; }
 
@@ -25,6 +26,9 @@ public:
 	// speed = (speed + 0.1) * 0.73 along the aim, no gravity. Blast power 1 is the game's value and NOT measured (the player lost a net 2 hp
 	// beyond a steady drain in the 20 ticks of each hit, which does not settle it).
 	void LaunchSkull(const FVector& Direction);
+	// The ender dragon's (dragon_phase1.txt: the one tick logged had speed 0.0998 aimed straight at the player, like a ghast's first tick; the rest of
+	// its flight was not logged, so it flies as a ghast's does, UNVERIFIED). It leaves a damage cloud where it lands (the dragon keeps the clouds).
+	void LaunchDragon(const FVector& Direction);
 
 	static constexpr double Acceleration = 0.1;
 	static constexpr double Inertia = 0.95;
@@ -37,5 +41,6 @@ private:
 
 	bool bSmall = false;
 	bool bSkull = false;
+	bool bDragon = false;
 	FVector Aim = FVector::ForwardVector;
 };

@@ -42,6 +42,10 @@
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#if MC_WITH_RENDER
+#include "DynamicRHI.h"
+#include "RenderTimer.h"
+#endif
 
 #if MC_WITH_RENDER
 #include "Engine/GameViewportClient.h"
@@ -252,35 +256,45 @@ void AMcPlayerController::ConnectToWorld()
 		bViewSetUp = true;
 	}
 	AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn());
-	if (MyPawn && !MyPawn->HasBlockWorld())
+	// The local hooks (attack, set block, lid push) are set once. They are tied to the attack hook, not to the block world: the host's own pawn is
+	// hooked by HookServerPawn, which gives it a block world first, and then the hooks were never set (clicks on mobs did nothing).
+	if (MyPawn && !MyPawn->AttackHandler)
 	{
-		MyPawn->SetBlockWorld(BlockWorld);
-		MyPawn->LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
-		{
-			const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
-			const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
-			if (!Lids || Lids->GetTicks() == LastLidTick)
-			{
-				return FVector::ZeroVector;
-			}
-			LastLidTick = Lids->GetTicks();
-			return Lids->GetPush(Box);
-		};
-		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestAttack(Look);
-			}
-		};
-		MyPawn->SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestSetBlock(Pos, State);
-			}
-		};
+		SetUpLocalPawn(*MyPawn);
 	}
+}
+
+void AMcPlayerController::SetUpLocalPawn(AMcPlayerPawn& LocalPawn)
+{
+	if (!LocalPawn.HasBlockWorld())
+	{
+		LocalPawn.SetBlockWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+	}
+	LocalPawn.LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
+	{
+		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+		const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
+		if (!Lids || Lids->GetTicks() == LastLidTick)
+		{
+			return FVector::ZeroVector;
+		}
+		LastLidTick = Lids->GetTicks();
+		return Lids->GetPush(Box);
+	};
+	LocalPawn.AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestAttack(Look);
+		}
+	};
+	LocalPawn.SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestSetBlock(Pos, State);
+		}
+	};
 }
 
 void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
@@ -763,6 +777,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			if (Host && WeakPawn.IsValid())
 			{
 				Host->GetManager().PlaySound(Event, WeakPawn->GetFeetPosition() + FVector(0.0, 1.0, 0.0), Volume, Pitch);
+			}
+		};
+		Data->ServerContainerEvent = [WeakPawn](const FIntVector& Pos, bool bOpen)
+		{
+			if (WeakPawn.IsValid())
+			{
+				WeakPawn->ServerGameEvent(FName(bOpen ? "container_open" : "container_close"), FVector(Pos) + FVector(0.5));
 			}
 		};
 		Data->ServerWindowValid = [World, WeakPawn](const FMcWindow& Window)
@@ -1313,6 +1334,22 @@ void AMcPlayerController::StartDevScreenshot()
 			return;
 		}
 		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
+#if MC_WITH_RENDER && !UE_BUILD_SHIPPING
+		// Where the frame goes, for finding what to cut: milliseconds of the game thread, the render thread and the GPU.
+		UE_LOG(LogMcClient, Display, TEXT("McShot: frame ms: game %.1f, render %.1f, gpu %.1f"),
+			FPlatformTime::ToMilliseconds(GGameThreadTime), FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
+		// Development: -McShotExec=cmd;cmd runs console commands now (ProfileGPU writes a table of the GPU passes to the log).
+		FString Exec;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McShotExec="), Exec, /*bShouldStopOnSeparator=*/ false))
+		{
+			TArray<FString> Commands;
+			Exec.ParseIntoArray(Commands, TEXT(";"));
+			for (const FString& Command : Commands)
+			{
+				GEngine->Exec(GetWorld(), *Command);
+			}
+		}
+#endif
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()

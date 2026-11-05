@@ -1,0 +1,19 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 0 -60 0
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule do_mob_spawning false
+cmd gamerule spawn_wardens false
+cmd difficulty normal
+cmd fill -20 -62 -20 40 -50 20 air
+cmd fill -20 -62 -20 40 -61 20 stone
+cmd gamemode survival
+cmd effect give @s resistance 1000 4 true
+cmd tp @s 0 -60 0
+cmd summon warden 5 -60 0
+log sents warden 1800
+log mobs 20 1800
+cmd tick unfreeze
+wait 1800

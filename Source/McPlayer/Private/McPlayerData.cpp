@@ -407,7 +407,13 @@ void UMcPlayerDataComponent::CloseServerWindow(bool bTellOwner)
 		Window.OnChanged();
 	}
 	const int32 ClosedId = Window.Id;
+	const bool bWasChest = Window.Kind == EMcWindowKind::Chest;
+	const FIntVector ClosedPos = Window.Pos;
 	Window = FMcWindow();
+	if (bWasChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(ClosedPos, false);
+	}
 	SentWindow.Reset();
 	// The window's changes were sent inside it; now the containers need sending in full.
 	SentInventory.Reset();
@@ -503,7 +509,12 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	Made.Title = Title;
 	Made.Pos = Pos;
 	Made.OnChanged = MoveTemp(OnChanged);
+	const bool bIsChest = Kind == EMcWindowKind::Chest;
 	OpenServerWindow(MoveTemp(Made), Aux);
+	if (bIsChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(Pos, true);
+	}
 }
 
 void UMcPlayerDataComponent::MarkWindowOnEntity(int32 EntityId)

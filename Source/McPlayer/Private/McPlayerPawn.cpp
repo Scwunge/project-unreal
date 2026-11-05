@@ -825,9 +825,14 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
 			FVector HitPoint, HitNormal;
 			float Time = 0.0f;
-			if (!It->IsHidden() && It->Kind != TEXT("minecraft:item") && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * AttackReach, FVector::ZeroVector, HitPoint, HitNormal, Time)
-				&& Time * AttackReach < BlockDistance)
+			const bool bBoxHit = !It->IsHidden() && It->Kind != TEXT("minecraft:item") && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * AttackReach, FVector::ZeroVector, HitPoint, HitNormal, Time);
+			if (bBoxHit && Time * AttackReach >= BlockDistance)
 			{
+				UE_LOG(LogMcPlayer, Verbose, TEXT("McHit client: %s box hit at %.2f but a block is at %.2f"), *It->Kind.ToString(), Time * AttackReach, BlockDistance);
+			}
+			if (bBoxHit && Time * AttackReach < BlockDistance)
+			{
+				UE_LOG(LogMcPlayer, Verbose, TEXT("McHit client: %s box hit at %.2f (block %.2f), sending the swing"), *It->Kind.ToString(), Time * AttackReach, BlockDistance);
 				AttackHandler(Look);
 				BreakCooldown = BreakRepeatSeconds;
 				StopDigging();
@@ -1127,6 +1132,10 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
 	Data->AddStat(TEXT("custom:damage_taken"), FMath::RoundToInt64(Taken * 10.0f));
+	if (Taken > 0.0f)
+	{
+		ServerGameEvent(FName("entity_damage"), Body.Position);
+	}
 	if (Taken > 0.0f && bSleeping)
 	{
 		ServerWakeUp();
@@ -1226,7 +1235,9 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
-	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative, Held, Strength))
+	const bool bHit = MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative, Held, Strength);
+	UE_LOG(LogMcPlayer, Verbose, TEXT("McHit server: swing from (%.2f %.2f %.2f) look (%.2f %.2f %.2f), strength %.2f damage %.2f, hit %d"), Eye.X, Eye.Y, Eye.Z, Look.X, Look.Y, Look.Z, Strength, Damage, bHit ? 1 : 0);
+	if (!bHit)
 	{
 		return;
 	}
@@ -1400,6 +1411,21 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	}
 }
 
+void AMcPlayerPawn::ServerGameEvent(FName Name, const FVector& At)
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (!Entities)
+	{
+		return;
+	}
+	FMcEntityManager::FGameEventTag Tag;
+	Tag.bPlayer = true;
+	Tag.bSneaking = bSneakPose;
+	Tag.PlayerId = static_cast<int32>(GetUniqueID());
+	Tag.bCreativeOrSpectator = Data && Data->bCreative;
+	Entities->GameEvent(Name, At, Tag);
+}
+
 void AMcPlayerPawn::ServerRide(int32 VehicleId)
 {
 	if (!HasAuthority() || bServerDead)
@@ -1411,6 +1437,7 @@ void AMcPlayerPawn::ServerRide(int32 VehicleId)
 		ServerDismount();
 	}
 	RidingId = VehicleId;
+	ServerGameEvent(FName("entity_mount"), Body.Position);
 	RideForward = 0.0f;
 	RideStrafe = 0.0f;
 	bSprinting = false;
@@ -1433,6 +1460,7 @@ void AMcPlayerPawn::ServerDismount()
 	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
 	FMcEntity* Found = Entities ? Entities->Find(RidingId) : nullptr;
 	RidingId = 0;
+	ServerGameEvent(FName("entity_dismount"), Body.Position);
 	if (Found && Found->Mount.IsValid() && BlockWorld)
 	{
 		McMount::ClearPlayer(*Found, GetUniqueID());
@@ -1859,6 +1887,9 @@ void AMcPlayerPawn::ServerGameTick()
 				if (FallDamage > 0)
 				{
 					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get(), &GameRules);
+					// (A landing that hurts is a hit_ground, 2, and a hurt, 7; one that doesn't is not signalled yet.)
+					ServerGameEvent(FName("hit_ground"), Feet);
+					ServerGameEvent(FName("entity_damage"), Feet);
 					// The landing: the player's own thud, and the block's fall sound.
 					if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)
 					{
@@ -1900,6 +1931,7 @@ void AMcPlayerPawn::ServerGameTick()
 		if (!bTeleported && Body.bOnGround && !bFlyingNow && !bSneakNow && ServerSteps.Walk(FVector2D(Step.X, Step.Z).Size()) && Entities)
 		{
 			Entities->PlaySound(McSound::GetBlockSound(GetBlockNameBelow(*BlockWorld, Feet), McSound::EBlockSound::Step, Feet));
+			ServerGameEvent(FName("step"), Feet);
 		}
 		// Water: a splash going in (louder and higher the faster), swimming sounds on the way, and a fire put out.
 		if (Entities && !bTeleported && !bFlyingNow)
@@ -1910,6 +1942,7 @@ void AMcPlayerPawn::ServerGameTick()
 			if (bInWater && !bServerWasInWater)
 			{
 				Entities->PlaySound(FName(Speed < 0.25f ? "entity.player.splash" : "entity.player.splash.high_speed"), Feet, Speed, Wobble);
+				ServerGameEvent(FName("splash"), Feet);
 				ServerSwum = 0.0;
 			}
 			else if (bInWater && !Body.bOnGround)
@@ -1919,6 +1952,7 @@ void AMcPlayerPawn::ServerGameTick()
 				{
 					ServerSwum = 0.0;
 					Entities->PlaySound(FName("entity.player.swim"), Feet, 0.3f, Wobble);
+					ServerGameEvent(FName("swim"), Feet);
 				}
 			}
 			if (FireBefore > 0 && Stats.OnFireTicks == 0 && (bInWater || Environment.bInLava))
@@ -1984,6 +2018,7 @@ void AMcPlayerPawn::ServerGameTick()
 					Level = FMath::Clamp(FMath::RoundToInt32(Amplifier->AsNumber()), 0, 4);
 				}
 				McEffects::Add(Stats, TEXT("bad_omen"), Level, 120000);
+				ServerGameEvent(FName("drink"), Body.Position);
 				if (!Data->bCreative)
 				{
 					FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
@@ -2025,6 +2060,9 @@ void AMcPlayerPawn::ServerGameTick()
 				Ate.Item = Held.Item;
 				FireTrigger(Ate);
 				McSurvival::Eat(Stats, Food);
+				// (Most food signals 3 and 8, minecraft.wiki "Vibration".)
+				ServerGameEvent(FName("item_interact_finish"), Body.Position);
+				ServerGameEvent(FName("eat"), Body.Position);
 				const FName Remainder = Items.GetUseRemainder(Held.Item);
 				FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
 				if (--Slot.Count <= 0)
@@ -2129,6 +2167,7 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	{
 		return;
 	}
+	ServerGameEvent(FName("projectile_shoot"), Body.Position);
 	// The draw's power: (t * t + t * 2) / 3 for t seconds, up to 1; under a tenth is not a shot.
 	const float Power = McCombat::GetBowPower(DrawTicks);
 	if (Power < 0.1f)
@@ -2329,6 +2368,7 @@ void AMcPlayerPawn::ServerDie()
 	}
 	Data->AddStat(TEXT("custom:deaths"));
 	Data->Counters.Add(TEXT("custom:time_since_death"), 0);
+	ServerGameEvent(FName("entity_die"), Body.Position);
 	DeathScore = McSurvival::GetTotalXp(Data->Stats);
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();

@@ -228,6 +228,8 @@ public:
 	TFunction<bool(const FMcWindow&)> ServerWindowValid;
 	// Plays a sound for what the player did in a window (an enchantment bought), at their position.
 	TFunction<void(FName Event, float Volume, float Pitch)> ServerSound;
+	// A chest, barrel or shulker box window opened (true) or closed (false) at the position; for the vibration it makes.
+	TFunction<void(const FIntVector& Pos, bool bOpen)> ServerContainerEvent;
 	// Sends the owner what changed. Called each game tick by the pawn.
 	void ServerTick();
 	// The stats and containers as bytes, for the owner and for the save.

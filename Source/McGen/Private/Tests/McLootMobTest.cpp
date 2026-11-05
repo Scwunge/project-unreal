@@ -107,6 +107,31 @@ bool FMcLootMobTest::RunTest(const FString& Parameters)
 	McLoot::FMobContext Sheared = Orange;
 	Sheared.bSheared = true;
 	TestEqual(TEXT("a sheared sheep drops no wool"), CountRolls(TEXT("minecraft:entities/sheep"), Sheared, TEXT("minecraft:orange_wool"), 100), 0);
+	// Totals over 3000 kills, beside what the game gave for 300 (loot spawn ... kill, as a player): an orange sheep 1.45
+	// mutton and 0.98 orange wool each, a small slime 0.95 slime balls, a zombie 1.04 rotten flesh.
+	const auto Mean = [](const TCHAR* Table, const McLoot::FMobContext& Context, const TCHAR* Prefix)
+	{
+		const McLoot::FMobScope Scope(Context);
+		FMcRandom Random(777);
+		int32 Total = 0;
+		for (int32 Roll = 0; Roll < 3000; ++Roll)
+		{
+			TArray<FMcItemStack> Out;
+			McLoot::RollEntity(Table, false, Random, Out);
+			for (const FMcItemStack& Stack : Out)
+			{
+				Total += Stack.Item.ToString().StartsWith(Prefix) ? Stack.Count : 0;
+			}
+		}
+		return Total / 3000.0;
+	};
+	const double Mutton = Mean(TEXT("minecraft:entities/sheep"), Orange, TEXT("minecraft:mutton"));
+	const double Balls = Mean(TEXT("minecraft:entities/slime"), Small, TEXT("minecraft:slime_ball"));
+	const double Flesh = Mean(TEXT("minecraft:entities/zombie"), ByPlayer, TEXT("minecraft:rotten_flesh"));
+	AddInfo(FString::Printf(TEXT("per kill: mutton %.2f, slime balls %.2f, rotten flesh %.2f"), Mutton, Balls, Flesh));
+	TestTrue(TEXT("a sheep gives 1.5 mutton on average"), FMath::Abs(Mutton - 1.5) < 0.1);
+	TestTrue(TEXT("a small slime gives 1 slime ball on average"), FMath::Abs(Balls - 1.0) < 0.1);
+	TestTrue(TEXT("a zombie gives 1 rotten flesh on average"), FMath::Abs(Flesh - 1.0) < 0.1);
 	return true;
 }
 

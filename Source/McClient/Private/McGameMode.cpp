@@ -1,5 +1,6 @@
 #include "McGameMode.h"
 #include "McSound.h"
+#include "McMob.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -741,6 +742,68 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				}
 			}
 			return false;
+		};
+		Host->PlayerLooksAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& PlayerPos, const FVector& Point)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (!McPawn || !McPawn->Data || McPawn->Data->bCreative || FVector::Dist(McPawn->GetFeetPosition(), PlayerPos) >= 0.5)
+				{
+					continue;
+				}
+				// Both the yaw and the pitch of the way they face must be within 60 degrees of the way to the point.
+				const FVector Eye = PlayerPos + FVector(0.0, 1.62, 0.0);
+				const FVector To = (Point - Eye).GetSafeNormal();
+				const double WantYaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+				const double WantPitch = FMath::RadiansToDegrees(FMath::Asin(-FMath::Clamp(To.Y, -1.0, 1.0)));
+				return FMath::Abs(FMath::FindDeltaAngleDegrees(WantYaw, McPawn->GetLookYaw())) <= 60.0 && FMath::Abs(WantPitch - McPawn->GetLookPitch()) <= 60.0;
+			}
+			return false;
+		};
+		Host->FindPlayerById = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](int32 Id, FVector& OutFeet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && static_cast<int32>(McPawn->GetUniqueID()) == Id)
+				{
+					if (!McPawn->Data || McPawn->Data->bCreative)
+					{
+						return false;
+					}
+					OutFeet = McPawn->GetFeetPosition();
+					return true;
+				}
+			}
+			return false;
+		};
+		Host->PlayerIdAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Feet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && FVector::Dist(McPawn->GetFeetPosition(), Feet) < 0.5)
+				{
+					return static_cast<int32>(McPawn->GetUniqueID());
+				}
+			}
+			return 0;
 		};
 		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
 		{
@@ -1550,7 +1613,20 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
-			Pawn->Data->SetCustomBars(McCommands::BossbarLines(GetPlayerName(It->Get())));
+			FString Bars = McCommands::BossbarLines(GetPlayerName(It->Get()));
+			// The ender dragon's bar (wiki: light purple, shown to players within 192 blocks of (0, 128, 0); the colour name is unverified).
+			for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+			{
+				if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+				{
+					const FMcMob& Dragon = static_cast<const FMcMob&>(*Entity);
+					if (FVector::DistSquared(Feet, FVector(0.0, 128.0, 0.0)) < 192.0 * 192.0)
+					{
+						Bars += FString::Printf(TEXT("Ender Dragon\t%.4f\tpink\tprogress\n"), FMath::Clamp(Dragon.Health / Dragon.Type.MaxHealth, 0.0f, 1.0f));
+					}
+				}
+			}
+			Pawn->Data->SetCustomBars(Bars);
 		}
 	}
 }

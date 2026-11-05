@@ -42,6 +42,8 @@ public:
 	void Vibrate(const FMcGameEvent& Event);
 	// A wool or carpet block on the ray between the centres of the two cells.
 	bool IsOccluded(const FIntVector& From, const FIntVector& To) const;
+	// A player or tamed wolf hit the creaking tied to the heart at Pos.
+	void CreakingHit(const FIntVector& Pos);
 	// A player stands on the shrieker at Pos.
 	void ShriekerTouched(const FIntVector& Pos, int32 PlayerId);
 	// A book went into or out of slot 0 to 5 of the chiseled bookshelf at Pos (-1: none has been used).
@@ -189,6 +191,12 @@ private:
 	TMap<FIntVector, int32> BookshelfSignal;
 	void TickSculk(const FIntVector& Pos, FMcStateId State);
 	void TickShrieker(const FIntVector& Pos, FMcStateId State);
+	void TickCreakingHeart(const FIntVector& Pos, FMcStateId State);
+	TSet<FIntVector> Hearts;
+	TMap<FIntVector, int32> HeartLevel;
+	TMap<FIntVector, int64> SpawnReady;
+	TMap<FIntVector, int64> ResinNext;
+	FRandomStream ResinRandom{ 77 };
 	void Shriek(const FIntVector& Pos, int32 PlayerId);
 	void HearVibration(const FIntVector& Cell, const FMcGameEvent& Event);
 	void Emit(const TCHAR* Name, const FIntVector& Pos, bool bPlayer = false);

@@ -1,6 +1,8 @@
 #include "McEntityHost.h"
 #include "McEnchantEffects.h"
 #include "McMount.h"
+#include "McWarden.h"
+#include "McCreaking.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -107,6 +109,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.GatewaySeed = InSeed;
 	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
 	{
 		if (OnPlayerBlast)
@@ -131,6 +134,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 		{
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
+	};
+	Manager.PlayerLooksAt = [this](const FVector& PlayerPos, const FVector& Point)
+	{
+		return PlayerLooksAt && PlayerLooksAt(PlayerPos, Point);
 	};
 	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
 	{
@@ -354,6 +361,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	else if (Kind == FMcWanderingTrader::StaticType())
 	{
 		Mob = new FMcWanderingTrader(*Type);
+	}
+	else if (Kind == FMcWarden::StaticType())
+	{
+		FMcWarden* Warden = new FMcWarden(*Type);
+		Warden->FindPlayer = [this](int32 Id, FVector& Out) { return FindPlayerById && FindPlayerById(Id, Out); };
+		Warden->IdOfPlayerAt = [this](const FVector& Feet) { return PlayerIdAt ? PlayerIdAt(Feet) : 0; };
+		Mob = Warden;
+	}
+	else if (Kind == FMcCreaking::StaticType())
+	{
+		Mob = new FMcCreaking(*Type);
 	}
 	else
 	{
@@ -1415,7 +1433,10 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 		Mob.PlayerHitAge = Mob.Age;
 		Mob.bPlayerHitWasShot = false;
 		const FVector OldVelocity = Mob.Body.Velocity;
-		Mob.Damage(Damage, &Eye);
+		const float Before = Mob.Health;
+		const bool bTook = Mob.Damage(Damage, &Eye);
+		UE_LOG(LogTemp, Verbose, TEXT("McHit attack: %s at (%.2f %.2f %.2f), health %.1f -> %.1f (took %d, hurt time %d), removed %d"), *Mob.GetType().ToString(), Mob.Body.Position.X, Mob.Body.Position.Y, Mob.Body.Position.Z,
+			Before, Mob.Health, bTook ? 1 : 0, Mob.HurtTime, Mob.bRemoved ? 1 : 0);
 		if (Push > 0.0f && !Mob.bRemoved)
 		{
 			// A second push on top of the first, the hurt one's: half what it had, and Push away from the hitter.

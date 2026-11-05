@@ -305,6 +305,13 @@ namespace McEntityModel
 				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true), Box(1, 33, -3, -4, 6, 6, 3, 1) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
+				// Mooshroom: the cow's body and head in its own pictures (red; brown is a variant). The mushrooms on its back
+				// are not drawn yet (open, see PLAN.md "Missing mobs").
+				FModel Moo = Cow;
+				Moo.Kind = TEXT("minecraft:mooshroom");
+				Moo.Textures = { TEXT("cow/mooshroom_red.png") };
+				Moo.Variants = { { TEXT("cow/mooshroom_red.png") }, { TEXT("cow/mooshroom_brown.png") } };
+				Models.Add(Moo.Kind, Moo);
 			}
 			{
 				FModel Sheep;

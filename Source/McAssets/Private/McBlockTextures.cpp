@@ -457,6 +457,7 @@ bool FMcBlockTextures::EnsureLoaded()
 	NewStats.WantedSize = Wanted > LayerSize ? static_cast<int32>(FMath::RoundUpToPowerOfTwo(Wanted)) : LayerSize;
 	const int32 MipCount = NumMipsFor(Size);
 
+	const double Pass1Done = FPlatformTime::Seconds();
 	// Pass 2: decode each picture and bring every frame to the array's size, so only small data is kept.
 	TArray<FPrepared> Prepared;
 	Prepared.SetNum(Ids.Num());
@@ -686,6 +687,7 @@ bool FMcBlockTextures::EnsureLoaded()
 	// The array: mip m holds every layer's m-th mip one after the other. The mips are filled straight into the bulk data
 	// (at a pack's size they are hundreds of megabytes).
 	const int32 NumLayers = NewLayers.Num();
+	const double Pass2Done = FPlatformTime::Seconds();
 	UTexture2DArray* Array = NewObject<UTexture2DArray>(GetTransientPackage(), TEXT("McBlockTextureArray"), RF_Transient);
 	Array->SetPlatformData(new FTexturePlatformData());
 	FTexturePlatformData* PlatformData = Array->GetPlatformData();
@@ -762,6 +764,8 @@ bool FMcBlockTextures::EnsureLoaded()
 	SourceKey = McPacks::GetSignature() + (bPbr ? TEXT("pbr") : TEXT("")) + FString::Printf(TEXT("|%d"), Size);
 	TextureArray = Array;
 
+	UE_LOG(LogMcAssets, Log, TEXT("Block textures: %.0f ms to read sizes and probe, %.0f ms to decode, %.0f ms to build the array"),
+		(Pass1Done - StartTime) * 1000.0, (Pass2Done - Pass1Done) * 1000.0, (FPlatformTime::Seconds() - Pass2Done) * 1000.0);
 	UE_LOG(LogMcAssets, Log, TEXT("Loaded %d of %d block textures into %d layers of %dx%d (%d animated, %d cutout, %d translucent, %d from resource packs, %d with PBR maps), %.0f MB, in %.0f ms"),
 		Stats.Loaded, Stats.Ids, Stats.Layers, Size, Size, Stats.Animated, Stats.Cutout, Stats.Translucent, Stats.FromPacks, Stats.PbrMaps,
 		static_cast<double>(Stats.ArrayBytes) / (1024.0 * 1024.0), (FPlatformTime::Seconds() - StartTime) * 1000.0);

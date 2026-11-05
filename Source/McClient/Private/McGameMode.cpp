@@ -1362,6 +1362,11 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 		if (Bot->Stage == 5 && Bot->Time >= Bot->NextAct)
 		{
 			HandleChat(Player, TEXT("/gamemode survival"));
+			// What a player would have put on: a full set of diamond armour.
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:diamond_helmet"), 1));
+			Pawn->Data->Armor->Set(1, FMcItemStack(FName("minecraft:diamond_chestplate"), 1));
+			Pawn->Data->Armor->Set(2, FMcItemStack(FName("minecraft:diamond_leggings"), 1));
+			Pawn->Data->Armor->Set(3, FMcItemStack(FName("minecraft:diamond_boots"), 1));
 			HandleChat(Player, TEXT("/give @s minecraft:diamond_sword"));
 			HandleChat(Player, TEXT("/give @s minecraft:bow"));
 			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
@@ -1373,6 +1378,8 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 		}
 		if (Bot->Time < Bot->NextAct)
 		{
+			// Between actions the player looks at its feet: an enderman is angered by being looked in the eyes (that is what killed the first bots).
+			Player->SetControlRotation(FRotator(-80.0, Player->GetControlRotation().Yaw, 0.0));
 			return true;
 		}
 		const FVector Feet = Pawn->GetFeetPosition();
@@ -1838,6 +1845,31 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 					{
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid() && Line == TEXT("!showdragon"))
+					{
+						// Development: a dragon with no AI 16 blocks in front of this player (yaw 0, towards +z), 3 up, in the world the player is in,
+						// for a close look at the model. Waits (up to a minute) for the pawn and the world to exist.
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Player, Tries = MakeShared<int32>(0)](float)
+						{
+							AMcPlayerController* McPlayer = Cast<AMcPlayerController>(Player.Get());
+							AMcPlayerPawn* Pawn = McPlayer ? Cast<AMcPlayerPawn>(McPlayer->GetPawn()) : nullptr;
+							AMcWorldActor* World = McPlayer ? const_cast<AMcWorldActor*>(McPlayer->GetWorldActor()) : nullptr;
+							FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+							if (!Pawn || !Host)
+							{
+								return ++(*Tries) < 60;
+							}
+							const FVector Feet = Pawn->GetFeetPosition();
+							const FVector At(Feet.X, Feet.Y + 3.0, Feet.Z + 16.0);
+							FMcMob* Shown = Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), At);
+							if (Shown)
+							{
+								Shown->bNoAI = true;
+							}
+							UE_LOG(LogTemp, Display, TEXT("showdragon: spawned %s at %s"), Shown ? TEXT("a dragon") : TEXT("nothing"), *At.ToString());
+							return false;
+						}), 1.0f);
 					}
 					else if (Player.IsValid() && Line == TEXT("!fightdragon"))
 					{

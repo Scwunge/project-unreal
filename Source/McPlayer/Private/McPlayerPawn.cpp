@@ -1125,6 +1125,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		return 0.0f;
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
+	UE_LOG(LogTemp, Display, TEXT("player hurt: kind %d, %.1f offered, %.1f taken, now %.1f hp, at %.1f %.1f %.1f"), static_cast<int32>(Kind), Amount, Taken, Data->Stats.Health, GetFeetPosition().X, GetFeetPosition().Y, GetFeetPosition().Z);
 	if (Taken > 0.0f && bSleeping)
 	{
 		ServerWakeUp();
@@ -1804,6 +1805,7 @@ void AMcPlayerPawn::ServerGameTick()
 				const int32 FallDamage = ServerFall.Update(ServerPreviousPosition.Y, Feet.Y, Body.bOnGround, bBreaksFall);
 				if (FallDamage > 0)
 				{
+					UE_LOG(LogTemp, Display, TEXT("player hurt: fall %d at y %.1f"), FallDamage, Feet.Y);
 					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get(), &GameRules);
 					// The landing: the player's own thud, and the block's fall sound.
 					if (const FMcEntityManager* Sounds = GetEntities ? GetEntities() : nullptr)

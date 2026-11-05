@@ -75,6 +75,8 @@ public:
 	// A player stands on the black top of the sculk shrieker at Pos. Only a naturally generated shrieker (can_summon) counts
 	// warnings; any shrieker shrieks.
 	void ShriekerTouched(const FIntVector& Pos, int32 PlayerId);
+	// A book went into or out of slot 0 to 5 of the chiseled bookshelf at Pos: comparators read slot + 1 (a vibration of 11 as well).
+	void BookshelfUsed(const FIntVector& Pos, int32 Slot);
 	// A player's warning level, 0 to 4; it drops by 1 for every 12000 ticks since the player last set a shrieker off.
 	int32 GetWarningLevel(int32 PlayerId) const;
 	// A shrieker started shrieking for this player: the player's warning level now, and the Darkness (12 s, players within 40 blocks)

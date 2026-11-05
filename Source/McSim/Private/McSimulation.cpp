@@ -217,6 +217,11 @@ void FMcSimulation::ShriekerTouched(const FIntVector& Pos, int32 PlayerId)
 	Redstone->ShriekerTouched(Pos, PlayerId);
 }
 
+void FMcSimulation::BookshelfUsed(const FIntVector& Pos, int32 Slot)
+{
+	Redstone->BookshelfUsed(Pos, Slot);
+}
+
 int32 FMcSimulation::GetWarningLevel(int32 PlayerId) const
 {
 	const FWarning* Warning = Warnings.Find(PlayerId);

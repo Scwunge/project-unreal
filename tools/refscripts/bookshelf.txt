@@ -1,0 +1,96 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 20 -50 6
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule do_mob_spawning false
+cmd fill -2 -62 -2 65 -56 10 air
+cmd fill -2 -62 -2 65 -61 10 stone
+cmd setblock 0 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:-1}
+cmd setblock 0 -60 3 comparator[facing=north]
+cmd setblock 0 -60 4 redstone_wire
+cmd setblock 3 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:-1}
+cmd setblock 3 -60 3 comparator[facing=north]
+cmd setblock 3 -60 4 redstone_wire
+cmd setblock 6 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:-1}
+cmd setblock 6 -60 3 comparator[facing=north]
+cmd setblock 6 -60 4 redstone_wire
+cmd setblock 9 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:0}
+cmd setblock 9 -60 3 comparator[facing=north]
+cmd setblock 9 -60 4 redstone_wire
+cmd setblock 12 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:0}
+cmd setblock 12 -60 3 comparator[facing=north]
+cmd setblock 12 -60 4 redstone_wire
+cmd setblock 15 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:0}
+cmd setblock 15 -60 3 comparator[facing=north]
+cmd setblock 15 -60 4 redstone_wire
+cmd setblock 18 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:1}
+cmd setblock 18 -60 3 comparator[facing=north]
+cmd setblock 18 -60 4 redstone_wire
+cmd setblock 21 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:1}
+cmd setblock 21 -60 3 comparator[facing=north]
+cmd setblock 21 -60 4 redstone_wire
+cmd setblock 24 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=true,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:1}
+cmd setblock 24 -60 3 comparator[facing=north]
+cmd setblock 24 -60 4 redstone_wire
+cmd setblock 27 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:2}
+cmd setblock 27 -60 3 comparator[facing=north]
+cmd setblock 27 -60 4 redstone_wire
+cmd setblock 30 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:2}
+cmd setblock 30 -60 3 comparator[facing=north]
+cmd setblock 30 -60 4 redstone_wire
+cmd setblock 33 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=true,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:2}
+cmd setblock 33 -60 3 comparator[facing=north]
+cmd setblock 33 -60 4 redstone_wire
+cmd setblock 36 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:3}
+cmd setblock 36 -60 3 comparator[facing=north]
+cmd setblock 36 -60 4 redstone_wire
+cmd setblock 39 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:3}
+cmd setblock 39 -60 3 comparator[facing=north]
+cmd setblock 39 -60 4 redstone_wire
+cmd setblock 42 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=true,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:3}
+cmd setblock 42 -60 3 comparator[facing=north]
+cmd setblock 42 -60 4 redstone_wire
+cmd setblock 45 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:4}
+cmd setblock 45 -60 3 comparator[facing=north]
+cmd setblock 45 -60 4 redstone_wire
+cmd setblock 48 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:4}
+cmd setblock 48 -60 3 comparator[facing=north]
+cmd setblock 48 -60 4 redstone_wire
+cmd setblock 51 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=true,slot_5_occupied=false]{last_interacted_slot:4}
+cmd setblock 51 -60 3 comparator[facing=north]
+cmd setblock 51 -60 4 redstone_wire
+cmd setblock 54 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]{last_interacted_slot:5}
+cmd setblock 54 -60 3 comparator[facing=north]
+cmd setblock 54 -60 4 redstone_wire
+cmd setblock 57 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]{last_interacted_slot:5}
+cmd setblock 57 -60 3 comparator[facing=north]
+cmd setblock 57 -60 4 redstone_wire
+cmd setblock 60 -60 2 chiseled_bookshelf[facing=south,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=true]{last_interacted_slot:5}
+cmd setblock 60 -60 3 comparator[facing=north]
+cmd setblock 60 -60 4 redstone_wire
+cmd tick step 5
+wait 40
+log states 0 -60 4 0 -60 4
+log states 3 -60 4 3 -60 4
+log states 6 -60 4 6 -60 4
+log states 9 -60 4 9 -60 4
+log states 12 -60 4 12 -60 4
+log states 15 -60 4 15 -60 4
+log states 18 -60 4 18 -60 4
+log states 21 -60 4 21 -60 4
+log states 24 -60 4 24 -60 4
+log states 27 -60 4 27 -60 4
+log states 30 -60 4 30 -60 4
+log states 33 -60 4 33 -60 4
+log states 36 -60 4 36 -60 4
+log states 39 -60 4 39 -60 4
+log states 42 -60 4 42 -60 4
+log states 45 -60 4 45 -60 4
+log states 48 -60 4 48 -60 4
+log states 51 -60 4 51 -60 4
+log states 54 -60 4 54 -60 4
+log states 57 -60 4 57 -60 4
+log states 60 -60 4 60 -60 4
+cmd tick unfreeze

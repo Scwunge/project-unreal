@@ -145,6 +145,18 @@ bool FMcGameEventTest::RunTest(const FString& Parameters)
 	// Twelve thousand ticks later the level drops by one.
 	for (int32 Index = 0; Index < 12000; ++Index) { Sim.Tick(); }
 	TestEqual(TEXT("level 3 after 10 minutes"), Sim.GetWarningLevel(7), 3);
+
+	// A chiseled bookshelf reads as the number of the slot last used (reference run bookshelf: 21 cases, whatever the shelf holds).
+	for (int32 Slot = -1; Slot <= 5; ++Slot)
+	{
+		const FIntVector Shelf(-10, 1, 3 + (Slot + 1) * 2);
+		World.SetBlock(Shelf, State(TEXT("minecraft:chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]")));
+		World.SetBlock(Shelf + FIntVector(1, 0, 0), State(TEXT("minecraft:comparator[facing=west,mode=compare,powered=false]")));
+		World.SetBlock(Shelf + FIntVector(2, 0, 0), State(TEXT("minecraft:redstone_wire")));
+		Sim.BookshelfUsed(Shelf, Slot);
+		for (int32 Index = 0; Index < 6; ++Index) { Sim.Tick(); }
+		TestEqual(*FString::Printf(TEXT("slot %d reads %d"), Slot, Slot + 1), Sim.GetDustPower(Shelf + FIntVector(2, 0, 0)), Slot + 1);
+	}
 	return true;
 }
 

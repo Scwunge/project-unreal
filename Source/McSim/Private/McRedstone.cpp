@@ -533,6 +533,11 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return (7 - Number(State, TEXT("bites"))) * 2;
 		}
+		// A chiseled bookshelf gives the number of the slot last used, 1 to 6, whatever it holds (reference run bookshelf: 21 cases).
+		if (Name == TEXT("minecraft:chiseled_bookshelf"))
+		{
+			return BookshelfSignal.FindRef(Pos);
+		}
 		if (Name == TEXT("minecraft:jukebox"))
 		{
 			// The disc inside gives its own level (reference run lg_juke, every disc put in by a dropper).
@@ -748,6 +753,10 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	{
 		Notify(Pos + Vec[Dir]);
 	}
+	if (!BookshelfSignal.IsEmpty() && BookshelfSignal.Contains(Pos) && Reg().IsValidState(State) && Reg().GetBlockOf(State).Name != TEXT("minecraft:chiseled_bookshelf"))
+	{
+		BookshelfSignal.Remove(Pos);
+	}
 	// One step further: through a conductor (a block a signal passes through), and from anything redstone does
 	// itself, so a piston still hears dust that reaches the block above it.
 	// (A redstone block or a removed block sends no update past its own neighbours: reference run rs_quasi.)
@@ -874,6 +883,13 @@ void FMcRedstone::PlayerPlaced(const FIntVector& Pos)
 	{
 		UpdateHookLine(Pos);
 	}
+}
+
+void FMcRedstone::BookshelfUsed(const FIntVector& Pos, int32 Slot)
+{
+	BookshelfSignal.Add(Pos, FMath::Clamp(Slot, -1, 5) + 1);
+	Emit(TEXT("block_change"), Pos, true);
+	NotifyContainerChanged(Pos);
 }
 
 void FMcRedstone::NotifyContainerChanged(const FIntVector& Pos)

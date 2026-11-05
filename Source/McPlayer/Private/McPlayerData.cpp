@@ -587,6 +587,8 @@ void UMcPlayerDataComponent::DropFromWindow(const FMcItemStack& Stack)
 {
 	if (IsServer() && ServerDrop && !Stack.IsEmpty())
 	{
+		AddStat(TEXT("dropped:") + Stack.Item.ToString(), Stack.Count);
+		AddStat(TEXT("custom:drop"), Stack.Count);
 		ServerDrop(Stack);
 	}
 }

@@ -24,6 +24,8 @@
 #include "McSound.h"
 #include "McUI.h"
 #include "McPlayerPawn.h"
+#include "McMob.h"
+#include "McItemRegistry.h"
 #include "McWorldActor.h"
 #include "McWorldSave.h"
 #include "AudioDevice.h"
@@ -1069,11 +1071,34 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 	// The list.
 	static const TArray<FStatRow> NoRows;
 	const TArray<FStatRow>& Rows = StatsTab == 0 ? GetStatRows() : NoRows;
-	const float Content = Rows.Num() * RowHeight + 10.0f;
-	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
 	APlayerController* Player = GetOwningPlayerController();
 	const AMcPlayerPawn* StatsPawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
 	const UMcPlayerDataComponent* Counted = StatsPawn ? StatsPawn->Data : nullptr;
+	// Items: every item with a count in any of the six item statistics. Mobs: every mob the game has.
+	static const TCHAR* const ItemStats[6] = { TEXT("broken:"), TEXT("crafted:"), TEXT("mined:"), TEXT("used:"), TEXT("picked_up:"), TEXT("dropped:") };
+	TArray<FName> ItemRows;
+	if (StatsTab == 1 && Counted)
+	{
+		TSet<FName> Seen;
+		for (const TPair<FString, int64>& Entry : Counted->Counters)
+		{
+			for (const TCHAR* Prefix : ItemStats)
+			{
+				if (Entry.Key.StartsWith(Prefix) && Entry.Value > 0)
+				{
+					Seen.Add(FName(*Entry.Key.RightChop(FCString::Strlen(Prefix))));
+				}
+			}
+		}
+		ItemRows = Seen.Array();
+		ItemRows.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+	}
+	const TArray<FMcMobType>& MobTypes = FMcMobType::GetAll();
+	constexpr float ItemRowHeight = 20.0f;
+	constexpr float MobRowHeight = 24.0f;
+	const float Content = StatsTab == 1 ? ItemRows.Num() * ItemRowHeight + ItemRowHeight + 10.0f
+		: StatsTab == 2 ? MobTypes.Num() * MobRowHeight + 10.0f : Rows.Num() * RowHeight + 10.0f;
+	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
 	if (Player && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom)
 	{
 		StatsScroll += 7 * ((Player->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) - (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0));
@@ -1090,6 +1115,51 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 		DrawGuiText(Rows[Index].Name, CentreX - 135.6f, Y, Colour, true);
 		const FString Value = FormatStat(Rows[Index].Id, Counted ? Counted->GetStat(TEXT("custom:") + Rows[Index].Id) : 0);
 		DrawGuiText(Value, CentreX + 133.3f - GetTextWidth(Value), Y, Colour, true);
+	}
+	if (StatsTab == 1)
+	{
+		// The six columns, headed by their pictures, the item's picture on the left.
+		static const TCHAR* const Pictures[6] = { TEXT("item_broken"), TEXT("item_crafted"), TEXT("block_mined"), TEXT("item_used"), TEXT("item_picked_up"), TEXT("item_dropped") };
+		const float FirstColumn = CentreX - 80.0f;
+		for (int32 Column = 0; Column < 6; ++Column)
+		{
+			DrawGuiSprite(FString(TEXT("textures/gui/sprites/statistics/")) + Pictures[Column] + TEXT(".png"), FirstColumn + Column * 40.0f + 11.0f, ListTop + 2.0f - StatsScroll, 18.0f, 18.0f);
+		}
+		for (int32 Index = 0; Index < ItemRows.Num(); ++Index)
+		{
+			const float Y = ListTop + ItemRowHeight + 5.0f + Index * ItemRowHeight - StatsScroll;
+			if (Y + 16.0f <= ListTop || Y >= ListBottom)
+			{
+				continue;
+			}
+			const uint32 Colour = (Index & 1) ? 0xBABABAu : 0xFFFFFFu;
+			DrawStack(FMcItemStack(ItemRows[Index], 1), CentreX - 135.0f, Y);
+			for (int32 Column = 0; Column < 6; ++Column)
+			{
+				const int64 Count = Counted->GetStat(FString(ItemStats[Column]) + ItemRows[Index].ToString());
+				const FString Value = Count > 0 ? FString::FromInt(static_cast<int32>(Count)) : McLang::Get(TEXT("stats.none"));
+				DrawGuiText(Value, FirstColumn + Column * 40.0f + 20.0f - GetTextWidth(Value) / 2.0f, Y + 4.0f, Colour, true);
+			}
+		}
+	}
+	else if (StatsTab == 2)
+	{
+		for (int32 Index = 0; Index < MobTypes.Num(); ++Index)
+		{
+			const float Y = ListTop + 5.0f + Index * MobRowHeight - StatsScroll;
+			if (Y + 20.0f <= ListTop || Y >= ListBottom)
+			{
+				continue;
+			}
+			const FString Id = MobTypes[Index].Name.ToString();
+			const FString Mob = McLang::Get(TEXT("entity.") + Id.Replace(TEXT(":"), TEXT(".")));
+			const int64 Killed = Counted ? Counted->GetStat(TEXT("killed:") + Id) : 0;
+			const int64 KilledBy = Counted ? Counted->GetStat(TEXT("killed_by:") + Id) : 0;
+			const FString KilledText = Killed > 0 ? McLang::Format(TEXT("stat_type.minecraft.killed"), { FString::FromInt(static_cast<int32>(Killed)), Mob }) : McLang::Format(TEXT("stat_type.minecraft.killed.none"), { Mob });
+			const FString KilledByText = KilledBy > 0 ? McLang::Format(TEXT("stat_type.minecraft.killed_by"), { Mob, FString::FromInt(static_cast<int32>(KilledBy)) }) : McLang::Format(TEXT("stat_type.minecraft.killed_by.none"), { Mob });
+			DrawGuiText(KilledText, CentreX - 135.6f, Y, Killed > 0 ? 0xFFFFFFu : 0x808080u, true);
+			DrawGuiText(KilledByText, CentreX - 135.6f, Y + 10.0f, KilledBy > 0 ? 0xFFFFFFu : 0x808080u, true);
+		}
 	}
 	if (MaxScroll > 0.0f)
 	{

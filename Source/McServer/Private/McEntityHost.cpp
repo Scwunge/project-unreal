@@ -609,6 +609,18 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	{
 		return;
 	}
+	// What its loot table can ask: whether a player did it (a hit or a shot in the last five seconds), what it is.
+	McLoot::FMobContext Context;
+	Context.bKilledByPlayer = Mob.Age - Mob.PlayerHitAge <= 100;
+	if (Context.bKilledByPlayer)
+	{
+		Context.Killer = TEXT("minecraft:player");
+		Context.bProjectile = Mob.bPlayerHitWasShot;
+		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
+	}
+	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
+	Context.DyeColor = Mob.DyeColor;
+	const McLoot::FMobScope LootScope(Context);
 	FMcRandom Rng(static_cast<uint64>(Seed) ^ (static_cast<uint64>(Mob.Id) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64>(Ticks));
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
@@ -1400,6 +1412,8 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 		{
 			Mob.LootingLevel = 0;
 		}
+		Mob.PlayerHitAge = Mob.Age;
+		Mob.bPlayerHitWasShot = false;
 		const FVector OldVelocity = Mob.Body.Velocity;
 		Mob.Damage(Damage, &Eye);
 		if (Push > 0.0f && !Mob.bRemoved)

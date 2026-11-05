@@ -168,6 +168,10 @@ public:
 	int32 LifeTicks = 0;
 	// The one leading a patrol or a wave of a raid: it carries the ominous banner and drops an ominous bottle. Not saved.
 	bool bCaptain = false;
+	// The Age at which a player last hurt it, and whether that was a shot: its loot asks whether a player killed it
+	// (the game counts the last five seconds). Not saved.
+	int32 PlayerHitAge = -1000000;
+	bool bPlayerHitWasShot = false;
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;

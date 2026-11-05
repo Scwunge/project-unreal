@@ -836,6 +836,17 @@ void UMcPlayerDataComponent::ServerTick()
 		SentCustomBars = CustomBars;
 		ClientSetCustomBars(CustomBars);
 	}
+	if (bCountersChanged && ++TicksSinceCounters >= 20)
+	{
+		bCountersChanged = false;
+		TicksSinceCounters = 0;
+		FString Text;
+		for (const TPair<FString, int64>& Counter : Counters)
+		{
+			Text += FString::Printf(TEXT("%s=%lld\n"), *Counter.Key, Counter.Value);
+		}
+		ClientSetCounters(Text);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -1052,6 +1063,31 @@ void UMcPlayerDataComponent::SetCustomBars(const FString& Lines)
 void UMcPlayerDataComponent::ClientSetCustomBars_Implementation(const FString& Lines)
 {
 	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::AddStat(const FString& Id, int64 Amount)
+{
+	if (Amount != 0)
+	{
+		Counters.FindOrAdd(Id) += Amount;
+		bCountersChanged = true;
+	}
+}
+
+void UMcPlayerDataComponent::ClientSetCounters_Implementation(const FString& Text)
+{
+	Counters.Reset();
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines);
+	for (const FString& Line : Lines)
+	{
+		FString Key;
+		FString Value;
+		if (Line.Split(TEXT("="), &Key, &Value, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+		{
+			Counters.Add(Key, FCString::Atoi64(*Value));
+		}
+	}
 }
 
 void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)

@@ -78,6 +78,8 @@ private:
 	FMcHdSummary Summary;
 	McHd::FClassTags Tags;
 	TArray<FName> LayerIds;
+	// Animated layers being remade on a worker thread, and those that changed again meanwhile (game thread only).
+	TSet<int32> RefreshBusy, RefreshAgain;
 	TSharedPtr<FRenderState, ESPMode::ThreadSafe> RenderState;
 
 	TMap<FString, FMcHdPicture> Pictures;

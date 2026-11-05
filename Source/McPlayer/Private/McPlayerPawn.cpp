@@ -322,6 +322,18 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 		{
 			// Depth Strider: a third a level, from the enchantment file's water movement efficiency.
 			Move.WaterEfficiency = FMath::Min(1.0f, Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:depth_strider")) / 3.0f);
+			// Soul Speed (UNVERIFIED, from the file): on soul sand or soil it adds 0.0405 + 0.0105 a level above the first to the speed and ignores the block's slowing.
+			const int32 SoulLevel = Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:soul_speed"));
+			if (SoulLevel > 0 && BlockWorld)
+			{
+				const FName Under = GetBlockNameBelow(*BlockWorld, Body.Position);
+				const FName Inside = GetBlockNameBelow(*BlockWorld, Body.Position + FVector(0.0, 0.2, 0.0));
+				if (Under == TEXT("minecraft:soul_sand") || Under == TEXT("minecraft:soul_soil") || Inside == TEXT("minecraft:soul_sand") || Inside == TEXT("minecraft:soul_soil"))
+				{
+					Move.Speed += 0.0405f + 0.0105f * (SoulLevel - 1);
+					Move.MovementEfficiency = 1.0f;
+				}
+			}
 		}
 	}
 	// An opening shulker box's lid moves what is in its way.

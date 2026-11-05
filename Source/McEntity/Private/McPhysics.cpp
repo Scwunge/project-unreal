@@ -518,7 +518,8 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 		}
 	}
 
-	const float SpeedFactor = SpeedFactorAt(World, Body);
+	const float BlockFactor = SpeedFactorAt(World, Body);
+	const float SpeedFactor = BlockFactor + (1.0f - BlockFactor) * FMath::Clamp(Input.MovementEfficiency, 0.0f, 1.0f);
 	FVector Motion = Body.Velocity * FVector(SpeedFactor, 1.0, SpeedFactor);
 	if (Body.bStuck)
 	{

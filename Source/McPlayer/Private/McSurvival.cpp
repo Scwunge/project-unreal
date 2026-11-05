@@ -288,7 +288,14 @@ namespace McSurvival
 		// Water Breathing and Conduit Power fill it under water too (minecraft.wiki, "Conduit Power").
 		if (Environment.bHeadInWater && !McEffects::Find(Stats, TEXT("water_breathing")) && !McEffects::Find(Stats, TEXT("conduit_power")))
 		{
-			if (--Stats.Air <= -20)
+			// Respiration (oxygen bonus = its level): the breath only drops on one tick in level + 1 (ench_log5: 101, 57, 42, 20 lost in 100 ticks at levels 0 to III).
+			static FRandomStream BreathRandom(0x5eb7);
+			const int32 OxygenBonus = Worn && Worn->Num() > 0 ? Worn->Get(0).GetEnchantmentLevel(TEXT("minecraft:respiration")) : 0;
+			if (OxygenBonus > 0 && BreathRandom.RandRange(0, OxygenBonus) != 0)
+			{
+				// No loss this tick.
+			}
+			else if (--Stats.Air <= -20)
 			{
 				Stats.Air = 0;
 				Hurt(Stats, 2.0f, EDamage::Drown, Worn, Rules);

@@ -100,6 +100,26 @@ bool FMcEnchantArmorTest::RunTest(const FString& Parameters)
 		Worn.Set(1, Piece(TEXT("chestplate"), TEXT("minecraft:blast_protection"), 4));
 		Check(TEXT("blast protection IV, an explosion"), Lost(Worn, McSurvival::EDamage::Explosion), 5.71f);
 	}
+	// Respiration: the breath drops one tick in level + 1. Vanilla lost 101, 57, 42 and 20 in 100 ticks at levels 0 to III (ench_log5, one run
+	// each, so noisy: the file's 100, 50, 33, 25 are inside it), so a long run is checked against the file's rate.
+	{
+		for (int32 Level = 0; Level < 4; ++Level)
+		{
+			FMcContainer Worn(4);
+			Worn.Set(0, Piece(TEXT("helmet"), Level > 0 ? TEXT("minecraft:respiration") : nullptr, Level));
+			FMcPlayerStats Stats;
+			Stats.MaxAir = 5000;
+			Stats.Air = 5000;
+			McSurvival::FEnvironment Under;
+			Under.bHeadInWater = true;
+			for (int32 Tick = 0; Tick < 2000; ++Tick)
+			{
+				McSurvival::Tick(Stats, Under, McSurvival::EDifficulty::Normal, &Worn);
+			}
+			const float Expected = 2000.0f / (Level + 1);
+			TestTrue(*FString::Printf(TEXT("respiration %d: %d lost in 2000 ticks, expected about %.0f"), Level, 5000 - Stats.Air, Expected), FMath::Abs((5000 - Stats.Air) - Expected) < 0.1f * Expected);
+		}
+	}
 	return true;
 }
 

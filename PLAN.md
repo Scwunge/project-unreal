@@ -1603,3 +1603,9 @@ Same-camera close-ups (flat world, Unreal Mode, `-McHd` on and off, shots hd_off
 
 ## Unreal Mode speed, first measurements (2026-11-05, 1070, 1280x720, flat-ish world prof1, not clean)
 `-McShotExec=ProfileGPU` plus a `McShot: frame ms: game/render/gpu` log line (non-Shipping). At the old High (TSR quality 3): GPU 11.3 ms, TSR 3.5, shadow depths 1.7, volumetric fog 0.85, base pass 0.83. Presets now also set TSR quality (Low/Medium 1, High 2, Ultra 3): GPU Low 8.1, Medium 8.5, High 10.3 ms. Every level still ran ~40 fps because the render thread sits at ~24 ms (game 9-19 ms) with ~3400 draw calls in the shadow depth passes: the GPU is not the limit, render-thread draw submission is.
+
+## Big packs (Pixlli 512, Unreal + HD + PBR), 2026-11-05, 1070 8 GB
+- Low re-shot twice: the leaves block missing once was mesh timing. Olive ground is the same without any pack (not a pack tint bug); the "brown" held block was the pack's dirt side.
+- 5.4 fps was the game thread (GPU 8 ms, render 16 ms): every animated layer remade its HD maps on the game thread at each animation step (45 ms a frame at 64 px, 221 ms at 128 px). Now a worker thread does it (one job per layer, newest wins): 128 px 4.5 to 49 fps; 256 px (1385 MB of HD arrays) loads in about 30 s and runs 47 fps.
+- Default pack budget follows the card: min(1536 MB, video memory / 5), at least 256 MB (the log says "Pack texture budget"). `-McPackBudgetMB` still wins.
+- Still open: the base pack load (6 to 8 s) and the HD build (up to 21 s the first time at 256 px, cached under 600 MB) still run on the game thread with no loading screen; a visible loading state needs a UI hook drawn before the load starts. Connected glass textures are a missing feature, not a bug.

@@ -804,9 +804,14 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 			const FBox Box(Feet - FVector(It->Size.X * 0.5, 0.0, It->Size.X * 0.5), Feet + FVector(It->Size.X * 0.5, It->Size.Y, It->Size.X * 0.5));
 			FVector HitPoint, HitNormal;
 			float Time = 0.0f;
-			if (!It->IsHidden() && It->Kind != TEXT("minecraft:item") && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * AttackReach, FVector::ZeroVector, HitPoint, HitNormal, Time)
-				&& Time * AttackReach < BlockDistance)
+			const bool bBoxHit = !It->IsHidden() && It->Kind != TEXT("minecraft:item") && FMath::LineExtentBoxIntersection(Box, Eye, Eye + Look * AttackReach, FVector::ZeroVector, HitPoint, HitNormal, Time);
+			if (bBoxHit && Time * AttackReach >= BlockDistance)
 			{
+				UE_LOG(LogMcPlayer, Verbose, TEXT("McHit client: %s box hit at %.2f but a block is at %.2f"), *It->Kind.ToString(), Time * AttackReach, BlockDistance);
+			}
+			if (bBoxHit && Time * AttackReach < BlockDistance)
+			{
+				UE_LOG(LogMcPlayer, Verbose, TEXT("McHit client: %s box hit at %.2f (block %.2f), sending the swing"), *It->Kind.ToString(), Time * AttackReach, BlockDistance);
 				AttackHandler(Look);
 				BreakCooldown = BreakRepeatSeconds;
 				StopDigging();
@@ -1202,7 +1207,9 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
-	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative))
+	const bool bHit = MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative);
+	UE_LOG(LogMcPlayer, Verbose, TEXT("McHit server: swing from (%.2f %.2f %.2f) look (%.2f %.2f %.2f), strength %.2f damage %.2f, hit %d"), Eye.X, Eye.Y, Eye.Z, Look.X, Look.Y, Look.Z, Strength, Damage, bHit ? 1 : 0);
+	if (!bHit)
 	{
 		return;
 	}

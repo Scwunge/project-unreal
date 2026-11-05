@@ -1382,7 +1382,11 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 	}
 	if (Best->IsLiving())
 	{
-		static_cast<FMcMob*>(Best)->Damage(Damage, &Eye);
+		FMcMob* Victim = static_cast<FMcMob*>(Best);
+		const float Before = Victim->Health;
+		const bool bTook = Victim->Damage(Damage, &Eye);
+		UE_LOG(LogTemp, Verbose, TEXT("McHit attack: %s at (%.2f %.2f %.2f), health %.1f -> %.1f (took %d, hurt time %d), removed %d"), *Victim->GetType().ToString(), Victim->Body.Position.X, Victim->Body.Position.Y, Victim->Body.Position.Z,
+			Before, Victim->Health, bTook ? 1 : 0, Victim->HurtTime, Victim->bRemoved ? 1 : 0);
 		return true;
 	}
 	return Best->OnAttacked(Damage, bCreative);

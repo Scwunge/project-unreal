@@ -252,35 +252,45 @@ void AMcPlayerController::ConnectToWorld()
 		bViewSetUp = true;
 	}
 	AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn());
-	if (MyPawn && !MyPawn->HasBlockWorld())
+	// The local hooks (attack, set block, lid push) are set once. They are tied to the attack hook, not to the block world: the host's own pawn is
+	// hooked by HookServerPawn, which gives it a block world first, and then the hooks were never set (clicks on mobs did nothing).
+	if (MyPawn && !MyPawn->AttackHandler)
 	{
-		MyPawn->SetBlockWorld(BlockWorld);
-		MyPawn->LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
-		{
-			const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
-			const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
-			if (!Lids || Lids->GetTicks() == LastLidTick)
-			{
-				return FVector::ZeroVector;
-			}
-			LastLidTick = Lids->GetTicks();
-			return Lids->GetPush(Box);
-		};
-		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestAttack(Look);
-			}
-		};
-		MyPawn->SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestSetBlock(Pos, State);
-			}
-		};
+		SetUpLocalPawn(*MyPawn);
 	}
+}
+
+void AMcPlayerController::SetUpLocalPawn(AMcPlayerPawn& LocalPawn)
+{
+	if (!LocalPawn.HasBlockWorld())
+	{
+		LocalPawn.SetBlockWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+	}
+	LocalPawn.LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
+	{
+		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+		const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
+		if (!Lids || Lids->GetTicks() == LastLidTick)
+		{
+			return FVector::ZeroVector;
+		}
+		LastLidTick = Lids->GetTicks();
+		return Lids->GetPush(Box);
+	};
+	LocalPawn.AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestAttack(Look);
+		}
+	};
+	LocalPawn.SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestSetBlock(Pos, State);
+		}
+	};
 }
 
 void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)

@@ -1318,8 +1318,17 @@ void FMcRedstone::DustReads(const FIntVector& Pos, TArray<FIntVector, TInlineAll
 FMcStateId FMcRedstone::DustShape(const FIntVector& Pos, FMcStateId State, int32 Power) const
 {
 	enum { NoLink, Side, Climb };
-	const bool bWasDot = Reg().GetPropertyValue(State, TEXT("north")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("east")) == TEXT("none")
-		&& Reg().GetPropertyValue(State, TEXT("south")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("west")) == TEXT("none");
+	bool bWasDot;
+	if (const bool* Known = DustIsDot.Find(State))
+	{
+		bWasDot = *Known;
+	}
+	else
+	{
+		bWasDot = Reg().GetPropertyValue(State, TEXT("north")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("east")) == TEXT("none")
+			&& Reg().GetPropertyValue(State, TEXT("south")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("west")) == TEXT("none");
+		DustIsDot.Add(State, bWasDot);
+	}
 	const bool bUpConductor = IsConductor(World.GetBlock(Pos + Vec[Up]));
 	int32 Link[4] = { NoLink, NoLink, NoLink, NoLink };
 	for (int32 Dir = 0; Dir < 4; ++Dir)
@@ -1352,9 +1361,23 @@ FMcStateId FMcRedstone::DustShape(const FIntVector& Pos, FMcStateId State, int32
 			Link[South] = Link[South] ? Link[South] : Side;
 		}
 	}
+	const int32 Code = Power * 81 + Link[North] * 27 + Link[East] * 9 + Link[South] * 3 + Link[West];
+	if (DustByCode.IsEmpty())
+	{
+		DustByCode.Init(0xFFFF, 16 * 81);
+	}
+	if (Power >= 0 && Power < 16 && DustByCode[Code] != 0xFFFF && Reg().GetBlockOf(DustByCode[Code]).Name == Reg().GetBlockOf(State).Name)
+	{
+		return DustByCode[Code];
+	}
 	static const TCHAR* const Names[3] = { TEXT("none"), TEXT("side"), TEXT("up") };
-	return With(State, { FChange(TEXT("power"), Power), FChange(TEXT("north"), Names[Link[North]]), FChange(TEXT("east"), Names[Link[East]]),
+	const FMcStateId Result = With(State, { FChange(TEXT("power"), Power), FChange(TEXT("north"), Names[Link[North]]), FChange(TEXT("east"), Names[Link[East]]),
 		FChange(TEXT("south"), Names[Link[South]]), FChange(TEXT("west"), Names[Link[West]]) });
+	if (Power >= 0 && Power < 16)
+	{
+		DustByCode[Code] = Result;
+	}
+	return Result;
 }
 
 void FMcRedstone::FlushDust()

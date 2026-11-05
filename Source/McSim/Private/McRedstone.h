@@ -166,6 +166,9 @@ private:
 	bool bQuietChange = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
+	// Dust states by power and links (power * 81 + links in base 3), and whether a dust state is a dot: worked out once.
+	mutable TArray<FMcStateId> DustByCode;
+	mutable TMap<FMcStateId, bool> DustIsDot;
 	int32 SunLight = 15;
 	int32 SkyLevel = 15;
 	double SunScale = 1.0;

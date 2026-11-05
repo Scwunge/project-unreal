@@ -28,6 +28,7 @@ namespace
 		CopperBulb,
 		Sculk,
 		CalibratedSculk,
+		Shrieker,
 		Observer,
 		Piston,
 		StickyPiston,
@@ -113,6 +114,7 @@ namespace
 				else if (Name.EndsWith(TEXT("copper_bulb"))) Kind = CopperBulb;
 				else if (Name == TEXT("minecraft:sculk_sensor")) Kind = Sculk;
 				else if (Name == TEXT("minecraft:calibrated_sculk_sensor")) Kind = CalibratedSculk;
+				else if (Name == TEXT("minecraft:sculk_shrieker")) Kind = Shrieker;
 				else if (Name == TEXT("minecraft:observer")) Kind = Observer;
 				else if (Name == TEXT("minecraft:piston")) Kind = Piston;
 				else if (Name == TEXT("minecraft:sticky_piston")) Kind = StickyPiston;
@@ -240,7 +242,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 	{
 		const bool bOn = !Flag(State, TEXT("powered"));
 		Set(Pos, { FChange(TEXT("powered"), Bool(bOn)) });
-		Vibrate(Pos, bOn ? 10 : 9);
+		Emit(bOn ? TEXT("block_activate") : TEXT("block_deactivate"), Pos, true);
 		Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, bOn), Centre, 0.3f, bOn ? 0.6f : 0.5f });
 		return true;
 	}
@@ -249,7 +251,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 		if (!Flag(State, TEXT("powered")))
 		{
 			Set(Pos, { FChange(TEXT("powered"), TEXT("true")) });
-			Vibrate(Pos, 10);
+			Emit(TEXT("block_activate"), Pos, true);
 			Sim.ScheduleTick(Pos, IsStoneButton(Block) ? 20 : 30);
 			Sim.PlaySound(FMcSoundEvent{ GetUseSound(Kind, Block, true), Centre });
 		}
@@ -268,7 +270,7 @@ bool FMcRedstone::Use(const FIntVector& Pos, float Yaw)
 			const bool bLower = Reg().GetPropertyValue(State, TEXT("half")) == TEXT("lower");
 			const FIntVector Other = Pos + Vec[bLower ? Up : Down];
 			Set(Pos, { FChange(TEXT("open"), Bool(bOpen)) });
-			Vibrate(Pos, bOpen ? 10 : 9);
+			Emit(bOpen ? TEXT("block_open") : TEXT("block_close"), Pos, true);
 			if (IsKind(Other, Door))
 			{
 				Set(Other, { FChange(TEXT("open"), Bool(bOpen)) });
@@ -531,6 +533,11 @@ int32 FMcRedstone::ContainerLevel(const FIntVector& Pos) const
 		{
 			return (7 - Number(State, TEXT("bites"))) * 2;
 		}
+		// A chiseled bookshelf gives the number of the slot last used, 1 to 6, whatever it holds (reference run bookshelf: 21 cases).
+		if (Name == TEXT("minecraft:chiseled_bookshelf"))
+		{
+			return BookshelfSignal.FindRef(Pos);
+		}
 		if (Name == TEXT("minecraft:jukebox"))
 		{
 			// The disc inside gives its own level (reference run lg_juke, every disc put in by a dropper).
@@ -746,6 +753,10 @@ void FMcRedstone::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	{
 		Notify(Pos + Vec[Dir]);
 	}
+	if (!BookshelfSignal.IsEmpty() && BookshelfSignal.Contains(Pos) && Reg().IsValidState(State) && Reg().GetBlockOf(State).Name != TEXT("minecraft:chiseled_bookshelf"))
+	{
+		BookshelfSignal.Remove(Pos);
+	}
 	// One step further: through a conductor (a block a signal passes through), and from anything redstone does
 	// itself, so a piston still hears dust that reaches the block above it.
 	// (A redstone block or a removed block sends no update past its own neighbours: reference run rs_quasi.)
@@ -828,12 +839,13 @@ void FMcRedstone::PlayerBroke(const FIntVector& Pos, FMcStateId State)
 	const FString Broken = Reg().GetBlockOf(State).Name.ToString();
 	if (!Broken.EndsWith(TEXT("_wool")) && !Broken.EndsWith(TEXT("_carpet")))
 	{
-		Vibrate(Pos, 12);
+		Emit(TEXT("block_destroy"), Pos, true);
 	}
 }
 
 void FMcRedstone::LightningStruck(const FIntVector& Pos)
 {
+	Emit(TEXT("lightning_strike"), Pos);
 	// A bolt in the cell above a rod strikes it (one in the rod's own cell does nothing in the reference run): it powers for 8 ticks and loses all its rust (reference run
 	// lg_misc4: exposed, weathered and oxidized rods became plain at once, the copper under them lost some). Not done: that copper.
 	for (const FIntVector& Cell : { Pos + FIntVector(0, -1, 0) })
@@ -864,13 +876,20 @@ void FMcRedstone::PlayerPlaced(const FIntVector& Pos)
 	const FString Placed = Reg().GetBlockOf(World.GetBlock(Pos)).Name.ToString();
 	if (!Placed.EndsWith(TEXT("_wool")) && !Placed.EndsWith(TEXT("_carpet")))
 	{
-		Vibrate(Pos, 13);
+		Emit(TEXT("block_place"), Pos, true);
 	}
 	// Reference run rs_trip4: the second hook a player puts in place joins the line and the strings at once.
 	if (KindOf(World.GetBlock(Pos)) == TripwireHook)
 	{
 		UpdateHookLine(Pos);
 	}
+}
+
+void FMcRedstone::BookshelfUsed(const FIntVector& Pos, int32 Slot)
+{
+	BookshelfSignal.Add(Pos, FMath::Clamp(Slot, -1, 5) + 1);
+	Emit(TEXT("block_change"), Pos, true);
+	NotifyContainerChanged(Pos);
 }
 
 void FMcRedstone::NotifyContainerChanged(const FIntVector& Pos)
@@ -941,6 +960,7 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 		if (HasPower(Pos))
 		{
 			Sim.LightTnt(Pos);
+			Emit(TEXT("prime_fuse"), Pos);
 		}
 		break;
 	// Power rising on a note block plays it once; `powered` goes again when the power does (McNoteBlock.h).
@@ -952,6 +972,7 @@ void FMcRedstone::Notify(const FIntVector& Pos)
 			if (bPowered)
 			{
 				Sim.PlayNote(Pos);
+				Emit(TEXT("note_block_play"), Pos);
 			}
 		}
 		break;
@@ -1244,6 +1265,9 @@ bool FMcRedstone::RunTick(const FIntVector& Pos, FMcStateId State)
 	case CalibratedSculk:
 		TickSculk(Pos, State);
 		break;
+	case Shrieker:
+		TickShrieker(Pos, State);
+		break;
 	case Tripwire:
 		TickTripwire(Pos, State);
 		break;
@@ -1318,8 +1342,17 @@ void FMcRedstone::DustReads(const FIntVector& Pos, TArray<FIntVector, TInlineAll
 FMcStateId FMcRedstone::DustShape(const FIntVector& Pos, FMcStateId State, int32 Power) const
 {
 	enum { NoLink, Side, Climb };
-	const bool bWasDot = Reg().GetPropertyValue(State, TEXT("north")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("east")) == TEXT("none")
-		&& Reg().GetPropertyValue(State, TEXT("south")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("west")) == TEXT("none");
+	bool bWasDot;
+	if (const bool* Known = DustIsDot.Find(State))
+	{
+		bWasDot = *Known;
+	}
+	else
+	{
+		bWasDot = Reg().GetPropertyValue(State, TEXT("north")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("east")) == TEXT("none")
+			&& Reg().GetPropertyValue(State, TEXT("south")) == TEXT("none") && Reg().GetPropertyValue(State, TEXT("west")) == TEXT("none");
+		DustIsDot.Add(State, bWasDot);
+	}
 	const bool bUpConductor = IsConductor(World.GetBlock(Pos + Vec[Up]));
 	int32 Link[4] = { NoLink, NoLink, NoLink, NoLink };
 	for (int32 Dir = 0; Dir < 4; ++Dir)
@@ -1352,9 +1385,23 @@ FMcStateId FMcRedstone::DustShape(const FIntVector& Pos, FMcStateId State, int32
 			Link[South] = Link[South] ? Link[South] : Side;
 		}
 	}
+	const int32 Code = Power * 81 + Link[North] * 27 + Link[East] * 9 + Link[South] * 3 + Link[West];
+	if (DustByCode.IsEmpty())
+	{
+		DustByCode.Init(0xFFFF, 16 * 81);
+	}
+	if (Power >= 0 && Power < 16 && DustByCode[Code] != 0xFFFF && Reg().GetBlockOf(DustByCode[Code]).Name == Reg().GetBlockOf(State).Name)
+	{
+		return DustByCode[Code];
+	}
 	static const TCHAR* const Names[3] = { TEXT("none"), TEXT("side"), TEXT("up") };
-	return With(State, { FChange(TEXT("power"), Power), FChange(TEXT("north"), Names[Link[North]]), FChange(TEXT("east"), Names[Link[East]]),
+	const FMcStateId Result = With(State, { FChange(TEXT("power"), Power), FChange(TEXT("north"), Names[Link[North]]), FChange(TEXT("east"), Names[Link[East]]),
 		FChange(TEXT("south"), Names[Link[South]]), FChange(TEXT("west"), Names[Link[West]]) });
+	if (Power >= 0 && Power < 16)
+	{
+		DustByCode[Code] = Result;
+	}
+	return Result;
 }
 
 void FMcRedstone::FlushDust()
@@ -1678,6 +1725,7 @@ void FMcRedstone::TickButton(const FIntVector& Pos, FMcStateId State)
 	if (Flag(State, TEXT("powered")))
 	{
 		Set(Pos, { FChange(TEXT("powered"), TEXT("false")) });
+		Emit(TEXT("block_deactivate"), Pos);
 		Sim.PlaySound(FMcSoundEvent{ GetUseSound(Button, Reg().GetBlockOf(State).Name, false), FVector(Pos) + FVector(0.5) });
 	}
 }
@@ -1794,6 +1842,7 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 		if ((Count > 0) != Flag(State, TEXT("powered")))
 		{
 			Set(Pos, { FChange(TEXT("powered"), Bool(Count > 0)) });
+			Emit(Count > 0 ? TEXT("block_activate") : TEXT("block_deactivate"), Pos);
 		}
 	}
 	else
@@ -1801,7 +1850,12 @@ void FMcRedstone::TickPlate(const FIntVector& Pos, FMcStateId State)
 		const int32 Power = Kind == PlateLight ? FMath::Min(Count, 15) : FMath::Min((Count + 9) / 10, 15);
 		if (Power != Number(State, TEXT("power")))
 		{
+			const bool bWasOn = Number(State, TEXT("power")) > 0;
 			Set(Pos, { FChange(TEXT("power"), Power) });
+			if (bWasOn != (Power > 0))
+			{
+				Emit(Power > 0 ? TEXT("block_activate") : TEXT("block_deactivate"), Pos);
+			}
 		}
 	}
 }
@@ -2034,57 +2088,148 @@ void FMcRedstone::TickTarget(const FIntVector& Pos, FMcStateId State)
 // Sensors hear a vibration within 8 blocks (calibrated ones 16), one tick a block; wool and carpet in the way stop it, a sensor already
 // hearing one or active hears no other, a calibrated one only the frequency its back is powered to (minecraft.wiki, "Sculk Sensor";
 // strength max(1, 15 - floor(15 / range * distance)), active 30 ticks, then 10 ticks of cooldown: reference run rs_sculk).
-void FMcRedstone::Vibrate(const FIntVector& Source, int32 Frequency)
+// A sneaking player is not heard at frequency 1 to 3, and a warden is not heard at all (minecraft.wiki, "Sculk Sensor").
+void FMcRedstone::Emit(const TCHAR* Name, const FIntVector& Pos, bool bPlayer)
+{
+	FMcGameEventSource Source;
+	Source.bPlayer = bPlayer;
+	Sim.EmitGameEvent(Name, Pos, Source);
+}
+
+bool FMcRedstone::IsOccluded(const FIntVector& Source, const FIntVector& Cell) const
+{
+	const FIntVector D = Cell - Source;
+	for (int32 Step = 1; Step < 64; ++Step)
+	{
+		const double Along = Step / 64.0;
+		const FIntVector Mid(FMath::FloorToInt32(Source.X + 0.5 + D.X * Along), FMath::FloorToInt32(Source.Y + 0.5 + D.Y * Along), FMath::FloorToInt32(Source.Z + 0.5 + D.Z * Along));
+		if (Mid == Source || Mid == Cell)
+		{
+			continue;
+		}
+		const FString Name = Reg().GetBlockOf(World.GetBlock(Mid)).Name.ToString();
+		if (Name.EndsWith(TEXT("_wool")) || Name.EndsWith(TEXT("_carpet")))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void FMcRedstone::Vibrate(const FMcGameEvent& Event)
 {
 	static const FName SculkPhase(TEXT("sculk_sensor_phase"));
-	for (int32 DX = -16; DX <= 16; ++DX)
-		for (int32 DY = -16; DY <= 16; ++DY)
-			for (int32 DZ = -16; DZ <= 16; ++DZ)
+	const FIntVector Source = Event.Pos;
+	if (Event.Source.bWarden || (Event.Source.bPlayer && Event.Source.bSneaking && McGameEvents::SneakingHides(Event)))
+	{
+		return;
+	}
+	const auto IsSensor = [this](FMcStateId State) { const uint8 Kind = KindOf(State); return Kind == Sculk || Kind == CalibratedSculk; };
+	// Only the 16 block sections that hold a sensor are walked (a vibration is made by every door and block placed).
+	for (int32 ChunkZ = FMath::FloorToInt32((Source.Z - 16) / 16.0); ChunkZ <= FMath::FloorToInt32((Source.Z + 16) / 16.0); ++ChunkZ)
+	{
+		for (int32 ChunkX = FMath::FloorToInt32((Source.X - 16) / 16.0); ChunkX <= FMath::FloorToInt32((Source.X + 16) / 16.0); ++ChunkX)
+		{
+			const FMcChunk* Chunk = World.FindChunk(FIntPoint(ChunkX, ChunkZ));
+			if (!Chunk)
 			{
-				const FIntVector Cell = Source + FIntVector(DX, DY, DZ);
-				const FMcStateId State = World.GetBlock(Cell);
-				const uint8 Kind = KindOf(State);
-				if (Kind != Sculk && Kind != CalibratedSculk)
-				{
-					continue;
-				}
-				const int32 Range = Kind == Sculk ? 8 : 16;
-				const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DY * DY + DZ * DZ));
-				if (Distance > Range || Vibrations.Contains(Cell) || Reg().GetPropertyValue(State, SculkPhase) != TEXT("inactive"))
-				{
-					continue;
-				}
-				if (Kind == CalibratedSculk)
-				{
-					const int32 Back = Opposite(FacingOf(State));
-					const FIntVector BackPos = Cell + Vec[Back];
-					const int32 Input = FMath::Max(Signal(World.GetBlock(BackPos), BackPos, Opposite(Back)), KindOf(World.GetBlock(BackPos)) == Dust ? Number(World.GetBlock(BackPos), TEXT("power")) : 0);
-					if (Input > 0 && Input != Frequency)
-					{
-						continue;
-					}
-				}
-				bool bBlocked = false;
-				static const FName WoolSuffix(TEXT("_wool")), CarpetSuffix(TEXT("_carpet"));
-				for (int32 Step = 1; Step < 64 && !bBlocked; ++Step)
-				{
-					const double Along = Step / 64.0;
-					const FIntVector Mid(FMath::FloorToInt32(Source.X + 0.5 + DX * Along), FMath::FloorToInt32(Source.Y + 0.5 + DY * Along), FMath::FloorToInt32(Source.Z + 0.5 + DZ * Along));
-					if (Mid == Source || Mid == Cell)
-					{
-						continue;
-					}
-					const FString Name = Reg().GetBlockOf(World.GetBlock(Mid)).Name.ToString();
-					bBlocked = Name.EndsWith(TEXT("_wool")) || Name.EndsWith(TEXT("_carpet"));
-				}
-				if (bBlocked)
-				{
-					continue;
-				}
-				const int32 Delay = FMath::Max(1, FMath::FloorToInt32(Distance));
-				Vibrations.Add(Cell, FVibration{ Sim.GetGameTime() + Delay, FMath::Max(1, 15 - FMath::FloorToInt32(15.0 / Range * Distance)) });
-				Sim.ScheduleTick(Cell, Delay);
+				continue;
 			}
+			for (int32 Section = 0; Section < Chunk->NumSections(); ++Section)
+			{
+				const int32 MinY = Chunk->SectionMinY(Section);
+				if (MinY + 15 < Source.Y - 16 || MinY > Source.Y + 16)
+				{
+					continue;
+				}
+				const FMcChunkSection& Blocks = Chunk->GetSection(Section);
+				if (Blocks.IsEmpty() || !Blocks.Blocks.MayContain(IsSensor))
+				{
+					continue;
+				}
+				TArray<FMcStateId> States;
+				States.SetNumUninitialized(FMcPalettedContainer::NumEntries);
+				Blocks.Blocks.CopyTo(States);
+				for (int32 Index = 0; Index < States.Num(); ++Index)
+				{
+					if (IsSensor(States[Index]))
+					{
+						HearVibration(FIntVector(ChunkX * 16 + (Index & 15), MinY + (Index >> 8), ChunkZ * 16 + ((Index >> 4) & 15)), Event);
+					}
+				}
+			}
+		}
+	}
+}
+
+void FMcRedstone::HearVibration(const FIntVector& Cell, const FMcGameEvent& Event)
+{
+	static const FName SculkPhase(TEXT("sculk_sensor_phase"));
+	const FIntVector Source = Event.Pos;
+	const FMcStateId State = World.GetBlock(Cell);
+	const uint8 Kind = KindOf(State);
+	const int32 DX = Cell.X - Source.X, DY = Cell.Y - Source.Y, DZ = Cell.Z - Source.Z;
+	const int32 Range = Kind == Sculk ? 8 : 16;
+	const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DY * DY + DZ * DZ));
+	if (Distance > Range || Vibrations.Contains(Cell) || Reg().GetPropertyValue(State, SculkPhase) != TEXT("inactive"))
+	{
+		return;
+	}
+	if (Kind == CalibratedSculk)
+	{
+		const int32 Back = Opposite(FacingOf(State));
+		const FIntVector BackPos = Cell + Vec[Back];
+		const int32 Input = FMath::Max(Signal(World.GetBlock(BackPos), BackPos, Opposite(Back)), KindOf(World.GetBlock(BackPos)) == Dust ? Number(World.GetBlock(BackPos), TEXT("power")) : 0);
+		if (Input > 0 && Input != Event.Frequency)
+		{
+			return;
+		}
+	}
+	if (IsOccluded(Source, Cell))
+	{
+		return;
+	}
+	const int32 Delay = FMath::Max(1, FMath::FloorToInt32(Distance));
+	FVibration Coming;
+	Coming.Arrive = Sim.GetGameTime() + Delay;
+	Coming.Power = FMath::Max(1, 15 - FMath::FloorToInt32(15.0 / Range * Distance));
+	Coming.bPlayer = Event.Source.bPlayer;
+	Coming.PlayerId = Event.Source.PlayerId;
+	Coming.Source = Source;
+	Vibrations.Add(Cell, Coming);
+	Sim.ScheduleTick(Cell, Delay);
+}
+
+// A shrieker shrieks for 90 ticks (minecraft.wiki, "Sculk Shrieker"; unmeasured: a player's step or a sensor's vibration cannot
+// be made from the reference client's commands). It hears sensors within 8 blocks that a player set off, wool between stops it.
+void FMcRedstone::Shriek(const FIntVector& Pos, int32 PlayerId)
+{
+	const FMcStateId State = World.GetBlock(Pos);
+	const bool bCanSummon = Flag(State, TEXT("can_summon"));
+	if (Flag(State, TEXT("shrieking")) || !Sim.CanShriekFor(PlayerId, bCanSummon))
+	{
+		return;
+	}
+	Set(Pos, { FChange(TEXT("shrieking"), TEXT("true")) });
+	Sim.ShriekerActivated(Pos, PlayerId, bCanSummon);
+	Sim.ScheduleTick(Pos, 90);
+}
+
+void FMcRedstone::ShriekerTouched(const FIntVector& Pos, int32 PlayerId)
+{
+	if (KindOf(World.GetBlock(Pos)) == Shrieker)
+	{
+		Shriek(Pos, PlayerId);
+	}
+}
+
+void FMcRedstone::TickShrieker(const FIntVector& Pos, FMcStateId State)
+{
+	if (Flag(State, TEXT("shrieking")))
+	{
+		Set(Pos, { FChange(TEXT("shrieking"), TEXT("false")) });
+		Sim.ShriekerFinished(Pos, Flag(State, TEXT("can_summon")));
+	}
 }
 
 void FMcRedstone::TickSculk(const FIntVector& Pos, FMcStateId State)
@@ -2099,7 +2244,21 @@ void FMcRedstone::TickSculk(const FIntVector& Pos, FMcStateId State)
 			return;
 		}
 		const int32 Power = Coming->Power;
+		const FVibration Heard = *Coming;
 		Vibrations.Remove(Pos);
+		if (Heard.bPlayer)
+		{
+			for (int32 DX = -8; DX <= 8; ++DX)
+				for (int32 DY = -8; DY <= 8; ++DY)
+					for (int32 DZ = -8; DZ <= 8; ++DZ)
+					{
+						const FIntVector Cell = Pos + FIntVector(DX, DY, DZ);
+						if (DX * DX + DY * DY + DZ * DZ <= 64 && KindOf(World.GetBlock(Cell)) == Shrieker && !IsOccluded(Pos, Cell))
+						{
+							Shriek(Cell, Heard.PlayerId);
+						}
+					}
+		}
 		Set(Pos, { FChange(TEXT("sculk_sensor_phase"), TEXT("active")), FChange(TEXT("power"), Power) });
 		// (A calibrated one stays active only 10 ticks.)
 		Sim.ScheduleTick(Pos, KindOf(State) == CalibratedSculk ? 10 : 30);
@@ -2337,6 +2496,7 @@ bool FMcRedstone::Extend(const FIntVector& Pos, FMcStateId State, int32 Facing, 
 		return false;
 	}
 	MoveBlocks(Move, Destroy, Facing, Facing);
+	Emit(TEXT("block_activate"), Pos);
 	if (Sim.OnBlocksPushed)
 	{
 		Sim.OnBlocksPushed(TArray<FIntVector>{ Pos }, Vec[Facing]);

@@ -1731,3 +1731,34 @@ Ray tracing without ray traced translucency (`rtp_notr`, `-McCvars=r.RayTracing.
 
 **Normal maps from packs fixed, and the normal convention is now DirectX** (2026-11-04; supersedes the "normal map direction" note above). Two bugs kept a pack's `_n`/`_s` maps out of HD Textures: (1) a pack picture bigger than 16 px is cut into 16 px tiles (`#tile:x,y:w,h` ids) and `McBlockTextures` skipped the maps for tiles (and named them after the tile id); now each tile takes its part of the maps. (2) `McHdBlocks::MakeLayerMaps` ran the generator on every 16 px layer, which is every pack tile, and ignored the pack's maps; now a pack layer's own normal and specular maps replace the generated ones (enlarged with `ScaleNearest`). New test `McClient.McAssets.PackTileMaps` (a pack's oak sign picture, 2x2 tiles, each tile its own map part); a zip pack reaches the maps through the same `McCache::Asset` extraction (not tested with a zip). Direction: LabPBR's normal maps are DirectX (Y-, green low = up the picture). With a throwaway DirectX test pack (raised square, edge bands, `zz_normal`, kept out of commits) the old material read it sunken vertically (sun-lit east wall at `-McTime=3000`: top band dark, bottom bright) while the horizontal axis was right (top-down view, sun from the east: the east band lit). So the material was inverted on Y for every LabPBR pack. Now `xy.x * T + xy.y * B` in the HD material (`make_materials.py`; Hd twins regenerated) and the generator writes green low for up (`NormalFromHeight`, `GeneratorVersion` 6 so the HD cache is rebuilt; `HdMaps` test updated). After: the same wall shows the top band bright, bottom dark (raised), top-down unchanged. Not checked: a stock Faithful PBR block (no such pack here); the folder pack's picture changes do not refresh `Saved/HdCache` (the cache key uses the pack's stamp, not its files: delete `Saved/HdCache/Blocks.bin` after editing a folder pack's pictures).
 - The imported player's saved yaw/pitch: FIXED 2026-11-04 (the cause was ours, not the import's). A player who joined before the world existed was moved to the saved place by `AMcGameMode` (`SetActorLocation` only), so the saved facing never reached them and they looked along +x (a no-`-McCam` shot of playerref faced east, the villager 30 degrees left of centre). `AMcPlayerPawn::SetStartLook` now applies the start transform's yaw and pitch too; the same shot matches ref_player_ref.png. It held for any saved world, not just imported ones. A player head's owner (profile texture) still draws as the default player: the skin comes from Mojang's servers, which this clean-room port does not call.
+
+## Playability (measurements, 2026-11-05)
+Goal: people can actually play the packaged build. Shipping binary on the GTX 1070 PC (i5-9400F, 6 threads), 1920x1080, seed 12, one run each through `tools/perf/baseline.txt` or `look.txt` (`tools/perf-remote.sh`, `MC_PERF_ALONE=1`). Runs with anything beside them are marked; they don't count.
+
+**Working targets, proposed and not approved by the user.** Vanilla on the 1070: 60 fps average with 1% lows above 30 walking and sprinting; no frame over 100 ms from chunk loading; a new world playable within 60 s; commit under 8 GB; no crash in 30 minutes; flying at full speed, 1% lows above 20.
+
+**New world, player in the world to settled:** old serial decoration 40.9 s (base_b2); workers, nearest first 19.7 s (base_a2, 85ae0d2); with the three priorities 18.6 s (base_a3, 04cade2). The 65-83 s seen before came from scattered decoration order and background priority: a chunk joins the world only when all 8 neighbours are decorated, so scattered order leaves it empty until nearly the end.
+
+| Vanilla, clean | fps | 1% low | worst ms | over 33 ms |
+|---|---|---|---|---|
+| Walk, old decoration (base_b2) | 74.3 | 10.0 | 323 | 366 |
+| Walk, workers (base_a3) | 92.3 | 24.3 | 87 | 33 |
+| Stand, old decoration (base_b2) | 113.1 | 43.8 | 81 | 6 |
+| Stand, workers (base_a3) | 110.0 | 26.7 | 84 | 18 |
+
+| Unreal High, stand / walk, clean | fps | render thread ms | GPU ms |
+|---|---|---|---|
+| Sections unmerged, no TSR preset (base_ub) | 48.4 / 26.7 | 17.0 | 18.5 |
+| One section per pass, TSR preset (base_uh) | 65.9 / 57.1 | 12.1 | 14.3 |
+
+The changes in that table aren't isolated: the TSR preset likely explains most of the GPU drop, and base_ub's old decoration affects walk. Vanilla numbers for merged sections are still to come; the only ones so far (base_a4, base_a4c) had an editor beside them.
+
+**Why the render thread costs what it does:** `UProceduralMeshComponent`'s proxy always sets `bDynamicRelevance`, so no draw commands are cached and every section of every chunk is gathered per view, per frame. It also keeps a CPU copy of each vertex at about 150 bytes (double-precision `FProcMeshVertex`). 54eea4f makes a chunk one section per pass instead of one per slice and pass. A component of our own with static draw paths and no CPU copy is the next step if merged sections aren't enough; it has to keep hardware ray tracing.
+
+**Open:**
+- Flying: speed is 22 blocks/s or 0, because the player stops when the chunk ahead isn't there. Normal priority keeps about 700 chunks but hitches, since this CPU has only 2 foreground workers and frame tasks wait for them. Background high is smooth, but the world thins to about 150-300 chunks.
+- No frame cap: every run logs vsync 0, maxfps 0, smooth 0, so uncapped frames take cores from the workers. In base_a4c (120 fps, not clean) the player barely stopped.
+- Memory: peak rss 6.6 GB in base_a2 against 3.9 GB in base_a3, probably vertices waiting for garbage collection; 54eea4f frees them when a mesh is destroyed. Not proven.
+- Not measured yet: Unreal Medium and Low, the old code on a real fly (base_b2 and base_v3 never left the ground), this PC's RTX 4060, Pixlli, menus to world, the 23-minute memory run, the soak.
+
+**Reading runs:** `-McPerf` logs say `machine.txt` at the start of each run. Two vanilla worlds of one seed differ in 56% of chunks and 0.084% of blocks, ours in 36-47% and 0.025%, so same-seed variation isn't a bug here.

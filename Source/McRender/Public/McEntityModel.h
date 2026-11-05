@@ -255,6 +255,21 @@ namespace McEntityModel
 	// thickness along x: a picture stood one pixel thick, or a cube), each Scale big, turning 1 radian a second and bobbing 0.096 of a block
 	// (a sine of period 63 ticks) about a height Lift above the usual 0.26. Age is in seconds.
 	MCRENDER_API float GetDroppedHeight(float Age, float Lift);
+
+	// What a dropped item is made of: a picture cut out one pixel thick (Sides), a full block (Sides and Top, the cube's two pictures),
+	// or a block that is not a full cube (stairs, slabs, fences) as its baked model (Sides, with LayerUV the block texture layer of
+	// each vertex). Scale and Lift (blocks) place it as the model's ground display does. False only for a name with no picture and no block.
+	struct FDroppedUnit
+	{
+		bool bCube = false;
+		bool bModel = false;
+		McPlayerModel::FMeshData Sides;
+		McPlayerModel::FMeshData Top;
+		TArray<FVector2D> LayerUV;
+		float Scale = 0.5f;
+		float Lift = 0.0f;
+	};
+	MCRENDER_API bool BuildDroppedUnit(FName Item, FDroppedUnit& Out);
 	MCRENDER_API void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out);
 
 	// A block of picture on every side, one block big, standing on the feet (a falling block). Layer 0 is every side (all six when
@@ -387,6 +402,8 @@ private:
 	bool bIsDropped = false;
 	bool bDropReady = false;
 	bool bDropCube = false;
+	bool bDropModel = false;
+	TArray<FVector2D> DropLayerUV;
 	float DropScale = 0.5f;
 	float DropLift = 0.0f;
 	McPlayerModel::FMeshData DropUnit;

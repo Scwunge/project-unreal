@@ -3501,30 +3501,130 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 void UMcEntityModelComponent::PrepareDropped()
 {
 	bDropReady = true;
-	DropUnit = McPlayerModel::FMeshData();
-	DropTop = McPlayerModel::FMeshData();
+	McEntityModel::FDroppedUnit Unit;
+	McEntityModel::BuildDroppedUnit(Item, Unit);
+	bDropCube = Unit.bCube;
+	bDropModel = Unit.bModel;
+	DropScale = Unit.Scale;
+	DropLift = Unit.Lift;
+	DropUnit = MoveTemp(Unit.Sides);
+	DropTop = MoveTemp(Unit.Top);
+	DropLayerUV = MoveTemp(Unit.LayerUV);
+}
+
+bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
+{
+	Out = FDroppedUnit();
 	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
-	bDropCube = Pictures.Kind == McHand::EHeld::Cube;
+	Out.bCube = Pictures.Kind == McHand::EHeld::Cube;
 	// The model's own ground display where the cache has it, else what the shots gave: a picture half a block, 0.125 up; a block a quarter.
-	const McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(bDropCube ? FName(TEXT("block/block")) : Item, TEXT("ground"));
-	DropScale = Display.bFound ? static_cast<float>(Display.Scale) : (bDropCube ? McEntityModel::GetDropArg(2, 0.25f) : 0.5f);
-	DropLift = (Display.bFound ? static_cast<float>(Display.Translation.Y) : (bDropCube ? 3.0f : 2.0f)) / 16.0f;
-	if (bDropCube)
+	const auto Place = [&Out](FName Model, bool bBlock)
 	{
-		McHand::BuildCubeSidesMesh(Pictures.SideTint, 1.0f, DropUnit);
-		McHand::BuildCubeTopMesh(Pictures.TopTint, 1.0f, DropTop);
-		return;
+		const McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(Model, TEXT("ground"));
+		Out.Scale = Display.bFound ? static_cast<float>(Display.Scale) : (bBlock ? McEntityModel::GetDropArg(2, 0.25f) : 0.5f);
+		Out.Lift = (Display.bFound ? static_cast<float>(Display.Translation.Y) : (bBlock ? 3.0f : 2.0f)) / 16.0f;
+	};
+	if (Out.bCube)
+	{
+		Place(FName(TEXT("block/block")), true);
+		McHand::BuildCubeSidesMesh(Pictures.SideTint, 1.0f, Out.Sides);
+		McHand::BuildCubeTopMesh(Pictures.TopTint, 1.0f, Out.Top);
+		return true;
 	}
+	// An item whose definition names a block's model (stairs, slabs, fences, ...) is drawn as that model, as the game does.
+	FString ModelId;
+	const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json")));
+	const TSharedPtr<FJsonObject>* Model = nullptr;
+	if (Json.IsValid() && Json->TryGetObjectField(TEXT("model"), Model))
+	{
+		(*Model)->TryGetStringField(TEXT("model"), ModelId);
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (ModelId.StartsWith(TEXT("minecraft:block/")) && Registry.EnsureLoaded() && FMcBlockModels::Get().EnsureBaked() && FMcBlockTextures::Get().EnsureLoaded())
+	{
+		const TOptional<FMcStateId> State = Registry.FindDefaultState(Item);
+		const FMcBlockModels& Models = FMcBlockModels::Get();
+		if (State.IsSet() && Models.IsBaked() && State.GetValue() < Models.NumStates() && !Models.GetModel(State.GetValue()).Quads.IsEmpty())
+		{
+			Out.bModel = true;
+			Place(FName(TEXT("block/block")), true);
+			const double Units = McCoords::UnitsPerBlock;
+			for (const FMcBakedQuad& Quad : Models.GetModel(State.GetValue()).Quads)
+			{
+				FVector Normal = FVector::ZeroVector;
+				switch (Quad.Face)
+				{
+				case EMcDirection::Down: Normal = FVector(0, 0, -1); break;
+				case EMcDirection::Up: Normal = FVector(0, 0, 1); break;
+				case EMcDirection::North: Normal = FVector(0, -1, 0); break;
+				case EMcDirection::South: Normal = FVector(0, 1, 0); break;
+				case EMcDirection::West: Normal = FVector(-1, 0, 0); break;
+				case EMcDirection::East: Normal = FVector(1, 0, 0); break;
+				default: break;
+				}
+				const float Layer = static_cast<float>(FMcBlockTextures::Get().GetLayer(Quad.Texture));
+				const int32 First = Out.Sides.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Local = FVector(Quad.Positions[Corner]) - FVector(0.5);
+					Out.Sides.Positions.Add(FVector(Local.X, Local.Z, Local.Y) * Units);
+					Out.Sides.Normals.Add(Normal);
+					Out.Sides.UV0.Add(FVector2D(Quad.UVs[Corner]));
+					Out.Sides.Colors.Add(FColor::White);
+					Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+				}
+				Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+			return true;
+		}
+	}
+	Place(Item, false);
 	TArray<FColor> Pixels;
 	int32 Width = 0, Height = 0;
-	const FString Path = GetTexturePath(0);
+	const FString Path = Pictures.Kind == McHand::EHeld::Flat ? Pictures.Side : FindItemTexture(Item);
 	if (Path.IsEmpty() || !McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width <= 0 || Height < Width)
 	{
-		// No picture to cut out: the two-sided flat picture as before.
-		McHand::BuildFlatMesh(1.0f, DropUnit);
-		return;
+		// No picture to cut out: the two-sided flat picture.
+		// Still nothing (a chest, a pot, a bar whose item model is not a picture): a plain cube of the block's own picture or, failing that,
+		// of planks, so that nothing a player drops is ever invisible.
+		FMcBlockTextures& Pictures2 = FMcBlockTextures::Get();
+		if (Item == FName(TEXT("minecraft:air")) || !Pictures2.EnsureLoaded())
+		{
+			return false;
+		}
+		FName Texture(*(TEXT("minecraft:block/") + McCache::PathOf(Item.ToString())));
+		if (Pictures2.GetLayerId(Pictures2.GetLayer(Texture)) != Texture)
+		{
+			Texture = FName(TEXT("minecraft:block/oak_planks"));
+		}
+		const float Layer = static_cast<float>(Pictures2.GetLayer(Texture));
+		Out = FDroppedUnit();
+		Out.bModel = true;
+		Place(FName(TEXT("block/block")), true);
+		static const FVector Normals[6] = { FVector(0, 0, -1), FVector(0, 0, 1), FVector(0, -1, 0), FVector(0, 1, 0), FVector(-1, 0, 0), FVector(1, 0, 0) };
+		const double Units = McCoords::UnitsPerBlock;
+		for (int32 Face = 0; Face < 6; ++Face)
+		{
+			const FVector N = Normals[Face];
+			const FVector U = Face < 2 ? FVector(1, 0, 0) : (Face < 4 ? FVector(1, 0, 0) : FVector(0, 1, 0));
+			const FVector V = FVector::CrossProduct(N, U);
+			const int32 First = Out.Sides.Positions.Num();
+			const FVector Corner[4] = { N * 0.5 - U * 0.5 + V * 0.5, N * 0.5 - U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 + V * 0.5 };
+			const FVector2D Uv[4] = { FVector2D(0, 0), FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0) };
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				Out.Sides.Positions.Add(Corner[Index] * Units);
+				Out.Sides.Normals.Add(N);
+				Out.Sides.UV0.Add(Uv[Index]);
+				Out.Sides.Colors.Add(FColor::White);
+				Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+			}
+			Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		}
+		return true;
 	}
-	McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, DropUnit);
+	McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Out.Sides);
+	return true;
 }
 
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -3667,6 +3767,42 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	if (bIsDropped && !bDropReady)
 	{
 		PrepareDropped();
+	}
+	if (bIsDropped && bDropModel)
+	{
+		// A block that is not a full cube: its baked model, drawn with the world's block pictures.
+		FMcBlockTextures& BlockPictures = FMcBlockTextures::Get();
+		if (!BlockPictures.IsLoaded() || !BaseMaterial)
+		{
+			return;
+		}
+		if (!BlockMaterial)
+		{
+			BlockMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+			BlockMaterial->SetTextureParameterValue(TEXT("Blocks"), BlockPictures.GetTextureArray());
+		}
+		BlockMaterial->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		BlockMaterial->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+		McPlayerModel::FMeshData DropMesh;
+		McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, DropMesh);
+		TArray<FVector2D> ModelUV1, ModelUV2;
+		const int32 Copies = McEntityModel::GetItemCopies(Count);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			ModelUV1.Append(DropLayerUV);
+		}
+		ModelUV2.Init(FVector2D(1.0, 0.0), DropMesh.Positions.Num());
+		if (NumSections == 0)
+		{
+			CreateMeshSection(0, DropMesh.Positions, DropMesh.Triangles, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>(), false);
+			SetMaterial(0, BlockMaterial);
+			NumSections = 1;
+		}
+		else
+		{
+			UpdateMeshSection(0, DropMesh.Positions, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>());
+		}
+		return;
 	}
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{

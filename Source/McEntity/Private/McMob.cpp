@@ -461,6 +461,10 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		// dragon15.txt (the damage command at the dragon's body, 30 ticks apart): hits of 2, 20 and 40 took 1.5, 6 and 11 (a quarter and one; player attacks, arrows and
 		// explosions alike). Generic (20) and magic (5) damage took nothing, which cannot be told apart here. Hits on the head, which take it all, are not told apart either.
 		Amount = Amount * 0.25f + 1.0f;
+		if (DragonPhase >= 5 && DragonPhase <= 7)
+		{
+			PerchDamage += Amount;
+		}
 	}
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.
 	if (HurtTime > 0 || Health <= 0.0f)
@@ -1017,6 +1021,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 				{
 					// The crystal that was healing it is gone: 10 hp, besides the blast (dragon15.txt: a crystal 8 blocks off, destroyed: 171.5 to 156.86, 14.64).
 					Health -= 10.0f;
+					bStrafeDue = true;
 					if (Health <= 0.0f)
 					{
 						DeathTicks = FMath::Max(DeathTicks, 1);
@@ -1026,23 +1031,193 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 				BeamTicks = 0;
 			}
 		}
-		// dragon6.txt (4000 ticks after the crystals started a fight, sampled every 5 ticks, the player ignored): it came in at height 126 and settled to
-		// 65-79 (mean 71) by about tick 1000 (126 at 0, 96 at 375, 86 at 500, 82 at 625), and ranged 1 to 63 blocks from the middle of the island (mean 26),
-		// at a median 0.95 a tick (90th percentile 1.28). Modelled as drifting to a new random point (radius 0 to 55, height 71 +-6, settling from 126 over
-		// 1000 ticks) each time it gets within 8 blocks, turning gently towards it. The circuit is not otherwise measured (n=1 fight, coarse samples).
-		const double Settle = FMath::Max(0.0, 1.0 - Age / 1000.0);
-		if (Age == 1 || (Body.Position - DragonGoal).SizeSquared() < 64.0)
+		// The phases (dragon_phase1.txt: a summoned dragon, normal difficulty, the player at the exit portal, DragonPhase read every 10 ticks over 4800 ticks).
+		// The order seen: holding pattern 540 ticks, strafing 150, holding 100, landing approach 480, landing 280, then four times (scanning 20, roaring 40,
+		// breathing 180), take-off 20, holding 500, approach 520, landing 290, the same four breaths again. Speeds (blocks a tick, mean): holding 0.66,
+		// strafing 0.76, approach 0.76, landing 0.59, on the perch 0.5 (still settling). Height in the holding pattern 65 to 128, mean 90; it perched at 65.
+		// Not measured: the circuit's exact shape, the breath's reach and damage (the wiki's 3 a second inside the cloud), and what makes it strafe.
+		++PhaseTicks;
+		const auto SetPhase = [this](int32 Next) { DragonPhase = Next; PhaseTicks = 0; };
+		const FVector Perch(0.0, 65.0, 0.0);
+		const FVector* Target = nullptr;
+		FVector Aim;
+		double Pace = 0.66;
+		if (DragonPhase == 0)
 		{
-			const double Angle = Random.FRandRange(0.0f, 2.0f * PI);
-			const double Radius = Random.FRandRange(0.0f, 55.0f);
-			DragonGoal = FVector(FMath::Cos(Angle) * Radius, 71.0 + 55.0 * Settle + Random.FRandRange(-6.0f, 6.0f), FMath::Sin(Angle) * Radius);
+			// Circles the middle of the island, riding a point that moves round at radius 15 to 45 and height 75 to 110.
+			const double Angle = (Age + 0.0) * 0.012;
+			const double Radius = 30.0 + 15.0 * FMath::Sin(Age * 0.007);
+			Aim = FVector(FMath::Cos(Angle) * Radius, 92.0 + 18.0 * FMath::Sin(Age * 0.005), FMath::Sin(Angle) * Radius);
+			Target = &Aim;
+			if (PhaseTicks >= HoldLength)
+			{
+				Breaths = 0;
+				if (bStrafeDue)
+				{
+					bStrafeDue = false;
+					SetPhase(1);
+				}
+				else
+				{
+					SetPhase(2);
+				}
+			}
 		}
-		// Past 50 blocks out (63 was the farthest seen; it overshoots by ~12 turning) it is steered back in.
-		const bool bFar = FMath::Square(Body.Position.X) + FMath::Square(Body.Position.Z) > 50.0 * 50.0;
-		const FVector Want = ((bFar ? FVector(0.0, DragonGoal.Y, 0.0) : DragonGoal) - Body.Position).GetSafeNormal() * 0.95;
+		else if (DragonPhase == 1)
+		{
+			// Swings out towards a player within 64 blocks and fires at them.
+			Pace = 0.76;
+			FVector Prey = FVector(40.0, 93.0, 0.0);
+			double Best = 64.0 * 64.0;
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				const double Distance = FVector::DistSquared(Player, Body.Position);
+				if (Distance < Best)
+				{
+					Best = Distance;
+					Prey = FVector(Player.X, 93.0, Player.Z);
+				}
+			}
+			Aim = Prey;
+			Target = &Aim;
+			if (PhaseTicks == 100 && Best < 64.0 * 64.0)
+			{
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					if (FVector::DistSquared(Player, Body.Position) <= Best + 1.0)
+					{
+						DragonClouds.Add(FVector4(Player.X, Player.Y, Player.Z, 600.0));
+					}
+				}
+				Manager.PlaySound(FName("entity.ender_dragon.shoot"), Body.Position, 5.0f, 1.0f);
+			}
+			if (PhaseTicks >= 150)
+			{
+				HoldLength = 100;
+				SetPhase(0);
+			}
+		}
+		else if (DragonPhase == 2)
+		{
+			// Comes in over the island from the side away from the player, losing height.
+			Pace = 0.76;
+			Aim = FVector(0.0, FMath::Lerp(90.0, 80.0, FMath::Min(1.0, PhaseTicks / 480.0)), 0.0);
+			Target = &Aim;
+			if (PhaseTicks >= 480)
+			{
+				SetPhase(3);
+			}
+		}
+		else if (DragonPhase == 3)
+		{
+			Pace = 0.59;
+			Target = &Perch;
+			if (PhaseTicks >= 280 || FVector::DistSquared(Body.Position, Perch) < 4.0)
+			{
+				Breaths = 0;
+				PerchDamage = 0.0f;
+				SetPhase(6);
+			}
+		}
+		else if (DragonPhase == 6)
+		{
+			Pace = 0.5;
+			Target = &Perch;
+			if (PhaseTicks >= 20)
+			{
+				// Nobody near the portal: it charges the nearest player within 150 blocks instead.
+				bool bNear = false;
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					bNear = bNear || FVector::DistSquared(FVector(Player.X, 0.0, Player.Z), FVector::ZeroVector) < 20.0 * 20.0;
+				}
+				SetPhase(bNear ? 7 : 8);
+			}
+		}
+		else if (DragonPhase == 7)
+		{
+			Target = &Perch;
+			if (PhaseTicks >= 40)
+			{
+				SetPhase(5);
+			}
+		}
+		else if (DragonPhase == 5)
+		{
+			Target = &Perch;
+			// The breath lands in front of the head and lingers; standing in it hurts (3 a second, the wiki).
+			if (PhaseTicks % 10 == 0)
+			{
+				const FVector Forward = FVector(-FMath::Sin(FMath::DegreesToRadians(Yaw)), 0.0, FMath::Cos(FMath::DegreesToRadians(Yaw)));
+				DragonClouds.Add(FVector4(Body.Position.X + Forward.X * 8.0, Body.Position.Y - 1.0, Body.Position.Z + Forward.Z * 8.0, 60.0));
+			}
+			if (PhaseTicks >= 180)
+			{
+				++Breaths;
+				SetPhase(Breaths >= 4 ? 4 : 6);
+			}
+			else if (PerchDamage > 50.0f)
+			{
+				SetPhase(4);
+			}
+		}
+		else if (DragonPhase == 8)
+		{
+			Pace = 1.0;
+			Aim = Perch;
+			double Best = 150.0 * 150.0;
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				if (FVector::DistSquared(Player, Body.Position) < Best)
+				{
+					Best = FVector::DistSquared(Player, Body.Position);
+					Aim = Player;
+				}
+			}
+			Target = &Aim;
+			if (PhaseTicks >= 100)
+			{
+				SetPhase(4);
+			}
+		}
+		else
+		{
+			// Take-off: straight up for 20 ticks, then back to circling.
+			Pace = 0.5;
+			Aim = Body.Position + FVector(0.0, 20.0, 0.0);
+			Target = &Aim;
+			if (PhaseTicks >= 20)
+			{
+				HoldLength = 500;
+				SetPhase(0);
+			}
+		}
+		const FVector Want = (*Target - Body.Position).GetSafeNormal() * Pace * FMath::Min(1.0, (*Target - Body.Position).Size() / 6.0 + 0.2);
 		Body.Velocity = FMath::Lerp(Body.Velocity, Want, 0.1);
 		Body.Position += Body.Velocity;
-		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Body.Velocity.X, Body.Velocity.Z));
+		if (DragonPhase < 5 || DragonPhase > 7)
+		{
+			Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Body.Velocity.X, Body.Velocity.Z));
+		}
+		// The clouds on the ground: 3 hp a second to a player standing in one, while they last.
+		for (int32 Index = DragonClouds.Num() - 1; Index >= 0; --Index)
+		{
+			FVector4& Cloud = DragonClouds[Index];
+			if (Age % 10 == 0)
+			{
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					if (FVector::DistSquared(FVector(Player.X, 0.0, Player.Z), FVector(Cloud.X, 0.0, Cloud.Z)) < 3.0 * 3.0 && FMath::Abs(Player.Y - Cloud.Y) < 3.0)
+					{
+						Manager.HurtPlayer(Player, 3.0f);
+					}
+				}
+			}
+			if (--Cloud.W <= 0.0)
+			{
+				DragonClouds.RemoveAtSwap(Index);
+			}
+		}
 		// Touching a player hurts them (the wiki's figures; the 20 tick gap is a guess).
 		if (AttackCooldown == 0)
 		{

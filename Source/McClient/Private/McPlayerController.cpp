@@ -321,6 +321,10 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
 		return Host ? &Host->GetManager() : nullptr;
 	};
+	Hooked.OnLocateStronghold = [World](const FVector& From, FVector2D& Out)
+	{
+		return World.IsValid() && World->FindNearestStronghold(From, Out);
+	};
 	Hooked.OnUseBlock = [World](AMcPlayerPawn& User, const FIntVector& Pos)
 	{
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;

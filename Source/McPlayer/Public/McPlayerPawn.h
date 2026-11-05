@@ -80,6 +80,8 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
 	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
 	TFunction<FMcEntityManager*()> GetEntities;
+	// Where the nearest stronghold's corner is (block x, z) for a thrown eye of ender; false if this dimension has none.
+	TFunction<bool(const FVector&, FVector2D&)> OnLocateStronghold;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
 	// A survival player started to dig at Pos (a click on it): a note block sounds.

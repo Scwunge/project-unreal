@@ -1,3 +1,4 @@
+#include "McParticleDefs.h"
 #include "McBlockTextures.h"
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
@@ -386,6 +387,11 @@ bool FMcBlockTextures::EnsureLoaded()
 	for (const TCHAR* Flow : FlowTextures)
 	{
 		Ids.AddUnique(FName(Flow));
+	}
+	// The particles' pictures (particles/*.json), drawn by the particle component from this same array.
+	for (const FName Particle : McParticleDefs::GetAllTextures())
+	{
+		Ids.AddUnique(Particle);
 	}
 	NewStats.Ids = Ids.Num();
 	const bool bPbr = McPacks::GetUsePbr() && McPacks::HasPacks();

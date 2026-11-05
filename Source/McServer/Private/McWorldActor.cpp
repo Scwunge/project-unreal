@@ -795,6 +795,14 @@ void AMcWorldActor::MulticastNote_Implementation(FVector_NetQuantize10 Position,
 	}
 }
 
+void AMcWorldActor::MulticastParticle_Implementation(FName Name, FVector_NetQuantize10 Position, FVector_NetQuantize10 Delta, float Speed, int32 Count)
+{
+	if (bViewed)
+	{
+		FMcSoundBus::Get().OnParticle.Broadcast(Name, FVector(Position), FVector(Delta), Speed, Count);
+	}
+}
+
 void AMcWorldActor::MulticastRecord_Implementation(FName Name, FVector_NetQuantize10 Position, bool bPlay)
 {
 	if (!bViewed)

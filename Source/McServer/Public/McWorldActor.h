@@ -160,6 +160,10 @@ public:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastNote(FVector_NetQuantize10 Position, int32 Note);
 
+	// Every machine showing this dimension: Count particles of the named kind (/particle) at Position, spread by Delta, at Speed.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastParticle(FName Name, FVector_NetQuantize10 Position, FVector_NetQuantize10 Delta, float Speed, int32 Count);
+
 	// Every machine showing this dimension: the block State at Pos was broken (its bits fly; the view's OnBlockBroken).
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastBlockBroken(FIntVector Pos, int32 State);

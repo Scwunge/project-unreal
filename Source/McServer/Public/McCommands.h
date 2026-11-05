@@ -94,6 +94,8 @@ public:
 	virtual void SetBlock(const FIntVector& Pos, FMcStateId State) = 0;
 	// A new mob of the kind at the feet position; false if there is nowhere to put it.
 	virtual bool Summon(FName Kind, const FVector& Feet) = 0;
+	// /particle: Count particles of the named kind ("minecraft:heart") at Pos, spread by Delta, at Speed. False if nobody could see it.
+	virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) { return false; }
 
 	// Experience: the level and the points towards the next.
 	virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const = 0;

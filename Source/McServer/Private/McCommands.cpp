@@ -42,6 +42,7 @@ namespace
 		{ TEXT("gamerule"), 2, TEXT("/gamerule <rule> [<value>]") },
 		{ TEXT("give"), 2, TEXT("/give <targets> <item> [<count>]") },
 		{ TEXT("help"), 0, TEXT("/help [<command>]") },
+		{ TEXT("particle"), 2, TEXT("/particle <name> [<pos> [<delta> <speed> <count> [force|normal]]]") },
 		{ TEXT("kick"), 3, TEXT("/kick <targets> [<reason>]") },
 		{ TEXT("kill"), 2, TEXT("/kill [<targets>]") },
 		{ TEXT("list"), 0, TEXT("/list") },
@@ -2512,6 +2513,48 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.summon.success"), { McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Kind.ToString())) })) };
 	}
 
+	// /particle <name> [<pos> [<delta> <speed> <count> [force|normal]]]: the game's own form. The name must be one of the game's particle kinds.
+	FReplies RunParticle(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() != 2 && Words.Num() != 5 && Words.Num() != 10 && Words.Num() != 11)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FString Name = Words[1];
+		if (!Name.Contains(TEXT(":")))
+		{
+			Name = TEXT("minecraft:") + Name;
+		}
+		if (!IFileManager::Get().FileExists(*McCache::Asset(TEXT("particles/") + McCache::PathOf(Name) + TEXT(".json"))))
+		{
+			return BadArgument(Command);
+		}
+		FVector Here = SenderFeet(Sender, Target);
+		FVector Pos = Here;
+		if (Words.Num() >= 5 && !(ParseCoordinate(Words[2], Here.X, true, Pos.X) && ParseCoordinate(Words[3], Here.Y, false, Pos.Y) && ParseCoordinate(Words[4], Here.Z, true, Pos.Z)))
+		{
+			return BadArgument(Command);
+		}
+		FVector Delta = FVector::ZeroVector;
+		double Speed = 0.0;
+		int32 Count = 0;
+		if (Words.Num() >= 10)
+		{
+			if (!(ParseCoordinate(Words[5], 0.0, false, Delta.X) && ParseCoordinate(Words[6], 0.0, false, Delta.Y) && ParseCoordinate(Words[7], 0.0, false, Delta.Z))
+				|| !Words[8].IsNumeric() || !Words[9].IsNumeric() || (Words.Num() == 11 && Words[10] != TEXT("force") && Words[10] != TEXT("normal")))
+			{
+				return BadArgument(Command);
+			}
+			Speed = FCString::Atod(*Words[8]);
+			Count = FCString::Atoi(*Words[9]);
+		}
+		if (!Target.SpawnParticle(FName(*Name), Pos, Delta, Speed, Count))
+		{
+			return { Fail(McLang::Get(TEXT("commands.particle.failed"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.particle.success"), { Name })) };
+	}
+
 	FReplies RunExperience(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		// /xp add|set <targets> <amount> [levels|points], /xp query <targets> levels|points
@@ -4905,6 +4948,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("summon"))
 	{
 		return RunSummon(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("particle"))
+	{
+		return RunParticle(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("xp") || Name == TEXT("experience"))
 	{

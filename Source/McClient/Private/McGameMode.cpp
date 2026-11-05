@@ -1952,6 +1952,17 @@ namespace
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
 		}
 
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			if (!World)
+			{
+				return false;
+			}
+			World->MulticastParticle(Name, FVector_NetQuantize10(Pos), FVector_NetQuantize10(Delta), static_cast<float>(Speed), Count);
+			return true;
+		}
+
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override
 		{
 			const AMcPlayerPawn* Pawn = FindPawn(Player);

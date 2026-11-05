@@ -1266,6 +1266,32 @@ void AMcGameMode::TickVillages()
 		{
 			continue;
 		}
+		// The End's fight starts when its main island has loaded: ten crystals on the pillars (positions read from vanilla, dragon8.txt)
+		// and the dragon, unless one has been killed in this game already (the kill is not saved yet). Where in the sky the dragon
+		// first appears is a guess.
+		if (World->Dimension == TEXT("minecraft:the_end") && !Host->GetManager().bEndFightStarted && World->GetBlockWorld())
+		{
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			bool bLoaded = false;
+			for (int32 Y = 45; Y <= 70 && !bLoaded; ++Y)
+			{
+				bLoaded = Reg.GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name != FName(TEXT("minecraft:air"));
+			}
+			if (bLoaded)
+			{
+				Host->GetManager().bEndFightStarted = true;
+				if (!Host->GetManager().bDragonKilledBefore)
+				{
+					for (const FVector& Crystal : FMcMob::GetPillarCrystalPositions())
+					{
+						Host->SpawnMob(FName(TEXT("minecraft:end_crystal")), Crystal);
+					}
+					FMcMob::BuildExitPortal(Host->GetManager(), false, false);
+					Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), FVector(0.5, 100.0, 0.5));
+					UE_LOG(LogTemp, Display, TEXT("The End: dragon and ten crystals started"));
+				}
+			}
+		}
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
@@ -1604,23 +1630,79 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 					}
 					else if (Player.IsValid() && Line == TEXT("!killdragon"))
 					{
-						// Development: "!killdragon" deals the ender dragon 1000 damage (no command reaches mobs), so a shot or run
-						// script can see the death, the exit portal and the credits without winning the fight by hand.
-						for (AMcWorldActor* World : Worlds)
-						{
-							FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
-							if (!Host)
+						// Development: "!killdragon" waits (by game state, since a slow world load makes timed lines all fire at once)
+						// for the ender dragon, deals it 1000 damage (no command reaches mobs), waits for its death to end, then drops
+						// this player from (0, 72, 0) onto the exit portal: a run script can see the death, the portal and the credits
+						// without winning the fight by hand.
+						struct FRun { int32 Stage = 0; int32 Wait = 0; };
+						UE_LOG(LogTemp, Display, TEXT("killdragon: armed, %d worlds"), Worlds.Num());
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+							[this, Player, Run = MakeShared<FRun>()](float)
 							{
-								continue;
-							}
-							for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
-							{
-								if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+								if (!Player.IsValid())
 								{
-									static_cast<FMcMob&>(*Entity).Damage(1000.0f, nullptr);
+									return false;
 								}
-							}
-						}
+								int32 Seen = 0;
+								FMcMob* Dragon = nullptr;
+								for (AMcWorldActor* World : Worlds)
+								{
+									FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+									if (!Host)
+									{
+										continue;
+									}
+									for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+									{
+										if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+										{
+											++Seen;
+											Dragon = static_cast<FMcMob*>(Entity.Get());
+										}
+									}
+								}
+								UE_LOG(LogTemp, Display, TEXT("killdragon: stage %d, dragons %d"), Run->Stage, Seen);
+								if (Run->Stage == 0 && Dragon)
+								{
+									Dragon->Damage(1000.0f, nullptr);
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon found (%.0f hp), damaged"), Dragon->Health);
+									Run->Stage = 1;
+								}
+								else if (Run->Stage == 1 && !Dragon)
+								{
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon gone, dropping the player on the portal in 3 s"));
+									Run->Stage = 2;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 2 && ++Run->Wait >= 3)
+								{
+									FString Spot;
+									FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+									HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("2 70 0")) : Spot));
+									Run->Stage = 3;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 3 && ++Run->Wait >= 4)
+								{
+									// Where the player is and what stands at the middle, for the run's log.
+									const AMcPlayerPawn* Pawn = Player.IsValid() ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+									UE_LOG(LogTemp, Display, TEXT("killdragon: player at %s"), Pawn ? *Pawn->GetFeetPosition().ToString() : TEXT("none"));
+									for (AMcWorldActor* World : Worlds)
+									{
+										if (World && World->GetBlockWorld())
+										{
+											FString Column;
+											for (int32 Y = 58; Y <= 67; ++Y)
+											{
+												Column += FString::Printf(TEXT(" %d:%s"), Y, *FMcBlockRegistry::Get().GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name.ToString());
+											}
+											UE_LOG(LogTemp, Display, TEXT("killdragon: column at 0,0 (%s):%s"), *World->Dimension, *Column);
+										}
+									}
+									return false;
+								}
+								return true;
+							}), 1.0f);
 					}
 					else if (Player.IsValid())
 					{

@@ -78,13 +78,30 @@ void UMcTravelSubsystem::TickPlayers()
 		const FIntVector Cell = GetCell(Pawn->GetFeetPosition());
 		bool bInNether = false;
 		bool bInEnd = false;
+		bool bInGateway = false;
+		FIntVector GatewayAt = Cell;
 		for (const int32 Rise : { 0, 1 })
 		{
 			const FMcStateId State = Blocks->GetBlock(Cell + FIntVector(0, Rise, 0));
 			bInNether |= McPortal::IsPortalBlock(State);
 			bInEnd |= FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:end_portal");
+			if (FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:end_gateway"))
+			{
+				bInGateway = true;
+				GatewayAt = Cell + FIntVector(0, Rise, 0);
+			}
 		}
 		FPortalState& State = States.FindOrAdd(Player);
+		if (bInGateway && !State.bMustLeave && Here->Dimension == End)
+		{
+			// A gateway takes you at once to the outer islands (the 40 tick cooldown is the step out above).
+			FVector Exit;
+			if (Here->FindGatewayExit(GatewayAt.X, GatewayAt.Z, Exit))
+			{
+				State.bMustLeave = StartExactTrip(*Player, End, Exit, Player->GetControlRotation().Yaw);
+			}
+			continue;
+		}
 		if (!bInNether && !bInEnd)
 		{
 			State = FPortalState();

@@ -68,6 +68,7 @@ namespace
 		{ TEXT("teammsg"), 0, TEXT("/teammsg <message>") },
 		{ TEXT("tm"), 0, TEXT("/tm <message>") },
 		{ TEXT("stopwatch"), 2, TEXT("/stopwatch (create|query|restart|remove) <id>") },
+		{ TEXT("item"), 2, TEXT("/item replace entity <targets> <slot> (with <item> [count] | from entity <source> <slot>)") },
 		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
 		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
 		{ TEXT("data"), 2, TEXT("/data (get|merge|modify|remove) ...") },
@@ -4420,6 +4421,158 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.stopwatch.query"), { Id, Seconds })) };
 	}
 
+	// A player's slot by the game's name: group 0 the inventory (0 to 8 the hotbar, 9 to 35 the rest), 1 the armour (head, chest,
+	// legs, feet), 2 the offhand. False for a name that is no slot of a player.
+	bool ParseSlot(const FString& Name, const IMcCommandTarget& Target, const FString& Player, int32& Group, int32& Index)
+	{
+		const auto Number = [&](const TCHAR* Prefix, int32 Max, int32& Out)
+		{
+			if (!Name.StartsWith(Prefix))
+			{
+				return false;
+			}
+			const FString Tail = Name.RightChop(FCString::Strlen(Prefix));
+			if (Tail.IsEmpty() || !Tail.IsNumeric() || Tail.Contains(TEXT(".")) || Tail.StartsWith(TEXT("-")))
+			{
+				return false;
+			}
+			Out = FCString::Atoi(*Tail);
+			return Out >= 0 && Out < Max;
+		};
+		int32 N = 0;
+		Group = 0;
+		if (Number(TEXT("hotbar."), 9, N) || Number(TEXT("container."), 36, N))
+		{
+			Index = N;
+			return true;
+		}
+		if (Number(TEXT("inventory."), 27, N))
+		{
+			Index = N + 9;
+			return true;
+		}
+		if (Name == TEXT("weapon") || Name == TEXT("weapon.mainhand"))
+		{
+			Index = Target.GetSelectedSlot(Player);
+			return true;
+		}
+		Group = 1;
+		if (Name == TEXT("armor.head")) { Index = 0; return true; }
+		if (Name == TEXT("armor.chest")) { Index = 1; return true; }
+		if (Name == TEXT("armor.legs")) { Index = 2; return true; }
+		if (Name == TEXT("armor.feet")) { Index = 3; return true; }
+		Group = 2;
+		Index = 0;
+		return Name == TEXT("weapon.offhand");
+	}
+
+	// /item replace entity <players> <slot> with <item> [count] | from entity <players> <slot> (wording from a ref run, cmd_group4.txt).
+	// Players only; blocks, modify and the other slots (enderchest, the crafting grid) are not built.
+	FReplies RunItem(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 6 || Words[1] != TEXT("replace") || Words[2] != TEXT("entity"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[3], Sender, Target, Players, Error))
+		{
+			// An entity argument: a name nobody has is "No entity was found", not the player argument's wording.
+			return { Fail(Words[3].StartsWith(TEXT("@")) ? Error : McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		// Where each word starts, for the context line.
+		const auto StartOf = [&](int32 Word)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Word; ++I)
+			{
+				At = Command.Find(Words[I], ESearchCase::CaseSensitive, ESearchDir::FromStart, At) + Words[I].Len();
+			}
+			return Command.Find(Words[Word], ESearchCase::CaseSensitive, ESearchDir::FromStart, At);
+		};
+		const auto BadSlot = [&](int32 Word, const FString& Slot, const TCHAR* Registry) -> FReplies
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element 'minecraft:%s' in registry 'minecraft:%s'"), *Slot, Registry)), Fail(BorderContext(Command, StartOf(Word))) };
+		};
+		int32 Group = 0;
+		int32 Index = 0;
+		// The slot is checked against the first player.
+		if (Players.IsEmpty() || !ParseSlot(Words[4], Target, Players[0], Group, Index))
+		{
+			return BadSlot(4, Words[4], TEXT("slot_source"));
+		}
+		FName Item;
+		int32 Count = 1;
+		bool bKnownItem = false;
+		if (Words[5] == TEXT("with"))
+		{
+			if (Words.Num() < 7 || Words.Num() > 8)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			Item = ItemId(Words[6]);
+			if (Target.GetMaxStackSize(Item) <= 0)
+			{
+				return { Fail(McLang::Format(TEXT("argument.item.id.invalid"), { Item.ToString() })), Fail(BorderContext(Command, StartOf(6))) };
+			}
+			if (Words.Num() == 8)
+			{
+				if (!Words[7].IsNumeric() || Words[7].Contains(TEXT(".")) || FCString::Atoi(*Words[7]) < 1 || FCString::Atoi(*Words[7]) > 99)
+				{
+					return BadArgument(Command);
+				}
+				Count = FCString::Atoi(*Words[7]);
+			}
+			bKnownItem = true;
+		}
+		else if (Words[5] == TEXT("from") && Words.Num() == 9 && Words[6] == TEXT("entity"))
+		{
+			TArray<FString> From;
+			int32 FromGroup = 0;
+			int32 FromIndex = 0;
+			if (!ResolvePlayers(Words[7], Sender, Target, From, Error))
+			{
+				return { Fail(Error) };
+			}
+			if (From.IsEmpty() || !ParseSlot(Words[8], Target, From[0], FromGroup, FromIndex))
+			{
+				return BadSlot(8, Words[8], TEXT("slot_source"));
+			}
+			if (!Target.GetSlot(From[0], FromGroup, FromIndex, Item, Count))
+			{
+				Item = NAME_None;
+				Count = 0;
+			}
+		}
+		else
+		{
+			return Unknown(Command, Command.Len());
+		}
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			int32 PlayerGroup = 0;
+			int32 PlayerIndex = 0;
+			if (ParseSlot(Words[4], Target, Player, PlayerGroup, PlayerIndex) && Target.SetSlot(Player, PlayerGroup, PlayerIndex, Item, Count))
+			{
+				++Changed;
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.item.target.failed"))) };
+		}
+		const FString Shown = bKnownItem ? TEXT("[") + Target.GetItemName(Item) + TEXT("]") : FString();
+		if (Changed == 1)
+		{
+			return { Ok(bKnownItem ? McLang::Format(TEXT("commands.item.entity.replace.success.single.known_item"), { TEXT("1"), Players[0], Shown })
+				: McLang::Format(TEXT("commands.item.entity.replace.success.single"), { TEXT("1"), Players[0] })) };
+		}
+		return { Ok(bKnownItem ? McLang::Format(TEXT("commands.item.entity.replace.success.multiple.known_item"), { FString::FromInt(Changed), Shown })
+			: McLang::Format(TEXT("commands.item.entity.replace.success.multiple"), { FString::FromInt(Changed) })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5114,6 +5267,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("stopwatch"))
 	{
 		return RunStopwatch(Command, Words);
+	}
+	if (Name == TEXT("item"))
+	{
+		return RunItem(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("team"))
 	{

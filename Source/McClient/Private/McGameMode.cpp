@@ -2174,6 +2174,44 @@ namespace
 			return Found;
 		}
 
+		static TSharedPtr<FMcContainer> SlotGroup(AMcPlayerPawn* Pawn, int32 Group)
+		{
+			if (!Pawn || !Pawn->Data)
+			{
+				return nullptr;
+			}
+			return Group == 0 ? Pawn->Data->Inventory : Group == 1 ? Pawn->Data->Armor : Group == 2 ? Pawn->Data->Offhand : nullptr;
+		}
+
+		virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) override
+		{
+			const TSharedPtr<FMcContainer> Container = SlotGroup(FindPawn(Player), Group);
+			if (!Container || Index < 0 || Index >= Container->Num())
+			{
+				return false;
+			}
+			Container->Set(Index, Item.IsNone() || Count <= 0 ? FMcItemStack() : FMcItemStack(Item, Count));
+			return true;
+		}
+
+		virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const override
+		{
+			const TSharedPtr<FMcContainer> Container = SlotGroup(FindPawn(Player), Group);
+			if (!Container || Index < 0 || Index >= Container->Num() || Container->Get(Index).IsEmpty())
+			{
+				return false;
+			}
+			OutItem = Container->Get(Index).Item;
+			OutCount = Container->Get(Index).Count;
+			return true;
+		}
+
+		virtual int32 GetSelectedSlot(const FString& Player) const override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			return Pawn && Pawn->Data ? Pawn->Data->SelectedSlot : 0;
+		}
+
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
 		{
 			return AwardAdvancement(FindPawn(Player), Id, bGrant, OutTitle);

@@ -216,6 +216,23 @@ namespace
 			HeldEnchantments.Add(Enchantment, Level);
 			return EEnchantResult::Done;
 		}
+		TMap<int32, TPair<FName, int32>> Slots;
+		virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) override
+		{
+			Slots.Add(Group * 100 + Index, TPair<FName, int32>(Item, Count));
+			return true;
+		}
+		virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const override
+		{
+			const TPair<FName, int32>* Found = Slots.Find(Group * 100 + Index);
+			if (!Found || Found->Value <= 0)
+			{
+				return false;
+			}
+			OutItem = Found->Key;
+			OutCount = Found->Value;
+			return true;
+		}
 		virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) override
 		{
 			FPlayer* P = Find(Player);
@@ -611,6 +628,13 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /item.
+	TestEqual(TEXT("item replace"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:diamond 5")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond]")));
+	TestEqual(TEXT("item hotbar"), First(TEXT("item replace entity Steve hotbar.1 with minecraft:diamond_sword")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond Sword]")));
+	TestEqual(TEXT("item unknown"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:nonsense")), FString(TEXT("Unknown item 'minecraft:nonsense'")));
+	TestEqual(TEXT("item bad slot"), First(TEXT("item replace entity Steve nosuch.slot with minecraft:stick")), FString(TEXT("Can't find element 'minecraft:nosuch.slot' in registry 'minecraft:slot_source'")));
+	TestEqual(TEXT("item nobody"), First(TEXT("item replace entity Nobody weapon.mainhand with minecraft:stick")), FString(TEXT("No entity was found")));
+	TestEqual(TEXT("item from"), First(TEXT("item replace entity Steve hotbar.2 from entity Steve hotbar.1")), FString(TEXT("Replaced 1 slot(s) on Steve")));
 	// Measured against the game: /teammsg and /stopwatch.
 	First(TEXT("team add msgteam"));
 	TestEqual(TEXT("teammsg without a team"), First(TEXT("teammsg hi")), FString(TEXT("You must be on a team to message your team")));

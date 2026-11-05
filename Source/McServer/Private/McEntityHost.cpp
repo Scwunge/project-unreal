@@ -616,6 +616,7 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 		Context.bProjectile = Mob.bPlayerHitWasShot;
 		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
 	}
+	Context.bOnFire = Mob.BurnTicks > 0;
 	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
 	Context.DyeColor = Mob.DyeColor;
 	const McLoot::FMobScope LootScope(Context);

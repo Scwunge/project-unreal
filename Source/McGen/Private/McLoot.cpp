@@ -957,11 +957,76 @@ namespace
 				Stack.Set(TEXT("minecraft:block_state"), MakeShared<FJsonValueObject>(State));
 			}
 		}
+		else if (Type == TEXT("copy_components") && GBlock && GBlock->BlockEntity)
+		{
+			// The block entity's data the game keeps as item components. Only what this engine models is copied: the
+			// contents of a container (container), the loot table it still owes (container_loot) and a pot's four
+			// sherds (pot_decorations). A name, lock, bees or skull profile are not held by any block entity here.
+			const FMcBlockEntity& Entity = *GBlock->BlockEntity;
+			const TArray<TSharedPtr<FJsonValue>>* Include;
+			TSet<FString> Wanted;
+			if (Object->TryGetArrayField(TEXT("include"), Include))
+			{
+				for (const TSharedPtr<FJsonValue>& Name : *Include)
+				{
+					Wanted.Add(McCache::Namespaced(Name->AsString()));
+				}
+			}
+			if (Entity.Kind == EMcBlockEntityKind::Container && Wanted.Contains(TEXT("minecraft:container")))
+			{
+				TArray<TSharedPtr<FJsonValue>> Items;
+				for (int32 Slot = 0; Slot < Entity.Slots.Num(); ++Slot)
+				{
+					const FMcItemStack& Held = Entity.Slots[Slot];
+					if (Held.IsEmpty())
+					{
+						continue;
+					}
+					const TSharedPtr<FJsonObject> Item = MakeShared<FJsonObject>();
+					Item->SetStringField(TEXT("id"), Held.Item.ToString());
+					Item->SetNumberField(TEXT("count"), Held.Count);
+					if (!Held.Components.IsEmpty())
+					{
+						const TSharedPtr<FJsonObject> Components = MakeShared<FJsonObject>();
+						for (const TPair<FName, TSharedPtr<FJsonValue>>& Component : Held.Components)
+						{
+							Components->SetField(Component.Key.ToString(), Component.Value);
+						}
+						Item->SetObjectField(TEXT("components"), Components);
+					}
+					const TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+					Entry->SetNumberField(TEXT("slot"), Slot);
+					Entry->SetObjectField(TEXT("item"), Item);
+					Items.Add(MakeShared<FJsonValueObject>(Entry));
+				}
+				if (!Items.IsEmpty())
+				{
+					Stack.Set(TEXT("minecraft:container"), MakeShared<FJsonValueArray>(Items));
+				}
+			}
+			if (Entity.Kind == EMcBlockEntityKind::Container && !Entity.LootTable.IsNone() && Wanted.Contains(TEXT("minecraft:container_loot")))
+			{
+				const TSharedPtr<FJsonObject> Loot = MakeShared<FJsonObject>();
+				Loot->SetStringField(TEXT("loot_table"), Entity.LootTable.ToString());
+				Loot->SetNumberField(TEXT("seed"), static_cast<double>(Entity.LootSeed));
+				Stack.Set(TEXT("minecraft:container_loot"), MakeShared<FJsonValueObject>(Loot));
+			}
+			if (Entity.Kind == EMcBlockEntityKind::Pot && Wanted.Contains(TEXT("minecraft:pot_decorations")))
+			{
+				TArray<TSharedPtr<FJsonValue>> Sides;
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					const bool bHas = Entity.Slots.IsValidIndex(Side) && !Entity.Slots[Side].IsEmpty();
+					Sides.Add(MakeShared<FJsonValueString>(bHas ? Entity.Slots[Side].Item.ToString() : FString(TEXT("minecraft:brick"))));
+				}
+				Stack.Set(TEXT("minecraft:pot_decorations"), MakeShared<FJsonValueArray>(Sides));
+			}
+		}
 		else if (Type == TEXT("discard"))
 		{
 			Stack.Clear();
 		}
-		// Anything else (maps that point at structures; copy_components, which needs the block entity) leaves the item as it is.
+		// Anything else (maps that point at structures, which need a structure finder this engine has not got) leaves the item as it is.
 	}
 
 	void RollTable(const FJsonObject& Table, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Depth);

@@ -870,11 +870,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	UpdateSteps(Manager);
 
+	if (BurnTicks > 0)
+	{
+		--BurnTicks;
+	}
+	if (Body.bInLava)
+	{
+		BurnTicks = 100;
+	}
 	// Undead burn in daylight when the sky is open over them: a point of damage a second.
 	if (Type.bBurnsInSun && Manager.bDaylight && Age % 20 == 0
 		&& Manager.IsSkyExposed(FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y + Type.Height), FMath::FloorToInt32(Body.Position.Z))))
 	{
 		HurtTime = 0;
+		BurnTicks = 100;
 		Damage(1.0f, nullptr);
 		if (bRemoved)
 		{

@@ -2,6 +2,8 @@
 #include "Misc/AutomationTest.h"
 #include "McHand.h"
 #include "McChunk.h"
+#include "McItemRegistry.h"
+#include "McBlockRegistry.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -340,5 +342,40 @@ bool FMcDroppedItemTest::RunTest(const FString&)
 	TestEqual(TEXT("with their triangles"), Stack.Triangles.Num(), One.Triangles.Num() * 5);
 	TestTrue(TEXT("a stack is wider than one"), Extent(Stack, 1) > Extent(One, 1));
 	TestTrue(TEXT("and taller"), Extent(Stack, 2) > Extent(One, 2));
+	return true;
+}
+
+// Nothing a player can drop may be invisible: every block item gives a mesh (a cube, its baked model, or the flat picture).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDroppedBlockItemsTest, "Mc.EntityModel.DroppedBlockItems", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcDroppedBlockItemsTest::RunTest(const FString&)
+{
+	if (!FMcItemRegistry::Get().EnsureLoaded() || !FMcBlockRegistry::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	int32 Checked = 0, Models = 0, Empty = 0;
+	for (const FMcItemDef& Item : FMcItemRegistry::Get().GetAll())
+	{
+		if (Item.Name == FName(TEXT("minecraft:air")) || !FMcBlockRegistry::Get().FindDefaultState(Item.Name).IsSet())
+		{
+			continue;
+		}
+		McEntityModel::FDroppedUnit Unit;
+		const bool bBuilt = McEntityModel::BuildDroppedUnit(Item.Name, Unit);
+		++Checked;
+		Models += Unit.bModel ? 1 : 0;
+		if (!bBuilt || Unit.Sides.Positions.IsEmpty() || Unit.Sides.Triangles.IsEmpty())
+		{
+			++Empty;
+			if (Empty <= 10)
+			{
+				AddError(FString::Printf(TEXT("%s drops as nothing"), *Item.Name.ToString()));
+			}
+		}
+	}
+	TestTrue(TEXT("block items were checked"), Checked > 100);
+	TestTrue(TEXT("some are drawn as their model"), Models > 20);
+	AddInfo(FString::Printf(TEXT("%d block items, %d as models, %d empty"), Checked, Models, Empty));
 	return true;
 }

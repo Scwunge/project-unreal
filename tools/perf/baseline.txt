@@ -5,7 +5,7 @@ mark:stand
 wait:40
 mark:walk
 look:30,0
-hold:W+Shift+SpaceBar:60
+hold:W+LeftControl+SpaceBar:60
 mark:settle2
 settle:60
 chat:/gamemode creative

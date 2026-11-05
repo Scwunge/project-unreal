@@ -26,6 +26,8 @@ struct FMcMoveInput
 	float Speed = 0.1f;
 	// Added to the jump's upward speed (jump boost).
 	float JumpBonus = 0.0f;
+	// The water movement efficiency attribute, 0 to 1 (Depth Strider adds a third a level): water drags less and pushes harder, half as much off the ground (ench_log5: 3.55, 6.01, 7.38, 8.28 blocks in 40 ticks at levels 0 to III).
+	float WaterEfficiency = 0.0f;
 };
 
 struct MCENTITY_API FMcBody

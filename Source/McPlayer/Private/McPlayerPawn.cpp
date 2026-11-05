@@ -318,6 +318,11 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	{
 		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
 		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
+		if (Data->Armor.IsValid() && Data->Armor->Num() >= 4)
+		{
+			// Depth Strider: a third a level, from the enchantment file's water movement efficiency.
+			Move.WaterEfficiency = FMath::Min(1.0f, Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:depth_strider")) / 3.0f);
+		}
 	}
 	// An opening shulker box's lid moves what is in its way.
 	if (LidPush)

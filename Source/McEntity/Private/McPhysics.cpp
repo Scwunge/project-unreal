@@ -471,7 +471,9 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 		{
 			Body.Velocity.Y -= SwimUp;
 		}
-		Accelerate(Body, Strafe, Forward, FluidAcceleration, Input.Yaw);
+		// Depth Strider: the efficiency (halved off the ground) blends water's drag toward 0.546 and its push toward the walking speed.
+		const double Efficiency = Water.bIn ? FMath::Clamp(static_cast<double>(Input.WaterEfficiency), 0.0, 1.0) * (Body.bOnGround ? 1.0 : 0.5) : 0.0;
+		Accelerate(Body, Strafe, Forward, FluidAcceleration + (static_cast<double>(Input.Speed) - FluidAcceleration) * Efficiency, Input.Yaw);
 		const FVector Before = Body.Velocity;
 		Move(World, Body, Body.Velocity, false);
 
@@ -483,10 +485,10 @@ void McPhysics::TickPlayer(const FMcBlockWorld& World, FMcBody& Body, const FMcM
 			Body.Velocity.Y = LedgeHop;
 		}
 
-		const double Drag = Water.bIn ? WaterDrag : LavaDrag;
+		const double Drag = Water.bIn ? WaterDrag + (0.54600006 - WaterDrag) * Efficiency : LavaDrag;
 		Body.Velocity.X *= Drag;
 		Body.Velocity.Z *= Drag;
-		Body.Velocity.Y = Body.Velocity.Y * Drag - (Water.bIn ? WaterSinking : LavaSinking);
+		Body.Velocity.Y = Body.Velocity.Y * (Water.bIn ? WaterDrag : Drag) - (Water.bIn ? WaterSinking : LavaSinking);
 		Body.bInBubbleColumn = BubbleColumnPush(World, Body.GetBox(), Body.Velocity, &Body.bBubbleDown);
 		return;
 	}

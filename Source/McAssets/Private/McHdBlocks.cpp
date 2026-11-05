@@ -2,6 +2,7 @@
 #include "McAssets.h"
 #include "McBlockTextures.h"
 #include "McCache.h"
+#include "McLoadScreen.h"
 #include "McResourcePacks.h"
 #include "Async/Async.h"
 #include "Async/ParallelFor.h"
@@ -363,6 +364,7 @@ bool FMcHdBlocks::EnsureBuilt()
 	{
 		return true;
 	}
+	const FMcLoadScreen LoadScreen(NSLOCTEXT("Mc", "LoadingHd", "Loading resource packs..."), McPacks::HasPacks());
 	FMcBlockTextures& Blocks = FMcBlockTextures::Get();
 	if (!Blocks.EnsureLoaded())
 	{

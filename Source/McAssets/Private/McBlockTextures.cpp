@@ -2,6 +2,7 @@
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
 #include "McCache.h"
+#include "McLoadScreen.h"
 #include "McResourcePacks.h"
 #include "Algo/Find.h"
 #include "Async/ParallelFor.h"
@@ -364,6 +365,7 @@ bool FMcBlockTextures::EnsureLoaded()
 	{
 		return false;
 	}
+	const FMcLoadScreen LoadScreen(NSLOCTEXT("Mc", "LoadingPacks", "Loading resource packs..."), McPacks::HasPacks());
 
 	const double StartTime = FPlatformTime::Seconds();
 	FMcTextureStats NewStats;

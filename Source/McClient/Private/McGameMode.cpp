@@ -433,6 +433,17 @@ namespace
 					return false;
 				}
 			}
+			else if (Key == TEXT("player"))
+			{
+				// Where the player is: the biome (the location trigger's way of asking).
+				const TSharedPtr<FJsonObject>* Predicate = nullptr;
+				const TSharedPtr<FJsonObject>* Location = nullptr;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetObjectField(TEXT("predicate"), Predicate) || (*Predicate)->Values.Num() != 1
+					|| !(*Predicate)->TryGetObjectField(TEXT("minecraft:location"), Location) || (*Location)->Values.Num() != 1 || !NameIn((*Location)->TryGetField(TEXT("biomes")), Event.Biome))
+				{
+					return false;
+				}
+			}
 			else if (Key == TEXT("location"))
 			{
 				// A block placed: match_block with plain block names, no state.

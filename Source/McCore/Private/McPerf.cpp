@@ -107,8 +107,8 @@ namespace McPerf
 			{
 				return EXCEPTION_CONTINUE_SEARCH;
 			}
-			static volatile LONG Seen = 0;
-			if (::InterlockedIncrement(&Seen) <= 6 && File != INVALID_HANDLE_VALUE)
+			static std::atomic<int32> Seen{ 0 };
+			if (Seen.fetch_add(1) < 6 && File != INVALID_HANDLE_VALUE)
 			{
 				char Line[200];
 				ULONG_PTR Kind = 0, Where = 0;

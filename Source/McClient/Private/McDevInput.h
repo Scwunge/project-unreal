@@ -71,5 +71,3 @@ private:
 	// A key pressed by "key:" is let go the next frame.
 	TArray<FKey> ToRelease;
 };
-
-#endif

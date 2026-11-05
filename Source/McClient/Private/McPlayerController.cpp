@@ -337,7 +337,7 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
 	};
-	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)
 	{
 		if (!World.IsValid())
 		{
@@ -349,7 +349,7 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
 		}
-		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative, &Weapon, Strength);
 	};
 	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
 	{

@@ -32,6 +32,8 @@ struct MCENTITY_API FMcMountState
 	TSharedPtr<FMcContainer> Inventory;
 	// How used to people it is, 0..100; a rider tames it when a roll under the max beats it.
 	int32 Temper = 0;
+	// The mob's own max health, rolled at spawn for a horse, donkey or mule (15 + a roll of 0..7 + a roll of 0..8, vehicle_log43); 0 for the type's. Saved.
+	float MaxHealth = 0.0f;
 	// The player riding it (the pawn's unique id), 0 for none.
 	uint32 RiderId = 0;
 	// Camels carry a second rider behind the first, who steers.
@@ -79,6 +81,10 @@ namespace McMount
 	MCENTITY_API bool IsRideable(const FMcEntity& Entity);
 	// The mount state, made with the kind's stats if there is none yet.
 	MCENTITY_API FMcMountState& Ensure(FMcEntity& Entity);
+	// What a mob's health tops out at: its own roll when it has one, else the type's.
+	MCENTITY_API float MaxHealthOf(const FMcMob& Mob);
+	// Rolls a horse, donkey or mule's max health, speed and jump when it spawns (the rest are made when first used).
+	MCENTITY_API void RollAtSpawn(FMcMob& Mob);
 	// The scale a charge of this many held ticks reaches, 0..1 (0.1 a tick, then slowing to a full charge at 10).
 	MCENTITY_API float ChargeScale(int32 HeldTicks);
 	// The part of the jump strength a charge of HeldTicks makes: 0.4 + 0.4 x scale/0.9, 1 from 0.9 up.

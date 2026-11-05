@@ -1,4 +1,5 @@
 #include "McLoot.h"
+#include "McEnchantEffects.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "McBlockRegistry.h"
@@ -23,6 +24,8 @@ namespace
 	thread_local const McLoot::FFishingContext* GFishing = nullptr;
 	// Whether the mob whose table is being rolled leads a raid party: 1 or 0, -1 when the roll is for no mob.
 	thread_local int32 GCaptain = -1;
+	// The Looting level of the weapon that killed the mob whose table is being rolled (0 for none).
+	thread_local int32 GLooting = 0;
 
 	TSharedPtr<FJsonObject> FindTable(const FString& Id)
 	{
@@ -143,6 +146,13 @@ namespace
 		if (Type == TEXT("random_chance"))
 		{
 			return Random.NextDouble() < Real(Object->TryGetField(TEXT("chance")), Random) ? 1 : 0;
+		}
+		if (Type == TEXT("random_chance_with_enchanted_bonus"))
+		{
+			// A rare drop: its own chance, or the better one that the killer's Looting level gives.
+			const float Chance = GLooting > 0 ? McEnchantEffects::EvalLevelBased(Object->TryGetField(TEXT("enchanted_chance")), GLooting)
+				: static_cast<float>(Object->GetNumberField(TEXT("unenchanted_chance")));
+			return Random.NextDouble() < Chance ? 1 : 0;
 		}
 		if (Type == TEXT("survives_explosion"))
 		{
@@ -555,6 +565,14 @@ namespace
 			Object->TryGetBoolField(TEXT("add"), bAdd);
 			Stack.Count = bAdd ? Stack.Count + Amount : Amount;
 		}
+		else if (Type == TEXT("enchanted_count_increase"))
+		{
+			// Looting adds its level times a roll of the count.
+			if (GLooting > 0)
+			{
+				Stack.Count += FMath::RoundToInt32(GLooting * static_cast<float>(Real(Object->TryGetField(TEXT("count")), Random)));
+			}
+		}
 		else if (Type == TEXT("explosion_decay") && GBlock && GBlock->ExplosionRadius > 0.0f)
 		{
 			// Each item of the stack survives a blast with a chance of 1 over its power.
@@ -936,12 +954,15 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 	return true;
 }
 
-bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out)
+bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Looting)
 {
 	const int32 Previous = GCaptain;
+	const int32 PreviousLooting = GLooting;
 	GCaptain = bCaptain ? 1 : 0;
+	GLooting = Looting;
 	const bool bRolled = Roll(Table, Random, Out);
 	GCaptain = Previous;
+	GLooting = PreviousLooting;
 	return bRolled;
 }
 

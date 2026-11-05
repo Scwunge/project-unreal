@@ -1,6 +1,7 @@
 #include "McItemStack.h"
 #include "Dom/JsonObject.h"
 #include "McCache.h"
+#include "McEnchantEffects.h"
 #include "Serialization/Archive.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -201,6 +202,13 @@ void FMcItemStack::SetDamage(int32 Damage)
 bool FMcItemStack::HurtAndBreak(int32 Amount)
 {
 	if (!IsDamageable() || Amount <= 0)
+	{
+		return false;
+	}
+	// Unbreaking, from the enchantment's own data: each point of wear can be saved.
+	static FRandomStream WearRandom(0x7ec4);
+	Amount = McEnchantEffects::GetItemDamage(*this, Amount, WearRandom);
+	if (Amount <= 0)
 	{
 		return false;
 	}

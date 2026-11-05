@@ -121,7 +121,7 @@ public:
 	// tick the simulation themselves call it too).
 	void MovePushedEntities();
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
-	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
+	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false, const FMcItemStack* Weapon = nullptr, float Strength = 1.0f);
 	// The id of the nearest vehicle along the ray, or 0.
 	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
 	// The nearest living mob along the ray, or null.

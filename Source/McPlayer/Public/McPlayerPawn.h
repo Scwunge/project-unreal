@@ -99,7 +99,8 @@ public:
 	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
 	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
-	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
+	// Weapon is the stack in hand and Strength how charged the swing was (its enchantments act through them).
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
 	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the

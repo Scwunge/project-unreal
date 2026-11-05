@@ -1,5 +1,6 @@
 #include "McPlayerPawn.h"
 #include "McBundle.h"
+#include "McEnchantEffects.h"
 #include "McLeash.h"
 #include "McMob.h"
 #include "McMount.h"
@@ -1222,7 +1223,7 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
-	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative))
+	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative, Held, Strength))
 	{
 		return;
 	}
@@ -1470,7 +1471,7 @@ void AMcPlayerPawn::ServerTickRiding()
 		{
 			const FMcMob& Ridden = static_cast<const FMcMob&>(*Found);
 			MountHealth = Ridden.Health;
-			MountMaxHealth = Ridden.Type.MaxHealth;
+			MountMaxHealth = McMount::MaxHealthOf(Ridden);
 			MountJump = McMount::IsRideable(*Found) && !McMount::IsStickMount(*Found) ? McMount::ChargeScale(Found->Mount->JumpHoldTicks) : -1.0f;
 		}
 		const FVector MountSeat = McMount::GetSeatFor(*Found, GetUniqueID());
@@ -1885,7 +1886,17 @@ void AMcPlayerPawn::ServerGameTick()
 			{
 				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
 			}
-			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats) > 0)
+			// The hand, the off hand and the armour that Mending may mend.
+			TArray<FMcItemStack*> MendEquipment;
+			MendEquipment.Add(&Data->Inventory->GetMutable(Data->SelectedSlot));
+			for (const TSharedPtr<FMcContainer>& Worn : { Data->Offhand, Data->Armor })
+			{
+				for (int32 Slot = 0; Worn.IsValid() && Slot < Worn->Num(); ++Slot)
+				{
+					MendEquipment.Add(&Worn->GetMutable(Slot));
+				}
+			}
+			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats, &MendEquipment) > 0)
 			{
 				Entities->PlaySound(FName("entity.experience_orb.pickup"), Ears, 0.1f, 0.5f * ((FMath::FRand() - FMath::FRand()) * 0.7f + 1.8f));
 			}
@@ -2065,14 +2076,26 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - McCombat::GetBowLaunchDrop(), 0.0);
 	Arrow->Body.Velocity = McCombat::GetBowAim(Look, DropRandom) * (Power * 3.0);
 	Arrow->PlayerBase = 2.0f;
+	if (const FMcItemStack& Bow = Data->Inventory->Get(Data->SelectedSlot); !Bow.IsEmpty())
+	{
+		// Power, from its own data: it adds to the arrow's base damage.
+		McEnchantEffects::FContext Shot;
+		Shot.DirectAttackerType = TEXT("minecraft:arrow");
+		Shot.bAttackerIsPlayer = true;
+		Arrow->PlayerBase += McEnchantEffects::SumAdd(Bow, TEXT("minecraft:damage"), Shot);
+	}
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;
 	Entities->Add(MoveTemp(Arrow));
 	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, McCombat::GetBowShootPitch(DropRandom.FRand(), Power));
 	if (!Data->bCreative)
 	{
-		Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);
 		FMcItemStack& Bow = Data->Inventory->GetMutable(Data->SelectedSlot);
+		// Infinity: an arrow (not a tipped or spectral one) is not used up, as its "ammo_use" effect says.
+		if (!McEnchantEffects::HasEffect(TEXT("minecraft:infinity"), TEXT("minecraft:ammo_use")) || Bow.GetEnchantmentLevel(TEXT("minecraft:infinity")) <= 0)
+		{
+			Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);
+		}
 		if (Bow.HurtAndBreak(1))
 		{
 			Bow.Clear();

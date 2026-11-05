@@ -128,6 +128,8 @@ public:
 	FVector BeamPos = FVector::ZeroVector;
 	int32 BeamTicks = 0;
 	int32 DeathTicks = 0;
+	// The Looting level of the weapon that last hit it, for what it drops if that kills it (not saved).
+	int32 LootingLevel = 0;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.

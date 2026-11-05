@@ -464,6 +464,38 @@ void AMcWorldActor::BeginPlay()
 			}
 		}
 	}
+	else if (bHaveLevel)
+	{
+		// A saved world keeps the spawn it was made with.
+		SpawnColumn = FIntPoint(Level.Spawn.X, Level.Spawn.Z);
+		SurfaceY = Level.Spawn.Y - 1;
+	}
+	else if (!bFlat && Dimension == TEXT("minecraft:overworld"))
+	{
+		// A new overworld: spawn on dry land, not over the ocean at 0, 0 (players drowned there on 2026-11-04). Look outwards in rings of 16 blocks.
+		const int32 SeaLevel = 63;
+		bool bLand = Generator->FindSolidTopY(0, 0) >= SeaLevel;
+		for (int32 Ring = 1; Ring <= 40 && !bLand; ++Ring)
+		{
+			for (int32 DZ = -Ring; DZ <= Ring && !bLand; ++DZ)
+			{
+				for (int32 DX = -Ring; DX <= Ring && !bLand; ++DX)
+				{
+					if (FMath::Max(FMath::Abs(DX), FMath::Abs(DZ)) != Ring)
+					{
+						continue;
+					}
+					const FIntPoint Column(DX * 16, DZ * 16);
+					if (Generator->FindSolidTopY(Column.X, Column.Y) >= SeaLevel)
+					{
+						SpawnColumn = Column;
+						SurfaceY = Generator->FindSurfaceY(Column.X, Column.Y);
+						bLand = true;
+					}
+				}
+			}
+		}
+	}
 	if (!WorldName.IsEmpty())
 	{
 		if (!bHaveLevel && !bSecondary)

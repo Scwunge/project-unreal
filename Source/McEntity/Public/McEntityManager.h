@@ -166,6 +166,10 @@ public:
 	// the rays reach (calling OnBlocksDestroyed with them, after the items were dealt with, so the drops they leave
 	// are safe).
 	void Explode(const FVector& Center, float Power);
+	// True while an explosion is hurting the mobs it reaches (an end crystal hit by one vanishes instead of going off).
+	bool bInBlast = false;
+	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
+	bool bDragonKilledBefore = false;
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;

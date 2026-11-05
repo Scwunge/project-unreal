@@ -650,7 +650,6 @@ MC_WORLD_STATS_TEST(2)
 MC_WORLD_STATS_TEST(3)
 MC_WORLD_STATS_TEST(4)
 
-#endif
 
 // Air, water and lava as a share of each 8-block band, over 25 patches of 4 by 4 undecorated chunks, with the carvers on
 // and off, to see how much of the caves comes from the carvers. "CAVEBANDS <carvers> <seed> <band start y> air water lava".
@@ -1334,6 +1333,37 @@ bool FMcVeinNoiseTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+		// Per-height summaries: VNY <seed> <y> <cells> <copper>0> <iron>0> <gap<0> <sum richness x10000>
+		for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+		{
+			FMcDensityGraph Graph(Seeds[SeedIndex]);
+			const TCHAR* Names[] = { TEXT("gap"), TEXT("copper_density"), TEXT("iron_density"), TEXT("richness") };
+			int32 Nodes[4];
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				Nodes[Index] = Graph.Parse(MakeShared<FJsonValueString>(FString(TEXT("minecraft:overworld/ore_vein/")) + Names[Index]));
+			}
+			FMcDensityContext Context(Graph);
+			for (const int32 Y : { -50, -30, -10, 5, 15, 30, 45 })
+			{
+				int32 Copper = 0;
+				int32 Iron = 0;
+				int32 Gap = 0;
+				double Richness = 0.0;
+				for (int32 J = 0; J < 64; ++J)
+				{
+					for (int32 I = 0; I < 64; ++I)
+					{
+						Context.SetPos(-4096 + I * 64, Y, -4096 + J * 64);
+						Gap += Graph.Evaluate(Nodes[0], Context) < 0.0 ? 1 : 0;
+						Copper += Graph.Evaluate(Nodes[1], Context) > 0.0 ? 1 : 0;
+						Iron += Graph.Evaluate(Nodes[2], Context) > 0.0 ? 1 : 0;
+						Richness += Graph.Evaluate(Nodes[3], Context);
+					}
+				}
+				AddInfo(FString::Printf(TEXT("VNY %d %d 4096 %d %d %d %.0f"), SeedIndex, Y, Copper, Iron, Gap, Richness * 10000.0));
+			}
+		}
 	return true;
 }
 
@@ -1369,3 +1399,5 @@ bool FMcDeepDarkWideTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+#endif

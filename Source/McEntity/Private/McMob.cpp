@@ -1,5 +1,6 @@
 #include "McMob.h"
 #include "McMount.h"
+#include "McXpOrb.h"
 #include "McLlama.h"
 #include "McVillager.h"
 #include "McMobLook.h"
@@ -113,6 +114,8 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// see FMcMob::Tick for the fitted path. Box 16 x 8 is the wiki's, contact damage 6 / 10 / 15 on easy / normal / hard is the wiki's. NOT built: the end crystals and
 		// their healing, the perch, breath and charge, fireballs, the 10 hp from crystal blasts, the death sequence and the exit portal.
 		Add(TEXT("minecraft:ender_dragon"), 16.f, 8.f, 200.f, 0.7f, 0.f, 150.f, false, false).bDragon = true;
+		// The end crystal (wiki: 2 x 2 box, goes off with power 6 at any damage, disappears instead if an explosion hurt it). Its health is not read back; any hit kills it.
+		Add(TEXT("minecraft:end_crystal"), 2.f, 2.f, 1.f, 0.f, 0.f, 0.f, false, false).bCrystal = true;
 		FMcMobType& Blaze = Add(TEXT("minecraft:blaze"), 0.6f, 1.8f, 20.f, 0.23f, 6.f, 48.f, false, false);
 		Blaze.bFlies = true;
 		Blaze.FireballKind = 2;
@@ -437,6 +440,27 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		Amount = McMount::ReduceDamage(*Mount, Amount);
 	}
+	if (Type.bCrystal)
+	{
+		// Any damage at all sets it off, unless it was an explosion that hurt it (wiki: End Crystal).
+		if (bRemoved)
+		{
+			return false;
+		}
+		bRemoved = true;
+		Health = 0.0f;
+		if (Owner && !Owner->bInBlast)
+		{
+			Owner->Explode(Body.Position, 6.0f);
+		}
+		return true;
+	}
+	if (Type.bDragon)
+	{
+		// dragon15.txt (the damage command at the dragon's body, 30 ticks apart): hits of 2, 20 and 40 took 1.5, 6 and 11 (a quarter and one; player attacks, arrows and
+		// explosions alike). Generic (20) and magic (5) damage took nothing, which cannot be told apart here. Hits on the head, which take it all, are not told apart either.
+		Amount = Amount * 0.25f + 1.0f;
+	}
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.
 	if (HurtTime > 0 || Health <= 0.0f)
 	{
@@ -466,6 +490,12 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		Body.bOnGround = false;
 	}
 	PlayVoice(Health <= 0.0f ? McSound::EMobSound::Death : McSound::EMobSound::Hurt);
+	if (Health <= 0.0f && Type.bDragon)
+	{
+		// The dragon does not drop dead: it takes 200 ticks to die (see Tick).
+		DeathTicks = FMath::Max(DeathTicks, 1);
+		return true;
+	}
 	if (Health <= 0.0f)
 	{
 		bRemoved = true;
@@ -730,6 +760,88 @@ FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
 	return Dest;
 }
 
+TArray<FVector> FMcMob::GetPillarCrystalPositions()
+{
+	// dragon8.txt: Pos of the ten crystals the End starts with (the feet of each, one above the top of its pillar), as read.
+	return {
+		FVector(-12.5, 77.0, 39.5), FVector(-12.5, 80.0, -39.5), FVector(12.5, 83.0, 39.5), FVector(-33.5, 86.0, 24.5), FVector(12.5, 89.0, -39.5),
+		FVector(-41.5, 92.0, -0.5), FVector(33.5, 95.0, -24.5), FVector(42.5, 98.0, 0.5), FVector(33.5, 101.0, 24.5), FVector(-33.5, 104.0, -24.5),
+	};
+}
+
+void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
+{
+	// dragon10.txt (a summoned dragon set to 0 hp, the player 20 blocks off, samples 5 ticks apart, second kill in that world): 40 points of orbs (37 + 3) came in
+	// ten drops from about tick 150 on, one every ~5 ticks, then a last 100 (73 + 17 + 7 + 3) with them: 500 in all. The wiki (Ender Dragon): 200 ticks in all;
+	// the first kill gives 12000 (ten drops of 960 and a last of 2400), later ones 500; at the end the bedrock frame fills with portal and a dragon egg
+	// appears on the first kill only. Where it flies during the 200 ticks is not logged (the dragon is not selectable while it dies): it hangs where it was.
+	++DeathTicks;
+	const bool bFirst = !Manager.bDragonKilledBefore;
+	const int32 Total = bFirst ? 12000 : 500;
+	if (DeathTicks >= 150 && DeathTicks < 200 && DeathTicks % 5 == 0)
+	{
+		FMcXpOrb::Spawn(Manager, Body.Position, Total * 8 / 100, Random);
+	}
+	if (DeathTicks < 200)
+	{
+		return;
+	}
+	FMcXpOrb::Spawn(Manager, Body.Position, Total * 20 / 100, Random);
+	bRemoved = true;
+	Manager.bDragonKilledBefore = true;
+	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
+	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
+	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
+	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
+	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
+	int32 BaseY = 58;
+	for (int32 Y = 100; Y > 40; --Y)
+	{
+		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
+		{
+			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
+			BaseY = Y - 3;
+			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
+			{
+				--BaseY;
+			}
+			break;
+		}
+	}
+	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
+	{
+		World.SetBlock(Cell, State);
+		if (Manager.OnSetBlock)
+		{
+			Manager.OnSetBlock(Cell, State);
+		}
+	};
+	for (int32 DX = -4; DX <= 4; ++DX)
+	{
+		for (int32 DZ = -4; DZ <= 4; ++DZ)
+		{
+			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
+			if (Distance > 3.5)
+			{
+				continue;
+			}
+			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
+			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? Portal : Bedrock);
+		}
+	}
+	for (int32 DY = 0; DY < 4; ++DY)
+	{
+		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
+	}
+	if (bFirst)
+	{
+		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
+	}
+}
+
 void FMcMob::TickBarter(FMcEntityManager& Manager)
 {
 	// Measured on the reference, two runs of ~40 (barter1.txt, barter2.txt; a gold ingot dropped a block from an idle piglin): the
@@ -848,12 +960,71 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		UpdateWolfPose();
 	}
+	if (Type.bCrystal)
+	{
+		LastPosition = Body.Position;
+		return;
+	}
 	if (bFrozen || bNoAI)
 	{
 		return;
 	}
+	if (Type.bDragon && DeathTicks > 0)
+	{
+		TickDragonDeath(Manager);
+		LastPosition = Body.Position;
+		return;
+	}
 	if (Type.bDragon)
 	{
+		// Healing (dragon9.txt: a summoned dragon on 100 hp, a crystal kept 8 blocks under it, 35 samples 5 ticks apart: +1 hp about every 8 to 10 ticks, 21 hp in
+		// ~175 ticks, after a first ~30 ticks of nothing that dragon13.txt (+4 in 40 ticks) did not show and is NOT modelled; the wiki says 1 every 10 ticks);
+		// with no crystal nothing in 60 ticks.
+		// The wiki gives the range, a 32 block box round the dragon, and 10 hp off the dragon when the crystal healing it is destroyed.
+		{
+			FMcMob* Nearest = nullptr;
+			double Best = TNumericLimits<double>::Max();
+			TArray<FMcEntity*> Near;
+			Manager.FindInBox(FBox(Body.Position - FVector(32.0), Body.Position + FVector(32.0)), Near);
+			for (FMcEntity* Other : Near)
+			{
+				if (Other->bRemoved || !Other->IsLiving())
+				{
+					continue;
+				}
+				FMcMob& Mob = static_cast<FMcMob&>(*Other);
+				const double Distance = FVector::DistSquared(Mob.Body.Position, Body.Position);
+				if (Mob.Type.bCrystal && Distance < Best)
+				{
+					Best = Distance;
+					Nearest = &Mob;
+				}
+			}
+			if (Nearest)
+			{
+				bHasBeam = true;
+				BeamPos = Nearest->Body.Position;
+				++BeamTicks;
+				if (BeamTicks % 10 == 0)
+				{
+					Health = FMath::Min(Type.MaxHealth, Health + 1.0f);
+				}
+			}
+			else
+			{
+				if (bHasBeam)
+				{
+					// The crystal that was healing it is gone: 10 hp, besides the blast (dragon15.txt: a crystal 8 blocks off, destroyed: 171.5 to 156.86, 14.64).
+					Health -= 10.0f;
+					if (Health <= 0.0f)
+					{
+						DeathTicks = FMath::Max(DeathTicks, 1);
+					}
+				}
+				bHasBeam = false;
+				BeamTicks = 0;
+			}
+		}
 		// dragon6.txt (4000 ticks after the crystals started a fight, sampled every 5 ticks, the player ignored): it came in at height 126 and settled to
 		// 65-79 (mean 71) by about tick 1000 (126 at 0, 96 at 375, 86 at 500, 82 at 625), and ranged 1 to 63 blocks from the middle of the island (mean 26),
 		// at a median 0.95 a tick (90th percentile 1.28). Modelled as drifting to a new random point (radius 0 to 55, height 71 +-6, settling from 126 over

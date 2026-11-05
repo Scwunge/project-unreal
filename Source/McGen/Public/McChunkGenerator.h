@@ -21,4 +21,7 @@ public:
 	// For a dimension with a roof (the Nether): the y of the highest solid block below BelowY with two blocks of air,
 	// not fluid, above it, so somewhere to stand under the ceiling. Below the column's bottom (MinY - 1) if there is none.
 	virtual int32 FindFloorY(int32 X, int32 Z, int32 BelowY) const { return FindSurfaceY(X, Z); }
+
+	// The y of the top solid block, below the sea as well, so a sea column can be told from land (FindSurfaceY holds at sea level).
+	virtual int32 FindSolidTopY(int32 X, int32 Z) const { return FindSurfaceY(X, Z); }
 };

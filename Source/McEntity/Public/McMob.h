@@ -61,6 +61,8 @@ struct MCENTITY_API FMcMobType
 	// Turns on a player who looks at its eyes (the enderman).
 	bool bGazeAngers = false;
 	bool bDragon = false;
+	// The end crystal: stands still, goes off (power 6) at any damage, and heals a dragon within 32 blocks.
+	bool bCrystal = false;
 	// Picks up and sets down blocks (the enderman).
 	bool bCarriesBlocks = false;
 	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
@@ -121,6 +123,11 @@ public:
 	int32 AngerTicks = 0;
 	int32 StareTicks = 0;
 	FVector DragonGoal = FVector::ZeroVector;
+	// The dragon: where the crystal that heals it stands (valid when bHasBeam), ticks since it began to be healed, and ticks of its death so far (0 while alive).
+	bool bHasBeam = false;
+	FVector BeamPos = FVector::ZeroVector;
+	int32 BeamTicks = 0;
+	int32 DeathTicks = 0;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
@@ -243,6 +250,11 @@ private:
 	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
 	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
 	void TickBarter(FMcEntityManager& Manager);
+	void TickDragonDeath(FMcEntityManager& Manager);
+
+public:
+	// Where the ten crystals on the End's pillars stand (read from the reference world, dragon8.txt), lowest first.
+	static TArray<FVector> GetPillarCrystalPositions();
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

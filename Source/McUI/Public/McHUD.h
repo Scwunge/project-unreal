@@ -183,6 +183,9 @@ private:
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
 	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
+	// One boss bar: title above, the bar (182 wide) with its colour and style, filled to Fraction.
+	void DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style);
+	void DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);

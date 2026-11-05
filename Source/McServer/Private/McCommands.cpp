@@ -65,6 +65,9 @@ namespace
 		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
 		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
+		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
+		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
+		{ TEXT("data"), 2, TEXT("/data (get|merge|modify|remove) ...") },
 		{ TEXT("tag"), 2, TEXT("/tag <targets> (add|list|remove) ...") },
 		{ TEXT("teleport"), 2, TEXT("/teleport <location> | <destination> | <targets> (<location>|<destination>)") },
 		{ TEXT("tell"), 0, TEXT("/tell -> msg") },
@@ -2882,6 +2885,1408 @@ namespace
 		return Tags;
 	}
 
+	// /team: teams and who is on them, kept for the session (wording from a ref run, cmd_team.txt). The game's team effects on play (colours of
+	// names, friendly fire, nametags, collision) are not drawn or applied.
+	struct FTeam
+	{
+		FString Name;
+		FString Display;
+		FString Color;
+		FString Prefix;
+		FString Suffix;
+		bool bFriendlyFire = true;
+		bool bSeeInvisible = true;
+		FString Nametag = TEXT("always");
+		FString DeathMessage = TEXT("always");
+		FString Collision = TEXT("always");
+		TArray<FString> Members;
+	};
+
+	TMap<FString, FTeam>& Teams()
+	{
+		static TMap<FString, FTeam> All;
+		return All;
+	}
+
+	FReplies RunTeam(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const auto Shown = [](const FTeam& Team) { return TEXT("[") + (Team.Display.IsEmpty() ? Team.Name : Team.Display) + TEXT("]"); };
+		const auto Joined = [&](int32 From)
+		{
+			TArray<FString> Rest;
+			for (int32 I = From; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			return FString::Join(Rest, TEXT(" "));
+		};
+		const auto Find = [&](const FString& Name) -> FTeam* { return Teams().Find(Name); };
+		const auto NotFound = [&](const FString& Name) -> FReplies { return { Fail(McLang::Format(TEXT("team.notFound"), { Name })) }; };
+
+		if (Verb == TEXT("list"))
+		{
+			if (Words.Num() == 2)
+			{
+				if (Teams().Num() == 0)
+				{
+					return { Ok(McLang::Get(TEXT("commands.team.list.teams.empty"))) };
+				}
+				TArray<FString> Keys;
+				Teams().GetKeys(Keys);
+				Keys.Sort();
+				TArray<FString> Names;
+				for (const FString& Key : Keys)
+				{
+					Names.Add(Shown(Teams()[Key]));
+				}
+				return { Ok(McLang::Format(TEXT("commands.team.list.teams.success"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			if (Team->Members.Num() == 0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.list.members.empty"), { Shown(*Team) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.list.members.success"), { Shown(*Team), FString::FromInt(Team->Members.Num()), FString::Join(Team->Members, TEXT(", ")) })) };
+		}
+		if (Verb == TEXT("add"))
+		{
+			if (Words.Num() < 3)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			if (Find(Words[2]))
+			{
+				return { Fail(McLang::Get(TEXT("commands.team.add.duplicate"))) };
+			}
+			FTeam Team;
+			Team.Name = Words[2];
+			Team.Display = Words.Num() > 3 ? PlainText(Joined(3)) : FString();
+			Teams().Add(Team.Name, Team);
+			return { Ok(McLang::Format(TEXT("commands.team.add.success"), { Shown(Team) })) };
+		}
+		if (Verb == TEXT("remove") || Verb == TEXT("empty"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			const FString Name = Shown(*Team);
+			if (Verb == TEXT("remove"))
+			{
+				Teams().Remove(Words[2]);
+				return { Ok(McLang::Format(TEXT("commands.team.remove.success"), { Name })) };
+			}
+			if (Team->Members.Num() == 0)
+			{
+				return { Fail(McLang::Get(TEXT("commands.team.empty.unchanged"))) };
+			}
+			const int32 Count = Team->Members.Num();
+			Team->Members.Reset();
+			return { Ok(McLang::Format(TEXT("commands.team.empty.success"), { FString::FromInt(Count), Name })) };
+		}
+
+		// Members are player selectors or plain names.
+		const auto Members = [&](const FString& Word, TArray<FString>& Out) -> bool
+		{
+			FString Error;
+			if (Word.StartsWith(TEXT("@")))
+			{
+				return ResolvePlayers(Word, Sender, Target, Out, Error);
+			}
+			Out.Add(Word);
+			return true;
+		};
+		const auto LeaveAll = [&](const FString& Member)
+		{
+			bool bWas = false;
+			for (TPair<FString, FTeam>& Pair : Teams())
+			{
+				bWas = Pair.Value.Members.Remove(Member) > 0 || bWas;
+			}
+			return bWas;
+		};
+
+		if (Verb == TEXT("join"))
+		{
+			if (Words.Num() < 3 || Words.Num() > 4)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			TArray<FString> Who;
+			if (!Members(Words.Num() == 4 ? Words[3] : TEXT("@s"), Who))
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			for (const FString& Member : Who)
+			{
+				LeaveAll(Member);
+				Team->Members.Add(Member);
+			}
+			if (Who.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.join.success.single"), { Team->Prefix + Who[0] + Team->Suffix, Shown(*Team) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.join.success.multiple"), { FString::FromInt(Who.Num()), Shown(*Team) })) };
+		}
+		if (Verb == TEXT("leave"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Words.Num() < 3 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			TArray<FString> Who;
+			if (!Members(Words[2], Who))
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			TArray<FString> Left;
+			for (const FString& Member : Who)
+			{
+				if (LeaveAll(Member))
+				{
+					Left.Add(Member);
+				}
+			}
+			if (Left.Num() == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.team.leave.success.single"), { Left[0] })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.team.leave.success.multiple"), { FString::FromInt(Left.Num()) })) };
+		}
+		if (Verb == TEXT("modify"))
+		{
+			if (Words.Num() < 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			FTeam* Team = Find(Words[2]);
+			if (!Team)
+			{
+				return NotFound(Words[2]);
+			}
+			const FString& Option = Words[3];
+			const FString& Value = Words[4];
+			const auto Flag = [&](bool& bState, const TCHAR* Key) -> FReplies
+			{
+				if (Value != TEXT("true") && Value != TEXT("false"))
+				{
+					return BadArgument(Command);
+				}
+				const bool bNew = Value == TEXT("true");
+				const FString Base = FString(TEXT("commands.team.option.")) + Key;
+				if (bNew == bState)
+				{
+					return { Fail(McLang::Get(Base + (bNew ? TEXT(".alreadyEnabled") : TEXT(".alreadyDisabled")))) };
+				}
+				bState = bNew;
+				return { Ok(McLang::Format(Base + (bNew ? TEXT(".enabled") : TEXT(".disabled")), { Shown(*Team) })) };
+			};
+			const auto Choice = [&](FString& State, const TCHAR* Key, const TCHAR* LangGroup, std::initializer_list<const TCHAR*> Allowed) -> FReplies
+			{
+				bool bKnown = false;
+				for (const TCHAR* One : Allowed)
+				{
+					bKnown = bKnown || Value == One;
+				}
+				if (!bKnown)
+				{
+					return BadArgument(Command);
+				}
+				const FString Base = FString(TEXT("commands.team.option.")) + Key;
+				if (State == Value)
+				{
+					return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+				}
+				State = Value;
+				return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Team), McLang::Get(FString(LangGroup) + Value) })) };
+			};
+			if (Option == TEXT("color"))
+			{
+				static const TCHAR* Colors[] = { TEXT("black"), TEXT("dark_blue"), TEXT("dark_green"), TEXT("dark_aqua"), TEXT("dark_red"), TEXT("dark_purple"), TEXT("gold"), TEXT("gray"), TEXT("dark_gray"), TEXT("blue"), TEXT("green"), TEXT("aqua"), TEXT("red"), TEXT("light_purple"), TEXT("yellow"), TEXT("white"), TEXT("reset") };
+				bool bKnown = false;
+				for (const TCHAR* One : Colors)
+				{
+					bKnown = bKnown || Value == One;
+				}
+				if (!bKnown)
+				{
+					return { Fail(McLang::Format(TEXT("argument.color.invalid"), { Value })), Fail(BorderContext(Command, Command.Len() - Value.Len())) };
+				}
+				const FString New = Value == TEXT("reset") ? FString() : Value;
+				if (New == Team->Color)
+				{
+					return { Fail(McLang::Get(TEXT("commands.team.option.color.unchanged"))) };
+				}
+				Team->Color = New;
+				if (New.IsEmpty())
+				{
+					return { Ok(McLang::Format(TEXT("commands.team.option.color.clear.success"), { Shown(*Team) })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.team.option.color.success"), { Shown(*Team), New })) };
+			}
+			if (Option == TEXT("friendlyFire"))
+			{
+				return Flag(Team->bFriendlyFire, TEXT("friendlyfire"));
+			}
+			if (Option == TEXT("seeFriendlyInvisibles"))
+			{
+				return Flag(Team->bSeeInvisible, TEXT("seeFriendlyInvisibles"));
+			}
+			if (Option == TEXT("nametagVisibility"))
+			{
+				return Choice(Team->Nametag, TEXT("nametagVisibility"), TEXT("team.visibility."), { TEXT("always"), TEXT("never"), TEXT("hideForOtherTeams"), TEXT("hideForOwnTeam") });
+			}
+			if (Option == TEXT("deathMessageVisibility"))
+			{
+				return Choice(Team->DeathMessage, TEXT("deathMessageVisibility"), TEXT("team.visibility."), { TEXT("always"), TEXT("never"), TEXT("hideForOtherTeams"), TEXT("hideForOwnTeam") });
+			}
+			if (Option == TEXT("collisionRule"))
+			{
+				return Choice(Team->Collision, TEXT("collisionRule"), TEXT("team.collision."), { TEXT("always"), TEXT("never"), TEXT("pushOtherTeams"), TEXT("pushOwnTeam") });
+			}
+			if (Option == TEXT("displayName"))
+			{
+				const FString New = PlainText(Joined(4));
+				if (New == (Team->Display.IsEmpty() ? Team->Name : Team->Display))
+				{
+					return { Fail(McLang::Get(TEXT("commands.team.option.name.unchanged"))) };
+				}
+				Team->Display = New;
+				return { Ok(McLang::Format(TEXT("commands.team.option.name.success"), { Shown(*Team) })) };
+			}
+			if (Option == TEXT("prefix") || Option == TEXT("suffix"))
+			{
+				const FString New = PlainText(Joined(4));
+				(Option == TEXT("prefix") ? Team->Prefix : Team->Suffix) = New;
+				return { Ok(McLang::Format(Option == TEXT("prefix") ? TEXT("commands.team.option.prefix.success") : TEXT("commands.team.option.suffix.success"), { New })) };
+			}
+			return BadArgument(Command);
+		}
+		return BadArgument(Command);
+	}
+
+	// /bossbar: custom bars kept for the session (wording from a ref run, cmd_boss.txt). Nothing draws a bar on the screen yet.
+	struct FBossbar
+	{
+		FString Id;
+		FString Name;
+		int32 Value = 0;
+		int32 Max = 100;
+		bool bVisible = true;
+		FString Color = TEXT("white");
+		FString Style = TEXT("progress");
+		TArray<FString> Players;
+	};
+
+	TMap<FString, FBossbar>& Bossbars()
+	{
+		static TMap<FString, FBossbar> All;
+		return All;
+	}
+
+	FReplies RunBossbar(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const auto Qualified = [](const FString& Id) { return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id; };
+		const auto Shown = [](const FBossbar& Bar) { return TEXT("[") + Bar.Name + TEXT("]"); };
+		const auto NotFound = [&](const FString& Id) -> FReplies { return { Fail(McLang::Format(TEXT("commands.bossbar.unknown"), { Qualified(Id) })) }; };
+
+		if (Verb == TEXT("list"))
+		{
+			if (Bossbars().Num() == 0)
+			{
+				return { Ok(McLang::Get(TEXT("commands.bossbar.list.bars.none"))) };
+			}
+			TArray<FString> Keys;
+			Bossbars().GetKeys(Keys);
+			Keys.Sort();
+			TArray<FString> Names;
+			for (const FString& Key : Keys)
+			{
+				Names.Add(Shown(Bossbars()[Key]));
+			}
+			return { Ok(McLang::Format(TEXT("commands.bossbar.list.bars.some"), { FString::FromInt(Names.Num()), FString::Join(Names, TEXT(", ")) })) };
+		}
+		if (Verb == TEXT("add"))
+		{
+			if (Words.Num() < 4)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			const FString Id = Qualified(Words[2]);
+			if (Bossbars().Contains(Id))
+			{
+				return { Fail(McLang::Format(TEXT("commands.bossbar.create.failed"), { Id })) };
+			}
+			FBossbar Bar;
+			Bar.Id = Id;
+			TArray<FString> Rest;
+			for (int32 I = 3; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			Bar.Name = PlainText(FString::Join(Rest, TEXT(" ")));
+			Bossbars().Add(Id, Bar);
+			return { Ok(McLang::Format(TEXT("commands.bossbar.create.success"), { Shown(Bar) })) };
+		}
+		if (Verb != TEXT("get") && Verb != TEXT("set") && Verb != TEXT("remove"))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FBossbar* Bar = Bossbars().Find(Qualified(Words[2]));
+		if (!Bar)
+		{
+			return NotFound(Words[2]);
+		}
+		if (Verb == TEXT("remove"))
+		{
+			const FString Name = Shown(*Bar);
+			Bossbars().Remove(Qualified(Words[2]));
+			return { Ok(McLang::Format(TEXT("commands.bossbar.remove.success"), { Name })) };
+		}
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& What = Words[3];
+		if (Verb == TEXT("get"))
+		{
+			if (What == TEXT("value"))
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.value"), { Shown(*Bar), FString::FromInt(Bar->Value) })) };
+			}
+			if (What == TEXT("max"))
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.max"), { Shown(*Bar), FString::FromInt(Bar->Max) })) };
+			}
+			if (What == TEXT("visible"))
+			{
+				return { Ok(McLang::Format(Bar->bVisible ? TEXT("commands.bossbar.get.visible.visible") : TEXT("commands.bossbar.get.visible.hidden"), { Shown(*Bar) })) };
+			}
+			if (What == TEXT("players"))
+			{
+				if (Bar->Players.Num() == 0)
+				{
+					return { Ok(McLang::Format(TEXT("commands.bossbar.get.players.none"), { Shown(*Bar) })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.bossbar.get.players.some"), { Shown(*Bar), FString::FromInt(Bar->Players.Num()), FString::Join(Bar->Players, TEXT(", ")) })) };
+			}
+			return BadArgument(Command);
+		}
+
+		// set
+		const FString Last = Words.Last();
+		const auto Whole = [&](const TCHAR* Key, int32& Field, int32 Minimum) -> FReplies
+		{
+			double Number = 0.0;
+			if (Words.Num() != 5 || !ParseNumber(Last, Number) || Number != FMath::FloorToDouble(Number))
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			if (Number < Minimum)
+			{
+				return { Fail(FString::Printf(TEXT("Integer must not be less than %d: found %d"), Minimum, FMath::RoundToInt32(Number))), Fail(BorderContext(Command, Command.Len() - Last.Len())) };
+			}
+			const FString Base = FString(TEXT("commands.bossbar.set.")) + Key;
+			if (FMath::RoundToInt32(Number) == Field)
+			{
+				return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+			}
+			Field = FMath::RoundToInt32(Number);
+			return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Bar), FString::FromInt(Field) })) };
+		};
+		const auto Choice = [&](FString& Field, const TCHAR* Key, std::initializer_list<const TCHAR*> Allowed) -> FReplies
+		{
+			bool bKnown = false;
+			for (const TCHAR* One : Allowed)
+			{
+				bKnown = bKnown || Last == One;
+			}
+			if (Words.Num() != 5 || !bKnown)
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			const FString Base = FString(TEXT("commands.bossbar.set.")) + Key;
+			if (Field == Last)
+			{
+				return { Fail(McLang::Get(Base + TEXT(".unchanged"))) };
+			}
+			Field = Last;
+			return { Ok(McLang::Format(Base + TEXT(".success"), { Shown(*Bar) })) };
+		};
+		if (What == TEXT("value"))
+		{
+			return Whole(TEXT("value"), Bar->Value, 0);
+		}
+		if (What == TEXT("max"))
+		{
+			return Whole(TEXT("max"), Bar->Max, 1);
+		}
+		if (What == TEXT("color"))
+		{
+			return Choice(Bar->Color, TEXT("color"), { TEXT("pink"), TEXT("blue"), TEXT("red"), TEXT("green"), TEXT("yellow"), TEXT("purple"), TEXT("white") });
+		}
+		if (What == TEXT("style"))
+		{
+			return Choice(Bar->Style, TEXT("style"), { TEXT("progress"), TEXT("notched_6"), TEXT("notched_10"), TEXT("notched_12"), TEXT("notched_20") });
+		}
+		if (What == TEXT("visible"))
+		{
+			if (Words.Num() != 5 || (Last != TEXT("true") && Last != TEXT("false")))
+			{
+				return Words.Num() < 5 ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			const bool bNew = Last == TEXT("true");
+			if (bNew == Bar->bVisible)
+			{
+				return { Fail(McLang::Get(bNew ? TEXT("commands.bossbar.set.visibility.unchanged.visible") : TEXT("commands.bossbar.set.visibility.unchanged.hidden"))) };
+			}
+			Bar->bVisible = bNew;
+			return { Ok(McLang::Format(bNew ? TEXT("commands.bossbar.set.visible.success.visible") : TEXT("commands.bossbar.set.visible.success.hidden"), { Shown(*Bar) })) };
+		}
+		if (What == TEXT("name"))
+		{
+			if (Words.Num() < 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			TArray<FString> Rest;
+			for (int32 I = 4; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			const FString New = PlainText(FString::Join(Rest, TEXT(" ")));
+			if (New == Bar->Name)
+			{
+				return { Fail(McLang::Get(TEXT("commands.bossbar.set.name.unchanged"))) };
+			}
+			Bar->Name = New;
+			return { Ok(McLang::Format(TEXT("commands.bossbar.set.name.success"), { Shown(*Bar) })) };
+		}
+		if (What == TEXT("players"))
+		{
+			TArray<FString> Who;
+			if (Words.Num() == 5)
+			{
+				FString Error;
+				if (!ResolvePlayers(Last, Sender, Target, Who, Error))
+				{
+					Who.Reset();
+				}
+			}
+			else if (Words.Num() != 4)
+			{
+				return BadArgument(Command);
+			}
+			Who.Sort();
+			TArray<FString> Old = Bar->Players;
+			Old.Sort();
+			if (Old == Who)
+			{
+				return { Fail(McLang::Get(TEXT("commands.bossbar.set.players.unchanged"))) };
+			}
+			Bar->Players = Who;
+			if (Who.Num() == 0)
+			{
+				return { Ok(McLang::Format(TEXT("commands.bossbar.set.players.success.none"), { Shown(*Bar) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.bossbar.set.players.success.some"), { Shown(*Bar), FString::FromInt(Who.Num()), FString::Join(Who, TEXT(", ")) })) };
+		}
+		return BadArgument(Command);
+	}
+
+	// /data: a small NBT value (just the kinds SNBT can write), its text form, and paths into it. Storage is kept for the session.
+	struct FNbt
+	{
+		enum class EType : uint8 { Byte, Short, Int, Long, Float, Double, String, List, Compound, ByteArray, IntArray, LongArray };
+		EType Type = EType::Compound;
+		double Real = 0.0;
+		int64 Whole = 0;
+		FString Text;
+		TArray<FNbt> Items;
+		TArray<FString> Keys;
+
+		bool IsNumber() const { return Type <= EType::Double; }
+		bool IsReal() const { return Type == EType::Float || Type == EType::Double; }
+		double AsDouble() const { return IsReal() ? Real : double(Whole); }
+		int32 Find(const FString& Key) const { return Keys.IndexOfByKey(Key); }
+		bool operator==(const FNbt& Other) const
+		{
+			if (Type != Other.Type || Text != Other.Text || Items.Num() != Other.Items.Num() || Keys.Num() != Other.Keys.Num())
+			{
+				return false;
+			}
+			if (IsReal() ? Real != Other.Real : Whole != Other.Whole)
+			{
+				return false;
+			}
+			for (int32 I = 0; I < Keys.Num(); ++I)
+			{
+				const int32 At = Other.Find(Keys[I]);
+				if (At == INDEX_NONE || !(Items[I] == Other.Items[At]))
+				{
+					return false;
+				}
+			}
+			if (Type != EType::Compound)
+			{
+				for (int32 I = 0; I < Items.Num(); ++I)
+				{
+					if (!(Items[I] == Other.Items[I]))
+					{
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+	};
+
+	FString ShortestReal(double Value, bool bFloat)
+	{
+		FString Best;
+		for (int32 Digits = 1; Digits <= 17; ++Digits)
+		{
+			Best = FString::Printf(TEXT("%.*g"), Digits, Value);
+			const double Back = FCString::Atod(*Best);
+			if (bFloat ? float(Back) == float(Value) : Back == Value)
+			{
+				break;
+			}
+		}
+		if (Best.Contains(TEXT("e")))
+		{
+			Best = FString::Printf(TEXT("%.1f"), Value);
+		}
+		if (!Best.Contains(TEXT(".")))
+		{
+			Best += TEXT(".0");
+		}
+		return Best;
+	}
+
+	bool PlainKey(const FString& Key)
+	{
+		for (TCHAR C : Key)
+		{
+			if (!(FChar::IsAlnum(C) || C == '_' || C == '-' || C == '.' || C == '+'))
+			{
+				return false;
+			}
+		}
+		return !Key.IsEmpty();
+	}
+
+	FString QuoteNbt(const FString& Text)
+	{
+		const TCHAR Quote = Text.Contains(TEXT("\"")) && !Text.Contains(TEXT("'")) ? '\'' : '"';
+		FString Out;
+		Out.AppendChar(Quote);
+		for (TCHAR C : Text)
+		{
+			if (C == Quote || C == '\\')
+			{
+				Out.AppendChar('\\');
+			}
+			Out.AppendChar(C);
+		}
+		Out.AppendChar(Quote);
+		return Out;
+	}
+
+	FString PrintNbt(const FNbt& Value)
+	{
+		using E = FNbt::EType;
+		switch (Value.Type)
+		{
+		case E::Byte: return FString::Printf(TEXT("%lldb"), Value.Whole);
+		case E::Short: return FString::Printf(TEXT("%llds"), Value.Whole);
+		case E::Int: return FString::Printf(TEXT("%lld"), Value.Whole);
+		case E::Long: return FString::Printf(TEXT("%lldL"), Value.Whole);
+		case E::Float: return ShortestReal(Value.Real, true) + TEXT("f");
+		case E::Double: return ShortestReal(Value.Real, false) + TEXT("d");
+		case E::String: return QuoteNbt(Value.Text);
+		default: break;
+		}
+		TArray<FString> Parts;
+		if (Value.Type == E::Compound)
+		{
+			TArray<FString> Sorted = Value.Keys;
+			Sorted.Sort();
+			for (const FString& Key : Sorted)
+			{
+				Parts.Add((PlainKey(Key) ? Key : QuoteNbt(Key)) + TEXT(": ") + PrintNbt(Value.Items[Value.Find(Key)]));
+			}
+			return TEXT("{") + FString::Join(Parts, TEXT(", ")) + TEXT("}");
+		}
+		for (const FNbt& Item : Value.Items)
+		{
+			Parts.Add(PrintNbt(Item));
+		}
+		if (Value.Type == E::List)
+		{
+			return TEXT("[") + FString::Join(Parts, TEXT(", ")) + TEXT("]");
+		}
+		const TCHAR* Tag = Value.Type == E::ByteArray ? TEXT("B") : Value.Type == E::IntArray ? TEXT("I") : TEXT("L");
+		return FString(TEXT("[")) + Tag + TEXT(";") + (Parts.Num() ? TEXT(" ") : TEXT("")) + FString::Join(Parts, TEXT(", ")) + TEXT("]");
+	}
+
+	struct FNbtParser
+	{
+		const FString& Text;
+		int32 Pos = 0;
+		explicit FNbtParser(const FString& InText) : Text(InText) {}
+
+		TCHAR Peek() const { return Pos < Text.Len() ? Text[Pos] : TCHAR(0); }
+		void Skip() { while (Pos < Text.Len() && FChar::IsWhitespace(Text[Pos])) { ++Pos; } }
+
+		bool Word(FString& Out)
+		{
+			const int32 Start = Pos;
+			while (Pos < Text.Len() && (FChar::IsAlnum(Text[Pos]) || Text[Pos] == '_' || Text[Pos] == '-' || Text[Pos] == '.' || Text[Pos] == '+'))
+			{
+				++Pos;
+			}
+			Out = Text.Mid(Start, Pos - Start);
+			return Pos > Start;
+		}
+
+		bool Quoted(FString& Out)
+		{
+			const TCHAR Quote = Text[Pos++];
+			Out.Reset();
+			while (Pos < Text.Len() && Text[Pos] != Quote)
+			{
+				if (Text[Pos] == '\\' && Pos + 1 < Text.Len())
+				{
+					++Pos;
+				}
+				Out.AppendChar(Text[Pos++]);
+			}
+			if (Pos >= Text.Len())
+			{
+				return false;
+			}
+			++Pos;
+			return true;
+		}
+
+		static void FromWord(const FString& Word, FNbt& Out)
+		{
+			using E = FNbt::EType;
+			Out = FNbt();
+			if (Word == TEXT("true") || Word == TEXT("false"))
+			{
+				Out.Type = E::Byte;
+				Out.Whole = Word == TEXT("true");
+				return;
+			}
+			FString Digits = Word;
+			const TCHAR Last = Word.Len() ? FChar::ToLower(Word[Word.Len() - 1]) : TCHAR(0);
+			E Kind = E::Int;
+			bool bSuffix = true;
+			if (Last == 'b') { Kind = E::Byte; }
+			else if (Last == 's') { Kind = E::Short; }
+			else if (Last == 'l') { Kind = E::Long; }
+			else if (Last == 'f') { Kind = E::Float; }
+			else if (Last == 'd') { Kind = E::Double; }
+			else { bSuffix = false; }
+			if (bSuffix)
+			{
+				Digits = Word.Left(Word.Len() - 1);
+			}
+			const bool bDecimal = Digits.Contains(TEXT("."));
+			const bool bNumeric = !Digits.IsEmpty() && (Digits.IsNumeric() || (Digits[0] == '-' && Digits.Mid(1).IsNumeric()) || (Digits[0] == '+' && Digits.Mid(1).IsNumeric()));
+			if (!bNumeric || (bDecimal && Kind != E::Float && Kind != E::Double && bSuffix) || (bDecimal && !bSuffix && false))
+			{
+				Out.Type = E::String;
+				Out.Text = Word;
+				return;
+			}
+			if (!bSuffix)
+			{
+				Kind = bDecimal ? E::Double : E::Int;
+			}
+			Out.Type = Kind;
+			if (Kind == E::Float || Kind == E::Double)
+			{
+				Out.Real = FCString::Atod(*Digits);
+				if (Kind == E::Float)
+				{
+					Out.Real = double(float(Out.Real));
+				}
+			}
+			else
+			{
+				Out.Whole = FCString::Atoi64(*Digits);
+			}
+		}
+
+		bool Value(FNbt& Out)
+		{
+			using E = FNbt::EType;
+			Skip();
+			const TCHAR C = Peek();
+			Out = FNbt();
+			if (C == '{')
+			{
+				++Pos;
+				Out.Type = E::Compound;
+				Skip();
+				if (Peek() == '}')
+				{
+					++Pos;
+					return true;
+				}
+				while (true)
+				{
+					Skip();
+					FString Key;
+					if (Peek() == '"' || Peek() == '\'')
+					{
+						if (!Quoted(Key))
+						{
+							return false;
+						}
+					}
+					else if (!Word(Key))
+					{
+						return false;
+					}
+					Skip();
+					if (Peek() != ':')
+					{
+						return false;
+					}
+					++Pos;
+					FNbt Item;
+					if (!Value(Item))
+					{
+						return false;
+					}
+					const int32 At = Out.Find(Key);
+					if (At == INDEX_NONE)
+					{
+						Out.Keys.Add(Key);
+						Out.Items.Add(Item);
+					}
+					else
+					{
+						Out.Items[At] = Item;
+					}
+					Skip();
+					if (Peek() == ',')
+					{
+						++Pos;
+						continue;
+					}
+					if (Peek() == '}')
+					{
+						++Pos;
+						return true;
+					}
+					return false;
+				}
+			}
+			if (C == '[')
+			{
+				++Pos;
+				Out.Type = E::List;
+				Skip();
+				if (Pos + 1 < Text.Len() && Text[Pos + 1] == ';' && (Text[Pos] == 'B' || Text[Pos] == 'I' || Text[Pos] == 'L'))
+				{
+					Out.Type = Text[Pos] == 'B' ? E::ByteArray : Text[Pos] == 'I' ? E::IntArray : E::LongArray;
+					Pos += 2;
+				}
+				Skip();
+				if (Peek() == ']')
+				{
+					++Pos;
+					return true;
+				}
+				while (true)
+				{
+					FNbt Item;
+					if (!Value(Item))
+					{
+						return false;
+					}
+					Out.Items.Add(Item);
+					Skip();
+					if (Peek() == ',')
+					{
+						++Pos;
+						continue;
+					}
+					if (Peek() == ']')
+					{
+						++Pos;
+						return true;
+					}
+					return false;
+				}
+			}
+			if (C == '"' || C == '\'')
+			{
+				Out.Type = E::String;
+				return Quoted(Out.Text);
+			}
+			FString Word;
+			if (!this->Word(Word))
+			{
+				return false;
+			}
+			FromWord(Word, Out);
+			return true;
+		}
+	};
+
+	struct FNbtStep
+	{
+		FString Key;
+		int32 Index = 0;
+		bool bIndex = false;
+	};
+
+	bool ParseNbtPath(const FString& Path, TArray<FNbtStep>& Out)
+	{
+		int32 I = 0;
+		while (I < Path.Len())
+		{
+			FNbtStep Step;
+			if (Path[I] == '[')
+			{
+				const int32 Close = Path.Find(TEXT("]"), ESearchCase::CaseSensitive, ESearchDir::FromStart, I);
+				const FString Number = Close == INDEX_NONE ? FString() : Path.Mid(I + 1, Close - I - 1);
+				if (Number.IsEmpty() || !(Number.IsNumeric() || (Number[0] == '-' && Number.Mid(1).IsNumeric())))
+				{
+					return false;
+				}
+				Step.bIndex = true;
+				Step.Index = FCString::Atoi(*Number);
+				I = Close + 1;
+			}
+			else
+			{
+				if (Path[I] == '.')
+				{
+					++I;
+				}
+				const int32 Start = I;
+				while (I < Path.Len() && Path[I] != '.' && Path[I] != '[')
+				{
+					++I;
+				}
+				Step.Key = Path.Mid(Start, I - Start);
+				if (Step.Key.IsEmpty())
+				{
+					return false;
+				}
+			}
+			Out.Add(Step);
+		}
+		return true;
+	}
+
+	FNbt* NbtAt(FNbt& Root, const TArray<FNbtStep>& Steps, bool bCreate)
+	{
+		FNbt* Here = &Root;
+		for (const FNbtStep& Step : Steps)
+		{
+			if (Step.bIndex)
+			{
+				if (Here->Type != FNbt::EType::List && Here->Type < FNbt::EType::ByteArray)
+				{
+					return nullptr;
+				}
+				const int32 At = Step.Index < 0 ? Here->Items.Num() + Step.Index : Step.Index;
+				if (!Here->Items.IsValidIndex(At))
+				{
+					return nullptr;
+				}
+				Here = &Here->Items[At];
+			}
+			else
+			{
+				if (Here->Type != FNbt::EType::Compound)
+				{
+					return nullptr;
+				}
+				int32 At = Here->Find(Step.Key);
+				if (At == INDEX_NONE)
+				{
+					if (!bCreate)
+					{
+						return nullptr;
+					}
+					Here->Keys.Add(Step.Key);
+					Here->Items.Add(FNbt());
+					At = Here->Items.Num() - 1;
+				}
+				Here = &Here->Items[At];
+			}
+		}
+		return Here;
+	}
+
+	void MergeNbt(FNbt& Into, const FNbt& From)
+	{
+		for (int32 I = 0; I < From.Keys.Num(); ++I)
+		{
+			const int32 At = Into.Find(From.Keys[I]);
+			if (At != INDEX_NONE && Into.Items[At].Type == FNbt::EType::Compound && From.Items[I].Type == FNbt::EType::Compound)
+			{
+				MergeNbt(Into.Items[At], From.Items[I]);
+			}
+			else if (At != INDEX_NONE)
+			{
+				Into.Items[At] = From.Items[I];
+			}
+			else
+			{
+				Into.Keys.Add(From.Keys[I]);
+				Into.Items.Add(From.Items[I]);
+			}
+		}
+	}
+
+	TMap<FString, FNbt>& DataStorage()
+	{
+		static TMap<FString, FNbt> All;
+		return All;
+	}
+
+	// Storage lives in <world>/data/command_storage.snbt: one compound, a child per storage id. It is read when the world's folder first
+	// meets a /data command, and written after each command that could change it.
+	FString& StorageFolder()
+	{
+		static FString Folder;
+		return Folder;
+	}
+
+	FString StoragePath(const FString& Folder)
+	{
+		return Folder / TEXT("data") / TEXT("command_storage.snbt");
+	}
+
+	void LoadStorage(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder == StorageFolder())
+		{
+			return;
+		}
+		StorageFolder() = Folder;
+		DataStorage().Reset();
+		FString Text;
+		if (Folder.IsEmpty() || !FFileHelper::LoadFileToString(Text, *StoragePath(Folder)))
+		{
+			return;
+		}
+		FNbtParser Parser(Text);
+		FNbt Root;
+		if (Parser.Value(Root) && Root.Type == FNbt::EType::Compound)
+		{
+			for (int32 I = 0; I < Root.Keys.Num(); ++I)
+			{
+				DataStorage().Add(Root.Keys[I], Root.Items[I]);
+			}
+		}
+	}
+
+	void SaveStorage(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder.IsEmpty())
+		{
+			return;
+		}
+		FNbt Root;
+		for (const TPair<FString, FNbt>& Pair : DataStorage())
+		{
+			Root.Keys.Add(Pair.Key);
+			Root.Items.Add(Pair.Value);
+		}
+		FFileHelper::SaveStringToFile(PrintNbt(Root), *StoragePath(Folder));
+	}
+
+	FReplies RunData(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		if (Verb != TEXT("get") && Verb != TEXT("merge") && Verb != TEXT("modify") && Verb != TEXT("remove"))
+		{
+			return BadArgument(Command);
+		}
+		const FString& Kind = Words[2];
+		if (Kind != TEXT("storage") && Kind != TEXT("entity"))
+		{
+			return Kind == TEXT("block") ? BadArgument(Command) : BadArgument(Command);
+		}
+		const auto Qualified = [](const FString& Id) { return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id; };
+		const auto Tail = [&](int32 From)
+		{
+			TArray<FString> Rest;
+			for (int32 I = From; I < Words.Num(); ++I)
+			{
+				Rest.Add(Words[I]);
+			}
+			return FString::Join(Rest, TEXT(" "));
+		};
+		// Where the n-th word begins in the command.
+		const auto WordStart = [&](int32 Index)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Index; ++I)
+			{
+				At += Words[I].Len() + 1;
+			}
+			return At;
+		};
+		const auto ParseValue = [&](int32 FromWord, FNbt& Out, FReplies& Error) -> bool
+		{
+			const FString Source = Tail(FromWord);
+			FNbtParser Parser(Source);
+			if (!Parser.Value(Out))
+			{
+				const int32 At = WordStart(FromWord) + Parser.Pos;
+				Error = { Fail(McLang::Get(TEXT("snbt.parser.expected_unquoted_string"))), Fail(BorderContext(Command.Left(At), At)) };
+				return false;
+			}
+			Parser.Skip();
+			if (Parser.Pos < Source.Len())
+			{
+				Error = { Fail(McLang::Get(TEXT("argument.nbt.trailing"))), Fail(BorderContext(Command, WordStart(FromWord) + Parser.Pos)) };
+				return false;
+			}
+			return true;
+		};
+		const FString Changed = McLang::Get(TEXT("commands.data.merge.failed"));
+
+		// The data the target holds, as a root compound; Id names it in replies.
+		FNbt Entity;
+		FNbt* Root = nullptr;
+		FString Id;
+		int32 After = 4;
+		if (Kind == TEXT("storage"))
+		{
+			if (Words.Num() < 4)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			Id = Qualified(Words[3]);
+			Root = &DataStorage().FindOrAdd(Id);
+		}
+		else
+		{
+			if (Verb != TEXT("get"))
+			{
+				return { Fail(McLang::Get(TEXT("commands.data.entity.invalid"))) };
+			}
+			TArray<FString> Who;
+			FString Error;
+			if (!ResolvePlayers(Words[3], Sender, Target, Who, Error) || Who.Num() == 0)
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			if (Who.Num() > 1)
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+			}
+			Id = Who[0];
+			FVector Feet = FVector::ZeroVector;
+			Target.GetPosition(Id, Feet);
+			FNbt Pos;
+			Pos.Type = FNbt::EType::List;
+			for (double Part : { Feet.X, Feet.Y, Feet.Z })
+			{
+				FNbt One;
+				One.Type = FNbt::EType::Double;
+				One.Real = Part;
+				Pos.Items.Add(One);
+			}
+			Entity.Keys.Add(TEXT("Pos"));
+			Entity.Items.Add(Pos);
+			Root = &Entity;
+		}
+
+		if (Verb == TEXT("get"))
+		{
+			TArray<FNbtStep> Steps;
+			if (Words.Num() <= After)
+			{
+				if (Kind == TEXT("entity"))
+				{
+					return { Ok(McLang::Format(TEXT("commands.data.entity.query"), { Id, PrintNbt(*Root) })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.data.storage.query"), { Id, PrintNbt(*Root) })) };
+			}
+			if (!ParseNbtPath(Words[After], Steps))
+			{
+				return BadArgument(Command);
+			}
+			FNbt* Found = NbtAt(*Root, Steps, false);
+			if (!Found)
+			{
+				return { Fail(McLang::Format(TEXT("arguments.nbtpath.nothing_found"), { Words[After] })) };
+			}
+			if (Words.Num() <= After + 1)
+			{
+				return { Ok(McLang::Format(Kind == TEXT("entity") ? TEXT("commands.data.entity.query") : TEXT("commands.data.storage.query"), { Id, PrintNbt(*Found) })) };
+			}
+			double Scale = 0.0;
+			if (!ParseNumber(Words[After + 1], Scale))
+			{
+				return BadArgument(Command);
+			}
+			if (!Found->IsNumber())
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.get.invalid"), { Words[After] })) };
+			}
+			const FString Amount = FString::FromInt(FMath::FloorToInt32(Found->AsDouble() * Scale));
+			return { Ok(McLang::Format(Kind == TEXT("entity") ? TEXT("commands.data.entity.get") : TEXT("commands.data.storage.get"), { Words[After], Id, FString::Printf(TEXT("%.2f"), Scale), Amount })) };
+		}
+		const FString Modified = McLang::Format(TEXT("commands.data.storage.modified"), { Id });
+		if (Verb == TEXT("merge"))
+		{
+			FNbt Value;
+			FReplies Error;
+			if (Words.Num() <= After)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			if (!ParseValue(After, Value, Error))
+			{
+				return Error;
+			}
+			if (Value.Type != FNbt::EType::Compound)
+			{
+				return { Fail(McLang::Get(TEXT("argument.nbt.expected.compound"))) };
+			}
+			FNbt Merged = *Root;
+			MergeNbt(Merged, Value);
+			if (Merged == *Root)
+			{
+				return { Fail(Changed) };
+			}
+			*Root = Merged;
+			return { Ok(Modified) };
+		}
+		if (Words.Num() <= After)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FNbtStep> Steps;
+		if (!ParseNbtPath(Words[After], Steps))
+		{
+			return BadArgument(Command);
+		}
+		if (Verb == TEXT("remove"))
+		{
+			if (Steps.Num() == 0 || Words.Num() != After + 1)
+			{
+				return BadArgument(Command);
+			}
+			const FNbtStep Last = Steps.Last();
+			Steps.Pop();
+			FNbt* Parent = NbtAt(*Root, Steps, false);
+			if (!Parent)
+			{
+				return { Fail(Changed) };
+			}
+			if (Last.bIndex)
+			{
+				const int32 At = Last.Index < 0 ? Parent->Items.Num() + Last.Index : Last.Index;
+				if (Parent->Type == FNbt::EType::Compound || !Parent->Items.IsValidIndex(At))
+				{
+					return { Fail(Changed) };
+				}
+				Parent->Items.RemoveAt(At);
+				return { Ok(Modified) };
+			}
+			const int32 At = Parent->Type == FNbt::EType::Compound ? Parent->Find(Last.Key) : INDEX_NONE;
+			if (At == INDEX_NONE)
+			{
+				return { Fail(Changed) };
+			}
+			Parent->Keys.RemoveAt(At);
+			Parent->Items.RemoveAt(At);
+			return { Ok(Modified) };
+		}
+
+		// modify <path> (set|merge|append|prepend|insert <index>) (value <nbt>|from storage <id> [<path>])
+		if (Words.Num() <= After + 1)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Op = Words[After + 1];
+		int32 Next = After + 2;
+		int32 InsertAt = 0;
+		if (Op == TEXT("insert"))
+		{
+			if (Words.Num() <= Next || !Words[Next].IsNumeric())
+			{
+				return Words.Num() <= Next ? Unknown(Command, Command.Len()) : BadArgument(Command);
+			}
+			InsertAt = FCString::Atoi(*Words[Next]);
+			++Next;
+		}
+		else if (Op != TEXT("set") && Op != TEXT("merge") && Op != TEXT("append") && Op != TEXT("prepend"))
+		{
+			return BadArgument(Command);
+		}
+		if (Words.Num() <= Next)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FNbt Value;
+		if (Words[Next] == TEXT("value"))
+		{
+			FReplies Error;
+			if (Words.Num() <= Next + 1)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			if (!ParseValue(Next + 1, Value, Error))
+			{
+				return Error;
+			}
+		}
+		else if (Words[Next] == TEXT("from") && Words.Num() > Next + 2 && Words[Next + 1] == TEXT("storage"))
+		{
+			FNbt* Source = DataStorage().Find(Qualified(Words[Next + 2]));
+			FNbt* Picked = Source ? Source : nullptr;
+			if (Picked && Words.Num() > Next + 3)
+			{
+				TArray<FNbtStep> From;
+				if (!ParseNbtPath(Words[Next + 3], From))
+				{
+					return BadArgument(Command);
+				}
+				Picked = NbtAt(*Picked, From, false);
+				if (!Picked)
+				{
+					return { Fail(McLang::Format(TEXT("arguments.nbtpath.nothing_found"), { Words[Next + 3] })) };
+				}
+			}
+			if (!Picked)
+			{
+				return { Fail(McLang::Format(TEXT("arguments.nbtpath.nothing_found"), { TEXT("") })) };
+			}
+			Value = *Picked;
+		}
+		else
+		{
+			return BadArgument(Command);
+		}
+
+		if (Steps.Num() == 0)
+		{
+			if (Op != TEXT("set") && Op != TEXT("merge"))
+			{
+				return BadArgument(Command);
+			}
+			if (Value.Type != FNbt::EType::Compound)
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.expected_object"), { PrintNbt(Value) })) };
+			}
+			FNbt New = Op == TEXT("set") ? Value : *Root;
+			if (Op == TEXT("merge"))
+			{
+				MergeNbt(New, Value);
+			}
+			if (New == *Root)
+			{
+				return { Fail(Changed) };
+			}
+			*Root = New;
+			return { Ok(Modified) };
+		}
+		FNbt Work = *Root;
+		FNbt* Place = NbtAt(Work, Steps, Op != TEXT("merge"));
+		if (Op == TEXT("set"))
+		{
+			if (!Place)
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.invalid_index"), { Words[After] })) };
+			}
+			*Place = Value;
+		}
+		else if (Op == TEXT("merge"))
+		{
+			if (!Place || Place->Type != FNbt::EType::Compound)
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.expected_object"), { Place ? PrintNbt(*Place) : FString() })) };
+			}
+			if (Value.Type != FNbt::EType::Compound)
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.expected_object"), { PrintNbt(Value) })) };
+			}
+			MergeNbt(*Place, Value);
+		}
+		else
+		{
+			if (!Place)
+			{
+				return { Fail(McLang::Format(TEXT("arguments.nbtpath.nothing_found"), { Words[After] })) };
+			}
+			if (Place->Type == FNbt::EType::Compound && Place->Keys.Num() == 0 && Place->Items.Num() == 0)
+			{
+				Place->Type = FNbt::EType::List;
+			}
+			if (Place->Type != FNbt::EType::List)
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.expected_list"), { PrintNbt(*Place) })) };
+			}
+			int32 At = Op == TEXT("append") ? Place->Items.Num() : Op == TEXT("prepend") ? 0 : InsertAt;
+			if (At < 0)
+			{
+				At = Place->Items.Num() + At + 1;
+			}
+			if (At < 0 || At > Place->Items.Num())
+			{
+				return { Fail(McLang::Format(TEXT("commands.data.modify.invalid_index"), { FString::FromInt(InsertAt) })) };
+			}
+			Place->Items.Insert(Value, At);
+		}
+		if (Work == *Root)
+		{
+			return { Fail(Changed) };
+		}
+		*Root = Work;
+		return { Ok(Modified) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -3569,6 +4974,24 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunSpreadPlayers(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("team"))
+	{
+		return RunTeam(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("bossbar"))
+	{
+		return RunBossbar(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("data"))
+	{
+		LoadStorage(Target);
+		FReplies Replies = RunData(Command, Words, Sender, Target);
+		if (Words.Num() > 1 && Words[1] != TEXT("get"))
+		{
+			SaveStorage(Target);
+		}
+		return Replies;
+	}
 	if (Name == TEXT("forceload"))
 	{
 		return RunForceLoad(Command, Words, Sender, Target);
@@ -3732,6 +5155,24 @@ TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, con
 		RunFunctionLines(Id, Sender, Target, Replies, 0);
 	}
 	return Replies;
+}
+
+FString McCommands::BossbarLines(const FString& Player)
+{
+	TArray<FString> Keys;
+	Bossbars().GetKeys(Keys);
+	Keys.Sort();
+	TArray<FString> Lines;
+	for (const FString& Key : Keys)
+	{
+		const FBossbar& Bar = Bossbars()[Key];
+		if (Bar.bVisible && Bar.Players.Contains(Player))
+		{
+			const float Fraction = Bar.Max > 0 ? FMath::Clamp(float(Bar.Value) / float(Bar.Max), 0.0f, 1.0f) : 0.0f;
+			Lines.Add(Bar.Name + TEXT("\t") + FString::SanitizeFloat(Fraction) + TEXT("\t") + Bar.Color + TEXT("\t") + Bar.Style);
+		}
+	}
+	return FString::Join(Lines, TEXT("\n"));
 }
 
 FMcWorldBorderState& McCommands::GetWorldBorder()

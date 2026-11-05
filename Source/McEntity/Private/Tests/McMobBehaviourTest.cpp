@@ -8,6 +8,7 @@
 #include "McFireball.h"
 #include "McShulkerBullet.h"
 #include "McMob.h"
+#include "McXpOrb.h"
 #include "McThrown.h"
 #include "Misc/AutomationTest.h"
 
@@ -516,6 +517,78 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
 		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+	}
+	{
+		// End crystals (wiki: power 6 at any damage; dragon9/13.txt: +1 hp per ~10 ticks while one is within 32 blocks; dragon10.txt: 500 points on a later kill).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 100.0, 0.5));
+		Dragon->bNoAI = false;
+		Dragon->Health = 100.0f;
+		FMcMob* Crystal = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(0.5, 85.0, 0.5));
+		for (int32 Tick = 0; Tick < 20; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(*FString::Printf(TEXT("a crystal heals the dragon about 1 hp in 10 ticks (health %.1f)"), Dragon->Health), Dragon->Health >= 101.0f && Dragon->Health <= 103.0f);
+		TestFalse(TEXT("and stays"), Crystal->bRemoved);
+		const float Before = Dragon->Health;
+		Crystal->Damage(0.0f, nullptr);
+		Manager.Tick();
+		TestTrue(TEXT("a crystal goes off at any damage"), Crystal->bRemoved);
+		TestTrue(TEXT("and the dragon it healed loses 10 (or more, if the blast reached it)"), Dragon->Health <= Before - 9.5f);
+	}
+	{
+		// A crystal hurt by a blast vanishes without going off.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		FMcMob* A = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(0.5, 1.0, 0.5));
+		FMcMob* B = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(5.5, 1.0, 0.5));
+		A->Damage(1.0f, nullptr);
+		TestTrue(TEXT("the first goes off"), A->bRemoved);
+		TestTrue(TEXT("the one beside it is gone too"), B->bRemoved);
+		TestTrue(TEXT("the first one's blast dug"), World.GetBlock(FIntVector(0, 0, 0)) != Stone);
+	}
+	{
+		// The dragon dies over 200 ticks; the second kill pays 500 points and leaves the exit portal and no egg, the first 12000 and an egg.
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			for (int32 Y = 58; Y <= 61; ++Y)
+			{
+				World.SetBlock(FIntVector(0, Y, 0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:bedrock")).Get(0));
+			}
+			Manager.bDragonKilledBefore = Pass == 1;
+			FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 100.0, 0.5));
+			Dragon->Damage(1000.0f, nullptr);
+			int32 Points = 0;
+			for (int32 Tick = 0; Tick < 210; ++Tick)
+			{
+				Manager.Tick();
+				if (Tick == 150)
+				{
+					TestFalse(TEXT("still dying at 150 ticks"), Dragon->bRemoved);
+				}
+			}
+			for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+			{
+				if (Entity->GetType() == FMcXpOrb::StaticType())
+				{
+					Points += static_cast<FMcXpOrb&>(*Entity).Value;
+				}
+			}
+			TestTrue(TEXT("dead after 200 ticks"), Dragon->bRemoved);
+			TestEqual(TEXT("xp"), Points, Pass == 0 ? 12000 : 500);
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			TestEqual(*FString::Printf(TEXT("exit portal, pass %d"), Pass), Reg.GetBlockOf(World.GetBlock(FIntVector(1, 58, 0))).Name.ToString(), FString(TEXT("minecraft:end_portal")));
+			TestEqual(TEXT("egg on the first kill only"), Reg.GetBlockOf(World.GetBlock(FIntVector(0, 62, 0))).Name == TEXT("minecraft:dragon_egg"), Pass == 0);
+		}
+		TestEqual(TEXT("ten crystals on the pillars"), FMcMob::GetPillarCrystalPositions().Num(), 10);
 	}
 	{
 		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.

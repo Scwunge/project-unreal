@@ -183,6 +183,37 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// A turtle is slow on land.
 		Add(TEXT("minecraft:turtle"), 1.2f, 0.4f, 30.f, 0.1f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:frog"), 0.5f, 0.5f, 10.f, 0.15f, 0.f, 0.f, true, false);
+		// The mobs the first audit missed. Health, speed, attack and follow range are the reference game's attributes (mobattrs1.txt: `attribute ... get` on a summoned mob,
+		// 2026-11-05); the box is minecraft.wiki's hitbox size (read 2026-11-05). Behaviour beyond walking, flying or swimming about is not built (see PLAN.md, missing mobs).
+		Add(TEXT("minecraft:mooshroom"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:ocelot"), 0.6f, 0.7f, 10.f, 0.3f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:armadillo"), 0.7f, 0.65f, 12.f, 0.14f, 0.f, 0.f, true, false);
+		// Polar bears and pandas fight back only when hurt (attack 6).
+		Add(TEXT("minecraft:polar_bear"), 1.4f, 1.4f, 30.f, 0.25f, 6.f, 20.f, false, false).bNeutral = true;
+		Add(TEXT("minecraft:panda"), 1.3f, 1.25f, 20.f, 0.15f, 6.f, 16.f, false, false).bNeutral = true;
+		// A parrot flies (flying speed 0.4, walking 0.2) and an allay flies (0.1); the attribute list gives the allay an attack of 2 it never uses.
+		Add(TEXT("minecraft:parrot"), 0.5f, 0.9f, 6.f, 0.4f, 0.f, 0.f, true, false).bFlies = true;
+		Add(TEXT("minecraft:allay"), 0.35f, 0.6f, 20.f, 0.1f, 0.f, 0.f, false, false).bFlies = true;
+		Add(TEXT("minecraft:happy_ghast"), 4.f, 4.f, 20.f, 0.05f, 0.f, 0.f, false, false).bFlies = true;
+		// The water animals: swimming about is not built yet (they stand where they are put).
+		Add(TEXT("minecraft:squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:glow_squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:cod"), 0.5f, 0.3f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:salmon"), 0.7f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tropical_fish"), 0.5f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:pufferfish"), 0.7f, 0.7f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tadpole"), 0.4f, 0.3f, 6.f, 1.0f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:axolotl"), 0.75f, 0.42f, 14.f, 1.0f, 2.f, 16.f, false, false);
+		// The snow golem (4 health; the reference summoned one read 3 after a tick: it melts) throws snowballs, which is not built.
+		Add(TEXT("minecraft:snow_golem"), 0.7f, 1.9f, 4.f, 0.2f, 0.f, 0.f, false, false);
+		// The zoglin, the nether's undead hoglin: 40 health, attack 6, knockback resistance 0.6.
+		Add(TEXT("minecraft:zoglin"), 1.3965f, 1.4f, 40.f, 0.3f, 6.f, 16.f, false, false);
+		Add(TEXT("minecraft:breeze"), 0.6f, 1.77f, 30.f, 0.63f, 3.f, 24.f, false, false);
+		Add(TEXT("minecraft:camel_husk"), 1.7f, 2.375f, 32.f, 0.09f, 0.f, 0.f, false, false);
+		// The parched shoots, as the skeletons do; whether it burns in daylight is not measured.
+		Add(TEXT("minecraft:parched"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, false).bShoots = true;
+		Add(TEXT("minecraft:sulfur_cube"), 0.98f, 0.98f, 4.f, 0.3f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:zombie_nautilus"), 0.875f, 0.95f, 15.f, 1.1f, 3.f, 16.f, false, false);
 		// A bee stings (2 on Normal) whoever hurt it, and flies.
 		FMcMobType& Bee = Add(TEXT("minecraft:bee"), 0.7f, 0.6f, 10.f, 0.3f, 2.f, 16.f, false, false);
 		Bee.bNeutral = true;

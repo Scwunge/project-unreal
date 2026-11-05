@@ -83,50 +83,54 @@ bool FMcClickKillTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the click has somewhere to go after the server hooks came first"), static_cast<bool>(Pawn->AttackHandler));
 	TestTrue(TEXT("and so has a block edit"), static_cast<bool>(Pawn->SetBlockHandler));
 
-	Pawn->Data->bCreative = false;
-	Pawn->ServerTeleport(FVector(2.5, 1.0, 2.5), 0.0f);
-	FMcEntityHost& Host = *Actor->GetEntityHost();
-	FMcMob* Cow = Host.SpawnMob(TEXT("minecraft:cow"), FVector(2.5, 1.0, 4.0));
-	if (!TestNotNull(TEXT("a cow"), Cow))
+	// Survival first, then creative (a creative player's click kills and drops too), both bare-handed.
+	for (const bool bCreative : { false, true })
 	{
-		Finish();
-		return false;
-	}
-	const int32 CowId = Cow->Id;
-	// The player follows the cow as one does: stands 1.5 blocks off it and aims at its middle for every swing (it is knocked back and runs).
-	// The pawn is not ticked here, so each swing is a tenth charged (damage 0.2 to 0.3 a bare-hand swing): many swings.
-	int32 Swings = 0;
-	for (; Swings < 400; ++Swings)
-	{
-		for (int32 Tick = 0; Tick < 12; ++Tick)
+		Pawn->Data->bCreative = bCreative;
+		Pawn->ServerTeleport(FVector(2.5, 1.0, 2.5), 0.0f);
+		FMcEntityHost& Host = *Actor->GetEntityHost();
+		FMcMob* Cow = Host.SpawnMob(TEXT("minecraft:cow"), FVector(2.5, 1.0, 4.0));
+		if (!TestNotNull(TEXT("a cow"), Cow))
 		{
-			Host.GetManager().Tick();
+			Finish();
+			return false;
 		}
-		FVector CowAt = FVector::ZeroVector;
-		bool bAlive = false;
+		const int32 CowId = Cow->Id;
+		// The player follows the cow as one does: stands 1.5 blocks off it and aims at its middle for every swing (it is knocked back and runs).
+		// The pawn is not ticked here, so each swing is a tenth charged (damage 0.2 to 0.3 a bare-hand swing): many swings.
+		int32 Swings = 0;
+		for (; Swings < 400; ++Swings)
+		{
+			for (int32 Tick = 0; Tick < 12; ++Tick)
+			{
+				Host.GetManager().Tick();
+			}
+			FVector CowAt = FVector::ZeroVector;
+			bool bAlive = false;
+			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
+			{
+				if (Entity->Id == CowId && !Entity->bRemoved)
+				{
+					bAlive = true;
+					CowAt = Entity->Body.Position;
+				}
+			}
+			if (!bAlive)
+			{
+				break;
+			}
+			Pawn->ServerTeleport(CowAt - FVector(0.0, 0.0, 1.5), 0.0f);
+			const FVector Eye = Pawn->GetFeetPosition() + FVector(0.0, 1.62, 0.0);
+			Pawn->ServerSwing((CowAt + FVector(0.0, 0.7, 0.0) - Eye).GetSafeNormal());
+		}
+		TestTrue(*FString::Printf(TEXT("the cow is dead after %d swings (%s)"), Swings, bCreative ? TEXT("creative") : TEXT("survival")), Swings < 400);
+		int32 Drops = 0;
 		for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
 		{
-			if (Entity->Id == CowId && !Entity->bRemoved)
-			{
-				bAlive = true;
-				CowAt = Entity->Body.Position;
-			}
+			Drops += (!Entity->IsLiving() && !Entity->bRemoved && Entity->Id > CowId) ? 1 : 0;
 		}
-		if (!bAlive)
-		{
-			break;
-		}
-		Pawn->ServerTeleport(CowAt - FVector(0.0, 0.0, 1.5), 0.0f);
-		const FVector Eye = Pawn->GetFeetPosition() + FVector(0.0, 1.62, 0.0);
-		Pawn->ServerSwing((CowAt + FVector(0.0, 0.7, 0.0) - Eye).GetSafeNormal());
+		TestTrue(TEXT("it dropped something on the ground"), Drops > 0);
 	}
-	TestTrue(*FString::Printf(TEXT("the cow is dead after %d swings"), Swings), Swings < 400);
-	int32 Drops = 0;
-	for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
-	{
-		Drops += (!Entity->IsLiving() && !Entity->bRemoved && Entity->Id != CowId) ? 1 : 0;
-	}
-	TestTrue(TEXT("it dropped something on the ground"), Drops > 0);
 	Finish();
 	return true;
 }

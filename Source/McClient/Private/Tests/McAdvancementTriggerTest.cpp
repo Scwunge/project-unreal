@@ -67,6 +67,20 @@ bool FMcAdvancementTriggerTest::RunTest(const FString& Parameters)
 	Used.Item = TEXT("minecraft:compass");
 	AMcGameMode::FireTrigger(*Pawn, Used);
 	TestTrue(TEXT("lodestone used"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/use_lodestone")));
+	for (const TCHAR* Trigger : { TEXT("minecraft:slept_in_bed"), TEXT("minecraft:enchanted_item"), TEXT("minecraft:villager_trade") })
+	{
+		FMcTriggerEvent Plain;
+		Plain.Trigger = Trigger;
+		AMcGameMode::FireTrigger(*Pawn, Plain);
+	}
+	TestTrue(TEXT("slept"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/sleep_in_bed")));
+	TestTrue(TEXT("enchanted"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enchant_item")));
+	TestTrue(TEXT("traded"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/trade")));
+	FMcTriggerEvent Totem;
+	Totem.Trigger = TEXT("minecraft:used_totem");
+	Totem.Item = TEXT("minecraft:totem_of_undying");
+	AMcGameMode::FireTrigger(*Pawn, Totem);
+	TestTrue(TEXT("totem"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/totem_of_undying")));
 	return true;
 }
 

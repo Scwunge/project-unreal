@@ -685,8 +685,17 @@ void UMcPlayerDataComponent::OpenTrading(const FIntVector& Pos, const FString& T
 	const FMcStatusEffect* Hero = McEffects::Find(Stats, TEXT("hero_of_the_village"));
 	Menu->SetTrader(Offers, Reputation, Level, Xp, bLevels, bLevels && Hero ? Hero->Amplifier : -1);
 	// The menu lives as long as the window, and so does this.
-	Menu->OnTrade = [Menu, OnTrade = MoveTemp(OnTrade)](int32 Index, int32 TraderXp)
+	Menu->OnTrade = [Menu, OnTrade = MoveTemp(OnTrade), WeakThis = TWeakObjectPtr<UMcPlayerDataComponent>(this)](int32 Index, int32 TraderXp)
 	{
+		if (UMcPlayerDataComponent* Self = WeakThis.Get())
+		{
+			if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Self->GetOwner()))
+			{
+				FMcTriggerEvent Traded;
+				Traded.Trigger = TEXT("minecraft:villager_trade");
+				Pawn->FireTrigger(Traded);
+			}
+		}
 		TArray<McTrading::FOffer> Current;
 		int32 NewLevel = 1;
 		int32 NewXp = 0;
@@ -788,6 +797,12 @@ bool UMcPlayerDataComponent::ApplyEnchant(int32 Slot)
 		return false;
 	}
 	Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Spent);
+	if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwner()))
+	{
+		FMcTriggerEvent Enchanted;
+		Enchanted.Trigger = TEXT("minecraft:enchanted_item");
+		Pawn->FireTrigger(Enchanted);
+	}
 	// A new seed: the next item gets new offers.
 	EnchantSeed = FMath::Rand() | 1;
 	Window.Enchanting->SetSeed(EnchantSeed);

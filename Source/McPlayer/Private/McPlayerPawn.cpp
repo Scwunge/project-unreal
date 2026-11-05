@@ -1502,6 +1502,10 @@ void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
 		ServerDismount();
 	}
 	bSleeping = true;
+	if (Data)
+	{
+		Data->AddStat(TEXT("custom:sleep_in_bed"));
+	}
 	FMcTriggerEvent Slept;
 	Slept.Trigger = TEXT("minecraft:slept_in_bed");
 	FireTrigger(Slept);

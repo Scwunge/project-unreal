@@ -693,6 +693,7 @@ void UMcPlayerDataComponent::OpenTrading(const FIntVector& Pos, const FString& T
 		{
 			if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Self->GetOwner()))
 			{
+				Self->AddStat(TEXT("custom:traded_with_villager"));
 				FMcTriggerEvent Traded;
 				Traded.Trigger = TEXT("minecraft:villager_trade");
 				Pawn->FireTrigger(Traded);
@@ -801,6 +802,7 @@ bool UMcPlayerDataComponent::ApplyEnchant(int32 Slot)
 	Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Spent);
 	if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwner()))
 	{
+		AddStat(TEXT("custom:enchant_item"));
 		FMcTriggerEvent Enchanted;
 		Enchanted.Trigger = TEXT("minecraft:enchanted_item");
 		Pawn->FireTrigger(Enchanted);

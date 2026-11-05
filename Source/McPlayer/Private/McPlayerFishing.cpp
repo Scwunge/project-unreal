@@ -71,6 +71,7 @@ void AMcPlayerPawn::ServerReel(FMcEntityManager& Entities, FMcFishingBobber& Bob
 		FMcRandom Random(static_cast<uint64>(DropRandom.GetUnsignedInt()) << 32 | DropRandom.GetUnsignedInt());
 		TArray<FMcItemStack> Catch;
 		McLoot::RollFishing(Context, Random, Catch);
+		Data->AddStat(TEXT("custom:fish_caught"));
 		for (const FMcItemStack& Stack : Catch)
 		{
 			// Flung out of the water in an arc that lands at the angler's feet.

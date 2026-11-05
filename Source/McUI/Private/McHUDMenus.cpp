@@ -429,6 +429,19 @@ void AMcHUD::DrawCentredText(const FString& Text, float CentreX, float Y, uint32
 	DrawGuiText(Text, FMath::RoundToFloat(CentreX - TextWidth(Text) / 2.0f), Y, Rgb, true);
 }
 
+// Buttons to press without a hand on the mouse, in turn: -McMenuPress, or the harness's "press" step.
+static TArray<FString> DevPresses;
+static double DevNextPress = 0.0;
+
+void AMcHUD::QueueMenuPresses(FString Spec)
+{
+	Spec.ReplaceInline(TEXT("_"), TEXT(" "));
+	TArray<FString> Labels;
+	Spec.ParseIntoArray(Labels, TEXT(","));
+	DevPresses.Append(Labels);
+	DevNextPress = FPlatformTime::Seconds() + 2.0;
+}
+
 bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled)
 {
 	const bool bOver = bEnabled && GuiMouse.X >= X && GuiMouse.X < X + W && GuiMouse.Y >= Y && GuiMouse.Y < Y + H;
@@ -438,25 +451,21 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 	DrawCentredText(Label, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, bEnabled ? White : Grey);
 	// -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a space), to run
 	// the menus without a hand on the mouse. Also in a packaged game, to test it.
-	static TArray<FString> Presses;
 	static bool bPressesRead = false;
-	static double NextPress = 0.0;
 	if (!bPressesRead)
 	{
 		bPressesRead = true;
 		FString Spec;
 		if (FParse::Value(FCommandLine::Get(), TEXT("-McMenuPress="), Spec, /*bShouldStopOnSeparator=*/false))
 		{
-			Spec.ReplaceInline(TEXT("_"), TEXT(" "));
-			Spec.ParseIntoArray(Presses, TEXT(","));
-			NextPress = FPlatformTime::Seconds() + 2.0;
+			QueueMenuPresses(Spec);
 		}
 	}
-	if (bEnabled && Presses.Num() > 0 && Presses[0] == Label && FPlatformTime::Seconds() >= NextPress)
+	if (bEnabled && DevPresses.Num() > 0 && DevPresses[0] == Label && FPlatformTime::Seconds() >= DevNextPress)
 	{
 		UE_LOG(LogMcUI, Display, TEXT("McMenuPress: %s"), *Label);
-		Presses.RemoveAt(0);
-		NextPress = FPlatformTime::Seconds() + 1.0;
+		DevPresses.RemoveAt(0);
+		DevNextPress = FPlatformTime::Seconds() + 1.0;
 		return true;
 	}
 	if (bOver && bMenuClick)

@@ -1,6 +1,8 @@
 #include "McClient.h"
 #include "McJavaImport.h"
 #include "McLaunch.h"
+#include "McPerf.h"
+#include "UObject/UObjectGlobals.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Modules/ModuleManager.h"
@@ -12,6 +14,11 @@ class FMcClientModule : public FDefaultGameModuleImpl
 public:
 	virtual void StartupModule() override
 	{
+		if (McPerf::IsOn())
+		{
+			FCoreUObjectDelegates::GetPreGarbageCollectDelegate().AddStatic(&McPerf::GcBegin);
+			FCoreUObjectDelegates::GetPostGarbageCollect().AddStatic(&McPerf::GcEnd);
+		}
 		// A dedicated server listens on server.properties' server-port unless the command line gives one (-Port=). The
 		// engine reads the port from the command line when it first makes a URL, after the game module has started.
 		FString Port;

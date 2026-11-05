@@ -64,8 +64,6 @@ private:
 	bool bStreamConnected = false;
 	bool bViewSetUp = false;
 	bool bMenuShotStarted = false;
-	// Development: the -McInput script being played (null otherwise).
-	TSharedPtr<FMcDevInput> DevInput;
 	bool bEnvironmentSpawned = false;
 	FString WantedDimension;
 	float ViewSyncTimer = 0.0f;

@@ -37,6 +37,9 @@ public:
 	virtual ~AMcHUD() override;
 	virtual void DrawHUD() override;
 
+	// Queues menu buttons to be pressed by name, comma separated with '_' for a space, a second apart. For a script.
+	static void QueueMenuPresses(FString Spec);
+
 	// Minecraft's automatic GUI scale: the largest whole number that keeps the screen at least 320 x 240
 	// GUI pixels.
 	static int32 GetGuiScale(int32 Width, int32 Height);

@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "McBundle.h"
 #include "McHUD.h"
+#include "McPerf.h"
 #include "McItemDefinition.h"
 #include "McTextComponent.h"
 #include "McFontRaster.h"
@@ -2501,6 +2502,7 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 
 void AMcHUD::DrawHUD()
 {
+	MC_PERF_SCOPE(Hud);
 	Super::DrawHUD();
 	// Chat is the one world menu that leaves the world sharp.
 	UpdateMenuBlur(IsWorldMenu() && ActiveMenu != EMenu::Chat);

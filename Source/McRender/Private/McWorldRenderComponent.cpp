@@ -7,6 +7,7 @@
 #include "McBlockTags.h"
 #include "McFluidMesher.h"
 #include "McLightEngine.h"
+#include "McPerf.h"
 #include "McRender.h"
 #include "McSkyComponent.h"
 #include "Camera/PlayerCameraManager.h"
@@ -219,7 +220,10 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 	// Texture animations run on game time, 20 ticks a second. -McAnimTick=<n> holds them at tick n (for comparing a frame with the game's).
 	static const bool bAnimTickGiven = FParse::Value(FCommandLine::Get(), TEXT("-McAnimTick="), AnimTickOverride);
-	FMcBlockTextures::Get().Tick(bAnimTickGiven ? AnimTickOverride : GetWorld()->GetTimeSeconds() * 20.0);
+	{
+		MC_PERF_SCOPE(TexAnim);
+		FMcBlockTextures::Get().Tick(bAnimTickGiven ? AnimTickOverride : GetWorld()->GetTimeSeconds() * 20.0);
+	}
 
 	if (MaterialGeneration != McRenderMode::GetGeneration())
 	{
@@ -284,9 +288,31 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		}
 	}
 
-	LaunchMeshTasks();
-	UploadResults();
-	ResortTranslucent();
+	{
+		MC_PERF_SCOPE(MeshLaunch);
+		LaunchMeshTasks();
+	}
+	{
+		MC_PERF_SCOPE(MeshUpload);
+		UploadResults();
+	}
+	{
+		MC_PERF_SCOPE(Resort);
+		ResortTranslucent();
+	}
+	if (McPerf::IsOn())
+	{
+		int32 Dirty = 0;
+		for (const TPair<FIntPoint, FChunkState>& Chunk : Chunks)
+		{
+			Dirty += Chunk.Value.bDirty;
+		}
+		McPerf::SetCounter(EMcPerfCounter::Chunks, Chunks.Num());
+		McPerf::SetCounter(EMcPerfCounter::Dirty, Dirty);
+		McPerf::SetCounter(EMcPerfCounter::InFlight, InFlight);
+		McPerf::SetCounter(EMcPerfCounter::Meshes, Meshes.Num());
+		McPerf::SetCounter(EMcPerfCounter::WaterMeshes, WaterMeshes.Num());
+	}
 }
 
 FVector UMcWorldRenderComponent::GetViewLocation() const
@@ -543,6 +569,8 @@ void UMcWorldRenderComponent::Upload(FChunkResult& Result)
 				Kept.Sections.Add({ MeshSection, Ordered });
 			}
 			const FMcMeshBuffers& Buffers = Pass == static_cast<int32>(EMcRenderPass::Translucent) ? Ordered : Built;
+			UploadedTriangles += Buffers.Triangles.Num() / 3;
+			McPerf::SetCounter(EMcPerfCounter::MeshTris, UploadedTriangles / 1000);
 			Mesh->CreateMeshSection(MeshSection, Buffers.Positions, Buffers.Triangles, Buffers.Normals, Buffers.UV0, Buffers.UV1, Buffers.UV2, NoUVs, Buffers.Colors, NoTangents, false);
 			Mesh->SetMaterial(MeshSection, PassMaterials.IsValidIndex(Pass) ? PassMaterials[Pass].Get() : nullptr);
 		}

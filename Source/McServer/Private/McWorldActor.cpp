@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "McPerf.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
 #include "McJavaImport.h"
@@ -1221,6 +1222,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	}
 	if (BlockWorld && Generator)
 	{
+		MC_PERF_SCOPE(Stream);
 		StreamChunks();
 	}
 	if (BlockWorld && !ShulkerLids)
@@ -1250,11 +1252,14 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		TickRemainder = FMath::Min(TickRemainder + DeltaSeconds, 0.25);
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
-			Simulation->Tick();
-			MovePushedEntities();
-			SyncFallingBlocks();
-			FeedPressurePlates();
-			TickLightning();
+			{
+				MC_PERF_SCOPE(Sim);
+				Simulation->Tick();
+				MovePushedEntities();
+				SyncFallingBlocks();
+				FeedPressurePlates();
+				TickLightning();
+			}
 			// Development: -McStrike=x,z strikes the top of that column every three seconds.
 			if (!DevStrike.IsEmpty() && ++DevStrikeTicks % 60 == 0)
 			{
@@ -1294,7 +1299,11 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 			// It rains, for the world's rules (a fishing bobber's bite comes sooner), once the rain is more than a fifth on.
 			Entities->GetManager().bRaining = RainLevel > 0.2f;
 			// Where the time never changes it is always night to the mobs (none burn).
-			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
+			{
+				MC_PERF_SCOPE(Entities);
+				Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
+				McPerf::SetCounter(EMcPerfCounter::Entities, Entities->GetManager().GetEntities().Num());
+			}
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);
 			if (Storage && ++TicksSinceAutosave >= AutosaveIntervalTicks)
 			{

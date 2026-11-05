@@ -1,0 +1,20 @@
+# A new survival world at the default render distance. The world is opened by the run's arguments, so its load is measured too.
+mark:fill
+settle:240
+mark:stand
+wait:40
+mark:walk
+look:30,0
+hold:W+Shift+SpaceBar:60
+mark:settle2
+settle:60
+chat:/gamemode creative
+fly:1
+hold:SpaceBar:4
+mark:fly
+hold:W+LeftControl:90
+mark:settle3
+settle:120
+mark:standend
+wait:20
+end

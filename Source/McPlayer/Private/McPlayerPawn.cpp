@@ -1,4 +1,5 @@
 #include "McPlayerPawn.h"
+#include "McPerf.h"
 #include "McBundle.h"
 #include "McLeash.h"
 #include "McMob.h"
@@ -383,6 +384,13 @@ void AMcPlayerPawn::ServerMove_Implementation(FVector FeetPos, float NewYaw, flo
 void AMcPlayerPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	MC_PERF_SCOPE(Pawn);
+	if (McPerf::IsOn() && IsLocallyControlled())
+	{
+		McPerf::SetCounter(EMcPerfCounter::X, FMath::FloorToInt64(Body.Position.X));
+		McPerf::SetCounter(EMcPerfCounter::Y, FMath::FloorToInt64(Body.Position.Y));
+		McPerf::SetCounter(EMcPerfCounter::Z, FMath::FloorToInt64(Body.Position.Z));
+	}
 
 #if MC_WITH_RENDER
 	if (UMcPlayerModelComponent* Figure = Model.Get())
@@ -2229,6 +2237,7 @@ void AMcPlayerPawn::ServerDie()
 		return;
 	}
 	bServerDead = true;
+	McPerf::Event(FString::Printf(TEXT("DIED at %s, last damage kind %d, air %d, on ground %d"), *Body.Position.ToString(), static_cast<int32>(Data->Stats.LastHurtKind), Data->Stats.Air, Body.bOnGround ? 1 : 0));
 	UE_LOG(LogMcPlayer, Display, TEXT("Died at %s, last damage kind %d, air %d, on ground %d"), *Body.Position.ToString(), static_cast<int32>(Data->Stats.LastHurtKind), Data->Stats.Air, Body.bOnGround ? 1 : 0);
 	if (BlockWorld)
 	{

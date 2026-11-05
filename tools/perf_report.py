@@ -18,7 +18,11 @@ lines = open(log, encoding="utf-8", errors="replace").read().splitlines()
 
 
 def kv(line):
-    return dict(re.findall(r"(\w+)=([^\s]+)", line))
+    # "ents" is both a count and, later in the line, a scope's time.
+    out = {}
+    for a, b in re.findall(r"(\w+)=([^\s]+)", line):
+        out["ents_ms" if a == "ents" and a in out else a] = b
+    return out
 
 
 print("--- phases")
@@ -30,7 +34,7 @@ for l in lines:
 
 print("--- mean per-frame ms by phase")
 sec = [kv(l) for l in lines if l.startswith("S ")]
-fields = ["gt", "rt", "rhi", "gpu", "stream", "sim", "ents", "launch", "upload", "resort", "texanim", "hud", "pawn", "entrender", "sky"]
+fields = ["gt", "rt", "rhi", "gpu", "stream", "sadd", "sdeco", "sunload", "sim", "ents_ms", "launch", "upload", "resort", "texanim", "hud", "pawn", "entrender", "sky"]
 print(f"{'phase':<14}" + "".join(f"{f[:7]:>8}" for f in fields))
 phases = []
 for s in sec:

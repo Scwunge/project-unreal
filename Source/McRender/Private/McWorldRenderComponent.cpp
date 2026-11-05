@@ -306,7 +306,8 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		int32 Dirty = 0;
 		for (const TPair<FIntPoint, FChunkState>& Chunk : Chunks)
 		{
-			Dirty += Chunk.Value.bDirty;
+			// Chunks at the edge wait on neighbours that won't come until the player moves: nothing to wait for.
+			Dirty += Chunk.Value.bDirty && HasAllNeighbours(Chunk.Key);
 		}
 		McPerf::SetCounter(EMcPerfCounter::Chunks, Chunks.Num());
 		McPerf::SetCounter(EMcPerfCounter::Dirty, Dirty);

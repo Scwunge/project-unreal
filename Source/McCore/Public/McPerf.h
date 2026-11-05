@@ -15,7 +15,10 @@
 
 enum class EMcPerfScope : uint8
 {
-	Stream,      // choosing, generating and dropping chunks on the game thread
+	Stream,      // choosing, generating and dropping chunks on the game thread, all of it; the next three are parts of it
+	StreamAdd,   // taking finished chunks in
+	StreamDecorate, // features and structures
+	StreamUnload,// saving and dropping far chunks
 	Sim,         // block ticks and the rest of a world tick except entities
 	Entities,    // mobs and items
 	MeshLaunch,  // choosing chunks to mesh and starting their tasks

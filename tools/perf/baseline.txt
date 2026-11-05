@@ -1,6 +1,6 @@
 # A new survival world at the default render distance. The world is opened by the run's arguments, so its load is measured too.
 mark:fill
-settle:240
+settle:120
 mark:stand
 wait:40
 mark:walk

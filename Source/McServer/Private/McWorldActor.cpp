@@ -1398,8 +1398,15 @@ void AMcWorldActor::StreamChunks()
 	}
 	Missing.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
 
-	bool bProgress = AddGeneratedChunks();
-	bProgress |= DecorateChunks();
+	bool bProgress = false;
+	{
+		MC_PERF_SCOPE(StreamAdd);
+		bProgress = AddGeneratedChunks();
+	}
+	{
+		MC_PERF_SCOPE(StreamDecorate);
+		bProgress |= DecorateChunks();
+	}
 
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
@@ -1436,6 +1443,7 @@ void AMcWorldActor::StreamChunks()
 	bool bUnloaded = false;
 	if (bAnyone)
 	{
+		MC_PERF_SCOPE(StreamUnload);
 		TArray<FIntPoint> Far;
 		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
 		{
@@ -1554,7 +1562,12 @@ bool AMcWorldActor::DecorateChunks()
 				Region.SetReadOnly(Index);
 			}
 		}
+		const double DecorateBegan = FPlatformTime::Seconds();
 		Features->Decorate(Region, static_cast<uint64>(Seed));
+		if (McPerf::IsOn() && FPlatformTime::Seconds() - DecorateBegan > 0.05)
+		{
+			McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Entry.Key.X, Entry.Key.Y, (FPlatformTime::Seconds() - DecorateBegan) * 1000.0));
+		}
 		Decorated.Add(Entry.Key);
 		bChanged = true;
 	}

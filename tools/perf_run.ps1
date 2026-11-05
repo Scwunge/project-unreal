@@ -46,7 +46,7 @@ while (-not $P.HasExited -and (Get-Date) -lt $Limit) {
         $P.Refresh()
         $Ws = [int]($P.WorkingSet64 / 1MB)
         if ($Ws -gt $Peak) { $Peak = $Ws }
-        "{0:N0},{1},{2},{3}" -f ((Get-Date) - $Began).TotalSeconds, (Snapshot), $Ws, [int]($P.PrivateMemorySize64 / 1MB) -replace '(\d),(\d{3}),', '$1$2,' | Add-Content "$Dir\samples.csv"
+        "{0:0},{1},{2},{3}" -f ((Get-Date) - $Began).TotalSeconds, (Snapshot), $Ws, [int]($P.PrivateMemorySize64 / 1MB) | Add-Content "$Dir\samples.csv"
     } catch { }
 }
 if ($P.HasExited) {

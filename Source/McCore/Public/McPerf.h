@@ -39,6 +39,10 @@ enum class EMcPerfCounter : uint8
 	MeshTris,    // triangles in the meshes uploaded so far (thousands), a running total of what is on the card
 	Entities,    // entities in the world
 	X, Y, Z,     // the local player, in blocks
+	LiveKVerts,  // vertices (thousands) in the chunk meshes now, each kept in memory by the mesh component as well as on the card
+	LiveKTris,   // triangles (thousands) in the chunk meshes now
+	KeptKVerts,  // vertices (thousands) kept again for re-sorting glass and ice
+	UObjects,    // live UObjects, which a leak of actors or components would show in
 	Count
 };
 

@@ -21,6 +21,7 @@
 #include "ProceduralMeshComponent.h"
 #include "Tasks/Task.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UObject/UObjectArray.h"
 
 static TAutoConsoleVariable<bool> CVarMcFlipWinding(
 	TEXT("mc.Render.FlipWinding"),
@@ -312,6 +313,41 @@ void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		McPerf::SetCounter(EMcPerfCounter::InFlight, InFlight);
 		McPerf::SetCounter(EMcPerfCounter::Meshes, Meshes.Num());
 		McPerf::SetCounter(EMcPerfCounter::WaterMeshes, WaterMeshes.Num());
+		// Once a second, what the meshes hold now.
+		static double NextCount = 0.0;
+		if (FPlatformTime::Seconds() >= NextCount)
+		{
+			NextCount = FPlatformTime::Seconds() + 1.0;
+			int64 Verts = 0, Indices = 0, Kept = 0;
+			for (const TMap<FIntPoint, TObjectPtr<UProceduralMeshComponent>>* Map : { &Meshes, &WaterMeshes })
+			{
+				for (const TPair<FIntPoint, TObjectPtr<UProceduralMeshComponent>>& Pair : *Map)
+				{
+					if (UProceduralMeshComponent* Mesh = Pair.Value)
+					{
+						for (int32 Section = 0; Section < Mesh->GetNumSections(); ++Section)
+						{
+							if (const FProcMeshSection* Held = Mesh->GetProcMeshSection(Section))
+							{
+								Verts += Held->ProcVertexBuffer.Num();
+								Indices += Held->ProcIndexBuffer.Num();
+							}
+						}
+					}
+				}
+			}
+			for (const TPair<FIntPoint, FTranslucentChunk>& Entry : TranslucentChunks)
+			{
+				for (const FTranslucentSection& Section : Entry.Value.Sections)
+				{
+					Kept += Section.Buffers.Positions.Num();
+				}
+			}
+			McPerf::SetCounter(EMcPerfCounter::LiveKVerts, Verts / 1000);
+			McPerf::SetCounter(EMcPerfCounter::LiveKTris, Indices / 3000);
+			McPerf::SetCounter(EMcPerfCounter::KeptKVerts, Kept / 1000);
+			McPerf::SetCounter(EMcPerfCounter::UObjects, GUObjectArray.GetObjectArrayNumMinusAvailable());
+		}
 	}
 }
 

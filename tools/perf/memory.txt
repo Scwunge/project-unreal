@@ -1,0 +1,11 @@
+# Does memory level off? A new world, ten minutes standing, ten walking on in one direction, three standing again.
+mark:fill
+settle:240
+mark:stand10
+wait:600
+mark:walk10
+look:30,0
+hold:W+LeftControl+SpaceBar:600
+mark:stand3
+wait:180
+end

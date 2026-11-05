@@ -38,10 +38,10 @@ public class Sym {
 $Help = 'C:\UE_5.8\Engine\Binaries\ThirdParty\DbgHelp\dbghelp.dll'
 if (Test-Path $Help) { [Sym]::LoadLibrary($Help) | Out-Null }
 $H = [IntPtr]1
-[Sym]::SymSetOptions([uint32]0x216) | Out-Null
+[Sym]::SymSetOptions([uint32]0x212) | Out-Null
 [Sym]::SymInitialize($H, (Split-Path $Exe), $false) | Out-Null
 $Base = [uint64]0x140000000
-[Sym]::SymLoadModuleEx($H, [IntPtr]::Zero, $Exe, $null, $Base, 0, [IntPtr]::Zero, 0) | Out-Null
+[Sym]::SymLoadModuleEx($H, [IntPtr]::Zero, $Exe, $null, $Base, 0x0B000000, [IntPtr]::Zero, 0) | Out-Null
 $Module = [IO.Path]::GetFileName($Exe)
 foreach ($Line in Get-Content $Log) {
     if ($Line -notmatch '^X ') { continue }

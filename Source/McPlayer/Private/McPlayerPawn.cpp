@@ -2229,6 +2229,7 @@ void AMcPlayerPawn::ServerDie()
 		return;
 	}
 	bServerDead = true;
+	UE_LOG(LogMcPlayer, Display, TEXT("Died at %s, last damage kind %d, air %d, on ground %d"), *Body.Position.ToString(), static_cast<int32>(Data->Stats.LastHurtKind), Data->Stats.Air, Body.bOnGround ? 1 : 0);
 	if (BlockWorld)
 	{
 		Data->Stats.bHasDeath = true;

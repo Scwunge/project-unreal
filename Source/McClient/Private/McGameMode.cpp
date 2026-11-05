@@ -23,6 +23,7 @@
 #include "McWorldSave.h"
 #include "McLaunch.h"
 #include "McCommands.h"
+#include "McAudioSubsystem.h"
 #include "McItemRegistry.h"
 #include "McPot.h"
 #include "McLang.h"
@@ -31,6 +32,9 @@
 #include "McSimulation.h"
 #include "McConduitHunt.h"
 #include "McEntityManager.h"
+#include "McBannerEntity.h"
+#include "McBanner.h"
+#include "McCache.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -40,6 +44,9 @@
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
+#include "McTextComponent.h"
+#include "Serialization/JsonWriter.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -70,7 +77,11 @@ namespace
 	int32 AwardAdvancement(AMcPlayerPawn* Pawn, const FString& Id, bool bGrant, FString& OutTitle)
 	{
 		const FString Full = McCache::Namespaced(Id);
-		const TSharedPtr<FJsonObject> Def = McCache::LoadJsonObject(McCache::Data(FString::Printf(TEXT("advancement/%s.json"), *McCache::PathOf(Full))));
+		const TSharedPtr<FJsonObject> Def = [&Full]() -> TSharedPtr<FJsonObject>
+		{
+			const FString Path = McData::PathOf(Full, TEXT("advancement"), TEXT(".json"));
+			return Path.IsEmpty() ? nullptr : McCache::LoadJsonObject(Path);
+		}();
 		if (!Pawn || !Pawn->Data || !Def.IsValid())
 		{
 			return -1;
@@ -85,9 +96,25 @@ namespace
 		{
 			const TSharedPtr<FJsonObject>* TitleObject = nullptr;
 			FString Key;
-			if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
+			FString Plain;
+			if ((*Display)->TryGetStringField(TEXT("title"), Plain))
+			{
+				Title = Plain;
+			}
+			else if ((*Display)->TryGetObjectField(TEXT("title"), TitleObject) && (*TitleObject)->TryGetStringField(TEXT("translate"), Key))
 			{
 				Title = McLang::Get(Key);
+			}
+			else if (TitleObject)
+			{
+				// Any other text component: its words.
+				FString Json;
+				FJsonSerializer::Serialize(TitleObject->ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+				TArray<McText::FSpan> Spans;
+				if (McText::Parse(Json, Spans))
+				{
+					Title = McText::ToPlain(Spans);
+				}
 			}
 			const TSharedPtr<FJsonObject>* IconObject = nullptr;
 			FString IconId;
@@ -136,17 +163,17 @@ namespace
 	const TArray<FInventoryTrigger>& InventoryTriggers()
 	{
 		static TArray<FInventoryTrigger> Triggers;
-		static bool bLoaded = false;
-		if (bLoaded)
+		static uint32 LoadedGeneration = 0;
+		// Read again after /reload or a change of data packs.
+		if (LoadedGeneration == McData::GetGeneration())
 		{
 			return Triggers;
 		}
-		bLoaded = true;
-		const FString Root = McCache::Data(TEXT("advancement"));
-		TArray<FString> Files;
-		IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.json"), true, false);
-		for (const FString& File : Files)
+		LoadedGeneration = McData::GetGeneration();
+		Triggers.Reset();
+		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
+			const FString& File = Listed.Paths.Last();
 			TSharedPtr<FJsonObject> Def;
 			FString Text;
 			if (!FFileHelper::LoadFileToString(Text, *File) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Def) || !Def.IsValid())
@@ -226,9 +253,7 @@ namespace
 				continue;
 			}
 			FInventoryTrigger Trigger;
-			FString Relative = File;
-			FPaths::MakePathRelativeTo(Relative, *(Root + TEXT("/")));
-			Trigger.Id = TEXT("minecraft:") + FPaths::ChangeExtension(Relative, TEXT(""));
+			Trigger.Id = Listed.Id;
 			const TArray<TSharedPtr<FJsonValue>>* Requirements = nullptr;
 			if (Def->TryGetArrayField(TEXT("requirements"), Requirements))
 			{
@@ -340,6 +365,15 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
+	ReadFunctionTags();
+	GetWorldTimerManager().SetTimer(FunctionTimer, this, &AMcGameMode::TickFunctions, 0.05f, true);
+	ReloadHandle = McData::OnReload().AddWeakLambda(this, [this]()
+	{
+		ReadFunctionTags();
+		RunFunctionTag(TEXT("minecraft:load"));
+	});
+	// The world has players a moment after it starts.
+	GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]() { RunFunctionTag(TEXT("minecraft:load")); }));
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		const FMcServerProperties& Properties = FMcServerProperties::Get();
@@ -372,7 +406,20 @@ void AMcGameMode::StartPlay()
 		Context.DayTime = Here->GetDayTime();
 		Context.bOverworld = Here->Dimension == TEXT("minecraft:overworld");
 		Context.GameTicks = Here->GetGameTime();
+		Context.Dimension = FName(*Here->Dimension);
+		if (Pawn->Data && Pawn->Data->Stats.bHasDeath)
+		{
+			Context.bHasDeath = true;
+			Context.DeathPosition = FVector2D(Pawn->Data->Stats.DeathPos.X + 0.5, Pawn->Data->Stats.DeathPos.Z + 0.5);
+			Context.DeathDimension = Pawn->Data->Stats.DeathDimension;
+		}
 		McItemFrames::SetContext(Context);
+		static bool bShotMapGiven = !FParse::Param(FCommandLine::Get(), TEXT("McMapShot"));
+		if (!bShotMapGiven && Here->GetGameTime() > 40)
+		{
+			bShotMapGiven = true;
+			const_cast<AMcPlayerPawn*>(Pawn)->GiveShotMap();
+		}
 	}), 0.05f, true);
 
 	// Advancements that fire on what a player carries.
@@ -422,9 +469,12 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			bool bFlying = false;
-			Pawn->SetActorLocation(GetStartTransform(It->Get(), bFlying).GetLocation());
+			const FTransform Start = GetStartTransform(It->Get(), bFlying);
+			Pawn->SetActorLocation(Start.GetLocation());
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
+				// (The place alone was set before, so a saved world's player looked along +x whatever way they faced.)
+				McPawn->SetStartLook(Start.Rotator());
 				McPawn->SetGameRules(GetGameRules());
 				McPawn->SetFlying(bFlying);
 				if (!RestoreSurvival(It->Get(), *McPawn))
@@ -784,6 +834,65 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Item.Body.Velocity = FVector::ZeroVector;
 		}
 	}
+	// Banners' patterns: { "at": [x, y, z], "patterns": [{ "pattern": "minecraft:border", "color": "blue" }, ...] }. The banner
+	// block is placed by "blocks"; its flag stands once the chunk is there.
+	struct FSceneBanner
+	{
+		FIntVector Pos;
+		TArray<McBanner::FLayer> Layers;
+	};
+	TSharedRef<TArray<FSceneBanner>> Banners = MakeShared<TArray<FSceneBanner>>();
+	const TArray<TSharedPtr<FJsonValue>>* BannerValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("banners"), BannerValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *BannerValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a banner needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			FSceneBanner& Banner = Banners->Emplace_GetRef();
+			Banner.Pos = ToBlock(*At);
+			const TArray<TSharedPtr<FJsonValue>>* Patterns = nullptr;
+			if (Object->TryGetArrayField(TEXT("patterns"), Patterns))
+			{
+				for (const TSharedPtr<FJsonValue>& Pattern : *Patterns)
+				{
+					const TSharedPtr<FJsonObject> Layer = Pattern->AsObject();
+					FString Id, Colour;
+					if (Layer.IsValid() && Layer->TryGetStringField(TEXT("pattern"), Id) && Layer->TryGetStringField(TEXT("color"), Colour))
+					{
+						Banner.Layers.Add({ McCache::PathOf(Id), Colour });
+					}
+				}
+			}
+		}
+	}
+	if (Host && Banners->Num() > 0)
+	{
+		TSharedRef<FTimerHandle> BannerTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*BannerTimer, FTimerDelegate::CreateWeakLambda(this, [this, Banners, BannerTimer]()
+		{
+			FMcEntityHost* EntityHost = WorldActor ? WorldActor->GetEntityHost() : nullptr;
+			FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+			for (int32 Index = Banners->Num() - 1; EntityHost && Blocks && Index >= 0; --Index)
+			{
+				const FSceneBanner& Banner = (*Banners)[Index];
+				if (Blocks->FindChunk(FIntPoint(Banner.Pos.X >> 4, Banner.Pos.Z >> 4)))
+				{
+					FMcBannerEntity::Stand(EntityHost->GetManager(), Banner.Pos, Banner.Layers);
+					Banners->RemoveAt(Index);
+				}
+			}
+			if (Banners->Num() == 0)
+			{
+				GetWorldTimerManager().ClearTimer(*BannerTimer);
+			}
+		}), 0.5f, true);
+	}
 	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
@@ -999,11 +1108,13 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		int32 KeptSlot = 0;
 		bool bKeep = false;
 		TOptional<FIntVector> Bed;
+		TOptional<FIntVector> Point;
 		if (const AMcPlayerPawn* Dead = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
 			if (Dead->Data)
 			{
 				Bed = Dead->Data->SpawnBed;
+				Point = Dead->Data->SpawnPoint;
 			}
 			bKeep = Dead->Data && Dead->GetGameRules().bKeepInventory;
 			if (bKeep)
@@ -1052,6 +1163,10 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 			{
 				bBedMissing = true;
 			}
+		}
+		if (!Bed.IsSet() && Point.IsSet())
+		{
+			Spawn.SetLocation(McCoords::BlockToUnreal(FVector(Point->X + 0.5, Point->Y, Point->Z + 0.5)));
 		}
 		RestartPlayerAtTransform(Who, Spawn);
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
@@ -1186,6 +1301,7 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
+			Pawn->Data->SetCustomBars(McCommands::BossbarLines(GetPlayerName(It->Get())));
 		}
 	}
 }
@@ -1289,6 +1405,41 @@ bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& 
 	return false;
 }
 
+void AMcGameMode::ApplyTickSpeed()
+{
+	// The world's clock runs at Rate/20 of normal; frozen, as slow as the engine lets it (a few steps of ticks run through it).
+	if (AWorldSettings* Settings = GetWorld() ? GetWorld()->GetWorldSettings() : nullptr)
+	{
+		Settings->SetTimeDilation(bTickFrozen ? 0.0001f : float(TickRate / 20.0));
+	}
+}
+
+void AMcGameMode::SetTickRate(double Rate)
+{
+	TickRate = Rate;
+	ApplyTickSpeed();
+}
+
+void AMcGameMode::SetTickFrozen(bool bFrozen)
+{
+	bTickFrozen = bFrozen;
+	ApplyTickSpeed();
+}
+
+void AMcGameMode::StepTicks(int32 Count)
+{
+	// Unfreezes for Count ticks of game time (real time at the target rate), then freezes again.
+	bTickFrozen = false;
+	ApplyTickSpeed();
+	GetWorldTimerManager().SetTimer(StepTimer, FTimerDelegate::CreateWeakLambda(this, [this]() { SetTickFrozen(true); }), float(Count) / 20.0f, false);
+}
+
+void AMcGameMode::SetDefaultGameMode(const FString& NewMode)
+{
+	// Kept for the session (not written to the world).
+	DefaultGameModeOverride = NewMode;
+}
+
 void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 {
 	if (!Pawn.Data || Pawn.Data->bCreative)
@@ -1297,7 +1448,7 @@ void AMcGameMode::ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const
 		return;
 	}
 	// A dedicated server's gamemode setting is for everyone new, whatever the world was made with.
-	const FString Mode = GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
+	const FString Mode = !DefaultGameModeOverride.IsEmpty() ? DefaultGameModeOverride : GetNetMode() == NM_DedicatedServer ? FMcServerProperties::Get().GetString(TEXT("gamemode"))
 		: WorldActor ? WorldActor->GetLevel().GameMode : FString();
 	if (McLaunch::IsCreativeMode(Mode))
 	{
@@ -1415,16 +1566,29 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 	// Development: -McChat="<line>|<line>" sends these lines as the player's chat from 8 seconds in, half a second apart (a
 	// command script for a shot or sound run, like the reference client's "cmd").
 	FString Lines;
-	if (FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
+	// A line "!respawn" presses Respawn on the death screen.
+	// -McChatFile=<path> reads the lines from a file, one a line, for text a command line can't carry (JSON with quotes).
+	FString ChatFile;
+	const bool bFromFile = FParse::Value(FCommandLine::Get(), TEXT("-McChatFile="), ChatFile) && FFileHelper::LoadFileToString(Lines, *ChatFile);
+	if (bFromFile || FParse::Value(FCommandLine::Get(), TEXT("-McChat="), Lines, /*bShouldStopOnSeparator=*/false))
 	{
 		TArray<FString> Parts;
-		Lines.ParseIntoArray(Parts, TEXT("|"));
+		Lines.ParseIntoArray(Parts, bFromFile ? TEXT("\n") : TEXT("|"));
+		for (FString& Part : Parts)
+		{
+			Part.TrimEndInline();
+		}
 		for (int32 Index = 0; Index < Parts.Num(); ++Index)
 		{
 			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
 				[this, Player = TWeakObjectPtr<APlayerController>(NewPlayer), Line = Parts[Index]](float)
 				{
-					if (Player.IsValid())
+					if (Player.IsValid() && Line == TEXT("!respawn"))
+					{
+						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
+						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid())
 					{
 						HandleChat(Player.Get(), Line);
 					}
@@ -1450,6 +1614,11 @@ namespace
 			return Controller ? Cast<AMcPlayerPawn>(Controller->GetPawn()) : nullptr;
 		}
 
+		virtual FString GetWorldFolder() const override
+		{
+			const AMcWorldActor* Overworld = Mode.FindWorld(TEXT("minecraft:overworld"));
+			return Overworld ? Overworld->GetWorldDir() : FString();
+		}
 		virtual TArray<FString> GetPlayerNames() const override
 		{
 			TArray<FString> Names;
@@ -1481,6 +1650,14 @@ namespace
 			}
 		}
 		virtual void Broadcast(const FString& Line) override { Mode.BroadcastChat(Line); }
+		virtual void SendTitle(const FString& Player, int32 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data)
+			{
+				Pawn->Data->ServerTitle(static_cast<UMcPlayerDataComponent::ETitleKind>(Kind), Text, FadeIn, Stay, FadeOut);
+			}
+		}
 
 		virtual bool IsCreative(const FString& Player) const override
 		{
@@ -1637,6 +1814,110 @@ namespace
 			{
 				World->SetBlock(Pos, State);
 			}
+		}
+		virtual void StopSounds(const FString& Player, const FString& Source, const FString& Sound) override
+		{
+			// This machine's own sounds (a player on another machine hears theirs).
+			if (UGameInstance* Instance = Mode.GetGameInstance())
+			{
+				if (UMcAudioSubsystem* Audio = Instance->GetSubsystem<UMcAudioSubsystem>())
+				{
+					FString Name = Sound;
+					Name.RemoveFromStart(TEXT("minecraft:"));
+					Audio->StopSounds(Source, Name.IsEmpty() ? NAME_None : FName(*Name));
+				}
+			}
+		}
+		virtual double GetTickRate() const override { return Mode.TickRate; }
+		virtual void SetTickRate(double Rate) override { Mode.SetTickRate(Rate); }
+		virtual bool IsTickFrozen() const override { return Mode.bTickFrozen; }
+		virtual void SetTickFrozen(bool bFrozen) override { Mode.SetTickFrozen(bFrozen); }
+		virtual void StepTicks(int32 Count) override { Mode.StepTicks(Count); }
+		virtual double GetAverageTickMs() const override { return Mode.GetWorld() ? Mode.GetWorld()->GetDeltaSeconds() * 1000.0 / FMath::Max(0.0001, double(Mode.GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation())) : 0.0; }
+		virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+			if (!Blocks)
+			{
+				return false;
+			}
+			double Best = TNumericLimits<double>::Max();
+			for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Pair : Blocks->GetChunks())
+			{
+				// A sample every 4 blocks (a biome cell) at the height asked from.
+				for (int32 LX = 0; LX < 16; LX += 4)
+				{
+					for (int32 LZ = 0; LZ < 16; LZ += 4)
+					{
+						const int32 X = Pair.Key.X * 16 + LX + 2;
+						const int32 Z = Pair.Key.Y * 16 + LZ + 2;
+						const double Distance = FMath::Square(X - From.X) + FMath::Square(Z - From.Z);
+						if (Distance < Best && Pair.Value->GetBiome(LX, FMath::FloorToInt32(From.Y), LZ) == Biome)
+						{
+							Best = Distance;
+							OutPos = FIntVector(X, FMath::FloorToInt32(From.Y), Z);
+						}
+					}
+				}
+			}
+			return Best < TNumericLimits<double>::Max();
+		}
+		virtual void SwingArm(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->SwingArm();
+			}
+		}
+		virtual bool GetYaw(const FString& Player, double& OutYaw) const override
+		{
+			const AMcPlayerPawn* Pawn = FindPawn(Player);
+			OutYaw = Pawn ? Pawn->GetLookYaw() : 0.0;
+			return Pawn != nullptr;
+		}
+		virtual void SetYaw(const FString& Player, double Yaw) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerTeleport(Pawn->GetFeetPosition(), float(Yaw));
+			}
+		}
+		virtual bool Hurt(const FString& Player, float Amount, const FString& Type) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (!Pawn || !Pawn->Data || Pawn->Data->bCreative || Pawn->IsServerDead())
+			{
+				return false;
+			}
+			using McSurvival::EDamage;
+			const EDamage Kind = Type == TEXT("fall") ? EDamage::Fall : Type == TEXT("drown") ? EDamage::Drown : Type == TEXT("in_fire") ? EDamage::InFire
+				: Type == TEXT("on_fire") ? EDamage::OnFire : Type == TEXT("lava") ? EDamage::Lava : Type == TEXT("starve") ? EDamage::Starve
+				: Type == TEXT("out_of_world") ? EDamage::Void : Type == TEXT("magic") || Type == TEXT("indirect_magic") ? EDamage::Magic
+				: Type == TEXT("wither") ? EDamage::Wither : Type == TEXT("explosion") || Type == TEXT("player_explosion") ? EDamage::Explosion
+				: Type == TEXT("mob_attack") ? EDamage::Mob : EDamage::Generic;
+			Pawn->ServerHurt(Amount, Kind, nullptr, false);
+			return true;
+		}
+		virtual void SetWorldSpawn(const FIntVector& Pos) override
+		{
+			Mode.WorldSpawnOverride = Pos;
+		}
+		virtual void SetPlayerSpawn(const FString& Player, const FIntVector& Pos) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				if (Pawn->Data)
+				{
+					// A spawn point is one place: it replaces a bed, and a bed slept in later replaces it.
+					Pawn->Data->SpawnPoint = Pos;
+					Pawn->Data->SpawnBed.Reset();
+				}
+			}
+		}
+		virtual void SetDefaultGameMode(const FString& Mode_) override
+		{
+			Mode.SetDefaultGameMode(Mode_);
 		}
 		virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) override
 		{
@@ -1843,6 +2124,53 @@ void AMcGameMode::BroadcastChat(const FString& Text, uint32 Rgb)
 	}
 }
 
+void AMcGameMode::ReadFunctionTags()
+{
+	TickFunctionIds = McCommands::GetFunctionTag(TEXT("minecraft:tick"));
+}
+
+void AMcGameMode::RunFunctionTag(const FString& Tag)
+{
+	// As the console: every command, no name.
+	FMcCommandSender Sender;
+	Sender.PermissionLevel = 4;
+	FGameCommandTarget Target(*this);
+	McCommands::RunFunctions(McCommands::GetFunctionTag(Tag), Sender, Target);
+}
+
+void AMcGameMode::TickFunctions()
+{
+	// The world border is a wall: a player past it is put back on its edge (the damage and warning it also has are not done).
+	const FMcWorldBorderState& Border = McCommands::GetWorldBorder();
+	if (Border.Size < 59999968.0)
+	{
+		const double Half = Border.Size * 0.5;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(It->Get() ? It->Get()->GetPawn() : nullptr);
+			if (!Pawn)
+			{
+				continue;
+			}
+			const FVector Feet = Pawn->GetFeetPosition();
+			const double X = FMath::Clamp(Feet.X, Border.CentreX - Half, Border.CentreX + Half);
+			const double Z = FMath::Clamp(Feet.Z, Border.CentreZ - Half, Border.CentreZ + Half);
+			if (X != Feet.X || Z != Feet.Z)
+			{
+				Pawn->ServerTeleport(FVector(X, Feet.Y, Z), Pawn->GetLookYaw());
+			}
+		}
+	}
+	if (TickFunctionIds.IsEmpty())
+	{
+		return;
+	}
+	FMcCommandSender Sender;
+	Sender.PermissionLevel = 4;
+	FGameCommandTarget Target(*this);
+	McCommands::RunFunctions(TickFunctionIds, Sender, Target);
+}
+
 void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)
 {
 	FMcCommandSender Sender;
@@ -1883,7 +2211,12 @@ FTransform AMcGameMode::GetSpawnTransform() const
 	const bool bWorld = WorldActor && WorldActor->GetBlockWorld();
 	const int32 SurfaceY = bWorld ? WorldActor->GetSurfaceY() : -61;
 	const FIntPoint Column = bWorld ? WorldActor->GetSpawnColumn() : FIntPoint::ZeroValue;
-	const FVector Block(Column.X + 0.5, SurfaceY + 1 + SpawnHeightAboveSurface, Column.Y + 0.5);
+	FVector Block(Column.X + 0.5, SurfaceY + 1 + SpawnHeightAboveSurface, Column.Y + 0.5);
+	if (WorldSpawnOverride.IsSet())
+	{
+		// /setworldspawn: the block's feet position.
+		Block = FVector(WorldSpawnOverride->X + 0.5, WorldSpawnOverride->Y, WorldSpawnOverride->Z + 0.5);
+	}
 	return FTransform(FRotator::ZeroRotator, McCoords::BlockToUnreal(Block));
 }
 

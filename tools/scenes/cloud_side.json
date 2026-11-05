@@ -1,0 +1,25 @@
+{
+ "description": "Just above the cloud layer (192-196), looking a little down at the clouds, for the cloud face shading.",
+ "camera": [
+  48.5,
+  200.0,
+  -40.5,
+  0.0,
+  14.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    48,
+    150,
+    -41
+   ],
+   "to": [
+    48,
+    150,
+    -41
+   ],
+   "state": "minecraft:stone"
+  }
+ ]
+}

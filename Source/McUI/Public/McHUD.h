@@ -55,7 +55,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language, Statistics, Advancements };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -117,10 +117,31 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// The shield's slot picture (its model is special, with no flat texture): the front plate of the entity texture on the
+	// slanted quad the vanilla slot shows (ref run shieldhud).
+	const FIcon& GetShieldIcon(const FMcItemStack& Shield);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
+	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).
+	const FIcon& GetMapIcon(const FMcItemStack& Stack);
+	// The picture of a filled map's data, kept current; null if the map is unknown.
+	UTexture2D* GetMapTexture(const FMcItemStack& Stack);
+	// The filled map in the main hand, held up in front of the view (frame and picture).
+	void DrawHeldMap(int32 Width, int32 Height, const FMcItemStack& Stack, float Pitch, const FVector& PlayerPosition, float PlayerYaw);
+	// A picture of Size (GUI units) square centred on (X, Y), turned clockwise by Degrees.
+	void DrawTurnedSprite(UTexture2D* Texture, float CentreX, float CentreY, float Size, float Degrees);
+	TMap<int32, FIcon> MapIcons;
+	TMap<int32, int32> MapIconRevisions;
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
-	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
+	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
+	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
+	// the definition is read (McItemDef) and each model it names is drawn: a flat item's layers, or a model's elements under its
+	// "gui" display transform.
+	const FIcon& GetStackIcon(const FMcItemStack& Stack);
+	void BuildModelIcon(const FString& ModelId, const TArray<uint32>& Tints, FIcon& Icon);
+	TMap<FString, FIcon> StackIcons;
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);
 	// A mob head's item: its placed model, turned and lifted as the item's template_skull model shows it in a slot.
 	// PotSides: a decorated pot's sides (back, left, right, front), drawn with their sherds' patterns.
@@ -130,6 +151,8 @@ private:
 	// The cache's screen-edge darkening picture as black with its grey as opacity, smoothed.
 	UTexture2D* LoadVignette();
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
+	// The same with the top edge moved right by TopShift and the bottom edge by BottomShift (italic text).
+	void DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift);
 	void DrawIcon(const FIcon& Icon, float X, float Y);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);
 
@@ -160,6 +183,9 @@ private:
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
 	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
+	// One boss bar: title above, the bar (182 wide) with its colour and style, filled to Fraction.
+	void DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style);
+	void DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
@@ -202,10 +228,16 @@ private:
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
 	void DrawPause(int32 Width, int32 Height);
+	// From the pause menu: the Statistics screen (General tab: every statistic of the language's text, by name; Items and Mobs
+	// have no tab content yet) and the Advancements screen (the empty window; no advancement tree is drawn yet).
+	void DrawStatistics(int32 Width, int32 Height);
+	void DrawAdvancements(int32 Width, int32 Height);
+	int32 StatsTab = 0;
+	int32 StatsScroll = 0;
 	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
 	void DrawOptions(int32 Width, int32 Height);
 	// The menus drawn over a world being played (the rest replace the screen).
-	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ActiveMenu == EMenu::Statistics || ActiveMenu == EMenu::Advancements || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
 	void OpenOptions(EMenu Back);
 	// The resource packs screen (from the options): the packs in the packs folder in two lists, available and selected
 	// (the top of the selected list wins), moved between them and up and down by the arrows over a pack's icon.
@@ -236,8 +268,13 @@ private:
 	// box open, up to twenty stay), and the box being typed into (T, or / for a command; Enter sends, Up and Down go
 	// back through what was sent).
 	void DrawChat(int32 Width, int32 Height, bool bOpen);
+	// The closed captions at the bottom right: a line for each sound lately played that has a caption, the newest on top,
+	// fading over three seconds, with an arrow towards a sound off to the side.
+	void DrawSubtitles(int32 Width, int32 Height);
 	// The overlay line over the hotbar (a jukebox's "Now Playing").
 	void DrawOverlay(int32 Width, int32 Height);
+	// The /title text: the title at four times the size above the middle of the screen, the subtitle at twice below it.
+	void DrawTitleText(int32 Width, int32 Height);
 	// The toasts at the top right, over everything.
 	void DrawToasts(int32 Width, int32 Height);
 	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
@@ -246,7 +283,7 @@ private:
 	FString HeldNameText;
 	double HeldNameTime = -100.0;
 	void DrawChatInput(int32 Width, int32 Height);
-	TArray<FString> WrapText(const FString& Text, float MaxWidth) const;
+	TArray<FString> WrapText(const FString& Text, float MaxWidth, bool bKeepSpace = false) const;
 	// The game's 9-sliced widgets: a button (true when clicked this frame) and a text field (Id says which is
 	// focused; a click focuses it, Tab moves on).
 	bool MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled = true);
@@ -259,6 +296,10 @@ private:
 	// A GUI sprite (textures/gui/sprites/...) in the box, scaled the way its .png.mcmeta says: stretched (the default),
 	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
 	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
+	// The tooltip of a bundle held by the hovered slot, with the cursor at (CursorX, CursorY) in GUI pixels.
+	void DrawCartographyPreview(FIntPoint Origin, const class FMcCartographyMenu& Menu);
+	// Selected is the cell picked with the wheel (an index into the shown stacks), or -1.
+	void DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight, int32 Selected = -1);
 	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
 	TMap<FString, FGuiScaling> GuiScalings;
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
@@ -371,7 +412,17 @@ private:
 		int32 Priority = 0;
 	};
 	TMap<int32, FGlyph> Glyphs;   // by code point
-	const FGlyph* FindGlyph(int32 Char) const;
+	// The glyph of Char in a font ("minecraft:uniform", "zz:pix"; empty is the default font, whose table is Glyphs). A font id
+	// of its own is read from font/<id>.json when it is first asked for, and a character it lacks shows as the missing box.
+	const FGlyph* FindGlyph(int32 Char, const FString& Font = FString()) const;
+	struct FFontTable
+	{
+		TMap<int32, FGlyph> Glyphs;
+		TSharedPtr<FMcRasterFonts> Raster;
+		TSet<int32> Asked;
+	};
+	TMap<FString, FFontTable> OtherFonts;
+	void LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& OutGlyphs, TSharedPtr<FMcRasterFonts>& OutRaster, TSet<int32>& OutAsked);
 	UTexture2D* MakeGlyphTexture(const FMcRasterGlyph& Glyph);
 	// The providers that draw their characters when they are first needed, and the characters they were already asked for.
 	TSharedPtr<FMcRasterFonts> RasterFonts;
@@ -384,6 +435,9 @@ private:
 	// Where the mouse was, in GUI pixels, and the slot it is over.
 	FVector2D GuiMouse = FVector2D::ZeroVector;
 	int32 HoverSlot = INDEX_NONE;
+	// The bundle under the cursor and the stack the wheel has picked in it (bundleicon ref run); reset when the cursor leaves.
+	int32 BundleSelectedSlot = INDEX_NONE;
+	int32 BundleSelected = -1;
 	bool bDeathShown = false;
 	// When the death screen came up: its buttons wake a second later.
 	double DeathShownTime = 0.0;

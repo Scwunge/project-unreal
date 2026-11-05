@@ -1,4 +1,5 @@
 #include "McWorldSave.h"
+#include "McMapStore.h"
 #include "McServer.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -134,6 +135,26 @@ bool McWorldSave::SaveLevel(const FString& WorldDir, const FMcLevelData& Level)
 	return WriteJson(WorldDir / TEXT("level.json"), Object);
 }
 
+bool McWorldSave::SaveMaps(const FString& WorldDir)
+{
+	if (McMapStore::Num() == 0)
+	{
+		return true;
+	}
+	const FString Path = WorldDir / TEXT("maps.json");
+	IFileManager::Get().MakeDirectory(*WorldDir, true);
+	const FString Temp = Path + TEXT(".tmp");
+	return FFileHelper::SaveStringToFile(McMapStore::ToJson(), *Temp, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& IFileManager::Get().Move(*Path, *Temp, /*Replace=*/true);
+}
+
+bool McWorldSave::LoadMaps(const FString& WorldDir)
+{
+	McMapStore::Reset();
+	FString Text;
+	return FFileHelper::LoadFileToString(Text, *(WorldDir / TEXT("maps.json"))) && McMapStore::FromJson(Text);
+}
+
 bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 {
 	const TSharedPtr<FJsonObject> Object = ReadJson(WorldDir / TEXT("level.json"));
@@ -236,7 +257,17 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	{
 		return false;
 	}
-	const TSharedPtr<FJsonObject> Object = ReadJson(WorldDir / TEXT("playerdata") / Id + TEXT(".json"));
+	// A world imported from a Java save holds the player it had as "imported-player"; whoever has no file of their own takes it.
+	FString File = WorldDir / TEXT("playerdata") / Id + TEXT(".json");
+	if (!IFileManager::Get().FileExists(*File))
+	{
+		const FString Imported = WorldDir / TEXT("playerdata") / TEXT("imported-player.json");
+		if (IFileManager::Get().FileExists(*Imported))
+		{
+			File = Imported;
+		}
+	}
+	const TSharedPtr<FJsonObject> Object = ReadJson(File);
 	const TArray<TSharedPtr<FJsonValue>>* Pos = nullptr;
 	if (!Object || !Object->TryGetArrayField(TEXT("pos"), Pos) || Pos->Num() != 3)
 	{

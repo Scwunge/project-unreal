@@ -7,6 +7,9 @@
 #include "McCache.h"
 #include "McChunk.h"
 #include "McEntityManager.h"
+#include "McMob.h"
+#include "McVehicle.h"
+#include "McVillager.h"
 #include "McChunkSave.h"
 #include "McDecor.h"
 #include "McDecorEntity.h"
@@ -489,6 +492,249 @@ namespace
 		return false;
 	}
 
+	// A moving entity of the game's NBT as the bytes of a chunk's entity save (the kind's name, then what its Serialize
+	// writes): a dropped item, a mob the port has, a minecart or a boat. False for any other.
+	bool MakeLive(const FMcNbt& Entity, FString& OutType, TArray<uint8>& OutData)
+	{
+		const FString Id = Entity.GetString(TEXT("id"));
+		const FMcNbt* Pos = FindList(Entity, TEXT("Pos"));
+		if (!Pos || Pos->Num() != 3)
+		{
+			return false;
+		}
+		const FVector Position(Pos->Values[0].GetReal(), Pos->Values[1].GetReal(), Pos->Values[2].GetReal());
+		FVector Motion = FVector::ZeroVector;
+		if (const FMcNbt* Motions = FindList(Entity, TEXT("Motion")))
+		{
+			if (Motions->Num() == 3)
+			{
+				Motion = FVector(Motions->Values[0].GetReal(), Motions->Values[1].GetReal(), Motions->Values[2].GetReal());
+			}
+		}
+		float Yaw = 0.0f, Pitch = 0.0f;
+		if (const FMcNbt* Rotation = FindList(Entity, TEXT("Rotation")))
+		{
+			if (Rotation->Num() == 2)
+			{
+				Yaw = static_cast<float>(Rotation->Values[0].GetReal());
+				Pitch = static_cast<float>(Rotation->Values[1].GetReal());
+			}
+		}
+		const auto Place = [&](FMcEntity& Live)
+		{
+			Live.Body.Position = Position;
+			Live.Body.Velocity = Motion;
+			Live.Body.bOnGround = Entity.GetInt(TEXT("OnGround")) != 0;
+			Live.Yaw = Yaw;
+			Live.Pitch = Pitch;
+		};
+		TUniquePtr<FMcEntity> Live;
+		FMcMob* LiveMob = nullptr;
+		if (Id == TEXT("minecraft:item"))
+		{
+			const FMcNbt* Held = Entity.Find(TEXT("Item"));
+			if (!Held)
+			{
+				return false;
+			}
+			TUniquePtr<FMcItemEntity> Item = MakeUnique<FMcItemEntity>();
+			Item->Stack = MakeStack(*Held);
+			if (Item->Stack.IsEmpty())
+			{
+				return false;
+			}
+			Item->PickupDelay = static_cast<int32>(Entity.GetInt(TEXT("PickupDelay")));
+			Item->Age = static_cast<int32>(Entity.GetInt(TEXT("Age")));
+			Live = MoveTemp(Item);
+		}
+		else if (const FMcMobType* Type = FMcMobType::Find(FName(*Id)))
+		{
+			// A villager and a zombie villager have saves of their own on top of a mob's.
+			FMcVillager* Villager = nullptr;
+			TUniquePtr<FMcMob> Mob;
+			if (Type->Name == FMcVillager::StaticType())
+			{
+				Villager = new FMcVillager(*Type);
+				Mob.Reset(Villager);
+			}
+			else if (Type->Name == FMcZombieVillager::StaticType())
+			{
+				Mob = MakeUnique<FMcZombieVillager>(*Type);
+			}
+			else
+			{
+				Mob = MakeUnique<FMcMob>(*Type);
+			}
+			if (Type->bHops)
+			{
+				// The game's size counts from 0 (size 1, 2 or 4 is 0, 1 or 3).
+				const int32 Wanted = static_cast<int32>(Entity.GetInt(TEXT("Size"))) + 1;
+				Mob->SetSize(Wanted >= 4 ? 4 : (Wanted >= 2 ? 2 : 1), false);
+			}
+			if (const FMcNbt* Health = Entity.Find(TEXT("Health")))
+			{
+				Mob->Health = FMath::Clamp(static_cast<float>(Health->GetReal()), 1.0f, Type->bHops ? 64.0f : Type->MaxHealth);
+			}
+			else
+			{
+				Mob->Health = Type->MaxHealth;
+			}
+			const int32 EntityAge = static_cast<int32>(Entity.GetInt(TEXT("Age")));
+			if (Villager)
+			{
+				// Type, profession, level and trades as the game keeps them (VillagerData: names, level, and the xp in Xp).
+				if (const FMcNbt* Data = Entity.Find(TEXT("VillagerData")))
+				{
+					const FString Variant = McCache::PathOf(Data->GetString(TEXT("type")));
+					if (!Variant.IsEmpty())
+					{
+						Villager->SetVariant(FName(*Variant));
+					}
+					const FString Profession = Data->GetString(TEXT("profession"));
+					if (!Profession.IsEmpty())
+					{
+						Villager->SetProfession(Profession.Contains(TEXT(":")) ? FName(*Profession) : FName(*(TEXT("minecraft:") + Profession)));
+					}
+					Villager->SetLevelAndXp(static_cast<int32>(Data->GetInt(TEXT("level"), 1)), static_cast<int32>(Entity.GetInt(TEXT("Xp"))));
+				}
+				if (EntityAge < 0)
+				{
+					Villager->SetBaby(true);
+					Villager->SetGrowthTicksLeft(-EntityAge);
+				}
+				Villager->SetFood(0);
+				const FMcNbt* Offers = Entity.Find(TEXT("Offers"));
+				const FMcNbt* Recipes = Offers ? FindList(*Offers, TEXT("Recipes")) : nullptr;
+				if (Recipes && Recipes->Num() > 0 && Villager->HasProfession())
+				{
+					TArray<McTrading::FOffer> Imported;
+					for (const FMcNbt& Recipe : Recipes->Values)
+					{
+						McTrading::FOffer Offer;
+						if (const FMcNbt* Buy = Recipe.Find(TEXT("buy")))
+						{
+							Offer.Wants = MakeStack(*Buy);
+						}
+						if (const FMcNbt* BuyB = Recipe.Find(TEXT("buyB")))
+						{
+							Offer.Extra = MakeStack(*BuyB);
+						}
+						if (const FMcNbt* Sell = Recipe.Find(TEXT("sell")))
+						{
+							Offer.Gives = MakeStack(*Sell);
+						}
+						Offer.Uses = static_cast<int32>(Recipe.GetInt(TEXT("uses")));
+						Offer.MaxUses = static_cast<int32>(Recipe.GetInt(TEXT("maxUses"), 12));
+						Offer.Xp = static_cast<int32>(Recipe.GetInt(TEXT("xp"), 1));
+						Offer.Demand = static_cast<int32>(Recipe.GetInt(TEXT("demand")));
+						if (const FMcNbt* Multiplier = Recipe.Find(TEXT("priceMultiplier")))
+						{
+							Offer.Discount = static_cast<float>(Multiplier->GetReal());
+						}
+						if (!Offer.Wants.IsEmpty() && !Offer.Gives.IsEmpty())
+						{
+							Imported.Add(MoveTemp(Offer));
+						}
+					}
+					if (!Imported.IsEmpty())
+					{
+						Villager->GetOffers() = MoveTemp(Imported);
+					}
+				}
+			}
+			else if (Type->bPanics && EntityAge < 0)
+			{
+				Mob->MakeBaby();
+			}
+			Mob->bNoAI = Entity.GetInt(TEXT("NoAI")) != 0;
+			if (Type->Name == FName(TEXT("minecraft:sheep")) && Entity.Find(TEXT("Color")))
+			{
+				Mob->DyeColor = FMath::Clamp(static_cast<int32>(Entity.GetInt(TEXT("Color"))), 0, 15);
+				Mob->ArmPose = Mob->DyeColor << 8;
+			}
+			if (const FMcNbt* Name = Entity.Find(TEXT("CustomName")))
+			{
+				// A text component: a plain string, or a compound with the text in it.
+				Mob->CustomName = Name->Type == FMcNbt::EType::String ? Name->String : Name->GetString(TEXT("text"));
+			}
+			// What it wears and holds: the equipment compound (head, chest, legs, feet, mainhand), or the older ArmorItems
+			// (feet first) and HandItems lists.
+			const auto ItemNamed = [](const FMcNbt* Slot) -> FName
+			{
+				const FString Id = Slot ? Slot->GetString(TEXT("id")) : FString();
+				return Id.IsEmpty() ? FName() : FName(*Id);
+			};
+			if (const FMcNbt* Equipment = Entity.Find(TEXT("equipment")))
+			{
+				Mob->Armor[0] = ItemNamed(Equipment->Find(TEXT("head")));
+				Mob->Armor[1] = ItemNamed(Equipment->Find(TEXT("chest")));
+				Mob->Armor[2] = ItemNamed(Equipment->Find(TEXT("legs")));
+				Mob->Armor[3] = ItemNamed(Equipment->Find(TEXT("feet")));
+				const FName Main = ItemNamed(Equipment->Find(TEXT("mainhand")));
+				if (!Main.IsNone())
+				{
+					Mob->HeldItem = Main;
+				}
+			}
+			else
+			{
+				if (const FMcNbt* Worn = FindList(Entity, TEXT("ArmorItems")))
+				{
+					for (int32 Slot = 0; Slot < 4 && Slot < Worn->Num(); ++Slot)
+					{
+						Mob->Armor[3 - Slot] = ItemNamed(&Worn->Values[Slot]);
+					}
+				}
+				if (const FMcNbt* Hands = FindList(Entity, TEXT("HandItems")))
+				{
+					const FName Main = Hands->Num() > 0 ? ItemNamed(&Hands->Values[0]) : FName();
+					if (!Main.IsNone())
+					{
+						Mob->HeldItem = Main;
+					}
+				}
+			}
+			LiveMob = Mob.Get();
+			Live = MoveTemp(Mob);
+		}
+		else if (Id.EndsWith(TEXT("minecart")) && Id != TEXT("minecraft:command_block_minecart") && Id != TEXT("minecraft:spawner_minecart"))
+		{
+			// The chest, furnace, hopper and TNT carts become plain ones; what they carried is kept in javaentities.
+			Live = MakeUnique<FMcMinecartEntity>();
+		}
+		else if (Id.EndsWith(TEXT("_boat")) || Id.EndsWith(TEXT("_raft")))
+		{
+			TUniquePtr<FMcBoatEntity> Boat = MakeUnique<FMcBoatEntity>();
+			FString Wood = Id;
+			for (const TCHAR* Suffix : { TEXT("_chest_boat"), TEXT("_chest_raft"), TEXT("_boat"), TEXT("_raft") })
+			{
+				if (Wood.RemoveFromEnd(Suffix))
+				{
+					break;
+				}
+			}
+			Boat->WoodName = FName(*Wood);
+			Live = MoveTemp(Boat);
+		}
+		else
+		{
+			return false;
+		}
+		Place(*Live);
+		OutType = Live->GetType().ToString();
+		FMemoryWriter DataWriter(OutData);
+		if (!Live->Serialize(DataWriter))
+		{
+			return false;
+		}
+		if (LiveMob)
+		{
+			// What a world's host keeps after a mob's own bytes (youth, flags, dye, name, gear).
+			LiveMob->SaveTrailer(DataWriter);
+		}
+		return true;
+	}
+
 	// What an entity file turned into scenery, by chunk: the entities' count and bytes as a chunk's save keeps them.
 	struct FSceneryChunk
 	{
@@ -531,7 +777,17 @@ namespace
 					McDecor::FDecor Decor;
 					FVector Position;
 					float Yaw = 0.0f;
-					if (MakeDecor(Entity, Decor, Position, Yaw))
+					FString LiveType;
+					TArray<uint8> LiveData;
+					if (MakeLive(Entity, LiveType, LiveData))
+					{
+						FSceneryChunk& Chunk = Scenery.FindOrAdd(FIntPoint(RegionX * 32 + LocalX, RegionZ * 32 + LocalZ));
+						FMemoryWriter BodyWriter(Chunk.Body, false, true);
+						BodyWriter << LiveType << LiveData;
+						++Chunk.Count;
+						++Stats.Scenery;
+					}
+					else if (MakeDecor(Entity, Decor, Position, Yaw))
 					{
 						FMcDecorEntity Scenic;
 						Scenic.Body.Position = Position;
@@ -629,6 +885,22 @@ namespace
 			else if (Id == TEXT("minecraft:decorated_pot"))
 			{
 				Chunk.SetBlockEntity(X, Y, Z, MakePot(Entity));
+			}
+			else if (Id == TEXT("minecraft:campfire") || Id == TEXT("minecraft:soul_campfire"))
+			{
+				FMcBlockEntity Campfire = FMcBlockEntity::MakeCampfire();
+				Campfire.Slots = ReadItems(Entity, FMcBlockEntity::NumCampfireSpots);
+				const auto ReadInts = [&Entity](const TCHAR* Key, int32* Out)
+				{
+					const FMcNbt* Array = Entity.Find(Key);
+					for (int32 Spot = 0; Array && Array->Type == FMcNbt::EType::IntArray && Spot < FMcBlockEntity::NumCampfireSpots && Spot < Array->Num(); ++Spot)
+					{
+						Out[Spot] = static_cast<int32>(Array->Values[Spot].Integer);
+					}
+				};
+				ReadInts(TEXT("CookingTimes"), Campfire.CookingTimes);
+				ReadInts(TEXT("CookingTotalTimes"), Campfire.CookingTotals);
+				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Campfire));
 			}
 			else if (Id == TEXT("minecraft:lectern"))
 			{
@@ -946,6 +1218,128 @@ bool McJavaImport::ConvertChunk(const FMcNbt& Root, FMcChunk& Chunk, FStats& Sta
 bool McJavaImport::IsJavaWorld(const FString& Folder)
 {
 	return IFileManager::Get().FileExists(*(Folder / TEXT("level.dat")));
+}
+
+bool McJavaImport::ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out)
+{
+	const FMcNbt* Pos = FindList(Root, TEXT("Pos"));
+	if (!Pos || Pos->Num() != 3)
+	{
+		return false;
+	}
+	Out = FMcPlayerData();
+	Out.Position = FVector(Pos->Values[0].GetReal(), Pos->Values[1].GetReal(), Pos->Values[2].GetReal());
+	if (Out.Position.ContainsNaN())
+	{
+		return false;
+	}
+	if (const FMcNbt* Rotation = FindList(Root, TEXT("Rotation")))
+	{
+		if (Rotation->Num() >= 2)
+		{
+			Out.Yaw = static_cast<float>(Rotation->Values[0].GetReal());
+			Out.Pitch = static_cast<float>(Rotation->Values[1].GetReal());
+		}
+	}
+	const FString Dimension = Root.GetString(TEXT("Dimension"));
+	if (!Dimension.IsEmpty())
+	{
+		Out.Dimension = Dimension;
+	}
+	const FMcNbt* Abilities = Root.Find(TEXT("abilities"));
+	Out.bFlying = Abilities && Abilities->GetInt(TEXT("flying")) != 0;
+	Out.bHasSurvival = true;
+	Out.bCreative = Root.GetInt(TEXT("playerGameType")) == 1;
+	Out.SelectedSlot = FMath::Clamp(static_cast<int32>(Root.GetInt(TEXT("SelectedItemSlot"))), 0, 8);
+	const auto Real = [&Root](const TCHAR* Key, double Default)
+	{
+		const FMcNbt* Tag = Root.Find(Key);
+		return Tag && Tag->IsNumber() ? Tag->GetReal() : Default;
+	};
+	Out.Stats.Add(TEXT("health"), FMath::Clamp(Real(TEXT("Health"), 20.0), 1.0, 20.0));
+	Out.Stats.Add(TEXT("food"), FMath::Clamp(Real(TEXT("foodLevel"), 20.0), 0.0, 20.0));
+	Out.Stats.Add(TEXT("saturation"), FMath::Max(0.0, Real(TEXT("foodSaturationLevel"), 5.0)));
+	Out.Stats.Add(TEXT("exhaustion"), FMath::Max(0.0, Real(TEXT("foodExhaustionLevel"), 0.0)));
+	Out.Stats.Add(TEXT("absorption"), FMath::Max(0.0, Real(TEXT("AbsorptionAmount"), 0.0)));
+	Out.Stats.Add(TEXT("xp_level"), FMath::Max(0.0, Real(TEXT("XpLevel"), 0.0)));
+	Out.Stats.Add(TEXT("xp_progress"), FMath::Clamp(Real(TEXT("XpP"), 0.0), 0.0, 1.0));
+	// The inventory's slots are the game's own numbers (the off hand is -106 there, 150 here); the ender chest's 0 to 26 follow
+	// the game's numbering at 200.
+	const auto AddItems = [&Out](const FMcNbt* List, int32 Base, bool bInventory)
+	{
+		if (!List)
+		{
+			return;
+		}
+		for (const FMcNbt& Entry : List->Values)
+		{
+			int32 Slot = static_cast<int32>(Entry.GetInt(TEXT("Slot")));
+			if (bInventory)
+			{
+				Slot = Slot == -106 ? 150 : Slot;
+				if (!((Slot >= 0 && Slot <= 35) || (Slot >= 100 && Slot <= 103) || Slot == 150))
+				{
+					continue;
+				}
+			}
+			else if (Slot < 0 || Slot > 26)
+			{
+				continue;
+			}
+			const FMcItemStack Stack = MakeStack(Entry);
+			if (!Stack.IsEmpty())
+			{
+				Out.Slots.Add({ Base + Slot, Stack });
+			}
+		}
+	};
+	AddItems(FindList(Root, TEXT("Inventory")), 0, true);
+	// The current layout keeps what is worn and the off hand in an equipment compound, not in the inventory list.
+	if (const FMcNbt* Equipment = Root.Find(TEXT("equipment")))
+	{
+		const struct { const TCHAR* Key; int32 Slot; } Pieces[] = { { TEXT("feet"), 100 }, { TEXT("legs"), 101 }, { TEXT("chest"), 102 }, { TEXT("head"), 103 }, { TEXT("offhand"), 150 } };
+		for (const auto& Piece : Pieces)
+		{
+			const FMcNbt* Item = Equipment->Find(Piece.Key);
+			const FMcItemStack Stack = Item ? MakeStack(*Item) : FMcItemStack();
+			if (!Stack.IsEmpty())
+			{
+				Out.Slots.RemoveAll([&Piece](const FMcSavedSlot& Saved) { return Saved.Slot == Piece.Slot; });
+				Out.Slots.Add({ Piece.Slot, Stack });
+			}
+		}
+	}
+	AddItems(FindList(Root, TEXT("EnderItems")), 200, false);
+	return true;
+}
+
+bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
+{
+	FMcNbt Root;
+	FString Newest;
+	FDateTime NewestTime = FDateTime::MinValue();
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(Source / TEXT("players") / TEXT("data") / TEXT("*.dat")), true, false);
+	for (const FString& File : Files)
+	{
+		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(Source / TEXT("players") / TEXT("data") / File));
+		if (Time > NewestTime)
+		{
+			NewestTime = Time;
+			Newest = Source / TEXT("players") / TEXT("data") / File;
+		}
+	}
+	FMcPlayerData Player;
+	bool bFound = !Newest.IsEmpty() && FMcNbt::LoadFile(Newest, Root) && ConvertPlayer(Root, Player);
+	if (!bFound)
+	{
+		// The older layout kept the one player in level.dat.
+		FMcNbt Level;
+		const FMcNbt* Data = FMcNbt::LoadFile(Source / TEXT("level.dat"), Level) ? Level.Find(TEXT("Data")) : nullptr;
+		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
+		bFound = Old && ConvertPlayer(*Old, Player);
+	}
+	return bFound && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Player);
 }
 
 bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
@@ -1270,6 +1664,7 @@ FString McJavaImport::ImportWorld(const FString& Source, const FString& Name, FS
 		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
 		return FString();
 	}
+	ImportPlayer(Source, WorldDir);
 	UE_LOG(LogMcServer, Log, TEXT("Imported '%s' as '%s' in %.1f s: %s"), *Source, *Folder, FPlatformTime::Seconds() - Start, *Describe(OutStats));
 	return Folder;
 }
@@ -1289,6 +1684,7 @@ FString McJavaImport::BeginImport(const FString& Source, const FString& Name)
 		UE_LOG(LogMcServer, Error, TEXT("Could not write %s."), *WorldDir);
 		return FString();
 	}
+	ImportPlayer(Source, WorldDir);
 	UE_LOG(LogMcServer, Log, TEXT("Began importing '%s' as '%s'; its chunks come in while it is played."), *Source, *Folder);
 	return Folder;
 }

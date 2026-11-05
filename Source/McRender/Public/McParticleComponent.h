@@ -146,6 +146,20 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<class UTexture2DArray> Glitter;
 	bool bGlitterFailed = false;
+	// A campfire's smoke (particles/campfire_cosy_smoke.json: big_smoke_0 to _11, one picked for each puff) is drawn from
+	// its own sprites too, the twelve 16 pixel frames side by side, on a third section.
+	static constexpr int32 CosyFrames = 12;
+	UMaterialInstanceDynamic* EnsureCosySmoke();
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> CosyMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTexture2DArray> CosySheet;
+	bool bCosyFailed = false;
+	// The lit campfires seen so far (found by the random pick, as the game's block would be), each making its smoke
+	// every tick: the game's campfire makes it from its block entity, not from the random pick, which finds a given block
+	// only about once in forty ticks.
+	TSet<FIntVector> Campfires;
+	void TickCampfires();
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> SpriteBase;
 };

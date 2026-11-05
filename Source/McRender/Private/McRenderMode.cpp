@@ -4,6 +4,8 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Texture2DArray.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "RHI.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/UObjectGlobals.h"
@@ -78,7 +80,8 @@ static void ApplyQuality()
 	const bool bRays = McRenderMode::IsRayTracing();
 	SetConsoleVariable(TEXT("r.Lumen.HardwareRayTracing"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Shadows"), bRays ? 1 : 0);
-	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), bRays ? 1 : 0);
+	// Off even with rays: ray traced translucency makes the water opaque and mirror-like (the bed no longer shows through).
+	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Reflections"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Geometry.ProceduralMeshes"), bRays ? 1 : 0);
 	if (!GEnhanced)
@@ -97,6 +100,30 @@ static void ApplyQuality()
 	SetConsoleVariable(TEXT("r.BloomQuality"), P.Post == 0 ? 3 : 5);
 	SetConsoleVariable(TEXT("r.DepthOfFieldQuality"), P.Post >= 3 ? 2 : 0);
 	SetConsoleVariable(TEXT("r.MotionBlurQuality"), P.Post >= 2 ? 3 : 0);
+#if !UE_BUILD_SHIPPING
+	// -McCvars=name=value,name=value: dev override of any console variables, applied last, for finding what costs frames.
+	FString Overrides;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McCvars="), Overrides, /*bShouldStopOnSeparator=*/ false))
+	{
+		TArray<FString> Pairs;
+		Overrides.ParseIntoArray(Pairs, TEXT(","));
+		for (const FString& Pair : Pairs)
+		{
+			FString Name, Value;
+			if (Pair.Split(TEXT("="), &Name, &Value))
+			{
+				if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(*Name))
+				{
+					Variable->Set(*Value, ECVF_SetByCode);
+				}
+				else
+				{
+					UE_LOG(LogMcRender, Warning, TEXT("-McCvars: no console variable %s"), *Name);
+				}
+			}
+		}
+	}
+#endif
 }
 
 bool McRenderMode::IsRayTracingSupported()

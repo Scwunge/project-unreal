@@ -51,6 +51,8 @@ namespace
 	// The enhanced look's sun and moon, in lux. Lit surfaces show their colour times the light over pi, before the
 	// tonemapper; the moon is a tenth of a lux or so, enough to see by.
 	constexpr float SunLux = 7.0f;
+	// Dusk and dawn's blue fill, in lux.
+	constexpr float TwilightLux = 2.5f;
 	constexpr float MoonLux = 0.6f;
 		// The Nether's and the End's fill lights, in lux: just enough that shapes read where no block light reaches.
 		constexpr float NetherFillLux = 4.0f;
@@ -514,6 +516,16 @@ void UMcSkyComponent::BuildEnhanced()
 	SunLight->SetVisibility(false);
 	SunLight->RegisterComponent();
 
+	TwilightFill = NewObject<UDirectionalLightComponent>(GetOwner(), TEXT("TwilightFill"));
+	TwilightFill->SetupAttachment(this);
+	TwilightFill->SetUsingAbsoluteRotation(true);
+	TwilightFill->SetMobility(EComponentMobility::Movable);
+	TwilightFill->SetCastShadows(false);
+	TwilightFill->SetLightColor(FLinearColor(0.45f, 0.55f, 1.0f));
+	TwilightFill->SetIntensity(0.0f);
+	TwilightFill->SetVisibility(false);
+	TwilightFill->RegisterComponent();
+
 	// Physical sky: Rayleigh and Mie scattering round a planet whose top is the world's y = 0. Hidden outside the Overworld
 	// and with Unreal Mode off, where the dome stands in.
 	Atmosphere = NewObject<USkyAtmosphereComponent>(GetOwner(), TEXT("Atmosphere"));
@@ -785,7 +797,17 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	}
 	// Under water the sun's light dances as caustics (a light function, only while it matters).
 	{
-		static UMaterialInterface* Caustics = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Mc/Materials/M_McCaustics.M_McCaustics"));
+		// Rooted: nothing else holds it, so the next garbage collection would free it and leave this pointer (and the
+		// light's, in a game that runs on) dangling; the light's next precache then calls through freed memory.
+		static UMaterialInterface* Caustics = []
+		{
+			UMaterialInterface* Loaded = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Mc/Materials/M_McCaustics.M_McCaustics"));
+			if (Loaded)
+			{
+				Loaded->AddToRoot();
+			}
+			return Loaded;
+		}();
 		const bool bCaustic = Caustics && McRenderMode::IsEnhanced() && McSky::GetCameraUnderwater() > 0.5f;
 		SunLight->SetLightFunctionMaterial(bCaustic ? Caustics : nullptr);
 	}
@@ -798,7 +820,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	const FVector ToSun = ToUnreal(FMcDayCycle::AngleToDirection(Cycle.GetSunAngle(Ticks)));
 	const FVector ToMoon = ToUnreal(FMcDayCycle::AngleToDirection(Cycle.GetMoonAngle(Ticks)));
 	// The sun fades out just after it sets and the moon takes over; rain hides most of both.
-	const float Day = FMath::SmoothStep(-0.04f, 0.12f, static_cast<float>(ToSun.Z));
+	const float Day = FMath::SmoothStep(McRenderMode::IsEnhanced() ? -0.2f : -0.04f, 0.12f, static_cast<float>(ToSun.Z));
 	const float Clear = 1.0f - 0.5f * Rain;
 	const bool bSun = Day > 0.0f;
 	const FVector Towards = bSun ? ToSun : ToMoon;
@@ -826,6 +848,16 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		{
 			Fog->SetDirectionalInscatteringColor(FLinearColor::Black);
 		}
+	}
+	// Dusk and dawn in Unreal Mode: the sun just under the horizon, the sky still glowing; a blue fill lights the ground.
+	if (TwilightFill)
+	{
+		const float Z = static_cast<float>(ToSun.Z);
+		const float Twilight = McRenderMode::IsEnhanced() ? FMath::SmoothStep(-0.3f, -0.05f, Z) * (1.0f - FMath::SmoothStep(0.0f, 0.25f, Z)) : 0.0f;
+		TwilightFill->SetVisibility(Twilight > 0.001f);
+		TwilightFill->SetIntensity(TwilightLux * Twilight * Clear);
+		const FVector From = FVector(-ToSun.X, -ToSun.Y, 0.7).GetSafeNormal();
+		TwilightFill->SetWorldRotation((-From).Rotation());
 	}
 	// A lightning flash lights the scene: a pale blue light from high up, with shadows, over the sun or the moon.
 	if (Mode == EMode::Overworld && FlashTime > 0.0f)

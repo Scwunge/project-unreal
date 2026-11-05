@@ -48,17 +48,48 @@ int32 FMcMapData::WaterBrightness(int32 Depth, int32 Parity)
 	return 0;
 }
 
+int32 FMcMapData::UpdateColumn(int32 PixelX, TFunctionRef<FColumn(int32, int32)> Sample)
+{
+	if (PixelX < 0 || PixelX >= Size)
+	{
+		return 0;
+	}
+	int32 Changed = 0;
+	for (int32 PixelZ = 0; PixelZ < Size; ++PixelZ)
+	{
+		Changed += UpdatePixel(PixelX, PixelZ, Sample);
+	}
+	if (Changed > 0)
+	{
+		++Revision;
+	}
+	return Changed;
+}
+
 int32 FMcMapData::UpdateRow(int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample)
 {
 	if (PixelZ < 0 || PixelZ >= Size)
 	{
 		return 0;
 	}
+	int32 Changed = 0;
+	for (int32 PixelX = 0; PixelX < Size; ++PixelX)
+	{
+		Changed += UpdatePixel(PixelX, PixelZ, Sample);
+	}
+	if (Changed > 0)
+	{
+		++Revision;
+	}
+	return Changed;
+}
+
+int32 FMcMapData::UpdatePixel(int32 PixelX, int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample)
+{
 	const int32 N = BlocksPerPixel();
 	const int32 OriginX = CenterX - 64 * N;
 	const int32 OriginZ = CenterZ - 64 * N;
 	int32 Changed = 0;
-	for (int32 PixelX = 0; PixelX < Size; ++PixelX)
 	{
 		auto Average = [&](int32 Row, int32& OutDepth, FMcStateId& OutTop)
 		{

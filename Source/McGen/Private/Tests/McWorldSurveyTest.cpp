@@ -650,7 +650,6 @@ MC_WORLD_STATS_TEST(2)
 MC_WORLD_STATS_TEST(3)
 MC_WORLD_STATS_TEST(4)
 
-#endif
 
 // Air, water and lava as a share of each 8-block band, over 25 patches of 4 by 4 undecorated chunks, with the carvers on
 // and off, to see how much of the caves comes from the carvers. "CAVEBANDS <carvers> <seed> <band start y> air water lava".
@@ -1400,3 +1399,5 @@ bool FMcDeepDarkWideTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+#endif

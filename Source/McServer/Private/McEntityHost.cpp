@@ -1,4 +1,5 @@
 #include "McEntityHost.h"
+#include "McMount.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -671,10 +672,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		if (Entity->IsLiving())
 		{
 			// After what the kind itself keeps, so an older save without it still reads.
-			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
-			DataWriter << Look;
-			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
-			DataWriter << Young;
+			static_cast<FMcMob&>(*Entity).SaveTrailer(DataWriter);
 		}
 		Writer << Type << Data;
 		++Count;
@@ -687,6 +685,46 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	Out << Count;
 	Bytes.Append(Body);
 	return Bytes;
+}
+
+TArray<uint8> FMcEntityHost::PackEntity(FMcEntity& Entity)
+{
+	TArray<uint8> Bytes;
+	if (Entity.bRemoved || !Entity.IsPersistent())
+	{
+		return Bytes;
+	}
+	TArray<uint8> Body;
+	FMemoryWriter Writer(Body);
+	FString Type = Entity.GetType().ToString();
+	TArray<uint8> Data;
+	FMemoryWriter DataWriter(Data);
+	Entity.Serialize(DataWriter);
+	if (Entity.IsLiving())
+	{
+		int32 Look = static_cast<FMcMob&>(Entity).LookSeed;
+		DataWriter << Look;
+		int32 Young = static_cast<FMcMob&>(Entity).YoungTicks;
+		DataWriter << Young;
+	}
+	Writer << Type << Data;
+	FMemoryWriter Out(Bytes);
+	int32 Count = 1;
+	Out << Count;
+	Bytes.Append(Body);
+	return Bytes;
+}
+
+FMcEntity* FMcEntityHost::UnpackEntity(TConstArrayView<uint8> Bytes, const FVector& Pos)
+{
+	const int32 Before = Manager.GetEntities().Num();
+	if (RestoreChunk(Bytes) < 1 || Manager.GetEntities().Num() <= Before)
+	{
+		return nullptr;
+	}
+	FMcEntity* Entity = Manager.GetEntities().Last().Get();
+	Entity->Body.Position = Pos;
+	return Entity;
 }
 
 int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
@@ -755,24 +793,7 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
-				if (!DataReader.AtEnd())
-				{
-					int32 Look = -1;
-					DataReader << Look;
-					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
-					{
-						Mob->LookSeed = Look;
-					}
-					int32 Young = 0;
-					if (!DataReader.AtEnd())
-					{
-						DataReader << Young;
-						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
-						{
-							Mob->SetYoung(Young);
-						}
-					}
-				}
+				Mob->LoadTrailer(DataReader);
 				++Restored;
 			}
 			else
@@ -810,12 +831,9 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 	{
 		return;
 	}
-	// The same chunk gets the same animals for a seed, whenever it arrives. Unsigned, so the mixing wraps rather than
-	// overflowing.
-	const uint64 Mixed = static_cast<uint64>(Seed) * 31ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.X)) * 341873128712ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.Y)) * 132897987541ull;
-	FRandomStream Local(static_cast<int32>(static_cast<uint32>(Mixed)));
+	// The same chunk gets the same animals for a seed, whenever it arrives. The mix is our own (Unreal's hash combine), not the
+	// game's, so unvisited chunks of an old world may get other animals than they would have.
+	FRandomStream Local(static_cast<int32>(HashCombineFast(GetTypeHash(static_cast<int64>(Seed)), HashCombineFast(GetTypeHash(Chunk.X), GetTypeHash(Chunk.Y)))));
 	if (Local.FRand() > 0.10f)
 	{
 		return;
@@ -933,10 +951,11 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	{
 		return;
 	}
-	if (Kind == TEXT("minecraft:slime"))
+	if (Kind == TEXT("minecraft:slime") || Kind == TEXT("minecraft:magma_cube"))
 	{
-		// Only low down in a slime chunk, and of a size that fits the room there.
-		if (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+		// A slime comes only low down in a slime chunk; both are of a size that fits the room there. (Magma cube sizes 1, 2 and 4
+		// are the game's; their shares were not measured.)
+		if (Kind == TEXT("minecraft:slime") && (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z))))
 		{
 			return;
 		}
@@ -989,6 +1008,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 	Manager.Difficulty = Rules.Difficulty;
+	Manager.bMobGriefing = Rules.bMobGriefing;
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
@@ -1136,6 +1156,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
 					{
 						Spawned->bFrozen = true;
+						UE_LOG(LogMcServer, Display, TEXT("McMobRow: %s spawned at %.1f %d %d, id %d"), *Kinds[Index], X, Y.GetValue(), Z, Spawned->Id);
 						if (FParse::Param(FCommandLine::Get(), TEXT("McMobRowBaby")) && FMcMob::CanBeYoung(Spawned->GetType()))
 						{
 							Spawned->SetYoung(FMcMob::YoungSpan);
@@ -1183,9 +1204,22 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						X = FMath::FloorToInt32(Players[0].X + (Index - (N - 1) * 0.5) * 1.8);
 						Z = FMath::FloorToInt32(Players[0].Z + (FParse::Param(FCommandLine::Get(), TEXT("McTrade")) ? 2.0 : 6.5));
 					}
+					if (FParse::Param(FCommandLine::Get(), TEXT("McMobSaddled")))
+					{
+						// -McMobSaddled: a tamed, saddled mount two blocks south, for -McRideMob to climb on.
+						X = FMath::FloorToInt32(Players[0].X);
+						Z = FMath::FloorToInt32(Players[0].Z + 2.0);
+					}
 					if (const TOptional<int32> Y = FindStandingY(X, Z, FMath::FloorToInt32(Players[0].Y), 24))
 					{
 						FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kind)), FVector(X + 0.5, Y.GetValue(), Z + 0.5));
+						if (Spawned && FParse::Param(FCommandLine::Get(), TEXT("McMobSaddled")) && McMount::IsRideable(*Spawned))
+						{
+							Spawned->bTamed = true;
+							FMcMountState& Mount = McMount::Ensure(*Spawned);
+							McMount::GetInventory(Mount)->Set(0, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+							McMount::Sync(Mount);
+						}
 						if (Spawned && Spawned->GetType() == FMcVillager::StaticType())
 						{
 							// A ring of villagers shows every biome type, and every fifth one is a baby.

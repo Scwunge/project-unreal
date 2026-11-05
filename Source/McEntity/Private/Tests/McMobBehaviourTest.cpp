@@ -1,10 +1,14 @@
 #include "McArrow.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McDimensionType.h"
 #include "McEntityManager.h"
+#include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McMob.h"
+#include "McXpOrb.h"
 #include "McThrown.h"
 #include "Misc/AutomationTest.h"
 
@@ -471,6 +475,291 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		}
 		TestEqual(TEXT("one item thrown for the ingot"), Items, 1);
 		TestEqual(TEXT("and the piglin is ready again"), Piglin->BarterTicks, 0);
+	}
+	{
+		// A blaze in sight of a player shoots three small fireballs 6 ticks apart then rests until 178 ticks after the first (nether1.txt),
+		// and a fireball's speed climbs 0.1, 0.19, 0.2755 (v = 0.95 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:blaze"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SmallType())
+				{
+					FireTicks.Add(Tick);
+				}
+			}
+		}
+		TestTrue(TEXT("two bursts of three at 178 apart"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 6 && FireTicks[2] - FireTicks[1] == 6 && FireTicks[3] - FireTicks[0] == 178);
+	}
+	{
+		// A wither in sight of a player fires a skull, another 45 ticks later, then a pair every 239 ticks (wither1.txt); a skull's speed climbs
+		// 0.1, 0.146, 0.18 (v = 0.73 * (v + 0.1)).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		AddMob(Manager, TEXT("minecraft:wither"), FVector(10.5, 3.0, 10.5));
+		TArray<int32> FireTicks;
+		TArray<double> Speeds;
+		for (int32 Tick = 0; Tick < 520; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				if (Manager.GetEntities()[Index]->GetType() == FMcFireball::SkullType())
+				{
+					FireTicks.Add(Tick);
+					if (Speeds.Num() == 0)
+					{
+						Speeds.Add(Manager.GetEntities()[Index]->Body.Velocity.Size());
+					}
+				}
+			}
+		}
+		TestTrue(TEXT("pairs 45 apart then 239 from the first"), FireTicks.Num() >= 4 && FireTicks[1] - FireTicks[0] == 45 && FireTicks[2] - FireTicks[0] == 239);
+		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
+	}
+	{
+		// An ender dragon starts at 126 and flies down to 65-79 within 1000 ticks, staying within 63 blocks of the middle (dragon6.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 126.0, 0.5));
+		TestEqual(TEXT("200 hp"), Dragon->Health, 200.0f);
+		double MaxRadius = 0.0;
+		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		{
+			Manager.Tick();
+			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
+		}
+		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
+		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+	}
+	{
+		// End crystals (wiki: power 6 at any damage; dragon9/13.txt: +1 hp per ~10 ticks while one is within 32 blocks; dragon10.txt: 500 points on a later kill).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 100.0, 0.5));
+		Dragon->bNoAI = false;
+		Dragon->Health = 100.0f;
+		FMcMob* Crystal = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(0.5, 85.0, 0.5));
+		for (int32 Tick = 0; Tick < 20; ++Tick)
+		{
+			Manager.Tick();
+		}
+		TestTrue(*FString::Printf(TEXT("a crystal heals the dragon about 1 hp in 10 ticks (health %.1f)"), Dragon->Health), Dragon->Health >= 101.0f && Dragon->Health <= 103.0f);
+		TestFalse(TEXT("and stays"), Crystal->bRemoved);
+		const float Before = Dragon->Health;
+		Crystal->Damage(0.0f, nullptr);
+		Manager.Tick();
+		TestTrue(TEXT("a crystal goes off at any damage"), Crystal->bRemoved);
+		TestTrue(TEXT("and the dragon it healed loses 10 (or more, if the blast reached it)"), Dragon->Health <= Before - 9.5f);
+	}
+	{
+		// A crystal hurt by a blast vanishes without going off.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		FMcMob* A = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(0.5, 1.0, 0.5));
+		FMcMob* B = AddMob(Manager, TEXT("minecraft:end_crystal"), FVector(5.5, 1.0, 0.5));
+		A->Damage(1.0f, nullptr);
+		TestTrue(TEXT("the first goes off"), A->bRemoved);
+		TestTrue(TEXT("the one beside it is gone too"), B->bRemoved);
+		TestTrue(TEXT("the first one's blast dug"), World.GetBlock(FIntVector(0, 0, 0)) != Stone);
+	}
+	{
+		// The dragon dies over 200 ticks; the second kill pays 500 points and leaves the exit portal and no egg, the first 12000 and an egg.
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			for (int32 Y = 58; Y <= 61; ++Y)
+			{
+				World.SetBlock(FIntVector(0, Y, 0), FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:bedrock")).Get(0));
+			}
+			Manager.bDragonKilledBefore = Pass == 1;
+			FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 100.0, 0.5));
+			Dragon->Damage(1000.0f, nullptr);
+			int32 Points = 0;
+			for (int32 Tick = 0; Tick < 210; ++Tick)
+			{
+				Manager.Tick();
+				if (Tick == 150)
+				{
+					TestFalse(TEXT("still dying at 150 ticks"), Dragon->bRemoved);
+				}
+			}
+			for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+			{
+				if (Entity->GetType() == FMcXpOrb::StaticType())
+				{
+					Points += static_cast<FMcXpOrb&>(*Entity).Value;
+				}
+			}
+			TestTrue(TEXT("dead after 200 ticks"), Dragon->bRemoved);
+			TestEqual(TEXT("xp"), Points, Pass == 0 ? 12000 : 500);
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			TestEqual(*FString::Printf(TEXT("exit portal, pass %d"), Pass), Reg.GetBlockOf(World.GetBlock(FIntVector(1, 58, 0))).Name.ToString(), FString(TEXT("minecraft:end_portal")));
+			TestEqual(TEXT("egg on the first kill only"), Reg.GetBlockOf(World.GetBlock(FIntVector(0, 62, 0))).Name == TEXT("minecraft:dragon_egg"), Pass == 0);
+		}
+		TestEqual(TEXT("ten crystals on the pillars"), FMcMob::GetPillarCrystalPositions().Num(), 10);
+	}
+	{
+		// A shulker in sight of a player fires homing bullets that speed up along the measured table (atk1.txt) and hurt the player.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		float Hurt = 0.0f;
+		Manager.OnPlayerHurt = [&Hurt](const FVector&, float Damage) { Hurt += Damage; };
+		AddMob(Manager, TEXT("minecraft:shulker"), FVector(10.5, 1.0, 10.5));
+		int32 Bullets = 0;
+		for (int32 Tick = 0; Tick < 300; ++Tick)
+		{
+			const int32 Before = Manager.GetEntities().Num();
+			Manager.Tick();
+			for (int32 Index = Before; Index < Manager.GetEntities().Num(); ++Index)
+			{
+				Bullets += Manager.GetEntities()[Index]->GetType() == FMcShulkerBullet::StaticType() ? 1 : 0;
+			}
+		}
+		TestTrue(TEXT("a shulker fires at least 2 bullets in 300 ticks"), Bullets >= 2);
+		TestTrue(TEXT("and one reaches the player"), Hurt >= FMcShulkerBullet::Damage);
+		TestTrue(TEXT("bullet speed climbs"), FMcShulkerBullet::SpeedAt(10) > FMcShulkerBullet::SpeedAt(2));
+	}
+	{
+		// A guardian with a player in sight hurts them for 6 once every 89 ticks (guard1.txt).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 14.5) };
+		TArray<int32> Hits;
+		int32 Now = 0;
+		Manager.OnPlayerHurt = [this, &Hits, &Now](const FVector&, float Damage) { Hits.Add(Now); TestEqual(TEXT("a beam hits for 6"), Damage, 6.0f); };
+		AddMob(Manager, TEXT("minecraft:guardian"), FVector(10.5, 1.0, 10.5));
+		for (; Now < 300; ++Now)
+		{
+			Manager.Tick();
+		}
+		TestTrue(TEXT("two or three beams in 300 ticks"), Hits.Num() >= 2 && Hits.Num() <= 3);
+	}
+	{
+		// An enderman is angered by a player whose view stays on its eyes (ender13/14.txt): aimed at them, 1 block off them, and looking away.
+		const FVector Player(10.5, 1.0, 20.5);
+		const FVector Eyes(10.5, 1.0 + 2.9 * 0.879, 10.5);
+		const FVector ToEyes = Eyes - (Player + FVector(0.0, 1.62, 0.0));
+		const FVector Looks[3] = { ToEyes.GetSafeNormal(), (ToEyes + FVector(0.0, 1.0, 0.0)).GetSafeNormal(), FVector(0.0, 0.0, 1.0) };
+		const bool bExpected[3] = { true, false, false };
+		for (int32 Case = 0; Case < 3; ++Case)
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.PlayerPositions = { Player };
+			Manager.PlayerLooks = { Looks[Case] };
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 8; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(*FString::Printf(TEXT("stare case %d"), Case), Enderman->AngerTicks > 0, bExpected[Case]);
+		}
+	}
+	{
+		// An enderman among flowers at its feet takes one (ender6.txt: all three did within about 600 ticks) and takes none with mob griefing off.
+		for (const bool bGriefing : { true, false })
+		{
+			FMcBlockWorld World{FMcDimensionType()};
+			MakeFlatWorld(World, Stone);
+			FMcEntityManager Manager(World);
+			Manager.Difficulty = 2;
+			Manager.bMobGriefing = bGriefing;
+			Manager.PlayerPositions = { FVector(10.5, 1.0, 22.5) };
+			const FMcStateId Flower = FMcBlockRegistry::Get().FindDefaultState(TEXT("minecraft:dandelion")).Get(0);
+			for (int32 X = -14; X < 30; ++X)
+			{
+				for (int32 Z = -14; Z < 30; ++Z)
+				{
+					World.SetBlock(FIntVector(X, 1, Z), Flower);
+				}
+			}
+			FMcBlockTags& Tags = FMcBlockTags::Get();
+			TestTrue(TEXT("tags load"), Tags.EnsureLoaded());
+			TestTrue(TEXT("the holdable tag exists"), Tags.Find(TEXT("minecraft:enderman_holdable")) != INDEX_NONE);
+			TestTrue(TEXT("a dandelion is holdable"), Tags.Has(Tags.Find(TEXT("minecraft:enderman_holdable")), Flower));
+			TestTrue(TEXT("a dandelion has no collision"), !FMcBlockShapes::Get().HasCollision(Flower));
+			FMcMob* Enderman = AddMob(Manager, TEXT("minecraft:enderman"), FVector(10.5, 1.0, 10.5));
+			for (int32 Tick = 0; Tick < 1500; ++Tick)
+			{
+				Manager.Tick();
+			}
+			TestEqual(bGriefing ? TEXT("an enderman in flowers picks one") : TEXT("with griefing off it takes nothing"), Enderman->Carried.IsSet(), bGriefing);
+		}
+	}
+	for (const TCHAR* Kind : { TEXT("minecraft:strider"), TEXT("minecraft:endermite"), TEXT("minecraft:shulker"), TEXT("minecraft:guardian"), TEXT("minecraft:phantom"), TEXT("minecraft:hoglin") })
+	{
+		// Each Nether, End and sea mob stays in the world for ten seconds beside a player (none is removed or sent out of the world on its own).
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		Manager.PlayerPositions = { FVector(10.5, 1.0, 20.5) };
+		FMcMob* Mob = AddMob(Manager, Kind, FVector(10.5, 1.0, 10.5));
+		const int32 Id = Mob->Id;
+		for (int32 Tick = 0; Tick < 200; ++Tick)
+		{
+			Manager.Tick();
+		}
+		bool bFound = false;
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			bFound |= Entity->Id == Id;
+		}
+		TestTrue(FString::Printf(TEXT("%s is still there after 200 ticks"), Kind), bFound);
+	}
+	{
+		// A phantom circles above a player and dives at it: over 900 ticks it passes within 3 blocks at least twice and climbs above 6.
+		FMcBlockWorld World{FMcDimensionType()};
+		MakeFlatWorld(World, Stone);
+		FMcEntityManager Manager(World);
+		Manager.Difficulty = 2;
+		const FVector Player(10.5, 1.0, 10.5);
+		Manager.PlayerPositions = { Player };
+		FMcMob* Phantom = AddMob(Manager, TEXT("minecraft:phantom"), FVector(10.5, 9.0, 0.5));
+		int32 Passes = 0;
+		bool bNear = false;
+		double Highest = 0.0;
+		for (int32 Tick = 0; Tick < 900; ++Tick)
+		{
+			Manager.Tick();
+			const double Distance = FVector::Dist(Phantom->Body.Position, Player + FVector(0, 0.9, 0));
+			Highest = FMath::Max(Highest, Phantom->Body.Position.Y - Player.Y);
+			if (Distance < 3.0 && !bNear)
+			{
+				++Passes;
+			}
+			bNear = Distance < 3.0;
+		}
+		TestTrue(FString::Printf(TEXT("a phantom dives at least twice in 900 ticks (%d) and climbs (%.1f)"), Passes, Highest), Passes >= 2 && Highest > 6.0);
 	}
 	return true;
 }

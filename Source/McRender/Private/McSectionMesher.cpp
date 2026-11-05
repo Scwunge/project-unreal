@@ -413,6 +413,7 @@ TSharedRef<const FMcRenderPalette> FMcRenderPalette::Build(const FMcBlockRegistr
 			Info.TintSource = McBlockMesher::GetTintSource(Registry, static_cast<FMcStateId>(Id));
 		}
 		const FMcBlockLight& BlockLight = FMcBlockLight::Get();
+		Info.bOpaqueToLight = BlockLight.IsLoaded() && BlockLight.GetDampening(static_cast<FMcStateId>(Id)) >= 15;
 		Info.Surface = McSurface::ForBlock(Registry.GetBlockOf(static_cast<FMcStateId>(Id)).Name,
 			BlockLight.IsLoaded() ? BlockLight.GetEmission(static_cast<FMcStateId>(Id)) : 0);
 	}
@@ -539,7 +540,9 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 					// side, the block's own cell for faces inside it (a slab's top, a torch).
 					const EMcDirection LightFrom = Quad.Face != EMcDirection::None ? Quad.Face : NearestDirection(ModelNormal);
 					FIntVector Front(X, Y, Z);
-					if (IsOnSide(Quad, LightFrom))
+					// An opaque block holds no light in its own cell, so a pack model's quad inside one takes the light of the
+					// cell it faces (the vanilla client shows such a quad lit; the shot zz_test_model).
+					if (IsOnSide(Quad, LightFrom) || Info.bOpaqueToLight)
 					{
 						Front += DirectionOffsets[DirectionIndex(LightFrom)];
 					}
@@ -581,7 +584,10 @@ FMcSectionMesh McBlockMesher::Build(const FMcSectionSnapshot& Snapshot, const FM
 						float Occlusion = 0.0f;
 						for (int32 Index = 0; Index < 4; ++Index)
 						{
-							const uint8 Packed = bOccluded[Index] ? FrontLight : Snapshot.Light[FMcSectionSnapshot::Index(Cells[Index].X, Cells[Index].Y, Cells[Index].Z)];
+							// A cell the light engine holds opaque has no light of its own, even when a pack's model for it is not a full cube.
+							const FMcStateId BesideState = Snapshot.Get(Cells[Index].X, Cells[Index].Y, Cells[Index].Z);
+							const bool bNoLight = bOccluded[Index] || (Palette.States.IsValidIndex(BesideState) && Palette.States[BesideState].bOpaqueToLight);
+							const uint8 Packed = bNoLight ? FrontLight : Snapshot.Light[FMcSectionSnapshot::Index(Cells[Index].X, Cells[Index].Y, Cells[Index].Z)];
 							Sum += FVector2D(Packed >> 4, Packed & 15);
 							Occlusion += bOccluded[Index] ? 0.2f : 1.0f;
 						}

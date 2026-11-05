@@ -181,6 +181,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			WorldDir = McWorldSave::GetWorldDir(WorldName);
 			bHaveLevel = McWorldSave::LoadLevel(WorldDir, Level);
+			McWorldSave::LoadMaps(WorldDir);
 			if (!bHaveLevel && IFileManager::Get().FileExists(*(WorldDir / TEXT("level.json"))))
 			{
 				// Starting a new world over this one's chunks would mix two seeds; leave it as it is.
@@ -325,6 +326,12 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSpawnerCycled(Pos);
 	};
+	Simulation->OnBlocksPushed = [this](const TArray<FIntVector>& Cells, const FIntVector& Dir)
+	{
+		FPistonPush& Push = PistonPushes.AddDefaulted_GetRef();
+		Push.Cells = Cells;
+		Push.Dir = Dir;
+	};
 	// TNT lit by fire or redstone becomes a primed block.
 	Simulation->OnLightTnt = [this](const FIntVector& Pos)
 	{
@@ -452,6 +459,38 @@ void AMcWorldActor::BeginPlay()
 						SpawnColumn = Column;
 						SurfaceY = Floor;
 						bFound = true;
+					}
+				}
+			}
+		}
+	}
+	else if (bHaveLevel)
+	{
+		// A saved world keeps the spawn it was made with.
+		SpawnColumn = FIntPoint(Level.Spawn.X, Level.Spawn.Z);
+		SurfaceY = Level.Spawn.Y - 1;
+	}
+	else if (!bFlat && Dimension == TEXT("minecraft:overworld"))
+	{
+		// A new overworld: spawn on dry land, not over the ocean at 0, 0 (players drowned there on 2026-11-04). Look outwards in rings of 16 blocks.
+		const int32 SeaLevel = 63;
+		bool bLand = Generator->FindSolidTopY(0, 0) >= SeaLevel;
+		for (int32 Ring = 1; Ring <= 40 && !bLand; ++Ring)
+		{
+			for (int32 DZ = -Ring; DZ <= Ring && !bLand; ++DZ)
+			{
+				for (int32 DX = -Ring; DX <= Ring && !bLand; ++DX)
+				{
+					if (FMath::Max(FMath::Abs(DX), FMath::Abs(DZ)) != Ring)
+					{
+						continue;
+					}
+					const FIntPoint Column(DX * 16, DZ * 16);
+					if (Generator->FindSolidTopY(Column.X, Column.Y) >= SeaLevel)
+					{
+						SpawnColumn = Column;
+						SurfaceY = Generator->FindSurfaceY(Column.X, Column.Y);
+						bLand = true;
 					}
 				}
 			}
@@ -880,6 +919,38 @@ void AMcWorldActor::SyncFallingBlocks()
 	}
 }
 
+void AMcWorldActor::MovePushedEntities()
+{
+	if (!Entities || PistonPushes.IsEmpty())
+	{
+		return;
+	}
+	for (FPistonPush& Push : PistonPushes)
+	{
+		++Push.Step;
+		const FVector Shift = FVector(Push.Dir) * (0.5 * Push.Step);
+		for (const FIntVector& Cell : Push.Cells)
+		{
+			const FBox Shape(FVector(Cell) + Shift, FVector(Cell) + FVector(1.0) + Shift);
+			TArray<FMcEntity*> Hit;
+			Entities->GetManager().FindInBox(Shape, Hit);
+			for (FMcEntity* Entity : Hit)
+			{
+				const FBox Box = Entity->Body.GetBox();
+				// Touching is not overlapping; what stands on a block moves only when the block rises.
+				if (Entity->bRemoved || Entity->IsVehicle() || Box.Min.X >= Shape.Max.X - UE_KINDA_SMALL_NUMBER || Box.Max.X <= Shape.Min.X + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Y >= Shape.Max.Y - UE_KINDA_SMALL_NUMBER || Box.Max.Y <= Shape.Min.Y + UE_KINDA_SMALL_NUMBER
+					|| Box.Min.Z >= Shape.Max.Z - UE_KINDA_SMALL_NUMBER || Box.Max.Z <= Shape.Min.Z + UE_KINDA_SMALL_NUMBER)
+				{
+					continue;
+				}
+				McPhysics::Move(*BlockWorld, Entity->Body, FVector(Push.Dir) * 0.5, false);
+			}
+		}
+	}
+	PistonPushes.RemoveAll([](const FPistonPush& Push) { return Push.Step >= 2; });
+}
+
 void AMcWorldActor::TickLightning()
 {
 	if (Weather != static_cast<uint8>(EMcWeather::Thunder) || !HasWeather() || !BlockWorld)
@@ -949,6 +1020,11 @@ void AMcWorldActor::Strike(const FVector& Position)
 {
 	UE_LOG(LogMcServer, Log, TEXT("Lightning struck %s at %s"), *Dimension, *Position.ToString());
 	MulticastLightning(FVector_NetQuantize10(Position), LightningRandom.RandHelper(MAX_int32));
+	if (Simulation)
+	{
+		const FVector Block = McCoords::UnrealToBlock(Position);
+		Simulation->LightningStruck(FIntVector(FMath::FloorToInt32(Block.X), FMath::FloorToInt32(Block.Y), FMath::FloorToInt32(Block.Z)));
+	}
 	// The thunder carries everywhere (its volume makes its range huge); the crack is near.
 	MulticastSound(FName("entity.lightning_bolt.thunder"), FVector_NetQuantize10(Position), 10000.0f, 0.8f + LightningRandom.FRand() * 0.2f);
 	MulticastSound(FName("entity.lightning_bolt.impact"), FVector_NetQuantize10(Position), 2.0f, 0.5f + LightningRandom.FRand() * 0.2f);
@@ -1101,6 +1177,7 @@ void AMcWorldActor::SaveWorld()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	// Whatever an autosave had left to look at is covered by this.
 	AutosaveQueue.Reset();
@@ -1125,6 +1202,7 @@ void AMcWorldActor::BeginAutosave()
 		Level.Dimension = Dimension;
 		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
+		McWorldSave::SaveMaps(WorldDir);
 	}
 	if (Entities)
 	{
@@ -1205,6 +1283,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
 			Simulation->Tick();
+			MovePushedEntities();
 			SyncFallingBlocks();
 			FeedPressurePlates();
 			TickLightning();
@@ -1225,13 +1304,17 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 				}
 			}
 			TArray<FVector> Players;
+			TArray<FVector> Looks;
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{
 				if (const APawn* Pawn = It->IsValid() && IsPlayerHere(*It->Get()) ? It->Get()->GetPawn() : nullptr)
 				{
 					Players.Add(McCoords::UnrealToBlock(Pawn->GetActorLocation()));
+					const FVector EyeUnreal = Pawn->GetActorLocation();
+					Looks.Add((McCoords::UnrealToBlock(EyeUnreal + It->Get()->GetControlRotation().Vector()) - McCoords::UnrealToBlock(EyeUnreal)).GetSafeNormal());
 				}
 			}
+			Entities->GetManager().PlayerLooks = Looks;
 			// The actors made for this world's mobs and items are its own (clients hide the ones of the dimension they are not in).
 			const FDelegateHandle Claim = GetWorld()->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateWeakLambda(this, [this](AActor* Spawned)
 			{

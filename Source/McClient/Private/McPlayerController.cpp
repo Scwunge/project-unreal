@@ -1,4 +1,8 @@
 #include "McPlayerController.h"
+#include "McItemFrames.h"
+#include "McSurvival.h"
+#include "McLeash.h"
+#include "McMount.h"
 #include "McMob.h"
 #include "ShaderCompiler.h"
 #include "McLaunch.h"
@@ -358,6 +362,48 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			return false;
 		}
+		// A lead ties it to the player, or a tied one is let go.
+		if (FMcEntityHost* LeadHost = World->GetEntityHost())
+		{
+			FMcItemStack& HeldLead = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			if (Mob->bLeashed && Mob->LeashKnot == 0)
+			{
+				McLeash::Detach(LeadHost->GetManager(), *Mob, !User.Data->bCreative);
+				return true;
+			}
+			if (!HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead") && McLeash::Attach(*Mob, User.GetFeetPosition()))
+			{
+				if (!User.Data->bCreative && --HeldLead.Count <= 0)
+				{
+					HeldLead.Clear();
+				}
+				return true;
+			}
+		}
+		// A horse, donkey or mule: saddle, armour, chest, food, or a seat on its back.
+		if (McMount::IsRideable(*Mob) && World->GetEntityHost())
+		{
+			FMcItemStack& HeldMount = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			const McMount::EUse Result = McMount::Use(World->GetEntityHost()->GetManager(), *Mob, HeldMount, User.GetUniqueID(), User.Data->bCreative, User.IsSneakPosed());
+			if (Result == McMount::EUse::Mounted)
+			{
+				User.ServerRide(Mob->Id);
+			}
+			if (Result == McMount::EUse::Inventory && Mob->Mount.IsValid())
+			{
+				// Sneaking on a tamed animal opens its saddle, armour and chest slots; the title is its name.
+				FString Name = Mob->GetType().ToString();
+				Name.RemoveFromStart(TEXT("minecraft:"));
+				Name = Name.Left(1).ToUpper() + Name.Mid(1);
+				User.Data->OpenBlockWindow(EMcWindowKind::Horse, FIntVector(FMath::FloorToInt32(Mob->Body.Position.X), FMath::FloorToInt32(Mob->Body.Position.Y), FMath::FloorToInt32(Mob->Body.Position.Z)),
+					Name, McMount::GetInventory(*Mob->Mount), nullptr);
+				User.Data->MarkWindowOnEntity(Mob->Id);
+			}
+			if (Result != McMount::EUse::None)
+			{
+				return true;
+			}
+		}
 		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
 		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
 		const int32 Id = Mob->Id;
@@ -560,6 +606,22 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			// Lights the TNT it is used on.
 			FMcEntityHost* Host = World->GetEntityHost();
 			return Host && FMcPrimedTnt::Ignite(Host->GetManager(), Pos) != nullptr;
+		}
+		if (Held == TEXT("minecraft:compass") && Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name == TEXT("minecraft:lodestone"))
+		{
+			// A compass used on a lodestone points at it from then on (one of a stack is tied, the rest stay).
+			FMcItemStack& Compass = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			FMcItemStack Tied(Compass.Item, 1);
+			Tied.Components = Compass.Components;
+			McItemFrames::SetLodestone(Tied, Pos, Blocks->GetDimension().Name);
+			if (Compass.Count > 1 && !User.Data->bCreative)
+			{
+				Compass.Count -= 1;
+				McSurvival::GiveItem(*User.Data->Inventory, Tied);
+				return true;
+			}
+			Compass = Tied;
+			return true;
 		}
 		if (Held == TEXT("minecraft:flint_and_steel"))
 		{

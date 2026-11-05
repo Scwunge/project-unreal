@@ -127,6 +127,11 @@ private:
 	TObjectPtr<UExponentialHeightFogComponent> Fog;
 	UPROPERTY(Transient)
 	TObjectPtr<UDirectionalLightComponent> SunLight;
+
+	// Unreal Mode's dusk and dawn: a soft blue light from the side away from the sun, so the ground is not black while the sky
+	// still glows (the sun has set and the moon is not up yet).
+	UPROPERTY(Transient)
+	TObjectPtr<UDirectionalLightComponent> TwilightFill;
 	UPROPERTY(Transient)
 	TObjectPtr<UPostProcessComponent> EnhancedPost;
 	UPROPERTY(Transient)

@@ -44,6 +44,11 @@ public:
 	// Puts back what CaptureChunk wrote, with new ids; returns how many came back. Entities of kinds this version
 	// doesn't know, or whose bytes are damaged, are dropped.
 	int32 RestoreChunk(TConstArrayView<uint8> Bytes);
+	// One entity as bytes (the format of CaptureChunk with a count of one), to carry it to another dimension; empty if it
+	// is not kept in saves. UnpackEntity puts it back here with a new id, at Pos, and returns it (null if the bytes are no
+	// good). Added for portal travel (McTravel).
+	TArray<uint8> PackEntity(FMcEntity& Entity);
+	FMcEntity* UnpackEntity(TConstArrayView<uint8> Bytes, const FVector& Pos);
 	// A chunk that came from a save has had its turn at animals: don't give it a herd when it joins the world.
 	// Call before adding the chunk.
 	void MarkSeeded(FIntPoint Chunk) { Seeded.Add(Chunk); }
@@ -105,6 +110,7 @@ public:
 	// ---- Patrols and raids (minecraft.wiki, "Pillager patrol" and "Raid") ----
 	// A raid: waves of raiders sent at a village. It waits 15 seconds, sends a wave, and sends the next once the last is
 	// dead; the last one dead is a victory, and no village left (or 40 minutes) a defeat.
+	bool CountVillagePoi(const FVector& Center) const;
 	struct FRaid
 	{
 		enum class EStatus : uint8 { Waiting, Active, Victory, Defeat };
@@ -122,9 +128,16 @@ public:
 		// The health of the wave when it came, and the ids of those of it still about.
 		float WaveHealth = 1.0f;
 		TArray<int32> Raiders;
+		// The raider carrying the banner (0 for none), and whether a bed, bell or job block was ever seen about the village.
+		int32 CaptainId = 0;
+		bool bSawPoi = false;
 	};
 	static constexpr int32 RaidWarmupTicks = 300;
-	static constexpr int32 RaidWaveDelayTicks = 100;
+	// Measured (raid6-9, vanilla, kill to next wave seen, sample grid 14-21 ticks): 293 to 321 between the last raider's death and the next wave, so the true gap is at most 293
+	// (the wiki's 300 is above it). Within (272, 293] unfitted; 293 is the best upper bound (provenance gap).
+	static constexpr int32 RaidWaveDelayTicks = 293;
+	// Raiders further than this from the village are removed (wiki; checked every 20 ticks).
+	static constexpr double RaiderLeashRange = 112.0;
 	static constexpr int32 RaidCelebrationTicks = 600;
 	static constexpr int64 RaidMaxTicks = 48000;
 	static constexpr double RaidBarRange = 96.0;

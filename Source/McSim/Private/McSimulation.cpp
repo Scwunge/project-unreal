@@ -89,12 +89,31 @@ namespace
 		return FMcBlockRegistry::Get().FindState(Block, Properties).Get(0);
 	}
 
-	// A block a fluid pushes aside: nothing to collide with (air, plants, torches).
+	// What flowing water and lava replace (reference run displace, 50 blocks beside a source): torches, redstone dust, levers and
+	// buttons, carpets, snow layers, pots, plants, fire, cobweb, repeaters, comparators, tripwire, and the end rod. They leave
+	// every block that can be waterlogged (signs, slabs, stairs, bars, panes, fences, trapdoors, chests, lanterns, candles,
+	// scaffolding, lights, barriers), and also rails, pressure plates, doors, hoppers, cauldrons and pots (those have a shape).
 	bool IsDisplaceable(FMcStateId State)
 	{
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		return Registry.IsAir(State) || (FluidOf(State) == EMcFluid::None && !FMcBlockShapes::Get().HasCollision(State) && !FMcBlockTags::Get().Has(TEXT("minecraft:climbable"), State)
-			&& !FMcBlockTags::Get().Has(TEXT("minecraft:portals"), State));
+		if (Registry.IsAir(State))
+		{
+			return true;
+		}
+		if (FluidOf(State) != EMcFluid::None || Registry.GetPropertyValue(State, TEXT("waterlogged")) != NAME_None)
+		{
+			return false;
+		}
+		// These have a small shape but were still replaced (measured; not generalised to similar blocks).
+		const FString Name = Registry.GetBlockOf(State).Name.ToString();
+		if (Name == TEXT("minecraft:end_rod") || Name == TEXT("minecraft:repeater") || Name == TEXT("minecraft:comparator") || Name == TEXT("minecraft:flower_pot")
+			|| Name.EndsWith(TEXT("_carpet")))
+		{
+			return true;
+		}
+		const FMcBlockTags& Tags = FMcBlockTags::Get();
+		return !FMcBlockShapes::Get().HasCollision(State) && !Tags.Has(TEXT("minecraft:climbable"), State) && !Tags.Has(TEXT("minecraft:portals"), State)
+			&& !Tags.Has(TEXT("minecraft:rails"), State) && !Tags.Has(TEXT("minecraft:pressure_plates"), State);
 	}
 }
 
@@ -132,6 +151,11 @@ void FMcSimulation::SetPressurePlate(const FIntVector& Pos, int32 NumEntities)
 void FMcSimulation::HitTarget(const FIntVector& Pos, int32 Power, int32 Duration)
 {
 	Redstone->HitTarget(Pos, Power, Duration);
+}
+
+void FMcSimulation::LightningStruck(const FIntVector& Pos)
+{
+	Redstone->LightningStruck(Pos);
 }
 
 void FMcSimulation::PlayerPlaced(const FIntVector& Pos)
@@ -193,6 +217,11 @@ void FMcSimulation::SetWeatherCycle(bool bCycle)
 void FMcSimulation::SetWeather(EMcWeather Weather, int32 Duration)
 {
 	Nature->SetWeather(Weather, Duration);
+}
+
+void FMcSimulation::SetSeaLevel(int32 Level)
+{
+	Nature->SetSeaLevel(Level);
 }
 
 void FMcSimulation::SetSnowAccumulation(int32 Layers)
@@ -266,9 +295,78 @@ void FMcSimulation::OnBlockChanged(const FIntVector& Pos, FMcStateId State)
 	}
 }
 
+void FMcSimulation::AbsorbWater(const FIntVector& Sponge)
+{
+	// Reference run rs_sponge: a sponge that has water against it takes the water within 6 steps (through water only), at most 65 blocks,
+	// at once, and becomes a wet sponge. Not fitted: which blocks go when more than 65 are in reach.
+	static const FIntVector Order[6] = { FIntVector(0, -1, 0), FIntVector(0, 1, 0), FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
+	bool bTouching = false;
+	for (const FIntVector& Offset : Order)
+	{
+		bTouching = bTouching || FluidOf(World.GetBlock(Sponge + Offset)) == EMcFluid::Water;
+	}
+	if (!bTouching)
+	{
+		return;
+	}
+	// Wet first, so the changes below do not set it off again.
+	World.SetBlock(Sponge, StateOf(TEXT("minecraft:wet_sponge")));
+	TSet<FIntVector> Seen;
+	Seen.Add(Sponge);
+	TArray<TPair<FIntVector, int32>> Queue;
+	Queue.Add(TPair<FIntVector, int32>(Sponge, 0));
+	int32 Removed = 0;
+	for (int32 Head = 0; Head < Queue.Num() && Removed < 65; ++Head)
+	{
+		const TPair<FIntVector, int32> Here = Queue[Head];
+		for (const FIntVector& Offset : Order)
+		{
+			const FIntVector Next = Here.Key + Offset;
+			if (Seen.Contains(Next) || Removed >= 65)
+			{
+				continue;
+			}
+			Seen.Add(Next);
+			const FMcStateId NextState = World.GetBlock(Next);
+			if (FluidOf(NextState) != EMcFluid::Water)
+			{
+				continue;
+			}
+			if (IsFluidBlock(NextState))
+			{
+				World.SetBlock(Next, StateOf(TEXT("minecraft:air")));
+			}
+			else
+			{
+				// Water held by a block (waterlogged): the block stays and dries.
+				const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+				const FMcBlock& Block = Registry.GetBlockOf(NextState);
+				TMap<FName, FName> Props;
+				const FMcBlockState& Info = Registry.GetState(NextState);
+				for (int32 Index = 0; Index < Block.Properties.Num(); ++Index)
+				{
+					Props.Add(Block.Properties[Index].Name, Block.Properties[Index].Values[Info.Values[Index]]);
+				}
+				Props.Add(TEXT("waterlogged"), TEXT("false"));
+				World.SetBlock(Next, Registry.FindState(Block.Name, Props).Get(NextState));
+			}
+			++Removed;
+			if (Here.Value + 1 < 6)
+			{
+				Queue.Add(TPair<FIntVector, int32>(Next, Here.Value + 1));
+			}
+		}
+	}
+}
+
 void FMcSimulation::Notify(const FIntVector& Pos)
 {
 	const FMcStateId State = World.GetBlock(Pos);
+	if (FMcBlockRegistry::Get().GetBlockOf(State).Name == TEXT("minecraft:sponge"))
+	{
+		AbsorbWater(Pos);
+		return;
+	}
 	// A conduit keeps its own 40 tick round of checks going from when it is placed (it holds water, so before fluids).
 	if (McConduit::IsConduit(State))
 	{

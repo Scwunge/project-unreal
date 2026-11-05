@@ -1,4 +1,5 @@
 #include "McPlayerData.h"
+#include "McMountMenu.h"
 #include "McSignMenu.h"
 #include "McLecternMenu.h"
 #include "McCraftingMenu.h"
@@ -97,6 +98,8 @@ void UMcPlayerDataComponent::FillCreativeHotbar()
 
 void UMcPlayerDataComponent::UpdateArmor()
 {
+	// The registry may not be loaded yet when a saved player comes back (an imported one in the first frames).
+	FMcItemRegistry::Get().EnsureLoaded();
 	float Points = 0.0f, Toughness = 0.0f;
 	McSurvival::GetArmorValues(*Armor, Points, Toughness);
 	Stats.Armor = FMath::RoundToInt32(Points);
@@ -210,6 +213,13 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 			Made.Menu = MakeShared<FMcContainerMenu>(Made.Container, Inventory);
 		}
 		break;
+	case EMcWindowKind::Horse:
+		if (Aux >= 2 && Aux <= 17)
+		{
+			Made.Container = MakeShared<FMcContainer>(Aux);
+			Made.Menu = MakeShared<FMcMountMenu>(Made.Container, Inventory);
+		}
+		break;
 	case EMcWindowKind::Hopper:
 	case EMcWindowKind::Dispenser:
 		Made.Container = MakeShared<FMcContainer>(Kind == EMcWindowKind::Hopper ? 5 : 9);
@@ -226,6 +236,9 @@ FMcWindow UMcPlayerDataComponent::MakeWindow(EMcWindowKind Kind, int32 Id, int32
 		break;
 	case EMcWindowKind::Grindstone:
 		Made.Menu = MakeShared<FMcGrindstoneMenu>(Inventory);
+		break;
+	case EMcWindowKind::CartographyTable:
+		Made.Menu = MakeShared<FMcCartographyMenu>(Inventory);
 		break;
 	case EMcWindowKind::Anvil:
 		Made.Menu = MakeShared<FMcAnvilMenu>(Inventory);
@@ -433,7 +446,17 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	case EMcWindowKind::Loom:
 	case EMcWindowKind::SmithingTable:
 	case EMcWindowKind::Grindstone:
+	case EMcWindowKind::CartographyTable:
 	case EMcWindowKind::Anvil:
+		break;
+	case EMcWindowKind::Horse:
+		if (!Container.IsValid() || Container->Num() < 2 || Container->Num() > 17)
+		{
+			return;
+		}
+		Aux = Container->Num();
+		Made.Container = Container;
+		Made.Menu = MakeShared<FMcMountMenu>(Container, Inventory);
 		break;
 	case EMcWindowKind::Chest:
 	case EMcWindowKind::Hopper:
@@ -483,6 +506,14 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	OpenServerWindow(MoveTemp(Made), Aux);
 }
 
+void UMcPlayerDataComponent::MarkWindowOnEntity(int32 EntityId)
+{
+	if (Window.IsOpen())
+	{
+		Window.EntityId = EntityId;
+	}
+}
+
 void UMcPlayerDataComponent::CloseWindow()
 {
 	if (!HasWindow())
@@ -511,6 +542,13 @@ void UMcPlayerDataComponent::NotifyClick(int32 Slot, int32 Button, EMcClickType 
 	{
 		// The menu the screen clicked is the server's own: only the follow-ups remain.
 		McSurvival::AddXp(Stats, Window.Menu->TakeExperience());
+	// Measured (ref run bundlesound, 20 clicks): insert and remove_one volume 0.8, pitch 0.8 + 0.5 * random (0.82 to 1.28 seen); insert_fail 1.0 and 1.0.
+	const FName BundleSound = Window.Menu->TakeBundleSound();
+	if (!BundleSound.IsNone() && ServerSound)
+	{
+		const bool bFail = BundleSound == FName("item.bundle.insert_fail");
+		ServerSound(BundleSound, bFail ? 1.0f : 0.8f, bFail ? 1.0f : 0.8f + FMath::FRand() * 0.5f);
+	}
 		Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Window.Menu->TakeLevelsSpent());
 		if (Window.OnChanged)
 		{
@@ -831,6 +869,11 @@ void UMcPlayerDataComponent::ServerTick()
 		SentRaidTitle = RaidBarTitle;
 		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
 	}
+	if (CustomBars != SentCustomBars)
+	{
+		SentCustomBars = CustomBars;
+		ClientSetCustomBars(CustomBars);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -882,7 +925,7 @@ void UMcPlayerDataComponent::SendChat(const FString& Text)
 	}
 	else
 	{
-		ServerChat(Text.Left(256));
+		ServerChat(Text.Left(Text.StartsWith(TEXT("/")) ? 32500 : 256));
 	}
 }
 
@@ -959,6 +1002,61 @@ void UMcPlayerDataComponent::ClientToast_Implementation(const FString& Heading, 
 	ShowToast(Heading, static_cast<uint32>(HeadingRgb), Title, Icon);
 }
 
+UMcPlayerDataComponent::FTitle& UMcPlayerDataComponent::GetTitle()
+{
+	static FTitle Title;
+	return Title;
+}
+
+void UMcPlayerDataComponent::ApplyTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	FTitle& Title = GetTitle();
+	switch (Kind)
+	{
+	case ETitleKind::Title:
+		Title.Title = Text;
+		Title.Time = FPlatformTime::Seconds();
+		break;
+	case ETitleKind::Subtitle:
+		// The subtitle is kept for the next title; one given alone is not shown by itself.
+		Title.Subtitle = Text;
+		break;
+	case ETitleKind::ActionBar:
+		ShowOverlay(Text, false);
+		break;
+	case ETitleKind::Clear:
+		Title.Title.Reset();
+		Title.Subtitle.Reset();
+		Title.Time = -1000.0;
+		break;
+	case ETitleKind::Reset:
+		Title = FTitle();
+		break;
+	case ETitleKind::Times:
+		Title.FadeIn = FadeIn;
+		Title.Stay = Stay;
+		Title.FadeOut = FadeOut;
+		break;
+	}
+}
+
+void UMcPlayerDataComponent::ServerTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	if (IsOwnerRemote())
+	{
+		ClientTitle(static_cast<uint8>(Kind), Text, FadeIn, Stay, FadeOut);
+	}
+	else if (IsServer())
+	{
+		ApplyTitle(Kind, Text, FadeIn, Stay, FadeOut);
+	}
+}
+
+void UMcPlayerDataComponent::ClientTitle_Implementation(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut)
+{
+	ApplyTitle(static_cast<ETitleKind>(Kind), Text, FadeIn, Stay, FadeOut);
+}
+
 void UMcPlayerDataComponent::ClientOverlay_Implementation(const FString& Text, bool bRainbow)
 {
 	ShowOverlay(Text, bRainbow);
@@ -971,8 +1069,8 @@ void UMcPlayerDataComponent::ClientChat_Implementation(const FString& Text, int3
 
 void UMcPlayerDataComponent::ServerChat_Implementation(const FString& Text)
 {
-	// The game takes at most 256 characters a line.
-	if (ServerOnChat && Text.Len() <= 256)
+	// The game takes at most 256 characters a line, and 32500 for a command.
+	if (ServerOnChat && Text.Len() <= (Text.StartsWith(TEXT("/")) ? 32500 : 256))
 	{
 		ServerOnChat(Text);
 	}
@@ -982,6 +1080,16 @@ void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
 {
 	RaidBarFraction = Fraction;
 	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::SetCustomBars(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::ClientSetCustomBars_Implementation(const FString& Lines)
+{
+	CustomBars = Lines;
 }
 
 void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)

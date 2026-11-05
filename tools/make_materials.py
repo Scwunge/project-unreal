@@ -153,7 +153,8 @@ return normalize(N - s * (dh.x * T + dh.y * B) * inv);
 # ("BlocksHdN": normal x and y in red and green, occlusion in blue, height in alpha) and a specular map ("BlocksHdS":
 # smoothness in red, F0 in green with 230 and up meaning metal, emission in alpha), the LabPBR layout. They are
 # filtered with mips and anisotropy, and opaque blocks get parallax occlusion mapping from the height.
-# The normal: water and particles as above; blocks from the normal map, put on the face with the same frame.
+# The normal: water and particles as above; blocks from the normal map, put on the face with the same frame. LabPBR normals
+# are DirectX (Y-: green low is up the picture, high is down), and B points down the picture (v grows downwards), hence + xy.y * B.
 LIT_NORMAL_HD_HLSL = LIT_NORMAL_HLSL[:LIT_NORMAL_HLSL.index("float3 luma")] + """
 float2 xy = (NMap.rg * 2.0 - 1.0) * Strength * (k == 2.0 ? 0.5 : 1.0);
 float z = sqrt(max(1.0 - dot(xy, xy), 0.05));
@@ -171,7 +172,7 @@ if (max(dot(T, T), dot(B, B)) < 1e-12)
 }
 T *= rsqrt(max(dot(T, T), 1e-12));
 B *= rsqrt(max(dot(B, B), 1e-12));
-return normalize(xy.x * T - xy.y * B + z * N);
+return normalize(xy.x * T + xy.y * B + z * N);
 """
 
 # Where the view ray, going into a block's surface, comes out in the picture: the whole shift in UV over the full depth
@@ -281,6 +282,11 @@ if (k == 1.0)
     float3 zenith = float3(0.12, 0.3, 0.75);
     float3 skycol = lerp(horizon, zenith, saturate(r.z * 1.5)) * pow(b.x, 2.2) * SkyFactor;
     e += skycol * fres * WaterSky;
+    // Shore foam: the mesher puts 0.4 * (closeness to the water's edge) after the layer number in UV1.x, so a white fringe
+    // fades in over the last half block before the shore and breathes slowly.
+    float edge = saturate(frac(Layer.x + 0.001) / 0.4);
+    float foam = smoothstep(0.1, 1.0, edge) * (0.7 + 0.3 * sin(Time * 1.4 + Pos.x * 0.011 + Pos.y * 0.009));
+    e += float3(0.85, 0.92, 1.0) * pow(b.x, 2.2) * SkyFactor * foam * 1.6;
 }
 if (puddle > 0.01 && k != 1.0 && k < 9.0)
 {
@@ -605,7 +611,7 @@ def make_block_material(name: str, blend_mode, default_array, vertex_alpha: bool
                            "BlockGlow": (add_scalar(material, -350, 800, "BlockGlow", 2.0), ""),
                            "Lava": (add_scalar(material, -350, 1600, "LavaGlow", 0.9), ""),
                            "Glow": (add_scalar(material, -350, 1700, "Glow", 2.5), ""),
-                           "Time": (time, ""), "Pos": (absolute, ""),
+                           "Time": (time, ""), "Pos": (absolute, ""), "Layer": (uv1, ""),
                            "Under": (add_scalar(material, -350, 1800, "Underwater", 0.0), ""),
                            "View": (camera, ""), "VNormal": (vertex_normal, ""), "Wet": (wetness, ""), "Puddles": (puddles, ""),
                            "WaterSky": (add_scalar(material, -350, 1900, "WaterSky", 1.0), "")})

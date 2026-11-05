@@ -48,6 +48,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks left of the hurt flash on the hearts; set to 10 when damage lands.
 	int32 HurtTime = 0;
 	bool bHardcore = false;
+	// The ridden mount's health and a horse's jump charge, copied from the pawn each tick (not saved): the HUD swaps the food row and the experience bar for them.
+	float MountHealth = 0.0f;
+	float MountMaxHealth = 0.0f;
+	float MountJump = -1.0f;
 
 	// ---- What the rules keep between ticks ----
 	// Ticks of immunity left after a hit (20 at the hit; within the first 10 only a bigger hit gets through, by the
@@ -64,6 +68,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks since food last healed or starved the player.
 	int32 FoodTimer = 0;
 	TArray<FMcStatusEffect> Effects;
+	// Where the player last died (a recovery compass points there), and in which dimension.
+	bool bHasDeath = false;
+	FIntVector DeathPos = FIntVector::ZeroValue;
+	FName DeathDimension;
 
 	// Reads or writes, by whether the archive is loading. False if a loading archive is malformed.
 	bool Serialize(FArchive& Ar);
@@ -82,6 +90,8 @@ enum class EMcWindowKind : uint8
 	Stonecutter,
 	SmithingTable,
 	Grindstone,
+	// The map slot, the material slot and the result: an FMcCartographyMenu.
+	CartographyTable,
 	Anvil,
 	BrewingStand,
 	Hopper,
@@ -94,6 +104,8 @@ enum class EMcWindowKind : uint8
 	Lectern,
 	// A villager's or wandering trader's trades; Pos is where the trader stands.
 	Trading,
+	// A tamed horse, donkey or mule: the saddle, armour and chest slots of the animal (an FMcMountMenu), EntityId says which.
+	Horse,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -113,6 +125,8 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
+	// Non-zero for a window on an entity (a chest cart or boat, a horse): it stays open while that is near, instead of while a block is there.
+	int32 EntityId = 0;
 	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
@@ -144,6 +158,8 @@ public:
 	bool bCreative = false;
 	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
 	TOptional<FIntVector> SpawnBed;
+	// Server: where /spawnpoint put them (a block); a bed slept in later takes over. Kept in the save.
+	TOptional<FIntVector> SpawnPoint;
 	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
 	TSet<FName> Advancements;
 
@@ -167,6 +183,8 @@ public:
 	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr, const TSharedPtr<FMcContainer>& SecondContainer = nullptr);
 	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
 	void CloseWindow();
+	// Server: the window just opened is on this entity.
+	void MarkWindowOnEntity(int32 EntityId);
 	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where
 	// this is the server).
 	void NotifyClick(int32 Slot, int32 Button, EMcClickType Type);
@@ -241,6 +259,25 @@ public:
 	static void ShowOverlay(const FString& Text, bool bRainbow);
 	static constexpr double OverlaySeconds = 3.0;
 
+	// The big text in the middle of the screen (/title): a title at four times the size, a subtitle at twice, which fade in,
+	// stay and fade out (in ticks; 10, 70 and 20 until /title times sets others). Both are legacy text.
+	struct FTitle
+	{
+		FString Title;
+		FString Subtitle;
+		int32 FadeIn = 10;
+		int32 Stay = 70;
+		int32 FadeOut = 20;
+		double Time = -1000.0;  // FPlatformTime::Seconds when it was shown
+	};
+	enum class ETitleKind : uint8 { Title, Subtitle, ActionBar, Clear, Reset, Times };
+	static FTitle& GetTitle();
+	// What /title does on this machine: the text for Title, Subtitle and ActionBar (a title or subtitle starts the show; the
+	// action bar is the overlay), Clear hides what is up, Reset also puts the times back, Times sets the three.
+	static void ApplyTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+	// Server: sends this player a /title.
+	void ServerTitle(ETitleKind Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+
 	// The small panels that slide in at the top right (an advancement made). A client list: each has the time it
 	// arrived and drops out of it once it has gone.
 	struct FToast
@@ -277,6 +314,9 @@ public:
 	float RaidBarFraction = -1.0f;
 	FString RaidBarTitle;
 	void SetRaidBar(float Fraction, const FString& Title);
+	// The custom boss bars below it (/bossbar), one per line: "title<TAB>fraction<TAB>color<TAB>style".
+	FString CustomBars;
+	void SetCustomBars(const FString& Lines);
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -285,6 +325,8 @@ protected:
 	void ClientSetStats(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Unreliable)
 	void ClientSetRaidBar(float Fraction, const FString& Title);
+	UFUNCTION(Client, Reliable)
+	void ClientSetCustomBars(const FString& Lines);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -298,6 +340,8 @@ protected:
 	void ClientChat(const FString& Text, int32 Rgb);
 	UFUNCTION(Client, Reliable)
 	void ClientOverlay(const FString& Text, bool bRainbow);
+	UFUNCTION(Client, Reliable)
+	void ClientTitle(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
 	UFUNCTION(Client, Reliable)
 	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)
@@ -347,6 +391,7 @@ private:
 	TArray<uint8> SentStats;
 	float SentRaidFraction = -1.0f;
 	FString SentRaidTitle;
+	FString SentCustomBars;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

@@ -17,6 +17,7 @@ class FMcEntityManager;
 class FMcNbt;
 class FMcWorldStorage;
 struct FMcLevelData;
+struct FMcPlayerData;
 
 namespace McJavaImport
 {
@@ -77,6 +78,12 @@ namespace McJavaImport
 	MCSERVER_API bool IsJavaWorld(const FString& Folder);
 	// level.dat and its neighbours into the world's own level data. False if level.dat can't be read.
 	MCSERVER_API bool ReadLevel(const FString& Folder, FMcLevelData& OutLevel);
+	// A Java player file (the root of players/data/<id>.dat) into the world's own player data: place, look, mode, health,
+	// food, experience, the inventory and ender chest by the game's slot numbers. False if it has no position.
+	MCSERVER_API bool ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out);
+	// Writes the most recently played player of the Java folder into WorldDir as "imported-player" (the one a world's
+	// players take when they have no file of their own). True if there was one.
+	MCSERVER_API bool ImportPlayer(const FString& Source, const FString& WorldDir);
 	// Imports the world in Source into Saved/Worlds/<new folder>, named Name (the vanilla level name if empty). Returns
 	// the folder name made, or an empty string on failure.
 	MCSERVER_API FString ImportWorld(const FString& Source, const FString& Name, FStats& OutStats);

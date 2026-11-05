@@ -53,6 +53,24 @@ struct MCENTITY_API FMcMobType
 	bool bHops = false;
 	// Bees fly: no gravity, and they wander at different heights.
 	bool bFlies = false;
+	// 1 for a ghast (one fireball every 60 to 85 ticks), 2 for a blaze (three small ones 6 ticks apart, a burst every 178 ticks;
+	// both measured in nether1.txt). Such a flier stops HoverRange blocks from its target (a guess) and shoots from there.
+	int32 FireballKind = 0;
+	// Fires homing bullets at a player in sight (the shulker).
+	bool bBullets = false;
+	// Turns on a player who looks at its eyes (the enderman).
+	bool bGazeAngers = false;
+	bool bDragon = false;
+	// The end crystal: stands still, goes off (power 6) at any damage, and heals a dragon within 32 blocks.
+	bool bCrystal = false;
+	// Picks up and sets down blocks (the enderman).
+	bool bCarriesBlocks = false;
+	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
+	int32 BeamTicks = 0;
+	float BeamDamage = 0.0f;
+	double HoverRange = 0.0;
+	// A phantom circles its target and dives at it (atk1.txt, 900 ticks: close passes 155 to 232 ticks apart, mean 189, n=4).
+	bool bSwoops = false;
 	// Drowned swim at a target in water, straight at it in three dimensions, instead of paddling up like the rest.
 	bool bSwims = false;
 	// Zombies in water do not paddle up: they sink (logged, a steady 0.025 blocks a tick), unlike the animals.
@@ -103,12 +121,29 @@ public:
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
 	int32 AngerTicks = 0;
+	int32 StareTicks = 0;
+	FVector DragonGoal = FVector::ZeroVector;
+	// The dragon: where the crystal that heals it stands (valid when bHasBeam), ticks since it began to be healed, and ticks of its death so far (0 while alive).
+	bool bHasBeam = false;
+	FVector BeamPos = FVector::ZeroVector;
+	int32 BeamTicks = 0;
+	int32 DeathTicks = 0;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
 	int32 OfferTicks = 0;
 	// A piglin that took a gold ingot: ticks left before it throws what it gives for it. Not saved.
 	int32 BarterTicks = 0;
+	// A ghast or blaze: ticks to its next fireball, and how many of a blaze's burst are left. Not saved.
+	int32 FireCooldown = 0;
+	int32 BurstLeft = 0;
+	int32 BeamCharge = 0;
+	// The block it carries (the enderman), or none.
+	TOptional<FMcStateId> Carried;
+	// A swooper: ticks left in this circling or diving, whether it is diving, and its place on the circle.
+	int32 SwoopTicks = 0;
+	bool bDiving = false;
+	float OrbitAngle = 0.0f;
 	// A dropped gold ingot it is walking to. Not saved.
 	FVector BarterGoal = FVector::ZeroVector;
 	bool bHasBarterGoal = false;
@@ -142,6 +177,18 @@ public:
 	int32 SwiftTicks = 0;
 	// Development: stands where it was put, doing nothing (for a picture).
 	bool bFrozen = false;
+	// The game's NoAI: it stands where it is and does nothing, but is saved and can be hurt (an imported world's).
+	bool bNoAI = false;
+	// A sheep's wool dye (0..15, the game's order), -1 for the plain one.
+	int32 DyeColor = -1;
+	// The name it was given (a name tag), empty for none. Kept and saved; not drawn yet.
+	FString CustomName;
+	// What it wears: head, chest, legs, feet (item names), None for nothing. Kept and saved; not drawn yet.
+	FName Armor[4];
+	// What the host keeps after the kind's own bytes: the coat, the youth, then the flags, dye, name and gear. A save without
+	// the later ones reads as before; SaveTrailer/LoadTrailer are the one place that says what order they come in.
+	void SaveTrailer(FArchive& Ar) const;
+	void LoadTrailer(FArchive& Ar);
 	// Which of its kind's looks it has (McMobLook), chosen at birth and saved; -1 for none.
 	int32 LookSeed = -1;
 	// A young animal: half the size, and grown up when the ticks run out. 0 for a grown one. (Villagers keep their own.)
@@ -203,6 +250,11 @@ private:
 	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
 	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
 	void TickBarter(FMcEntityManager& Manager);
+	void TickDragonDeath(FMcEntityManager& Manager);
+
+public:
+	// Where the ten crystals on the End's pillars stand (read from the reference world, dragon8.txt), lowest first.
+	static TArray<FVector> GetPillarCrystalPositions();
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

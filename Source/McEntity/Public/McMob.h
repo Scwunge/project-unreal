@@ -123,6 +123,17 @@ public:
 	int32 AngerTicks = 0;
 	int32 StareTicks = 0;
 	FVector DragonGoal = FVector::ZeroVector;
+	// The dragon's phase (the numbers of its DragonPhase data, dragon_phase1.txt): 0 holding pattern, 1 strafing, 2 landing approach, 3 landing,
+	// 4 take-off, 5 sitting and breathing, 6 sitting and scanning, 7 sitting and roaring, 8 charging a player. Ticks in it, breaths this perch,
+	// damage taken while perched (over 50 it takes off), a strafe owed (a crystal went, or the fight just began), and the breath clouds on the ground
+	// (x, y, z, ticks left).
+	int32 DragonPhase = 0;
+	int32 PhaseTicks = 0;
+	int32 Breaths = 0;
+	float PerchDamage = 0.0f;
+	bool bStrafeDue = true;
+	int32 HoldLength = 540;
+	TArray<FVector4> DragonClouds;
 	// The dragon: where the crystal that heals it stands (valid when bHasBeam), ticks since it began to be healed, and ticks of its death so far (0 while alive).
 	bool bHasBeam = false;
 	FVector BeamPos = FVector::ZeroVector;

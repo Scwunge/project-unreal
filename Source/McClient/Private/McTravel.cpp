@@ -11,8 +11,12 @@
 #include "McPlayerPawn.h"
 #include "McPortal.h"
 #include "McWorldActor.h"
+#if MC_WITH_RENDER
+#include "McHUD.h"
+#endif
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 
 namespace
 {
@@ -186,7 +190,28 @@ bool UMcTravelSubsystem::StartEndTrip(AMcPlayerController& Controller)
 	}
 	if (Here->Dimension == End)
 	{
-		// Out of the End: back to the spawn of the first world. (The credits are not shown yet.)
+		// The first time out of the End (the dragon is dead, the portal is open) the poem and the credits come first, over
+		// a black screen, on the machine that shows them; the trip starts when they end or are skipped with Escape.
+#if MC_WITH_RENDER
+		if (!bCreditsSeen)
+		{
+			if (AMcHUD* Hud = Cast<AMcHUD>(Controller.GetHUD()))
+			{
+				bCreditsSeen = true;
+				const FString PlayerName = Controller.PlayerState ? Controller.PlayerState->GetPlayerName() : FString(TEXT("Player"));
+				TWeakObjectPtr<AMcPlayerController> Weak(&Controller);
+				Hud->StartCredits(PlayerName, [this, Weak]()
+				{
+					if (AMcPlayerController* Back = Weak.Get())
+					{
+						StartEndTrip(*Back);
+					}
+				});
+				return true;
+			}
+		}
+#endif
+		// Out of the End: back to the spawn of the first world.
 		AMcWorldActor* Home = Mode->GetPrimaryWorld();
 		if (!Home || Home == Here)
 		{

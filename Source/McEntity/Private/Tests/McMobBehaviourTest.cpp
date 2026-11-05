@@ -531,22 +531,43 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
 	}
 	{
-		// An ender dragon starts at 126 and flies down to 65-79 within 1000 ticks, staying within 63 blocks of the middle (dragon6.txt).
+		// An ender dragon with a player at the exit portal goes through the phases dragon_phase1.txt showed: holding 540, strafing 150, holding 100,
+		// approach 480, landing, then four times scanning 20, roaring 40, breathing 180, take-off, holding 500, approach, landing ...
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
 		FMcEntityManager Manager(World);
 		Manager.Difficulty = 2;
-		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		Manager.PlayerPositions = { FVector(8.5, 65.0, 0.5) };
 		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 126.0, 0.5));
 		TestEqual(TEXT("200 hp"), Dragon->Health, 200.0f);
+		TArray<int32> Phases;
+		TArray<int32> Lengths;
 		double MaxRadius = 0.0;
-		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		for (int32 Tick = 0; Tick < 4800; ++Tick)
 		{
 			Manager.Tick();
 			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
+			if (Phases.IsEmpty() || Phases.Last() != Dragon->DragonPhase)
+			{
+				Phases.Add(Dragon->DragonPhase);
+				Lengths.Add(0);
+			}
+			++Lengths.Last();
 		}
-		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
-		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+		const TArray<int32> First = { 0, 1, 0, 2, 3, 6, 7, 5, 6, 7, 5, 6, 7, 5, 6, 7, 5, 4, 0, 2, 3 };
+		bool bOrder = Phases.Num() >= First.Num();
+		for (int32 Index = 0; bOrder && Index < First.Num(); ++Index)
+		{
+			bOrder = Phases[Index] == First[Index];
+		}
+		TestTrue(*FString::Printf(TEXT("the phases come in the order seen (got %d changes)"), Phases.Num()), bOrder);
+		if (bOrder)
+		{
+			TestTrue(TEXT("holding 540 first"), FMath::Abs(Lengths[0] - 540) <= 2);
+			TestTrue(TEXT("strafing 150"), FMath::Abs(Lengths[1] - 150) <= 2);
+			TestTrue(TEXT("breathing 180"), FMath::Abs(Lengths[7] - 180) <= 2);
+		}
+		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle; max %.1f"), MaxRadius), MaxRadius < 75.0);
 	}
 	{
 		// End crystals (wiki: power 6 at any damage; dragon9/13.txt: +1 hp per ~10 ticks while one is within 32 blocks; dragon10.txt: 500 points on a later kill).

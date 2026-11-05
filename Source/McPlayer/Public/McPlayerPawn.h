@@ -24,6 +24,17 @@ class FMcEntityManager;
 class UCameraComponent;
 class UMcPlayerDataComponent;
 
+// Something that happened to a player which an advancement may be waiting for (the game's trigger, by id, with what it was about).
+struct FMcTriggerEvent
+{
+	FName Trigger;
+	FName Item;
+	FName Block;
+	FName Entity;
+	FName Recipe;
+	FName Biome;
+};
+
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
 {
@@ -87,6 +98,9 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The game mode judges the advancement triggers.
+	TFunction<void(AMcPlayerPawn& Player, const FMcTriggerEvent& Event)> OnTrigger;
+	void FireTrigger(const FMcTriggerEvent& Event) { if (OnTrigger) { OnTrigger(*this, Event); } }
 	// Called after the server put a block down for this player.
 	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).

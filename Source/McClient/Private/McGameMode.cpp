@@ -280,6 +280,177 @@ namespace
 	}
 
 	// Once a second: whatever a player carries that an advancement asks for grants it (parents are not needed, as in the game).
+	struct FCriterionDef
+	{
+		FString Advancement;
+		FString Name;
+		TSharedPtr<FJsonObject> Conditions;
+	};
+
+	struct FTriggerTable
+	{
+		// By trigger id.
+		TMap<FString, TArray<FCriterionDef>> ByTrigger;
+		// By advancement: the groups of criteria names, a group being met by any one of them.
+		TMap<FString, TArray<TArray<FString>>> Requirements;
+	};
+
+	// Every advancement's criteria that wait on an event (the inventory ones are polled, see InventoryTriggers).
+	const FTriggerTable& EventTriggers()
+	{
+		static FTriggerTable Table;
+		static uint32 LoadedGeneration = 0;
+		if (LoadedGeneration == McData::GetGeneration())
+		{
+			return Table;
+		}
+		LoadedGeneration = McData::GetGeneration();
+		Table = FTriggerTable();
+		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
+		{
+			TSharedPtr<FJsonObject> Def;
+			FString Text;
+			const TSharedPtr<FJsonObject>* Criteria = nullptr;
+			if (!FFileHelper::LoadFileToString(Text, *Listed.Paths.Last()) || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Def) || !Def.IsValid()
+				|| !Def->TryGetObjectField(TEXT("criteria"), Criteria))
+			{
+				continue;
+			}
+			bool bAny = false;
+			for (const auto& Entry : (*Criteria)->Values)
+			{
+				const TSharedPtr<FJsonObject>* Criterion = nullptr;
+				FString Trigger;
+				if (!Entry.Value->TryGetObject(Criterion) || !(*Criterion)->TryGetStringField(TEXT("trigger"), Trigger) || Trigger == TEXT("minecraft:inventory_changed"))
+				{
+					continue;
+				}
+				FCriterionDef Out;
+				Out.Advancement = Listed.Id;
+				Out.Name = FString(Entry.Key);
+				const TSharedPtr<FJsonObject>* Conditions = nullptr;
+				Out.Conditions = (*Criterion)->TryGetObjectField(TEXT("conditions"), Conditions) ? *Conditions : MakeShared<FJsonObject>();
+				Table.ByTrigger.FindOrAdd(Trigger).Add(MoveTemp(Out));
+				bAny = true;
+			}
+			if (!bAny)
+			{
+				continue;
+			}
+			TArray<TArray<FString>>& Groups = Table.Requirements.Add(Listed.Id);
+			const TArray<TSharedPtr<FJsonValue>>* Requirements = nullptr;
+			if (Def->TryGetArrayField(TEXT("requirements"), Requirements))
+			{
+				for (const TSharedPtr<FJsonValue>& Group : *Requirements)
+				{
+					TArray<FString>& Names = Groups.AddDefaulted_GetRef();
+					for (const TSharedPtr<FJsonValue>& Name : Group->AsArray())
+					{
+						Names.Add(Name->AsString());
+					}
+				}
+			}
+			else
+			{
+				for (const auto& Entry : (*Criteria)->Values)
+				{
+					Groups.Add(TArray<FString>{ FString(Entry.Key) });
+				}
+			}
+		}
+		return Table;
+	}
+
+	bool NameIn(const TSharedPtr<FJsonValue>& Wanted, const FName& Name)
+	{
+		if (Name.IsNone() || !Wanted.IsValid())
+		{
+			return false;
+		}
+		FString One;
+		if (Wanted->TryGetString(One))
+		{
+			return !One.StartsWith(TEXT("#")) && McCache::Namespaced(One) == Name.ToString();
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+		if (Wanted->TryGetArray(Many))
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *Many)
+			{
+				if (NameIn(Value, Name))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// An entity predicate in a condition: only the entity type is understood; anything else (components, equipment, flags)
+	// counts as not met, so no advancement is made that the game would not have made.
+	bool EntityMatches(const TSharedPtr<FJsonValue>& Value, const FName& Entity)
+	{
+		const TSharedPtr<FJsonObject>* Object = nullptr;
+		if (!Value.IsValid() || !Value->TryGetObject(Object))
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Predicate = nullptr;
+		if (!(*Object)->TryGetObjectField(TEXT("predicate"), Predicate) || (*Predicate)->Values.Num() != 1 || !(*Predicate)->HasField(TEXT("minecraft:entity_type")))
+		{
+			return false;
+		}
+		return NameIn((*Predicate)->TryGetField(TEXT("minecraft:entity_type")), Entity);
+	}
+
+	bool ConditionsMatch(const FJsonObject& Conditions, const FMcTriggerEvent& Event)
+	{
+		for (const auto& Entry : Conditions.Values)
+		{
+			const FString Key(Entry.Key);
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			if (Key == TEXT("item"))
+			{
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				FString Reference;
+				if (!Entry.Value->TryGetObject(Item) || (*Item)->Values.Num() != 1 || !(*Item)->TryGetStringField(TEXT("items"), Reference)
+					|| Event.Item.IsNone() || !FMcItemRegistry::Get().Matches(Event.Item, Reference))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("entity") || Key == TEXT("child"))
+			{
+				if (!EntityMatches(Entry.Value, Event.Entity))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("recipes"))
+			{
+				if (!NameIn(Entry.Value, Event.Recipe))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("location"))
+			{
+				// A block placed: match_block with plain block names, no state.
+				FString Type;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetStringField(TEXT("type"), Type) || Type != TEXT("minecraft:match_block")
+					|| (*Object)->HasField(TEXT("state")) || (*Object)->HasField(TEXT("nbt")) || !NameIn((*Object)->TryGetField(TEXT("blocks")), Event.Block))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	void PollInventoryTriggers(UWorld* World)
 	{
 		if (!World)
@@ -350,6 +521,44 @@ namespace
 					AwardAdvancement(Pawn, Trigger.Id, true, Title);
 				}
 			}
+		}
+	}
+}
+
+void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
+{
+	if (!Pawn.Data || Event.Trigger.IsNone())
+	{
+		return;
+	}
+	const FTriggerTable& Table = EventTriggers();
+	const TArray<FCriterionDef>* Waiting = Table.ByTrigger.Find(Event.Trigger.ToString());
+	if (!Waiting)
+	{
+		return;
+	}
+	for (const FCriterionDef& Criterion : *Waiting)
+	{
+		const FName Done(*(Criterion.Advancement + TEXT("/") + Criterion.Name));
+		if (Pawn.Data->Advancements.Contains(FName(*Criterion.Advancement)) || Pawn.Data->Criteria.Contains(Done) || !ConditionsMatch(*Criterion.Conditions, Event))
+		{
+			continue;
+		}
+		Pawn.Data->Criteria.Add(Done);
+		bool bAll = true;
+		for (const TArray<FString>& Group : Table.Requirements.FindRef(Criterion.Advancement))
+		{
+			bool bAny = false;
+			for (const FString& Name : Group)
+			{
+				bAny = bAny || Pawn.Data->Criteria.Contains(FName(*(Criterion.Advancement + TEXT("/") + Name)));
+			}
+			bAll = bAll && bAny;
+		}
+		if (bAll)
+		{
+			FString Title;
+			AwardAdvancement(&Pawn, Criterion.Advancement, true, Title);
 		}
 	}
 }

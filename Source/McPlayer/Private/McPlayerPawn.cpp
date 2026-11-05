@@ -1845,6 +1845,11 @@ void AMcPlayerPawn::ServerGameTick()
 				{
 					Entities->PlaySound(FName("entity.player.burp"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, FMath::FRand() * 0.1f + 0.9f);
 				}
+				Data->AddStat(TEXT("used:") + Held.Item.ToString());
+				FMcTriggerEvent Ate;
+				Ate.Trigger = TEXT("minecraft:consume_item");
+				Ate.Item = Held.Item;
+				FireTrigger(Ate);
 				McSurvival::Eat(Stats, Food);
 				const FName Remainder = Items.GetUseRemainder(Held.Item);
 				FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
@@ -2234,6 +2239,11 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	{
 		ServerSetBlock(Change.Pos, Change.State);
 		Data->AddStat(TEXT("used:") + Held.Item.ToString());
+		FMcTriggerEvent Placed;
+		Placed.Trigger = TEXT("minecraft:placed_block");
+		Placed.Item = Held.Item;
+		Placed.Block = Registry.GetBlockOf(Change.State).Name;
+		FireTrigger(Placed);
 		if (OnPlaced)
 		{
 			OnPlaced(Change.Pos);

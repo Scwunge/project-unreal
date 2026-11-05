@@ -148,6 +148,8 @@ public:
 	TOptional<FIntVector> SpawnPoint;
 	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
 	TSet<FName> Advancements;
+	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
+	TSet<FName> Criteria;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.

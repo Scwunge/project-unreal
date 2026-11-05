@@ -54,6 +54,10 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	{
 		Out.Stats.Add(TEXT("stat:") + Counter.Key, static_cast<double>(Counter.Value));
 	}
+	for (const FName Criterion : Data.Criteria)
+	{
+		Out.Stats.Add(TEXT("criterion:") + Criterion.ToString(), 1.0);
+	}
 	for (const FName Advancement : Data.Advancements)
 	{
 		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
@@ -136,8 +140,13 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	Data.Stats = Stats;
 	Data.Advancements.Reset();
 	Data.Counters.Reset();
+	Data.Criteria.Reset();
 	for (const TPair<FString, double>& Stat : Saved.Stats)
 	{
+		if (Stat.Key.StartsWith(TEXT("criterion:")))
+		{
+			Data.Criteria.Add(FName(*Stat.Key.RightChop(10)));
+		}
 		if (Stat.Key.StartsWith(TEXT("stat:")))
 		{
 			Data.Counters.Add(Stat.Key.RightChop(5), static_cast<int64>(Stat.Value));

@@ -1525,3 +1525,15 @@ bool AMcWorldActor::DecorateChunks()
 	}
 	return bChanged;
 }
+
+bool AMcWorldActor::FindNearestStronghold(const FVector& From, FVector2D& OutCorner) const
+{
+	FIntPoint Corner;
+	if (!Features.IsValid() || !BlockWorld || BlockWorld->GetDimension().Name != TEXT("minecraft:overworld")
+		|| !Features->FindNearestStronghold(static_cast<uint64>(Seed), From.X, From.Z, Corner))
+	{
+		return false;
+	}
+	OutCorner = FVector2D(Corner.X, Corner.Y);
+	return true;
+}

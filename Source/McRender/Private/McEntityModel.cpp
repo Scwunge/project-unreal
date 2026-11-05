@@ -2755,7 +2755,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	VariantSeed = INT32_MIN;
 	WolfTextureState = 0;
 	bBabyLook = false;
-	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
 	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
 	PotSides = NAME_None;
 	if (bIsPotItem)
@@ -2770,7 +2770,7 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsFalling = Kind == TEXT("minecraft:falling_block");
-	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
 	bIsDecor = Kind == TEXT("mc:decor") && McDecor::Decode(Item.ToString(), Decor);

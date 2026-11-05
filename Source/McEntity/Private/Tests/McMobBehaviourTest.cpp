@@ -317,6 +317,36 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 			Manager.Tick();
 		}
 		TestTrue(TEXT("a pearl lands in front of the wall"), Landed.Z > 12.0 && Landed.Z < 14.0);
+		// An eye of ender with a stronghold 50 blocks east flies 12 blocks that way and up, hovers, then drops as an item
+		// (or breaks): after 100 ticks it is gone from the entities, and an item is on the ground 4 times in 5.
+		FMcEntityManager EyeManager(World);
+		FMcThrownEntity* FirstEye = nullptr;
+		for (int32 Throw = 0; Throw < 40; ++Throw)
+		{
+			TUniquePtr<FMcThrownEntity> Eye = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderEye);
+			Eye->Body.Position = FVector(0.5, 5.0, 8.5);
+			Eye->bEyeHasTarget = true;
+			Eye->EyeTarget = FVector2D(50.5, 8.5);
+			FirstEye = FirstEye ? FirstEye : Eye.Get();
+			EyeManager.Add(MoveTemp(Eye));
+		}
+		for (int32 Tick = 0; Tick < 45; ++Tick)
+		{
+			EyeManager.Tick();
+		}
+		TestTrue(TEXT("the eye has flown about 12 blocks towards the stronghold"), FMath::Abs(FirstEye->Body.Position.X - 12.5) < 0.5);
+		TestTrue(TEXT("and risen"), FirstEye->Body.Position.Y > 8.0);
+		for (int32 Tick = 0; Tick < 55; ++Tick)
+		{
+			EyeManager.Tick();
+		}
+		int32 Dropped = 0;
+		for (const TUniquePtr<FMcEntity>& Entity : EyeManager.GetEntities())
+		{
+			Dropped += Entity->GetType() == TEXT("minecraft:item") ? static_cast<const FMcItemEntity&>(*Entity).Stack.Count : 0;
+			TestFalse(TEXT("the eye itself is gone"), Entity->GetType() == TEXT("minecraft:ender_eye"));
+		}
+		TestTrue(TEXT("most eyes survive (about 80%)"), Dropped >= 24 && Dropped <= 38);
 		// A baby chicken is half the size and grows up.
 		FMcMob* Chick = AddMob(Manager, TEXT("minecraft:chicken"), FVector(2.5, 1.0, 2.5));
 		Chick->MakeBaby();

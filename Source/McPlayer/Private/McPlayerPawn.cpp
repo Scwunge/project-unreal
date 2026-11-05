@@ -836,7 +836,9 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && !Held.IsEmpty() && !bEating)
 	{
 		FMcThrownEntity::EKind ThrownKind;
-		if (FMcThrownEntity::FindKind(Held.Item, ThrownKind))
+		// An eye aimed at an end portal frame goes in it instead (below).
+		const bool bAtFrame = Held.Item == TEXT("minecraft:ender_eye") && Target.IsSet() && FMcBlockRegistry::Get().GetBlockOf(Target->State).Name == TEXT("minecraft:end_portal_frame");
+		if (FMcThrownEntity::FindKind(Held.Item, ThrownKind) && !bAtFrame)
 		{
 			ServerThrow();
 			return;
@@ -1257,6 +1259,13 @@ void AMcPlayerPawn::ServerThrow_Implementation()
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
 	TUniquePtr<FMcThrownEntity> Thrown = MakeUnique<FMcThrownEntity>(Kind);
+	if (Kind == FMcThrownEntity::EKind::EnderEye)
+	{
+		// Towards the nearest stronghold; where there is none (the other dimensions) it falls like any thrown thing.
+		FVector2D EyeAim = FVector2D::ZeroVector;
+		Thrown->bEyeHasTarget = OnLocateStronghold && OnLocateStronghold(Body.Position, EyeAim);
+		Thrown->EyeTarget = EyeAim;
+	}
 	// TODO: the launch point's offset from the eye and the aim's spread, measured from the reference client (none until then).
 	Thrown->Body.Position = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	// 1.5 blocks a tick along the look, with the game's inaccuracy, and the thrower's own speed on top.
@@ -1284,7 +1293,7 @@ void AMcPlayerPawn::ServerThrow_Implementation()
 		};
 	}
 	Entities->Add(MoveTemp(Thrown));
-	static const FName Sounds[3] = { FName("entity.snowball.throw"), FName("entity.egg.throw"), FName("entity.ender_pearl.throw") };
+	static const FName Sounds[4] = { FName("entity.snowball.throw"), FName("entity.egg.throw"), FName("entity.ender_pearl.throw"), FName("entity.ender_eye.launch") };
 	Entities->PlaySound(Sounds[static_cast<int32>(Kind)], Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f /* TODO: volume and pitch measured from the reference client */);
 	if (!Data->bCreative)
 	{

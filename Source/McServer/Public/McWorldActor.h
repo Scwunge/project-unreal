@@ -52,6 +52,9 @@ public:
 	void RemoveAnchor(int32 Id);
 	// Whether every chunk within Radius of Chunk is in the world.
 	bool AreChunksLoaded(FIntPoint Chunk, int32 Radius) const;
+	// Where the nearest stronghold's start corner is (block x, z), for a thrown eye of ender; false outside the overworld or
+	// where the world has no structures.
+	bool FindNearestStronghold(const FVector& From, FVector2D& OutCorner) const;
 
 	// Terrain from the jar's worldgen/noise_settings/, unless the world is flat.
 	UPROPERTY(EditAnywhere, Category = "Mc")

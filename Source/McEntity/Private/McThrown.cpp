@@ -2,16 +2,17 @@
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McMob.h"
+#include "McItemStack.h"
 
 FName FMcThrownEntity::GetTypeName(EKind Kind)
 {
-	static const FName Snowball(TEXT("minecraft:snowball")), Egg(TEXT("minecraft:egg")), Pearl(TEXT("minecraft:ender_pearl"));
-	return Kind == EKind::Snowball ? Snowball : Kind == EKind::Egg ? Egg : Pearl;
+	static const FName Snowball(TEXT("minecraft:snowball")), Egg(TEXT("minecraft:egg")), Pearl(TEXT("minecraft:ender_pearl")), Eye(TEXT("minecraft:ender_eye"));
+	return Kind == EKind::Snowball ? Snowball : Kind == EKind::Egg ? Egg : Kind == EKind::EnderPearl ? Pearl : Eye;
 }
 
 bool FMcThrownEntity::FindKind(FName Item, EKind& Out)
 {
-	for (const EKind Candidate : { EKind::Snowball, EKind::Egg, EKind::EnderPearl })
+	for (const EKind Candidate : { EKind::Snowball, EKind::Egg, EKind::EnderPearl, EKind::EnderEye })
 	{
 		if (GetTypeName(Candidate) == Item)
 		{
@@ -74,8 +75,49 @@ void FMcThrownEntity::Break(FMcEntityManager& Manager, const FVector& At, FMcEnt
 	}
 }
 
+void FMcThrownEntity::TickEye(FMcEntityManager& Manager)
+{
+	if (Age == 1)
+	{
+		EyeStart = Body.Position;
+		const FVector2D Offset = EyeTarget - FVector2D(Body.Position.X, Body.Position.Z);
+		const double Dist = Offset.Size();
+		const FVector2D Step = Dist > 1.0e-6 ? Offset / Dist * FMath::Min(Dist, EyeReach) : FVector2D::ZeroVector;
+		// Far from the target the eye rises, over it (within the reach) it comes down.
+		EyeGoal = FVector(EyeStart.X + Step.X, EyeStart.Y + (Dist > EyeReach ? EyeRise : -EyeRise * 0.5), EyeStart.Z + Step.Y);
+	}
+	Body.Velocity = FVector::ZeroVector;
+	if (Age <= EyeFlyTicks)
+	{
+		Body.Position = FMath::Lerp(EyeStart, EyeGoal, static_cast<double>(Age) / EyeFlyTicks);
+		return;
+	}
+	if (Age <= EyeFlyTicks + EyeHoverTicks)
+	{
+		return;
+	}
+	bRemoved = true;
+	if (Manager.GetRandom().FRand() < EyeSurviveChance)
+	{
+		FMcItemStack Stack;
+		Stack.Item = GetTypeName(EKind::EnderEye);
+		Stack.Count = 1;
+		Manager.DropItem(Body.Position, Stack);
+	}
+	else
+	{
+		Manager.PlaySound(FName("entity.ender_eye.death"), Body.Position, 1.0f, 1.0f);
+	}
+}
+
 void FMcThrownEntity::Tick(FMcEntityManager& Manager)
 {
+	if (Kind == EKind::EnderEye && bEyeHasTarget)
+	{
+		++Age;
+		TickEye(Manager);
+		return;
+	}
 	if (++Age >= LifeTicks)
 	{
 		bRemoved = true;

@@ -260,3 +260,35 @@ bool FMcHorsePoseTest::RunTest(const FString& Parameters)
 }
 
 #endif
+
+// The banner's swing (fitted to the vanilla run banner3): a 100 tick cycle, 0.033 rad either way of 0.058.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcBannerSwingTest, "Mc.EntityModel.BannerSwing", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcBannerSwingTest::RunTest(const FString&)
+{
+	float Min = 10.0f, Max = -10.0f;
+	for (int32 Tick = 0; Tick < 100; ++Tick)
+	{
+		const float Tilt = McEntityModel::GetBannerTilt(Tick);
+		Min = FMath::Min(Min, Tilt);
+		Max = FMath::Max(Max, Tilt);
+		TestEqual(TEXT("repeats every 100 ticks"), McEntityModel::GetBannerTilt(Tick + 100), Tilt, 1.0e-4f);
+	}
+	TestEqual(TEXT("most back"), Max, 0.091f, 2.0e-3f);
+	TestEqual(TEXT("most forward"), Min, 0.025f, 2.0e-3f);
+	// A tilted flag's foot moves back and its top stays: the lowest vertex of the flag is further from the face.
+	McPlayerModel::FMeshData Straight, Swung;
+	McEntityModel::BuildBannerMesh(false, true, 0.0f, Straight, 0.0f);
+	McEntityModel::BuildBannerMesh(false, true, 0.0f, Swung, 0.1f);
+	TestEqual(TEXT("same vertices"), Swung.Positions.Num(), Straight.Positions.Num());
+	double LowStraight = 1.0e9, LowSwung = 1.0e9, ZStraight = 0.0, ZSwung = 0.0, TopStraight = -1.0e9, TopSwung = -1.0e9;
+	for (int32 Index = 0; Index < Straight.Positions.Num(); ++Index)
+	{
+		if (Straight.Positions[Index].Z < LowStraight) { LowStraight = Straight.Positions[Index].Z; ZStraight = Straight.Positions[Index].Y; }
+		if (Swung.Positions[Index].Z < LowSwung) { LowSwung = Swung.Positions[Index].Z; ZSwung = Swung.Positions[Index].Y; }
+		TopStraight = FMath::Max(TopStraight, Straight.Positions[Index].Z);
+		TopSwung = FMath::Max(TopSwung, Swung.Positions[Index].Z);
+	}
+	TestTrue(TEXT("the foot moves (back, along z)"), FMath::Abs(ZSwung - ZStraight) > 0.5);
+	TestEqual(TEXT("the top stays (to a hair)"), TopSwung, TopStraight, 2.0);
+	return true;
+}

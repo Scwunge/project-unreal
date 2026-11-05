@@ -231,7 +231,12 @@ namespace McEntityModel
 
 	// A placed banner (McBanner): its pole and crossbar (bFlag false) or its flag (true), facing Minecraft yaw BodyYaw, at
 	// the size the game draws it. The flag is cut from whichever 64 square picture is laid over it.
-	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out);
+	// Tilt: how far the flag swings about its bar, in radians (see GetBannerTilt).
+	MCRENDER_API void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out, float Tilt = 0.0f);
+	// The flag's swing at a time in ticks. Fitted to a vanilla run (banner3, 40 shots 4 ticks apart over a standing banner):
+	// the foot of the flag moves on a 100 tick cycle, 0.033 rad either way of a rest 0.058 rad back; the phase is given
+	// for the one position measured (a second banner 2 blocks away swung in step, so none is taken from x).
+	MCRENDER_API float GetBannerTilt(double Ticks);
 
 	// An item frame, painting or armor stand from an imported world (McDecor), at its entity's position: how many pictures
 	// (layers) it is drawn from, and one layer's mesh. A painting's layer 0 is its picture (PictureBlocks across and up) and 1 the

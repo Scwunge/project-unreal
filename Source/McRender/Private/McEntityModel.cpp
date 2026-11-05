@@ -1772,7 +1772,7 @@ namespace McEntityModel
 		return Models.Find(Kind);
 	}
 
-	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out)
+	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out, float Tilt)
 	{
 		// Pixels before the two thirds the game scales a banner by; the flag faces south (+z) and hangs from the bar.
 		static const FModel Pole = []
@@ -1793,7 +1793,7 @@ namespace McEntityModel
 		{
 			FModel Result;
 			Result.TextureSize = FIntPoint(64, 64);
-			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 2, 1, 20, 40, 1) }));
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 4, 1, 20, 40, 1) }));
 			return Result;
 		}();
 		static const FModel WallFlag = []
@@ -1804,12 +1804,39 @@ namespace McEntityModel
 			return Result;
 		}();
 		FAnim Anim;
-		Anim.BodyYaw = BodyYaw;
+		// The flag swings about the bar it hangs from: built unturned, tilted there, then turned like the rest.
+		Anim.BodyYaw = bFlag ? 0.0f : BodyYaw;
 		BuildMesh(bFlag ? (bWall ? WallFlag : Flag) : (bWall ? WallBar : Pole), Anim, 0, Out);
 		for (FVector& Position : Out.Positions)
 		{
 			Position *= 2.0 / 3.0;
 		}
+		if (bFlag)
+		{
+			// Positive Tilt swings the foot of the flag back (away from its face).
+			const FQuat Swing(FVector::XAxisVector, -Tilt);
+			const FQuat Turn(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const FVector Pivot(0.0, (bWall ? 22.0 : 44.0) * 2.0 / 3.0, 0.0);
+			// The mesh holds engine axes (x, model z, model y) in engine units; turn it in the model's own axes and pixels.
+			const double Units = McCoords::UnitsPerBlock / 16.0;
+			for (FVector& Position : Out.Positions)
+			{
+				const FVector Model(Position.X / Units, Position.Z / Units, Position.Y / Units);
+				const FVector Moved = Turn.RotateVector(Pivot + Swing.RotateVector(Model - Pivot));
+				Position = FVector(Moved.X, Moved.Z, Moved.Y) * Units;
+			}
+			for (FVector& Normal : Out.Normals)
+			{
+				const FVector Moved = Turn.RotateVector(Swing.RotateVector(FVector(Normal.X, Normal.Z, Normal.Y)));
+				Normal = FVector(Moved.X, Moved.Z, Moved.Y);
+			}
+		}
+	}
+
+	float GetBannerTilt(double Ticks)
+	{
+		const double Phase = FMath::Fmod((Ticks + 32.0) / 100.0, 1.0);
+		return 0.058f + 0.033f * static_cast<float>(FMath::Cos(2.0 * PI * Phase));
 	}
 
 	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
@@ -3753,12 +3780,14 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 			Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
-			if (NumSections > Layer)
+			// The pole and bar are built once; the flag's layers again each frame, as it swings.
+			if (NumSections > Layer && Layer == 0)
 			{
 				continue;
 			}
+			const float Tilt = McEntityModel::GetBannerTilt(GetWorld() ? GetWorld()->GetTimeSeconds() * 20.0 : 0.0);
 			McPlayerModel::FMeshData Data;
-			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data);
+			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data, Tilt);
 			if (Layer > 0)
 			{
 				// The flag takes the dye's colour (the pole and bar keep the wood).
@@ -3776,6 +3805,11 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			TArray<FVector2D> UV1, UV2;
 			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
 			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			if (NumSections > Layer)
+			{
+				UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
+				continue;
+			}
 			CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
 			SetMaterial(Layer, Material);
 			NumSections = Layer + 1;

@@ -420,6 +420,10 @@ void AMcWorldActor::BeginPlay()
 	{
 		MulticastSound(Event.Name, FVector_NetQuantize10(Event.Position), Event.Volume, Event.Pitch);
 	};
+	Entities->GetManager().OnParticle = [this](FName Name, const FVector& Position, const FVector& Delta, float Speed, int32 Count)
+	{
+		MulticastParticle(Name, FVector_NetQuantize10(Position), FVector_NetQuantize10(Delta), Speed, Count);
+	};
 	// What the entities and players do that can be heard as vibrations goes to the simulation (sculk sensors, shriekers, listeners).
 	Entities->GetManager().OnGameEvent = [this](FName Name, const FVector& At, const FMcEntityManager::FGameEventTag& Tag)
 	{

@@ -1126,6 +1126,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		return 0.0f;
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
+	Data->AddStat(TEXT("custom:damage_taken"), FMath::RoundToInt64(Taken * 10.0f));
 	if (Taken > 0.0f && bSleeping)
 	{
 		ServerWakeUp();
@@ -1651,6 +1652,11 @@ void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
 		ServerDismount();
 	}
 	bSleeping = true;
+	if (Data)
+	{
+		Data->AddStat(TEXT("custom:sleep_in_bed"));
+		Data->Counters.Add(TEXT("custom:time_since_rest"), 0);
+	}
 	SleepTicks = 0;
 	UE_LOG(LogMcPlayer, Display, TEXT("Went to bed at %s"), *Head.ToString());
 	bSleptThroughSent = false;
@@ -1789,6 +1795,53 @@ void AMcPlayerPawn::ServerGameTick()
 		const FVector Step = Feet - ServerPreviousPosition;
 		// A jump of more than 10 blocks in a tick is a teleport (spawning, the dev camera), not a fall.
 		const bool bTeleported = Step.SizeSquared() > 100.0;
+
+		// Statistics: time, and the distances in cm (the game counts whole centimetres of the way moved, by how it was moved).
+		Data->AddStat(TEXT("custom:play_time"));
+		Data->AddStat(TEXT("custom:total_world_time"));
+		Data->AddStat(TEXT("custom:time_since_death"));
+		Data->AddStat(TEXT("custom:time_since_rest"));
+		if (bSneakPose || bSneaking)
+		{
+			Data->AddStat(TEXT("custom:sneak_time"));
+		}
+		if (!bTeleported && RidingId == 0)
+		{
+			const int64 Across = FMath::RoundToInt64(FVector2D(Step.X, Step.Z).Size() * 100.0);
+			const int64 Vertical = FMath::RoundToInt64(FMath::Abs(Step.Y) * 100.0);
+			if (bServerGliding)
+			{
+				Data->AddStat(TEXT("custom:aviate_one_cm"), FMath::RoundToInt64(Step.Size() * 100.0));
+			}
+			else if (bFlyingNow)
+			{
+				Data->AddStat(TEXT("custom:fly_one_cm"), Across);
+			}
+			else if (Environment.bClimbing && Step.Y > 0.0)
+			{
+				Data->AddStat(TEXT("custom:climb_one_cm"), Vertical);
+			}
+			else if (Environment.bHeadInWater)
+			{
+				Data->AddStat(TEXT("custom:walk_under_water_one_cm"), Across);
+			}
+			else if (Environment.bFeetInWater && !Body.bOnGround)
+			{
+				Data->AddStat(TEXT("custom:swim_one_cm"), Across);
+			}
+			else if (Body.bOnGround)
+			{
+				Data->AddStat(bSneakPose || bSneaking ? TEXT("custom:crouch_one_cm") : bSprintNow ? TEXT("custom:sprint_one_cm") : TEXT("custom:walk_one_cm"), Across);
+			}
+			if (!Body.bOnGround && !bFlyingNow && !bServerGliding && !Environment.bFeetInWater && !Environment.bClimbing && Step.Y < 0.0)
+			{
+				Data->AddStat(TEXT("custom:fall_one_cm"), Vertical);
+			}
+			if (bServerWasOnGround && !Body.bOnGround && Step.Y > 0.2)
+			{
+				Data->AddStat(TEXT("custom:jump"));
+			}
+		}
 
 		const int32 FireBefore = Stats.OnFireTicks;
 		if (!Data->bCreative)
@@ -1966,6 +2019,11 @@ void AMcPlayerPawn::ServerGameTick()
 				{
 					Entities->PlaySound(FName("entity.player.burp"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, FMath::FRand() * 0.1f + 0.9f);
 				}
+				Data->AddStat(TEXT("used:") + Held.Item.ToString());
+				FMcTriggerEvent Ate;
+				Ate.Trigger = TEXT("minecraft:consume_item");
+				Ate.Item = Held.Item;
+				FireTrigger(Ate);
 				McSurvival::Eat(Stats, Food);
 				const FName Remainder = Items.GetUseRemainder(Held.Item);
 				FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
@@ -2224,6 +2282,7 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 		ServerSetBlock(Pos, Registry.FindState(TEXT("minecraft:tripwire"), Disarmed).Get(State));
 	}
 	ServerSetBlock(Pos, Air);
+	Data->AddStat(TEXT("mined:") + Registry.GetBlockOf(State).Name.ToString());
 	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
 	{
 		for (const FMcItemStack& Drop : Drops)
@@ -2248,6 +2307,7 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	}
 	if (Wear > 0 && Tool.HurtAndBreak(Wear))
 	{
+		Data->AddStat(TEXT("broken:") + Tool.Item.ToString());
 		Tool.Clear();
 		ServerItemBroke();
 	}
@@ -2267,6 +2327,8 @@ void AMcPlayerPawn::ServerDie()
 		Data->Stats.DeathPos = FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
 		Data->Stats.DeathDimension = BlockWorld->GetDimension().Name;
 	}
+	Data->AddStat(TEXT("custom:deaths"));
+	Data->Counters.Add(TEXT("custom:time_since_death"), 0);
 	DeathScore = McSurvival::GetTotalXp(Data->Stats);
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();
@@ -2368,6 +2430,12 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	for (const FMcNetBlockChange& Change : Placed)
 	{
 		ServerSetBlock(Change.Pos, Change.State);
+		Data->AddStat(TEXT("used:") + Held.Item.ToString());
+		FMcTriggerEvent Placed;
+		Placed.Trigger = TEXT("minecraft:placed_block");
+		Placed.Item = Held.Item;
+		Placed.Block = Registry.GetBlockOf(Change.State).Name;
+		FireTrigger(Placed);
 		if (OnPlaced)
 		{
 			OnPlaced(Change.Pos);

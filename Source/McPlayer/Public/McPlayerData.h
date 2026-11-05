@@ -162,6 +162,8 @@ public:
 	TOptional<FIntVector> SpawnPoint;
 	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
 	TSet<FName> Advancements;
+	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
+	TSet<FName> Criteria;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
@@ -318,6 +320,13 @@ public:
 	FString CustomBars;
 	void SetCustomBars(const FString& Lines);
 
+	// The statistics, by id: "custom:jump", "mined:minecraft:stone", "killed:minecraft:zombie" (kind, then the name the
+	// Statistics screen is keyed by). The server counts them and keeps them in the save; the owner is sent a copy about once a
+	// second. Distances are in cm, times in ticks, damage in tenths of a heart-point (the game's units).
+	TMap<FString, int64> Counters;
+	void AddStat(const FString& Id, int64 Amount = 1);
+	int64 GetStat(const FString& Id) const { const int64* Found = Counters.Find(Id); return Found ? *Found : 0; }
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -327,6 +336,8 @@ protected:
 	void ClientSetRaidBar(float Fraction, const FString& Title);
 	UFUNCTION(Client, Reliable)
 	void ClientSetCustomBars(const FString& Lines);
+	UFUNCTION(Client, Reliable)
+	void ClientSetCounters(const FString& Text);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -392,6 +403,8 @@ private:
 	float SentRaidFraction = -1.0f;
 	FString SentRaidTitle;
 	FString SentCustomBars;
+	bool bCountersChanged = false;
+	int32 TicksSinceCounters = 0;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

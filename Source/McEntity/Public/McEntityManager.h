@@ -170,6 +170,9 @@ public:
 	bool bInBlast = false;
 	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
 	bool bDragonKilledBefore = false;
+	// The world seed, and how many central gateways the dragon's deaths have made (up to 20, one a kill).
+	int64 GatewaySeed = 0;
+	int32 GatewaysMade = 0;
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;

@@ -543,9 +543,14 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TArray<int32> Phases;
 		TArray<int32> Lengths;
 		double MaxRadius = 0.0;
+		bool bFireball = false;
 		for (int32 Tick = 0; Tick < 4800; ++Tick)
 		{
 			Manager.Tick();
+			for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+			{
+				bFireball = bFireball || Entity->GetType() == FName(TEXT("minecraft:dragon_fireball"));
+			}
 			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
 			if (Phases.IsEmpty() || Phases.Last() != Dragon->DragonPhase)
 			{
@@ -567,6 +572,7 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("strafing 150"), FMath::Abs(Lengths[1] - 150) <= 2);
 			TestTrue(TEXT("breathing 180"), FMath::Abs(Lengths[7] - 180) <= 2);
 		}
+		TestTrue(TEXT("the strafe fired a fireball"), bFireball);
 		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle; max %.1f"), MaxRadius), MaxRadius < 75.0);
 	}
 	{

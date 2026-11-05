@@ -109,6 +109,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.GatewaySeed = InSeed;
 	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
 	{
 		if (OnPlayerBlast)

@@ -78,7 +78,7 @@ if hitches:
 samples = os.path.join(d, "samples.csv")
 if os.path.exists(samples):
     rows = list(csv.DictReader(open(samples, encoding="utf-8-sig")))
-    good = [r for r in rows if r.get("vram_mb", "").isdigit()]
+    good = [r for r in rows if all((r.get(k) or "").isdigit() for k in ("free_mb", "cpu", "vram_mb", "gpu_pct", "game_ws_mb", "game_private_mb"))]
     if good:
         print("--- outside view")
         print(f"VRAM used on the card: start {good[0]['vram_mb']} MB, peak {max(int(r['vram_mb']) for r in good)} MB (all processes); "

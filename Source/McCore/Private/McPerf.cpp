@@ -158,6 +158,18 @@ namespace McPerf
 		void WriteLine(const FString&) {}
 #endif
 
+		// Whether the game's window has the focus: a run's numbers and held keys mean less without it.
+		int32 IsForeground()
+		{
+#if PLATFORM_WINDOWS
+			DWORD Owner = 0;
+			::GetWindowThreadProcessId(::GetForegroundWindow(), &Owner);
+			return Owner == ::GetCurrentProcessId() ? 1 : 0;
+#else
+			return 1;
+#endif
+		}
+
 		double Now()
 		{
 			return FPlatformTime::Seconds() - GStartTime;
@@ -244,12 +256,12 @@ namespace McPerf
 				const FPlatformMemoryStats Memory = FPlatformMemory::GetStats();
 				const float N = FMath::Max(1, SecondFrames);
 				auto Counter = [](EMcPerfCounter Which) { return Counters[static_cast<int32>(Which)]; };
-				FString Line = FString::Printf(TEXT("S t=%.1f phase=%s n=%d avg=%.1f max=%.1f gt=%.1f rt=%.1f rhi=%.1f gpu=%.1f rss=%d peak=%d commit=%d chunks=%lld dirty=%lld flight=%lld meshes=%lld water=%lld ktris=%lld ents=%lld pos=%lld,%lld,%lld lverts=%lld ltris=%lld kept=%lld uobj=%lld"),
+				FString Line = FString::Printf(TEXT("S t=%.1f phase=%s n=%d avg=%.1f max=%.1f gt=%.1f rt=%.1f rhi=%.1f gpu=%.1f rss=%d peak=%d commit=%d chunks=%lld dirty=%lld flight=%lld meshes=%lld water=%lld ktris=%lld ents=%lld pos=%lld,%lld,%lld lverts=%lld ltris=%lld kept=%lld uobj=%lld fg=%d"),
 					Now(), *Phase, SecondFrames, SecondSum / N, SecondMax, SecondGame / N, SecondRender / N, SecondRhi / N, SecondGpu / N,
 					static_cast<int32>(Memory.UsedPhysical / (1024 * 1024)), static_cast<int32>(Memory.PeakUsedPhysical / (1024 * 1024)), static_cast<int32>(Memory.UsedVirtual / (1024 * 1024)),
 					Counter(EMcPerfCounter::Chunks), Counter(EMcPerfCounter::Dirty), Counter(EMcPerfCounter::InFlight), Counter(EMcPerfCounter::Meshes), Counter(EMcPerfCounter::WaterMeshes),
 					Counter(EMcPerfCounter::MeshTris), Counter(EMcPerfCounter::Entities), Counter(EMcPerfCounter::X), Counter(EMcPerfCounter::Y), Counter(EMcPerfCounter::Z),
-					Counter(EMcPerfCounter::LiveKVerts), Counter(EMcPerfCounter::LiveKTris), Counter(EMcPerfCounter::KeptKVerts), Counter(EMcPerfCounter::UObjects));
+					Counter(EMcPerfCounter::LiveKVerts), Counter(EMcPerfCounter::LiveKTris), Counter(EMcPerfCounter::KeptKVerts), Counter(EMcPerfCounter::UObjects), IsForeground());
 				for (int32 Index = 0; Index < static_cast<int32>(EMcPerfScope::Count); ++Index)
 				{
 					Line += FString::Printf(TEXT(" %s=%.2f"), ScopeNames[Index], SecondScopeCycles[Index] * ToMs / N);

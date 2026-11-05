@@ -238,6 +238,17 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 	if (bRunning)
 	{
 		Left -= DeltaSeconds;
+		// Losing the window's focus lets go of every key; a held step keeps them down.
+		if (Current.Kind == FStep::EKind::Hold && Left > 0.0f)
+		{
+			for (const FKey& Key : Current.Keys)
+			{
+				if (!Controller.IsInputKeyDown(Key))
+				{
+					Press(Controller, Key, true);
+				}
+			}
+		}
 		if (Current.Kind == FStep::EKind::Hold && !Current.Name.IsEmpty() && !bHoldShot && Left <= Current.Seconds * 0.5f)
 		{
 			bHoldShot = true;

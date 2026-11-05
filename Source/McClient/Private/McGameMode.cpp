@@ -1602,6 +1602,26 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
 					}
+					else if (Player.IsValid() && Line == TEXT("!killdragon"))
+					{
+						// Development: "!killdragon" deals the ender dragon 1000 damage (no command reaches mobs), so a shot or run
+						// script can see the death, the exit portal and the credits without winning the fight by hand.
+						for (AMcWorldActor* World : Worlds)
+						{
+							FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+							if (!Host)
+							{
+								continue;
+							}
+							for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+							{
+								if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+								{
+									static_cast<FMcMob&>(*Entity).Damage(1000.0f, nullptr);
+								}
+							}
+						}
+					}
 					else if (Player.IsValid())
 					{
 						HandleChat(Player.Get(), Line);

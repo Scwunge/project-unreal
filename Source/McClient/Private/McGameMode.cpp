@@ -2216,6 +2216,27 @@ namespace
 			}
 		}
 
+		virtual bool GetVehicleName(const FString& Player, FString& OutName) const override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			FMcEntityManager* Entities = Pawn && Pawn->GetRidingId() != 0 && Pawn->GetEntities ? Pawn->GetEntities() : nullptr;
+			const FMcEntity* Vehicle = Entities ? Entities->Find(Pawn->GetRidingId()) : nullptr;
+			if (!Vehicle)
+			{
+				return false;
+			}
+			OutName = McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Vehicle->GetType().ToString()));
+			return true;
+		}
+
+		virtual void Dismount(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerDismount();
+			}
+		}
+
 		virtual int32 GetSelectedSlot(const FString& Player) const override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);

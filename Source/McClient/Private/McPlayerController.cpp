@@ -42,6 +42,10 @@
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#if MC_WITH_RENDER
+#include "DynamicRHI.h"
+#include "RenderTimer.h"
+#endif
 
 #if MC_WITH_RENDER
 #include "Engine/GameViewportClient.h"
@@ -1330,6 +1334,22 @@ void AMcPlayerController::StartDevScreenshot()
 			return;
 		}
 		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
+#if MC_WITH_RENDER && !UE_BUILD_SHIPPING
+		// Where the frame goes, for finding what to cut: milliseconds of the game thread, the render thread and the GPU.
+		UE_LOG(LogMcClient, Display, TEXT("McShot: frame ms: game %.1f, render %.1f, gpu %.1f"),
+			FPlatformTime::ToMilliseconds(GGameThreadTime), FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
+		// Development: -McShotExec=cmd;cmd runs console commands now (ProfileGPU writes a table of the GPU passes to the log).
+		FString Exec;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McShotExec="), Exec, /*bShouldStopOnSeparator=*/ false))
+		{
+			TArray<FString> Commands;
+			Exec.ParseIntoArray(Commands, TEXT(";"));
+			for (const FString& Command : Commands)
+			{
+				GEngine->Exec(GetWorld(), *Command);
+			}
+		}
+#endif
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()

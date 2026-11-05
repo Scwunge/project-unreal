@@ -542,12 +542,6 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		Body.bOnGround = false;
 	}
 	PlayVoice(Health <= 0.0f ? McSound::EMobSound::Death : McSound::EMobSound::Hurt);
-	if (Health <= 0.0f && Type.bDragon)
-	{
-		// The dragon does not drop dead: it takes 200 ticks to die (see Tick).
-		DeathTicks = FMath::Max(DeathTicks, 1);
-		return true;
-	}
 	if (Owner)
 	{
 		Owner->GameEvent(FName("entity_damage"), Body.Position);
@@ -557,6 +551,12 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 			Dying.bDying = true;
 			Owner->GameEvent(FName("entity_die"), Body.Position, Dying);
 		}
+	}
+	if (Health <= 0.0f && Type.bDragon)
+	{
+		// The dragon does not drop dead: it takes 200 ticks to die (see Tick).
+		DeathTicks = FMath::Max(DeathTicks, 1);
+		return true;
 	}
 	if (Health <= 0.0f)
 	{

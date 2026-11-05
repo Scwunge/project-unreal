@@ -81,6 +81,15 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 				}
 				const FVector From = Next - Body.Velocity.GetSafeNormal() * 2.0;
 				static_cast<FMcMob*>(Other.Get())->Damage(Hit, &From);
+				if (PunchKnockback > 0.0f)
+				{
+					FVector Way(Body.Velocity.X, 0.0, Body.Velocity.Z);
+					if (Way.Normalize())
+					{
+						Other->Body.Velocity.X += Way.X * PunchKnockback * 0.6;
+						Other->Body.Velocity.Z += Way.Z * PunchKnockback * 0.6;
+					}
+				}
 				Manager.PlaySound(FName("entity.arrow.hit"), Next, 1.0f, GetHitPitch(FMath::FRand()));
 				bRemoved = true;
 				return;

@@ -2029,6 +2029,7 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 		Shot.DirectAttackerType = TEXT("minecraft:arrow");
 		Shot.bAttackerIsPlayer = true;
 		Arrow->PlayerBase += McEnchantEffects::SumAdd(Bow, TEXT("minecraft:damage"), Shot);
+		Arrow->PunchKnockback = McEnchantEffects::SumAdd(Bow, TEXT("minecraft:knockback"), Shot);
 	}
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;

@@ -22,6 +22,8 @@ public:
 	// A player's shot: it hurts mobs too, by the game's rule (the base times the speed, rounded up, and a critical
 	// draw adds up to half as much again), and can be picked up where it lands unless it was shot in creative.
 	float PlayerBase = 0.0f;
+	// The bow's Punch: knockback points, each pushing a mob hit 0.6 further along the arrow's way (ench_log6: first-tick step 0.37, 0.97, 1.57 at Punch 0, I, II).
+	float PunchKnockback = 0.0f;
 	bool bCritical = false;
 	bool bPickup = false;
 	// An effect it gives the player it hits (a stray's slowness, a bogged's poison), for Duration ticks; none when unnamed.

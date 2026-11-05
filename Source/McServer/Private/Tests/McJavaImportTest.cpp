@@ -24,6 +24,8 @@
 #include "McWorldStorage.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -1526,6 +1528,39 @@ bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(McWorldSave::GetWorldDir(Folder), Target, Out));
 	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s in %.2f s (%.2f s of it lighting; tags %.2f s, writing %.2f s, regions %.2f s)"), Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds, Out.LightSeconds, Out.MakeSeconds, Out.WriteSeconds, Out.RegionSeconds));
 	McWorldSave::DeleteWorld(Folder);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportOwnSaveTest, "McClient.McServer.JavaExport.WriteOwnSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportOwnSaveTest::RunTest(const FString& Parameters)
+{
+	// Exports a world made in this game (the save named by MC_EXPORT_WORLD, a name or a full folder, default e2e) as the vanilla save ownexport in
+	// E:/mc-reference/run/saves, for opening in the vanilla client through ref.sh. It works on a copy of the world; only
+	// its own output folder is replaced.
+	FString Name = FPlatformMisc::GetEnvironmentVariable(TEXT("MC_EXPORT_WORLD"));
+	Name = Name.IsEmpty() ? TEXT("e2e") : Name;
+	const FString Source = Name.Contains(TEXT(":")) ? Name : McWorldSave::GetWorldDir(Name);
+	const FString Target = TEXT("E:/mc-reference/run/saves/ownexport");
+	if (!IFileManager::Get().DirectoryExists(*Source) || !IFileManager::Get().DirectoryExists(TEXT("E:/mc-reference/run/saves")))
+	{
+		AddInfo(FString::Printf(TEXT("no world %s or no reference saves on this machine; skipped"), *Name));
+		return true;
+	}
+	if (!LoadRegistries() || !FMcItemRegistry::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	const FString Copy = McWorldSave::GetWorldDir(TEXT("OwnExportCopy"));
+	IFileManager::Get().DeleteDirectory(*Copy, false, true);
+	TestTrue(TEXT("the world copied"), FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*Copy, *Source, true));
+	IFileManager::Get().DeleteDirectory(*Target, false, true);
+	McJavaExport::FStats Out;
+	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(Copy, Target, Out));
+	AddInfo(FString::Printf(TEXT("exported %s: %d chunks in %d regions (%d failed) to %s in %.2f s"), *Name, Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds));
+	IFileManager::Get().DeleteDirectory(*Copy, false, true);
 	return true;
 }
 

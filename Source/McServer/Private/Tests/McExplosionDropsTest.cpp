@@ -74,6 +74,21 @@ bool FMcExplosionDropsTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(*FString::Printf(TEXT("each half of a blown up double slab stays with a third (kept %d of %d)"), Halves, 2 * Tries), Halves > 2 * Tries * 0.28 && Halves < 2 * Tries * 0.39);
 		TestTrue(TEXT("air has no table"), !McLoot::RollBlock({ State(TEXT("minecraft:air")), 0.0f }, Random, Out));
+
+		// copy_components: a shulker box that is broken keeps what it held (a barrel's table copies only its name, so its contents spill).
+		FMcBlockEntity Box = FMcBlockEntity::MakeContainer(27);
+		Box.Slots[3] = FMcItemStack(FName("minecraft:diamond"), 5);
+		McLoot::FBlockContext BoxContext;
+		BoxContext.State = State(TEXT("minecraft:shulker_box[facing=up]"));
+		BoxContext.BlockEntity = &Box;
+		Out.Reset();
+		TestTrue(TEXT("a shulker box has a table"), McLoot::RollBlock(BoxContext, Random, Out));
+		TestTrue(TEXT("a shulker box drops itself"), Out.Num() == 1 && Out[0].Item == FName("minecraft:shulker_box"));
+		TestTrue(TEXT("a shulker box drop carries its contents"), (Out.Num() == 1 && Out[0].Get(FName("minecraft:container")).IsValid() && Out[0].Get(FName("minecraft:container"))->AsArray().Num() == 1));
+		BoxContext.BlockEntity = nullptr;
+		Out.Reset();
+		McLoot::RollBlock(BoxContext, Random, Out);
+		TestTrue(TEXT("a shulker box with no block entity carries no contents"), (Out.Num() == 1 && Out[0].Get(FName("minecraft:container")).IsValid() && Out[0].Get(FName("minecraft:container"))->AsArray().Num() == 0));
 	}
 
 	{

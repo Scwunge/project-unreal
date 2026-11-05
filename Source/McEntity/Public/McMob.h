@@ -179,6 +179,9 @@ public:
 	// (the game counts the last five seconds). Not saved.
 	int32 PlayerHitAge = -1000000;
 	bool bPlayerHitWasShot = false;
+	// Ticks it still counts as burning (the sun or lava set it): its loot is cooked while it is. How long the game's own
+	// fire lasts after the sun is not measured (PLAN.md, provenance gaps). Not saved.
+	int32 BurnTicks = 0;
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;

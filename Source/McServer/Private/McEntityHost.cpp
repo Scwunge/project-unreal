@@ -636,6 +636,15 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 		Context.bProjectile = Mob.bPlayerHitWasShot;
 		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
 	}
+	Context.bOnFire = Mob.BurnTicks > 0;
+	// What it sits in (a boat, a minecart): a zombie's red mushroom asks for a zombie horse, which nothing here rides yet.
+	if (Mob.RidingId != 0)
+	{
+		if (const FMcEntity* Vehicle = Manager.Find(Mob.RidingId))
+		{
+			Context.Vehicle = Vehicle->GetType();
+		}
+	}
 	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
 	Context.DyeColor = Mob.DyeColor;
 	const McLoot::FMobScope LootScope(Context);

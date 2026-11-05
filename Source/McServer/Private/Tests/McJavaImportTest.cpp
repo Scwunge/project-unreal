@@ -13,6 +13,8 @@
 #include "McChunk.h"
 #include "McChunkSave.h"
 #include "McJavaExport.h"
+#include "McBlockLight.h"
+#include "McLightEngine.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
 #include "McItemRegistry.h"
@@ -1522,7 +1524,166 @@ bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
 	IFileManager::Get().DeleteDirectory(*Target, false, true);
 	McJavaExport::FStats Out;
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(McWorldSave::GetWorldDir(Folder), Target, Out));
-	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s"), Out.Chunks, Out.Regions, Out.Failed, *Target));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s in %.2f s (%.2f s of it lighting)"), Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds, Out.LightSeconds));
 	McWorldSave::DeleteWorld(Folder);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportBlockEntitiesTest, "McClient.McServer.JavaExport.BlockEntities",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportBlockEntitiesTest::RunTest(const FString& Parameters)
+{
+	// What a chunk keeps as block entities goes out as the game's NBT and comes back through the importer as it was.
+	if (!TestTrue(TEXT("registries load"), LoadRegistries() && FMcItemRegistry::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcChunk Source(FIntPoint(2, -3), -64, 24);
+	const auto Put = [&](int32 X, int32 Y, int32 Z, const TCHAR* Block, FMcBlockEntity Entity)
+	{
+		Source.SetBlock(X, Y, Z, Registry.ParseState(Block).Get(0));
+		Source.SetBlockEntity(X, Y, Z, MoveTemp(Entity));
+	};
+	FMcBlockEntity Chest = FMcBlockEntity::MakeContainer(27);
+	Chest.Slots[2] = FMcItemStack(TEXT("minecraft:diamond_sword"), 1);
+	Chest.Slots[2].Set(TEXT("minecraft:damage"), MakeShared<FJsonValueNumber>(5));
+	Chest.Slots[26] = FMcItemStack(TEXT("minecraft:apple"), 12);
+	Chest.LootTable = TEXT("minecraft:chests/simple_dungeon");
+	Chest.LootSeed = 123456789012;
+	Put(1, -60, 2, TEXT("minecraft:chest[facing=north]"), Chest);
+	FMcBlockEntity Sign = FMcBlockEntity::MakeSign();
+	Sign.SignSides[0].Lines[0] = TEXT("Exported");
+	Sign.SignSides[0].Lines[2] = TEXT("sign");
+	Sign.SignSides[0].Color = TEXT("red");
+	Sign.SignSides[0].bGlowing = true;
+	Sign.SignSides[1].Lines[1] = TEXT("back");
+	Sign.bWaxed = true;
+	Put(3, -60, 3, TEXT("minecraft:oak_sign[rotation=4]"), Sign);
+	FMcBlockEntity Campfire = FMcBlockEntity::MakeCampfire();
+	Campfire.Slots[1] = FMcItemStack(TEXT("minecraft:beef"), 1);
+	Campfire.CookingTimes[1] = 212;
+	Campfire.CookingTotals[1] = 600;
+	Put(5, -60, 5, TEXT("minecraft:campfire[facing=north,lit=true]"), Campfire);
+	FMcBlockEntity Spawner = FMcBlockEntity::MakeSpawner(TEXT("minecraft:zombie"));
+	Put(6, -60, 6, TEXT("minecraft:spawner"), Spawner);
+	FMcBlockEntity Lectern = FMcBlockEntity::MakeLectern(FMcItemStack(TEXT("minecraft:writable_book"), 1));
+	Lectern.Page = 3;
+	Put(7, -60, 7, TEXT("minecraft:lectern[facing=north]"), Lectern);
+	FMcBlockEntity Pot = FMcBlockEntity::MakePot({ TEXT("minecraft:brick"), TEXT("minecraft:angler_pottery_sherd"), TEXT("minecraft:brick"), TEXT("minecraft:brick") });
+	Put(8, -60, 8, TEXT("minecraft:decorated_pot"), Pot);
+	FMcNbt Skull;
+	Skull.Type = FMcNbt::EType::Compound;
+	Skull.Keys.Add(TEXT("note_block_sound"));
+	FMcNbt Sound;
+	Sound.Type = FMcNbt::EType::String;
+	Sound.String = TEXT("minecraft:entity.zombie.ambient");
+	Skull.Values.Add(Sound);
+	FMcBlockEntity RawSkull;
+	RawSkull.Kind = EMcBlockEntityKind::Raw;
+	RawSkull.EntityId = TEXT("minecraft:skull");
+	Skull.WriteRoot(RawSkull.Data);
+	Put(9, -60, 9, TEXT("minecraft:skeleton_skull[rotation=0]"), RawSkull);
+
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Source, Root);
+	const FMcNbt* List = Root.Find(TEXT("block_entities"));
+	if (!TestTrue(TEXT("block entities are written"), List && List->Num() == 7))
+	{
+		return false;
+	}
+	for (const FMcNbt& Entity : List->Values)
+	{
+		TestTrue(TEXT("each has a position and an id"), Entity.Find(TEXT("x")) && Entity.Find(TEXT("y")) && Entity.Find(TEXT("z")) && !Entity.GetString(TEXT("id")).IsEmpty());
+	}
+	FMcChunk Result(FIntPoint(2, -3), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("our own chunk converts back"), McJavaImport::ConvertChunk(Root, Result, Stats));
+	for (const TPair<FIntVector, FMcBlockEntity>& Pair : Source.GetBlockEntities())
+	{
+		const FMcBlockEntity* Back = Result.FindBlockEntity(Pair.Key.X, Pair.Key.Y, Pair.Key.Z);
+		if (TestNotNull(*FString::Printf(TEXT("block entity at %d,%d,%d comes back"), Pair.Key.X, Pair.Key.Y, Pair.Key.Z), Back))
+		{
+			if (Pair.Value.Kind == EMcBlockEntityKind::Raw)
+			{
+				// The importer keeps a raw record whole (with its id and position), so only what was in it is compared.
+				FMcNbt Kept;
+				TestTrue(TEXT("raw block entity keeps its kind, id and data"), Back->Kind == EMcBlockEntityKind::Raw && Back->EntityId == Pair.Value.EntityId
+					&& FMcNbt::Parse(Back->Data, Kept) && Kept.GetString(TEXT("note_block_sound")) == TEXT("minecraft:entity.zombie.ambient"));
+				continue;
+			}
+			TestTrue(*FString::Printf(TEXT("block entity at %d,%d,%d is as it was"), Pair.Key.X, Pair.Key.Y, Pair.Key.Z), *Back == Pair.Value);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportLightTest, "McClient.McServer.JavaExport.Light",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportLightTest::RunTest(const FString& Parameters)
+{
+	// A stone slab over part of a chunk: above it the sky is full, under it dark, and a torch under it shines.
+	if (!TestTrue(TEXT("registries load"), LoadRegistries() && FMcBlockLight::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcDimensionType Type;
+	if (!TestTrue(TEXT("the overworld's type loads"), FMcDimensionType::Load(TEXT("minecraft:overworld"), Type)))
+	{
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcBlockWorld World(Type);
+	TUniquePtr<FMcChunk> Made = World.MakeChunk(FIntPoint(0, 0));
+	const FMcStateId Stone = Registry.ParseState(TEXT("minecraft:stone")).Get(0);
+	for (int32 X = 0; X < 16; ++X)
+	{
+		for (int32 Z = 0; Z < 16; ++Z)
+		{
+			Made->SetBlock(X, 10, Z, Stone);
+			Made->SetBlock(X, -64, Z, Stone);
+		}
+	}
+	Made->SetBlock(8, 5, 8, Registry.ParseState(TEXT("minecraft:torch")).Get(0));
+	FMcChunk& Chunk = World.AddChunk(MoveTemp(Made));
+	FMcLightRegion Light = FMcLightRegion::Capture(World, FIntPoint(0, 0));
+	Light.Compute(*FMcLightPalette::Build());
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Chunk, Root, 0, &Light);
+	TestEqual(TEXT("light is on"), static_cast<int32>(Root.GetInt(TEXT("isLightOn"))), 1);
+	const FMcNbt* Sections = Root.Find(TEXT("sections"));
+	if (!TestTrue(TEXT("a section below the world, then 24"), Sections && Sections->Num() == 25))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the one below the world is the game's -5"), static_cast<int32>(Sections->Values[0].GetInt(TEXT("Y"))), -5);
+	const auto Nibble = [](const FMcNbt& Section, const TCHAR* Key, int32 X, int32 Y, int32 Z)
+	{
+		const FMcNbt* Array = Section.Find(Key);
+		if (!Array || Array->Bytes.Num() != 2048)
+		{
+			return -1;
+		}
+		const int32 Index = (Y * 16 + Z) * 16 + X;
+		return static_cast<int32>((Array->Bytes[Index >> 1] >> ((Index & 1) * 4)) & 15);
+	};
+	// Section index 1 + (y + 64) / 16: the top (y 304..319) is index 24, the slab's (y 0..15) is 5.
+	TestEqual(TEXT("open sky at the top"), Nibble(Sections->Values[24], TEXT("SkyLight"), 3, 3, 3), 15);
+	TestEqual(TEXT("sky above the slab"), Nibble(Sections->Values[5], TEXT("SkyLight"), 3, 12, 3), 15);
+	// The neighbouring columns are open sky, so light creeps in from the sides: 15 outside, 14 at the edge, 7 eight blocks in.
+	TestEqual(TEXT("under the slab, light only from its open sides"), Nibble(Sections->Values[5], TEXT("SkyLight"), 8, 7, 8), 7);
+	TestEqual(TEXT("at its edge"), Nibble(Sections->Values[5], TEXT("SkyLight"), 0, 7, 8), 14);
+	TestTrue(TEXT("the torch lights its own block"), Nibble(Sections->Values[5], TEXT("BlockLight"), 8, 5, 8) >= 13);
+	TestTrue(TEXT("and the next one a step less"), Nibble(Sections->Values[5], TEXT("BlockLight"), 9, 5, 8) == Nibble(Sections->Values[5], TEXT("BlockLight"), 8, 5, 8) - 1);
+	TestFalse(TEXT("a section without light sources has no block light"), Sections->Values[24].Find(TEXT("BlockLight")) != nullptr);
+	// The bytes written are the ones the array holds.
+	TArray<uint8> Bytes;
+	Root.WriteRoot(Bytes);
+	FMcNbt Back;
+	TestTrue(TEXT("what is written parses"), FMcNbt::Parse(Bytes, Back));
+	const FMcNbt* BackSections = Back.Find(TEXT("sections"));
+	TestTrue(TEXT("with its light"), BackSections && BackSections->Num() == 25 && BackSections->Values[5].Find(TEXT("SkyLight")) && BackSections->Values[5].Find(TEXT("SkyLight"))->Num() == 2048);
 	return true;
 }

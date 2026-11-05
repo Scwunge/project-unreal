@@ -11,6 +11,13 @@
 #include "McGenRegion.h"
 #include "McBlockTags.h"
 #include "McBlockShapes.h"
+#include "McBlockWorld.h"
+#include "McBlockLight.h"
+#include "McLightEngine.h"
+#include "McItemStack.h"
+#include "McSign.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/MemoryReader.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -96,6 +103,283 @@ namespace
 		return Tag;
 	}
 
+	// A JSON value of an item component as NBT: whole numbers as ints, other numbers as doubles, true and false as
+	// bytes, objects as compounds, arrays as lists. (The component's own NBT types are not kept, so a long or a byte
+	// comes back as an int.)
+	FMcNbt JsonToNbt(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid())
+		{
+			return MakeTag(EType::Compound);
+		}
+		switch (Value->Type)
+		{
+		case EJson::Number:
+		{
+			const double Number = Value->AsNumber();
+			if (Number == FMath::FloorToDouble(Number) && FMath::Abs(Number) < 2147483647.0)
+			{
+				return Int(static_cast<int64>(Number));
+			}
+			return Real(Number, EType::Double);
+		}
+		case EJson::Boolean:
+			return Int(Value->AsBool() ? 1 : 0, EType::Byte);
+		case EJson::String:
+			return Str(Value->AsString());
+		case EJson::Array:
+		{
+			FMcNbt List = MakeTag(EType::List);
+			for (const TSharedPtr<FJsonValue>& Element : Value->AsArray())
+			{
+				List.Values.Add(JsonToNbt(Element));
+			}
+			return List;
+		}
+		case EJson::Object:
+		{
+			FMcNbt Compound = MakeTag(EType::Compound);
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Value->AsObject()->Values)
+			{
+				Compound.Keys.Add(Pair.Key);
+				Compound.Values.Add(JsonToNbt(Pair.Value));
+			}
+			return Compound;
+		}
+		default:
+			return MakeTag(EType::Compound);
+		}
+	}
+
+	// An item as the game saves one: id, count and its components.
+	FMcNbt ItemToNbt(const FMcItemStack& Stack)
+	{
+		FMcNbt Item = MakeTag(EType::Compound);
+		Add(Item, TEXT("id"), Str(Stack.Item.ToString()));
+		Add(Item, TEXT("count"), Int(Stack.Count));
+		if (!Stack.Components.IsEmpty())
+		{
+			FMcNbt Components = MakeTag(EType::Compound);
+			for (const TPair<FName, TSharedPtr<FJsonValue>>& Pair : Stack.Components)
+			{
+				Components.Keys.Add(Pair.Key.ToString());
+				Components.Values.Add(JsonToNbt(Pair.Value));
+			}
+			Add(Item, TEXT("components"), MoveTemp(Components));
+		}
+		return Item;
+	}
+
+	// "Items": the stacks that are there, each with its slot.
+	FMcNbt ItemsToNbt(TConstArrayView<FMcItemStack> Slots)
+	{
+		FMcNbt Items = MakeTag(EType::List);
+		for (int32 Slot = 0; Slot < Slots.Num(); ++Slot)
+		{
+			if (!Slots[Slot].IsEmpty())
+			{
+				FMcNbt Item = ItemToNbt(Slots[Slot]);
+				Item.Keys.Insert(TEXT("Slot"), 0);
+				Item.Values.Insert(Int(Slot, EType::Byte), 0);
+				Items.Values.Add(MoveTemp(Item));
+			}
+		}
+		return Items;
+	}
+
+	FMcNbt MakeIntArray(const int32* Values, int32 Num)
+	{
+		FMcNbt Array = MakeTag(EType::IntArray);
+		for (int32 Index = 0; Index < Num; ++Index)
+		{
+			Array.Values.Add(Int(Values[Index]));
+		}
+		return Array;
+	}
+
+	// The stacks at the start of what FMcFurnace and FMcBrewingStand save (see McJavaImport's MakeMachineBytes).
+	TArray<FMcItemStack> ReadMachineStacks(const TArray<uint8>& Data, int32 NumSlots)
+	{
+		TArray<FMcItemStack> Slots;
+		Slots.SetNum(NumSlots);
+		FMemoryReader Reader(Data);
+		for (FMcItemStack& Slot : Slots)
+		{
+			Slot.Serialize(Reader);
+		}
+		return Slots;
+	}
+
+	// The block entity id the game uses for the block at a position, from the block's name.
+	FString BlockEntityId(const FString& BlockName)
+	{
+		if (BlockName.EndsWith(TEXT("shulker_box")))
+		{
+			return TEXT("minecraft:shulker_box");
+		}
+		if (BlockName.EndsWith(TEXT("_hanging_sign")))
+		{
+			return TEXT("minecraft:hanging_sign");
+		}
+		if (BlockName.EndsWith(TEXT("_sign")))
+		{
+			return TEXT("minecraft:sign");
+		}
+		if (BlockName == TEXT("minecraft:spawner"))
+		{
+			return TEXT("minecraft:mob_spawner");
+		}
+		return BlockName;
+	}
+
+	FMcNbt MakeSignSide(const FMcSignSide& In)
+	{
+		FMcNbt Text = MakeTag(EType::Compound);
+		FMcNbt Messages = MakeTag(EType::List);
+		for (int32 Line = 0; Line < FMcSignSide::NumLines; ++Line)
+		{
+			Messages.Values.Add(Str(In.Lines[Line]));
+		}
+		Add(Text, TEXT("messages"), MoveTemp(Messages));
+		Add(Text, TEXT("color"), Str(In.Color.ToString()));
+		Add(Text, TEXT("has_glowing_text"), Int(In.bGlowing ? 1 : 0, EType::Byte));
+		return Text;
+	}
+
+	// The block entities of a chunk as the game's list: each with its position, id and data.
+	FMcNbt MakeBlockEntityList(const FMcChunk& Chunk)
+	{
+		const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+		FMcNbt List = MakeTag(EType::List);
+		for (const TPair<FIntVector, FMcBlockEntity>& Pair : Chunk.GetBlockEntities())
+		{
+			const FMcBlockEntity& Source = Pair.Value;
+			FString Described = Blocks.Describe(Chunk.GetBlock(Pair.Key.X, Pair.Key.Y, Pair.Key.Z));
+			int32 Bracket;
+			if (Described.FindChar(TEXT('['), Bracket))
+			{
+				Described.LeftInline(Bracket);
+			}
+			FMcNbt Entity = MakeTag(EType::Compound);
+			bool bKnown = true;
+			FString Id = BlockEntityId(Described);
+			switch (Source.Kind)
+			{
+			case EMcBlockEntityKind::Container:
+				Add(Entity, TEXT("Items"), ItemsToNbt(Source.Slots));
+				if (!Source.LootTable.IsNone())
+				{
+					Add(Entity, TEXT("LootTable"), Str(Source.LootTable.ToString()));
+					Add(Entity, TEXT("LootTableSeed"), Int(Source.LootSeed, EType::Long));
+				}
+				break;
+			case EMcBlockEntityKind::Spawner:
+			{
+				FMcNbt Mob = MakeTag(EType::Compound);
+				Add(Mob, TEXT("id"), Str(Source.EntityId.ToString()));
+				FMcNbt SpawnData = MakeTag(EType::Compound);
+				Add(SpawnData, TEXT("entity"), MoveTemp(Mob));
+				Add(Entity, TEXT("SpawnData"), MoveTemp(SpawnData));
+				break;
+			}
+			case EMcBlockEntityKind::Furnace:
+				Add(Entity, TEXT("Items"), ItemsToNbt(ReadMachineStacks(Source.Data, 3)));
+				break;
+			case EMcBlockEntityKind::BrewingStand:
+				Add(Entity, TEXT("Items"), ItemsToNbt(ReadMachineStacks(Source.Data, 5)));
+				break;
+			case EMcBlockEntityKind::Sign:
+				Add(Entity, TEXT("front_text"), MakeSignSide(Source.SignSides[0]));
+				Add(Entity, TEXT("back_text"), MakeSignSide(Source.SignSides[1]));
+				Add(Entity, TEXT("is_waxed"), Int(Source.bWaxed ? 1 : 0, EType::Byte));
+				break;
+			case EMcBlockEntityKind::Lectern:
+				if (Source.Slots.IsEmpty() || Source.Slots[0].IsEmpty())
+				{
+					bKnown = false;
+					break;
+				}
+				Add(Entity, TEXT("Book"), ItemToNbt(Source.Slots[0]));
+				Add(Entity, TEXT("Page"), Int(Source.Page));
+				break;
+			case EMcBlockEntityKind::Pot:
+			{
+				FMcNbt Sherds = MakeTag(EType::List);
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					Sherds.Values.Add(Str(Source.Slots.IsValidIndex(Side) && !Source.Slots[Side].IsEmpty() ? Source.Slots[Side].Item.ToString() : FString(TEXT("minecraft:brick"))));
+				}
+				Add(Entity, TEXT("sherds"), MoveTemp(Sherds));
+				break;
+			}
+			case EMcBlockEntityKind::Campfire:
+				Add(Entity, TEXT("Items"), ItemsToNbt(Source.Slots));
+				Add(Entity, TEXT("CookingTimes"), MakeIntArray(Source.CookingTimes, FMcBlockEntity::NumCampfireSpots));
+				Add(Entity, TEXT("CookingTotalTimes"), MakeIntArray(Source.CookingTotals, FMcBlockEntity::NumCampfireSpots));
+				break;
+			case EMcBlockEntityKind::Raw:
+			{
+				// Kept as it was read: its own compound, with its position put right.
+				FMcNbt Kept;
+				if (!FMcNbt::Parse(Source.Data, Kept) || Kept.Type != EType::Compound)
+				{
+					bKnown = false;
+					break;
+				}
+				for (const TCHAR* Key : { TEXT("x"), TEXT("y"), TEXT("z"), TEXT("id") })
+				{
+					const int32 At = Kept.Keys.IndexOfByKey(Key);
+					if (At != INDEX_NONE)
+					{
+						Kept.Keys.RemoveAt(At);
+						Kept.Values.RemoveAt(At);
+					}
+				}
+				Entity = MoveTemp(Kept);
+				Id = Source.EntityId.ToString();
+				break;
+			}
+			default:
+				bKnown = false;
+				break;
+			}
+			if (!bKnown)
+			{
+				continue;
+			}
+			Add(Entity, TEXT("id"), Str(Id));
+			Add(Entity, TEXT("keepPacked"), Int(0, EType::Byte));
+			Add(Entity, TEXT("x"), Int(Chunk.GetPos().X * 16 + Pair.Key.X));
+			Add(Entity, TEXT("y"), Int(Pair.Key.Y));
+			Add(Entity, TEXT("z"), Int(Chunk.GetPos().Y * 16 + Pair.Key.Z));
+			List.Values.Add(MoveTemp(Entity));
+		}
+		return List;
+	}
+
+	// One section's light as the game saves it: 4096 nibbles, y then z then x, the even one in the low half of a byte.
+	FMcNbt MakeLightArray(const FMcLightRegion& Light, int32 MinWorldY, bool bSky, bool& bAnyLight)
+	{
+		FMcNbt Tag = MakeTag(EType::ByteArray);
+		Tag.Bytes.SetNumZeroed(2048);
+		bAnyLight = false;
+		for (int32 Y = 0; Y < 16; ++Y)
+		{
+			for (int32 Z = 0; Z < 16; ++Z)
+			{
+				for (int32 X = 0; X < 16; ++X)
+				{
+					const int32 Level = bSky ? Light.GetSkyLight(FMcLightRegion::Border + X, MinWorldY + Y, FMcLightRegion::Border + Z)
+						: Light.GetBlockLight(FMcLightRegion::Border + X, MinWorldY + Y, FMcLightRegion::Border + Z);
+					const int32 Index = (Y * 16 + Z) * 16 + X;
+					Tag.Bytes[Index >> 1] |= static_cast<uint8>((Index & 1) ? Level << 4 : Level);
+					bAnyLight |= Level != 0;
+				}
+			}
+		}
+		return Tag;
+	}
+
 	void WriteBig32(TArray<uint8>& Out, uint32 Value)
 	{
 		Out.Add(static_cast<uint8>(Value >> 24));
@@ -127,7 +411,7 @@ void McJavaExport::PackIndices(TConstArrayView<int32> Indexes, int32 Bits, TArra
 	}
 }
 
-void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate)
+void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate, const FMcLightRegion* Light)
 {
 	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
 	const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
@@ -140,8 +424,17 @@ void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdat
 	Add(Out, TEXT("LastUpdate"), Int(LastUpdate, EType::Long));
 	Add(Out, TEXT("InhabitedTime"), Int(0, EType::Long));
 	// The game relights a chunk that says its light isn't on.
-	Add(Out, TEXT("isLightOn"), Int(0, EType::Byte));
+	Add(Out, TEXT("isLightOn"), Int(Light ? 1 : 0, EType::Byte));
 	FMcNbt Sections = MakeTag(EType::List);
+	if (Light)
+	{
+		// The section below the world holds only light (no sky reaches it).
+		FMcNbt Below = MakeTag(EType::Compound);
+		Add(Below, TEXT("Y"), Int(Chunk.GetMinY() / McCoords::SectionSize - 1, EType::Byte));
+		bool bAny;
+		Add(Below, TEXT("SkyLight"), MakeLightArray(*Light, Chunk.GetMinY() - McCoords::SectionSize, true, bAny));
+		Sections.Values.Add(MoveTemp(Below));
+	}
 	for (int32 Section = 0; Section < Chunk.NumSections(); ++Section)
 	{
 		FMcNbt Entry = MakeTag(EType::Compound);
@@ -207,10 +500,21 @@ void McJavaExport::MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdat
 			Add(BiomeTag, TEXT("data"), LongArray(Longs));
 		}
 		Add(Entry, TEXT("biomes"), MoveTemp(BiomeTag));
+		if (Light)
+		{
+			// As in real saves: sky light for every section, block light only where there is some.
+			bool bAny;
+			Add(Entry, TEXT("SkyLight"), MakeLightArray(*Light, Chunk.GetMinY() + Section * McCoords::SectionSize, true, bAny));
+			FMcNbt BlockLight = MakeLightArray(*Light, Chunk.GetMinY() + Section * McCoords::SectionSize, false, bAny);
+			if (bAny)
+			{
+				Add(Entry, TEXT("BlockLight"), MoveTemp(BlockLight));
+			}
+		}
 		Sections.Values.Add(MoveTemp(Entry));
 	}
 	Add(Out, TEXT("sections"), MoveTemp(Sections));
-	Add(Out, TEXT("block_entities"), MakeTag(EType::List));
+	Add(Out, TEXT("block_entities"), MakeBlockEntityList(Chunk));
 	// Heightmaps (observed in a real 26.3 save): four long arrays, each column's height above the world's bottom in
 	// 9 bits, 7 to a long, columns in z then x order.
 	FMcNbt Heightmaps = MakeTag(EType::Compound);
@@ -289,7 +593,7 @@ void McJavaExport::MakeRegion(const TMap<FIntPoint, TArray<uint8>>& Chunks, TArr
 	}
 }
 
-bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder, FStats& OutStats)
+bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder, FStats& OutStats, bool bWriteLight)
 {
 	FMcLevelData Level;
 	if (!McWorldSave::LoadLevel(WorldDir, Level) || !FMcBlockRegistry::Get().EnsureLoaded())
@@ -297,6 +601,12 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 		return false;
 	}
 	IFileManager& Files = IFileManager::Get();
+	TSharedPtr<const FMcLightPalette> LightPalette;
+	if (bWriteLight)
+	{
+		FMcBlockLight::Get().EnsureLoaded();
+		LightPalette = FMcLightPalette::Build();
+	}
 	for (const TCHAR* Dimension : { TEXT("minecraft:overworld"), TEXT("minecraft:the_nether"), TEXT("minecraft:the_end") })
 	{
 		const FString Source = WorldDir / McWorldSave::GetDimensionFolder(Dimension);
@@ -310,19 +620,72 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 		const FString Target = OutFolder / TEXT("dimensions") / Namespace / Path / TEXT("region");
 		TArray<FString> Names;
 		Files.FindFiles(Names, *(Source / TEXT("*.mcr")), true, false);
+		TArray<FIntPoint> RegionKeys;
 		for (const FString& Name : Names)
 		{
 			TArray<FString> Parts;
 			Name.ParseIntoArray(Parts, TEXT("."), true);
-			if (Parts.Num() != 4 || Parts[0] != TEXT("r") || !Parts[1].IsNumeric() || !Parts[2].IsNumeric())
+			if (Parts.Num() == 4 && Parts[0] == TEXT("r") && Parts[1].IsNumeric() && Parts[2].IsNumeric())
 			{
-				continue;
+				RegionKeys.Add(FIntPoint(FCString::Atoi(*Parts[1]), FCString::Atoi(*Parts[2])));
 			}
-			const int32 RegionX = FCString::Atoi(*Parts[1]);
-			const int32 RegionZ = FCString::Atoi(*Parts[2]);
-			FMcRegionFile Region(Source / Name);
-			TBitArray<> Present;
+		}
+		// Row by row, so that the regions around the one being written (light crosses their borders) are the ones held.
+		RegionKeys.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.Y != B.Y ? A.Y < B.Y : A.X < B.X; });
+		FMcBlockWorld World(Type);
+		TMap<FIntPoint, TBitArray<>> Held;
+		const auto Hold = [&](FIntPoint Key)
+		{
+			if (Held.Contains(Key))
+			{
+				return;
+			}
+			TBitArray<>& Present = Held.Add(Key);
+			const FString Path = Source / FString::Printf(TEXT("r.%d.%d.mcr"), Key.X, Key.Y);
+			if (!Files.FileExists(*Path))
+			{
+				return;
+			}
+			FMcRegionFile Region(Path);
 			Region.GetPresent(Present);
+			for (int32 Index = 0; Index < Present.Num(); ++Index)
+			{
+				if (!Present[Index])
+				{
+					continue;
+				}
+				const FIntPoint Pos(Key.X * 32 + Index % 32, Key.Y * 32 + Index / 32);
+				TArray<uint8> Payload;
+				TUniquePtr<FMcChunk> Chunk = World.MakeChunk(Pos);
+				FMcChunkSaveExtras Extras;
+				if (Region.Read(Pos, Payload) && McChunkSave::Decode(Payload, *Chunk, Extras))
+				{
+					World.AddChunk(MoveTemp(Chunk));
+				}
+			}
+		};
+		const double Started = FPlatformTime::Seconds();
+		for (const FIntPoint& Key : RegionKeys)
+		{
+			for (int32 DZ = -1; DZ <= 1; ++DZ)
+			{
+				for (int32 DX = -1; DX <= 1; ++DX)
+				{
+					Hold(Key + FIntPoint(DX, DZ));
+				}
+			}
+			for (TMap<FIntPoint, TBitArray<>>::TIterator It(Held); It; ++It)
+			{
+				if (FMath::Abs(It.Key().X - Key.X) > 1 || FMath::Abs(It.Key().Y - Key.Y) > 1)
+				{
+					for (int32 Index = 0; Index < It.Value().Num(); ++Index)
+					{
+						World.RemoveChunk(FIntPoint(It.Key().X * 32 + Index % 32, It.Key().Y * 32 + Index / 32));
+					}
+					It.RemoveCurrent();
+				}
+			}
+			const TBitArray<>& Present = Held.FindChecked(Key);
 			TMap<FIntPoint, TArray<uint8>> Chunks;
 			for (int32 Index = 0; Index < Present.Num(); ++Index)
 			{
@@ -330,17 +693,26 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 				{
 					continue;
 				}
-				const FIntPoint Pos(RegionX * 32 + Index % 32, RegionZ * 32 + Index / 32);
-				TArray<uint8> Payload;
-				FMcChunk Chunk(Pos, Type.MinY, Type.Height / McCoords::SectionSize);
-				FMcChunkSaveExtras Extras;
-				if (!Region.Read(Pos, Payload) || !McChunkSave::Decode(Payload, Chunk, Extras))
+				const FIntPoint Pos(Key.X * 32 + Index % 32, Key.Y * 32 + Index / 32);
+				const FMcChunk* Chunk = World.FindChunk(Pos);
+				if (!Chunk)
 				{
 					++OutStats.Failed;
 					continue;
 				}
 				FMcNbt Root;
-				MakeChunk(Chunk, Root, static_cast<int64>(Level.DayTime));
+				if (bWriteLight)
+				{
+					const double LightStarted = FPlatformTime::Seconds();
+					FMcLightRegion Light = FMcLightRegion::Capture(World, Pos);
+					Light.Compute(*LightPalette);
+					OutStats.LightSeconds += FPlatformTime::Seconds() - LightStarted;
+					MakeChunk(*Chunk, Root, static_cast<int64>(Level.DayTime), &Light);
+				}
+				else
+				{
+					MakeChunk(*Chunk, Root, static_cast<int64>(Level.DayTime));
+				}
 				TArray<uint8> Bytes;
 				Root.WriteRoot(Bytes);
 				Chunks.Add(Pos, MoveTemp(Bytes));
@@ -353,12 +725,13 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 			TArray<uint8> File;
 			MakeRegion(Chunks, File);
 			Files.MakeDirectory(*Target, true);
-			if (!FFileHelper::SaveArrayToFile(File, *(Target / FString::Printf(TEXT("r.%d.%d.mca"), RegionX, RegionZ))))
+			if (!FFileHelper::SaveArrayToFile(File, *(Target / FString::Printf(TEXT("r.%d.%d.mca"), Key.X, Key.Y))))
 			{
 				return false;
 			}
 			++OutStats.Regions;
 		}
+		OutStats.Seconds += FPlatformTime::Seconds() - Started;
 	}
 	// level.dat, gzip-compressed, in the current layout.
 	FMcNbt Data = MakeTag(EType::Compound);

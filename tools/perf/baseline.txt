@@ -9,6 +9,7 @@ hold:W+LeftControl+SpaceBar:60
 mark:settle2
 settle:60
 chat:/gamemode creative
+wait:2
 fly:1
 hold:SpaceBar:4
 mark:fly

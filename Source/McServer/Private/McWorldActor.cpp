@@ -1447,7 +1447,7 @@ void AMcWorldActor::StreamChunks()
 				Generator->Generate(*Result.Chunk);
 			}
 			Finished->Enqueue(MoveTemp(Result));
-		});
+		}, UE::Tasks::ETaskPriority::BackgroundNormal);  // Behind the frame's own tasks, which would otherwise wait for a free worker.
 	}
 
 	bool bUnloaded = false;
@@ -1623,7 +1623,7 @@ bool AMcWorldActor::DecorateChunks()
 				McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Job->Pos.X, Job->Pos.Y, (FPlatformTime::Seconds() - Began) * 1000.0));
 			}
 			Done->Enqueue(Job->Pos);
-		}));
+		}, UE::Tasks::ETaskPriority::BackgroundNormal));
 		bChanged = true;
 	}
 

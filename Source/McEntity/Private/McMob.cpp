@@ -1110,11 +1110,16 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			Target = &Aim;
 			if (PhaseTicks == 100 && Best < 64.0 * 64.0)
 			{
+				// One fireball, aimed at the nearest player (dragon_phase1.txt: aimed straight at them, speed 0.1 on its first tick).
 				for (const FVector& Player : Manager.PlayerPositions)
 				{
 					if (FVector::DistSquared(Player, Body.Position) <= Best + 1.0)
 					{
-						DragonClouds.Add(FVector4(Player.X, Player.Y, Player.Z, 600.0));
+						TUniquePtr<FMcFireball> Ball = MakeUnique<FMcFireball>();
+						Ball->Body.Position = Body.Position + FVector(0.0, -4.0, 0.0);
+						Ball->LaunchDragon(Player + FVector(0.0, 0.9, 0.0) - Ball->Body.Position);
+						Manager.Add(MoveTemp(Ball));
+						break;
 					}
 				}
 				Manager.PlaySound(FName("entity.ender_dragon.shoot"), Body.Position, 5.0f, 1.0f);

@@ -1077,6 +1077,16 @@ void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 			}
 		}
 		McPerf::Event(FString::Printf(TEXT("CHUNK %d,%d %08x %d"), Pos.X, Pos.Y, FCrc::MemCrc32(States.GetData(), States.Num() * States.GetTypeSize()), Chunk.GetBlockEntities().Num()));
+		// -McChunkDump=<file>: the blocks as well, so the comparison can count them.
+		FString DumpPath;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McChunkDump="), DumpPath))
+		{
+			const int32 Header[4] = { Pos.X, Pos.Y, States.Num(), static_cast<int32>(States.GetTypeSize()) };
+			TArray<uint8> Bytes;
+			Bytes.Append(reinterpret_cast<const uint8*>(Header), sizeof(Header));
+			Bytes.Append(reinterpret_cast<const uint8*>(States.GetData()), States.Num() * States.GetTypeSize());
+			FFileHelper::SaveArrayToFile(Bytes, *DumpPath, &IFileManager::Get(), FILEWRITE_Append);
+		}
 	}
 	// Before the edits, so a chunk that only changes by them counts as changed.
 	const uint32 LoadedRevision = Arrived.Chunk->GetRevision();

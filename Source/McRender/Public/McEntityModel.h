@@ -251,6 +251,12 @@ namespace McEntityModel
 	MCRENDER_API void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out);
 	MCRENDER_API void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out);
 
+	// A dropped item as the game shows it (fitted from same-camera shots of the game): Count copies of Unit (a mesh one block across with its middle at the origin,
+	// thickness along x: a picture stood one pixel thick, or a cube), each Scale big, turning 1 radian a second and bobbing 0.096 of a block
+	// (a sine of period 63 ticks) about a height Lift above the usual 0.26. Age is in seconds.
+	MCRENDER_API float GetDroppedHeight(float Age, float Lift);
+	MCRENDER_API void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out);
+
 	// A block of picture on every side, one block big, standing on the feet (a falling block). Layer 0 is every side (all six when
 	// there is no separate top picture, otherwise all but the top), layer 1 the top alone.
 	MCRENDER_API void BuildBlockMesh(bool bTopPicture, int32 Layer, McPlayerModel::FMeshData& Out);
@@ -377,6 +383,15 @@ private:
 	bool bIsItem = false;
 	// An item lying flat, still ("mc:grillfood": the food on a campfire); also bIsItem.
 	bool bIsGrillFood = false;
+	// A dropped item (bIsItem, not thrown, not food on a grill): its picture stood thick, or its block as a small cube, spinning and bobbing.
+	bool bIsDropped = false;
+	bool bDropReady = false;
+	bool bDropCube = false;
+	float DropScale = 0.5f;
+	float DropLift = 0.0f;
+	McPlayerModel::FMeshData DropUnit;
+	McPlayerModel::FMeshData DropTop;
+	void PrepareDropped();
 	bool bIsArrow = false;
 	// A falling block: a cube with the block's picture, drawn smoothly between the 20 positions a second it is sent.
 	bool bIsFalling = false;

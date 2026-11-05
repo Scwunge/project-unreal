@@ -176,6 +176,7 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.Width = InType.Width;
 	Body.Height = InType.Height;
 	Body.StepHeight = 0.6f;
+	McMount::RollAtSpawn(*this);
 	// What they carry when they spawn: a skeleton its bow, a vex its iron sword.
 	if (InType.Name == FName(TEXT("minecraft:skeleton")) || InType.Name == FName(TEXT("minecraft:stray")) || InType.Name == FName(TEXT("minecraft:bogged")))
 	{

@@ -1828,6 +1828,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		break;
 	case McGui::EScreen::Horse:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawMobPreview(FName(*(FString(TEXT("minecraft:")) + Screen->Title.ToLower())), Origin);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Hopper:

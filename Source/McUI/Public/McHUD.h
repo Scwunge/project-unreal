@@ -119,6 +119,9 @@ private:
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
+	// The animal in a mount's window, drawn from its model and picture in the 54 x 54 box at Origin + (26, 18): standing, turned a quarter
+	// towards the viewer, about 38 pixels tall with its feet 8 above the bottom (vanilla donkey window shot, ref_donkey_window.png).
+	void DrawMobPreview(FName Kind, FIntPoint Origin);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon);
 	void BuildBlockIcon(FMcStateId State, FIcon& Icon);

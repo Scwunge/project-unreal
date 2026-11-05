@@ -16,6 +16,8 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcSimPerfTest, "McClient.McSim.SimPerf",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::PerfFilter)
 
+namespace { constexpr double CalibrationIdleMs = 40.0; }
+
 bool FMcSimPerfTest::RunTest(const FString& Parameters)
 {
 	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
@@ -181,11 +183,28 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 
 	for (const FScene& Scene : Scenes)
 	{
+	// How fast this machine is right now: a fixed integer workload, timed before each run. A scene's limit grows with how much slower
+	// than CalibrationIdleMs it is, so a loaded host cannot fail it but a slow sim still does.
+	const auto Calibrate = []()
+	{
+		const double Start = FPlatformTime::Seconds();
+		uint32 Value = 2463534242u;
+		for (int32 Index = 0; Index < 40000000; ++Index)
+		{
+			Value ^= Value << 13; Value ^= Value >> 17; Value ^= Value << 5;
+		}
+		const double Ms = (FPlatformTime::Seconds() - Start) * 1000.0;
+		return Value == 0 ? Ms + 1.0 : Ms;
+	};
 	// A busy machine (a merge suite beside it) slows every tick: a scene passes if any of up to three runs averages under the limit, so
 	// only a regression that is slow on every run fails, not a loaded host.
 	double BestAvg = TNumericLimits<double>::Max();
-	for (int32 Attempt = 0; Attempt < 3 && BestAvg >= 25.0; ++Attempt)
+	double Limit = 25.0;
+	for (int32 Attempt = 0; Attempt < 3 && BestAvg >= Limit; ++Attempt)
 	{
+		const double Calibration = Calibrate();
+		Limit = FMath::Max(Limit, 25.0 * Calibration / CalibrationIdleMs);
+		UE_LOG(LogTemp, Display, TEXT("SIMPERF calibration %.1f ms (limit now %.1f ms)"), Calibration, Limit);
 		FMcBlockWorld World{FMcDimensionType()};
 		for (int32 Z = -Half; Z <= Half; ++Z)
 		{
@@ -237,7 +256,7 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 		UE_LOG(LogTemp, Display, TEXT("SIMPERF %s: build %.1f ms, tick avg %.3f ms, first %.3f ms, worst %.3f ms at tick %d, median %.3f ms, p95 %.3f ms, %d ticks over 20 ms, scheduled left %d"), *Scene.Name, BuildMs, Avg, First, Worst, WorstAt, All[All.Num() / 2], All[All.Num() * 95 / 100], Over20, Sim.NumScheduled());
 		BestAvg = FMath::Min(BestAvg, Avg);
 	}
-	TestTrue(*FString::Printf(TEXT("%s averages under 25 ms a tick in at least one of three runs (best %.2f)"), *Scene.Name, BestAvg), BestAvg < 25.0);
+	TestTrue(*FString::Printf(TEXT("%s averages under 25 ms a tick in at least one of three runs (best %.2f, limit %.2f)"), *Scene.Name, BestAvg, Limit), BestAvg < Limit);
 	}
 	return true;
 }

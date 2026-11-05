@@ -1378,3 +1378,5 @@ What new ref verbs would settle the unverified numbers (Script.java is off limit
 Darkness each time), a warden rises within 5 blocks of it at the fourth shriek's end, is deaf while it emerges, hears the player's steps, roars, walks to them and hits for 30 on Normal. UNVERIFIED on everything the
 reference client could not show: the shrieker-to-warden delay, emerge time, anger arithmetic and the roar trigger, sonic boom and Darkness effects (see the lists above). `McSim.SimPerf` now passes a scene if any of
 three runs averages under 25 ms, so a loaded machine no longer fails it but a real regression (slow every run) still does.
+
+**SimPerf under load:** the limit (25 ms a tick) is scaled by a fixed integer workload timed before each run (`CalibrationIdleMs` = 40 ms, fitted from one pair: the dust scene averaged 18.0 ms when the workload took ~40 ms and 31.1 ms when it took ~67 ms, 18.0 x 67/40 = 30). It is a fit from two runs, not a measured idle baseline: re-measure the workload on a quiet 1070 and set it.

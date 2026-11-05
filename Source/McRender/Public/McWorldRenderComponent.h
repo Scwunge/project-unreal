@@ -64,7 +64,7 @@ private:
 	{
 		FIntPoint ChunkPos;
 		uint64 Ticket = 0;
-		TArray<FMcSectionMesh> Sections;  // only the sections that were not empty
+		FMcSectionMesh Mesh;  // the whole column, each pass one mesh
 	};
 
 	struct FChunkState

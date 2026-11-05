@@ -56,6 +56,7 @@ namespace
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
 		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle> | dismount)") },
+		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -4864,6 +4865,39 @@ namespace
 		return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
 	}
 
+	// /place feature <feature> [pos] (wording from a ref run, cmd_group4.txt). Template, structure and jigsaw are not built.
+	FReplies RunPlace(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("feature") || (Words.Num() != 3 && Words.Num() != 6))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FIntVector Pos;
+		if (Words.Num() == 6)
+		{
+			if (!ParseBlockPos(Words, 3, SenderFeet(Sender, Target), Pos))
+			{
+				return BadArgument(Command);
+			}
+		}
+		else
+		{
+			const FVector Feet = SenderFeet(Sender, Target);
+			Pos = FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+		}
+		const FString Id = McCache::Namespaced(Words[2]);
+		const int32 Result = Target.PlaceFeature(Id, Pos);
+		if (Result == 1)
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:worldgen/feature'"), *Id)), Fail(BorderContext(Command, Command.Len())) };
+		}
+		if (Result != 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.place.feature.failed"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.place.feature.success"), { Id, FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z) })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5404,6 +5438,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("ride"))
 	{
 		return RunRide(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("place"))
+	{
+		return RunPlace(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("loot"))
 	{

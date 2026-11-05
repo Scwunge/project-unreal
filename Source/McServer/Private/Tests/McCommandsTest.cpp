@@ -628,6 +628,8 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /place.
+	TestEqual(TEXT("place in a world without features"), First(TEXT("place feature minecraft:oak 0 70 0")), FString(TEXT("Failed to place feature")));
 	// Measured against the game: /ride.
 	TestEqual(TEXT("ride players"), First(TEXT("ride Steve mount Steve")), FString(TEXT("Players can't be ridden")));
 	TestEqual(TEXT("ride not riding"), First(TEXT("ride Steve dismount")), FString(TEXT("Steve is not riding any vehicle")));

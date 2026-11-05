@@ -1310,7 +1310,19 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 		return;
 	}
 	static const FIntVector Faces[6] = { FIntVector(0, -1, 0), FIntVector(0, 1, 0), FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
-	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
+	const FName Tool = Data->Inventory->Get(Data->SelectedSlot).Item;
+	const FMcStateId Used = BlockWorld ? BlockWorld->GetBlock(Pos) : 0;
+	const bool bUsed = OnUseItemOn(*this, Pos, Pos + Faces[Face]);
+	if (bUsed)
+	{
+		FMcTriggerEvent Event;
+		Event.Trigger = TEXT("minecraft:item_used_on_block");
+		Event.Item = Tool;
+		Event.State = Used;
+		Event.Block = FMcBlockRegistry::Get().IsValidState(Used) ? FMcBlockRegistry::Get().GetBlockOf(Used).Name : NAME_None;
+		FireTrigger(Event);
+	}
+	if (bUsed && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
 		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || FMcVehicle::IsVehicleItem(Held.Item))

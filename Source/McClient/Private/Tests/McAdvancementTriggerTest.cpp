@@ -57,6 +57,16 @@ bool FMcAdvancementTriggerTest::RunTest(const FString& Parameters)
 	Crafted.Recipe = TEXT("minecraft:rib_armor_trim_smithing_template_smithing_trim");
 	AMcGameMode::FireTrigger(*Pawn, Crafted);
 	TestTrue(TEXT("recipe crafted"), Pawn->Data->Criteria.Contains(TEXT("minecraft:adventure/trim_with_all_exclusive_armor_patterns/armor_trimmed_minecraft:rib_armor_trim_smithing_template_smithing_trim")));
+	// A compass used on a lodestone makes Oh, Lodestone (it is a block and a tool the criterion names), a stick does not.
+	FMcTriggerEvent Used;
+	Used.Trigger = TEXT("minecraft:item_used_on_block");
+	Used.Item = TEXT("minecraft:stick");
+	Used.Block = TEXT("minecraft:lodestone");
+	AMcGameMode::FireTrigger(*Pawn, Used);
+	TestFalse(TEXT("a stick is no compass"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/use_lodestone")));
+	Used.Item = TEXT("minecraft:compass");
+	AMcGameMode::FireTrigger(*Pawn, Used);
+	TestTrue(TEXT("lodestone used"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/use_lodestone")));
 	return true;
 }
 

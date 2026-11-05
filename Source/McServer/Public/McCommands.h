@@ -113,6 +113,8 @@ public:
 	// The vehicle a player rides (its name as shown), and getting off it.
 	virtual bool GetVehicleName(const FString& Player, FString& OutName) const { return false; }
 	virtual void Dismount(const FString& Player) {}
+	// /place feature: puts a configured feature down at Pos. 0 placed, 1 no such feature, 2 it could not be placed (or the world has no features).
+	virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) { return 2; }
 	// The hotbar slot (0 to 8) the player holds.
 	virtual int32 GetSelectedSlot(const FString& Player) const { return 0; }
 

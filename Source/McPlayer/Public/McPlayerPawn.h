@@ -33,6 +33,8 @@ struct FMcTriggerEvent
 	FName Entity;
 	FName Recipe;
 	FName Biome;
+	// The state of the block the event was about (item_used_on_block), for tags and properties.
+	FMcStateId State = 0;
 };
 
 UCLASS()

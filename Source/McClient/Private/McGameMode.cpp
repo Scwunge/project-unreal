@@ -40,6 +40,7 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McCache.h"
 #include "McDataPacks.h"
 #include "McTextComponent.h"
@@ -442,6 +443,79 @@ namespace
 					|| !(*Predicate)->TryGetObjectField(TEXT("minecraft:location"), Location) || (*Location)->Values.Num() != 1 || !NameIn((*Location)->TryGetField(TEXT("biomes")), Event.Biome))
 				{
 					return false;
+				}
+			}
+				else if (Key == TEXT("location") && Event.Trigger == TEXT("minecraft:item_used_on_block"))
+			{
+				// all_of a location_check on the block (names or a tag, no state) and a match_tool on the item in hand.
+				FString Type;
+				const TArray<TSharedPtr<FJsonValue>>* Terms = nullptr;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetStringField(TEXT("type"), Type) || Type != TEXT("minecraft:all_of")
+					|| !(*Object)->TryGetArrayField(TEXT("terms"), Terms))
+				{
+					return false;
+				}
+				for (const TSharedPtr<FJsonValue>& Term : *Terms)
+				{
+					const TSharedPtr<FJsonObject>* TermObject = nullptr;
+					const TSharedPtr<FJsonObject>* Predicate = nullptr;
+					FString TermType;
+					if (!Term->TryGetObject(TermObject) || !(*TermObject)->TryGetStringField(TEXT("type"), TermType) || !(*TermObject)->TryGetObjectField(TEXT("predicate"), Predicate))
+					{
+						return false;
+					}
+					if (TermType == TEXT("minecraft:location_check"))
+					{
+						const TSharedPtr<FJsonObject>* BlockPredicate = nullptr;
+						if ((*Predicate)->Values.Num() != 1 || !(*Predicate)->TryGetObjectField(TEXT("block"), BlockPredicate) || (*BlockPredicate)->Values.Num() != 1
+							|| !(*BlockPredicate)->HasField(TEXT("blocks")))
+						{
+							return false;
+						}
+						const TSharedPtr<FJsonValue> Blocks = (*BlockPredicate)->TryGetField(TEXT("blocks"));
+						FString Tag;
+						if (Blocks->TryGetString(Tag) && Tag.StartsWith(TEXT("#")))
+						{
+							if (!FMcBlockTags::Get().Has(Tag.RightChop(1), Event.State))
+							{
+								return false;
+							}
+						}
+						else if (!NameIn(Blocks, Event.Block))
+						{
+							return false;
+						}
+					}
+					else if (TermType == TEXT("minecraft:match_tool"))
+					{
+						const TSharedPtr<FJsonValue> Items = (*Predicate)->TryGetField(TEXT("items"));
+						if ((*Predicate)->Values.Num() != 1 || !Items.IsValid() || Event.Item.IsNone())
+						{
+							return false;
+						}
+						bool bAny = false;
+						const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+						FString One;
+						if (Items->TryGetString(One))
+						{
+							bAny = FMcItemRegistry::Get().Matches(Event.Item, One);
+						}
+						else if (Items->TryGetArray(Many))
+						{
+							for (const TSharedPtr<FJsonValue>& Value : *Many)
+							{
+								bAny = bAny || FMcItemRegistry::Get().Matches(Event.Item, Value->AsString());
+							}
+						}
+						if (!bAny)
+						{
+							return false;
+						}
+					}
+					else
+					{
+						return false;
+					}
 				}
 			}
 			else if (Key == TEXT("location"))
@@ -1949,6 +2023,11 @@ namespace
 			}
 			OutState = Blocks->GetBlock(Pos);
 			return true;
+		}
+		virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			return World ? World->PlaceFeature(Id, Pos) : 2;
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override
 		{

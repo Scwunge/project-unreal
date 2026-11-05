@@ -296,12 +296,8 @@ void FMcEntityHost::SpawnWave(FRaid& Raid)
 	TArray<TPair<FName, int32>> Kinds;
 	FRandomStream Wave(static_cast<int32>(Seed) ^ (Raid.Id * 7919) ^ (Raid.Wave * 104729));
 	RollWave(Rules.Difficulty, Raid.Wave, Wave, Kinds);
-	// UNFITTED PLACEHOLDER (provenance gap): the wiki says Hard adds a chance of one more pillager or vindicator a wave but gives no chance, and a vanilla run could not
-	// show it (raid1-4.txt: no raid started in the reference world, so no wave was ever seen). The 1 in 2 and the 1 in 2 split between the two kinds are made up.
-	if (Rules.Difficulty >= 3 && Wave.FRand() < 0.5f)
-	{
-		Kinds.Add(TPair<FName, int32>(Wave.FRand() < 0.5f ? FName(TEXT("minecraft:pillager")) : FName(TEXT("minecraft:vindicator")), 1));
-	}
+	// Hard bonus raiders: measured in vanilla (raid7-9, Hard, 44 waves, 3 raids at omen 0/1/4): every wave sat inside the wiki table ranges (riders included) except one
+	// (wave 8 had 9 vindicators, table max 8), so no bonus on top of the table is added; a bonus rate of at most about 1 in 30 waves is unfitted (provenance gap).
 	Raid.Raiders.Reset();
 	Raid.WaveHealth = 0.0f;
 	bool bCaptainMade = false;

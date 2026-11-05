@@ -133,8 +133,9 @@ public:
 		bool bSawPoi = false;
 	};
 	static constexpr int32 RaidWarmupTicks = 300;
-	// minecraft.wiki, Raid: "each cooldown is 300 ticks" (the page puts it under spawning; not seen in a vanilla run: no raid could be started in the reference world).
-	static constexpr int32 RaidWaveDelayTicks = 300;
+	// Measured (raid6-9, vanilla, kill to next wave seen, sample grid 14-21 ticks): 293 to 321 between the last raider's death and the next wave, so the true gap is at most 293
+	// (the wiki's 300 is above it). Within (272, 293] unfitted; 293 is the best upper bound (provenance gap).
+	static constexpr int32 RaidWaveDelayTicks = 293;
 	// Raiders further than this from the village are removed (wiki; checked every 20 ticks).
 	static constexpr double RaiderLeashRange = 112.0;
 	static constexpr int32 RaidCelebrationTicks = 600;

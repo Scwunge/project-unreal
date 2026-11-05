@@ -541,6 +541,7 @@ private:
 	float ServerLastHealth = -1.0f;
 	// Ticks since the last swing, for how charged the next is.
 	int32 ServerAttackTicks = 100;
+	int32 LocationTicks = 0;
 	bool bServerUsing = false;
 	FRandomStream DropRandom{ 11 };
 };

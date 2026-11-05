@@ -37,6 +37,7 @@
 #include "Dom/JsonObject.h"
 #include "McEntityActor.h"
 #include "McChunk.h"
+#include "McBiomeRegistry.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
@@ -1868,6 +1869,21 @@ void AMcPlayerPawn::ServerGameTick()
 			if (bServerWasOnGround && !Body.bOnGround && Step.Y > 0.2)
 			{
 				Data->AddStat(TEXT("custom:jump"));
+			}
+		}
+
+		// The location trigger: where the player stands, once a second.
+		if (++LocationTicks >= 20)
+		{
+			LocationTicks = 0;
+			const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+			const FMcChunk* Here = BlockWorld->FindChunk(Chunk);
+			if (Biomes.IsLoaded() && Here)
+			{
+				FMcTriggerEvent Where;
+				Where.Trigger = TEXT("minecraft:location");
+				Where.Biome = Biomes.GetName(Here->GetBiome(FMath::FloorToInt32(Feet.X) & 15, FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z) & 15));
+				FireTrigger(Where);
 			}
 		}
 

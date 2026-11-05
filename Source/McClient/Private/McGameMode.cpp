@@ -1568,6 +1568,224 @@ void AMcGameMode::BlastPlayerNear(const AMcWorldActor& World, const FVector& Pos
 	}
 }
 
+void AMcGameMode::RunFightBot(APlayerController* Controller)
+{
+	// Development: "!fightdragon" plays the End in survival through the real attack calls: it gives the player a sword, a bow and
+	// arrows, shoots every pillar crystal from the ground, then hits the dragon with the sword while it perches and shoots it
+	// otherwise, until the dragon dies or the player does. Positions are set by /tp (a player's own climbing is not played) and
+	// the aim is worked out here; the damage goes through AMcPlayerPawn::ServerSwing and ShootBowAlong, the calls a player's
+	// click and bow release end in. Each step is logged ("fightbot: ...").
+	struct FBot
+	{
+		int32 Stage = 0;
+		double Time = 0.0;
+		double LastLog = 0.0;
+		double NextAct = 0.0;
+		int32 Shots = 0;
+		int32 CrystalsAtStart = -1;
+		int32 Swings = 0;
+		int32 Retreats = 0;
+	};
+	TSharedRef<FBot> Bot = MakeShared<FBot>();
+	TWeakObjectPtr<APlayerController> Weak(Controller);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Weak, Bot](float Delta)
+	{
+		AMcPlayerController* Player = Cast<AMcPlayerController>(Weak.Get());
+		AMcPlayerPawn* Pawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+		AMcWorldActor* World = Player ? const_cast<AMcWorldActor*>(Player->GetWorldActor()) : nullptr;
+		FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+		if (!Pawn || !Pawn->Data || !Host || !World->GetBlockWorld())
+		{
+			return true;
+		}
+		Bot->Time += Delta;
+		const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+		const auto GroundAt = [&](double X, double Z)
+		{
+			for (int32 Y = 100; Y > 40; --Y)
+			{
+				if (Reg.GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(FMath::FloorToInt32(X), Y, FMath::FloorToInt32(Z)))).Name != FName(TEXT("minecraft:air")))
+				{
+					return static_cast<double>(Y) + 1.0;
+				}
+			}
+			return 64.0;
+		};
+		const auto Slot = [&](const TCHAR* Item)
+		{
+			for (int32 I = 0; I < 9; ++I)
+			{
+				if (Pawn->Data->Inventory->Get(I).Item == FName(Item))
+				{
+					return I;
+				}
+			}
+			return -1;
+		};
+		FMcMob* Dragon = nullptr;
+		TArray<FMcMob*> Crystals;
+		for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+		{
+			if (Entity->bRemoved)
+			{
+				continue;
+			}
+			if (Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+			{
+				Dragon = static_cast<FMcMob*>(Entity.Get());
+			}
+			else if (Entity->GetType() == FName(TEXT("minecraft:end_crystal")))
+			{
+				Crystals.Add(static_cast<FMcMob*>(Entity.Get()));
+			}
+		}
+		const float Health = Pawn->Data->Stats.Health;
+		const FString DragonText = Dragon ? FString::Printf(TEXT("%.0f hp"), Dragon->Health) : FString(TEXT("none"));
+		if (Bot->Time - Bot->LastLog >= 5.0)
+		{
+			Bot->LastLog = Bot->Time;
+			UE_LOG(LogTemp, Display, TEXT("fightbot: t=%.0f stage %d, player %.1f hp, crystals %d, dragon %s (phase %d), arrows %d, swings %d, retreats %d"), Bot->Time, Bot->Stage,
+				Health, Crystals.Num(), *DragonText, Dragon ? Dragon->DragonPhase : -1, Bot->Shots, Bot->Swings, Bot->Retreats);
+		}
+		if (Bot->Stage > 0 && Bot->Time > 8.0 && Health <= 0.0f)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: the player died at t=%.0f (stage %d, dragon %s, crystals %d)"), Bot->Time, Bot->Stage, *DragonText, Crystals.Num());
+			return false;
+		}
+		if (Bot->Time > 900.0)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: gave up after 900 s (crystals %d, dragon %s)"), Crystals.Num(), *DragonText);
+			return false;
+		}
+		const auto LookAt = [&](const FVector& From, const FVector& To) { return (To - From).GetSafeNormal(); };
+		if (Bot->Stage == 0)
+		{
+			// The kit: what a player could have, from the start of a run.
+			if (Bot->Time < 1.0 || (!Dragon && Crystals.IsEmpty()))
+			{
+				return true;
+			}
+			HandleChat(Player, FString::Printf(TEXT("/tp @s 2.5 %.1f 20.5"), GroundAt(2.5, 20.5)));
+			Bot->Stage = 5;
+			Bot->NextAct = Bot->Time + 3.0;
+			return true;
+		}
+		if (Bot->Stage == 5 && Bot->Time >= Bot->NextAct)
+		{
+			HandleChat(Player, TEXT("/gamemode survival"));
+			// What a player would have put on: a full set of diamond armour.
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:diamond_helmet"), 1));
+			Pawn->Data->Armor->Set(1, FMcItemStack(FName("minecraft:diamond_chestplate"), 1));
+			Pawn->Data->Armor->Set(2, FMcItemStack(FName("minecraft:diamond_leggings"), 1));
+			Pawn->Data->Armor->Set(3, FMcItemStack(FName("minecraft:diamond_boots"), 1));
+			HandleChat(Player, TEXT("/give @s minecraft:diamond_sword"));
+			HandleChat(Player, TEXT("/give @s minecraft:bow"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			Bot->Stage = 1;
+			Bot->NextAct = Bot->Time + 4.0;
+			return true;
+		}
+		if (Bot->Time < Bot->NextAct)
+		{
+			// Between actions the player looks at its feet: an enderman is angered by being looked in the eyes (that is what killed the first bots).
+			Player->SetControlRotation(FRotator(-80.0, Player->GetControlRotation().Yaw, 0.0));
+			return true;
+		}
+		const FVector Feet = Pawn->GetFeetPosition();
+		const FVector Eye = Feet + FVector(0.0, 1.62, 0.0);
+		if (Bot->Stage == 1)
+		{
+			// Crystals: from the ground well inside the ring, arrows at the nearest one still standing.
+			if (Crystals.IsEmpty())
+			{
+				UE_LOG(LogTemp, Display, TEXT("fightbot: every crystal is gone at t=%.0f after %d arrows (player %.1f hp)"), Bot->Time, Bot->Shots, Health);
+				Bot->Stage = 2;
+				return true;
+			}
+			if (Bot->CrystalsAtStart < 0)
+			{
+				Bot->CrystalsAtStart = Crystals.Num();
+			}
+			FMcMob* Target = Crystals[0];
+			for (FMcMob* Crystal : Crystals)
+			{
+				if (FVector::DistSquared(Crystal->Body.Position, Feet) < FVector::DistSquared(Target->Body.Position, Feet))
+				{
+					Target = Crystal;
+				}
+			}
+			const FVector Spot(Target->Body.Position.X * 0.5, 0.0, Target->Body.Position.Z * 0.5);
+			if (FVector::Dist2D(Feet, Spot) > 4.0)
+			{
+				HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, GroundAt(Spot.X, Spot.Z), Spot.Z));
+				Bot->NextAct = Bot->Time + 1.5;
+				return true;
+			}
+			const int32 Bow = Slot(TEXT("minecraft:bow"));
+			if (Bow >= 0)
+			{
+				Pawn->Data->SelectedSlot = Bow;
+			}
+			Pawn->ShootBowAlong(LookAt(Eye, Target->Body.Position + FVector(0.0, 1.0, 0.0)), 20);
+			++Bot->Shots;
+			Bot->NextAct = Bot->Time + 1.2;
+			return true;
+		}
+		if (!Dragon)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: the dragon is dead at t=%.0f after %d arrows and %d swings (player %.1f hp, %d retreats)"), Bot->Time, Bot->Shots, Bot->Swings, Health, Bot->Retreats);
+			HandleChat(Player, TEXT("/tp @s 2 70 0"));
+			return false;
+		}
+		// The dragon: sword while it sits, bow while it flies. A hurt player backs off and heals first.
+		if (Health < 7.0f)
+		{
+			++Bot->Retreats;
+			HandleChat(Player, FString::Printf(TEXT("/tp @s 0.5 %.1f 40.5"), GroundAt(0.5, 40.5)));
+			Bot->NextAct = Bot->Time + 20.0;
+			return true;
+		}
+		const bool bPerched = Dragon->DragonPhase >= 5 && Dragon->DragonPhase <= 7;
+		if (bPerched)
+		{
+			const FVector Head = Dragon->Body.Position + FVector(0.0, 1.0, 0.0);
+			if (FVector::Dist(Feet, Head) > 5.0)
+			{
+				HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Head.X + 3.0, GroundAt(Head.X + 3.0, Head.Z), Head.Z));
+				Bot->NextAct = Bot->Time + 0.5;
+				return true;
+			}
+			const int32 Sword = Slot(TEXT("minecraft:diamond_sword"));
+			if (Sword >= 0)
+			{
+				Pawn->Data->SelectedSlot = Sword;
+			}
+			Pawn->ServerSwing(LookAt(Eye, Head));
+			++Bot->Swings;
+			Bot->NextAct = Bot->Time + 0.65;
+			return true;
+		}
+		const FVector Spot(0.5, GroundAt(0.5, 30.5), 30.5);
+		if (FVector::Dist2D(Feet, FVector(Spot.X, 0.0, Spot.Z)) > 6.0)
+		{
+			HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, Spot.Y, Spot.Z));
+			Bot->NextAct = Bot->Time + 1.0;
+			return true;
+		}
+		const int32 Bow = Slot(TEXT("minecraft:bow"));
+		if (Bow >= 0)
+		{
+			Pawn->Data->SelectedSlot = Bow;
+		}
+		Pawn->ShootBowAlong(LookAt(Eye, Dragon->Body.Position), 20);
+		++Bot->Shots;
+		Bot->NextAct = Bot->Time + 1.2;
+		return true;
+	}), 0.25f);
+}
+
 void AMcGameMode::TickVillages()
 {
 	for (AMcWorldActor* World : Worlds)
@@ -1912,6 +2130,123 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 					{
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid() && Line == TEXT("!showdragon"))
+					{
+						// Development: a dragon with no AI 16 blocks in front of this player (yaw 0, towards +z), 3 up, in the world the player is in,
+						// for a close look at the model. Waits (up to a minute) for the pawn and the world to exist.
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Player, Tries = MakeShared<int32>(0)](float)
+						{
+							AMcPlayerController* McPlayer = Cast<AMcPlayerController>(Player.Get());
+							AMcPlayerPawn* Pawn = McPlayer ? Cast<AMcPlayerPawn>(McPlayer->GetPawn()) : nullptr;
+							AMcWorldActor* World = McPlayer ? const_cast<AMcWorldActor*>(McPlayer->GetWorldActor()) : nullptr;
+							FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+							if (!Pawn || !Host)
+							{
+								return ++(*Tries) < 60;
+							}
+							const FVector Feet = Pawn->GetFeetPosition();
+							const FVector At(Feet.X, Feet.Y + 3.0, Feet.Z + 16.0);
+							FMcMob* Shown = Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), At);
+							if (Shown)
+							{
+								Shown->bNoAI = true;
+							}
+							UE_LOG(LogTemp, Display, TEXT("showdragon: spawned %s at %s"), Shown ? TEXT("a dragon") : TEXT("nothing"), *At.ToString());
+							return false;
+						}), 1.0f);
+					}
+					else if (Player.IsValid() && Line == TEXT("!fightdragon"))
+					{
+						RunFightBot(Player.Get());
+					}
+					else if (Player.IsValid() && (Line == TEXT("!killdragon") || Line == TEXT("!freezedragon")))
+					{
+						// Development: "!killdragon" waits (by game state, since a slow world load makes timed lines all fire at once)
+						// for the ender dragon, deals it 1000 damage (no command reaches mobs), waits for its death to end, then drops
+						// this player from (0, 72, 0) onto the exit portal: a run script can see the death, the portal and the credits
+						// without winning the fight by hand.
+						struct FRun { int32 Stage = 0; int32 Wait = 0; };
+						UE_LOG(LogTemp, Display, TEXT("killdragon: armed, %d worlds"), Worlds.Num());
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+							[this, Player, bFreeze = (Line == TEXT("!freezedragon")), Run = MakeShared<FRun>()](float)
+							{
+								if (!Player.IsValid())
+								{
+									return false;
+								}
+								int32 Seen = 0;
+								FMcMob* Dragon = nullptr;
+								for (AMcWorldActor* World : Worlds)
+								{
+									FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+									if (!Host)
+									{
+										continue;
+									}
+									for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+									{
+										if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+										{
+											++Seen;
+											Dragon = static_cast<FMcMob*>(Entity.Get());
+										}
+									}
+								}
+								UE_LOG(LogTemp, Display, TEXT("killdragon: stage %d, dragons %d"), Run->Stage, Seen);
+								if (Run->Stage == 0 && Dragon)
+								{
+									if (bFreeze)
+									{
+										// "!freezedragon": hold the dragon still (no AI) at (0.5, 66, 0.5) and put this player at -McKillTp, for a shot of
+										// the model.
+										Dragon->bNoAI = true;
+										Dragon->Body.Position = FVector(0.5, 66.0, 0.5);
+										Dragon->Body.Velocity = FVector::ZeroVector;
+										FString Spot;
+										FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+										HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("0.5 66 28.5")) : Spot));
+										return false;
+									}
+									Dragon->Damage(1000.0f, nullptr);
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon found (%.0f hp), damaged"), Dragon->Health);
+									Run->Stage = 1;
+								}
+								else if (Run->Stage == 1 && !Dragon)
+								{
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon gone, dropping the player on the portal in 3 s"));
+									Run->Stage = 2;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 2 && ++Run->Wait >= 3)
+								{
+									FString Spot;
+									FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+									HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("2 70 0")) : Spot));
+									Run->Stage = 3;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 3 && ++Run->Wait >= 4)
+								{
+									// Where the player is and what stands at the middle, for the run's log.
+									const AMcPlayerPawn* Pawn = Player.IsValid() ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+									UE_LOG(LogTemp, Display, TEXT("killdragon: player at %s"), Pawn ? *Pawn->GetFeetPosition().ToString() : TEXT("none"));
+									for (AMcWorldActor* World : Worlds)
+									{
+										if (World && World->GetBlockWorld())
+										{
+											FString Column;
+											for (int32 Y = 58; Y <= 67; ++Y)
+											{
+												Column += FString::Printf(TEXT(" %d:%s"), Y, *FMcBlockRegistry::Get().GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name.ToString());
+											}
+											UE_LOG(LogTemp, Display, TEXT("killdragon: column at 0,0 (%s):%s"), *World->Dimension, *Column);
+										}
+									}
+									return false;
+								}
+								return true;
+							}), 1.0f);
 					}
 					else if (Player.IsValid())
 					{

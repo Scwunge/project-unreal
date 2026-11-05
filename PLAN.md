@@ -4115,3 +4115,11 @@ OPEN provenance gaps from this stretch: enchanted raider gear NOT built (vanilla
 - Drops (2026-11-05, `McClient.McServer.NewMobDrops`): 60 host kills of each of the 22 loot-table mobs (the tables are the vanilla data in `cache/client/data/minecraft/loot_table/entities`, run by McLoot): items dropped are only the table's items, mobs with empty tables drop nothing (ocelot, tadpole, axolotl, armadillo, allay, happy ghast, sulfur cube), the rest drop (e.g. squid 39 stacks, parched 89, mooshroom 70 in 60 kills). Passes. Conditions that need a player kill, fire or looting are the existing McLoot's.
 - Breeding does not exist for any animal yet (no love mode, no breeding items, no baby spawn): it is generic infrastructure, not per mob, and still to build.
 
+
+### The End path, survival fight status (2026-11-05, later)
+- Way home: after the credits the player leaves the End for the overworld spawn (seen in the dev-kill run only).
+- Bug fixed: the dragon lost 10 hp each time it circled out of 32 blocks of its healing crystal (it died of itself in about a minute). The 10 hp now applies only when no crystal stands at the beam target.
+- Dev `!fightdragon` (McGameMode::RunFightBot): kit of sword, bow, 192 arrows; arrows at each crystal, sword when perched, bow otherwise, through `ShootBowAlong` / `ServerSwing`; logs `fightbot:` lines. Positions by /tp. NOT yet a finished result: the latest run (fresh world, dragon 200 hp, 10 crystals) had the player dead at bot t=9 before any arrow, cause not found (dragon touch/strafe or endermen are the suspects). Needs a safer spot or logging of the hurt source.
+- Dragon model: still not seen on screen. Frozen-dragon shots (`!freezedragon`, camera at the ground north/south of (0.5,66,0.5)) show only the boss bar; the freeze position may sit inside terrain. Treat the model as unverified.
+- Game runs slowly in the End with the fight on (bot time 9 s took about 2 minutes of wall time on this PC); check before drawing conclusions about timing.
+- remote.sh shot is cut off at 300 s; long runs: start UnrealEditor directly with -McShotDelay.

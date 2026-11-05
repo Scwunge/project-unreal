@@ -497,6 +497,7 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		// dragon15.txt (the damage command at the dragon's body, 30 ticks apart): hits of 2, 20 and 40 took 1.5, 6 and 11 (a quarter and one; player attacks, arrows and
 		// explosions alike). Generic (20) and magic (5) damage took nothing, which cannot be told apart here. Hits on the head, which take it all, are not told apart either.
+		UE_LOG(LogTemp, Display, TEXT("dragon damaged: %.1f raw, %s source, age %d, phase %d, health %.0f"), Amount, Source ? TEXT("with") : TEXT("no"), Age, DragonPhase, Health);
 		Amount = Amount * 0.25f + 1.0f;
 		if (DragonPhase >= 5 && DragonPhase <= 7)
 		{
@@ -1142,7 +1143,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 			else
 			{
+				bool bCrystalStands = false;
 				if (bHasBeam)
+				{
+					// Leaving the 32 block box of a crystal that still stands is not losing it (the dragon circles the ring, in and out of range).
+					for (const TUniquePtr<FMcEntity>& Any : Manager.GetEntities())
+					{
+						if (!Any->bRemoved && Any->IsLiving() && static_cast<FMcMob&>(*Any).Type.bCrystal && FVector::DistSquared(Any->Body.Position, BeamPos) < 2.0 * 2.0)
+						{
+							bCrystalStands = true;
+							break;
+						}
+					}
+				}
+				if (bHasBeam && !bCrystalStands)
 				{
 					// The crystal that was healing it is gone: 10 hp, besides the blast (dragon15.txt: a crystal 8 blocks off, destroyed: 171.5 to 156.86, 14.64).
 					Health -= 10.0f;

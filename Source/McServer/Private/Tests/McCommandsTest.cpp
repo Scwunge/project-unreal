@@ -628,6 +628,9 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /loot.
+	TestEqual(TEXT("loot unknown"), First(TEXT("loot give Steve loot minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' in registry 'minecraft:loot_table'")));
+	TestTrue(TEXT("loot dropped"), First(TEXT("loot give Steve loot minecraft:chests/simple_dungeon")).StartsWith(TEXT("Dropped ")));
 	// Measured against the game: /item.
 	TestEqual(TEXT("item replace"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:diamond 5")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond]")));
 	TestEqual(TEXT("item hotbar"), First(TEXT("item replace entity Steve hotbar.1 with minecraft:diamond_sword")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond Sword]")));

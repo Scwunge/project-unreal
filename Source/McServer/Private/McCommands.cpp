@@ -8,6 +8,8 @@
 #include "McMob.h"
 #include "McBiomeRegistry.h"
 #include "McVehicle.h"
+#include "McLoot.h"
+#include "McRandom.h"
 
 namespace
 {
@@ -52,6 +54,7 @@ namespace
 		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
+		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
 		{ TEXT("setworldspawn"), 2, TEXT("/setworldspawn [<pos>] [<yaw> [<pitch>]]") },
@@ -4573,6 +4576,52 @@ namespace
 			: McLang::Format(TEXT("commands.item.entity.replace.success.multiple"), { FString::FromInt(Changed) })) };
 	}
 
+	// /loot give <players> loot <table>: rolls the table and gives the stacks (wording from a ref run, cmd_group4.txt).
+	// Only the give target with the loot source is built; mine and kill sources, spawn, insert and replace are not.
+	FReplies RunLoot(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("give") || Words.Num() != 5 || Words[3] != TEXT("loot"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FString Table = McCache::Namespaced(Words[4]);
+		TArray<FMcItemStack> Stacks;
+		static uint64 Draw = 0x6c6f6f74;
+		FMcRandom Random(++Draw * 0x9E3779B97F4A7C15ull);
+		if (!McLoot::Roll(Table, Random, Stacks))
+		{
+			int32 At = Command.Find(Words[4], ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:loot_table'"), *Table)), Fail(BorderContext(Command, At)) };
+		}
+		int32 Total = 0;
+		FName Only;
+		for (const FMcItemStack& Stack : Stacks)
+		{
+			if (Stack.IsEmpty())
+			{
+				continue;
+			}
+			Total += Stack.Count;
+			Only = Stack.Item;
+			for (const FString& Player : Players)
+			{
+				Target.Give(Player, Stack.Item, Stack.Count);
+			}
+		}
+		const FString Count = FString::FromInt(Total);
+		if (Total == 1)
+		{
+			return { Ok(McLang::Format(TEXT("commands.drop.success.single_with_table"), { Count, TEXT("[") + Target.GetItemName(Only) + TEXT("]"), Table })) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { Count, Table })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5105,6 +5154,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("title"))
 	{
 		return RunTitle(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("loot"))
+	{
+		return RunLoot(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("seed"))
 	{

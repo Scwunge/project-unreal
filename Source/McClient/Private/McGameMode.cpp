@@ -427,6 +427,15 @@ namespace
 					return false;
 				}
 			}
+			else if (Key == TEXT("to") || Key == TEXT("from"))
+			{
+				FString Wanted;
+				const FName Actual = Key == TEXT("to") ? Event.To : Event.From;
+				if (!Entry.Value->TryGetString(Wanted) || Actual.IsNone() || McCache::Namespaced(Wanted) != Actual.ToString())
+				{
+					return false;
+				}
+			}
 			else if (Key == TEXT("recipes"))
 			{
 				if (!NameIn(Entry.Value, Event.Recipe))

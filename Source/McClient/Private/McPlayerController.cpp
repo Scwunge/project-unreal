@@ -911,6 +911,14 @@ void AMcPlayerController::EnterWorld(AMcWorldActor& NewWorld)
 	{
 		MyPawn->SetBlockWorld(NewWorld.GetBlockWorld());
 		HookServerPawn(*MyPawn);
+		if (Old && Old != WorldActor)
+		{
+			FMcTriggerEvent Moved;
+			Moved.Trigger = TEXT("minecraft:changed_dimension");
+			Moved.From = FName(*McCache::Namespaced(Old->Dimension));
+			Moved.To = FName(*McCache::Namespaced(NewWorld.Dimension));
+			MyPawn->FireTrigger(Moved);
+		}
 	}
 	if (IsLocalController() && Old != WorldActor)
 	{

@@ -76,6 +76,13 @@ bool FMcAdvancementTriggerTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("slept"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/sleep_in_bed")));
 	TestTrue(TEXT("enchanted"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enchant_item")));
 	TestTrue(TEXT("traded"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/trade")));
+	FMcTriggerEvent Moved;
+	Moved.Trigger = TEXT("minecraft:changed_dimension");
+	Moved.From = TEXT("minecraft:overworld");
+	Moved.To = TEXT("minecraft:the_nether");
+	AMcGameMode::FireTrigger(*Pawn, Moved);
+	TestTrue(TEXT("nether entered"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enter_the_nether")));
+	TestFalse(TEXT("not the end"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enter_the_end")));
 	FMcTriggerEvent Totem;
 	Totem.Trigger = TEXT("minecraft:used_totem");
 	Totem.Item = TEXT("minecraft:totem_of_undying");

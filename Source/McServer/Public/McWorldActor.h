@@ -52,6 +52,13 @@ public:
 	void RemoveAnchor(int32 Id);
 	// Whether every chunk within Radius of Chunk is in the world.
 	bool AreChunksLoaded(FIntPoint Chunk, int32 Radius) const;
+	// Where the nearest stronghold's start corner is (block x, z), for a thrown eye of ender; false outside the overworld or
+	// where the world has no structures.
+	// Where an end gateway at (X, Z) on the central island sends you (wiki "End Gateway"): along the line from the middle through it, starting
+	// 1024 blocks out and moving by 16 to the edge of the outer islands (768 to 1280), then the highest ground in that chunk. False if
+	// there is no ground.
+	bool FindGatewayExit(int32 X, int32 Z, FVector& OutFeet) const;
+	bool FindNearestStronghold(const FVector& From, FVector2D& OutCorner) const;
 
 	// Terrain from the jar's worldgen/noise_settings/, unless the world is flat.
 	UPROPERTY(EditAnywhere, Category = "Mc")
@@ -121,7 +128,7 @@ public:
 	// tick the simulation themselves call it too).
 	void MovePushedEntities();
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
-	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
+	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false, const FMcItemStack* Weapon = nullptr, float Strength = 1.0f);
 	// The id of the nearest vehicle along the ray, or 0.
 	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
 	// The nearest living mob along the ray, or null.

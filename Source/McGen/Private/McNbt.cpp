@@ -260,6 +260,12 @@ namespace
 		}
 		case EType::String: WriteString(Out, Tag.String); break;
 		case EType::ByteArray:
+			if (!Tag.Bytes.IsEmpty())
+			{
+				WriteBig(Out, Tag.Bytes.Num(), 4);
+				Out.Append(Tag.Bytes);
+				break;
+			}
 			WriteBig(Out, Tag.Num(), 4);
 			for (const FMcNbt& Value : Tag.Values) { WriteBig(Out, static_cast<uint64>(Value.Integer), 1); }
 			break;

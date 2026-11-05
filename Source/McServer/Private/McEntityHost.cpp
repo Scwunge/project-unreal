@@ -1,4 +1,5 @@
 #include "McEntityHost.h"
+#include "McEnchantEffects.h"
 #include "McMount.h"
 #include "McTnt.h"
 #include "McSpawners.h"
@@ -608,11 +609,23 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	{
 		return;
 	}
+	// What its loot table can ask: whether a player did it (a hit or a shot in the last five seconds), what it is.
+	McLoot::FMobContext Context;
+	Context.bKilledByPlayer = Mob.Age - Mob.PlayerHitAge <= 100;
+	if (Context.bKilledByPlayer)
+	{
+		Context.Killer = TEXT("minecraft:player");
+		Context.bProjectile = Mob.bPlayerHitWasShot;
+		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
+	}
+	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
+	Context.DyeColor = Mob.DyeColor;
+	const McLoot::FMobScope LootScope(Context);
 	FMcRandom Rng(static_cast<uint64>(Seed) ^ (static_cast<uint64>(Mob.Id) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64>(Ticks));
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
 	TArray<FMcItemStack> Drops;
-	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops))
+	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops, Mob.LootingLevel))
 	{
 		for (const FMcItemStack& Stack : Drops)
 		{
@@ -1346,7 +1359,7 @@ FMcEntity* FMcEntityHost::FindVehicle(const FVector& Eye, const FVector& Directi
 	return Best;
 }
 
-bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative)
+bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative, const FMcItemStack* Weapon, float Strength)
 {
 	// The nearest living entity whose box the ray enters within Reach.
 	// The direction comes from a client: a NaN or empty one hits nothing.
@@ -1382,7 +1395,38 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 	}
 	if (Best->IsLiving())
 	{
-		static_cast<FMcMob*>(Best)->Damage(Damage, &Eye);
+		FMcMob& Mob = *static_cast<FMcMob*>(Best);
+		float Push = 0.0f;
+		if (Weapon && !Weapon->IsEmpty())
+		{
+			// What the weapon's enchantments add, from their own data (data/minecraft/enchantment).
+			McEnchantEffects::FContext Context;
+			Context.VictimType = Mob.GetType();
+			Context.bAttackerIsPlayer = true;
+			Context.DamageTags = McEnchantEffects::GetDamageTags(TEXT("minecraft:player_attack"));
+			Damage += McEnchantEffects::SumAdd(*Weapon, TEXT("minecraft:damage"), Context) * Strength;
+			Push = McEnchantEffects::SumAdd(*Weapon, TEXT("minecraft:knockback"), Context) * 0.5f;
+			Mob.LootingLevel = Weapon->GetEnchantmentLevel(TEXT("minecraft:looting"));
+		}
+		else
+		{
+			Mob.LootingLevel = 0;
+		}
+		Mob.PlayerHitAge = Mob.Age;
+		Mob.bPlayerHitWasShot = false;
+		const FVector OldVelocity = Mob.Body.Velocity;
+		Mob.Damage(Damage, &Eye);
+		if (Push > 0.0f && !Mob.bRemoved)
+		{
+			// A second push on top of the first, the hurt one's: half what it had, and Push away from the hitter.
+			FVector Away = Mob.Body.Position - Eye;
+			Away.Y = 0.0;
+			Away = Away.GetSafeNormal();
+			Mob.Body.Velocity.X = Mob.Body.Velocity.X * 0.5 + Away.X * Push;
+			Mob.Body.Velocity.Z = Mob.Body.Velocity.Z * 0.5 + Away.Z * Push;
+			Mob.Body.Velocity.Y = FMath::Min(Mob.Body.Velocity.Y * 0.5 + Push, 0.4);
+		}
+		(void)OldVelocity;
 		return true;
 	}
 	return Best->OnAttacked(Damage, bCreative);

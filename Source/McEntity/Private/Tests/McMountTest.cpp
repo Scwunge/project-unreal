@@ -270,5 +270,38 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("it loads"), Loaded.Serialize(Reader));
 		TestTrue(TEXT("tame, saddled, armoured"), Loaded.bTamed && Loaded.Mount.IsValid() && Loaded.Mount->bSaddled && Loaded.Mount->Armor == FName(TEXT("minecraft:iron_horse_armor")));
 	}
+
+	// Rolled at spawn (vehicle_log43, 120 bare summons each): whole max health 15 to 30 (horse mean 22.8, donkey 22.4, mule 23.2), kept by a save.
+	{
+		const FMcMobType* RollType = FMcMobType::Find(TEXT("minecraft:donkey"));
+		double Sum = 0.0;
+		bool bWhole = true;
+		bool bRange = true;
+		for (int32 I = 0; I < 400; I++)
+		{
+			FMcMob Rolled(*RollType);
+			const float Max = McMount::MaxHealthOf(Rolled);
+			bWhole = bWhole && Max == FMath::FloorToFloat(Max) && Rolled.Health == Max;
+			bRange = bRange && Max >= 15.0f && Max <= 30.0f;
+			Sum += Max;
+		}
+		TestTrue(TEXT("whole numbers, health at the max"), bWhole);
+		TestTrue(TEXT("15 to 30"), bRange);
+		TestTrue(TEXT("mean about 22.5"), FMath::Abs(Sum / 400.0 - 22.5) < 0.8);
+		FMcMob Original(*HorseType);
+		Original.Health = 10.0f;
+		const float Max = McMount::MaxHealthOf(Original);
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		Original.Serialize(Writer);
+		FMcMob Back(*HorseType);
+		FMemoryReader Reader(Bytes);
+		TestTrue(TEXT("loads"), Back.Serialize(Reader));
+		TestEqual(TEXT("the roll and the hurt health stay"), McMount::MaxHealthOf(Back), Max);
+		TestEqual(TEXT("health"), Back.Health, 10.0f);
+		// A pig has no roll: the type's.
+		FMcMob Pig(*FMcMobType::Find(TEXT("minecraft:pig")));
+		TestEqual(TEXT("a pig keeps the type's max health"), McMount::MaxHealthOf(Pig), 10.0f);
+	}
 	return true;
 }

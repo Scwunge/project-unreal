@@ -321,6 +321,10 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
 		return Host ? &Host->GetManager() : nullptr;
 	};
+	Hooked.OnLocateStronghold = [World](const FVector& From, FVector2D& Out)
+	{
+		return World.IsValid() && World->FindNearestStronghold(From, Out);
+	};
 	Hooked.OnUseBlock = [World](AMcPlayerPawn& User, const FIntVector& Pos)
 	{
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
@@ -337,7 +341,7 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
 	};
-	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)
 	{
 		if (!World.IsValid())
 		{
@@ -349,8 +353,26 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
 		}
-		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+		const FName TargetType = Target ? Target->GetType() : NAME_None;
+		const float HealthBefore = Target ? Target->Health : 0.0f;
+		const bool bHit = World->AttackMobs(Eye, Look, Reach, Damage, bCreative, &Weapon, Strength);
+		if (bHit && Target && WeakAttacker.IsValid() && WeakAttacker->Data)
+		{
+			// Statistics and the kill trigger: the health the blow took off, and a mob left with none was killed.
+			WeakAttacker->Data->AddStat(TEXT("custom:damage_dealt"), FMath::RoundToInt64(FMath::Max(0.0f, HealthBefore - FMath::Max(Target->Health, 0.0f)) * 10.0f));
+			if (HealthBefore > 0.0f && Target->Health <= 0.0f)
+			{
+				WeakAttacker->Data->AddStat(TEXT("custom:mob_kills"));
+				WeakAttacker->Data->AddStat(TEXT("killed:") + TargetType.ToString());
+				FMcTriggerEvent Killed;
+				Killed.Trigger = TEXT("minecraft:player_killed_entity");
+				Killed.Entity = TargetType;
+				WeakAttacker->FireTrigger(Killed);
+			}
+		}
+		return bHit;
 	};
+	Hooked.OnTrigger = [](AMcPlayerPawn& Who, const FMcTriggerEvent& Event) { AMcGameMode::FireTrigger(Who, Event); };
 	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
 	{
 		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
@@ -431,6 +453,10 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 					Mob->OwnerName = Player;
 					Mob->AngerTicks = 0;
 					Mob->Health = 40.0f;
+					FMcTriggerEvent Tamed;
+					Tamed.Trigger = TEXT("minecraft:tame_animal");
+					Tamed.Entity = Mob->GetType();
+					User.FireTrigger(Tamed);
 				}
 				return true;
 			}

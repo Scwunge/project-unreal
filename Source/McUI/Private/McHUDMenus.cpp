@@ -967,8 +967,32 @@ namespace
 	struct FStatRow
 	{
 		FString Name;
-		FString Value;
+		// The statistic's id ("jump", "walk_one_cm").
+		FString Id;
 	};
+
+	// A statistic's value in the game's format for it (distances in cm, m or km; times in s, min, h or d; damage in hearts).
+	FString FormatStat(const FString& Id, int64 Value)
+	{
+		if (Id.EndsWith(TEXT("_one_cm")))
+		{
+			const double Metres = Value / 100.0;
+			return Metres * 0.001 >= 0.5 ? FString::Printf(TEXT("%.2f km"), Metres * 0.001) : Metres >= 0.5 ? FString::Printf(TEXT("%.2f m"), Metres) : FString::Printf(TEXT("%lld cm"), Value);
+		}
+		if (Id.StartsWith(TEXT("damage_")))
+		{
+			return FString::Printf(TEXT("%.2f"), Value / 10.0);
+		}
+		if (Id == TEXT("sneak_time") || Id == TEXT("play_time") || Id == TEXT("time_since_death") || Id == TEXT("time_since_rest") || Id == TEXT("total_world_time"))
+		{
+			const double Seconds = Value / 20.0;
+			const double Days = Seconds / 86400.0;
+			const double Hours = Seconds / 3600.0;
+			const double Minutes = Seconds / 60.0;
+			return Days >= 0.5 ? FString::Printf(TEXT("%.2f d"), Days) : Hours >= 0.5 ? FString::Printf(TEXT("%.2f h"), Hours) : Minutes >= 0.5 ? FString::Printf(TEXT("%.2f min"), Minutes) : FString::Printf(TEXT("%.1f s"), Seconds);
+		}
+		return FString::Printf(TEXT("%lld"), Value);
+	}
 
 	// The General tab's rows: every "stat.minecraft.*" text of the language, sorted by the shown name (character codes, so
 	// "Distance Walked" comes before "Distance by Boat"), each at zero in the game's format for it: counts "0", damage "0.00",
@@ -983,21 +1007,7 @@ namespace
 			Rows.Reset();
 			for (const FString& Key : McLang::GetKeysWithPrefix(TEXT("stat.minecraft.")))
 			{
-				const FString Id = Key.RightChop(15);
-				FString Value = TEXT("0");
-				if (Id.EndsWith(TEXT("_one_cm")))
-				{
-					Value = TEXT("0 cm");
-				}
-				else if (Id.StartsWith(TEXT("damage_")))
-				{
-					Value = TEXT("0.00");
-				}
-				else if (Id == TEXT("sneak_time") || Id == TEXT("play_time") || Id == TEXT("time_since_death") || Id == TEXT("time_since_rest") || Id == TEXT("total_world_time"))
-				{
-					Value = TEXT("0.0 s");
-				}
-				Rows.Add({ McLang::Get(Key), Value });
+				Rows.Add({ McLang::Get(Key), Key.RightChop(15) });
 			}
 			Rows.Sort([](const FStatRow& A, const FStatRow& B) { return A.Name.Compare(B.Name, ESearchCase::CaseSensitive) < 0; });
 		}
@@ -1051,6 +1061,8 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 	const float Content = Rows.Num() * RowHeight + 10.0f;
 	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
 	APlayerController* Player = GetOwningPlayerController();
+	const AMcPlayerPawn* StatsPawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+	const UMcPlayerDataComponent* Counted = StatsPawn ? StatsPawn->Data : nullptr;
 	if (Player && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom)
 	{
 		StatsScroll += 7 * ((Player->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) - (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0));
@@ -1065,7 +1077,8 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 		}
 		const uint32 Colour = (Index & 1) ? 0xBABABAu : 0xFFFFFFu;
 		DrawGuiText(Rows[Index].Name, CentreX - 135.6f, Y, Colour, true);
-		DrawGuiText(Rows[Index].Value, CentreX + 133.3f - GetTextWidth(Rows[Index].Value), Y, Colour, true);
+		const FString Value = FormatStat(Rows[Index].Id, Counted ? Counted->GetStat(TEXT("custom:") + Rows[Index].Id) : 0);
+		DrawGuiText(Value, CentreX + 133.3f - GetTextWidth(Value), Y, Colour, true);
 	}
 	if (MaxScroll > 0.0f)
 	{
@@ -1546,6 +1559,12 @@ void AMcHUD::ClearPackCaches()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
+	// The cached icons hold raw pointers to the pictures just dropped: a garbage collection would free them under the icons.
+	Icons.Empty();
+	ItemIcons.Empty();
+	BannerIcons.Empty();
+	PotIcons.Empty();
+	StackIcons.Empty();
 	GuiScalings.Empty();
 	Glyphs.Reset();
 	RasterFonts.Reset();

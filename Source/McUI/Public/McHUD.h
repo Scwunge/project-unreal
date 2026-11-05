@@ -32,6 +32,9 @@ class MCUI_API AMcHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	// Starts the end poem and credits (a player has won). Done is called when they end or the player presses Escape.
+	void StartCredits(const FString& PlayerNameForPoem, TFunction<void()> Done);
+	bool IsShowingCredits() const { return bCreditsOn; }
 	AMcHUD();
 	virtual ~AMcHUD() override;
 	virtual void DrawHUD() override;
@@ -134,6 +137,9 @@ private:
 	TMap<int32, int32> MapIconRevisions;
 	UPROPERTY(Transient)
 	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
+	// The animal in a mount's window, drawn from its model and picture in the 54 x 54 box at Origin + (26, 18): standing, turned a quarter
+	// towards the viewer, about 38 pixels tall with its feet 8 above the bottom (vanilla donkey window shot, ref_donkey_window.png).
+	void DrawMobPreview(FName Kind, FIntPoint Origin);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
@@ -213,6 +219,8 @@ private:
 	void ShowScreen(TSharedRef<FScreenState> State);
 	void HideScreen();
 	void FlushDrops();
+	// The end poem and the credits, scrolling up over a black screen; Escape or the end of the text calls Done.
+	void DrawCredits(int32 Width, int32 Height);
 	// The death screen: shown while the player is dead, with a button that asks the server to bring them back.
 	void ShowDeathScreen(int32 Width, int32 Height, class AMcPlayerPawn& Player);
 
@@ -439,6 +447,11 @@ private:
 	int32 BundleSelectedSlot = INDEX_NONE;
 	int32 BundleSelected = -1;
 	bool bDeathShown = false;
+	// The credits: lines of text with their colour, the clock they started at, and what to do when they end.
+	bool bCreditsOn = false;
+	double CreditsStart = 0.0;
+	TArray<TPair<FString, uint32>> CreditLines;
+	TFunction<void()> CreditsDone;
 	// When the death screen came up: its buttons wake a second later.
 	double DeathShownTime = 0.0;
 };

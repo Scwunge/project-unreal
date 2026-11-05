@@ -125,7 +125,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// The falling block's picture is its block's.
 		ItemId = static_cast<const FMcFallingBlockEntity&>(Entity).Block;
 	}
-	else if (Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl"))
+	else if (Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye"))
 	{
 		// A thrown item's picture is its item's.
 		ItemId = Kind;

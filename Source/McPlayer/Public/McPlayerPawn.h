@@ -24,6 +24,17 @@ class FMcEntityManager;
 class UCameraComponent;
 class UMcPlayerDataComponent;
 
+// Something that happened to a player which an advancement may be waiting for (the game's trigger, by id, with what it was about).
+struct FMcTriggerEvent
+{
+	FName Trigger;
+	FName Item;
+	FName Block;
+	FName Entity;
+	FName Recipe;
+	FName Biome;
+};
+
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
 {
@@ -80,6 +91,8 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
 	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
 	TFunction<FMcEntityManager*()> GetEntities;
+	// Where the nearest stronghold's corner is (block x, z) for a thrown eye of ender; false if this dimension has none.
+	TFunction<bool(const FVector&, FVector2D&)> OnLocateStronghold;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
 	// A survival player started to dig at Pos (a click on it): a note block sounds.
@@ -90,6 +103,9 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The game mode judges the advancement triggers.
+	TFunction<void(AMcPlayerPawn& Player, const FMcTriggerEvent& Event)> OnTrigger;
+	void FireTrigger(const FMcTriggerEvent& Event) { if (OnTrigger) { OnTrigger(*this, Event); } }
 	// Called after the server put a block down for this player.
 	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
@@ -99,7 +115,8 @@ public:
 	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
 	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
-	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
+	// Weapon is the stack in hand and Strength how charged the swing was (its enchantments act through them).
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
 	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the

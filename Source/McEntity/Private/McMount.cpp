@@ -118,6 +118,15 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		const FName Kind = Entity.GetType();
 		const FMcMobType* Type = FMcMobType::Find(Kind);
 		State.Speed = Type ? Type->Speed : 0.0f;
+		if (Kind == TEXT("minecraft:horse") || Kind == TEXT("minecraft:donkey") || Kind == TEXT("minecraft:mule"))
+		{
+			// 360 bare summons (vehicle_log43): max health whole numbers 15 to 30, mean 22.8, sd 3.6 (two dice, 0..7 and 0..8: 22.5 and 3.45).
+			State.MaxHealth = static_cast<float>(15 + FMath::RandRange(0, 7) + FMath::RandRange(0, 8));
+			if (Entity.IsLiving())
+			{
+				static_cast<FMcMob&>(Entity).Health = State.MaxHealth;
+			}
+		}
 		if (IsPackKind(Kind))
 		{
 			State.JumpStrength = 0.5f;
@@ -138,6 +147,19 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		}
 	}
 	return *Entity.Mount;
+}
+
+float McMount::MaxHealthOf(const FMcMob& Mob)
+{
+	return Mob.Mount.IsValid() && Mob.Mount->MaxHealth > 0.0f ? Mob.Mount->MaxHealth : Mob.Type.MaxHealth;
+}
+
+void McMount::RollAtSpawn(FMcMob& Mob)
+{
+	if (IsHorseKind(Mob.GetType()))
+	{
+		Ensure(Mob);
+	}
 }
 
 float McMount::ChargeScale(int32 HeldTicks)
@@ -427,7 +449,14 @@ void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
 	{
 		return;
 	}
+	// The mob's health is already read; making its state must not roll it again.
+	const float SavedHealth = Mob.Health;
 	FMcMountState& State = Ensure(Mob);
+	if (Ar.IsLoading())
+	{
+		Mob.Health = SavedHealth;
+		State.MaxHealth = 0.0f;
+	}
 	if (Ar.IsSaving() && !State.Inventory.IsValid())
 	{
 		State.Inventory = MakeShared<FMcContainer>(2);
@@ -448,6 +477,15 @@ void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
 	if (Ar.IsLoading())
 	{
 		Sync(State);
+	}
+	// The rolled max health, a tail older saves lack (they keep the type's, with the health they had).
+	if (Ar.IsSaving() || !Ar.AtEnd())
+	{
+		Ar << State.MaxHealth;
+		if (Ar.IsLoading() && !(State.MaxHealth >= 1.0f && State.MaxHealth <= 1024.0f))
+		{
+			State.MaxHealth = 0.0f;
+		}
 	}
 }
 

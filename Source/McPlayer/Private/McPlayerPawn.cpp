@@ -1,5 +1,6 @@
 #include "McPlayerPawn.h"
 #include "McBundle.h"
+#include "McEnchantEffects.h"
 #include "McLeash.h"
 #include "McMob.h"
 #include "McMount.h"
@@ -899,7 +900,9 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 	if (Player.WasInputKeyJustPressed(EKeys::RightMouseButton) && !Held.IsEmpty() && !bEating)
 	{
 		FMcThrownEntity::EKind ThrownKind;
-		if (FMcThrownEntity::FindKind(Held.Item, ThrownKind))
+		// An eye aimed at an end portal frame goes in it instead (below).
+		const bool bAtFrame = Held.Item == TEXT("minecraft:ender_eye") && Target.IsSet() && FMcBlockRegistry::Get().GetBlockOf(Target->State).Name == TEXT("minecraft:end_portal_frame");
+		if (FMcThrownEntity::FindKind(Held.Item, ThrownKind) && !bAtFrame)
 		{
 			ServerThrow();
 			return;
@@ -1123,6 +1126,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		return 0.0f;
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
+	Data->AddStat(TEXT("custom:damage_taken"), FMath::RoundToInt64(Taken * 10.0f));
 	if (Taken > 0.0f && bSleeping)
 	{
 		ServerWakeUp();
@@ -1222,7 +1226,7 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	const float Damage = McCombat::GetDamage(FMath::Max(0.0f, Attack.Damage + McEffects::GetAttackBonus(Data->Stats)), Strength, bCritical);
 	const FVector Eye = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	ServerAttackTicks = 0;
-	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative))
+	if (!MobAttack(Eye, Look.GetSafeNormal(), 3.0, Damage, Data->bCreative, Held, Strength))
 	{
 		return;
 	}
@@ -1320,6 +1324,13 @@ void AMcPlayerPawn::ServerThrow_Implementation()
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
 	TUniquePtr<FMcThrownEntity> Thrown = MakeUnique<FMcThrownEntity>(Kind);
+	if (Kind == FMcThrownEntity::EKind::EnderEye)
+	{
+		// Towards the nearest stronghold; where there is none (the other dimensions) it falls like any thrown thing.
+		FVector2D EyeAim = FVector2D::ZeroVector;
+		Thrown->bEyeHasTarget = OnLocateStronghold && OnLocateStronghold(Body.Position, EyeAim);
+		Thrown->EyeTarget = EyeAim;
+	}
 	// TODO: the launch point's offset from the eye and the aim's spread, measured from the reference client (none until then).
 	Thrown->Body.Position = Body.Position + FVector(0.0, GetEyeHeight(), 0.0);
 	// 1.5 blocks a tick along the look, with the game's inaccuracy, and the thrower's own speed on top.
@@ -1347,7 +1358,7 @@ void AMcPlayerPawn::ServerThrow_Implementation()
 		};
 	}
 	Entities->Add(MoveTemp(Thrown));
-	static const FName Sounds[3] = { FName("entity.snowball.throw"), FName("entity.egg.throw"), FName("entity.ender_pearl.throw") };
+	static const FName Sounds[4] = { FName("entity.snowball.throw"), FName("entity.egg.throw"), FName("entity.ender_pearl.throw"), FName("entity.ender_eye.launch") };
 	Entities->PlaySound(Sounds[static_cast<int32>(Kind)], Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, 1.0f /* TODO: volume and pitch measured from the reference client */);
 	if (!Data->bCreative)
 	{
@@ -1470,7 +1481,7 @@ void AMcPlayerPawn::ServerTickRiding()
 		{
 			const FMcMob& Ridden = static_cast<const FMcMob&>(*Found);
 			MountHealth = Ridden.Health;
-			MountMaxHealth = Ridden.Type.MaxHealth;
+			MountMaxHealth = McMount::MaxHealthOf(Ridden);
 			MountJump = McMount::IsRideable(*Found) && !McMount::IsStickMount(*Found) ? McMount::ChargeScale(Found->Mount->JumpHoldTicks) : -1.0f;
 		}
 		const FVector MountSeat = McMount::GetSeatFor(*Found, GetUniqueID());
@@ -1641,6 +1652,11 @@ void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
 		ServerDismount();
 	}
 	bSleeping = true;
+	if (Data)
+	{
+		Data->AddStat(TEXT("custom:sleep_in_bed"));
+		Data->Counters.Add(TEXT("custom:time_since_rest"), 0);
+	}
 	SleepTicks = 0;
 	UE_LOG(LogMcPlayer, Display, TEXT("Went to bed at %s"), *Head.ToString());
 	bSleptThroughSent = false;
@@ -1780,6 +1796,53 @@ void AMcPlayerPawn::ServerGameTick()
 		// A jump of more than 10 blocks in a tick is a teleport (spawning, the dev camera), not a fall.
 		const bool bTeleported = Step.SizeSquared() > 100.0;
 
+		// Statistics: time, and the distances in cm (the game counts whole centimetres of the way moved, by how it was moved).
+		Data->AddStat(TEXT("custom:play_time"));
+		Data->AddStat(TEXT("custom:total_world_time"));
+		Data->AddStat(TEXT("custom:time_since_death"));
+		Data->AddStat(TEXT("custom:time_since_rest"));
+		if (bSneakPose || bSneaking)
+		{
+			Data->AddStat(TEXT("custom:sneak_time"));
+		}
+		if (!bTeleported && RidingId == 0)
+		{
+			const int64 Across = FMath::RoundToInt64(FVector2D(Step.X, Step.Z).Size() * 100.0);
+			const int64 Vertical = FMath::RoundToInt64(FMath::Abs(Step.Y) * 100.0);
+			if (bServerGliding)
+			{
+				Data->AddStat(TEXT("custom:aviate_one_cm"), FMath::RoundToInt64(Step.Size() * 100.0));
+			}
+			else if (bFlyingNow)
+			{
+				Data->AddStat(TEXT("custom:fly_one_cm"), Across);
+			}
+			else if (Environment.bClimbing && Step.Y > 0.0)
+			{
+				Data->AddStat(TEXT("custom:climb_one_cm"), Vertical);
+			}
+			else if (Environment.bHeadInWater)
+			{
+				Data->AddStat(TEXT("custom:walk_under_water_one_cm"), Across);
+			}
+			else if (Environment.bFeetInWater && !Body.bOnGround)
+			{
+				Data->AddStat(TEXT("custom:swim_one_cm"), Across);
+			}
+			else if (Body.bOnGround)
+			{
+				Data->AddStat(bSneakPose || bSneaking ? TEXT("custom:crouch_one_cm") : bSprintNow ? TEXT("custom:sprint_one_cm") : TEXT("custom:walk_one_cm"), Across);
+			}
+			if (!Body.bOnGround && !bFlyingNow && !bServerGliding && !Environment.bFeetInWater && !Environment.bClimbing && Step.Y < 0.0)
+			{
+				Data->AddStat(TEXT("custom:fall_one_cm"), Vertical);
+			}
+			if (bServerWasOnGround && !Body.bOnGround && Step.Y > 0.2)
+			{
+				Data->AddStat(TEXT("custom:jump"));
+			}
+		}
+
 		const int32 FireBefore = Stats.OnFireTicks;
 		if (!Data->bCreative)
 		{
@@ -1885,7 +1948,17 @@ void AMcPlayerPawn::ServerGameTick()
 			{
 				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
 			}
-			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats) > 0)
+			// The hand, the off hand and the armour that Mending may mend.
+			TArray<FMcItemStack*> MendEquipment;
+			MendEquipment.Add(&Data->Inventory->GetMutable(Data->SelectedSlot));
+			for (const TSharedPtr<FMcContainer>& Worn : { Data->Offhand, Data->Armor })
+			{
+				for (int32 Slot = 0; Worn.IsValid() && Slot < Worn->Num(); ++Slot)
+				{
+					MendEquipment.Add(&Worn->GetMutable(Slot));
+				}
+			}
+			if (McSurvival::CollectXp(*Entities, Body.GetBox(), Stats, &MendEquipment) > 0)
 			{
 				Entities->PlaySound(FName("entity.experience_orb.pickup"), Ears, 0.1f, 0.5f * ((FMath::FRand() - FMath::FRand()) * 0.7f + 1.8f));
 			}
@@ -1946,6 +2019,11 @@ void AMcPlayerPawn::ServerGameTick()
 				{
 					Entities->PlaySound(FName("entity.player.burp"), Body.Position + FVector(0.0, GetEyeHeight(), 0.0), 0.5f, FMath::FRand() * 0.1f + 0.9f);
 				}
+				Data->AddStat(TEXT("used:") + Held.Item.ToString());
+				FMcTriggerEvent Ate;
+				Ate.Trigger = TEXT("minecraft:consume_item");
+				Ate.Item = Held.Item;
+				FireTrigger(Ate);
 				McSurvival::Eat(Stats, Food);
 				const FName Remainder = Items.GetUseRemainder(Held.Item);
 				FMcItemStack& Slot = Data->Inventory->GetMutable(Data->SelectedSlot);
@@ -2065,14 +2143,26 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - McCombat::GetBowLaunchDrop(), 0.0);
 	Arrow->Body.Velocity = McCombat::GetBowAim(Look, DropRandom) * (Power * 3.0);
 	Arrow->PlayerBase = 2.0f;
+	if (const FMcItemStack& Bow = Data->Inventory->Get(Data->SelectedSlot); !Bow.IsEmpty())
+	{
+		// Power, from its own data: it adds to the arrow's base damage.
+		McEnchantEffects::FContext Shot;
+		Shot.DirectAttackerType = TEXT("minecraft:arrow");
+		Shot.bAttackerIsPlayer = true;
+		Arrow->PlayerBase += McEnchantEffects::SumAdd(Bow, TEXT("minecraft:damage"), Shot);
+	}
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;
 	Entities->Add(MoveTemp(Arrow));
 	Entities->PlaySound(FName("entity.arrow.shoot"), Body.Position + FVector(0.0, 1.0, 0.0), 1.0f, McCombat::GetBowShootPitch(DropRandom.FRand(), Power));
 	if (!Data->bCreative)
 	{
-		Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);
 		FMcItemStack& Bow = Data->Inventory->GetMutable(Data->SelectedSlot);
+		// Infinity: an arrow (not a tipped or spectral one) is not used up, as its "ammo_use" effect says.
+		if (!McEnchantEffects::HasEffect(TEXT("minecraft:infinity"), TEXT("minecraft:ammo_use")) || Bow.GetEnchantmentLevel(TEXT("minecraft:infinity")) <= 0)
+		{
+			Data->Inventory->RemoveItem(TEXT("minecraft:arrow"), 1);
+		}
 		if (Bow.HurtAndBreak(1))
 		{
 			Bow.Clear();
@@ -2192,6 +2282,7 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 		ServerSetBlock(Pos, Registry.FindState(TEXT("minecraft:tripwire"), Disarmed).Get(State));
 	}
 	ServerSetBlock(Pos, Air);
+	Data->AddStat(TEXT("mined:") + Registry.GetBlockOf(State).Name.ToString());
 	if (FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr)
 	{
 		for (const FMcItemStack& Drop : Drops)
@@ -2216,6 +2307,7 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	}
 	if (Wear > 0 && Tool.HurtAndBreak(Wear))
 	{
+		Data->AddStat(TEXT("broken:") + Tool.Item.ToString());
 		Tool.Clear();
 		ServerItemBroke();
 	}
@@ -2235,6 +2327,8 @@ void AMcPlayerPawn::ServerDie()
 		Data->Stats.DeathPos = FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
 		Data->Stats.DeathDimension = BlockWorld->GetDimension().Name;
 	}
+	Data->AddStat(TEXT("custom:deaths"));
+	Data->Counters.Add(TEXT("custom:time_since_death"), 0);
 	DeathScore = McSurvival::GetTotalXp(Data->Stats);
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();
@@ -2336,6 +2430,12 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	for (const FMcNetBlockChange& Change : Placed)
 	{
 		ServerSetBlock(Change.Pos, Change.State);
+		Data->AddStat(TEXT("used:") + Held.Item.ToString());
+		FMcTriggerEvent Placed;
+		Placed.Trigger = TEXT("minecraft:placed_block");
+		Placed.Item = Held.Item;
+		Placed.Block = Registry.GetBlockOf(Change.State).Name;
+		FireTrigger(Placed);
 		if (OnPlaced)
 		{
 			OnPlaced(Change.Pos);

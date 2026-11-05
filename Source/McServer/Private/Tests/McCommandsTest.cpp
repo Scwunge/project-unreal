@@ -611,6 +611,19 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /trigger.
+	TestEqual(TEXT("trigger unknown"), First(TEXT("trigger nope")), FString(TEXT("Unknown scoreboard objective 'nope'")));
+	First(TEXT("scoreboard objectives add trg trigger"));
+	TestEqual(TEXT("trigger unprimed"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger"), First(TEXT("trigger trg")), FString(TEXT("Triggered [trg]")));
+	TestEqual(TEXT("trigger once"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger add"), First(TEXT("trigger trg add 5")), FString(TEXT("Triggered [trg] (added 5 to value)")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger set"), First(TEXT("trigger trg set 3")), FString(TEXT("Triggered [trg] (set value to 3)")));
+	TestEqual(TEXT("trigger value"), First(TEXT("scoreboard players get Steve trg")), FString(TEXT("Steve has 3 [trg]")));
+	First(TEXT("scoreboard objectives remove trg"));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

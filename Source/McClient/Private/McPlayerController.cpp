@@ -677,6 +677,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 				Host->GetManager().PlaySound(Event, WeakPawn->GetFeetPosition() + FVector(0.0, 1.0, 0.0), Volume, Pitch);
 			}
 		};
+		Data->ServerContainerEvent = [WeakPawn](const FIntVector& Pos, bool bOpen)
+		{
+			if (WeakPawn.IsValid())
+			{
+				WeakPawn->ServerGameEvent(FName(bOpen ? "container_open" : "container_close"), FVector(Pos) + FVector(0.5));
+			}
+		};
 		Data->ServerWindowValid = [World, WeakPawn](const FMcWindow& Window)
 		{
 			return World.IsValid() && WeakPawn.IsValid() && UMcBlockUseSubsystem::IsWindowValid(*WeakPawn, *World, Window);

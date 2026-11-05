@@ -335,6 +335,16 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		Body.bOnGround = false;
 	}
 	PlayVoice(Health <= 0.0f ? McSound::EMobSound::Death : McSound::EMobSound::Hurt);
+	if (Owner)
+	{
+		Owner->GameEvent(FName("entity_damage"), Body.Position);
+		if (Health <= 0.0f)
+		{
+			FMcEntityManager::FGameEventTag Dying;
+			Dying.bDying = true;
+			Owner->GameEvent(FName("entity_die"), Body.Position, Dying);
+		}
+	}
 	if (Health <= 0.0f)
 	{
 		bRemoved = true;
@@ -391,6 +401,7 @@ void FMcMob::UpdateSteps(FMcEntityManager& Manager)
 		return;
 	}
 	NextStep = StepDistance + 1.0;
+	Manager.GameEvent(FName("step"), Body.Position);
 	const FMcBlockWorld& World = Manager.GetWorld();
 	const FIntVector Below(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.2), FMath::FloorToInt32(Body.Position.Z));
 	const FMcStateId State = World.GetBlock(Below);
@@ -422,6 +433,7 @@ bool FMcMob::TryTeleport(FMcEntityManager& Manager)
 				// Heard where it went from and where it came to.
 				Manager.PlaySound(FName("entity.enderman.teleport"), Origin);
 				Manager.PlaySound(FName("entity.enderman.teleport"), Body.Position);
+				Manager.GameEvent(FName("teleport"), Body.Position);
 				return true;
 			}
 		}
@@ -461,6 +473,7 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 		Arrow->EffectDuration = 100;
 	}
 	Manager.Add(MoveTemp(Arrow));
+	Manager.GameEvent(FName("projectile_shoot"), Eye);
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
 }
 

@@ -187,6 +187,29 @@ public:
 		}
 	}
 
+	// ---- Game events (what sculk sensors and wardens hear: minecraft.wiki, "Vibration") ----
+	// Who made it: a player (sneaking or not, in Creative or Spectator), a warden, a mob that is dying.
+	struct FGameEventTag
+	{
+		bool bPlayer = false;
+		bool bSneaking = false;
+		bool bWarden = false;
+		bool bProjectile = false;
+		bool bDying = false;
+		bool bCreativeOrSpectator = false;
+		int32 PlayerId = 0;
+	};
+	// Called with the event's name ("step", "entity_damage", "explode"), where it happened and who made it, for whoever runs
+	// the simulation. Left unset, events are dropped.
+	TFunction<void(FName, const FVector&, const FGameEventTag&)> OnGameEvent;
+	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag = FGameEventTag()) const
+	{
+		if (OnGameEvent)
+		{
+			OnGameEvent(Name, Position, Tag);
+		}
+	}
+
 	// ---- Sounds ----
 	// Called with every sound the entities make (a mob's voice and steps, a blast, an arrow in a wall), for whoever sends
 	// them to the players. Left unset, they are dropped.

@@ -1415,7 +1415,10 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 		Mob.PlayerHitAge = Mob.Age;
 		Mob.bPlayerHitWasShot = false;
 		const FVector OldVelocity = Mob.Body.Velocity;
-		Mob.Damage(Damage, &Eye);
+		const float Before = Mob.Health;
+		const bool bTook = Mob.Damage(Damage, &Eye);
+		UE_LOG(LogTemp, Verbose, TEXT("McHit attack: %s at (%.2f %.2f %.2f), health %.1f -> %.1f (took %d, hurt time %d), removed %d"), *Mob.GetType().ToString(), Mob.Body.Position.X, Mob.Body.Position.Y, Mob.Body.Position.Z,
+			Before, Mob.Health, bTook ? 1 : 0, Mob.HurtTime, Mob.bRemoved ? 1 : 0);
 		if (Push > 0.0f && !Mob.bRemoved)
 		{
 			// A second push on top of the first, the hurt one's: half what it had, and Push away from the hitter.

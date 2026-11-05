@@ -6,7 +6,11 @@
 #   bash tools/perf-remote.sh run <name> <script> [game args]
 #                                                     play tools/perf/<script>.txt in the stage as <name>, on the 1070's
 #                                                     desktop, and bring the record to Saved/Perf/<name>/
+#   bash tools/perf-remote.sh soak <name> [rounds]    the soak test: a new world through tools/perf/soak_round.txt (3 rounds,
+#                                                     about 30 minutes), then a new process reopens it. Exit 1 on any crash,
+#                                                     with the stacks named. Shares the card (MC_PERF_SHARED) and not the build lane.
 #   bash tools/perf-remote.sh report <name>           prints a finished run's summary
+#   bash tools/perf-remote.sh symbols <name>          names the frames of a run's stacks
 #
 # A run takes its turn in the desktop queue, so no vanilla client or shot shares the card, and notes what else was running.
 # MC_PERF_MINUTES sets a run's time limit (default 8). Runs of up to MC_PERF_HOLD_MINUTES (default 10) also hold the
@@ -69,7 +73,7 @@ run)
     until { [ -z "$1" ] || turn "$1"; } && mkdir "$2" 2>/dev/null; do [ -z "${said:-}" ] && echo "waiting for $(basename "$2") ($(cat "$2/owner" 2>/dev/null))"; said=1; sleep 10; done
     said=; echo "$NAME perf $$" > "$2/owner"; held="$held $2"
   }
-  take "$Q" /e/mc-remote/lock; rm -f "$T1"
+  if [ "${MC_PERF_SHARED:-0}" = 1 ]; then rm -f "$T1"; else take "$Q" /e/mc-remote/lock; rm -f "$T1"; fi
   take "$SQ" /e/mc-remote/lock-s1070; rm -f "$T2"
   [ "$MINUTES" -le "${MC_PERF_HOLD_MINUTES:-10}" ] && take "" "$BLOCK"
   echo "== run $run: $script, up to $MINUTES min"
@@ -88,6 +92,24 @@ run)
   $SSH "tar -cf - -C $OUT/runs/$run ." | tar -xf - -C "$ROOT/Saved/Perf/$run"
   python -I "$ROOT/tools/perf_report.py" "$ROOT/Saved/Perf/$run"
   ;;
+soak)
+  run="$1"; rounds="${2:-3}"; world="soak$(date +%m%d%H%M)"
+  s="$ROOT/tools/perf/soak_generated.txt"
+  { cat "$ROOT/tools/perf/soak_head.txt"; for _ in $(seq 1 "$rounds"); do cat "$ROOT/tools/perf/soak_round.txt"; done; cat "$ROOT/tools/perf/soak_tail.txt"; } > "$s"
+  export MC_PERF_SHARED=1 MC_PERF_MINUTES=$((rounds * 15 + 10))
+  bash "$0" run "$run" soak_generated -McWorld=$world -McSeed=12 > "$ROOT/Saved/perf-soak.out" 2>&1; a=$?
+  tail -60 "$ROOT/Saved/perf-soak.out"
+  MC_PERF_MINUTES=6 bash "$0" run "$run-reload" soak_reload -McWorld=$world; b=$?
+  rm -f "$s"
+  [ $a = 0 ] || bash "$0" symbols "$run"
+  [ $b = 0 ] || bash "$0" symbols "$run-reload"
+  echo "SOAK: first half $([ $a = 0 ] && echo clean || echo FAILED), reload $([ $b = 0 ] && echo clean || echo FAILED)"
+  [ $a = 0 ] && [ $b = 0 ]
+  ;;
+symbols)
+  $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/perf_symbols.ps1\"" < "$ROOT/tools/perf_symbols.ps1"
+  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-Shipping.exe"
+  ;;
 report) python -I "$ROOT/tools/perf_report.py" "$ROOT/Saved/Perf/$1" ;;
-*) sed -n 2,12p "$0"; exit 2 ;;
+*) sed -n 2,15p "$0"; exit 2 ;;
 esac

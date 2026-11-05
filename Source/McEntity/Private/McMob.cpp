@@ -838,6 +838,78 @@ TArray<FVector> FMcMob::GetPillarCrystalPositions()
 	};
 }
 
+void FMcMob::BuildExitPortal(FMcEntityManager& Manager, bool bPortal, bool bEgg)
+{
+	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
+	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
+	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
+	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
+	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
+	int32 BaseY = 0;
+	bool bColumn = false;
+	for (int32 Y = 100; Y > 40; --Y)
+	{
+		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
+		{
+			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
+			BaseY = Y - 3;
+			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
+			{
+				--BaseY;
+			}
+			bColumn = true;
+			break;
+		}
+	}
+	if (!bColumn)
+	{
+		// No column yet (a fresh End): the podium stands in the island, its portal level where the surface at the middle is (a guess; the
+		// reference puts the first one at the same place the worldgen leaves the surface).
+		BaseY = 58;
+		for (int32 Y = 100; Y > 40; --Y)
+		{
+			if (World.GetBlock(FIntVector(0, Y, 0)) != StateOf(TEXT("minecraft:air")))
+			{
+				BaseY = Y;
+				break;
+			}
+		}
+	}
+	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
+	{
+		World.SetBlock(Cell, State);
+		if (Manager.OnSetBlock)
+		{
+			Manager.OnSetBlock(Cell, State);
+		}
+	};
+	UE_LOG(LogTemp, Display, TEXT("exit portal: base y %d, column found %d, portal %d, egg %d"), BaseY, bColumn ? 1 : 0, bPortal ? 1 : 0, bEgg ? 1 : 0);
+	for (int32 DX = -4; DX <= 4; ++DX)
+	{
+		for (int32 DZ = -4; DZ <= 4; ++DZ)
+		{
+			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
+			if (Distance > 3.5)
+			{
+				continue;
+			}
+			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
+			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? (bPortal ? Portal : StateOf(TEXT("minecraft:air"))) : Bedrock);
+		}
+	}
+	for (int32 DY = 0; DY < 4; ++DY)
+	{
+		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
+	}
+	if (bEgg)
+	{
+		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
+	}
+}
+
 void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 {
 	// dragon10.txt (a summoned dragon set to 0 hp, the player 20 blocks off, samples 5 ticks apart, second kill in that world): 40 points of orbs (37 + 3) came in
@@ -858,28 +930,9 @@ void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 	FMcXpOrb::Spawn(Manager, Body.Position, Total * 20 / 100, Random);
 	bRemoved = true;
 	Manager.bDragonKilledBefore = true;
-	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
-	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	BuildExitPortal(Manager, true, bFirst);
 	FMcBlockWorld& World = Manager.GetWorld();
-	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
-	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
-	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
-	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
-	int32 BaseY = 58;
-	for (int32 Y = 100; Y > 40; --Y)
-	{
-		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
-		{
-			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
-			BaseY = Y - 3;
-			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
-			{
-				--BaseY;
-			}
-			break;
-		}
-	}
+	const auto StateOf = [](const TCHAR* Name) { return FMcBlockRegistry::Get().FindDefaultState(Name).Get(0); };
 	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
 	{
 		World.SetBlock(Cell, State);
@@ -888,27 +941,6 @@ void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 			Manager.OnSetBlock(Cell, State);
 		}
 	};
-	for (int32 DX = -4; DX <= 4; ++DX)
-	{
-		for (int32 DZ = -4; DZ <= 4; ++DZ)
-		{
-			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
-			if (Distance > 3.5)
-			{
-				continue;
-			}
-			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
-			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? Portal : Bedrock);
-		}
-	}
-	for (int32 DY = 0; DY < 4; ++DY)
-	{
-		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
-	}
-	if (bFirst)
-	{
-		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
-	}
 	// A gateway for this kill (gateway1.txt, a first kill on seed 4242424242 made the one at position 11; the wiki: position k is at
 	// (floor(96 cos(k pi / 10)), 75, floor(96 sin(k pi / 10))), twenty of them, in an order the seed decides). The order here is a shuffle of
 	// 1..20 from the seed, so only that one sample is matched; the real order is open.

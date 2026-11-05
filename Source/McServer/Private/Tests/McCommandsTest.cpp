@@ -649,6 +649,11 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /place.
+	TestEqual(TEXT("place in a world without features"), First(TEXT("place feature minecraft:oak 0 70 0")), FString(TEXT("Failed to place feature")));
+	// Measured against the game: /ride.
+	TestEqual(TEXT("ride players"), First(TEXT("ride Steve mount Steve")), FString(TEXT("Players can't be ridden")));
+	TestEqual(TEXT("ride not riding"), First(TEXT("ride Steve dismount")), FString(TEXT("Steve is not riding any vehicle")));
 	// Measured against the game: /attribute.
 	TestEqual(TEXT("attr get"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 20.0")));
 	TestEqual(TEXT("attr set"), First(TEXT("attribute Steve minecraft:max_health base set 30")), FString(TEXT("The base value for attribute Max Health for entity Steve set to 30.0")));

@@ -139,6 +139,9 @@ public:
 	// saved world the chunk's save keeps them. A portal beside Pos that this leaves without its frame goes out
 	// unless bCheckPortals is false (which the code that builds portals uses, as it is part way through).
 	void SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals = true);
+	// /place feature: runs a configured feature ("minecraft:oak") at Pos on a copy of the chunks around it, then makes the
+	// blocks it changed the world's. 0 placed, 1 no such feature, 2 nothing placed (or this world has no features, as flat ones).
+	int32 PlaceFeature(const FString& Id, const FIntVector& Pos);
 
 	// Server: a player's hand on the block at Pos flips a lever, presses a button, or opens or shuts a door, trapdoor
 	// or fence gate (see FMcSimulation::UseBlock). Yaw is where they look. True if the block took the click.

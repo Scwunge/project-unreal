@@ -46,6 +46,7 @@ enum class EMcPerfCounter : uint8
 	LiveKTris,   // triangles (thousands) in the chunk meshes now
 	KeptKVerts,  // vertices (thousands) kept again for re-sorting glass and ice
 	UObjects,    // live UObjects, which a leak of actors or components would show in
+	Streaming,   // 0 once the world has every chunk these players need
 	Count
 };
 

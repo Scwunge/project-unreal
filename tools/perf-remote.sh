@@ -108,7 +108,7 @@ soak)
   ;;
 symbols)
   $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/perf_symbols.ps1\"" < "$ROOT/tools/perf_symbols.ps1"
-  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-Shipping.exe"
+  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-Shipping.exe"
   ;;
 report) python -I "$ROOT/tools/perf_report.py" "$ROOT/Saved/Perf/$1" ;;
 *) sed -n 2,15p "$0"; exit 2 ;;

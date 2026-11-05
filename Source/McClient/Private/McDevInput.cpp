@@ -255,7 +255,8 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 			TakeShot(Current.Name);
 		}
 		if (Current.Kind == FStep::EKind::Settle && Left > 0.0f && McPerf::GetCounter(EMcPerfCounter::Chunks) > 0
-			&& McPerf::GetCounter(EMcPerfCounter::Dirty) == 0 && McPerf::GetCounter(EMcPerfCounter::InFlight) == 0)
+			&& McPerf::GetCounter(EMcPerfCounter::Dirty) == 0 && McPerf::GetCounter(EMcPerfCounter::InFlight) == 0
+			&& McPerf::GetCounter(EMcPerfCounter::Streaming) == 0)
 		{
 			McPerf::Event(FString::Printf(TEXT("SETTLED after %.1f s, %lld chunks, %lld meshes"), Current.Seconds - Left, McPerf::GetCounter(EMcPerfCounter::Chunks), McPerf::GetCounter(EMcPerfCounter::Meshes)));
 			Left = 0.0f;
@@ -264,9 +265,9 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 		{
 			return;
 		}
-		if (Current.Kind == FStep::EKind::Settle && McPerf::GetCounter(EMcPerfCounter::Dirty) + McPerf::GetCounter(EMcPerfCounter::InFlight) > 0)
+		if (Current.Kind == FStep::EKind::Settle && McPerf::GetCounter(EMcPerfCounter::Dirty) + McPerf::GetCounter(EMcPerfCounter::InFlight) + McPerf::GetCounter(EMcPerfCounter::Streaming) > 0)
 		{
-			McPerf::Event(FString::Printf(TEXT("NOT_SETTLED after %.1f s, %lld dirty, %lld in flight"), Current.Seconds, McPerf::GetCounter(EMcPerfCounter::Dirty), McPerf::GetCounter(EMcPerfCounter::InFlight)));
+			McPerf::Event(FString::Printf(TEXT("NOT_SETTLED after %.1f s, %lld dirty, %lld in flight, %lld streaming"), Current.Seconds, McPerf::GetCounter(EMcPerfCounter::Dirty), McPerf::GetCounter(EMcPerfCounter::InFlight), McPerf::GetCounter(EMcPerfCounter::Streaming)));
 		}
 		if (Current.Kind == FStep::EKind::Hold)
 		{

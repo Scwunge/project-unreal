@@ -33,7 +33,7 @@ $Before = @(
 )
 $Before | Set-Content "$Dir\machine.txt"
 
-$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=C:\mc-runs\mc-unreal\cache $Extra"
+$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=C:\mc-runs\mc-unreal\cache -windowed -ResX=1920 -ResY=1080 $Extra"
 $P = Start-Process $Exe -ArgumentList $GameArgs -PassThru
 "pid $($P.Id) args $GameArgs"
 'secs,free_mb,cpu,vram_mb,gpu_pct,game_ws_mb,game_private_mb' | Set-Content "$Dir\samples.csv"

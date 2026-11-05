@@ -534,8 +534,18 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
 
+void AMcWorldActor::WaitForDecorating()
+{
+	for (UE::Tasks::FTask& Task : DecorateTasks)
+	{
+		Task.Wait();
+	}
+	DecorateTasks.Reset();
+}
+
 void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	WaitForDecorating();
 	if (LiveImport)
 	{
 		// Before the last save, so nothing is being queued behind it.
@@ -1469,6 +1479,11 @@ void AMcWorldActor::StreamChunks()
 		for (auto It = Pending.CreateIterator(); It; ++It)
 		{
 			const FIntPoint Pos = It.Key();
+			// A worker has it; its turn comes when the job is done.
+			if (DecorateBusy.Contains(Pos))
+			{
+				continue;
+			}
 			bool bNearAnyone = false;
 			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
@@ -1485,7 +1500,8 @@ void AMcWorldActor::StreamChunks()
 	}
 
 	// Nothing left to load, generate, decorate or unload for these players: skip the work until they move.
-	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty();
+	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty() && DecorateBusy.IsEmpty();
+	McPerf::SetCounter(EMcPerfCounter::Streaming, bSettled ? 0 : 1 + Missing.Num() + InFlight.Num() + DecorateBusy.Num());
 	SettledCentres = bSettled ? Centres : TArray<FIntPoint>();
 	SettledRadii = bSettled ? Radii : TArray<int32>();
 	SettledViewDistance = ViewDistance;
@@ -1522,25 +1538,22 @@ bool AMcWorldActor::DecorateChunks()
 		return false;
 	}
 	bool bChanged = false;
-	// The chunks around Pos, row by row from the north-west, and which of them players already have.
-	const auto Gather = [this](FIntPoint Pos, FMcChunk** Out, bool* bLive)
+	// Jobs that came back: their chunks are free again.
+	FIntPoint DonePos;
+	while (DecorateDone->Dequeue(DonePos))
 	{
-		bool bAll = true;
 		for (int32 Index = 0; Index < 9; ++Index)
 		{
-			const FIntPoint At = Pos + FIntPoint(Index % 3 - 1, Index / 3 - 1);
-			const TUniquePtr<FMcChunk>* Waiting = Pending.Find(At);
-			Out[Index] = Waiting ? Waiting->Get() : BlockWorld->FindChunk(At);
-			bLive[Index] = !Waiting && Out[Index];
-			bAll &= Out[Index] != nullptr;
+			DecorateBusy.Remove(DonePos + FIntPoint(Index % 3 - 1, Index / 3 - 1));
 		}
-		return bAll;
-	};
+		Decorated.Add(DonePos);
+		bChanged = true;
+	}
+	DecorateTasks.RemoveAll([](const UE::Tasks::FTask& Task) { return Task.IsCompleted(); });
 
-	const double Deadline = FPlatformTime::Seconds() + 0.006;
 	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
 	{
-		if (FPlatformTime::Seconds() > Deadline)
+		if (DecorateTasks.Num() >= MaxDecorateJobs)
 		{
 			break;
 		}
@@ -1548,27 +1561,69 @@ bool AMcWorldActor::DecorateChunks()
 		{
 			continue;
 		}
-		FMcChunk* Around[9];
-		bool bLive[9];
-		if (!Gather(Entry.Key, Around, bLive))
+		// The chunks around it, row by row from the north-west: waiting ones (free of other jobs) or ones in the world.
+		FMcChunk* Waiting[9] = {};
+		const FMcChunk* Live[9] = {};
+		bool bReady = true;
+		for (int32 Index = 0; Index < 9 && bReady; ++Index)
+		{
+			const FIntPoint At = Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1);
+			if (const TUniquePtr<FMcChunk>* Found = Pending.Find(At))
+			{
+				Waiting[Index] = Found->Get();
+				bReady = !DecorateBusy.Contains(At);
+			}
+			else
+			{
+				Live[Index] = BlockWorld->FindChunk(At);
+				bReady = Live[Index] != nullptr;
+			}
+		}
+		if (!bReady)
 		{
 			continue;
 		}
-		FMcGenRegion Region(Entry.Key, Around);
+		struct FJob
+		{
+			FIntPoint Pos;
+			FMcChunk* Around[9];
+			bool bReadOnly[9];
+			TArray<TUniquePtr<FMcChunk>> Copies;
+		};
+		TSharedRef<FJob, ESPMode::ThreadSafe> Job = MakeShared<FJob, ESPMode::ThreadSafe>();
+		Job->Pos = Entry.Key;
 		for (int32 Index = 0; Index < 9; ++Index)
 		{
-			if (bLive[Index])
+			Job->bReadOnly[Index] = Waiting[Index] == nullptr;
+			if (Waiting[Index])
 			{
-				Region.SetReadOnly(Index);
+				Job->Around[Index] = Waiting[Index];
+				DecorateBusy.Add(Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+			}
+			else
+			{
+				Job->Copies.Add(MakeUnique<FMcChunk>(*Live[Index]));
+				Job->Around[Index] = Job->Copies.Last().Get();
 			}
 		}
-		const double DecorateBegan = FPlatformTime::Seconds();
-		Features->Decorate(Region, static_cast<uint64>(Seed));
-		if (McPerf::IsOn() && FPlatformTime::Seconds() - DecorateBegan > 0.05)
+		DecorateTasks.Add(UE::Tasks::Launch(UE_SOURCE_LOCATION, [Job, Library = Features, Done = DecorateDone, WorldSeed = static_cast<uint64>(Seed)]()
 		{
-			McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Entry.Key.X, Entry.Key.Y, (FPlatformTime::Seconds() - DecorateBegan) * 1000.0));
-		}
-		Decorated.Add(Entry.Key);
+			FMcGenRegion Region(Job->Pos, Job->Around);
+			for (int32 Index = 0; Index < 9; ++Index)
+			{
+				if (Job->bReadOnly[Index])
+				{
+					Region.SetReadOnly(Index);
+				}
+			}
+			const double Began = FPlatformTime::Seconds();
+			Library->Decorate(Region, WorldSeed);
+			if (McPerf::IsOn() && FPlatformTime::Seconds() - Began > 0.05)
+			{
+				McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Job->Pos.X, Job->Pos.Y, (FPlatformTime::Seconds() - Began) * 1000.0));
+			}
+			Done->Enqueue(Job->Pos);
+		}));
 		bChanged = true;
 	}
 
@@ -1576,7 +1631,8 @@ bool AMcWorldActor::DecorateChunks()
 	TArray<FIntPoint> Ready;
 	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
 	{
-		bool bDone = Decorated.Contains(Entry.Key);
+		// One a job is still writing to isn't done changing.
+		bool bDone = Decorated.Contains(Entry.Key) && !DecorateBusy.Contains(Entry.Key);
 		for (int32 Index = 0; Index < 9 && bDone; ++Index)
 		{
 			const FIntPoint At = Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1);

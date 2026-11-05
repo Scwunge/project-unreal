@@ -105,7 +105,7 @@ namespace
 	}
 
 	// The chunks strongholds start in, by seed.
-	const TArray<FIntPoint>& RingChunks(uint64 Seed, int32 Count, int32 Distance, int32 Spread)
+	TArray<FIntPoint> RingChunks(uint64 Seed, int32 Count, int32 Distance, int32 Spread)
 	{
 		static FCriticalSection Lock;
 		static TMap<FString, TArray<FIntPoint>> Cache;
@@ -1433,8 +1433,16 @@ void FMcStructureLibrary::Build(FMcGenRegion& Region, const FStructure& Structur
 				Layout = MakeShared<FMcJigsawLibrary::FLayout>();
 			}
 			FScopeLock Guard(&LayoutLock);
-			Layouts.Add(Key, Layout);
-			LayoutOrder.Add(Key);
+			// Another chunk of this structure may have got here first on another thread; they all use the same one.
+			if (const TSharedPtr<FMcJigsawLibrary::FLayout>* Found = Layouts.Find(Key))
+			{
+				Layout = *Found;
+			}
+			else
+			{
+				Layouts.Add(Key, Layout);
+				LayoutOrder.Add(Key);
+			}
 			while (LayoutOrder.Num() > 256)
 			{
 				Layouts.Remove(LayoutOrder[0]);

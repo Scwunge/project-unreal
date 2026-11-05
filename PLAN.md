@@ -1269,6 +1269,9 @@ Numbers and format details in the Java import and export that did not come strai
 6. Player import: equipment slot mapping (feet 100 ... head 103, off hand 150, ender 200+) is the port's own numbering; the NBT side (`equipment` compound, XpP, EnderItems) was read from the playerref save, so observed. The -106 off hand slot in old inventories is recalled and unverified.
 7. Dye order (white 0 ... black 15) for sheep: from the reference shots/save of sheep colours only for the colours that were shot; the full order is recalled.
 
+8. Burning mobs' loot (cooked meat): `FMcMob::BurnTicks` is set to 100 by sun burn and lava and counts down; the 100 is a placeholder, not measured. A vanilla zombie set alight by `data merge ... Fire` showed no burning in the reference run, so the real duration is unmeasured. The loot condition (on fire at death) follows the table; only how long a mob stays on fire is a guess.
+9. Loot gaps still open: `exploration_map` (chests: abandoned_camp, shipwreck_map, underwater ruins) needs a structure finder (nearest structure of a tag from a position), which the engine has not got, so the map is left unfilled and the table's own `filtered` map_id check discards it, as the game does when it finds no structure. `copy_components` is done for the contents (`container`), `container_loot` and `pot_decorations`; custom_name, lock, bees and profile are not held by any block entity here. Zombie jockeys: no mob rides a mob (RidingId is boats and minecarts), so `FMobContext.Vehicle` stays unset and the zombie-horse mushroom drop never fires outside the test.
+
 ### Import checks against vanilla shots (import-java-world, 2026-11-04)
 
 - Skull heads: skeleton skull, creeper head and player head from an imported save match vanilla (ref_player_ref.png vs the same camera, -McCam=12,261.8,12,180,15). The type is in the block name, so nothing is lost on import; a player head's owner (profile) is not read, it draws as the default player.

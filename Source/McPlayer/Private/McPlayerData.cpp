@@ -14,6 +14,7 @@
 #include "McSurvival.h"
 #include "McEffects.h"
 #include "GameFramework/Pawn.h"
+#include "McPlayerPawn.h"
 #include "Net/UnrealNetwork.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
@@ -370,6 +371,50 @@ void UMcPlayerDataComponent::OpenServerWindow(FMcWindow NewWindow, int32 Aux)
 		return;
 	}
 	Window = MoveTemp(NewWindow);
+	if (IsServer())
+	{
+		// Statistics: what was opened (the kinds the data does not tell apart, such as a blast furnace from a furnace, count as the plain one).
+		const TCHAR* Opened = nullptr;
+		switch (Window.Kind)
+		{
+		case EMcWindowKind::CraftingTable: Opened = TEXT("interact_with_crafting_table"); break;
+		case EMcWindowKind::Chest: Opened = TEXT("open_chest"); break;
+		case EMcWindowKind::Furnace: Opened = TEXT("interact_with_furnace"); break;
+		case EMcWindowKind::Stonecutter: Opened = TEXT("interact_with_stonecutter"); break;
+		case EMcWindowKind::SmithingTable: Opened = TEXT("interact_with_smithing_table"); break;
+		case EMcWindowKind::Grindstone: Opened = TEXT("interact_with_grindstone"); break;
+		case EMcWindowKind::Anvil: Opened = TEXT("interact_with_anvil"); break;
+		case EMcWindowKind::BrewingStand: Opened = TEXT("interact_with_brewingstand"); break;
+		case EMcWindowKind::Hopper: Opened = TEXT("inspect_hopper"); break;
+		case EMcWindowKind::Dispenser: Opened = TEXT("inspect_dispenser"); break;
+		case EMcWindowKind::Loom: Opened = TEXT("interact_with_loom"); break;
+		case EMcWindowKind::Lectern: Opened = TEXT("interact_with_lectern"); break;
+		case EMcWindowKind::Trading: Opened = TEXT("talked_to_villager"); break;
+		default: break;
+		}
+		if (Opened)
+		{
+			AddStat(FString(TEXT("custom:")) + Opened);
+		}
+		if (Window.Crafting)
+		{
+			Window.Crafting->OnCrafted = [WeakThis = TWeakObjectPtr<UMcPlayerDataComponent>(this)](FName Recipe, const FMcItemStack& Result)
+			{
+				if (UMcPlayerDataComponent* Self = WeakThis.Get())
+				{
+					Self->AddStat(TEXT("crafted:") + Result.Item.ToString(), Result.Count);
+					if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Self->GetOwner()))
+					{
+						FMcTriggerEvent Crafted;
+						Crafted.Trigger = TEXT("minecraft:recipe_crafted");
+						Crafted.Recipe = Recipe;
+						Crafted.Item = Result.Item;
+						Pawn->FireTrigger(Crafted);
+					}
+				}
+			};
+		}
+	}
 	LastSequence = 0;
 	TicksSinceWindowSync = 0;
 	if (IsOwnerRemote())

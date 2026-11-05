@@ -971,6 +971,17 @@ namespace
 		FString Id;
 	};
 
+	// Seconds as Java prints a double: the shortest digits that read back, with ".0" on a whole number ("0.0", "20.25").
+	FString ShortSeconds(double Seconds)
+	{
+		FString Text = FString::SanitizeFloat(Seconds, 0);
+		if (!Text.Contains(TEXT(".")))
+		{
+			Text += TEXT(".0");
+		}
+		return Text;
+	}
+
 	// A statistic's value in the game's format for it (distances in cm, m or km; times in s, min, h or d; damage in hearts).
 	FString FormatStat(const FString& Id, int64 Value)
 	{
@@ -989,7 +1000,7 @@ namespace
 			const double Days = Seconds / 86400.0;
 			const double Hours = Seconds / 3600.0;
 			const double Minutes = Seconds / 60.0;
-			return Days >= 0.5 ? FString::Printf(TEXT("%.2f d"), Days) : Hours >= 0.5 ? FString::Printf(TEXT("%.2f h"), Hours) : Minutes >= 0.5 ? FString::Printf(TEXT("%.2f min"), Minutes) : FString::Printf(TEXT("%.1f s"), Seconds);
+			return Days >= 0.5 ? FString::Printf(TEXT("%.2f d"), Days) : Hours >= 0.5 ? FString::Printf(TEXT("%.2f h"), Hours) : Minutes >= 0.5 ? FString::Printf(TEXT("%.2f min"), Minutes) : ShortSeconds(Seconds) + TEXT(" s");
 		}
 		return FString::Printf(TEXT("%lld"), Value);
 	}

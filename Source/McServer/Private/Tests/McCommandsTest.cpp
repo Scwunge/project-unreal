@@ -223,6 +223,23 @@ namespace
 			HeldEnchantments.Add(Enchantment, Level);
 			return EEnchantResult::Done;
 		}
+		TMap<int32, TPair<FName, int32>> Slots;
+		virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) override
+		{
+			Slots.Add(Group * 100 + Index, TPair<FName, int32>(Item, Count));
+			return true;
+		}
+		virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const override
+		{
+			const TPair<FName, int32>* Found = Slots.Find(Group * 100 + Index);
+			if (!Found || Found->Value <= 0)
+			{
+				return false;
+			}
+			OutItem = Found->Key;
+			OutCount = Found->Value;
+			return true;
+		}
 		virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) override
 		{
 			FPlayer* P = Find(Player);
@@ -632,6 +649,41 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /attribute.
+	TestEqual(TEXT("attr get"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 20.0")));
+	TestEqual(TEXT("attr set"), First(TEXT("attribute Steve minecraft:max_health base set 30")), FString(TEXT("The base value for attribute Max Health for entity Steve set to 30.0")));
+	TestEqual(TEXT("attr add"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Added modifier test:a to attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr twice"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Modifier test:a is already present on attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr sum"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 34.0")));
+	TestEqual(TEXT("attr modval"), First(TEXT("attribute Steve minecraft:max_health modifier value get test:a")), FString(TEXT("The value of modifier test:a on attribute Max Health for entity Steve is 4.0")));
+	TestEqual(TEXT("attr remove"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Removed modifier test:a from attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr gone"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Attribute Max Health for entity Steve has no modifier test:a")));
+	TestEqual(TEXT("attr reset"), First(TEXT("attribute Steve minecraft:max_health base reset")), FString(TEXT("The base value for attribute Max Health for entity Steve reset to default 20.0")));
+	TestEqual(TEXT("attr speed"), First(TEXT("attribute Steve minecraft:movement_speed get")), FString(TEXT("The value of attribute Speed for entity Steve is 0.10000000149011612")));
+	TestEqual(TEXT("attr unknown"), First(TEXT("attribute Steve minecraft:nonsense get")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:attribute'")));
+	// Measured against the game: /loot.
+	TestEqual(TEXT("loot unknown"), First(TEXT("loot give Steve loot minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' in registry 'minecraft:loot_table'")));
+	TestTrue(TEXT("loot dropped"), First(TEXT("loot give Steve loot minecraft:chests/simple_dungeon")).StartsWith(TEXT("Dropped ")));
+	// Measured against the game: /item.
+	TestEqual(TEXT("item replace"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:diamond 5")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond]")));
+	TestEqual(TEXT("item hotbar"), First(TEXT("item replace entity Steve hotbar.1 with minecraft:diamond_sword")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond Sword]")));
+	TestEqual(TEXT("item unknown"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:nonsense")), FString(TEXT("Unknown item 'minecraft:nonsense'")));
+	TestEqual(TEXT("item bad slot"), First(TEXT("item replace entity Steve nosuch.slot with minecraft:stick")), FString(TEXT("Can't find element 'minecraft:nosuch.slot' in registry 'minecraft:slot_source'")));
+	TestEqual(TEXT("item nobody"), First(TEXT("item replace entity Nobody weapon.mainhand with minecraft:stick")), FString(TEXT("No entity was found")));
+	TestEqual(TEXT("item from"), First(TEXT("item replace entity Steve hotbar.2 from entity Steve hotbar.1")), FString(TEXT("Replaced 1 slot(s) on Steve")));
+	// Measured against the game: /teammsg and /stopwatch.
+	First(TEXT("team add msgteam"));
+	TestEqual(TEXT("teammsg without a team"), First(TEXT("teammsg hi")), FString(TEXT("You must be on a team to message your team")));
+	First(TEXT("team join msgteam Steve"));
+	TestEqual(TEXT("teammsg"), First(TEXT("teammsg hello team")), FString(TEXT("-> [msgteam] <Steve> hello team")));
+	TestEqual(TEXT("tm"), First(TEXT("tm again")), FString(TEXT("-> [msgteam] <Steve> again")));
+	First(TEXT("team remove msgteam"));
+	TestEqual(TEXT("stopwatch create"), First(TEXT("stopwatch create sw")), FString(TEXT("Created stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch twice"), First(TEXT("stopwatch create sw")), FString(TEXT("Stopwatch 'minecraft:sw' already exists")));
+	TestTrue(TEXT("stopwatch query"), First(TEXT("stopwatch query sw")).StartsWith(TEXT("Stopwatch 'minecraft:sw' has run for ")));
+	TestEqual(TEXT("stopwatch restart"), First(TEXT("stopwatch restart sw")), FString(TEXT("Restarted stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch remove"), First(TEXT("stopwatch remove sw")), FString(TEXT("Removed stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch gone"), First(TEXT("stopwatch remove sw")), FString(TEXT("Stopwatch 'minecraft:sw' does not exist")));
 	// Measured against the game: /trigger.
 	TestEqual(TEXT("trigger unknown"), First(TEXT("trigger nope")), FString(TEXT("Unknown scoreboard objective 'nope'")));
 	First(TEXT("scoreboard objectives add trg trigger"));

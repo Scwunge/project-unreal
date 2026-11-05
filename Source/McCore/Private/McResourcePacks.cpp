@@ -123,6 +123,7 @@ namespace
 	bool GReloadRequested = false;
 	int32 GMaxSize = 0;
 	int64 GBudget = 0;
+	int64 GVideoMemory = 0;
 	int32 GUsePbr = -1;
 }
 
@@ -1105,10 +1106,22 @@ namespace McPacks
 		if (GBudget == 0)
 		{
 			int32 Megabytes = 1536;
+			// A card with less than 8 GB gets a share of what it has (the pack arrays, HD Textures' three included, come to
+			// about two budgets): 5 GB gives 1 GB, 4 GB gives 800 MB.
+			if (GVideoMemory > 0)
+			{
+				Megabytes = FMath::Clamp(static_cast<int32>(GVideoMemory / (5ll * 1024 * 1024)), 256, Megabytes);
+			}
 			FParse::Value(FCommandLine::Get(), TEXT("-McPackBudgetMB="), Megabytes);
 			GBudget = static_cast<int64>(FMath::Max(Megabytes, 1)) * 1024 * 1024;
 		}
 		return GBudget;
+	}
+
+	void SetVideoMemoryBytes(int64 Bytes)
+	{
+		FScopeLock Lock(&GLock);
+		GVideoMemory = Bytes;
 	}
 
 	void SetBudgetMegabytes(int32 Megabytes)

@@ -3,6 +3,7 @@
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
 #include "McCache.h"
+#include "McLoadScreen.h"
 #include "McResourcePacks.h"
 #include "Algo/Find.h"
 #include "Async/ParallelFor.h"
@@ -15,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "RenderingThread.h"
+#include "RHI.h"
 #include "RHICommandList.h"
 #include "RHIResources.h"
 #include "Serialization/JsonReader.h"
@@ -364,9 +366,19 @@ bool FMcBlockTextures::EnsureLoaded()
 	{
 		return false;
 	}
+	const FMcLoadScreen LoadScreen(NSLOCTEXT("Mc", "LoadingPacks", "Loading resource packs..."), McPacks::HasPacks());
 
 	const double StartTime = FPlatformTime::Seconds();
 	FMcTextureStats NewStats;
+	{
+		FTextureMemoryStats Memory;
+		RHIGetTextureMemoryStats(Memory);
+		if (Memory.DedicatedVideoMemory > 0)
+		{
+			McPacks::SetVideoMemoryBytes(Memory.DedicatedVideoMemory);
+		}
+		UE_LOG(LogMcAssets, Log, TEXT("Pack texture budget %lld MB (video memory %lld MB)"), McPacks::GetBudgetBytes() / (1024 * 1024), Memory.DedicatedVideoMemory / (1024 * 1024));
+	}
 	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
 
 	// Layer 0 is the missing texture; the others follow the models' sorted texture ids.

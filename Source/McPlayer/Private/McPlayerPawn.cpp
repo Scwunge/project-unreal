@@ -37,6 +37,7 @@
 #include "Dom/JsonObject.h"
 #include "McEntityActor.h"
 #include "McChunk.h"
+#include "McBiomeRegistry.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/Engine.h"
@@ -1871,6 +1872,21 @@ void AMcPlayerPawn::ServerGameTick()
 			}
 		}
 
+		// The location trigger: where the player stands, once a second.
+		if (++LocationTicks >= 20)
+		{
+			LocationTicks = 0;
+			const FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+			const FMcChunk* Here = BlockWorld->FindChunk(Chunk);
+			if (Biomes.IsLoaded() && Here)
+			{
+				FMcTriggerEvent Where;
+				Where.Trigger = TEXT("minecraft:location");
+				Where.Biome = Biomes.GetName(Here->GetBiome(FMath::FloorToInt32(Feet.X) & 15, FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z) & 15));
+				FireTrigger(Where);
+			}
+		}
+
 		const int32 FireBefore = Stats.OnFireTicks;
 		if (!Data->bCreative)
 		{
@@ -1925,6 +1941,7 @@ void AMcPlayerPawn::ServerGameTick()
 		}
 		ServerTickElytra();
 		ServerTickMaps();
+		ServerTickFrostWalker();
 
 		// Footsteps, on the ground and not sneaking (sneaking is quiet), at the step sound of the block underfoot.
 		const bool bSneakNow = bLocal ? bSneaking : bSneakPose;
@@ -2189,6 +2206,7 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 		Shot.DirectAttackerType = TEXT("minecraft:arrow");
 		Shot.bAttackerIsPlayer = true;
 		Arrow->PlayerBase += McEnchantEffects::SumAdd(Bow, TEXT("minecraft:damage"), Shot);
+		Arrow->PunchKnockback = McEnchantEffects::SumAdd(Bow, TEXT("minecraft:knockback"), Shot);
 	}
 	Arrow->bCritical = Power >= 1.0f;
 	Arrow->bPickup = !Data->bCreative;
@@ -2237,6 +2255,56 @@ void AMcPlayerPawn::ServerHurtSound()
 		}
 	}
 	ServerLastHealth = Health;
+}
+
+void AMcPlayerPawn::ServerTickFrostWalker()
+{
+	if (!Data || !Data->Armor.IsValid() || !ServerSetBlock || !BlockWorld || Data->Armor->Num() < 4 || RidingId != 0)
+	{
+		return;
+	}
+	const FIntVector Here(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+	if (Here == FrostWalkerBlock)
+	{
+		return;
+	}
+	FrostWalkerBlock = Here;
+	const int32 Level = Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:frost_walker"));
+	if (Level <= 0 || !Body.bOnGround)
+	{
+		return;
+	}
+	// Radius 3 at level I and one more a level (enchantment file), clamped to 16; the disk is the blocks under the feet within it.
+	const int32 Radius = FMath::Clamp(3 + (Level - 1), 0, 16);
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	TMap<FName, FName> Fresh;
+	Fresh.Add(TEXT("age"), TEXT("0"));
+	const TOptional<FMcStateId> Ice = Registry.FindState(TEXT("minecraft:frosted_ice"), Fresh);
+	if (!Ice.IsSet())
+	{
+		return;
+	}
+	const auto NameAt = [&](const FIntVector& Pos)
+	{
+		const FMcStateId State = BlockWorld->GetBlock(Pos);
+		return Registry.IsValidState(State) ? Registry.GetBlockOf(State).Name : NAME_None;
+	};
+	for (int32 DX = -Radius; DX <= Radius; ++DX)
+	{
+		for (int32 DZ = -Radius; DZ <= Radius; ++DZ)
+		{
+			if (DX * DX + DZ * DZ > Radius * Radius)
+			{
+				continue;
+			}
+			const FIntVector Pos(Here.X + DX, Here.Y - 1, Here.Z + DZ);
+			const FName Above = NameAt(Pos + FIntVector(0, 1, 0));
+			if (NameAt(Pos) == TEXT("minecraft:water") && (Above == TEXT("minecraft:air") || Above == TEXT("minecraft:cave_air") || Above == TEXT("minecraft:void_air")))
+			{
+				ServerSetBlock(Pos, Ice.GetValue());
+			}
+		}
+	}
 }
 
 void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)

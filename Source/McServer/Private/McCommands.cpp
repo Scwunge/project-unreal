@@ -65,6 +65,9 @@ namespace
 		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
 		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
+		{ TEXT("teammsg"), 0, TEXT("/teammsg <message>") },
+		{ TEXT("tm"), 0, TEXT("/tm <message>") },
+		{ TEXT("stopwatch"), 2, TEXT("/stopwatch (create|query|restart|remove) <id>") },
 		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
 		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
 		{ TEXT("data"), 2, TEXT("/data (get|merge|modify|remove) ...") },
@@ -4336,6 +4339,87 @@ namespace
 		return { Ok(McLang::Format(bSet ? TEXT("commands.trigger.set.success") : TEXT("commands.trigger.add.success"), { Shown(*Objective), FString::FromInt(Amount) })) };
 	}
 
+	// /teammsg and /tm <message>: to everyone on the sender's team (wording from a ref run, cmd_group5.txt).
+	FReplies RunTeamMsg(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString Me = SenderName(Sender);
+		FTeam* Mine = nullptr;
+		for (TPair<FString, FTeam>& Entry : Teams())
+		{
+			if (Entry.Value.Members.Contains(Me))
+			{
+				Mine = &Entry.Value;
+				break;
+			}
+		}
+		if (!Mine)
+		{
+			return { Fail(McLang::Get(TEXT("commands.teammsg.failed.noteam"))) };
+		}
+		const FString Shown = TEXT("[") + (Mine->Display.IsEmpty() ? Mine->Name : Mine->Display) + TEXT("]");
+		const FString Text = RestOf(Words, 1);
+		for (const FString& Member : Mine->Members)
+		{
+			if (Member != Me)
+			{
+				Target.SendTo(Member, Ok(McLang::Format(TEXT("chat.type.team.text"), { Shown, Me, Text })));
+			}
+		}
+		return { Ok(McLang::Format(TEXT("chat.type.team.sent"), { Shown, Me, Text })) };
+	}
+
+	// /stopwatch create|query|restart|remove <id>: stopwatches run on real time, kept for the session (wording from a ref run).
+	TMap<FString, double>& Stopwatches()
+	{
+		static TMap<FString, double> All;
+		return All;
+	}
+
+	FReplies RunStopwatch(const FString& Command, const TArray<FString>& Words)
+	{
+		if (Words.Num() < 3 || Words.Num() > 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const FString Id = McCache::Namespaced(Words[2]);
+		double* Started = Stopwatches().Find(Id);
+		if (Verb == TEXT("create"))
+		{
+			if (Started)
+			{
+				return { Fail(McLang::Format(TEXT("commands.stopwatch.already_exists"), { Id })) };
+			}
+			Stopwatches().Add(Id, FPlatformTime::Seconds());
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.create.success"), { Id })) };
+		}
+		if (Verb != TEXT("query") && Verb != TEXT("restart") && Verb != TEXT("remove"))
+		{
+			return BadArgument(Command);
+		}
+		if (!Started)
+		{
+			return { Fail(McLang::Format(TEXT("commands.stopwatch.does_not_exist"), { Id })) };
+		}
+		if (Verb == TEXT("restart"))
+		{
+			*Started = FPlatformTime::Seconds();
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.restart.success"), { Id })) };
+		}
+		if (Verb == TEXT("remove"))
+		{
+			Stopwatches().Remove(Id);
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.remove.success"), { Id })) };
+		}
+		// To whole milliseconds, as the game shows it.
+		FString Seconds = FString::SanitizeFloat(FMath::RoundToDouble((FPlatformTime::Seconds() - *Started) * 1000.0) / 1000.0, 0);
+		return { Ok(McLang::Format(TEXT("commands.stopwatch.query"), { Id, Seconds })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5022,6 +5106,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("spreadplayers"))
 	{
 		return RunSpreadPlayers(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("teammsg") || Name == TEXT("tm"))
+	{
+		return RunTeamMsg(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("stopwatch"))
+	{
+		return RunStopwatch(Command, Words);
 	}
 	if (Name == TEXT("team"))
 	{

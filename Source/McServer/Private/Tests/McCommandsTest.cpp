@@ -611,6 +611,19 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /teammsg and /stopwatch.
+	First(TEXT("team add msgteam"));
+	TestEqual(TEXT("teammsg without a team"), First(TEXT("teammsg hi")), FString(TEXT("You must be on a team to message your team")));
+	First(TEXT("team join msgteam Steve"));
+	TestEqual(TEXT("teammsg"), First(TEXT("teammsg hello team")), FString(TEXT("-> [msgteam] <Steve> hello team")));
+	TestEqual(TEXT("tm"), First(TEXT("tm again")), FString(TEXT("-> [msgteam] <Steve> again")));
+	First(TEXT("team remove msgteam"));
+	TestEqual(TEXT("stopwatch create"), First(TEXT("stopwatch create sw")), FString(TEXT("Created stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch twice"), First(TEXT("stopwatch create sw")), FString(TEXT("Stopwatch 'minecraft:sw' already exists")));
+	TestTrue(TEXT("stopwatch query"), First(TEXT("stopwatch query sw")).StartsWith(TEXT("Stopwatch 'minecraft:sw' has run for ")));
+	TestEqual(TEXT("stopwatch restart"), First(TEXT("stopwatch restart sw")), FString(TEXT("Restarted stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch remove"), First(TEXT("stopwatch remove sw")), FString(TEXT("Removed stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch gone"), First(TEXT("stopwatch remove sw")), FString(TEXT("Stopwatch 'minecraft:sw' does not exist")));
 	// Measured against the game: /trigger.
 	TestEqual(TEXT("trigger unknown"), First(TEXT("trigger nope")), FString(TEXT("Unknown scoreboard objective 'nope'")));
 	First(TEXT("scoreboard objectives add trg trigger"));

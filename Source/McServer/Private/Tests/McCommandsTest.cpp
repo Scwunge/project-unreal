@@ -29,6 +29,13 @@ namespace
 		FMcServerAccess Access;
 		bool bAllowlist = false;
 		bool bDedicated = false;
+		struct FParticleCall { FName Name; FVector Pos; FVector Delta; double Speed; int32 Count; };
+		TArray<FParticleCall> Particles;
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			Particles.Add({ Name, Pos, Delta, Speed, Count });
+			return true;
+		}
 
 		FPlayer* Find(const FString& Name)
 		{
@@ -292,6 +299,20 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no permission is an error"), AnyError(Replies));
 	TestFalse(TEXT("and changes nothing"), Target.Find(TEXT("Steve"))->bCreative);
 	TestTrue(TEXT("unknown command"), Joined(McCommands::HandleChat(TEXT("/fly"), Op(TEXT("Steve")), Target)).Contains(TEXT("<--[HERE]")));
+
+	// /particle
+	Replies = McCommands::HandleChat(TEXT("/particle minecraft:heart 1 2 3 0.5 0.25 0.5 0.1 7 force"), Op(TEXT("Steve")), Target);
+	TestFalse(TEXT("particle ok"), AnyError(Replies));
+	TestEqual(TEXT("one particle call"), Target.Particles.Num(), 1);
+	if (Target.Particles.Num() == 1)
+	{
+		TestEqual(TEXT("name"), Target.Particles[0].Name, FName(TEXT("minecraft:heart")));
+		TestEqual(TEXT("position y"), Target.Particles[0].Pos.Y, 2.0, 1e-6);
+		TestEqual(TEXT("delta x"), Target.Particles[0].Delta.X, 0.5, 1e-6);
+		TestEqual(TEXT("count"), Target.Particles[0].Count, 7);
+	}
+	TestTrue(TEXT("a particle with no definition is refused"), AnyError(McCommands::HandleChat(TEXT("/particle minecraft:nonsense"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("a half given command is refused"), AnyError(McCommands::HandleChat(TEXT("/particle heart 1 2"), Op(TEXT("Steve")), Target)));
 
 	// /gamemode
 	Replies = McCommands::HandleChat(TEXT("/gamemode creative"), Op(TEXT("Steve")), Target);

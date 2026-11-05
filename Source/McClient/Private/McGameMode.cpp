@@ -1,4 +1,5 @@
 #include "McGameMode.h"
+#include "McSound.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -1046,6 +1047,40 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			}
 			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
 			Item.Body.Velocity = FVector::ZeroVector;
+		}
+	}
+	// Particles repeated for a shot: { "name": "minecraft:heart", "at": [x, y, z], "delta": [dx, dy, dz], "speed": 0, "count": 1, "every": 40 }
+	// emits the particle every "every" ticks (default 20), starting at once, as /particle would.
+	const TArray<TSharedPtr<FJsonValue>>* ParticleValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("particles"), ParticleValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *ParticleValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Id;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("name"), Id))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a particle needs \"at\": [x, y, z] and \"name\""), *Path);
+				continue;
+			}
+			FVector Delta = FVector::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* DeltaValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("delta"), DeltaValues) && DeltaValues->Num() == 3)
+			{
+				Delta = FVector((*DeltaValues)[0]->AsNumber(), (*DeltaValues)[1]->AsNumber(), (*DeltaValues)[2]->AsNumber());
+			}
+			double Speed = 0.0, Count = 1.0, Every = 20.0;
+			Object->TryGetNumberField(TEXT("speed"), Speed);
+			Object->TryGetNumberField(TEXT("count"), Count);
+			Object->TryGetNumberField(TEXT("every"), Every);
+			const FVector At3((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber());
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[Name = FName(*Id), At3, Delta, Speed, Count](float)
+				{
+					FMcSoundBus::Get().OnParticle.Broadcast(Name, At3, Delta, static_cast<float>(Speed), static_cast<int32>(Count));
+					return true;
+				}), static_cast<float>(FMath::Max(1.0, Every) / 20.0));
 		}
 	}
 	// Banners' patterns: { "at": [x, y, z], "patterns": [{ "pattern": "minecraft:border", "color": "blue" }, ...] }. The banner

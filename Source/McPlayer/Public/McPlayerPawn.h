@@ -432,6 +432,9 @@ private:
 	bool bServerGliding = false;
 	// Server: wears the wings while gliding.
 	void ServerTickElytra();
+	// Frost Walker: freezes the water under the feet in a disk when the block the player stands in changes (the enchantment's replace_disk).
+	void ServerTickFrostWalker();
+	FIntVector FrostWalkerBlock = FIntVector(MAX_int32, 0, 0);
 	// Server: a rocket used while gliding: used up, and the pull starts on the owner's machine.
 	bool ServerBoost();
 	// The owner flew into a wall this hard.

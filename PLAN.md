@@ -1373,3 +1373,8 @@ What new ref verbs would settle the unverified numbers (Script.java is off limit
 - Before it: wander 38 ticks, still 149 ticks, walk 43 ticks to 1.9 blocks from the player, then the roar. So it took ~246 ticks (12 s) from summon to roar with a motionless player 5.5 blocks off, which fits "sniff 35 + more sniffs/contact", but the anger arithmetic cannot be read from sents. **Not reproduced by our model** (ours sniffs after 100 ticks, +35 per sniff, 5-10 s apart, so ~3 sniffs = 20+ s to reach 80). Needs `log anger`.
 - After the roar the warden keeps chasing at the same speed for 1700+ ticks and ended 165 blocks away: the player was being pushed along by its hits (the player's position is not in the log, so this is a guess); a `log player` verb would show it.
 - Sonic boom, melee damage and Darkness could not be read: the log has no player health or effects.
+
+**Warden in a scene (McClient.McServer.WardenScene, 2026-11-05):** the real simulation and entity host joined by McSculkMobs: a player sets off a natural shrieker four times (warning levels 1 to 4,
+Darkness each time), a warden rises within 5 blocks of it at the fourth shriek's end, is deaf while it emerges, hears the player's steps, roars, walks to them and hits for 30 on Normal. UNVERIFIED on everything the
+reference client could not show: the shrieker-to-warden delay, emerge time, anger arithmetic and the roar trigger, sonic boom and Darkness effects (see the lists above). `McSim.SimPerf` now passes a scene if any of
+three runs averages under 25 ms, so a loaded machine no longer fails it but a real regression (slow every run) still does.

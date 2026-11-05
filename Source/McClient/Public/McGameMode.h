@@ -113,6 +113,8 @@ private:
 	FTimerHandle FunctionTimer;
 	FDelegateHandle ReloadHandle;
 	void TickVillages();
+	// Development: "!fightdragon" (see the definition).
+	void RunFightBot(APlayerController* Controller);
 	FTimerHandle VillageTimer;
 	// A raid on a village was won: the players round it become Heroes of the Village.
 	void HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level);

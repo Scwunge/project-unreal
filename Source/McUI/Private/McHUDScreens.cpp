@@ -1423,7 +1423,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			return;
 		}
 #endif
-		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape);
+		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape) && !bCreditsOn;  // Escape while the credits run only skips them
 #if !UE_BUILD_SHIPPING
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;

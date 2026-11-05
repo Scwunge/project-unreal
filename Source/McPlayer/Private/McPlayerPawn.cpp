@@ -2068,7 +2068,21 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	}
 	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
-	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	ShootBowAlong(FVector(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch)), DrawTicks);
+}
+
+void AMcPlayerPawn::ShootBowAlong(const FVector& Look, int32 DrawTicks)
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (!Entities || !Data)
+	{
+		return;
+	}
+	const float Power = McCombat::GetBowPower(DrawTicks);
+	if (Power < 0.1f)
+	{
+		return;
+	}
 	// Three blocks a tick at full draw, aimed with the measured spread, from 0.1 block under the eye.
 	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
 	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - McCombat::GetBowLaunchDrop(), 0.0);

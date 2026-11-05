@@ -127,6 +127,8 @@ public:
 	// Server: the points of experience as orbs at the player (a death drops them).
 	void ServerDropXp(int32 Points);
 	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
+	// The shot itself, along a given look (ServerShootBow reads this player's own); a development driver aims with it.
+	void ShootBowAlong(const FVector& Look, int32 DrawTicks);
 	// The experience points the player had when they died: the death screen's "Score".
 	int32 GetDeathScore() const { return DeathScore; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.

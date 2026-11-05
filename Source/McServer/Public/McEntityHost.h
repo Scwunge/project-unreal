@@ -91,6 +91,14 @@ public:
 
 	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
+	// A mob out of the bytes SaveLive wrote (its own, its trailer, then the mob that rides it, if any, the same way), with new
+	// ids. Null if the kind isn't one this version has or the bytes are bad.
+	FMcMob* RestoreMob(FName Kind, TConstArrayView<uint8> Data);
+	// What the game's finalizeSpawn adds to a mob that came by natural spawning: a zombie is a baby one time in twenty and
+	// that baby sometimes rides a chicken (one near it, or a new one), a spider sometimes carries a skeleton.
+	void FinishSpawn(FMcMob& Mob);
+	// What CaptureChunk keeps of one entity: its own bytes, and for a mob the trailer and the mob riding it.
+	void SaveLive(FMcEntity& Entity, TArray<uint8>& Data);
 	// The monster spawners of the loaded chunks (McSpawners), run each tick.
 	FMcSpawners& GetSpawners() { return *Spawners; }
 

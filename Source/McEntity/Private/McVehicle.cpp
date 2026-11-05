@@ -612,6 +612,11 @@ void FMcMinecartEntity::TouchDetectors(FMcEntityManager& Manager, const FMcBlock
 
 bool FMcMinecartEntity::CanCarryMob(const FMcMob& Mob) const
 {
+	// A mob with a rider, or one that is itself a rider, stays out: the pair is not split across vehicles.
+	if (Mob.PassengerId != 0 || Mob.RidingId != 0)
+	{
+		return false;
+	}
 	return Variant == EVariant::Plain && FVector2D(Body.Velocity.X, Body.Velocity.Z).SizeSquared() > 0.1 * 0.1
 		&& Mob.Type.Name != TEXT("minecraft:iron_golem");
 }
@@ -960,6 +965,11 @@ void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
 
 bool FMcBoatEntity::CanCarryMob(const FMcMob& Mob) const
 {
+	// A mob with a rider, or one that is itself a rider, stays out: the pair is not split across vehicles.
+	if (Mob.PassengerId != 0 || Mob.RidingId != 0)
+	{
+		return false;
+	}
 	// Anything smaller than the boat that comes up against it (and a rider who is a player takes a seat by asking).
 	return Mob.Type.Width < Body.Width;
 }

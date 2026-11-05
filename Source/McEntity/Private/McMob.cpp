@@ -282,7 +282,7 @@ void FMcMob::LoadTrailer(FArchive& Ar)
 	}
 	int32 Young = 0;
 	Ar << Young;
-	if (!Ar.IsError() && Young > 0 && CanBeYoung(Type.Name))
+	if (!Ar.IsError() && Young > 0 && (CanBeYoung(Type.Name) || CanBeBabyZombie(Type.Name)))
 	{
 		SetYoung(Young);
 	}
@@ -342,6 +342,11 @@ bool FMcMob::CanBeYoung(FName Kind)
 		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
 	};
 	return Breeders.Contains(Kind);
+}
+
+bool FMcMob::CanBeBabyZombie(FName Kind)
+{
+	return Kind == TEXT("minecraft:zombie") || Kind == TEXT("minecraft:husk") || Kind == TEXT("minecraft:drowned") || Kind == TEXT("minecraft:zombie_villager");
 }
 
 bool FMcMob::IsPrey(const FMcEntity& Other) const
@@ -753,7 +758,57 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 	}
 }
 
+FVector FMcMob::GetSeatOffset(const FMcMob& Rider) const
+{
+	// Logged in the reference (jockey_chicken.txt, jockey_spider.txt, at rest): a baby zombie sits 0.513 above a chicken's feet and
+	// 0.1 behind its middle (the way it faces is forward); a skeleton sits 0.065 above a spider's feet, in the middle. Other
+	// mounts are not measured: three quarters of their height, in the middle.
+	double Up = Type.Height * 0.75;
+	double Back = 0.0;
+	if (Type.Name == FName(TEXT("minecraft:chicken")))
+	{
+		Up = 0.513;
+		Back = 0.1;
+	}
+	else if (Type.Name == FName(TEXT("minecraft:spider")))
+	{
+		Up = 0.065;
+	}
+	const double Radians = FMath::DegreesToRadians(static_cast<double>(Yaw));
+	return FVector(FMath::Sin(Radians) * Back, Up, -FMath::Cos(Radians) * Back);
+}
+
 void FMcMob::Tick(FMcEntityManager& Manager)
+{
+	FMcMob* Mount = nullptr;
+	if (RidingId != 0)
+	{
+		FMcEntity* Found = Manager.Find(RidingId);
+		if (Found && Found->IsLiving() && !Found->bRemoved)
+		{
+			Mount = static_cast<FMcMob*>(Found);
+		}
+	}
+	if (!Mount)
+	{
+		TickAlone(Manager);
+		return;
+	}
+	// The pair is one body, the mount's: the rider's goals walk it, its physics collide it, and the rider is put on its seat after.
+	const FMcBody Own = Body;
+	Body = Mount->Body;
+	Carrier = Mount;
+	TickAlone(Manager);
+	Carrier = nullptr;
+	Mount->Body = Body;
+	Mount->Yaw = Yaw;
+	Mount->LastPosition = LastPosition;
+	Body = Own;
+	Body.Position = Mount->Body.Position + Mount->GetSeatOffset(*this);
+	Body.Velocity = FVector::ZeroVector;
+}
+
+void FMcMob::TickAlone(FMcEntityManager& Manager)
 {
 	FMcBlockWorld& World = Manager.GetWorld();
 	if (Age == 0)
@@ -849,11 +904,28 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		const FMcEntity* Vehicle = Manager.Find(RidingId);
 		if (Vehicle && !Vehicle->bRemoved)
 		{
-			Body.Velocity = FVector::ZeroVector;
-			Goal.Reset();
+			// A boat or a cart carries it; a mob it rides is moved by this very tick (Tick), so it goes on.
+			if (!Vehicle->IsLiving())
+			{
+				Body.Velocity = FVector::ZeroVector;
+				Goal.Reset();
+				return;
+			}
+		}
+		else
+		{
+			RidingId = 0;
+		}
+	}
+	if (PassengerId != 0)
+	{
+		const FMcEntity* Rider = Manager.Find(PassengerId);
+		if (Rider && !Rider->bRemoved && Rider->IsLiving() && static_cast<const FMcMob*>(Rider)->RidingId == Id)
+		{
+			// Ridden: its rider's goals steer it.
 			return;
 		}
-		RidingId = 0;
+		PassengerId = 0;
 	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{
@@ -1252,7 +1324,10 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 
 	FMcMoveInput Input;
-	Input.Speed = static_cast<float>(GetInputSpeed(Type));
+	// A baby zombie is half as fast again as a grown one (the game's +50% baby speed modifier).
+	// Riding a mob, the pair walks at the mount's speed (a chicken jockey crossed 2.75 blocks a second in the log, a chicken's 0.25
+	// attribute at ten blocks a second per unit and a tenth over), steered by the rider.
+	Input.Speed = static_cast<float>(Carrier ? GetInputSpeed(Carrier->Type) * CarriedSpeedFactor : GetInputSpeed(Type) * (YoungTicks > 0 && CanBeBabyZombie(Type.Name) ? 1.5 : 1.0));
 	bool bWalking = false;
 	if (bHasTarget)
 	{

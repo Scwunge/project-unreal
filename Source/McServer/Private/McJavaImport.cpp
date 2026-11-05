@@ -648,6 +648,10 @@ namespace
 				Mob->MakeBaby();
 			}
 			Mob->bNoAI = Entity.GetInt(TEXT("NoAI")) != 0;
+			if (FMcMob::CanBeBabyZombie(Type->Name) && Entity.GetInt(TEXT("IsBaby")) != 0)
+			{
+				Mob->SetYoung(FMcMob::BabyForever);
+			}
 			if (Type->Name == FName(TEXT("minecraft:sheep")) && Entity.Find(TEXT("Color")))
 			{
 				Mob->DyeColor = FMath::Clamp(static_cast<int32>(Entity.GetInt(TEXT("Color"))), 0, 15);
@@ -732,6 +736,27 @@ namespace
 		{
 			// What a world's host keeps after a mob's own bytes (youth, flags, dye, name, gear).
 			LiveMob->SaveTrailer(DataWriter);
+			// The mob that sits on it (Passengers, the way the game keeps a chicken jockey's zombie), nested the way the host saves one.
+			int32 Riders = 0;
+			FString RiderType;
+			TArray<uint8> RiderData;
+			if (const FMcNbt* Passengers = FindList(Entity, TEXT("Passengers")))
+			{
+				for (const FMcNbt& Passenger : Passengers->Values)
+				{
+					if (FMcMobType::Find(FName(*Passenger.GetString(TEXT("id")))) && MakeLive(Passenger, RiderType, RiderData))
+					{
+						Riders = 1;
+						break;
+					}
+					RiderData.Reset();
+				}
+			}
+			DataWriter << Riders;
+			if (Riders == 1)
+			{
+				DataWriter << RiderType << RiderData;
+			}
 		}
 		return true;
 	}

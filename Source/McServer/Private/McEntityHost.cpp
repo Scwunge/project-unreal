@@ -92,6 +92,9 @@ namespace
 
 	// Hostile mobs stay under this many in the world per player, and are removed past this distance from every player.
 	constexpr int32 HostileCapPerPlayer = 20;
+	// A zombie that spawns is a baby 5% of the time, and a baby has a jockey's chicken 5% of the time.
+	constexpr float ZombieBabyOdds = 0.05f;
+	constexpr float ChickenJockeyOdds = 0.05f;
 	constexpr double DespawnDistance = 100.0;
 	constexpr double MinSpawnDistance = 24.0;
 	constexpr double MaxSpawnDistance = 48.0;
@@ -678,7 +681,10 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	FMemoryWriter Writer(Body);
 	for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
 	{
-		if (Entity->bRemoved || !Entity->IsPersistent()
+		// A mob that rides a mob is kept inside its mount's record.
+		const bool bRidesMob = Entity->IsLiving() && static_cast<FMcMob&>(*Entity).RidingId != 0
+			&& Manager.Find(static_cast<FMcMob&>(*Entity).RidingId) && Manager.Find(static_cast<FMcMob&>(*Entity).RidingId)->IsLiving();
+		if (Entity->bRemoved || !Entity->IsPersistent() || bRidesMob
 			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.X)) != Chunk.X
 			|| McCoords::BlockToChunk(FMath::FloorToInt32(Entity->Body.Position.Z)) != Chunk.Y)
 		{
@@ -687,13 +693,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		// Length-prefixed, so a kind that a later version drops can be skipped without reading it.
 		FString Type = Entity->GetType().ToString();
 		TArray<uint8> Data;
-		FMemoryWriter DataWriter(Data);
-		Entity->Serialize(DataWriter);
-		if (Entity->IsLiving())
-		{
-			// After what the kind itself keeps, so an older save without it still reads.
-			static_cast<FMcMob&>(*Entity).SaveTrailer(DataWriter);
-		}
+		SaveLive(*Entity, Data);
 		Writer << Type << Data;
 		++Count;
 	}
@@ -705,6 +705,67 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 	Out << Count;
 	Bytes.Append(Body);
 	return Bytes;
+}
+
+void FMcEntityHost::SaveLive(FMcEntity& Entity, TArray<uint8>& Data)
+{
+	FMemoryWriter DataWriter(Data);
+	Entity.Serialize(DataWriter);
+	if (Entity.IsLiving())
+	{
+		// After what the kind itself keeps, so an older save without it still reads.
+		FMcMob& Mob = static_cast<FMcMob&>(Entity);
+		Mob.SaveTrailer(DataWriter);
+		// Then the mob that rides it (a chicken jockey's zombie), whole, the way a vanilla vehicle keeps Passengers.
+		FMcEntity* Found = Mob.PassengerId != 0 ? Manager.Find(Mob.PassengerId) : nullptr;
+		FMcMob* Rider = Found && !Found->bRemoved && Found->IsLiving() && static_cast<FMcMob*>(Found)->RidingId == Mob.Id ? static_cast<FMcMob*>(Found) : nullptr;
+		int32 Riders = Rider ? 1 : 0;
+		DataWriter << Riders;
+		if (Rider)
+		{
+			FString RiderType = Rider->GetType().ToString();
+			TArray<uint8> RiderData;
+			SaveLive(*Rider, RiderData);
+			DataWriter << RiderType << RiderData;
+		}
+	}
+}
+
+FMcMob* FMcEntityHost::RestoreMob(FName Kind, TConstArrayView<uint8> Data)
+{
+	FMcMob* Mob = SpawnMob(Kind, FVector::ZeroVector);
+	if (!Mob)
+	{
+		return nullptr;
+	}
+	FMemoryReaderView DataReader(Data);
+	if (!Mob->Serialize(DataReader))
+	{
+		Mob->bRemoved = true;
+		return nullptr;
+	}
+	Mob->LoadTrailer(DataReader);
+	int32 Riders = 0;
+	if (!DataReader.AtEnd() && !DataReader.IsError())
+	{
+		DataReader << Riders;
+	}
+	if (Riders == 1 && !DataReader.IsError())
+	{
+		FString RiderType;
+		TArray<uint8> RiderData;
+		DataReader << RiderType << RiderData;
+		if (!DataReader.IsError())
+		{
+			if (FMcMob* Rider = RestoreMob(FName(*RiderType), RiderData))
+			{
+				Rider->RidingId = Mob->Id;
+				Mob->PassengerId = Rider->Id;
+				Rider->Body.Position = Mob->Body.Position + Mob->GetSeatOffset(*Rider);
+			}
+		}
+	}
+	return Mob;
 }
 
 int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
@@ -769,16 +830,11 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 				++Restored;
 			}
 		}
-		else if (FMcMob* Mob = SpawnMob(Kind, FVector::ZeroVector))
+		else if (FMcMobType::Find(Kind))
 		{
-			if (Mob->Serialize(DataReader))
+			if (RestoreMob(Kind, Data))
 			{
-				Mob->LoadTrailer(DataReader);
 				++Restored;
-			}
-			else
-			{
-				Mob->bRemoved = true;
 			}
 		}
 		else
@@ -956,7 +1012,53 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 		}
 		return;
 	}
-	SpawnMob(Kind, Pos);
+	if (FMcMob* Spawned = SpawnMob(Kind, Pos))
+	{
+		FinishSpawn(*Spawned);
+	}
+}
+
+void FMcEntityHost::FinishSpawn(FMcMob& Mob)
+{
+	// The odds below are the game's (Zombie and Spider finalizeSpawn), checked against summons in the reference.
+	const auto Ride = [](FMcMob& Rider, FMcMob& Mount)
+	{
+		Rider.RidingId = Mount.Id;
+		Mount.PassengerId = Rider.Id;
+		Rider.Body.Position = Mount.Body.Position + Mount.GetSeatOffset(Rider);
+	};
+	if (FMcMob::CanBeBabyZombie(Mob.GetType()) && Random.FRand() < ZombieBabyOdds)
+	{
+		Mob.SetYoung(FMcMob::BabyForever);
+		if (Random.FRand() < ChickenJockeyOdds)
+		{
+			// A chicken near it that nobody rides.
+			for (const TUniquePtr<FMcEntity>& Other : Manager.GetEntities())
+			{
+				if (!Other->bRemoved && Other->GetType() == FName(TEXT("minecraft:chicken")) && static_cast<FMcMob&>(*Other).PassengerId == 0
+					&& FMath::Abs(Other->Body.Position.X - Mob.Body.Position.X) <= 5.0 && FMath::Abs(Other->Body.Position.Z - Mob.Body.Position.Z) <= 5.0
+					&& FMath::Abs(Other->Body.Position.Y - Mob.Body.Position.Y) <= 3.0)
+				{
+					Ride(Mob, static_cast<FMcMob&>(*Other));
+					return;
+				}
+			}
+		}
+		else if (Random.FRand() < ChickenJockeyOdds)
+		{
+			if (FMcMob* Chicken = SpawnMob(TEXT("minecraft:chicken"), Mob.Body.Position))
+			{
+				Ride(Mob, *Chicken);
+			}
+		}
+	}
+	else if (Mob.GetType() == FName(TEXT("minecraft:spider")) && Random.RandHelper(100) == 0)
+	{
+		if (FMcMob* Skeleton = SpawnMob(TEXT("minecraft:skeleton"), Mob.Body.Position))
+		{
+			Ride(*Skeleton, Mob);
+		}
+	}
 }
 
 FName FMcEntityHost::PickSpawn(TConstArrayView<FMcSpawnEntry> Entries, int32 Roll)

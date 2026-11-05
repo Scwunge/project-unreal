@@ -54,6 +54,7 @@ namespace
 		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
+		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -4622,6 +4623,203 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { Count, Table })) };
 	}
 
+	// ---- /attribute (wording from a ref run, cmd_group4.txt) ----
+	// The values live here, per player, and only max_health reaches the game (through SetAttribute); the others are kept and
+	// reported but change nothing yet. Not kept in the save.
+	struct FAttributeDefault
+	{
+		const TCHAR* Id;
+		double Value;
+	};
+
+	// Player defaults (minecraft.wiki, "Attribute").
+	const FAttributeDefault AttributeDefaults[] = {
+		{ TEXT("max_health"), 20.0 }, { TEXT("movement_speed"), (double)0.1f }, { TEXT("attack_damage"), 1.0 }, { TEXT("attack_speed"), 4.0 },
+		{ TEXT("attack_knockback"), 0.0 }, { TEXT("armor"), 0.0 }, { TEXT("armor_toughness"), 0.0 }, { TEXT("luck"), 0.0 },
+		{ TEXT("knockback_resistance"), 0.0 }, { TEXT("block_interaction_range"), 4.5 }, { TEXT("entity_interaction_range"), 3.0 },
+		{ TEXT("gravity"), 0.08 }, { TEXT("jump_strength"), (double)0.42f }, { TEXT("step_height"), 0.6 }, { TEXT("safe_fall_distance"), 3.0 },
+		{ TEXT("fall_damage_multiplier"), 1.0 }, { TEXT("scale"), 1.0 }, { TEXT("flying_speed"), (double)0.05f }, { TEXT("max_absorption"), 0.0 },
+		{ TEXT("burning_time"), 1.0 }, { TEXT("movement_efficiency"), 0.0 }, { TEXT("oxygen_bonus"), 0.0 }, { TEXT("water_movement_efficiency"), 0.0 },
+		{ TEXT("sneaking_speed"), (double)0.3f }, { TEXT("submerged_mining_speed"), 0.2 }, { TEXT("mining_efficiency"), 0.0 },
+		{ TEXT("block_break_speed"), 1.0 }, { TEXT("sweeping_damage_ratio"), 0.0 }, { TEXT("explosion_knockback_resistance"), 0.0 },
+	};
+
+	struct FAttributeModifier
+	{
+		double Amount = 0.0;
+		int32 Operation = 0;
+	};
+
+	struct FAttributeState
+	{
+		TOptional<double> Base;
+		TMap<FString, FAttributeModifier> Modifiers;
+	};
+
+	TMap<FString, TMap<FString, FAttributeState>>& AttributeStates()
+	{
+		static TMap<FString, TMap<FString, FAttributeState>> States;
+		return States;
+	}
+
+	// Java prints a double as its shortest text that reads back the same, with ".0" on a whole number.
+	FString AttrDouble(double Value)
+	{
+		FString Text;
+		for (int32 Digits = 1; Digits <= 17; ++Digits)
+		{
+			Text = FString::Printf(TEXT("%.*g"), Digits, Value);
+			if (FCString::Atod(*Text) == Value)
+			{
+				break;
+			}
+		}
+		if (Text.Contains(TEXT("e")))
+		{
+			Text = FString::Printf(TEXT("%.1f"), Value);
+		}
+		if (!Text.Contains(TEXT(".")))
+		{
+			Text += TEXT(".0");
+		}
+		return Text;
+	}
+
+	double AttributeValue(double Base, const FAttributeState& State)
+	{
+		double Add = 0.0;
+		double MultBase = 0.0;
+		for (const auto& Entry : State.Modifiers)
+		{
+			if (Entry.Value.Operation == 0)
+			{
+				Add += Entry.Value.Amount;
+			}
+			else if (Entry.Value.Operation == 1)
+			{
+				MultBase += Entry.Value.Amount;
+			}
+		}
+		double Value = Base + Add;
+		const double Start = Value;
+		Value += Start * MultBase;
+		for (const auto& Entry : State.Modifiers)
+		{
+			if (Entry.Value.Operation == 2)
+			{
+				Value *= 1.0 + Entry.Value.Amount;
+			}
+		}
+		return Value;
+	}
+
+	FReplies RunAttribute(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		if (Players.Num() > 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+		}
+		const FString Id = McCache::Namespaced(Words[2]);
+		const FAttributeDefault* Known = nullptr;
+		for (const FAttributeDefault& Candidate : AttributeDefaults)
+		{
+			if (Id == FString(TEXT("minecraft:")) + Candidate.Id)
+			{
+				Known = &Candidate;
+			}
+		}
+		if (!Known)
+		{
+			int32 At = Command.Find(Words[2], ESearchCase::CaseSensitive, ESearchDir::FromStart, Command.Find(Words[1]) + Words[1].Len());
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:attribute'"), *Id)), Fail(BorderContext(Command, At + Words[2].Len())) };
+		}
+		const FString Player = Players[0];
+		const FString Shown = McLang::Get(FString(TEXT("attribute.name.")) + Known->Id);
+		FAttributeState& State = AttributeStates().FindOrAdd(Player).FindOrAdd(Known->Id);
+		const auto Push = [&]()
+		{
+			Target.SetAttribute(Player, Known->Id, AttributeValue(State.Base.Get(Known->Value), State));
+		};
+		const double Base = State.Base.Get(Known->Value);
+		const FString& Verb = Words[3];
+		if (Verb == TEXT("get") && Words.Num() <= 5)
+		{
+			return { Ok(McLang::Format(TEXT("commands.attribute.value.get.success"), { Shown, Player, AttrDouble(AttributeValue(Base, State)) })) };
+		}
+		if (Verb == TEXT("base") && Words.Num() >= 5)
+		{
+			if (Words[4] == TEXT("get") && Words.Num() <= 6)
+			{
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.get.success"), { Shown, Player, AttrDouble(Base) })) };
+			}
+			if (Words[4] == TEXT("set") && Words.Num() == 6)
+			{
+				if (!Words[5].IsNumeric())
+				{
+					return BadArgument(Command);
+				}
+				State.Base = FCString::Atod(*Words[5]);
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.set.success"), { Shown, Player, AttrDouble(*State.Base) })) };
+			}
+			if (Words[4] == TEXT("reset") && Words.Num() == 5)
+			{
+				State.Base.Reset();
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.reset.success"), { Shown, Player, AttrDouble(Known->Value) })) };
+			}
+		}
+		if (Verb == TEXT("modifier") && Words.Num() >= 6)
+		{
+			const FString Modifier = McCache::Namespaced(Words[5]);
+			if (Words[4] == TEXT("add") && Words.Num() == 8)
+			{
+				const int32 Operation = Words[7] == TEXT("add_value") ? 0 : Words[7] == TEXT("add_multiplied_base") ? 1 : Words[7] == TEXT("add_multiplied_total") ? 2 : -1;
+				if (!Words[6].IsNumeric() || Operation < 0)
+				{
+					return BadArgument(Command);
+				}
+				if (State.Modifiers.Contains(Modifier))
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.modifier_already_present"), { Modifier, Shown, Player })) };
+				}
+				State.Modifiers.Add(Modifier, FAttributeModifier{ FCString::Atod(*Words[6]), Operation });
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.add.success"), { Modifier, Shown, Player })) };
+			}
+			if (Words[4] == TEXT("remove") && Words.Num() == 6)
+			{
+				if (!State.Modifiers.Remove(Modifier))
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.no_modifier"), { Shown, Player, Modifier })) };
+				}
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.remove.success"), { Modifier, Shown, Player })) };
+			}
+			if (Words[4] == TEXT("value") && Words.Num() >= 7 && Words[5] == TEXT("get"))
+			{
+				const FString Wanted = McCache::Namespaced(Words[6]);
+				const FAttributeModifier* Found = State.Modifiers.Find(Wanted);
+				if (!Found)
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.no_modifier"), { Shown, Player, Wanted })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.value.get.success"), { Wanted, Shown, Player, AttrDouble(Found->Amount) })) };
+			}
+		}
+		return Unknown(Command, Command.Len());
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5154,6 +5352,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("title"))
 	{
 		return RunTitle(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("attribute"))
+	{
+		return RunAttribute(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("loot"))
 	{

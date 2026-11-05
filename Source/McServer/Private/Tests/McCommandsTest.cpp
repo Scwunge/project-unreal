@@ -628,6 +628,18 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /attribute.
+	TestEqual(TEXT("attr get"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 20.0")));
+	TestEqual(TEXT("attr set"), First(TEXT("attribute Steve minecraft:max_health base set 30")), FString(TEXT("The base value for attribute Max Health for entity Steve set to 30.0")));
+	TestEqual(TEXT("attr add"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Added modifier test:a to attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr twice"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Modifier test:a is already present on attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr sum"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 34.0")));
+	TestEqual(TEXT("attr modval"), First(TEXT("attribute Steve minecraft:max_health modifier value get test:a")), FString(TEXT("The value of modifier test:a on attribute Max Health for entity Steve is 4.0")));
+	TestEqual(TEXT("attr remove"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Removed modifier test:a from attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr gone"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Attribute Max Health for entity Steve has no modifier test:a")));
+	TestEqual(TEXT("attr reset"), First(TEXT("attribute Steve minecraft:max_health base reset")), FString(TEXT("The base value for attribute Max Health for entity Steve reset to default 20.0")));
+	TestEqual(TEXT("attr speed"), First(TEXT("attribute Steve minecraft:movement_speed get")), FString(TEXT("The value of attribute Speed for entity Steve is 0.10000000149011612")));
+	TestEqual(TEXT("attr unknown"), First(TEXT("attribute Steve minecraft:nonsense get")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:attribute'")));
 	// Measured against the game: /loot.
 	TestEqual(TEXT("loot unknown"), First(TEXT("loot give Steve loot minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' in registry 'minecraft:loot_table'")));
 	TestTrue(TEXT("loot dropped"), First(TEXT("loot give Steve loot minecraft:chests/simple_dungeon")).StartsWith(TEXT("Dropped ")));

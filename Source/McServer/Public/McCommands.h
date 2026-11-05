@@ -108,6 +108,8 @@ public:
 	// 2 the offhand. SetSlot puts Count of Item there (an empty Item or a Count of 0 empties it); false if there is no such player or slot.
 	virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) { return false; }
 	virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const { return false; }
+	// /attribute changed the value of an attribute (id without the namespace) to Value; only some reach the game.
+	virtual void SetAttribute(const FString& Player, const FString& Id, double Value) {}
 	// The hotbar slot (0 to 8) the player holds.
 	virtual int32 GetSelectedSlot(const FString& Player) const { return 0; }
 

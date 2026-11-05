@@ -2206,6 +2206,16 @@ namespace
 			return true;
 		}
 
+		virtual void SetAttribute(const FString& Player, const FString& Id, double Value) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data && Id == TEXT("max_health"))
+			{
+				Pawn->Data->Stats.MaxHealth = FMath::Max(1.0f, (float)Value);
+				Pawn->Data->Stats.Health = FMath::Min(Pawn->Data->Stats.Health, Pawn->Data->Stats.MaxHealth);
+			}
+		}
+
 		virtual int32 GetSelectedSlot(const FString& Player) const override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);

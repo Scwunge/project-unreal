@@ -844,6 +844,35 @@ void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 	{
 		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
 	}
+	// A gateway for this kill (gateway1.txt, a first kill on seed 4242424242 made the one at position 11; the wiki: position k is at
+	// (floor(96 cos(k pi / 10)), 75, floor(96 sin(k pi / 10))), twenty of them, in an order the seed decides). The order here is a shuffle of
+	// 1..20 from the seed, so only that one sample is matched; the real order is open.
+	if (Manager.GatewaysMade < 20)
+	{
+		TArray<int32> Order;
+		for (int32 K = 1; K <= 20; ++K)
+		{
+			Order.Add(K);
+		}
+		FRandomStream Shuffle(static_cast<int32>(Manager.GatewaySeed ^ (Manager.GatewaySeed >> 32)));
+		for (int32 I = 19; I > 0; --I)
+		{
+			Order.Swap(I, Shuffle.RandRange(0, I));
+		}
+		const int32 K = Order[Manager.GatewaysMade++];
+		const FIntVector Centre(FMath::FloorToInt32(96.0 * FMath::Cos(PI * K / 10.0)), 75, FMath::FloorToInt32(96.0 * FMath::Sin(PI * K / 10.0)));
+		for (int32 DY = -2; DY <= 2; ++DY)
+		{
+			if (DY == 0)
+			{
+				Put(Centre, StateOf(TEXT("minecraft:end_gateway")));
+			}
+			else
+			{
+				Put(Centre + FIntVector(0, DY, 0), StateOf(TEXT("minecraft:bedrock")));
+			}
+		}
+	}
 }
 
 void FMcMob::TickBarter(FMcEntityManager& Manager)

@@ -1933,6 +1933,130 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
 					Models.Add(Baby.Kind, Baby);
 				}
+				// Baby models of the missing mobs, batch 1 (2026-11-05): boxes from the reference's logged babyModel (models_b1.txt); pictures are the grown one's names with _baby.
+				// Not logged: baby tropical fish, parrot, fish and tadpole (no baby in the game).
+				{
+					FModel Moo = Young(TEXT("minecraft:mooshroom"), 64, 64);
+					Moo.Parts.Add(Part(ERole::Head, FVector(0.0f, 10.431f, 5.1667f), { Box(0, 18, -3.0f, -1.431f, -0.167f, 6, 6, 5), Box(8, 29, 3.0f, 3.569f, 2.833f, 1, 2, 1), Box(4, 29, -4.0f, 3.569f, 2.833f, 1, 2, 1), Box(12, 29, -2.0f, -1.431f, 4.833f, 4, 3, 1) }));  // head
+					Moo.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.0f, 5.0f), { Box(0, 0, -7.0f, 1.0f, -11.0f, 8, 6, 12) }));  // body
+					Moo.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6.0f, -3.5f), { Box(22, 27, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Moo.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6.0f, -3.5f), { Box(34, 27, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Moo.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6.0f, 3.5f), { Box(22, 18, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Moo.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6.0f, 3.5f), { Box(34, 18, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Models.Add(Moo.Kind, Moo);
+				}
+				{
+					FModel Oce = Young(TEXT("minecraft:ocelot"), 32, 32);
+					Oce.Parts.Add(Part(ERole::LegBackLeft, FVector(1.0f, 2.0f, -2.5f), { Box(18, 22, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // leftHindLeg
+					Oce.Parts.Add(Part(ERole::LegBackRight, FVector(-1.0f, 2.0f, -2.5f), { Box(12, 22, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // rightHindLeg
+					Oce.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.0f, 2.0f, 1.5f), { Box(18, 18, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // leftFrontLeg
+					Oce.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.0f, 2.0f, 1.5f), { Box(12, 18, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // rightFrontLeg
+					Oce.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.893f, -3.9151f), { Box(0, 18, -0.5f, -0.893f, -5.085f, 1, 1, 5) }, -0.5672f, 0.0f, 0.0f));  // tail1
+					Oce.Parts.Add(Part(ERole::Head, FVector(0.0f, 4.0f, 3.125f), { Box(0, 0, -2.5f, -1.0f, -1.125f, 5, 4, 4), Box(18, 0, -2.0f, 3.0f, -1.125f, 1, 1, 2), Box(24, 0, 1.0f, 3.0f, -1.125f, 1, 1, 2), Box(18, 3, -1.5f, -1.0f, 2.875f, 3, 2, 1) }));  // head
+					Oce.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.5f, -0.5f), { Box(0, 8, -2.0f, -1.5f, -3.5f, 4, 3, 7) }));  // body
+					Models.Add(Oce.Kind, Oce);
+				}
+				{
+					FModel Bear = Young(TEXT("minecraft:polar_bear"), 64, 64);
+					Bear.Parts.Add(Part(ERole::Head, FVector(0.0f, 5.375f, 5.75f), { Box(0, 0, -3.0f, -2.375f, 0.25f, 6, 5, 4), Box(20, 3, -2.0f, -2.375f, 4.25f, 4, 2, 2), Box(20, 0, -4.0f, 1.625f, 1.75f, 2, 2, 1), Box(26, 0, 2.0f, 1.625f, 1.75f, 2, 2, 1) }));  // head
+					Bear.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.5f, 0.0f), { Box(0, 9, -4.0f, -3.5f, -6.0f, 8, 7, 12) }));  // body
+					Bear.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 2.5f, -4.5f), { Box(0, 34, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // rightHindLeg
+					Bear.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 2.5f, -4.5f), { Box(12, 34, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // leftHindLeg
+					Bear.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 2.5f, 4.5f), { Box(0, 28, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // rightFrontLeg
+					Bear.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 2.5f, 4.5f), { Box(12, 28, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // leftFrontLeg
+					Models.Add(Bear.Kind, Bear);
+				}
+				{
+					FModel Pan = Young(TEXT("minecraft:panda"), 64, 64);
+					Pan.Parts.Add(Part(ERole::Head, FVector(0.0f, 5.0f, 3.0f), { Box(0, 0, -3.5f, -3.0f, 0.0f, 7, 6, 5), Box(24, 6, -2.0f, -3.0f, 5.0f, 4, 2, 1), Box(24, 0, -4.5f, 1.0f, 2.5f, 3, 3, 1), Box(33, 0, 1.5f, 1.0f, 2.5f, 3, 3, 1) }));  // head
+					Pan.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -2.5f), { Box(0, 11, -4.5f, -3.5f, -5.5f, 9, 7, 11) }));  // body
+					Pan.Parts.Add(Part(ERole::LegBackRight, FVector(-3.0f, 2.0f, -6.5f), { Box(0, 34, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // rightHindLeg
+					Pan.Parts.Add(Part(ERole::LegBackLeft, FVector(3.0f, 2.0f, -6.5f), { Box(12, 34, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // leftHindLeg
+					Pan.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.0f, 2.0f, 1.5f), { Box(0, 29, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // rightFrontLeg
+					Pan.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.0f, 2.0f, 1.5f), { Box(12, 29, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // leftFrontLeg
+					Models.Add(Pan.Kind, Pan);
+				}
+				{
+					FModel Sq = Young(TEXT("minecraft:squid"), 32, 32);
+					Sq.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -1.5708f, 0.0f));  // root/tentacle0
+					Sq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -0.7854f, 0.0f));  // root/tentacle1
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, 3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.1416f, 0.0f));  // root/tentacle6
+					Sq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.927f, 0.0f));  // root/tentacle7
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 11.0f, 0.0f), { Box(0, 0, -4.0f, -5.0f, -4.0f, 8, 10, 8) }));  // root/body
+					Sq.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 1.5708f, 0.0f));  // root/tentacle4
+					Sq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 2.3562f, 0.0f));  // root/tentacle5
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }));  // root/tentacle2
+					Sq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 0.7854f, 0.0f));  // root/tentacle3
+					Models.Add(Sq.Kind, Sq);
+				}
+				{
+					FModel GSq = Young(TEXT("minecraft:glow_squid"), 32, 32);
+					GSq.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -1.5708f, 0.0f));  // root/tentacle0
+					GSq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -0.7854f, 0.0f));  // root/tentacle1
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, 3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.1416f, 0.0f));  // root/tentacle6
+					GSq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.927f, 0.0f));  // root/tentacle7
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 11.0f, 0.0f), { Box(0, 0, -4.0f, -5.0f, -4.0f, 8, 10, 8) }));  // root/body
+					GSq.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 1.5708f, 0.0f));  // root/tentacle4
+					GSq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 2.3562f, 0.0f));  // root/tentacle5
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }));  // root/tentacle2
+					GSq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 0.7854f, 0.0f));  // root/tentacle3
+					Models.Add(GSq.Kind, GSq);
+				}
+				{
+					FModel Axo = Young(TEXT("minecraft:axolotl"), 32, 32);
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 1.25f, -1.75f), { Box(0, 0, -2.0f, -1.25f, -3.25f, 4, 2, 6), Box(0, 12, 0.0f, -1.25f, -2.25f, 0, 3, 5) }));  // root/root/body
+					Axo.Parts.Add(Part(ERole::Head, FVector(0.0f, 1.0f, 1.0f), { Box(0, 8, -3.0f, -1.0f, 0.0f, 6, 3, 4) }));  // root/root/body/head
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, 3.0f), { Box(20, 0, -3.0f, 0.0f, 0.0f, 6, 3, 0) }));  // root/root/body/head/top_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(3.0f, 1.5f, 3.0f), { Box(20, 8, 0.0f, -1.5f, 0.0f, 3, 5, 0) }));  // root/root/body/head/left_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(-3.0f, 1.5f, 3.0f), { Box(20, 3, -3.0f, -1.5f, 0.0f, 3, 5, 0) }));  // root/root/body/head/right_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(-2.0f, 1.0f, -0.5f), { Box(20, 16, -3.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/right_front_leg
+					Axo.Parts.Add(Part(ERole::Static, FVector(-2.0f, 1.0f, -3.5f), { Box(20, 14, 0.0f, 0.0f, -0.5f, 3, 0, 1) }, -1.5708f, -1.5708f, -1.5708f));  // root/root/body/right_hind_leg/right_leg_r1
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 1.5f, -5.0f), { Box(10, 9, 0.0f, -1.5f, -7.0f, 0, 3, 8) }));  // root/root/body/tail
+					Axo.Parts.Add(Part(ERole::Static, FVector(2.0f, 1.0f, -3.5f), { Box(20, 14, 0.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/left_hind_leg
+					Axo.Parts.Add(Part(ERole::Static, FVector(2.0f, 1.0f, -0.5f), { Box(20, 13, 0.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/left_front_leg
+					Models.Add(Axo.Kind, Axo);
+				}
+				{
+					FModel Arm = Young(TEXT("minecraft:armadillo"), 64, 64);
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, -0.5f), { Box(0, 0, -2.5f, -2.0f, -3.5f, 5, 4, 7), Box(0, 11, -2.5f, -2.0f, -3.0f, 5, 4, 6) }));  // body
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, 2.7f), { Box(20, 17, -1.0f, 0.0f, 0.0f, 2, 2, 4) }, 0.7418f, 0.0f, 0.0f));  // body/head/head_cube
+					Arm.Parts.Add(Part(ERole::Static, FVector(-1.0f, 6.0f, 3.0f), { Box(28, 8, -1.8f, -1.0f, 0.0f, 2, 3, 0) }, -0.4363f, 0.1134f, -0.0524f));  // body/head/head_cube/right_ear
+					Arm.Parts.Add(Part(ERole::Static, FVector(1.0f, 6.0f, 3.0f), { Box(28, 8, -0.2f, -1.0f, 0.0f, 2, 3, 0, 0.0f, true) }, -0.4363f, -0.1134f, 0.0524f));  // body/head/head_cube/left_ear
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.5f, -4.9f), { Box(22, 11, -0.5f, -0.5f, -2.0f, 1, 1, 4) }, -1.0472f, 0.0f, 0.0f));  // body/tail/right_ear_cube
+					Arm.Parts.Add(Part(ERole::LegBackRight, FVector(-1.5f, 2.0f, -2.5f), { Box(20, 27, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // rightHindLeg
+					Arm.Parts.Add(Part(ERole::LegBackLeft, FVector(1.5f, 2.0f, -2.5f), { Box(20, 27, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // leftHindLeg
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.3f, -0.5f), { Box(0, 25, -3.0f, -3.0f, -3.0f, 6, 6, 6) }));  // cube
+					Arm.Parts.Add(Part(ERole::Static, FVector(1.5f, 2.0f, 1.5f), { Box(20, 23, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // root/right_front_leg
+					Arm.Parts.Add(Part(ERole::Static, FVector(-1.5f, 2.0f, 1.5f), { Box(24, 0, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // root/left_front_leg
+					Models.Add(Arm.Kind, Arm);
+				}
+				{
+					FModel Zog = Young(TEXT("minecraft:zoglin"), 64, 64);
+					Zog.Parts.Add(Part(ERole::Head, FVector(0.0f, 11.0f, 7.0f), { Box(0, 0, -5.0f, -1.74f, -1.453f, 10, 4, 12), Box(44, 29, -7.0f, -0.902f, 6.488f, 2, 5, 2), Box(52, 29, 5.0f, -0.902f, 6.488f, 2, 5, 2) }, 0.8727f, 0.0f, 0.0f));  // head
+					Zog.Parts.Add(Part(ERole::Static, FVector(-5.0f, 12.0f, 8.5f), { Box(32, 5, -5.1f, -0.5f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, 0.8727f));  // head/right_ear
+					Zog.Parts.Add(Part(ERole::Static, FVector(5.0f, 12.0f, 8.5f), { Box(32, 0, -0.9f, -0.5f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, -0.8727f));  // head/left_ear
+					Zog.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6.0f, 4.5f), { Box(0, 38, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Zog.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6.0f, 4.5f), { Box(12, 38, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Zog.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6.0f, -4.5f), { Box(0, 47, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Zog.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6.0f, -4.5f), { Box(12, 47, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Zog.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0f, 0.0f), { Box(0, 16, -4.0f, 6.0f, -7.0f, 8, 8, 14), Box(24, 39, 0.0f, 12.0f, -3.0f, 0, 6, 11) }));  // root/body
+					Models.Add(Zog.Kind, Zog);
+				}
+				{
+					FModel Gha = Young(TEXT("minecraft:happy_ghast"), 64, 64);
+					Gha.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.7992f, 0.0f), { Box(0, 0, -8.0f, -8.0f, -8.0f, 16, 16, 16) }));  // body
+					Gha.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle0
+					Gha.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }));  // body/tentacle1
+					Gha.Parts.Add(Part(ERole::Static, FVector(0.0f, -1.2008f, 0.0f), { Box(0, 32, -8.0f, 0.0f, -8.0f, 16, 16, 16) }));  // body/inner_body
+					Gha.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle8
+					Gha.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }));  // body/tentacle6
+					Gha.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }));  // body/tentacle7
+					Gha.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle4
+					Gha.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }));  // body/tentacle5
+					Gha.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -4.0f, -1.0f, 2, 4, 2) }));  // body/tentacle2
+					Gha.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle3
+					Models.Add(Gha.Kind, Gha);
+				}
 			}
 			return Models;
 		}

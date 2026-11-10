@@ -441,6 +441,8 @@ bool FMcMob::CanBeYoung(FName Kind)
 		TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken"), TEXT("minecraft:horse"), TEXT("minecraft:donkey"), TEXT("minecraft:mule"),
 		TEXT("minecraft:wolf"), TEXT("minecraft:goat"), TEXT("minecraft:fox"), TEXT("minecraft:llama"), TEXT("minecraft:rabbit"),
 		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
+		TEXT("minecraft:mooshroom"), TEXT("minecraft:ocelot"), TEXT("minecraft:polar_bear"), TEXT("minecraft:panda"), TEXT("minecraft:axolotl"),
+		TEXT("minecraft:armadillo"), TEXT("minecraft:zoglin"), TEXT("minecraft:happy_ghast"),
 	};
 	return Breeders.Contains(Kind);
 }

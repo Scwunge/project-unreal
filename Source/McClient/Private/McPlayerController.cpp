@@ -374,6 +374,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			// Statistics and the kill trigger: the health the blow took off, and a mob left with none was killed.
 			WeakAttacker->Data->AddStat(TEXT("custom:damage_dealt"), FMath::RoundToInt64(FMath::Max(0.0f, HealthBefore - FMath::Max(Target->Health, 0.0f)) * 10.0f));
+			// Hearts of dark red rise off a mob a player hurt by more than a heart (minecraft.wiki, "Damage indicator": one for each heart of damage).
+			const float Taken = HealthBefore - FMath::Max(Target->Health, 0.0f);
+			if (Taken >= 2.0f && World->GetEntityHost())
+			{
+				World->GetEntityHost()->GetManager().SpawnParticle(FName(TEXT("minecraft:damage_indicator")), Target->Body.Position + FVector(0.0, Target->Body.Height * 0.5, 0.0),
+					FVector(0.1, 0.0, 0.1), 0.2f, FMath::Clamp(FMath::RoundToInt(Taken * 0.5f), 1, 20));
+			}
 			if (HealthBefore > 0.0f && Target->Health <= 0.0f)
 			{
 				WeakAttacker->Data->AddStat(TEXT("custom:mob_kills"));

@@ -1645,3 +1645,29 @@ OPEN provenance gaps from this stretch: enchanted raider gear NOT built (vanilla
 ## Missing mobs, batch 1 (2026-11-05)
 Types only (McMob.cpp, test McClient.McEntity.MobTypes): mooshroom, ocelot, armadillo, polar bear, panda, parrot, allay, happy ghast, squid, glow squid, cod, salmon, tropical fish, pufferfish, tadpole, axolotl, snow golem, zoglin, breeze, camel husk, parched, sulfur cube, zombie nautilus. Health, speed, attack and follow range from vanilla `attribute ... get` (E:\mc-reference\scripts\mobattrs1.txt, run log kept in the session scratchpad); boxes from the wiki Hitbox size rows (read 2026-11-05; pufferfish puffed sizes, baby sizes, salmon sizes small/large, camel husk sitting, sulfur cube small not used). Warden and creaking belong to the redstone session.
 NOT built, so open: models and textures for all of them; swimming (fish and squid just stand), water breathing and flopping on land; flying behaviour for parrot/allay/happy ghast beyond the generic wander; panda genes and moods; ocelot trust and fleeing; polar bear cubs; mooshroom shearing/stew/brown variant; armadillo roll-up and scutes; axolotl play dead and attack; snow golem snowballs and melting; zoglin hostility; breeze wind charges; camel husk riding; parched arrows (burning in sun not measured); sulfur cube (size 0..? behaviour unknown); zombie nautilus; spawning rules and biomes; loot tables are the game's (cache) and apply by name; baby sizes and breeding.
+
+## Hostile mobs: zoglin, breeze, parched (redstone session, agreed with mc-villagers-e 2026-11-05)
+
+Split: mc-villagers-e keeps models and passive/neutral mobs and the attribute rows (McMob.cpp Add lines); the redstone session takes the behaviour
+of zoglin, breeze and parched (camel_husk, zombie_nautilus, sulfur_cube are not taken: nothing says they are hostile). Merged `claude/villagers-a9bdf7`
+into this branch first (conflicts in McMob.cpp Damage, McPlayerPawn, McEntityHost includes, PLAN.md; all kept both sides).
+Ref runs: `tools/refscripts/zoglin.txt`, `breeze.txt`, `parched.txt` (survival player with resistance 4, so the player's own health says nothing; mob health and
+`log sents` do). Tests: `McClient.McEntity.Zoglin`, `McClient.McEntity.BreezeParched`.
+
+Measured (ref):
+- Zoglin (`zoglin.txt`, normal): it attacks a mob that is not a zoglin (killed a NoAI zombie 6 blocks off, hits at ticks 44, 85, 126, 166 of the run:
+  **a bite every 40 ticks**; the damage steps varied, 7.9, 4.9, 5.9, 1.3 and the rest, so the zombie's own armor or a random is in it: attack 6 is the table value, the
+  per-hit numbers are not explained). A cow it reached was down 7 hp (10 to 3). Code: `bHuntsMobs` (prey = any mob but its own kind and creepers, **the creeper
+  exclusion is the wiki's, UNVERIFIED**: the run had no creeper), bite interval 40 ticks.
+- Breeze (`breeze.txt`, first run was spoilt by two zoglins left in the world from the zoglin run; the numbers below are from that run where the breeze fought them,
+  and the clean rerun): wind charge speed **0.70 a tick**, flat (no gravity or drag), launches **43-50 ticks apart** (48, 50, 49, 45, 43; later gaps near 60),
+  breeze 30 hp, jumps about every 60 ticks to about **5.5 blocks** above the floor, strays 4-9 blocks from the player and runs off when the player cannot be hurt.
+  A charge took **1 hp** from a zoglin. Code: `FireballKind = 4` (shoot cadence 43-60, jump 0.95 upward every 60 ticks, stops closing at 5), `FMcFireball::LaunchWind`.
+- Parched (`parched.txt`, noon, 600 ticks): health stayed 16, so it **does not burn in daylight** if the pit had open sky (not checked); it keeps 5-12 blocks from the player.
+  Its shooting is the skeleton code (`bShoots`); its arrow cadence and the 16-health bow numbers are the skeleton's, **UNVERIFIED for the parched** (the player was immune and `log sents` only showed the parched).
+
+UNVERIFIED / not done: the breeze's 24-block range, jump impulse, 5-block stand-off, that it needs line of sight (the log showed it launching at 70 blocks from the
+player), the wind charge burst (knockback to entities, levers, doors, candles), its immunity to its own charges, the inhale animation and sounds; the zoglin's
+knockback on bite and the shove it takes (resistance 0.6 is in the table, nothing applies it), whether zoglins ignore players in Creative, babies; parched slowness arrows
+(the real arrow effect is Weakness/Slowness: not done); none of the three has a spawn rule (the nether, deserts, trial chambers).
+New ref verbs that would settle them: a `log player` (health/effects) so a hurt player shows the bite and arrow damage; `log targets <type>` for a mob's current target.

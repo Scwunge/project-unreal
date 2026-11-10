@@ -20,6 +20,22 @@ const FName& FMcFireball::SkullType()
 	return Name;
 }
 
+const FName& FMcFireball::WindType()
+{
+	static const FName Name(TEXT("minecraft:breeze_wind_charge"));
+	return Name;
+}
+
+void FMcFireball::LaunchWind(const FVector& Direction)
+{
+	bWind = true;
+	bSmall = true;
+	Aim = Direction.GetSafeNormal();
+	Body.Velocity = Aim * WindSpeed;
+	Body.Width = 0.3125f;
+	Body.Height = 0.3125f;
+}
+
 void FMcFireball::LaunchSkull(const FVector& Direction)
 {
 	bSkull = true;
@@ -55,7 +71,7 @@ void FMcFireball::Hit(FMcEntityManager& Manager, const FVector* PlayerFeet)
 	{
 		if (PlayerFeet)
 		{
-			Manager.HurtPlayer(*PlayerFeet, SmallDamage);
+			Manager.HurtPlayer(*PlayerFeet, bWind ? WindDamage : SmallDamage);
 		}
 		return;
 	}
@@ -102,6 +118,10 @@ void FMcFireball::Tick(FMcEntityManager& Manager)
 			}
 		}
 		Body.Position = Next;
+	}
+	if (bWind)
+	{
+		return;
 	}
 	Body.Velocity = bSkull ? (Body.Velocity + Aim * 0.1) * 0.73 : (Body.Velocity + Aim * Acceleration) * Inertia;
 }

@@ -1,0 +1,23 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 0 -60 0
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule do_mob_spawning false
+cmd difficulty normal
+cmd fill -20 -62 -20 40 -50 20 air
+cmd fill -20 -62 -20 40 -61 20 stone
+cmd gamemode survival
+cmd effect give @s resistance 1000 4 true
+cmd tp @s 0 -60 0
+cmd kill @e[type=!player]
+wait 5
+cmd summon zoglin 6 -60 0
+cmd summon cow 9 -60 6
+cmd summon zombie 9 -60 -6 {NoAI:1b}
+cmd summon zoglin 14 -60 -14
+log sents zoglin 900
+log mobs 30 900
+cmd tick unfreeze
+wait 900

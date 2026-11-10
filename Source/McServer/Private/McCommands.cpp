@@ -9,6 +9,7 @@
 #include "McBiomeRegistry.h"
 #include "McVehicle.h"
 #include "McLoot.h"
+#include "McRecipe.h"
 #include "McRandom.h"
 
 namespace
@@ -57,6 +58,7 @@ namespace
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
 		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle> | dismount)") },
 		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
+		{ TEXT("recipe"), 2, TEXT("/recipe (give | take) <targets> (* | <recipe>)") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -4898,6 +4900,60 @@ namespace
 		return { Ok(McLang::Format(TEXT("commands.place.feature.success"), { Id, FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z) })) };
 	}
 
+	// /recipe give|take <players> (<recipe> | *) (wording from a ref run, cmd_misc.txt). The port has no recipe book screen, so the
+	// unlocked recipes are only remembered here for the session; the game also unlocks recipes by itself as ingredients are picked up,
+	// which is why its "take *" counted 108 where this counts what was given.
+	FReplies RunRecipe(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		static TMap<FString, TSet<FName>> Unlocked;
+		if (Words.Num() != 4 || (Words[1] != TEXT("give") && Words[1] != TEXT("take")))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		TArray<FName> Wanted;
+		FMcRecipeBook& Book = FMcRecipeBook::Get();
+		Book.EnsureLoaded();
+		if (Words[3] == TEXT("*"))
+		{
+			for (const FMcRecipe& Recipe : Book.GetAll())
+			{
+				Wanted.Add(Recipe.Id);
+			}
+		}
+		else
+		{
+			const FName Id(*McCache::Namespaced(Words[3]));
+			if (!Book.Find(Id))
+			{
+				return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:recipe'"), *Id.ToString())), Fail(BorderContext(Command, Command.Len())) };
+			}
+			Wanted.Add(Id);
+		}
+		const bool bGive = Words[1] == TEXT("give");
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			TSet<FName>& Set = Unlocked.FindOrAdd(Player);
+			for (const FName Id : Wanted)
+			{
+				Changed += bGive ? (Set.Contains(Id) ? 0 : (Set.Add(Id), 1)) : Set.Remove(Id);
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bGive ? TEXT("commands.recipe.give.failed") : TEXT("commands.recipe.take.failed"))) };
+		}
+		const FString Count = FString::FromInt(Changed);
+		const FString Key = FString(bGive ? TEXT("commands.recipe.give.success.") : TEXT("commands.recipe.take.success.")) + (Players.Num() == 1 ? TEXT("single") : TEXT("multiple"));
+		return { Ok(McLang::Format(Key, { Count, Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num()) })) };
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -5442,6 +5498,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("place"))
 	{
 		return RunPlace(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("recipe"))
+	{
+		return RunRecipe(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("loot"))
 	{

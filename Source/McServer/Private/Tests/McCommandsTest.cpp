@@ -628,6 +628,12 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /recipe.
+	FMcRecipeBook::Get().EnsureLoaded();
+	TestEqual(TEXT("recipe give"), First(TEXT("recipe give Steve minecraft:stick")), FString(TEXT("Unlocked 1 recipe(s) for Steve")));
+	TestEqual(TEXT("recipe again"), First(TEXT("recipe give Steve minecraft:stick")), FString(TEXT("No new recipes were learned")));
+	TestEqual(TEXT("recipe take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("Took 1 recipe(s) from Steve")));
+	TestEqual(TEXT("recipe nothing to take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("No recipes could be forgotten")));
 	// Measured against the game: /place.
 	TestEqual(TEXT("place in a world without features"), First(TEXT("place feature minecraft:oak 0 70 0")), FString(TEXT("Failed to place feature")));
 	// Measured against the game: /ride.

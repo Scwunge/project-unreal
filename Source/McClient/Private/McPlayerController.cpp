@@ -478,6 +478,11 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 					Tamed.Trigger = TEXT("minecraft:tame_animal");
 					Tamed.Entity = Mob->GetType();
 					User.FireTrigger(Tamed);
+					if (World->GetEntityHost())
+					{
+						World->GetEntityHost()->GetManager().SpawnParticle(FName(TEXT("minecraft:heart")), Mob->Body.Position + FVector(0.0, Mob->Body.Height * 0.8, 0.0),
+							FVector(0.4, 0.3, 0.4), 0.0f, 7);
+					}
 				}
 				return true;
 			}

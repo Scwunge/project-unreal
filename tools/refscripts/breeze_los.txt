@@ -1,0 +1,21 @@
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 0 -60 0
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule do_mob_spawning false
+cmd difficulty normal
+cmd fill -20 -62 -20 40 -50 20 air
+cmd fill -20 -62 -20 40 -61 20 stone
+cmd fill 4 -60 -20 5 -52 20 stone
+cmd gamemode survival
+cmd effect give @s resistance 1000 4 true
+cmd tp @s 0 -60 0
+cmd kill @e[type=!player]
+wait 5
+cmd summon breeze 12 -60 0
+log sents breeze 600
+log mobs 30 600
+cmd tick unfreeze
+wait 600

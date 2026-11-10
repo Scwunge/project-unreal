@@ -16,6 +16,7 @@ cmd kill @e[type=!player]
 wait 5
 cmd summon breeze 12 -60 0
 log sents breeze 600
+log sents breeze_wind_charge 600
 log mobs 30 600
 cmd tick unfreeze
 wait 600

@@ -1571,3 +1571,9 @@ NOT built, so open: models and textures for all of them; swimming (fish and squi
 - Drops (2026-11-05, `McClient.McServer.NewMobDrops`): 60 host kills of each of the 22 loot-table mobs (the tables are the vanilla data in `cache/client/data/minecraft/loot_table/entities`, run by McLoot): items dropped are only the table's items, mobs with empty tables drop nothing (ocelot, tadpole, axolotl, armadillo, allay, happy ghast, sulfur cube), the rest drop (e.g. squid 39 stacks, parched 89, mooshroom 70 in 60 kills). Passes. Conditions that need a player kill, fire or looting are the existing McLoot's.
 - Breeding does not exist for any animal yet (no love mode, no breeding items, no baby spawn): it is generic infrastructure, not per mob, and still to build.
 
+
+## New mobs: movement log (2026-11-10)
+Reference script `E:\mc-reference\scripts\mobmove_b1.txt`, log `E:\mc-reference\run\log_mobmove_b1.log` (`log sents`, 600 ticks per mob, peaceful, one mob each, 15 mobs). Not yet used by code. Per-tick horizontal speed (blocks/tick) from the log, measured, one run each, so a first look and no fit:
+- Max / mean while moving: ocelot 0.069/0.064 (moving 12% of ticks), armadillo 0.066/0.024 (72%), mooshroom 0.048/0.046 (18%), panda 0.027/0.021 (2%), polar bear never moved (0%).
+- Swimmers: squid 0.200, glow squid 0.200, cod/salmon/pufferfish 0.063, tadpole 0.089, axolotl 0.217. Fliers: allay 0.101 (moving 46%), happy ghast 0.325 (moving 100%), parrot stayed on the ground (0%).
+- Script flaws to fix before fitting: the air-phase fill also removed the tank floor (parrot, tadpole and axolotl y reach -62, below the arena floor); the water tank is 11x11 so swimmers hit walls; polar bear and panda barely moved in 600 ticks (needs a longer run or other trigger). Numbers above are indicative only.

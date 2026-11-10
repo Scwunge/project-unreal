@@ -1745,13 +1745,16 @@ Goal: people can actually play the packaged build. Shipping binary on the GTX 10
 | Walk, workers (base_a3) | 92.3 | 24.3 | 87 | 33 |
 | Stand, old decoration (base_b2) | 113.1 | 43.8 | 81 | 6 |
 | Stand, workers (base_a3) | 110.0 | 26.7 | 84 | 18 |
+| Walk, workers and one section per pass (base_a5) | 100.2 | 25.5 | 69 | 31 |
+| Stand, workers and one section per pass (base_a5) | 122.4 | 45.4 | 83 | 5 |
 
 | Unreal High, stand / walk, clean | fps | render thread ms | GPU ms |
 |---|---|---|---|
 | Sections unmerged, no TSR preset (base_ub) | 48.4 / 26.7 | 17.0 | 18.5 |
 | One section per pass, TSR preset (base_uh) | 65.9 / 57.1 | 12.1 | 14.3 |
+| Same, Unreal Medium, screen percentage 85 (base_um) | 83.3 / 72.2 | 11.2 | 10.9 |
 
-The changes in that table aren't isolated: the TSR preset likely explains most of the GPU drop, and base_ub's old decoration affects walk. Vanilla numbers for merged sections are still to come; the only ones so far (base_a4, base_a4c) had an editor beside them.
+The changes in that table aren't isolated: the TSR preset likely explains most of the GPU drop, and base_ub's old decoration affects walk. Vanilla with merged sections (base_a5) cut the render thread from 7.8 to 7.1 ms standing and 8.8 to 7.9 walking against base_a3, about 10%. Unreal Medium walks with a 1% low of 16.7, the same as High's 16.2, so its lows come from game-thread hitches rather than the GPU.
 
 **Why the render thread costs what it does:** `UProceduralMeshComponent`'s proxy always sets `bDynamicRelevance`, so no draw commands are cached and every section of every chunk is gathered per view, per frame. It also keeps a CPU copy of each vertex at about 150 bytes (double-precision `FProcMeshVertex`). 54eea4f makes a chunk one section per pass instead of one per slice and pass. A component of our own with static draw paths and no CPU copy is the next step if merged sections aren't enough; it has to keep hardware ray tracing.
 
@@ -1759,6 +1762,16 @@ The changes in that table aren't isolated: the TSR preset likely explains most o
 - Flying: speed is 22 blocks/s or 0, because the player stops when the chunk ahead isn't there. Normal priority keeps about 700 chunks but hitches, since this CPU has only 2 foreground workers and frame tasks wait for them. Background high is smooth, but the world thins to about 150-300 chunks.
 - No frame cap: every run logs vsync 0, maxfps 0, smooth 0, so uncapped frames take cores from the workers. In base_a4c (120 fps, not clean) the player barely stopped.
 - Memory: peak rss 6.6 GB in base_a2 against 3.9 GB in base_a3, probably vertices waiting for garbage collection; 54eea4f frees them when a mesh is destroyed. Not proven.
-- Not measured yet: Unreal Medium and Low, the old code on a real fly (base_b2 and base_v3 never left the ground), this PC's RTX 4060, Pixlli, menus to world, the 23-minute memory run, the soak.
+- Not measured yet: Unreal Low, the old code on a real fly (base_b2 and base_v3 never left the ground), this PC's RTX 4060, Pixlli, menus to world, the 23-minute memory run, the soak.
 
-**Reading runs:** `-McPerf` logs say `machine.txt` at the start of each run. Two vanilla worlds of one seed differ in 56% of chunks and 0.084% of blocks, ours in 36-47% and 0.025%, so same-seed variation isn't a bug here.
+**Reading runs:** each run's folder has `machine.txt` (free memory, CPU, GPU and the biggest processes when it started) and `end.txt` (exit code, time and peak working set). Two vanilla worlds of one seed differ in 56% of chunks and 0.084% of blocks, ours in 36-47% and 0.025%, so same-seed variation isn't a bug here.
+
+**Crash on leaving a world (fixed in 23f1fe0, unbuilt):** the packaged game's crash reports of 7 and 9 Nov (`%LOCALAPPDATA%\McClient\Saved\Crashes`) all stop in the audio subsystem's tick reading a freed block world. The subsystem outlives every level but dropped its borrowed world only on a dimension change, so quitting to the title, opening another world or joining a server crashed the next frame. It now holds a weak pointer to the world actor and drops the world when the actor goes. The 5 Nov reports came from older copies whose symbols aren't kept and are not explained.
+
+**All of the above is UE 5.8.** The 1070 builds only with 5.9 since 2026-11-10, so none of it compares with 5.9 runs. The 5.9 set, once this branch has m1 on 5.9 and is built, each clean (`MC_PERF_ALONE=1`), seed 12, 1920x1080:
+1. Vanilla `baseline.txt` twice (base59_a, base59_b), to see run-to-run spread before trusting any difference.
+2. Unreal High, Medium and Low through `look.txt` (base59_uh, base59_um, base59_ul).
+3. Vanilla capped at 120 (`-McPerfCvars=t.MaxFPS=120`, base59_cap), the first clean capped run.
+4. Flying with `mc.World.OutrunPriority` 0, 1 and 2 (6f672ab), capped, reading the STREAM lines to choose the default.
+5. Leave-to-title check, `tools/perf/leave.txt` with `MC_PERF_MINUTES=3`: a world, Escape, Save and Quit to Title, 30 s on the title; passes with no new crash report (unbuilt and untried; the script may stop at the title, since it runs on the world's player controller).
+Then the frame cap default (the reference options have maxFps 120 and vsync on), the 23-minute memory run and the soak.

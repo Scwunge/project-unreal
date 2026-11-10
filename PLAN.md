@@ -1333,3 +1333,8 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 ### Statistics: Items and Mobs tabs (geometry unmeasured)
 - The Items tab lists every item with a count in broken, crafted, mined, used, picked up or dropped (the six sprite headers from the jar), item picture left, counts centred in 40 wide columns, "-" for none. The Mobs tab lists every mob the game has with the jar's "You killed N X" / "You have never killed X" and "X killed you N time(s)" lines. Row heights (20 and 24), column positions and the grey of the "never" lines are my guess: the ref harness cannot switch Statistics tabs, so nothing was measured. Provenance gap until a tab-click verb exists in Script.java.
 - New counters: dropped (thrown or dropped from a window) and picked up (items collected, by the inventory difference), plus custom:drop. `killed_by:` is not counted anywhere yet, so every mob reads "never killed you". Vehicle distances, fish_caught, enchant_item, bell_ring and the rest of the General counters are still unwired.
+
+### /recipe give|take (resource-packs session, 2026-11-10, unbuilt)
+- `/recipe give|take <players> (<recipe>|*)` is in McCommands.cpp with test assertions; written before the UE 5.9 move, not yet compiled or run.
+- Gap: the unknown-recipe error wording ("Can't find element ... of type 'minecraft:recipe'") is unmeasured; measure with a ref run.
+- Gap: the unlocked set is per session in a static, not saved per player; `take *` counts only what was given, not the game's full recipe list.

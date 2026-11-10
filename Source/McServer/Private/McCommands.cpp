@@ -4931,7 +4931,7 @@ namespace
 			const FName Id(*McCache::Namespaced(Words[3]));
 			if (!Book.Find(Id))
 			{
-				return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:recipe'"), *Id.ToString())), Fail(BorderContext(Command, Command.Len())) };
+				return { Fail(FString::Printf(TEXT("Unknown recipe: %s"), *Id.ToString())) };
 			}
 			Wanted.Add(Id);
 		}

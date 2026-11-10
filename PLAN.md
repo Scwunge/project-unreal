@@ -1336,5 +1336,5 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 
 ### /recipe give|take (resource-packs session, 2026-11-10, unbuilt)
 - `/recipe give|take <players> (<recipe>|*)` is in McCommands.cpp with test assertions; written before the UE 5.9 move, not yet compiled or run.
-- Gap: the unknown-recipe error wording ("Can't find element ... of type 'minecraft:recipe'") is unmeasured; measure with a ref run.
+- Measured 2026-11-10 (ref run cmd_recipe.txt): unknown recipe is "Unknown recipe: <id>" (fixed); non-player selector: "Only players may be affected by this command, but the provided selector includes entities". `give *` in the game unlocked 1727 recipes, `take *` took 1746 (ours counts our recipe book only).
 - Gap: the unlocked set is per session in a static, not saved per player; `take *` counts only what was given, not the game's full recipe list.

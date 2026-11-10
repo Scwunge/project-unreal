@@ -634,6 +634,7 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("recipe again"), First(TEXT("recipe give Steve minecraft:stick")), FString(TEXT("No new recipes were learned")));
 	TestEqual(TEXT("recipe take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("Took 1 recipe(s) from Steve")));
 	TestEqual(TEXT("recipe nothing to take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("No recipes could be forgotten")));
+	TestEqual(TEXT("recipe unknown"), First(TEXT("recipe give Steve minecraft:nonexistent_thing")), FString(TEXT("Unknown recipe: minecraft:nonexistent_thing")));
 	// Measured against the game: /place.
 	TestEqual(TEXT("place in a world without features"), First(TEXT("place feature minecraft:oak 0 70 0")), FString(TEXT("Failed to place feature")));
 	// Measured against the game: /ride.

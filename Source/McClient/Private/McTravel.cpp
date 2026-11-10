@@ -126,6 +126,20 @@ bool UMcTravelSubsystem::AddTrip(AMcPlayerController& Controller, AMcWorldActor&
 	Trip.StartedAt = GetWorld()->GetTimeSeconds();
 	Trip.Chunk = FIntPoint(McCoords::BlockToChunk(Trip.Target.X), McCoords::BlockToChunk(Trip.Target.Z));
 	Trip.Anchor = Dest.AddAnchor(Trip.Chunk, Trip.ChunkRadius);
+	// A rider takes the boat or cart (vehicle_log46): it is packed now and set down with the rider on arrival.
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Controller.GetPawn());
+	FMcEntityHost* Host = Controller.GetWorldActor() ? Controller.GetWorldActor()->GetEntityHost() : nullptr;
+	if (Trip.Kind != EKind::Exact && Pawn && Pawn->GetRidingId() != 0 && Host)
+	{
+		if (FMcEntity* Ridden = Host->GetManager().Find(Pawn->GetRidingId()))
+		{
+			Trip.VehicleBytes = Host->PackEntity(*Ridden);
+			if (!Trip.VehicleBytes.IsEmpty())
+			{
+				Ridden->bRemoved = true;
+			}
+		}
+	}
 	Trips.Add(Trip);
 	return true;
 }
@@ -283,6 +297,16 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 	}
 	Player->EnterWorld(*Dest);
 	Pawn->ServerTeleport(Feet, Yaw);
+	if (!Trip.VehicleBytes.IsEmpty() && Dest->GetEntityHost())
+	{
+		// The vehicle comes out at the portal's standing point with no speed (vehicle_log46); the rider sits in it again.
+		if (FMcEntity* Arrived = Dest->GetEntityHost()->UnpackEntity(Trip.VehicleBytes, Feet))
+		{
+			Arrived->PortalCooldown = 300;
+			Arrived->Body.Velocity = FVector::ZeroVector;
+			Pawn->ServerRide(Arrived->Id);
+		}
+	}
 	States.FindOrAdd(Player).bMustLeave = true;
 	if (Trip.Kind == EKind::NetherPortal)
 	{

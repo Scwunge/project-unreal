@@ -71,6 +71,8 @@ private:
 		bool bAlongX = true;
 		FVector Feet = FVector::ZeroVector;
 		float McYaw = 0.0f;
+		// The vehicle the player rides, packed for the trip (empty when on foot).
+		TArray<uint8> VehicleBytes;
 		double StartedAt = 0.0;
 	};
 	struct FPortalState

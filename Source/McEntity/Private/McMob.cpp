@@ -1884,6 +1884,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		}
 		else if (OnAttackPlayer)
 		{
+			UE_LOG(LogTemp, Display, TEXT("player bitten by %s at %s (anger %d, damage %.1f)"), *Type.Name.ToString(), *Body.Position.ToString(), AngerTicks, BiteDamage);
 			OnAttackPlayer(Target, BiteDamage);
 			// What a bite gives (reference, effects2/3/4.txt): a husk hunger for 140 ticks on Normal and 280 on Hard (none on Easy,
 			// the Easy runs showed none in 120 ticks), a wither skeleton wither for 200 at Normal and Hard (199 on Easy too).

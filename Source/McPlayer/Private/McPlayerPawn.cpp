@@ -1126,6 +1126,10 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
 	UE_LOG(LogTemp, Display, TEXT("player hurt: kind %d, %.1f offered, %.1f taken, now %.1f hp, at %.1f %.1f %.1f"), static_cast<int32>(Kind), Amount, Taken, Data->Stats.Health, GetFeetPosition().X, GetFeetPosition().Y, GetFeetPosition().Z);
+	if (From)
+	{
+		UE_LOG(LogTemp, Display, TEXT("player hurt: from %s"), *From->ToString());
+	}
 	if (Taken > 0.0f && bSleeping)
 	{
 		ServerWakeUp();

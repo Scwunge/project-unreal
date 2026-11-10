@@ -1406,7 +1406,7 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 				}
 			}
 			const FVector Spot(Target->Body.Position.X * 0.5, 0.0, Target->Body.Position.Z * 0.5);
-			if (FVector::Dist2D(Feet, Spot) > 4.0)
+			if (FVector::Dist2D(FVector(Feet.X, Feet.Z, 0.0), FVector(Spot.X, Spot.Z, 0.0)) > 4.0)
 			{
 				HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, GroundAt(Spot.X, Spot.Z), Spot.Z));
 				Bot->NextAct = Bot->Time + 1.5;
@@ -1457,7 +1457,7 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 			return true;
 		}
 		const FVector Spot(0.5, GroundAt(0.5, 30.5), 30.5);
-		if (FVector::Dist2D(Feet, FVector(Spot.X, 0.0, Spot.Z)) > 6.0)
+		if (FVector::Dist2D(FVector(Feet.X, Feet.Z, 0.0), FVector(Spot.X, Spot.Z, 0.0)) > 6.0)
 		{
 			HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, Spot.Y, Spot.Z));
 			Bot->NextAct = Bot->Time + 1.0;

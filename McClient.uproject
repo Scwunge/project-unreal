@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.8",
+	"EngineAssociation": "5.9",
 	"Category": "",
 	"Description": "Private Unreal game that plays like Minecraft Java Edition 26.3. See PLAN.md.",
 	"Modules": [

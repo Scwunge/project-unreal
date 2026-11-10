@@ -767,7 +767,8 @@ FVector FMcMob::GetSeatOffset(const FMcMob& Rider) const
 	double Back = 0.0;
 	if (Type.Name == FName(TEXT("minecraft:chicken")))
 	{
-		Up = 0.513;
+		// jockey_chicken_adult.txt: a grown rider sits on the chicken's feet, a baby 0.513 up.
+		Up = Rider.IsYoung() ? 0.513 : 0.0;
 		Back = 0.1;
 	}
 	else if (Type.Name == FName(TEXT("minecraft:spider")))
@@ -1327,7 +1328,7 @@ void FMcMob::TickAlone(FMcEntityManager& Manager)
 	// A baby zombie is half as fast again as a grown one (the game's +50% baby speed modifier).
 	// Riding a mob, the pair walks at the mount's speed (a chicken jockey crossed 2.75 blocks a second in the log, a chicken's 0.25
 	// attribute at ten blocks a second per unit and a tenth over), steered by the rider.
-	Input.Speed = static_cast<float>(Carrier ? GetInputSpeed(Carrier->Type) * CarriedSpeedFactor : GetInputSpeed(Type) * (YoungTicks > 0 && CanBeBabyZombie(Type.Name) ? 1.5 : 1.0));
+	Input.Speed = static_cast<float>(Carrier ? GetInputSpeed(Carrier->Type) * (Carrier->Type.Name == FName(TEXT("minecraft:spider")) ? SpiderCarriedSpeedFactor : CarriedSpeedFactor) : GetInputSpeed(Type) * (YoungTicks > 0 && CanBeBabyZombie(Type.Name) ? 1.5 : 1.0));
 	bool bWalking = false;
 	if (bHasTarget)
 	{

@@ -114,6 +114,8 @@ public:
 	// The mob it is riding while its tick runs over that mob's body, else null. Not saved.
 	const FMcMob* Carrier = nullptr;
 	static constexpr double CarriedSpeedFactor = 1.1;
+	// A spider carrying a rider: 5.7 blocks a second in jockey_spider_near.txt, against 3.6 at 1.1 times its own speed.
+	static constexpr double SpiderCarriedSpeedFactor = 1.75;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).

@@ -1773,5 +1773,8 @@ The changes in that table aren't isolated: the TSR preset likely explains most o
 2. Unreal High, Medium and Low through `look.txt` (base59_uh, base59_um, base59_ul).
 3. Vanilla capped at 120 (`-McPerfCvars=t.MaxFPS=120`, base59_cap), the first clean capped run.
 4. Flying with `mc.World.OutrunPriority` 0, 1 and 2 (6f672ab), capped, reading the STREAM lines to choose the default.
-5. Leave-to-title check, `tools/perf/leave.txt` with `MC_PERF_MINUTES=3`: a world, Escape, Save and Quit to Title, 30 s on the title; passes with no new crash report (unbuilt and untried; the script may stop at the title, since it runs on the world's player controller).
-Then the frame cap default (the reference options have maxFps 120 and vsync on), the 23-minute memory run and the soak.
+5. Leave-to-title check, `tools/perf/leave.txt` with `MC_PERF_MINUTES=3`: a world, Escape, Save and Quit to Title, 30 s on the title; passes with exit code 0 and no new crash report (untried; the script is one per process and the title has the same controller class, so it should carry on there).
+6. The new frame cap options with `-McPerf` off can't be read from the harness (it leaves them alone so runs stay comparable); check by hand once that 120 and VSync hold on the title and in a world.
+Then the 23-minute memory run and the soak.
+
+**Frame cap (unbuilt):** Options now has Max Framerate (10 to 260 in steps of 10, 260 Unlimited) and VSync, saved in options.json as `maxFps` and `vsync`, defaulting to 120 and on like the game's own options. They're set at the first menu frame and whenever the world's options apply. `-McPerf` runs leave them alone and choose with `-McPerfCvars`.

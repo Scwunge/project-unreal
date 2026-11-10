@@ -1228,34 +1228,60 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Saved.Save();
 	}
 
+	// Max Framerate 10 to 260 in steps of 10 (260 is Unlimited) and VSync, as the game's Video Settings have them.
+	{
+		const FString FpsText = Settings.MaxFps >= FMcClientOptions::UnlimitedFps ? FString(TEXT("Max Framerate: Unlimited"))
+			: FString::Printf(TEXT("Max Framerate: %d fps"), Settings.MaxFps);
+		const int32 Fps = 10 + 10 * FMath::RoundToInt(25.0f * MenuSlider(4, FpsText, (Settings.MaxFps - 10) / 250.0f, Left, Top + 84.0f, 150.0f, 20.0f));
+		if (Fps != Settings.MaxFps)
+		{
+			Settings.MaxFps = Fps;
+			Settings.ApplyFrameRate();
+		}
+		if (Dragging == 4 && DraggedSlider == INDEX_NONE)
+		{
+			FMcClientOptions Saved = FMcClientOptions::Load();
+			Saved.MaxFps = Settings.MaxFps;
+			Saved.Save();
+		}
+		if (MenuButton(Settings.bVSync ? TEXT("VSync: ON") : TEXT("VSync: OFF"), Right, Top + 84.0f, 150.0f, 20.0f))
+		{
+			Settings.bVSync = !Settings.bVSync;
+			Settings.ApplyFrameRate();
+			FMcClientOptions Saved = FMcClientOptions::Load();
+			Saved.bVSync = Settings.bVSync;
+			Saved.Save();
+		}
+	}
+
 	// Unreal Mode: the game lit by Unreal (Lumen, real shadows, fog, bloom) instead of Minecraft's own light.
 	const bool bUnreal = McRenderMode::IsEnhanced();
-	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), Left, Top + 84.0f, 150.0f, 20.0f))
+	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), Left, Top + 108.0f, 150.0f, 20.0f))
 	{
 		ToggleGraphics();
 	}
 	// HD Textures: generated high-resolution textures and materials (or a resource pack), on top of Unreal Mode.
 	const bool bHd = McRenderMode::GetHdSwitch();
-	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), Right, Top + 84.0f, 150.0f, 20.0f, bUnreal))
+	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), Right, Top + 108.0f, 150.0f, 20.0f, bUnreal))
 	{
 		ToggleHd();
 	}
 	// Quality, for Unreal Mode: cycles Low, Medium, High, Ultra; the FPS readout works in both looks.
 	static const TCHAR* const QualityNames[4] = { TEXT("Quality: Low"), TEXT("Quality: Medium"), TEXT("Quality: High"), TEXT("Quality: Ultra") };
-	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 132.0f, 150.0f, 20.0f, bUnreal))
+	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 156.0f, 150.0f, 20.0f, bUnreal))
 	{
 		McRenderMode::SetQuality((McRenderMode::GetQuality() + 1) % 4);
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.Quality = McRenderMode::GetQuality();
 		Options.Save();
 	}
-	if (MenuButton(FMcClientOptions::Load().bShowSubtitles ? TEXT("Subtitles: ON") : TEXT("Subtitles: OFF"), Right, Top + 108.0f, 150.0f, 20.0f))
+	if (MenuButton(FMcClientOptions::Load().bShowSubtitles ? TEXT("Subtitles: ON") : TEXT("Subtitles: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
 	{
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.bShowSubtitles = !Options.bShowSubtitles;
 		Options.Save();
 	}
-	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
+	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 156.0f, 150.0f, 20.0f))
 	{
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.bShowFps = !Options.bShowFps;
@@ -1265,7 +1291,7 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	// Ray tracing: greyed out, with the reason, without Unreal Mode or a card (and DX12) that traces rays.
 	const bool bRaysCan = McRenderMode::IsRayTracingSupported();
 	const bool bRays = McRenderMode::GetRayTracingSwitch();
-	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 156.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
+	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 180.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
 	{
 		McRenderMode::SetRayTracing(!bRays);
 		FMcClientOptions Options = FMcClientOptions::Load();
@@ -1273,28 +1299,28 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Options.Save();
 	}
 	DrawCentredText(!bUnreal ? TEXT("Ray Tracing needs Unreal Mode") : !bRaysCan ? TEXT("Ray Tracing: this card or graphics API can't trace rays (needs DX12)")
-		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 180.0f, Grey);
+		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 204.0f, Grey);
 	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
-		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
+		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 134.0f, Grey);
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
-		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
+		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 146.0f, Grey);
 
-	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 156.0f, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 180.0f, 150.0f, 20.0f))
 	{
 		OpenResourcePacks();
 		return;
 	}
 	if (bPacksNeedRestart)
 	{
-		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 246.0f, Grey);
+		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 270.0f, Grey);
 	}
 
-	if (MenuButton(McLang::Get(TEXT("options.language")), CentreX - 100.0f, Top + 196.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.language")), CentreX - 100.0f, Top + 220.0f, 200.0f, 20.0f))
 	{
 		OpenLanguage();
 		return;
 	}
-	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 220.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 244.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}
@@ -2019,6 +2045,7 @@ void AMcHUD::ApplyOptions()
 	bSettingsApplied = true;
 	if (APlayerController* Controller = GetOwningPlayerController())
 	{
+		Settings.ApplyFrameRate();
 		// The game's near plane is 0.05 blocks; the engine's 10 units would cut the hand held up to the camera, and the drawn bow's string comes within a unit or two of it.
 		Controller->ConsoleCommand(TEXT("r.SetNearClipPlane 1"));
 	}

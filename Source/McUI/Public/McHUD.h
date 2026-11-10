@@ -325,6 +325,8 @@ private:
 	int32 DraggedSlider = INDEX_NONE;
 	FMcClientOptions Settings;
 	bool bSettingsApplied = false;
+	// The saved frame cap and VSync, set once at the first menu or world (FMcClientOptions::ApplyFrameRate).
+	bool bFrameRateApplied = false;
 	TWeakObjectPtr<APawn> SettingsPawn;
 	int32 LanPort = 0;
 

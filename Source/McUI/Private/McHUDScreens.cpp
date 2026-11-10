@@ -2559,6 +2559,11 @@ void AMcHUD::DrawHUD()
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);
 	const int32 Width = Canvas->SizeX / Scale;
 	const int32 Height = Canvas->SizeY / Scale;
+	if (!bFrameRateApplied)
+	{
+		bFrameRateApplied = true;
+		FMcClientOptions::Load().ApplyFrameRate();
+	}
 	if (McLaunch::IsMenu(GetWorld()))
 	{
 		DrawMenus(Width, Height, true);

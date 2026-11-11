@@ -1100,31 +1100,31 @@ FVector FMcMob::GetSeatOffset(const FMcMob& Rider) const
 
 void FMcMob::Tick(FMcEntityManager& Manager)
 {
-	FMcMob* Mount = nullptr;
+	FMcMob* Steed = nullptr;
 	if (RidingId != 0)
 	{
 		FMcEntity* Found = Manager.Find(RidingId);
 		if (Found && Found->IsLiving() && !Found->bRemoved)
 		{
-			Mount = static_cast<FMcMob*>(Found);
+			Steed = static_cast<FMcMob*>(Found);
 		}
 	}
-	if (!Mount)
+	if (!Steed)
 	{
 		TickAlone(Manager);
 		return;
 	}
 	// The pair is one body, the mount's: the rider's goals walk it, its physics collide it, and the rider is put on its seat after.
 	const FMcBody Own = Body;
-	Body = Mount->Body;
-	Carrier = Mount;
+	Body = Steed->Body;
+	Carrier = Steed;
 	TickAlone(Manager);
 	Carrier = nullptr;
-	Mount->Body = Body;
-	Mount->Yaw = Yaw;
-	Mount->LastPosition = LastPosition;
+	Steed->Body = Body;
+	Steed->Yaw = Yaw;
+	Steed->LastPosition = LastPosition;
 	Body = Own;
-	Body.Position = Mount->Body.Position + Mount->GetSeatOffset(*this);
+	Body.Position = Steed->Body.Position + Steed->GetSeatOffset(*this);
 	Body.Velocity = FVector::ZeroVector;
 }
 

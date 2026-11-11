@@ -10,13 +10,36 @@
 #include "McSimulation.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/AutomationTest.h"
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/WindowsHWrapper.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 
 #if WITH_DEV_AUTOMATION_TESTS
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcSimPerfTest, "McClient.McSim.SimPerf",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::PerfFilter)
 
-namespace { constexpr double CalibrationIdleMs = 40.0; }
+namespace
+{
+	// What the calibration workload costs on an idle machine, in ms (a two-run fit): the unit of the scene numbers below. A scene's tick
+	// is timed in the CPU cycles this thread was actually given (not wall time), and scaled so the calibration workload is this many ms.
+	// A busy machine then changes neither number: the time a thread waits for a core is not counted, and frequency, cache and
+	// hyper-threading effects hit the calibration and the scene alike. Wall time is logged beside it for reading.
+	constexpr double CalibrationIdleMs = 40.0;
+
+	uint64 ThreadCycles()
+	{
+#if PLATFORM_WINDOWS
+		ULONG64 Cycles = 0;
+		QueryThreadCycleTime(GetCurrentThread(), &Cycles);
+		return Cycles;
+#else
+		return FPlatformTime::Cycles64();
+#endif
+	}
+}
 
 bool FMcSimPerfTest::RunTest(const FString& Parameters)
 {
@@ -183,18 +206,19 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 
 	for (const FScene& Scene : Scenes)
 	{
-	// How fast this machine is right now: a fixed integer workload, timed before each run. A scene's limit grows with how much slower
-	// than CalibrationIdleMs it is, so a loaded host cannot fail it but a slow sim still does.
-	const auto Calibrate = []()
+	// How fast this thread is right now: a fixed integer workload, timed in thread CPU cycles before each run. Scene ticks are timed in the same
+	// cycles and scaled to idle ms by it, so the limit does not move with machine load (the old wall-time scheme still failed at 25.01 and 35.5 ms
+	// against 25 on busy lanes).
+	const auto Calibrate = []() -> double
 	{
-		const double Start = FPlatformTime::Seconds();
+		const uint64 Start = ThreadCycles();
 		uint32 Value = 2463534242u;
 		for (int32 Index = 0; Index < 40000000; ++Index)
 		{
 			Value ^= Value << 13; Value ^= Value >> 17; Value ^= Value << 5;
 		}
-		const double Ms = (FPlatformTime::Seconds() - Start) * 1000.0;
-		return Value == 0 ? Ms + 1.0 : Ms;
+		const double Cycles = static_cast<double>(ThreadCycles() - Start);
+		return Value == 0 ? Cycles + 1.0 : Cycles;
 	};
 	// A busy machine (a merge suite beside it) slows every tick: a scene passes if any of up to three runs averages under the limit, so
 	// only a regression that is slow on every run fails, not a loaded host.
@@ -202,9 +226,10 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 	double Limit = 25.0;
 	for (int32 Attempt = 0; Attempt < 3 && BestAvg >= Limit; ++Attempt)
 	{
-		const double Calibration = Calibrate();
-		Limit = FMath::Max(Limit, 25.0 * Calibration / CalibrationIdleMs);
-		UE_LOG(LogTemp, Display, TEXT("SIMPERF calibration %.1f ms (limit now %.1f ms)"), Calibration, Limit);
+		// Cycles of the calibration workload: one "idle ms" is CalibrationCycles / CalibrationIdleMs cycles.
+		const double CalibrationCycles = Calibrate();
+		const double MsPerCycle = CalibrationIdleMs / CalibrationCycles;
+		UE_LOG(LogTemp, Display, TEXT("SIMPERF calibration %.0f cycles (= %.1f idle ms)"), CalibrationCycles, CalibrationIdleMs);
 		FMcBlockWorld World{FMcDimensionType()};
 		for (int32 Z = -Half; Z <= Half; ++Z)
 		{
@@ -225,19 +250,22 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 		Scene.Build(World, Sim);
 		const double BuildMs = (FPlatformTime::Seconds() - BuildStart) * 1000.0;
 		double Total = 0.0;
+		double WallTotal = 0.0;
 		double Worst = 0.0;
 		double First = 0.0;
 		int32 WorstAt = 0, Over20 = 0;
 		TArray<double> All;
 		for (int32 Tick = 0; Tick < Scene.Ticks; ++Tick)
 		{
-			const double Start = FPlatformTime::Seconds();
+			const double WallStart = FPlatformTime::Seconds();
+			const uint64 Start = ThreadCycles();
 			if (Scene.Each)
 			{
 				Scene.Each(World, Sim, Tick);
 			}
 			Sim.Tick();
-			const double Ms = (FPlatformTime::Seconds() - Start) * 1000.0;
+			const double Ms = static_cast<double>(ThreadCycles() - Start) * MsPerCycle;
+			WallTotal += (FPlatformTime::Seconds() - WallStart) * 1000.0;
 			if (Tick == 0)
 			{
 				First = Ms;
@@ -253,7 +281,7 @@ bool FMcSimPerfTest::RunTest(const FString& Parameters)
 		}
 		const double Avg = Total / Scene.Ticks;
 		All.Sort();
-		UE_LOG(LogTemp, Display, TEXT("SIMPERF %s: build %.1f ms, tick avg %.3f ms, first %.3f ms, worst %.3f ms at tick %d, median %.3f ms, p95 %.3f ms, %d ticks over 20 ms, scheduled left %d"), *Scene.Name, BuildMs, Avg, First, Worst, WorstAt, All[All.Num() / 2], All[All.Num() * 95 / 100], Over20, Sim.NumScheduled());
+		UE_LOG(LogTemp, Display, TEXT("SIMPERF %s: build %.1f ms, tick avg %.3f idle-ms (wall %.3f ms), first %.3f, worst %.3f at tick %d, median %.3f, p95 %.3f, %d ticks over 20, scheduled left %d"), *Scene.Name, BuildMs, Avg, WallTotal / Scene.Ticks, First, Worst, WorstAt, All[All.Num() / 2], All[All.Num() * 95 / 100], Over20, Sim.NumScheduled());
 		BestAvg = FMath::Min(BestAvg, Avg);
 	}
 	TestTrue(*FString::Printf(TEXT("%s averages under 25 ms a tick in at least one of three runs (best %.2f, limit %.2f)"), *Scene.Name, BestAvg, Limit), BestAvg < Limit);

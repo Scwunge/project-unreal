@@ -85,4 +85,4 @@ namespace McPerf
 	};
 }
 
-#define MC_PERF_SCOPE(Name) McPerf::FScope PREPROCESSOR_JOIN(McPerfScope, __LINE__)(EMcPerfScope::Name)
+#define MC_PERF_SCOPE(Name) McPerf::FScope UE_JOIN(McPerfScope, __LINE__)(EMcPerfScope::Name)

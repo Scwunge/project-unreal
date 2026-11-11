@@ -84,7 +84,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 	BodyYaw = Entity.Yaw;
 	HeadYaw = Entity.Yaw;
 	HeadPitch = Entity.Pitch;
-	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType() || Kind == FMcFireball::SkullType())
+	if (Kind == FMcFireball::GhastType() || Kind == FMcFireball::SmallType() || Kind == FMcFireball::SkullType() || Kind == FMcFireball::DragonType())
 	{
 		// Drawn as the fire charge item (the game's own picture for it); its size and spin are not matched.
 		Kind = FMcItemEntity::StaticType();
@@ -126,7 +126,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		// The falling block's picture is its block's.
 		ItemId = static_cast<const FMcFallingBlockEntity&>(Entity).Block;
 	}
-	else if (Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl"))
+	else if (Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye"))
 	{
 		// A thrown item's picture is its item's.
 		ItemId = Kind;

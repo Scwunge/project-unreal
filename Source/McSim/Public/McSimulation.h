@@ -7,6 +7,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "McGameEvent.h"
 #include "McCore.h"
 #include "McSound.h"
 
@@ -60,8 +61,43 @@ public:
 	void PlayerPlaced(const FIntVector& Pos);
 	// A player broke the block that was at Pos (State is what it was).
 	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
-	// Something made a vibration (frequency 1 to 15) at Pos; sculk sensors hear it.
+	// Something made a vibration (frequency 1 to 15) at Pos; sculk sensors hear it. (Prefer EmitGameEvent.)
 	void Vibrate(const FIntVector& Pos, int32 Frequency);
+	// A game event happened at Pos (name as in McGameEvents, "minecraft:step" or "step"): sculk sensors in range hear it as a
+	// vibration of its frequency, and every listener is told. Whoever simulates an entity calls this for what it does: steps,
+	// landings, damage, eating, mounting, explosions and so on (the frequency table is in McGameEvent.cpp).
+	void EmitGameEvent(FName Name, const FIntVector& Pos, const FMcGameEventSource& Source = FMcGameEventSource());
+	// Listeners (a warden's hearing) get every event with a frequency; use McGameEvents::WardenCanHear and IsVibrationOccluded.
+	int32 AddGameEventListener(TFunction<void(const FMcGameEvent&)> Listener);
+	void RemoveGameEventListener(int32 Handle);
+	// True if a wool or carpet block lies on the ray between the centres of the two cells (what stops a vibration).
+	bool IsVibrationOccluded(const FIntVector& From, const FIntVector& To) const;
+	// A player stands on the black top of the sculk shrieker at Pos. Only a naturally generated shrieker (can_summon) counts
+	// warnings; any shrieker shrieks.
+	void ShriekerTouched(const FIntVector& Pos, int32 PlayerId);
+	// A book went into or out of slot 0 to 5 of the chiseled bookshelf at Pos: comparators read slot + 1 (a vibration of 11 as well).
+	void BookshelfUsed(const FIntVector& Pos, int32 Slot);
+	// A player's warning level, 0 to 4; it drops by 1 for every 12000 ticks since the player last set a shrieker off.
+	int32 GetWarningLevel(int32 PlayerId) const;
+	// A shrieker started shrieking for this player: the player's warning level now, and the Darkness (12 s, players within 40 blocks)
+	// that follows when it ends. For whoever owns sounds and effects.
+	TFunction<void(const FIntVector& Pos, int32 PlayerId, int32 WarningLevel)> OnShriek;
+	// The shrieker at Pos has shrieked at warning level 4 for this player: a warden should try to emerge within 11x13x11 of it
+	// (20 tries, none if another warden is within 24 blocks); for whoever owns the warden.
+	TFunction<void(const FIntVector& Pos, int32 PlayerId)> OnWardenSummon;
+	// ---- The creaking heart (the redstone side runs the block; whoever owns the mobs runs the creaking) ----
+	// The heart at Pos wants a creaking within 16 across and 8 up and down of it; true if one was put there (and is now tied to it).
+	TFunction<bool(const FIntVector& Heart)> OnCreakingSpawn;
+	// The creaking tied to the heart should go: it twitched and dies when the heart was broken (bBroken), or despawns at daybreak.
+	TFunction<void(const FIntVector& Heart, bool bBroken)> OnCreakingRelease;
+	// How far the creaking tied to the heart is from it, or below 0 for none.
+	TFunction<double(const FIntVector& Heart)> GetCreakingDistance;
+	// A player or tamed wolf hit the creaking tied to the heart.
+	void CreakingHit(const FIntVector& Heart);
+	// (Used by the redstone side.)
+	bool CanShriekFor(int32 PlayerId, bool bCanSummon) const;
+	void ShriekerActivated(const FIntVector& Pos, int32 PlayerId, bool bCanSummon);
+	void ShriekerFinished(const FIntVector& Pos, bool bCanSummon);
 	void SetSunLight(int32 Level);
 	int32 GetDustPower(const FIntVector& Pos) const;
 	// SetSunLight fixes what detectors read; without it they follow the day clock and the weather.
@@ -210,4 +246,11 @@ private:
 	TUniquePtr<FMcNature> Nature;
 	int64 DayOffset = 0;
 	bool bSunFixed = false;
+	TMap<int32, TFunction<void(const FMcGameEvent&)>> GameListeners;
+	int32 NextListener = 1;
+	// Shrieker warning: level, the tick it last rose, and the tick its next activation is allowed.
+	struct FWarning { int32 Level = 0; int64 Raised = 0; int64 NextAllowed = 0; };
+	TMap<int32, FWarning> Warnings;
+	// Who set the shrieker at Pos off (for the warden summon at its end).
+	TMap<FIntVector, int32> ShriekedFor;
 };

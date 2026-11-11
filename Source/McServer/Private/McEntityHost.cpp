@@ -1,5 +1,8 @@
 #include "McEntityHost.h"
+#include "McEnchantEffects.h"
 #include "McMount.h"
+#include "McWarden.h"
+#include "McCreaking.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -106,6 +109,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.GatewaySeed = InSeed;
 	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
 	{
 		if (OnPlayerBlast)
@@ -130,6 +134,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 		{
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
+	};
+	Manager.PlayerLooksAt = [this](const FVector& PlayerPos, const FVector& Point)
+	{
+		return PlayerLooksAt && PlayerLooksAt(PlayerPos, Point);
 	};
 	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
 	{
@@ -353,6 +361,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	else if (Kind == FMcWanderingTrader::StaticType())
 	{
 		Mob = new FMcWanderingTrader(*Type);
+	}
+	else if (Kind == FMcWarden::StaticType())
+	{
+		FMcWarden* Warden = new FMcWarden(*Type);
+		Warden->FindPlayer = [this](int32 Id, FVector& Out) { return FindPlayerById && FindPlayerById(Id, Out); };
+		Warden->IdOfPlayerAt = [this](const FVector& Feet) { return PlayerIdAt ? PlayerIdAt(Feet) : 0; };
+		Mob = Warden;
+	}
+	else if (Kind == FMcCreaking::StaticType())
+	{
+		Mob = new FMcCreaking(*Type);
 	}
 	else
 	{
@@ -608,11 +627,32 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	{
 		return;
 	}
+	// What its loot table can ask: whether a player did it (a hit or a shot in the last five seconds), what it is.
+	McLoot::FMobContext Context;
+	Context.bKilledByPlayer = Mob.Age - Mob.PlayerHitAge <= 100;
+	if (Context.bKilledByPlayer)
+	{
+		Context.Killer = TEXT("minecraft:player");
+		Context.bProjectile = Mob.bPlayerHitWasShot;
+		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
+	}
+	Context.bOnFire = Mob.BurnTicks > 0;
+	// What it sits in (a boat, a minecart): a zombie's red mushroom asks for a zombie horse, which nothing here rides yet.
+	if (Mob.RidingId != 0)
+	{
+		if (const FMcEntity* Vehicle = Manager.Find(Mob.RidingId))
+		{
+			Context.Vehicle = Vehicle->GetType();
+		}
+	}
+	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
+	Context.DyeColor = Mob.DyeColor;
+	const McLoot::FMobScope LootScope(Context);
 	FMcRandom Rng(static_cast<uint64>(Seed) ^ (static_cast<uint64>(Mob.Id) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64>(Ticks));
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
 	TArray<FMcItemStack> Drops;
-	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops))
+	if (McLoot::RollEntity(Table, Mob.bCaptain, Rng, Drops, Mob.LootingLevel))
 	{
 		for (const FMcItemStack& Stack : Drops)
 		{
@@ -1346,7 +1386,7 @@ FMcEntity* FMcEntityHost::FindVehicle(const FVector& Eye, const FVector& Directi
 	return Best;
 }
 
-bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative)
+bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative, const FMcItemStack* Weapon, float Strength)
 {
 	// The nearest living entity whose box the ray enters within Reach.
 	// The direction comes from a client: a NaN or empty one hits nothing.
@@ -1382,7 +1422,41 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 	}
 	if (Best->IsLiving())
 	{
-		static_cast<FMcMob*>(Best)->Damage(Damage, &Eye);
+		FMcMob& Mob = *static_cast<FMcMob*>(Best);
+		float Push = 0.0f;
+		if (Weapon && !Weapon->IsEmpty())
+		{
+			// What the weapon's enchantments add, from their own data (data/minecraft/enchantment).
+			McEnchantEffects::FContext Context;
+			Context.VictimType = Mob.GetType();
+			Context.bAttackerIsPlayer = true;
+			Context.DamageTags = McEnchantEffects::GetDamageTags(TEXT("minecraft:player_attack"));
+			Damage += McEnchantEffects::SumAdd(*Weapon, TEXT("minecraft:damage"), Context) * Strength;
+			Push = McEnchantEffects::SumAdd(*Weapon, TEXT("minecraft:knockback"), Context) * 0.5f;
+			Mob.LootingLevel = Weapon->GetEnchantmentLevel(TEXT("minecraft:looting"));
+		}
+		else
+		{
+			Mob.LootingLevel = 0;
+		}
+		Mob.PlayerHitAge = Mob.Age;
+		Mob.bPlayerHitWasShot = false;
+		const FVector OldVelocity = Mob.Body.Velocity;
+		const float Before = Mob.Health;
+		const bool bTook = Mob.Damage(Damage, &Eye);
+		UE_LOG(LogTemp, Verbose, TEXT("McHit attack: %s at (%.2f %.2f %.2f), health %.1f -> %.1f (took %d, hurt time %d), removed %d"), *Mob.GetType().ToString(), Mob.Body.Position.X, Mob.Body.Position.Y, Mob.Body.Position.Z,
+			Before, Mob.Health, bTook ? 1 : 0, Mob.HurtTime, Mob.bRemoved ? 1 : 0);
+		if (Push > 0.0f && !Mob.bRemoved)
+		{
+			// A second push on top of the first, the hurt one's: half what it had, and Push away from the hitter.
+			FVector Away = Mob.Body.Position - Eye;
+			Away.Y = 0.0;
+			Away = Away.GetSafeNormal();
+			Mob.Body.Velocity.X = Mob.Body.Velocity.X * 0.5 + Away.X * Push;
+			Mob.Body.Velocity.Z = Mob.Body.Velocity.Z * 0.5 + Away.Z * Push;
+			Mob.Body.Velocity.Y = FMath::Min(Mob.Body.Velocity.Y * 0.5 + Push, 0.4);
+		}
+		(void)OldVelocity;
 		return true;
 	}
 	return Best->OnAttacked(Damage, bCreative);

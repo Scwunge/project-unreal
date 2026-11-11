@@ -40,6 +40,11 @@ public:
 	// this machine, what they see all follow; the pawn is moved by the caller.
 	void EnterWorld(AMcWorldActor& NewWorld);
 
+	// The local player's pawn gets its client hooks (attack, set block, lid push), once. Server hooks (HookServerPawn) come separately and may come first.
+	void SetUpLocalPawn(AMcPlayerPawn& LocalPawn);
+	// Server: connects the pawn's survival rules to the world (blocks, items, windows, respawning).
+	void HookServerPawn(AMcPlayerPawn& Hooked);
+
 private:
 	void ConnectToWorld();
 	void SetUpLocalView();
@@ -55,9 +60,6 @@ private:
 	void SyncDimensionView();
 	void StartDevScreenshot();
 	void HandleSetBlockRequest(const FIntVector& Pos, uint16 State);
-	// Server: connects the pawn's survival rules to the world (blocks, items, windows, respawning).
-	void HookServerPawn(AMcPlayerPawn& Hooked);
-
 	UPROPERTY(Transient)
 	TObjectPtr<AMcWorldActor> WorldActor;
 

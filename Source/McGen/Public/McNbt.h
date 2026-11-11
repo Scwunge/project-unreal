@@ -34,6 +34,9 @@ public:
 	// List elements, array elements (as integers) or compound values (parallel to Keys).
 	TArray<FMcNbt> Values;
 	TArray<FString> Keys;
+	// A byte array made from raw bytes (light data, 2048 at a time): written in place of Values when it has any, which
+	// saves a tag per byte. Reading still fills Values.
+	TArray<uint8> Bytes;
 
 	// Reads a gzip (or, if it isn't gzip, raw) NBT file; false if it can't be read or is malformed.
 	static bool LoadFile(const FString& Path, FMcNbt& Out);

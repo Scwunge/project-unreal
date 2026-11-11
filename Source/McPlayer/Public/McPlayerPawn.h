@@ -24,6 +24,17 @@ class FMcEntityManager;
 class UCameraComponent;
 class UMcPlayerDataComponent;
 
+// Something that happened to a player which an advancement may be waiting for (the game's trigger, by id, with what it was about).
+struct FMcTriggerEvent
+{
+	FName Trigger;
+	FName Item;
+	FName Block;
+	FName Entity;
+	FName Recipe;
+	FName Biome;
+};
+
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
 {
@@ -80,6 +91,8 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
 	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
 	TFunction<FMcEntityManager*()> GetEntities;
+	// Where the nearest stronghold's corner is (block x, z) for a thrown eye of ender; false if this dimension has none.
+	TFunction<bool(const FVector&, FVector2D&)> OnLocateStronghold;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
 	// A survival player started to dig at Pos (a click on it): a note block sounds.
@@ -90,6 +103,9 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The game mode judges the advancement triggers.
+	TFunction<void(AMcPlayerPawn& Player, const FMcTriggerEvent& Event)> OnTrigger;
+	void FireTrigger(const FMcTriggerEvent& Event) { if (OnTrigger) { OnTrigger(*this, Event); } }
 	// Called after the server put a block down for this player.
 	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
@@ -99,7 +115,8 @@ public:
 	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
 	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
-	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
+	// Weapon is the stack in hand and Strength how charged the swing was (its enchantments act through them).
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
 	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the
@@ -158,6 +175,8 @@ public:
 	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
 	void ServerRide(int32 VehicleId);
 	void ServerDismount();
+	// A game event this player made at a place (what sculk sensors and wardens hear): sneaking and the game mode are told with it.
+	void ServerGameEvent(FName Name, const FVector& At);
 	// How far the server lets a player reach for blocks, eyes to the block's middle.
 	static constexpr double ServerReach = 6.5;
 
@@ -413,6 +432,9 @@ private:
 	bool bServerGliding = false;
 	// Server: wears the wings while gliding.
 	void ServerTickElytra();
+	// Frost Walker: freezes the water under the feet in a disk when the block the player stands in changes (the enchantment's replace_disk).
+	void ServerTickFrostWalker();
+	FIntVector FrostWalkerBlock = FIntVector(MAX_int32, 0, 0);
 	// Server: a rocket used while gliding: used up, and the pull starts on the owner's machine.
 	bool ServerBoost();
 	// The owner flew into a wall this hard.
@@ -522,6 +544,7 @@ private:
 	float ServerLastHealth = -1.0f;
 	// Ticks since the last swing, for how charged the next is.
 	int32 ServerAttackTicks = 100;
+	int32 LocationTicks = 0;
 	bool bServerUsing = false;
 	FRandomStream DropRandom{ 11 };
 };

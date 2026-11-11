@@ -83,6 +83,8 @@ public:
 
 	explicit FMcFeatureLibrary(int32 InSeaLevel = 63, int32 InMinY = -64, int32 InHeight = 384);
 
+	// The corner (block x, z) of the start chunk of the stronghold nearest a position; false if the structures place none.
+	bool FindNearestStronghold(uint64 Seed, double X, double Z, FIntPoint& OutCorner) const;
 	// A placed feature by id ("minecraft:trees_plains"), or null.
 	TSharedPtr<const FMcPlacedFeature> GetPlaced(const FString& Id);
 	// A placed feature written as an id or inline ({ "feature": ..., "placement": [...] }).

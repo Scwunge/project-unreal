@@ -1178,6 +1178,31 @@ const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& S
 	return nullptr;
 }
 
+bool FMcStructureLibrary::FindNearestRingStart(uint64 Seed, double X, double Z, FIntPoint& OutChunk) const
+{
+	double Best = TNumericLimits<double>::Max();
+	bool bFound = false;
+	for (const TSharedPtr<FSet>& Set : Sets)
+	{
+		if (!Set->bRings)
+		{
+			continue;
+		}
+		for (const FIntPoint& Chunk : RingChunks(Seed, Set->RingCount, Set->RingDistance, Set->RingSpread))
+		{
+			const double Dx = Chunk.X * 16.0 - X;
+			const double Dz = Chunk.Y * 16.0 - Z;
+			if (Dx * Dx + Dz * Dz < Best)
+			{
+				Best = Dx * Dx + Dz * Dz;
+				OutChunk = Chunk;
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
 void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const
 {
 	for (const TSharedPtr<FSet>& Set : Sets)

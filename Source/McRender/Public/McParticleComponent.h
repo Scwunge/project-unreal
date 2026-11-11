@@ -16,6 +16,7 @@
 
 #include "CoreMinimal.h"
 #include "McCore.h"
+#include "McParticleKinds.h"
 #include "ProceduralMeshComponent.h"
 #include "McParticleComponent.generated.h"
 
@@ -56,6 +57,10 @@ public:
 	// of the food's sprite; each bit takes one at random.
 	void ItemEaten(const FVector& Eye, const FVector& Forward, const TArray<FColor>& Colours);
 
+	// What /particle and the game's own effects ask for: Count particles of the named kind (see McParticleKinds) at Pos (blocks) with
+	// the start velocities spread by Delta (blocks, as /particle's dx dy dz) and scaled by Speed.
+	void Emit(FName Name, const FVector& Pos, const FVector& Delta, float Speed, int32 Count);
+
 	int32 NumParticles() const { return Particles.Num(); }
 
 	// The component drawing particles for World on this machine, if any (the player's digging finds it this way).
@@ -86,6 +91,7 @@ private:
 		Bubble,  // the game's bubble.png, drawn a texel at a time: a bubble column's, and one rising a little and bursting
 		Wake,    // a fleck of foam over a swimming fish
 		Totem,   // a spark off a Totem of Undying
+		Sprite,  // one of the game's particle pictures, behaving as its McParticleKinds row says
 	};
 
 	struct FParticle
@@ -107,6 +113,8 @@ private:
 		bool bPhysics = false;
 		bool bOnGround = false;
 		float Phase = 0.0f;  // leaves: where in their sway
+		const McParticleKinds::FKind* Row = nullptr;  // sprites: how it behaves
+		uint8 Frame = 0;     // sprites: the picture picked when it appeared
 	};
 
 	FParticle& Add(EStyle Style, const FVector& Pos, const FVector& Velocity);
@@ -123,7 +131,7 @@ private:
 	float SkyLightAt(const FIntVector& Pos) const;
 
 	// What each state does when picked near the player.
-	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown };
+	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown, Drip };
 	void BuildEmitters();
 	TArray<EEmitter> Emitters;  // by state id
 	TArray<FIntVector> Facing;  // by state id: a wall torch's or furnace's facing
@@ -136,6 +144,7 @@ private:
 	FVector CameraBlock = FVector::ZeroVector;
 	uint32 MaterialGeneration = 0;
 	FDelegateHandle NoteHandle;
+	FDelegateHandle ParticleHandle;
 
 	// The totem's sparks are drawn from their own sprites (particles/totem_of_undying.json: glitter_7 down to
 	// glitter_0 over a spark's life), the eight frames side by side in one picture, on a second section.

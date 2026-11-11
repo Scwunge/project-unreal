@@ -1,0 +1,21 @@
+{
+  "description": "The commonest particle kinds in a row, each re-emitted every second, as in the vanilla ref runs qb1 to qb4 (one particle at rest per kind): heart, happy_villager, angry_villager, crit, enchanted_hit, damage_indicator, witch above; poof, smoke, large_smoke, white_smoke, cloud, flame, small_flame below.",
+  "camera": [3.5, -58.38, 0.5, 0.0, 10.0],
+  "blocks": [ { "from": [-8, -61, -2], "to": [14, -61, 8], "state": "minecraft:stone" } ],
+  "particles": [
+    { "name": "minecraft:heart", "at": [0.9, -58.8, 4.0] },
+    { "name": "minecraft:happy_villager", "at": [2.1, -58.8, 4.0] },
+    { "name": "minecraft:angry_villager", "at": [3.3, -58.8, 4.0] },
+    { "name": "minecraft:crit", "at": [4.5, -58.8, 4.0] },
+    { "name": "minecraft:enchanted_hit", "at": [5.7, -58.8, 4.0] },
+    { "name": "minecraft:damage_indicator", "at": [6.9, -58.8, 4.0] },
+    { "name": "minecraft:witch", "at": [8.1, -58.8, 4.0] },
+    { "name": "minecraft:poof", "at": [0.9, -60.0, 4.0] },
+    { "name": "minecraft:smoke", "at": [2.1, -60.0, 4.0] },
+    { "name": "minecraft:large_smoke", "at": [3.3, -60.0, 4.0] },
+    { "name": "minecraft:white_smoke", "at": [4.5, -60.0, 4.0] },
+    { "name": "minecraft:cloud", "at": [5.7, -60.0, 4.0] },
+    { "name": "minecraft:flame", "at": [6.9, -60.0, 4.0] },
+    { "name": "minecraft:explosion", "at": [8.1, -60.0, 4.0], "every": 30 }
+  ]
+}

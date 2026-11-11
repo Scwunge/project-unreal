@@ -399,7 +399,11 @@ void FMcWarden::Tick(FMcEntityManager& Manager)
 			if (Target)
 			{
 				const FVector Place = GetTargetPlace(*Target, Manager);
-				if (Target->Id > 0 && OnAttackPlayer)
+				if (Target->Id > 0 && OnSonicHitPlayer)
+				{
+					OnSonicHitPlayer(Place, McWarden::GetSonicDamage(Manager.Difficulty));
+				}
+				else if (Target->Id > 0 && OnAttackPlayer)
 				{
 					OnAttackPlayer(Place, McWarden::GetSonicDamage(Manager.Difficulty));
 				}

@@ -59,6 +59,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// Same, for a hit that armor does not reduce (a warden's sonic boom). Unset: it goes to OnPlayerHit.
+	TFunction<void(const FVector&, float)> OnPlayerHitThroughArmor;
 	// Called with the player's feet, the damage, the push and the centre when a blast reaches a player.
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).

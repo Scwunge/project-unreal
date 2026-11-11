@@ -365,6 +365,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 		FMcWarden* Warden = new FMcWarden(*Type);
 		Warden->FindPlayer = [this](int32 Id, FVector& Out) { return FindPlayerById && FindPlayerById(Id, Out); };
 		Warden->IdOfPlayerAt = [this](const FVector& Feet) { return PlayerIdAt ? PlayerIdAt(Feet) : 0; };
+		Warden->OnSonicHitPlayer = [this](const FVector& Feet, float Damage)
+		{
+			if (OnPlayerHitThroughArmor)
+			{
+				OnPlayerHitThroughArmor(Feet, Damage);
+			}
+			else if (OnPlayerHit)
+			{
+				OnPlayerHit(Feet, Damage);
+			}
+		};
 		Mob = Warden;
 	}
 	else if (Kind == FMcCreaking::StaticType())

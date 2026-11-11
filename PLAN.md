@@ -1472,6 +1472,8 @@ What new ref verbs would settle the unverified numbers (Script.java is off limit
 - After the roar the warden keeps chasing at the same speed for 1700+ ticks and ended 165 blocks away: the player was being pushed along by its hits (the player's position is not in the log, so this is a guess); a `log player` verb would show it.
 - Sonic boom, melee damage and Darkness could not be read: the log has no player health or effects.
 
+**Sonic boom ignores armor (2026-11-11, UNBUILT):** `FMcWarden::OnSonicHitPlayer` -> `FMcEntityHost::OnPlayerHitThroughArmor` -> `AMcGameMode::HurtPlayerNear(..., EDamage::Magic)` (Magic is in `BypassesArmor`); without the host callback it falls back to `OnPlayerHit`, so McWardenSceneTest still sees the hit. The "bypasses armor" rule is the wiki's (UNVERIFIED against the reference client); nothing tests it with armor on yet.
+
 **Warden in a scene (McClient.McServer.WardenScene, 2026-11-05):** the real simulation and entity host joined by McSculkMobs: a player sets off a natural shrieker four times (warning levels 1 to 4,
 Darkness each time), a warden rises within 5 blocks of it at the fourth shriek's end, is deaf while it emerges, hears the player's steps, roars, walks to them and hits for 30 on Normal. UNVERIFIED on everything the
 reference client could not show: the shrieker-to-warden delay, emerge time, anger arithmetic and the roar trigger, sonic boom and Darkness effects (see the lists above). `McSim.SimPerf` now passes a scene if any of

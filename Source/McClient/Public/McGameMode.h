@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "McGameRules.h"
+#include "McSurvival.h"
 #include "McGameMode.generated.h"
 
 struct FMcPlayerData;
@@ -83,7 +84,7 @@ private:
 	// A new player (or one back from the dead) starts in the world's game mode, or the dedicated server's.
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
-	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind = McSurvival::EDamage::Mob);
 	void BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center);
 	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
 	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);

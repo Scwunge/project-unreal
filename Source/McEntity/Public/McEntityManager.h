@@ -187,6 +187,9 @@ public:
 	// Called with the position of a player (as in PlayerPositions): whether they wear any gold armour. Piglins leave
 	// such a player alone. Left unset, nobody does.
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Called with the position of a player (as in PlayerPositions): whether they wear a carved pumpkin on the head. An enderman is not
+	// angered by that player's gaze (wiki "Enderman"). Left unset, nobody does.
+	TFunction<bool(const FVector&)> PlayerWearsPumpkin;
 	// Called with the position of a player (as in PlayerPositions) and a point: whether that player, in Survival or Adventure, has the
 	// point within 60 degrees of where they face (both yaw and pitch). A creaking holds still while this is true. Left unset, nobody looks.
 	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;

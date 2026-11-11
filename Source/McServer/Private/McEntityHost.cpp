@@ -143,6 +143,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	{
 		return PlayerWearsGold && PlayerWearsGold(PlayerPos);
 	};
+	Manager.PlayerWearsPumpkin = [this](const FVector& PlayerPos)
+	{
+		return PlayerWearsPumpkin && PlayerWearsPumpkin(PlayerPos);
+	};
 	Manager.OnPlayerEffect = [this](const FVector& PlayerPos, FName Effect, int32 Amplifier, int32 Duration)
 	{
 		if (OnPlayerEffect)

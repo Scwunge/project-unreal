@@ -1140,6 +1140,11 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 		return 0.0f;
 	}
 	const float Taken = McSurvival::Hurt(Data->Stats, Amount, Kind, Data->Armor.Get(), &GameRules);
+	UE_LOG(LogTemp, Display, TEXT("player hurt: kind %d, %.1f offered, %.1f taken, now %.1f hp, at %.1f %.1f %.1f"), static_cast<int32>(Kind), Amount, Taken, Data->Stats.Health, GetFeetPosition().X, GetFeetPosition().Y, GetFeetPosition().Z);
+	if (From)
+	{
+		UE_LOG(LogTemp, Display, TEXT("player hurt: from %s"), *From->ToString());
+	}
 	Data->AddStat(TEXT("custom:damage_taken"), FMath::RoundToInt64(Taken * 10.0f));
 	if (Taken > 0.0f)
 	{
@@ -1915,6 +1920,7 @@ void AMcPlayerPawn::ServerGameTick()
 				const int32 FallDamage = ServerFall.Update(ServerPreviousPosition.Y, Feet.Y, Body.bOnGround, bBreaksFall);
 				if (FallDamage > 0)
 				{
+					UE_LOG(LogTemp, Display, TEXT("player hurt: fall %d at y %.1f"), FallDamage, Feet.Y);
 					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get(), &GameRules);
 					// (A landing that hurts is a hit_ground, 2, and a hurt, 7; one that doesn't is not signalled yet.)
 					ServerGameEvent(FName("hit_ground"), Feet);
@@ -2206,7 +2212,21 @@ void AMcPlayerPawn::ServerShootBow(int32 DrawTicks)
 	}
 	const double McYaw = FMath::DegreesToRadians(static_cast<double>(McLookYaw));
 	const double McPitch = FMath::DegreesToRadians(static_cast<double>(McLookPitch));
-	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
+	ShootBowAlong(FVector(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch)), DrawTicks);
+}
+
+void AMcPlayerPawn::ShootBowAlong(const FVector& Look, int32 DrawTicks)
+{
+	FMcEntityManager* Entities = GetEntities ? GetEntities() : nullptr;
+	if (!Entities || !Data)
+	{
+		return;
+	}
+	const float Power = McCombat::GetBowPower(DrawTicks);
+	if (Power < 0.1f)
+	{
+		return;
+	}
 	// Three blocks a tick at full draw, aimed with the measured spread, from 0.1 block under the eye.
 	TUniquePtr<FMcArrowEntity> Arrow = MakeUnique<FMcArrowEntity>();
 	Arrow->Body.Position = Body.Position + FVector(0.0, GetEyeHeight() - McCombat::GetBowLaunchDrop(), 0.0);

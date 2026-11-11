@@ -1836,6 +1836,7 @@ bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const FString Only = Parameters;
+	constexpr int32 MaxChunksInDefaultRun = 75000;
 	for (const TCHAR* Name : { TEXT("campref"), TEXT("endref"), TEXT("terrain3"), TEXT("importflat") })
 	{
 		if (!Only.IsEmpty() && Only != Name)
@@ -1863,6 +1864,14 @@ bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
 		if (TestFalse(*FString::Printf(TEXT("%s: the import ran"), Name), FolderA.IsEmpty()))
 		{
 			AddInfo(FString::Printf(TEXT("%s: imported %d chunks (%d failed) in %.1f s = %.0f chunks/s"), Name, First.Chunks, First.ChunksFailed, ImportSeconds, First.Chunks / FMath::Max(ImportSeconds, 0.001)));
+			// The export and the re-import of a save this big (campref has 84,000 chunks, 8 billion blocks) ran for over an hour in a default
+			// run; it is only done when the save is asked for by name (the test's parameter), terrain3 (68,000 chunks) stays in.
+			if (Only.IsEmpty() && First.Chunks > MaxChunksInDefaultRun)
+			{
+				AddInfo(FString::Printf(TEXT("%s: %d chunks is more than %d, so not exported in a default run (pass its name as the parameter)"), Name, First.Chunks, MaxChunksInDefaultRun));
+				McWorldSave::DeleteWorld(FolderA);
+				continue;
+			}
 			const FString Out = FPaths::ProjectSavedDir() / TEXT("RoundTripOut") / Name;
 			IFileManager::Get().DeleteDirectory(*Out, false, true);
 			McJavaExport::FStats Exported;

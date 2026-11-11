@@ -361,6 +361,16 @@ private:
 	TSharedPtr<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe> DecorateDone = MakeShared<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	// The chunks the players and anchors are in, as of the last look.
 	TArray<FIntPoint> StreamCentres;
+	// Where each player will be in mc.World.LeadSeconds at their speed now, for ordering the work only (none when off).
+	TArray<FIntPoint> StreamLeads;
+	// Each player's place at the last look and their speed since, in Unreal units a second (the pawn keeps its own).
+	struct FStreamMotion
+	{
+		FVector Location = FVector::ZeroVector;
+		FVector Velocity = FVector::ZeroVector;
+		double Time = 0.0;
+	};
+	TMap<TWeakObjectPtr<const APawn>, FStreamMotion> StreamMotion;
 	bool bOutrunning = false;
 	UE::Tasks::ETaskPriority WorldTaskPriority() const;
 	// Waits for the decorating jobs: the chunks they use are the actor's.

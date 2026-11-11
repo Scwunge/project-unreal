@@ -38,6 +38,8 @@ static TAutoConsoleVariable<int32> CVarMcOutrunPriority(TEXT("mc.World.OutrunPri
 static TAutoConsoleVariable<int32> CVarMcFillNormal(TEXT("mc.World.FillNormal"), 1, TEXT("World tasks take normal priority while a player has nothing around them."));
 static TAutoConsoleVariable<int32> CVarMcDecorateJobs(TEXT("mc.World.DecorateJobs"), 3, TEXT("Decoration jobs at once."));
 static TAutoConsoleVariable<int32> CVarMcChunksInFlight(TEXT("mc.World.ChunksInFlight"), 16, TEXT("Chunks being made at once."));
+static TAutoConsoleVariable<float> CVarMcLeadSeconds(TEXT("mc.World.LeadSeconds"), 0.0f,
+	TEXT("Chunks around where a moving player will be in this many seconds are made and decorated as early as those around them (0 off)."));
 
 // Per second, for the perf log.
 static int32 GStreamMade = 0, GStreamDecorated = 0, GStreamAdded = 0;
@@ -1382,6 +1384,8 @@ void AMcWorldActor::StreamChunks()
 	// The chunks the players are in, then the anchors, each with how far around it chunks are wanted.
 	TArray<FIntPoint> Centres;
 	TArray<int32> Radii;
+	TArray<FIntPoint> Leads;
+	const double LeadSeconds = FMath::Max(0.0f, CVarMcLeadSeconds.GetValueOnGameThread());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		const APlayerController* Controller = It->Get();
@@ -1391,6 +1395,21 @@ void AMcWorldActor::StreamChunks()
 			const FVector Location = Pawn->GetActorLocation();
 			Centres.Add(FIntPoint(FMath::FloorToInt32(Location.X / ChunkUnits), FMath::FloorToInt32(Location.Y / ChunkUnits)));
 			Radii.Add(LoadRadius);
+			// Unreal X and Y are the block X and Z; height doesn't matter here.
+			FStreamMotion& Motion = StreamMotion.FindOrAdd(Pawn);
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (Motion.Time > 0.0 && Now > Motion.Time)
+			{
+				// A jump of more than a few chunks is a teleport, not speed.
+				const FVector Step = Location - Motion.Location;
+				Motion.Velocity = Step.Size2D() < 4.0 * ChunkUnits ? Step / (Now - Motion.Time) : FVector::ZeroVector;
+			}
+			Motion.Location = Location;
+			Motion.Time = Now;
+			const FVector Ahead = Location + Motion.Velocity * LeadSeconds;
+			const FIntPoint Lead(FMath::FloorToInt32(Ahead.X / ChunkUnits), FMath::FloorToInt32(Ahead.Y / ChunkUnits));
+			// No further than the loaded square reaches: past it nothing is wanted.
+			Leads.Add(Centres.Last() + FIntPoint(FMath::Clamp(Lead.X - Centres.Last().X, -LoadRadius, LoadRadius), FMath::Clamp(Lead.Y - Centres.Last().Y, -LoadRadius, LoadRadius)));
 		}
 	}
 	const int32 NumPlayers = Centres.Num();
@@ -1428,6 +1447,14 @@ void AMcWorldActor::StreamChunks()
 		}
 	}
 	StreamCentres = Centres;
+	StreamLeads = LeadSeconds > 0.0 ? Leads : TArray<FIntPoint>();
+	for (auto It = StreamMotion.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
 
 	// Nothing has moved and nothing was left outstanding: the world is already what these players need.
 	if (bAnyone && Centres == SettledCentres && Radii == SettledRadii && ViewDistance == SettledViewDistance)
@@ -1465,7 +1492,13 @@ void AMcWorldActor::StreamChunks()
 				const FIntPoint Pos = Centre + FIntPoint(DX, DZ);
 				if (!BlockWorld->HasChunk(Pos) && !Pending.Contains(Pos))
 				{
-					Missing.Add({ DX * DX + DZ * DZ, Pos });
+					int32 Key = DX * DX + DZ * DZ;
+					if (StreamLeads.IsValidIndex(Index))
+					{
+						const FIntPoint FromLead = Pos - StreamLeads[Index];
+						Key = FMath::Min(Key, FromLead.X * FromLead.X + FromLead.Y * FromLead.Y);
+					}
+					Missing.Add({ Key, Pos });
 				}
 			}
 		}
@@ -1661,6 +1694,11 @@ bool AMcWorldActor::DecorateChunks()
 				for (const FIntPoint& Centre : StreamCentres)
 				{
 					const FIntPoint Away = Entry.Key - Centre;
+					Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
+				}
+				for (const FIntPoint& Lead : StreamLeads)
+				{
+					const FIntPoint Away = Entry.Key - Lead;
 					Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
 				}
 				NearestFirst.Add({ Nearest, Entry.Key });

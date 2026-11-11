@@ -1694,6 +1694,9 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 			{
 				return true;
 			}
+			// The pumpkin goes on and the eyes go down before the player arrives among the endermen: the first bite came from one angered at the arrival.
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:carved_pumpkin"), 1));
+			Player->SetControlRotation(FRotator(-80.0, Player->GetControlRotation().Yaw, 0.0));
 			HandleChat(Player, FString::Printf(TEXT("/tp @s 2.5 %.1f 20.5"), GroundAt(2.5, 20.5)));
 			Bot->Stage = 5;
 			Bot->NextAct = Bot->Time + 3.0;

@@ -1741,9 +1741,11 @@ namespace
 		IFileManager::Get().FindFiles(Names, *(FolderA / TEXT("*.mcr")), true, false);
 		int32 Compared = 0;
 		int32 Counter = 0;
+		const double CompareStarted = FPlatformTime::Seconds();
 		FMcBlockWorld World(Type);
 		for (const FString& Name : Names)
 		{
+			UE_LOG(LogTemp, Display, TEXT("RoundTrip compare progress: %s file %s, %d chunks so far, %.1f s"), Dimension, *Name, Compared, FPlatformTime::Seconds() - CompareStarted);
 			FMcRegionFile RegionA(FolderA / Name);
 			FMcRegionFile RegionB(FolderB / Name);
 			TBitArray<> PresentA;

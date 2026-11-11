@@ -35,7 +35,7 @@ public class Sym {
  }
 }
 '@
-$Help = 'C:\UE_5.8\Engine\Binaries\ThirdParty\DbgHelp\dbghelp.dll'
+$Help = 'C:\Program Files\Epic Games\UE_5.9\Engine\Binaries\ThirdParty\DbgHelp\dbghelp.dll'
 if (Test-Path $Help) { [Sym]::LoadLibrary($Help) | Out-Null }
 $H = [IntPtr]1
 [Sym]::SymSetOptions([uint32]0x212) | Out-Null

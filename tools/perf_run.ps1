@@ -11,9 +11,10 @@
 param(
     [Parameter(Mandatory)][string]$Stage,
     [Parameter(Mandatory)][string]$Dir,
-    [int]$Minutes = 8
+    [int]$Minutes = 8,
+    [string]$Config = 'Shipping'
 )
-$Exe = Join-Path $Stage 'Windows\McClient\Binaries\Win64\McClient-Win64-Shipping.exe'
+$Exe = Join-Path $Stage "Windows\McClient\Binaries\Win64\McClient-Win64-$Config.exe"
 $Extra = if (Test-Path "$Dir\args.txt") { (Get-Content "$Dir\args.txt" -Raw) } else { '' }
 if ($null -eq $Extra) { $Extra = '' }
 Remove-Item "$Dir\perf.log", "$Dir\samples.csv", "$Dir\end.txt" -ErrorAction SilentlyContinue
@@ -33,7 +34,9 @@ $Before = @(
 )
 $Before | Set-Content "$Dir\machine.txt"
 
-$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=C:\mc-runs\mc-unreal\cache -windowed -ResX=1920 -ResY=1080 $Extra"
+# Test builds record the engine's CSV profile for the whole run (Shipping has no profiler).
+$Csv = if ($Config -ne 'Shipping') { ' -csvCaptureFrames=1000000 -csvGpuStats' } else { '' }
+$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=C:\mc-runs\mc-unreal\cache -windowed -ResX=1920 -ResY=1080 $Extra$Csv"
 $P = Start-Process $Exe -ArgumentList $GameArgs -PassThru
 "pid $($P.Id) args $GameArgs"
 'secs,free_mb,cpu,vram_mb,gpu_pct,game_ws_mb,game_private_mb' | Set-Content "$Dir\samples.csv"
@@ -54,4 +57,12 @@ if ($P.HasExited) {
 } else {
     "time limit: stopped after $Minutes min, peak ws $Peak MB" | Set-Content "$Dir\end.txt"
     Stop-Process -Id $P.Id -Force
+}
+if ($Csv) {
+    # The engine writes the profile under the game's Saved folder: the stage's own, or LOCALAPPDATA's for a packaged game.
+    Start-Sleep -Seconds 2
+    $Found = @(Join-Path $Stage 'Windows\McClient\Saved\Profiling\CSV'), (Join-Path $env:LOCALAPPDATA 'McClient\Saved\Profiling\CSV') |
+        Where-Object { Test-Path $_ } | ForEach-Object { Get-ChildItem $_ -Filter '*.csv*' } |
+        Where-Object { $_.LastWriteTime -ge $Began } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($Found) { Copy-Item $Found.FullName "$Dir\profile.csv" -Force; "profile $($Found.FullName)" } else { 'no CSV profile found' }
 }

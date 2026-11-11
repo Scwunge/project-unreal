@@ -1760,6 +1760,7 @@ The changes in that table aren't isolated: the TSR preset likely explains most o
 
 **Open:**
 - Flying: speed is 22 blocks/s or 0, because the player stops when the chunk ahead isn't there. Normal priority keeps about 700 chunks but hitches, since this CPU has only 2 foreground workers and frame tasks wait for them. Background high is smooth, but the world thins to about 150-300 chunks.
+- Walking hitches: base_a5's walk has a 50-70 ms frame most seconds, and none of our scopes, GC or chunk counters move with them (game thread 10-14 ms on average, our scopes about 2.5 of it). Shipping has no profiler, so `MC_PERF_CONFIG=Test tools/perf-remote.sh build` / `run` now builds the Test configuration in its own stage and brings back the engine's CSV profile as profile.csv (untried: the first Test build cooks from scratch).
 - No frame cap: every run logs vsync 0, maxfps 0, smooth 0, so uncapped frames take cores from the workers. In base_a4c (120 fps, not clean) the player barely stopped.
 - Memory: peak rss 6.6 GB in base_a2 against 3.9 GB in base_a3, probably vertices waiting for garbage collection; 54eea4f frees them when a mesh is destroyed. Not proven.
 - Not measured yet: Unreal Low, the old code on a real fly (base_b2 and base_v3 never left the ground), Pixlli, menus to world, the 23-minute memory run, the soak.

@@ -23,6 +23,10 @@ ROOT="$(git rev-parse --show-toplevel)"; NAME="$(basename "$ROOT")"
 BRUN="C:/mc-build/$NAME"; OUT="C:/mc-build/$NAME-out"; WB="${BRUN//\//\\}"; WO="${OUT//\//\\}"
 mode="${1:-}"; shift || true
 BLOCK=/e/mc-remote/lock-b1070
+# MC_PERF_CONFIG=Test builds and runs the Test configuration in a stage of its own (stage-Test): near Shipping's speed, with
+# the engine's CSV profiler on for the whole run, brought back as profile.csv. Shipping, the default, is what players get.
+CONFIG="${MC_PERF_CONFIG:-Shipping}"
+case "$CONFIG" in Shipping) STAGEDIR=stage ;; Test) STAGEDIR=stage-Test ;; *) echo "MC_PERF_CONFIG is Shipping or Test"; exit 2 ;; esac
 
 case "$mode" in
 build)
@@ -38,19 +42,19 @@ build)
   mkdir -p "$ROOT/Saved"
   cat > "$ROOT/Saved/perf-build.ps1" <<EOF
 \$ErrorActionPreference = 'Continue'
-\$Stage = '$WO\\stage'
+\$Stage = '$WO\\$STAGEDIR'
 Set-Location '$WB'
-\$Uat = 'C:\\UE_5.8\\Engine\\Build\\BatchFiles\\RunUAT.bat'
-\$Common = @('BuildCookRun', '-project=$WB\\McClient.uproject', '-noP4', '-platform=Win64', '-clientconfig=Shipping', '-target=McClient', '-build', '-stage', '-pak', '-archive', "-archivedirectory=\$Stage", '-utf8output', '-nocompileeditor')
+\$Uat = 'C:\\Program Files\\Epic Games\\UE_5.9\\Engine\\Build\\BatchFiles\\RunUAT.bat'
+\$Common = @('BuildCookRun', '-project=$WB\\McClient.uproject', '-noP4', '-platform=Win64', '-clientconfig=$CONFIG', '-target=McClient', '-build', '-stage', '-pak', '-archive', "-archivedirectory=\$Stage", '-utf8output', '-nocompileeditor')
 if ($FULL -eq 1 -or -not (Test-Path "\$Stage\\Windows\\McClient\\Content\\Paks")) {
-  & 'C:\\UE_5.8\\Engine\\Build\\BatchFiles\\Build.bat' McClientEditor Win64 Development '-Project=$WB\\McClient.uproject' -WaitMutex -NoHotReloadFromIDE
+  & 'C:\\Program Files\\Epic Games\\UE_5.9\\Engine\\Build\\BatchFiles\\Build.bat' McClientEditor Win64 Development '-Project=$WB\\McClient.uproject' -WaitMutex -NoHotReloadFromIDE
   "EDITOR_EXIT=\$LASTEXITCODE"
   if (\$LASTEXITCODE -ne 0) { "RUN_DONE"; exit 1 }
   & \$Uat @Common -cook
 } else {
-  # Code only: compile Shipping and put the new executable in the stage; the cooked content stays.
-  & 'C:\\UE_5.8\\Engine\\Build\\BatchFiles\\Build.bat' McClient Win64 Shipping '-Project=$WB\\McClient.uproject' -WaitMutex
-  if (\$LASTEXITCODE -eq 0) { Copy-Item '$WB\\Binaries\\Win64\\McClient-Win64-Shipping.exe' "\$Stage\\Windows\\McClient\\Binaries\\Win64\\" -Force }
+  # Code only: compile the configuration and put the new executable in the stage; the cooked content stays.
+  & 'C:\\Program Files\\Epic Games\\UE_5.9\\Engine\\Build\\BatchFiles\\Build.bat' McClient Win64 $CONFIG '-Project=$WB\\McClient.uproject' -WaitMutex
+  if (\$LASTEXITCODE -eq 0) { Copy-Item '$WB\\Binaries\\Win64\\McClient-Win64-$CONFIG.exe' "\$Stage\\Windows\\McClient\\Binaries\\Win64\\" -Force }
 }
 "BUILD_EXIT=\$LASTEXITCODE"
 "RUN_DONE"
@@ -104,7 +108,7 @@ run)
   $SSH "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force $OUT/runs/$run | Out-Null; \$input | Set-Content $OUT/runs/$run/script.txt\"" < "$ROOT/tools/perf/$script.txt"
   printf '%s' "$args" | $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/runs/$run/args.txt\""
   $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/perf_run.ps1\"" < "$ROOT/tools/perf_run.ps1"
-  printf '%s\r\n' "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\\perf_run.ps1 -Stage $WO\\stage -Dir $WO\\runs\\$run -Minutes $MINUTES > $WO\\runs\\$run\\runner.txt 2>&1" "echo done> $WO\\runs\\$run\\done.txt" > "$ROOT/Saved/perf-job.cmd"
+  printf '%s\r\n' "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\\perf_run.ps1 -Stage $WO\\$STAGEDIR -Config $CONFIG -Dir $WO\\runs\\$run -Minutes $MINUTES > $WO\\runs\\$run\\runner.txt 2>&1" "echo done> $WO\\runs\\$run\\done.txt" > "$ROOT/Saved/perf-job.cmd"
   $SSH "powershell -NoProfile -Command \"\$input | Set-Content C:/mc-runs/job2.cmd\"" < "$ROOT/Saved/perf-job.cmd"
   $SSH "schtasks /run /tn McRemoteJob2" >/dev/null || { echo "could not start McRemoteJob2"; exit 1; }
   deadline=$((SECONDS + MINUTES * 60 + 180))
@@ -132,7 +136,7 @@ soak)
   ;;
 symbols)
   $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/perf_symbols.ps1\"" < "$ROOT/tools/perf_symbols.ps1"
-  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-Shipping.exe"
+  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-$CONFIG.exe"
   ;;
 report) python -I "$ROOT/tools/perf_report.py" "$ROOT/Saved/Perf/$1" ;;
 *) sed -n 2,15p "$0"; exit 2 ;;

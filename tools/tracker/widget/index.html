@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Port progress</title>
+<!--
+  The iframe page. Query parameters (all optional):
+    src=URL         progress.json to show (default: progress.json next to this page)
+    theme=auto|light|dark
+    interval=SECONDS  re-fetch period (default 300)
+    title=TEXT
+    missing=off     hide the missing-id lists
+  It posts {type: "mc-tracker-height", height} to the parent page whenever its height changes,
+  so the parent can size the iframe (see TRACKER.md).
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  body { padding: 1px; }
+</style>
+</head>
+<body>
+<div id="tracker" data-mc-tracker></div>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var node = document.getElementById("tracker");
+    var map = { src: "data-src", theme: "data-theme", interval: "data-interval", title: "data-title", missing: "data-missing" };
+    Object.keys(map).forEach(function (k) { if (q.has(k)) node.setAttribute(map[k], q.get(k)); });
+    if (window.parent !== window && "ResizeObserver" in window) {
+      new ResizeObserver(function () {
+        window.parent.postMessage({ type: "mc-tracker-height", height: document.documentElement.scrollHeight }, "*");
+      }).observe(document.body);
+    }
+  })();
+</script>
+<script src="tracker.js"></script>
+</body>
+</html>

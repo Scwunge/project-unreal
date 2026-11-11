@@ -1190,6 +1190,7 @@ Singleplayer is a listen server, the same code path as multiplayer, so hosting i
 - **Reference server.** The vanilla host on `claude/server-host` can run a real 26.3 server to script
   comparisons (place the same blocks, step the same ticks) when a behaviour is unclear.
 - **Network soak.** Two or more clients on a dedicated server, editing and moving, checked for desync.
+- **Progress count.** `tools/tracker/audit.py --ref m1/blocks-and-chunks` scores every vanilla id absent/present/verified into `progress.json` (rules and limits in `tools/tracker/TRACKER.md`); quote its counts, not session reports.
 
 ## 6. Hard parts, in order of pain
 

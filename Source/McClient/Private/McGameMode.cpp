@@ -1614,6 +1614,8 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 		int32 CrystalsAtStart = -1;
 		int32 Swings = 0;
 		int32 Retreats = 0;
+		bool bLocked = false;
+		FVector Locked = FVector::ZeroVector;
 	};
 	TSharedRef<FBot> Bot = MakeShared<FBot>();
 	TWeakObjectPtr<APlayerController> Weak(Controller);
@@ -1795,13 +1797,30 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 			{
 				Bot->CrystalsAtStart = Crystals.Num();
 			}
-			FMcMob* Target = Crystals[0];
-			for (FMcMob* Crystal : Crystals)
+			// One crystal at a time: the one aimed at stays the target until it is gone (the nearest one flips as the player crosses the island).
+			FMcMob* Target = nullptr;
+			if (Bot->bLocked)
 			{
-				if (FVector::DistSquared(Crystal->Body.Position, Feet) < FVector::DistSquared(Target->Body.Position, Feet))
+				for (FMcMob* Crystal : Crystals)
 				{
-					Target = Crystal;
+					if (FVector::DistSquared(Crystal->Body.Position, Bot->Locked) < 1.0)
+					{
+						Target = Crystal;
+					}
 				}
+			}
+			if (!Target)
+			{
+				Target = Crystals[0];
+				for (FMcMob* Crystal : Crystals)
+				{
+					if (FVector::DistSquared(Crystal->Body.Position, Feet) < FVector::DistSquared(Target->Body.Position, Feet))
+					{
+						Target = Crystal;
+					}
+				}
+				Bot->bLocked = true;
+				Bot->Locked = Target->Body.Position;
 			}
 			// From the far side of the island, the long way across, lobbing the arrow onto the crystal: close in, the pillar's own side is in the way.
 			const FVector2D Out = FVector2D(Target->Body.Position.X, Target->Body.Position.Z).GetSafeNormal();

@@ -99,6 +99,8 @@ private:
 		bool bAlongX = true;
 		FVector Feet = FVector::ZeroVector;
 		TArray<uint8> Bytes;
+		// Animals that were aboard a vehicle, packed alongside it.
+		TArray<TArray<uint8>> Passengers;
 		double StartedAt = 0.0;
 	};
 	void TickEntities();

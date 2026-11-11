@@ -4075,3 +4075,21 @@ The changes in that table aren't isolated: the TSR preset likely explains most o
 Then the 23-minute memory run and the soak.
 
 **Frame cap (unbuilt):** Options now has Max Framerate (10 to 260 in steps of 10, 260 Unlimited) and VSync, saved in options.json as `maxFps` and `vsync`, defaulting to 120 and on like the game's own options. They're set at the first menu frame and whenever the world's options apply. `-McPerf` runs leave them alone and choose with `-McPerfCvars`.
+
+**5.9 on the 1070: no clean runs yet (2026-11-11).** The series waited 90 minutes (15:58-17:28) and never ran: other sessions' tests held 1070 test lanes the whole time (one over 90 min). An ALONE run now takes no lock while a 1070 test lane is busy (eb3a5ba).
+
+**5.9 on this PC instead (RTX 4060, labelled _4060, not clean).** `tools/perf-local.sh` builds Shipping in `I:\mc-build\<checkout>-perf` with J:\UE_5.9 and runs the same scripts on this desktop (lock-local, lock-blocal). 3 or 4 test editors (UnrealEditor-Cmd) ran beside every run, with about 24-26 GB free; machine.txt records the count. CPU contention makes these game-thread-bound, so they are not comparable with the 1070's 5.8 numbers above, nor with each other closely.
+
+| 5.9, 4060, 3-4 test editors beside | fps | 1% low | p99 ms | over 33 ms | gt / rt / gpu ms |
+|---|---|---|---|---|---|
+| Stand (base59_b) | 76.7 | 31.8 | 27.6 | 8 | 13.2 / 10.5 / 1.8 |
+| Walk (base59_b) | 59.3 | 22.0 | 40.8 | 119 | 16.8 / 12.3 / 3.5 |
+| Fly (base59_b) | 69.1 | 28.5 | 28.7 | 11 | 14.5 / 11.7 / 3.3 |
+| Stand, capped 120 (base59_cap) | 74.9 | 29.4 | 30.2 | 14 | 13.4 / 10.2 / 1.9 |
+| Walk, capped 120 (base59_cap) | 59.2 | 21.7 | 42.3 | 132 | 16.9 / 11.6 / 2.5 |
+| Unreal Medium, stand / walk (base59_um) | 64.6 / 51.1 | 32.5 / 19.5 | 27.9 / 44.0 | 4 / 137 | 14.3 / 14.6 / 6.9 (stand) |
+
+- The GPU is nearly idle (2-3.5 ms vanilla, 7 ms Unreal Medium): with other editors on the CPU, the game thread (13-17 ms) sets the frame rate. The cap at 120 changes nothing, since frames never reach it.
+- base59_a was the first launch of a new stage: models baked in 18.6 s against 1.2 s afterwards, and the walk was 43 fps. Left out of the table.
+- No new hitch source shows: the over-33 ms frames in walk come with stream/unload/launch/upload means under 0.5 ms, so they are mostly contention, not chunk work. The H lines would say per frame (not read yet).
+- Leave to title (leave59_4060): **inconclusive.** No crash, but the game never left the world: after `key:Escape` the simulation stopped (sim 0.00) and the world stayed loaded (729 chunks) until the 3-minute limit. Either the Escape didn't open the pause menu, or the press never matched "Save and Quit to Title". Next: run leave.txt in a Development build with the log, which shows each `McMenuPress:` line.

@@ -650,7 +650,6 @@ MC_WORLD_STATS_TEST(2)
 MC_WORLD_STATS_TEST(3)
 MC_WORLD_STATS_TEST(4)
 
-#endif
 
 // Air, water and lava as a share of each 8-block band, over 25 patches of 4 by 4 undecorated chunks, with the carvers on
 // and off, to see how much of the caves comes from the carvers. "CAVEBANDS <carvers> <seed> <band start y> air water lava".
@@ -1099,10 +1098,10 @@ bool FMcWorldStatsAtTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStatsTest, "McClient.McGen.NetherStats",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
 
-bool FMcNetherStatsTest::RunTest(const FString& Parameters)
+static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 {
 	FMcNoiseSettings Settings;
-	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
+	if (!Test.TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
 	{
 		return false;
 	}
@@ -1122,7 +1121,9 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove;
+		bMcFeatureStatsOn = true;
+		McFeatureStats.Reset();
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
 		{
 			for (int32 PatchX = 0; PatchX < 8; ++PatchX)
@@ -1149,7 +1150,10 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 						FMcChunk* Nine[9];
 						Around(CX, CZ, Nine);
 						FMcGenRegion Region(FIntPoint(Corner.X - 1 + CX, Corner.Y - 1 + CZ), Nine);
-						Features.Decorate(Region, Seeds[SeedIndex]);
+						if (!bNoDecor)
+						{
+							Features.Decorate(Region, Seeds[SeedIndex]);
+						}
 					}
 				}
 				for (int32 CZ = 1; CZ < Side - 1; ++CZ)
@@ -1170,6 +1174,10 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 									Band.SetNumZeroed(16);
 									++Band[Y >> 3];
 									++PerBiome.FindOrAdd(Biome + TEXT(" ") + Name);
+									if (Y >= 32 && Name == TEXT("minecraft:lava"))
+									{
+										++LavaAbove.FindOrAdd(Biome);
+									}
 								}
 							}
 						}
@@ -1183,19 +1191,179 @@ bool FMcNetherStatsTest::RunTest(const FString& Parameters)
 			{
 				if (Pair.Value[Band] > 0)
 				{
-					AddInfo(FString::Printf(TEXT("NSTAT %d A %d %s %lld"), SeedIndex, Band, *Pair.Key, Pair.Value[Band]));
+					Test.AddInfo(FString::Printf(TEXT("NSTAT %d A %d %s %lld"), SeedIndex, Band, *Pair.Key, Pair.Value[Band]));
 				}
 			}
 		}
 		for (const TPair<FString, int64>& Pair : PerBiome)
 		{
-			AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d B %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, TPair<int64, int64>>& Pair : McFeatureStats)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d F %s %lld %lld"), SeedIndex, *Pair.Key, Pair.Value.Key, Pair.Value.Value));
+		}
+		bMcFeatureStatsOn = false;
+		for (const TPair<FString, int64>& Pair : LavaAbove)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : Columns)
 		{
-			AddInfo(FString::Printf(TEXT("NSTAT %d C %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d C %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 	}
+	return true;
+}
+
+bool FMcNetherStatsTest::RunTest(const FString& Parameters)
+{
+	return RunNetherStats(*this, false);
+}
+
+// The same counts with terrain and carvers only (no decoration), to see which blocks the features add.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStatsTerrainTest, "McClient.McGen.NetherStatsTerrain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcNetherStatsTerrainTest::RunTest(const FString& Parameters)
+{
+	return RunNetherStats(*this, true);
+}
+
+// Structure starts in the Nether on the 256 x 256 chunks from (-128, -128), the same cells as `log starts -128 -128 256 nether`
+// on the reference: STARTSN <seed index> <structure> <count>. The biome is taken at y 64.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcNetherStartsTest, "McClient.McGen.NetherStarts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcNetherStartsTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:nether"), Settings)))
+	{
+		return false;
+	}
+	FMcStructureLibrary Structures(Settings.SeaLevel, Settings.MinY);
+	if (!TestTrue(TEXT("structure sets load"), Structures.Load()))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		const uint64 Seed = Seeds[SeedIndex];
+		const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:nether"));
+		Structures.SetHeightSource([&Generator](int32 X, int32 Z) { return 64; });
+		Structures.SetBiomeSource([&Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); });
+		TMap<FName, int64> Counts, Candidates;
+		for (int32 Z = -128; Z < 128; ++Z)
+		{
+			for (int32 X = -128; X < 128; ++X)
+			{
+				TArray<FName> Here;
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Here);
+				if (Here.IsEmpty())
+				{
+					continue;
+				}
+				for (const FName Name : Here)
+				{
+					Candidates.FindOrAdd(Name)++;
+				}
+				const FMcBiomeId Biome = Generator.GetBiome(X * 16 + 8, 64, Z * 16 + 8);
+				Here.Reset();
+				Structures.GetCandidates(Seed, FIntPoint(X, Z), Biome, Here);
+				for (const FName Name : Here)
+				{
+					Counts.FindOrAdd(Name)++;
+				}
+			}
+		}
+		for (const TPair<FName, int64>& Pair : Candidates)
+		{
+			AddInfo(FString::Printf(TEXT("STARTSNALL %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+		}
+		for (const TPair<FName, int64>& Pair : Counts)
+		{
+			AddInfo(FString::Printf(TEXT("STARTSN %d %s %lld"), SeedIndex, *Pair.Key.ToString(), Pair.Value));
+		}
+	}
+	return true;
+}
+
+// The ore vein density functions on the grid `log veinnoise -4096 -4096 64 64 30` reads on the reference (seed 4242424242):
+// VN <seed index> <x> <z> toggle mask gap copper iron richness, each times 10000. Compared by distribution, not point by point.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcVeinNoiseTest, "McClient.McGen.VeinNoise",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcVeinNoiseTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const uint64 Seeds[] = { 4242424242ull, 1001ull, static_cast<uint64>(-77777ll), 909090909ull, 31415926535ull };
+	for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+	{
+		FMcDensityGraph Graph(Seeds[SeedIndex]);
+		const TCHAR* Names[] = { TEXT("toggle"), TEXT("mask"), TEXT("gap"), TEXT("copper_density"), TEXT("iron_density"), TEXT("richness") };
+		int32 Nodes[6];
+		for (int32 Index = 0; Index < 6; ++Index)
+		{
+			Nodes[Index] = Graph.Parse(MakeShared<FJsonValueString>(FString(TEXT("minecraft:overworld/ore_vein/")) + Names[Index]));
+			if (!TestTrue(TEXT("vein function parses"), Nodes[Index] != INDEX_NONE))
+			{
+				return false;
+			}
+		}
+		FMcDensityContext Context(Graph);
+		for (int32 J = 0; J < 64; ++J)
+		{
+			for (int32 I = 0; I < 64; ++I)
+			{
+				const int32 X = -4096 + I * 64;
+				const int32 Z = -4096 + J * 64;
+				Context.SetPos(X, 30, Z);
+				FString Row;
+				for (int32 Index = 0; Index < 6; ++Index)
+				{
+					Row += FString::Printf(TEXT(" %lld"), FMath::RoundToInt64(Graph.Evaluate(Nodes[Index], Context) * 10000.0));
+				}
+				AddInfo(FString::Printf(TEXT("VN %d %d %d%s"), SeedIndex, X, Z, *Row));
+			}
+		}
+	}
+		// Per-height summaries: VNY <seed> <y> <cells> <copper>0> <iron>0> <gap<0> <sum richness x10000>
+		for (int32 SeedIndex = 0; SeedIndex < 5; ++SeedIndex)
+		{
+			FMcDensityGraph Graph(Seeds[SeedIndex]);
+			const TCHAR* Names[] = { TEXT("gap"), TEXT("copper_density"), TEXT("iron_density"), TEXT("richness") };
+			int32 Nodes[4];
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				Nodes[Index] = Graph.Parse(MakeShared<FJsonValueString>(FString(TEXT("minecraft:overworld/ore_vein/")) + Names[Index]));
+			}
+			FMcDensityContext Context(Graph);
+			for (const int32 Y : { -50, -30, -10, 5, 15, 30, 45 })
+			{
+				int32 Copper = 0;
+				int32 Iron = 0;
+				int32 Gap = 0;
+				double Richness = 0.0;
+				for (int32 J = 0; J < 64; ++J)
+				{
+					for (int32 I = 0; I < 64; ++I)
+					{
+						Context.SetPos(-4096 + I * 64, Y, -4096 + J * 64);
+						Gap += Graph.Evaluate(Nodes[0], Context) < 0.0 ? 1 : 0;
+						Copper += Graph.Evaluate(Nodes[1], Context) > 0.0 ? 1 : 0;
+						Iron += Graph.Evaluate(Nodes[2], Context) > 0.0 ? 1 : 0;
+						Richness += Graph.Evaluate(Nodes[3], Context);
+					}
+				}
+				AddInfo(FString::Printf(TEXT("VNY %d %d 4096 %d %d %d %.0f"), SeedIndex, Y, Copper, Iron, Gap, Richness * 10000.0));
+			}
+		}
 	return true;
 }
 
@@ -1231,3 +1399,5 @@ bool FMcDeepDarkWideTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+#endif

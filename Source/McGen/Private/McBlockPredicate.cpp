@@ -583,6 +583,11 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	{
 		return Supports(Name == TEXT("minecraft:crimson_fungus") ? TEXT("minecraft:supports_crimson_fungus") : TEXT("minecraft:supports_warped_fungus"));
 	}
+	if (Name == TEXT("minecraft:crimson_roots") || Name == TEXT("minecraft:warped_roots") || Name == TEXT("minecraft:nether_sprouts") || Name == TEXT("minecraft:nether_wart"))
+	{
+		// The jar's support tags (supports_crimson_roots and so on): roots need nylium or soil, not bare netherrack.
+		return Supports(Name == TEXT("minecraft:crimson_roots") ? TEXT("minecraft:supports_crimson_roots") : Name == TEXT("minecraft:warped_roots") ? TEXT("minecraft:supports_warped_roots") : Name == TEXT("minecraft:nether_sprouts") ? TEXT("minecraft:supports_nether_sprouts") : TEXT("minecraft:supports_nether_wart"));
+	}
 	// Saplings, flowers, grass, ferns and bushes stand on dirt-like blocks; tall plants need room above too.
 	const bool bPlant = Tags.Has(TEXT("minecraft:saplings"), State) || Tags.Has(TEXT("minecraft:flowers"), State) || Name.Contains(TEXT("grass"))
 		|| Name.Contains(TEXT("fern")) || Name.Contains(TEXT("bush")) || Name == TEXT("minecraft:sweet_berry_bush") || Name.Contains(TEXT("leaf_litter"))

@@ -1,4 +1,5 @@
 #include "McFireball.h"
+#include "McMob.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 
@@ -36,6 +37,19 @@ void FMcFireball::LaunchWind(const FVector& Direction)
 	Body.Height = 0.3125f;
 }
 
+const FName& FMcFireball::DragonType()
+{
+	static const FName Name(TEXT("minecraft:dragon_fireball"));
+	return Name;
+}
+
+void FMcFireball::LaunchDragon(const FVector& Direction)
+{
+	bDragon = true;
+	Aim = Direction.GetSafeNormal();
+	Body.Velocity = Aim * Acceleration;
+}
+
 void FMcFireball::LaunchSkull(const FVector& Direction)
 {
 	bSkull = true;
@@ -67,6 +81,18 @@ void FMcFireball::Launch(const FVector& Direction, bool bInSmall)
 void FMcFireball::Hit(FMcEntityManager& Manager, const FVector* PlayerFeet)
 {
 	bRemoved = true;
+	if (bDragon)
+	{
+		for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+		{
+			if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+			{
+				static_cast<FMcMob&>(*Entity).DragonClouds.Add(FVector4(Body.Position.X, Body.Position.Y, Body.Position.Z, 600.0));
+				break;
+			}
+		}
+		return;
+	}
 	if (bSmall)
 	{
 		if (PlayerFeet)

@@ -30,7 +30,7 @@ param(
     [string]$FromLog
 )
 
-$EngineRoot = 'E:\Epic Games\UE_5.8\Engine'
+$EngineRoot = 'J:\UE_5.9\Engine'
 $Project = Join-Path (Split-Path $PSScriptRoot) 'McClient.uproject'
 $BuildBat = Join-Path $EngineRoot 'Build\BatchFiles\Build.bat'
 $EditorCmd = Join-Path $EngineRoot 'Binaries\Win64\UnrealEditor-Cmd.exe'

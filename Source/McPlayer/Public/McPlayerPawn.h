@@ -24,6 +24,17 @@ class FMcEntityManager;
 class UCameraComponent;
 class UMcPlayerDataComponent;
 
+// Something that happened to a player which an advancement may be waiting for (the game's trigger, by id, with what it was about).
+struct FMcTriggerEvent
+{
+	FName Trigger;
+	FName Item;
+	FName Block;
+	FName Entity;
+	FName Recipe;
+	FName Biome;
+};
+
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
 {
@@ -59,6 +70,9 @@ public:
 	// Puts the eyes at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
 	void SetView(const FVector& EyePos, float McYaw, float McPitch);
+	// Turns to Look (Unreal yaw and pitch, as a start transform carries them) without moving: for a player who joined before
+	// the world did and is placed afterwards, who would otherwise keep looking along +x.
+	void SetStartLook(const FRotator& Look);
 
 	// Changes blocks for the player. Until the server takes requests (M3's networking), the game mode points
 	// this straight at the world actor.
@@ -77,6 +91,8 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
 	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
 	TFunction<FMcEntityManager*()> GetEntities;
+	// Where the nearest stronghold's corner is (block x, z) for a thrown eye of ender; false if this dimension has none.
+	TFunction<bool(const FVector&, FVector2D&)> OnLocateStronghold;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
 	// A survival player started to dig at Pos (a click on it): a note block sounds.
@@ -87,6 +103,9 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The game mode judges the advancement triggers.
+	TFunction<void(AMcPlayerPawn& Player, const FMcTriggerEvent& Event)> OnTrigger;
+	void FireTrigger(const FMcTriggerEvent& Event) { if (OnTrigger) { OnTrigger(*this, Event); } }
 	// Called after the server put a block down for this player.
 	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
@@ -96,7 +115,8 @@ public:
 	// The player placed a sign at Pos: it gets its text, and they the editor for its front.
 	TFunction<void(AMcPlayerPawn& Player, const FIntVector& Pos)> OnPlacedSign;
 	// A swing at mobs: the eye, the look direction, the reach and the damage; true if something was hit.
-	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)> MobAttack;
+	// Weapon is the stack in hand and Strength how charged the swing was (its enchantments act through them).
+	TFunction<bool(const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)> MobAttack;
 	// The id of the nearest vehicle along the ray (a minecart or boat to get into), or 0.
 	TFunction<int32(const FVector& Eye, const FVector& Look, double Reach)> FindVehicle;
 	// The player right-clicks the mob their look ray hits (a villager opens its trades): the eye, the look direction and the
@@ -343,6 +363,13 @@ private:
 	bool bSneakPose = false;
 	UPROPERTY(Replicated)
 	int32 RidingId = 0;
+	// The ridden mount's health in half hearts (0 max for none), and a horse's jump charge 0..1 (-1 for a mount that has no jump bar): the HUD draws them in place of the food row and the experience bar.
+	UPROPERTY(Replicated)
+	float MountHealth = 0.0f;
+	UPROPERTY(Replicated)
+	float MountMaxHealth = 0.0f;
+	UPROPERTY(Replicated)
+	float MountJump = -1.0f;
 	UPROPERTY(Replicated)
 	bool bSleeping = false;
 	UPROPERTY(Replicated)
@@ -381,7 +408,6 @@ public:
 private:
 	void ServerTickMaps();
 	int32 MapTicks = 0;
-	int32 MapRow = 0;
 	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
 	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
 	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;
@@ -406,6 +432,9 @@ private:
 	bool bServerGliding = false;
 	// Server: wears the wings while gliding.
 	void ServerTickElytra();
+	// Frost Walker: freezes the water under the feet in a disk when the block the player stands in changes (the enchantment's replace_disk).
+	void ServerTickFrostWalker();
+	FIntVector FrostWalkerBlock = FIntVector(MAX_int32, 0, 0);
 	// Server: a rocket used while gliding: used up, and the pull starts on the owner's machine.
 	bool ServerBoost();
 	// The owner flew into a wall this hard.
@@ -426,6 +455,8 @@ private:
 public:
 	// Ticks since this player's totem went off (its flight across their screen), or -1.
 	float GetTotemAge() const { return TotemAge; }
+	// Swings the arm drawn in first person (on the machine that draws it); for /swing.
+	void SwingArm();
 private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
@@ -513,6 +544,7 @@ private:
 	float ServerLastHealth = -1.0f;
 	// Ticks since the last swing, for how charged the next is.
 	int32 ServerAttackTicks = 100;
+	int32 LocationTicks = 0;
 	bool bServerUsing = false;
 	FRandomStream DropRandom{ 11 };
 };

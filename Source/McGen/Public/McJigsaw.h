@@ -64,6 +64,7 @@ public:
 		FIntVector Max = FIntVector::ZeroValue;
 		int32 Depth = 0;
 		int32 Parent = -1;  // the piece it grows from, an index into the layout
+		int32 Container = -1;  // the piece whose box it was put inside (a house on a street's margin), or -1
 	};
 
 	struct FLayout

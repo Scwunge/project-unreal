@@ -74,5 +74,17 @@ bool FMcBundleClickTest::RunTest(const FString&)
 	Menu.Click(0, 1, EMcClickType::Pickup, Dropped);
 	TestEqual(TEXT("cobble back on the cursor"), Menu.GetCarried().Count, 64);
 	TestEqual(TEXT("bundle empty again"), McBundle::GetFullness(Menu.GetStack(0)), 0.0, 1.0e-9);
+
+	// A stack picked with the wheel is the one a right click takes (index 1 of the list, not the newest).
+	FMcItemStack Three(TEXT("minecraft:bundle"), 1);
+	FMcItemStack A = Make(TEXT("minecraft:stick"), 2, 64);
+	FMcItemStack B = Make(TEXT("minecraft:dirt"), 3, 64);
+	McBundle::Insert(Three, A);
+	McBundle::Insert(Three, B);
+	TestEqual(TEXT("dirt is the newest"), McBundle::GetContents(Three)[0].Item, FName(TEXT("minecraft:dirt")));
+	const FMcItemStack Picked = McBundle::RemoveAt(Three, 1);
+	TestEqual(TEXT("the picked stick came out"), Picked.Item, FName(TEXT("minecraft:stick")));
+	TestEqual(TEXT("the dirt stayed"), McBundle::GetContents(Three)[0].Item, FName(TEXT("minecraft:dirt")));
+	TestEqual(TEXT("an index out of range takes the newest"), McBundle::RemoveAt(Three, 7).Item, FName(TEXT("minecraft:dirt")));
 	return true;
 }

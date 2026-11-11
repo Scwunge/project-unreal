@@ -31,6 +31,9 @@ public:
 	// A music note rises at Position (a note block played, a jukebox playing), in the colour of this note (0 to 24).
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnNote, const FVector&, int32);
 	FOnNote OnNote;
+	// A particle by name (/particle): Name, where, the spread (Delta), the speed, how many.
+	DECLARE_MULTICAST_DELEGATE_FiveParams(FOnParticle, FName, const FVector&, const FVector&, float, int32);
+	FOnParticle OnParticle;
 };
 
 namespace McSound

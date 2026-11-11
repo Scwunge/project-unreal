@@ -88,7 +88,9 @@ public:
 	// Player attacks: the mob (if any) the ray from the eyes hits within Reach, hurt by Damage and pushed away.
 	// True if something was hit.
 	// A vehicle (minecart, boat) is hit as well; in creative it breaks at once and drops nothing.
-	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative = false);
+	// Weapon (the stack in hand) and Strength (the swing's charge, 0 to 1) bring in its enchantments: Sharpness, Smite and Bane of
+	// Arthropods add to the damage by the victim, Knockback pushes harder, Looting is kept for the drops.
+	bool Attack(const FVector& Eye, const FVector& Direction, float Reach, float Damage, bool bCreative = false, const FMcItemStack* Weapon = nullptr, float Strength = 1.0f);
 	// The nearest vehicle the ray from the eyes reaches within Reach, or null.
 	FMcEntity* FindVehicle(const FVector& Eye, const FVector& Direction, float Reach);
 	// The nearest living mob the ray from the eyes enters within Reach, or null.

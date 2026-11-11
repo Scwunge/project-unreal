@@ -161,8 +161,9 @@ bool FMcHdMapsTest::RunTest(const FString& Parameters)
 	NormalFromHeight(Hill, 8, 8, 1.0f, Normal);
 	TestTrue(TEXT("right of the hill faces right"), Normal[3 * 8 + 6].R > 128);
 	TestTrue(TEXT("left of the hill faces left"), Normal[3 * 8 + 1].R < 128);
-	TestTrue(TEXT("below the hill faces down the picture (y below 128)"), Normal[6 * 8 + 3].G < 128);
-	TestTrue(TEXT("above it faces up (y above 128)"), Normal[1 * 8 + 3].G > 128);
+	// LabPBR is DirectX: green rises DOWN the picture.
+	TestTrue(TEXT("below the hill faces down the picture (green above 128, DirectX)"), Normal[6 * 8 + 3].G > 128);
+	TestTrue(TEXT("above it faces up (green below 128)"), Normal[1 * 8 + 3].G < 128);
 	TestEqual(TEXT("height goes to alpha"), static_cast<int32>(Normal[3 * 8 + 3].A), 255);
 
 	// Generating a stone: 16 -> 64, with all three pictures the same size, deterministic, with detail.

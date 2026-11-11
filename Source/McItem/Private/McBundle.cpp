@@ -176,4 +176,17 @@ namespace McBundle
 		SetContents(Bundle, Contents);
 		return Out;
 	}
+
+	FMcItemStack RemoveAt(FMcItemStack& Bundle, int32 Index)
+	{
+		TArray<FMcItemStack> Contents = GetContents(Bundle);
+		if (!Contents.IsValidIndex(Index))
+		{
+			return RemoveNewest(Bundle);
+		}
+		const FMcItemStack Out = Contents[Index];
+		Contents.RemoveAt(Index);
+		SetContents(Bundle, Contents);
+		return Out;
+	}
 }

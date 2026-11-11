@@ -4,6 +4,7 @@
 #include "McBlockRegistry.h"
 #include "McBlockTextures.h"
 #include "McChunk.h"
+#include "McRenderMode.h"
 
 namespace McFluidMesher
 {
@@ -90,6 +91,11 @@ namespace
 		// those axes, which is clockwise once swapped to Unreal's, as the block mesher does it.
 		void Emit(EMcRenderPass Pass, int32 BlockX, int32 BlockY, int32 BlockZ, const FVector (&Corners)[4], const FVector2D (&UVs)[4],
 			int32 Direction, bool bBack, FVector2D Light, uint16 Layer, FColor Tint);
+
+		// Unreal Mode only: how close each corner of the next top face is to the water's edge (0 inside, 1 at a shore side),
+		// carried as a fraction of the layer number in UV1.x (at most 0.4, so the layer still rounds to itself). Left null,
+		// every vertex is exactly what it always was.
+		const float* EdgeWeights = nullptr;
 	};
 
 	float FBuilder::CornerHeight(EFluid Kind, int32 X, int32 Y, int32 Z, int32 CornerX, int32 CornerZ) const
@@ -165,7 +171,7 @@ namespace
 			Buffers.Positions.Add(FVector(Block.X, Block.Z, Block.Y) * McCoords::UnitsPerBlock);
 			Buffers.Normals.Add(Normal);
 			Buffers.UV0.Add(UVs[Corner]);
-			Buffers.UV1.Add(FVector2D(Layer, Pass == EMcRenderPass::Water ? McSurface::Water : McSurface::Lava));
+			Buffers.UV1.Add(FVector2D(Layer + (EdgeWeights ? 0.4f * EdgeWeights[Corner] : 0.0f), Pass == EMcRenderPass::Water ? McSurface::Water : McSurface::Lava));
 			Buffers.UV2.Add(Light);
 			Buffers.Colors.Add(Color);
 		}
@@ -282,7 +288,20 @@ namespace
 				UVs[3] = FVector2D(1, 0);
 			}
 			const FVector2D Light = LightFor(UpIndex);
+			// A water corner touching a side with no water beside it is on the shore (north-west, south-west, south-east, north-east).
+			float Edge[4] = { 0, 0, 0, 0 };
+			if (bShoreFoam && bWater && McRenderMode::IsEnhanced())
+			{
+				const bool West = InfoAt(X - 1, Y, Z).Kind != Kind, East = InfoAt(X + 1, Y, Z).Kind != Kind;
+				const bool North = InfoAt(X, Y, Z - 1).Kind != Kind, South = InfoAt(X, Y, Z + 1).Kind != Kind;
+				Edge[0] = (West || North) ? 1.0f : 0.0f;
+				Edge[1] = (West || South) ? 1.0f : 0.0f;
+				Edge[2] = (East || South) ? 1.0f : 0.0f;
+				Edge[3] = (East || North) ? 1.0f : 0.0f;
+				EdgeWeights = Edge;
+			}
 			Emit(Pass, X, Y, Z, Corners, UVs, UpIndex, false, Light, Layer, Tint);
+			EdgeWeights = nullptr;
 			if (bWater)
 			{
 				const FVector BackCorners[4] = { Corners[0], Corners[3], Corners[2], Corners[1] };

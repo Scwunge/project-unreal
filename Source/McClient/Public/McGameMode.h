@@ -50,6 +50,8 @@ public:
 	// The player of that name (as they joined, ignoring case), or null.
 	APlayerController* FindPlayer(const FString& Name) const;
 	static FString GetPlayerName(const AController* Controller);
+	// An advancement trigger fired for a player: criteria that wait for it are met, and advancements whose criteria are all met are made.
+	static void FireTrigger(class AMcPlayerPawn& Pawn, const struct FMcTriggerEvent& Event);
 
 	// ---- Dimensions ----
 	// The first world: the Overworld unless the world was saved in (or started with -McDimension in) another.
@@ -60,6 +62,19 @@ public:
 	AMcWorldActor* GetOrCreateWorld(const FString& Dimension);
 	// Where new and returning players start, in the first world.
 	FTransform GetSpawnTransform() const;
+	// /tick: the target rate, and a freeze (kept for the session).
+	double TickRate = 20.0;
+	bool bTickFrozen = false;
+	FTimerHandle StepTimer;
+	void ApplyTickSpeed();
+	void SetTickRate(double Rate);
+	void SetTickFrozen(bool bFrozen);
+	void StepTicks(int32 Count);
+	// /defaultgamemode: what players who join (or respawn) after this start in; kept for the session.
+	void SetDefaultGameMode(const FString& NewMode);
+	FString DefaultGameModeOverride;
+	// /setworldspawn: kept for the session.
+	TOptional<FIntVector> WorldSpawnOverride;
 	// What a player left behind in a world with a save: the dimension, place and look they were last in. False if the world
 	// has nothing for them.
 	bool LoadSavedPlayer(const AController* Controller, FMcPlayerData& OutSaved) const;

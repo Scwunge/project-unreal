@@ -170,6 +170,11 @@ public:
 	bool bInBlast = false;
 	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
 	bool bDragonKilledBefore = false;
+	// The End's dragon and crystals have been put in (once, by the game mode, when the main island loads).
+	bool bEndFightStarted = false;
+	// The world seed, and how many central gateways the dragon's deaths have made (up to 20, one a kill).
+	int64 GatewaySeed = 0;
+	int32 GatewaysMade = 0;
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
@@ -243,6 +248,18 @@ public:
 	void PlaySound(FName Name, const FVector& Position, float Volume = 1.0f, float Pitch = 1.0f) const
 	{
 		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
+	}
+
+	// ---- Particles ----
+	// Called with each effect the entities make that the players see (a blast's cloud), for whoever sends it to them; unset, dropped.
+	// Name as /particle writes it, Position in blocks, Delta the spread, Speed, Count.
+	TFunction<void(FName, const FVector&, const FVector&, float, int32)> OnParticle;
+	void SpawnParticle(FName Name, const FVector& Position, const FVector& Delta = FVector::ZeroVector, float Speed = 0.0f, int32 Count = 1) const
+	{
+		if (OnParticle)
+		{
+			OnParticle(Name, Position, Delta, Speed, Count);
+		}
 	}
 
 	// ---- Detector rails ----

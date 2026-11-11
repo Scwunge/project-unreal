@@ -182,6 +182,19 @@ uint32 McLang::GetGeneration()
 	return McPacks::GetGeneration() + GLanguageGeneration;
 }
 
+TArray<FString> McLang::GetKeysWithPrefix(const FString& Prefix)
+{
+	TArray<FString> Keys;
+	for (const TPair<FString, FString>& Pair : GetTable())
+	{
+		if (Pair.Key.StartsWith(Prefix))
+		{
+			Keys.Add(Pair.Key);
+		}
+	}
+	return Keys;
+}
+
 FString McLang::Get(const FString& Key)
 {
 	const FString* Found = GetTable().Find(Key);

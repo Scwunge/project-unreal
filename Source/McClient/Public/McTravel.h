@@ -42,6 +42,8 @@ public:
 	bool StartPortalTrip(AMcPlayerController& Controller, const FIntVector& Cell);
 	// Sends the player into the End, onto its platform, or back from it to the spawn.
 	bool StartEndTrip(AMcPlayerController& Controller);
+	// Whether the end poem and credits were shown this session (the first way out of the End shows them).
+	bool bCreditsSeen = false;
 
 	bool IsOnTrip(const AController* Controller) const;
 	int32 NumTrips() const { return Trips.Num(); }

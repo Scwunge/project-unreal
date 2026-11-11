@@ -27,4 +27,6 @@ namespace McBundle
 	MCITEM_API int32 Insert(FMcItemStack& Bundle, FMcItemStack& Stack);
 	// Takes the newest stack out of the bundle; empty if it holds nothing.
 	MCITEM_API FMcItemStack RemoveNewest(FMcItemStack& Bundle);
+	// Takes the stack at an index of GetContents (the one picked with the wheel); an index out of range takes the newest.
+	MCITEM_API FMcItemStack RemoveAt(FMcItemStack& Bundle, int32 Index);
 }

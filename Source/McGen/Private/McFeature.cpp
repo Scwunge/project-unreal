@@ -855,3 +855,14 @@ namespace McFeature
 		return !FMcBlockTags::Get().Has(TEXT("minecraft:features_cannot_replace"), State);
 	}
 }
+
+bool FMcFeatureLibrary::FindNearestStronghold(uint64 Seed, double X, double Z, FIntPoint& OutCorner) const
+{
+	FIntPoint Chunk;
+	if (!Structures.IsValid() || !Structures->FindNearestRingStart(Seed, X, Z, Chunk))
+	{
+		return false;
+	}
+	OutCorner = FIntPoint(Chunk.X * 16, Chunk.Y * 16);
+	return true;
+}

@@ -1,7 +1,7 @@
 // A world of ours written back as a Java save, the way McJavaImport reads one (minecraft.wiki: "Java Edition level
 // format", "Region file format", "Chunk format"): blocks and biomes of every saved chunk in the current layout
-// (dimensions/<namespace>/<name>/region/r.X.Z.mca), and level.dat. Block entities, entities and the player are not
-// written yet (see PLAN.md).
+// (dimensions/<namespace>/<name>/region/r.X.Z.mca), their block entities and light, level.dat and the world generation
+// settings. Entities and the player are not written yet (see PLAN.md).
 
 #pragma once
 
@@ -9,6 +9,7 @@
 
 class FMcChunk;
 class FMcNbt;
+struct FMcLightRegion;
 
 namespace McJavaExport
 {
@@ -20,10 +21,17 @@ namespace McJavaExport
 		int32 Chunks = 0;
 		int32 Regions = 0;
 		int32 Failed = 0;
+		// Seconds spent in all, and of those lighting chunks.
+		double Seconds = 0.0;
+		double LightSeconds = 0.0;
+		// Of the rest: building the chunk's tags (with lighting counted within), writing them out, and compressing a region.
+		double MakeSeconds = 0.0;
+		double WriteSeconds = 0.0;
+		double RegionSeconds = 0.0;
 	};
 
 	// A chunk as the game's chunk NBT: sections with palettes of block states and biomes, packed as the game packs them.
-	MCSERVER_API void MakeChunk(const FMcChunk& Chunk, FMcNbt& Out);
+	MCSERVER_API void MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate = 0, const FMcLightRegion* Light = nullptr);
 
 	// Packs Indexes (each below the palette's size) into longs of Bits bits, none spanning two longs; the inverse of
 	// McJavaImport::UnpackIndices.
@@ -33,6 +41,7 @@ namespace McJavaExport
 	MCSERVER_API void MakeRegion(const TMap<FIntPoint, TArray<uint8>>& Chunks, TArray<uint8>& OutFile);
 
 	// Writes WorldDir (a world of ours) as a Java save into OutFolder. False if the world can't be read or OutFolder
-	// can't be written.
-	MCSERVER_API bool ExportWorld(const FString& WorldDir, const FString& OutFolder, FStats& OutStats);
+	// can't be written. With bWriteLight each chunk gets the sky and block light our engine works out for it (as the game saves
+	// it, so the game has no need to light the chunk again).
+	MCSERVER_API bool ExportWorld(const FString& WorldDir, const FString& OutFolder, FStats& OutStats, bool bWriteLight = true);
 }

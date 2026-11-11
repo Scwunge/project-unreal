@@ -97,6 +97,9 @@ public:
 	// gives them.
 	virtual int32 TakeExperience() { return 0; }
 	// The bundle sound the last click made (item.bundle.insert, insert_fail or remove_one), or none; read once.
+	// The stack of a bundle picked with the wheel (an index of its contents; -1 for none), which a right click takes out.
+	// Set by the screen before each click.
+	void SetBundlePick(int32 Index) { BundlePick = Index; }
 	FName TakeBundleSound() { const FName Out = BundleSound; BundleSound = NAME_None; return Out; }
 	// Levels the player spent in the menu since last asked (an anvil's), which the caller takes from them.
 	virtual int32 TakeLevelsSpent() { return 0; }
@@ -108,6 +111,7 @@ public:
 
 protected:
 	FName BundleSound;
+	int32 BundlePick = -1;
 	// ---- What subclasses decide ----
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const { return true; }
 	virtual bool MayPickup(int32 Slot) const { return true; }

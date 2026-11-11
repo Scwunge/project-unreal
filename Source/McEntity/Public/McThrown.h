@@ -11,7 +11,7 @@
 class MCENTITY_API FMcThrownEntity final : public FMcEntity
 {
 public:
-	enum class EKind : uint8 { Snowball, Egg, EnderPearl };
+	enum class EKind : uint8 { Snowball, Egg, EnderPearl, EnderEye };
 
 	explicit FMcThrownEntity(EKind InKind);
 	static FName GetTypeName(EKind Kind);
@@ -25,6 +25,17 @@ public:
 	// Where a pearl's thrower goes (block coordinates, the feet) when it lands.
 	TFunction<void(const FVector&)> OnPearlLanded;
 
+	// An eye of ender (EnderEye): once thrown it flies towards Target (block x, z) and rises, hovers, and then drops as an
+	// item or shatters. Set by the thrower; without a target (no stronghold in this dimension) it just falls.
+	// The numbers are the wiki's (about 12 blocks, 2 to 3 seconds, then 80% drops); the path is to be fitted to a log.
+	FVector2D EyeTarget = FVector2D::ZeroVector;
+	bool bEyeHasTarget = false;
+	static constexpr int32 EyeFlyTicks = 40;
+	static constexpr int32 EyeHoverTicks = 20;
+	static constexpr double EyeReach = 12.0;
+	static constexpr double EyeRise = 8.0;
+	static constexpr float EyeSurviveChance = 0.8f;
+
 	static constexpr double Speed = 1.5;
 	static constexpr double Gravity = 0.03;
 	static constexpr double Drag = 0.99;
@@ -36,5 +47,9 @@ public:
 private:
 	void Break(FMcEntityManager& Manager, const FVector& At, FMcEntity* Hit);
 
+	void TickEye(FMcEntityManager& Manager);
+
 	EKind Kind;
+	FVector EyeStart = FVector::ZeroVector;
+	FVector EyeGoal = FVector::ZeroVector;
 };

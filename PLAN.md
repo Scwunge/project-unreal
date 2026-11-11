@@ -1338,3 +1338,5 @@ un`; fitted per tick from `log ents` and `log sounds`): done in `McSimulation.cp
 - `/recipe give|take <players> (<recipe>|*)` is in McCommands.cpp with test assertions; written before the UE 5.9 move, not yet compiled or run.
 - Measured 2026-11-10 (ref run cmd_recipe.txt): unknown recipe is "Unknown recipe: <id>" (fixed); non-player selector: "Only players may be affected by this command, but the provided selector includes entities". `give *` in the game unlocked 1727 recipes, `take *` took 1746 (ours counts our recipe book only).
 - Gap: the unlocked set is per session in a static, not saved per player; `take *` counts only what was given, not the game's full recipe list.
+
+- /loot give ... mine <pos> (rolls minecraft:blocks/<block> with no tool; a block with no table reports "Dropped 0 items from loot table ..." which is a guess) and ... kill <players> (player table, 0 items, measured). Unbuilt (5.9 pending). Still not built: spawn, insert, replace (cmd_group4 measured "Dropped 6 items" for spawn, "Dropped 2 items" for replace entity weapon.offhand, which looks odd and should be re-measured), and kill of non-players.

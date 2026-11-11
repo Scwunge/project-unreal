@@ -4585,7 +4585,10 @@ namespace
 	// Only the give target with the loot source is built; mine and kill sources, spawn, insert and replace are not.
 	FReplies RunLoot(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
-		if (Words.Num() < 3 || Words[1] != TEXT("give") || Words.Num() != 5 || Words[3] != TEXT("loot"))
+		const bool bLoot = Words.Num() == 5 && Words[3] == TEXT("loot");
+		const bool bMine = Words.Num() == 7 && Words[3] == TEXT("mine");
+		const bool bKill = Words.Num() == 5 && Words[3] == TEXT("kill");
+		if (Words.Num() < 3 || Words[1] != TEXT("give") || !(bLoot || bMine || bKill))
 		{
 			return Unknown(Command, Command.Len());
 		}
@@ -4595,12 +4598,48 @@ namespace
 		{
 			return { Fail(Error) };
 		}
-		const FString Table = McCache::Namespaced(Words[4]);
+		FString Table;
+		if (bLoot)
+		{
+			Table = McCache::Namespaced(Words[4]);
+		}
+		else if (bMine)
+		{
+			// The block's own table, rolled without a tool (so tool conditions such as silk touch are not met). Measured: mining grass
+			// blocks gives "Dropped 1 [Dirt] from loot table minecraft:blocks/grass_block" (ref run cmd_group4.txt).
+			FIntVector Pos;
+			FMcStateId State;
+			if (!ParseBlockPos(Words, 4, SenderFeet(Sender, Target), Pos))
+			{
+				return BadArgument(Command);
+			}
+			if (!Target.GetBlock(Pos, State))
+			{
+				return { Fail(McLang::Get(TEXT("argument.pos.unloaded"))) };
+			}
+			const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+			Table = FString::Printf(TEXT("minecraft:blocks/%s"), *McCache::Namespaced(Blocks.GetBlockOf(State).Name.ToString()).RightChop(10));
+		}
+		else
+		{
+			// Only players can be killed here, and the player table drops nothing (measured: "Dropped 0 items from loot table
+			// minecraft:entities/player"). Other targets are not supported.
+			TArray<FString> Victims;
+			if (!ResolvePlayers(Words[4], Sender, Target, Victims, Error))
+			{
+				return { Fail(Error) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { TEXT("0"), TEXT("minecraft:entities/player") })) };
+		}
 		TArray<FMcItemStack> Stacks;
 		static uint64 Draw = 0x6c6f6f74;
 		FMcRandom Random(++Draw * 0x9E3779B97F4A7C15ull);
 		if (!McLoot::Roll(Table, Random, Stacks))
 		{
+			if (!bLoot)
+			{
+				return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { TEXT("0"), Table })) };
+			}
 			int32 At = Command.Find(Words[4], ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:loot_table'"), *Table)), Fail(BorderContext(Command, At)) };
 		}
@@ -4902,7 +4941,7 @@ namespace
 
 	// /recipe give|take <players> (<recipe> | *) (wording from a ref run, cmd_misc.txt). The port has no recipe book screen, so the
 	// unlocked recipes are only remembered here for the session; the game also unlocks recipes by itself as ingredients are picked up,
-	// which is why its "take *" counted 108 where this counts what was given.
+	// which is why its "take *" counted 1746 (cmd_recipe.txt) where this counts what was given.
 	FReplies RunRecipe(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		static TMap<FString, TSet<FName>> Unlocked;

@@ -14,6 +14,6 @@ shots=(
 for q in 0 2; do
   for s in "${shots[@]}"; do
     n=${s%%|*}; a=${s#*|}
-    MC_LOCAL_LANE=0 bash /e/mc-remote/remote.sh shot "ab_${tag}_${n}_q${q}.png" "-McUnreal -McQuality=$q $a -McShotDelay=12"
+    MC_LOCAL_LANE=0 bash /e/mc-remote/remote.sh shot "ab_${tag}_${n}_q${q}.png" "-McEnhanced -McQuality=$q $a -McShotDelay=12"
   done
 done

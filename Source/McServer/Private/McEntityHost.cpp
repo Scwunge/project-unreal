@@ -662,6 +662,19 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 			}
 		}
 	}
+	// A mount a player put a saddle on drops it (vehicle_log52: 15 of 16 saddled pigs and horses left a saddle). Its armour drops
+	// the same way on the wiki's word; not yet measured.
+	if (Mob.Mount.IsValid() && Mob.Mount->Inventory.IsValid())
+	{
+		for (const int32 Slot : { static_cast<int32>(FMcMountMenuSlots::Saddle), static_cast<int32>(FMcMountMenuSlots::Armor) })
+		{
+			const FMcItemStack& Worn = Mob.Mount->Inventory->Get(Slot);
+			if (!Worn.IsEmpty())
+			{
+				Manager.DropItem(Mob.Body.Position + FVector(0.0, Mob.Type.Height * 0.5, 0.0), Worn);
+			}
+		}
+	}
 }
 
 void FMcEntityHost::OnChunkAdded(FIntPoint Chunk)

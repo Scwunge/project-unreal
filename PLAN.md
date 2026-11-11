@@ -1617,3 +1617,6 @@ Same-camera close-ups (flat world, Unreal Mode, `-McHd` on and off, shots hd_off
 
 ## UE 5.9 before/after shot set (prepared 2026-11-10, not yet run)
 - `tools/unreal_ab.sh <tag>` takes the same six Unreal Mode scenes at Low and High (`ab_<tag>_<scene>_q<N>.png`, 1070 only). Run it once on the last 5.8 build if one still exists, and once on the first 5.9 build, then compare Lumen GI/reflections, shadows, volumetric fog, materials, TSR, and the `McShot: frame ms` lines. The 5.8 binaries are gone from the 1070, so the "before" set may have to come from the old shots in `Saved/` and the numbers in this file. Check the Unreal-off pixel output is unchanged too.
+
+## Cloud placement test prepared (2026-11-11, unbuilt, not run)
+`MC_CLOUD_CONST=1` in `tools/make_cloud_edit.py` makes the duplicated cloud material's density a constant (`return Dens;`, no mask, no height profile). Run it as the next cheap split from the entry above: with `-McVolumeClouds -McCloudDensity=<n>` on a fresh `-McWorld=`, clouds filling the layer mean the mask / world-position mapping was wrong; still none means the layer placement (`SetLayerBottomAltitude`, `BottomZ`) or the instance parameters. Needs a 5.9 build and a headless editor run on the 1070 (not through MCP: it writes a Content asset).

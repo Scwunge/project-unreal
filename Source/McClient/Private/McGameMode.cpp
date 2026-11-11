@@ -1687,6 +1687,34 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 			return false;
 		}
 		const auto LookAt = [&](const FVector& From, const FVector& To) { return (To - From).GetSafeNormal(); };
+		// The way to point a full-draw bow so the arrow arrives at the target: the arrow flies 3 blocks a tick, loses 1% a tick and falls 0.05 a tick
+		// (McArrow.h), so a shot at a distant pillar top has to aim over it. Found by flying the arrow in the head and raising the aim by what it fell short.
+		const auto Ballistic = [&](const FVector& From, const FVector& To)
+		{
+			const FVector Flat(To.X - From.X, 0.0, To.Z - From.Z);
+			const double Range = Flat.Size();
+			if (Range < 1.0)
+			{
+				return (To - From).GetSafeNormal();
+			}
+			const FVector Way = Flat / Range;
+			double Angle = FMath::Atan2(To.Y - From.Y, Range);
+			for (int32 Round = 0; Round < 12; ++Round)
+			{
+				FVector Velocity = (Way * FMath::Cos(Angle) + FVector(0.0, FMath::Sin(Angle), 0.0)) * 3.0;
+				FVector Position = From;
+				double Gone = 0.0;
+				for (int32 Tick = 0; Tick < 200 && Gone < Range; ++Tick)
+				{
+					Position += Velocity;
+					Gone += FVector(Velocity.X, 0.0, Velocity.Z).Size();
+					Velocity *= 0.99;
+					Velocity.Y -= 0.05;
+				}
+				Angle += FMath::Atan2(To.Y - Position.Y, Range);
+			}
+			return Way * FMath::Cos(Angle) + FVector(0.0, FMath::Sin(Angle), 0.0);
+		};
 		if (Bot->Stage == 0)
 		{
 			// The kit: what a player could have, from the start of a run.
@@ -1760,7 +1788,7 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 			{
 				Pawn->Data->SelectedSlot = Bow;
 			}
-			Pawn->ShootBowAlong(LookAt(Eye, Target->Body.Position + FVector(0.0, 1.0, 0.0)), 20);
+			Pawn->ShootBowAlong(Ballistic(Eye, Target->Body.Position + FVector(0.0, 1.0, 0.0)), 20);
 			++Bot->Shots;
 			Bot->NextAct = Bot->Time + 1.2;
 			return true;
@@ -1811,7 +1839,7 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 		{
 			Pawn->Data->SelectedSlot = Bow;
 		}
-		Pawn->ShootBowAlong(LookAt(Eye, Dragon->Body.Position), 20);
+		Pawn->ShootBowAlong(Ballistic(Eye, Dragon->Body.Position), 20);
 		++Bot->Shots;
 		Bot->NextAct = Bot->Time + 1.2;
 		return true;

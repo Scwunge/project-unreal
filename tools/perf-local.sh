@@ -9,13 +9,15 @@
 #                                                    lock-blocal (no build beside it); record to Saved/Perf/<name>_4060/
 #
 # It takes no test lane: headless tests on this PC may run beside it, and machine.txt says what was running.
-# MC_PERF_MINUTES sets a run's time limit (default 8); MC_PERF_CONFIG=Test as in perf-remote.sh.
+# MC_PERF_MINUTES sets a run's time limit (default 8); MC_PERF_CONFIG=Development for a log and the CSV profile.
 set -u
 ROOT="$(git rev-parse --show-toplevel)"; NAME="$(basename "$ROOT")"
 B="I:/mc-build/$NAME-perf"; OUT="I:/mc-build/$NAME-perf-out"; WB="${B//\//\\}"; WO="${OUT//\//\\}"
 ENGINE='J:\UE_5.9'
 CONFIG="${MC_PERF_CONFIG:-Shipping}"
-case "$CONFIG" in Shipping) STAGEDIR=stage ;; Test) STAGEDIR=stage-Test ;; *) echo "MC_PERF_CONFIG is Shipping or Test"; exit 2 ;; esac
+case "$CONFIG" in Shipping) STAGEDIR=stage ;; Test) STAGEDIR=stage-Test ;; Development) STAGEDIR=stage-Development ;; *) echo "MC_PERF_CONFIG is Shipping, Test or Development"; exit 2 ;; esac
+# The installed engine builds no Test targets; Development (a log, stats and the CSV profiler) stands in, as McClient.exe.
+EXE="McClient-Win64-$CONFIG.exe"; [ "$CONFIG" = Development ] && EXE=McClient.exe
 CACHE='E:\mc-unreal\cache'
 held=""; cleanup() { rm -f "${T1:-}"; for l in $held; do rm -rf "$l"; done; }; trap cleanup EXIT
 take() { # queue dir or "", lock
@@ -43,7 +45,7 @@ build)
     e=$?
   else
     cmd //c "$ENGINE\\Engine\\Build\\BatchFiles\\Build.bat McClient Win64 $CONFIG -Project=$WB\\McClient.uproject -WaitMutex" > "$OUT/perf-build.log" 2>&1
-    e=$?; [ $e = 0 ] && cp "$B/Binaries/Win64/McClient-Win64-$CONFIG.exe" "$OUT/$STAGEDIR/Windows/McClient/Binaries/Win64/"
+    e=$?; [ $e = 0 ] && cp "$B/Binaries/Win64/$EXE" "$OUT/$STAGEDIR/Windows/McClient/Binaries/Win64/"
   fi
   grep -E "error C|error LNK|: error |BUILD SUCCESSFUL|Total execution time" "$OUT/perf-build.log" | tail -20
   echo "BUILD_EXIT=$e"; [ $e = 0 ]
@@ -51,7 +53,7 @@ build)
 run)
   run="${1}_4060"; script="$2"; shift 2; args="$*"
   [ -f "$ROOT/tools/perf/$script.txt" ] || { echo "no tools/perf/$script.txt"; exit 2; }
-  [ -f "$OUT/$STAGEDIR/Windows/McClient/Binaries/Win64/McClient-Win64-$CONFIG.exe" ] || { echo "no stage: run build first"; exit 2; }
+  [ -f "$OUT/$STAGEDIR/Windows/McClient/Binaries/Win64/$EXE" ] || { echo "no stage: run build first"; exit 2; }
   MINUTES="${MC_PERF_MINUTES:-8}"
   Q=/e/mc-remote/queue; mkdir -p "$Q"; T1="$Q/$(date +%s%N)-$$"; : > "$T1"
   take "$Q" /e/mc-remote/lock-local; rm -f "$T1"

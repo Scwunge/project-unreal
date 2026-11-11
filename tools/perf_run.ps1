@@ -16,6 +16,7 @@ param(
     [string]$Cache = 'C:\mc-runs\mc-unreal\cache'
 )
 $Exe = Join-Path $Stage "Windows\McClient\Binaries\Win64\McClient-Win64-$Config.exe"
+if ($Config -eq 'Development') { $Exe = Join-Path $Stage 'Windows\McClient\Binaries\Win64\McClient.exe' }
 $Extra = if (Test-Path "$Dir\args.txt") { (Get-Content "$Dir\args.txt" -Raw) } else { '' }
 if ($null -eq $Extra) { $Extra = '' }
 Remove-Item "$Dir\perf.log", "$Dir\samples.csv", "$Dir\end.txt" -ErrorAction SilentlyContinue

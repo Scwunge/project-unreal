@@ -27,5 +27,10 @@ bool FMcParticleKindsTest::RunTest(const FString&)
 	TestEqual(TEXT("a crit lives 7 ticks"), McParticleKinds::Find(TEXT("minecraft:crit")).LifeMin, 7);
 	TestTrue(TEXT("a name with no row still gets a default"), McParticleKinds::Find(TEXT("minecraft:ash")).LifeMin >= 1);
 	TestTrue(TEXT("the same row both ways"), &McParticleKinds::Find(TEXT("heart")) == &McParticleKinds::Find(TEXT("minecraft:heart")));
+	// A dripstone drop hangs, then falls where it hung and goes when it lands.
+	const McParticleKinds::FKind& Hang = McParticleKinds::Find(TEXT("dripping_dripstone_water"));
+	TestEqual(TEXT("a hanging drop becomes a falling one"), Hang.Then, FName("minecraft:falling_dripstone_water"));
+	const McParticleKinds::FKind& Fall = McParticleKinds::Find(Hang.Then);
+	TestTrue(TEXT("which falls and stops on landing"), Fall.Gravity > 0.0f && Fall.bPhysics && Fall.bDieOnLand);
 	return true;
 }

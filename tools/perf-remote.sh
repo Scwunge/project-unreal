@@ -69,6 +69,10 @@ run)
   run="$1"; script="$2"; shift 2; args="$*"
   [ -f "$ROOT/tools/perf/$script.txt" ] || { echo "no tools/perf/$script.txt"; exit 2; }
   MINUTES="${MC_PERF_MINUTES:-8}"
+  # MC_PERF_ALONE=1: hold nothing while another session's test editor is up on the 1070; give up at once (exit 3), try later.
+  if [ "${MC_PERF_ALONE:-0}" = 1 ] && [ "$script" != chunkhash ]; then
+    for l in d c b ""; do [ -d "/e/mc-remote/lock-t1070$l" ] && { echo "RUN_NOT_ALONE: lock-t1070$l busy ($(cat "/e/mc-remote/lock-t1070$l/owner" 2>/dev/null)), nothing taken"; exit 3; }; done
+  fi
   # The desktop, first come first served with ref.sh and shots, then the shot lane and its task.
   Q=/e/mc-remote/queue; SQ=/e/mc-remote/queue-shot; mkdir -p "$Q" "$SQ"
   T1="$Q/$(date +%s%N)-$$"; T2="$SQ/$(date +%s%N)-$$"; : > "$T1"; : > "$T2"

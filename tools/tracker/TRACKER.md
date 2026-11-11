@@ -1,86 +1,179 @@
 # Port progress tracker
 
-A repeatable count of how much of vanilla Minecraft Java 26.3 the mc-unreal port covers, and a small widget that shows
-it live on your own website.
+A repeatable answer to "how close is mc-unreal to a 1:1 copy of Minecraft Java 26.3?", and a small widget that
+shows it live on your own website.
 
-- `audit.py` reads the vanilla content lists and the port's source, and writes `progress.json`.
+- `audit.py` scores every vanilla content id and every game system, and writes `progress.json`.
 - The widget fetches `progress.json` and draws it. It re-fetches on a timer, so when the file changes the page does too.
 - `update.sh` reruns the audit and copies the file to a folder your website serves.
 
-The output holds ids and counts only. It contains no game assets and no text from the jar. The audit never opens the
-Minecraft jar. It reads only the reports and data files that `tools/fetch_cache.py` already put in `cache/`.
+The output holds ids, counts and short rule texts only. It contains no game assets and no text from the jar. The
+audit never opens the Minecraft jar. It reads only the reports and data files that `tools/fetch_cache.py` already
+put in `cache/`.
 
-## What the numbers mean
+## The numbers
 
-Each vanilla content id (a block, an entity, a command, a recipe and so on) is in exactly one of three states.
+### Checks
 
-| State | Meaning |
+A **check** is one aspect of one vanilla id, for example a block's drops, a mob's AI, or one branch of a command's
+syntax. Each check is in one of three states:
+
+| State | Value | Meaning |
+|---|---|---|
+| **absent** | 0 | The audit found nothing for it. Unknown also counts as absent. |
+| **present** | 0.5 | The code that should do it names the id, or loads the data for it. |
+| **verified** | 1 | A passing test, a vanilla comparison log or a PLAN.md vanilla comparison names the id for that aspect. |
+
+The scores build up in three steps:
+
+1. An **id's score** is the mean of the checks that apply to it.
+2. A **category's score** is the mean of its ids.
+3. The **headline** is the weighted mean of every category and every system (see below).
+
+The headline comes in three figures:
+
+| Figure | What it counts |
 |---|---|
-| **absent** | The audit found no sign of the id in the port. |
-| **present** | The port names the id or loads it. The rule depends on the category; see below. |
-| **verified** | A passing automation test or a vanilla comparison log names the id. |
+| **1:1** | `(verified + 0.5 × present) / checks`, weighted. This is the main number. |
+| **Strict** | Verified checks only. The floor: what is proven. |
+| **Lenient** | Present or verified checks. The ceiling: what the code at least attempts. |
 
-### How "present" is decided
+`left` in `progress.json` gives what remains as counts: checks absent, checks present but not verified, ids not done
+(an id is done when every check is verified), and systems missing or not verified.
 
-| Categories | Rule |
-|---|---|
-| Entities, block entities, mob effects, potions, particles, menus, statistics, attributes, villager professions, game events, commands, damage types, paintings, music discs | The id appears as a string literal in game source (`Source/**/*.cpp\|h`, not under `Tests/`), as `"creeper"` or `"minecraft:creeper"`. Comments do not count. For commands, the top-level names come from `commands.json`. |
-| Blocks, items | `McBlockRegistry.cpp` registers every block from `blocks.json`, and `McItemRegistry.cpp` registers every item from `registries.json`. So an id counts if it registers **and** has a model or texture in the client assets (`blockstates/<id>.json` or `textures/block/<id>.png`; `items/<id>.json` or `textures/item/<id>.png`), or is named in source. The audit checks that each registry still loads from the report. If that load is ever removed, the category falls back to the string-literal rule. |
-| Loot tables, enchantments, biomes | The source reads that data folder at runtime (the audit looks for the loader call, for example `McCache::Data(TEXT("worldgen/biome/*.json"))`), so every file in it counts. |
-| Recipes, structures, advancements | The source loads the folder, **and** every type the file uses is named in source: the recipe's `type`, the structure's `type`, or each advancement criterion's `trigger`. A recipe of a serializer the port never names stays absent. |
+### Aspects and how each is detected
 
-Each category in `progress.json` carries its rule as a `rule` string. The widget shows it under the category's
-missing ids.
+"Named in X" means a string literal in those files (game code only, never `Tests/`) is the id, as `"creeper"` or
+`"minecraft:creeper"`. It also counts if a literal names a tag that contains the id, or if the id is built from parts
+the files name (see [Ids built at runtime](#ids-built-at-runtime)).
 
-### How "verified" is decided
+**Blocks** (`blocks.json` and the registry):
 
-You have to pass `--test-log`: an Unreal automation log of a run of the audited revision (`tools/run_tests.ps1`
-writes `Saved/Logs/run_tests.log`). **Without a log, nothing is verified.** A test that exists in the source has not
-been shown to pass.
+| Aspect | Applies to | Present when |
+|---|---|---|
+| Model or texture | every block | `blockstates/<id>.json` or `textures/block/<id>.png` is in the client assets, and `McBlockRegistry.cpp` loads blocks from `blocks.json` |
+| States and placement | blocks with properties | `McBlockPlacement.cpp` names the block, or every property name is named in placement or block-behaviour code |
+| Behaviour | blocks with a non-shape property (`age`, `power`, `lit`, `open`…) or a block entity | block-behaviour code names it: McSim, McWorld, block use and break, containers, TNT, spawners |
+| Drops | blocks with `loot_table/blocks/<id>.json` | the block-break code reads block loot tables, and the DataCoverage test did not reject the table |
+| Sounds | every block but air | the port's block sound rules (the table in `McSound.cpp`, which the audit runs in Python) give a group. It is absent when they fall back to stone while the sound registry has a `block.<part>.*` group that fits the id, as `block.wool.*` fits `white_wool`. |
 
-With a log:
+**Items:**
 
-- **Test files.** Take a test file under `Source/**/Tests/` where every test it declares has
-  `Result={Success}` in the log. Every id named as a string literal in that file is verified. If one test in the file
-  failed or did not run, none of the file's ids count.
-- **Test names.** If a passing test's last name segment, turned into snake_case, equals an id, that id is verified.
-  For example, `McClient.McSim.Fire` verifies `fire`.
-- **Vanilla comparison logs.** `McClient.McSim.RefScripts` holds the port to `tools/refscripts/expect/rs_*.txt`, and
-  `McClient.McSim.RefScriptsLogistics` holds it to `expect/lg_*.txt`. If that test passed, every block named in the
-  state columns of those logs is verified.
-- Only tests the audited revision declares count. If the log came from a different build, record which one with
-  `--test-log-note`; the note is stored in `progress.json` and shown nowhere else.
-- If the log has `DataCoverage:` lines for loot tables or recipes that did not load, those ids go back to absent.
+| Aspect | Applies to | Present when |
+|---|---|---|
+| Model | every item | `items/<id>.json` or `textures/item/<id>.png` is in the client assets, and the item registry loads |
+| Use | items with an active component in the components report (food, consumable, tool, weapon, equippable, glider…), or that player, item, entity, client or server code names | that code names the item, or names every active component it has |
+| How it is obtained | items that some recipe result, loot table entry or villager trade gives | the port loads that kind of data |
+
+**Entities:**
+
+| Aspect | Applies to | Present when |
+|---|---|---|
+| Model and animation | every entity type | the entity renderer (McRender) names it |
+| AI or behaviour | every entity type | entity code (McEntity, the server's entity host) names it |
+| Drops | entities with `loot_table/entities/<id>.json` | loot tables load **and** the entity's AI is present (a mob that never exists drops nothing) |
+| Sounds | entities with `entity.<id>.*` sound events | the mob sound table in `McSound.cpp` lists it, or audio code names it |
+| Spawning | entities in a biome's `natural_mob_spawns` or a structure's `spawn_overrides` | the port reads `natural_mob_spawns` and the entity's AI is present, or spawning code names it |
+
+**Commands:** every executable branch in `commands.json` is one check (1,494 in 26.3). A branch is present if
+`McCommands` names the command and every literal word on the branch (`time` `set`, `gamerule` …). It is verified if
+a passing test runs a command line containing those words in order, such as `"/time set night"`. A command's score is
+the mean of its branches.
+
+**Other registries** (block entities, mob effects, potions, particles, menus, statistics, attributes, villager
+professions, game events) have one check: named in game source.
+
+**Data folders** (advancements, recipes, loot tables, enchantments, biomes, structures, damage types, paintings,
+music discs) have one check:
+
+- Present if the source reads that folder at runtime. The audit looks for the loader call, for example
+  `McCache::Data(TEXT("worldgen/biome/*.json"))`.
+- Recipes, structures and advancements must also have their `type`, or every criterion `trigger`, named in source.
+  A recipe of a serializer the port never names stays absent.
+- Folders without a loader fall back to "named in source".
+- Loot tables and recipes that the DataCoverage test lists as not loading are absent.
+
+Each category and aspect in `progress.json` carries its rule as text, and the widget shows it in the drill-down.
+
+### Verified: where the evidence comes from
+
+1. **The test log.**
+   - Which log: `--test-log`, or by default the one remote.sh writes, `<main checkout>/Saved/Remote/run_tests.log`.
+   - Which commit it ran: `--test-log-commit`, else a `run_tests.log.commit` file next to the log holding the
+     hash, else **inferred** as the newest commit of the audited branch older than the log file. `progress.json` says
+     which way it was found (`evidence.test_log.commit_source`).
+   - Which tests count: a test file counts if every test it declares passed and the file is unchanged between the
+     log's commit and the audited one. Its ids then verify the aspects that its module can test. For example,
+     McAudio and McCore tests verify sounds; McEntity and McServer tests verify AI; McAssets, McRender and McUI tests
+     verify models. `VERIFY_MODULES` in `audit.py` holds the full table.
+   - A passing test whose last name segment, in snake_case, is an id also counts.
+2. **Vanilla comparison logs.** `McClient.McSim.RefScripts` holds the port to `tools/refscripts/expect/rs_*.txt`,
+   and `McClient.McSim.RefScriptsLogistics` holds it to `expect/lg_*.txt`. If those tests passed, every block in the
+   logs' state columns has its states and behaviour verified.
+3. **PLAN.md.** A sentence counts if it cites a baked ref log (`rs_*`/`lg_*` with an expect file) or says "matches
+   vanilla", "all equal", "held to the reference", "32/32" and the like. It does not count if it also says unbuilt,
+   untested, parked, guess, open or unexplained.
+   - The ids it cites come from `backticks`, `minecraft:` ids, snake_case words and plain names ("blast furnace").
+     A short stoplist skips ordinary words like "light" and "stone".
+   - A sentence about shots verifies the model aspect. Any other verifies behaviour (blocks) or AI (entities).
+
+### Systems
+
+`systems.json` lists what id counts cannot see: rendering, lighting, fluids, redstone, worldgen, saves, multiplayer,
+UI screens, options, audio, statistics, the recipe book and so on.
+
+- Each system has a status (`absent`, `unknown`, `present` or `verified`) and an evidence line.
+- The list is kept by hand. It was seeded from PLAN.md and the test names on 2026-11-11.
+- A system marked `verified` must list `verify_tests`. The audit counts it as present unless all of those tests
+  passed in a test log matched to the audited commit.
+- Change a status only with a reason in `evidence`.
+
+### Weights
+
+`weights.json` gives each category and system a weight. A key that is left out weighs 1.
+
+The defaults are a judgement call about how much of playing the game each part is. For example: blocks 12,
+entities 12, items 9, redstone 4, paintings 0.5. Systems make up about half of the total weight (`content_weight_share_pct` gives the content share). Edit the weights
+freely; the history will show the jump on the next run.
 
 ### Limits
 
 Read the figures with these in mind.
 
-- **Present is not done.** For most categories, present only means the source mentions the id. For blocks, items,
-  loot tables, enchantments and biomes, it means the generic loader reads the id. Neither says the id behaves as it
-  does in vanilla. A block counts as present because its model draws, even if its behaviour (a piston pushing, a
-  crop growing) is missing.
-- **Names built at runtime are missed.** If the source builds an id from parts, for example
-  `Wood + TEXT("_boat")`, the audit cannot see it. Boats show as absent entities for this reason. Treat absent as
-  "not found", not "certainly missing".
-- **A literal can be a coincidence.** A short id such as `"say"` or `"stone"` may appear in source for another
-  reason.
-- **Verified means a test passed, not that it matches vanilla.** Most automation tests check the port against values
-  a session wrote down. Only the ref-log rule compares with a real vanilla run.
-- **The totals are weighted by id count.** Blocks, items, recipes and loot tables make up about two thirds of all ids,
-  and they are mostly present under the loader rules. The overall bar therefore reads higher than an honest sense of
-  "how done is the game". `category_mean_pct` gives every category the same weight. Quote that figure, or the
-  per-category rows, rather than the overall percentage alone.
-- **Some data is not counted:** sounds, tags, worldgen features, dimension types and others. You can add them in the
-  `DATA_CATEGORIES` and `REGISTRY_CATEGORIES` tables at the top of `audit.py`. If a listed data folder is missing from
-  the cache, it is reported under `skipped`.
+- **Present is not done.** Present only means the right code mentions the id, or loads its data. It does not say
+  the id behaves exactly as in vanilla. That is why present scores half.
+- **Literals are a proxy.** A short id such as `"say"` may appear for another reason. An id built in a way the audit
+  cannot see reads as absent. Treat absent as "not found", not "certainly missing".
+- **Applicability is a heuristic.** Vanilla behaviour lives in Java classes that the clean-room rule forbids reading.
+  So "has behaviour" is guessed from data: non-shape properties, block entities, active components, sound events,
+  spawn lists. Some blocks with behaviour but only shape properties are not scored on it.
+- **Verified means a test passed, not always that it matches vanilla.** Most automation tests check the port against
+  values a session measured or wrote down. Only the ref-log rule replays a vanilla run tick for tick. An inferred
+  test-log commit can also be wrong if the log came from a dirty checkout.
+- **The weights and systems are opinions.** The id checks are mechanical; these two files are not. Quote strict and
+  lenient beside the 1:1 figure.
+- **Not counted:** sound events, tags, worldgen features, dimension types and more. You can add categories in
+  `audit.py`.
+
+### Ids built at runtime
+
+Some ids are built in code. For example, boats are `Wood + TEXT("_boat")`, where the wood name comes from data.
+The audit therefore also counts an id as named when either of these holds:
+
+- A suffix literal such as `"_boat"` or `"_chest_boat"` that 3 or more ids of that kind end with is named in the
+  same files. The same applies to a prefix literal such as `"stripped_"`.
+- A format literal such as `"%s_boat"` matches the id.
+
+Tag literals count too: `TEXT("minecraft:saplings")` names every sapling.
 
 ## Files
 
 | File | What it is |
 |---|---|
 | `audit.py` | The audit. Python 3, standard library only. Run `python tools/tracker/audit.py --help`. |
-| `progress.json` | The audit output, committed once as a sample. `update.sh` writes elsewhere by default. |
+| `systems.json` | The hand-kept systems list. |
+| `weights.json` | The weights of the headline. |
+| `progress.json` | The audit output, committed as a sample. `update.sh` writes elsewhere by default. |
 | `update.sh` | Reruns the audit and copies the output (and, if you ask, the widget) to a folder. |
 | `widget/tracker.js` | The widget. Plain JavaScript, no build step, no CDN. |
 | `widget/tracker.css` | The widget's stylesheet. `tracker.js` loads it from the same folder. |
@@ -92,27 +185,35 @@ Read the figures with these in mind.
 
 ```json
 {
-  "schema": 1,
-  "generated": "2026-11-11T19:30:00+00:00",
+  "schema": 2,
+  "generated": "2026-11-11T21:00:00+00:00",
   "commit": { "hash": "...", "branch": "m1/blocks-and-chunks", "date": "...", "subject": "..." },
-  "test_log": { "used": false },
-  "ref_logs": [ { "logs": 29, "test": "McClient.McSim.RefScripts", "passed": false } ],
-  "totals": { "ids": 9322, "absent": 2181, "present": 7141, "verified": 0 },
-  "category_mean_pct": { "present_or_verified": 69.38, "verified": 0.0 },
+  "headline": { "one_to_one_pct": 51.4, "strict_pct": 14.4, "lenient_pct": 88.4, "formula": "...", "content_weight_share_pct": 50.7 },
+  "left": { "checks": 17730, "absent": 3272, "present_not_verified": 12856, "verified": 1602,
+            "ids": 9322, "ids_done": 452, "ids_untouched": 2131, "systems": 32, "systems_verified": 2, "systems_absent_or_unknown": 2 },
+  "evidence": { "test_log": { "used": true, "commit": "0ce58805b2", "commit_source": "inferred: ...", "tests_passed": 267 },
+                "ref_logs": [ ... ], "plan_citations": { "sentences": 12, "model_ids": 1, "behaviour_ids": 25 } },
   "categories": [
-    { "key": "entity_type", "label": "Entities", "group": "registry", "ids": 161,
-      "absent": 41, "present": 120, "verified": 0, "named_in_source": 120, "verified_by": {},
-      "rule": "...", "missing": ["acacia_boat", "..."], "missing_more": 0 }
+    { "key": "block", "label": "Blocks", "group": "content", "ids": 1286, "weight": 12,
+      "score": 0.528, "strict": 0.075, "lenient": 0.98, "ids_done": 14, "ids_untouched": 0,
+      "checks": { "applies": 5009, "absent": 107, "present": 4503, "verified": 399 },
+      "aspects": [ { "key": "sounds", "label": "Sounds", "rule": "...", "applies": 1283, "absent": 59,
+                     "present": 1153, "verified": 71, "missing": ["amethyst_cluster", "..."], "missing_more": 19 } ],
+      "lowest": ["..."], "lowest_more": 0, "notes": [] }
   ],
+  "systems": [ { "key": "redstone", "label": "Redstone and pistons", "status": "verified", "score": 1.0, "weight": 4,
+                 "evidence": "...", "notes": [] } ],
   "skipped": [],
-  "history": [ { "t": "...", "commit": "31df2eea31", "ids": 9322, "absent": 2181, "present": 7141, "verified": 0 } ]
+  "history": [ { "t": "...", "commit": "31df2eea31", "one_to_one": 51.36, "strict": 14.35, "lenient": 88.38,
+                 "absent": 3272, "present": 12856, "verified": 1602 } ]
 }
 ```
 
-- `absent`, `present` and `verified` never overlap, and they add up to `ids`.
 - Each run appends one point to `history`, read from the existing output file. If nothing changed since the last run
-  (same commit, same counts), the last point's time moves forward instead. The history keeps the latest 2000 points.
-- `missing` lists up to 60 absent ids per category. Change this with `--missing-cap`.
+  (same commit, same figures), the last point's time moves forward instead.
+- The history keeps the latest 2000 points.
+- Points from the first, schema 1 version of the file are dropped.
+- Missing-id lists hold up to 40 ids each. Change this with `--missing-cap`.
 
 ## Running the audit
 
@@ -123,15 +224,26 @@ python tools/tracker/audit.py --ref m1/blocks-and-chunks
 ```
 
 `--ref` reads the committed revision through git, so uncommitted edits in a checkout do not leak into the figure, and
-you need not check the branch out. Leave it off to audit the working tree. Other options:
+you need not check the branch out. Leave it off to audit the working tree.
 
-- `--test-log PATH` turns on verified (see above).
-- `--test-log-note TEXT` records where the log came from.
-- `--out PATH` sets the output file. It defaults to `tools/tracker/progress.json`.
-- `--cache PATH` sets the cache folder. It defaults to `<repo>/cache`; from a git worktree, it uses the main
-  checkout's `cache/`.
+A run takes about 10 seconds, uses git and Python only, and starts no Unreal process. It prints the headline and a
+per-category table.
 
-A run takes a few seconds and starts no Unreal process.
+| Option | Meaning |
+|---|---|
+| `--test-log PATH` | The automation log. The default is `<main checkout>/Saved/Remote/run_tests.log` if it exists. |
+| `--test-log-commit REV` | The commit that log's run built. Use this when you know it. Otherwise the audit reads `<log>.commit`, or infers the commit from the log's time. |
+| `--no-test-log` | Use no log. Tests then verify nothing. |
+| `--systems`, `--weights` | Other systems or weights files. |
+| `--out PATH` | The output file. It defaults to `tools/tracker/progress.json`. |
+| `--cache PATH` | The cache folder. It defaults to `<repo>/cache`; from a git worktree, it uses the main checkout's `cache/`. |
+
+To make the commit match exact, have the test runner write the hash next to the log once it knows which commit it
+built. For example, add this line to remote.sh after the run:
+
+```bash
+git -C "$CHECKOUT" rev-parse HEAD > "$CHECKOUT/Saved/Remote/run_tests.log.commit"
+```
 
 ## Installing it on your website
 
@@ -158,6 +270,13 @@ Put this where the widget should appear:
 ```
 
 The widget draws inside a shadow root, so your site's CSS cannot break it, and its CSS cannot leak into your page.
+It shows:
+
+- the 1:1 figure big, with strict and lenient beside it;
+- a bar, the "what's left" counts, and a trend line;
+- a row per category, which opens to show each aspect's bar, its rule and its absent ids;
+- the systems list.
+
 Options, set as attributes on the div:
 
 | Attribute | Default | Meaning |
@@ -165,21 +284,22 @@ Options, set as attributes on the div:
 | `data-src` | `progress.json` | URL of the JSON. |
 | `data-interval` | `300` | Seconds between re-fetches. `0` fetches once. The widget also re-fetches when the tab becomes visible again. |
 | `data-theme` | `auto` | `auto` follows the visitor's light or dark setting; `light` and `dark` force one. |
-| `data-title` | `mc-unreal port progress` | The heading. |
+| `data-title` | `mc-unreal: how close to 1:1` | The heading. |
 | `data-css` | `tracker.css` next to `tracker.js` | URL of the stylesheet. `none` loads none, so only your own CSS applies. |
 | `data-missing` | on | `off` hides the lists of missing ids. |
+| `data-systems` | on | `off` hides the systems list. |
 
 You can embed more than one widget on a page. If you add a div after the page has loaded, call
 `McTracker.mount(div)`. After each successful fetch, the div fires a `mc-tracker-update` event with the data in
-`event.detail`, in case you want to show a figure elsewhere on the page.
+`event.detail`. You can use it to show the 1:1 figure elsewhere on your page, for example in a header.
 
 ### Method 2: iframe
 
 ```html
 <iframe id="mc-tracker" src="/tracker/index.html?src=progress.json&theme=auto"
-        title="Port progress" style="width:100%;border:0;min-height:400px" loading="lazy"></iframe>
+        title="Port progress" style="width:100%;border:0;min-height:520px" loading="lazy"></iframe>
 <script>
-  // Optional: let the frame size itself to its content.
+  // Optional: let the frame size itself to its content (it grows when a row is opened).
   addEventListener("message", function (e) {
     if (e.data && e.data.type === "mc-tracker-height")
       document.getElementById("mc-tracker").style.height = e.data.height + "px";
@@ -232,7 +352,8 @@ accept script tags at all, the iframe without the resize script still works; giv
   python -m http.server 8000 --directory tools/tracker
   ```
 
-  Then open `http://localhost:8000/widget/demo.html`.
+  Then open `http://localhost:8000/widget/demo.html` (after `update.sh` has written `out/progress.json`, or point
+  `data-src` at `../progress.json`).
 
 ## Keeping it updated
 
@@ -250,7 +371,7 @@ It reads these environment variables:
 |---|---|
 | `OUT_DIR` | The output folder. The first argument, if given, wins over it. The default is `tools/tracker/out`. |
 | `AUDIT_REF` | The revision to audit. Defaults to `m1/blocks-and-chunks`; set it to an empty string to audit the working tree. |
-| `TEST_LOG`, `TEST_LOG_NOTE` | A test log to turn on verified, and a note on where it came from. |
+| `TEST_LOG`, `TEST_LOG_COMMIT`, `TEST_LOG_NOTE` | Override the test log, its commit, and a note stored with it. By default the audit finds remote.sh's log by itself. |
 | `COPY_WIDGET=1` | Also copy the widget files. |
 | `PYTHON` | The Python to run. |
 
@@ -267,8 +388,8 @@ Keep the same output folder from run to run, because the history lives in that f
    - Start in: `E:\mc-unreal`
 5. On the **Conditions** tab, you may untick **Start the task only if the computer is on AC power**.
 
-Change `/e/www/tracker` to your output folder. The `logs/` folder is git-ignored. Each run takes a few seconds, uses
-git and Python only, and never starts Unreal.
+Change `/e/www/tracker` to your output folder. The `logs/` folder is git-ignored. Each run takes about 10 seconds,
+uses git and Python only, and never starts Unreal, so it is safe while someone is playing.
 
 ### Or on every merge into m1: a git hook
 
@@ -289,31 +410,33 @@ the merge from waiting on the audit. Hooks are not versioned, so set this up on 
 If the merges happen in a worktree that is on another branch (for example, a session merging with
 `git merge` and then `git update-ref`), no hook fires for m1. Use the scheduled task there.
 
+A finished test run changes the verified figures too, so a scheduled task catches both kinds of change.
+
 ## Changing the widget's look
 
 - **Colours and sizes:** set any `--mct-*` variable on the div from your own CSS. These pass into the shadow root.
 
   ```css
   [data-mc-tracker] {
-    --mct-verified: #2f9e44;
-    --mct-present: #f08c00;
-    --mct-absent: #dee2e6;
+    --mct-score: #f08c00;      /* the 1:1 bar and trend line */
+    --mct-verified: #2f9e44;   /* verified, and the strict part of a bar */
+    --mct-lenient: #ffe8cc;    /* the lenient part of a bar */
     --mct-radius: 0;
     --mct-font: "Inter", sans-serif;
     --mct-max-width: 100%;
   }
   ```
 
-  The variables are `--mct-bg`, `--mct-fg`, `--mct-muted`, `--mct-border`, `--mct-track`, `--mct-verified`,
-  `--mct-present`, `--mct-absent`, `--mct-error`, `--mct-code-bg`, `--mct-font`, `--mct-mono`, `--mct-radius` and
-  `--mct-max-width`.
+  The variables are `--mct-bg`, `--mct-fg`, `--mct-muted`, `--mct-border`, `--mct-track`, `--mct-score`,
+  `--mct-lenient`, `--mct-verified`, `--mct-present`, `--mct-absent`, `--mct-error`, `--mct-code-bg`, `--mct-font`,
+  `--mct-mono`, `--mct-radius` and `--mct-max-width`.
 
   The dark theme sets its own values on `:host([data-theme="dark"])` and in the `prefers-color-scheme` block. To
   override colours in dark mode too, target `[data-mc-tracker][data-theme="dark"]` as well, or force one theme with
   `data-theme`.
-- **Bigger changes:** copy `tracker.css`, edit it, and point `data-css` at your copy. The class names (`.card`,
-  `.bar`, `.seg-verified`, `.cat-head` and so on) are listed in the file.
+- **Bigger changes:** copy `tracker.css`, edit it, and point `data-css` at your copy. The class names (`.hero`,
+  `.big-num`, `.score-bar`, `.left-grid`, `.cat-head`, `.aspect`, `.chip-verified` and so on) are listed in the file.
 - **Text and layout:** the heading is `data-title`. Everything else is built in `render()` in `tracker.js`, which is
   plain DOM code with no framework.
-- **Phone width:** below 520 px, each category row stacks its bar under its label. The breakpoint is the last
-  `@media` block in `tracker.css`.
+- **Phone width:** below 560 px, the counts grid drops to two columns and each row stacks its bar under its label.
+  The breakpoint is the last `@media` block in `tracker.css`.

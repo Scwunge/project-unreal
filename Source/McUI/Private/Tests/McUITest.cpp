@@ -75,6 +75,25 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	Layout = ComputeHud(320, 240, Stats);
 	TestTrue(TEXT("food halves the same way"), Layout.Food[1].Fill == EIcon::Full && Layout.Food[2].Fill == EIcon::Half && Layout.Food[3].Fill == EIcon::Empty);
 
+	// Riding a horse (22 health, a charge half done): its 11 hearts take the food row's place, a second row above, and the jump bar the experience bar.
+	Stats.MountHealth = 15.0f;
+	Stats.MountMaxHealth = 22.0f;
+	Stats.MountJump = 0.5f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestEqual(TEXT("no food while riding"), Layout.Food.Num(), 0);
+	TestEqual(TEXT("eleven mount hearts"), Layout.Mount.Num(), 11);
+	TestPoint(TEXT("the first mount heart is where the food starts"), Layout.Mount[0].Pos, FIntPoint(242, 201));
+	TestPoint(TEXT("the eleventh opens a row above"), Layout.Mount[10].Pos, FIntPoint(242, 191));
+	TestTrue(TEXT("seven and a half hearts of health"), Layout.Mount[6].Fill == EIcon::Full && Layout.Mount[7].Fill == EIcon::Half && Layout.Mount[8].Fill == EIcon::Empty);
+	TestTrue(TEXT("the jump bar replaces the experience bar"), Layout.bShowJump && Layout.JumpFill == 91);
+	Stats.MountJump = 0.0f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestFalse(TEXT("an idle mount leaves the experience bar"), Layout.bShowJump);
+	Stats.MountHealth = 0.0f;
+	Stats.MountMaxHealth = 0.0f;
+	Stats.MountJump = -1.0f;
+	Layout = ComputeHud(320, 240, Stats);
+
 	// The hurt flash.
 	TestFalse(TEXT("no flash when not hurt"), IsHurtBlink(0));
 	TestTrue(TEXT("flash"), IsHurtBlink(10));
@@ -157,6 +176,28 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("bundle bar width"), GetBundleBar(Fulls[Index]).Width, Widths[Index]);
 	}
+	// The bundle tooltip (ref runs bundletip, bundletip2): 4 columns, items in the last cells; the content
+	// is 12 (title and gap) + the body + 4 + 13 high: 47 for the description (2 lines), 101 for 3 rows of cells.
+	TestEqual(TEXT("always 4 columns"), GetBundleGrid(1).Columns, 4);
+	TestEqual(TEXT("1 item one row"), GetBundleGrid(1).Rows, 1);
+	TestEqual(TEXT("1 item 3 blanks"), GetBundleGrid(1).Blanks, 3);
+	TestEqual(TEXT("5 items 2 rows"), GetBundleGrid(5).Rows, 2);
+	TestEqual(TEXT("5 items 3 blanks"), GetBundleGrid(5).Blanks, 3);
+	TestEqual(TEXT("12 items 3 rows"), GetBundleGrid(12).Rows, 3);
+	TestEqual(TEXT("12 items no blanks"), GetBundleGrid(12).Blanks, 0);
+	TestEqual(TEXT("13 items hide 5"), GetBundleGrid(13).Hidden, 5);
+	TestEqual(TEXT("13 items show 8 after 3 blanks"), GetBundleGrid(13).Blanks, 3);
+	TestEqual(TEXT("16 items hide 5"), GetBundleGrid(16).Hidden, 5);
+	TestEqual(TEXT("16 items no blanks"), GetBundleGrid(16).Blanks, 0);
+	TestEqual(TEXT("17 items hide 9"), GetBundleGrid(17).Hidden, 9);
+	TestEqual(TEXT("17 items 3 blanks"), GetBundleGrid(17).Blanks, 3);
+	TestEqual(TEXT("24 items hide 13"), GetBundleGrid(24).Hidden, 13);
+	TestEqual(TEXT("12 items hide none"), GetBundleGrid(12).Hidden, 0);
+	TestEqual(TEXT("10 items 4 columns"), GetBundleGrid(10).Columns, 4);
+	TestEqual(TEXT("10 items 3 rows"), GetBundleGrid(10).Rows, 3);
+	TestEqual(TEXT("10 items 2 blanks"), GetBundleGrid(10).Blanks, 2);
+	TestEqual(TEXT("empty tooltip height"), GetBundleTipHeight(0, 2), 47);
+	TestEqual(TEXT("three rows tooltip height"), GetBundleTipHeight(3, 0), 101);
 	TestEqual(TEXT("blue while there is room"), GetBundleBar(0.5).Color, 0x7087FFu);
 	TestEqual(TEXT("red when full"), GetBundleBar(1.0).Color, 0xFF5454u);
 	TestEqual(TEXT("one point off, still full width"), GetDurabilityBar(1, 1561).Width, 13);

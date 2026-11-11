@@ -1217,6 +1217,37 @@ namespace McEntityModel
 				DragonJaw.Scale = 0.75f;
 				Dragon.Parts.Add(DragonJaw);
 				Models.Add(Dragon.Kind, Dragon);
+				// The whole dragon, APPROXIMATE: its proportions are read off a vanilla frozen dragon seen from above and the side
+				// (dragon_shot1, ref_dr_top and ref_dr_side: about 13.5 blocks nose to tail, wings about 14 across) and its
+				// parts are the familiar ones (a body, five neck pieces, the head above, eight tail pieces, two wings with a
+				// membrane). The texture cuts (UVs) of everything but the head are guesses, the wings do not beat, and neck and
+				// tail do not follow the dragon's turns. The front is -z, as for the other mobs.
+				{
+					FModel Full;
+					Full.Kind = FName(TEXT("minecraft:ender_dragon"));
+					Full.TextureSize = FIntPoint(256, 256);
+					Full.Textures = { TEXT("enderdragon/dragon.png") };
+					Full.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 0, -12, -12, -20, 24, 24, 64) }));
+					for (int32 Piece = 0; Piece < 5; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 - Piece, -20 - 10 * Piece), { Box(192, 104, -5, -5, -10, 10, 10, 10) }, -0.04f * Piece));
+					}
+					for (int32 Piece = 0; Piece < 8; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 + Piece, 44 + 10 * Piece), { Box(192, 104, -5, -5, 0, 10, 10, 10) }, 0.03f * Piece));
+					}
+					for (const FPart& Source : Dragon.Parts)
+					{
+						FPart Moved = Source;
+						Moved.Pivot += FVector(0, 7, -86);
+						Moved.RestYaw = PI;
+						Full.Parts.Add(Moved);
+					}
+					// Wings: a bone 96 long, a membrane behind it; raised a little (0.25) from level.
+					Full.Parts.Add(Part(ERole::Static, FVector(-12, 2, -4), { Box(0, 88, -96, -4, -4, 96, 8, 8), Box(0, 152, -96, 0, 4, 96, 0, 56) }, 0.0f, 0.0f, 0.25f));
+					Full.Parts.Add(Part(ERole::Static, FVector(12, 2, -4), { Box(0, 88, 0, -4, -4, 96, 8, 8, 0.0f, true), Box(0, 152, 0, 0, 4, 96, 0, 56, 0.0f, true) }, 0.0f, 0.0f, -0.25f));
+					Models.Add(Full.Kind, Full);
+				}
 				// A carved pumpkin worn on a head (McPlayerModel): its block model 10.1 pixels across (the block at 0.63),
 				// its middle on the head's, 4 over the neck, its face forward (measured in vanilla, ref_wh_pumpkin against
 				// ref_wh_bare, from the front: 82 pixels to the bare head's 64, its top 1 pixel over the head's).
@@ -2209,7 +2240,7 @@ namespace McEntityModel
 		return Models.Find(Kind);
 	}
 
-	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out)
+	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out, float Tilt)
 	{
 		// Pixels before the two thirds the game scales a banner by; the flag faces south (+z) and hangs from the bar.
 		static const FModel Pole = []
@@ -2230,7 +2261,7 @@ namespace McEntityModel
 		{
 			FModel Result;
 			Result.TextureSize = FIntPoint(64, 64);
-			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 2, 1, 20, 40, 1) }));
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 4, 1, 20, 40, 1) }));
 			return Result;
 		}();
 		static const FModel WallFlag = []
@@ -2241,12 +2272,39 @@ namespace McEntityModel
 			return Result;
 		}();
 		FAnim Anim;
-		Anim.BodyYaw = BodyYaw;
+		// The flag swings about the bar it hangs from: built unturned, tilted there, then turned like the rest.
+		Anim.BodyYaw = bFlag ? 0.0f : BodyYaw;
 		BuildMesh(bFlag ? (bWall ? WallFlag : Flag) : (bWall ? WallBar : Pole), Anim, 0, Out);
 		for (FVector& Position : Out.Positions)
 		{
 			Position *= 2.0 / 3.0;
 		}
+		if (bFlag)
+		{
+			// Positive Tilt swings the foot of the flag back (away from its face).
+			const FQuat Swing(FVector::XAxisVector, -Tilt);
+			const FQuat Turn(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const FVector Pivot(0.0, (bWall ? 22.0 : 44.0) * 2.0 / 3.0, 0.0);
+			// The mesh holds engine axes (x, model z, model y) in engine units; turn it in the model's own axes and pixels.
+			const double Units = McCoords::UnitsPerBlock / 16.0;
+			for (FVector& Position : Out.Positions)
+			{
+				const FVector Model(Position.X / Units, Position.Z / Units, Position.Y / Units);
+				const FVector Moved = Turn.RotateVector(Pivot + Swing.RotateVector(Model - Pivot));
+				Position = FVector(Moved.X, Moved.Z, Moved.Y) * Units;
+			}
+			for (FVector& Normal : Out.Normals)
+			{
+				const FVector Moved = Turn.RotateVector(Swing.RotateVector(FVector(Normal.X, Normal.Z, Normal.Y)));
+				Normal = FVector(Moved.X, Moved.Z, Moved.Y);
+			}
+		}
+	}
+
+	float GetBannerTilt(double Ticks)
+	{
+		const double Phase = FMath::Fmod((Ticks + 32.0) / 100.0, 1.0);
+		return 0.058f + 0.033f * static_cast<float>(FMath::Cos(2.0 * PI * Phase));
 	}
 
 	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
@@ -3221,6 +3279,92 @@ namespace McEntityModel
 		}
 	}
 
+	void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const double Half = Width * 0.5 * Units;
+		const FVector Centre(0.0, 0.0, Height * Units);
+		// The picture's top edge towards -Y (north), its left towards -X, as it reads looking down on it.
+		const FVector Corners[4] = { Centre + FVector(-Half, Half, 0), Centre + FVector(Half, Half, 0), Centre + FVector(Half, -Half, 0), Centre + FVector(-Half, -Half, 0) };
+		const FVector2D UVs[4] = { FVector2D(0, VMax), FVector2D(1, VMax), FVector2D(1, 0), FVector2D(0, 0) };
+		for (const bool bBack : { false, true })
+		{
+			const FVector Normal(0.0, 0.0, bBack ? -1.0 : 1.0);
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(Corners[Corner]);
+				Out.Normals.Add(Normal);
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(FColor::White);
+			}
+			if (bBack)
+			{
+				Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+			}
+			else
+			{
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+		}
+	}
+
+	// The dropped item's numbers, fitted from 16 same-camera shots 4 ticks apart (itemdrop1): the width of a diamond's picture followed
+	// |cos| of a turn of 0.05 radian a tick; its middle rose and fell 0.096 of a block about 0.385 above the floor with a period of
+	// 63 ticks. -McDrop=lift,radius,cubescale overrides the base height, the spread of a stack and a block's size while they are being fitted.
+	namespace
+	{
+		float GetDropArg(int32 Index, float Default)
+		{
+			static FString Text;
+			static bool bRead = FParse::Value(FCommandLine::Get(), TEXT("-McDrop="), Text, false);
+			TArray<FString> Parts;
+			Text.ParseIntoArray(Parts, TEXT(","));
+			return Parts.IsValidIndex(Index) ? FCString::Atof(*Parts[Index]) : Default;
+		}
+	}
+
+	float GetDroppedHeight(float Age, float Lift)
+	{
+		return GetDropArg(0, 0.26f) + 0.096f * FMath::Sin(Age * 2.0f) + Lift;
+	}
+
+	void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const FQuat Turn(FVector::ZAxisVector, Age * 1.0f);
+		const FVector Up(0.0, 0.0, GetDroppedHeight(Age, Lift));
+		const int32 Copies = GetItemCopies(Count);
+		const double Spread = GetDropArg(1, 0.12f);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			// The copies are scattered a little around the middle, and turn with it.
+			const FVector Offset = Copies == 1 ? FVector::ZeroVector : FVector(FMath::Sin(Copy * 2.4) * Spread, FMath::Cos(Copy * 2.4) * Spread, (FMath::Frac(Copy * 0.618) - 0.5) * 0.2);
+			const int32 First = Out.Positions.Num();
+			for (int32 Index = 0; Index < Unit.Positions.Num(); ++Index)
+			{
+				Out.Positions.Add(Up * Units + Turn.RotateVector(Unit.Positions[Index] * Scale + Offset * Units));
+				Out.Normals.Add(Turn.RotateVector(Unit.Normals[Index]));
+				Out.UV0.Add(Unit.UV0[Index]);
+				Out.Colors.Add(Unit.Colors[Index]);
+			}
+			for (const int32 Index : Unit.Triangles)
+			{
+				Out.Triangles.Add(First + Index);
+			}
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -3379,7 +3523,8 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	VariantSeed = INT32_MIN;
 	WolfTextureState = 0;
 	bBabyLook = false;
-	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsGrillFood = Kind == TEXT("mc:grillfood");
+	bIsItem = bIsGrillFood || Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
 	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
 	PotSides = NAME_None;
 	if (bIsPotItem)
@@ -3394,7 +3539,9 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsFalling = Kind == TEXT("minecraft:falling_block");
-	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
+	bIsDropped = bIsItem && !bIsThrown && !bIsGrillFood;
+	bDropReady = false;
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
 	bIsDecor = Kind == TEXT("mc:decor") && McDecor::Decode(Item.ToString(), Decor);
@@ -3653,6 +3800,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	{
 		return FindTopTexture(Item);
 	}
+	if (bIsDropped && bDropCube)
+	{
+		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+		return Layer == 1 ? Pictures.Top : Pictures.Side;
+	}
 	if (bIsItem || bIsFalling)
 	{
 		return FindItemTexture(Item);
@@ -3814,6 +3966,135 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	return Material;
 }
 
+void UMcEntityModelComponent::PrepareDropped()
+{
+	bDropReady = true;
+	McEntityModel::FDroppedUnit Unit;
+	McEntityModel::BuildDroppedUnit(Item, Unit);
+	bDropCube = Unit.bCube;
+	bDropModel = Unit.bModel;
+	DropScale = Unit.Scale;
+	DropLift = Unit.Lift;
+	DropUnit = MoveTemp(Unit.Sides);
+	DropTop = MoveTemp(Unit.Top);
+	DropLayerUV = MoveTemp(Unit.LayerUV);
+}
+
+bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
+{
+	Out = FDroppedUnit();
+	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+	Out.bCube = Pictures.Kind == McHand::EHeld::Cube;
+	// The model's own ground display where the cache has it, else what the shots gave: a picture half a block, 0.125 up; a block a quarter.
+	const auto Place = [&Out](FName Model, bool bBlock)
+	{
+		const McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(Model, TEXT("ground"));
+		Out.Scale = Display.bFound ? static_cast<float>(Display.Scale) : (bBlock ? McEntityModel::GetDropArg(2, 0.25f) : 0.5f);
+		Out.Lift = (Display.bFound ? static_cast<float>(Display.Translation.Y) : (bBlock ? 3.0f : 2.0f)) / 16.0f;
+	};
+	if (Out.bCube)
+	{
+		Place(FName(TEXT("block/block")), true);
+		McHand::BuildCubeSidesMesh(Pictures.SideTint, 1.0f, Out.Sides);
+		McHand::BuildCubeTopMesh(Pictures.TopTint, 1.0f, Out.Top);
+		return true;
+	}
+	// An item whose definition names a block's model (stairs, slabs, fences, ...) is drawn as that model, as the game does.
+	FString ModelId;
+	const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json")));
+	const TSharedPtr<FJsonObject>* Model = nullptr;
+	if (Json.IsValid() && Json->TryGetObjectField(TEXT("model"), Model))
+	{
+		(*Model)->TryGetStringField(TEXT("model"), ModelId);
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (ModelId.StartsWith(TEXT("minecraft:block/")) && Registry.EnsureLoaded() && FMcBlockModels::Get().EnsureBaked() && FMcBlockTextures::Get().EnsureLoaded())
+	{
+		const TOptional<FMcStateId> State = Registry.FindDefaultState(Item);
+		const FMcBlockModels& Models = FMcBlockModels::Get();
+		if (State.IsSet() && Models.IsBaked() && State.GetValue() < Models.NumStates() && !Models.GetModel(State.GetValue()).Quads.IsEmpty())
+		{
+			Out.bModel = true;
+			Place(FName(TEXT("block/block")), true);
+			const double Units = McCoords::UnitsPerBlock;
+			for (const FMcBakedQuad& Quad : Models.GetModel(State.GetValue()).Quads)
+			{
+				FVector Normal = FVector::ZeroVector;
+				switch (Quad.Face)
+				{
+				case EMcDirection::Down: Normal = FVector(0, 0, -1); break;
+				case EMcDirection::Up: Normal = FVector(0, 0, 1); break;
+				case EMcDirection::North: Normal = FVector(0, -1, 0); break;
+				case EMcDirection::South: Normal = FVector(0, 1, 0); break;
+				case EMcDirection::West: Normal = FVector(-1, 0, 0); break;
+				case EMcDirection::East: Normal = FVector(1, 0, 0); break;
+				default: break;
+				}
+				const float Layer = static_cast<float>(FMcBlockTextures::Get().GetLayer(Quad.Texture));
+				const int32 First = Out.Sides.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Local = FVector(Quad.Positions[Corner]) - FVector(0.5);
+					Out.Sides.Positions.Add(FVector(Local.X, Local.Z, Local.Y) * Units);
+					Out.Sides.Normals.Add(Normal);
+					Out.Sides.UV0.Add(FVector2D(Quad.UVs[Corner]));
+					Out.Sides.Colors.Add(FColor::White);
+					Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+				}
+				Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+			return true;
+		}
+	}
+	Place(Item, false);
+	TArray<FColor> Pixels;
+	int32 Width = 0, Height = 0;
+	const FString Path = Pictures.Kind == McHand::EHeld::Flat ? Pictures.Side : FindItemTexture(Item);
+	if (Path.IsEmpty() || !McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width <= 0 || Height < Width)
+	{
+		// No picture to cut out: the two-sided flat picture.
+		// Still nothing (a chest, a pot, a bar whose item model is not a picture): a plain cube of the block's own picture or, failing that,
+		// of planks, so that nothing a player drops is ever invisible.
+		FMcBlockTextures& Pictures2 = FMcBlockTextures::Get();
+		if (Item == FName(TEXT("minecraft:air")) || !Pictures2.EnsureLoaded())
+		{
+			return false;
+		}
+		FName Texture(*(TEXT("minecraft:block/") + McCache::PathOf(Item.ToString())));
+		if (Pictures2.GetLayerId(Pictures2.GetLayer(Texture)) != Texture)
+		{
+			Texture = FName(TEXT("minecraft:block/oak_planks"));
+		}
+		const float Layer = static_cast<float>(Pictures2.GetLayer(Texture));
+		Out = FDroppedUnit();
+		Out.bModel = true;
+		Place(FName(TEXT("block/block")), true);
+		static const FVector Normals[6] = { FVector(0, 0, -1), FVector(0, 0, 1), FVector(0, -1, 0), FVector(0, 1, 0), FVector(-1, 0, 0), FVector(1, 0, 0) };
+		const double Units = McCoords::UnitsPerBlock;
+		for (int32 Face = 0; Face < 6; ++Face)
+		{
+			const FVector N = Normals[Face];
+			const FVector U = Face < 2 ? FVector(1, 0, 0) : (Face < 4 ? FVector(1, 0, 0) : FVector(0, 1, 0));
+			const FVector V = FVector::CrossProduct(N, U);
+			const int32 First = Out.Sides.Positions.Num();
+			const FVector Corner[4] = { N * 0.5 - U * 0.5 + V * 0.5, N * 0.5 - U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 + V * 0.5 };
+			const FVector2D Uv[4] = { FVector2D(0, 0), FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0) };
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				Out.Sides.Positions.Add(Corner[Index] * Units);
+				Out.Sides.Normals.Add(N);
+				Out.Sides.UV0.Add(Uv[Index]);
+				Out.Sides.Colors.Add(FColor::White);
+				Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+			}
+			Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		}
+		return true;
+	}
+	McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Out.Sides);
+	return true;
+}
+
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -3951,6 +4232,46 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		SetRelativeScale3D(FVector(Scale));
 	}
 
+	if (bIsDropped && !bDropReady)
+	{
+		PrepareDropped();
+	}
+	if (bIsDropped && bDropModel)
+	{
+		// A block that is not a full cube: its baked model, drawn with the world's block pictures.
+		FMcBlockTextures& BlockPictures = FMcBlockTextures::Get();
+		if (!BlockPictures.IsLoaded() || !BaseMaterial)
+		{
+			return;
+		}
+		if (!BlockMaterial)
+		{
+			BlockMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+			BlockMaterial->SetTextureParameterValue(TEXT("Blocks"), BlockPictures.GetTextureArray());
+		}
+		BlockMaterial->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		BlockMaterial->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+		McPlayerModel::FMeshData DropMesh;
+		McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, DropMesh);
+		TArray<FVector2D> ModelUV1, ModelUV2;
+		const int32 Copies = McEntityModel::GetItemCopies(Count);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			ModelUV1.Append(DropLayerUV);
+		}
+		ModelUV2.Init(FVector2D(1.0, 0.0), DropMesh.Positions.Num());
+		if (NumSections == 0)
+		{
+			CreateMeshSection(0, DropMesh.Positions, DropMesh.Triangles, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>(), false);
+			SetMaterial(0, BlockMaterial);
+			NumSections = 1;
+		}
+		else
+		{
+			UpdateMeshSection(0, DropMesh.Positions, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>());
+		}
+		return;
+	}
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
@@ -4028,6 +4349,45 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		else if (bIsThrown)
 		{
 			McEntityModel::BuildThrownMesh(ItemVMax, Data);
+		}
+		else if (bIsGrillFood)
+		{
+			McEntityModel::BuildFlatItemMesh(0.375f, 0.0f, ItemVMax, Data);
+		}
+		else if (bIsDropped && bDropCube)
+		{
+			// A block: the sides, then the top, each its own picture.
+			for (int32 Part = 0; Part < 2; ++Part)
+			{
+				UMaterialInstanceDynamic* Material = GetMaterial(Part);
+				if (!Material)
+				{
+					bItemFailed = true;
+					return;
+				}
+				Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+				Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+				McPlayerModel::FMeshData Cube;
+				McEntityModel::BuildDroppedMesh(Part == 0 ? DropUnit : DropTop, Anim.Age, Count, DropScale, DropLift, Cube);
+				TArray<FVector2D> CubeUV1, CubeUV2;
+				CubeUV1.Init(FVector2D::ZeroVector, Cube.Positions.Num());
+				CubeUV2.Init(FVector2D(1.0, 0.0), Cube.Positions.Num());
+				if (NumSections <= Part)
+				{
+					CreateMeshSection(Part, Cube.Positions, Cube.Triangles, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>(), false);
+					SetMaterial(Part, Material);
+					NumSections = Part + 1;
+				}
+				else
+				{
+					UpdateMeshSection(Part, Cube.Positions, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>());
+				}
+			}
+			return;
+		}
+		else if (bIsDropped)
+		{
+			McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, Data);
 		}
 		else
 		{
@@ -4150,12 +4510,14 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 			Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
-			if (NumSections > Layer)
+			// The pole and bar are built once; the flag's layers again each frame, as it swings.
+			if (NumSections > Layer && Layer == 0)
 			{
 				continue;
 			}
+			const float Tilt = McEntityModel::GetBannerTilt(GetWorld() ? GetWorld()->GetTimeSeconds() * 20.0 : 0.0);
 			McPlayerModel::FMeshData Data;
-			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data);
+			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data, Tilt);
 			if (Layer > 0)
 			{
 				// The flag takes the dye's colour (the pole and bar keep the wood).
@@ -4173,6 +4535,11 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			TArray<FVector2D> UV1, UV2;
 			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
 			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			if (NumSections > Layer)
+			{
+				UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
+				continue;
+			}
 			CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
 			SetMaterial(Layer, Material);
 			NumSections = Layer + 1;

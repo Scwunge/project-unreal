@@ -797,7 +797,17 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	}
 	// Under water the sun's light dances as caustics (a light function, only while it matters).
 	{
-		static UMaterialInterface* Caustics = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Mc/Materials/M_McCaustics.M_McCaustics"));
+		// Rooted: nothing else holds it, so the next garbage collection would free it and leave this pointer (and the
+		// light's, in a game that runs on) dangling; the light's next precache then calls through freed memory.
+		static UMaterialInterface* Caustics = []
+		{
+			UMaterialInterface* Loaded = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Mc/Materials/M_McCaustics.M_McCaustics"));
+			if (Loaded)
+			{
+				Loaded->AddToRoot();
+			}
+			return Loaded;
+		}();
 		const bool bCaustic = Caustics && McRenderMode::IsEnhanced() && McSky::GetCameraUnderwater() > 0.5f;
 		SunLight->SetLightFunctionMaterial(bCaustic ? Caustics : nullptr);
 	}

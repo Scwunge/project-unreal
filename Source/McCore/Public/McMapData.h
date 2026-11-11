@@ -62,4 +62,11 @@ struct MCCORE_API FMcMapData
 
 	// Rebuild the pixels of one map row range from a column sampler: Sample(BlockX, BlockZ). Returns pixels changed.
 	int32 UpdateRow(int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample);
+	// The same for one column of pixels (the held map fills by columns, see ServerTickMaps).
+	int32 UpdateColumn(int32 PixelX, TFunctionRef<FColumn(int32, int32)> Sample);
+
+private:
+	int32 UpdatePixel(int32 PixelX, int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample);
+
+public:
 };

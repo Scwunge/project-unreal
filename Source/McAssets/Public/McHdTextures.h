@@ -22,7 +22,7 @@
 namespace McHd
 {
 	// Bump this when the generated pictures change, so cached ones are rebuilt.
-	constexpr int32 GeneratorVersion = 5;
+	constexpr int32 GeneratorVersion = 6;  // 6: the generated normal maps are DirectX (green down the picture), like LabPBR
 
 	enum class EMaterialClass : uint8
 	{

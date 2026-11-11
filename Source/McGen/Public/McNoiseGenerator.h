@@ -57,7 +57,7 @@ public:
 	virtual void Generate(FMcChunk& Chunk) const override;
 	virtual int32 FindSurfaceY(int32 X, int32 Z) const override;
 	// The top solid block's Y by the final density alone, below the sea as well (the sea floor).
-	int32 FindSolidTopY(int32 X, int32 Z) const;
+	virtual int32 FindSolidTopY(int32 X, int32 Z) const override;
 	virtual int32 FindFloorY(int32 X, int32 Z, int32 BelowY) const override;
 
 	const FMcDensityGraph& GetGraph() const { return Graph; }

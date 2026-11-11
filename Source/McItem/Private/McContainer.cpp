@@ -334,7 +334,7 @@ void FMcMenu::Pickup(int32 Slot, int32 Button, TArray<FMcItemStack>& Dropped)
 	}
 	if (Button == 1 && Carried.IsEmpty() && !Stack.IsEmpty() && McBundle::IsBundle(Stack.Item) && MayPickup(Slot) && !McBundle::GetContents(Stack).IsEmpty())
 	{
-		Carried = McBundle::RemoveNewest(Stack);
+		Carried = McBundle::RemoveAt(Stack, BundlePick);
 		BundleSound = FName("item.bundle.remove_one");
 		SetStack(Slot, Stack);
 		return;

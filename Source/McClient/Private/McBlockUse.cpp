@@ -281,6 +281,7 @@ void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 			}
 		}
 		TickHoppers();
+		TickCampfires();
 		TickJukeboxes();
 		TickShulkers();
 		if (++CleanTimer >= 100)
@@ -1157,7 +1158,7 @@ void UMcBlockUseSubsystem::GetContents(const AMcWorldActor& WorldActor, const FI
 	{
 		return;
 	}
-	if (Entity->Kind == EMcBlockEntityKind::Container || Entity->Kind == EMcBlockEntityKind::Lectern)
+	if (Entity->Kind == EMcBlockEntityKind::Container || Entity->Kind == EMcBlockEntityKind::Lectern || Entity->Kind == EMcBlockEntityKind::Campfire)
 	{
 		Out.Append(Entity->Slots);
 	}
@@ -1510,6 +1511,116 @@ namespace
 	}
 }
 
+bool UMcBlockUseSubsystem::UseCampfire(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+{
+	UMcPlayerDataComponent* Data = Player.Data;
+	FMcChunk* Chunk = FindChunkOf(WorldActor, Pos);
+	if (!Data || !Chunk)
+	{
+		return false;
+	}
+	FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+	FMcRecipeBook& Book = FMcRecipeBook::Get();
+	const FMcRecipe* Recipe = !Held.IsEmpty() && Book.EnsureLoaded() ? Book.FindCooking(EMcRecipeType::CampfireCooking, Held) : nullptr;
+	if (!Recipe)
+	{
+		return false;
+	}
+	FMcBlockEntity* Campfire = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	if (!Campfire || Campfire->Kind != EMcBlockEntityKind::Campfire || Campfire->Slots.Num() != FMcBlockEntity::NumCampfireSpots)
+	{
+		Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeCampfire());
+		Campfire = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+	}
+	for (int32 Spot = 0; Spot < FMcBlockEntity::NumCampfireSpots; ++Spot)
+	{
+		if (Campfire->Slots[Spot].IsEmpty())
+		{
+			FMcItemStack One = Held;
+			One.Count = 1;
+			Campfire->Slots[Spot] = One;
+			Campfire->CookingTimes[Spot] = 0;
+			Campfire->CookingTotals[Spot] = Recipe->CookingTime;
+			if (!Data->bCreative && --Held.Count <= 0)
+			{
+				Held.Clear();
+			}
+			WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+			WorldActor.GetBlockWorld()->OnBlockEntityChanged.Broadcast(Pos);
+			return true;
+		}
+	}
+	return false;
+}
+
+void UMcBlockUseSubsystem::TickCampfires()
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcRecipeBook& Book = FMcRecipeBook::Get();
+	for (TActorIterator<AMcWorldActor> It(GetWorld()); It; ++It)
+	{
+		FMcBlockWorld* Blocks = It->HasAuthority() ? It->GetBlockWorld() : nullptr;
+		if (!Blocks)
+		{
+			continue;
+		}
+		TArray<FIntPoint> Loaded;
+		Blocks->GetChunks().GetKeys(Loaded);
+		for (const FIntPoint& ChunkPos : Loaded)
+		{
+			FMcChunk* Chunk = Blocks->FindChunk(ChunkPos);
+			if (!Chunk || Chunk->GetBlockEntities().IsEmpty())
+			{
+				continue;
+			}
+			TArray<FIntVector> Spots;
+			for (const TPair<FIntVector, FMcBlockEntity>& Entity : Chunk->GetBlockEntities())
+			{
+				if (Entity.Value.Kind == EMcBlockEntityKind::Campfire)
+				{
+					Spots.Add(Entity.Key);
+				}
+			}
+			for (const FIntVector& Local : Spots)
+			{
+				const FIntVector Pos(ChunkPos.X * 16 + Local.X, Local.Y, ChunkPos.Y * 16 + Local.Z);
+				const FMcStateId State = Blocks->GetBlock(Pos);
+				if (!Registry.IsValidState(State) || Registry.GetPropertyValue(State, TEXT("lit")) != TEXT("true"))
+				{
+					continue;
+				}
+				FMcBlockEntity* Campfire = Chunk->FindBlockEntity(Local.X, Local.Y, Local.Z);
+				bool bChanged = false;
+				for (int32 Spot = 0; Spot < FMcBlockEntity::NumCampfireSpots && Spot < Campfire->Slots.Num(); ++Spot)
+				{
+					FMcItemStack& Food = Campfire->Slots[Spot];
+					if (Food.IsEmpty() || ++Campfire->CookingTimes[Spot] < Campfire->CookingTotals[Spot])
+					{
+						continue;
+					}
+					const FMcRecipe* Recipe = Book.EnsureLoaded() ? Book.FindCooking(EMcRecipeType::CampfireCooking, Food) : nullptr;
+					if (Recipe)
+					{
+						if (FMcEntityHost* Host = It->GetEntityHost())
+						{
+							Host->GetManager().DropItem(FVector(Pos) + FVector(0.5, 0.7, 0.5), Recipe->Result);
+						}
+					}
+					Food.Clear();
+					Campfire->CookingTimes[Spot] = 0;
+					Campfire->CookingTotals[Spot] = 0;
+					bChanged = true;
+				}
+				if (bChanged)
+				{
+					It->MarkChunkDirty(ChunkPos);
+					Blocks->OnBlockEntityChanged.Broadcast(Pos);
+				}
+			}
+		}
+	}
+}
+
 bool UMcBlockUseSubsystem::UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -1610,6 +1721,123 @@ void UMcBlockUseSubsystem::LecternButton(AMcPlayerPawn& Player, AMcWorldActor& W
 	}
 }
 
+namespace
+{
+	// The books a chiseled bookshelf holds (minecraft.wiki, "Chiseled Bookshelf": books, books and quills, written books,
+	// enchanted books and knowledge books).
+	bool IsShelfBook(FName Item)
+	{
+		return Item == TEXT("minecraft:book") || Item == TEXT("minecraft:writable_book") || Item == TEXT("minecraft:written_book")
+			|| Item == TEXT("minecraft:enchanted_book") || Item == TEXT("minecraft:knowledge_book");
+	}
+
+	// Which of the six slots the player's look meets on the shelf's front, 0 to 5 (upper left, upper middle, upper right, then the
+	// lower row, as the face is seen), or INDEX_NONE if it is not the front. UNVERIFIED: the wiki gives the slot numbers but not
+	// where on the face each one is; this is the natural reading order.
+	int32 GetShelfSlot(const AMcPlayerPawn& Player, FMcStateId State, const FIntVector& Pos)
+	{
+		const FName Facing = FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("facing"));
+		const FVector Front = Facing == TEXT("north") ? FVector(0, 0, -1) : Facing == TEXT("south") ? FVector(0, 0, 1) : Facing == TEXT("east") ? FVector(1, 0, 0) : FVector(-1, 0, 0);
+		const double YawRad = FMath::DegreesToRadians(static_cast<double>(Player.GetLookYaw()));
+		const double PitchRad = FMath::DegreesToRadians(static_cast<double>(Player.GetLookPitch()));
+		const FVector Look(-FMath::Sin(YawRad) * FMath::Cos(PitchRad), -FMath::Sin(PitchRad), FMath::Cos(YawRad) * FMath::Cos(PitchRad));
+		const FVector Eye = Player.GetFeetPosition() + FVector(0.0, 1.62, 0.0);
+		const FVector Centre = FVector(Pos) + FVector(0.5);
+		const double Facing_Dot = FVector::DotProduct(Look, Front);
+		if (Facing_Dot >= -1e-6)
+		{
+			return INDEX_NONE;
+		}
+		const double T = FVector::DotProduct(Centre + Front * 0.5 - Eye, Front) / Facing_Dot;
+		if (T <= 0.0)
+		{
+			return INDEX_NONE;
+		}
+		const FVector Hit = Eye + Look * T;
+		const FVector Right = FVector::CrossProduct(-Front, FVector(0, 1, 0));
+		const double U = FVector::DotProduct(Hit - Centre, Right) + 0.5;
+		const double V = Hit.Y - Pos.Y;
+		if (U < 0.0 || U >= 1.0 || V < 0.0 || V >= 1.0)
+		{
+			return INDEX_NONE;
+		}
+		return (V >= 0.5 ? 0 : 3) + FMath::Min(2, FMath::FloorToInt32(U * 3.0));
+	}
+
+	// A click on a chiseled bookshelf: a book in hand goes into an empty slot, an occupied slot gives its book (also with a book
+	// in hand, since 1.19.3). The slot is remembered for comparators (reference run bookshelf: they read slot + 1).
+	bool UseBookshelf(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
+	{
+		UMcPlayerDataComponent* Data = Player.Data;
+		FMcBlockWorld* Blocks = WorldActor.GetBlockWorld();
+		FMcChunk* Chunk = Blocks ? Blocks->FindChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)) : nullptr;
+		if (!Data || !Chunk)
+		{
+			return false;
+		}
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		const FMcStateId State = Blocks->GetBlock(Pos);
+		const int32 Slot = GetShelfSlot(Player, State, Pos);
+		if (Slot == INDEX_NONE)
+		{
+			return false;
+		}
+		FMcBlockEntity* Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+		if (!Entity || Entity->Kind != EMcBlockEntityKind::Container || Entity->Slots.Num() != 6)
+		{
+			Chunk->SetBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15, FMcBlockEntity::MakeContainer(6));
+			Entity = Chunk->FindBlockEntity(Pos.X & 15, Pos.Y, Pos.Z & 15);
+		}
+		const FName Occupied(*FString::Printf(TEXT("slot_%d_occupied"), Slot));
+		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
+		FName Sound;
+		bool bPlace = false;
+		if (!Entity->Slots[Slot].IsEmpty())
+		{
+			const FMcItemStack Taken = Entity->Slots[Slot];
+			Entity->Slots[Slot].Clear();
+			const FMcItemStack Left = Data->Inventory->AddItem(Taken);
+			if (!Left.IsEmpty())
+			{
+				DropAll(WorldActor, Pos, { Left });
+			}
+			Sound = Taken.Item == TEXT("minecraft:enchanted_book") ? FName("block.chiseled_bookshelf.pickup.enchanted") : FName("block.chiseled_bookshelf.pickup");
+		}
+		else if (!Held.IsEmpty() && IsShelfBook(Held.Item))
+		{
+			FMcItemStack One = Held;
+			One.Count = 1;
+			Entity->Slots[Slot] = One;
+			if (!Data->bCreative && --Held.Count <= 0)
+			{
+				Held.Clear();
+			}
+			bPlace = true;
+			Sound = One.Item == TEXT("minecraft:enchanted_book") ? FName("block.chiseled_bookshelf.insert.enchanted") : FName("block.chiseled_bookshelf.insert");
+		}
+		else
+		{
+			return false;
+		}
+		const FMcBlock& Block = Registry.GetBlockOf(State);
+		const FMcBlockState& Data0 = Registry.GetState(State);
+		TMap<FName, FName> Properties;
+		for (int32 Index = 0; Index < Block.Properties.Num(); ++Index)
+		{
+			Properties.Add(Block.Properties[Index].Name, Block.Properties[Index].Values[Data0.Values[Index]]);
+		}
+		Properties.Add(Occupied, bPlace ? FName("true") : FName("false"));
+		WorldActor.SetBlock(Pos, Registry.FindState(Block.Name, Properties).Get(State));
+		WorldActor.MarkChunkDirty(FIntPoint(Pos.X >> 4, Pos.Z >> 4));
+		WorldActor.MulticastSound(Sound, FVector_NetQuantize10(FVector(Pos) + FVector(0.5)), 0.8f, 1.0f);
+		if (FMcSimulation* Sim = WorldActor.GetSimulation())
+		{
+			Sim->BookshelfUsed(Pos, Slot);
+		}
+		return true;
+	}
+}
+
 bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos)
 {
 	UMcPlayerDataComponent* Data = Player.Data;
@@ -1652,6 +1880,14 @@ bool UMcBlockUseSubsystem::Use(AMcPlayerPawn& Player, AMcWorldActor& WorldActor,
 	if (Name == TEXT("minecraft:lectern"))
 	{
 		return UseLectern(Player, WorldActor, Pos);
+	}
+	if (Name == TEXT("minecraft:campfire") || Name == TEXT("minecraft:soul_campfire"))
+	{
+		return UseCampfire(Player, WorldActor, Pos);
+	}
+	if (Name == TEXT("minecraft:chiseled_bookshelf"))
+	{
+		return UseBookshelf(Player, WorldActor, Pos);
 	}
 	if (McBell::IsBell(Blocks->GetBlock(Pos)))
 	{

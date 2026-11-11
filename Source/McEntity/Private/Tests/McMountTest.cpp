@@ -90,12 +90,60 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(*FString::Printf(TEXT("a hold of %d ticks peaks %.3f above the floor (reference %.3f)"), Holds[Row], Peak, Peaks[Row]), FMath::Abs(Peak - Peaks[Row]) < 0.02);
 	}
+	// Rearing (vehicle_log34: a standing jump set the rider back 0.315, 0.504, 0.6174, 0.6854 then 0.7 along the facing, and forward again by 0.119, 0.1915,
+	// 0.2108, 0.1366, 0.0421 after the landing; 0.0675 = 0.15 x 0.45 higher on the first tick).
+	for (const double Yaw : { 0.0, 90.0 })
+	{
+		FMcMob* Rearer = MakeHorse(*HorseType, 80.5 + Yaw / 30.0);
+		Rearer->bTamed = true;
+		FMcMountState& Rearing = McMount::Ensure(*Rearer);
+		Rearing.Speed = 0.225f;
+		Rearing.JumpStrength = 0.7f;
+		Rearing.bSaddled = true;
+		Rearing.RiderId = 40;
+		for (int32 Tick = 0; Tick < 5; ++Tick) { Manager.Tick(); }
+		const double Facing = FMath::DegreesToRadians(Yaw);
+		double MostBack = 0.0;
+		double FirstBack = 0.0;
+		double FirstRise = 0.0;
+		for (int32 Tick = 0; Tick < 90; ++Tick)
+		{
+			McMount::SetRiderInput(*Rearer, 0.0f, 0.0f, static_cast<float>(Yaw), Tick < 10);
+			Manager.Tick();
+			const FVector Offset = McMount::GetSeat(*Rearer) - Rearer->Body.Position - FVector(0.0, 0.84375, 0.0);
+			const double Back = Offset.X * FMath::Sin(Facing) - Offset.Z * FMath::Cos(Facing);
+			if (FirstBack == 0.0 && Back > 0.0)
+			{
+				FirstBack = Back;
+				FirstRise = Offset.Y;
+			}
+			MostBack = FMath::Max(MostBack, Back);
+		}
+		TestNearlyEqual(*FString::Printf(TEXT("facing %.0f the first rear tick sets the rider back 0.315"), Yaw), FirstBack, 0.315, 1e-3);
+		TestNearlyEqual(TEXT("and 0.0675 up"), FirstRise, 0.0675, 1e-3);
+		TestNearlyEqual(TEXT("at the most 0.7 back"), MostBack, 0.7, 1e-3);
+		TestNearlyEqual(TEXT("and back in place after the landing"), (McMount::GetSeat(*Rearer) - Rearer->Body.Position).Size(), 0.84375, 1e-3);
+	}
 	TestEqual(TEXT("hold 10 is a full charge"), McMount::JumpFraction(10), 1.0f);
 	TestEqual(TEXT("hold 1 is 0.4"), McMount::JumpFraction(1), 0.4f);
+
+	// Feeding a wild horse (vehicle_log40/41): temper after each food, in the logged order.
+	{
+		FMcMob* Fed = MakeHorse(*HorseType, 96.5);
+		const TCHAR* Foods[] = {TEXT("minecraft:hay_block"), TEXT("minecraft:golden_apple"), TEXT("minecraft:sugar"), TEXT("minecraft:hay_block"), TEXT("minecraft:golden_carrot"), TEXT("minecraft:wheat"), TEXT("minecraft:apple")};
+		const int32 Temper[] = {0, 10, 13, 13, 18, 21, 24};
+		for (int32 I = 0; I < 7; I++)
+		{
+			FMcItemStack Food{FName(Foods[I]), 16};
+			McMount::Use(Manager, *Fed, Food, 1, false, false);
+			TestEqual(*FString::Printf(TEXT("temper after %s"), Foods[I]), Fed->Mount->Temper, Temper[I]);
+		}
+	}
 
 	// Saddle, armour, chest, food and a seat.
 	FMcMob* Wild = MakeHorse(*HorseType, 90.5);
 	FMcItemStack Saddle(FName(TEXT("minecraft:saddle")), 1);
+	TestNearlyEqual(TEXT("the rider sits 0.84375 above a horse's feet (vehicle_log30)"), McMount::GetSeat(*Wild).Y - Wild->Body.Position.Y, 0.84375, 1e-6);
 	TestEqual(TEXT("a wild horse takes no saddle"), McMount::Use(Manager, *Wild, Saddle, 1, false, false), McMount::EUse::Mounted);
 	McMount::ClearRider(*Wild);
 	TestEqual(TEXT("and the saddle stays in the hand"), Saddle.Count, 1);
@@ -156,6 +204,11 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("no third"), McMount::Use(Manager, *Two, Nothing, 13, false, false), McMount::EUse::None);
 		McMount::ClearPlayer(*Two, 11);
 		TestEqual(TEXT("the second steers now"), TwoState.RiderId, 12u);
+		// Seats (vehicle_log39, camel at yaw 28.125: the player 0.500 ahead of its centre, a villager put on behind it 0.700 behind).
+		Two->Yaw = 0.0f;
+		TestNearlyEqual(TEXT("the first rider sits 0.5 ahead of the camel's centre"), McMount::GetSeat(*Two).Z - Two->Body.Position.Z, 0.5, 1e-6);
+		TwoState.PassengerId = 99;
+		TestNearlyEqual(TEXT("a passenger sits 0.7 behind it"), McMount::GetSeatFor(*Two, 99).Z - Two->Body.Position.Z, -0.7, 1e-6);
 	}
 
 	// A pig with a carrot on a stick (vehicle_log26): 0.1239 a tick; a boost of 746 ticks adds 1.15 x sin(pi t/746): 0.1632 after 64 ticks.
@@ -192,12 +245,20 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("without the stick in hand it stops"), Pig->Body.Position.Z - Held < 0.05);
 	}
 
-	// Armour: iron (5 points) takes 4 off a 10-point hit.. 10 x (1 - max(1, 5 - 5)/25) = 9.6; diamond (11): 10 x (1 - 6/25) = 7.6.
-	FMcMountState Armored;
-	Armored.Armor = FName(TEXT("minecraft:iron_horse_armor"));
-	TestTrue(TEXT("iron armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 9.6f) < 0.01f);
-	Armored.Armor = FName(TEXT("minecraft:diamond_horse_armor"));
-	TestTrue(TEXT("diamond armour on a 10 hit"), FMath::Abs(McMount::ReduceDamage(Armored, 10.0f) - 7.6f) < 0.01f);
+	// Armour (vehicle_log35, a horse of 30 health hit by 10 and by 4 in each armour): health left after the 10 hit and the 4 hit.
+	struct FArmorRow { const TCHAR* Item; float After10; float After4; };
+	const FArmorRow Rows[] = {
+		{TEXT("minecraft:leather_horse_armor"), 20.24f, 26.16f}, {TEXT("minecraft:copper_horse_armor"), 20.32f, 26.32f},
+		{TEXT("minecraft:iron_horse_armor"), 20.40f, 26.48f}, {TEXT("minecraft:golden_horse_armor"), 20.80f, 26.80f},
+		{TEXT("minecraft:diamond_horse_armor"), 22.80f, 27.50f}, {TEXT("minecraft:netherite_horse_armor"), 26.15f, 28.81f},
+	};
+	for (const FArmorRow& Row : Rows)
+	{
+		FMcMountState Armored;
+		Armored.Armor = FName(Row.Item);
+		TestTrue(*FString::Printf(TEXT("%s on a 10 hit leaves %.2f (got %.2f)"), Row.Item, Row.After10, 30.0f - McMount::ReduceDamage(Armored, 10.0f)), FMath::Abs(30.0f - McMount::ReduceDamage(Armored, 10.0f) - Row.After10) < 0.01f);
+		TestTrue(*FString::Printf(TEXT("%s on a 4 hit leaves %.2f (got %.2f)"), Row.Item, Row.After4, 30.0f - McMount::ReduceDamage(Armored, 4.0f)), FMath::Abs(30.0f - McMount::ReduceDamage(Armored, 4.0f) - Row.After4) < 0.01f);
+	}
 
 	// Saved and loaded again: the saddle, the armour and the taming stay.
 	{
@@ -208,6 +269,39 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		FMemoryReader Reader(Bytes);
 		TestTrue(TEXT("it loads"), Loaded.Serialize(Reader));
 		TestTrue(TEXT("tame, saddled, armoured"), Loaded.bTamed && Loaded.Mount.IsValid() && Loaded.Mount->bSaddled && Loaded.Mount->Armor == FName(TEXT("minecraft:iron_horse_armor")));
+	}
+
+	// Rolled at spawn (vehicle_log43, 120 bare summons each): whole max health 15 to 30 (horse mean 22.8, donkey 22.4, mule 23.2), kept by a save.
+	{
+		const FMcMobType* RollType = FMcMobType::Find(TEXT("minecraft:donkey"));
+		double Sum = 0.0;
+		bool bWhole = true;
+		bool bRange = true;
+		for (int32 I = 0; I < 400; I++)
+		{
+			FMcMob Rolled(*RollType);
+			const float Max = McMount::MaxHealthOf(Rolled);
+			bWhole = bWhole && Max == FMath::FloorToFloat(Max) && Rolled.Health == Max;
+			bRange = bRange && Max >= 15.0f && Max <= 30.0f;
+			Sum += Max;
+		}
+		TestTrue(TEXT("whole numbers, health at the max"), bWhole);
+		TestTrue(TEXT("15 to 30"), bRange);
+		TestTrue(TEXT("mean about 22.5"), FMath::Abs(Sum / 400.0 - 22.5) < 0.8);
+		FMcMob Original(*HorseType);
+		Original.Health = 10.0f;
+		const float Max = McMount::MaxHealthOf(Original);
+		TArray<uint8> Bytes;
+		FMemoryWriter Writer(Bytes);
+		Original.Serialize(Writer);
+		FMcMob Back(*HorseType);
+		FMemoryReader Reader(Bytes);
+		TestTrue(TEXT("loads"), Back.Serialize(Reader));
+		TestEqual(TEXT("the roll and the hurt health stay"), McMount::MaxHealthOf(Back), Max);
+		TestEqual(TEXT("health"), Back.Health, 10.0f);
+		// A pig has no roll: the type's.
+		FMcMob Pig(*FMcMobType::Find(TEXT("minecraft:pig")));
+		TestEqual(TEXT("a pig keeps the type's max health"), McMount::MaxHealthOf(Pig), 10.0f);
 	}
 	return true;
 }

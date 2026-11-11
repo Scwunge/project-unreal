@@ -321,6 +321,36 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 			Manager.Tick();
 		}
 		TestTrue(TEXT("a pearl lands in front of the wall"), Landed.Z > 12.0 && Landed.Z < 14.0);
+		// An eye of ender with a stronghold 50 blocks east flies 12 blocks that way and up, hovers, then drops as an item
+		// (or breaks): after 100 ticks it is gone from the entities, and an item is on the ground 4 times in 5.
+		FMcEntityManager EyeManager(World);
+		FMcThrownEntity* FirstEye = nullptr;
+		for (int32 Throw = 0; Throw < 40; ++Throw)
+		{
+			TUniquePtr<FMcThrownEntity> Eye = MakeUnique<FMcThrownEntity>(FMcThrownEntity::EKind::EnderEye);
+			Eye->Body.Position = FVector(0.5, 5.0, 8.5);
+			Eye->bEyeHasTarget = true;
+			Eye->EyeTarget = FVector2D(50.5, 8.5);
+			FirstEye = FirstEye ? FirstEye : Eye.Get();
+			EyeManager.Add(MoveTemp(Eye));
+		}
+		for (int32 Tick = 0; Tick < 45; ++Tick)
+		{
+			EyeManager.Tick();
+		}
+		TestTrue(TEXT("the eye has flown about 12 blocks towards the stronghold"), FMath::Abs(FirstEye->Body.Position.X - 12.5) < 0.5);
+		TestTrue(TEXT("and risen"), FirstEye->Body.Position.Y > 8.0);
+		for (int32 Tick = 0; Tick < 55; ++Tick)
+		{
+			EyeManager.Tick();
+		}
+		int32 Dropped = 0;
+		for (const TUniquePtr<FMcEntity>& Entity : EyeManager.GetEntities())
+		{
+			Dropped += Entity->GetType() == TEXT("minecraft:item") ? static_cast<const FMcItemEntity&>(*Entity).Stack.Count : 0;
+			TestFalse(TEXT("the eye itself is gone"), Entity->GetType() == TEXT("minecraft:ender_eye"));
+		}
+		TestTrue(TEXT("most eyes survive (about 80%)"), Dropped >= 24 && Dropped <= 38);
 		// A baby chicken is half the size and grows up.
 		FMcMob* Chick = AddMob(Manager, TEXT("minecraft:chicken"), FVector(2.5, 1.0, 2.5));
 		Chick->MakeBaby();
@@ -501,22 +531,49 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a skull starts at 0.1"), Speeds.Num() == 1 && FMath::IsNearlyEqual(Speeds[0], 0.1, 0.001));
 	}
 	{
-		// An ender dragon starts at 126 and flies down to 65-79 within 1000 ticks, staying within 63 blocks of the middle (dragon6.txt).
+		// An ender dragon with a player at the exit portal goes through the phases dragon_phase1.txt showed: holding 540, strafing 150, holding 100,
+		// approach 480, landing, then four times scanning 20, roaring 40, breathing 180, take-off, holding 500, approach, landing ...
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeFlatWorld(World, Stone);
 		FMcEntityManager Manager(World);
 		Manager.Difficulty = 2;
-		Manager.PlayerPositions = { FVector(0.5, 1.0, 0.5) };
+		Manager.PlayerPositions = { FVector(8.5, 65.0, 0.5) };
 		FMcMob* Dragon = AddMob(Manager, TEXT("minecraft:ender_dragon"), FVector(0.5, 126.0, 0.5));
 		TestEqual(TEXT("200 hp"), Dragon->Health, 200.0f);
+		TArray<int32> Phases;
+		TArray<int32> Lengths;
 		double MaxRadius = 0.0;
-		for (int32 Tick = 0; Tick < 1200; ++Tick)
+		bool bFireball = false;
+		for (int32 Tick = 0; Tick < 4800; ++Tick)
 		{
 			Manager.Tick();
+			for (const TUniquePtr<FMcEntity>& Entity : Manager.GetEntities())
+			{
+				bFireball = bFireball || Entity->GetType() == FName(TEXT("minecraft:dragon_fireball"));
+			}
 			MaxRadius = FMath::Max(MaxRadius, FMath::Sqrt(FMath::Square(Dragon->Body.Position.X) + FMath::Square(Dragon->Body.Position.Z)));
+			if (Phases.IsEmpty() || Phases.Last() != Dragon->DragonPhase)
+			{
+				Phases.Add(Dragon->DragonPhase);
+				Lengths.Add(0);
+			}
+			++Lengths.Last();
 		}
-		TestTrue(TEXT("it came down to 60-85"), Dragon->Body.Position.Y > 60.0 && Dragon->Body.Position.Y < 85.0);
-		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle (63 was the farthest vanilla was seen); max %.1f at y %.1f"), MaxRadius, Dragon->Body.Position.Y), MaxRadius < 75.0);
+		const TArray<int32> First = { 0, 1, 0, 2, 3, 6, 7, 5, 6, 7, 5, 6, 7, 5, 6, 7, 5, 4, 0, 2, 3 };
+		bool bOrder = Phases.Num() >= First.Num();
+		for (int32 Index = 0; bOrder && Index < First.Num(); ++Index)
+		{
+			bOrder = Phases[Index] == First[Index];
+		}
+		TestTrue(*FString::Printf(TEXT("the phases come in the order seen (got %d changes)"), Phases.Num()), bOrder);
+		if (bOrder)
+		{
+			TestTrue(TEXT("holding 540 first"), FMath::Abs(Lengths[0] - 540) <= 2);
+			TestTrue(TEXT("strafing 150"), FMath::Abs(Lengths[1] - 150) <= 2);
+			TestTrue(TEXT("breathing 180"), FMath::Abs(Lengths[7] - 180) <= 2);
+		}
+		TestTrue(TEXT("the strafe fired a fireball"), bFireball);
+		TestTrue(*FString::Printf(TEXT("and stayed within 75 blocks of the middle; max %.1f"), MaxRadius), MaxRadius < 75.0);
 	}
 	{
 		// End crystals (wiki: power 6 at any damage; dragon9/13.txt: +1 hp per ~10 ticks while one is within 32 blocks; dragon10.txt: 500 points on a later kill).

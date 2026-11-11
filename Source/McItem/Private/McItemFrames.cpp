@@ -51,12 +51,41 @@ namespace
 McItemFrames::FContext Current;
 	FNeedle CompassNeedle;
 	FNeedle ClockNeedle = []() { FNeedle Needle; Needle.Pull = 0.115; Needle.Damping = 0.895; return Needle; }();
-	// A spinning needle (another dimension, or no target): a random drift. Not measured at all: a placeholder
-	// until a run logs a clock or compass out of the overworld.
-	FNeedle SpinNeedle;
+	// A spinning needle (another dimension, or no target), one for each kind of compass or clock, as the three needles of run
+	// compassspin1 (compass, recovery compass, lodestone compass without a lodestone, in the Nether) each wandered alone. Its
+	// frames moved 1.02 a tick on average with a 28% chance of standing still, 14% turning back and at most 3 a tick;
+	// a spring with a new random target half the ticks, pulling 0.15 and damped 0.6, gives 1.01, 28%, 14% and 3
+	// (a search over the target chance, pull and damping; the rule behind it is not known, so the exact frames differ).
+	struct FSpin
+	{
+		FNeedle Needle;
+		FRandomStream Random;
+		double Target = 0.0;
+		int64 LastTicks = INT64_MIN;
+		FSpin() { Needle.Pull = 0.15; Needle.Damping = 0.6; }
+	};
+	TMap<FName, FSpin> Spins;
 	int64 LastTicks = INT64_MIN;
-	FRandomStream Random(1234);
-	double SpinTarget = 0.0;
+	double SpinValue(FName Kind)
+	{
+		FSpin* Spin = Spins.Find(Kind);
+		if (!Spin)
+		{
+			Spin = &Spins.Add(Kind);
+			Spin->Random.Initialize(GetTypeHash(Kind));
+		}
+		const int32 Steps = Spin->LastTicks == INT64_MIN ? 1 : static_cast<int32>(FMath::Clamp<int64>(Current.GameTicks - Spin->LastTicks, 0, 20));
+		Spin->LastTicks = Current.GameTicks;
+		for (int32 Step = 0; Step < Steps; ++Step)
+		{
+			if (Spin->Random.FRand() < 0.5f)
+			{
+				Spin->Target = Spin->Random.FRand();
+			}
+			Spin->Needle.Step(Spin->Target, true);
+		}
+		return Spin->Needle.Value;
+	}
 }
 
 namespace McItemFrames
@@ -112,13 +141,8 @@ namespace McItemFrames
 		}
 		for (int32 Step = 0; Step < Steps; ++Step)
 		{
-			if (Random.FRand() < 0.05f)
-			{
-				SpinTarget = Random.FRand();
-			}
 			CompassNeedle.Step(Target, true);
 			ClockNeedle.Step(ClockTarget, true);
-			SpinNeedle.Step(SpinTarget, true);
 		}
 	}
 
@@ -129,13 +153,13 @@ namespace McItemFrames
 		{
 			const bool bRecovery = Name == TEXT("minecraft:recovery_compass");
 			// The compass points at the spawn in the overworld; the recovery one has no death place to point at here.
-			const double Value = (Current.bOverworld && !bRecovery) ? CompassNeedle.Value : SpinNeedle.Value;
+			const double Value = (Current.bOverworld && !bRecovery) ? CompassNeedle.Value : SpinValue(FName(*Name));
 			const int32 Frame = (16 + FrameOf(Value, 32)) % 32;
 			return FName(*FString::Printf(TEXT("minecraft:%s_%02d"), bRecovery ? TEXT("recovery_compass") : TEXT("compass"), Frame));
 		}
 		if (Name == TEXT("minecraft:clock"))
 		{
-			const double Value = Current.bOverworld ? ClockNeedle.Value : SpinNeedle.Value;
+			const double Value = Current.bOverworld ? ClockNeedle.Value : SpinValue(FName(*Name));
 			return FName(*FString::Printf(TEXT("minecraft:clock_%02d"), FrameOf(Value, 64)));
 		}
 		return Item;
@@ -208,7 +232,7 @@ namespace McItemFrames
 		if (!bPointed)
 		{
 			// Nowhere to point in this dimension: the needle drifts about (not measured, see SpinNeedle).
-			return FName(*FString::Printf(TEXT("minecraft:%s_%02d"), *Prefix, (16 + FrameOf(SpinNeedle.Value, 32)) % 32));
+			return FName(*FString::Printf(TEXT("minecraft:%s_%02d"), *Prefix, (16 + FrameOf(SpinValue(FName(*Prefix)), 32)) % 32));
 		}
 		const uint64 Key = (static_cast<uint64>(GetTypeHash(Target.X)) << 32) ^ GetTypeHash(Target.Y) ^ (bRecovery ? 1ull : 0ull);
 		FTracked& Needle = Tracked.FindOrAdd(Key);

@@ -48,6 +48,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks left of the hurt flash on the hearts; set to 10 when damage lands.
 	int32 HurtTime = 0;
 	bool bHardcore = false;
+	// The ridden mount's health and a horse's jump charge, copied from the pawn each tick (not saved): the HUD swaps the food row and the experience bar for them.
+	float MountHealth = 0.0f;
+	float MountMaxHealth = 0.0f;
+	float MountJump = -1.0f;
 
 	// ---- What the rules keep between ticks ----
 	// Ticks of immunity left after a hit (20 at the hit; within the first 10 only a bigger hit gets through, by the
@@ -154,8 +158,12 @@ public:
 	bool bCreative = false;
 	// Server: the bed (either half) the player sleeps in last set as where they come back after dying; kept in the save.
 	TOptional<FIntVector> SpawnBed;
+	// Server: where /spawnpoint put them (a block); a bed slept in later takes over. Kept in the save.
+	TOptional<FIntVector> SpawnPoint;
 	// Server: the advancements made ("minecraft:story/mine_stone"), kept in the save.
 	TSet<FName> Advancements;
+	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
+	TSet<FName> Criteria;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
@@ -220,6 +228,8 @@ public:
 	TFunction<bool(const FMcWindow&)> ServerWindowValid;
 	// Plays a sound for what the player did in a window (an enchantment bought), at their position.
 	TFunction<void(FName Event, float Volume, float Pitch)> ServerSound;
+	// A chest, barrel or shulker box window opened (true) or closed (false) at the position; for the vibration it makes.
+	TFunction<void(const FIntVector& Pos, bool bOpen)> ServerContainerEvent;
 	// Sends the owner what changed. Called each game tick by the pawn.
 	void ServerTick();
 	// The stats and containers as bytes, for the owner and for the save.
@@ -308,6 +318,16 @@ public:
 	float RaidBarFraction = -1.0f;
 	FString RaidBarTitle;
 	void SetRaidBar(float Fraction, const FString& Title);
+	// The custom boss bars below it (/bossbar), one per line: "title<TAB>fraction<TAB>color<TAB>style".
+	FString CustomBars;
+	void SetCustomBars(const FString& Lines);
+
+	// The statistics, by id: "custom:jump", "mined:minecraft:stone", "killed:minecraft:zombie" (kind, then the name the
+	// Statistics screen is keyed by). The server counts them and keeps them in the save; the owner is sent a copy about once a
+	// second. Distances are in cm, times in ticks, damage in tenths of a heart-point (the game's units).
+	TMap<FString, int64> Counters;
+	void AddStat(const FString& Id, int64 Amount = 1);
+	int64 GetStat(const FString& Id) const { const int64* Found = Counters.Find(Id); return Found ? *Found : 0; }
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -316,6 +336,10 @@ protected:
 	void ClientSetStats(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Unreliable)
 	void ClientSetRaidBar(float Fraction, const FString& Title);
+	UFUNCTION(Client, Reliable)
+	void ClientSetCustomBars(const FString& Lines);
+	UFUNCTION(Client, Reliable)
+	void ClientSetCounters(const FString& Text);
 	UFUNCTION(Client, Reliable)
 	void ClientSetInventory(const TArray<uint8>& Bytes);
 	UFUNCTION(Client, Reliable)
@@ -380,6 +404,9 @@ private:
 	TArray<uint8> SentStats;
 	float SentRaidFraction = -1.0f;
 	FString SentRaidTitle;
+	FString SentCustomBars;
+	bool bCountersChanged = false;
+	int32 TicksSinceCounters = 0;
 	TArray<uint8> SentInventory;
 	TArray<uint8> SentWindow;
 	int32 TicksSinceWindowSync = 0;

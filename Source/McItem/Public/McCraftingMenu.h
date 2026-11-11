@@ -21,6 +21,8 @@ public:
 	const FMcRecipe* GetRecipe() const { return Match.Recipe; }
 	// Looks again at the grid (after changing it behind the menu's back).
 	void Refresh();
+	// Called when a result is taken: the recipe's id and what came out (the server counts it and tells the advancements).
+	TFunction<void(FName Recipe, const FMcItemStack& Result)> OnCrafted;
 
 protected:
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override { return Slot != 0; }

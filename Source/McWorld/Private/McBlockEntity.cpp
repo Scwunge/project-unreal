@@ -50,6 +50,14 @@ FMcBlockEntity FMcBlockEntity::MakeLectern(const FMcItemStack& Book)
 	return Result;
 }
 
+FMcBlockEntity FMcBlockEntity::MakeCampfire()
+{
+	FMcBlockEntity Result;
+	Result.Kind = EMcBlockEntityKind::Campfire;
+	Result.Slots.SetNum(NumCampfireSpots);
+	return Result;
+}
+
 FMcBlockEntity FMcBlockEntity::MakePot(const TArray<FName>& Sides)
 {
 	FMcBlockEntity Result;
@@ -91,7 +99,7 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	Ar << KindByte;
 	if (Ar.IsLoading())
 	{
-		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Raw))
+		if (KindByte > static_cast<uint8>(EMcBlockEntityKind::Campfire))
 		{
 			return false;
 		}
@@ -161,11 +169,20 @@ bool FMcBlockEntity::Serialize(FArchive& Ar)
 	{
 		Ar << Page;
 	}
+	if (Kind == EMcBlockEntityKind::Campfire)
+	{
+		for (int32 Spot = 0; Spot < NumCampfireSpots; ++Spot)
+		{
+			Ar << CookingTimes[Spot];
+			Ar << CookingTotals[Spot];
+		}
+	}
 	return !Ar.IsError();
 }
 
 bool FMcBlockEntity::operator==(const FMcBlockEntity& Other) const
 {
 	return Kind == Other.Kind && Slots == Other.Slots && LootTable == Other.LootTable && LootSeed == Other.LootSeed && EntityId == Other.EntityId && Data == Other.Data
-		&& SignSides[0] == Other.SignSides[0] && SignSides[1] == Other.SignSides[1] && bWaxed == Other.bWaxed && Page == Other.Page;
+		&& SignSides[0] == Other.SignSides[0] && SignSides[1] == Other.SignSides[1] && bWaxed == Other.bWaxed && Page == Other.Page
+		&& FMemory::Memcmp(CookingTimes, Other.CookingTimes, sizeof(CookingTimes)) == 0 && FMemory::Memcmp(CookingTotals, Other.CookingTotals, sizeof(CookingTotals)) == 0;
 }

@@ -1,5 +1,5 @@
-#include "McParticleDefs.h"
 #include "McBlockTextures.h"
+#include "McParticleDefs.h"
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
 #include "McCache.h"

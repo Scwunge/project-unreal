@@ -922,7 +922,7 @@ void AMcPlayerController::AttachView()
 	SpawnEnvironment();
 	if (UMcAudioSubsystem* Audio = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMcAudioSubsystem>() : nullptr)
 	{
-		Audio->SetListenerWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+		Audio->SetListenerWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr, WorldActor);
 	}
 #endif
 }

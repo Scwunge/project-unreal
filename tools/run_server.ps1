@@ -19,7 +19,7 @@ param(
     [int]$Port = 0
 )
 
-$EngineRoot = 'E:\Epic Games\UE_5.8\Engine'
+$EngineRoot = 'J:\UE_5.9\Engine'
 $Project = Join-Path (Split-Path $PSScriptRoot) 'McClient.uproject'
 $Editor = Join-Path $EngineRoot 'Binaries\Win64\UnrealEditor.exe'
 

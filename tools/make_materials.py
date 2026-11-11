@@ -1,6 +1,6 @@
 """Create the block materials under /Game/Mc/Materials. Run headless from the project folder:
 
-    "E:/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" McClient.uproject
+    "J:/UE_5.9/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" McClient.uproject
         -run=pythonscript -script="<abs path>/tools/make_materials.py" -unattended -nopause -NullRHI
 
 Material assets can only be made inside the editor, so this script is how they are made and remade: the

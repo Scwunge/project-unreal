@@ -55,7 +55,8 @@ namespace
 		{
 			return *Found;
 		}
-		return Id.EndsWith(TEXT("shulker_box")) ? 27 : 0;
+		// Copper chests (all four weathering stages, waxed or not) hold 27 slots like a chest.
+		return Id.EndsWith(TEXT("shulker_box")) || Id.EndsWith(TEXT("copper_chest")) ? 27 : 0;
 	}
 
 	bool GetPaletteEntry(const FMcNbt& Entry, FString& OutName, TMap<FString, FString>& OutProperties)
@@ -885,6 +886,22 @@ namespace
 			else if (Id == TEXT("minecraft:decorated_pot"))
 			{
 				Chunk.SetBlockEntity(X, Y, Z, MakePot(Entity));
+			}
+			else if (Id == TEXT("minecraft:campfire") || Id == TEXT("minecraft:soul_campfire"))
+			{
+				FMcBlockEntity Campfire = FMcBlockEntity::MakeCampfire();
+				Campfire.Slots = ReadItems(Entity, FMcBlockEntity::NumCampfireSpots);
+				const auto ReadInts = [&Entity](const TCHAR* Key, int32* Out)
+				{
+					const FMcNbt* Array = Entity.Find(Key);
+					for (int32 Spot = 0; Array && Array->Type == FMcNbt::EType::IntArray && Spot < FMcBlockEntity::NumCampfireSpots && Spot < Array->Num(); ++Spot)
+					{
+						Out[Spot] = static_cast<int32>(Array->Values[Spot].Integer);
+					}
+				};
+				ReadInts(TEXT("CookingTimes"), Campfire.CookingTimes);
+				ReadInts(TEXT("CookingTotalTimes"), Campfire.CookingTotals);
+				Chunk.SetBlockEntity(X, Y, Z, MoveTemp(Campfire));
 			}
 			else if (Id == TEXT("minecraft:lectern"))
 			{

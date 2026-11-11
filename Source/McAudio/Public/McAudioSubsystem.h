@@ -47,16 +47,22 @@ public:
 	void StopMusic();
 	// The event of the track playing (or being decoded), or none.
 	FName GetMusic();
+	// /stopsound: stops sounds of a source ("" or "master" for all; "music", "record", or one named for the events it plays:
+	// "weather" weather.*, "block" block.*, "ambient" ambient.*, "ui" ui.*, "player" entity.player.*; the game's hostile, neutral and voice
+	// sources are not told apart by the event name, so those stop nothing) and, if Event is not none, only that event. Returns how many.
+	int32 StopSounds(const FString& Source, FName Event);
 
 	// The blocks the listener is in, for the mood sound and Unreal Mode's acoustics. Null when there is no world; set
-	// again with the player's view.
-	void SetListenerWorld(const FMcBlockWorld* InWorld);
+	// again with the player's view. Owner is what holds the world (its world actor): once Owner is destroyed the world
+	// is let go of, since this subsystem outlives every level and the world goes with its actor.
+	void SetListenerWorld(const FMcBlockWorld* InWorld, const UObject* Owner = nullptr);
 
 private:
 	// A sound that is playing, with what is needed to keep shaping it.
 	struct FLive
 	{
 		TWeakObjectPtr<UAudioComponent> Component;
+		FName Event;
 		FVector Position = FVector::ZeroVector;
 		bool bPositional = false;
 		// The part of the world's ambience (rain, the cave): music-like, it ducks for a blast.
@@ -95,6 +101,8 @@ private:
 	void TickMood(float DeltaTime, const FVector& Head, bool bUnreal);
 	void TickImmersive(float DeltaTime, const FVector& Head);
 	void ReleaseImmersive();
+	// Lets go of the listener's world when the actor that holds it is gone (left to the title, another world, a server).
+	void DropStaleListener();
 	void UpdateLive(const FVector& Head);
 	void DripNear(const FVector& Head);
 	FMcStateId GetBlockAt(const FIntVector& Cell) const;
@@ -128,6 +136,8 @@ private:
 	int32 RecordRequest = 0;
 
 	const FMcBlockWorld* ListenerWorld = nullptr;
+	TWeakObjectPtr<const UObject> ListenerOwner;
+	bool bListenerOwned = false;
 	// The cave's mood meter and when it was last read.
 	float MoodMeter = 0.0f;
 	float MoodClock = 0.0f;

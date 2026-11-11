@@ -29,6 +29,7 @@ namespace McGui
 		TArray<FBarIcon> Absorption;     // golden hearts, after the red ones
 		TArray<FBarIcon> Armor;
 		TArray<FBarIcon> Food;           // right to left from the right edge of the bar
+		TArray<FBarIcon> Mount;          // the ridden mount's hearts, right to left from the right edge, rows stacking up; they replace the food
 		TArray<FBarIcon> Air;            // only while breath is short of full: Full, Half is the one bursting
 		FIntPoint XpBar;                 // top left of the 182 x 5 bar
 		int32 XpFill = 0;                // pixels of the bar that are filled, 0 to 182
@@ -36,6 +37,9 @@ namespace McGui
 		bool bShowLevel = false;
 		bool bShowArmor = false;
 		bool bShowAir = false;
+		// A horse's jump bar in place of the experience bar, filled to JumpFill pixels.
+		bool bShowJump = false;
+		int32 JumpFill = 0;
 	};
 
 	// The largest whole GUI scale the screen allows (at least 320 x 240 GUI pixels), or Setting if that is smaller.
@@ -73,6 +77,31 @@ namespace McGui
 	// The fullness bar under a bundle holding something (vanilla ref run bundle1: widths 1, 4, 7, 10, 12 and 13 of 13 for
 	// 1, 16, 32, 48, 63 and 64 of 64; blue 0x7087FF, red 0xFF5454 when full).
 	MCUI_API FDurabilityBar GetBundleBar(double Fullness);
+
+	// The bundle tooltip (ref runs bundletip, bundletip2): all sizes in GUI pixels. The content is 96 wide; from the top
+	// the title (9), 3 apart a grid of 24 pixel cells or, for an empty bundle, the wrapped description (9 a line), 4 apart
+	// the 13 high fullness bar. The picture round it is the tooltip sprites, 12 bigger on every side.
+	struct FBundleGrid
+	{
+		int32 Columns = 0;
+		int32 Rows = 0;
+		// Cells left out (not drawn) at the start of the first row, so that the items fill the last cells.
+		int32 Blanks = 0;
+		// Stacks not shown, written "+N" in the last cell; 0 when all are shown.
+		int32 Hidden = 0;
+	};
+	// Measured (bundletip2 and 3: 1 to 24 items): always 4 columns, ceil(n/4) rows up to 3, the items in the last cells in
+	// list order. Over 12 the last cell says +N, N = 4 * ceil((n - 12) / 4) + 1, and the stacks before those are shown.
+	MCUI_API FBundleGrid GetBundleGrid(int32 NumStacks);
+	constexpr int32 BundleTipWidth = 96;
+	constexpr int32 BundleTipCell = 24;
+	constexpr int32 BundleTipBarHeight = 13;
+	constexpr int32 BundleTipTitleHeight = 9;
+	constexpr int32 BundleTipTitleGap = 3;
+	constexpr int32 BundleTipBarGap = 4;
+	constexpr int32 BundleTipLineHeight = 9;
+	// The height of the content for a grid of rows (or, with none, a description of DescriptionLines lines).
+	MCUI_API int32 GetBundleTipHeight(int32 Rows, int32 DescriptionLines);
 
 	// Whether a slot writes a count, and which. Stacks of one say nothing.
 	MCUI_API bool ShowsCount(int32 Count);

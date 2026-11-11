@@ -117,18 +117,27 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		FMcMountState& State = *Entity.Mount;
 		const FName Kind = Entity.GetType();
 		const FMcMobType* Type = FMcMobType::Find(Kind);
-		State.Speed = Type ? Type->Speed : 0.225f;
+		State.Speed = Type ? Type->Speed : 0.0f;
+		if (Kind == TEXT("minecraft:horse") || Kind == TEXT("minecraft:donkey") || Kind == TEXT("minecraft:mule"))
+		{
+			// 360 bare summons (vehicle_log43): max health whole numbers 15 to 30, mean 22.8, sd 3.6 (two dice, 0..7 and 0..8: 22.5 and 3.45).
+			State.MaxHealth = static_cast<float>(15 + FMath::RandRange(0, 7) + FMath::RandRange(0, 8));
+			if (Entity.IsLiving())
+			{
+				static_cast<FMcMob&>(Entity).Health = State.MaxHealth;
+			}
+		}
 		if (IsPackKind(Kind))
 		{
 			State.JumpStrength = 0.5f;
 		}
 		else if (Kind == TEXT("minecraft:pig"))
 		{
-			State.Speed = (Type ? Type->Speed : 0.25f) * 0.2296f;
+			State.Speed = (Type ? Type->Speed : 0.0f) * 0.2296f;
 		}
 		else if (Kind == TEXT("minecraft:strider"))
 		{
-			State.Speed = (Type ? Type->Speed : 0.175f) * 0.2357f;
+			State.Speed = (Type ? Type->Speed : 0.0f) * 0.2357f;
 		}
 		else if (Kind == TEXT("minecraft:horse"))
 		{
@@ -138,6 +147,19 @@ FMcMountState& McMount::Ensure(FMcEntity& Entity)
 		}
 	}
 	return *Entity.Mount;
+}
+
+float McMount::MaxHealthOf(const FMcMob& Mob)
+{
+	return Mob.Mount.IsValid() && Mob.Mount->MaxHealth > 0.0f ? Mob.Mount->MaxHealth : Mob.Type.MaxHealth;
+}
+
+void McMount::RollAtSpawn(FMcMob& Mob)
+{
+	if (IsHorseKind(Mob.GetType()))
+	{
+		Ensure(Mob);
+	}
 }
 
 float McMount::ChargeScale(int32 HeldTicks)
@@ -243,6 +265,34 @@ bool McMount::ClearRider(FMcEntity& Entity)
 
 FVector McMount::GetSeat(const FMcEntity& Entity)
 {
+	// The rider's feet above the mount's: horse from vehicle_log30 (player y -60.15625 on a floor at -61), the rest from vehicle_log31.
+	struct FSeat { const TCHAR* Type; double Height; };
+	static const FSeat Seats[] = {
+		{TEXT("minecraft:horse"), 0.84375}, {TEXT("minecraft:donkey"), 0.5125}, {TEXT("minecraft:mule"), 0.6125},
+		{TEXT("minecraft:pig"), 0.26875}, {TEXT("minecraft:strider"), 1.1}, {TEXT("minecraft:camel"), 1.4},
+	};
+	for (const FSeat& Seat : Seats)
+	{
+		if (Entity.GetType() == Seat.Type)
+		{
+			FVector Result = Entity.Body.Position + FVector(0.0, Seat.Height, 0.0);
+			const double Facing = FMath::DegreesToRadians(static_cast<double>(Entity.Yaw));
+			if (Entity.GetType() == TEXT("minecraft:camel"))
+			{
+				// The camel's first rider sits 0.5 ahead of its centre (vehicle_log39: 0.500 along the facing, none to the side).
+				Result.X -= FMath::Sin(Facing) * 0.5;
+				Result.Z += FMath::Cos(Facing) * 0.5;
+			}
+			if (Entity.Mount.IsValid() && Entity.Mount->Rear > 0.0f)
+			{
+				// Rearing for a jump sets the rider back along the facing and up (vehicle_log34: 0.7 and 0.15 at the most).
+				Result.X += FMath::Sin(Facing) * 0.7 * Entity.Mount->Rear;
+				Result.Z -= FMath::Cos(Facing) * 0.7 * Entity.Mount->Rear;
+				Result.Y += 0.15 * Entity.Mount->Rear;
+			}
+			return Result;
+		}
+	}
 	return Entity.Body.Position + FVector(0.0, Entity.Body.Height * 0.6875, 0.0);
 }
 
@@ -347,6 +397,34 @@ bool McMount::TickRidden(FMcEntityManager& Manager, FMcMob& Mob)
 				Mob.Body.Velocity.Z += FMath::Cos(Radians) * 0.4 * State.PendingJump;
 			}
 			State.PendingJump = 0.0f;
+			State.RearStep = 0;
+			State.RearFall = -1;
+		}
+		if (!bCamel)
+		{
+			if (State.RearStep >= 0)
+			{
+				if (!Mob.Body.bOnGround || State.RearStep == 0)
+				{
+					State.Rear = FMath::Min(1.0f, State.Rear + 0.45f * FMath::Pow(0.6f, static_cast<float>(State.RearStep)));
+					++State.RearStep;
+				}
+				else
+				{
+					State.RearStep = -1;
+					State.RearFall = 0;
+				}
+			}
+			if (State.RearFall >= 0)
+			{
+				// What is left of the rear on each tick after the landing (vehicle_log34: the rider slides forward 0.119, 0.1915, 0.2108, 0.1366, 0.0421 of the 0.7).
+				static const float Left[] = { 0.83f, 0.5564f, 0.2553f, 0.0602f, 0.0f };
+				State.Rear = Left[State.RearFall];
+				if (++State.RearFall >= 5)
+				{
+					State.RearFall = -1;
+				}
+			}
 		}
 	}
 	else
@@ -371,7 +449,14 @@ void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
 	{
 		return;
 	}
+	// The mob's health is already read; making its state must not roll it again.
+	const float SavedHealth = Mob.Health;
 	FMcMountState& State = Ensure(Mob);
+	if (Ar.IsLoading())
+	{
+		Mob.Health = SavedHealth;
+		State.MaxHealth = 0.0f;
+	}
 	if (Ar.IsSaving() && !State.Inventory.IsValid())
 	{
 		State.Inventory = MakeShared<FMcContainer>(2);
@@ -393,6 +478,15 @@ void McMount::Serialize(FArchive& Ar, FMcMob& Mob)
 	{
 		Sync(State);
 	}
+	// The rolled max health, a tail older saves lack (they keep the type's, with the health they had).
+	if (Ar.IsSaving() || !Ar.AtEnd())
+	{
+		Ar << State.MaxHealth;
+		if (Ar.IsLoading() && !(State.MaxHealth >= 1.0f && State.MaxHealth <= 1024.0f))
+		{
+			State.MaxHealth = 0.0f;
+		}
+	}
 }
 
 int32 McMount::ArmorPoints(FName Item)
@@ -410,7 +504,10 @@ int32 McMount::ArmorPoints(FName Item)
 float McMount::ReduceDamage(const FMcMountState& State, float Damage)
 {
 	const float Armor = static_cast<float>(ArmorPoints(State.Armor));
-	const float Cut = FMath::Clamp(FMath::Max(Armor / 5.0f, Armor - Damage / 2.0f), 0.0f, 20.0f);
+	// Diamond armour carries toughness 2 and netherite 3 (vehicle_log35: a 10 hit left a horse 22.8 and 26.15, a 4 hit 27.5 and 28.81); the rest none.
+	const FString Name = State.Armor.ToString();
+	const float Toughness = Name.Contains(TEXT("netherite")) ? 3.0f : Name.Contains(TEXT("diamond")) ? 2.0f : 0.0f;
+	const float Cut = FMath::Clamp(FMath::Max(Armor / 5.0f, Armor - Damage / (2.0f + Toughness / 4.0f)), 0.0f, 20.0f);
 	return Damage * (1.0f - Cut / 25.0f);
 }
 
@@ -447,8 +544,9 @@ FVector McMount::GetSeatFor(const FMcEntity& Entity, uint32 PlayerId)
 	if (Entity.Mount.IsValid() && Entity.Mount->PassengerId == PlayerId)
 	{
 		const double Radians = FMath::DegreesToRadians(static_cast<double>(Entity.Yaw));
-		Seat.X += FMath::Sin(Radians) * 0.9;
-		Seat.Z -= FMath::Cos(Radians) * 0.9;
+		// The second rider sits 0.7 behind the centre, 1.2 behind the first (vehicle_log39, a villager put on behind the player).
+		Seat.X += FMath::Sin(Radians) * 1.2;
+		Seat.Z -= FMath::Cos(Radians) * 1.2;
 	}
 	return Seat;
 }

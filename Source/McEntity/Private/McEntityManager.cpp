@@ -344,11 +344,14 @@ bool FMcEntityManager::IsDarkEnoughToSpawn(const FIntVector& Cell) const
 
 void FMcEntityManager::Explode(const FVector& Center, float Power)
 {
+	GameEvent(FName("explode"), Center);
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	TArray<FIntVector> Cells;
 	McExplosion::Collect(World, Center, Power, Random, Cells);
 	// Loud (carries 64 blocks) and low, a little different each time.
 	PlaySound(FName("entity.generic.explode"), Center, 4.0f, McExplosion::GetBlastPitch(Random.FRand(), Random.FRand()));
+	// The blast's cloud (the vanilla run qb4: 8 ticks of one 16 frame picture, three quarters of a block wide).
+	SpawnParticle(FName("minecraft:explosion"), Center);
 
 	// Everything standing near is hurt first, by the blocks as they were: the ones about to go still shield.
 	const double Radius = Power * 2.0;
@@ -403,7 +406,9 @@ void FMcEntityManager::Explode(const FVector& Center, float Power)
 		{
 			Mob.HurtTime = 0;
 			// No blow's knockback of its own: the reference mobs' push was exactly the blast's (1 - distance / 8), set below.
+			bInBlast = true;
 			Mob.Damage(Damage, nullptr);
+			bInBlast = false;
 			if (!Mob.bRemoved)
 			{
 				// Shoved away from the blast along the line to its eye, harder the closer and more open to it.

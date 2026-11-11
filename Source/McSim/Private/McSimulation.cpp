@@ -89,18 +89,31 @@ namespace
 		return FMcBlockRegistry::Get().FindState(Block, Properties).Get(0);
 	}
 
-	// A block a fluid pushes aside: nothing to collide with (air, plants, torches). A light block holds its ground against flowing water
-	// (reference run icemelt: they stayed waterlogged=false while melt water flowed around them). Other waterloggable blocks (signs,
-	// lava against anything) are NOT measured, so they behave as before.
+	// What flowing water and lava replace (reference run displace, 50 blocks beside a source): torches, redstone dust, levers and
+	// buttons, carpets, snow layers, pots, plants, fire, cobweb, repeaters, comparators, tripwire, and the end rod. They leave
+	// every block that can be waterlogged (signs, slabs, stairs, bars, panes, fences, trapdoors, chests, lanterns, candles,
+	// scaffolding, lights, barriers), and also rails, pressure plates, doors, hoppers, cauldrons and pots (those have a shape).
 	bool IsDisplaceable(FMcStateId State)
 	{
 		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-		if (Registry.GetBlockOf(State).Name == TEXT("minecraft:light"))
+		if (Registry.IsAir(State))
+		{
+			return true;
+		}
+		if (FluidOf(State) != EMcFluid::None || Registry.GetPropertyValue(State, TEXT("waterlogged")) != NAME_None)
 		{
 			return false;
 		}
-		return Registry.IsAir(State) || (FluidOf(State) == EMcFluid::None && !FMcBlockShapes::Get().HasCollision(State) && !FMcBlockTags::Get().Has(TEXT("minecraft:climbable"), State)
-			&& !FMcBlockTags::Get().Has(TEXT("minecraft:portals"), State));
+		// These have a small shape but were still replaced (measured; not generalised to similar blocks).
+		const FString Name = Registry.GetBlockOf(State).Name.ToString();
+		if (Name == TEXT("minecraft:end_rod") || Name == TEXT("minecraft:repeater") || Name == TEXT("minecraft:comparator") || Name == TEXT("minecraft:flower_pot")
+			|| Name.EndsWith(TEXT("_carpet")))
+		{
+			return true;
+		}
+		const FMcBlockTags& Tags = FMcBlockTags::Get();
+		return !FMcBlockShapes::Get().HasCollision(State) && !Tags.Has(TEXT("minecraft:climbable"), State) && !Tags.Has(TEXT("minecraft:portals"), State)
+			&& !Tags.Has(TEXT("minecraft:rails"), State) && !Tags.Has(TEXT("minecraft:pressure_plates"), State);
 	}
 }
 
@@ -157,7 +170,110 @@ void FMcSimulation::PlayerBroke(const FIntVector& Pos, FMcStateId State)
 
 void FMcSimulation::Vibrate(const FIntVector& Pos, int32 Frequency)
 {
-	Redstone->Vibrate(Pos, Frequency);
+	FMcGameEvent Event;
+	Event.Name = TEXT("vibration");
+	Event.Frequency = Frequency;
+	Event.Pos = Pos;
+	Redstone->Vibrate(Event);
+}
+
+void FMcSimulation::EmitGameEvent(FName Name, const FIntVector& Pos, const FMcGameEventSource& Source)
+{
+	const int32 Frequency = McGameEvents::FrequencyOf(Name);
+	if (Frequency <= 0)
+	{
+		return;
+	}
+	FMcGameEvent Event;
+	Event.Name = Name;
+	Event.Frequency = Frequency;
+	Event.Pos = Pos;
+	Event.Source = Source;
+	Redstone->Vibrate(Event);
+	for (const TPair<int32, TFunction<void(const FMcGameEvent&)>>& Listener : GameListeners)
+	{
+		Listener.Value(Event);
+	}
+}
+
+int32 FMcSimulation::AddGameEventListener(TFunction<void(const FMcGameEvent&)> Listener)
+{
+	GameListeners.Add(NextListener, MoveTemp(Listener));
+	return NextListener++;
+}
+
+void FMcSimulation::RemoveGameEventListener(int32 Handle)
+{
+	GameListeners.Remove(Handle);
+}
+
+bool FMcSimulation::IsVibrationOccluded(const FIntVector& From, const FIntVector& To) const
+{
+	return Redstone->IsOccluded(From, To);
+}
+
+void FMcSimulation::ShriekerTouched(const FIntVector& Pos, int32 PlayerId)
+{
+	Redstone->ShriekerTouched(Pos, PlayerId);
+}
+
+void FMcSimulation::BookshelfUsed(const FIntVector& Pos, int32 Slot)
+{
+	Redstone->BookshelfUsed(Pos, Slot);
+}
+
+void FMcSimulation::CreakingHit(const FIntVector& Heart)
+{
+	Redstone->CreakingHit(Heart);
+}
+
+int32 FMcSimulation::GetWarningLevel(int32 PlayerId) const
+{
+	const FWarning* Warning = Warnings.Find(PlayerId);
+	if (!Warning)
+	{
+		return 0;
+	}
+	return FMath::Max(0, Warning->Level - static_cast<int32>((GameTime - Warning->Raised) / 12000));
+}
+
+bool FMcSimulation::CanShriekFor(int32 PlayerId, bool bCanSummon) const
+{
+	const FWarning* Warning = Warnings.Find(PlayerId);
+	return !bCanSummon || !Warning || GameTime >= Warning->NextAllowed;
+}
+
+// A shrieker set off for a player: any shrieker shrieks; a naturally generated one also raises the player's warning level, and
+// the player cannot set one off again for 10 seconds, the shriek included (minecraft.wiki, "Sculk Shrieker").
+void FMcSimulation::ShriekerActivated(const FIntVector& Pos, int32 PlayerId, bool bCanSummon)
+{
+	if (!bCanSummon)
+	{
+		return;
+	}
+	FWarning& Warning = Warnings.FindOrAdd(PlayerId);
+	Warning.Level = GetWarningLevel(PlayerId);
+	Warning.Level = FMath::Min(4, Warning.Level + 1);
+	Warning.Raised = GameTime;
+	Warning.NextAllowed = GameTime + 200;
+	ShriekedFor.Add(Pos, PlayerId);
+	if (OnShriek)
+	{
+		OnShriek(Pos, PlayerId, Warning.Level);
+	}
+}
+
+void FMcSimulation::ShriekerFinished(const FIntVector& Pos, bool bCanSummon)
+{
+	int32 PlayerId = 0;
+	if (!ShriekedFor.RemoveAndCopyValue(Pos, PlayerId) || !bCanSummon)
+	{
+		return;
+	}
+	if (GetWarningLevel(PlayerId) >= 4 && OnWardenSummon)
+	{
+		OnWardenSummon(Pos, PlayerId);
+	}
 }
 
 void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)
@@ -204,6 +320,11 @@ void FMcSimulation::SetWeatherCycle(bool bCycle)
 void FMcSimulation::SetWeather(EMcWeather Weather, int32 Duration)
 {
 	Nature->SetWeather(Weather, Duration);
+}
+
+void FMcSimulation::SetSeaLevel(int32 Level)
+{
+	Nature->SetSeaLevel(Level);
 }
 
 void FMcSimulation::SetSnowAccumulation(int32 Layers)

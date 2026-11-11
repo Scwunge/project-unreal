@@ -322,6 +322,41 @@ const AMcHUD::FIcon& AMcHUD::GetBannerIcon(const FMcItemStack& Banner)
 	return BannerIcons.Add(Key, MoveTemp(Icon));
 }
 
+const AMcHUD::FIcon& AMcHUD::GetShieldIcon(const FMcItemStack& Shield)
+{
+	// A shield with no base colour shows the bare wooden face; one with a colour, the tinted base.
+	FString Colour;
+	if (const TSharedPtr<FJsonValue> Value = Shield.Get(TEXT("minecraft:base_color")); Value.IsValid())
+	{
+		Value->TryGetString(Colour);
+	}
+	const FString Key = TEXT("shield|") + Colour;
+	if (const FIcon* Found = StackIcons.Find(Key))
+	{
+		return *Found;
+	}
+	FIcon Icon;
+	UTexture2D* Texture = GetLayerTexture(FName(Colour.IsEmpty() ? TEXT("minecraft:entity/shield/shield_base_nopattern") : TEXT("minecraft:entity/shield/shield_base")));
+	// Corners measured on the vanilla slot (top left, top right, bottom right, bottom left), in GUI pixels; the front
+	// plate is the 13 by 23 texels at the corner of the 64 square sheet.
+	const FVector2D Corners[4] = { FVector2D(3.3, 0.4), FVector2D(10.6, 1.8), FVector2D(9.4, 15.6), FVector2D(2.1, 13.9) };
+	const FVector2D UVs[4] = { FVector2D(0, 0), FVector2D(13.0 / 64, 0), FVector2D(13.0 / 64, 23.0 / 64), FVector2D(0, 23.0 / 64) };
+	const FLinearColor Tint = Colour.IsEmpty() ? FLinearColor::White : McBanner::GetDyeColour(Colour);
+	for (const int32 First : { 0, 2 })
+	{
+		FIconTriangle& Triangle = Icon.Triangles.AddDefaulted_GetRef();
+		const int32 Indices[3] = { 0, First == 0 ? 1 : 2, First == 0 ? 2 : 3 };
+		for (int32 I = 0; I < 3; ++I)
+		{
+			Triangle.Positions[I] = Corners[Indices[I]];
+			Triangle.UVs[I] = UVs[Indices[I]];
+		}
+		Triangle.Color = Tint;
+		Triangle.Texture = Texture;
+	}
+	return StackIcons.Add(Key, MoveTemp(Icon));
+}
+
 void AMcHUD::BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint)
 {
 	UTexture2D* Texture = GetLayerTexture(FName(*McCache::Namespaced(TextureId)));
@@ -698,6 +733,10 @@ const AMcHUD::FIcon& AMcHUD::GetStackIcon(const FMcItemStack& Stack)
 	{
 		return GetBannerIcon(Stack);
 	}
+	if (Stack.Item == TEXT("minecraft:shield"))
+	{
+		return GetShieldIcon(Stack);
+	}
 	if (!McItemDef::UsesPackModels(Stack))
 	{
 		return GetItemIcon(McItemFrames::ResolveStack(Stack));
@@ -830,6 +869,88 @@ void AMcHUD::DrawSprite(UTexture2D* Texture, float X, float Y, float Width, floa
 	FCanvasTileItem Tile(FVector2D(X, Y) * Scale, Texture->GetResource(), FVector2D(Width, Height) * Scale, FLinearColor::White);
 	Tile.BlendMode = SE_BLEND_Translucent;
 	Canvas->DrawItem(Tile);
+}
+
+void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
+{
+	const McEntityModel::FModel* Model = McEntityModel::Find(Kind);
+	if (!Model)
+	{
+		return;
+	}
+	const TArray<FString>& Textures = Model->Variants.Num() > 0 ? Model->Variants[0] : Model->Textures;
+	const McEntityModel::FAnim Anim;
+	constexpr double Turn = 0.4363;  // 25 degrees
+	const double CosT = FMath::Cos(Turn);
+	const double SinT = FMath::Sin(Turn);
+	struct FPlaced
+	{
+		FIconTriangle Triangle;
+		double Depth = 0.0;
+	};
+	TArray<FPlaced> Placed;
+	double MinY = 1e9;
+	double MaxY = -1e9;
+	for (int32 Layer = 0; Layer < Textures.Num(); ++Layer)
+	{
+		McPlayerModel::FMeshData Mesh;
+		McEntityModel::BuildMesh(*Model, Anim, Layer, Mesh);
+		UTexture2D* Texture = LoadSprite(TEXT("textures/entity/") + Textures[Layer]);
+		if (!Texture)
+		{
+			continue;
+		}
+		for (int32 T = 0; T + 2 < Mesh.Triangles.Num(); T += 3)
+		{
+			const int32 I[3] = { Mesh.Triangles[T], Mesh.Triangles[T + 1], Mesh.Triangles[T + 2] };
+			const FVector UN = Mesh.Normals.IsValidIndex(I[0]) ? Mesh.Normals[I[0]] : FVector::ZeroVector;
+			// The mesh is in Unreal axes (z up); the turn is done in Minecraft's (y up, z south, facing the viewer).
+			const FVector N(UN.X, UN.Z, UN.Y);
+			// The viewer is on +z looking back: a face shows when its turned normal points that way.
+			if (-N.X * SinT + N.Z * CosT <= 0.0)
+			{
+				continue;
+			}
+			FPlaced Item;
+			Item.Triangle.Texture = Texture;
+			double Depth = 0.0;
+			for (int32 K = 0; K < 3; ++K)
+			{
+				const FVector& P = Mesh.Positions[I[K]];
+				const double X = P.X * CosT + P.Z * SinT;
+				const double Z = -P.X * SinT + P.Z * CosT;
+				Item.Triangle.Positions[K] = FVector2D(X, -P.Y);
+				Item.Triangle.UVs[K] = Mesh.UV0[I[K]];
+				Depth += Z;
+				if (Layer == 0)
+				{
+					MinY = FMath::Min(MinY, -P.Y);
+					MaxY = FMath::Max(MaxY, -P.Y);
+				}
+			}
+			const FColor Shade = Mesh.Colors.IsValidIndex(I[0]) ? Mesh.Colors[I[0]] : FColor::White;
+			Item.Triangle.Color = FLinearColor(Shade.R / 255.0f, Shade.G / 255.0f, Shade.B / 255.0f, 1.0f);
+			Item.Depth = Depth / 3.0 + Layer * 0.01;
+			Placed.Add(Item);
+		}
+	}
+	if (Placed.IsEmpty() || MaxY <= MinY)
+	{
+		return;
+	}
+	Placed.Sort([](const FPlaced& A, const FPlaced& B) { return A.Depth < B.Depth; });
+	// Fit: 37.7 GUI pixels from the top of the head down to the feet, the feet 8 above the bottom of the box, centred across it.
+	const double Fit = 37.7 / (MaxY - MinY);
+	FIcon Icon;
+	for (FPlaced& Item : Placed)
+	{
+		for (int32 K = 0; K < 3; ++K)
+		{
+			Item.Triangle.Positions[K] = FVector2D(53.0 + Item.Triangle.Positions[K].X * Fit, 64.0 + (Item.Triangle.Positions[K].Y - MaxY) * Fit);
+		}
+		Icon.Triangles.Add(Item.Triangle);
+	}
+	DrawIcon(Icon, static_cast<float>(Origin.X), static_cast<float>(Origin.Y));
 }
 
 void AMcHUD::DrawIcon(const FIcon& Icon, float X, float Y)

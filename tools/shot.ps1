@@ -17,7 +17,7 @@ param(
 )
 
 $Project = Join-Path (Split-Path $PSScriptRoot -Parent) 'McClient.uproject'
-$Editor = 'E:\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe'
+$Editor = 'J:\UE_5.9\Engine\Binaries\Win64\UnrealEditor.exe'
 $OutPath = if ([IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path (Split-Path $PSScriptRoot -Parent) $Out }
 if (Test-Path $OutPath) { Remove-Item $OutPath }
 # One build, test or shot at a time across checkouts: an editor started beside another session's build waits for it.

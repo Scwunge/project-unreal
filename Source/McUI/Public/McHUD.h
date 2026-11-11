@@ -32,6 +32,9 @@ class MCUI_API AMcHUD : public AHUD
 	GENERATED_BODY()
 
 public:
+	// Starts the end poem and credits (a player has won). Done is called when they end or the player presses Escape.
+	void StartCredits(const FString& PlayerNameForPoem, TFunction<void()> Done);
+	bool IsShowingCredits() const { return bCreditsOn; }
 	AMcHUD();
 	virtual ~AMcHUD() override;
 	virtual void DrawHUD() override;
@@ -55,7 +58,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language };
+	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language, Statistics, Advancements };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -117,6 +120,9 @@ private:
 	const FIcon& GetItemIcon(FName Item);
 	// A banner is drawn as its flag: the base colour, then each pattern in its dye's colour. Kept by what it looks like.
 	const FIcon& GetBannerIcon(const FMcItemStack& Banner);
+	// The shield's slot picture (its model is special, with no flat texture): the front plate of the entity texture on the
+	// slanted quad the vanilla slot shows (ref run shieldhud).
+	const FIcon& GetShieldIcon(const FMcItemStack& Shield);
 	// A decorated pot in 3D, with its sherds.
 	const FIcon& GetPotIcon(const FMcItemStack& Pot);
 	// A filled map is drawn as its picture, redrawn when the map has changed (McMapStore).
@@ -131,6 +137,9 @@ private:
 	TMap<int32, int32> MapIconRevisions;
 	UPROPERTY(Transient)
 	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
+	// The animal in a mount's window, drawn from its model and picture in the 54 x 54 box at Origin + (26, 18): standing, turned a quarter
+	// towards the viewer, about 38 pixels tall with its feet 8 above the bottom (vanilla donkey window shot, ref_donkey_window.png).
+	void DrawMobPreview(FName Kind, FIntPoint Origin);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then
@@ -180,6 +189,9 @@ private:
 	void DrawEffects(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// The raid's bar, at the top and in the middle: its title over a red bar of ten notches.
 	void DrawRaidBar(int32 Width, UMcPlayerDataComponent* Data);
+	// One boss bar: title above, the bar (182 wide) with its colour and style, filled to Fraction.
+	void DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style);
+	void DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
@@ -207,6 +219,8 @@ private:
 	void ShowScreen(TSharedRef<FScreenState> State);
 	void HideScreen();
 	void FlushDrops();
+	// The end poem and the credits, scrolling up over a black screen; Escape or the end of the text calls Done.
+	void DrawCredits(int32 Width, int32 Height);
 	// The death screen: shown while the player is dead, with a button that asks the server to bring them back.
 	void ShowDeathScreen(int32 Width, int32 Height, class AMcPlayerPawn& Player);
 
@@ -222,10 +236,16 @@ private:
 	void DrawJoin(int32 Width, int32 Height);
 	void DrawMessage(int32 Width, int32 Height);
 	void DrawPause(int32 Width, int32 Height);
+	// From the pause menu: the Statistics screen (General tab: every statistic of the language's text, by name; Items and Mobs
+	// have no tab content yet) and the Advancements screen (the empty window; no advancement tree is drawn yet).
+	void DrawStatistics(int32 Width, int32 Height);
+	void DrawAdvancements(int32 Width, int32 Height);
+	int32 StatsTab = 0;
+	int32 StatsScroll = 0;
 	// The settings: Unreal Mode and what comes after it. Opened from the title screen or the pause menu.
 	void DrawOptions(int32 Width, int32 Height);
 	// The menus drawn over a world being played (the rest replace the screen).
-	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
+	bool IsWorldMenu() const { return ActiveMenu == EMenu::Pause || ActiveMenu == EMenu::Chat || ActiveMenu == EMenu::Statistics || ActiveMenu == EMenu::Advancements || ((ActiveMenu == EMenu::Options || ActiveMenu == EMenu::Language || ActiveMenu == EMenu::ResourcePacks || ActiveMenu == EMenu::ConfirmPacks || ActiveMenu == EMenu::ConfirmIncompatible) && OptionsBack == EMenu::Pause); }
 	void OpenOptions(EMenu Back);
 	// The resource packs screen (from the options): the packs in the packs folder in two lists, available and selected
 	// (the top of the selected list wins), moved between them and up and down by the arrows over a pack's icon.
@@ -284,6 +304,10 @@ private:
 	// A GUI sprite (textures/gui/sprites/...) in the box, scaled the way its .png.mcmeta says: stretched (the default),
 	// tiled, or as a nine slice with its borders. A sprite the mcmeta of the game does not describe falls to the given nine slice.
 	void DrawGuiSprite(const FString& Sprite, float X, float Y, float W, float H);
+	// The tooltip of a bundle held by the hovered slot, with the cursor at (CursorX, CursorY) in GUI pixels.
+	void DrawCartographyPreview(FIntPoint Origin, const class FMcCartographyMenu& Menu);
+	// Selected is the cell picked with the wheel (an index into the shown stacks), or -1.
+	void DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight, int32 Selected = -1);
 	FGuiScaling GetGuiScaling(const FString& Sprite, UTexture2D* Texture);
 	TMap<FString, FGuiScaling> GuiScalings;
 	void DrawCentredText(const FString& Text, float CentreX, float Y, uint32 Rgb);
@@ -419,7 +443,15 @@ private:
 	// Where the mouse was, in GUI pixels, and the slot it is over.
 	FVector2D GuiMouse = FVector2D::ZeroVector;
 	int32 HoverSlot = INDEX_NONE;
+	// The bundle under the cursor and the stack the wheel has picked in it (bundleicon ref run); reset when the cursor leaves.
+	int32 BundleSelectedSlot = INDEX_NONE;
+	int32 BundleSelected = -1;
 	bool bDeathShown = false;
+	// The credits: lines of text with their colour, the clock they started at, and what to do when they end.
+	bool bCreditsOn = false;
+	double CreditsStart = 0.0;
+	TArray<TPair<FString, uint32>> CreditLines;
+	TFunction<void()> CreditsDone;
 	// When the death screen came up: its buttons wake a second later.
 	double DeathShownTime = 0.0;
 };

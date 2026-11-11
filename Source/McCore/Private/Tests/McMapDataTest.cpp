@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #include "McMapData.h"
+#include "McBlockRegistry.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMapCenterTest, "Mc.Map.Center", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FMcMapCenterTest::RunTest(const FString&)
@@ -47,5 +48,53 @@ bool FMcMapShadeTest::RunTest(const FString&)
 	TestEqual(TEXT("shallow"), FMcMapData::WaterBrightness(2, 1), 2);
 	TestEqual(TEXT("mid"), FMcMapData::WaterBrightness(5, 0), 1);
 	TestEqual(TEXT("deep"), FMcMapData::WaterBrightness(12, 1), 0);
+	return true;
+}
+
+// The held map fills by columns (measured, ServerTickMaps): a column update touches that column alone, and going over every
+// column gives what going over every row gives.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcMapColumnTest, "Mc.Map.Column", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcMapColumnTest::RunTest(const FString&)
+{
+	// Any state that has a map colour.
+	FMcBlockRegistry::Get().EnsureLoaded();
+	FMcStateId Coloured = 0;
+	for (FMcStateId Id = 1; Id < 3000 && Coloured == 0; ++Id)
+	{
+		Coloured = McMapColors::ColorOf(Id) != 0 ? Id : 0;
+	}
+	if (!TestTrue(TEXT("a coloured state exists"), Coloured != 0))
+	{
+		return true;
+	}
+	const auto Sample = [Coloured](int32 X, int32 Z)
+	{
+		FMcMapData::FColumn Column;
+		Column.Top = Coloured;
+		Column.Height = 64 + ((X + 2 * Z) & 3);
+		return Column;
+	};
+	FMcMapData ByColumn;
+	const int32 Changed = ByColumn.UpdateColumn(5, Sample);
+	TestTrue(TEXT("column 5 changed"), Changed > 0);
+	int32 Elsewhere = 0;
+	for (int32 Z = 0; Z < FMcMapData::Size; ++Z)
+	{
+		for (int32 X = 0; X < FMcMapData::Size; ++X)
+		{
+			Elsewhere += (X != 5 && ByColumn.Colors[Z * FMcMapData::Size + X] != 0) ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("no other column touched"), Elsewhere, 0);
+	for (int32 X = 0; X < FMcMapData::Size; ++X)
+	{
+		ByColumn.UpdateColumn(X, Sample);
+	}
+	FMcMapData ByRow;
+	for (int32 Z = 0; Z < FMcMapData::Size; ++Z)
+	{
+		ByRow.UpdateRow(Z, Sample);
+	}
+	TestTrue(TEXT("columns and rows give one picture"), ByColumn.Colors == ByRow.Colors);
 	return true;
 }

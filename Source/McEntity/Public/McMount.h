@@ -32,6 +32,8 @@ struct MCENTITY_API FMcMountState
 	TSharedPtr<FMcContainer> Inventory;
 	// How used to people it is, 0..100; a rider tames it when a roll under the max beats it.
 	int32 Temper = 0;
+	// The mob's own max health, rolled at spawn for a horse, donkey or mule (15 + a roll of 0..7 + a roll of 0..8, vehicle_log43); 0 for the type's. Saved.
+	float MaxHealth = 0.0f;
 	// The player riding it (the pawn's unique id), 0 for none.
 	uint32 RiderId = 0;
 	// Camels carry a second rider behind the first, who steers.
@@ -49,6 +51,11 @@ struct MCENTITY_API FMcMountState
 	int32 LastHurtEvents = 0;
 	int32 SpitMemory = 0;
 	int32 SpitCooldown = 0;
+	// The rear a horse makes on a jump, 0..1 (vehicle_log34): the rider sits 0.7 x it back along the facing and 0.15 x it higher. Rises by 0.45 x 0.6^n a tick
+	// from the jump (RearStep n, -1 for none) until the landing, then falls away over five ticks (RearFall, -1 for none).
+	float Rear = 0.0f;
+	int32 RearStep = -1;
+	int32 RearFall = -1;
 	// Camels: ticks until it may dash again.
 	int32 DashCooldown = 0;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.
@@ -74,6 +81,10 @@ namespace McMount
 	MCENTITY_API bool IsRideable(const FMcEntity& Entity);
 	// The mount state, made with the kind's stats if there is none yet.
 	MCENTITY_API FMcMountState& Ensure(FMcEntity& Entity);
+	// What a mob's health tops out at: its own roll when it has one, else the type's.
+	MCENTITY_API float MaxHealthOf(const FMcMob& Mob);
+	// Rolls a horse, donkey or mule's max health, speed and jump when it spawns (the rest are made when first used).
+	MCENTITY_API void RollAtSpawn(FMcMob& Mob);
 	// The scale a charge of this many held ticks reaches, 0..1 (0.1 a tick, then slowing to a full charge at 10).
 	MCENTITY_API float ChargeScale(int32 HeldTicks);
 	// The part of the jump strength a charge of HeldTicks makes: 0.4 + 0.4 x scale/0.9, 1 from 0.9 up.
@@ -91,7 +102,7 @@ namespace McMount
 	MCENTITY_API bool ClearPlayer(FMcEntity& Entity, uint32 PlayerId);
 	// Whether that player sits on it, and whether they are the one who steers.
 	MCENTITY_API bool HasPlayer(const FMcEntity& Entity, uint32 PlayerId);
-	// Where a player riding it sits (the passenger of a camel sits 0.9 behind, not measured).
+	// Where a player riding it sits (a camel's first rider sits 0.5 ahead of its centre and the passenger 0.7 behind it).
 	MCENTITY_API FVector GetSeatFor(const FMcEntity& Entity, uint32 PlayerId);
 	// Where the rider's feet sit.
 	MCENTITY_API FVector GetSeat(const FMcEntity& Entity);

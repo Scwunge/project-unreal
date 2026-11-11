@@ -23,6 +23,8 @@ struct FMcCommandSender
 	// The player's name; empty for the server console.
 	FString Name;
 	int32 PermissionLevel = 0;
+	// Where the command runs from, when /execute moved it (else the sender's own feet).
+	TOptional<FVector> Position;
 	bool IsConsole() const { return Name.IsEmpty(); }
 };
 
@@ -30,6 +32,18 @@ struct FMcCommandReply
 {
 	FString Text;
 	bool bError = false;
+};
+
+// /worldborder's state, kept for the session. Values the game never showed before a command set them start at -1, so the first set always counts as a change.
+struct FMcWorldBorderState
+{
+	double Size = 59999968.0;
+	double CentreX = 0.0;
+	double CentreZ = 0.0;
+	double DamageAmount = -1.0;
+	double DamageBuffer = -1.0;
+	double WarningDistance = -1.0;
+	double WarningTicks = -1.0;
 };
 
 // What a command can do. Players are named as they joined; names match ignoring case.
@@ -80,6 +94,8 @@ public:
 	virtual void SetBlock(const FIntVector& Pos, FMcStateId State) = 0;
 	// A new mob of the kind at the feet position; false if there is nowhere to put it.
 	virtual bool Summon(FName Kind, const FVector& Feet) = 0;
+	// /particle: Count particles of the named kind ("minecraft:heart") at Pos, spread by Delta, at Speed. False if nobody could see it.
+	virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) { return false; }
 
 	// Experience: the level and the points towards the next.
 	virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const = 0;
@@ -90,6 +106,14 @@ public:
 	// Takes up to MaxCount (every one, if negative) of Item (any item, if None) from the player's inventory, armour, offhand
 	// and cursor, or with bTest only counts them. How many were found.
 	virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) = 0;
+	// One slot of a player: Group 0 the inventory (0 to 8 the hotbar, 9 to 35 the rest), 1 the armour (head, chest, legs, feet),
+	// 2 the offhand. SetSlot puts Count of Item there (an empty Item or a Count of 0 empties it); false if there is no such player or slot.
+	virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) { return false; }
+	virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const { return false; }
+	// /attribute changed the value of an attribute (id without the namespace) to Value; only some reach the game.
+	virtual void SetAttribute(const FString& Player, const FString& Id, double Value) {}
+	// The hotbar slot (0 to 8) the player holds.
+	virtual int32 GetSelectedSlot(const FString& Player) const { return 0; }
 
 	// Effects, named without the namespace ("speed"). Duration is in ticks; an instant effect ignores it.
 	virtual bool IsEffect(FName Effect) const = 0;
@@ -110,6 +134,27 @@ public:
 	// Plays a sounds.json event for everyone, at a position in blocks (volume over 1 carries further).
 	virtual void PlaySoundAt(FName Event, const FVector& Position, float Volume, float Pitch) {}
 
+	// /setworldspawn and /spawnpoint, at a block (the feet position of where players come back).
+	virtual void SetWorldSpawn(const FIntVector& Pos) {}
+	virtual void SetPlayerSpawn(const FString& Player, const FIntVector& Pos) {}
+	// /tick: the world's target ticks per second, whether it is frozen, a number of ticks to run while frozen, and the time a frame takes.
+	virtual double GetTickRate() const { return 20.0; }
+	virtual void SetTickRate(double Rate) {}
+	virtual bool IsTickFrozen() const { return false; }
+	virtual void SetTickFrozen(bool bFrozen) {}
+	virtual void StepTicks(int32 Count) {}
+	virtual double GetAverageTickMs() const { return 0.0; }
+	// /rotate: a player's yaw (Minecraft degrees), read and set.
+	virtual bool GetYaw(const FString& Player, double& OutYaw) const { return false; }
+	virtual void SetYaw(const FString& Player, double Yaw) {}
+	// /locate biome: the nearest loaded spot of a biome (id), from a position.
+	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
+	// /swing: a player swings their arm.
+	virtual void SwingArm(const FString& Player) {}
+	// The folder of the world being played, where /data storage is kept (empty: nowhere to keep it).
+	virtual FString GetWorldFolder() const { return FString(); }
+	// /damage: hurts a player; false if nothing hurt them (creative).
+	virtual bool Hurt(const FString& Player, float Amount, const FString& Type) { return false; }
 	// /defaultgamemode: what new players start in.
 	virtual void SetDefaultGameMode(const FString& Mode) {}
 	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).
@@ -123,6 +168,10 @@ public:
 
 namespace McCommands
 {
+	// The world border /worldborder sets (the game reads it to keep players inside).
+	MCSERVER_API FMcWorldBorderState& GetWorldBorder();
+	// The custom boss bars (/bossbar) a player is shown: one line each, "title<TAB>fraction<TAB>color<TAB>style", in id order.
+	MCSERVER_API FString BossbarLines(const FString& Player);
 	// A line typed into chat: a command if it starts with '/', else said to everyone as "<Name> text". Replies for the
 	// sender come back; what everyone sees goes through Target.Broadcast.
 	MCSERVER_API TArray<FMcCommandReply> HandleChat(const FString& Line, const FMcCommandSender& Sender, IMcCommandTarget& Target);

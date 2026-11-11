@@ -814,6 +814,7 @@ bool FMcStructureLibrary::Load(FMcFeatureLibrary* Features)
 		if (Structure->Type == TEXT("ocean_monument"))
 		{
 			Structure->Surround.Init(false, NumBiomes);
+			// The jar's tag required_ocean_monument_surrounding lists exactly these two.
 			ResolveTag(TEXT("#minecraft:is_ocean"), Structure->Surround, 0);
 			ResolveTag(TEXT("#minecraft:is_river"), Structure->Surround, 0);
 		}
@@ -1177,6 +1178,31 @@ const FMcStructureLibrary::FStructure* FMcStructureLibrary::Choose(const FSet& S
 	return nullptr;
 }
 
+bool FMcStructureLibrary::FindNearestRingStart(uint64 Seed, double X, double Z, FIntPoint& OutChunk) const
+{
+	double Best = TNumericLimits<double>::Max();
+	bool bFound = false;
+	for (const TSharedPtr<FSet>& Set : Sets)
+	{
+		if (!Set->bRings)
+		{
+			continue;
+		}
+		for (const FIntPoint& Chunk : RingChunks(Seed, Set->RingCount, Set->RingDistance, Set->RingSpread))
+		{
+			const double Dx = Chunk.X * 16.0 - X;
+			const double Dz = Chunk.Y * 16.0 - Z;
+			if (Dx * Dx + Dz * Dz < Best)
+			{
+				Best = Dx * Dx + Dz * Dz;
+				OutChunk = Chunk;
+				bFound = true;
+			}
+		}
+	}
+	return bFound;
+}
+
 void FMcStructureLibrary::GetCandidates(uint64 Seed, FIntPoint Chunk, TArray<FName>& Out) const
 {
 	for (const TSharedPtr<FSet>& Set : Sets)
@@ -1254,17 +1280,19 @@ bool FMcStructureLibrary::SurroundAllows(FName Id, FIntPoint Chunk, TFunctionRef
 		{
 			continue;
 		}
+		// A 29-block square round the start (minecraft.wiki, "Ocean Monument": every point of the square must be in a biome the structure's surround list allows); sampled on a 5 x 5 grid. The wiki's extra 16-block deep-ocean rule is not applied here.
 		static const int32 Steps[] = { -29, -15, 0, 15, 29 };
 		for (const int32 DZ : Steps)
 		{
 			for (const int32 DX : Steps)
 			{
-				if (DX * DX + DZ * DZ > 29 * 29)
-				{
-					continue;
-				}
 				const FMcBiomeId Biome = BiomeAt(Chunk.X * 16 + 8 + DX, Chunk.Y * 16 + 8 + DZ);
 				if (!Structure->Surround.IsValidIndex(Biome) || !Structure->Surround[Biome])
+				{
+					return false;
+				}
+				// The centre 16-block square must be deep ocean (minecraft.wiki, "Ocean Monument"; the structure's own biome tag).
+				if (FMath::Abs(DX) <= 16 && FMath::Abs(DZ) <= 16 && (!Structure->Biomes.IsValidIndex(Biome) || !Structure->Biomes[Biome]))
 				{
 					return false;
 				}

@@ -14,6 +14,7 @@
 #include "McSurvival.h"
 #include "McEffects.h"
 #include "GameFramework/Pawn.h"
+#include "McPlayerPawn.h"
 #include "Net/UnrealNetwork.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
@@ -98,6 +99,8 @@ void UMcPlayerDataComponent::FillCreativeHotbar()
 
 void UMcPlayerDataComponent::UpdateArmor()
 {
+	// The registry may not be loaded yet when a saved player comes back (an imported one in the first frames).
+	FMcItemRegistry::Get().EnsureLoaded();
 	float Points = 0.0f, Toughness = 0.0f;
 	McSurvival::GetArmorValues(*Armor, Points, Toughness);
 	Stats.Armor = FMath::RoundToInt32(Points);
@@ -368,6 +371,50 @@ void UMcPlayerDataComponent::OpenServerWindow(FMcWindow NewWindow, int32 Aux)
 		return;
 	}
 	Window = MoveTemp(NewWindow);
+	if (IsServer())
+	{
+		// Statistics: what was opened (the kinds the data does not tell apart, such as a blast furnace from a furnace, count as the plain one).
+		const TCHAR* Opened = nullptr;
+		switch (Window.Kind)
+		{
+		case EMcWindowKind::CraftingTable: Opened = TEXT("interact_with_crafting_table"); break;
+		case EMcWindowKind::Chest: Opened = TEXT("open_chest"); break;
+		case EMcWindowKind::Furnace: Opened = TEXT("interact_with_furnace"); break;
+		case EMcWindowKind::Stonecutter: Opened = TEXT("interact_with_stonecutter"); break;
+		case EMcWindowKind::SmithingTable: Opened = TEXT("interact_with_smithing_table"); break;
+		case EMcWindowKind::Grindstone: Opened = TEXT("interact_with_grindstone"); break;
+		case EMcWindowKind::Anvil: Opened = TEXT("interact_with_anvil"); break;
+		case EMcWindowKind::BrewingStand: Opened = TEXT("interact_with_brewingstand"); break;
+		case EMcWindowKind::Hopper: Opened = TEXT("inspect_hopper"); break;
+		case EMcWindowKind::Dispenser: Opened = TEXT("inspect_dispenser"); break;
+		case EMcWindowKind::Loom: Opened = TEXT("interact_with_loom"); break;
+		case EMcWindowKind::Lectern: Opened = TEXT("interact_with_lectern"); break;
+		case EMcWindowKind::Trading: Opened = TEXT("talked_to_villager"); break;
+		default: break;
+		}
+		if (Opened)
+		{
+			AddStat(FString(TEXT("custom:")) + Opened);
+		}
+		if (Window.Crafting)
+		{
+			Window.Crafting->OnCrafted = [WeakThis = TWeakObjectPtr<UMcPlayerDataComponent>(this)](FName Recipe, const FMcItemStack& Result)
+			{
+				if (UMcPlayerDataComponent* Self = WeakThis.Get())
+				{
+					Self->AddStat(TEXT("crafted:") + Result.Item.ToString(), Result.Count);
+					if (AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Self->GetOwner()))
+					{
+						FMcTriggerEvent Crafted;
+						Crafted.Trigger = TEXT("minecraft:recipe_crafted");
+						Crafted.Recipe = Recipe;
+						Crafted.Item = Result.Item;
+						Pawn->FireTrigger(Crafted);
+					}
+				}
+			};
+		}
+	}
 	LastSequence = 0;
 	TicksSinceWindowSync = 0;
 	if (IsOwnerRemote())
@@ -405,7 +452,13 @@ void UMcPlayerDataComponent::CloseServerWindow(bool bTellOwner)
 		Window.OnChanged();
 	}
 	const int32 ClosedId = Window.Id;
+	const bool bWasChest = Window.Kind == EMcWindowKind::Chest;
+	const FIntVector ClosedPos = Window.Pos;
 	Window = FMcWindow();
+	if (bWasChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(ClosedPos, false);
+	}
 	SentWindow.Reset();
 	// The window's changes were sent inside it; now the containers need sending in full.
 	SentInventory.Reset();
@@ -501,7 +554,12 @@ void UMcPlayerDataComponent::OpenBlockWindow(EMcWindowKind Kind, const FIntVecto
 	Made.Title = Title;
 	Made.Pos = Pos;
 	Made.OnChanged = MoveTemp(OnChanged);
+	const bool bIsChest = Kind == EMcWindowKind::Chest;
 	OpenServerWindow(MoveTemp(Made), Aux);
+	if (bIsChest && ServerContainerEvent)
+	{
+		ServerContainerEvent(Pos, true);
+	}
 }
 
 void UMcPlayerDataComponent::MarkWindowOnEntity(int32 EntityId)
@@ -540,12 +598,12 @@ void UMcPlayerDataComponent::NotifyClick(int32 Slot, int32 Button, EMcClickType 
 	{
 		// The menu the screen clicked is the server's own: only the follow-ups remain.
 		McSurvival::AddXp(Stats, Window.Menu->TakeExperience());
-	// Volumes from minecraft.wiki "Bundle" (0.8, failing 1.0); the pitch of the varied ones is not measured: 0.8 to 1.2.
+	// Measured (ref run bundlesound, 20 clicks): insert and remove_one volume 0.8, pitch 0.8 + 0.5 * random (0.82 to 1.28 seen); insert_fail 1.0 and 1.0.
 	const FName BundleSound = Window.Menu->TakeBundleSound();
 	if (!BundleSound.IsNone() && ServerSound)
 	{
 		const bool bFail = BundleSound == FName("item.bundle.insert_fail");
-		ServerSound(BundleSound, bFail ? 1.0f : 0.8f, bFail ? 1.0f : 0.8f + FMath::FRand() * 0.4f);
+		ServerSound(BundleSound, bFail ? 1.0f : 0.8f, bFail ? 1.0f : 0.8f + FMath::FRand() * 0.5f);
 	}
 		Stats.XpLevel = FMath::Max(0, Stats.XpLevel - Window.Menu->TakeLevelsSpent());
 		if (Window.OnChanged)
@@ -867,6 +925,22 @@ void UMcPlayerDataComponent::ServerTick()
 		SentRaidTitle = RaidBarTitle;
 		ClientSetRaidBar(RaidBarFraction, RaidBarTitle);
 	}
+	if (CustomBars != SentCustomBars)
+	{
+		SentCustomBars = CustomBars;
+		ClientSetCustomBars(CustomBars);
+	}
+	if (bCountersChanged && ++TicksSinceCounters >= 20)
+	{
+		bCountersChanged = false;
+		TicksSinceCounters = 0;
+		FString Text;
+		for (const TPair<FString, int64>& Counter : Counters)
+		{
+			Text += FString::Printf(TEXT("%s=%lld\n"), *Counter.Key, Counter.Value);
+		}
+		ClientSetCounters(Text);
+	}
 	const TArray<uint8> State = WriteState();
 	if (State != SentStats)
 	{
@@ -1073,6 +1147,41 @@ void UMcPlayerDataComponent::SetRaidBar(float Fraction, const FString& Title)
 {
 	RaidBarFraction = Fraction;
 	RaidBarTitle = Title;
+}
+
+void UMcPlayerDataComponent::SetCustomBars(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::ClientSetCustomBars_Implementation(const FString& Lines)
+{
+	CustomBars = Lines;
+}
+
+void UMcPlayerDataComponent::AddStat(const FString& Id, int64 Amount)
+{
+	if (Amount != 0)
+	{
+		Counters.FindOrAdd(Id) += Amount;
+		bCountersChanged = true;
+	}
+}
+
+void UMcPlayerDataComponent::ClientSetCounters_Implementation(const FString& Text)
+{
+	Counters.Reset();
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines);
+	for (const FString& Line : Lines)
+	{
+		FString Key;
+		FString Value;
+		if (Line.Split(TEXT("="), &Key, &Value, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+		{
+			Counters.Add(Key, FCString::Atoi64(*Value));
+		}
+	}
 }
 
 void UMcPlayerDataComponent::ClientSetRaidBar_Implementation(float Fraction, const FString& Title)

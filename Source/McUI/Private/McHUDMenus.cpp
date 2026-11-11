@@ -238,6 +238,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		switch (ActiveMenu)
 		{
 		case EMenu::Pause: case EMenu::Chat: OpenMenu(EMenu::None); return false;
+		case EMenu::Statistics: case EMenu::Advancements: OpenMenu(EMenu::Pause); break;
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: case EMenu::ImportJava: OpenMenu(EMenu::Worlds); break;
 		case EMenu::Options: OpenMenu(OptionsBack); return IsWorldMenu() ? false : true;
@@ -258,6 +259,8 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 	case EMenu::Join: DrawJoin(Width, Height); break;
 	case EMenu::Message: DrawMessage(Width, Height); break;
 	case EMenu::Pause: DrawPause(Width, Height); break;
+	case EMenu::Statistics: DrawStatistics(Width, Height); break;
+	case EMenu::Advancements: DrawAdvancements(Width, Height); break;
 	case EMenu::Chat: DrawChatInput(Width, Height); break;
 	case EMenu::Options: DrawOptions(Width, Height); break;
 	case EMenu::ResourcePacks: DrawResourcePacks(Width, Height); break;
@@ -910,20 +913,44 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	const float CentreX = Width / 2.0f;
 	DrawCentredText(McLang::Get(TEXT("menu.game")), CentreX, 40.0f, White);
 	const bool bClient = GetNetMode() == NM_Client;
-	const float Top = Height / 4.0f + 24.0f;
+	// Fitted from the reference's pause menu at 1280 x 720 (GUI scale 3, a 240 high screen): Back to Game at 68, Advancements and
+	// Statistics 24 below it, a row of four 20 square buttons (bugs, feedback, social, reporting: none of them do anything here yet)
+	// 24 below that, Options and World Options, and Save and Quit; 24 apart.
+	const float Top = Height / 4.0f + 8.0f;
 	if (MenuButton(McLang::Get(TEXT("menu.returnToGame")), CentreX - 102.0f, Top, 204.0f, 20.0f))
 	{
 		OpenMenu(EMenu::None);
 	}
-	else if (MenuButton(McLang::Get(TEXT("menu.options")), CentreX - 102.0f, Top + 48.0f, 98.0f, 20.0f))
+	else if (MenuButton(McLang::Get(TEXT("gui.advancements")), CentreX - 102.0f, Top + 24.0f, 98.0f, 20.0f))
+	{
+		OpenMenu(EMenu::Advancements);
+	}
+	else if (MenuButton(McLang::Get(TEXT("gui.stats")), CentreX + 4.0f, Top + 24.0f, 98.0f, 20.0f))
+	{
+		StatsScroll = 0;
+		OpenMenu(EMenu::Statistics);
+	}
+	static const TCHAR* PauseIcons[4] = { TEXT("textures/gui/sprites/pause_menu/bug.png"), TEXT("textures/gui/sprites/pause_menu/social_interactions.png"),
+		TEXT(""), TEXT("textures/gui/sprites/pause_menu/player_reporting.png") };
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const float IconX = CentreX - 46.3f + Index * 24.0f;
+		MenuButton(TEXT(""), IconX, Top + 48.0f, 20.0f, 20.0f);
+		if (UTexture2D* Icon = PauseIcons[Index][0] ? LoadSprite(PauseIcons[Index]) : nullptr)
+		{
+			const float IconW = static_cast<float>(Icon->GetSizeX()), IconH = static_cast<float>(Icon->GetSizeY());
+			DrawGuiSprite(PauseIcons[Index], IconX + (20.0f - IconW) / 2.0f, Top + 48.0f + (20.0f - IconH) / 2.0f, IconW, IconH);
+		}
+	}
+	if (MenuButton(McLang::Get(TEXT("menu.options")), CentreX - 102.0f, Top + 72.0f, 98.0f, 20.0f))
 	{
 		OpenOptions(EMenu::Pause);
 	}
-	else if (MenuButton(bLanOpen ? TEXT("LAN: Open") : TEXT("Open to LAN"), CentreX + 4.0f, Top + 48.0f, 98.0f, 20.0f, !bClient && !bLanOpen))
+	else if (MenuButton(bLanOpen ? TEXT("LAN: Open") : TEXT("Open to LAN"), CentreX + 4.0f, Top + 72.0f, 98.0f, 20.0f, !bClient && !bLanOpen))
 	{
 		OpenToLan();
 	}
-	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Top + 72.0f, 204.0f, 20.0f))
+	else if (MenuButton(bClient ? TEXT("Disconnect") : TEXT("Save and Quit to Title"), CentreX - 102.0f, Top + 96.0f, 204.0f, 20.0f))
 	{
 		// Leaving the map saves the world and the player (AMcWorldActor and AMcGameMode end play).
 		OpenMenu(EMenu::None);
@@ -931,7 +958,215 @@ void AMcHUD::DrawPause(int32 Width, int32 Height)
 	}
 	if (bLanOpen)
 	{
-		DrawCentredText(FString::Printf(TEXT("Local game hosted on port %d"), LanPort), CentreX, Top + 100.0f, Grey);
+		DrawCentredText(FString::Printf(TEXT("Local game hosted on port %d"), LanPort), CentreX, Top + 124.0f, Grey);
+	}
+}
+
+namespace
+{
+	struct FStatRow
+	{
+		FString Name;
+		// The statistic's id ("jump", "walk_one_cm").
+		FString Id;
+	};
+
+	// Seconds as Java prints a double: the shortest digits that read back, with ".0" on a whole number ("0.0", "20.25").
+	FString ShortSeconds(double Seconds)
+	{
+		FString Text = FString::SanitizeFloat(Seconds, 0);
+		if (!Text.Contains(TEXT(".")))
+		{
+			Text += TEXT(".0");
+		}
+		return Text;
+	}
+
+	// A statistic's value in the game's format for it (distances in cm, m or km; times in s, min, h or d; damage in hearts).
+	FString FormatStat(const FString& Id, int64 Value)
+	{
+		if (Id.EndsWith(TEXT("_one_cm")))
+		{
+			const double Metres = Value / 100.0;
+			return Metres * 0.001 >= 0.5 ? FString::Printf(TEXT("%.2f km"), Metres * 0.001) : Metres >= 0.5 ? FString::Printf(TEXT("%.2f m"), Metres) : FString::Printf(TEXT("%lld cm"), Value);
+		}
+		if (Id.StartsWith(TEXT("damage_")))
+		{
+			return FString::Printf(TEXT("%.2f"), Value / 10.0);
+		}
+		if (Id == TEXT("sneak_time") || Id == TEXT("play_time") || Id == TEXT("time_since_death") || Id == TEXT("time_since_rest") || Id == TEXT("total_world_time"))
+		{
+			const double Seconds = Value / 20.0;
+			const double Days = Seconds / 86400.0;
+			const double Hours = Seconds / 3600.0;
+			const double Minutes = Seconds / 60.0;
+			return Days >= 0.5 ? FString::Printf(TEXT("%.2f d"), Days) : Hours >= 0.5 ? FString::Printf(TEXT("%.2f h"), Hours) : Minutes >= 0.5 ? FString::Printf(TEXT("%.2f min"), Minutes) : ShortSeconds(Seconds) + TEXT(" s");
+		}
+		return FString::Printf(TEXT("%lld"), Value);
+	}
+
+	// The General tab's rows: every "stat.minecraft.*" text of the language, sorted by the shown name (character codes, so
+	// "Distance Walked" comes before "Distance by Boat"), each at zero in the game's format for it: counts "0", damage "0.00",
+	// distances "0 cm", times "0.0 s" (the rows the vanilla client shows for a world that has none yet).
+	const TArray<FStatRow>& GetStatRows()
+	{
+		static TArray<FStatRow> Rows;
+		static uint32 Generation = 0xFFFFFFFFu;
+		if (Generation != McLang::GetGeneration())
+		{
+			Generation = McLang::GetGeneration();
+			Rows.Reset();
+			for (const FString& Key : McLang::GetKeysWithPrefix(TEXT("stat.minecraft.")))
+			{
+				Rows.Add({ McLang::Get(Key), Key.RightChop(15) });
+			}
+			Rows.Sort([](const FStatRow& A, const FStatRow& B) { return A.Name.Compare(B.Name, ESearchCase::CaseSensitive) < 0; });
+		}
+		return Rows;
+	}
+}
+
+void AMcHUD::DrawStatistics(int32 Width, int32 Height)
+{
+	DrawWorldMenuDim(Width, Height);
+	LoadFont();
+	const float CentreX = Width / 2.0f;
+	// Fitted from the reference's screen at 1280 x 720 (GUI scale 3): the tabs 122 wide and 2 apart over a 22 high header, the
+	// list from 24 to 32 above the bottom with rows 14 apart, names 136 left of the middle and values ending 133 right of it, a 6
+	// wide scroll bar, and Done 200 wide 26 above the bottom.
+	constexpr float HeaderBottom = 22.0f;
+	constexpr float ListTop = 24.0f;
+	constexpr float RowHeight = 14.0f;
+	const float ListBottom = Height - 32.0f;
+
+	if (UTexture2D* Tile = LoadSprite(TEXT("textures/gui/tab_header_background.png")))
+	{
+		for (float TileX = 0.0f; TileX < Width; TileX += 16.0f)
+		{
+			for (float TileY = 0.0f; TileY < HeaderBottom; TileY += 16.0f)
+			{
+				const float TileW = FMath::Min(16.0f, Width - TileX);
+				const float TileH = FMath::Min(16.0f, HeaderBottom - TileY);
+				const float Ku = Tile->GetSizeX() / 16.0f;
+				DrawRegion(Tile, TileX, TileY, TileW, TileH, 0.0f, 0.0f, TileW * Ku, TileH * Ku);
+			}
+		}
+	}
+	if (UTexture2D* Tile = LoadSprite(TEXT("textures/gui/inworld_menu_list_background.png")))
+	{
+		for (float TileY = ListTop; TileY < ListBottom; TileY += 16.0f)
+		{
+			for (float TileX = 0.0f; TileX < Width; TileX += 16.0f)
+			{
+				const float TileW = FMath::Min(16.0f, Width - TileX);
+				const float TileH = FMath::Min(16.0f, ListBottom - TileY);
+				const float Ku = Tile->GetSizeX() / 16.0f;
+				DrawRegion(Tile, TileX, TileY, TileW, TileH, 0.0f, 0.0f, TileW * Ku, TileH * Ku);
+			}
+		}
+	}
+
+	// The list.
+	static const TArray<FStatRow> NoRows;
+	const TArray<FStatRow>& Rows = StatsTab == 0 ? GetStatRows() : NoRows;
+	const float Content = Rows.Num() * RowHeight + 10.0f;
+	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
+	APlayerController* Player = GetOwningPlayerController();
+	const AMcPlayerPawn* StatsPawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+	const UMcPlayerDataComponent* Counted = StatsPawn ? StatsPawn->Data : nullptr;
+	if (Player && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom)
+	{
+		StatsScroll += 7 * ((Player->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) - (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0));
+	}
+	StatsScroll = FMath::Clamp(StatsScroll, 0, FMath::RoundToInt(MaxScroll));
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		const float Y = ListTop + 5.0f + Index * RowHeight - StatsScroll;
+		if (Y + 8.0f <= ListTop || Y >= ListBottom)
+		{
+			continue;
+		}
+		const uint32 Colour = (Index & 1) ? 0xBABABAu : 0xFFFFFFu;
+		DrawGuiText(Rows[Index].Name, CentreX - 135.6f, Y, Colour, true);
+		const FString Value = FormatStat(Rows[Index].Id, Counted ? Counted->GetStat(TEXT("custom:") + Rows[Index].Id) : 0);
+		DrawGuiText(Value, CentreX + 133.3f - GetTextWidth(Value), Y, Colour, true);
+	}
+	if (MaxScroll > 0.0f)
+	{
+		const float TrackH = ListBottom - ListTop;
+		const float ThumbH = FMath::Clamp(TrackH * TrackH / Content, 32.0f, TrackH - 8.0f);
+		const float ThumbY = ListTop + (TrackH - ThumbH) * StatsScroll / MaxScroll;
+		const float BarX = CentreX + 147.7f;
+		DrawFill(BarX, ListTop, 6.0f, TrackH, FLinearColor::Black);
+		DrawFill(BarX, ThumbY, 6.0f, ThumbH, FLinearColor::FromSRGBColor(FColor(128, 128, 128)));
+		DrawFill(BarX, ThumbY, 5.0f, ThumbH - 1.0f, FLinearColor::FromSRGBColor(FColor(192, 192, 192)));
+	}
+
+	for (const bool bHeader : { true, false })
+	{
+		if (UTexture2D* Line = LoadSprite(bHeader ? TEXT("textures/gui/inworld_header_separator.png") : TEXT("textures/gui/inworld_footer_separator.png")))
+		{
+			const float LineY = bHeader ? ListTop - 2.0f : ListBottom;
+			const float Ku = Line->GetSizeX() / 32.0f;
+			for (float LineX = 0.0f; LineX < Width; LineX += 32.0f)
+			{
+				const float LineW = FMath::Min(32.0f, Width - LineX);
+				DrawRegion(Line, LineX, LineY, LineW, 2.0f, 0.0f, 0.0f, LineW * Ku, 2.0f * Ku);
+			}
+		}
+	}
+
+	// The tabs.
+	const TCHAR* Labels[3] = { TEXT("stat.generalButton"), TEXT("stat.itemsButton"), TEXT("stat.mobsButton") };
+	for (int32 Tab = 0; Tab < 3; ++Tab)
+	{
+		const float TabX = CentreX - 184.3f + Tab * 124.0f;
+		const bool bSelected = Tab == StatsTab;
+		const bool bOver = GuiMouse.X >= TabX && GuiMouse.X < TabX + 122.0f && GuiMouse.Y >= (bSelected ? 1.0f : 5.0f) && GuiMouse.Y < HeaderBottom;
+		const FString Sprite = FString(TEXT("textures/gui/sprites/widget/tab")) + (bSelected ? TEXT("_selected") : TEXT("")) + (bOver ? TEXT("_highlighted") : TEXT("")) + TEXT(".png");
+		DrawGuiSprite(Sprite, TabX, bSelected ? 1.0f : 5.0f, 122.0f, bSelected ? 22.0f : 18.0f);
+		const FString Text = McLang::Get(Labels[Tab]);
+		DrawCentredText(Text, TabX + 61.0f, bSelected ? 8.0f : 10.0f, bSelected ? White : Grey);
+		if (bSelected)
+		{
+			const float W = GetTextWidth(Text) + 2.0f;
+			DrawFill(TabX + 61.0f - W / 2.0f, 21.5f, W, 1.0f, FLinearColor::White);
+		}
+		if (bOver && bMenuClick)
+		{
+			StatsTab = Tab;
+			StatsScroll = 0;
+		}
+	}
+
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Height - 26.0f, 200.0f, 20.0f))
+	{
+		OpenMenu(EMenu::Pause);
+	}
+}
+
+void AMcHUD::DrawAdvancements(int32 Width, int32 Height)
+{
+	DrawWorldMenuDim(Width, Height);
+	LoadFont();
+	const float CentreX = Width / 2.0f;
+	// The window is the sprite's 252 x 140 corner, in the middle; its inner 234 x 113 is the black map, here with the game's
+	// empty-state text (no advancement tree is drawn yet).
+	const float WindowX = FMath::FloorToFloat(CentreX - 126.0f + 0.3f);
+	const float WindowY = FMath::FloorToFloat((Height - 140.0f) / 2.0f);
+	DrawCentredText(McLang::Get(TEXT("gui.advancements")), CentreX, 12.0f, White);
+	if (UTexture2D* Window = LoadSprite(TEXT("textures/gui/advancements/window.png")))
+	{
+		const float Ku = Window->GetSizeX() / 256.0f;
+		DrawRegion(Window, WindowX, WindowY, 252.0f, 140.0f, 0.0f, 0.0f, 252.0f * Ku, 140.0f * Ku);
+	}
+	DrawFill(WindowX + 9.0f, WindowY + 18.0f, 234.0f, 113.0f, FLinearColor::Black);
+	DrawGuiText(McLang::Get(TEXT("gui.advancements")), WindowX + 8.0f, WindowY + 6.0f, 0xFFFFFFu, true);
+	DrawCentredText(McLang::Get(TEXT("advancements.empty")), WindowX + 9.0f + 117.0f, WindowY + 18.0f + 56.5f - 4.0f, White);
+	DrawCentredText(McLang::Get(TEXT("advancements.sad_label")), WindowX + 9.0f + 117.0f, WindowY + 18.0f + 113.0f - 9.0f, White);
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Height - 26.0f, 200.0f, 20.0f))
+	{
+		OpenMenu(EMenu::Pause);
 	}
 }
 
@@ -1335,6 +1570,12 @@ void AMcHUD::ClearPackCaches()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
+	// The cached icons hold raw pointers to the pictures just dropped: a garbage collection would free them under the icons.
+	Icons.Empty();
+	ItemIcons.Empty();
+	BannerIcons.Empty();
+	PotIcons.Empty();
+	StackIcons.Empty();
 	GuiScalings.Empty();
 	Glyphs.Reset();
 	RasterFonts.Reset();

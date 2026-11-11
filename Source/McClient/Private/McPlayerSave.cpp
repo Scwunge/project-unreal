@@ -43,6 +43,21 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 		Out.Stats.Add(TEXT("spawn_z"), Data.SpawnBed->Z);
 	}
 
+	if (Data.SpawnPoint.IsSet())
+	{
+		Out.Stats.Add(TEXT("sp_x"), Data.SpawnPoint->X);
+		Out.Stats.Add(TEXT("sp_y"), Data.SpawnPoint->Y);
+		Out.Stats.Add(TEXT("sp_z"), Data.SpawnPoint->Z);
+	}
+
+	for (const TPair<FString, int64>& Counter : Data.Counters)
+	{
+		Out.Stats.Add(TEXT("stat:") + Counter.Key, static_cast<double>(Counter.Value));
+	}
+	for (const FName Criterion : Data.Criteria)
+	{
+		Out.Stats.Add(TEXT("criterion:") + Criterion.ToString(), 1.0);
+	}
 	for (const FName Advancement : Data.Advancements)
 	{
 		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
@@ -124,8 +139,18 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	}
 	Data.Stats = Stats;
 	Data.Advancements.Reset();
+	Data.Counters.Reset();
+	Data.Criteria.Reset();
 	for (const TPair<FString, double>& Stat : Saved.Stats)
 	{
+		if (Stat.Key.StartsWith(TEXT("criterion:")))
+		{
+			Data.Criteria.Add(FName(*Stat.Key.RightChop(10)));
+		}
+		if (Stat.Key.StartsWith(TEXT("stat:")))
+		{
+			Data.Counters.Add(Stat.Key.RightChop(5), static_cast<int64>(Stat.Value));
+		}
 		if (Stat.Key.StartsWith(TEXT("advancement:")))
 		{
 			Data.Advancements.Add(FName(*Stat.Key.RightChop(12)));
@@ -136,6 +161,12 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	{
 		Data.SpawnBed = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_y"))),
 			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("spawn_z"))));
+	}
+	Data.SpawnPoint.Reset();
+	if (Saved.Stats.Contains(TEXT("sp_x")) && Saved.Stats.Contains(TEXT("sp_y")) && Saved.Stats.Contains(TEXT("sp_z")))
+	{
+		Data.SpawnPoint = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_y"))),
+			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_z"))));
 	}
 	// The mode stays what the server was started with (-McCreative); only what the player carried comes back.
 	Data.SelectedSlot = FMath::Clamp(Saved.SelectedSlot, 0, 8);

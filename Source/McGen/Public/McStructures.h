@@ -69,6 +69,9 @@ public:
 	// Structures that want suitable biomes all round them (monuments) check a circle through this.
 	bool SurroundAllows(FName Structure, FIntPoint Chunk, TFunctionRef<FMcBiomeId(int32, int32)> BiomeAt) const;
 
+	// The start chunk of the stronghold nearest to a block position (x, z), from the sets that place their starts in rings;
+	// false if there are none. What a thrown eye of ender flies towards.
+	bool FindNearestRingStart(uint64 Seed, double X, double Z, FIntPoint& OutChunk) const;
 	// The jigsaw layout last made for a structure starting here (null if none was), for tests and tools.
 	TSharedPtr<FMcJigsawLibrary::FLayout> FindLayout(FName Structure, uint64 Seed, FIntPoint Start) const;
 

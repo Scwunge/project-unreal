@@ -60,6 +60,11 @@ struct MCENTITY_API FMcMobType
 	bool bBullets = false;
 	// Turns on a player who looks at its eyes (the enderman).
 	bool bGazeAngers = false;
+	bool bDragon = false;
+	// The end crystal: stands still, goes off (power 6) at any damage, and heals a dragon within 32 blocks.
+	bool bCrystal = false;
+	// Picks up and sets down blocks (the enderman).
+	bool bCarriesBlocks = false;
 	// Hits a player in sight with a beam every BeamTicks ticks of keeping them in sight (the guardians), for BeamDamage.
 	int32 BeamTicks = 0;
 	float BeamDamage = 0.0f;
@@ -90,6 +95,13 @@ public:
 
 	// Hurts the mob; Source (block coordinates) pushes it away from there, as a hit does. True if it died.
 	bool Damage(float Amount, const FVector* Source);
+	// Takes no damage at all (a creaking tied to its heart); OnShielded hears of each hit that was turned away.
+	bool bInvulnerable = false;
+	// Is not pushed by a hit (the warden: knockback resistance 100%).
+	bool bNoKnockback = false;
+	TFunction<void(FMcMob&, const FVector*)> OnShielded;
+	// A hit got through (after the health went down); Source as in Damage. For the mobs that remember who hurt them.
+	virtual void OnHurt(float Amount, const FVector* Source) {}
 	// Whether this mob goes for that entity as its prey (zombies: villagers; golems: hostile mobs but the creeper).
 	bool IsPrey(const FMcEntity& Other) const;
 
@@ -116,6 +128,26 @@ public:
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).
 	int32 AngerTicks = 0;
+	int32 StareTicks = 0;
+	FVector DragonGoal = FVector::ZeroVector;
+	// The dragon's phase (the numbers of its DragonPhase data, dragon_phase1.txt): 0 holding pattern, 1 strafing, 2 landing approach, 3 landing,
+	// 4 take-off, 5 sitting and breathing, 6 sitting and scanning, 7 sitting and roaring, 8 charging a player. Ticks in it, breaths this perch,
+	// damage taken while perched (over 50 it takes off), a strafe owed (a crystal went, or the fight just began), and the breath clouds on the ground
+	// (x, y, z, ticks left).
+	int32 DragonPhase = 0;
+	int32 PhaseTicks = 0;
+	int32 Breaths = 0;
+	float PerchDamage = 0.0f;
+	bool bStrafeDue = true;
+	int32 HoldLength = 540;
+	TArray<FVector4> DragonClouds;
+	// The dragon: where the crystal that heals it stands (valid when bHasBeam), ticks since it began to be healed, and ticks of its death so far (0 while alive).
+	bool bHasBeam = false;
+	FVector BeamPos = FVector::ZeroVector;
+	int32 BeamTicks = 0;
+	int32 DeathTicks = 0;
+	// The Looting level of the weapon that last hit it, for what it drops if that kills it (not saved).
+	int32 LootingLevel = 0;
 	// The entity (a wandering trader) this mob is on a lead to, 0 for none: it follows it, and is let go if that is gone.
 	int32 LeashHolderId = 0;
 	// A golem holding out a poppy to a child: ticks left. It stands still and faces the child meanwhile.
@@ -126,6 +158,8 @@ public:
 	int32 FireCooldown = 0;
 	int32 BurstLeft = 0;
 	int32 BeamCharge = 0;
+	// The block it carries (the enderman), or none.
+	TOptional<FMcStateId> Carried;
 	// A swooper: ticks left in this circling or diving, whether it is diving, and its place on the circle.
 	int32 SwoopTicks = 0;
 	bool bDiving = false;
@@ -141,6 +175,13 @@ public:
 	int32 LifeTicks = 0;
 	// The one leading a patrol or a wave of a raid: it carries the ominous banner and drops an ominous bottle. Not saved.
 	bool bCaptain = false;
+	// The Age at which a player last hurt it, and whether that was a shot: its loot asks whether a player killed it
+	// (the game counts the last five seconds). Not saved.
+	int32 PlayerHitAge = -1000000;
+	bool bPlayerHitWasShot = false;
+	// Ticks it still counts as burning (the sun or lava set it): its loot is cooked while it is. How long the game's own
+	// fire lasts after the sun is not measured (PLAN.md, provenance gaps). Not saved.
+	int32 BurnTicks = 0;
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;
@@ -236,6 +277,14 @@ private:
 	// A witch's own potions: healing when hurt, water breathing in water, swiftness to close in.
 	void TickWitch(FMcEntityManager& Manager, bool bChasing, double TargetDistance);
 	void TickBarter(FMcEntityManager& Manager);
+	void TickDragonDeath(FMcEntityManager& Manager);
+
+public:
+	// Where the ten crystals on the End's pillars stand (read from the reference world, dragon8.txt), lowest first.
+	static TArray<FVector> GetPillarCrystalPositions();
+	// The exit portal structure at the middle of the End: bedrock disc and ring, the column four tall, the portal blocks if bPortal (air
+	// inside the ring if not: the fight's starting podium), the egg on top if bEgg.
+	static void BuildExitPortal(FMcEntityManager& Manager, bool bPortal, bool bEgg);
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

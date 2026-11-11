@@ -29,6 +29,13 @@ namespace
 		FMcServerAccess Access;
 		bool bAllowlist = false;
 		bool bDedicated = false;
+		struct FParticleCall { FName Name; FVector Pos; FVector Delta; double Speed; int32 Count; };
+		TArray<FParticleCall> Particles;
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			Particles.Add({ Name, Pos, Delta, Speed, Count });
+			return true;
+		}
 
 		FPlayer* Find(const FString& Name)
 		{
@@ -216,6 +223,23 @@ namespace
 			HeldEnchantments.Add(Enchantment, Level);
 			return EEnchantResult::Done;
 		}
+		TMap<int32, TPair<FName, int32>> Slots;
+		virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) override
+		{
+			Slots.Add(Group * 100 + Index, TPair<FName, int32>(Item, Count));
+			return true;
+		}
+		virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const override
+		{
+			const TPair<FName, int32>* Found = Slots.Find(Group * 100 + Index);
+			if (!Found || Found->Value <= 0)
+			{
+				return false;
+			}
+			OutItem = Found->Key;
+			OutCount = Found->Value;
+			return true;
+		}
 		virtual int32 Clear(const FString& Player, FName Item, int32 MaxCount, bool bTest) override
 		{
 			FPlayer* P = Find(Player);
@@ -292,6 +316,20 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("no permission is an error"), AnyError(Replies));
 	TestFalse(TEXT("and changes nothing"), Target.Find(TEXT("Steve"))->bCreative);
 	TestTrue(TEXT("unknown command"), Joined(McCommands::HandleChat(TEXT("/fly"), Op(TEXT("Steve")), Target)).Contains(TEXT("<--[HERE]")));
+
+	// /particle
+	Replies = McCommands::HandleChat(TEXT("/particle minecraft:heart 1 2 3 0.5 0.25 0.5 0.1 7 force"), Op(TEXT("Steve")), Target);
+	TestFalse(TEXT("particle ok"), AnyError(Replies));
+	TestEqual(TEXT("one particle call"), Target.Particles.Num(), 1);
+	if (Target.Particles.Num() == 1)
+	{
+		TestEqual(TEXT("name"), Target.Particles[0].Name, FName(TEXT("minecraft:heart")));
+		TestEqual(TEXT("position y"), Target.Particles[0].Pos.Y, 2.0, 1e-6);
+		TestEqual(TEXT("delta x"), Target.Particles[0].Delta.X, 0.5, 1e-6);
+		TestEqual(TEXT("count"), Target.Particles[0].Count, 7);
+	}
+	TestTrue(TEXT("a particle with no definition is refused"), AnyError(McCommands::HandleChat(TEXT("/particle minecraft:nonsense"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("a half given command is refused"), AnyError(McCommands::HandleChat(TEXT("/particle heart 1 2"), Op(TEXT("Steve")), Target)));
 
 	// /gamemode
 	Replies = McCommands::HandleChat(TEXT("/gamemode creative"), Op(TEXT("Steve")), Target);
@@ -611,6 +649,54 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /attribute.
+	TestEqual(TEXT("attr get"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 20.0")));
+	TestEqual(TEXT("attr set"), First(TEXT("attribute Steve minecraft:max_health base set 30")), FString(TEXT("The base value for attribute Max Health for entity Steve set to 30.0")));
+	TestEqual(TEXT("attr add"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Added modifier test:a to attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr twice"), First(TEXT("attribute Steve minecraft:max_health modifier add test:a 4 add_value")), FString(TEXT("Modifier test:a is already present on attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr sum"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 34.0")));
+	TestEqual(TEXT("attr modval"), First(TEXT("attribute Steve minecraft:max_health modifier value get test:a")), FString(TEXT("The value of modifier test:a on attribute Max Health for entity Steve is 4.0")));
+	TestEqual(TEXT("attr remove"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Removed modifier test:a from attribute Max Health for entity Steve")));
+	TestEqual(TEXT("attr gone"), First(TEXT("attribute Steve minecraft:max_health modifier remove test:a")), FString(TEXT("Attribute Max Health for entity Steve has no modifier test:a")));
+	TestEqual(TEXT("attr reset"), First(TEXT("attribute Steve minecraft:max_health base reset")), FString(TEXT("The base value for attribute Max Health for entity Steve reset to default 20.0")));
+	TestEqual(TEXT("attr speed"), First(TEXT("attribute Steve minecraft:movement_speed get")), FString(TEXT("The value of attribute Speed for entity Steve is 0.10000000149011612")));
+	TestEqual(TEXT("attr unknown"), First(TEXT("attribute Steve minecraft:nonsense get")), FString(TEXT("Can't find element 'minecraft:nonsense' of type 'minecraft:attribute'")));
+	// Measured against the game: /loot.
+	TestEqual(TEXT("loot unknown"), First(TEXT("loot give Steve loot minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' in registry 'minecraft:loot_table'")));
+	TestTrue(TEXT("loot dropped"), First(TEXT("loot give Steve loot minecraft:chests/simple_dungeon")).StartsWith(TEXT("Dropped ")));
+	// Measured against the game: /item.
+	TestEqual(TEXT("item replace"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:diamond 5")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond]")));
+	TestEqual(TEXT("item hotbar"), First(TEXT("item replace entity Steve hotbar.1 with minecraft:diamond_sword")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond Sword]")));
+	TestEqual(TEXT("item unknown"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:nonsense")), FString(TEXT("Unknown item 'minecraft:nonsense'")));
+	TestEqual(TEXT("item bad slot"), First(TEXT("item replace entity Steve nosuch.slot with minecraft:stick")), FString(TEXT("Can't find element 'minecraft:nosuch.slot' in registry 'minecraft:slot_source'")));
+	TestEqual(TEXT("item nobody"), First(TEXT("item replace entity Nobody weapon.mainhand with minecraft:stick")), FString(TEXT("No entity was found")));
+	TestEqual(TEXT("item from"), First(TEXT("item replace entity Steve hotbar.2 from entity Steve hotbar.1")), FString(TEXT("Replaced 1 slot(s) on Steve")));
+	// Measured against the game: /teammsg and /stopwatch.
+	First(TEXT("team add msgteam"));
+	TestEqual(TEXT("teammsg without a team"), First(TEXT("teammsg hi")), FString(TEXT("You must be on a team to message your team")));
+	First(TEXT("team join msgteam Steve"));
+	TestEqual(TEXT("teammsg"), First(TEXT("teammsg hello team")), FString(TEXT("-> [msgteam] <Steve> hello team")));
+	TestEqual(TEXT("tm"), First(TEXT("tm again")), FString(TEXT("-> [msgteam] <Steve> again")));
+	First(TEXT("team remove msgteam"));
+	TestEqual(TEXT("stopwatch create"), First(TEXT("stopwatch create sw")), FString(TEXT("Created stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch twice"), First(TEXT("stopwatch create sw")), FString(TEXT("Stopwatch 'minecraft:sw' already exists")));
+	TestTrue(TEXT("stopwatch query"), First(TEXT("stopwatch query sw")).StartsWith(TEXT("Stopwatch 'minecraft:sw' has run for ")));
+	TestEqual(TEXT("stopwatch restart"), First(TEXT("stopwatch restart sw")), FString(TEXT("Restarted stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch remove"), First(TEXT("stopwatch remove sw")), FString(TEXT("Removed stopwatch 'minecraft:sw'")));
+	TestEqual(TEXT("stopwatch gone"), First(TEXT("stopwatch remove sw")), FString(TEXT("Stopwatch 'minecraft:sw' does not exist")));
+	// Measured against the game: /trigger.
+	TestEqual(TEXT("trigger unknown"), First(TEXT("trigger nope")), FString(TEXT("Unknown scoreboard objective 'nope'")));
+	First(TEXT("scoreboard objectives add trg trigger"));
+	TestEqual(TEXT("trigger unprimed"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger"), First(TEXT("trigger trg")), FString(TEXT("Triggered [trg]")));
+	TestEqual(TEXT("trigger once"), First(TEXT("trigger trg")), FString(TEXT("You cannot trigger this objective yet")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger add"), First(TEXT("trigger trg add 5")), FString(TEXT("Triggered [trg] (added 5 to value)")));
+	First(TEXT("scoreboard players enable Steve trg"));
+	TestEqual(TEXT("trigger set"), First(TEXT("trigger trg set 3")), FString(TEXT("Triggered [trg] (set value to 3)")));
+	TestEqual(TEXT("trigger value"), First(TEXT("scoreboard players get Steve trg")), FString(TEXT("Steve has 3 [trg]")));
+	First(TEXT("scoreboard objectives remove trg"));
 	// Measured against the game: /forceload.
 	TestEqual(TEXT("forceload none"), First(TEXT("forceload query")), FString(TEXT("No force loaded chunks were found in minecraft:overworld")));
 	TestEqual(TEXT("forceload add"), First(TEXT("forceload add 0 0")), FString(TEXT("Marked chunk [0, 0] in minecraft:overworld to be force loaded")));

@@ -13,14 +13,19 @@
 #include "McChunk.h"
 #include "McChunkSave.h"
 #include "McJavaExport.h"
+#include "McBlockLight.h"
+#include "McLightEngine.h"
 #include "McJavaImport.h"
 #include "McFurnace.h"
 #include "McItemRegistry.h"
 #include "McNbt.h"
+#include "McRegionFile.h"
 #include "McWorldSave.h"
 #include "McWorldStorage.h"
 #include "Misc/AutomationTest.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -1521,8 +1526,375 @@ bool FMcJavaExportRefSaveTest::RunTest(const FString& Parameters)
 	IFileManager::Get().DeleteDirectory(*Target, false, true);
 	McJavaExport::FStats Out;
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(McWorldSave::GetWorldDir(Folder), Target, Out));
-	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s"), Out.Chunks, Out.Regions, Out.Failed, *Target));
+	AddInfo(FString::Printf(TEXT("exported %d chunks in %d regions (%d failed) to %s in %.2f s (%.2f s of it lighting; tags %.2f s, writing %.2f s, regions %.2f s)"), Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds, Out.LightSeconds, Out.MakeSeconds, Out.WriteSeconds, Out.RegionSeconds));
 	McWorldSave::DeleteWorld(Folder);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportOwnSaveTest, "McClient.McServer.JavaExport.WriteOwnSave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportOwnSaveTest::RunTest(const FString& Parameters)
+{
+	// Exports a world made in this game (the save named by MC_EXPORT_WORLD, a name or a full folder, default e2e) as the vanilla save ownexport in
+	// E:/mc-reference/run/saves, for opening in the vanilla client through ref.sh. It works on a copy of the world; only
+	// its own output folder is replaced.
+	FString Name = FPlatformMisc::GetEnvironmentVariable(TEXT("MC_EXPORT_WORLD"));
+	Name = Name.IsEmpty() ? TEXT("e2e") : Name;
+	const FString Source = Name.Contains(TEXT(":")) ? Name : McWorldSave::GetWorldDir(Name);
+	const FString Target = TEXT("E:/mc-reference/run/saves/ownexport");
+	if (!IFileManager::Get().DirectoryExists(*Source) || !IFileManager::Get().DirectoryExists(TEXT("E:/mc-reference/run/saves")))
+	{
+		AddInfo(FString::Printf(TEXT("no world %s or no reference saves on this machine; skipped"), *Name));
+		return true;
+	}
+	if (!LoadRegistries() || !FMcItemRegistry::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	const FString Copy = McWorldSave::GetWorldDir(TEXT("OwnExportCopy"));
+	IFileManager::Get().DeleteDirectory(*Copy, false, true);
+	TestTrue(TEXT("the world copied"), FPlatformFileManager::Get().GetPlatformFile().CopyDirectoryTree(*Copy, *Source, true));
+	IFileManager::Get().DeleteDirectory(*Target, false, true);
+	McJavaExport::FStats Out;
+	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(Copy, Target, Out));
+	AddInfo(FString::Printf(TEXT("exported %s: %d chunks in %d regions (%d failed) to %s in %.2f s"), *Name, Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds));
+	IFileManager::Get().DeleteDirectory(*Copy, false, true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportBlockEntitiesTest, "McClient.McServer.JavaExport.BlockEntities",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportBlockEntitiesTest::RunTest(const FString& Parameters)
+{
+	// What a chunk keeps as block entities goes out as the game's NBT and comes back through the importer as it was.
+	if (!TestTrue(TEXT("registries load"), LoadRegistries() && FMcItemRegistry::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcChunk Source(FIntPoint(2, -3), -64, 24);
+	const auto Put = [&](int32 X, int32 Y, int32 Z, const TCHAR* Block, FMcBlockEntity Entity)
+	{
+		Source.SetBlock(X, Y, Z, Registry.ParseState(Block).Get(0));
+		Source.SetBlockEntity(X, Y, Z, MoveTemp(Entity));
+	};
+	FMcBlockEntity Chest = FMcBlockEntity::MakeContainer(27);
+	Chest.Slots[2] = FMcItemStack(TEXT("minecraft:diamond_sword"), 1);
+	Chest.Slots[2].Set(TEXT("minecraft:damage"), MakeShared<FJsonValueNumber>(5));
+	Chest.Slots[26] = FMcItemStack(TEXT("minecraft:apple"), 12);
+	Chest.LootTable = TEXT("minecraft:chests/simple_dungeon");
+	Chest.LootSeed = 123456789012;
+	Put(1, -60, 2, TEXT("minecraft:chest[facing=north]"), Chest);
+	FMcBlockEntity Sign = FMcBlockEntity::MakeSign();
+	Sign.SignSides[0].Lines[0] = TEXT("Exported");
+	Sign.SignSides[0].Lines[2] = TEXT("sign");
+	Sign.SignSides[0].Color = TEXT("red");
+	Sign.SignSides[0].bGlowing = true;
+	Sign.SignSides[1].Lines[1] = TEXT("back");
+	Sign.bWaxed = true;
+	Put(3, -60, 3, TEXT("minecraft:oak_sign[rotation=4]"), Sign);
+	FMcBlockEntity Campfire = FMcBlockEntity::MakeCampfire();
+	Campfire.Slots[1] = FMcItemStack(TEXT("minecraft:beef"), 1);
+	Campfire.CookingTimes[1] = 212;
+	Campfire.CookingTotals[1] = 600;
+	Put(5, -60, 5, TEXT("minecraft:campfire[facing=north,lit=true]"), Campfire);
+	FMcBlockEntity Spawner = FMcBlockEntity::MakeSpawner(TEXT("minecraft:zombie"));
+	Put(6, -60, 6, TEXT("minecraft:spawner"), Spawner);
+	FMcBlockEntity Lectern = FMcBlockEntity::MakeLectern(FMcItemStack(TEXT("minecraft:writable_book"), 1));
+	Lectern.Page = 3;
+	Put(7, -60, 7, TEXT("minecraft:lectern[facing=north]"), Lectern);
+	FMcBlockEntity Pot = FMcBlockEntity::MakePot({ TEXT("minecraft:brick"), TEXT("minecraft:angler_pottery_sherd"), TEXT("minecraft:brick"), TEXT("minecraft:brick") });
+	Put(8, -60, 8, TEXT("minecraft:decorated_pot"), Pot);
+	FMcNbt Skull;
+	Skull.Type = FMcNbt::EType::Compound;
+	Skull.Keys.Add(TEXT("note_block_sound"));
+	FMcNbt Sound;
+	Sound.Type = FMcNbt::EType::String;
+	Sound.String = TEXT("minecraft:entity.zombie.ambient");
+	Skull.Values.Add(Sound);
+	FMcBlockEntity RawSkull;
+	RawSkull.Kind = EMcBlockEntityKind::Raw;
+	RawSkull.EntityId = TEXT("minecraft:skull");
+	Skull.WriteRoot(RawSkull.Data);
+	Put(9, -60, 9, TEXT("minecraft:skeleton_skull[rotation=0]"), RawSkull);
+
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Source, Root);
+	const FMcNbt* List = Root.Find(TEXT("block_entities"));
+	if (!TestTrue(TEXT("block entities are written"), List && List->Num() == 7))
+	{
+		return false;
+	}
+	for (const FMcNbt& Entity : List->Values)
+	{
+		TestTrue(TEXT("each has a position and an id"), Entity.Find(TEXT("x")) && Entity.Find(TEXT("y")) && Entity.Find(TEXT("z")) && !Entity.GetString(TEXT("id")).IsEmpty());
+	}
+	FMcChunk Result(FIntPoint(2, -3), -64, 24);
+	McJavaImport::FStats Stats;
+	TestTrue(TEXT("our own chunk converts back"), McJavaImport::ConvertChunk(Root, Result, Stats));
+	for (const TPair<FIntVector, FMcBlockEntity>& Pair : Source.GetBlockEntities())
+	{
+		const FMcBlockEntity* Back = Result.FindBlockEntity(Pair.Key.X, Pair.Key.Y, Pair.Key.Z);
+		if (TestNotNull(*FString::Printf(TEXT("block entity at %d,%d,%d comes back"), Pair.Key.X, Pair.Key.Y, Pair.Key.Z), Back))
+		{
+			if (Pair.Value.Kind == EMcBlockEntityKind::Raw)
+			{
+				// The importer keeps a raw record whole (with its id and position), so only what was in it is compared.
+				FMcNbt Kept;
+				TestTrue(TEXT("raw block entity keeps its kind, id and data"), Back->Kind == EMcBlockEntityKind::Raw && Back->EntityId == Pair.Value.EntityId
+					&& FMcNbt::Parse(Back->Data, Kept) && Kept.GetString(TEXT("note_block_sound")) == TEXT("minecraft:entity.zombie.ambient"));
+				continue;
+			}
+			TestTrue(*FString::Printf(TEXT("block entity at %d,%d,%d is as it was"), Pair.Key.X, Pair.Key.Y, Pair.Key.Z), *Back == Pair.Value);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportLightTest, "McClient.McServer.JavaExport.Light",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcJavaExportLightTest::RunTest(const FString& Parameters)
+{
+	// A stone slab over part of a chunk: above it the sky is full, under it dark, and a torch under it shines.
+	if (!TestTrue(TEXT("registries load"), LoadRegistries() && FMcBlockLight::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcDimensionType Type;
+	if (!TestTrue(TEXT("the overworld's type loads"), FMcDimensionType::Load(TEXT("minecraft:overworld"), Type)))
+	{
+		return false;
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	FMcBlockWorld World(Type);
+	TUniquePtr<FMcChunk> Made = World.MakeChunk(FIntPoint(0, 0));
+	const FMcStateId Stone = Registry.ParseState(TEXT("minecraft:stone")).Get(0);
+	for (int32 X = 0; X < 16; ++X)
+	{
+		for (int32 Z = 0; Z < 16; ++Z)
+		{
+			Made->SetBlock(X, 10, Z, Stone);
+			Made->SetBlock(X, -64, Z, Stone);
+		}
+	}
+	Made->SetBlock(8, 5, 8, Registry.ParseState(TEXT("minecraft:torch")).Get(0));
+	FMcChunk& Chunk = World.AddChunk(MoveTemp(Made));
+	FMcLightRegion Light = FMcLightRegion::Capture(World, FIntPoint(0, 0));
+	Light.Compute(*FMcLightPalette::Build());
+	FMcNbt Root;
+	McJavaExport::MakeChunk(Chunk, Root, 0, &Light);
+	TestEqual(TEXT("light is on"), static_cast<int32>(Root.GetInt(TEXT("isLightOn"))), 1);
+	const FMcNbt* Sections = Root.Find(TEXT("sections"));
+	if (!TestTrue(TEXT("a section below the world, then 24"), Sections && Sections->Num() == 25))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the one below the world is the game's -5"), static_cast<int32>(Sections->Values[0].GetInt(TEXT("Y"))), -5);
+	const auto Nibble = [](const FMcNbt& Section, const TCHAR* Key, int32 X, int32 Y, int32 Z)
+	{
+		const FMcNbt* Array = Section.Find(Key);
+		if (!Array || Array->Bytes.Num() != 2048)
+		{
+			return -1;
+		}
+		const int32 Index = (Y * 16 + Z) * 16 + X;
+		return static_cast<int32>((Array->Bytes[Index >> 1] >> ((Index & 1) * 4)) & 15);
+	};
+	// Section index 1 + (y + 64) / 16: the top (y 304..319) is index 24, the slab's (y 0..15) is 5.
+	TestEqual(TEXT("open sky at the top"), Nibble(Sections->Values[24], TEXT("SkyLight"), 3, 3, 3), 15);
+	TestEqual(TEXT("sky above the slab"), Nibble(Sections->Values[5], TEXT("SkyLight"), 3, 12, 3), 15);
+	// The neighbouring columns are open sky, so light creeps in from the sides: 15 outside, 14 at the edge, 7 eight blocks in.
+	TestEqual(TEXT("under the slab, light only from its open sides"), Nibble(Sections->Values[5], TEXT("SkyLight"), 8, 7, 8), 7);
+	TestEqual(TEXT("at its edge"), Nibble(Sections->Values[5], TEXT("SkyLight"), 0, 7, 8), 14);
+	TestTrue(TEXT("the torch lights its own block"), Nibble(Sections->Values[5], TEXT("BlockLight"), 8, 5, 8) >= 13);
+	TestTrue(TEXT("and the next one a step less"), Nibble(Sections->Values[5], TEXT("BlockLight"), 9, 5, 8) == Nibble(Sections->Values[5], TEXT("BlockLight"), 8, 5, 8) - 1);
+	TestFalse(TEXT("a section without light sources has no block light"), Sections->Values[24].Find(TEXT("BlockLight")) != nullptr);
+	// The bytes written are the ones the array holds.
+	TArray<uint8> Bytes;
+	Root.WriteRoot(Bytes);
+	FMcNbt Back;
+	TestTrue(TEXT("what is written parses"), FMcNbt::Parse(Bytes, Back));
+	const FMcNbt* BackSections = Back.Find(TEXT("sections"));
+	TestTrue(TEXT("with its light"), BackSections && BackSections->Num() == 25 && BackSections->Values[5].Find(TEXT("SkyLight")) && BackSections->Values[5].Find(TEXT("SkyLight"))->Num() == 2048);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaRoundTripRealSavesTest, "McClient.McServer.JavaExport.RoundTripInRealSaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+namespace
+{
+	// Compares the chunks of one dimension folder of two of our worlds: the same chunks, the same blocks and block entities.
+	// Every Step-th chunk has its blocks looked at in full. Returns the number of chunks compared.
+	int32 CompareDimension(FAutomationTestBase& Test, const FString& FolderA, const FString& FolderB, const TCHAR* Dimension, int32 Step, int32& OutBad)
+	{
+		FMcDimensionType Type;
+		if (!FMcDimensionType::Load(Dimension, Type))
+		{
+			return 0;
+		}
+		TArray<FString> Names;
+		IFileManager::Get().FindFiles(Names, *(FolderA / TEXT("*.mcr")), true, false);
+		int32 Compared = 0;
+		int32 Counter = 0;
+		FMcBlockWorld World(Type);
+		for (const FString& Name : Names)
+		{
+			FMcRegionFile RegionA(FolderA / Name);
+			FMcRegionFile RegionB(FolderB / Name);
+			TBitArray<> PresentA;
+			TBitArray<> PresentB;
+			RegionA.GetPresent(PresentA);
+			if (IFileManager::Get().FileExists(*(FolderB / Name)))
+			{
+				RegionB.GetPresent(PresentB);
+			}
+			TArray<FString> Parts;
+			Name.ParseIntoArray(Parts, TEXT("."), true);
+			const int32 RX = FCString::Atoi(*Parts[1]);
+			const int32 RZ = FCString::Atoi(*Parts[2]);
+			for (int32 Index = 0; Index < PresentA.Num(); ++Index)
+			{
+				if (!PresentA[Index])
+				{
+					continue;
+				}
+				const FIntPoint Pos(RX * 32 + Index % 32, RZ * 32 + Index / 32);
+				if (!PresentB.IsValidIndex(Index) || !PresentB[Index])
+				{
+					++OutBad;
+					Test.AddError(FString::Printf(TEXT("%s chunk %d,%d is missing after the round trip"), Dimension, Pos.X, Pos.Y));
+					continue;
+				}
+				TArray<uint8> PayloadA;
+				TArray<uint8> PayloadB;
+				TUniquePtr<FMcChunk> A = World.MakeChunk(Pos);
+				TUniquePtr<FMcChunk> B = World.MakeChunk(Pos);
+				FMcChunkSaveExtras Extras;
+				if (!RegionA.Read(Pos, PayloadA) || !RegionB.Read(Pos, PayloadB) || !McChunkSave::Decode(PayloadA, *A, Extras) || !McChunkSave::Decode(PayloadB, *B, Extras))
+				{
+					++OutBad;
+					continue;
+				}
+				++Compared;
+				bool bSame = A->GetBlockEntities().Num() == B->GetBlockEntities().Num();
+				if ((Counter++ % Step) == 0)
+				{
+					for (int32 Y = A->GetMinY(); bSame && Y <= A->GetMaxY(); ++Y)
+					{
+						for (int32 Z = 0; bSame && Z < 16; ++Z)
+						{
+							for (int32 X = 0; X < 16; ++X)
+							{
+								if (A->GetBlock(X, Y, Z) != B->GetBlock(X, Y, Z))
+								{
+									bSame = false;
+									break;
+								}
+							}
+						}
+					}
+				}
+				if (bSame)
+				{
+					for (const TPair<FIntVector, FMcBlockEntity>& Pair : A->GetBlockEntities())
+					{
+						const FMcBlockEntity* Other = B->FindBlockEntity(Pair.Key.X, Pair.Key.Y, Pair.Key.Z);
+						// A raw record keeps its own id and position inside its bytes; those are put right on the way out, so only the kind is compared.
+						if (!Other || Other->Kind != Pair.Value.Kind || (Pair.Value.Kind != EMcBlockEntityKind::Raw && !(*Other == Pair.Value)))
+						{
+							bSame = false;
+							break;
+						}
+					}
+				}
+				if (!bSame)
+				{
+					++OutBad;
+					if (OutBad <= 5)
+					{
+						Test.AddError(FString::Printf(TEXT("%s chunk %d,%d differs after the round trip"), Dimension, Pos.X, Pos.Y));
+					}
+				}
+			}
+		}
+		return Compared;
+	}
+}
+
+bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
+{
+	// Each real save (read only) is imported, written back out as a Java world in a temporary folder, imported again, and the
+	// two imports compared; times are logged. Only saves that this machine has are used.
+	if (!LoadRegistries() || !FMcBlockLight::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	const FString Only = Parameters;
+	for (const TCHAR* Name : { TEXT("campref"), TEXT("endref"), TEXT("terrain3"), TEXT("importflat") })
+	{
+		if (!Only.IsEmpty() && Only != Name)
+		{
+			continue;
+		}
+		FString Source;
+		for (const TCHAR* Root : { TEXT("E:/mc-reference/run/saves/"), TEXT("C:/mc-reference/run/saves/") })
+		{
+			if (McJavaImport::IsJavaWorld(FString(Root) + Name))
+			{
+				Source = FString(Root) + Name;
+				break;
+			}
+		}
+		if (Source.IsEmpty())
+		{
+			AddInfo(FString::Printf(TEXT("%s: not on this machine; skipped"), Name));
+			continue;
+		}
+		McJavaImport::FStats First;
+		double Start = FPlatformTime::Seconds();
+		const FString FolderA = McJavaImport::ImportWorld(Source, TEXT("RoundTripA"), First);
+		const double ImportSeconds = FPlatformTime::Seconds() - Start;
+		if (TestFalse(*FString::Printf(TEXT("%s: the import ran"), Name), FolderA.IsEmpty()))
+		{
+			AddInfo(FString::Printf(TEXT("%s: imported %d chunks (%d failed) in %.1f s = %.0f chunks/s"), Name, First.Chunks, First.ChunksFailed, ImportSeconds, First.Chunks / FMath::Max(ImportSeconds, 0.001)));
+			const FString Out = FPaths::ProjectSavedDir() / TEXT("RoundTripOut") / Name;
+			IFileManager::Get().DeleteDirectory(*Out, false, true);
+			McJavaExport::FStats Exported;
+			Start = FPlatformTime::Seconds();
+			const bool bExported = McJavaExport::ExportWorld(McWorldSave::GetWorldDir(FolderA), Out, Exported);
+			const double ExportSeconds = FPlatformTime::Seconds() - Start;
+			TestTrue(*FString::Printf(TEXT("%s: the export ran"), Name), bExported);
+			AddInfo(FString::Printf(TEXT("%s: exported %d chunks in %d regions (%d failed) in %.1f s (%.1f s lighting)"), Name, Exported.Chunks, Exported.Regions, Exported.Failed, ExportSeconds, Exported.LightSeconds));
+			McJavaImport::FStats Second;
+			Start = FPlatformTime::Seconds();
+			const FString FolderB = McJavaImport::ImportWorld(Out, TEXT("RoundTripB"), Second);
+			AddInfo(FString::Printf(TEXT("%s: re-imported %d chunks (%d failed) in %.1f s"), Name, Second.Chunks, Second.ChunksFailed, FPlatformTime::Seconds() - Start));
+			if (TestFalse(*FString::Printf(TEXT("%s: the re-import ran"), Name), FolderB.IsEmpty()))
+			{
+				TestEqual(*FString::Printf(TEXT("%s: same number of chunks"), Name), Second.Chunks, First.Chunks);
+				int32 Bad = 0;
+				int32 Compared = 0;
+				const FString DirA = McWorldSave::GetWorldDir(FolderA);
+				const FString DirB = McWorldSave::GetWorldDir(FolderB);
+				for (const TCHAR* Dimension : { TEXT("minecraft:overworld"), TEXT("minecraft:the_nether"), TEXT("minecraft:the_end") })
+				{
+					Compared += CompareDimension(*this, DirA / McWorldSave::GetDimensionFolder(Dimension), DirB / McWorldSave::GetDimensionFolder(Dimension), Dimension, 4, Bad);
+				}
+				AddInfo(FString::Printf(TEXT("%s: compared %d chunks, %d differ"), Name, Compared, Bad));
+				TestEqual(*FString::Printf(TEXT("%s: no chunk differs"), Name), Bad, 0);
+				McWorldSave::DeleteWorld(FolderB);
+			}
+			IFileManager::Get().DeleteDirectory(*Out, false, true);
+			McWorldSave::DeleteWorld(FolderA);
+		}
+	}
+	return true;
+}
+
 #endif

@@ -170,7 +170,110 @@ void FMcSimulation::PlayerBroke(const FIntVector& Pos, FMcStateId State)
 
 void FMcSimulation::Vibrate(const FIntVector& Pos, int32 Frequency)
 {
-	Redstone->Vibrate(Pos, Frequency);
+	FMcGameEvent Event;
+	Event.Name = TEXT("vibration");
+	Event.Frequency = Frequency;
+	Event.Pos = Pos;
+	Redstone->Vibrate(Event);
+}
+
+void FMcSimulation::EmitGameEvent(FName Name, const FIntVector& Pos, const FMcGameEventSource& Source)
+{
+	const int32 Frequency = McGameEvents::FrequencyOf(Name);
+	if (Frequency <= 0)
+	{
+		return;
+	}
+	FMcGameEvent Event;
+	Event.Name = Name;
+	Event.Frequency = Frequency;
+	Event.Pos = Pos;
+	Event.Source = Source;
+	Redstone->Vibrate(Event);
+	for (const TPair<int32, TFunction<void(const FMcGameEvent&)>>& Listener : GameListeners)
+	{
+		Listener.Value(Event);
+	}
+}
+
+int32 FMcSimulation::AddGameEventListener(TFunction<void(const FMcGameEvent&)> Listener)
+{
+	GameListeners.Add(NextListener, MoveTemp(Listener));
+	return NextListener++;
+}
+
+void FMcSimulation::RemoveGameEventListener(int32 Handle)
+{
+	GameListeners.Remove(Handle);
+}
+
+bool FMcSimulation::IsVibrationOccluded(const FIntVector& From, const FIntVector& To) const
+{
+	return Redstone->IsOccluded(From, To);
+}
+
+void FMcSimulation::ShriekerTouched(const FIntVector& Pos, int32 PlayerId)
+{
+	Redstone->ShriekerTouched(Pos, PlayerId);
+}
+
+void FMcSimulation::BookshelfUsed(const FIntVector& Pos, int32 Slot)
+{
+	Redstone->BookshelfUsed(Pos, Slot);
+}
+
+void FMcSimulation::CreakingHit(const FIntVector& Heart)
+{
+	Redstone->CreakingHit(Heart);
+}
+
+int32 FMcSimulation::GetWarningLevel(int32 PlayerId) const
+{
+	const FWarning* Warning = Warnings.Find(PlayerId);
+	if (!Warning)
+	{
+		return 0;
+	}
+	return FMath::Max(0, Warning->Level - static_cast<int32>((GameTime - Warning->Raised) / 12000));
+}
+
+bool FMcSimulation::CanShriekFor(int32 PlayerId, bool bCanSummon) const
+{
+	const FWarning* Warning = Warnings.Find(PlayerId);
+	return !bCanSummon || !Warning || GameTime >= Warning->NextAllowed;
+}
+
+// A shrieker set off for a player: any shrieker shrieks; a naturally generated one also raises the player's warning level, and
+// the player cannot set one off again for 10 seconds, the shriek included (minecraft.wiki, "Sculk Shrieker").
+void FMcSimulation::ShriekerActivated(const FIntVector& Pos, int32 PlayerId, bool bCanSummon)
+{
+	if (!bCanSummon)
+	{
+		return;
+	}
+	FWarning& Warning = Warnings.FindOrAdd(PlayerId);
+	Warning.Level = GetWarningLevel(PlayerId);
+	Warning.Level = FMath::Min(4, Warning.Level + 1);
+	Warning.Raised = GameTime;
+	Warning.NextAllowed = GameTime + 200;
+	ShriekedFor.Add(Pos, PlayerId);
+	if (OnShriek)
+	{
+		OnShriek(Pos, PlayerId, Warning.Level);
+	}
+}
+
+void FMcSimulation::ShriekerFinished(const FIntVector& Pos, bool bCanSummon)
+{
+	int32 PlayerId = 0;
+	if (!ShriekedFor.RemoveAndCopyValue(Pos, PlayerId) || !bCanSummon)
+	{
+		return;
+	}
+	if (GetWarningLevel(PlayerId) >= 4 && OnWardenSummon)
+	{
+		OnWardenSummon(Pos, PlayerId);
+	}
 }
 
 void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)

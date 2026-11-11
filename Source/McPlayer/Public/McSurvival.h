@@ -134,5 +134,7 @@ namespace McSurvival
 	// Arrows a player shot that lie stuck in a block within reach go back into the inventory, one each. Returns how many.
 	MCPLAYER_API int32 CollectArrows(FMcEntityManager& Entities, const FBox& PlayerBox, FMcContainer& Inventory);
 	// The experience orbs within reach of the player are taken into their experience. Returns the points.
-	MCPLAYER_API int32 CollectXp(FMcEntityManager& Entities, const FBox& PlayerBox, FMcPlayerStats& Stats);
+	// Equipment is what the player holds and wears: an orb first mends one damaged piece of it that has Mending (picked at random),
+	// two points of durability for each point of the orb, and only what is left goes to the experience.
+	MCPLAYER_API int32 CollectXp(FMcEntityManager& Entities, const FBox& PlayerBox, FMcPlayerStats& Stats, const TArray<FMcItemStack*>* Equipment = nullptr);
 }

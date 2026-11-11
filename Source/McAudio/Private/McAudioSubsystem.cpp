@@ -353,6 +353,7 @@ bool UMcAudioSubsystem::PlayShaped(const FMcSoundEvent& Event, const FSpawn& Spa
 	const FVector Listener = McCoords::UnrealToBlock(ViewLocation);
 
 	// Unreal Mode shapes the event; vanilla plays it as it came.
+	DropStaleListener();
 	const bool bUnreal = ListenerWorld && McRenderMode::IsEnhanced();
 	FMcSoundEvent Shaped = Event;
 	const float Distance = static_cast<float>(FVector::Dist(Listener, Event.Position));
@@ -498,9 +499,11 @@ UAudioComponent* UMcAudioSubsystem::Play2D(FName EventName, float Volume, bool b
 	return Component;
 }
 
-void UMcAudioSubsystem::SetListenerWorld(const FMcBlockWorld* InWorld)
+void UMcAudioSubsystem::SetListenerWorld(const FMcBlockWorld* InWorld, const UObject* Owner)
 {
 	ListenerWorld = InWorld;
+	ListenerOwner = Owner;
+	bListenerOwned = InWorld && Owner;
 	MoodMeter = 0.0f;
 	bHaveLast = false;
 	if (!InWorld)
@@ -550,8 +553,17 @@ bool UMcAudioSubsystem::FindDarkSpot(const FVector& Head, float MinDistance, flo
 	return false;
 }
 
+void UMcAudioSubsystem::DropStaleListener()
+{
+	if (ListenerWorld && bListenerOwned && !ListenerOwner.IsValid())
+	{
+		SetListenerWorld(nullptr);
+	}
+}
+
 bool UMcAudioSubsystem::Tick(float DeltaTime)
 {
+	DropStaleListener();
 	UWorld* World = GetWorld();
 	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
 	if (!ListenerWorld || !Player || !FMcBlockRegistry::Get().IsLoaded())

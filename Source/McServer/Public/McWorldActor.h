@@ -128,7 +128,7 @@ public:
 	// tick the simulation themselves call it too).
 	void MovePushedEntities();
 	// A player's swing from Eye along Look: hurts the mob it reaches. True if one was hit.
-	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false);
+	bool AttackMobs(const FVector& Eye, const FVector& Look, float Reach, float Damage, bool bCreative = false, const FMcItemStack* Weapon = nullptr, float Strength = 1.0f);
 	// The id of the nearest vehicle along the ray, or 0.
 	int32 FindVehicle(const FVector& Eye, const FVector& Look, float Reach);
 	// The nearest living mob along the ray, or null.
@@ -166,6 +166,10 @@ public:
 	// A music note rises at Position, in the colour of Note (0 to 24).
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastNote(FVector_NetQuantize10 Position, int32 Note);
+
+	// Every machine showing this dimension: Count particles of the named kind (/particle) at Position, spread by Delta, at Speed.
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastParticle(FName Name, FVector_NetQuantize10 Position, FVector_NetQuantize10 Delta, float Speed, int32 Count);
 
 	// Every machine showing this dimension: the block State at Pos was broken (its bits fly; the view's OnBlockBroken).
 	UFUNCTION(NetMulticast, Unreliable)

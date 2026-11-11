@@ -406,7 +406,7 @@ void UMcTravelSubsystem::TickEntities()
 			// riding goes with what carries it.
 			if (Entity->IsVehicle())
 			{
-				if (static_cast<FMcVehicle&>(*Entity).GetPassengerCount() > static_cast<FMcVehicle&>(*Entity).MobPassengers.Num())
+				if (static_cast<FMcVehicle&>(*Entity).GetPassengerCount() > static_cast<FMcVehicle&>(*Entity).GetMobPassengers().Num())
 				{
 					continue;
 				}
@@ -476,7 +476,7 @@ void UMcTravelSubsystem::TickEntities()
 			if (Entity->IsVehicle())
 			{
 				// The animals aboard step off, travel beside it and board again where it is set down.
-				for (const int32 MobId : static_cast<FMcVehicle&>(*Entity).MobPassengers)
+				for (const int32 MobId : static_cast<FMcVehicle&>(*Entity).GetMobPassengers())
 				{
 					FMcEntity* Aboard = Host->GetManager().Find(MobId);
 					if (Aboard && !Aboard->bRemoved && Aboard->IsLiving())

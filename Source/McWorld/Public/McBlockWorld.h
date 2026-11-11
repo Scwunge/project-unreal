@@ -34,6 +34,11 @@ public:
 	int32 NumChunks() const { return Chunks.Num(); }
 	const TMap<FIntPoint, TUniquePtr<FMcChunk>>& GetChunks() const { return Chunks; }
 
+	// A player has nothing around them yet (a new or opened world, a long teleport). Making chunks then comes before a smooth
+	// frame, since there is nothing to look at; otherwise it runs behind the frame's own tasks.
+	bool IsFilling() const { return bFilling; }
+	void SetFilling(bool bOn) { bFilling = bOn; }
+
 	// World block coordinates (x east, y up, z south). Unloaded chunks read as air and ignore writes.
 	FMcStateId GetBlock(const FIntVector& Pos) const;
 	FMcStateId SetBlock(const FIntVector& Pos, FMcStateId State);
@@ -55,6 +60,7 @@ public:
 	const TArray<FBox3f>* FindCollisionOverride(const FIntVector& Pos) const { return CollisionOverrides.IsEmpty() ? nullptr : CollisionOverrides.Find(Pos); }
 
 private:
+	bool bFilling = false;
 	FMcDimensionType Dimension;
 	TMap<FIntPoint, TUniquePtr<FMcChunk>> Chunks;
 	TMap<FIntVector, TArray<FBox3f>> CollisionOverrides;

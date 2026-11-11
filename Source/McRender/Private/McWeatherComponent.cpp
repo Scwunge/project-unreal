@@ -1,4 +1,5 @@
 ﻿#include "McWeatherComponent.h"
+#include "McPerf.h"
 #include "McBiomeRegistry.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
@@ -139,6 +140,7 @@ int32 UMcWeatherComponent::FindTop(int32 X, int32 Z) const
 
 void UMcWeatherComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Sky);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const float Rain = GetRain ? GetRain() : 0.0f;
 	// In Unreal Mode the world is lit by the scene, so unlit streaks would glow at night: dim them with the sky's light

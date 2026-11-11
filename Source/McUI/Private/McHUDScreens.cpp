@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "McBundle.h"
 #include "McHUD.h"
+#include "McPerf.h"
 #include "McItemDefinition.h"
 #include "McTextComponent.h"
 #include "McFontRaster.h"
@@ -2534,6 +2535,7 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 
 void AMcHUD::DrawHUD()
 {
+	MC_PERF_SCOPE(Hud);
 	Super::DrawHUD();
 	// Chat is the one world menu that leaves the world sharp.
 	UpdateMenuBlur(IsWorldMenu() && ActiveMenu != EMenu::Chat);
@@ -2590,6 +2592,11 @@ void AMcHUD::DrawHUD()
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);
 	const int32 Width = Canvas->SizeX / Scale;
 	const int32 Height = Canvas->SizeY / Scale;
+	if (!bFrameRateApplied)
+	{
+		bFrameRateApplied = true;
+		FMcClientOptions::Load().ApplyFrameRate();
+	}
 	if (McLaunch::IsMenu(GetWorld()))
 	{
 		DrawMenus(Width, Height, true);

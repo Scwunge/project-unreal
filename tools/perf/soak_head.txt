@@ -1,0 +1,4 @@
+# The soak test: a new survival world, played by tools/perf-remote.sh soak with this, tools/perf/soak_round.txt some number of times, then soak_tail.txt.
+mark:load
+settle:240
+chat:/time set day

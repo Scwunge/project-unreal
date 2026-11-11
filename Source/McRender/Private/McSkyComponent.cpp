@@ -1,4 +1,5 @@
 ﻿#include "McSkyComponent.h"
+#include "McPerf.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McDayCycle.h"
@@ -397,6 +398,7 @@ void UMcSkyComponent::BuildStars()
 
 void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Sky);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!bReady)
 	{

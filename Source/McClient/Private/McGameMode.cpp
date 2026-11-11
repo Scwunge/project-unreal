@@ -1,4 +1,5 @@
 #include "McGameMode.h"
+#include "McPerf.h"
 #include "McMob.h"
 #include "McSound.h"
 #include "Containers/Ticker.h"
@@ -2683,6 +2684,7 @@ void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)
 	FGameCommandTarget Target(*this);
 	for (const FMcCommandReply& Reply : McCommands::HandleChat(Text, Sender, Target))
 	{
+		McPerf::Event(FString::Printf(TEXT("REPLY%s %s"), Reply.bError ? TEXT("_ERROR") : TEXT(""), *Reply.Text));
 		Target.SendTo(Sender.Name, Reply);
 	}
 }

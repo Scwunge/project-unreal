@@ -7,6 +7,15 @@
 //   wait:<seconds>
 //   shot:<name>             save Saved/Shots/<name>.png
 //   end                     quit
+//   mark:<phase>            starts a phase in the -McPerf record
+//   note:<text>             a line in the -McPerf record
+//   chat:<line>             sends the line as the player's chat (a command with /); may hold ':'
+//   press:<a,b_c>           queues menu buttons to press by name, '_' for a space
+//   fly:<0|1>               stops or starts flying
+//   pack:<a,b|off>          selects these resource packs and reloads, as the menu does
+//   settle:<seconds>        waits until the renderer has nothing left to mesh, at most that long
+// -McInputFile=<path> reads the steps from a file, one a line, with # for a comment; a script keeps going across a
+// return to the title. A player who dies presses Respawn two seconds later.
 // Key names are Unreal's (W, SpaceBar, LeftShift, One, F3, Escape), plus L, R, M for the mouse buttons and Shift,
 // Ctrl, Space, Esc. The script starts -McInputDelay seconds (default 5) after the player is in the world.
 
@@ -17,13 +26,13 @@
 
 class AMcPlayerController;
 
-#if !UE_BUILD_SHIPPING
-
 class FMcDevInput
 {
 public:
 	// False when the command line has no -McInput.
 	static bool Wanted();
+	// The script of this run, read from the command line the first time.
+	static FMcDevInput& Get();
 
 	explicit FMcDevInput(const FString& Script);
 
@@ -33,7 +42,7 @@ public:
 	// A step as text and its pieces, for the tests.
 	struct FStep
 	{
-		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End };
+		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End, Mark, Note, Chat, MenuPress, Fly, Pack, Settle };
 		EKind Kind = EKind::Wait;
 		TArray<FKey> Keys;
 		float Seconds = 0.0f;
@@ -56,8 +65,9 @@ private:
 	FStep Current;
 	float Left = 0.0f;
 	float Waited = 0.0f;
+	float StartDelay = 5.0f;
+	float DeadFor = 0.0f;
+	bool bHadPawn = false;
 	// A key pressed by "key:" is let go the next frame.
 	TArray<FKey> ToRelease;
 };
-
-#endif

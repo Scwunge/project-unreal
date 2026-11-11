@@ -1,0 +1,7 @@
+# The soak's second half: a new process opens the world the first half saved.
+mark:reopen
+settle:180
+hold:W+LeftControl:20
+mark:end
+wait:5
+end

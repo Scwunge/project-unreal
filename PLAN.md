@@ -4027,3 +4027,51 @@ OPEN provenance gaps from this stretch: enchanted raider gear NOT built (vanilla
 ## Loading screen for pack loads, and the vanilla grass colour (2026-11-05)
 - `FMcLoadScreen` (McAssets/Private/McLoadScreen.*): the engine's movie player shows "Loading resource packs..." (its own thread and window) while EnsureLoaded / EnsureBuilt block the game thread, only when a pack is in use; nothing in commandlets/servers/tests or when a loading screen is already up. The log says "Loading screen shown/closed". Not seen on screen from here (the shot tool captures only the game view); Pixlli at 128 px: screen up for 6.3 s (base load) plus 1.3 s (cached HD). The loads themselves still run on the game thread (they create UObjects), so the game still freezes that long: about 8 s at 128 px, about 30 s at 256 px the first time (HD arrays then cached only under 600 MB).
 - Vanilla grass is not a tint bug: grass_block_top averages grey 147, times the plains tint 91BD59 gives (84,109,51); the Vanilla shot measures (83,108,51), the same arithmetic as the game's. Unreal Mode measures (139,181,76), 1.65 times brighter because it is sun and sky lit with exposure, not a flat light of 1.
+
+## Playability (measurements, 2026-11-05)
+Goal: people can actually play the packaged build. Shipping binary on the GTX 1070 PC (i5-9400F, 6 threads), 1920x1080, seed 12, one run each through `tools/perf/baseline.txt` or `look.txt` (`tools/perf-remote.sh`, `MC_PERF_ALONE=1`). Runs with anything beside them are marked; they don't count.
+
+**Working targets, proposed and not approved by the user.** Vanilla on the 1070: 60 fps average with 1% lows above 30 walking and sprinting; no frame over 100 ms from chunk loading; a new world playable within 60 s; commit under 8 GB; no crash in 30 minutes; flying at full speed, 1% lows above 20.
+
+**New world, player in the world to settled:** old serial decoration 40.9 s (base_b2); workers, nearest first 19.7 s (base_a2, 85ae0d2); with the three priorities 18.6 s (base_a3, 04cade2). The 65-83 s seen before came from scattered decoration order and background priority: a chunk joins the world only when all 8 neighbours are decorated, so scattered order leaves it empty until nearly the end.
+
+| Vanilla, clean | fps | 1% low | worst ms | over 33 ms |
+|---|---|---|---|---|
+| Walk, old decoration (base_b2) | 74.3 | 10.0 | 323 | 366 |
+| Walk, workers (base_a3) | 92.3 | 24.3 | 87 | 33 |
+| Stand, old decoration (base_b2) | 113.1 | 43.8 | 81 | 6 |
+| Stand, workers (base_a3) | 110.0 | 26.7 | 84 | 18 |
+| Walk, workers and one section per pass (base_a5) | 100.2 | 25.5 | 69 | 31 |
+| Stand, workers and one section per pass (base_a5) | 122.4 | 45.4 | 83 | 5 |
+
+| Unreal High, stand / walk, clean | fps | render thread ms | GPU ms |
+|---|---|---|---|
+| Sections unmerged, no TSR preset (base_ub) | 48.4 / 26.7 | 17.0 | 18.5 |
+| One section per pass, TSR preset (base_uh) | 65.9 / 57.1 | 12.1 | 14.3 |
+| Same, Unreal Medium, screen percentage 85 (base_um) | 83.3 / 72.2 | 11.2 | 10.9 |
+
+The changes in that table aren't isolated: the TSR preset likely explains most of the GPU drop, and base_ub's old decoration affects walk. Vanilla with merged sections (base_a5) cut the render thread from 7.8 to 7.1 ms standing and 8.8 to 7.9 walking against base_a3, about 10%. Unreal Medium walks with a 1% low of 16.7, the same as High's 16.2, so its lows come from game-thread hitches rather than the GPU.
+
+**Why the render thread costs what it does:** `UProceduralMeshComponent`'s proxy always sets `bDynamicRelevance`, so no draw commands are cached and every section of every chunk is gathered per view, per frame. It also keeps a CPU copy of each vertex at about 150 bytes (double-precision `FProcMeshVertex`). 54eea4f makes a chunk one section per pass instead of one per slice and pass. A component of our own with static draw paths and no CPU copy is the next step if merged sections aren't enough; it has to keep hardware ray tracing.
+
+**Open:**
+- Flying: speed is 22 blocks/s or 0, because the player stops when the chunk ahead isn't there. Normal priority keeps about 700 chunks but hitches, since this CPU has only 2 foreground workers and frame tasks wait for them. Background high is smooth, but the world thins to about 150-300 chunks.
+- Walking hitches: base_a5's walk has 31 frames over 33 ms. Its `H` lines (one per slow frame, with every scope over 1 ms) name them: unloading a row of chunks at once (sunload 36-54 ms, 8 frames), copying chunks for 32 mesh tasks in one frame (launch about 20 ms, 9 frames), mesh uploads (6-14 ms), now and then the pawn (10-22 ms), and the simulation's 20 Hz tick (about 6 ms) under most of them. Flying is the same: 33 of base_a5's 39 flying hitches are unloading (43-60 ms each). Since then (unbuilt): unloading is at most `mc.World.UnloadPerFrame` (4) chunks a frame, farthest first, and launches and uploads stop at `mc.Render.LaunchBudgetMs` and `mc.Render.UploadBudgetMs` (3 ms each, at least one each) once the world is in. The pawn's spikes are for the Test profile: `MC_PERF_CONFIG=Test` builds the Test configuration in its own stage and brings back the engine's CSV profile as profile.csv (untried; its first build cooks from scratch).
+- No frame cap: every run logs vsync 0, maxfps 0, smooth 0, so uncapped frames take cores from the workers. In base_a4c (120 fps, not clean) the player barely stopped.
+- Memory: peak rss 6.6 GB in base_a2 against 3.9 GB in base_a3, probably vertices waiting for garbage collection; 54eea4f frees them when a mesh is destroyed. Not proven.
+- Not measured yet: Unreal Low, the old code on a real fly (base_b2 and base_v3 never left the ground), Pixlli, menus to world, the 23-minute memory run, the soak.
+
+**Reading runs:** each run's folder has `machine.txt` (free memory, CPU, GPU and the biggest processes when it started) and `end.txt` (exit code, time and peak working set). Two vanilla worlds of one seed differ in 56% of chunks and 0.084% of blocks, ours in 36-47% and 0.025%, so same-seed variation isn't a bug here.
+
+**Crash on leaving a world (fixed in 23f1fe0, unbuilt):** the packaged game's crash reports of 7 and 9 Nov (`%LOCALAPPDATA%\McClient\Saved\Crashes`) all stop in the audio subsystem's tick reading a freed block world. The subsystem outlives every level but dropped its borrowed world only on a dimension change, so quitting to the title, opening another world or joining a server crashed the next frame. It now holds a weak pointer to the world actor and drops the world when the actor goes. The 5 Nov reports came from older copies whose symbols aren't kept and are not explained.
+
+**All of the above is UE 5.8.** The 1070 builds only with 5.9 since 2026-11-10, so none of it compares with 5.9 runs. The 5.9 set, once this branch has m1 on 5.9 and is built, each clean (`MC_PERF_ALONE=1`), seed 12, 1920x1080:
+1. Vanilla `baseline.txt` twice (base59_a, base59_b), to see run-to-run spread before trusting any difference.
+2. Unreal High, Medium and Low through `look.txt` (base59_uh, base59_um, base59_ul).
+3. Vanilla capped at 120 (`-McPerfCvars=t.MaxFPS=120`, base59_cap), the first clean capped run.
+4. Flying, capped, with `mc.World.OutrunPriority` 0, 1 and 2 (6f672ab) and `mc.World.LeadSeconds` 1.5 and 3 (chunks around where the player will be in that many seconds go first, default 0), reading the STREAM lines and how often the player stops to choose the defaults.
+5. Leave-to-title check, `tools/perf/leave.txt` with `MC_PERF_MINUTES=3`: a world, Escape, Save and Quit to Title, 30 s on the title; passes with exit code 0 and no new crash report (untried; the script is one per process and the title has the same controller class, so it should carry on there).
+6. The new frame cap options with `-McPerf` off can't be read from the harness (it leaves them alone so runs stay comparable); check by hand once that 120 and VSync hold on the title and in a world.
+Then the 23-minute memory run and the soak.
+
+**Frame cap (unbuilt):** Options now has Max Framerate (10 to 260 in steps of 10, 260 Unlimited) and VSync, saved in options.json as `maxFps` and `vsync`, defaulting to 120 and on like the game's own options. They're set at the first menu frame and whenever the world's options apply. `-McPerf` runs leave them alone and choose with `-McPerfCvars`.

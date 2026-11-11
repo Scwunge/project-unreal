@@ -1,13 +1,18 @@
 #include "McDevInput.h"
 
-#if !UE_BUILD_SHIPPING
-
 #include "McClient.h"
+#include "McPerf.h"
+#include "McPlayerData.h"
+#include "McResourcePacks.h"
+#if MC_WITH_RENDER
+#include "McHUD.h"
+#endif
 #include "McPlayerController.h"
 #include "McPlayerPawn.h"
 #include "Engine/GameViewportClient.h"
 #include "InputKeyEventArgs.h"
 #include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformMisc.h"
@@ -15,7 +20,38 @@
 
 bool FMcDevInput::Wanted()
 {
-	return FParse::Param(FCommandLine::Get(), TEXT("McInput")) || FCString::Strifind(FCommandLine::Get(), TEXT("-McInput=")) != nullptr;
+	static const bool bWanted = FParse::Param(FCommandLine::Get(), TEXT("McInput")) || FCString::Strifind(FCommandLine::Get(), TEXT("-McInput=")) != nullptr
+		|| FCString::Strifind(FCommandLine::Get(), TEXT("-McInputFile=")) != nullptr;
+	return bWanted;
+}
+
+FMcDevInput& FMcDevInput::Get()
+{
+	static TUniquePtr<FMcDevInput> Instance = []
+	{
+		FString Script, Path;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McInputFile="), Path) && FFileHelper::LoadFileToString(Script, *Path))
+		{
+			TArray<FString> Lines;
+			Script.ParseIntoArrayLines(Lines);
+			Script.Reset();
+			for (const FString& Line : Lines)
+			{
+				// One to a line, so a step may hold ';'; the constructor splits on '\n' when it sees one.
+				if (!Line.TrimStart().StartsWith(TEXT("#")))
+				{
+					Script += Line + TEXT("\n");
+				}
+			}
+		}
+		else
+		{
+			FParse::Value(FCommandLine::Get(), TEXT("-McInput="), Script, false);
+			Script = Script.TrimQuotes();
+		}
+		return MakeUnique<FMcDevInput>(Script);
+	}();
+	return *Instance;
 }
 
 FKey FMcDevInput::ParseKey(const FString& Name)
@@ -42,6 +78,29 @@ bool FMcDevInput::ParseStep(const FString& Text, FStep& Out)
 	}
 	const FString Verb = Fields[0].ToLower();
 	Out = FStep();
+	// The rest of the step after the verb, colons and all.
+	const FString Rest = Text.TrimStartAndEnd().Mid(Fields[0].Len() + 1);
+	static const TMap<FString, FStep::EKind> TextSteps = {
+		{ TEXT("mark"), FStep::EKind::Mark }, { TEXT("note"), FStep::EKind::Note }, { TEXT("chat"), FStep::EKind::Chat }, { TEXT("press"), FStep::EKind::MenuPress }, { TEXT("pack"), FStep::EKind::Pack },
+	};
+	if (const FStep::EKind* Kind = TextSteps.Find(Verb))
+	{
+		Out.Kind = *Kind;
+		Out.Name = Rest;
+		return !Rest.IsEmpty();
+	}
+	if (Verb == TEXT("fly") && Fields.Num() >= 2)
+	{
+		Out.Kind = FStep::EKind::Fly;
+		Out.A = FCString::Atof(*Fields[1]);
+		return true;
+	}
+	if (Verb == TEXT("settle") && Fields.Num() >= 2)
+	{
+		Out.Kind = FStep::EKind::Settle;
+		Out.Seconds = FCString::Atof(*Fields[1]);
+		return true;
+	}
 	auto ReadKeys = [&Out](const FString& List)
 	{
 		TArray<FString> Names;
@@ -105,7 +164,7 @@ bool FMcDevInput::ParseStep(const FString& Text, FStep& Out)
 FMcDevInput::FMcDevInput(const FString& Script)
 {
 	TArray<FString> Texts;
-	Script.ParseIntoArray(Texts, TEXT(";"));
+	Script.ParseIntoArray(Texts, Script.Contains(TEXT("\n")) ? TEXT("\n") : TEXT(";"));
 	for (const FString& Text : Texts)
 	{
 		FStep Step;
@@ -118,9 +177,8 @@ FMcDevInput::FMcDevInput(const FString& Script)
 			UE_LOG(LogMcClient, Error, TEXT("-McInput: cannot read the step \"%s\""), *Text);
 		}
 	}
-	float Delay = 5.0f;
-	FParse::Value(FCommandLine::Get(), TEXT("-McInputDelay="), Delay);
-	Waited = -Delay;
+	FParse::Value(FCommandLine::Get(), TEXT("-McInputDelay="), StartDelay);
+	Waited = -StartDelay;
 }
 
 void FMcDevInput::TakeShot(const FString& Name)
@@ -146,8 +204,31 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 	AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Controller.GetPawn());
 	if (!Pawn)
 	{
+		// Between worlds, or at the title. The script takes up again a while after a player is back.
+		if (bHadPawn)
+		{
+			bHadPawn = false;
+			Waited = -StartDelay;
+		}
 		return;
 	}
+	if (!bHadPawn)
+	{
+		bHadPawn = true;
+		McPerf::Event(TEXT("PLAYER_IN_WORLD"));
+	}
+	if (Pawn->IsDead())
+	{
+		DeadFor += DeltaSeconds;
+		if (DeadFor >= 2.0f)
+		{
+			DeadFor = 0.0f;
+			McPerf::Event(FString::Printf(TEXT("RESPAWN at %s"), *Pawn->GetActorLocation().ToString()));
+			Pawn->RequestRespawn();
+		}
+		return;
+	}
+	DeadFor = 0.0f;
 	if (Waited < 0.0f)
 	{
 		Waited += DeltaSeconds;
@@ -157,14 +238,36 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 	if (bRunning)
 	{
 		Left -= DeltaSeconds;
+		// Losing the window's focus lets go of every key; a held step keeps them down.
+		if (Current.Kind == FStep::EKind::Hold && Left > 0.0f)
+		{
+			for (const FKey& Key : Current.Keys)
+			{
+				if (!Controller.IsInputKeyDown(Key))
+				{
+					Press(Controller, Key, true);
+				}
+			}
+		}
 		if (Current.Kind == FStep::EKind::Hold && !Current.Name.IsEmpty() && !bHoldShot && Left <= Current.Seconds * 0.5f)
 		{
 			bHoldShot = true;
 			TakeShot(Current.Name);
 		}
+		if (Current.Kind == FStep::EKind::Settle && Left > 0.0f && McPerf::GetCounter(EMcPerfCounter::Chunks) > 0
+			&& McPerf::GetCounter(EMcPerfCounter::Dirty) == 0 && McPerf::GetCounter(EMcPerfCounter::InFlight) == 0
+			&& McPerf::GetCounter(EMcPerfCounter::Streaming) == 0)
+		{
+			McPerf::Event(FString::Printf(TEXT("SETTLED after %.1f s, %lld chunks, %lld meshes"), Current.Seconds - Left, McPerf::GetCounter(EMcPerfCounter::Chunks), McPerf::GetCounter(EMcPerfCounter::Meshes)));
+			Left = 0.0f;
+		}
 		if (Left > 0.0f)
 		{
 			return;
+		}
+		if (Current.Kind == FStep::EKind::Settle && McPerf::GetCounter(EMcPerfCounter::Dirty) + McPerf::GetCounter(EMcPerfCounter::InFlight) + McPerf::GetCounter(EMcPerfCounter::Streaming) > 0)
+		{
+			McPerf::Event(FString::Printf(TEXT("NOT_SETTLED after %.1f s, %lld dirty, %lld in flight, %lld streaming"), Current.Seconds, McPerf::GetCounter(EMcPerfCounter::Dirty), McPerf::GetCounter(EMcPerfCounter::InFlight), McPerf::GetCounter(EMcPerfCounter::Streaming)));
 		}
 		if (Current.Kind == FStep::EKind::Hold)
 		{
@@ -218,6 +321,43 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 			FPlatformMisc::RequestExit(false, TEXT("McInput"));
 			Next = Steps.Num();
 			break;
+		case FStep::EKind::Mark:
+			McPerf::Mark(Current.Name);
+			break;
+		case FStep::EKind::Note:
+			McPerf::Event(Current.Name);
+			break;
+		case FStep::EKind::Chat:
+			McPerf::Event(FString::Printf(TEXT("CHAT %s"), *Current.Name));
+			if (Pawn->Data)
+			{
+				Pawn->Data->SendChat(Current.Name);
+			}
+			break;
+		case FStep::EKind::MenuPress:
+#if MC_WITH_RENDER
+			AMcHUD::QueueMenuPresses(Current.Name);
+#endif
+			break;
+		case FStep::EKind::Fly:
+			Pawn->SetFlying(Current.A != 0.0f);
+			break;
+		case FStep::EKind::Pack:
+		{
+			TArray<FString> Names;
+			if (Current.Name != TEXT("off"))
+			{
+				Current.Name.ParseIntoArray(Names, TEXT(","));
+			}
+			McPerf::Event(FString::Printf(TEXT("PACKS %s"), *Current.Name));
+			McPacks::ApplySelection(Names);
+			McPacks::RequestReload();
+			break;
+		}
+		case FStep::EKind::Settle:
+			Left = Current.Seconds;
+			bRunning = true;
+			break;
 		}
 	}
 	if (!bRunning && !Steps.IsValidIndex(Next) && FParse::Param(FCommandLine::Get(), TEXT("McInputQuit")))
@@ -225,5 +365,3 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 		FPlatformMisc::RequestExit(false, TEXT("McInput"));
 	}
 }
-
-#endif

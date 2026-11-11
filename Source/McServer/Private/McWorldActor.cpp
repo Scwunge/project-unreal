@@ -1,4 +1,6 @@
 #include "McWorldActor.h"
+#include "HAL/IConsoleManager.h"
+#include "McPerf.h"
 #include "McSculkMobs.h"
 #include "McChestLink.h"
 #include "McBannerEntity.h"
@@ -31,6 +33,19 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+
+// Trying out how the world keeps up with a player crossing it (-McPerfCvars=). Not settings for players.
+static TAutoConsoleVariable<int32> CVarMcOutrunPriority(TEXT("mc.World.OutrunPriority"), 1, TEXT("World tasks while a player's own chunk is missing: 0 background normal, 1 background high, 2 normal."));
+static TAutoConsoleVariable<int32> CVarMcFillNormal(TEXT("mc.World.FillNormal"), 1, TEXT("World tasks take normal priority while a player has nothing around them."));
+static TAutoConsoleVariable<int32> CVarMcDecorateJobs(TEXT("mc.World.DecorateJobs"), 3, TEXT("Decoration jobs at once."));
+static TAutoConsoleVariable<int32> CVarMcChunksInFlight(TEXT("mc.World.ChunksInFlight"), 16, TEXT("Chunks being made at once."));
+static TAutoConsoleVariable<int32> CVarMcUnloadPerFrame(TEXT("mc.World.UnloadPerFrame"), 4,
+	TEXT("Chunks saved and dropped a frame at most, farthest first; the rest wait for the next frames (0 no limit)."));
+static TAutoConsoleVariable<float> CVarMcLeadSeconds(TEXT("mc.World.LeadSeconds"), 0.0f,
+	TEXT("Chunks around where a moving player will be in this many seconds are made and decorated as early as those around them (0 off)."));
+
+// Per second, for the perf log.
+static int32 GStreamMade = 0, GStreamDecorated = 0, GStreamAdded = 0;
 
 AMcWorldActor::AMcWorldActor()
 {
@@ -589,8 +604,18 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
 
+void AMcWorldActor::WaitForDecorating()
+{
+	for (UE::Tasks::FTask& Task : DecorateTasks)
+	{
+		Task.Wait();
+	}
+	DecorateTasks.Reset();
+}
+
 void AMcWorldActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	WaitForDecorating();
 	if (LiveImport)
 	{
 		// Before the last save, so nothing is being queued behind it.
@@ -1112,6 +1137,35 @@ void AMcWorldActor::ApplyEdits(FMcChunk& Chunk)
 void AMcWorldActor::AddToWorld(FFinishedChunk Arrived)
 {
 	const FIntPoint Pos = Arrived.Chunk->GetPos();
+	// -McChunkHash: what each new chunk came to, so two runs of a seed can be compared (tools/perf_chunks.py).
+	static const bool bHashChunks = FParse::Param(FCommandLine::Get(), TEXT("McChunkHash"));
+	if (bHashChunks && McPerf::IsOn() && !Arrived.bFromDisk)
+	{
+		const FMcChunk& Chunk = *Arrived.Chunk;
+		TArray<FMcStateId> States;
+		States.Reserve((Chunk.GetMaxY() - Chunk.GetMinY() + 1) * 256);
+		for (int32 Y = Chunk.GetMinY(); Y <= Chunk.GetMaxY(); ++Y)
+		{
+			for (int32 Z = 0; Z < 16; ++Z)
+			{
+				for (int32 X = 0; X < 16; ++X)
+				{
+					States.Add(Chunk.GetBlock(X, Y, Z));
+				}
+			}
+		}
+		McPerf::Event(FString::Printf(TEXT("CHUNK %d,%d %08x %d"), Pos.X, Pos.Y, FCrc::MemCrc32(States.GetData(), States.Num() * States.GetTypeSize()), Chunk.GetBlockEntities().Num()));
+		// -McChunkDump=<file>: the blocks as well, so the comparison can count them.
+		FString DumpPath;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McChunkDump="), DumpPath))
+		{
+			const int32 Header[4] = { Pos.X, Pos.Y, States.Num(), static_cast<int32>(States.GetTypeSize()) };
+			TArray<uint8> Bytes;
+			Bytes.Append(reinterpret_cast<const uint8*>(Header), sizeof(Header));
+			Bytes.Append(reinterpret_cast<const uint8*>(States.GetData()), States.Num() * States.GetTypeSize());
+			FFileHelper::SaveArrayToFile(Bytes, *DumpPath, &IFileManager::Get(), FILEWRITE_Append);
+		}
+	}
 	// Before the edits, so a chunk that only changes by them counts as changed.
 	const uint32 LoadedRevision = Arrived.Chunk->GetRevision();
 	ApplyEdits(*Arrived.Chunk);
@@ -1285,6 +1339,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 	}
 	if (BlockWorld && Generator)
 	{
+		MC_PERF_SCOPE(Stream);
 		StreamChunks();
 	}
 	if (BlockWorld && !ShulkerLids)
@@ -1314,11 +1369,14 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 		TickRemainder = FMath::Min(TickRemainder + DeltaSeconds, 0.25);
 		for (; TickRemainder >= 0.05; TickRemainder -= 0.05)
 		{
-			Simulation->Tick();
-			MovePushedEntities();
-			SyncFallingBlocks();
-			FeedPressurePlates();
-			TickLightning();
+			{
+				MC_PERF_SCOPE(Sim);
+				Simulation->Tick();
+				MovePushedEntities();
+				SyncFallingBlocks();
+				FeedPressurePlates();
+				TickLightning();
+			}
 			// Development: -McStrike=x,z strikes the top of that column every three seconds.
 			if (!DevStrike.IsEmpty() && ++DevStrikeTicks % 60 == 0)
 			{
@@ -1358,7 +1416,11 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 			// It rains, for the world's rules (a fishing bobber's bite comes sooner), once the rain is more than a fifth on.
 			Entities->GetManager().bRaining = RainLevel > 0.2f;
 			// Where the time never changes it is always night to the mobs (none burn).
-			Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
+			{
+				MC_PERF_SCOPE(Entities);
+				Entities->Tick(Players, BlockWorld->GetDimension().bHasFixedTime ? 18000.0 : DayTicks);
+				McPerf::SetCounter(EMcPerfCounter::Entities, Entities->GetManager().GetEntities().Num());
+			}
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);
 			if (Storage && ++TicksSinceAutosave >= AutosaveIntervalTicks)
 			{
@@ -1388,6 +1450,8 @@ void AMcWorldActor::StreamChunks()
 	// The chunks the players are in, then the anchors, each with how far around it chunks are wanted.
 	TArray<FIntPoint> Centres;
 	TArray<int32> Radii;
+	TArray<FIntPoint> Leads;
+	const double LeadSeconds = FMath::Max(0.0f, CVarMcLeadSeconds.GetValueOnGameThread());
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		const APlayerController* Controller = It->Get();
@@ -1397,6 +1461,21 @@ void AMcWorldActor::StreamChunks()
 			const FVector Location = Pawn->GetActorLocation();
 			Centres.Add(FIntPoint(FMath::FloorToInt32(Location.X / ChunkUnits), FMath::FloorToInt32(Location.Y / ChunkUnits)));
 			Radii.Add(LoadRadius);
+			// Unreal X and Y are the block X and Z; height doesn't matter here.
+			FStreamMotion& Motion = StreamMotion.FindOrAdd(Pawn);
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (Motion.Time > 0.0 && Now > Motion.Time)
+			{
+				// A jump of more than a few chunks is a teleport, not speed.
+				const FVector Step = Location - Motion.Location;
+				Motion.Velocity = Step.Size2D() < 4.0 * ChunkUnits ? Step / (Now - Motion.Time) : FVector::ZeroVector;
+			}
+			Motion.Location = Location;
+			Motion.Time = Now;
+			const FVector Ahead = Location + Motion.Velocity * LeadSeconds;
+			const FIntPoint Lead(FMath::FloorToInt32(Ahead.X / ChunkUnits), FMath::FloorToInt32(Ahead.Y / ChunkUnits));
+			// No further than the loaded square reaches: past it nothing is wanted.
+			Leads.Add(Centres.Last() + FIntPoint(FMath::Clamp(Lead.X - Centres.Last().X, -LoadRadius, LoadRadius), FMath::Clamp(Lead.Y - Centres.Last().Y, -LoadRadius, LoadRadius)));
 		}
 	}
 	const int32 NumPlayers = Centres.Num();
@@ -1409,6 +1488,39 @@ void AMcWorldActor::StreamChunks()
 	// With nobody to measure from, leave the world as it is: unloading now would drop every chunk (and, with them,
 	// the mobs), only to generate it all again when the first pawn appears (a listen server's start, a death).
 	const bool bAnyone = !Centres.IsEmpty();
+
+	// Nothing at all around a player: a new or opened world, a long teleport. Only their own chunk missing: they're
+	// outrunning the world (flying), and it has to keep up without taking the frame's workers.
+	bOutrunning = false;
+	for (int32 Index = 0; Index < NumPlayers; ++Index)
+	{
+		if (BlockWorld->HasChunk(Centres[Index]))
+		{
+			continue;
+		}
+		bOutrunning = true;
+		bool bAnyNear = false;
+		for (int32 DZ = -2; DZ <= 2 && !bAnyNear; ++DZ)
+		{
+			for (int32 DX = -2; DX <= 2 && !bAnyNear; ++DX)
+			{
+				bAnyNear = BlockWorld->HasChunk(Centres[Index] + FIntPoint(DX, DZ));
+			}
+		}
+		if (!bAnyNear)
+		{
+			BlockWorld->SetFilling(true);
+		}
+	}
+	StreamCentres = Centres;
+	StreamLeads = LeadSeconds > 0.0 ? Leads : TArray<FIntPoint>();
+	for (auto It = StreamMotion.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
 
 	// Nothing has moved and nothing was left outstanding: the world is already what these players need.
 	if (bAnyone && Centres == SettledCentres && Radii == SettledRadii && ViewDistance == SettledViewDistance)
@@ -1446,19 +1558,32 @@ void AMcWorldActor::StreamChunks()
 				const FIntPoint Pos = Centre + FIntPoint(DX, DZ);
 				if (!BlockWorld->HasChunk(Pos) && !Pending.Contains(Pos))
 				{
-					Missing.Add({ DX * DX + DZ * DZ, Pos });
+					int32 Key = DX * DX + DZ * DZ;
+					if (StreamLeads.IsValidIndex(Index))
+					{
+						const FIntPoint FromLead = Pos - StreamLeads[Index];
+						Key = FMath::Min(Key, FromLead.X * FromLead.X + FromLead.Y * FromLead.Y);
+					}
+					Missing.Add({ Key, Pos });
 				}
 			}
 		}
 	}
 	Missing.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
 
-	bool bProgress = AddGeneratedChunks();
-	bProgress |= DecorateChunks();
+	bool bProgress = false;
+	{
+		MC_PERF_SCOPE(StreamAdd);
+		bProgress = AddGeneratedChunks();
+	}
+	{
+		MC_PERF_SCOPE(StreamDecorate);
+		bProgress |= DecorateChunks();
+	}
 
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
-		if (InFlight.Num() >= MaxChunksInFlight)
+		if (InFlight.Num() >= CVarMcChunksInFlight.GetValueOnGameThread())
 		{
 			break;
 		}
@@ -1485,37 +1610,53 @@ void AMcWorldActor::StreamChunks()
 				Generator->Generate(*Result.Chunk);
 			}
 			Finished->Enqueue(MoveTemp(Result));
-		});
+		}, WorldTaskPriority());
 	}
 
 	bool bUnloaded = false;
 	if (bAnyone)
 	{
-		TArray<FIntPoint> Far;
+		MC_PERF_SCOPE(StreamUnload);
+		// Each chunk dropped is encoded for its save and takes its meshes and mobs with it, about 1.5 ms on the 1070, and
+		// walking past a border drops a whole row at once (50 ms frames in base_a5): a few a frame, the farthest first.
+		TArray<TPair<int32, FIntPoint>> Far;
 		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
 		{
 			bool bNearAnyone = false;
+			int32 Nearest = MAX_int32;
 			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
 				const int32 Keep = FMath::Max(KeepRadius, Radii[Index]);
-				bNearAnyone = FMath::Abs(Chunk.Key.X - Centres[Index].X) <= Keep && FMath::Abs(Chunk.Key.Y - Centres[Index].Y) <= Keep;
+				const FIntPoint Away = Chunk.Key - Centres[Index];
+				bNearAnyone = FMath::Abs(Away.X) <= Keep && FMath::Abs(Away.Y) <= Keep;
+				Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
 			}
 			if (!bNearAnyone)
 			{
-				Far.Add(Chunk.Key);
+				Far.Add({ Nearest, Chunk.Key });
 			}
 		}
-		for (const FIntPoint& Pos : Far)
+		Far.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key > B.Key; });
+		const int32 Budget = CVarMcUnloadPerFrame.GetValueOnGameThread();
+		const int32 Dropping = Budget > 0 ? FMath::Min(Budget, Far.Num()) : Far.Num();
+		for (int32 Index = 0; Index < Dropping; ++Index)
 		{
+			const FIntPoint Pos = Far[Index].Value;
 			// Saved while it's still whole, with its mobs; the writing happens on a worker.
 			SaveChunk(Pos);
 			ChunkStates.Remove(Pos);
 			BlockWorld->RemoveChunk(Pos);
 		}
+		// Any left over keep the world unsettled, so the next frames carry on.
 		bUnloaded = !Far.IsEmpty();
 		for (auto It = Pending.CreateIterator(); It; ++It)
 		{
 			const FIntPoint Pos = It.Key();
+			// A worker has it; its turn comes when the job is done.
+			if (DecorateBusy.Contains(Pos))
+			{
+				continue;
+			}
 			bool bNearAnyone = false;
 			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
@@ -1532,7 +1673,24 @@ void AMcWorldActor::StreamChunks()
 	}
 
 	// Nothing left to load, generate, decorate or unload for these players: skip the work until they move.
-	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty();
+	const bool bSettled = bAnyone && !bProgress && !bUnloaded && Missing.IsEmpty() && InFlight.IsEmpty() && DecorateBusy.IsEmpty();
+	if (bSettled)
+	{
+		BlockWorld->SetFilling(false);
+	}
+	McPerf::SetCounter(EMcPerfCounter::Streaming, bSettled ? 0 : 1 + Missing.Num() + InFlight.Num() + DecorateBusy.Num());
+	if (McPerf::IsOn() && !bSettled)
+	{
+		static double NextReport = 0.0;
+		const double Now = FPlatformTime::Seconds();
+		if (Now >= NextReport)
+		{
+			NextReport = Now + 1.0;
+			McPerf::Event(FString::Printf(TEXT("STREAM missing=%d inflight=%d pending=%d decorated=%d jobs=%d made=%d deco=%d added=%d filling=%d outrun=%d"),
+				Missing.Num(), InFlight.Num(), Pending.Num(), Decorated.Num(), DecorateTasks.Num(), GStreamMade, GStreamDecorated, GStreamAdded, BlockWorld->IsFilling() ? 1 : 0, bOutrunning ? 1 : 0));
+			GStreamMade = GStreamDecorated = GStreamAdded = 0;
+		}
+	}
 	SettledCentres = bSettled ? Centres : TArray<FIntPoint>();
 	SettledRadii = bSettled ? Radii : TArray<int32>();
 	SettledViewDistance = ViewDistance;
@@ -1545,6 +1703,7 @@ bool AMcWorldActor::AddGeneratedChunks()
 	while (Finished->Dequeue(Result))
 	{
 		bAny = true;
+		++GStreamMade;
 		const FIntPoint Pos = Result.Chunk->GetPos();
 		InFlight.Remove(Pos);
 		if (BlockWorld->HasChunk(Pos) || Pending.Contains(Pos))
@@ -1562,6 +1721,21 @@ bool AMcWorldActor::AddGeneratedChunks()
 	return bAny;
 }
 
+UE::Tasks::ETaskPriority AMcWorldActor::WorldTaskPriority() const
+{
+	// Behind the frame's own tasks, which would otherwise wait for a free worker, unless there's nothing yet to look at.
+	if (BlockWorld->IsFilling() && CVarMcFillNormal.GetValueOnGameThread())
+	{
+		return UE::Tasks::ETaskPriority::Normal;
+	}
+	if (bOutrunning)
+	{
+		const int32 Choice = CVarMcOutrunPriority.GetValueOnGameThread();
+		return Choice == 2 ? UE::Tasks::ETaskPriority::Normal : Choice == 0 ? UE::Tasks::ETaskPriority::BackgroundNormal : UE::Tasks::ETaskPriority::BackgroundHigh;
+	}
+	return UE::Tasks::ETaskPriority::BackgroundNormal;
+}
+
 bool AMcWorldActor::DecorateChunks()
 {
 	if (!Features || Pending.IsEmpty())
@@ -1569,48 +1743,115 @@ bool AMcWorldActor::DecorateChunks()
 		return false;
 	}
 	bool bChanged = false;
-	// The chunks around Pos, row by row from the north-west, and which of them players already have.
-	const auto Gather = [this](FIntPoint Pos, FMcChunk** Out, bool* bLive)
+	// Jobs that came back: their chunks are free again.
+	FIntPoint DonePos;
+	while (DecorateDone->Dequeue(DonePos))
 	{
-		bool bAll = true;
 		for (int32 Index = 0; Index < 9; ++Index)
 		{
-			const FIntPoint At = Pos + FIntPoint(Index % 3 - 1, Index / 3 - 1);
-			const TUniquePtr<FMcChunk>* Waiting = Pending.Find(At);
-			Out[Index] = Waiting ? Waiting->Get() : BlockWorld->FindChunk(At);
-			bLive[Index] = !Waiting && Out[Index];
-			bAll &= Out[Index] != nullptr;
+			DecorateBusy.Remove(DonePos + FIntPoint(Index % 3 - 1, Index / 3 - 1));
 		}
-		return bAll;
-	};
+		Decorated.Add(DonePos);
+		++GStreamDecorated;
+		bChanged = true;
+	}
+	DecorateTasks.RemoveAll([](const UE::Tasks::FTask& Task) { return Task.IsCompleted(); });
 
-	const double Deadline = FPlatformTime::Seconds() + 0.006;
-	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
+	// Nearest the players first. A chunk joins the world only once all its neighbours are decorated, so working through
+	// them in any other order leaves the player looking at nothing until nearly all of them are done.
+	TArray<TPair<int32, FIntPoint>> NearestFirst;
+	if (DecorateTasks.Num() < CVarMcDecorateJobs.GetValueOnGameThread())
 	{
-		if (FPlatformTime::Seconds() > Deadline)
+		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
+		{
+			if (!Decorated.Contains(Entry.Key))
+			{
+				int32 Nearest = MAX_int32;
+				for (const FIntPoint& Centre : StreamCentres)
+				{
+					const FIntPoint Away = Entry.Key - Centre;
+					Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
+				}
+				for (const FIntPoint& Lead : StreamLeads)
+				{
+					const FIntPoint Away = Entry.Key - Lead;
+					Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
+				}
+				NearestFirst.Add({ Nearest, Entry.Key });
+			}
+		}
+		NearestFirst.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key < B.Key; });
+	}
+	for (const TPair<int32, FIntPoint>& Next : NearestFirst)
+	{
+		if (DecorateTasks.Num() >= CVarMcDecorateJobs.GetValueOnGameThread())
 		{
 			break;
 		}
-		if (Decorated.Contains(Entry.Key))
+		const FIntPoint Pos = Next.Value;
+		// The chunks around it, row by row from the north-west: waiting ones (free of other jobs) or ones in the world.
+		FMcChunk* Waiting[9] = {};
+		const FMcChunk* Live[9] = {};
+		bool bReady = true;
+		for (int32 Index = 0; Index < 9 && bReady; ++Index)
 		{
-			continue;
-		}
-		FMcChunk* Around[9];
-		bool bLive[9];
-		if (!Gather(Entry.Key, Around, bLive))
-		{
-			continue;
-		}
-		FMcGenRegion Region(Entry.Key, Around);
-		for (int32 Index = 0; Index < 9; ++Index)
-		{
-			if (bLive[Index])
+			const FIntPoint At = Pos + FIntPoint(Index % 3 - 1, Index / 3 - 1);
+			if (const TUniquePtr<FMcChunk>* Found = Pending.Find(At))
 			{
-				Region.SetReadOnly(Index);
+				Waiting[Index] = Found->Get();
+				bReady = !DecorateBusy.Contains(At);
+			}
+			else
+			{
+				Live[Index] = BlockWorld->FindChunk(At);
+				bReady = Live[Index] != nullptr;
 			}
 		}
-		Features->Decorate(Region, static_cast<uint64>(Seed));
-		Decorated.Add(Entry.Key);
+		if (!bReady)
+		{
+			continue;
+		}
+		struct FJob
+		{
+			FIntPoint Pos;
+			FMcChunk* Around[9];
+			bool bReadOnly[9];
+			TArray<TUniquePtr<FMcChunk>> Copies;
+		};
+		TSharedRef<FJob, ESPMode::ThreadSafe> Job = MakeShared<FJob, ESPMode::ThreadSafe>();
+		Job->Pos = Pos;
+		for (int32 Index = 0; Index < 9; ++Index)
+		{
+			Job->bReadOnly[Index] = Waiting[Index] == nullptr;
+			if (Waiting[Index])
+			{
+				Job->Around[Index] = Waiting[Index];
+				DecorateBusy.Add(Pos + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+			}
+			else
+			{
+				Job->Copies.Add(MakeUnique<FMcChunk>(*Live[Index]));
+				Job->Around[Index] = Job->Copies.Last().Get();
+			}
+		}
+		DecorateTasks.Add(UE::Tasks::Launch(UE_SOURCE_LOCATION, [Job, Library = Features, Done = DecorateDone, WorldSeed = static_cast<uint64>(Seed)]()
+		{
+			FMcGenRegion Region(Job->Pos, Job->Around);
+			for (int32 Index = 0; Index < 9; ++Index)
+			{
+				if (Job->bReadOnly[Index])
+				{
+					Region.SetReadOnly(Index);
+				}
+			}
+			const double Began = FPlatformTime::Seconds();
+			Library->Decorate(Region, WorldSeed);
+			if (McPerf::IsOn() && FPlatformTime::Seconds() - Began > 0.05)
+			{
+				McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Job->Pos.X, Job->Pos.Y, (FPlatformTime::Seconds() - Began) * 1000.0));
+			}
+			Done->Enqueue(Job->Pos);
+		}, WorldTaskPriority()));
 		bChanged = true;
 	}
 
@@ -1618,7 +1859,8 @@ bool AMcWorldActor::DecorateChunks()
 	TArray<FIntPoint> Ready;
 	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
 	{
-		bool bDone = Decorated.Contains(Entry.Key);
+		// One a job is still writing to isn't done changing.
+		bool bDone = Decorated.Contains(Entry.Key) && !DecorateBusy.Contains(Entry.Key);
 		for (int32 Index = 0; Index < 9 && bDone; ++Index)
 		{
 			const FIntPoint At = Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1);
@@ -1636,6 +1878,7 @@ bool AMcWorldActor::DecorateChunks()
 		Pending.Remove(Pos);
 		Decorated.Remove(Pos);
 		AddToWorld(MoveTemp(Done));
+		++GStreamAdded;
 		bChanged = true;
 	}
 	return bChanged;

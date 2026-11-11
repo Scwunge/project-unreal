@@ -1,0 +1,11 @@
+# A short look at a graphics setting: a new survival world, standing, then walking. Enough to read the render thread and the GPU.
+mark:fill
+settle:120
+mark:stand
+wait:40
+mark:walk
+look:30,0
+hold:W+LeftControl+SpaceBar:40
+mark:settle2
+settle:60
+end

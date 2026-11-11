@@ -1,4 +1,5 @@
 ﻿#include "McCloudComponent.h"
+#include "McPerf.h"
 #include "McCache.h"
 #include "McChunk.h"
 #include "McDimensionType.h"
@@ -93,6 +94,7 @@ bool UMcCloudComponent::IsCloud(FIntPoint Cell) const
 
 void UMcCloudComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Sky);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// Unreal Mode has its own volumetric clouds in the sky (UMcSkyComponent); the vanilla slabs are for the vanilla look.
 	SetVisibility(!McRenderMode::IsEnhanced());

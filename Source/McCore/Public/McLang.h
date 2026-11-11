@@ -27,6 +27,9 @@ namespace McLang
 	// Bumps when the language or the packs change, for screens that keep their text.
 	MCCORE_API uint32 GetGeneration();
 
+	// Reads the text again, for when the cache it is read from has just been built (McCacheSetup.h). Saves nothing.
+	MCCORE_API void Reload();
+
 	MCCORE_API FString Get(const FString& Key);
 	// Every key (the game's, the language's and the packs') that starts with the prefix.
 	MCCORE_API TArray<FString> GetKeysWithPrefix(const FString& Prefix);

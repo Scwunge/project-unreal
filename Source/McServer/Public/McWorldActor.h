@@ -14,6 +14,7 @@
 #include "McShulkerLids.h"
 #include "McWorldSave.h"
 #include "GameFramework/Controller.h"
+#include "Tasks/Task.h"
 #include "McWorldActor.generated.h"
 
 class FMcFeatureLibrary;
@@ -83,6 +84,10 @@ public:
 	// Chunks being generated on worker threads at once.
 	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 1))
 	int32 MaxChunksInFlight = 16;
+
+	// Chunks being decorated on worker threads at once (never two whose 3x3 regions share a chunk still being made).
+	UPROPERTY(EditAnywhere, Category = "Mc", meta = (ClampMin = 1))
+	int32 MaxDecorateJobs = 3;
 
 	// Null until BeginPlay has loaded the registry, the dimension and the preset from cache/.
 	FMcBlockWorld* GetBlockWorld() const { return BlockWorld.Get(); }
@@ -359,6 +364,28 @@ private:
 	TSharedPtr<FMcFeatureLibrary> Features;
 	TMap<FIntPoint, TUniquePtr<FMcChunk>> Pending;
 	TSet<FIntPoint> Decorated;
+	// Decorating happens on workers, because one chunk can take most of a second. While a job runs, the waiting chunks
+	// in its region are its own: they stay in Pending, listed here, and nothing else reads, changes or removes them.
+	// Chunks already in the world go to the job as copies, since the game keeps changing and unloading them.
+	TSet<FIntPoint> DecorateBusy;
+	TArray<UE::Tasks::FTask> DecorateTasks;
+	TSharedPtr<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe> DecorateDone = MakeShared<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
+	// The chunks the players and anchors are in, as of the last look.
+	TArray<FIntPoint> StreamCentres;
+	// Where each player will be in mc.World.LeadSeconds at their speed now, for ordering the work only (none when off).
+	TArray<FIntPoint> StreamLeads;
+	// Each player's place at the last look and their speed since, in Unreal units a second (the pawn keeps its own).
+	struct FStreamMotion
+	{
+		FVector Location = FVector::ZeroVector;
+		FVector Velocity = FVector::ZeroVector;
+		double Time = 0.0;
+	};
+	TMap<TWeakObjectPtr<const APawn>, FStreamMotion> StreamMotion;
+	bool bOutrunning = false;
+	UE::Tasks::ETaskPriority WorldTaskPriority() const;
+	// Waits for the decorating jobs: the chunks they use are the actor's.
+	void WaitForDecorating();
 
 	// Block changes by chunk, keyed by world position.
 	TMap<FIntPoint, TMap<FIntVector, FMcStateId>> Edits;

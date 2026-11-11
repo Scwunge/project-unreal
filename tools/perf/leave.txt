@@ -1,0 +1,14 @@
+# Leaving a world to the title, for the crash of 7 and 9 Nov (the audio subsystem kept the freed world). A new world, a
+# short walk so sounds play, then Save and Quit to Title. Passes with exit code 0 (end.txt) and no new crash report. The
+# script is one per process and the title's controller is AMcPlayerController too, so it should go on at the title and end
+# there; MC_PERF_MINUTES=3 in case it doesn't.
+mark:fill
+settle:90
+mark:walk
+hold:W+LeftControl:10
+mark:leave
+key:Escape
+wait:2
+press:Save_and_Quit_to_Title
+wait:30
+end

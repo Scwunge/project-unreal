@@ -2037,3 +2037,5 @@ Second run (2026-11-11), `mobmove_b2.txt`, log `log_mobmove_b2.log`: fixed arena
 - Water: squid and glow squid 0.200 (moving 7 to 8%), cod/salmon/pufferfish 0.063 (10%), tadpole 0.073 (100%), axolotl 0.222 (100%, y range -60 to -53.6).
 - Air: allay 0.110 (80%, y up to -48.6), happy ghast 0.318 (99%, y -57 to -38.7), parrot 0.074 (3%, stayed on ground 94%).
 Still indicative, one run each; the idle land mobs need a nearer player or a lure before any wander speed is fitted.
+
+Integration line on UE 5.9 (claude/integrate-b1, 2026-11-11): m1 0ce5880 + playable eb3a5ba + villagers 4d14550 + worldgen 30b4813 + redstone test fixes ef73a18 and 0237999, head a8501e9. Built on the 1070 (UE 5.9). Its full suite (everything except JavaExport) has NOT run: the run was stopped by the STOP order in NetherStarts with 88 passed, no failure. Earlier head d1f74f8 (without the two test fixes): playable 259/260 and villagers 260/261, the one miss each SimPerf (26.36 and 28.19 ms, load). Redstone 950fa0c itself is not merged here; its Illagers crash was a use-after-free in the test (fixed in ef73a18).

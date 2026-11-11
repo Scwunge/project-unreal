@@ -1620,3 +1620,6 @@ Same-camera close-ups (flat world, Unreal Mode, `-McHd` on and off, shots hd_off
 
 ## Cloud placement test prepared (2026-11-11, unbuilt, not run)
 `MC_CLOUD_CONST=1` in `tools/make_cloud_edit.py` makes the duplicated cloud material's density a constant (`return Dens;`, no mask, no height profile). Run it as the next cheap split from the entry above: with `-McVolumeClouds -McCloudDensity=<n>` on a fresh `-McWorld=`, clouds filling the layer mean the mask / world-position mapping was wrong; still none means the layer placement (`SetLayerBottomAltitude`, `BottomZ`) or the instance parameters. Needs a 5.9 build and a headless editor run on the 1070 (not through MCP: it writes a Content asset).
+
+## Later item: RTX option (not started)
+RTX option (Unreal Mode extra, post-1:1; user asked 2026-11-11). Java has no ray tracing (RTX is a Bedrock feature), so this is not 1:1. A Unreal Mode setting for hardware ray tracing: Lumen HWRT GI and reflections, RT shadows, falling back to software Lumen on cards without RT. Testing: the 1070 has no RT cores, so it can only test the fallback. Hardware RT needs the user's 4060 PC, so ask the user (through the leader) before any run there.

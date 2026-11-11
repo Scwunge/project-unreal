@@ -86,6 +86,8 @@ bool FMcNewMobDropsTest::RunTest(const FString& Parameters)
 				break;
 			}
 			Mob->bFrozen = true;
+			// A player's kill (the tables with a killed_by_player condition drop nothing otherwise).
+			Mob->PlayerHitAge = Mob->Age;
 			Mob->Damage(1000.0f, nullptr);
 			Host.GetManager().Tick();
 		}

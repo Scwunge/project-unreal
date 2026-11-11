@@ -28,6 +28,8 @@ namespace McLang
 	MCCORE_API uint32 GetGeneration();
 
 	MCCORE_API FString Get(const FString& Key);
+	// Every key (the game's, the language's and the packs') that starts with the prefix.
+	MCCORE_API TArray<FString> GetKeysWithPrefix(const FString& Prefix);
 	// The text with its %s (and %1$s style) placeholders filled in order.
 	MCCORE_API FString Format(const FString& Key, const TArray<FString>& Args);
 	// Fills a pattern's placeholders; exposed for tests.

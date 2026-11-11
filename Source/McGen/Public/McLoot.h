@@ -25,8 +25,8 @@ namespace McLoot
 	// trade does to what it gives.
 	MCGEN_API void ApplyModifier(const TSharedPtr<FJsonValue>& Modifier, FMcRandom& Random, FMcItemStack& Stack);
 
-	// Rolls a mob's table; bCaptain answers the raider predicate (is_captain) that decides the ominous bottle.
-	MCGEN_API bool RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out);
+	// Rolls a mob's table, for a kill with a weapon of that Looting level; bCaptain answers the raider predicate (is_captain) that decides the ominous bottle.
+	MCGEN_API bool RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Looting = 0);
 
 	// What an entity's loot table can ask about the mob and how it died (killed_by_player, entity_properties of the mob,
 	// its killer and its vehicle, damage_source_properties). A roll made while a scope is alive uses it; with none, those

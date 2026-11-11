@@ -19,6 +19,12 @@ namespace McCache
 	// A file from the jar's assets/minecraft/, e.g. Asset("blockstates/stone.json"). A resource pack that has the file
 	// wins (McResourcePacks.h): the path is then the pack's file, or for a zip the copy taken out into Saved/McPackCache.
 	MCCORE_API FString Asset(const FString& RelativePath);
+	// The file of an id with its folder and extension: AssetOf("zz:block/a", "models/", ".json") is assets/zz/models/block/a.json
+	// from a pack, AssetOf("stone", "blockstates/", ".json") the game's blockstates/stone.json. An id's namespace is
+	// "minecraft" when it has none; any other namespace is only in resource packs.
+	// The name AssetOf looks up ("zz:models/block/a.json", or "models/block/a.json" for the game's), for McPacks::IsFromPack and the like.
+	MCCORE_API FString RelativeOf(const FString& Id, const FString& Directory, const FString& Extension);
+	MCCORE_API FString AssetOf(const FString& Id, const FString& Directory, const FString& Extension);
 
 	// The "texture" section of a picture's .png.mcmeta, for pictures drawn on their own (not cut into an atlas): how the
 	// game samples it. Blur filters it smoothly instead of nearest; clamp holds its edge pixels past 0 and 1, where

@@ -528,7 +528,8 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	}
 	if (Name == TEXT("minecraft:lily_pad"))
 	{
-		return Supports(TEXT("minecraft:supports_lily_pad")) && Shapes.GetFluid(Region.GetBlock(Pos)) == EMcFluid::None;
+		// Resting on water (a still source) or on ice; the tag lists only the ice.
+		return ((Shapes.GetFluid(Below) == EMcFluid::Water && Shapes.GetFluidLevel(Below) == 0) || Supports(TEXT("minecraft:supports_lily_pad"))) && Shapes.GetFluid(Region.GetBlock(Pos)) == EMcFluid::None;
 	}
 	if (Name == TEXT("minecraft:kelp") || Name == TEXT("minecraft:kelp_plant") || Name == TEXT("minecraft:seagrass") || Name == TEXT("minecraft:tall_seagrass"))
 	{
@@ -557,6 +558,11 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	{
 		return Supports(TEXT("minecraft:supports_azalea"));
 	}
+	if (Name == TEXT("minecraft:spore_blossom"))
+	{
+		// Hangs from a ceiling with a sturdy underside (it is in the flowers tag, which would ask for ground).
+		return HasSturdyFace(Region.GetBlock(Pos + FIntVector(0, 1, 0)), FIntVector(0, -1, 0));
+	}
 	if (Name == TEXT("minecraft:mangrove_propagule"))
 	{
 		return Supports(TEXT("minecraft:supports_mangrove_propagule"));
@@ -576,6 +582,11 @@ bool FMcBlockPredicate::CanSurvive(FMcGenRegion& Region, const FIntVector& Pos, 
 	if (Name == TEXT("minecraft:crimson_fungus") || Name == TEXT("minecraft:warped_fungus"))
 	{
 		return Supports(Name == TEXT("minecraft:crimson_fungus") ? TEXT("minecraft:supports_crimson_fungus") : TEXT("minecraft:supports_warped_fungus"));
+	}
+	if (Name == TEXT("minecraft:crimson_roots") || Name == TEXT("minecraft:warped_roots") || Name == TEXT("minecraft:nether_sprouts") || Name == TEXT("minecraft:nether_wart"))
+	{
+		// The jar's support tags (supports_crimson_roots and so on): roots need nylium or soil, not bare netherrack.
+		return Supports(Name == TEXT("minecraft:crimson_roots") ? TEXT("minecraft:supports_crimson_roots") : Name == TEXT("minecraft:warped_roots") ? TEXT("minecraft:supports_warped_roots") : Name == TEXT("minecraft:nether_sprouts") ? TEXT("minecraft:supports_nether_sprouts") : TEXT("minecraft:supports_nether_wart"));
 	}
 	// Saplings, flowers, grass, ferns and bushes stand on dirt-like blocks; tall plants need room above too.
 	const bool bPlant = Tags.Has(TEXT("minecraft:saplings"), State) || Tags.Has(TEXT("minecraft:flowers"), State) || Name.Contains(TEXT("grass"))

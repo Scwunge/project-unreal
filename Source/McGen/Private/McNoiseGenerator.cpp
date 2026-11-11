@@ -176,7 +176,7 @@ void FMcNoiseGenerator::Generate(FMcChunk& Chunk) const
 				{
 					State = Lava;
 				}
-				else if (Y < Settings.SeaLevel && Y > Surface)
+				else if (Y < Settings.SeaLevel)  // aquifers off: every open cell under the sea level holds the default fluid (the Nether's lava sea)
 				{
 					State = Settings.DefaultFluid;
 				}
@@ -279,9 +279,11 @@ void FMcNoiseGenerator::LoadCarvers()
 	}
 }
 
+bool bMcCarversOff = false;
+
 void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const
 {
-	if (Carvers.IsEmpty())
+	if (Carvers.IsEmpty() || bMcCarversOff)
 	{
 		return;
 	}
@@ -321,7 +323,8 @@ void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>
 			{
 				return;
 			}
-			FMcStateId Fill = Y < LavaLevel ? Lava : Air;
+			// Without aquifers a carved cell under the sea level holds the default fluid (the Nether's cave floors flood with lava).
+			FMcStateId Fill = Y < LavaLevel ? Lava : (!bAquifers && Y < Settings.SeaLevel ? Settings.DefaultFluid : Air);
 			if (bAquifers)
 			{
 				Fill = Aquifer.Compute(ChunkX * 16 + X, Y, ChunkZ * 16 + Z, 0.0, AquiferContext, AquiferCache);
@@ -510,6 +513,24 @@ int32 FMcNoiseGenerator::FindSurfaceY(int32 X, int32 Z) const
 		{
 			// Under the sea the surface is the water's.
 			return FMath::Max(Y, Settings.SeaLevel - 1);
+		}
+	}
+	return Settings.MinY;
+}
+
+int32 FMcNoiseGenerator::FindSolidTopY(int32 X, int32 Z) const
+{
+	if (!bValid)
+	{
+		return Settings.SeaLevel;
+	}
+	FMcDensityContext Context(Graph);
+	for (int32 Y = Settings.MinY + Settings.Height - 1; Y >= Settings.MinY; --Y)
+	{
+		Context.SetPos(X, Y, Z);
+		if (Graph.Evaluate(FinalDensity, Context) > 0.0)
+		{
+			return Y;
 		}
 	}
 	return Settings.MinY;

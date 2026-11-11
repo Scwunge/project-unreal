@@ -1,4 +1,5 @@
 #include "McWorldSave.h"
+#include "McMapStore.h"
 #include "McServer.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -132,6 +133,26 @@ bool McWorldSave::SaveLevel(const FString& WorldDir, const FMcLevelData& Level)
 	}
 	Object->SetObjectField(TEXT("gameRules"), Rules);
 	return WriteJson(WorldDir / TEXT("level.json"), Object);
+}
+
+bool McWorldSave::SaveMaps(const FString& WorldDir)
+{
+	if (McMapStore::Num() == 0)
+	{
+		return true;
+	}
+	const FString Path = WorldDir / TEXT("maps.json");
+	IFileManager::Get().MakeDirectory(*WorldDir, true);
+	const FString Temp = Path + TEXT(".tmp");
+	return FFileHelper::SaveStringToFile(McMapStore::ToJson(), *Temp, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& IFileManager::Get().Move(*Path, *Temp, /*Replace=*/true);
+}
+
+bool McWorldSave::LoadMaps(const FString& WorldDir)
+{
+	McMapStore::Reset();
+	FString Text;
+	return FFileHelper::LoadFileToString(Text, *(WorldDir / TEXT("maps.json"))) && McMapStore::FromJson(Text);
 }
 
 bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)

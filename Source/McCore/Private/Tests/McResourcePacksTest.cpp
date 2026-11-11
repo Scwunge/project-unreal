@@ -626,6 +626,44 @@ bool FMcLanguageTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A pack's core shaders and post effects are found (folder and zip) and listed; nothing else counts as one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackShadersTest, "McClient.McCore.PackShaders",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackShadersTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackShadersTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString FolderDir = Root / TEXT("folder");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(FolderDir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("void main() {}"), *(FolderDir / TEXT("assets/minecraft/shaders/core/position.fsh")));
+	FFileHelper::SaveStringToFile(TEXT("{}"), *(FolderDir / TEXT("assets/minecraft/post_effect/blur.json")));
+	FFileHelper::SaveStringToFile(TEXT("png"), *(FolderDir / TEXT("assets/minecraft/textures/block/stone.png")));
+	const FString NonePath = Root / TEXT("none");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(NonePath / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("png"), *(NonePath / TEXT("assets/minecraft/textures/block/stone.png")));
+	const FString ZipPath = Root / TEXT("shaders.zip");
+	FFileHelper::SaveArrayToFile(MakeZip({
+		{ TEXT("pack.mcmeta"), Bytes(TEXT("{\"pack\":{\"pack_format\":97}}")), false },
+		{ TEXT("assets/other/shaders/core/x.vsh"), Bytes(TEXT("x")), true },
+		{ TEXT("assets/minecraft/textures/shaders/not.png"), Bytes(TEXT("png")), true } }), *ZipPath);
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Folder = FMcResourcePack::Open(FolderDir, &Error);
+	const TSharedPtr<FMcResourcePack> None = FMcResourcePack::Open(NonePath, &Error);
+	const TSharedPtr<FMcResourcePack> Zip = FMcResourcePack::Open(ZipPath, &Error);
+	if (!TestTrue(TEXT("the packs open: ") + Error, Folder.IsValid() && None.IsValid() && Zip.IsValid()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("folder: two shader files"), Folder->GetInfo().ShaderFiles.Num(), 2);
+	TestTrue(TEXT("folder: the core shader"), Folder->GetInfo().ShaderFiles.Contains(TEXT("assets/minecraft/shaders/core/position.fsh")));
+	TestTrue(TEXT("folder: the post effect"), Folder->GetInfo().ShaderFiles.Contains(TEXT("assets/minecraft/post_effect/blur.json")));
+	TestEqual(TEXT("a pack without shaders"), None->GetInfo().ShaderFiles.Num(), 0);
+	TestEqual(TEXT("zip: one, in another namespace; a texture under textures/shaders is not one"), Zip->GetInfo().ShaderFiles.Num(), 1);
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackBuiltInTest, "McClient.McCore.PackBuiltIn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
 
@@ -663,6 +701,57 @@ bool FMcPackBuiltInTest::RunTest(const FString& Parameters)
 	McPacks::SetPacks({ TEXT("programmer_art") });
 	TestEqual(TEXT("a selection of a built-in pack keeps its id"), McPacks::GetSelectedNames(), TArray<FString>({ TEXT("programmer_art") }));
 	McPacks::SetPacks(Before);
+	return true;
+}
+
+// A pack's own namespace: "zz:textures/a.png" is assets/zz/textures/a.png, found in the packs alone; the game's namespace
+// needs no prefix, and a namespace the jar has no copy of reads as a file that is not there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcPackNamespaceTest, "McClient.McCore.PackNamespace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcPackNamespaceTest::RunTest(const FString& Parameters)
+{
+	const FString Root = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McPackNamespaceTest"));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	const FString Dir = Root / TEXT("ns");
+	FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"pack_format\":97}}"), *(Dir / TEXT("pack.mcmeta")));
+	FFileHelper::SaveStringToFile(TEXT("zz font"), *(Dir / TEXT("assets/zz/font/pix.json")));
+	FFileHelper::SaveStringToFile(TEXT("mc model"), *(Dir / TEXT("assets/minecraft/models/item/zz_own.json")));
+	FFileHelper::SaveStringToFile(TEXT("zz model"), *(Dir / TEXT("assets/zz/models/item/own.json")));
+	FString Error;
+	const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(Dir, &Error);
+	if (!TestTrue(TEXT("the pack opens: ") + Error, Pack.IsValid()))
+	{
+		return false;
+	}
+	McPacks::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>({ Pack })));
+
+	FString Path;
+	TestTrue(TEXT("a namespaced file is found"), McPacks::TryResolve(TEXT("zz:font/pix.json"), Path));
+	FString Text;
+	FFileHelper::LoadFileToString(Text, *Path);
+	TestEqual(TEXT("its contents"), Text, FString(TEXT("zz font")));
+	TestTrue(TEXT("it is from a pack"), McPacks::IsFromPack(TEXT("zz:font/pix.json")));
+	TestFalse(TEXT("another namespace's file is not found"), McPacks::TryResolve(TEXT("yy:font/pix.json"), Path));
+	TestFalse(TEXT("the game's namespace does not see it"), McPacks::IsFromPack(TEXT("font/pix.json")));
+	TestTrue(TEXT("the game's namespace, written out"), McPacks::IsFromPack(TEXT("minecraft:models/item/zz_own.json")));
+	TestTrue(TEXT("and without the prefix"), McPacks::IsFromPack(TEXT("models/item/zz_own.json")));
+	TArray<TArray<uint8>> All;
+	McPacks::ReadAll(TEXT("zz:font/pix.json"), All);
+	TestEqual(TEXT("read in all"), All.Num(), 1);
+
+	TestEqual(TEXT("an id of the game"), McCache::RelativeOf(TEXT("minecraft:item/a"), TEXT("models/"), TEXT(".json")), FString(TEXT("models/item/a.json")));
+	TestEqual(TEXT("an id without a namespace"), McCache::RelativeOf(TEXT("item/a"), TEXT("models/"), TEXT(".json")), FString(TEXT("models/item/a.json")));
+	TestEqual(TEXT("an id of a pack"), McCache::RelativeOf(TEXT("zz:item/own"), TEXT("models/"), TEXT(".json")), FString(TEXT("zz:models/item/own.json")));
+	FFileHelper::LoadFileToString(Text, *McCache::AssetOf(TEXT("zz:item/own"), TEXT("models/"), TEXT(".json")));
+	TestEqual(TEXT("AssetOf finds the pack's file"), Text, FString(TEXT("zz model")));
+	FFileHelper::LoadFileToString(Text, *McCache::AssetOf(TEXT("minecraft:item/zz_own"), TEXT("models/"), TEXT(".json")));
+	TestEqual(TEXT("and the game's namespace's"), Text, FString(TEXT("mc model")));
+	TestFalse(TEXT("a namespace no pack has is a file that is not there"), IFileManager::Get().FileExists(*McCache::AssetOf(TEXT("zz:item/none"), TEXT("models/"), TEXT(".json"))));
+
+	McPacks::SetStack(MakeShared<FMcPackStack>());
+	TestFalse(TEXT("without the pack nothing is found"), McPacks::IsFromPack(TEXT("zz:font/pix.json")));
+	IFileManager::Get().DeleteDirectory(*Root, false, true);
 	return true;
 }
 

@@ -1,4 +1,8 @@
 #include "McPlayerController.h"
+#include "McItemFrames.h"
+#include "McSurvival.h"
+#include "McLeash.h"
+#include "McMount.h"
 #include "McMob.h"
 #include "ShaderCompiler.h"
 #include "McLaunch.h"
@@ -38,6 +42,10 @@
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#if MC_WITH_RENDER
+#include "DynamicRHI.h"
+#include "RenderTimer.h"
+#endif
 
 #if MC_WITH_RENDER
 #include "Engine/GameViewportClient.h"
@@ -248,35 +256,45 @@ void AMcPlayerController::ConnectToWorld()
 		bViewSetUp = true;
 	}
 	AMcPlayerPawn* MyPawn = Cast<AMcPlayerPawn>(GetPawn());
-	if (MyPawn && !MyPawn->HasBlockWorld())
+	// The local hooks (attack, set block, lid push) are set once. They are tied to the attack hook, not to the block world: the host's own pawn is
+	// hooked by HookServerPawn, which gives it a block world first, and then the hooks were never set (clicks on mobs did nothing).
+	if (MyPawn && !MyPawn->AttackHandler)
 	{
-		MyPawn->SetBlockWorld(BlockWorld);
-		MyPawn->LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
-		{
-			const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
-			const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
-			if (!Lids || Lids->GetTicks() == LastLidTick)
-			{
-				return FVector::ZeroVector;
-			}
-			LastLidTick = Lids->GetTicks();
-			return Lids->GetPush(Box);
-		};
-		MyPawn->AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestAttack(Look);
-			}
-		};
-		MyPawn->SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
-		{
-			if (UMcChunkStreamComponent* Stream = WeakStream.Get())
-			{
-				Stream->RequestSetBlock(Pos, State);
-			}
-		};
+		SetUpLocalPawn(*MyPawn);
 	}
+}
+
+void AMcPlayerController::SetUpLocalPawn(AMcPlayerPawn& LocalPawn)
+{
+	if (!LocalPawn.HasBlockWorld())
+	{
+		LocalPawn.SetBlockWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+	}
+	LocalPawn.LidPush = [WeakSelf = TWeakObjectPtr<AMcPlayerController>(this)](const FBox& Box, int64& LastLidTick)
+	{
+		const AMcWorldActor* World = WeakSelf.IsValid() ? WeakSelf->GetWorldActor() : nullptr;
+		const FMcShulkerLids* Lids = World ? World->GetShulkerLids() : nullptr;
+		if (!Lids || Lids->GetTicks() == LastLidTick)
+		{
+			return FVector::ZeroVector;
+		}
+		LastLidTick = Lids->GetTicks();
+		return Lids->GetPush(Box);
+	};
+	LocalPawn.AttackHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FVector& Look)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestAttack(Look);
+		}
+	};
+	LocalPawn.SetBlockHandler = [WeakStream = TWeakObjectPtr<UMcChunkStreamComponent>(ChunkStream)](const FIntVector& Pos, FMcStateId State)
+	{
+		if (UMcChunkStreamComponent* Stream = WeakStream.Get())
+		{
+			Stream->RequestSetBlock(Pos, State);
+		}
+	};
 }
 
 void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
@@ -317,6 +335,10 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		FMcEntityHost* Host = World.IsValid() ? World->GetEntityHost() : nullptr;
 		return Host ? &Host->GetManager() : nullptr;
 	};
+	Hooked.OnLocateStronghold = [World](const FVector& From, FVector2D& Out)
+	{
+		return World.IsValid() && World->FindNearestStronghold(From, Out);
+	};
 	Hooked.OnUseBlock = [World](AMcPlayerPawn& User, const FIntVector& Pos)
 	{
 		UMcBlockUseSubsystem* Use = User.GetWorld() ? User.GetWorld()->GetSubsystem<UMcBlockUseSubsystem>() : nullptr;
@@ -333,7 +355,7 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 	{
 		return World.IsValid() ? World->FindVehicle(Eye, Look, static_cast<float>(Reach)) : 0;
 	};
-	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative)
+	Hooked.MobAttack = [World, WeakAttacker = TWeakObjectPtr<AMcPlayerPawn>(&Hooked)](const FVector& Eye, const FVector& Look, double Reach, float Damage, bool bCreative, const FMcItemStack& Weapon, float Strength)
 	{
 		if (!World.IsValid())
 		{
@@ -345,14 +367,81 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 		{
 			static_cast<FMcVillager&>(*Target).AddReputation(AMcGameMode::GetPlayerName(WeakAttacker->GetController()), -McVillager::HitReputation);
 		}
-		return World->AttackMobs(Eye, Look, Reach, Damage, bCreative);
+		const FName TargetType = Target ? Target->GetType() : NAME_None;
+		const float HealthBefore = Target ? Target->Health : 0.0f;
+		const bool bHit = World->AttackMobs(Eye, Look, Reach, Damage, bCreative, &Weapon, Strength);
+		if (bHit && Target && WeakAttacker.IsValid() && WeakAttacker->Data)
+		{
+			// Statistics and the kill trigger: the health the blow took off, and a mob left with none was killed.
+			WeakAttacker->Data->AddStat(TEXT("custom:damage_dealt"), FMath::RoundToInt64(FMath::Max(0.0f, HealthBefore - FMath::Max(Target->Health, 0.0f)) * 10.0f));
+			// Hearts of dark red rise off a mob a player hurt by more than a heart (minecraft.wiki, "Damage indicator": one for each heart of damage).
+			const float Taken = HealthBefore - FMath::Max(Target->Health, 0.0f);
+			if (Taken >= 2.0f && World->GetEntityHost())
+			{
+				World->GetEntityHost()->GetManager().SpawnParticle(FName(TEXT("minecraft:damage_indicator")), Target->Body.Position + FVector(0.0, Target->Body.Height * 0.5, 0.0),
+					FVector(0.1, 0.0, 0.1), 0.2f, FMath::Clamp(FMath::RoundToInt(Taken * 0.5f), 1, 20));
+			}
+			if (HealthBefore > 0.0f && Target->Health <= 0.0f)
+			{
+				WeakAttacker->Data->AddStat(TEXT("custom:mob_kills"));
+				WeakAttacker->Data->AddStat(TEXT("killed:") + TargetType.ToString());
+				FMcTriggerEvent Killed;
+				Killed.Trigger = TEXT("minecraft:player_killed_entity");
+				Killed.Entity = TargetType;
+				WeakAttacker->FireTrigger(Killed);
+			}
+		}
+		return bHit;
 	};
+	Hooked.OnTrigger = [](AMcPlayerPawn& Who, const FMcTriggerEvent& Event) { AMcGameMode::FireTrigger(Who, Event); };
 	Hooked.OnUseMob = [World](AMcPlayerPawn& User, const FVector& Eye, const FVector& Look, double Reach)
 	{
 		FMcMob* Mob = World.IsValid() && User.Data ? World->FindMob(Eye, Look, static_cast<float>(Reach) + 0.5f) : nullptr;
 		if (!Mob)
 		{
 			return false;
+		}
+		// A lead ties it to the player, or a tied one is let go.
+		if (FMcEntityHost* LeadHost = World->GetEntityHost())
+		{
+			FMcItemStack& HeldLead = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			if (Mob->bLeashed && Mob->LeashKnot == 0)
+			{
+				McLeash::Detach(LeadHost->GetManager(), *Mob, !User.Data->bCreative);
+				return true;
+			}
+			if (!HeldLead.IsEmpty() && HeldLead.Item == TEXT("minecraft:lead") && McLeash::Attach(*Mob, User.GetFeetPosition()))
+			{
+				if (!User.Data->bCreative && --HeldLead.Count <= 0)
+				{
+					HeldLead.Clear();
+				}
+				return true;
+			}
+		}
+		// A horse, donkey or mule: saddle, armour, chest, food, or a seat on its back.
+		if (McMount::IsRideable(*Mob) && World->GetEntityHost())
+		{
+			FMcItemStack& HeldMount = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			const McMount::EUse Result = McMount::Use(World->GetEntityHost()->GetManager(), *Mob, HeldMount, User.GetUniqueID(), User.Data->bCreative, User.IsSneakPosed());
+			if (Result == McMount::EUse::Mounted)
+			{
+				User.ServerRide(Mob->Id);
+			}
+			if (Result == McMount::EUse::Inventory && Mob->Mount.IsValid())
+			{
+				// Sneaking on a tamed animal opens its saddle, armour and chest slots; the title is its name.
+				FString Name = Mob->GetType().ToString();
+				Name.RemoveFromStart(TEXT("minecraft:"));
+				Name = Name.Left(1).ToUpper() + Name.Mid(1);
+				User.Data->OpenBlockWindow(EMcWindowKind::Horse, FIntVector(FMath::FloorToInt32(Mob->Body.Position.X), FMath::FloorToInt32(Mob->Body.Position.Y), FMath::FloorToInt32(Mob->Body.Position.Z)),
+					Name, McMount::GetInventory(*Mob->Mount), nullptr);
+				User.Data->MarkWindowOnEntity(Mob->Id);
+			}
+			if (Result != McMount::EUse::None)
+			{
+				return true;
+			}
 		}
 		const FString Player = AMcGameMode::GetPlayerName(User.GetController());
 		const TWeakObjectPtr<AMcWorldActor> WeakWorld = World;
@@ -385,6 +474,15 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 					Mob->OwnerName = Player;
 					Mob->AngerTicks = 0;
 					Mob->Health = 40.0f;
+					FMcTriggerEvent Tamed;
+					Tamed.Trigger = TEXT("minecraft:tame_animal");
+					Tamed.Entity = Mob->GetType();
+					User.FireTrigger(Tamed);
+					if (World->GetEntityHost())
+					{
+						World->GetEntityHost()->GetManager().SpawnParticle(FName(TEXT("minecraft:heart")), Mob->Body.Position + FVector(0.0, Mob->Body.Height * 0.8, 0.0),
+							FVector(0.4, 0.3, 0.4), 0.0f, 7);
+					}
 				}
 				return true;
 			}
@@ -557,6 +655,22 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			FMcEntityHost* Host = World->GetEntityHost();
 			return Host && FMcPrimedTnt::Ignite(Host->GetManager(), Pos) != nullptr;
 		}
+		if (Held == TEXT("minecraft:compass") && Registry.GetBlockOf(Blocks->GetBlock(Pos)).Name == TEXT("minecraft:lodestone"))
+		{
+			// A compass used on a lodestone points at it from then on (one of a stack is tied, the rest stay).
+			FMcItemStack& Compass = User.Data->Inventory->GetMutable(User.Data->SelectedSlot);
+			FMcItemStack Tied(Compass.Item, 1);
+			Tied.Components = Compass.Components;
+			McItemFrames::SetLodestone(Tied, Pos, Blocks->GetDimension().Name);
+			if (Compass.Count > 1 && !User.Data->bCreative)
+			{
+				Compass.Count -= 1;
+				McSurvival::GiveItem(*User.Data->Inventory, Tied);
+				return true;
+			}
+			Compass = Tied;
+			return true;
+		}
 		if (Held == TEXT("minecraft:flint_and_steel"))
 		{
 			if (!Registry.IsAir(Blocks->GetBlock(Beside)))
@@ -675,6 +789,13 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			if (Host && WeakPawn.IsValid())
 			{
 				Host->GetManager().PlaySound(Event, WeakPawn->GetFeetPosition() + FVector(0.0, 1.0, 0.0), Volume, Pitch);
+			}
+		};
+		Data->ServerContainerEvent = [WeakPawn](const FIntVector& Pos, bool bOpen)
+		{
+			if (WeakPawn.IsValid())
+			{
+				WeakPawn->ServerGameEvent(FName(bOpen ? "container_open" : "container_close"), FVector(Pos) + FVector(0.5));
 			}
 		};
 		Data->ServerWindowValid = [World, WeakPawn](const FMcWindow& Window)
@@ -801,7 +922,7 @@ void AMcPlayerController::AttachView()
 	SpawnEnvironment();
 	if (UMcAudioSubsystem* Audio = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMcAudioSubsystem>() : nullptr)
 	{
-		Audio->SetListenerWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr);
+		Audio->SetListenerWorld(WorldActor ? WorldActor->GetBlockWorld() : nullptr, WorldActor);
 	}
 #endif
 }
@@ -1225,6 +1346,22 @@ void AMcPlayerController::StartDevScreenshot()
 			return;
 		}
 		UE_LOG(LogMcClient, Display, TEXT("McShot: saving %s (%.1f fps, %.1f fps over the last 3 s)"), *ShotPath, 1.0f / FMath::Max(FApp::GetDeltaTime(), 0.0001), FpsWindow->Average());
+#if MC_WITH_RENDER && !UE_BUILD_SHIPPING
+		// Where the frame goes, for finding what to cut: milliseconds of the game thread, the render thread and the GPU.
+		UE_LOG(LogMcClient, Display, TEXT("McShot: frame ms: game %.1f, render %.1f, gpu %.1f"),
+			FPlatformTime::ToMilliseconds(GGameThreadTime), FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
+		// Development: -McShotExec=cmd;cmd runs console commands now (ProfileGPU writes a table of the GPU passes to the log).
+		FString Exec;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-McShotExec="), Exec, /*bShouldStopOnSeparator=*/ false))
+		{
+			TArray<FString> Commands;
+			Exec.ParseIntoArray(Commands, TEXT(";"));
+			for (const FString& Command : Commands)
+			{
+				GEngine->Exec(GetWorld(), *Command);
+			}
+		}
+#endif
 		FScreenshotRequest::RequestScreenshot(ShotPath, false, false);
 		FTimerHandle ExitTimer;
 		GetWorldTimerManager().SetTimer(ExitTimer, FTimerDelegate::CreateWeakLambda(this, []()

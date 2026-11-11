@@ -892,7 +892,6 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcJavaExportTest, "McClient.McServer.JavaExport.RoundTrip",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
@@ -1897,3 +1896,5 @@ bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+
+#endif

@@ -4,12 +4,17 @@
 #include "McFurnace.h"
 #include "McGuiLayout.h"
 #include "McHUD.h"
+#include "McItemDefinition.h"
+#include "McItemStack.h"
 #include "McItemRegistry.h"
 #include "McMenuInput.h"
 #include "McPlayerData.h"
 #include "McResourcePacks.h"
 #include "McRecipe.h"
 #include "McScreenLayout.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -69,6 +74,25 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	Stats.Food = 5;
 	Layout = ComputeHud(320, 240, Stats);
 	TestTrue(TEXT("food halves the same way"), Layout.Food[1].Fill == EIcon::Full && Layout.Food[2].Fill == EIcon::Half && Layout.Food[3].Fill == EIcon::Empty);
+
+	// Riding a horse (22 health, a charge half done): its 11 hearts take the food row's place, a second row above, and the jump bar the experience bar.
+	Stats.MountHealth = 15.0f;
+	Stats.MountMaxHealth = 22.0f;
+	Stats.MountJump = 0.5f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestEqual(TEXT("no food while riding"), Layout.Food.Num(), 0);
+	TestEqual(TEXT("eleven mount hearts"), Layout.Mount.Num(), 11);
+	TestPoint(TEXT("the first mount heart is where the food starts"), Layout.Mount[0].Pos, FIntPoint(242, 201));
+	TestPoint(TEXT("the eleventh opens a row above"), Layout.Mount[10].Pos, FIntPoint(242, 191));
+	TestTrue(TEXT("seven and a half hearts of health"), Layout.Mount[6].Fill == EIcon::Full && Layout.Mount[7].Fill == EIcon::Half && Layout.Mount[8].Fill == EIcon::Empty);
+	TestTrue(TEXT("the jump bar replaces the experience bar"), Layout.bShowJump && Layout.JumpFill == 91);
+	Stats.MountJump = 0.0f;
+	Layout = ComputeHud(320, 240, Stats);
+	TestFalse(TEXT("an idle mount leaves the experience bar"), Layout.bShowJump);
+	Stats.MountHealth = 0.0f;
+	Stats.MountMaxHealth = 0.0f;
+	Stats.MountJump = -1.0f;
+	Layout = ComputeHud(320, 240, Stats);
 
 	// The hurt flash.
 	TestFalse(TEXT("no flash when not hurt"), IsHurtBlink(0));
@@ -144,6 +168,38 @@ bool FMcHudLayoutTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("an undamaged item has no bar"), GetDurabilityBar(0, 100).bShow);
 	TestFalse(TEXT("an item with no durability has none"), GetDurabilityBar(5, 0).bShow);
 	TestEqual(TEXT("half damaged, half the 13 pixels"), GetDurabilityBar(50, 100).Width, 7);
+	// Bundles (vanilla ref run bundle1): 1, 16, 32, 48, 63 and 64 of 64 sticks.
+	TestFalse(TEXT("an empty bundle has no bar"), GetBundleBar(0.0).bShow);
+	const double Fulls[] = {1.0 / 64, 16.0 / 64, 32.0 / 64, 48.0 / 64, 63.0 / 64, 1.0};
+	const int32 Widths[] = {1, 4, 7, 10, 12, 13};
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		TestEqual(TEXT("bundle bar width"), GetBundleBar(Fulls[Index]).Width, Widths[Index]);
+	}
+	// The bundle tooltip (ref runs bundletip, bundletip2): 4 columns, items in the last cells; the content
+	// is 12 (title and gap) + the body + 4 + 13 high: 47 for the description (2 lines), 101 for 3 rows of cells.
+	TestEqual(TEXT("always 4 columns"), GetBundleGrid(1).Columns, 4);
+	TestEqual(TEXT("1 item one row"), GetBundleGrid(1).Rows, 1);
+	TestEqual(TEXT("1 item 3 blanks"), GetBundleGrid(1).Blanks, 3);
+	TestEqual(TEXT("5 items 2 rows"), GetBundleGrid(5).Rows, 2);
+	TestEqual(TEXT("5 items 3 blanks"), GetBundleGrid(5).Blanks, 3);
+	TestEqual(TEXT("12 items 3 rows"), GetBundleGrid(12).Rows, 3);
+	TestEqual(TEXT("12 items no blanks"), GetBundleGrid(12).Blanks, 0);
+	TestEqual(TEXT("13 items hide 5"), GetBundleGrid(13).Hidden, 5);
+	TestEqual(TEXT("13 items show 8 after 3 blanks"), GetBundleGrid(13).Blanks, 3);
+	TestEqual(TEXT("16 items hide 5"), GetBundleGrid(16).Hidden, 5);
+	TestEqual(TEXT("16 items no blanks"), GetBundleGrid(16).Blanks, 0);
+	TestEqual(TEXT("17 items hide 9"), GetBundleGrid(17).Hidden, 9);
+	TestEqual(TEXT("17 items 3 blanks"), GetBundleGrid(17).Blanks, 3);
+	TestEqual(TEXT("24 items hide 13"), GetBundleGrid(24).Hidden, 13);
+	TestEqual(TEXT("12 items hide none"), GetBundleGrid(12).Hidden, 0);
+	TestEqual(TEXT("10 items 4 columns"), GetBundleGrid(10).Columns, 4);
+	TestEqual(TEXT("10 items 3 rows"), GetBundleGrid(10).Rows, 3);
+	TestEqual(TEXT("10 items 2 blanks"), GetBundleGrid(10).Blanks, 2);
+	TestEqual(TEXT("empty tooltip height"), GetBundleTipHeight(0, 2), 47);
+	TestEqual(TEXT("three rows tooltip height"), GetBundleTipHeight(3, 0), 101);
+	TestEqual(TEXT("blue while there is room"), GetBundleBar(0.5).Color, 0x7087FFu);
+	TestEqual(TEXT("red when full"), GetBundleBar(1.0).Color, 0xFF5454u);
 	TestEqual(TEXT("one point off, still full width"), GetDurabilityBar(1, 1561).Width, 13);
 	TestEqual(TEXT("nearly broken, a pixel"), GetDurabilityBar(99, 100).Width, 0);
 	const uint32 Half = GetDurabilityBar(50, 100).Color;
@@ -945,6 +1001,62 @@ bool FMcPackGuiTest::RunTest(const FString& Parameters)
 	McPacks::SetStack(MakeShared<FMcPackStack>());
 	TestEqual(TEXT("without the pack the game's again"), AMcHUD::SpritePath(Panorama), GamePath);
 	IFileManager::Get().DeleteDirectory(*Root, false, true);
+	return true;
+}
+
+// An item definition picks its model from the stack: select and range_dispatch on custom_model_data, condition on damaged,
+// composite giving two models, tints read, an unknown property taking the fallback.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcItemDefinitionTest, "McClient.McUI.ItemDefinition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcItemDefinitionTest::RunTest(const FString& Parameters)
+{
+	const auto Parse = [](const TCHAR* Text)
+	{
+		TSharedPtr<FJsonObject> Json;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(Text)), Json);
+		return Json;
+	};
+	const auto Models = [](const TArray<McItemDef::FModelRef>& Refs)
+	{
+		FString Text;
+		for (const McItemDef::FModelRef& Ref : Refs)
+		{
+			Text += Ref.Model + TEXT(";");
+		}
+		return Text;
+	};
+	const auto WithData = [](const TCHAR* DataJson)
+	{
+		FMcItemStack Stack(TEXT("minecraft:stick"), 1);
+		TSharedPtr<FJsonValue> Value;
+		FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(FString(DataJson)), Value);
+		Stack.Set(TEXT("minecraft:custom_model_data"), Value);
+		return Stack;
+	};
+	const TSharedPtr<FJsonObject> Select = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:custom_model_data\",\"cases\":[{\"when\":\"blue\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:blue\",\"tints\":[{\"type\":\"minecraft:constant\",\"value\":255}]}},{\"when\":[\"a\",\"b\"],\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:ab\"}}],"
+		"\"fallback\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:custom_model_data\",\"entries\":[{\"threshold\":1,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:one\"}},{\"threshold\":2,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:two\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:none\"}}}}"));
+	using McItemDef::EContext;
+	TestEqual(TEXT("a string case"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui)), FString(TEXT("m:blue;")));
+	const TArray<McItemDef::FModelRef> Blue = McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"blue\"]}")), EContext::Gui);
+	TestTrue(TEXT("its constant tint, opaque blue"), Blue.Num() == 1 && Blue[0].Tints.Num() == 1 && Blue[0].Tints[0] == 0xFF0000FFu);
+	TestEqual(TEXT("a case with a list"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"strings\":[\"b\"]}")), EContext::Gui)), FString(TEXT("m:ab;")));
+	TestEqual(TEXT("no string: range_dispatch, float 1"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.0]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 1.5 takes the lower threshold"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[1.5]}")), EContext::Gui)), FString(TEXT("m:one;")));
+	TestEqual(TEXT("float 2"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[2.0]}")), EContext::Gui)), FString(TEXT("m:two;")));
+	TestEqual(TEXT("float below every threshold: the fallback"), Models(McItemDef::ResolveJson(Select, WithData(TEXT("{\"floats\":[0.5]}")), EContext::Gui)), FString(TEXT("m:none;")));
+	TestEqual(TEXT("no data: the fallback"), Models(McItemDef::ResolveJson(Select, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:none;")));
+
+	const TSharedPtr<FJsonObject> Condition = Parse(TEXT("{\"model\":{\"type\":\"minecraft:condition\",\"property\":\"minecraft:custom_model_data\",\"index\":1,\"on_true\":{\"type\":\"minecraft:composite\",\"models\":[{\"type\":\"minecraft:model\",\"model\":\"m:a\"},{\"type\":\"minecraft:model\",\"model\":\"m:b\"}]},\"on_false\":{\"type\":\"minecraft:empty\"}}}"));
+	TestEqual(TEXT("a flag set: the composite's two models"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[false,true]}")), EContext::Gui)), FString(TEXT("m:a;m:b;")));
+	TestEqual(TEXT("a flag unset: empty"), Models(McItemDef::ResolveJson(Condition, WithData(TEXT("{\"flags\":[true,false]}")), EContext::Gui)), FString());
+
+	const TSharedPtr<FJsonObject> Context = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:display_context\",\"cases\":[{\"when\":\"gui\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:gui\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:other\"}}}"));
+	TestEqual(TEXT("display_context gui"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:gui;")));
+	TestEqual(TEXT("display_context hand"), Models(McItemDef::ResolveJson(Context, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::FirstPersonRightHand)), FString(TEXT("m:other;")));
+
+	const TSharedPtr<FJsonObject> Unknown = Parse(TEXT("{\"model\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:compass\",\"entries\":[{\"threshold\":0.5,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:never\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:fallback\"}}}"));
+	TestEqual(TEXT("an unread property reads 0: the fallback"), Models(McItemDef::ResolveJson(Unknown, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:fallback;")));
 	return true;
 }
 

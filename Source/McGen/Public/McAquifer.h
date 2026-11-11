@@ -35,6 +35,7 @@ public:
 		TMap<FIntVector, FIntVector> Centres;
 		TMap<FIntVector, FStatus> Statuses;
 		TMap<FIntPoint, int32> Surfaces;
+		TMap<FIntPoint, int32> ExactSurfaces;
 	};
 
 	// Reads the aquifers object's functions into Graph. False when there is none (aquifers off).

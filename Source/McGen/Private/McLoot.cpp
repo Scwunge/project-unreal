@@ -1,8 +1,10 @@
 #include "McLoot.h"
+#include "McEnchantEffects.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
+#include "McDataPacks.h"
 #include "McGen.h"
 #include "McItemRegistry.h"
 #include "McNbt.h"
@@ -23,6 +25,8 @@ namespace
 	thread_local const McLoot::FFishingContext* GFishing = nullptr;
 	// Whether the mob whose table is being rolled leads a raid party: 1 or 0, -1 when the roll is for no mob.
 	thread_local int32 GCaptain = -1;
+	// The Looting level of the weapon that killed the mob whose table is being rolled (0 for none).
+	thread_local int32 GLooting = 0;
 	// The mob being rolled for, if its context is set (McLoot::FMobScope).
 	thread_local const McLoot::FMobContext* GMob = nullptr;
 
@@ -35,10 +39,18 @@ namespace
 			return *Found;
 		}
 		TSharedPtr<FJsonObject> Table;
-		const FString Path = McCache::Data(TEXT("loot_table/") + McCache::PathOf(Key) + TEXT(".json"));
-		if (IFileManager::Get().FileExists(*Path))
+		// A data pack's table of the id (any namespace) wins over the game's.
+		const FString Path = McData::PathOf(Key, TEXT("loot_table"), TEXT(".json"));
+		if (!Path.IsEmpty())
 		{
 			Table = McCache::LoadJsonObject(Path);
+		}
+		static bool bHooked = false;
+		if (!bHooked)
+		{
+			// /reload drops what was read.
+			bHooked = true;
+			McData::OnReload().AddLambda([]() { FScopeLock Lock(&TablesLock); Tables.Empty(); });
 		}
 		if (!Table.IsValid())
 		{
@@ -316,6 +328,13 @@ namespace
 		if (Type == TEXT("random_chance"))
 		{
 			return Random.NextDouble() < Real(Object->TryGetField(TEXT("chance")), Random) ? 1 : 0;
+		}
+		if (Type == TEXT("random_chance_with_enchanted_bonus"))
+		{
+			// A rare drop: its own chance, or the better one that the killer's Looting level gives.
+			const float Chance = GLooting > 0 ? McEnchantEffects::EvalLevelBased(Object->TryGetField(TEXT("enchanted_chance")), GLooting)
+				: static_cast<float>(Object->GetNumberField(TEXT("unenchanted_chance")));
+			return Random.NextDouble() < Chance ? 1 : 0;
 		}
 		if (Type == TEXT("survives_explosion"))
 		{
@@ -736,6 +755,14 @@ namespace
 			bool bAdd = false;
 			Object->TryGetBoolField(TEXT("add"), bAdd);
 			Stack.Count = bAdd ? Stack.Count + Amount : Amount;
+		}
+		else if (Type == TEXT("enchanted_count_increase"))
+		{
+			// Looting adds its level times a roll of the count.
+			if (GLooting > 0)
+			{
+				Stack.Count += FMath::RoundToInt32(GLooting * static_cast<float>(Real(Object->TryGetField(TEXT("count")), Random)));
+			}
 		}
 		else if (Type == TEXT("explosion_decay") && GBlock && GBlock->ExplosionRadius > 0.0f)
 		{
@@ -1213,12 +1240,15 @@ bool McLoot::Roll(const FString& Table, FMcRandom& Random, TArray<FMcItemStack>&
 	return true;
 }
 
-bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out)
+bool McLoot::RollEntity(const FString& Table, bool bCaptain, FMcRandom& Random, TArray<FMcItemStack>& Out, int32 Looting)
 {
 	const int32 Previous = GCaptain;
+	const int32 PreviousLooting = GLooting;
 	GCaptain = bCaptain ? 1 : 0;
+	GLooting = Looting;
 	const bool bRolled = Roll(Table, Random, Out);
 	GCaptain = Previous;
+	GLooting = PreviousLooting;
 	return bRolled;
 }
 
@@ -1230,7 +1260,7 @@ bool McLoot::RollBlock(const FBlockContext& Context, FMcRandom& Random, TArray<F
 		return false;
 	}
 	const FString Table = TEXT("blocks/") + McCache::PathOf(Registry.GetBlockOf(Context.State).Name.ToString());
-	if (!IFileManager::Get().FileExists(*McCache::Data(TEXT("loot_table/") + Table + TEXT(".json"))))
+	if (McData::PathOf(Table, TEXT("loot_table"), TEXT(".json")).IsEmpty())
 	{
 		// Air, bedrock and the like drop nothing; no warning for that.
 		return false;

@@ -1,5 +1,6 @@
 #include "McWorkstationMenus.h"
 #include "McItemRegistry.h"
+#include "McMapStore.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
@@ -729,5 +730,171 @@ void FMcLoomMenu::OnClosed(TArray<FMcItemStack>& Dropped)
 {
 	Table->Set(ResultSlot, FMcItemStack());
 	GiveBack(*Table, 3, *Player, Dropped);
+	Refresh();
+}
+
+// ---- Cartography table ----
+
+FMcCartographyMenu::FMcCartographyMenu(const TSharedPtr<FMcContainer>& PlayerInventory)
+	: Table(MakeShared<FMcContainer>(3))
+	, Player(PlayerInventory)
+{
+	AddSlot(Table, MapSlot);
+	AddSlot(Table, MaterialSlot);
+	AddSlot(Table, ResultSlot);
+	AddPlayerSlots(PlayerInventory);
+}
+
+FMcCartographyMenu::EOperation FMcCartographyMenu::GetOperation(const FMcItemStack& Map, const FMcItemStack& Material)
+{
+	if (Map.Item != FName(TEXT("minecraft:filled_map")) || Map.IsEmpty() || Material.IsEmpty())
+	{
+		return EOperation::None;
+	}
+	const FMcMapData* Data = McMapStore::Find(McMapStore::GetId(Map));
+	if (!Data)
+	{
+		return EOperation::None;
+	}
+	if (Material.Item == FName(TEXT("minecraft:paper")))
+	{
+		return McMapStore::CanZoom(Map) ? EOperation::Zoom : EOperation::None;
+	}
+	if (Material.Item == FName(TEXT("minecraft:map")))
+	{
+		return EOperation::Copy;
+	}
+	if (Material.Item == FName(TEXT("minecraft:glass_pane")))
+	{
+		return Data->bLocked ? EOperation::None : EOperation::Lock;
+	}
+	return EOperation::None;
+}
+
+FMcItemStack FMcCartographyMenu::GetPreview(const FMcItemStack& Map, const FMcItemStack& Material)
+{
+	FMcItemStack Out = Map;
+	Out.Count = 1;
+	switch (GetOperation(Map, Material))
+	{
+	case EOperation::Zoom:
+		McMapStore::SetId(Out, McMapStore::Zoom(McMapStore::GetId(Map)));
+		return Out;
+	case EOperation::Copy:
+		Out.Count = 2;
+		return Out;
+	case EOperation::Lock:
+		return Out;
+	default:
+		return FMcItemStack();
+	}
+}
+
+FMcItemStack FMcCartographyMenu::MakeResult() const
+{
+	const FMcItemStack& Map = Table->Get(MapSlot);
+	FMcItemStack Out = GetPreview(Map, Table->Get(MaterialSlot));
+	if (!Out.IsEmpty() && GetCurrentOperation() == EOperation::Lock)
+	{
+		McMapStore::SetId(Out, McMapStore::LockedCopy(McMapStore::GetId(Map)));
+	}
+	return Out;
+}
+
+void FMcCartographyMenu::Consume()
+{
+	for (const int32 Slot : { MapSlot, MaterialSlot })
+	{
+		FMcItemStack Used = Table->Get(Slot);
+		Used.Count -= 1;
+		Table->Set(Slot, Used.Count > 0 ? Used : FMcItemStack());
+	}
+	Refresh();
+}
+
+void FMcCartographyMenu::Refresh()
+{
+	Table->Set(ResultSlot, GetPreview(Table->Get(MapSlot), Table->Get(MaterialSlot)));
+}
+
+bool FMcCartographyMenu::MayPlace(int32 Slot, const FMcItemStack& Stack) const
+{
+	if (Slot == MapSlot)
+	{
+		return Stack.Item == FName(TEXT("minecraft:filled_map"));
+	}
+	if (Slot >= PlayerStart)
+	{
+		return true;
+	}
+	return Slot == MaterialSlot && (Stack.Item == FName(TEXT("minecraft:paper")) || Stack.Item == FName(TEXT("minecraft:map")) || Stack.Item == FName(TEXT("minecraft:glass_pane")));
+}
+
+void FMcCartographyMenu::SlotChanged(int32 Slot)
+{
+	if (Slot == MapSlot || Slot == MaterialSlot)
+	{
+		Refresh();
+	}
+}
+
+void FMcCartographyMenu::OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>& Dropped)
+{
+	if (Slot != ResultSlot)
+	{
+		return;
+	}
+	// Whatever part of the stack the click split off, the whole result comes (two maps for a copy).
+	Taken = MakeResult();
+	Consume();
+}
+
+FMcItemStack FMcCartographyMenu::QuickMoveStack(int32 Slot)
+{
+	const FMcItemStack Original = GetStack(Slot);
+	if (Original.IsEmpty())
+	{
+		return FMcItemStack();
+	}
+	if (Slot == ResultSlot)
+	{
+		FMcItemStack Made = MakeResult();
+		if (Made.IsEmpty() || !Player->CanAddItem(Made))
+		{
+			return FMcItemStack();
+		}
+		FMcItemStack Rest = Made;
+		MoveItemStackTo(Rest, PlayerStart, NumSlots(), true);
+		Consume();
+		return Made;
+	}
+	FMcItemStack Rest = Original;
+	bool bMoved;
+	if (Slot < PlayerStart)
+	{
+		bMoved = MoveItemStackTo(Rest, PlayerStart, NumSlots(), true);
+	}
+	else
+	{
+		const int32 Into = MayPlace(MapSlot, Original) ? MapSlot : MaterialSlot;
+		const int32 HotbarStart = PlayerStart + 27;
+		bMoved = MayPlace(Into, Original) && MoveItemStackTo(Rest, Into, Into + 1, false);
+		if (!bMoved)
+		{
+			bMoved = Slot >= HotbarStart ? MoveItemStackTo(Rest, PlayerStart, HotbarStart, false) : MoveItemStackTo(Rest, HotbarStart, NumSlots(), false);
+		}
+	}
+	if (!bMoved)
+	{
+		return FMcItemStack();
+	}
+	SetStack(Slot, Rest.Count > 0 ? Rest : FMcItemStack());
+	return Original;
+}
+
+void FMcCartographyMenu::OnClosed(TArray<FMcItemStack>& Dropped)
+{
+	Table->Set(ResultSlot, FMcItemStack());
+	GiveBack(*Table, 2, *Player, Dropped);
 	Refresh();
 }

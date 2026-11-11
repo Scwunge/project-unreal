@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "McGameEvent.h"
 #include "CoreMinimal.h"
 #include "McCore.h"
 
@@ -25,7 +26,12 @@ public:
 	bool RunTick(const FIntVector& Pos, FMcStateId State);
 	// Pistons told of a change while a game tick's scheduled ticks run act at the end of that same tick (block events),
 	// not the next one (reference run rs_world, an observer pulse driving a piston).
-	void BeginTick() { bInTick = true; }
+	void BeginTick()
+	{
+		bInTick = true;
+		for (const FIntVector& Pos : NextPistonEvents) PistonEvents.AddUnique(Pos);
+		NextPistonEvents.Reset();
+	}
 	void EndTick();
 
 	// What stands on a pressure plate: how many entities. Pressing and releasing follow.
@@ -33,7 +39,15 @@ public:
 	void HitTarget(const FIntVector& Pos, int32 Power, int32 Duration);
 	// Something at Source made a vibration of the given frequency (1 to 15): sculk sensors within range hear it after a delay
 	// of one tick a block (minecraft.wiki, "Sculk Sensor"; reference run rs_sculk).
-	void Vibrate(const FIntVector& Source, int32 Frequency);
+	void Vibrate(const FMcGameEvent& Event);
+	// A wool or carpet block on the ray between the centres of the two cells.
+	bool IsOccluded(const FIntVector& From, const FIntVector& To) const;
+	// A player or tamed wolf hit the creaking tied to the heart at Pos.
+	void CreakingHit(const FIntVector& Pos);
+	// A player stands on the shrieker at Pos.
+	void ShriekerTouched(const FIntVector& Pos, int32 PlayerId);
+	// A book went into or out of slot 0 to 5 of the chiseled bookshelf at Pos (-1: none has been used).
+	void BookshelfUsed(const FIntVector& Pos, int32 Slot);
 	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
 	void SetDetector(const FIntVector& Pos, bool bOccupied);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
@@ -41,6 +55,8 @@ public:
 	// A container at Pos changed what it holds: the comparators that read it look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
 	void PlayerPlaced(const FIntVector& Pos);
+	// A lightning bolt hit Pos (or the cell above a lightning rod).
+	void LightningStruck(const FIntVector& Pos);
 	// A player broke the block that was at Pos (its kind in State): a vibration of 12.
 	void PlayerBroke(const FIntVector& Pos, FMcStateId State);
 
@@ -147,6 +163,11 @@ private:
 	TSet<FIntVector> DirtyDust;
 	bool bFlushing = false;
 	bool bInTick = false;
+	// A moving block is landing: its neighbours hear of it after this tick's block events, so a piston acts next tick.
+	bool bLanding = false;
+	TArray<FIntVector> NextPistonEvents;
+	// Composters at level 7 with their turn to 8 scheduled.
+	TSet<FIntVector> ComposterPending;
 	TArray<FIntVector> PistonEvents;
 	// Set while an observer changes its own state, which is not a new observer.
 	bool bObserverSelf = false;
@@ -154,6 +175,9 @@ private:
 	bool bQuietChange = false;
 	// Set while a dust network is worked out: dust gives no signal to the blocks it is reading.
 	bool bIgnoreDust = false;
+	// Dust states by power and links (power * 81 + links in base 3), and whether a dust state is a dot: worked out once.
+	mutable TArray<FMcStateId> DustByCode;
+	mutable TMap<FMcStateId, bool> DustIsDot;
 	int32 SunLight = 15;
 	int32 SkyLevel = 15;
 	double SunScale = 1.0;
@@ -162,9 +186,20 @@ private:
 	TMap<FIntVector, int32> Plates;
 	TMap<FIntVector, int64> TargetUntil;
 	// A vibration on its way to a sensor: when it arrives and the strength it gives.
-	struct FVibration { int64 Arrive; int32 Power; };
+	struct FVibration { int64 Arrive; int32 Power; bool bPlayer = false; int32 PlayerId = 0; FIntVector Source = FIntVector::ZeroValue; };
 	TMap<FIntVector, FVibration> Vibrations;
+	TMap<FIntVector, int32> BookshelfSignal;
 	void TickSculk(const FIntVector& Pos, FMcStateId State);
+	void TickShrieker(const FIntVector& Pos, FMcStateId State);
+	void TickCreakingHeart(const FIntVector& Pos, FMcStateId State);
+	TSet<FIntVector> Hearts;
+	TMap<FIntVector, int32> HeartLevel;
+	TMap<FIntVector, int64> SpawnReady;
+	TMap<FIntVector, int64> ResinNext;
+	FRandomStream ResinRandom{ 77 };
+	void Shriek(const FIntVector& Pos, int32 PlayerId);
+	void HearVibration(const FIntVector& Cell, const FMcGameEvent& Event);
+	void Emit(const TCHAR* Name, const FIntVector& Pos, bool bPlayer = false);
 	TSet<FIntVector> Detectors;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;

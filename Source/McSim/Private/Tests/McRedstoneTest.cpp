@@ -464,8 +464,10 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);
 		FMcSimulation Sim(World);
-		World.SetBlock(FIntVector(5, 1, 0), State(TEXT("minecraft:piston[extended=false,facing=east]")));
+		// (The power is there when the piston is placed: a piston hears of a change next to it, and a redstone block
+		// placed two above tells nothing past its own neighbours.)
 		World.SetBlock(FIntVector(5, 3, 0), State(TEXT("minecraft:redstone_block")));
+		World.SetBlock(FIntVector(5, 1, 0), State(TEXT("minecraft:piston[extended=false,facing=east]")));
 		Run(Sim, 3);
 		TestEqual(TEXT("the piston fires"), Registry.GetBlockOf(World.GetBlock(FIntVector(6, 1, 0))).Name.ToString(), FString(TEXT("minecraft:piston_head")));
 	}

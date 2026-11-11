@@ -485,12 +485,12 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		return Registry.GetBlockOf(Blocks.GetBlock(Muzzle)).Name.ToString();
 	};
 	FMcItemStack Remain;
-	TestEqual(TEXT("a fire charge lights the air in front"), Fire(0, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
+	// A fire charge is launched as a small fireball and lights nothing in front (reference run lg_disp).
+	TestEqual(TEXT("a fire charge does not light the air in front"), Fire(0, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:air")));
 	TestTrue(TEXT("and is used up"), Remain.IsEmpty());
 	TestEqual(TEXT("a flint and steel lights it too"), Fire(2, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:fire")));
 	TestEqual(TEXT("and is worn by one"), Remain.GetDamage(), 1);
 	TestEqual(TEXT("no fire on stone"), Fire(6, TEXT("minecraft:fire_charge"), TEXT("minecraft:stone"), Remain), FString(TEXT("minecraft:stone")));
-	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
 	TestEqual(TEXT("a shulker box is placed"), Fire(10, TEXT("minecraft:red_shulker_box"), TEXT("minecraft:air"), Remain), FString(TEXT("minecraft:red_shulker_box")));
 	TestTrue(TEXT("and leaves the dispenser"), Remain.IsEmpty());
 	// A box that carries things keeps them when a dispenser places it.
@@ -503,13 +503,12 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	UMcBlockUseSubsystem::GetContents(*Actor, FIntVector(15, 64, 5), InBox);
 	TestTrue(TEXT("the placed box holds its gold"), !InBox.IsEmpty() && InBox[0].Item == TEXT("minecraft:gold_ingot") && InBox[0].Count == 9);
 	// Fire only where it can stay; a campfire or candle in front is lit instead.
-	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:fire_charge"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
-	TestEqual(TEXT("and the charge is kept"), Remain.Count, 1);
+	TestEqual(TEXT("no fire in mid air"), Fire(1, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:air"), Remain, false), FString(TEXT("minecraft:air")));
+	TestEqual(TEXT("and the flint is kept"), Remain.Count, 1);
 	TestEqual(TEXT("an unlit campfire is lit"), Fire(12, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:campfire[lit=false]"), Remain), FString(TEXT("minecraft:campfire")));
 	TestEqual(TEXT("burning"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 12)), TEXT("lit")), FName(TEXT("true")));
-	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:fire_charge"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
+	TestEqual(TEXT("a candle too"), Fire(3, TEXT("minecraft:flint_and_steel"), TEXT("minecraft:candle[lit=false]"), Remain), FString(TEXT("minecraft:candle")));
 	TestEqual(TEXT("which burns"), Registry.GetPropertyValue(Blocks.GetBlock(FIntVector(15, 64, 3)), TEXT("lit")), FName(TEXT("true")));
-	TestTrue(TEXT("using up the charge"), Remain.IsEmpty());
 	// Food on the lit campfire cooks for its recipe's time (600 ticks, as in a real save), then is done and leaves its spot.
 	{
 		FMcBlockEntity Grill = FMcBlockEntity::MakeCampfire();

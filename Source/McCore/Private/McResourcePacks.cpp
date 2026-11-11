@@ -85,6 +85,36 @@ namespace
 		return true;
 	}
 
+	// "zz:textures/a.png" -> namespace "zz", path "textures/a.png"; a name without one is the game's own ("minecraft").
+	void SplitPackName(const FString& Relative, FString& Namespace, FString& Path)
+	{
+		int32 Colon = INDEX_NONE;
+		const int32 Slash = Relative.Find(TEXT("/"));
+		if (Relative.FindChar(TEXT(':'), Colon) && (Slash == INDEX_NONE || Colon < Slash))
+		{
+			Namespace = Relative.Left(Colon);
+			Path = Relative.Mid(Colon + 1);
+			return;
+		}
+		Namespace = TEXT("minecraft");
+		Path = Relative;
+	}
+
+	// The file's name inside a pack: "assets/<namespace>/<path>".
+	FString InPackName(const FString& Relative)
+	{
+		FString Namespace, Path;
+		SplitPackName(Relative, Namespace, Path);
+		return TEXT("assets/") + Namespace + TEXT("/") + Path;
+	}
+
+	bool IsGameNamespace(const FString& Relative)
+	{
+		FString Namespace, Path;
+		SplitPackName(Relative, Namespace, Path);
+		return Namespace == TEXT("minecraft");
+	}
+
 	FCriticalSection GLock;
 	FCriticalSection GExtractLock;
 	TSharedPtr<const FMcPackStack> GStack;
@@ -93,6 +123,7 @@ namespace
 	bool GReloadRequested = false;
 	int32 GMaxSize = 0;
 	int64 GBudget = 0;
+	int64 GVideoMemory = 0;
 	int32 GUsePbr = -1;
 }
 
@@ -316,7 +347,55 @@ TSharedPtr<FMcResourcePack> FMcResourcePack::Open(const FString& PackPath, FStri
 	{
 		return Fail(TEXT("pack.mcmeta has no \"pack\" section"));
 	}
+	Pack->FindShaderFiles();
+	if (Pack->Info.ShaderFiles.Num() > 0)
+	{
+		UE_LOG(LogMcCore, Warning, TEXT("Resource pack %s has %d shader file(s) (e.g. %s): core shaders and post effects are for the game's own renderer and are not used here"),
+			*Pack->Info.Name, Pack->Info.ShaderFiles.Num(), *Pack->Info.ShaderFiles[0]);
+	}
 	return Pack;
+}
+
+void FMcResourcePack::FindShaderFiles()
+{
+	const auto IsShaderPath = [](const FString& Path)
+	{
+		// assets/<namespace>/shaders/... or assets/<namespace>/post_effect/...
+		TArray<FString> Parts;
+		Path.ParseIntoArray(Parts, TEXT("/"), true);
+		return Parts.Num() >= 4 && Parts[0] == TEXT("assets") && (Parts[2] == TEXT("shaders") || Parts[2] == TEXT("post_effect"));
+	};
+	Info.ShaderFiles.Reset();
+	if (Info.bZip)
+	{
+		for (const TPair<FString, FZipEntry>& Entry : Entries)
+		{
+			if (IsShaderPath(Entry.Key))
+			{
+				Info.ShaderFiles.Add(Entry.Key);
+			}
+		}
+	}
+	else
+	{
+		TArray<FString> Namespaces;
+		IFileManager::Get().FindFiles(Namespaces, *(Info.Path / TEXT("assets") / TEXT("*")), false, true);
+		for (const FString& Namespace : Namespaces)
+		{
+			for (const TCHAR* Folder : { TEXT("shaders"), TEXT("post_effect") })
+			{
+				TArray<FString> Found;
+				IFileManager::Get().FindFilesRecursive(Found, *(Info.Path / TEXT("assets") / Namespace / Folder), TEXT("*"), true, false);
+				for (const FString& File : Found)
+				{
+					FString Relative = File;
+					FPaths::MakePathRelativeTo(Relative, *(Info.Path / TEXT("")));
+					Info.ShaderFiles.Add(Relative.Replace(TEXT("\\"), TEXT("/")));
+				}
+			}
+		}
+	}
+	Info.ShaderFiles.Sort();
 }
 
 bool FMcResourcePack::OpenZip(const FString& PackPath, FString& OutError)
@@ -486,6 +565,29 @@ FString FMcResourcePack::Resolve(const FString& Relative) const
 bool FMcResourcePack::Has(const FString& Relative) const
 {
 	return HasExact(Resolve(Relative));
+}
+
+void FMcResourcePack::ListFiles(const FString& Prefix, TArray<FString>& Out) const
+{
+	if (Info.bZip)
+	{
+		for (const TPair<FString, FZipEntry>& Entry : Entries)
+		{
+			if (Entry.Key.StartsWith(Prefix) && !Entry.Key.EndsWith(TEXT("/")))
+			{
+				Out.Add(Entry.Key);
+			}
+		}
+		return;
+	}
+	TArray<FString> Files;
+	IFileManager::Get().FindFilesRecursive(Files, *(Info.Path / Prefix), TEXT("*"), true, false);
+	for (const FString& File : Files)
+	{
+		FString Relative = File;
+		FPaths::MakePathRelativeTo(Relative, *(Info.Path + TEXT("/")));
+		Out.Add(Relative.Replace(TEXT("\\"), TEXT("/")));
+	}
 }
 
 FString FMcResourcePack::GetFolderFile(const FString& Relative) const
@@ -860,7 +962,7 @@ namespace McPacks
 	void ReadAll(const FString& Relative, TArray<TArray<uint8>>& Out)
 	{
 		const TSharedRef<const FMcPackStack> Stack = GetStack();
-		const FString InPack = TEXT("assets/minecraft/") + Relative;
+		const FString InPack = InPackName(Relative);
 		for (int32 Index = 0; Index < Stack->Num(); ++Index)
 		{
 			TArray<uint8> Bytes;
@@ -903,10 +1005,15 @@ namespace McPacks
 		{
 			return false;
 		}
-		const FString InPack = TEXT("assets/minecraft/") + Relative;
+		const FString InPack = InPackName(Relative);
 		const int32 Index = Stack->Find(InPack);
 		if (Index == INDEX_NONE)
 		{
+			// The game's own hiding and atlas sprites are of its own namespace; another namespace is the packs' alone.
+			if (!IsGameNamespace(Relative))
+			{
+				return false;
+			}
 			if (Stack->IsVanillaHidden(InPack) || IsAtlasFiltered(Relative))
 			{
 				OutPath = McCache::Root() / TEXT("hidden-by-resource-pack") / Relative;
@@ -961,7 +1068,7 @@ namespace McPacks
 	{
 		const TSharedRef<const FMcPackStack> Stack = GetStack();
 		FString Unused;
-		return Stack->Num() > 0 && (Stack->Find(TEXT("assets/minecraft/") + Relative) != INDEX_NONE || FindAtlasSprite(Relative, Unused));
+		return Stack->Num() > 0 && (Stack->Find(InPackName(Relative)) != INDEX_NONE || (IsGameNamespace(Relative) && FindAtlasSprite(Relative, Unused)));
 	}
 
 	FString GetSignature()
@@ -999,10 +1106,22 @@ namespace McPacks
 		if (GBudget == 0)
 		{
 			int32 Megabytes = 1536;
+			// A card with less than 8 GB gets a share of what it has (the pack arrays, HD Textures' three included, come to
+			// about two budgets): 5 GB gives 1 GB, 4 GB gives 800 MB.
+			if (GVideoMemory > 0)
+			{
+				Megabytes = FMath::Clamp(static_cast<int32>(GVideoMemory / (5ll * 1024 * 1024)), 256, Megabytes);
+			}
 			FParse::Value(FCommandLine::Get(), TEXT("-McPackBudgetMB="), Megabytes);
 			GBudget = static_cast<int64>(FMath::Max(Megabytes, 1)) * 1024 * 1024;
 		}
 		return GBudget;
+	}
+
+	void SetVideoMemoryBytes(int64 Bytes)
+	{
+		FScopeLock Lock(&GLock);
+		GVideoMemory = Bytes;
 	}
 
 	void SetBudgetMegabytes(int32 Megabytes)

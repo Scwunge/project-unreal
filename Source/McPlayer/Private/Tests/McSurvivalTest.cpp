@@ -588,6 +588,29 @@ bool FMcBlockBreakTest::RunTest(const FString& Parameters)
 	Enchants->SetNumberField(TEXT("minecraft:efficiency"), 3);
 	Efficient.Set(TEXT("minecraft:enchantments"), MakeShared<FJsonValueObject>(Enchants));
 	TestTrue(TEXT("efficiency speeds up the pickaxe"), McBlockBreak::GetBreakTicks(Efficient, Stone, true, false) < 23);
+	// ench_log7 (vanilla, one start-destroy then looking at the block): which efficiency levels break at once.
+	{
+		const auto Instant = [&](const TCHAR* ToolName, const TCHAR* BlockName, int32 Level)
+		{
+			FMcItemStack Tool = S(ToolName);
+			if (Level > 0)
+			{
+				TSharedRef<FJsonObject> Map = MakeShared<FJsonObject>();
+				Map->SetNumberField(TEXT("minecraft:efficiency"), Level);
+				Tool.Set(TEXT("minecraft:enchantments"), MakeShared<FJsonValueObject>(Map));
+			}
+			return McBlockBreak::GetProgressPerTick(Tool, State(BlockName), true, false) >= 1.0f;
+		};
+		for (int32 Level = 0; Level <= 5; ++Level)
+		{
+			TestEqual(*FString::Printf(TEXT("diamond shovel, dirt, efficiency %d"), Level), Instant(TEXT("minecraft:diamond_shovel"), TEXT("minecraft:dirt"), Level), Level >= 3);
+			TestEqual(*FString::Printf(TEXT("golden shovel, dirt, efficiency %d"), Level), Instant(TEXT("minecraft:golden_shovel"), TEXT("minecraft:dirt"), Level), Level >= 2);
+			TestEqual(*FString::Printf(TEXT("diamond pickaxe, netherrack, efficiency %d"), Level), Instant(TEXT("minecraft:diamond_pickaxe"), TEXT("minecraft:netherrack"), Level), Level >= 2);
+			TestTrue(*FString::Printf(TEXT("golden pickaxe, netherrack, efficiency %d"), Level), Instant(TEXT("minecraft:golden_pickaxe"), TEXT("minecraft:netherrack"), Level));
+			TestFalse(*FString::Printf(TEXT("diamond pickaxe, stone, efficiency %d"), Level), Instant(TEXT("minecraft:diamond_pickaxe"), TEXT("minecraft:stone"), Level));
+			TestFalse(*FString::Printf(TEXT("diamond axe, planks, efficiency %d"), Level), Instant(TEXT("minecraft:diamond_axe"), TEXT("minecraft:oak_planks"), Level));
+		}
+	}
 
 	// Tools wear one per block; a hand does not.
 	TestEqual(TEXT("a pickaxe wears 1"), McBlockBreak::GetToolWear(Wooden, Stone), 1);

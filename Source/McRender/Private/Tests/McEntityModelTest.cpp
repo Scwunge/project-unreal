@@ -1,5 +1,9 @@
 #include "McEntityModel.h"
 #include "Misc/AutomationTest.h"
+#include "McHand.h"
+#include "McChunk.h"
+#include "McItemRegistry.h"
+#include "McBlockRegistry.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -31,6 +35,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		// creeper), a spider's legs well past it. And the hitbox height: the model is nearly as tall.
 		double MaxWidth;
 		double Height;
+		// How far below the feet the drawing may hang (a ghast's tentacles hang 3.6 blocks), and how far past 1 the pictures' UVs may run
+		// (a strider's flat bristles have a 72 wide net on a 64 wide picture, as in the game).
+		double Below = 0.07;
+		double UVSlack = 0.0;
 	};
 	const FExpectation Expectations[] = {
 		{ TEXT("minecraft:creeper"), 1, 0.8, 1.7 },
@@ -38,6 +46,15 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:skeleton"), 2, 1.2, 1.99 },  // its picture and the one for what it holds (a held item is 0.85 across, tilted 35 degrees up to 1.17)
 		{ TEXT("minecraft:enderman"), 2, 0.8, 2.9 },
 		{ TEXT("minecraft:slime"), 2, 0.55, 0.52 },
+		{ TEXT("minecraft:hoglin"), 1, 2.6, 1.95 },
+		{ TEXT("minecraft:magma_cube"), 1, 0.6, 0.52 },
+		{ TEXT("minecraft:blaze"), 1, 1.6, 1.8 },
+		{ TEXT("minecraft:strider"), 1, 2.4, 1.95, 0.07, 0.15 },
+		{ TEXT("minecraft:ghast"), 1, 5.3, 4.05, 3.7 },
+		{ TEXT("minecraft:endermite"), 1, 0.6, 0.25 },
+		{ TEXT("minecraft:shulker"), 1, 1.1, 1.0 },
+		{ TEXT("minecraft:phantom"), 1, 3.2, 0.4 },
+		{ TEXT("minecraft:guardian"), 1, 3.0, 1.25, 0.3 },
 	};
 	for (const FExpectation& Expect : Expectations)
 	{
@@ -53,14 +70,14 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
 			TestTrue(FString::Printf(TEXT("%s layer %d is not too wide (%.3f by %.3f)"), Expect.Kind, Layer, Bounds.GetSize().X, Bounds.GetSize().Y), Bounds.GetSize().X <= Expect.MaxWidth && Bounds.GetSize().Y <= Expect.MaxWidth);
-			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height"), Expect.Kind, Layer), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -0.07);
+			TestTrue(FString::Printf(TEXT("%s layer %d stays within the hitbox height (%.3f to %.3f)"), Expect.Kind, Layer, Bounds.Min.Z, Bounds.Max.Z), Bounds.Max.Z <= Expect.Height + 0.03 && Bounds.Min.Z >= -Expect.Below);
 			// UVs stay on the picture.
 			McPlayerModel::FMeshData Data;
 			BuildMesh(*Model, FAnim(), Layer, Data);
 			bool bOnPicture = true;
 			for (const FVector2D& UV : Data.UV0)
 			{
-				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 && UV.Y >= 0.0 && UV.Y <= 1.0;
+				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 + Expect.UVSlack && UV.Y >= 0.0 && UV.Y <= 1.0;
 			}
 			TestTrue(FString::Printf(TEXT("%s layer %d UVs are on the picture"), Expect.Kind, Layer), bOnPicture);
 		}
@@ -70,7 +87,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{
 			Top = FMath::Max(Top, LayerBounds(*Model, Layer).Max.Z);
 		}
-		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox"), Expect.Kind), Top >= Expect.Height * 0.85);
+		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox (%.3f of %.3f)"), Expect.Kind, Top, Expect.Height), Top >= Expect.Height * 0.85);
 	}
 
 	// A slime is see-through on its outer shell only; the eyes of a spider and an enderman glow.
@@ -247,3 +264,118 @@ bool FMcHorsePoseTest::RunTest(const FString& Parameters)
 }
 
 #endif
+
+// The banner's swing (fitted to the vanilla run banner3): a 100 tick cycle, 0.033 rad either way of 0.058.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcBannerSwingTest, "Mc.EntityModel.BannerSwing", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcBannerSwingTest::RunTest(const FString&)
+{
+	float Min = 10.0f, Max = -10.0f;
+	for (int32 Tick = 0; Tick < 100; ++Tick)
+	{
+		const float Tilt = McEntityModel::GetBannerTilt(Tick);
+		Min = FMath::Min(Min, Tilt);
+		Max = FMath::Max(Max, Tilt);
+		TestEqual(TEXT("repeats every 100 ticks"), McEntityModel::GetBannerTilt(Tick + 100), Tilt, 1.0e-4f);
+	}
+	TestEqual(TEXT("most back"), Max, 0.091f, 2.0e-3f);
+	TestEqual(TEXT("most forward"), Min, 0.025f, 2.0e-3f);
+	// A tilted flag's foot moves back and its top stays: the lowest vertex of the flag is further from the face.
+	McPlayerModel::FMeshData Straight, Swung;
+	McEntityModel::BuildBannerMesh(false, true, 0.0f, Straight, 0.0f);
+	McEntityModel::BuildBannerMesh(false, true, 0.0f, Swung, 0.1f);
+	TestEqual(TEXT("same vertices"), Swung.Positions.Num(), Straight.Positions.Num());
+	double LowStraight = 1.0e9, LowSwung = 1.0e9, ZStraight = 0.0, ZSwung = 0.0, TopStraight = -1.0e9, TopSwung = -1.0e9;
+	for (int32 Index = 0; Index < Straight.Positions.Num(); ++Index)
+	{
+		if (Straight.Positions[Index].Z < LowStraight) { LowStraight = Straight.Positions[Index].Z; ZStraight = Straight.Positions[Index].Y; }
+		if (Swung.Positions[Index].Z < LowSwung) { LowSwung = Swung.Positions[Index].Z; ZSwung = Swung.Positions[Index].Y; }
+		TopStraight = FMath::Max(TopStraight, Straight.Positions[Index].Z);
+		TopSwung = FMath::Max(TopSwung, Swung.Positions[Index].Z);
+	}
+	TestTrue(TEXT("the foot moves (back, along z)"), FMath::Abs(ZSwung - ZStraight) > 0.5);
+	TestEqual(TEXT("the top stays (to a hair)"), TopSwung, TopStraight, 2.0);
+	return true;
+}
+
+// A dropped item (fitted from same-camera shots of the game): a picture stood one pixel thick, spinning 1 radian a second,
+// bobbing about 0.096 of a block with a period of pi seconds, and a stack shown as several copies.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDroppedItemTest, "Mc.EntityModel.Dropped", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcDroppedItemTest::RunTest(const FString&)
+{
+	TArray<FColor> Pixels;
+	Pixels.Init(FColor::White, 4);
+	McPlayerModel::FMeshData Unit;
+	McHand::BuildExtrudedMesh(Pixels, 2, 1.0f, Unit);
+	TestTrue(TEXT("the picture has a thickness (faces on the edges)"), Unit.Positions.Num() > 8);
+
+	TestEqual(TEXT("bob repeats every pi seconds"), McEntityModel::GetDroppedHeight(0.4f + PI, 0.0f), McEntityModel::GetDroppedHeight(0.4f, 0.0f), 1.0e-4f);
+	float Low = 10.0f, High = -10.0f;
+	for (int32 Step = 0; Step < 64; ++Step)
+	{
+		const float Height = McEntityModel::GetDroppedHeight(Step * 0.05f, 0.0f);
+		Low = FMath::Min(Low, Height);
+		High = FMath::Max(High, Height);
+	}
+	TestEqual(TEXT("bob is 0.096 either side"), (High - Low) * 0.5f, 0.096f, 3.0e-3f);
+
+	// Facing along y at age 0 (a width of half a block across y); a quarter turn later, edge on.
+	const auto Extent = [](const McPlayerModel::FMeshData& Mesh, int32 Axis)
+	{
+		double Min = 1.0e9, Max = -1.0e9;
+		for (const FVector& Position : Mesh.Positions)
+		{
+			Min = FMath::Min(Min, Position[Axis]);
+			Max = FMath::Max(Max, Position[Axis]);
+		}
+		return Max - Min;
+	};
+	McPlayerModel::FMeshData One, Quarter, Stack;
+	McEntityModel::BuildDroppedMesh(Unit, 0.0f, 1, 0.5f, 0.0f, One);
+	McEntityModel::BuildDroppedMesh(Unit, PI * 0.5f, 1, 0.5f, 0.0f, Quarter);
+	TestEqual(TEXT("half a block across"), Extent(One, 1), 0.5 * McCoords::UnitsPerBlock, 0.5);
+	TestEqual(TEXT("one pixel thick at half size"), Extent(One, 0), 0.5 / 16.0 * McCoords::UnitsPerBlock, 0.5);
+	TestEqual(TEXT("a quarter turn (pi/2 s) puts the width along x"), Extent(Quarter, 0), 0.5 * McCoords::UnitsPerBlock, 0.5);
+	TestEqual(TEXT("and the thickness along y"), Extent(Quarter, 1), 0.5 / 16.0 * McCoords::UnitsPerBlock, 0.5);
+
+	McEntityModel::BuildDroppedMesh(Unit, 0.0f, 64, 0.5f, 0.0f, Stack);
+	TestEqual(TEXT("64 show five copies"), Stack.Positions.Num(), One.Positions.Num() * 5);
+	TestEqual(TEXT("with their triangles"), Stack.Triangles.Num(), One.Triangles.Num() * 5);
+	TestTrue(TEXT("a stack is wider than one"), Extent(Stack, 1) > Extent(One, 1));
+	TestTrue(TEXT("and taller"), Extent(Stack, 2) > Extent(One, 2));
+	return true;
+}
+
+// Nothing a player can drop may be invisible: every block item gives a mesh (a cube, its baked model, or the flat picture).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDroppedBlockItemsTest, "Mc.EntityModel.DroppedBlockItems", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FMcDroppedBlockItemsTest::RunTest(const FString&)
+{
+	if (!FMcItemRegistry::Get().EnsureLoaded() || !FMcBlockRegistry::Get().EnsureLoaded())
+	{
+		AddError(TEXT("registries did not load"));
+		return false;
+	}
+	int32 Checked = 0, Models = 0, Empty = 0;
+	for (const FMcItemDef& Item : FMcItemRegistry::Get().GetAll())
+	{
+		if (Item.Name == FName(TEXT("minecraft:air")) || !FMcBlockRegistry::Get().FindDefaultState(Item.Name).IsSet())
+		{
+			continue;
+		}
+		McEntityModel::FDroppedUnit Unit;
+		const bool bBuilt = McEntityModel::BuildDroppedUnit(Item.Name, Unit);
+		++Checked;
+		Models += Unit.bModel ? 1 : 0;
+		if (!bBuilt || Unit.Sides.Positions.IsEmpty() || Unit.Sides.Triangles.IsEmpty())
+		{
+			++Empty;
+			if (Empty <= 10)
+			{
+				AddError(FString::Printf(TEXT("%s drops as nothing"), *Item.Name.ToString()));
+			}
+		}
+	}
+	TestTrue(TEXT("block items were checked"), Checked > 100);
+	TestTrue(TEXT("some are drawn as their model"), Models > 20);
+	AddInfo(FString::Printf(TEXT("%d block items, %d as models, %d empty"), Checked, Models, Empty));
+	return true;
+}

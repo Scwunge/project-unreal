@@ -224,6 +224,7 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:basalt_pillar"), EScene::Nether, FIntPoint(0, 0), FIntVector(24, 60, 24), TEXT("minecraft:basalt"), 1 },
 		{ TEXT("minecraft:sculk_patch_deep_dark"), EScene::Cave, FIntPoint(0, 0), FIntVector(24, 45, 24), TEXT("minecraft:sculk"), 4 },
 		{ TEXT("minecraft:rooted_azalea_tree"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:azalea_leaves"), 6 },
+		{ TEXT("minecraft:spore_blossom"), EScene::Roof, FIntPoint(0, 0), FIntVector(24, 41, 24), TEXT("minecraft:spore_blossom"), 4 },
 		{ TEXT("minecraft:warm_ocean_vegetation"), EScene::Sea, FIntPoint(0, 0), FIntVector(24, 46, 24), TEXT("coral_block"), 40 },
 	};
 	for (const FCase& Case : Cases)
@@ -268,6 +269,67 @@ bool FMcWorldFeatureTest::RunTest(const FString& Parameters)
 			bMarker = bMarker || Name.Contains(Case.Marker);
 		}
 		TestTrue(FString::Printf(TEXT("%s leaves %s"), Case.Feature, Case.Marker), bMarker);
+	}
+	return true;
+}
+
+// ICEBERG <feature> <runs> <mean columns whose top block is above the water> <mean top y>: for fitting the iceberg size
+// to the reference client's share of packed ice in frozen oceans.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcIcebergAreaTest, "McClient.McGen.IcebergArea",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcIcebergAreaTest::RunTest(const FString& Parameters)
+{
+	if (!TestTrue(TEXT("registries load"), FMcBlockRegistry::Get().EnsureLoaded() && FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("overworld settings load"), FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	FMcFeatureLibrary Library(Settings.SeaLevel, Settings.MinY, Settings.Height);
+	TestTrue(TEXT("biome features load"), Library.LoadBiomes());
+	for (const TCHAR* Id : { TEXT("minecraft:iceberg_packed"), TEXT("minecraft:iceberg_blue") })
+	{
+		const TSharedPtr<const FMcFeature> Feature = Library.ParseFeature(MakeShared<FJsonValueString>(Id));
+		if (!TestTrue(FString::Printf(TEXT("%s parses"), Id), Feature.IsValid()))
+		{
+			continue;
+		}
+		constexpr int32 Runs = 80;
+		int64 Columns = 0;
+		int64 TopSum = 0;
+		int32 Placed = 0;
+		for (int32 Run = 0; Run < Runs; ++Run)
+		{
+			FScene Scene(Settings, EScene::Sea, 3, FIntPoint(0, 0));
+			FMcChunk* Around[9];
+			Scene.Around(1, 1, Around);
+			FMcGenRegion Region(FIntPoint(1, 1), Around);
+			FMcRandom Random(1000 + Run);
+			FMcFeatureContext Context{ Region, Random, Library, Settings.SeaLevel, nullptr };
+			Placed += Feature->Place(Context, FIntVector(24, 62, 24)) ? 1 : 0;
+			int32 Top = 0;
+			for (int32 X = 0; X < 48; ++X)
+			{
+				for (int32 Z = 0; Z < 48; ++Z)
+				{
+					for (int32 Y = 200; Y >= Settings.SeaLevel; --Y)
+					{
+						if (!Region.IsAir(Region.GetBlock(FIntVector(X, Y, Z))))
+						{
+							++Columns;
+							Top = FMath::Max(Top, Y);
+							break;
+						}
+					}
+				}
+			}
+			TopSum += Top;
+		}
+		AddInfo(FString::Printf(TEXT("ICEBERG %s placed %d of %d, mean columns above the water %.1f, mean top y %.1f"), Id, Placed, Runs, static_cast<double>(Columns) / Runs, static_cast<double>(TopSum) / Runs));
 	}
 	return true;
 }

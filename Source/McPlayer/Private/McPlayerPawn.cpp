@@ -1246,6 +1246,11 @@ void AMcPlayerPawn::ServerSwing(const FVector& Look)
 	{
 		// A full swing sounds strong (or a critical one), a rushed one weak.
 		Entities->PlaySound(FName(bCritical && Strength > 0.9f ? "entity.player.attack.crit" : Strength > 0.9f ? "entity.player.attack.strong" : "entity.player.attack.weak"), Body.Position + FVector(0.0, 1.0, 0.0));
+		if (bCritical && Strength > 0.9f)
+		{
+			// Sparks fly where the blow lands: about two blocks along the look from the eye (the struck mob is not known here).
+			Entities->SpawnParticle(FName("minecraft:crit"), Eye + Look.GetSafeNormal() * 2.0, FVector(0.3, 0.3, 0.3), 0.4f, 10);
+		}
 	}
 	if (!Data->bCreative)
 	{

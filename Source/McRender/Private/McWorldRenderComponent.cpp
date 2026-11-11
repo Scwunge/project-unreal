@@ -74,6 +74,20 @@ static TAutoConsoleVariable<bool> CVarMcFlipWinding(
 	false,
 	TEXT("Reverse the triangle order of block faces. Only for checking the mesher's winding; remeshes everything."));
 
+// Game-thread time a frame may spend copying chunks for mesh tasks and handing finished meshes to the engine, once the
+// world is in (a new world fills as fast as it can). Each launch copies a 3x3 chunk region; 32 of them were 20 ms frames
+// while walking in base_a5. At least one of each happens every frame.
+static TAutoConsoleVariable<float> CVarMcLaunchBudgetMs(TEXT("mc.Render.LaunchBudgetMs"), 3.0f,
+	TEXT("Milliseconds a frame for launching chunk mesh tasks while the world isn't filling (0 no limit)."));
+static TAutoConsoleVariable<float> CVarMcUploadBudgetMs(TEXT("mc.Render.UploadBudgetMs"), 3.0f,
+	TEXT("Milliseconds a frame for uploading finished chunk meshes while the world isn't filling (0 no limit)."));
+
+// Whether the frame's budget (milliseconds, 0 none) is spent, given when the work began; never before the first item.
+static bool BudgetSpent(float BudgetMs, double Began, int32 Done)
+{
+	return BudgetMs > 0.0f && Done > 0 && (FPlatformTime::Seconds() - Began) * 1000.0 >= BudgetMs;
+}
+
 namespace
 {
 	// All eight: light reaches 15 blocks, so a chunk's light depends on its diagonal neighbours too.
@@ -490,7 +504,9 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 	});
 
 	const int32 NumToLaunch = FMath::Min(Ready.Num(), MaxMeshLaunchesPerTick);
-	for (int32 Index = 0; Index < NumToLaunch; ++Index)
+	const float BudgetMs = World->IsFilling() ? 0.0f : CVarMcLaunchBudgetMs.GetValueOnGameThread();
+	const double Began = FPlatformTime::Seconds();
+	for (int32 Index = 0; Index < NumToLaunch && !BudgetSpent(BudgetMs, Began, Index); ++Index)
 	{
 		const FIntPoint Pos = Ready[Index];
 		const FMcChunk* Chunk = World->FindChunk(Pos);
@@ -535,7 +551,9 @@ void UMcWorldRenderComponent::LaunchMeshTasks()
 
 void UMcWorldRenderComponent::UploadResults()
 {
-	for (int32 Count = 0; Count < MaxMeshUploadsPerTick; ++Count)
+	const float BudgetMs = World && World->IsFilling() ? 0.0f : CVarMcUploadBudgetMs.GetValueOnGameThread();
+	const double Began = FPlatformTime::Seconds();
+	for (int32 Count = 0; Count < MaxMeshUploadsPerTick && !BudgetSpent(BudgetMs, Began, Count); ++Count)
 	{
 		TUniquePtr<FChunkResult> Result;
 		if (!Results->Dequeue(Result))

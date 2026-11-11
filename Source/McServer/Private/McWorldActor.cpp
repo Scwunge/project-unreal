@@ -38,6 +38,8 @@ static TAutoConsoleVariable<int32> CVarMcOutrunPriority(TEXT("mc.World.OutrunPri
 static TAutoConsoleVariable<int32> CVarMcFillNormal(TEXT("mc.World.FillNormal"), 1, TEXT("World tasks take normal priority while a player has nothing around them."));
 static TAutoConsoleVariable<int32> CVarMcDecorateJobs(TEXT("mc.World.DecorateJobs"), 3, TEXT("Decoration jobs at once."));
 static TAutoConsoleVariable<int32> CVarMcChunksInFlight(TEXT("mc.World.ChunksInFlight"), 16, TEXT("Chunks being made at once."));
+static TAutoConsoleVariable<int32> CVarMcUnloadPerFrame(TEXT("mc.World.UnloadPerFrame"), 4,
+	TEXT("Chunks saved and dropped a frame at most, farthest first; the rest wait for the next frames (0 no limit)."));
 static TAutoConsoleVariable<float> CVarMcLeadSeconds(TEXT("mc.World.LeadSeconds"), 0.0f,
 	TEXT("Chunks around where a moving player will be in this many seconds are made and decorated as early as those around them (0 off)."));
 
@@ -1551,27 +1553,37 @@ void AMcWorldActor::StreamChunks()
 	if (bAnyone)
 	{
 		MC_PERF_SCOPE(StreamUnload);
-		TArray<FIntPoint> Far;
+		// Each chunk dropped is encoded for its save and takes its meshes and mobs with it, about 1.5 ms on the 1070, and
+		// walking past a border drops a whole row at once (50 ms frames in base_a5): a few a frame, the farthest first.
+		TArray<TPair<int32, FIntPoint>> Far;
 		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Chunk : BlockWorld->GetChunks())
 		{
 			bool bNearAnyone = false;
+			int32 Nearest = MAX_int32;
 			for (int32 Index = 0; Index < Centres.Num() && !bNearAnyone; ++Index)
 			{
 				const int32 Keep = FMath::Max(KeepRadius, Radii[Index]);
-				bNearAnyone = FMath::Abs(Chunk.Key.X - Centres[Index].X) <= Keep && FMath::Abs(Chunk.Key.Y - Centres[Index].Y) <= Keep;
+				const FIntPoint Away = Chunk.Key - Centres[Index];
+				bNearAnyone = FMath::Abs(Away.X) <= Keep && FMath::Abs(Away.Y) <= Keep;
+				Nearest = FMath::Min(Nearest, Away.X * Away.X + Away.Y * Away.Y);
 			}
 			if (!bNearAnyone)
 			{
-				Far.Add(Chunk.Key);
+				Far.Add({ Nearest, Chunk.Key });
 			}
 		}
-		for (const FIntPoint& Pos : Far)
+		Far.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key > B.Key; });
+		const int32 Budget = CVarMcUnloadPerFrame.GetValueOnGameThread();
+		const int32 Dropping = Budget > 0 ? FMath::Min(Budget, Far.Num()) : Far.Num();
+		for (int32 Index = 0; Index < Dropping; ++Index)
 		{
+			const FIntPoint Pos = Far[Index].Value;
 			// Saved while it's still whole, with its mobs; the writing happens on a worker.
 			SaveChunk(Pos);
 			ChunkStates.Remove(Pos);
 			BlockWorld->RemoveChunk(Pos);
 		}
+		// Any left over keep the world unsettled, so the next frames carry on.
 		bUnloaded = !Far.IsEmpty();
 		for (auto It = Pending.CreateIterator(); It; ++It)
 		{

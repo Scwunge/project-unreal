@@ -143,7 +143,7 @@ void UMcWeatherComponent::TickComponent(float DeltaTime, ELevelTick TickType, FA
 	const float Rain = GetRain ? GetRain() : 0.0f;
 	// In Unreal Mode the world is lit by the scene, so unlit streaks would glow at night: dim them with the sky's light
 	// (the vanilla material already scales by it, but its picture is brighter than the dark scene around it).
-	const uint8 Tone = McRenderMode::IsEnhanced() ? static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Sqrt(FMath::Clamp(McSky::GetSkyLightFactor(), 0.0f, 1.0f)) * 255.0f), 0, 255)) : 255;
+	const uint8 Tone = McRenderMode::IsEnhanced() ? static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Max(0.1f, FMath::Pow(FMath::Clamp(McSky::GetSkyLightFactor(), 0.0f, 1.0f), 0.85f)) * 255.0f), 0, 255)) : 255;
 	const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
 	if (Rain <= 0.0f || !BlockWorld || !RainMaterial || !Controller || !Controller->PlayerCameraManager)
 	{

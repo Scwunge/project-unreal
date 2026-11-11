@@ -1640,6 +1640,12 @@ void AMcHUD::ClearPackCaches()
 	// The menu pictures come from the packs too.
 	Sprites.Empty();
 	LayerTextures.Empty();
+	// The cached icons hold raw pointers to the pictures just dropped: a garbage collection would free them under the icons.
+	Icons.Empty();
+	ItemIcons.Empty();
+	BannerIcons.Empty();
+	PotIcons.Empty();
+	StackIcons.Empty();
 	GuiScalings.Empty();
 	Glyphs.Reset();
 	RasterFonts.Reset();

@@ -48,6 +48,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks left of the hurt flash on the hearts; set to 10 when damage lands.
 	int32 HurtTime = 0;
 	bool bHardcore = false;
+	// The ridden mount's health and a horse's jump charge, copied from the pawn each tick (not saved): the HUD swaps the food row and the experience bar for them.
+	float MountHealth = 0.0f;
+	float MountMaxHealth = 0.0f;
+	float MountJump = -1.0f;
 
 	// ---- What the rules keep between ticks ----
 	// Ticks of immunity left after a hit (20 at the hit; within the first 10 only a bigger hit gets through, by the
@@ -64,6 +68,10 @@ struct MCPLAYER_API FMcPlayerStats
 	// Ticks since food last healed or starved the player.
 	int32 FoodTimer = 0;
 	TArray<FMcStatusEffect> Effects;
+	// Where the player last died (a recovery compass points there), and in which dimension.
+	bool bHasDeath = false;
+	FIntVector DeathPos = FIntVector::ZeroValue;
+	FName DeathDimension;
 
 	// Reads or writes, by whether the archive is loading. False if a loading archive is malformed.
 	bool Serialize(FArchive& Ar);
@@ -82,6 +90,8 @@ enum class EMcWindowKind : uint8
 	Stonecutter,
 	SmithingTable,
 	Grindstone,
+	// The map slot, the material slot and the result: an FMcCartographyMenu.
+	CartographyTable,
 	Anvil,
 	BrewingStand,
 	Hopper,
@@ -94,6 +104,8 @@ enum class EMcWindowKind : uint8
 	Lectern,
 	// A villager's or wandering trader's trades; Pos is where the trader stands.
 	Trading,
+	// A tamed horse, donkey or mule: the saddle, armour and chest slots of the animal (an FMcMountMenu), EntityId says which.
+	Horse,
 };
 
 // A window one player has open. Menu is the one clicks go to; Container and Furnace are what it shows.
@@ -113,6 +125,8 @@ struct MCPLAYER_API FMcWindow
 	class FMcEnchantMenu* Enchanting = nullptr;
 	// Where the block is, for a window on one.
 	FIntVector Pos = FIntVector::ZeroValue;
+	// Non-zero for a window on an entity (a chest cart or boat, a horse): it stays open while that is near, instead of while a block is there.
+	int32 EntityId = 0;
 	// Server: told after clicks, to write a chest's items back to the world, and after the menu's own buttons.
 	TFunction<void()> OnChanged;
 
@@ -171,6 +185,8 @@ public:
 	void OpenBlockWindow(EMcWindowKind Kind, const FIntVector& Pos, const FString& Title, const TSharedPtr<FMcContainer>& Container, const TSharedPtr<class FMcMachine>& Machine, TFunction<void()> OnChanged = nullptr, const TSharedPtr<FMcContainer>& SecondContainer = nullptr);
 	// The player closes the window: the cursor stack goes back (or drops), and the other side is told.
 	void CloseWindow();
+	// Server: the window just opened is on this entity.
+	void MarkWindowOnEntity(int32 EntityId);
 	// The HUD tells of each click or drag it has applied to the window's menu, to be sent to the server (a no-op where
 	// this is the server).
 	void NotifyClick(int32 Slot, int32 Button, EMcClickType Type);
@@ -212,6 +228,8 @@ public:
 	TFunction<bool(const FMcWindow&)> ServerWindowValid;
 	// Plays a sound for what the player did in a window (an enchantment bought), at their position.
 	TFunction<void(FName Event, float Volume, float Pitch)> ServerSound;
+	// A chest, barrel or shulker box window opened (true) or closed (false) at the position; for the vibration it makes.
+	TFunction<void(const FIntVector& Pos, bool bOpen)> ServerContainerEvent;
 	// Sends the owner what changed. Called each game tick by the pawn.
 	void ServerTick();
 	// The stats and containers as bytes, for the owner and for the save.

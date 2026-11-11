@@ -2,7 +2,9 @@
 #include "McAssets.h"
 #include "McBlockTextures.h"
 #include "McCache.h"
+#include "McLoadScreen.h"
 #include "McResourcePacks.h"
+#include "Async/Async.h"
 #include "Async/ParallelFor.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Texture2DArray.h"
@@ -126,15 +128,41 @@ namespace
 	//   works from those 16 as always.
 	// - A layer from a resource pack is used as the picture it is, shrunk to Size if needed; its normal and specular maps
 	//   are the pack's own when it has them (and -McPackPbr is on), else made from the picture without added detail.
-	McHd::FMaps MakeLayerMaps(const FMcBlockTextures& Blocks, int32 Layer, int32 Size, const McHd::FClassTags& Tags)
+	// What one layer's maps are made from. The views point at the layer's pixels, or at copies when the maps are made on
+	// another thread while the layer goes on animating.
+	struct FLayerInput
 	{
-		const int32 Source = Blocks.GetSize();
-		const FString Id = Blocks.GetLayerId(Layer) == NAME_None ? FString(TEXT("minecraft:block/missing")) : Blocks.GetLayerId(Layer).ToString();
-		const McHd::EMaterialClass Class = McHd::PickClass(Id, &Tags);
-		const bool bEmissive = McHd::IsEmissiveTexture(Id);
-		const TConstArrayView<FColor> Pixels = Blocks.GetPixels(Layer);
+		FString Id;
+		int32 Source = 0;
+		bool bFromPack = false;
+		McHd::EMaterialClass Class = McHd::EMaterialClass::Generic;
+		bool bEmissive = false;
+		TConstArrayView<FColor> Pixels, Normal, Specular;
+	};
 
-		if (Source == FMcBlockTextures::TextureSize || !Blocks.IsFromPack(Layer))
+	FLayerInput MakeLayerInput(const FMcBlockTextures& Blocks, int32 Layer, const McHd::FClassTags& Tags)
+	{
+		FLayerInput Input;
+		Input.Source = Blocks.GetSize();
+		Input.Id = Blocks.GetLayerId(Layer) == NAME_None ? FString(TEXT("minecraft:block/missing")) : Blocks.GetLayerId(Layer).ToString();
+		Input.bFromPack = Blocks.IsFromPack(Layer);
+		Input.Class = McHd::PickClass(Input.Id, &Tags);
+		Input.bEmissive = McHd::IsEmissiveTexture(Input.Id);
+		Input.Pixels = Blocks.GetPixels(Layer);
+		Input.Normal = Blocks.GetNormalPixels(Layer);
+		Input.Specular = Blocks.GetSpecularPixels(Layer);
+		return Input;
+	}
+
+	McHd::FMaps MakeLayerMaps(const FLayerInput& In, int32 Size)
+	{
+		const int32 Source = In.Source;
+		const FString& Id = In.Id;
+		const McHd::EMaterialClass Class = In.Class;
+		const bool bEmissive = In.bEmissive;
+		const TConstArrayView<FColor> Pixels = In.Pixels;
+
+		if (Source == FMcBlockTextures::TextureSize || !In.bFromPack)
 		{
 			McHd::FPicture Plain;
 			Plain.Width = Plain.Height = FMcBlockTextures::TextureSize;
@@ -147,7 +175,22 @@ namespace
 					Plain.Pixels[Y * Plain.Width + X] = Pixels[Y * Step * Source + X * Step];
 				}
 			}
-			return McHd::Generate(Id, Plain, Size / FMcBlockTextures::TextureSize, Class, bEmissive, true);
+			McHd::FMaps Generated = McHd::Generate(Id, Plain, Size / FMcBlockTextures::TextureSize, Class, bEmissive, true);
+			// A pack's picture is cut into 16 pixel tiles (one layer each) whatever its size, so a pack layer is 16 wide here
+			// too: its own normal and specular maps, when it brought them, replace the generated ones (enlarged without
+			// smoothing, which would bend the normals).
+			if (In.bFromPack)
+			{
+				if (In.Normal.Num() > 0)
+				{
+					Generated.Normal = McHd::ScaleNearest(MakeSource(In.Normal, Source), Size, Size);
+				}
+				if (In.Specular.Num() > 0)
+				{
+					Generated.Specular = McHd::ScaleNearest(MakeSource(In.Specular, Source), Size, Size);
+				}
+			}
+			return Generated;
 		}
 
 		auto ToSize = [Source, Size](TConstArrayView<FColor> From, bool bPlain)
@@ -156,13 +199,13 @@ namespace
 			return Size == Source ? Picture : McHd::Shrink(Picture, Size, Size, bPlain);
 		};
 		McHd::FMaps Made = McHd::GenerateFromAlbedo(Id, ToSize(Pixels, false), Class, bEmissive, true);
-		if (Blocks.GetNormalPixels(Layer).Num() > 0)
+		if (In.Normal.Num() > 0)
 		{
-			Made.Normal = ToSize(Blocks.GetNormalPixels(Layer), true);
+			Made.Normal = ToSize(In.Normal, true);
 		}
-		if (Blocks.GetSpecularPixels(Layer).Num() > 0)
+		if (In.Specular.Num() > 0)
 		{
-			Made.Specular = ToSize(Blocks.GetSpecularPixels(Layer), true);
+			Made.Specular = ToSize(In.Specular, true);
 		}
 		return Made;
 	}
@@ -238,8 +281,9 @@ UTexture2DArray* FMcHdBlocks::MakeArray(int32 Width, int32 Height, int32 NumLaye
 		MipMap->BulkData.Unlock();
 	}
 	Array->SRGB = bSrgb;
-	// The project's own filter (trilinear, anisotropic by r.MaxAnisotropy), not nearest.
-	Array->Filter = TF_Default;
+	// Nearest, like the game's own pictures: trilinear softened every 16 pixel texel edge into a blur (the generated detail
+	// sits inside each texel, so nearest keeps the edges crisp and the detail). -McHdSmooth brings the project's filter back.
+	Array->Filter = FParse::Param(FCommandLine::Get(), TEXT("McHdSmooth")) ? TF_Default : TF_Nearest;
 	Array->AddressX = TA_Wrap;
 	Array->AddressY = TA_Wrap;
 	Array->NeverStream = true;
@@ -320,6 +364,7 @@ bool FMcHdBlocks::EnsureBuilt()
 	{
 		return true;
 	}
+	const FMcLoadScreen LoadScreen(NSLOCTEXT("Mc", "LoadingHd", "Loading resource packs..."), McPacks::HasPacks());
 	FMcBlockTextures& Blocks = FMcBlockTextures::Get();
 	if (!Blocks.EnsureLoaded())
 	{
@@ -396,7 +441,7 @@ bool FMcHdBlocks::EnsureBuilt()
 	{
 		ParallelFor(NumLayers, [&](int32 Layer)
 		{
-			const McHd::FMaps Made = MakeLayerMaps(Blocks, Layer, Size, Tags);
+			const McHd::FMaps Made = MakeLayerMaps(MakeLayerInput(Blocks, Layer, Tags), Size);
 			const McHd::FPicture* Pictures[3] = { &Made.Albedo, &Made.Normal, &Made.Specular };
 			for (int32 Kind = 0; Kind < 3; ++Kind)
 			{
@@ -442,66 +487,98 @@ bool FMcHdBlocks::EnsureBuilt()
 
 void FMcHdBlocks::RefreshLayer(int32 Layer)
 {
+	check(IsInGameThread());
 	if (!IsBuilt() || !RenderState.IsValid() || !Albedo->GetResource() || !LayerIds.IsValidIndex(Layer))
 	{
 		return;
 	}
-	FMcBlockTextures& Blocks = FMcBlockTextures::Get();
-	const int32 Size = Summary.Size;
-	const McHd::FMaps Made = MakeLayerMaps(Blocks, Layer, Size, Tags);
-
-	struct FUpload
-	{
-		TArray<FColor> Chain[3];
-	};
-	FUpload Upload;
-	MakeMipChain(Made.Albedo.Pixels.GetData(), Size, Size, true, Upload.Chain[0]);
-	MakeMipChain(Made.Normal.Pixels.GetData(), Size, Size, false, Upload.Chain[1]);
-	MakeMipChain(Made.Specular.Pixels.GetData(), Size, Size, false, Upload.Chain[2]);
-
 	FTextureResource* Resources[3] = { Albedo->GetResource(), Normal->GetResource(), Specular->GetResource() };
 	if (!Resources[1] || !Resources[2])
 	{
 		return;
 	}
-	const int32 NumMips = FMath::FloorLog2(Size) + 1;
-	ENQUEUE_RENDER_COMMAND(McUploadHdLayer)(
-		[Resources, State = RenderState, Upload = MoveTemp(Upload), Layer, Size, NumMips](FRHICommandListImmediate& RHICmdList)
+	// The maps are made on a worker thread: at 128 pixels and up the game thread spent 45 to 220 ms a frame on the animated
+	// layers (4.5 fps). One job per layer at a time; a step that comes while it runs is made when it is done, from the newest.
+	if (RefreshBusy.Contains(Layer))
+	{
+		RefreshAgain.Add(Layer);
+		return;
+	}
+	RefreshBusy.Add(Layer);
+	struct FCopy
+	{
+		FLayerInput Input;
+		TArray<FColor> Pixels, Normal, Specular;
+	};
+	TSharedRef<FCopy> Copy = MakeShared<FCopy>();
+	Copy->Input = MakeLayerInput(FMcBlockTextures::Get(), Layer, Tags);
+	Copy->Pixels = TArray<FColor>(Copy->Input.Pixels.GetData(), Copy->Input.Pixels.Num());
+	Copy->Normal = TArray<FColor>(Copy->Input.Normal.GetData(), Copy->Input.Normal.Num());
+	Copy->Specular = TArray<FColor>(Copy->Input.Specular.GetData(), Copy->Input.Specular.Num());
+	Copy->Input.Pixels = Copy->Pixels;
+	Copy->Input.Normal = Copy->Normal;
+	Copy->Input.Specular = Copy->Specular;
+	const int32 Size = Summary.Size;
+	TSharedPtr<FRenderState, ESPMode::ThreadSafe> State = RenderState;
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, Copy, Layer, Size, State, R0 = Resources[0], R1 = Resources[1], R2 = Resources[2]]()
+	{
+		const McHd::FMaps Made = MakeLayerMaps(Copy->Input, Size);
+		struct FUpload
 		{
-			for (int32 Kind = 0; Kind < 3; ++Kind)
+			TArray<FColor> Chain[3];
+		};
+		FUpload Upload;
+		MakeMipChain(Made.Albedo.Pixels.GetData(), Size, Size, true, Upload.Chain[0]);
+		MakeMipChain(Made.Normal.Pixels.GetData(), Size, Size, false, Upload.Chain[1]);
+		MakeMipChain(Made.Specular.Pixels.GetData(), Size, Size, false, Upload.Chain[2]);
+		const int32 NumMips = FMath::FloorLog2(Size) + 1;
+		ENQUEUE_RENDER_COMMAND(McUploadHdLayer)(
+			[Resources = TStaticArray<FTextureResource*, 3>{ R0, R1, R2 }, State, Upload = MoveTemp(Upload), Layer, Size, NumMips](FRHICommandListImmediate& RHICmdList)
 			{
-				if (!Resources[Kind]->TextureRHI.IsValid())
+				for (int32 Kind = 0; Kind < 3; ++Kind)
 				{
-					return;
+					if (!Resources[Kind]->TextureRHI.IsValid())
+					{
+						return;
+					}
+					if (!State->Staging[Kind].IsValid())
+					{
+						State->Staging[Kind] = RHICmdList.CreateTexture(FRHITextureCreateDesc::Create2D(TEXT("McHdStaging"), Size, Size, PF_B8G8R8A8)
+							.SetNumMips(NumMips)
+							.SetFlags(Kind == 0 ? (ETextureCreateFlags::ShaderResource | ETextureCreateFlags::SRGB) : ETextureCreateFlags::ShaderResource)
+							.SetInitialState(ERHIAccess::SRVMask));
+					}
+					int32 Offset = 0;
+					for (int32 Mip = 0; Mip < NumMips; ++Mip)
+					{
+						const uint32 Dim = FMath::Max(Size >> Mip, 1);
+						RHICmdList.UpdateTexture2D(State->Staging[Kind], Mip, FUpdateTextureRegion2D(0, 0, 0, 0, Dim, Dim), Dim * 4,
+							reinterpret_cast<const uint8*>(Upload.Chain[Kind].GetData() + Offset));
+						Offset += Dim * Dim;
+					}
+					FRHICopyTextureInfo CopyInfo;
+					CopyInfo.DestSliceIndex = Layer;
+					CopyInfo.NumMips = NumMips;
+					RHICmdList.Transition({
+						FRHITransitionInfo(State->Staging[Kind], ERHIAccess::Unknown, ERHIAccess::CopySrc),
+						FRHITransitionInfo(Resources[Kind]->TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopyDest) });
+					RHICmdList.CopyTexture(State->Staging[Kind], Resources[Kind]->TextureRHI, CopyInfo);
+					RHICmdList.Transition({
+						FRHITransitionInfo(State->Staging[Kind], ERHIAccess::CopySrc, ERHIAccess::SRVMask),
+						FRHITransitionInfo(Resources[Kind]->TextureRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask) });
 				}
-				if (!State->Staging[Kind].IsValid())
-				{
-					State->Staging[Kind] = RHICmdList.CreateTexture(FRHITextureCreateDesc::Create2D(TEXT("McHdStaging"), Size, Size, PF_B8G8R8A8)
-						.SetNumMips(NumMips)
-						.SetFlags(Kind == 0 ? (ETextureCreateFlags::ShaderResource | ETextureCreateFlags::SRGB) : ETextureCreateFlags::ShaderResource)
-						.SetInitialState(ERHIAccess::SRVMask));
-				}
-				int32 Offset = 0;
-				for (int32 Mip = 0; Mip < NumMips; ++Mip)
-				{
-					const uint32 Dim = FMath::Max(Size >> Mip, 1);
-					RHICmdList.UpdateTexture2D(State->Staging[Kind], Mip, FUpdateTextureRegion2D(0, 0, 0, 0, Dim, Dim), Dim * 4,
-						reinterpret_cast<const uint8*>(Upload.Chain[Kind].GetData() + Offset));
-					Offset += Dim * Dim;
-				}
-				FRHICopyTextureInfo Copy;
-				Copy.DestSliceIndex = Layer;
-				Copy.NumMips = NumMips;
-				RHICmdList.Transition({
-					FRHITransitionInfo(State->Staging[Kind], ERHIAccess::Unknown, ERHIAccess::CopySrc),
-					FRHITransitionInfo(Resources[Kind]->TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopyDest) });
-				RHICmdList.CopyTexture(State->Staging[Kind], Resources[Kind]->TextureRHI, Copy);
-				RHICmdList.Transition({
-					FRHITransitionInfo(State->Staging[Kind], ERHIAccess::CopySrc, ERHIAccess::SRVMask),
-					FRHITransitionInfo(Resources[Kind]->TextureRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask) });
+			});
+		AsyncTask(ENamedThreads::GameThread, [this, Layer]()
+		{
+			RefreshBusy.Remove(Layer);
+			if (RefreshAgain.Remove(Layer) > 0)
+			{
+				RefreshLayer(Layer);
 			}
 		});
+	});
 }
+
 
 FMcHdPicture FMcHdBlocks::GetPicture(const FString& TextureId, const FString& PngPath)
 {

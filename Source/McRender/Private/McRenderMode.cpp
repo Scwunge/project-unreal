@@ -4,6 +4,8 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Texture2DArray.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "RHI.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/UObjectGlobals.h"
@@ -66,19 +68,20 @@ void McRenderMode::SetEnhanced(bool bEnhanced)
 // Quality presets are listed Low to Ultra. Vanilla (Unreal Mode off) goes back to the plain full-scale picture.
 static void ApplyQuality()
 {
-	struct FPreset { float Scale; int32 Probe; int32 Reflections; float ShadowBias; int32 Fog; int32 Post; };
+	struct FPreset { float Scale; int32 Probe; int32 Reflections; float ShadowBias; int32 Fog; int32 Post; int32 Tsr; };
 	static const FPreset Presets[4] = {
-		{ 70.0f, 32, 0, 2.0f, 0, 0 },
-		{ 85.0f, 16, 1, 1.0f, 1, 1 },
-		{ 100.0f, 16, 1, 0.0f, 1, 2 },
-		{ 100.0f, 8, 1, -0.5f, 1, 3 },
+		{ 70.0f, 32, 0, 2.0f, 0, 0, 1 },
+		{ 85.0f, 16, 1, 1.0f, 1, 1, 1 },
+		{ 100.0f, 16, 1, 0.0f, 1, 2, 2 },
+		{ 100.0f, 8, 1, -0.5f, 1, 3, 3 },
 	};
 	const FPreset& P = Presets[FMath::Clamp(GQuality, 0, 3)];
 	// Hardware ray tracing: Lumen traces the real scene (the procedural meshes included), and translucent surfaces get rays.
 	const bool bRays = McRenderMode::IsRayTracing();
 	SetConsoleVariable(TEXT("r.Lumen.HardwareRayTracing"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Shadows"), bRays ? 1 : 0);
-	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), bRays ? 1 : 0);
+	// Off even with rays: ray traced translucency makes the water opaque and mirror-like (the bed no longer shows through).
+	SetConsoleVariable(TEXT("r.RayTracing.Translucency"), 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Reflections"), bRays ? 1 : 0);
 	SetConsoleVariable(TEXT("r.RayTracing.Geometry.ProceduralMeshes"), bRays ? 1 : 0);
 	if (!GEnhanced)
@@ -89,6 +92,8 @@ static void ApplyQuality()
 	}
 	// TSR smooths the edges and fills out the lower render scales; vanilla keeps the crisp unfiltered pixels (none).
 	SetConsoleVariable(TEXT("r.AntiAliasingMethod"), 4);
+	// TSR's own quality: at the engine's default (3) it was the biggest GPU cost, 3.5 of 11 ms at 720p on a GTX 1070.
+	SetConsoleVariable(TEXT("sg.AntiAliasingQuality"), P.Tsr);
 	SetConsoleFloat(TEXT("r.ScreenPercentage"), P.Scale);
 	SetConsoleVariable(TEXT("r.Lumen.ScreenProbeGather.DownsampleFactor"), P.Probe);
 	SetConsoleVariable(TEXT("r.Lumen.Reflections.Allow"), P.Reflections);
@@ -97,6 +102,30 @@ static void ApplyQuality()
 	SetConsoleVariable(TEXT("r.BloomQuality"), P.Post == 0 ? 3 : 5);
 	SetConsoleVariable(TEXT("r.DepthOfFieldQuality"), P.Post >= 3 ? 2 : 0);
 	SetConsoleVariable(TEXT("r.MotionBlurQuality"), P.Post >= 2 ? 3 : 0);
+#if !UE_BUILD_SHIPPING
+	// -McCvars=name=value,name=value: dev override of any console variables, applied last, for finding what costs frames.
+	FString Overrides;
+	if (FParse::Value(FCommandLine::Get(), TEXT("-McCvars="), Overrides, /*bShouldStopOnSeparator=*/ false))
+	{
+		TArray<FString> Pairs;
+		Overrides.ParseIntoArray(Pairs, TEXT(","));
+		for (const FString& Pair : Pairs)
+		{
+			FString Name, Value;
+			if (Pair.Split(TEXT("="), &Name, &Value))
+			{
+				if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(*Name))
+				{
+					Variable->Set(*Value, ECVF_SetByCode);
+				}
+				else
+				{
+					UE_LOG(LogMcRender, Warning, TEXT("-McCvars: no console variable %s"), *Name);
+				}
+			}
+		}
+	}
+#endif
 }
 
 bool McRenderMode::IsRayTracingSupported()

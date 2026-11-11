@@ -27,6 +27,7 @@ public:
 	void SetWeather(EMcWeather Weather, int32 Duration);
 	// How many layers of snow a snowfall piles up (the game's snowAccumulationHeight rule, default 1).
 	void SetSnowAccumulation(int32 Layers) { SnowAccumulation = Layers; }
+	void SetSeaLevel(int32 Level) { SeaLevel = Level; }
 
 	// The sun's light level from the day clock and the weather: 15 at noon, 4 on a clear night.
 	int32 GetSunLight() const;
@@ -84,6 +85,7 @@ private:
 	int32 RainTime = 0;
 	int32 ThunderTime = 0;
 	int32 SnowAccumulation = 1;
+	int32 SeaLevel = 63;
 	mutable TMap<FMcBiomeId, FBiomeInfo> Biomes;
 	TUniquePtr<FMcFeatureLibrary> Features;
 };

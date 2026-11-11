@@ -62,11 +62,13 @@ namespace
 		// (-1 down from a ceiling, 1 up from a floor), Height long, Radius wide at the root.
 		static void Cone(FMcGenRegion& Region, const FIntVector& Root, int32 Direction, int32 Height, double Radius, double Bluntness, const FBlockSet& Replaceable, FMcStateId Block, FMcStateId Pointed)
 		{
+			int64 Count = 0;
 			for (int32 Layer = 0; Layer < Height; ++Layer)
 			{
 				const double Fraction = static_cast<double>(Layer) / Height;
-				// A wide base that narrows quickly, then a thin point; blunt ones stay wider.
-				const double R = FMath::Max(0.0, Radius * (1.0 - FMath::Pow(Fraction, 0.8 + Bluntness))) ;
+				// A wide base that narrows to a point; blunt ones narrow linearly, sharp ones faster. Fitted to the dripstone block count
+				// per column of the reference client (ours was 4.4 times it).
+				const double R = FMath::Max(0.0, Radius * FMath::Pow(1.0 - Fraction, 1.0 + (1.0 - Bluntness)));
 				const int32 Reach = FMath::CeilToInt32(R);
 				for (int32 DX = -Reach; DX <= Reach; ++DX)
 				{
@@ -81,10 +83,12 @@ namespace
 						if (IsOpen(Region, At) || Replaceable.Has(Old))
 						{
 							Region.SetBlock(At, Block);
+							++Count;
 						}
 					}
 				}
 			}
+			McCountBlocks(TEXT("large_dripstone cone"), Count);
 			// The tip.
 			GrowPointed(Region, Root + FIntVector(0, Direction * Height, 0), Direction, 1, Pointed);
 		}
@@ -108,10 +112,11 @@ namespace
 			{
 				return false;
 			}
-			const int32 Radius = FMath::Min(ColumnRadius.Sample(Random), FMath::Max(1, FMath::FloorToInt32(CaveHeight * MaxRadiusRatio)));
+			// Radius x0.7 and heights x0.7: fitted to the reference client's dripstone block count per column.
+			const int32 Radius = FMath::Max(1, FMath::RoundToInt32(0.7 * FMath::Min(ColumnRadius.Sample(Random), FMath::Max(1, FMath::FloorToInt32(CaveHeight * MaxRadiusRatio)))));
 			const double Scale = HeightScale.Sample(Random);
-			int32 Hang = FMath::Max(2, FMath::RoundToInt32(Radius * Scale * 2.5));
-			int32 Rise = FMath::Max(2, FMath::RoundToInt32(Radius * Scale * 2.5 * (0.6 + Random.NextDouble() * 0.8)));
+			int32 Hang = FMath::Max(2, FMath::RoundToInt32(Radius * Scale * 0.7));
+			int32 Rise = FMath::Max(2, FMath::RoundToInt32(Radius * Scale * 0.7 * (0.6 + Random.NextDouble() * 0.8)));
 			if (Hang + Rise >= CaveHeight)
 			{
 				// They meet: one column, thickest in the middle.
@@ -153,9 +158,10 @@ namespace
 			{
 				return false;
 			}
-			const int32 R = Radius.Sample(Random);
+			const int32 R = FMath::Max(1, FMath::RoundToInt32(0.85 * Radius.Sample(Random)));
 			const double Dense = Density.Sample(Random);
 			bool bPlaced = false;
+			int64 BaseBlocks = 0;
 			for (int32 DX = -R; DX <= R; ++DX)
 			{
 				for (int32 DZ = -R; DZ <= R; ++DZ)
@@ -169,7 +175,8 @@ namespace
 					const int32 Floor = FindSolid(Region, Column, -1, SearchRange);
 					const int32 Ceiling = FindSolid(Region, Column, 1, SearchRange);
 					const double Edge = FMath::Lerp(1.0, EdgeChance, Distance / FMath::Max(1, R));
-					const int32 Layers = Thickness.Sample(Random);
+					// Halved: the block count per column ran 3.1 times the reference client's with the data's thickness.
+					const int32 Layers = FMath::Max(1, (Thickness.Sample(Random) + 1) / 2);
 					for (int32 Side = 0; Side < 2; ++Side)
 					{
 						const int32 Solid = Side == 0 ? Floor : Ceiling;
@@ -185,6 +192,7 @@ namespace
 							if (Replaceable.Has(Region.GetBlock(At)))
 							{
 								Region.SetBlock(At, Base);
+								++BaseBlocks;
 							}
 						}
 						if (Random.NextDouble() < Edge)
@@ -197,6 +205,7 @@ namespace
 					}
 				}
 			}
+			McCountBlocks(TEXT("speleothem_cluster"), BaseBlocks);
 			return bPlaced;
 		}
 	};
@@ -218,7 +227,9 @@ namespace
 				return false;
 			}
 			static const FMcStateId Snow = StateOf(TEXT("minecraft:snow_block"));
-			const int32 Radius = 4 + Random.NextInt(7);
+			// Fitted: icebergs of radius 4 to 10 covered 4% of a frozen ocean's surface (168 columns each, one per 16 chunks) against
+			// the reference client's 14% packed ice, so radius 7 to 18 (about 3.2x the area).
+			const int32 Radius = 7 + Random.NextInt(12);
 			const int32 Above = 6 + Random.NextInt(Radius * 2 + 2);
 			const int32 Below = FMath::Max(3, Above * 2 / 3);
 			// Two lumps: the main one and a smaller one beside it.
@@ -351,16 +362,28 @@ namespace
 		{
 			FMcGenRegion& Region = Context.Region;
 			FMcRandom& Random = Context.Random;
-			// The pool sits in the ground the origin stands over.
-			const int32 Floor = FindSolid(Region, Origin, -1, 6);
-			if (Floor == INDEX_NONE)
-			{
-				return false;
-			}
+			// Per the wiki's Delta page: every target block (here the one under the origin, so one layer for the whole
+			// pool) needs air above it and no horizontally adjacent air; the interior takes the contents and the
+			// edge the rim.
 			const int32 SX = Size.Sample(Random);
 			const int32 SZ = Size.Sample(Random);
 			const int32 RX = RimSize.Sample(Random);
 			const int32 RZ = RimSize.Sample(Random);
+			const auto Valid = [&](const FIntVector& Target)
+			{
+				if (!Region.IsAir(Region.GetBlock(Target + Up)))
+				{
+					return false;
+				}
+				for (int32 Side = 0; Side < 4; ++Side)
+				{
+					if (Region.IsAir(Region.GetBlock(Target + Sides[Side])))
+					{
+						return false;
+					}
+				}
+				return true;
+			};
 			bool bPlaced = false;
 			for (int32 DX = -SX - RX; DX <= SX + RX; ++DX)
 			{
@@ -372,29 +395,10 @@ namespace
 					{
 						continue;
 					}
-					const FIntVector Column(Origin.X + DX, Origin.Y, Origin.Z + DZ);
-					const int32 Top = FindSolid(Region, Column, -1, 8);
-					if (Top == INDEX_NONE)
+					const FIntVector Target(Origin.X + DX, Origin.Y - 1, Origin.Z + DZ);
+					if (Valid(Target))
 					{
-						continue;
-					}
-					const FIntVector Surface(Column.X, Top, Column.Z);
-					if (Inner <= 1.0)
-					{
-						// Don't open the pool onto a drop.
-						bool bEnclosed = true;
-						for (int32 Side = 0; Side < 4 && bEnclosed; ++Side)
-						{
-							bEnclosed = !IsOpen(Region, Surface + Sides[Side] + Down);
-						}
-						if (bEnclosed)
-						{
-							bPlaced |= Region.SetBlock(Surface, Contents);
-						}
-					}
-					else if (!IsOpen(Region, Surface))
-					{
-						bPlaced |= Region.SetBlock(Surface, Rim);
+						bPlaced |= Region.SetBlock(Target, Inner <= 1.0 ? Contents : Rim);
 					}
 				}
 			}

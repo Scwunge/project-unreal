@@ -135,6 +135,8 @@ private:
 	void StartChunk(AMcWorldActor& WorldActor, FIntPoint ChunkPos);
 	// One game tick of every hopper.
 	void TickHoppers();
+	// One game tick of the food on every lit campfire: it cooks, and a cooked piece drops as its result.
+	void TickCampfires();
 	// Tells each world which shulker boxes are open, and for how many (their lids follow on every machine).
 	void TickShulkers();
 	// Moves an item into the block the hopper faces, then one in from above; true if either moved.
@@ -155,6 +157,9 @@ private:
 	// A player used the lectern at Pos (minecraft.wiki, "Lectern"): an empty one takes the book and quill or written
 	// book they hold; one with a book opens it to read. False for an empty lectern and anything else in hand.
 	static bool UseLectern(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
+	// A player used the campfire at Pos (minecraft.wiki, "Campfire"): the food in hand that a campfire cooks goes on
+	// the first free of its four spots (one of it; creative keeps its own). False for anything else in hand or no free spot.
+	static bool UseCampfire(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos);
 	// A reader of the lectern at Pos pressed a button: the book opens at the menu's page for everyone reading it, the
 	// lectern giving a 2-tick pulse, or the book is taken off into the reader's inventory.
 	static void LecternButton(AMcPlayerPawn& Player, AMcWorldActor& WorldActor, const FIntVector& Pos, class FMcLecternMenu& Menu);

@@ -263,6 +263,22 @@ McGui::FScreenLayout McGui::MakeHopperLayout()
 	return Layout;
 }
 
+McGui::FScreenLayout McGui::MakeHorseLayout(int32 ContainerSlots, bool bArmor)
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Horse;
+	Layout.Texture = TEXT("horse.png");
+	// vanilla shot of a donkey: the saddle at the top left, the armour under it, the chest 5 x 3 from x 80.
+	Layout.Slots.Add(FIntPoint(8, 18));
+	Layout.Slots.Add(bArmor ? FIntPoint(8, 36) : FIntPoint(FScreenLayout::Hidden, FScreenLayout::Hidden));
+	for (int32 Slot = 2; Slot < ContainerSlots; ++Slot)
+	{
+		Layout.Slots.Add(FIntPoint(80 + 18 * ((Slot - 2) % 5), 18 + 18 * ((Slot - 2) / 5)));
+	}
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
 McGui::FScreenLayout McGui::MakeDispenserLayout()
 {
 	FScreenLayout Layout;
@@ -272,6 +288,20 @@ McGui::FScreenLayout McGui::MakeDispenserLayout()
 	{
 		Layout.Slots.Add(FIntPoint(62 + 18 * (Slot % 3), 17 + 18 * (Slot / 3)));
 	}
+	AddPlayerSlots(Layout, 84, 142);
+	return Layout;
+}
+
+// Slots measured from the texture: the two inputs' 18 pixel boxes start at (14, 14) and (14, 51), the result's 24 pixel
+// well at (141, 35).
+McGui::FScreenLayout McGui::MakeCartographyLayout()
+{
+	FScreenLayout Layout;
+	Layout.Kind = EScreen::Cartography;
+	Layout.Texture = TEXT("cartography_table.png");
+	Layout.Slots.Add(FIntPoint(15, 15));
+	Layout.Slots.Add(FIntPoint(15, 52));
+	Layout.Slots.Add(FIntPoint(145, 39));
 	AddPlayerSlots(Layout, 84, 142);
 	return Layout;
 }

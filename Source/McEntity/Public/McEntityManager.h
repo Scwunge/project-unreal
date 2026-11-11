@@ -46,6 +46,14 @@ public:
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
 	int32 Age = 0;
+	// Ticks before a portal can take it again (McTravel; not saved).
+	int32 PortalCooldown = 0;
+	// Tied by a lead (McLeash.h): to a knot entity by id, or (id 0) to the player last seen near LeashPlayerPos. Not saved.
+	bool bLeashed = false;
+	int32 LeashKnot = 0;
+	FVector LeashPlayerPos = FVector::ZeroVector;
+	// Saddle, tamed state and rider of a mount (McMount.h); null for anything that isn't one. Not saved yet.
+	TSharedPtr<struct FMcMountState> Mount;
 	// Set to have the manager drop it at the end of the tick.
 	bool bRemoved = false;
 };
@@ -130,6 +138,10 @@ public:
 	const FVector& GetAlarmPos() const { return AlarmPos; }
 	// Players (block position of their feet) for mobs to chase and bite; set by the server before each tick.
 	TArray<FVector> PlayerPositions;
+	// The mob griefing game rule (endermen take blocks, villagers..): on unless the host says otherwise.
+	bool bMobGriefing = true;
+	// Where each player looks (unit vectors from their eyes, parallel to PlayerPositions); empty where the host doesn't know.
+	TArray<FVector> PlayerLooks;
 	// Whether nothing solid is over the block, so rain and sun reach it.
 	bool IsSkyExposed(const FIntVector& Pos) const;
 
@@ -154,6 +166,15 @@ public:
 	// the rays reach (calling OnBlocksDestroyed with them, after the items were dealt with, so the drops they leave
 	// are safe).
 	void Explode(const FVector& Center, float Power);
+	// True while an explosion is hurting the mobs it reaches (an end crystal hit by one vanishes instead of going off).
+	bool bInBlast = false;
+	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
+	bool bDragonKilledBefore = false;
+	// The End's dragon and crystals have been put in (once, by the game mode, when the main island loads).
+	bool bEndFightStarted = false;
+	// The world seed, and how many central gateways the dragon's deaths have made (up to 20, one a kill).
+	int64 GatewaySeed = 0;
+	int32 GatewaysMade = 0;
 	// Called with the position of a player (the block position of the feet, as in PlayerPositions) and the damage to
 	// give: for bites, arrows and blasts. Left unset, the hit is dropped.
 	TFunction<void(const FVector&, float)> OnPlayerHurt;
@@ -166,6 +187,9 @@ public:
 	// Called with the position of a player (as in PlayerPositions): whether they wear any gold armour. Piglins leave
 	// such a player alone. Left unset, nobody does.
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Called with the position of a player (as in PlayerPositions) and a point: whether that player, in Survival or Adventure, has the
+	// point within 60 degrees of where they face (both yaw and pitch). A creaking holds still while this is true. Left unset, nobody looks.
+	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
 	// Called with a villager a mob has just killed, so a zombie's kill can turn it into a zombie villager.
 	TFunction<void(FMcMob&)> OnVillagerSlain;
 	// Called with where a village wants a golem (villagers that are scared, or crowded together); the host puts one beside them.
@@ -187,6 +211,29 @@ public:
 		}
 	}
 
+	// ---- Game events (what sculk sensors and wardens hear: minecraft.wiki, "Vibration") ----
+	// Who made it: a player (sneaking or not, in Creative or Spectator), a warden, a mob that is dying.
+	struct FGameEventTag
+	{
+		bool bPlayer = false;
+		bool bSneaking = false;
+		bool bWarden = false;
+		bool bProjectile = false;
+		bool bDying = false;
+		bool bCreativeOrSpectator = false;
+		int32 PlayerId = 0;
+	};
+	// Called with the event's name ("step", "entity_damage", "explode"), where it happened and who made it, for whoever runs
+	// the simulation. Left unset, events are dropped.
+	TFunction<void(FName, const FVector&, const FGameEventTag&)> OnGameEvent;
+	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag = FGameEventTag()) const
+	{
+		if (OnGameEvent)
+		{
+			OnGameEvent(Name, Position, Tag);
+		}
+	}
+
 	// ---- Sounds ----
 	// Called with every sound the entities make (a mob's voice and steps, a blast, an arrow in a wall), for whoever sends
 	// them to the players. Left unset, they are dropped.
@@ -201,6 +248,18 @@ public:
 	void PlaySound(FName Name, const FVector& Position, float Volume = 1.0f, float Pitch = 1.0f) const
 	{
 		PlaySound(FMcSoundEvent{ Name, Position, Volume, Pitch });
+	}
+
+	// ---- Particles ----
+	// Called with each effect the entities make that the players see (a blast's cloud), for whoever sends it to them; unset, dropped.
+	// Name as /particle writes it, Position in blocks, Delta the spread, Speed, Count.
+	TFunction<void(FName, const FVector&, const FVector&, float, int32)> OnParticle;
+	void SpawnParticle(FName Name, const FVector& Position, const FVector& Delta = FVector::ZeroVector, float Speed = 0.0f, int32 Count = 1) const
+	{
+		if (OnParticle)
+		{
+			OnParticle(Name, Position, Delta, Speed, Count);
+		}
 	}
 
 	// ---- Detector rails ----

@@ -1,0 +1,123 @@
+cmd gamerule send_command_feedback false
+cmd gamemode spectator
+cmd execute in minecraft:overworld run tp @s 10 -50 40
+wait 200
+cmd tick freeze
+wait 4
+cmd fill -2 -60 -2 12 -55 20 air
+cmd fill -2 -61 -2 12 -61 20 stone
+wait 10
+cmd setblock 1 -60 0 chest
+cmd setblock 1 -59 0 hopper[facing=down]
+cmd setblock 1 -58 0 jukebox
+cmd setblock 5 -60 4 chest
+cmd setblock 5 -60 4 chest
+cmd setblock 4 -60 4 jukebox
+cmd setblock 5 -60 4 hopper[facing=east]
+cmd setblock 6 -60 4 chest
+cmd setblock 1 -60 8 chest
+cmd setblock 1 -59 8 hopper[facing=down]
+cmd setblock 1 -58 8 jukebox[has_record=true]
+cmd item replace block 1 -58 0 container.0 with minecraft:music_disc_cat 1
+cmd item replace block 1 -58 8 container.0 with minecraft:music_disc_13 1
+cmd item replace block 4 -60 4 container.0 with minecraft:music_disc_11 1
+wait 10
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick step 1
+wait 4
+log states 0 -60 0 7 -58 8
+log items 0 -60 0 7 -58 8
+cmd tick unfreeze

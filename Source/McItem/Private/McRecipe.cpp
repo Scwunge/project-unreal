@@ -1,4 +1,5 @@
 #include "McRecipe.h"
+#include "McMapStore.h"
 #include "McPot.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -287,6 +288,16 @@ bool FMcRecipeBook::LoadOne(const FString& Id, const FJsonObject& Json)
 		Recipe.Type = EMcRecipeType::CraftingTransmute;
 		Recipe.Input = ParseIngredient(Field(TEXT("input")));
 		Recipe.Material = ParseIngredient(Field(TEXT("material")));
+		const TSharedPtr<FJsonObject>* Count;
+		if (Json.TryGetObjectField(TEXT("material_count"), Count))
+		{
+			double Min = 1.0, Max = 1.0;
+			(*Count)->TryGetNumberField(TEXT("min"), Min);
+			(*Count)->TryGetNumberField(TEXT("max"), Max);
+			Recipe.MaterialMin = static_cast<int32>(Min);
+			Recipe.MaterialMax = static_cast<int32>(Max);
+		}
+		Json.TryGetBoolField(TEXT("add_material_count_to_result"), Recipe.bAddMaterialCount);
 	}
 	else if (TypeName == TEXT("crafting_decorated_pot"))
 	{
@@ -623,7 +634,27 @@ bool FMcRecipeBook::MatchSpecial(const FMcRecipe& Recipe, const TArray<FMcItemSt
 		}
 		return true;
 	}
-	// Fireworks and map extending are not done; see the gaps in the report.
+	if (Special == TEXT("crafting_special_mapextending"))
+	{
+		// A map in the middle of eight paper zooms out one scale: a new map with the same centre.
+		const FMcIngredient* MapIngredient = Named("map");
+		const FMcIngredient* Paper = Named("material");
+		if (!MapIngredient || !Paper || Width != 3 || Height != 3 || Items.Num() != 9 || !MapIngredient->Test(Grid[4]) || !McMapStore::CanZoom(Grid[4]))
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < 9; ++Index)
+		{
+			if (Index != 4 && !Paper->Test(Grid[Index]))
+			{
+				return false;
+			}
+		}
+		Out = Single(Grid[4]);
+		McMapStore::SetId(Out, McMapStore::Zoom(McMapStore::GetId(Grid[4])));
+		return true;
+	}
+	// Fireworks are not done; see the gaps in the report.
 	return false;
 }
 
@@ -655,15 +686,31 @@ bool FMcRecipeBook::FindCraftingMatch(const TArray<FMcItemStack>& Grid, int32 Wi
 			}
 			break;
 		case EMcRecipeType::CraftingTransmute:
-			if (Items.Num() == 2)
+			if (Items.Num() >= 1 + Recipe.MaterialMin && Items.Num() <= 1 + Recipe.MaterialMax)
 			{
-				for (const int32 First : { 0, 1 })
+				for (int32 First = 0; First < Items.Num(); ++First)
 				{
-					if (Recipe.Input.Test(*Items[First]) && Recipe.Material.Test(*Items[1 - First]))
+					if (!Recipe.Input.Test(*Items[First]))
 					{
-						// The result is the new kind of item with the old one's components.
+						continue;
+					}
+					bool bMaterials = true;
+					for (int32 Other = 0; Other < Items.Num() && bMaterials; ++Other)
+					{
+						bMaterials = Other == First || Recipe.Material.Test(*Items[Other]);
+					}
+					if (bMaterials)
+					{
+						// The result is the new kind of item (the same one if the recipe names none) with the old one's components.
 						FMcItemStack Result = Single(*Items[First]);
-						Result.Item = Recipe.Result.Item;
+						if (!Recipe.Result.Item.IsNone())
+						{
+							Result.Item = Recipe.Result.Item;
+						}
+						if (Recipe.bAddMaterialCount)
+						{
+							Result.Count += Items.Num() - 1;
+						}
 						Result.Normalize();
 						Out = { &Recipe, Result };
 						return true;

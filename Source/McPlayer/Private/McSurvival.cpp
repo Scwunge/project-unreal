@@ -1,4 +1,5 @@
 #include "McSurvival.h"
+#include "McEnchantEffects.h"
 #include "McEffects.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -11,9 +12,9 @@
 
 bool FMcPlayerStats::Serialize(FArchive& Ar)
 {
-	int32 Version = 2;
+	int32 Version = 3;
 	Ar << Version;
-	if (Ar.IsLoading() && Version != 1 && Version != 2)
+	if (Ar.IsLoading() && Version != 1 && Version != 2 && Version != 3)
 	{
 		return false;
 	}
@@ -35,6 +36,10 @@ bool FMcPlayerStats::Serialize(FArchive& Ar)
 		{
 			Ar << Effect.Id << Effect.Amplifier << Effect.Duration;
 		}
+	}
+	if (Version >= 3)
+	{
+		Ar << bHasDeath << DeathPos << DeathDimension;
 	}
 	return !Ar.IsError();
 }
@@ -209,6 +214,22 @@ namespace McSurvival
 		if (Kind != EDamage::Void && Kind != EDamage::Starve)
 		{
 			Taken *= 1.0f - McEffects::GetResistance(Stats);
+		}
+		if (Worn)
+		{
+			// Protection, Feather Falling and the rest, from each enchantment's own data: the pieces' protection adds up to at
+			// most 20 points, each taking a twenty-fifth off.
+			static const TCHAR* const Names[] = { TEXT("minecraft:generic"), TEXT("minecraft:fall"), TEXT("minecraft:drown"), TEXT("minecraft:in_fire"), TEXT("minecraft:on_fire"),
+				TEXT("minecraft:lava"), TEXT("minecraft:starve"), TEXT("minecraft:mob_attack"), TEXT("minecraft:out_of_world"), TEXT("minecraft:magic"), TEXT("minecraft:wither"),
+				TEXT("minecraft:explosion") };
+			McEnchantEffects::FContext Context;
+			Context.DamageTags = McEnchantEffects::GetDamageTags(FName(Names[FMath::Min<int32>(static_cast<int32>(Kind), UE_ARRAY_COUNT(Names) - 1)]));
+			float Protection = 0.0f;
+			for (int32 Slot = 0; Slot < Worn->Num(); ++Slot)
+			{
+				Protection += McEnchantEffects::SumAdd(Worn->Get(Slot), TEXT("minecraft:damage_protection"), Context);
+			}
+			Taken *= 1.0f - FMath::Clamp(Protection, 0.0f, 20.0f) / 25.0f;
 		}
 		const float Absorbed = FMath::Min(Stats.Absorption, Taken);
 		Stats.Absorption -= Absorbed;
@@ -487,7 +508,7 @@ namespace McSurvival
 		return Taken;
 	}
 
-	int32 CollectXp(FMcEntityManager& Entities, const FBox& PlayerBox, FMcPlayerStats& Stats)
+	int32 CollectXp(FMcEntityManager& Entities, const FBox& PlayerBox, FMcPlayerStats& Stats, const TArray<FMcItemStack*>* Equipment)
 	{
 		int32 Points = 0;
 		TArray<FMcEntity*> Near;
@@ -496,13 +517,35 @@ namespace McSurvival
 		{
 			if (Entity->GetType() == FMcXpOrb::StaticType() && !Entity->bRemoved)
 			{
-				Points += static_cast<FMcXpOrb*>(Entity)->Value;
+				int32 Left = static_cast<FMcXpOrb*>(Entity)->Value;
+				Points += Left;
 				Entity->bRemoved = true;
+				// Mending (its "repair_with_xp" effect: durability per point is its factor, 2).
+				while (Equipment && Left > 0)
+				{
+					TArray<FMcItemStack*> Worn;
+					for (FMcItemStack* Piece : *Equipment)
+					{
+						if (Piece && !Piece->IsEmpty() && Piece->GetDamage() > 0 && McEnchantEffects::GetFactor(*Piece, TEXT("minecraft:repair_with_xp"), McEnchantEffects::FContext()) > 1.0f)
+						{
+							Worn.Add(Piece);
+						}
+					}
+					if (Worn.IsEmpty())
+					{
+						break;
+					}
+					FMcItemStack& Mended = *Worn[FMath::RandRange(0, Worn.Num() - 1)];
+					const float Factor = McEnchantEffects::GetFactor(Mended, TEXT("minecraft:repair_with_xp"), McEnchantEffects::FContext());
+					const int32 Repair = FMath::Min(FMath::FloorToInt32(Left * Factor), Mended.GetDamage());
+					Mended.SetDamage(Mended.GetDamage() - Repair);
+					Left -= FMath::CeilToInt32(Repair / Factor);
+				}
+				if (Left > 0)
+				{
+					AddXp(Stats, Left);
+				}
 			}
-		}
-		if (Points > 0)
-		{
-			AddXp(Stats, Points);
 		}
 		return Points;
 	}

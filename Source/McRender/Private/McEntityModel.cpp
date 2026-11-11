@@ -305,6 +305,13 @@ namespace McEntityModel
 				Cow.Parts.Add(Part(ERole::Head, FVector(0, 20, 8), { Box(0, 0, -4, -4, 0, 8, 8, 6), Box(22, 0, -5, 2, 4, 1, 3, 1), Box(22, 0, 4, 2, 4, 1, 3, 1, 0.0f, true), Box(1, 33, -3, -4, 6, 6, 3, 1) }));
 				AddLegs(Cow, 0, 16, 4, 12, 4, 5, -7, 12);
 				Models.Add(Cow.Kind, Cow);
+				// Mooshroom: the cow's body and head in its own pictures (red; brown is a variant). The mushrooms on its back
+				// are not drawn yet (open, see PLAN.md "Missing mobs").
+				FModel Moo = Cow;
+				Moo.Kind = TEXT("minecraft:mooshroom");
+				Moo.Textures = { TEXT("cow/mooshroom_red.png") };
+				Moo.Variants = { { TEXT("cow/mooshroom_red.png") }, { TEXT("cow/mooshroom_brown.png") } };
+				Models.Add(Moo.Kind, Moo);
 			}
 			{
 				FModel Sheep;
@@ -321,6 +328,8 @@ namespace McEntityModel
 				Sheep.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12, 5), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
 				Sheep.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12, -7), { WoolLeg }, 0, 0, 0, 0, 1));
+				// The wool takes the sheep's dye (white when it has none).
+				Sheep.TintedLayers = 2u;
 				Models.Add(Sheep.Kind, Sheep);
 			}
 			{
@@ -568,6 +577,27 @@ namespace McEntityModel
 				}
 			}
 			{
+				// A hoglin, from the logged model (`hogmagma1.txt`, the adult; the baby's boxes are logged too but not built): 128 x 64 picture, a
+				// 14 x 6 x 19 head held tilted down (0.8727) with two horns standing up on it (they are children of the head in the log, so they
+				// are boxes of the head here) and two ears at their own logged slants (flattened to world position and roll), a 16 x 14 x 26
+				// body with a mane fin on top and four legs, the front pair longer (14) than the hind (11). Box sizes and pivots were converted
+				// from the log by script (y = 24 - y, z = -z, the parents' turns folded in); hind legs sit at -10, front at 8.5.
+				{
+					FModel Hoglin;
+					Hoglin.Kind = TEXT("minecraft:hoglin");
+					Hoglin.TextureSize = FIntPoint(128, 64);
+					Hoglin.Textures = { TEXT("hoglin/hoglin.png") };
+					Hoglin.Parts.Add(Part(ERole::Head, FVector(0, 22, 12), { Box(61, 1, -7, -3, 0, 14, 6, 19), Box(10, 13, -8, -2, 11, 2, 11, 2), Box(1, 13, 6, -2, 11, 2, 11, 2) }, 0.8727f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(-6, 20.99f, 15.46f), { Box(1, 1, -6, 0, -2, 6, 1, 4) }, 0.74f, -0.5148f, 0.4946f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(6, 20.99f, 15.46f), { Box(1, 6, 0, 0, -2, 6, 1, 4) }, 0.74f, 0.5148f, -0.4946f));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(0, 17, 0), { Box(1, 1, -8, -7, -13, 16, 14, 26) }));
+					Hoglin.Parts.Add(Part(ERole::Static, FVector(0, 31, 7), { Box(90, 33, 0, -10, -10, 0, 10, 19) }));
+					Hoglin.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 14, 8.5f), { Box(66, 42, -3, -14, -3, 6, 14, 6) }));
+					Hoglin.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 14, 8.5f), { Box(41, 42, -3, -14, -3, 6, 14, 6) }));
+					Hoglin.Parts.Add(Part(ERole::LegBackRight, FVector(-5, 11, -10), { Box(21, 45, -2.5f, -11, -2.5f, 5, 11, 5) }));
+					Hoglin.Parts.Add(Part(ERole::LegBackLeft, FVector(5, 11, -10), { Box(0, 45, -2.5f, -11, -2.5f, 5, 11, 5) }));
+					Models.Add(Hoglin.Kind, Hoglin);
+				}
 				// The piglins: one body from the logged model (`variants3.txt`): a 10 x 8 x 8 head with a snout and two tusks, ears
 				// hanging out at their logged slants, the ordinary body, arms and legs. Zombified ones hold their arms out like the
 				// zombie. The jacket, sleeves and trousers layers log as the very same boxes as the body's.
@@ -881,6 +911,37 @@ namespace McEntityModel
 				DragonJaw.Scale = 0.75f;
 				Dragon.Parts.Add(DragonJaw);
 				Models.Add(Dragon.Kind, Dragon);
+				// The whole dragon, APPROXIMATE: its proportions are read off a vanilla frozen dragon seen from above and the side
+				// (dragon_shot1, ref_dr_top and ref_dr_side: about 13.5 blocks nose to tail, wings about 14 across) and its
+				// parts are the familiar ones (a body, five neck pieces, the head above, eight tail pieces, two wings with a
+				// membrane). The texture cuts (UVs) of everything but the head are guesses, the wings do not beat, and neck and
+				// tail do not follow the dragon's turns. The front is -z, as for the other mobs.
+				{
+					FModel Full;
+					Full.Kind = FName(TEXT("minecraft:ender_dragon"));
+					Full.TextureSize = FIntPoint(256, 256);
+					Full.Textures = { TEXT("enderdragon/dragon.png") };
+					Full.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 0, -12, -12, -20, 24, 24, 64) }));
+					for (int32 Piece = 0; Piece < 5; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 - Piece, -20 - 10 * Piece), { Box(192, 104, -5, -5, -10, 10, 10, 10) }, -0.04f * Piece));
+					}
+					for (int32 Piece = 0; Piece < 8; ++Piece)
+					{
+						Full.Parts.Add(Part(ERole::Static, FVector(0, 12 + Piece, 44 + 10 * Piece), { Box(192, 104, -5, -5, 0, 10, 10, 10) }, 0.03f * Piece));
+					}
+					for (const FPart& Source : Dragon.Parts)
+					{
+						FPart Moved = Source;
+						Moved.Pivot += FVector(0, 7, -86);
+						Moved.RestYaw = PI;
+						Full.Parts.Add(Moved);
+					}
+					// Wings: a bone 96 long, a membrane behind it; raised a little (0.25) from level.
+					Full.Parts.Add(Part(ERole::Static, FVector(-12, 2, -4), { Box(0, 88, -96, -4, -4, 96, 8, 8), Box(0, 152, -96, 0, 4, 96, 0, 56) }, 0.0f, 0.0f, 0.25f));
+					Full.Parts.Add(Part(ERole::Static, FVector(12, 2, -4), { Box(0, 88, 0, -4, -4, 96, 8, 8, 0.0f, true), Box(0, 152, 0, 0, 4, 96, 0, 56, 0.0f, true) }, 0.0f, 0.0f, -0.25f));
+					Models.Add(Full.Kind, Full);
+				}
 				// A carved pumpkin worn on a head (McPlayerModel): its block model 10.1 pixels across (the block at 0.63),
 				// its middle on the head's, 4 over the neck, its face forward (measured in vanilla, ref_wh_pumpkin against
 				// ref_wh_bare, from the front: 82 pixels to the bare head's 64, its top 1 pixel over the head's).
@@ -965,6 +1026,150 @@ namespace McEntityModel
 				Hunting.Kind = FName(TEXT("mc:conduit/hunting"));
 				Hunting.Textures[1] = TEXT("conduit/open_eye.png");
 				Models.Add(Hunting.Kind, Hunting);
+			}
+			{
+				// A blaze, from the logged model (`stridermodel1.txt`): an 8 x 8 x 8 head and twelve 2 x 8 x 2 rods, each at the place the log has
+				// it for one tick (they circle the body, in three rings of four at different heights; the circling and bobbing are not
+				// built, so the rods stand still), on a 64 x 32 picture.
+				FModel Blaze;
+				Blaze.Kind = TEXT("minecraft:blaze");
+				Blaze.Textures = { TEXT("blaze/blaze.png") };
+				Blaze.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, -4, -4, 8, 8, 8) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-7.412f, 26.99f, -5.105f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-5.105f, 26.94f, 7.412f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(7.412f, 26.67f, 5.105f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(5.106f, 26.23f, -7.412f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-4.928f, 13.07f, 0.844f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-2.321f, 21.74f, -6.604f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-0.844f, 12.37f, -4.928f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(-6.604f, 21.31f, 2.321f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(2.321f, 21.05f, 6.604f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(6.604f, 21.02f, -2.321f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(0.844f, 12.18f, 4.928f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Blaze.Parts.Add(Part(ERole::Static, FVector(4.928f, 12.01f, -0.844f), { Box(0, 16, 0, -8, -2, 2, 8, 2) }));
+				Models.Add(Blaze.Kind, Blaze);
+			}
+			{
+				// A phantom, from the logged model (`phantom1.txt`, one frame): body, head, two wing pairs and a two-part tail on a 64 x 64 picture, all at their rest tilts. The wing flap and the tail sway are not fitted. Lowered 21 (1.3125 blocks) from the log's pivots to sit in the hitbox: the reference shows a phantom on the ground with its wings flat on it (pairshots1.txt); the exact lift is not measured.
+				FModel Phantom;
+				Phantom.Kind = TEXT("minecraft:phantom");
+				Phantom.TextureSize = FIntPoint(64, 64);
+				Phantom.Textures = { TEXT("phantom/phantom.png") };
+				Phantom.Parts.Add(Part(ERole::Static, FVector(2.0f, 5.0f, 8.0f), { Box(23, 12, 0.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, -0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(7.97f, 4.4f, 8.0f), { Box(16, 24, 0.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, -0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.0f, 8.0f), { Box(23, 12, -6.0f, -2.0f, -9.0f, 6, 2, 9) }, 0.0f, 0, 0.1f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(-8.97f, 4.4f, 8.0f), { Box(16, 24, -13.0f, -1.0f, -9.0f, 13, 1, 9) }, 0.0f, 0, 0.2f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.0f, -1.0f), { Box(3, 20, -2.0f, -2.0f, -6.0f, 3, 2, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.5f, -7.0f), { Box(4, 29, -1.0f, -1.0f, -6.0f, 1, 1, 6) }, 0.0f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, 0), { Box(0, 8, -3.0f, -1.0f, -1.0f, 5, 3, 9) }, -0.1f, 0, 0.0f));
+				Phantom.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.7f, 7.065f), { Box(0, 0, -4.0f, -1.0f, 0, 7, 3, 5) }, 0.1f, 0, 0.0f));
+				Models.Add(Phantom.Kind, Phantom);
+			}
+			{
+				// A guardian, from the logged model (`phantom1.txt`, one frame): the 12 x 12 x 16 head with its side and top plates, twelve spikes at rest, the eye and a three-part tail, on a 64 x 64 picture. Spike extension, the eye's look and the tail swish are not fitted.
+				FModel Guardian;
+				Guardian.Kind = TEXT("minecraft:guardian");
+				Guardian.TextureSize = FIntPoint(64, 64);
+				Guardian.Textures = { TEXT("guardian/guardian.png") };
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(0, 0, -6.0f, -22.0f, -8.0f, 12, 12, 16), Box(0, 28, -8.0f, -22.0f, -6.0f, 2, 12, 12), Box(0, 28, 6.0f, -22.0f, -6.0f, 2, 12, 12), Box(16, 40, -6.0f, -10.0f, -6.0f, 12, 2, 12), Box(16, 40, -6.0f, -24.0f, -6.0f, 12, 2, 12) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.933f, 0.0671f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.0f, -0.0004f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 2.356f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.077f, 8.0f, -8.077f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, 0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-8.06f, 8.0f, -8.06f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -1.571f, -0.7854f, 3.142f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0116f, -7.988f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0729f, 7.927f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 2.356f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 8.25f), { Box(8, 0, -1.0f, -17.0f, -1.0f, 2, 2, 1) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0), { Box(40, 0, -2.0f, -18.0f, -15.0f, 4, 4, 8) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.5f, 23.5f, -14.0f), { Box(0, 54, 0.0f, -17.0f, -7.0f, 3, 3, 7) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-1.0f, 23.0f, -20.0f), { Box(41, 32, 0.0f, -16.0f, -6.0f, 2, 2, 6), Box(25, 19, 1.0f, -19.5f, -12.0f, 1, 9, 9) }, 0.0f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.08f, -8.08f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, -0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.04f, 8.043f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.7854f, 0, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(7.967f, 15.97f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, -0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.921f, 15.92f, 0), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 0.0f, 0, 0.7854f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(-7.948f, 8.0f, 7.948f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, -0.7854f, 0.0f));
+				Guardian.Parts.Add(Part(ERole::Static, FVector(8.023f, 8.0f, 8.023f), { Box(0, 0, -1.0f, -4.5f, -1.0f, 2, 9, 2) }, 1.571f, 0.7854f, 0.0f));
+				Models.Add(Guardian.Kind, Guardian);
+			}
+			{
+				// An endermite, from the logged model (`endmobs1.txt`): four stacked segments on a 64 x 32 picture, front to back
+				// 4 x 3 x 2, 6 x 4 x 5, 3 x 3 x 1 and 1 x 2 x 1. The wriggle (each segment swings sideways) is not fitted.
+				FModel Endermite;
+				Endermite.Kind = TEXT("minecraft:endermite");
+				Endermite.TextureSize = FIntPoint(64, 32);
+				Endermite.Textures = { TEXT("endermite/endermite.png") };
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, 3.5f), { Box(0, 0, -2, -3, -1, 4, 3, 2) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 4, 0), { Box(0, 5, -3, -4, -2.5f, 6, 4, 5) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 3, -3), { Box(0, 14, -1.5f, -3, -0.5f, 3, 3, 1) }));
+				Endermite.Parts.Add(Part(ERole::Static, FVector(0, 2, -4), { Box(0, 18, -0.5f, -2, -0.5f, 1, 2, 1) }));
+				Models.Add(Endermite.Kind, Endermite);
+			}
+			{
+				// A shulker, from the logged model (`endmobs1.txt`, closed): a 16 x 8 x 16 base, a 16 x 12 x 16 lid overlapping it, and
+				// a 6 cube head standing 12 up, on a 64 x 64 picture. The lid's opening and the head's turn are not built.
+				FModel Shulker;
+				Shulker.Kind = TEXT("minecraft:shulker");
+				Shulker.TextureSize = FIntPoint(64, 64);
+				Shulker.Textures = { TEXT("shulker/shulker.png") };
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 28, -8, 0, -8, 16, 8, 16) }));
+				// The lid is a hair bigger than the game's, so its notched lower edge shows the base through the gaps instead of fighting it for the depth.
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 0, 0), { Box(0, 0, -8, 4, -8, 16, 12, 16, 0.02f) }));
+				Shulker.Parts.Add(Part(ERole::Static, FVector(0, 12, 0), { Box(0, 52, -3, -6, -3, 6, 6, 6) }));
+				Models.Add(Shulker.Kind, Shulker);
+			}
+			{
+				// A strider, from the logged model (`stridermodel1.txt`; the adult): a 16 x 14 x 16 body 1 above the middle, two 4 x 16 x 4 legs,
+				// and three bristles each side (flat 12 x 16 fins, children of the body, at their rest rolls). 64 x 128 picture. The legs' swing
+				// and the bristles' sway are not fitted.
+				FModel Strider;
+				Strider.Kind = TEXT("minecraft:strider");
+				Strider.TextureSize = FIntPoint(64, 128);
+				Strider.Textures = { TEXT("strider/strider.png") };
+				Strider.Parts.Add(Part(ERole::Static, FVector(0, 21.7f, 0), { Box(0, 0, -8, -6, -8, 16, 14, 16) }));
+				Strider.Parts.Add(Part(ERole::LegRight, FVector(-4, 16, 0), { Box(0, 32, -2, -16, -2, 4, 16, 4) }));
+				Strider.Parts.Add(Part(ERole::LegLeft, FVector(4, 16, 0), { Box(0, 55, -2, -16, -2, 4, 16, 4) }));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 19.0f, 8), { Box(16, 65, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.222f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 24.0f, 8), { Box(16, 49, -12, 0, -16, 12, 0, 16) }, 0, 0, 1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(-8, 28.0f, 8), { Box(16, 33, -12, 0, -16, 12, 0, 16) }, 0, 0, 0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 29.0f, 8), { Box(16, 33, 0, 0, -16, 12, 0, 16) }, 0, 0, -0.873f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 25.0f, 8), { Box(16, 49, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.135f));
+				Strider.Parts.Add(Part(ERole::Static, FVector(8, 20.0f, 8), { Box(16, 65, 0, 0, -16, 12, 0, 16) }, 0, 0, -1.222f));
+				Models.Add(Strider.Kind, Strider);
+			}
+			{
+				// A ghast, from the logged model (`ghast1.txt`, one frame): a 16 cube body and nine 2 x L x 2 tentacles hanging from under it, all
+				// drawn 4.5 times as big (the log's root scale) on a 64 x 32 picture. The tentacles' sway (between 0.2 and 0.6 tilt) is not
+				// built, they rest at 0.4, and the shooting face is not shown.
+				FModel Ghast;
+				Ghast.Kind = TEXT("minecraft:ghast");
+				Ghast.Scale = 4.5f;
+				Ghast.Textures = { TEXT("ghast/ghast.png") };
+				Ghast.Parts.Add(Part(ERole::Static, FVector(0, 6.4f, 0), { Box(0, 0, -8, -8, -8, 16, 16, 16) }));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, 5.0f), { Box(0, 0, -1, -8, -1, 2, 8, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, 5.0f), { Box(0, 0, -1, -13, -1, 2, 13, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, 5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.6f, 0.0f), { Box(0, 0, -1, -11, -1, 2, 11, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.6f, 0.0f), { Box(0, 0, -1, -10, -1, 2, 10, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.6f, -5.0f), { Box(0, 0, -1, -9, -1, 2, 9, 2) }, 0.4f));
+				Ghast.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.6f, -5.0f), { Box(0, 0, -1, -12, -1, 2, 12, 2) }, 0.4f));
+				Models.Add(Ghast.Kind, Ghast);
+			}
+			{
+				// A magma cube of size 1 (0.52 across), from the logged model (hogmagma1.txt): eight 8 x 1 x 8 slices stacked 8 high, each
+				// with its own piece of a 64 x 64 picture (two columns of four), and a 4 x 4 x 4 core inside. Bigger sizes are the same model
+				// grown with the hitbox.
+				FModel Magma;
+				Magma.Kind = TEXT("minecraft:magma_cube");
+				Magma.TextureSize = FIntPoint(64, 64);
+				Magma.Textures = { TEXT("slime/magmacube.png") };
+				Magma.BaseWidth = 0.52f;
+				for (int32 Slice = 0; Slice < 8; ++Slice)
+				{
+					Magma.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(Slice < 4 ? 0 : 32, (Slice % 4) * 9, -4, 7 - Slice, -4, 8, 1, 8) }));
+				}
+				Magma.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(24, 40, -2, 2, -2, 4, 4, 4) }));
+				Models.Add(Magma.Kind, Magma);
 			}
 			{
 				// The pictures are chosen per villager (GetVillagerTextures); these are the plains novice farmer's.
@@ -1605,7 +1810,7 @@ namespace McEntityModel
 		return Models.Find(Kind);
 	}
 
-	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out)
+	void BuildBannerMesh(bool bWall, bool bFlag, float BodyYaw, McPlayerModel::FMeshData& Out, float Tilt)
 	{
 		// Pixels before the two thirds the game scales a banner by; the flag faces south (+z) and hangs from the bar.
 		static const FModel Pole = []
@@ -1626,7 +1831,7 @@ namespace McEntityModel
 		{
 			FModel Result;
 			Result.TextureSize = FIntPoint(64, 64);
-			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 2, 1, 20, 40, 1) }));
+			Result.Parts.Add(Part(ERole::Static, FVector::ZeroVector, { Box(0, 0, -10, 4, 1, 20, 40, 1) }));
 			return Result;
 		}();
 		static const FModel WallFlag = []
@@ -1637,12 +1842,39 @@ namespace McEntityModel
 			return Result;
 		}();
 		FAnim Anim;
-		Anim.BodyYaw = BodyYaw;
+		// The flag swings about the bar it hangs from: built unturned, tilted there, then turned like the rest.
+		Anim.BodyYaw = bFlag ? 0.0f : BodyYaw;
 		BuildMesh(bFlag ? (bWall ? WallFlag : Flag) : (bWall ? WallBar : Pole), Anim, 0, Out);
 		for (FVector& Position : Out.Positions)
 		{
 			Position *= 2.0 / 3.0;
 		}
+		if (bFlag)
+		{
+			// Positive Tilt swings the foot of the flag back (away from its face).
+			const FQuat Swing(FVector::XAxisVector, -Tilt);
+			const FQuat Turn(FVector::YAxisVector, -FMath::DegreesToRadians(BodyYaw));
+			const FVector Pivot(0.0, (bWall ? 22.0 : 44.0) * 2.0 / 3.0, 0.0);
+			// The mesh holds engine axes (x, model z, model y) in engine units; turn it in the model's own axes and pixels.
+			const double Units = McCoords::UnitsPerBlock / 16.0;
+			for (FVector& Position : Out.Positions)
+			{
+				const FVector Model(Position.X / Units, Position.Z / Units, Position.Y / Units);
+				const FVector Moved = Turn.RotateVector(Pivot + Swing.RotateVector(Model - Pivot));
+				Position = FVector(Moved.X, Moved.Z, Moved.Y) * Units;
+			}
+			for (FVector& Normal : Out.Normals)
+			{
+				const FVector Moved = Turn.RotateVector(Swing.RotateVector(FVector(Normal.X, Normal.Z, Normal.Y)));
+				Normal = FVector(Moved.X, Moved.Z, Moved.Y);
+			}
+		}
+	}
+
+	float GetBannerTilt(double Ticks)
+	{
+		const double Phase = FMath::Fmod((Ticks + 32.0) / 100.0, 1.0);
+		return 0.058f + 0.033f * static_cast<float>(FMath::Cos(2.0 * PI * Phase));
 	}
 
 	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
@@ -1830,15 +2062,35 @@ namespace McEntityModel
 			return;
 		}
 		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(FName(*Item));
-		TArray<FColor> Pixels;
-		int32 Width = 0, Height = 0;
-		if (Pictures.Kind != McHand::EHeld::Flat || !McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, Width, Height) || Width <= 0 || Height < Width)
-		{
-			return;
-		}
+		const bool bCube = Pictures.Kind == McHand::EHeld::Cube;
 		McPlayerModel::FMeshData Flat;
-		McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Flat);
-		McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(FName(*Item), bMain ? TEXT("thirdperson_righthand") : TEXT("thirdperson_lefthand"));
+		if (bCube)
+		{
+			// A full block: its sides and top, both from the side picture.
+			McPlayerModel::FMeshData Top;
+			McHand::BuildCubeSidesMesh(FColor::White, 1.0f, Flat);
+			McHand::BuildCubeTopMesh(FColor::White, 1.0f, Top);
+			const int32 First = Flat.Positions.Num();
+			Flat.Positions.Append(Top.Positions);
+			Flat.Normals.Append(Top.Normals);
+			Flat.UV0.Append(Top.UV0);
+			Flat.Colors.Append(Top.Colors);
+			for (const int32 Index : Top.Triangles)
+			{
+				Flat.Triangles.Add(Index + First);
+			}
+		}
+		else
+		{
+			TArray<FColor> Pixels;
+			int32 Width = 0, Height = 0;
+			if (Pictures.Kind != McHand::EHeld::Flat || !McRenderTextures::LoadPngPixels(Pictures.Side, Pixels, Width, Height) || Width <= 0 || Height < Width)
+			{
+				return;
+			}
+			McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Flat);
+		}
+		McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(bCube ? FName(TEXT("block/block")) : FName(*Item), bMain ? TEXT("thirdperson_righthand") : TEXT("thirdperson_lefthand"));
 		// A model with no left hand display has the right one turned over (the left hand mirrors the right).
 		static FString ModeText;
 		static bool bModeRead = FParse::Value(FCommandLine::Get(), TEXT("-McStandLeft="), ModeText);
@@ -1991,8 +2243,8 @@ namespace McEntityModel
 			const FVector RotU = U * FMath::Cos(Angle) + V * FMath::Sin(Angle);
 			const FVector RotV = V * FMath::Cos(Angle) - U * FMath::Sin(Angle);
 			const FVector4 Rect(0, 0, 1, ItemVMax);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
-			AddDecorPicture(N * (-1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, false, bGlow, Out);
+			AddDecorPicture(N * (1.0 / 32.0), RotU, RotV, 0.5, 0.5, Rect, true, bGlow, Out);
 			return;
 		}
 		if (Decor.bInvisible)
@@ -2597,6 +2849,92 @@ namespace McEntityModel
 		}
 	}
 
+	void BuildFlatItemMesh(float Width, float Height, float VMax, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const double Half = Width * 0.5 * Units;
+		const FVector Centre(0.0, 0.0, Height * Units);
+		// The picture's top edge towards -Y (north), its left towards -X, as it reads looking down on it.
+		const FVector Corners[4] = { Centre + FVector(-Half, Half, 0), Centre + FVector(Half, Half, 0), Centre + FVector(Half, -Half, 0), Centre + FVector(-Half, -Half, 0) };
+		const FVector2D UVs[4] = { FVector2D(0, VMax), FVector2D(1, VMax), FVector2D(1, 0), FVector2D(0, 0) };
+		for (const bool bBack : { false, true })
+		{
+			const FVector Normal(0.0, 0.0, bBack ? -1.0 : 1.0);
+			const int32 First = Out.Positions.Num();
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				Out.Positions.Add(Corners[Corner]);
+				Out.Normals.Add(Normal);
+				Out.UV0.Add(UVs[Corner]);
+				Out.Colors.Add(FColor::White);
+			}
+			if (bBack)
+			{
+				Out.Triangles.Append({ First, First + 2, First + 1, First, First + 3, First + 2 });
+			}
+			else
+			{
+				Out.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+		}
+	}
+
+	// The dropped item's numbers, fitted from 16 same-camera shots 4 ticks apart (itemdrop1): the width of a diamond's picture followed
+	// |cos| of a turn of 0.05 radian a tick; its middle rose and fell 0.096 of a block about 0.385 above the floor with a period of
+	// 63 ticks. -McDrop=lift,radius,cubescale overrides the base height, the spread of a stack and a block's size while they are being fitted.
+	namespace
+	{
+		float GetDropArg(int32 Index, float Default)
+		{
+			static FString Text;
+			static bool bRead = FParse::Value(FCommandLine::Get(), TEXT("-McDrop="), Text, false);
+			TArray<FString> Parts;
+			Text.ParseIntoArray(Parts, TEXT(","));
+			return Parts.IsValidIndex(Index) ? FCString::Atof(*Parts[Index]) : Default;
+		}
+	}
+
+	float GetDroppedHeight(float Age, float Lift)
+	{
+		return GetDropArg(0, 0.26f) + 0.096f * FMath::Sin(Age * 2.0f) + Lift;
+	}
+
+	void BuildDroppedMesh(const McPlayerModel::FMeshData& Unit, float Age, int32 Count, float Scale, float Lift, McPlayerModel::FMeshData& Out)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const double Units = McCoords::UnitsPerBlock;
+		const FQuat Turn(FVector::ZAxisVector, Age * 1.0f);
+		const FVector Up(0.0, 0.0, GetDroppedHeight(Age, Lift));
+		const int32 Copies = GetItemCopies(Count);
+		const double Spread = GetDropArg(1, 0.12f);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			// The copies are scattered a little around the middle, and turn with it.
+			const FVector Offset = Copies == 1 ? FVector::ZeroVector : FVector(FMath::Sin(Copy * 2.4) * Spread, FMath::Cos(Copy * 2.4) * Spread, (FMath::Frac(Copy * 0.618) - 0.5) * 0.2);
+			const int32 First = Out.Positions.Num();
+			for (int32 Index = 0; Index < Unit.Positions.Num(); ++Index)
+			{
+				Out.Positions.Add(Up * Units + Turn.RotateVector(Unit.Positions[Index] * Scale + Offset * Units));
+				Out.Normals.Add(Turn.RotateVector(Unit.Normals[Index]));
+				Out.UV0.Add(Unit.UV0[Index]);
+				Out.Colors.Add(Unit.Colors[Index]);
+			}
+			for (const int32 Index : Unit.Triangles)
+			{
+				Out.Triangles.Add(First + Index);
+			}
+		}
+	}
+
 	void BuildItemMesh(float Age, int32 Count, float Width, float VMax, McPlayerModel::FMeshData& Out)
 	{
 		Out.Positions.Reset();
@@ -2755,7 +3093,8 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	VariantSeed = INT32_MIN;
 	WolfTextureState = 0;
 	bBabyLook = false;
-	bIsItem = Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsGrillFood = Kind == TEXT("mc:grillfood");
+	bIsItem = bIsGrillFood || Kind == TEXT("minecraft:item") || Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
 	bIsPotItem = bIsItem && Item.ToString().StartsWith(TEXT("minecraft:decorated_pot"));
 	PotSides = NAME_None;
 	if (bIsPotItem)
@@ -2770,7 +3109,9 @@ void UMcEntityModelComponent::SetKind(FName InKind, FName InItem, int32 InCount)
 	bIsArrow = Kind == TEXT("minecraft:arrow");
 	bIsBobber = Kind == TEXT("minecraft:fishing_bobber");
 	bIsFalling = Kind == TEXT("minecraft:falling_block");
-	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl");
+	bIsThrown = Kind == TEXT("minecraft:snowball") || Kind == TEXT("minecraft:egg") || Kind == TEXT("minecraft:ender_pearl") || Kind == TEXT("minecraft:ender_eye");
+	bIsDropped = bIsItem && !bIsThrown && !bIsGrillFood;
+	bDropReady = false;
 	bIsBanner = Kind == TEXT("mc:banner");
 	bIsTnt = Kind == TEXT("minecraft:tnt");
 	bIsDecor = Kind == TEXT("mc:decor") && McDecor::Decode(Item.ToString(), Decor);
@@ -3029,6 +3370,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	{
 		return FindTopTexture(Item);
 	}
+	if (bIsDropped && bDropCube)
+	{
+		const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+		return Layer == 1 ? Pictures.Top : Pictures.Side;
+	}
 	if (bIsItem || bIsFalling)
 	{
 		return FindItemTexture(Item);
@@ -3190,6 +3536,135 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 	return Material;
 }
 
+void UMcEntityModelComponent::PrepareDropped()
+{
+	bDropReady = true;
+	McEntityModel::FDroppedUnit Unit;
+	McEntityModel::BuildDroppedUnit(Item, Unit);
+	bDropCube = Unit.bCube;
+	bDropModel = Unit.bModel;
+	DropScale = Unit.Scale;
+	DropLift = Unit.Lift;
+	DropUnit = MoveTemp(Unit.Sides);
+	DropTop = MoveTemp(Unit.Top);
+	DropLayerUV = MoveTemp(Unit.LayerUV);
+}
+
+bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
+{
+	Out = FDroppedUnit();
+	const McHand::FHeldPictures Pictures = McHand::FindHeldPictures(Item);
+	Out.bCube = Pictures.Kind == McHand::EHeld::Cube;
+	// The model's own ground display where the cache has it, else what the shots gave: a picture half a block, 0.125 up; a block a quarter.
+	const auto Place = [&Out](FName Model, bool bBlock)
+	{
+		const McHand::FHeldDisplay Display = McHand::ReadHeldDisplay(Model, TEXT("ground"));
+		Out.Scale = Display.bFound ? static_cast<float>(Display.Scale) : (bBlock ? McEntityModel::GetDropArg(2, 0.25f) : 0.5f);
+		Out.Lift = (Display.bFound ? static_cast<float>(Display.Translation.Y) : (bBlock ? 3.0f : 2.0f)) / 16.0f;
+	};
+	if (Out.bCube)
+	{
+		Place(FName(TEXT("block/block")), true);
+		McHand::BuildCubeSidesMesh(Pictures.SideTint, 1.0f, Out.Sides);
+		McHand::BuildCubeTopMesh(Pictures.TopTint, 1.0f, Out.Top);
+		return true;
+	}
+	// An item whose definition names a block's model (stairs, slabs, fences, ...) is drawn as that model, as the game does.
+	FString ModelId;
+	const TSharedPtr<FJsonObject> Json = McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json")));
+	const TSharedPtr<FJsonObject>* Model = nullptr;
+	if (Json.IsValid() && Json->TryGetObjectField(TEXT("model"), Model))
+	{
+		(*Model)->TryGetStringField(TEXT("model"), ModelId);
+	}
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (ModelId.StartsWith(TEXT("minecraft:block/")) && Registry.EnsureLoaded() && FMcBlockModels::Get().EnsureBaked() && FMcBlockTextures::Get().EnsureLoaded())
+	{
+		const TOptional<FMcStateId> State = Registry.FindDefaultState(Item);
+		const FMcBlockModels& Models = FMcBlockModels::Get();
+		if (State.IsSet() && Models.IsBaked() && State.GetValue() < Models.NumStates() && !Models.GetModel(State.GetValue()).Quads.IsEmpty())
+		{
+			Out.bModel = true;
+			Place(FName(TEXT("block/block")), true);
+			const double Units = McCoords::UnitsPerBlock;
+			for (const FMcBakedQuad& Quad : Models.GetModel(State.GetValue()).Quads)
+			{
+				FVector Normal = FVector::ZeroVector;
+				switch (Quad.Face)
+				{
+				case EMcDirection::Down: Normal = FVector(0, 0, -1); break;
+				case EMcDirection::Up: Normal = FVector(0, 0, 1); break;
+				case EMcDirection::North: Normal = FVector(0, -1, 0); break;
+				case EMcDirection::South: Normal = FVector(0, 1, 0); break;
+				case EMcDirection::West: Normal = FVector(-1, 0, 0); break;
+				case EMcDirection::East: Normal = FVector(1, 0, 0); break;
+				default: break;
+				}
+				const float Layer = static_cast<float>(FMcBlockTextures::Get().GetLayer(Quad.Texture));
+				const int32 First = Out.Sides.Positions.Num();
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const FVector Local = FVector(Quad.Positions[Corner]) - FVector(0.5);
+					Out.Sides.Positions.Add(FVector(Local.X, Local.Z, Local.Y) * Units);
+					Out.Sides.Normals.Add(Normal);
+					Out.Sides.UV0.Add(FVector2D(Quad.UVs[Corner]));
+					Out.Sides.Colors.Add(FColor::White);
+					Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+				}
+				Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+			}
+			return true;
+		}
+	}
+	Place(Item, false);
+	TArray<FColor> Pixels;
+	int32 Width = 0, Height = 0;
+	const FString Path = Pictures.Kind == McHand::EHeld::Flat ? Pictures.Side : FindItemTexture(Item);
+	if (Path.IsEmpty() || !McRenderTextures::LoadPngPixels(Path, Pixels, Width, Height) || Width <= 0 || Height < Width)
+	{
+		// No picture to cut out: the two-sided flat picture.
+		// Still nothing (a chest, a pot, a bar whose item model is not a picture): a plain cube of the block's own picture or, failing that,
+		// of planks, so that nothing a player drops is ever invisible.
+		FMcBlockTextures& Pictures2 = FMcBlockTextures::Get();
+		if (Item == FName(TEXT("minecraft:air")) || !Pictures2.EnsureLoaded())
+		{
+			return false;
+		}
+		FName Texture(*(TEXT("minecraft:block/") + McCache::PathOf(Item.ToString())));
+		if (Pictures2.GetLayerId(Pictures2.GetLayer(Texture)) != Texture)
+		{
+			Texture = FName(TEXT("minecraft:block/oak_planks"));
+		}
+		const float Layer = static_cast<float>(Pictures2.GetLayer(Texture));
+		Out = FDroppedUnit();
+		Out.bModel = true;
+		Place(FName(TEXT("block/block")), true);
+		static const FVector Normals[6] = { FVector(0, 0, -1), FVector(0, 0, 1), FVector(0, -1, 0), FVector(0, 1, 0), FVector(-1, 0, 0), FVector(1, 0, 0) };
+		const double Units = McCoords::UnitsPerBlock;
+		for (int32 Face = 0; Face < 6; ++Face)
+		{
+			const FVector N = Normals[Face];
+			const FVector U = Face < 2 ? FVector(1, 0, 0) : (Face < 4 ? FVector(1, 0, 0) : FVector(0, 1, 0));
+			const FVector V = FVector::CrossProduct(N, U);
+			const int32 First = Out.Sides.Positions.Num();
+			const FVector Corner[4] = { N * 0.5 - U * 0.5 + V * 0.5, N * 0.5 - U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 - V * 0.5, N * 0.5 + U * 0.5 + V * 0.5 };
+			const FVector2D Uv[4] = { FVector2D(0, 0), FVector2D(0, 1), FVector2D(1, 1), FVector2D(1, 0) };
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				Out.Sides.Positions.Add(Corner[Index] * Units);
+				Out.Sides.Normals.Add(N);
+				Out.Sides.UV0.Add(Uv[Index]);
+				Out.Sides.Colors.Add(FColor::White);
+				Out.LayerUV.Add(FVector2D(Layer, 0.0f));
+			}
+			Out.Sides.Triangles.Append({ First, First + 1, First + 2, First, First + 2, First + 3 });
+		}
+		return true;
+	}
+	McHand::BuildExtrudedMesh(Pixels, Width, Height > Width ? static_cast<float>(Width) / Height : 1.0f, Out.Sides);
+	return true;
+}
+
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -3327,6 +3802,46 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		SetRelativeScale3D(FVector(Scale));
 	}
 
+	if (bIsDropped && !bDropReady)
+	{
+		PrepareDropped();
+	}
+	if (bIsDropped && bDropModel)
+	{
+		// A block that is not a full cube: its baked model, drawn with the world's block pictures.
+		FMcBlockTextures& BlockPictures = FMcBlockTextures::Get();
+		if (!BlockPictures.IsLoaded() || !BaseMaterial)
+		{
+			return;
+		}
+		if (!BlockMaterial)
+		{
+			BlockMaterial = UMaterialInstanceDynamic::Create(McRenderMode::Pick(BaseMaterial), this);
+			BlockMaterial->SetTextureParameterValue(TEXT("Blocks"), BlockPictures.GetTextureArray());
+		}
+		BlockMaterial->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		BlockMaterial->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+		McPlayerModel::FMeshData DropMesh;
+		McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, DropMesh);
+		TArray<FVector2D> ModelUV1, ModelUV2;
+		const int32 Copies = McEntityModel::GetItemCopies(Count);
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			ModelUV1.Append(DropLayerUV);
+		}
+		ModelUV2.Init(FVector2D(1.0, 0.0), DropMesh.Positions.Num());
+		if (NumSections == 0)
+		{
+			CreateMeshSection(0, DropMesh.Positions, DropMesh.Triangles, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>(), false);
+			SetMaterial(0, BlockMaterial);
+			NumSections = 1;
+		}
+		else
+		{
+			UpdateMeshSection(0, DropMesh.Positions, DropMesh.Normals, DropMesh.UV0, ModelUV1, ModelUV2, TArray<FVector2D>(), DropMesh.Colors, TArray<FProcMeshTangent>());
+		}
+		return;
+	}
 	if (UMaterialInstanceDynamic* Base = GetMaterial(0))
 	{
 		Base->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
@@ -3404,6 +3919,45 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		else if (bIsThrown)
 		{
 			McEntityModel::BuildThrownMesh(ItemVMax, Data);
+		}
+		else if (bIsGrillFood)
+		{
+			McEntityModel::BuildFlatItemMesh(0.375f, 0.0f, ItemVMax, Data);
+		}
+		else if (bIsDropped && bDropCube)
+		{
+			// A block: the sides, then the top, each its own picture.
+			for (int32 Part = 0; Part < 2; ++Part)
+			{
+				UMaterialInstanceDynamic* Material = GetMaterial(Part);
+				if (!Material)
+				{
+					bItemFailed = true;
+					return;
+				}
+				Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+				Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+				McPlayerModel::FMeshData Cube;
+				McEntityModel::BuildDroppedMesh(Part == 0 ? DropUnit : DropTop, Anim.Age, Count, DropScale, DropLift, Cube);
+				TArray<FVector2D> CubeUV1, CubeUV2;
+				CubeUV1.Init(FVector2D::ZeroVector, Cube.Positions.Num());
+				CubeUV2.Init(FVector2D(1.0, 0.0), Cube.Positions.Num());
+				if (NumSections <= Part)
+				{
+					CreateMeshSection(Part, Cube.Positions, Cube.Triangles, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>(), false);
+					SetMaterial(Part, Material);
+					NumSections = Part + 1;
+				}
+				else
+				{
+					UpdateMeshSection(Part, Cube.Positions, Cube.Normals, Cube.UV0, CubeUV1, CubeUV2, TArray<FVector2D>(), Cube.Colors, TArray<FProcMeshTangent>());
+				}
+			}
+			return;
+		}
+		else if (bIsDropped)
+		{
+			McEntityModel::BuildDroppedMesh(DropUnit, Anim.Age, Count, DropScale, DropLift, Data);
 		}
 		else
 		{
@@ -3526,12 +4080,14 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			}
 			Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
 			Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
-			if (NumSections > Layer)
+			// The pole and bar are built once; the flag's layers again each frame, as it swings.
+			if (NumSections > Layer && Layer == 0)
 			{
 				continue;
 			}
+			const float Tilt = McEntityModel::GetBannerTilt(GetWorld() ? GetWorld()->GetTimeSeconds() * 20.0 : 0.0);
 			McPlayerModel::FMeshData Data;
-			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data);
+			McEntityModel::BuildBannerMesh(bBannerWall, Layer > 0, TargetBodyYaw, Data, Tilt);
 			if (Layer > 0)
 			{
 				// The flag takes the dye's colour (the pole and bar keep the wood).
@@ -3549,6 +4105,11 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			TArray<FVector2D> UV1, UV2;
 			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
 			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			if (NumSections > Layer)
+			{
+				UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
+				continue;
+			}
 			CreateMeshSection(Layer, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>(), false);
 			SetMaterial(Layer, Material);
 			NumSections = Layer + 1;

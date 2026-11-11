@@ -536,7 +536,7 @@ namespace
 				{
 					const FIntVector Top(X, Region.GetHeight(EMcHeightmap::MotionBlocking, X, Z), Z);
 					const FIntVector Below = Top + Down;
-					if (Context.Library.GetTemperature(Region.GetBiome(Top), Top.Y) >= 0.15f)
+					if (Context.Library.GetTemperature(Region.GetBiome(Top), X, Top.Y, Z) >= 0.15f)
 					{
 						continue;
 					}

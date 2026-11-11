@@ -6,7 +6,7 @@
 //
 // Trunk placers written: straight, forking, giant, mega_jungle, dark_oak, fancy, cherry. The others (bending,
 // upwards_branching, poplar) place a straight trunk of their height, and foliage placers we don't know (poplar)
-// a blob, so every tree type places something. Decorators written: beehive, trunk_vine, leave_vine, alter_ground.
+// a blob, so every tree type places something. Decorators written: beehive, trunk_vine, leave_vine, alter_ground, place_on_ground.
 
 #include "McFeatureTypes.h"
 #include "Dom/JsonObject.h"
@@ -27,9 +27,9 @@ namespace
 	const FIntVector Sides[4] = { FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
 	const TCHAR* const SideNames[4] = { TEXT("north"), TEXT("south"), TEXT("west"), TEXT("east") };
 
-	enum class ETrunk : uint8 { Straight, Forking, Giant, MegaJungle, DarkOak, Fancy, Cherry };
+	enum class ETrunk : uint8 { Straight, Forking, Giant, MegaJungle, DarkOak, Fancy, Cherry, UpwardsBranching };
 	enum class EFoliage : uint8 { Blob, Spruce, Pine, Acacia, Bush, RandomSpread, DarkOak, Fancy, MegaPine, Cherry, Jungle };
-	enum class EDecorator : uint8 { Beehive, TrunkVine, LeaveVine, AlterGround };
+	enum class EDecorator : uint8 { Beehive, TrunkVine, LeaveVine, AlterGround, PlaceOnGround, AttachedToLeaves };
 	// Which corner cells of a square layer of leaves are left out.
 	enum class ECorners : uint8 { Square, Cut, Random, Round };
 
@@ -38,6 +38,14 @@ namespace
 		EDecorator Type = EDecorator::Beehive;
 		float Probability = 1.0f;
 		TSharedPtr<const FMcStateProvider> Provider;
+		// place_on_ground: attempts, and how far each may stray from the foot (blocks sideways, blocks up or down).
+		int32 Tries = 128;
+		int32 Radius = 2;
+		int32 Height = 1;
+		// attached_to_leaves: the block hung under a leaf, the empty cells it needs, the keep-off radius.
+		int32 EmptyBlocks = 2;
+		int32 ExclusionXZ = 1;
+		FString Block;
 	};
 
 	// Where leaves attach: the cell above a branch's last log. A double one is the north-west cell of a 2x2 top.
@@ -113,6 +121,8 @@ namespace
 		FIntVector Origin;
 		TArray<FLog> Logs;
 		TArray<FIntVector> Leaves;
+		// How far the trunk stands above the foot on its roots.
+		int32 RootRise = 0;
 	};
 
 	class FTree final : public FMcFeature
@@ -137,6 +147,15 @@ namespace
 		int32 BranchLengthMin = 2, BranchLengthMax = 4;
 		int32 BranchStartMin = -4, BranchStartMax = -3;
 		int32 BranchEndMin = -1, BranchEndMax = 0;
+		// upwards_branching: each trunk log may sprout a branch of ExtraSteps blocks; mangrove roots round the foot.
+		float BranchChance = 0.5f;
+		FMcIntProvider ExtraSteps;
+		bool bRoots = false;
+		int32 RootWidth = 8;
+		int32 RootLength = 15;
+		// A block (moss carpet) set on the air above a root with this chance.
+		float AboveRootChance = 0.0f;
+		FString AboveRootBlock;
 		TArray<FDecorator> Decorators;
 
 		virtual bool Place(FMcFeatureContext& Context, const FIntVector& Origin) const override
@@ -161,6 +180,45 @@ namespace
 					return false;
 				}
 			}
+			// A tree keeps off other trunks: the ring of columns around each foot has to be free up to the trunk's top.
+			// Fitted to the reference client's trunk density per forest column (about 29 per 1000, against twice that
+			// without the ring); the radius is the one-block ring, not read from any data file.
+			int32 TopY = MIN_int32;
+			for (const FLog& Log : Plan.Logs)
+			{
+				TopY = FMath::Max(TopY, Log.Pos.Y);
+			}
+			// Trees with a wider trunk (several feet) skip the ring: dark forest measured 61..112 per 1000 columns, and
+			// the ring held it to 35..73.
+			// Mangroves stand packed, their roots and branches interleaving. Measured on 241 single vanilla mangroves, the
+			// nearest trunk foot is never closer than 3 columns (0.8% at 2, 18% at 3, 29% at 4, 24% at 5); so for them
+			// the rule is that spacing, not a free ring: no log within 2 columns of the foot, from the ground up to
+			// the trunk's first layer.
+			static const int32 Logs = FMcBlockTags::Get().Find(TEXT("minecraft:logs"));
+			for (const FIntVector& Foot : Plan.Foot)
+			{
+				if (Plan.Foot.Num() > 1)
+				{
+					break;
+				}
+				const int32 Reach = bRoots ? 2 : 1;
+				for (int32 Y = Foot.Y; Y <= (bRoots ? Foot.Y + B.RootRise + 1 : TopY); ++Y)
+				{
+					for (int32 DZ = -Reach; DZ <= Reach; ++DZ)
+					{
+						for (int32 DX = -Reach; DX <= Reach; ++DX)
+						{
+							const FMcStateId Cell = B.Region.GetBlock(FIntVector(Foot.X + DX, Y, Foot.Z + DZ));
+							// Mangroves: no log within 2; the one-block ring also has to be free of roots up to the trunk's foot.
+							const bool bRing = FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1 && Y <= Foot.Y + B.RootRise;
+							if (bRoots ? (FMcBlockTags::Get().Has(Logs, Cell) || (bRing && !IsFree(B.Region, Cell))) : !IsFree(B.Region, Cell))
+							{
+								return false;
+							}
+						}
+					}
+				}
+			}
 
 			if (BelowProvider.IsValid())
 			{
@@ -176,6 +234,10 @@ namespace
 			for (const FLog& Log : Plan.Logs)
 			{
 				PlaceLog(B, Log);
+			}
+			if (bRoots)
+			{
+				PlaceRoots(B);
 			}
 			for (const FAttach& Attach : Plan.Attach)
 			{
@@ -235,6 +297,48 @@ namespace
 					AddLog(Plan, O + FIntVector(0, Y, 0));
 				}
 				Plan.Attach.Add({ O + FIntVector(0, Height, 0), 0, false });
+				break;
+			}
+			case ETrunk::UpwardsBranching:
+			{
+				// A straight trunk; from the logs of its upper half, a branch may leave sideways and climb as it goes, and
+				// its tip carries leaves of its own. Our shape; the numbers come from the placer's JSON.
+				// With roots the trunk stands on them: it starts one to three blocks above the foot.
+				B.RootRise = bRoots ? 1 + Random.NextInt(3) : 0;
+				const FIntVector Base = O + FIntVector(0, B.RootRise, 0);
+				const int32 Height = RollHeight(Random);
+				for (int32 Y = 0; Y < Height; ++Y)
+				{
+					AddLog(Plan, Base + FIntVector(0, Y, 0));
+				}
+				Plan.Attach.Add({ Base + FIntVector(0, Height, 0), 0, false });
+				for (int32 Y = Height / 2; Y < Height; ++Y)
+				{
+					if (Random.NextFloat() >= BranchChance)
+					{
+						continue;
+					}
+					const FIntVector Dir = Sides[Random.NextInt(4)];
+					const int32 Steps = ExtraSteps.Sample(Random);
+					FIntVector Tip = Base + FIntVector(0, Y, 0);
+					// Leaves at the branch's foot and midway as well as at its tip (the reference trees carry about
+					// 350 leaves each, all within 3 blocks of a log).
+					Plan.Attach.Add({ Tip + Up, 0, false });
+					for (int32 Step = 1; Step <= Steps; ++Step)
+					{
+						Tip += Dir;
+						if (Step % 2 == 0)
+						{
+							++Tip.Y;
+						}
+						AddLog(Plan, Tip, AxisOf(Dir));
+						if (Step == (Steps + 1) / 2 && Step < Steps)
+						{
+							Plan.Attach.Add({ Tip + Up, 0, false });
+						}
+					}
+					Plan.Attach.Add({ Tip + Up, 0, false });
+				}
 				break;
 			}
 			case ETrunk::Forking:
@@ -430,6 +534,57 @@ namespace
 					AddLog(Plan, End, 1);
 				}
 				Plan.Attach.Add({ End + Up, 0, false });
+			}
+		}
+
+		// Mangrove roots, fitted to single vanilla mangroves dumped block by block (about 51 root blocks a tree, a third
+		// of them muddy, a root entering the mud one block at most, reaching about 8 blocks below the trunk's foot and up to 5 sideways at the farthest): a column under the trunk,
+		// and about eighteen more at a distance of 1 to 5 blocks in random directions. Each runs down from the foot's level
+		// through air, water and mud (mud becomes muddy roots) until something else stops it, at most RootLength.
+		void PlaceRoots(FBuild& B) const
+		{
+			static const FMcStateId Roots = DefaultState(TEXT("minecraft:mangrove_roots"));
+			static const FMcStateId MuddyRoots = McWithProperty(DefaultState(TEXT("minecraft:muddy_mangrove_roots")), TEXT("axis"), TEXT("y"));
+			static const FMcStateId Mud = DefaultState(TEXT("minecraft:mud"));
+			const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+			const int32 Count = 17 + B.Random.NextInt(3);
+			for (int32 Index = 0; Index <= Count; ++Index)
+			{
+				int32 DX = 0, DZ = 0;
+				if (Index > 0)
+				{
+					const FIntVector Dir = Sides[B.Random.NextInt(4)];
+					const int32 Distance = 1 + B.Random.NextInt(FMath::Max(RootWidth * 5 / 8, 1));
+					const int32 Side = B.Random.NextInt(3) - 1;
+					DX = Dir.X * Distance + Dir.Z * Side;
+					DZ = Dir.Z * Distance + Dir.X * Side;
+				}
+				const int32 Top = Index == 0 ? B.RootRise - 1 : B.Random.NextInt(B.RootRise + 1) - 1;
+				int32 MudLeft = 1;
+				for (int32 Drop = 0; Drop < RootLength; ++Drop)
+				{
+					const FIntVector At = B.Origin + FIntVector(DX, Top - Drop, DZ);
+					const FMcStateId Here = B.Region.GetBlock(At);
+					const bool bWater = Shapes.GetFluid(Here) == EMcFluid::Water;
+					const bool bMud = Here == Mud;
+					if (!B.Region.IsAir(Here) && !bWater && !bMud && !IsFree(B.Region, Here))
+					{
+						break;
+					}
+					if (bMud && --MudLeft < 0)
+					{
+						break;
+					}
+					B.Region.SetBlock(At, bMud ? MuddyRoots : bWater ? McWithProperty(Roots, TEXT("waterlogged"), TEXT("true")) : Roots);
+					if (AboveRootChance > 0.0f && !AboveRootBlock.IsEmpty() && B.Random.NextFloat() < AboveRootChance)
+					{
+						const FIntVector Over = At + FIntVector(0, 1, 0);
+						if (B.Region.IsAir(B.Region.GetBlock(Over)))
+						{
+							B.Region.SetBlock(Over, DefaultState(*AboveRootBlock));
+						}
+					}
+				}
 			}
 		}
 
@@ -690,6 +845,41 @@ namespace
 					}
 				}
 				break;
+			case EDecorator::AttachedToLeaves:
+			{
+				// A propagule (or whatever the provider gives) hung under leaves that have room below, none of its
+				// kind within the exclusion radius.
+				if (Decorator.Block.IsEmpty())
+				{
+					return;
+				}
+				const FMcStateId Hung = McWithProperty(DefaultState(*Decorator.Block), TEXT("hanging"), TEXT("true"));
+				TArray<FIntVector> Placed;
+				for (const FIntVector& Leaf : B.Leaves)
+				{
+					if (Random.NextFloat() >= Decorator.Probability)
+					{
+						continue;
+					}
+					bool bRoom = true;
+					for (int32 Below = 1; Below <= Decorator.EmptyBlocks; ++Below)
+					{
+						const FMcStateId Cell = B.Region.GetBlock(Leaf - FIntVector(0, Below, 0));
+						bRoom &= B.Region.IsAir(Cell);
+					}
+					bool bClose = false;
+					for (const FIntVector& Other : Placed)
+					{
+						bClose |= FMath::Abs(Other.X - Leaf.X) <= Decorator.ExclusionXZ && FMath::Abs(Other.Z - Leaf.Z) <= Decorator.ExclusionXZ;
+					}
+					if (bRoom && !bClose)
+					{
+						B.Region.SetBlock(Leaf - Up, Hung);
+						Placed.Add(Leaf);
+					}
+				}
+				break;
+			}
 			case EDecorator::Beehive:
 			{
 				if (Random.NextFloat() >= Decorator.Probability || B.Logs.IsEmpty() || B.Leaves.IsEmpty())
@@ -724,6 +914,28 @@ namespace
 					{
 						B.Region.SetBlock(Log + Sides[Side], McWithProperty(Nest, TEXT("facing"), SideNames[Side]));
 						break;
+					}
+				}
+				break;
+			}
+			case EDecorator::PlaceOnGround:
+			{
+				// Litter scattered round the foot: each try picks a cell within the radius and height and sets the block
+				// there if it is air with something to rest on.
+				if (!Decorator.Provider.IsValid())
+				{
+					return;
+				}
+				for (int32 Try = 0; Try < Decorator.Tries; ++Try)
+				{
+					const FIntVector At = B.Origin + FIntVector(
+						Random.NextInt(Decorator.Radius * 2 + 1) - Decorator.Radius,
+						Random.NextInt(Decorator.Height * 2 + 1) - Decorator.Height,
+						Random.NextInt(Decorator.Radius * 2 + 1) - Decorator.Radius);
+					const TOptional<FMcStateId> State = Decorator.Provider->Get(B.Region, Random, At);
+					if (State.IsSet() && B.Region.IsAir(B.Region.GetBlock(At)) && FMcBlockPredicate::CanSurvive(B.Region, At, State.GetValue()))
+					{
+						B.Region.SetBlock(At, State.GetValue());
 					}
 				}
 				break;
@@ -778,7 +990,8 @@ namespace
 		if (Type == TEXT("dark_oak_trunk_placer")) return ETrunk::DarkOak;
 		if (Type == TEXT("fancy_trunk_placer")) return ETrunk::Fancy;
 		if (Type == TEXT("cherry_trunk_placer")) return ETrunk::Cherry;
-		// straight, and the ones not written: bending, upwards_branching, poplar.
+		if (Type == TEXT("upwards_branching_trunk_placer")) return ETrunk::UpwardsBranching;
+		// straight, and the ones not written: bending, poplar.
 		return ETrunk::Straight;
 	}
 
@@ -817,6 +1030,36 @@ namespace
 		Tree->BaseHeight = ReadInt(*TrunkJson, TEXT("base_height"), 4);
 		Tree->RandA = ReadInt(*TrunkJson, TEXT("height_rand_a"));
 		Tree->RandB = ReadInt(*TrunkJson, TEXT("height_rand_b"));
+		if (Tree->Trunk == ETrunk::UpwardsBranching)
+		{
+			ReadProvider(*TrunkJson, TEXT("extra_branch_steps"), Tree->ExtraSteps);
+			double Chance = 0.5;
+			TrunkJson->TryGetNumberField(TEXT("place_branch_per_log_probability"), Chance);
+			Tree->BranchChance = static_cast<float>(Chance);
+		}
+		const TSharedPtr<FJsonObject>* RootJson;
+		if (Json.TryGetObjectField(TEXT("root_placer"), RootJson))
+		{
+			Tree->bRoots = true;
+			const TSharedPtr<FJsonObject>* Placement;
+			if ((*RootJson)->TryGetObjectField(TEXT("mangrove_root_placement"), Placement))
+			{
+				Tree->RootWidth = ReadInt(**Placement, TEXT("max_root_width"), 8);
+				Tree->RootLength = ReadInt(**Placement, TEXT("max_root_length"), 15);
+			}
+			const TSharedPtr<FJsonObject>* Above;
+			if ((*RootJson)->TryGetObjectField(TEXT("above_root_placement"), Above))
+			{
+				double Chance = 0.0;
+				(*Above)->TryGetNumberField(TEXT("above_root_placement_chance"), Chance);
+				Tree->AboveRootChance = static_cast<float>(Chance);
+				const TSharedPtr<FJsonObject>* Provider;
+				if ((*Above)->TryGetObjectField(TEXT("above_root_provider"), Provider))
+				{
+					(*Provider)->TryGetStringField(TEXT("id"), Tree->AboveRootBlock);
+				}
+			}
+		}
 		if (Tree->Trunk == ETrunk::Cherry)
 		{
 			ReadProvider(*TrunkJson, TEXT("branch_count"), Tree->BranchCount);
@@ -869,9 +1112,26 @@ namespace
 					Decorator.Type = EDecorator::AlterGround;
 					Decorator.Provider = FMcStateProvider::Parse(Object->TryGetField(TEXT("provider")));
 				}
+				else if (Type == TEXT("place_on_ground"))
+				{
+					Decorator.Type = EDecorator::PlaceOnGround;
+					Decorator.Provider = FMcStateProvider::Parse(Object->TryGetField(TEXT("block_state_provider")));
+					int32 Value = 0;
+					if (Object->TryGetNumberField(TEXT("tries"), Value)) Decorator.Tries = Value;
+					if (Object->TryGetNumberField(TEXT("radius"), Value)) Decorator.Radius = Value;
+					if (Object->TryGetNumberField(TEXT("height"), Value)) Decorator.Height = Value;
+				}
+				else if (Type == TEXT("attached_to_leaves"))
+				{
+					Decorator.Type = EDecorator::AttachedToLeaves;
+					Object->TryGetStringField(TEXT("block_provider"), Decorator.Block);
+					int32 Value = 0;
+					if (Object->TryGetNumberField(TEXT("required_empty_blocks"), Value)) Decorator.EmptyBlocks = Value;
+					if (Object->TryGetNumberField(TEXT("exclusion_radius_xz"), Value)) Decorator.ExclusionXZ = Value;
+				}
 				else
 				{
-					// cocoa, attached_to_leaves, attached_to_logs, place_on_ground and the rest: not written.
+					// cocoa, attached_to_logs, attached_to_logs and the rest: not written.
 					continue;
 				}
 				Tree->Decorators.Add(Decorator);

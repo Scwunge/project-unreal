@@ -88,7 +88,9 @@ bool FMcAnimalsTest::RunTest(const FString& Parameters)
 		{
 			continue;
 		}
-		TestTrue(*FString::Printf(TEXT("%s spawns at full health"), Animal.Name), FMath::IsNearlyEqual(Mob->Health, Animal.Health));
+		// A horse, donkey or mule rolls its own max health, 15 to 30 whole (vehicle_log43), and spawns at it.
+		const bool bRolled = Kind == FName(TEXT("minecraft:horse")) || Kind == FName(TEXT("minecraft:donkey")) || Kind == FName(TEXT("minecraft:mule"));
+		TestTrue(*FString::Printf(TEXT("%s spawns at full health"), Animal.Name), bRolled ? (Mob->Health >= 15.0f && Mob->Health <= 30.0f) : FMath::IsNearlyEqual(Mob->Health, Animal.Health));
 
 		// Killed, it drops nothing but what its table lists (tables with a chance of nothing may give nothing).
 		Mob->Damage(1000.0f, nullptr);

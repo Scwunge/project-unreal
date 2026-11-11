@@ -2,6 +2,7 @@
 // with their mouse and key handling. The sprites are the jar's own (textures/gui/sprites, textures/gui/container).
 
 #include "Kismet/GameplayStatics.h"
+#include "McBundle.h"
 #include "McHUD.h"
 #include "McItemDefinition.h"
 #include "McTextComponent.h"
@@ -22,6 +23,7 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
+#include "McMapStore.h"
 #include "Algo/Reverse.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -70,6 +72,7 @@ struct AMcHUD::FScreenState
 	FMcEnchantMenu* Enchanting = nullptr;
 	// The stonecutter's menu and how far down its recipes are scrolled.
 	FMcStonecutterMenu* Stonecutter = nullptr;
+	FMcCartographyMenu* Cartography = nullptr;
 	int32 RecipeScroll = 0;
 	// The loom's menu (Input holds it), its patterns scrolled the same way.
 	FMcLoomMenu* Loom = nullptr;
@@ -935,7 +938,8 @@ void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Pictur
 	}
 	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item == TEXT("minecraft:decorated_pot") && !McItemDef::UsesPackModels(Stack)
 		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y);
-	const McGui::FDurabilityBar Bar = McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
+	const McGui::FDurabilityBar Bar = McBundle::IsBundle(Stack.Item) ? McGui::GetBundleBar(McBundle::GetFullness(Stack))
+		: McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
 	{
 		DrawFill(X + 2, Y + 13, 13, 2, FLinearColor::Black);
@@ -992,6 +996,14 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("food_full.png") : TEXT("food_half.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
 		}
 	}
+	for (const McGui::FBarIcon& Icon : Layout.Mount)
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("heart/vehicle_container.png")), Icon.Pos.X, Icon.Pos.Y, 9, 9);
+		if (Icon.Fill != McGui::EIcon::Empty)
+		{
+			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("heart/vehicle_full.png") : TEXT("heart/vehicle_half.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
+		}
+	}
 	if (Layout.bShowAir)
 	{
 		for (const McGui::FBarIcon& Icon : Layout.Air)
@@ -999,8 +1011,19 @@ void AMcHUD::DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			DrawSprite(LoadSprite(Hud + (Icon.Fill == McGui::EIcon::Full ? TEXT("air.png") : TEXT("air_bursting.png"))), Icon.Pos.X, Icon.Pos.Y, 9, 9);
 		}
 	}
-	DrawSprite(LoadSprite(Hud + TEXT("experience_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
-	if (Layout.XpFill > 0)
+	if (Layout.bShowJump)
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("jump_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
+		if (Layout.JumpFill > 0)
+		{
+			DrawRegion(LoadSprite(Hud + TEXT("jump_bar_progress.png")), Layout.XpBar.X, Layout.XpBar.Y, static_cast<float>(Layout.JumpFill), 5, 0, 0, static_cast<float>(Layout.JumpFill), 5);
+		}
+	}
+	else
+	{
+		DrawSprite(LoadSprite(Hud + TEXT("experience_bar_background.png")), Layout.XpBar.X, Layout.XpBar.Y, 182, 5);
+	}
+	if (!Layout.bShowJump && Layout.XpFill > 0)
 	{
 		DrawRegion(LoadSprite(Hud + TEXT("experience_bar_progress.png")), Layout.XpBar.X, Layout.XpBar.Y, static_cast<float>(Layout.XpFill), 5, 0, 0, static_cast<float>(Layout.XpFill), 5);
 	}
@@ -1181,6 +1204,10 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 	case EMcWindowKind::Grindstone:
 		State->Layout = McGui::MakeGrindstoneLayout();
 		break;
+	case EMcWindowKind::CartographyTable:
+		State->Layout = McGui::MakeCartographyLayout();
+		State->Cartography = static_cast<FMcCartographyMenu*>(Window.Menu.Get());
+		break;
 	case EMcWindowKind::Anvil:
 		State->Layout = McGui::MakeAnvilLayout();
 		State->Anvil = static_cast<FMcAnvilMenu*>(Window.Menu.Get());
@@ -1196,6 +1223,9 @@ void AMcHUD::SyncScreen(UMcPlayerDataComponent* Data)
 		break;
 	case EMcWindowKind::Hopper:
 		State->Layout = McGui::MakeHopperLayout();
+		break;
+	case EMcWindowKind::Horse:
+		State->Layout = McGui::MakeHorseLayout(Window.Menu.IsValid() ? Window.Menu->NumSlots() - 36 : 2, Window.Title == TEXT("Horse"));
 		break;
 	case EMcWindowKind::Dispenser:
 		State->Layout = McGui::MakeDispenserLayout();
@@ -1359,6 +1389,16 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 				User->RequestUseMob(FVector(0.0, 0.0, 1.0));
 			}
 		}
+		// -McRideMob right-clicks the mount that -McSpawnMobs=horse,1 -McMobSaddled put two blocks south, six seconds in.
+		static bool bDevRideDone = false;
+		if (!bDevRideDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McRideMob")))
+		{
+			bDevRideDone = true;
+			if (AMcPlayerPawn* User = Cast<AMcPlayerPawn>(GetOwningPawn()))
+			{
+				User->RequestUseMob(FVector(0.0, -0.3, 1.0));
+			}
+		}
 		// -McInventory opens the inventory once the world is up (-McInventory=log also searches the creative list).
 		static bool bDevInventoryDone = false;
 		FString DevSearch;
@@ -1366,6 +1406,20 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 		{
 			bDevInventoryDone = true;
 			Data->OpenInventoryWindow();
+			return;
+		}
+		// -McHorseWindow opens a donkey's window (the saddle, an apple and diamonds in the chest slots) for a shot.
+		static bool bDevHorseDone = false;
+		if (!bDevHorseDone && GetWorld()->GetTimeSeconds() > 6.0 && FParse::Param(FCommandLine::Get(), TEXT("McHorseWindow")))
+		{
+			bDevHorseDone = true;
+			const TSharedPtr<FMcContainer> Slots = MakeShared<FMcContainer>(17);
+			Slots->Set(0, FMcItemStack(FName(TEXT("minecraft:saddle")), 1));
+			Slots->Set(4, FMcItemStack(FName(TEXT("minecraft:apple")), 5));
+			Slots->Set(7, FMcItemStack(FName(TEXT("minecraft:diamond")), 3));
+			const AMcPlayerPawn* DevPawn = Cast<AMcPlayerPawn>(GetOwningPawn());
+			const FVector Feet = DevPawn ? DevPawn->GetFeetPosition() : FVector::ZeroVector;
+			Data->OpenBlockWindow(EMcWindowKind::Horse, FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z)), TEXT("Donkey"), Slots, nullptr);
 			return;
 		}
 #endif
@@ -1566,7 +1620,18 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 	{
 		if (Player->WasInputKeyJustPressed(Buttons[Button]) && !(bInside && Slot < 0) && !bTaken)
 		{
+			// Taking the cartography table's result uses up its inputs and plays ui.cartography_table.take_result.
+			const auto Inputs = [this]() { return Screen->Cartography ? Screen->Cartography->GetStack(FMcCartographyMenu::MapSlot).Count + Screen->Cartography->GetStack(FMcCartographyMenu::MaterialSlot).Count : 0; };
+			const int32 InputsBefore = Inputs();
+			Input.GetMenu().SetBundlePick(Slot == BundleSelectedSlot ? BundleSelected : -1);
 			Input.MouseDown(Slot, Button, bShift, Time);
+			if (Screen->Cartography && Slot == FMcCartographyMenu::ResultSlot && InputsBefore > 0 && Inputs() < InputsBefore)
+			{
+				FVector Eye = FVector::ZeroVector;
+				FRotator Look;
+				Player->GetPlayerViewPoint(Eye, Look);
+				FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(TEXT("ui.cartography_table.take_result")), McCoords::UnrealToBlock(Eye), 1.0f, 1.0f });
+			}
 		}
 		if (Player->WasInputKeyJustReleased(Buttons[Button]))
 		{
@@ -2001,6 +2066,20 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawRegion(Background, Origin.X, Origin.Y, Layout.Size.X, Layout.Size.Y, 0, 0, Layout.Size.X, Layout.Size.Y);
 	}
+	if (Layout.Kind == McGui::EScreen::Horse)
+	{
+		// The slot frames the picture leaves out: the saddle's, the armour's (a horse's only) and the chest's 5 x 3.
+		const FString HorseParts = TEXT("textures/gui/sprites/container/");
+		DrawRegion(LoadSprite(HorseParts + TEXT("slot.png")), Origin.X + 7, Origin.Y + 17, 18, 18, 0, 0, 18, 18);
+		if (Layout.IsShown(1))
+		{
+			DrawRegion(LoadSprite(HorseParts + TEXT("slot.png")), Origin.X + 7, Origin.Y + 35, 18, 18, 0, 0, 18, 18);
+		}
+		if (Layout.Slots.Num() - 36 > 2)
+		{
+			DrawRegion(LoadSprite(HorseParts + TEXT("horse/chest_slots.png")), Origin.X + 79, Origin.Y + 17, 90, 54, 0, 0, 90, 54);
+		}
+	}
 	if (Layout.Kind == McGui::EScreen::Furnace && Screen->Furnace.IsValid())
 	{
 		const FMcFurnace& Furnace = *Screen->Furnace;
@@ -2087,6 +2166,11 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 			DrawAnvil(Origin);
 		}
 		break;
+	case McGui::EScreen::Horse:
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawMobPreview(FName(*(FString(TEXT("minecraft:")) + Screen->Title.ToLower())), Origin);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		break;
 	case McGui::EScreen::Hopper:
 		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 39.0f, 0x404040, false);
@@ -2094,6 +2178,14 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	case McGui::EScreen::Dispenser:
 	case McGui::EScreen::BrewingStand:
 		DrawGuiText(Screen->Title, Origin.X + 176 / 2.0f - TextWidth(Screen->Title) / 2.0f, Origin.Y + 6.0f, 0x404040, false);
+		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
+		break;
+	case McGui::EScreen::Cartography:
+		if (Screen->Cartography)
+		{
+			DrawCartographyPreview(Origin, *Screen->Cartography);
+		}
+		DrawGuiText(Screen->Title, Origin.X + 8.0f, Origin.Y + 6.0f, 0x404040, false);
 		DrawGuiText(TEXT("Inventory"), Origin.X + 8.0f, Origin.Y + 72.0f, 0x404040, false);
 		break;
 	case McGui::EScreen::Grindstone:
@@ -2118,6 +2210,26 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		break;
 	}
 
+	// The wheel over a bundle picks one of its stacks, from the last shown one back (bundleicon ref run); leaving drops it.
+	const bool bOverBundle = Menu.GetCarried().IsEmpty() && HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item);
+	if (!bOverBundle || BundleSelectedSlot != HoverSlot)
+	{
+		BundleSelectedSlot = bOverBundle ? HoverSlot : INDEX_NONE;
+		BundleSelected = -1;
+	}
+	if (bOverBundle)
+	{
+		APlayerController* Wheel = GetOwningPlayerController();
+		const McGui::FBundleGrid WheelGrid = McGui::GetBundleGrid(McBundle::GetContents(Menu.GetStack(HoverSlot)).Num());
+		const int32 Shown = WheelGrid.Rows * WheelGrid.Columns - (WheelGrid.Hidden > 0 ? 1 : 0) - WheelGrid.Blanks;
+		const int32 Step = Wheel ? (Wheel->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0) - (Wheel->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) : 0;
+		if (Step != 0 && Shown > 0)
+		{
+			BundleSelected = BundleSelected - Step;
+			BundleSelected = BundleSelected < 0 ? Shown - 1 : (BundleSelected >= Shown ? 0 : BundleSelected);
+		}
+	}
+
 	for (int32 Slot = 0; Slot < Menu.NumSlots() && Slot < Layout.Slots.Num(); ++Slot)
 	{
 		if (!Layout.IsShown(Slot))
@@ -2125,7 +2237,19 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 			continue;
 		}
 		const FIntPoint At = Origin + Layout.Slots[Slot];
-		DrawStack(Menu.GetStack(Slot), static_cast<float>(At.X), static_cast<float>(At.Y));
+		const TArray<FMcItemStack> Held = Slot == BundleSelectedSlot && BundleSelected >= 0 ? McBundle::GetContents(Menu.GetStack(Slot)) : TArray<FMcItemStack>();
+		if (Held.IsValidIndex(BundleSelected))
+		{
+			// The open bundle: the back of the bag, the picked stack, then the front over its lower part.
+			const FString Colour = Menu.GetStack(Slot).Item.ToString().Replace(TEXT("minecraft:"), TEXT(""));
+			DrawGuiSprite(TEXT("textures/item/") + Colour + TEXT("_open_back.png"), static_cast<float>(At.X), static_cast<float>(At.Y), 16.0f, 16.0f);
+			DrawStack(Held[BundleSelected], static_cast<float>(At.X), static_cast<float>(At.Y));
+			DrawGuiSprite(TEXT("textures/item/") + Colour + TEXT("_open_front.png"), static_cast<float>(At.X), static_cast<float>(At.Y), 16.0f, 16.0f);
+		}
+		else
+		{
+			DrawStack(Menu.GetStack(Slot), static_cast<float>(At.X), static_cast<float>(At.Y));
+		}
 		if (Slot == HoverSlot)
 		{
 			DrawFill(static_cast<float>(At.X), static_cast<float>(At.Y), 16, 16, FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
@@ -2189,6 +2313,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawStack(Menu.GetCarried(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
 	}
+	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item))
+	{
+		DrawBundleTooltip(Menu.GetStack(HoverSlot), static_cast<float>(GuiMouse.X), static_cast<float>(GuiMouse.Y), static_cast<float>(Width), static_cast<float>(Height), BundleSelected);
+	}
 	else if ((HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && !Menu.GetStack(HoverSlot).IsEmpty()) || (Screen->bCreative && Screen->CreativeHover >= 0))
 	{
 		const FString Name = HoverSlot >= 0 ? GetItemName(Menu.GetStack(HoverSlot)) : DisplayName(Screen->CreativeItems[Screen->CreativeHover]);
@@ -2197,6 +2325,157 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		const float Y = static_cast<float>(GuiMouse.Y) - 12.0f;
 		DrawFill(X - 3, Y - 3, Wide + 5, 14, FLinearColor(0.06f, 0.0f, 0.06f, 0.9f));
 		DrawGuiText(Name, X, Y, 0xFFFFFF, true);
+	}
+}
+
+// The cartography table's preview (ref run carto1, vanilla, measured in gui pixels from the panel's corner): a 66 square paper
+// at (67, 13) holding the map at 0.45 (at (71, 17)); zooming out shows it at 0.225 centred on the paper with a dashed edge
+// (scaled_map); copying shows two 50 wide papers, the back at (83, 13) and the front at (67, 29), the map at 0.35 inset 3;
+// a glass pane adds the lock at (118, 60); a map and material that do nothing show the crossed arrow at (35, 31).
+void AMcHUD::DrawCartographyPreview(FIntPoint Origin, const FMcCartographyMenu& Menu)
+{
+	const FMcItemStack Map = Menu.GetStack(FMcCartographyMenu::MapSlot);
+	const FMcItemStack Material = Menu.GetStack(FMcCartographyMenu::MaterialSlot);
+	const FMcCartographyMenu::EOperation Op = FMcCartographyMenu::GetOperation(Map, Material);
+	const FString Dir = TEXT("textures/gui/sprites/container/cartography_table/");
+	const float X = static_cast<float>(Origin.X);
+	const float Y = static_cast<float>(Origin.Y);
+	UTexture2D* Picture = Map.IsEmpty() ? nullptr : GetMapTexture(Map);
+	const FMcMapData* Data = Map.IsEmpty() ? nullptr : McMapStore::Find(McMapStore::GetId(Map));
+	const float Full = static_cast<float>(FMcMapData::Size);
+	if (Op == FMcCartographyMenu::EOperation::Copy)
+	{
+		DrawGuiSprite(Dir + TEXT("duplicated_map.png"), X + 83.0f, Y + 13.0f, 50.0f, 66.0f);
+		DrawSprite(Picture, X + 86.0f, Y + 16.0f, Full * 0.35f, Full * 0.35f);
+		DrawGuiSprite(Dir + TEXT("duplicated_map.png"), X + 67.0f, Y + 29.0f, 50.0f, 66.0f);
+		DrawSprite(Picture, X + 70.0f, Y + 32.0f, Full * 0.35f, Full * 0.35f);
+		return;
+	}
+	if (Op == FMcCartographyMenu::EOperation::Zoom)
+	{
+		DrawGuiSprite(Dir + TEXT("scaled_map.png"), X + 67.0f, Y + 13.0f, 66.0f, 66.0f);
+		DrawSprite(Picture, X + 85.4f, Y + 31.4f, Full * 0.225f, Full * 0.225f);
+		return;
+	}
+	DrawGuiSprite(Dir + TEXT("map.png"), X + 67.0f, Y + 13.0f, 66.0f, 66.0f);
+	DrawSprite(Picture, X + 71.0f, Y + 17.0f, Full * 0.45f, Full * 0.45f);
+	if (Op == FMcCartographyMenu::EOperation::Lock || (Data && Data->bLocked))
+	{
+		DrawGuiSprite(Dir + TEXT("locked.png"), X + 118.0f, Y + 60.0f, 10.0f, 14.0f);
+	}
+	if (!Map.IsEmpty() && !Material.IsEmpty() && Op == FMcCartographyMenu::EOperation::None)
+	{
+		DrawGuiSprite(Dir + TEXT("error.png"), X + 35.0f, Y + 31.0f, 28.0f, 21.0f);
+	}
+}
+
+void AMcHUD::DrawBundleTooltip(const FMcItemStack& Bundle, float CursorX, float CursorY, float ScreenWidth, float ScreenHeight, int32 Selected)
+{
+	namespace Gui = McGui;
+	const TArray<FMcItemStack> Contents = McBundle::GetContents(Bundle);
+	const Gui::FBundleGrid Grid = Gui::GetBundleGrid(Contents.Num());
+	// The empty bundle's description, wrapped to the content width.
+	TArray<FString> Lines;
+	if (Contents.IsEmpty())
+	{
+		FString Line;
+		TArray<FString> Words;
+		McLang::Get(TEXT("item.minecraft.bundle.empty.description")).ParseIntoArray(Words, TEXT(" "));
+		for (const FString& Word : Words)
+		{
+			const FString Next = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+			if (!Line.IsEmpty() && TextWidth(Next) > Gui::BundleTipWidth)
+			{
+				Lines.Add(Line);
+				Line = Word;
+			}
+			else
+			{
+				Line = Next;
+			}
+		}
+		Lines.Add(Line);
+	}
+	const float Wide = Gui::BundleTipWidth;
+	const float High = Gui::GetBundleTipHeight(Grid.Rows, Lines.Num());
+	float X = CursorX + 12.0f;
+	float Y = CursorY - 12.0f;
+	if (Y + High > ScreenHeight - 5.0f)
+	{
+		Y = ScreenHeight - 5.0f - High;
+	}
+	if (X + Wide + 12.0f > ScreenWidth)
+	{
+		X = CursorX - 12.0f - Wide;
+	}
+	const FString SpriteDir = TEXT("textures/gui/sprites/");
+	DrawGuiSprite(SpriteDir + TEXT("tooltip/background.png"), X - 12.0f, Y - 12.0f, Wide + 24.0f, High + 24.0f);
+	DrawGuiSprite(SpriteDir + TEXT("tooltip/frame.png"), X - 12.0f, Y - 12.0f, Wide + 24.0f, High + 24.0f);
+	DrawGuiText(GetItemName(Bundle), X, Y, 0xFFFFFF, true);
+	float Below = Y + Gui::BundleTipTitleHeight + Gui::BundleTipTitleGap;
+	if (Contents.IsEmpty())
+	{
+		for (const FString& Line : Lines)
+		{
+			DrawGuiText(Line, X, Below, 0xAAAAAA, true);
+			Below += Gui::BundleTipLineHeight;
+		}
+	}
+	else
+	{
+		const int32 Cells = Grid.Rows * Grid.Columns - (Grid.Hidden > 0 ? 1 : 0);
+		for (int32 Cell = Grid.Blanks; Cell < Cells; ++Cell)
+		{
+			const float CellX = X + (Cell % Grid.Columns) * Gui::BundleTipCell;
+			const float CellY = Below + (Cell / Grid.Columns) * Gui::BundleTipCell;
+			DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_background.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			const bool bPicked = Cell - Grid.Blanks == Selected;
+			if (bPicked)
+			{
+				DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_highlight_back.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			}
+			DrawStack(Contents[Cell - Grid.Blanks], CellX + 4.0f, CellY + 4.0f);
+			if (bPicked)
+			{
+				DrawGuiSprite(SpriteDir + TEXT("container/bundle/slot_highlight_front.png"), CellX, CellY, Gui::BundleTipCell, Gui::BundleTipCell);
+			}
+		}
+		if (Grid.Hidden > 0)
+		{
+			const FString More = FString::Printf(TEXT("+%d"), Grid.Hidden);
+			const float CellX = X + (Cells % Grid.Columns) * Gui::BundleTipCell;
+			const float CellY = Below + (Cells / Grid.Columns) * Gui::BundleTipCell;
+			DrawGuiText(More, CellX + (Gui::BundleTipCell - TextWidth(More)) * 0.5f, CellY + 8.0f, 0xFFFFFF, true);
+		}
+		Below += Grid.Rows * Gui::BundleTipCell;
+	}
+	// The picked stack's name in a tooltip of its own, centred over this one with its bottom edge on this one's top (bundleicon ref run).
+	if (Selected >= 0 && Contents.IsValidIndex(Selected))
+	{
+		const FString Name = GetItemName(Contents[Selected]);
+		const float NameWide = TextWidth(Name);
+		const float NameX = X + (Wide - NameWide) * 0.5f;
+		const float NameY = Y - 16.0f;
+		DrawGuiSprite(SpriteDir + TEXT("tooltip/background.png"), NameX - 12.0f, NameY - 12.0f, NameWide + 24.0f, 9.0f + 24.0f);
+		DrawGuiSprite(SpriteDir + TEXT("tooltip/frame.png"), NameX - 12.0f, NameY - 12.0f, NameWide + 24.0f, 9.0f + 24.0f);
+		DrawGuiText(Name, NameX, NameY, 0xFFFFFF, true);
+	}
+	// The fullness bar: a one pixel frame, the fill inside it and the word over it.
+	const double Fullness = McBundle::GetFullness(Bundle);
+	const float BarY = Below + Gui::BundleTipBarGap;
+	const bool bFull = Fullness >= 1.0 - 1.0e-9;
+	DrawGuiSprite(SpriteDir + TEXT("container/bundle/bundle_progressbar_border.png"), X, BarY, Wide, Gui::BundleTipBarHeight);
+	if (Fullness > 0.0)
+	{
+		// The fill is floor(94 f) pixels (bundletip2: 1 to 16 of 64), at least one.
+		const float Fill = FMath::Max(1.0f, FMath::FloorToFloat((Wide - 2.0f) * static_cast<float>(Fullness) + 1.0e-4f));
+		DrawGuiSprite(SpriteDir + TEXT("container/bundle/") + (bFull ? TEXT("bundle_progressbar_full.png") : TEXT("bundle_progressbar_fill.png")), X + 1.0f, BarY + 1.0f, Fill, Gui::BundleTipBarHeight - 2.0f);
+	}
+	// Only a full or an empty bundle has a word on its bar (bundletip2: none at 1 to 16 of 64).
+	if (bFull || Fullness <= 0.0)
+	{
+		const FString Label = McLang::Get(bFull ? TEXT("item.minecraft.bundle.full") : TEXT("item.minecraft.bundle.empty"));
+		DrawGuiText(Label, X + (Wide - TextWidth(Label)) * 0.5f, BarY + 3.0f, 0xFFFFFF, true);
 	}
 }
 
@@ -2372,6 +2651,21 @@ void AMcHUD::DrawHUD()
 				FLinearColor(1.0f, 1.0f, 1.0f, Player ? StepVignette(*Player) : 0.0f));
 		}
 	}
+	// A spyglass at the eye: a square scope picture, taller than the screen, with black beside it (GUI units).
+	if (Player && Player->IsScoping() && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead)
+	{
+		const float Side = Player->GetScopeScale() * static_cast<float>(Height);
+		const float Left = (static_cast<float>(Width) - Side) * 0.5f;
+		const float RightEdge = Left + Side;
+		DrawFill(0.0f, 0.0f, FMath::Max(Left, 0.0f), static_cast<float>(Height), FLinearColor::Black);
+		DrawFill(FMath::Min(RightEdge, static_cast<float>(Width)), 0.0f, FMath::Max(static_cast<float>(Width) - RightEdge, 0.0f), static_cast<float>(Height), FLinearColor::Black);
+		DrawSprite(LoadSprite(TEXT("textures/misc/spyglass_scope.png")), Left, (static_cast<float>(Height) - Side) * 0.5f, Side, Side);
+	}
+	// A filled map in the main hand is held up before the view (under the crosshair and the rest of the HUD).
+	if (Player && Data && !Screen.IsValid() && ActiveMenu == EMenu::None && !bDead && !Player->IsScoping() && Data->GetSelected().Item == TEXT("minecraft:filled_map"))
+	{
+		DrawHeldMap(Width, Height, Data->GetSelected(), Player->GetLookPitch(), Player->GetFeetPosition(), Player->GetLookYaw());
+	}
 	// Minecraft draws the crosshair inverting what is behind it; plain white for now.
 	if (!Screen.IsValid() && ActiveMenu == EMenu::None)
 	{
@@ -2457,6 +2751,10 @@ void AMcHUD::DrawHUD()
 	else if (IsWorldMenu())
 	{
 		DrawMenus(Width, Height, false);
+	}
+	if (bCreditsOn)
+	{
+		DrawCredits(Width, Height);
 	}
 	DrawToasts(Width, Height);
 }
@@ -3311,4 +3609,149 @@ void AMcHUD::DrawLectern(int32 Width, int32 Height)
 	};
 	Button(TEXT("Done"), Width / 2.0f - 100.0f, BookView::IsOverDone(GuiMouse, Width));
 	Button(TEXT("Take Book"), Width / 2.0f + 2.0f, BookView::IsOverTake(GuiMouse, Width));
+}
+
+void AMcHUD::StartCredits(const FString& PlayerNameForPoem, TFunction<void()> Done)
+{
+	CreditLines.Reset();
+	const auto ColourOf = [](TCHAR Code) -> uint32
+	{
+		static const uint32 Colours[16] = { 0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+			0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF };
+		const int32 Index = FChar::IsDigit(Code) ? Code - TEXT('0') : (FChar::ToLower(Code) - TEXT('a') + 10);
+		return Index >= 0 && Index < 16 ? Colours[Index] : 0xFFFFFF;
+	};
+	const auto Wrap = [this](const FString& Text, uint32 Rgb, TArray<TPair<FString, uint32>>& Out)
+	{
+		if (Text.IsEmpty())
+		{
+			Out.Emplace(FString(), Rgb);
+			return;
+		}
+		FString Line;
+		TArray<FString> Words;
+		Text.ParseIntoArray(Words, TEXT(" "), true);
+		for (const FString& Word : Words)
+		{
+			const FString Try = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+			if (!Line.IsEmpty() && TextWidth(Try) > 274.0f)
+			{
+				Out.Emplace(Line, Rgb);
+				Line = Word;
+			}
+			else
+			{
+				Line = Try;
+			}
+		}
+		Out.Emplace(Line, Rgb);
+	};
+	FString Poem;
+	if (FFileHelper::LoadFileToString(Poem, *McCache::Asset(TEXT("texts/end.txt"))))
+	{
+		Poem = Poem.Replace(TEXT("PLAYERNAME"), *PlayerNameForPoem).Replace(TEXT("\r"), TEXT(""));
+		TArray<FString> Lines;
+		Poem.ParseIntoArray(Lines, TEXT("\n"), false);
+		for (FString Line : Lines)
+		{
+			uint32 Rgb = 0xFFFFFF;
+			if (Line.Len() >= 2 && Line[0] == 0x00A7)
+			{
+				Rgb = ColourOf(Line[1]);
+				Line = Line.Mid(2);
+			}
+			Wrap(Line, Rgb, CreditLines);
+		}
+	}
+	for (int32 Index = 0; Index < 24; ++Index)
+	{
+		CreditLines.Emplace(FString(), 0xFFFFFF);
+	}
+	FString Json;
+	TArray<TSharedPtr<FJsonValue>> Sections;
+	if (FFileHelper::LoadFileToString(Json, *McCache::Asset(TEXT("texts/credits.json")))
+		&& FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Sections))
+	{
+		for (const TSharedPtr<FJsonValue>& SectionValue : Sections)
+		{
+			const TSharedPtr<FJsonObject> Section = SectionValue->AsObject();
+			if (!Section.IsValid())
+			{
+				continue;
+			}
+			CreditLines.Emplace(FString(), 0xFFFFFF);
+			CreditLines.Emplace(Section->GetStringField(TEXT("section")), 0xFFFF55);
+			CreditLines.Emplace(FString(), 0xFFFFFF);
+			const TArray<TSharedPtr<FJsonValue>>* Disciplines = nullptr;
+			if (!Section->TryGetArrayField(TEXT("disciplines"), Disciplines))
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& DisciplineValue : *Disciplines)
+			{
+				const TSharedPtr<FJsonObject> Discipline = DisciplineValue->AsObject();
+				if (!Discipline.IsValid())
+				{
+					continue;
+				}
+				CreditLines.Emplace(Discipline->GetStringField(TEXT("discipline")), 0xFFFFFF);
+				const TArray<TSharedPtr<FJsonValue>>* Titles = nullptr;
+				if (!Discipline->TryGetArrayField(TEXT("titles"), Titles))
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& TitleValue : *Titles)
+				{
+					const TSharedPtr<FJsonObject> Title = TitleValue->AsObject();
+					if (!Title.IsValid())
+					{
+						continue;
+					}
+					CreditLines.Emplace(Title->GetStringField(TEXT("title")), 0xAAAAAA);
+					const TArray<TSharedPtr<FJsonValue>>* Names = nullptr;
+					if (Title->TryGetArrayField(TEXT("names"), Names))
+					{
+						for (const TSharedPtr<FJsonValue>& Name : *Names)
+						{
+							CreditLines.Emplace(Name->AsString(), 0xFFFFFF);
+						}
+					}
+				}
+				CreditLines.Emplace(FString(), 0xFFFFFF);
+			}
+		}
+	}
+	CreditsDone = MoveTemp(Done);
+	CreditsStart = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	bCreditsOn = true;
+}
+
+void AMcHUD::DrawCredits(int32 Width, int32 Height)
+{
+	// Unmeasured: the scroll speed and line gap are a guess (30 GUI pixels a second, 12 apart) until a reference recording.
+	APlayerController* Player = GetOwningPlayerController();
+	const double Elapsed = (GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0) - CreditsStart;
+	const float Offset = static_cast<float>(Elapsed) * 30.0f;
+	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.0f, 0.0f, 0.0f, 1.0f));
+	const float Top = Height - Offset;
+	for (int32 Index = 0; Index < CreditLines.Num(); ++Index)
+	{
+		const float Y = Top + Index * 12.0f;
+		if (Y > -12.0f && Y < Height && !CreditLines[Index].Key.IsEmpty())
+		{
+			DrawGuiText(CreditLines[Index].Key, FMath::RoundToFloat(Width / 2.0f - TextWidth(CreditLines[Index].Key) / 2.0f), Y, CreditLines[Index].Value, true);
+		}
+	}
+	const bool bEnded = Top + CreditLines.Num() * 12.0f < 0.0f;
+	if (bEnded || (Player && Player->WasInputKeyJustPressed(EKeys::Escape)))
+	{
+		bCreditsOn = false;
+		CreditLines.Reset();
+		if (CreditsDone)
+		{
+			TFunction<void()> Done = MoveTemp(CreditsDone);
+			CreditsDone = nullptr;
+			Done();
+		}
+	}
 }

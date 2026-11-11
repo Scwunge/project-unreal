@@ -1,4 +1,6 @@
 #include "McGameMode.h"
+#include "McMob.h"
+#include "McSound.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -32,6 +34,9 @@
 #include "McSimulation.h"
 #include "McConduitHunt.h"
 #include "McEntityManager.h"
+#include "McBannerEntity.h"
+#include "McBanner.h"
+#include "McCache.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameSession.h"
 #include "Engine/World.h"
@@ -706,7 +711,20 @@ void AMcGameMode::StartPlay()
 		Context.DayTime = Here->GetDayTime();
 		Context.bOverworld = Here->Dimension == TEXT("minecraft:overworld");
 		Context.GameTicks = Here->GetGameTime();
+		Context.Dimension = FName(*Here->Dimension);
+		if (Pawn->Data && Pawn->Data->Stats.bHasDeath)
+		{
+			Context.bHasDeath = true;
+			Context.DeathPosition = FVector2D(Pawn->Data->Stats.DeathPos.X + 0.5, Pawn->Data->Stats.DeathPos.Z + 0.5);
+			Context.DeathDimension = Pawn->Data->Stats.DeathDimension;
+		}
 		McItemFrames::SetContext(Context);
+		static bool bShotMapGiven = !FParse::Param(FCommandLine::Get(), TEXT("McMapShot"));
+		if (!bShotMapGiven && Here->GetGameTime() > 40)
+		{
+			bShotMapGiven = true;
+			const_cast<AMcPlayerPawn*>(Pawn)->GiveShotMap();
+		}
 	}), 0.05f, true);
 
 	// Advancements that fire on what a player carries.
@@ -756,9 +774,12 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			bool bFlying = false;
-			Pawn->SetActorLocation(GetStartTransform(It->Get(), bFlying).GetLocation());
+			const FTransform Start = GetStartTransform(It->Get(), bFlying);
+			Pawn->SetActorLocation(Start.GetLocation());
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
+				// (The place alone was set before, so a saved world's player looked along +x whatever way they faced.)
+				McPawn->SetStartLook(Start.Rotator());
 				McPawn->SetGameRules(GetGameRules());
 				McPawn->SetFlying(bFlying);
 				if (!RestoreSurvival(It->Get(), *McPawn))
@@ -815,6 +836,68 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				}
 			}
 			return false;
+		};
+		Host->PlayerLooksAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& PlayerPos, const FVector& Point)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (!McPawn || !McPawn->Data || McPawn->Data->bCreative || FVector::Dist(McPawn->GetFeetPosition(), PlayerPos) >= 0.5)
+				{
+					continue;
+				}
+				// Both the yaw and the pitch of the way they face must be within 60 degrees of the way to the point.
+				const FVector Eye = PlayerPos + FVector(0.0, 1.62, 0.0);
+				const FVector To = (Point - Eye).GetSafeNormal();
+				const double WantYaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+				const double WantPitch = FMath::RadiansToDegrees(FMath::Asin(-FMath::Clamp(To.Y, -1.0, 1.0)));
+				return FMath::Abs(FMath::FindDeltaAngleDegrees(WantYaw, McPawn->GetLookYaw())) <= 60.0 && FMath::Abs(WantPitch - McPawn->GetLookPitch()) <= 60.0;
+			}
+			return false;
+		};
+		Host->FindPlayerById = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](int32 Id, FVector& OutFeet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && static_cast<int32>(McPawn->GetUniqueID()) == Id)
+				{
+					if (!McPawn->Data || McPawn->Data->bCreative)
+					{
+						return false;
+					}
+					OutFeet = McPawn->GetFeetPosition();
+					return true;
+				}
+			}
+			return false;
+		};
+		Host->PlayerIdAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Feet)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && FVector::Dist(McPawn->GetFeetPosition(), Feet) < 0.5)
+				{
+					return static_cast<int32>(McPawn->GetUniqueID());
+				}
+			}
+			return 0;
 		};
 		Host->OnPlayerEffect = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, FName Effect, int32 Amplifier, int32 Duration)
 		{
@@ -1088,7 +1171,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			Pot.Entity = FMcBlockEntity::MakePot(Sides);
 		}
 	}
-	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "sides": [pot sides] }.
+	// Dropped items that stay put and are never picked up: { "at": [x, y, z], "item": id, "count": n, "sides": [pot sides] }.
 	const TArray<TSharedPtr<FJsonValue>>* ItemValues = nullptr;
 	FMcEntityHost* Host = WorldActor ? WorldActor->GetEntityHost() : nullptr;
 	if (Host && Scene->TryGetArrayField(TEXT("items"), ItemValues))
@@ -1104,6 +1187,11 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 				continue;
 			}
 			FMcItemStack Stack{ FName(*Id) };
+			double CountValue = 1.0;
+			if (Object->TryGetNumberField(TEXT("count"), CountValue))
+			{
+				Stack.Count = FMath::Max(1, static_cast<int32>(CountValue));
+			}
 			const TArray<TSharedPtr<FJsonValue>>* SideValues = nullptr;
 			if (Object->TryGetArrayField(TEXT("sides"), SideValues))
 			{
@@ -1117,6 +1205,99 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			FMcItemEntity& Item = Host->GetManager().DropItem(FVector((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber()), Stack, TNumericLimits<int32>::Max());
 			Item.Body.Velocity = FVector::ZeroVector;
 		}
+	}
+	// Particles repeated for a shot: { "name": "minecraft:heart", "at": [x, y, z], "delta": [dx, dy, dz], "speed": 0, "count": 1, "every": 40 }
+	// emits the particle every "every" ticks (default 20), starting at once, as /particle would.
+	const TArray<TSharedPtr<FJsonValue>>* ParticleValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("particles"), ParticleValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *ParticleValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			FString Id;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3 || !Object->TryGetStringField(TEXT("name"), Id))
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a particle needs \"at\": [x, y, z] and \"name\""), *Path);
+				continue;
+			}
+			FVector Delta = FVector::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* DeltaValues = nullptr;
+			if (Object->TryGetArrayField(TEXT("delta"), DeltaValues) && DeltaValues->Num() == 3)
+			{
+				Delta = FVector((*DeltaValues)[0]->AsNumber(), (*DeltaValues)[1]->AsNumber(), (*DeltaValues)[2]->AsNumber());
+			}
+			double Speed = 0.0, Count = 1.0, Every = 20.0;
+			Object->TryGetNumberField(TEXT("speed"), Speed);
+			Object->TryGetNumberField(TEXT("count"), Count);
+			Object->TryGetNumberField(TEXT("every"), Every);
+			const FVector At3((*At)[0]->AsNumber(), (*At)[1]->AsNumber(), (*At)[2]->AsNumber());
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[Name = FName(*Id), At3, Delta, Speed, Count](float)
+				{
+					FMcSoundBus::Get().OnParticle.Broadcast(Name, At3, Delta, static_cast<float>(Speed), static_cast<int32>(Count));
+					return true;
+				}), static_cast<float>(FMath::Max(1.0, Every) / 20.0));
+		}
+	}
+	// Banners' patterns: { "at": [x, y, z], "patterns": [{ "pattern": "minecraft:border", "color": "blue" }, ...] }. The banner
+	// block is placed by "blocks"; its flag stands once the chunk is there.
+	struct FSceneBanner
+	{
+		FIntVector Pos;
+		TArray<McBanner::FLayer> Layers;
+	};
+	TSharedRef<TArray<FSceneBanner>> Banners = MakeShared<TArray<FSceneBanner>>();
+	const TArray<TSharedPtr<FJsonValue>>* BannerValues = nullptr;
+	if (Scene->TryGetArrayField(TEXT("banners"), BannerValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *BannerValues)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* At = nullptr;
+			if (!Object.IsValid() || !Object->TryGetArrayField(TEXT("at"), At) || At->Num() != 3)
+			{
+				UE_LOG(LogMcClient, Error, TEXT("%s: a banner needs \"at\": [x, y, z]"), *Path);
+				continue;
+			}
+			FSceneBanner& Banner = Banners->Emplace_GetRef();
+			Banner.Pos = ToBlock(*At);
+			const TArray<TSharedPtr<FJsonValue>>* Patterns = nullptr;
+			if (Object->TryGetArrayField(TEXT("patterns"), Patterns))
+			{
+				for (const TSharedPtr<FJsonValue>& Pattern : *Patterns)
+				{
+					const TSharedPtr<FJsonObject> Layer = Pattern->AsObject();
+					FString Id, Colour;
+					if (Layer.IsValid() && Layer->TryGetStringField(TEXT("pattern"), Id) && Layer->TryGetStringField(TEXT("color"), Colour))
+					{
+						Banner.Layers.Add({ McCache::PathOf(Id), Colour });
+					}
+				}
+			}
+		}
+	}
+	if (Host && Banners->Num() > 0)
+	{
+		TSharedRef<FTimerHandle> BannerTimer = MakeShared<FTimerHandle>();
+		GetWorldTimerManager().SetTimer(*BannerTimer, FTimerDelegate::CreateWeakLambda(this, [this, Banners, BannerTimer]()
+		{
+			FMcEntityHost* EntityHost = WorldActor ? WorldActor->GetEntityHost() : nullptr;
+			FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
+			for (int32 Index = Banners->Num() - 1; EntityHost && Blocks && Index >= 0; --Index)
+			{
+				const FSceneBanner& Banner = (*Banners)[Index];
+				if (Blocks->FindChunk(FIntPoint(Banner.Pos.X >> 4, Banner.Pos.Z >> 4)))
+				{
+					FMcBannerEntity::Stand(EntityHost->GetManager(), Banner.Pos, Banner.Layers);
+					Banners->RemoveAt(Index);
+				}
+			}
+			if (Banners->Num() == 0)
+			{
+				GetWorldTimerManager().ClearTimer(*BannerTimer);
+			}
+		}), 0.5f, true);
 	}
 	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
@@ -1490,6 +1671,32 @@ void AMcGameMode::TickVillages()
 		{
 			continue;
 		}
+		// The End's fight starts when its main island has loaded: ten crystals on the pillars (positions read from vanilla, dragon8.txt)
+		// and the dragon, unless one has been killed in this game already (the kill is not saved yet). Where in the sky the dragon
+		// first appears is a guess.
+		if (World->Dimension == TEXT("minecraft:the_end") && !Host->GetManager().bEndFightStarted && World->GetBlockWorld())
+		{
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			bool bLoaded = false;
+			for (int32 Y = 45; Y <= 70 && !bLoaded; ++Y)
+			{
+				bLoaded = Reg.GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name != FName(TEXT("minecraft:air"));
+			}
+			if (bLoaded)
+			{
+				Host->GetManager().bEndFightStarted = true;
+				if (!Host->GetManager().bDragonKilledBefore)
+				{
+					for (const FVector& Crystal : FMcMob::GetPillarCrystalPositions())
+					{
+						Host->SpawnMob(FName(TEXT("minecraft:end_crystal")), Crystal);
+					}
+					FMcMob::BuildExitPortal(Host->GetManager(), false, false);
+					Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), FVector(0.5, 100.0, 0.5));
+					UE_LOG(LogTemp, Display, TEXT("The End: dragon and ten crystals started"));
+				}
+			}
+		}
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
@@ -1526,7 +1733,20 @@ void AMcGameMode::TickVillages()
 			{
 				Pawn->Data->SetRaidBar(-1.0f, FString());
 			}
-			Pawn->Data->SetCustomBars(McCommands::BossbarLines(GetPlayerName(It->Get())));
+			FString Bars = McCommands::BossbarLines(GetPlayerName(It->Get()));
+			// The ender dragon's bar (wiki: light purple, shown to players within 192 blocks of (0, 128, 0); the colour name is unverified).
+			for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+			{
+				if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+				{
+					const FMcMob& Dragon = static_cast<const FMcMob&>(*Entity);
+					if (FVector::DistSquared(Feet, FVector(0.0, 128.0, 0.0)) < 192.0 * 192.0)
+					{
+						Bars += FString::Printf(TEXT("Ender Dragon\t%.4f\tpink\tprogress\n"), FMath::Clamp(Dragon.Health / Dragon.Type.MaxHealth, 0.0f, 1.0f));
+					}
+				}
+			}
+			Pawn->Data->SetCustomBars(Bars);
 		}
 	}
 }
@@ -1812,6 +2032,82 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 					{
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid() && Line == TEXT("!killdragon"))
+					{
+						// Development: "!killdragon" waits (by game state, since a slow world load makes timed lines all fire at once)
+						// for the ender dragon, deals it 1000 damage (no command reaches mobs), waits for its death to end, then drops
+						// this player from (0, 72, 0) onto the exit portal: a run script can see the death, the portal and the credits
+						// without winning the fight by hand.
+						struct FRun { int32 Stage = 0; int32 Wait = 0; };
+						UE_LOG(LogTemp, Display, TEXT("killdragon: armed, %d worlds"), Worlds.Num());
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+							[this, Player, Run = MakeShared<FRun>()](float)
+							{
+								if (!Player.IsValid())
+								{
+									return false;
+								}
+								int32 Seen = 0;
+								FMcMob* Dragon = nullptr;
+								for (AMcWorldActor* World : Worlds)
+								{
+									FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+									if (!Host)
+									{
+										continue;
+									}
+									for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+									{
+										if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+										{
+											++Seen;
+											Dragon = static_cast<FMcMob*>(Entity.Get());
+										}
+									}
+								}
+								UE_LOG(LogTemp, Display, TEXT("killdragon: stage %d, dragons %d"), Run->Stage, Seen);
+								if (Run->Stage == 0 && Dragon)
+								{
+									Dragon->Damage(1000.0f, nullptr);
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon found (%.0f hp), damaged"), Dragon->Health);
+									Run->Stage = 1;
+								}
+								else if (Run->Stage == 1 && !Dragon)
+								{
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon gone, dropping the player on the portal in 3 s"));
+									Run->Stage = 2;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 2 && ++Run->Wait >= 3)
+								{
+									FString Spot;
+									FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+									HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("2 70 0")) : Spot));
+									Run->Stage = 3;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 3 && ++Run->Wait >= 4)
+								{
+									// Where the player is and what stands at the middle, for the run's log.
+									const AMcPlayerPawn* Pawn = Player.IsValid() ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+									UE_LOG(LogTemp, Display, TEXT("killdragon: player at %s"), Pawn ? *Pawn->GetFeetPosition().ToString() : TEXT("none"));
+									for (AMcWorldActor* World : Worlds)
+									{
+										if (World && World->GetBlockWorld())
+										{
+											FString Column;
+											for (int32 Y = 58; Y <= 67; ++Y)
+											{
+												Column += FString::Printf(TEXT(" %d:%s"), Y, *FMcBlockRegistry::Get().GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name.ToString());
+											}
+											UE_LOG(LogTemp, Display, TEXT("killdragon: column at 0,0 (%s):%s"), *World->Dimension, *Column);
+										}
+									}
+									return false;
+								}
+								return true;
+							}), 1.0f);
 					}
 					else if (Player.IsValid())
 					{
@@ -2175,6 +2471,17 @@ namespace
 				return true;
 			}
 			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
+		}
+
+		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			if (!World)
+			{
+				return false;
+			}
+			World->MulticastParticle(Name, FVector_NetQuantize10(Pos), FVector_NetQuantize10(Delta), static_cast<float>(Speed), Count);
+			return true;
 		}
 
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override

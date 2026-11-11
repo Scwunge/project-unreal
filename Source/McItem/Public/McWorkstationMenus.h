@@ -170,3 +170,45 @@ private:
 	TArray<FName> Patterns;
 	int32 Selected = -1;
 };
+
+// The cartography table (minecraft.wiki, "Cartography Table"): slot 0 the filled map, 1 the material, 2 the result,
+// then the player's slots. Paper zooms an unlocked map out one scale (at most 4); an empty map makes a copy (two maps
+// come out, sharing the map's id); a glass pane makes a locked copy, a new map with the picture as it is (a locked
+// map cannot be locked again). Taking the result uses one of each input.
+class MCITEM_API FMcCartographyMenu : public FMcMenu
+{
+public:
+	static constexpr int32 MapSlot = 0;
+	static constexpr int32 MaterialSlot = 1;
+	static constexpr int32 ResultSlot = 2;
+
+	enum class EOperation : uint8 { None, Zoom, Copy, Lock };
+
+	explicit FMcCartographyMenu(const TSharedPtr<FMcContainer>& PlayerInventory);
+
+	// What the two inputs would do.
+	static EOperation GetOperation(const FMcItemStack& Map, const FMcItemStack& Material);
+	// The result shown: a locked copy still points at the source map until it is taken.
+	static FMcItemStack GetPreview(const FMcItemStack& Map, const FMcItemStack& Material);
+	EOperation GetCurrentOperation() const { return GetOperation(Table->Get(MapSlot), Table->Get(MaterialSlot)); }
+
+	virtual void SerializeState(FArchive& Ar) override { Refresh(); }
+
+protected:
+	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override;
+	virtual bool CanTakeForPickupAll(int32 Slot) const override { return Slot != ResultSlot; }
+	virtual bool CanDragTo(int32 Slot) const override { return Slot != ResultSlot; }
+	virtual FMcItemStack QuickMoveStack(int32 Slot) override;
+	virtual void SlotChanged(int32 Slot) override;
+	virtual void OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStack>& Dropped) override;
+	virtual void OnClosed(TArray<FMcItemStack>& Dropped) override;
+
+private:
+	void Refresh();
+	// The result as it is taken (a locked copy gets its own map now), and the inputs used up.
+	FMcItemStack MakeResult() const;
+	void Consume();
+
+	TSharedPtr<FMcContainer> Table;
+	TSharedPtr<FMcContainer> Player;
+};

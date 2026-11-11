@@ -13,7 +13,7 @@
 
 namespace McGui
 {
-	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Anvil, BrewingStand, Hopper, Dispenser, Loom, Trading };
+	enum class EScreen : uint8 { Inventory, CraftingTable, Chest, Furnace, Creative, Enchanting, Stonecutter, Smithing, Grindstone, Cartography, Anvil, BrewingStand, Hopper, Dispenser, Loom, Trading, Horse };
 
 	using FPlayerMenuSlots = ::FMcPlayerMenuSlots;
 
@@ -51,10 +51,14 @@ namespace McGui
 	MCUI_API FScreenLayout MakeLoomLayout();
 	MCUI_API FScreenLayout MakeSmithingLayout();
 	MCUI_API FScreenLayout MakeGrindstoneLayout();
+	MCUI_API FScreenLayout MakeCartographyLayout();
 	MCUI_API FScreenLayout MakeAnvilLayout();
 	MCUI_API FScreenLayout MakeBrewingStandLayout();
 	MCUI_API FScreenLayout MakeHopperLayout();
 	MCUI_API FScreenLayout MakeDispenserLayout();
+	// A tamed horse, donkey or mule: Slots is the container's (the saddle, the armour, the chest) then the player's. The armour slot is shown for
+	// a horse only, the chest's 5 x 3 slots when there are 17 container slots.
+	MCUI_API FScreenLayout MakeHorseLayout(int32 ContainerSlots, bool bArmor);
 	// A trader's window: 276 wide, the offers in a list on the left and the player's slots on the right.
 	MCUI_API FScreenLayout MakeTradingLayout();
 

@@ -779,10 +779,10 @@ void McHd::NormalFromHeight(TConstArrayView<float> Height, int32 Width, int32 He
 		for (int32 X = 0; X < Width; ++X)
 		{
 			// Height rises to the right: the surface tilts left (x goes negative). Rising downwards the picture it
-			// tilts up (y, which is up the picture, goes positive).
+			// tilts up the picture; LabPBR's normal maps are DirectX (Y-: green low is up the picture), so y goes negative.
 			const float Dx = (At(X + 1, Y) - At(X - 1, Y)) * 0.5f * Strength;
 			const float Dy = (At(X, Y + 1) - At(X, Y - 1)) * 0.5f * Strength;
-			FVector3f Normal(-Dx, Dy, 1.0f);
+			FVector3f Normal(-Dx, -Dy, 1.0f);
 			Normal.Normalize();
 			OutNormal[Y * Width + X] = FColor(ToByte(Normal.X * 0.5f + 0.5f), ToByte(Normal.Y * 0.5f + 0.5f), 255, ToByte(Height[Y * Width + X]));
 		}

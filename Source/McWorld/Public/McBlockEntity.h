@@ -31,6 +31,10 @@ enum class EMcBlockEntityKind : uint8
 	// block entity's id ("minecraft:sign") and Data its NBT, written by FMcNbt::WriteRoot, kept as it was read so
 	// that nothing is lost until the feature that uses it exists. Nothing in the game reads it yet.
 	Raw,
+	// A campfire or soul campfire: the food on its four spots in Slots[0..3] (empty where there is none), and for each
+	// spot how long it has cooked (CookingTimes) out of how long it takes (CookingTotals), in ticks. Observed in a
+	// real 26.3 save: Items [{Slot, id, count}], CookingTimes and CookingTotalTimes as 4 ints, 600 for raw food.
+	Campfire,
 };
 
 // One side of a sign (minecraft.wiki, "Sign"): four lines of text, the dye they are written in, and whether glow ink
@@ -64,11 +68,16 @@ struct MCWORLD_API FMcBlockEntity
 	bool bWaxed = false;
 	// The page a lectern's book lies open at.
 	int32 Page = 0;
+	// A campfire's cooking progress per spot.
+	static constexpr int32 NumCampfireSpots = 4;
+	int32 CookingTimes[NumCampfireSpots] = {0, 0, 0, 0};
+	int32 CookingTotals[NumCampfireSpots] = {0, 0, 0, 0};
 
 	static FMcBlockEntity MakeContainer(int32 NumSlots);
 	static FMcBlockEntity MakeSpawner(FName InEntityId);
 	static FMcBlockEntity MakeSign();
 	static FMcBlockEntity MakeLectern(const FMcItemStack& Book);
+	static FMcBlockEntity MakeCampfire();
 	static FMcBlockEntity MakePot(const TArray<FName>& Sides);
 
 	// Reads or writes, by whether the archive is loading. Names are saved as text, so a save doesn't depend on

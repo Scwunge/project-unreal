@@ -1,8 +1,15 @@
 #include "McMob.h"
+#include "McMount.h"
+#include "McXpOrb.h"
+#include "McLlama.h"
 #include "McVillager.h"
+#include "McMobLook.h"
 #include "McArrow.h"
+#include "McFireball.h"
+#include "McShulkerBullet.h"
 #include "McPotion.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
 #include "McPathfinding.h"
@@ -84,6 +91,57 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// 20 / 0.23 / 5 / 35 (angered only). Their gold-armor rule, bartering, hoglin hunting and the nether's own spawning are not done:
 		// they go for a player like any hostile mob.
 		Add(TEXT("minecraft:piglin"), 0.6f, 1.95f, 16.f, 0.35f, 5.f, 16.f, false, false);
+		// The hoglin (hogmagma1.txt, nethermobs1/2.txt): 1.3965 x 1.4, 40 hp, speed 0.3, bite 6, knockback resistance 0.6, follows 16. Its
+		// bite throws the target (attack knockback 1.0), not done.
+		Add(TEXT("minecraft:hoglin"), 1.3965f, 1.4f, 40.f, 0.3f, 6.f, 16.f, false, false);
+		// The strider (nethermobs1/2.txt): 0.9 x 1.7, 20 hp, speed 0.175, follows 16, no bite. It walks on lava, which is not done
+		// (it would sink and burn like anything else).
+		// The ghast (nethermobs1/2.txt, nether1/2.txt): 4 x 4, 10 hp, follows 100, no bite; shoots fireballs (see FMcFireball). The
+		// blaze: 0.6 x 1.8, 20 hp, speed 0.23, follows 48, hovers and shoots small fireballs. Neither burns. Their hover distances are guesses.
+		FMcMobType& Ghast = Add(TEXT("minecraft:ghast"), 4.f, 4.f, 10.f, 0.7f, 0.f, 100.f, false, false);
+		Ghast.bFlies = true;
+		Ghast.FireballKind = 1;
+		Ghast.HoverRange = 20.0;
+		// The wither (wither1.txt, normal difficulty, a summoned one, n=1 run): 300 hp (full for 1800 ticks, nobody hit it). It holds about 10 blocks from the
+		// player (one run; guess for the range), fires a skull from a side head about 1.3 either side of its middle, the second 45 ticks (gaps 31-62, 7 pairs) after
+		// the first, a pair every 239 ticks (6 gaps 226-247). Its box 0.9 x 3.5 and speed are the wiki's / guesses (box not logged), the 64 block shooting range is a
+		// guess. Its other attack (the blue skull, charging at half health), flying, armor, and the 220 tick spawn shield are NOT built.
+		FMcMobType& Wither = Add(TEXT("minecraft:wither"), 0.9f, 3.5f, 300.f, 0.6f, 0.f, 64.f, false, false);
+		Wither.bFlies = true;
+		Wither.FireballKind = 3;
+		Wither.HoverRange = 10.0;
+		// The ender dragon (dragon1/2/6.txt, normal difficulty, one dragon each): 200 hp (read back); it flies a loose circuit round the middle of the island,
+		// see FMcMob::Tick for the fitted path. Box 16 x 8 is the wiki's, contact damage 6 / 10 / 15 on easy / normal / hard is the wiki's. NOT built: the end crystals and
+		// their healing, the perch, breath and charge, fireballs, the 10 hp from crystal blasts, the death sequence and the exit portal.
+		Add(TEXT("minecraft:ender_dragon"), 16.f, 8.f, 200.f, 0.7f, 0.f, 150.f, false, false).bDragon = true;
+		// The end crystal (wiki: 2 x 2 box, goes off with power 6 at any damage, disappears instead if an explosion hurt it). Its health is not read back; any hit kills it.
+		Add(TEXT("minecraft:end_crystal"), 2.f, 2.f, 1.f, 0.f, 0.f, 0.f, false, false).bCrystal = true;
+		FMcMobType& Blaze = Add(TEXT("minecraft:blaze"), 0.6f, 1.8f, 20.f, 0.23f, 6.f, 48.f, false, false);
+		Blaze.bFlies = true;
+		Blaze.FireballKind = 2;
+		Blaze.HoverRange = 16.0;
+		// Measured 2026-11-03 (endmobs1.txt, enddims1.txt): endermite 8 hp, speed 0.25, attack 2, follow 16, box 0.4 x 0.3; shulker 30 hp, speed 0.7 but it never walks,
+		// follow 16, box 1 x 1. The shulker's bullets, its peeking lid and the endermite's pearl spawn are not built, so the shulker only stands.
+		// Measured 2026-11-03 (phantom1.txt, enddims1.txt; NoAI summons): phantom 20 hp, speed 0.7, attack 2, follow 16, box 0.9 x 0.5; guardian 30 hp, 0.5, attack 6,
+		// follow 16, box 0.85; elder guardian 80 hp, 0.3, attack 8, follow 16, box 1.9975. NOT measured: the phantom's swoop (the one hunt run flew nowhere in the log) so it
+		// is a plain flier that bites; the guardians' beam, spikes and water rules, so they only swim and never attack here.
+		FMcMobType& Phantom = Add(TEXT("minecraft:phantom"), 0.9f, 0.5f, 20.f, 0.7f, 2.f, 16.f, false, true);
+		Phantom.bFlies = true;
+		Phantom.bSwoops = true;
+		// Beams (guard1.txt, normal difficulty, 3 and 3 gaps, health sampled every 4 ticks): the player lost 6 hp per hit from both; the guardian's hits came 112, then
+		// 92, 76, 100 ticks apart (mean 89, first 112); the elder's 56, then 68, 64, 60 (mean 64). Each is taken as one period of the timer; mining fatigue and the
+		// beam's picture are not built.
+		FMcMobType& Guardian = Add(TEXT("minecraft:guardian"), 0.85f, 0.85f, 30.f, 0.5f, 0.f, 16.f, false, false);
+		Guardian.bSwims = true;
+		Guardian.BeamTicks = 89;
+		Guardian.BeamDamage = 6.0f;
+		FMcMobType& Elder = Add(TEXT("minecraft:elder_guardian"), 1.9975f, 1.9975f, 80.f, 0.3f, 0.f, 16.f, false, false);
+		Elder.bSwims = true;
+		Elder.BeamTicks = 64;
+		Elder.BeamDamage = 6.0f;
+		Add(TEXT("minecraft:endermite"), 0.4f, 0.3f, 8.f, 0.25f, 2.f, 16.f, false, false);
+		Add(TEXT("minecraft:shulker"), 1.0f, 1.0f, 30.f, 0.f, 0.f, 16.f, false, false).bBullets = true;
+		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, false, false);
 		Add(TEXT("minecraft:piglin_brute"), 0.6f, 1.95f, 50.f, 0.35f, 7.f, 12.f, false, false);
 		Add(TEXT("minecraft:zombified_piglin"), 0.6f, 1.95f, 20.f, 0.23f, 5.f, 35.f, false, false).bNeutral = true;
 		// The spider's box is 1.4 wide and 0.9 tall. Its bite is 2 (3 on Hard).
@@ -96,7 +154,13 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Enderman = Add(TEXT("minecraft:enderman"), 0.6f, 2.9f, 40.f, 0.3f, 7.f, 64.f, false, false);
 		Enderman.bNeutral = true;
 		Enderman.bTeleports = true;
+		// Stare trigger: fitted from ender13/ender14 (see the Tick block); it is on.
+		Enderman.bGazeAngers = true;
+		Enderman.bCarriesBlocks = true;
 		// The smallest size: 0.52 wide, 1 health. The others are made by SetSize; the attack is by size.
+		// The magma cube (hogmagma1.txt): per size n (1, 2, 4 across the sizes the game makes) health n squared, attack n, armor 3n, speed
+		// 0.2 + 0.1n, box 0.52 n; it does not burn. Size 1: 1 hp, attack 1, follows 16. Armor and the speed rise are not done.
+		Add(TEXT("minecraft:magma_cube"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
 		Add(TEXT("minecraft:slime"), 0.52f, 0.52f, 1.f, 0.3f, 1.f, 16.f, false, false).bHops = true;
 
 		// The overworld animals (minecraft.wiki, the page of each). Horses and llamas have a random health of 15 to 30
@@ -110,12 +174,46 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		Add(TEXT("minecraft:donkey"), 1.3965f, 1.5f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:mule"), 1.3965f, 1.6f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:goat"), 0.9f, 1.3f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		// Rideable kinds (McMount.h): the camel (wiki: 1.7 x 2.375, 32 health, speed 0.09) and the strider (0.9 x 1.7, 20 health, 0.175).
+		Add(TEXT("minecraft:camel"), 1.7f, 2.375f, 32.f, 0.09f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:strider"), 0.9f, 1.7f, 20.f, 0.175f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		// The wandering trader's llamas are a llama in all but their blanket.
 		Add(TEXT("minecraft:trader_llama"), 0.9f, 1.87f, 22.5f, 0.175f, 0.f, 0.f, true, false);
 		// A turtle is slow on land.
 		Add(TEXT("minecraft:turtle"), 1.2f, 0.4f, 30.f, 0.1f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:frog"), 0.5f, 0.5f, 10.f, 0.15f, 0.f, 0.f, true, false);
+		// The mobs the first audit missed. Health, speed, attack and follow range are the reference game's attributes (mobattrs1.txt: `attribute ... get` on a summoned mob,
+		// 2026-11-05); the box is minecraft.wiki's hitbox size (read 2026-11-05). Behaviour beyond walking, flying or swimming about is not built (see PLAN.md, missing mobs).
+		Add(TEXT("minecraft:mooshroom"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:ocelot"), 0.6f, 0.7f, 10.f, 0.3f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:armadillo"), 0.7f, 0.65f, 12.f, 0.14f, 0.f, 0.f, true, false);
+		// Polar bears and pandas fight back only when hurt (attack 6).
+		Add(TEXT("minecraft:polar_bear"), 1.4f, 1.4f, 30.f, 0.25f, 6.f, 20.f, false, false).bNeutral = true;
+		Add(TEXT("minecraft:panda"), 1.3f, 1.25f, 20.f, 0.15f, 6.f, 16.f, false, false).bNeutral = true;
+		// A parrot flies (flying speed 0.4, walking 0.2) and an allay flies (0.1); the attribute list gives the allay an attack of 2 it never uses.
+		Add(TEXT("minecraft:parrot"), 0.5f, 0.9f, 6.f, 0.4f, 0.f, 0.f, true, false).bFlies = true;
+		Add(TEXT("minecraft:allay"), 0.35f, 0.6f, 20.f, 0.1f, 0.f, 0.f, false, false).bFlies = true;
+		Add(TEXT("minecraft:happy_ghast"), 4.f, 4.f, 20.f, 0.05f, 0.f, 0.f, false, false).bFlies = true;
+		// The water animals: swimming about is not built yet (they stand where they are put).
+		Add(TEXT("minecraft:squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:glow_squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:cod"), 0.5f, 0.3f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:salmon"), 0.7f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tropical_fish"), 0.5f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:pufferfish"), 0.7f, 0.7f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tadpole"), 0.4f, 0.3f, 6.f, 1.0f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:axolotl"), 0.75f, 0.42f, 14.f, 1.0f, 2.f, 16.f, false, false);
+		// The snow golem (4 health; the reference summoned one read 3 after a tick: it melts) throws snowballs, which is not built.
+		Add(TEXT("minecraft:snow_golem"), 0.7f, 1.9f, 4.f, 0.2f, 0.f, 0.f, false, false);
+		// The zoglin, the nether's undead hoglin: 40 health, attack 6, knockback resistance 0.6.
+		Add(TEXT("minecraft:zoglin"), 1.3965f, 1.4f, 40.f, 0.3f, 6.f, 16.f, false, false);
+		Add(TEXT("minecraft:breeze"), 0.6f, 1.77f, 30.f, 0.63f, 3.f, 24.f, false, false);
+		Add(TEXT("minecraft:camel_husk"), 1.7f, 2.375f, 32.f, 0.09f, 0.f, 0.f, false, false);
+		// The parched shoots, as the skeletons do; whether it burns in daylight is not measured.
+		Add(TEXT("minecraft:parched"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, false).bShoots = true;
+		Add(TEXT("minecraft:sulfur_cube"), 0.98f, 0.98f, 4.f, 0.3f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:zombie_nautilus"), 0.875f, 0.95f, 15.f, 1.1f, 3.f, 16.f, false, false);
 		// A bee stings (2 on Normal) whoever hurt it, and flies.
 		FMcMobType& Bee = Add(TEXT("minecraft:bee"), 0.7f, 0.6f, 10.f, 0.3f, 2.f, 16.f, false, false);
 		Bee.bNeutral = true;
@@ -148,6 +246,12 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		FMcMobType& Ravager = Add(TEXT("minecraft:ravager"), 1.95f, 2.2f, 100.f, 0.3f, 12.f, 32.f, false, false);
 		Ravager.bHuntsVillagers = true;
 		Ravager.bIsRaider = true;
+		// The warden (minecraft.wiki, "Warden"; box, health and Normal damage 30 from the page; health 500 also read in warden.txt):
+		// blind, so it follows no one by sight (FollowRange 0): FMcWarden steers it by what it hears and smells. Speed 0.33: warden.txt
+		// (log_warden.log) shows 0.165 to 0.17 blocks a tick while it chases, and this table walks 10 blocks a second per point of speed.
+		Add(TEXT("minecraft:warden"), 0.9f, 2.9f, 500.f, 0.33f, 30.f, 0.f, false, false);
+		// The creaking ("Creaking": 1 health, 2.7 by 0.9, speed 0.3, damage 3 on Normal): FMcCreaking moves it only while no player looks at it.
+		Add(TEXT("minecraft:creaking"), 0.9f, 2.7f, 1.f, 0.3f, 3.f, 0.f, false, false);
 		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.
 		FMcMobType& Witch = Add(TEXT("minecraft:witch"), 0.6f, 1.95f, 26.f, 0.25f, 3.f, 16.f, false, false);
 		Witch.bShoots = true;
@@ -171,6 +275,7 @@ FMcMob::FMcMob(const FMcMobType& InType)
 	Body.Width = InType.Width;
 	Body.Height = InType.Height;
 	Body.StepHeight = 0.6f;
+	McMount::RollAtSpawn(*this);
 	// What they carry when they spawn: a skeleton its bow, a vex its iron sword.
 	if (InType.Name == FName(TEXT("minecraft:skeleton")) || InType.Name == FName(TEXT("minecraft:stray")) || InType.Name == FName(TEXT("minecraft:bogged")))
 	{
@@ -243,7 +348,85 @@ bool FMcMob::Serialize(FArchive& Ar)
 			SetSize(Saved, false);
 		}
 	}
+	if (McMount::IsRideable(*this) && !Ar.IsError())
+	{
+		McMount::Serialize(Ar, *this);
+	}
 	return !Ar.IsError() && !FMath::IsNaN(Health);
+}
+
+void FMcMob::SaveTrailer(FArchive& Ar) const
+{
+	int32 Look = LookSeed;
+	int32 Young = YoungTicks;
+	Ar << Look << Young;
+	uint8 Flags = bNoAI ? 1 : 0;
+	int32 Dye = DyeColor;
+	FString Name = CustomName;
+	FString Held = HeldItem.IsNone() ? FString() : HeldItem.ToString();
+	Ar << Flags << Dye << Name << Held;
+	for (const FName& Piece : Armor)
+	{
+		FString Text = Piece.IsNone() ? FString() : Piece.ToString();
+		Ar << Text;
+	}
+}
+
+void FMcMob::LoadTrailer(FArchive& Ar)
+{
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Look = -1;
+	Ar << Look;
+	if (!Ar.IsError() && Look >= 0 && Look < McMobLook::GetCount(Type.Name))
+	{
+		LookSeed = Look;
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	int32 Young = 0;
+	Ar << Young;
+	if (!Ar.IsError() && Young > 0 && CanBeYoung(Type.Name))
+	{
+		SetYoung(Young);
+	}
+	if (Ar.AtEnd())
+	{
+		return;
+	}
+	uint8 Flags = 0;
+	int32 Dye = -1;
+	FString Name, Held;
+	Ar << Flags << Dye << Name << Held;
+	if (Ar.IsError())
+	{
+		return;
+	}
+	bNoAI = (Flags & 1) != 0;
+	DyeColor = Dye >= 0 && Dye <= 15 ? Dye : -1;
+	CustomName = Name;
+	if (!Held.IsEmpty())
+	{
+		HeldItem = FName(*Held);
+	}
+	for (FName& Piece : Armor)
+	{
+		FString Text;
+		Ar << Text;
+		if (Ar.IsError())
+		{
+			return;
+		}
+		Piece = Text.IsEmpty() ? FName() : FName(*Text);
+	}
+	if (Type.Name == FName(TEXT("minecraft:sheep")) && DyeColor >= 0)
+	{
+		ArmPose = DyeColor << 8;
+	}
 }
 
 void FMcMob::UpdateWolfPose()
@@ -286,9 +469,52 @@ bool FMcMob::IsPrey(const FMcEntity& Other) const
 
 bool FMcMob::Damage(float Amount, const FVector* Source)
 {
+	// Horse armour takes its share (McMount.h).
+	if (Mount.IsValid())
+	{
+		McMount::Sync(*Mount);
+	}
+	if (Mount.IsValid() && !Mount->Armor.IsNone())
+	{
+		Amount = McMount::ReduceDamage(*Mount, Amount);
+	}
+	if (Type.bCrystal)
+	{
+		// Any damage at all sets it off, unless it was an explosion that hurt it (wiki: End Crystal).
+		if (bRemoved)
+		{
+			return false;
+		}
+		bRemoved = true;
+		Health = 0.0f;
+		if (Owner && !Owner->bInBlast)
+		{
+			Owner->Explode(Body.Position, 6.0f);
+		}
+		return true;
+	}
+	if (Type.bDragon)
+	{
+		// dragon15.txt (the damage command at the dragon's body, 30 ticks apart): hits of 2, 20 and 40 took 1.5, 6 and 11 (a quarter and one; player attacks, arrows and
+		// explosions alike). Generic (20) and magic (5) damage took nothing, which cannot be told apart here. Hits on the head, which take it all, are not told apart either.
+		Amount = Amount * 0.25f + 1.0f;
+		if (DragonPhase >= 5 && DragonPhase <= 7)
+		{
+			PerchDamage += Amount;
+		}
+	}
 	// Right after a hit only a stronger one gets through, and only by the difference; here that is simply ignored.
 	if (HurtTime > 0 || Health <= 0.0f)
 	{
+		return false;
+	}
+	if (bInvulnerable)
+	{
+		HurtTime = 10;
+		if (OnShielded)
+		{
+			OnShielded(*this, Source);
+		}
 		return false;
 	}
 	Health -= Amount;
@@ -303,7 +529,8 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		bTeleportPending = true;
 	}
-	if (Source)
+	OnHurt(Amount, Source);
+	if (Source && !bNoKnockback)
 	{
 		// Knockback: 0.4 away from the hitter, and a hop.
 		FVector Away = Body.Position - *Source;
@@ -315,6 +542,22 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 		Body.bOnGround = false;
 	}
 	PlayVoice(Health <= 0.0f ? McSound::EMobSound::Death : McSound::EMobSound::Hurt);
+	if (Health <= 0.0f && Type.bDragon)
+	{
+		// The dragon does not drop dead: it takes 200 ticks to die (see Tick).
+		DeathTicks = FMath::Max(DeathTicks, 1);
+		return true;
+	}
+	if (Owner)
+	{
+		Owner->GameEvent(FName("entity_damage"), Body.Position);
+		if (Health <= 0.0f)
+		{
+			FMcEntityManager::FGameEventTag Dying;
+			Dying.bDying = true;
+			Owner->GameEvent(FName("entity_die"), Body.Position, Dying);
+		}
+	}
 	if (Health <= 0.0f)
 	{
 		bRemoved = true;
@@ -371,6 +614,11 @@ void FMcMob::UpdateSteps(FMcEntityManager& Manager)
 		return;
 	}
 	NextStep = StepDistance + 1.0;
+	{
+		FMcEntityManager::FGameEventTag Tag;
+		Tag.bWarden = Type.Name == FName(TEXT("minecraft:warden"));
+		Manager.GameEvent(FName("step"), Body.Position, Tag);
+	}
 	const FMcBlockWorld& World = Manager.GetWorld();
 	const FIntVector Below(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y - 0.2), FMath::FloorToInt32(Body.Position.Z));
 	const FMcStateId State = World.GetBlock(Below);
@@ -402,6 +650,7 @@ bool FMcMob::TryTeleport(FMcEntityManager& Manager)
 				// Heard where it went from and where it came to.
 				Manager.PlaySound(FName("entity.enderman.teleport"), Origin);
 				Manager.PlaySound(FName("entity.enderman.teleport"), Body.Position);
+				Manager.GameEvent(FName("teleport"), Body.Position);
 				return true;
 			}
 		}
@@ -441,6 +690,7 @@ void FMcMob::Shoot(FMcEntityManager& Manager, const FVector& TargetFeet)
 		Arrow->EffectDuration = 100;
 	}
 	Manager.Add(MoveTemp(Arrow));
+	Manager.GameEvent(FName("projectile_shoot"), Eye);
 	Manager.PlaySound(FName("entity.skeleton.shoot"), Eye, 1.0f, 1.0f / (VoiceRandom.FRand() * 0.4f + 0.8f));
 }
 
@@ -579,6 +829,149 @@ FVector FMcMob::NextWaypoint(FMcEntityManager& Manager, const FVector& Dest)
 	return Dest;
 }
 
+TArray<FVector> FMcMob::GetPillarCrystalPositions()
+{
+	// dragon8.txt: Pos of the ten crystals the End starts with (the feet of each, one above the top of its pillar), as read.
+	return {
+		FVector(-12.5, 77.0, 39.5), FVector(-12.5, 80.0, -39.5), FVector(12.5, 83.0, 39.5), FVector(-33.5, 86.0, 24.5), FVector(12.5, 89.0, -39.5),
+		FVector(-41.5, 92.0, -0.5), FVector(33.5, 95.0, -24.5), FVector(42.5, 98.0, 0.5), FVector(33.5, 101.0, 24.5), FVector(-33.5, 104.0, -24.5),
+	};
+}
+
+void FMcMob::BuildExitPortal(FMcEntityManager& Manager, bool bPortal, bool bEgg)
+{
+	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
+	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
+	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
+	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
+	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
+	int32 BaseY = 0;
+	bool bColumn = false;
+	for (int32 Y = 100; Y > 40; --Y)
+	{
+		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
+		{
+			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
+			BaseY = Y - 3;
+			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
+			{
+				--BaseY;
+			}
+			bColumn = true;
+			break;
+		}
+	}
+	if (!bColumn)
+	{
+		// No column yet (a fresh End): the podium stands in the island, its portal level where the surface at the middle is (a guess; the
+		// reference puts the first one at the same place the worldgen leaves the surface).
+		BaseY = 58;
+		for (int32 Y = 100; Y > 40; --Y)
+		{
+			if (World.GetBlock(FIntVector(0, Y, 0)) != StateOf(TEXT("minecraft:air")))
+			{
+				BaseY = Y;
+				break;
+			}
+		}
+	}
+	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
+	{
+		World.SetBlock(Cell, State);
+		if (Manager.OnSetBlock)
+		{
+			Manager.OnSetBlock(Cell, State);
+		}
+	};
+	UE_LOG(LogTemp, Display, TEXT("exit portal: base y %d, column found %d, portal %d, egg %d"), BaseY, bColumn ? 1 : 0, bPortal ? 1 : 0, bEgg ? 1 : 0);
+	for (int32 DX = -4; DX <= 4; ++DX)
+	{
+		for (int32 DZ = -4; DZ <= 4; ++DZ)
+		{
+			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
+			if (Distance > 3.5)
+			{
+				continue;
+			}
+			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
+			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? (bPortal ? Portal : StateOf(TEXT("minecraft:air"))) : Bedrock);
+		}
+	}
+	for (int32 DY = 0; DY < 4; ++DY)
+	{
+		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
+	}
+	if (bEgg)
+	{
+		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
+	}
+}
+
+void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
+{
+	// dragon10.txt (a summoned dragon set to 0 hp, the player 20 blocks off, samples 5 ticks apart, second kill in that world): 40 points of orbs (37 + 3) came in
+	// ten drops from about tick 150 on, one every ~5 ticks, then a last 100 (73 + 17 + 7 + 3) with them: 500 in all. The wiki (Ender Dragon): 200 ticks in all;
+	// the first kill gives 12000 (ten drops of 960 and a last of 2400), later ones 500; at the end the bedrock frame fills with portal and a dragon egg
+	// appears on the first kill only. Where it flies during the 200 ticks is not logged (the dragon is not selectable while it dies): it hangs where it was.
+	++DeathTicks;
+	const bool bFirst = !Manager.bDragonKilledBefore;
+	const int32 Total = bFirst ? 12000 : 500;
+	if (DeathTicks >= 150 && DeathTicks < 200 && DeathTicks % 5 == 0)
+	{
+		FMcXpOrb::Spawn(Manager, Body.Position, Total * 8 / 100, Random);
+	}
+	if (DeathTicks < 200)
+	{
+		return;
+	}
+	FMcXpOrb::Spawn(Manager, Body.Position, Total * 20 / 100, Random);
+	bRemoved = true;
+	Manager.bDragonKilledBefore = true;
+	BuildExitPortal(Manager, true, bFirst);
+	FMcBlockWorld& World = Manager.GetWorld();
+	const auto StateOf = [](const TCHAR* Name) { return FMcBlockRegistry::Get().FindDefaultState(Name).Get(0); };
+	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
+	{
+		World.SetBlock(Cell, State);
+		if (Manager.OnSetBlock)
+		{
+			Manager.OnSetBlock(Cell, State);
+		}
+	};
+	// A gateway for this kill (gateway1.txt, a first kill on seed 4242424242 made the one at position 11; the wiki: position k is at
+	// (floor(96 cos(k pi / 10)), 75, floor(96 sin(k pi / 10))), twenty of them, in an order the seed decides). The order here is a shuffle of
+	// 1..20 from the seed, so only that one sample is matched; the real order is open.
+	if (Manager.GatewaysMade < 20)
+	{
+		TArray<int32> Order;
+		for (int32 K = 1; K <= 20; ++K)
+		{
+			Order.Add(K);
+		}
+		FRandomStream Shuffle(static_cast<int32>(Manager.GatewaySeed ^ (Manager.GatewaySeed >> 32)));
+		for (int32 I = 19; I > 0; --I)
+		{
+			Order.Swap(I, Shuffle.RandRange(0, I));
+		}
+		const int32 K = Order[Manager.GatewaysMade++];
+		const FIntVector Centre(FMath::FloorToInt32(96.0 * FMath::Cos(PI * K / 10.0)), 75, FMath::FloorToInt32(96.0 * FMath::Sin(PI * K / 10.0)));
+		for (int32 DY = -2; DY <= 2; ++DY)
+		{
+			if (DY == 0)
+			{
+				Put(Centre, StateOf(TEXT("minecraft:end_gateway")));
+			}
+			else
+			{
+				Put(Centre + FIntVector(0, DY, 0), StateOf(TEXT("minecraft:bedrock")));
+			}
+		}
+	}
+}
+
 void FMcMob::TickBarter(FMcEntityManager& Manager)
 {
 	// Measured on the reference, two runs of ~40 (barter1.txt, barter2.txt; a gold ingot dropped a block from an idle piglin): the
@@ -646,7 +1039,8 @@ void FMcMob::TickBarter(FMcEntityManager& Manager)
 		}
 		return;
 	}
-	// It walks to an ingot within 8 blocks (the range is a guess: only a drop a block away was measured).
+	// It walks to a dropped ingot up to 8 blocks away and ignores one 10 or more away (barter3.txt, 3 runs each at 1.5, 3, 4, 6, 8, 10,
+	// 12 and 16 blocks: all took it up to 8, none at 10 and beyond; 9 untested). Needs mob griefing on in the game rules, which this does not check.
 	TArray<FMcEntity*> Near;
 	Manager.FindInBox(FBox(Body.Position - FVector(8.0, 2.0, 8.0), Body.Position + FVector(8.0, 3.0, 8.0)), Near);
 	for (FMcEntity* Other : Near)
@@ -696,8 +1090,277 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		UpdateWolfPose();
 	}
-	if (bFrozen)
+	if (Type.bCrystal)
 	{
+		LastPosition = Body.Position;
+		return;
+	}
+	if (bFrozen || bNoAI)
+	{
+		return;
+	}
+	if (Type.bDragon && DeathTicks > 0)
+	{
+		TickDragonDeath(Manager);
+		LastPosition = Body.Position;
+		return;
+	}
+	if (Type.bDragon)
+	{
+		// Healing (dragon9.txt: a summoned dragon on 100 hp, a crystal kept 8 blocks under it, 35 samples 5 ticks apart: +1 hp about every 8 to 10 ticks, 21 hp in
+		// ~175 ticks, after a first ~30 ticks of nothing that dragon13.txt (+4 in 40 ticks) did not show and is NOT modelled; the wiki says 1 every 10 ticks);
+		// with no crystal nothing in 60 ticks.
+		// The wiki gives the range, a 32 block box round the dragon, and 10 hp off the dragon when the crystal healing it is destroyed.
+		{
+			FMcMob* Nearest = nullptr;
+			double Best = TNumericLimits<double>::Max();
+			TArray<FMcEntity*> Near;
+			Manager.FindInBox(FBox(Body.Position - FVector(32.0), Body.Position + FVector(32.0)), Near);
+			for (FMcEntity* Other : Near)
+			{
+				if (Other->bRemoved || !Other->IsLiving())
+				{
+					continue;
+				}
+				FMcMob& Mob = static_cast<FMcMob&>(*Other);
+				const double Distance = FVector::DistSquared(Mob.Body.Position, Body.Position);
+				if (Mob.Type.bCrystal && Distance < Best)
+				{
+					Best = Distance;
+					Nearest = &Mob;
+				}
+			}
+			if (Nearest)
+			{
+				bHasBeam = true;
+				BeamPos = Nearest->Body.Position;
+				++BeamTicks;
+				if (BeamTicks % 10 == 0)
+				{
+					Health = FMath::Min(Type.MaxHealth, Health + 1.0f);
+				}
+			}
+			else
+			{
+				if (bHasBeam)
+				{
+					// The crystal that was healing it is gone: 10 hp, besides the blast (dragon15.txt: a crystal 8 blocks off, destroyed: 171.5 to 156.86, 14.64).
+					Health -= 10.0f;
+					bStrafeDue = true;
+					if (Health <= 0.0f)
+					{
+						DeathTicks = FMath::Max(DeathTicks, 1);
+					}
+				}
+				bHasBeam = false;
+				BeamTicks = 0;
+			}
+		}
+		// The phases (dragon_phase1.txt: a summoned dragon, normal difficulty, the player at the exit portal, DragonPhase read every 10 ticks over 4800 ticks).
+		// The order seen: holding pattern 540 ticks, strafing 150, holding 100, landing approach 480, landing 280, then four times (scanning 20, roaring 40,
+		// breathing 180), take-off 20, holding 500, approach 520, landing 290, the same four breaths again. Speeds (blocks a tick, mean): holding 0.66,
+		// strafing 0.76, approach 0.76, landing 0.59, on the perch 0.5 (still settling). Height in the holding pattern 65 to 128, mean 90; it perched at 65.
+		// Not measured: the circuit's exact shape, the breath's reach and damage (the wiki's 3 a second inside the cloud), and what makes it strafe.
+		++PhaseTicks;
+		const auto SetPhase = [this](int32 Next) { DragonPhase = Next; PhaseTicks = 0; };
+		const FVector Perch(0.0, 65.0, 0.0);
+		const FVector* Target = nullptr;
+		FVector Aim;
+		double Pace = 0.66;
+		if (DragonPhase == 0)
+		{
+			// Circles the middle of the island, riding a point that moves round at radius 15 to 45 and height 75 to 110.
+			const double Angle = (Age + 0.0) * 0.012;
+			const double Radius = 30.0 + 15.0 * FMath::Sin(Age * 0.007);
+			Aim = FVector(FMath::Cos(Angle) * Radius, 92.0 + 18.0 * FMath::Sin(Age * 0.005), FMath::Sin(Angle) * Radius);
+			Target = &Aim;
+			if (PhaseTicks >= HoldLength)
+			{
+				Breaths = 0;
+				if (bStrafeDue)
+				{
+					bStrafeDue = false;
+					SetPhase(1);
+				}
+				else
+				{
+					SetPhase(2);
+				}
+			}
+		}
+		else if (DragonPhase == 1)
+		{
+			// Swings out towards a player within 64 blocks and fires at them.
+			Pace = 0.76;
+			FVector Prey = FVector(40.0, 93.0, 0.0);
+			double Best = 64.0 * 64.0;
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				const double Distance = FVector::DistSquared(Player, Body.Position);
+				if (Distance < Best)
+				{
+					Best = Distance;
+					Prey = FVector(Player.X, 93.0, Player.Z);
+				}
+			}
+			Aim = Prey;
+			Target = &Aim;
+			if (PhaseTicks == 100 && Best < 64.0 * 64.0)
+			{
+				// One fireball, aimed at the nearest player (dragon_phase1.txt: aimed straight at them, speed 0.1 on its first tick).
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					if (FVector::DistSquared(Player, Body.Position) <= Best + 1.0)
+					{
+						TUniquePtr<FMcFireball> Ball = MakeUnique<FMcFireball>();
+						Ball->Body.Position = Body.Position + FVector(0.0, -4.0, 0.0);
+						Ball->LaunchDragon(Player + FVector(0.0, 0.9, 0.0) - Ball->Body.Position);
+						Manager.Add(MoveTemp(Ball));
+						break;
+					}
+				}
+				Manager.PlaySound(FName("entity.ender_dragon.shoot"), Body.Position, 5.0f, 1.0f);
+			}
+			if (PhaseTicks >= 150)
+			{
+				HoldLength = 100;
+				SetPhase(0);
+			}
+		}
+		else if (DragonPhase == 2)
+		{
+			// Comes in over the island from the side away from the player, losing height.
+			Pace = 0.76;
+			Aim = FVector(0.0, FMath::Lerp(90.0, 80.0, FMath::Min(1.0, PhaseTicks / 480.0)), 0.0);
+			Target = &Aim;
+			if (PhaseTicks >= 480)
+			{
+				SetPhase(3);
+			}
+		}
+		else if (DragonPhase == 3)
+		{
+			Pace = 0.59;
+			Target = &Perch;
+			if (PhaseTicks >= 280 || FVector::DistSquared(Body.Position, Perch) < 4.0)
+			{
+				Breaths = 0;
+				PerchDamage = 0.0f;
+				SetPhase(6);
+			}
+		}
+		else if (DragonPhase == 6)
+		{
+			Pace = 0.5;
+			Target = &Perch;
+			if (PhaseTicks >= 20)
+			{
+				// Nobody near the portal: it charges the nearest player within 150 blocks instead.
+				bool bNear = false;
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					bNear = bNear || FVector::DistSquared(FVector(Player.X, 0.0, Player.Z), FVector::ZeroVector) < 20.0 * 20.0;
+				}
+				SetPhase(bNear ? 7 : 8);
+			}
+		}
+		else if (DragonPhase == 7)
+		{
+			Target = &Perch;
+			if (PhaseTicks >= 40)
+			{
+				SetPhase(5);
+			}
+		}
+		else if (DragonPhase == 5)
+		{
+			Target = &Perch;
+			// The breath lands in front of the head and lingers; standing in it hurts (3 a second, the wiki).
+			if (PhaseTicks % 10 == 0)
+			{
+				const FVector Forward = FVector(-FMath::Sin(FMath::DegreesToRadians(Yaw)), 0.0, FMath::Cos(FMath::DegreesToRadians(Yaw)));
+				DragonClouds.Add(FVector4(Body.Position.X + Forward.X * 8.0, Body.Position.Y - 1.0, Body.Position.Z + Forward.Z * 8.0, 60.0));
+			}
+			if (PhaseTicks >= 180)
+			{
+				++Breaths;
+				SetPhase(Breaths >= 4 ? 4 : 6);
+			}
+			else if (PerchDamage > 50.0f)
+			{
+				SetPhase(4);
+			}
+		}
+		else if (DragonPhase == 8)
+		{
+			Pace = 1.0;
+			Aim = Perch;
+			double Best = 150.0 * 150.0;
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				if (FVector::DistSquared(Player, Body.Position) < Best)
+				{
+					Best = FVector::DistSquared(Player, Body.Position);
+					Aim = Player;
+				}
+			}
+			Target = &Aim;
+			if (PhaseTicks >= 100)
+			{
+				SetPhase(4);
+			}
+		}
+		else
+		{
+			// Take-off: straight up for 20 ticks, then back to circling.
+			Pace = 0.5;
+			Aim = Body.Position + FVector(0.0, 20.0, 0.0);
+			Target = &Aim;
+			if (PhaseTicks >= 20)
+			{
+				HoldLength = 500;
+				SetPhase(0);
+			}
+		}
+		const FVector Want = (*Target - Body.Position).GetSafeNormal() * Pace * FMath::Min(1.0, (*Target - Body.Position).Size() / 6.0 + 0.2);
+		Body.Velocity = FMath::Lerp(Body.Velocity, Want, 0.1);
+		Body.Position += Body.Velocity;
+		if (DragonPhase < 5 || DragonPhase > 7)
+		{
+			Yaw = FMath::RadiansToDegrees(FMath::Atan2(-Body.Velocity.X, Body.Velocity.Z));
+		}
+		// The clouds on the ground: 3 hp a second to a player standing in one, while they last.
+		for (int32 Index = DragonClouds.Num() - 1; Index >= 0; --Index)
+		{
+			FVector4& Cloud = DragonClouds[Index];
+			if (Age % 10 == 0)
+			{
+				for (const FVector& Player : Manager.PlayerPositions)
+				{
+					if (FVector::DistSquared(FVector(Player.X, 0.0, Player.Z), FVector(Cloud.X, 0.0, Cloud.Z)) < 3.0 * 3.0 && FMath::Abs(Player.Y - Cloud.Y) < 3.0)
+					{
+						Manager.HurtPlayer(Player, 3.0f);
+					}
+				}
+			}
+			if (--Cloud.W <= 0.0)
+			{
+				DragonClouds.RemoveAtSwap(Index);
+			}
+		}
+		// Touching a player hurts them (the wiki's figures; the 20 tick gap is a guess).
+		if (AttackCooldown == 0)
+		{
+			for (const FVector& Player : Manager.PlayerPositions)
+			{
+				if (FMath::Abs(Player.X - Body.Position.X) < 8.0 && FMath::Abs(Player.Z - Body.Position.Z) < 8.0 && Player.Y + 1.0 > Body.Position.Y && Player.Y < Body.Position.Y + 8.0)
+				{
+					Manager.HurtPlayer(Player, Manager.Difficulty <= 1 ? 6.0f : (Manager.Difficulty == 2 ? 10.0f : 15.0f));
+					AttackCooldown = 20;
+				}
+			}
+		}
+		LastPosition = Body.Position;
 		return;
 	}
 	if (Type.bIsFangs)
@@ -757,6 +1420,71 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	{
 		--AngerTicks;
 	}
+	if (Type.bGazeAngers)
+	{
+		// Stare trigger, fitted from vanilla logs (ender13.txt, ender14.txt: survival player, enderman alone in the End, anger_end_time read back,
+		// aim swept off its eyes, n=2 at 10 blocks and n=1 at 3 and 20): it was angered when the view passed within 0.5 blocks of its eyes at 10 blocks
+		// (13 of 14 aimed within 0.5), never at 1 block or more, nor looking away; the edge sat between 0.25 and 0.4 at 3 blocks, 0.5 and 0.75 at
+		// 10 and 1.0 and 1.25 at 20. That fits "1 - cos(angle) < k / distance" with k between 0.0125 and 0.0195 (0.016 used). Eyes: 2.55 above its
+		// feet (2.9 tall, measured as the aim that worked), player eyes 1.62. Held for 5 ticks (the wiki's figure; the logs sampled at 12 ticks).
+		// One unexplained miss: a 0.1 offset at 3 blocks did not anger it. Anger length 1200 is the hurt value, not measured here.
+		bool bLooked = false;
+		for (int32 PlayerIndex = 0; PlayerIndex < Manager.PlayerPositions.Num() && PlayerIndex < Manager.PlayerLooks.Num(); ++PlayerIndex)
+		{
+			const FVector ToEnderman = (Body.Position + FVector(0.0, Type.Height * 0.879, 0.0)) - (Manager.PlayerPositions[PlayerIndex] + FVector(0.0, 1.62, 0.0));
+			const double Distance = ToEnderman.Size();
+			if (Distance > 0.01 && Distance < Type.FollowRange)
+			{
+				const double CosAngle = FVector::DotProduct(Manager.PlayerLooks[PlayerIndex].GetSafeNormal(), ToEnderman / Distance);
+				bLooked = bLooked || (1.0 - CosAngle) < 0.016 / Distance;
+			}
+		}
+		StareTicks = bLooked ? StareTicks + 1 : 0;
+		if (StareTicks >= 5)
+		{
+			AngerTicks = 1200;
+		}
+	}
+	if (Type.bCarriesBlocks)
+	{
+		// Block carrying (ender6.txt: 3 endermen in a field of dandelions at their feet each picked one up, after about 100, 120 and 617 ticks (n=3),
+		// then held it for the 3000 ticks left; mob griefing was on). A pick-up tries a random cell within 2 across and 0 to 2 up from its feet
+		// with a chance fitted so the field gives the measured mean of 270 ticks (1 in 90 a tick; a third of tries land on the flowers' layer).
+		// Which blocks it may take is the game's own tag minecraft:enderman_holdable (cache/client/data). Setting one down: ender7.txt, 6 endermen
+		// carrying dirt on open ground, the carriers fell from 6 to 4 within 717 ticks (2 set-downs in about 3800 carrying enderman-ticks, so 1 in
+		// 1900 a tick, with n=2 that is only good to a factor of two or three). Where it puts the block (a free cell beside its feet over solid ground)
+		// was not measured.
+		const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+		FMcBlockWorld& BlockWorld = Manager.GetWorld();
+		const FIntVector Feet(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y), FMath::FloorToInt32(Body.Position.Z));
+		if (!Carried.IsSet() && Manager.bMobGriefing && Random.FRand() < 1.0f / 90.0f)
+		{
+			const FIntVector Cell(Feet.X + Random.RandRange(-2, 1), Feet.Y + Random.RandRange(0, 2), Feet.Z + Random.RandRange(-2, 1));
+			FMcBlockTags& Tags = FMcBlockTags::Get();
+			Tags.EnsureLoaded();
+			const int32 HoldableTag = Tags.Find(TEXT("minecraft:enderman_holdable"));
+			if (BlockWorld.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)))
+			{
+				const FMcStateId State = BlockWorld.GetBlock(Cell);
+				if (Tags.Has(HoldableTag, State)
+					&& HasLineOfSight(BlockWorld, Body.Position + FVector(0.0, Type.Height * 0.88, 0.0), FVector(Cell.X + 0.5, Cell.Y + 0.5, Cell.Z + 0.5)))
+				{
+					Carried = State;
+					BlockWorld.SetBlock(Cell, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
+				}
+			}
+		}
+		else if (Carried.IsSet() && Manager.bMobGriefing && Random.RandRange(0, 1899) == 0)
+		{
+			const FIntVector Cell(Feet.X + Random.RandRange(-1, 1), Feet.Y, Feet.Z + Random.RandRange(-1, 1));
+			if (BlockWorld.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)) && Registry.IsAir(BlockWorld.GetBlock(Cell))
+				&& FMcBlockShapes::Get().HasCollision(BlockWorld.GetBlock(Cell + FIntVector(0, -1, 0))))
+			{
+				BlockWorld.SetBlock(Cell, Carried.GetValue());
+				Carried.Reset();
+			}
+		}
+	}
 	if (ShootCooldown > 0)
 	{
 		--ShootCooldown;
@@ -780,6 +1508,17 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		}
 		RidingId = 0;
 	}
+	// A saddled mount with a player on its back goes where they steer it (McMount.h).
+	if ((Type.Name == TEXT("minecraft:llama") || Type.Name == TEXT("minecraft:trader_llama")) && McLlama::Tick(Manager, *this))
+	{
+		LastPosition = Body.Position;
+		return;
+	}
+	if (Mount.IsValid() && McMount::TickRidden(Manager, *this))
+	{
+		LastPosition = Body.Position;
+		return;
+	}
 	if (!World.HasChunk(FIntPoint(FMath::FloorToInt32(Body.Position.X) >> 4, FMath::FloorToInt32(Body.Position.Z) >> 4)))
 	{
 		return;
@@ -795,11 +1534,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	UpdateSteps(Manager);
 
+	if (BurnTicks > 0)
+	{
+		--BurnTicks;
+	}
+	if (Body.bInLava)
+	{
+		BurnTicks = 100;
+	}
 	// Undead burn in daylight when the sky is open over them: a point of damage a second.
 	if (Type.bBurnsInSun && Manager.bDaylight && Age % 20 == 0
 		&& Manager.IsSkyExposed(FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y + Type.Height), FMath::FloorToInt32(Body.Position.Z))))
 	{
 		HurtTime = 0;
+		BurnTicks = 100;
 		Damage(1.0f, nullptr);
 		if (bRemoved)
 		{
@@ -1069,6 +1817,96 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		// A skeleton with a target raises its bow arms (the model's pose 1).
 		ArmPose = bChasing ? 1 : 0;
 	}
+	if (Type.FireballKind != 0 && bChasing)
+	{
+		// Fireballs at a player in sight, from the middle of the body, along the line to their middle.
+		if (FireCooldown > 0)
+		{
+			--FireCooldown;
+		}
+		const double Side = (Type.FireballKind == 3) ? ((BurstLeft == 0) ? -1.3 : 1.3) : 0.0;
+		const FVector From = Body.Position + FVector(0.0, Type.Height * (Type.FireballKind == 3 ? 0.9 : 0.5), 0.0) + FVector(0.0, 0.0, 0.0)
+			+ (Type.FireballKind == 3 ? FVector(Side, 0.0, 0.0) : FVector::ZeroVector);
+		const FVector At = Target + FVector(0.0, 1.0, 0.0);
+		Yaw = FMath::RadiansToDegrees(FMath::Atan2(-(Target.X - Body.Position.X), Target.Z - Body.Position.Z));
+		const auto Fire = [&]()
+		{
+			TUniquePtr<FMcFireball> Ball = MakeUnique<FMcFireball>();
+			Ball->Body.Position = From;
+			if (Type.FireballKind == 3)
+			{
+				Ball->LaunchSkull(At - From);
+			}
+			else
+			{
+				Ball->Launch(At - From, Type.FireballKind == 2);
+			}
+			Manager.Add(MoveTemp(Ball));
+		};
+		if (FMath::Sqrt(PreyDistSq) <= (Type.FireballKind == 1 ? 64.0 : 48.0) && HasLineOfSight(World, From, At))
+		{
+			if (FireCooldown <= 0)
+			{
+				Fire();
+				if (Type.FireballKind == 3)
+				{
+					BurstLeft = (BurstLeft == 0) ? 1 : 0;
+					FireCooldown = (BurstLeft == 1) ? 45 : 239 - 45;
+				}
+				else if (Type.FireballKind == 1)
+				{
+					FireCooldown = Random.RandRange(60, 85);
+				}
+				else if (BurstLeft > 0)
+				{
+					--BurstLeft;
+					FireCooldown = BurstLeft > 0 ? 6 : 178 - 12;
+				}
+				else
+				{
+					BurstLeft = 2;
+					FireCooldown = 6;
+				}
+			}
+		}
+	}
+	if (Type.BeamTicks > 0)
+	{
+		// The beam: kept on a player in sight for BeamTicks, then it hurts them and starts over; out of sight it drops back to nothing.
+		const FVector From = Body.Position + FVector(0.0, Type.Height * 0.5, 0.0);
+		if (bChasing && HasLineOfSight(World, From, Target + FVector(0.0, 1.0, 0.0)))
+		{
+			if (++BeamCharge >= Type.BeamTicks)
+			{
+				BeamCharge = 0;
+				Manager.HurtPlayer(Target, Type.BeamDamage);
+			}
+		}
+		else
+		{
+			BeamCharge = 0;
+		}
+	}
+	if (Type.bBullets && bChasing)
+	{
+		// A bullet from the top of the shulker at a player in sight. Fired at ticks 0, 30, 140, 210, 290 of atk1.txt (gaps 30, 110, 70, 80:
+		// n=4, so a random gap in 30 to 110).
+		if (FireCooldown > 0)
+		{
+			--FireCooldown;
+		}
+		else
+		{
+			const FVector From = Body.Position + FVector(0.0, Type.Height, 0.0);
+			if (FMath::Sqrt(PreyDistSq) <= 16.0 && HasLineOfSight(World, From, Target + FVector(0.0, 1.0, 0.0)))
+			{
+				TUniquePtr<FMcShulkerBullet> Bullet = MakeUnique<FMcShulkerBullet>();
+				Bullet->Body.Position = From;
+				Manager.Add(MoveTemp(Bullet));
+				FireCooldown = Random.RandRange(30, 110);
+			}
+		}
+	}
 	if (Type.bShoots && bChasing && DrinkTicks == 0)
 	{
 		// Faces its prey, shoots from up to 15 blocks with nothing in the way, and doesn't close in past 10.
@@ -1129,14 +1967,50 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		FVector Velocity = FVector::ZeroVector;
 		if (bHasTarget)
 		{
-			const FVector To = Target - Body.Position;
-			if (To.SizeSquared() < 0.4 * 0.4)
+			FVector To = Target - Body.Position;
+			double FlySpeed = Type.Speed * BlocksPerSecondPerSpeed / 20.0;
+			if (Type.bSwoops && bChasing)
+			{
+				// Measured on the reference (900 ticks): it circles within 12 blocks of the player (mean 5.8 across) and 1 to 28 above the
+				// feet (mean 9.5), at about 0.24 a tick, and dives at up to 0.59 a tick every 155 to 232 ticks (mean 189). The circle's
+				// radius and rate are fitted to those ranges, not logged.
+				if (--SwoopTicks <= 0)
+				{
+					bDiving = !bDiving;
+					SwoopTicks = bDiving ? 50 : Random.RandRange(140, 190);
+					if (!bDiving)
+					{
+						OrbitAngle = Random.FRandRange(0.0f, 2.0f * PI);
+					}
+				}
+				if (bDiving)
+				{
+					FlySpeed = 0.4;
+					if (To.SizeSquared() < 1.5 * 1.5)
+					{
+						bDiving = false;
+						SwoopTicks = Random.RandRange(140, 190);
+					}
+				}
+				else
+				{
+					OrbitAngle += 0.05f;
+					To = Target + FVector(FMath::Cos(OrbitAngle) * 6.0, 9.0, FMath::Sin(OrbitAngle) * 6.0) - Body.Position;
+					FlySpeed = 0.24;
+				}
+			}
+			if (Type.HoverRange > 0.0 && bChasing && To.SizeSquared() < FMath::Square(Type.HoverRange))
+			{
+				// Close enough to shoot from: holds still, facing it.
+				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
+			}
+			else if (To.SizeSquared() < 0.4 * 0.4)
 			{
 				Goal.Reset();
 			}
 			else
 			{
-				Velocity = To.GetSafeNormal() * (Type.Speed * BlocksPerSecondPerSpeed / 20.0) * (SwiftTicks > 0 ? 1.3 : 1.0);
+				Velocity = To.GetSafeNormal() * FlySpeed * (SwiftTicks > 0 ? 1.3 : 1.0);
 				Yaw = FMath::RadiansToDegrees(FMath::Atan2(-To.X, To.Z));
 			}
 		}

@@ -230,6 +230,8 @@ namespace McPacks
 	MCCORE_API void SetUsePbr(bool bUse);
 	MCCORE_API void SetMaxTextureSize(int32 Size);
 	MCCORE_API void SetBudgetMegabytes(int32 Megabytes);
+	// The card's own memory, known before the first budget is asked for: the default budget shrinks on a card under 8 GB.
+	MCCORE_API void SetVideoMemoryBytes(int64 Bytes);
 
 	// The largest power-of-two side, from 16 up to Wanted (itself rounded up to a power of two) and MaxSize, for which
 	// NumLayers layers with their whole mip chain fit in BudgetBytes at 4 bytes a pixel. Never below 16.

@@ -234,6 +234,8 @@ void UMcParticleComponent::BuildEmitters()
 		else if (Name == TEXT("minecraft:nether_portal")) Emitter = EEmitter::Portal;
 		else if (Name == TEXT("minecraft:water") && Registry.GetPropertyValue(State, TEXT("level")) != TEXT("0")) Emitter = EEmitter::FlowingWater;
 		else if (Name == TEXT("minecraft:bubble_column")) Emitter = Registry.GetPropertyValue(State, TEXT("drag")) == TEXT("true") ? EEmitter::BubbleDown : EEmitter::BubbleUp;
+		else if (Name == TEXT("minecraft:pointed_dripstone") && Registry.GetPropertyValue(State, TEXT("vertical_direction")) == TEXT("down")
+			&& Registry.GetPropertyValue(State, TEXT("thickness")) == TEXT("tip")) Emitter = EEmitter::Drip;
 		else if (Tags.Has(Leaves, State)) Emitter = EEmitter::Leaves;
 	}
 }
@@ -710,6 +712,26 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		{
 			FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName(Emitters[State] == EEmitter::BubbleDown ? TEXT("block.bubble_column.whirlpool_ambient") : TEXT("block.bubble_column.upwards_ambient")),
 				FVector(Pos), Random.FRand() * 0.15f + 0.1f, Random.FRand() * 0.15f + 0.9f });
+		}
+		break;
+	case EEmitter::Drip:
+		// A stalactite's tip drips what lies over its column: water or lava above the dripstone it hangs from (about one visit in 50: a guess,
+		// not yet fitted to a run).
+		if (Random.RandRange(0, 49) == 0)
+		{
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			FIntVector Up = Pos + FIntVector(0, 1, 0);
+			FName Above = Reg.GetBlockOf(static_cast<FMcStateId>(World->GetBlock(Up))).Name;
+			while ((Above == TEXT("minecraft:pointed_dripstone") || Above == TEXT("minecraft:dripstone_block")) && Up.Y < Pos.Y + 12)
+			{
+				Up.Y += 1;
+				Above = Reg.GetBlockOf(static_cast<FMcStateId>(World->GetBlock(Up))).Name;
+			}
+			if (Above == TEXT("minecraft:water") || Above == TEXT("minecraft:lava"))
+			{
+				Emit(Above == TEXT("minecraft:water") ? FName("minecraft:dripping_water") : FName("minecraft:dripping_lava"),
+					FVector(Pos) + FVector(0.5, 0.1, 0.5), FVector::ZeroVector, 0.0f, 1);
+			}
 		}
 		break;
 	case EEmitter::Leaves:

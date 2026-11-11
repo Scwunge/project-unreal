@@ -71,6 +71,9 @@ namespace McLoot
 		FMcStateId State = 0;
 		// 0 when the block was not blown up.
 		float ExplosionRadius = 0.0f;
+		// The block entity the block had, if it had one: copy_components takes what it holds (a barrel's contents, a pot's
+		// sherds) onto the dropped item. Null for a block without one.
+		const FMcBlockEntity* BlockEntity = nullptr;
 	};
 
 	// Rolls the loot table of the block with that state ("blocks/<name>") into stacks. False if the block has none

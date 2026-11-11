@@ -179,6 +179,9 @@ public:
 	// (the game counts the last five seconds). Not saved.
 	int32 PlayerHitAge = -1000000;
 	bool bPlayerHitWasShot = false;
+	// Ticks it still counts as burning (the sun or lava set it): its loot is cooked while it is. How long the game's own
+	// fire lasts after the sun is not measured (PLAN.md, provenance gaps). Not saved.
+	int32 BurnTicks = 0;
 	// Ticks left of glowing (a bell rung near a raider outlines it), and the raid it belongs to, 0 for none.
 	int32 GlowTicks = 0;
 	int32 RaidId = 0;
@@ -279,6 +282,9 @@ private:
 public:
 	// Where the ten crystals on the End's pillars stand (read from the reference world, dragon8.txt), lowest first.
 	static TArray<FVector> GetPillarCrystalPositions();
+	// The exit portal structure at the middle of the End: bedrock disc and ring, the column four tall, the portal blocks if bPortal (air
+	// inside the ring if not: the fight's starting podium), the egg on top if bEgg.
+	static void BuildExitPortal(FMcEntityManager& Manager, bool bPortal, bool bEgg);
 	// The mob's own voice: ambient, hurt or death, with the pitch it varies by (and a slime's size-scaled volume).
 	void PlayVoice(McSound::EMobSound Kind);
 	// A slime's jump or squish: volume 0.4 a size, low for the big ones and high for the small.

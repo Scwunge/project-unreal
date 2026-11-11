@@ -45,6 +45,18 @@ bool FMcAdvancementTriggerTest::RunTest(const FString& Parameters)
 	Killed.Entity = TEXT("minecraft:zombie");
 	AMcGameMode::FireTrigger(*Pawn, Killed);
 	TestTrue(TEXT("a zombie is"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/kill_a_mob")));
+	// A biome entered counts toward Adventuring Time (all of them are needed to make it), and a recipe toward the trim one.
+	FMcTriggerEvent Where;
+	Where.Trigger = TEXT("minecraft:location");
+	Where.Biome = TEXT("minecraft:badlands");
+	AMcGameMode::FireTrigger(*Pawn, Where);
+	TestTrue(TEXT("badlands entered"), Pawn->Data->Criteria.Contains(TEXT("minecraft:adventure/adventuring_time/minecraft:badlands")));
+	TestFalse(TEXT("one biome is not the lot"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/adventuring_time")));
+	FMcTriggerEvent Crafted;
+	Crafted.Trigger = TEXT("minecraft:recipe_crafted");
+	Crafted.Recipe = TEXT("minecraft:rib_armor_trim_smithing_template_smithing_trim");
+	AMcGameMode::FireTrigger(*Pawn, Crafted);
+	TestTrue(TEXT("recipe crafted"), Pawn->Data->Criteria.Contains(TEXT("minecraft:adventure/trim_with_all_exclusive_armor_patterns/armor_trimmed_minecraft:rib_armor_trim_smithing_template_smithing_trim")));
 	return true;
 }
 

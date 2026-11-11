@@ -170,6 +170,8 @@ public:
 	bool bInBlast = false;
 	// Whether the dragon has been killed before in this world (the second kill gives 500 points, not 12000, and no egg).
 	bool bDragonKilledBefore = false;
+	// The End's dragon and crystals have been put in (once, by the game mode, when the main island loads).
+	bool bEndFightStarted = false;
 	// The world seed, and how many central gateways the dragon's deaths have made (up to 20, one a kill).
 	int64 GatewaySeed = 0;
 	int32 GatewaysMade = 0;

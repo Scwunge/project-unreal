@@ -1,6 +1,6 @@
 #include "McGameMode.h"
-#include "McSound.h"
 #include "McMob.h"
+#include "McSound.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
@@ -434,6 +434,17 @@ namespace
 			else if (Key == TEXT("recipes"))
 			{
 				if (!NameIn(Entry.Value, Event.Recipe))
+				{
+					return false;
+				}
+			}
+			else if (Key == TEXT("player"))
+			{
+				// Where the player is: the biome (the location trigger's way of asking).
+				const TSharedPtr<FJsonObject>* Predicate = nullptr;
+				const TSharedPtr<FJsonObject>* Location = nullptr;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetObjectField(TEXT("predicate"), Predicate) || (*Predicate)->Values.Num() != 1
+					|| !(*Predicate)->TryGetObjectField(TEXT("minecraft:location"), Location) || (*Location)->Values.Num() != 1 || !NameIn((*Location)->TryGetField(TEXT("biomes")), Event.Biome))
 				{
 					return false;
 				}
@@ -1577,6 +1588,32 @@ void AMcGameMode::TickVillages()
 		{
 			continue;
 		}
+		// The End's fight starts when its main island has loaded: ten crystals on the pillars (positions read from vanilla, dragon8.txt)
+		// and the dragon, unless one has been killed in this game already (the kill is not saved yet). Where in the sky the dragon
+		// first appears is a guess.
+		if (World->Dimension == TEXT("minecraft:the_end") && !Host->GetManager().bEndFightStarted && World->GetBlockWorld())
+		{
+			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+			bool bLoaded = false;
+			for (int32 Y = 45; Y <= 70 && !bLoaded; ++Y)
+			{
+				bLoaded = Reg.GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name != FName(TEXT("minecraft:air"));
+			}
+			if (bLoaded)
+			{
+				Host->GetManager().bEndFightStarted = true;
+				if (!Host->GetManager().bDragonKilledBefore)
+				{
+					for (const FVector& Crystal : FMcMob::GetPillarCrystalPositions())
+					{
+						Host->SpawnMob(FName(TEXT("minecraft:end_crystal")), Crystal);
+					}
+					FMcMob::BuildExitPortal(Host->GetManager(), false, false);
+					Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), FVector(0.5, 100.0, 0.5));
+					UE_LOG(LogTemp, Display, TEXT("The End: dragon and ten crystals started"));
+				}
+			}
+		}
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
@@ -1912,6 +1949,82 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 					{
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
+					}
+					else if (Player.IsValid() && Line == TEXT("!killdragon"))
+					{
+						// Development: "!killdragon" waits (by game state, since a slow world load makes timed lines all fire at once)
+						// for the ender dragon, deals it 1000 damage (no command reaches mobs), waits for its death to end, then drops
+						// this player from (0, 72, 0) onto the exit portal: a run script can see the death, the portal and the credits
+						// without winning the fight by hand.
+						struct FRun { int32 Stage = 0; int32 Wait = 0; };
+						UE_LOG(LogTemp, Display, TEXT("killdragon: armed, %d worlds"), Worlds.Num());
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+							[this, Player, Run = MakeShared<FRun>()](float)
+							{
+								if (!Player.IsValid())
+								{
+									return false;
+								}
+								int32 Seen = 0;
+								FMcMob* Dragon = nullptr;
+								for (AMcWorldActor* World : Worlds)
+								{
+									FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+									if (!Host)
+									{
+										continue;
+									}
+									for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+									{
+										if (!Entity->bRemoved && Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+										{
+											++Seen;
+											Dragon = static_cast<FMcMob*>(Entity.Get());
+										}
+									}
+								}
+								UE_LOG(LogTemp, Display, TEXT("killdragon: stage %d, dragons %d"), Run->Stage, Seen);
+								if (Run->Stage == 0 && Dragon)
+								{
+									Dragon->Damage(1000.0f, nullptr);
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon found (%.0f hp), damaged"), Dragon->Health);
+									Run->Stage = 1;
+								}
+								else if (Run->Stage == 1 && !Dragon)
+								{
+									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon gone, dropping the player on the portal in 3 s"));
+									Run->Stage = 2;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 2 && ++Run->Wait >= 3)
+								{
+									FString Spot;
+									FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+									HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("2 70 0")) : Spot));
+									Run->Stage = 3;
+									Run->Wait = 0;
+								}
+								else if (Run->Stage == 3 && ++Run->Wait >= 4)
+								{
+									// Where the player is and what stands at the middle, for the run's log.
+									const AMcPlayerPawn* Pawn = Player.IsValid() ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+									UE_LOG(LogTemp, Display, TEXT("killdragon: player at %s"), Pawn ? *Pawn->GetFeetPosition().ToString() : TEXT("none"));
+									for (AMcWorldActor* World : Worlds)
+									{
+										if (World && World->GetBlockWorld())
+										{
+											FString Column;
+											for (int32 Y = 58; Y <= 67; ++Y)
+											{
+												Column += FString::Printf(TEXT(" %d:%s"), Y, *FMcBlockRegistry::Get().GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(0, Y, 0))).Name.ToString());
+											}
+											UE_LOG(LogTemp, Display, TEXT("killdragon: column at 0,0 (%s):%s"), *World->Dimension, *Column);
+										}
+									}
+									return false;
+								}
+								return true;
+							}), 1.0f);
 					}
 					else if (Player.IsValid())
 					{
@@ -2366,6 +2479,54 @@ namespace
 				}
 			}
 			return Found;
+		}
+
+		static TSharedPtr<FMcContainer> SlotGroup(AMcPlayerPawn* Pawn, int32 Group)
+		{
+			if (!Pawn || !Pawn->Data)
+			{
+				return nullptr;
+			}
+			return Group == 0 ? Pawn->Data->Inventory : Group == 1 ? Pawn->Data->Armor : Group == 2 ? Pawn->Data->Offhand : nullptr;
+		}
+
+		virtual bool SetSlot(const FString& Player, int32 Group, int32 Index, FName Item, int32 Count) override
+		{
+			const TSharedPtr<FMcContainer> Container = SlotGroup(FindPawn(Player), Group);
+			if (!Container || Index < 0 || Index >= Container->Num())
+			{
+				return false;
+			}
+			Container->Set(Index, Item.IsNone() || Count <= 0 ? FMcItemStack() : FMcItemStack(Item, Count));
+			return true;
+		}
+
+		virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const override
+		{
+			const TSharedPtr<FMcContainer> Container = SlotGroup(FindPawn(Player), Group);
+			if (!Container || Index < 0 || Index >= Container->Num() || Container->Get(Index).IsEmpty())
+			{
+				return false;
+			}
+			OutItem = Container->Get(Index).Item;
+			OutCount = Container->Get(Index).Count;
+			return true;
+		}
+
+		virtual void SetAttribute(const FString& Player, const FString& Id, double Value) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			if (Pawn && Pawn->Data && Id == TEXT("max_health"))
+			{
+				Pawn->Data->Stats.MaxHealth = FMath::Max(1.0f, (float)Value);
+				Pawn->Data->Stats.Health = FMath::Min(Pawn->Data->Stats.Health, Pawn->Data->Stats.MaxHealth);
+			}
+		}
+
+		virtual int32 GetSelectedSlot(const FString& Player) const override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			return Pawn && Pawn->Data ? Pawn->Data->SelectedSlot : 0;
 		}
 
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override

@@ -8,6 +8,8 @@
 #include "McMob.h"
 #include "McBiomeRegistry.h"
 #include "McVehicle.h"
+#include "McLoot.h"
+#include "McRandom.h"
 
 namespace
 {
@@ -53,6 +55,8 @@ namespace
 		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
+		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
+		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
 		{ TEXT("setworldspawn"), 2, TEXT("/setworldspawn [<pos>] [<yaw> [<pitch>]]") },
@@ -66,6 +70,10 @@ namespace
 		{ TEXT("forceload"), 2, TEXT("/forceload (add|query|remove) ...") },
 		{ TEXT("spreadplayers"), 2, TEXT("/spreadplayers <x> <z> <spreadDistance> <maxRange> [under <maxHeight>] <respectTeams> <targets>") },
 		{ TEXT("summon"), 2, TEXT("/summon <entity> [<pos>]") },
+		{ TEXT("teammsg"), 0, TEXT("/teammsg <message>") },
+		{ TEXT("tm"), 0, TEXT("/tm <message>") },
+		{ TEXT("stopwatch"), 2, TEXT("/stopwatch (create|query|restart|remove) <id>") },
+		{ TEXT("item"), 2, TEXT("/item replace entity <targets> <slot> (with <item> [count] | from entity <source> <slot>)") },
 		{ TEXT("team"), 2, TEXT("/team (add|empty|join|leave|list|modify|remove) ...") },
 		{ TEXT("bossbar"), 2, TEXT("/bossbar (add|get|list|remove|set) ...") },
 		{ TEXT("data"), 2, TEXT("/data (get|merge|modify|remove) ...") },
@@ -4379,6 +4387,482 @@ namespace
 		return { Ok(McLang::Format(bSet ? TEXT("commands.trigger.set.success") : TEXT("commands.trigger.add.success"), { Shown(*Objective), FString::FromInt(Amount) })) };
 	}
 
+	// /teammsg and /tm <message>: to everyone on the sender's team (wording from a ref run, cmd_group5.txt).
+	FReplies RunTeamMsg(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString Me = SenderName(Sender);
+		FTeam* Mine = nullptr;
+		for (TPair<FString, FTeam>& Entry : Teams())
+		{
+			if (Entry.Value.Members.Contains(Me))
+			{
+				Mine = &Entry.Value;
+				break;
+			}
+		}
+		if (!Mine)
+		{
+			return { Fail(McLang::Get(TEXT("commands.teammsg.failed.noteam"))) };
+		}
+		const FString Shown = TEXT("[") + (Mine->Display.IsEmpty() ? Mine->Name : Mine->Display) + TEXT("]");
+		const FString Text = RestOf(Words, 1);
+		for (const FString& Member : Mine->Members)
+		{
+			if (Member != Me)
+			{
+				Target.SendTo(Member, Ok(McLang::Format(TEXT("chat.type.team.text"), { Shown, Me, Text })));
+			}
+		}
+		return { Ok(McLang::Format(TEXT("chat.type.team.sent"), { Shown, Me, Text })) };
+	}
+
+	// /stopwatch create|query|restart|remove <id>: stopwatches run on real time, kept for the session (wording from a ref run).
+	TMap<FString, double>& Stopwatches()
+	{
+		static TMap<FString, double> All;
+		return All;
+	}
+
+	FReplies RunStopwatch(const FString& Command, const TArray<FString>& Words)
+	{
+		if (Words.Num() < 3 || Words.Num() > 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const FString& Verb = Words[1];
+		const FString Id = McCache::Namespaced(Words[2]);
+		double* Started = Stopwatches().Find(Id);
+		if (Verb == TEXT("create"))
+		{
+			if (Started)
+			{
+				return { Fail(McLang::Format(TEXT("commands.stopwatch.already_exists"), { Id })) };
+			}
+			Stopwatches().Add(Id, FPlatformTime::Seconds());
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.create.success"), { Id })) };
+		}
+		if (Verb != TEXT("query") && Verb != TEXT("restart") && Verb != TEXT("remove"))
+		{
+			return BadArgument(Command);
+		}
+		if (!Started)
+		{
+			return { Fail(McLang::Format(TEXT("commands.stopwatch.does_not_exist"), { Id })) };
+		}
+		if (Verb == TEXT("restart"))
+		{
+			*Started = FPlatformTime::Seconds();
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.restart.success"), { Id })) };
+		}
+		if (Verb == TEXT("remove"))
+		{
+			Stopwatches().Remove(Id);
+			return { Ok(McLang::Format(TEXT("commands.stopwatch.remove.success"), { Id })) };
+		}
+		// To whole milliseconds, as the game shows it.
+		FString Seconds = FString::SanitizeFloat(FMath::RoundToDouble((FPlatformTime::Seconds() - *Started) * 1000.0) / 1000.0, 0);
+		return { Ok(McLang::Format(TEXT("commands.stopwatch.query"), { Id, Seconds })) };
+	}
+
+	// A player's slot by the game's name: group 0 the inventory (0 to 8 the hotbar, 9 to 35 the rest), 1 the armour (head, chest,
+	// legs, feet), 2 the offhand. False for a name that is no slot of a player.
+	bool ParseSlot(const FString& Name, const IMcCommandTarget& Target, const FString& Player, int32& Group, int32& Index)
+	{
+		const auto Number = [&](const TCHAR* Prefix, int32 Max, int32& Out)
+		{
+			if (!Name.StartsWith(Prefix))
+			{
+				return false;
+			}
+			const FString Tail = Name.RightChop(FCString::Strlen(Prefix));
+			if (Tail.IsEmpty() || !Tail.IsNumeric() || Tail.Contains(TEXT(".")) || Tail.StartsWith(TEXT("-")))
+			{
+				return false;
+			}
+			Out = FCString::Atoi(*Tail);
+			return Out >= 0 && Out < Max;
+		};
+		int32 N = 0;
+		Group = 0;
+		if (Number(TEXT("hotbar."), 9, N) || Number(TEXT("container."), 36, N))
+		{
+			Index = N;
+			return true;
+		}
+		if (Number(TEXT("inventory."), 27, N))
+		{
+			Index = N + 9;
+			return true;
+		}
+		if (Name == TEXT("weapon") || Name == TEXT("weapon.mainhand"))
+		{
+			Index = Target.GetSelectedSlot(Player);
+			return true;
+		}
+		Group = 1;
+		if (Name == TEXT("armor.head")) { Index = 0; return true; }
+		if (Name == TEXT("armor.chest")) { Index = 1; return true; }
+		if (Name == TEXT("armor.legs")) { Index = 2; return true; }
+		if (Name == TEXT("armor.feet")) { Index = 3; return true; }
+		Group = 2;
+		Index = 0;
+		return Name == TEXT("weapon.offhand");
+	}
+
+	// /item replace entity <players> <slot> with <item> [count] | from entity <players> <slot> (wording from a ref run, cmd_group4.txt).
+	// Players only; blocks, modify and the other slots (enderchest, the crafting grid) are not built.
+	FReplies RunItem(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 6 || Words[1] != TEXT("replace") || Words[2] != TEXT("entity"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[3], Sender, Target, Players, Error))
+		{
+			// An entity argument: a name nobody has is "No entity was found", not the player argument's wording.
+			return { Fail(Words[3].StartsWith(TEXT("@")) ? Error : McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+		}
+		// Where each word starts, for the context line.
+		const auto StartOf = [&](int32 Word)
+		{
+			int32 At = 0;
+			for (int32 I = 0; I < Word; ++I)
+			{
+				At = Command.Find(Words[I], ESearchCase::CaseSensitive, ESearchDir::FromStart, At) + Words[I].Len();
+			}
+			return Command.Find(Words[Word], ESearchCase::CaseSensitive, ESearchDir::FromStart, At);
+		};
+		const auto BadSlot = [&](int32 Word, const FString& Slot, const TCHAR* Registry) -> FReplies
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element 'minecraft:%s' in registry 'minecraft:%s'"), *Slot, Registry)), Fail(BorderContext(Command, StartOf(Word))) };
+		};
+		int32 Group = 0;
+		int32 Index = 0;
+		// The slot is checked against the first player.
+		if (Players.IsEmpty() || !ParseSlot(Words[4], Target, Players[0], Group, Index))
+		{
+			return BadSlot(4, Words[4], TEXT("slot_source"));
+		}
+		FName Item;
+		int32 Count = 1;
+		bool bKnownItem = false;
+		if (Words[5] == TEXT("with"))
+		{
+			if (Words.Num() < 7 || Words.Num() > 8)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			Item = ItemId(Words[6]);
+			if (Target.GetMaxStackSize(Item) <= 0)
+			{
+				return { Fail(McLang::Format(TEXT("argument.item.id.invalid"), { Item.ToString() })), Fail(BorderContext(Command, StartOf(6))) };
+			}
+			if (Words.Num() == 8)
+			{
+				if (!Words[7].IsNumeric() || Words[7].Contains(TEXT(".")) || FCString::Atoi(*Words[7]) < 1 || FCString::Atoi(*Words[7]) > 99)
+				{
+					return BadArgument(Command);
+				}
+				Count = FCString::Atoi(*Words[7]);
+			}
+			bKnownItem = true;
+		}
+		else if (Words[5] == TEXT("from") && Words.Num() == 9 && Words[6] == TEXT("entity"))
+		{
+			TArray<FString> From;
+			int32 FromGroup = 0;
+			int32 FromIndex = 0;
+			if (!ResolvePlayers(Words[7], Sender, Target, From, Error))
+			{
+				return { Fail(Error) };
+			}
+			if (From.IsEmpty() || !ParseSlot(Words[8], Target, From[0], FromGroup, FromIndex))
+			{
+				return BadSlot(8, Words[8], TEXT("slot_source"));
+			}
+			if (!Target.GetSlot(From[0], FromGroup, FromIndex, Item, Count))
+			{
+				Item = NAME_None;
+				Count = 0;
+			}
+		}
+		else
+		{
+			return Unknown(Command, Command.Len());
+		}
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			int32 PlayerGroup = 0;
+			int32 PlayerIndex = 0;
+			if (ParseSlot(Words[4], Target, Player, PlayerGroup, PlayerIndex) && Target.SetSlot(Player, PlayerGroup, PlayerIndex, Item, Count))
+			{
+				++Changed;
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.item.target.failed"))) };
+		}
+		const FString Shown = bKnownItem ? TEXT("[") + Target.GetItemName(Item) + TEXT("]") : FString();
+		if (Changed == 1)
+		{
+			return { Ok(bKnownItem ? McLang::Format(TEXT("commands.item.entity.replace.success.single.known_item"), { TEXT("1"), Players[0], Shown })
+				: McLang::Format(TEXT("commands.item.entity.replace.success.single"), { TEXT("1"), Players[0] })) };
+		}
+		return { Ok(bKnownItem ? McLang::Format(TEXT("commands.item.entity.replace.success.multiple.known_item"), { FString::FromInt(Changed), Shown })
+			: McLang::Format(TEXT("commands.item.entity.replace.success.multiple"), { FString::FromInt(Changed) })) };
+	}
+
+	// /loot give <players> loot <table>: rolls the table and gives the stacks (wording from a ref run, cmd_group4.txt).
+	// Only the give target with the loot source is built; mine and kill sources, spawn, insert and replace are not.
+	FReplies RunLoot(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("give") || Words.Num() != 5 || Words[3] != TEXT("loot"))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		const FString Table = McCache::Namespaced(Words[4]);
+		TArray<FMcItemStack> Stacks;
+		static uint64 Draw = 0x6c6f6f74;
+		FMcRandom Random(++Draw * 0x9E3779B97F4A7C15ull);
+		if (!McLoot::Roll(Table, Random, Stacks))
+		{
+			int32 At = Command.Find(Words[4], ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:loot_table'"), *Table)), Fail(BorderContext(Command, At)) };
+		}
+		int32 Total = 0;
+		FName Only;
+		for (const FMcItemStack& Stack : Stacks)
+		{
+			if (Stack.IsEmpty())
+			{
+				continue;
+			}
+			Total += Stack.Count;
+			Only = Stack.Item;
+			for (const FString& Player : Players)
+			{
+				Target.Give(Player, Stack.Item, Stack.Count);
+			}
+		}
+		const FString Count = FString::FromInt(Total);
+		if (Total == 1)
+		{
+			return { Ok(McLang::Format(TEXT("commands.drop.success.single_with_table"), { Count, TEXT("[") + Target.GetItemName(Only) + TEXT("]"), Table })) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { Count, Table })) };
+	}
+
+	// ---- /attribute (wording from a ref run, cmd_group4.txt) ----
+	// The values live here, per player, and only max_health reaches the game (through SetAttribute); the others are kept and
+	// reported but change nothing yet. Not kept in the save.
+	struct FAttributeDefault
+	{
+		const TCHAR* Id;
+		double Value;
+	};
+
+	// Player defaults (minecraft.wiki, "Attribute").
+	const FAttributeDefault AttributeDefaults[] = {
+		{ TEXT("max_health"), 20.0 }, { TEXT("movement_speed"), (double)0.1f }, { TEXT("attack_damage"), 1.0 }, { TEXT("attack_speed"), 4.0 },
+		{ TEXT("attack_knockback"), 0.0 }, { TEXT("armor"), 0.0 }, { TEXT("armor_toughness"), 0.0 }, { TEXT("luck"), 0.0 },
+		{ TEXT("knockback_resistance"), 0.0 }, { TEXT("block_interaction_range"), 4.5 }, { TEXT("entity_interaction_range"), 3.0 },
+		{ TEXT("gravity"), 0.08 }, { TEXT("jump_strength"), (double)0.42f }, { TEXT("step_height"), 0.6 }, { TEXT("safe_fall_distance"), 3.0 },
+		{ TEXT("fall_damage_multiplier"), 1.0 }, { TEXT("scale"), 1.0 }, { TEXT("flying_speed"), (double)0.05f }, { TEXT("max_absorption"), 0.0 },
+		{ TEXT("burning_time"), 1.0 }, { TEXT("movement_efficiency"), 0.0 }, { TEXT("oxygen_bonus"), 0.0 }, { TEXT("water_movement_efficiency"), 0.0 },
+		{ TEXT("sneaking_speed"), (double)0.3f }, { TEXT("submerged_mining_speed"), 0.2 }, { TEXT("mining_efficiency"), 0.0 },
+		{ TEXT("block_break_speed"), 1.0 }, { TEXT("sweeping_damage_ratio"), 0.0 }, { TEXT("explosion_knockback_resistance"), 0.0 },
+	};
+
+	struct FAttributeModifier
+	{
+		double Amount = 0.0;
+		int32 Operation = 0;
+	};
+
+	struct FAttributeState
+	{
+		TOptional<double> Base;
+		TMap<FString, FAttributeModifier> Modifiers;
+	};
+
+	TMap<FString, TMap<FString, FAttributeState>>& AttributeStates()
+	{
+		static TMap<FString, TMap<FString, FAttributeState>> States;
+		return States;
+	}
+
+	// Java prints a double as its shortest text that reads back the same, with ".0" on a whole number.
+	FString AttrDouble(double Value)
+	{
+		FString Text;
+		for (int32 Digits = 1; Digits <= 17; ++Digits)
+		{
+			Text = FString::Printf(TEXT("%.*g"), Digits, Value);
+			if (FCString::Atod(*Text) == Value)
+			{
+				break;
+			}
+		}
+		if (Text.Contains(TEXT("e")))
+		{
+			Text = FString::Printf(TEXT("%.1f"), Value);
+		}
+		if (!Text.Contains(TEXT(".")))
+		{
+			Text += TEXT(".0");
+		}
+		return Text;
+	}
+
+	double AttributeValue(double Base, const FAttributeState& State)
+	{
+		double Add = 0.0;
+		double MultBase = 0.0;
+		for (const auto& Entry : State.Modifiers)
+		{
+			if (Entry.Value.Operation == 0)
+			{
+				Add += Entry.Value.Amount;
+			}
+			else if (Entry.Value.Operation == 1)
+			{
+				MultBase += Entry.Value.Amount;
+			}
+		}
+		double Value = Base + Add;
+		const double Start = Value;
+		Value += Start * MultBase;
+		for (const auto& Entry : State.Modifiers)
+		{
+			if (Entry.Value.Operation == 2)
+			{
+				Value *= 1.0 + Entry.Value.Amount;
+			}
+		}
+		return Value;
+	}
+
+	FReplies RunAttribute(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 4)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		if (Players.Num() > 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+		}
+		const FString Id = McCache::Namespaced(Words[2]);
+		const FAttributeDefault* Known = nullptr;
+		for (const FAttributeDefault& Candidate : AttributeDefaults)
+		{
+			if (Id == FString(TEXT("minecraft:")) + Candidate.Id)
+			{
+				Known = &Candidate;
+			}
+		}
+		if (!Known)
+		{
+			int32 At = Command.Find(Words[2], ESearchCase::CaseSensitive, ESearchDir::FromStart, Command.Find(Words[1]) + Words[1].Len());
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:attribute'"), *Id)), Fail(BorderContext(Command, At + Words[2].Len())) };
+		}
+		const FString Player = Players[0];
+		const FString Shown = McLang::Get(FString(TEXT("attribute.name.")) + Known->Id);
+		FAttributeState& State = AttributeStates().FindOrAdd(Player).FindOrAdd(Known->Id);
+		const auto Push = [&]()
+		{
+			Target.SetAttribute(Player, Known->Id, AttributeValue(State.Base.Get(Known->Value), State));
+		};
+		const double Base = State.Base.Get(Known->Value);
+		const FString& Verb = Words[3];
+		if (Verb == TEXT("get") && Words.Num() <= 5)
+		{
+			return { Ok(McLang::Format(TEXT("commands.attribute.value.get.success"), { Shown, Player, AttrDouble(AttributeValue(Base, State)) })) };
+		}
+		if (Verb == TEXT("base") && Words.Num() >= 5)
+		{
+			if (Words[4] == TEXT("get") && Words.Num() <= 6)
+			{
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.get.success"), { Shown, Player, AttrDouble(Base) })) };
+			}
+			if (Words[4] == TEXT("set") && Words.Num() == 6)
+			{
+				if (!Words[5].IsNumeric())
+				{
+					return BadArgument(Command);
+				}
+				State.Base = FCString::Atod(*Words[5]);
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.set.success"), { Shown, Player, AttrDouble(*State.Base) })) };
+			}
+			if (Words[4] == TEXT("reset") && Words.Num() == 5)
+			{
+				State.Base.Reset();
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.base_value.reset.success"), { Shown, Player, AttrDouble(Known->Value) })) };
+			}
+		}
+		if (Verb == TEXT("modifier") && Words.Num() >= 6)
+		{
+			const FString Modifier = McCache::Namespaced(Words[5]);
+			if (Words[4] == TEXT("add") && Words.Num() == 8)
+			{
+				const int32 Operation = Words[7] == TEXT("add_value") ? 0 : Words[7] == TEXT("add_multiplied_base") ? 1 : Words[7] == TEXT("add_multiplied_total") ? 2 : -1;
+				if (!Words[6].IsNumeric() || Operation < 0)
+				{
+					return BadArgument(Command);
+				}
+				if (State.Modifiers.Contains(Modifier))
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.modifier_already_present"), { Modifier, Shown, Player })) };
+				}
+				State.Modifiers.Add(Modifier, FAttributeModifier{ FCString::Atod(*Words[6]), Operation });
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.add.success"), { Modifier, Shown, Player })) };
+			}
+			if (Words[4] == TEXT("remove") && Words.Num() == 6)
+			{
+				if (!State.Modifiers.Remove(Modifier))
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.no_modifier"), { Shown, Player, Modifier })) };
+				}
+				Push();
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.remove.success"), { Modifier, Shown, Player })) };
+			}
+			if (Words[4] == TEXT("value") && Words.Num() >= 7 && Words[5] == TEXT("get"))
+			{
+				const FString Wanted = McCache::Namespaced(Words[6]);
+				const FAttributeModifier* Found = State.Modifiers.Find(Wanted);
+				if (!Found)
+				{
+					return { Fail(McLang::Format(TEXT("commands.attribute.failed.no_modifier"), { Shown, Player, Wanted })) };
+				}
+				return { Ok(McLang::Format(TEXT("commands.attribute.modifier.value.get.success"), { Wanted, Shown, Player, AttrDouble(Found->Amount) })) };
+			}
+		}
+		return Unknown(Command, Command.Len());
+	}
+
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 3 || Words.Num() > 4)
@@ -4912,6 +5396,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunTitle(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("attribute"))
+	{
+		return RunAttribute(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("loot"))
+	{
+		return RunLoot(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("seed"))
 	{
 		return { Ok(McLang::Format(TEXT("commands.seed.success"), { TEXT("[") + LexToString(Target.GetSeed()) + TEXT("]") })) };
@@ -5069,6 +5561,18 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("spreadplayers"))
 	{
 		return RunSpreadPlayers(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("teammsg") || Name == TEXT("tm"))
+	{
+		return RunTeamMsg(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("stopwatch"))
+	{
+		return RunStopwatch(Command, Words);
+	}
+	if (Name == TEXT("item"))
+	{
+		return RunItem(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("team"))
 	{

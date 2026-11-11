@@ -53,8 +53,9 @@ public:
 	int32 StopSounds(const FString& Source, FName Event);
 
 	// The blocks the listener is in, for the mood sound and Unreal Mode's acoustics. Null when there is no world; set
-	// again with the player's view.
-	void SetListenerWorld(const FMcBlockWorld* InWorld);
+	// again with the player's view. Owner is what holds the world (its world actor): once Owner is destroyed the world
+	// is let go of, since this subsystem outlives every level and the world goes with its actor.
+	void SetListenerWorld(const FMcBlockWorld* InWorld, const UObject* Owner = nullptr);
 
 private:
 	// A sound that is playing, with what is needed to keep shaping it.
@@ -100,6 +101,8 @@ private:
 	void TickMood(float DeltaTime, const FVector& Head, bool bUnreal);
 	void TickImmersive(float DeltaTime, const FVector& Head);
 	void ReleaseImmersive();
+	// Lets go of the listener's world when the actor that holds it is gone (left to the title, another world, a server).
+	void DropStaleListener();
 	void UpdateLive(const FVector& Head);
 	void DripNear(const FVector& Head);
 	FMcStateId GetBlockAt(const FIntVector& Cell) const;
@@ -133,6 +136,8 @@ private:
 	int32 RecordRequest = 0;
 
 	const FMcBlockWorld* ListenerWorld = nullptr;
+	TWeakObjectPtr<const UObject> ListenerOwner;
+	bool bListenerOwned = false;
 	// The cave's mood meter and when it was last read.
 	float MoodMeter = 0.0f;
 	float MoodClock = 0.0f;

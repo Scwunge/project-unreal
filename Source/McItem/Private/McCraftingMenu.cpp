@@ -80,6 +80,10 @@ void FMcCraftingMenu::OnTake(int32 Slot, FMcItemStack& Taken, TArray<FMcItemStac
 	{
 		return;
 	}
+	if (OnCrafted)
+	{
+		OnCrafted(Match.Recipe->Id, Taken);
+	}
 	ConsumeIngredients(Dropped);
 	Refresh();
 }

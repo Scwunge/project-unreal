@@ -55,7 +55,8 @@ namespace
 		{
 			return *Found;
 		}
-		return Id.EndsWith(TEXT("shulker_box")) ? 27 : 0;
+		// Copper chests (all four weathering stages, waxed or not) hold 27 slots like a chest.
+		return Id.EndsWith(TEXT("shulker_box")) || Id.EndsWith(TEXT("copper_chest")) ? 27 : 0;
 	}
 
 	bool GetPaletteEntry(const FMcNbt& Entry, FString& OutName, TMap<FString, FString>& OutProperties)

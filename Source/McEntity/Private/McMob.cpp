@@ -183,6 +183,37 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// A turtle is slow on land.
 		Add(TEXT("minecraft:turtle"), 1.2f, 0.4f, 30.f, 0.1f, 0.f, 0.f, true, false);
 		Add(TEXT("minecraft:frog"), 0.5f, 0.5f, 10.f, 0.15f, 0.f, 0.f, true, false);
+		// The mobs the first audit missed. Health, speed, attack and follow range are the reference game's attributes (mobattrs1.txt: `attribute ... get` on a summoned mob,
+		// 2026-11-05); the box is minecraft.wiki's hitbox size (read 2026-11-05). Behaviour beyond walking, flying or swimming about is not built (see PLAN.md, missing mobs).
+		Add(TEXT("minecraft:mooshroom"), 0.9f, 1.4f, 10.f, 0.2f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:ocelot"), 0.6f, 0.7f, 10.f, 0.3f, 0.f, 0.f, true, false);
+		Add(TEXT("minecraft:armadillo"), 0.7f, 0.65f, 12.f, 0.14f, 0.f, 0.f, true, false);
+		// Polar bears and pandas fight back only when hurt (attack 6).
+		Add(TEXT("minecraft:polar_bear"), 1.4f, 1.4f, 30.f, 0.25f, 6.f, 20.f, false, false).bNeutral = true;
+		Add(TEXT("minecraft:panda"), 1.3f, 1.25f, 20.f, 0.15f, 6.f, 16.f, false, false).bNeutral = true;
+		// A parrot flies (flying speed 0.4, walking 0.2) and an allay flies (0.1); the attribute list gives the allay an attack of 2 it never uses.
+		Add(TEXT("minecraft:parrot"), 0.5f, 0.9f, 6.f, 0.4f, 0.f, 0.f, true, false).bFlies = true;
+		Add(TEXT("minecraft:allay"), 0.35f, 0.6f, 20.f, 0.1f, 0.f, 0.f, false, false).bFlies = true;
+		Add(TEXT("minecraft:happy_ghast"), 4.f, 4.f, 20.f, 0.05f, 0.f, 0.f, false, false).bFlies = true;
+		// The water animals: swimming about is not built yet (they stand where they are put).
+		Add(TEXT("minecraft:squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:glow_squid"), 0.8f, 0.8f, 10.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:cod"), 0.5f, 0.3f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:salmon"), 0.7f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tropical_fish"), 0.5f, 0.4f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:pufferfish"), 0.7f, 0.7f, 3.f, 0.7f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:tadpole"), 0.4f, 0.3f, 6.f, 1.0f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:axolotl"), 0.75f, 0.42f, 14.f, 1.0f, 2.f, 16.f, false, false);
+		// The snow golem (4 health; the reference summoned one read 3 after a tick: it melts) throws snowballs, which is not built.
+		Add(TEXT("minecraft:snow_golem"), 0.7f, 1.9f, 4.f, 0.2f, 0.f, 0.f, false, false);
+		// The zoglin, the nether's undead hoglin: 40 health, attack 6, knockback resistance 0.6.
+		Add(TEXT("minecraft:zoglin"), 1.3965f, 1.4f, 40.f, 0.3f, 6.f, 16.f, false, false);
+		Add(TEXT("minecraft:breeze"), 0.6f, 1.77f, 30.f, 0.63f, 3.f, 24.f, false, false);
+		Add(TEXT("minecraft:camel_husk"), 1.7f, 2.375f, 32.f, 0.09f, 0.f, 0.f, false, false);
+		// The parched shoots, as the skeletons do; whether it burns in daylight is not measured.
+		Add(TEXT("minecraft:parched"), 0.6f, 1.99f, 16.f, 0.25f, 2.f, 16.f, false, false).bShoots = true;
+		Add(TEXT("minecraft:sulfur_cube"), 0.98f, 0.98f, 4.f, 0.3f, 0.f, 0.f, false, false);
+		Add(TEXT("minecraft:zombie_nautilus"), 0.875f, 0.95f, 15.f, 1.1f, 3.f, 16.f, false, false);
 		// A bee stings (2 on Normal) whoever hurt it, and flies.
 		FMcMobType& Bee = Add(TEXT("minecraft:bee"), 0.7f, 0.6f, 10.f, 0.3f, 2.f, 16.f, false, false);
 		Bee.bNeutral = true;
@@ -807,6 +838,78 @@ TArray<FVector> FMcMob::GetPillarCrystalPositions()
 	};
 }
 
+void FMcMob::BuildExitPortal(FMcEntityManager& Manager, bool bPortal, bool bEgg)
+{
+	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
+	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	FMcBlockWorld& World = Manager.GetWorld();
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
+	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
+	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
+	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
+	int32 BaseY = 0;
+	bool bColumn = false;
+	for (int32 Y = 100; Y > 40; --Y)
+	{
+		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
+		{
+			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
+			BaseY = Y - 3;
+			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
+			{
+				--BaseY;
+			}
+			bColumn = true;
+			break;
+		}
+	}
+	if (!bColumn)
+	{
+		// No column yet (a fresh End): the podium stands in the island, its portal level where the surface at the middle is (a guess; the
+		// reference puts the first one at the same place the worldgen leaves the surface).
+		BaseY = 58;
+		for (int32 Y = 100; Y > 40; --Y)
+		{
+			if (World.GetBlock(FIntVector(0, Y, 0)) != StateOf(TEXT("minecraft:air")))
+			{
+				BaseY = Y;
+				break;
+			}
+		}
+	}
+	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
+	{
+		World.SetBlock(Cell, State);
+		if (Manager.OnSetBlock)
+		{
+			Manager.OnSetBlock(Cell, State);
+		}
+	};
+	UE_LOG(LogTemp, Display, TEXT("exit portal: base y %d, column found %d, portal %d, egg %d"), BaseY, bColumn ? 1 : 0, bPortal ? 1 : 0, bEgg ? 1 : 0);
+	for (int32 DX = -4; DX <= 4; ++DX)
+	{
+		for (int32 DZ = -4; DZ <= 4; ++DZ)
+		{
+			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
+			if (Distance > 3.5)
+			{
+				continue;
+			}
+			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
+			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? (bPortal ? Portal : StateOf(TEXT("minecraft:air"))) : Bedrock);
+		}
+	}
+	for (int32 DY = 0; DY < 4; ++DY)
+	{
+		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
+	}
+	if (bEgg)
+	{
+		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
+	}
+}
+
 void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 {
 	// dragon10.txt (a summoned dragon set to 0 hp, the player 20 blocks off, samples 5 ticks apart, second kill in that world): 40 points of orbs (37 + 3) came in
@@ -827,28 +930,9 @@ void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 	FMcXpOrb::Spawn(Manager, Body.Position, Total * 20 / 100, Random);
 	bRemoved = true;
 	Manager.bDragonKilledBefore = true;
-	// The exit portal (dragon9/11.txt: bedrock disc under it out to 2.5 blocks, the portal in the same, a ring of bedrock round it out to 3.5, a bedrock column
-	// four tall in the middle with the egg on top; the torches are the worldgen's), where the column stands, or at height 58 if there is none.
+	BuildExitPortal(Manager, true, bFirst);
 	FMcBlockWorld& World = Manager.GetWorld();
-	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
-	const auto StateOf = [&](const TCHAR* Name) { return Registry.FindDefaultState(Name).Get(0); };
-	const FMcStateId Bedrock = StateOf(TEXT("minecraft:bedrock"));
-	const FMcStateId Portal = StateOf(TEXT("minecraft:end_portal"));
-	const FMcStateId EndStone = StateOf(TEXT("minecraft:end_stone"));
-	int32 BaseY = 58;
-	for (int32 Y = 100; Y > 40; --Y)
-	{
-		if (World.GetBlock(FIntVector(0, Y, 0)) == Bedrock)
-		{
-			// The top of the column is the fourth bedrock block; the one under the portal level is the disc.
-			BaseY = Y - 3;
-			while (World.GetBlock(FIntVector(0, BaseY - 1, 0)) == Bedrock && BaseY > 41)
-			{
-				--BaseY;
-			}
-			break;
-		}
-	}
+	const auto StateOf = [](const TCHAR* Name) { return FMcBlockRegistry::Get().FindDefaultState(Name).Get(0); };
 	const auto Put = [&](const FIntVector& Cell, FMcStateId State)
 	{
 		World.SetBlock(Cell, State);
@@ -857,27 +941,6 @@ void FMcMob::TickDragonDeath(FMcEntityManager& Manager)
 			Manager.OnSetBlock(Cell, State);
 		}
 	};
-	for (int32 DX = -4; DX <= 4; ++DX)
-	{
-		for (int32 DZ = -4; DZ <= 4; ++DZ)
-		{
-			const double Distance = FMath::Sqrt(static_cast<double>(DX * DX + DZ * DZ));
-			if (Distance > 3.5)
-			{
-				continue;
-			}
-			Put(FIntVector(DX, BaseY - 1, DZ), Distance <= 2.5 ? Bedrock : EndStone);
-			Put(FIntVector(DX, BaseY, DZ), Distance <= 2.5 ? Portal : Bedrock);
-		}
-	}
-	for (int32 DY = 0; DY < 4; ++DY)
-	{
-		Put(FIntVector(0, BaseY + DY, 0), Bedrock);
-	}
-	if (bFirst)
-	{
-		Put(FIntVector(0, BaseY + 4, 0), StateOf(TEXT("minecraft:dragon_egg")));
-	}
 	// A gateway for this kill (gateway1.txt, a first kill on seed 4242424242 made the one at position 11; the wiki: position k is at
 	// (floor(96 cos(k pi / 10)), 75, floor(96 sin(k pi / 10))), twenty of them, in an order the seed decides). The order here is a shuffle of
 	// 1..20 from the seed, so only that one sample is matched; the real order is open.
@@ -1471,11 +1534,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 	}
 	UpdateSteps(Manager);
 
+	if (BurnTicks > 0)
+	{
+		--BurnTicks;
+	}
+	if (Body.bInLava)
+	{
+		BurnTicks = 100;
+	}
 	// Undead burn in daylight when the sky is open over them: a point of damage a second.
 	if (Type.bBurnsInSun && Manager.bDaylight && Age % 20 == 0
 		&& Manager.IsSkyExposed(FIntVector(FMath::FloorToInt32(Body.Position.X), FMath::FloorToInt32(Body.Position.Y + Type.Height), FMath::FloorToInt32(Body.Position.Z))))
 	{
 		HurtTime = 0;
+		BurnTicks = 100;
 		Damage(1.0f, nullptr);
 		if (bRemoved)
 		{

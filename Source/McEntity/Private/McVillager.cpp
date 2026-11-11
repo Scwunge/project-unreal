@@ -614,6 +614,7 @@ void FMcVillager::TryBreed(FMcEntityManager& Manager)
 	BreedCooldown = McVillager::BreedCooldownTicks;
 	Mate->BreedCooldown = McVillager::BreedCooldownTicks;
 	Manager.OnVillagerBred((Body.Position + Mate->Body.Position) * 0.5, *this);
+	Manager.SpawnParticle(FName("minecraft:heart"), (Body.Position + Mate->Body.Position) * 0.5 + FVector(0.0, 1.5, 0.0), FVector(0.5, 0.3, 0.5), 0.0f, 7);
 }
 
 void FMcVillager::Play(FMcEntityManager& Manager)

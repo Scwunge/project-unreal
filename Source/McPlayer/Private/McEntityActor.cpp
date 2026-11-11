@@ -30,7 +30,7 @@ AMcEntityActor::AMcEntityActor()
 	SetReplicateMovement(true);
 	// A moving entity should be seen from far off but needn't be updated more than the movement needs.
 	SetNetUpdateFrequency(20.0f);
-	NetCullDistanceSquared = FMath::Square(100.0 * 16.0 * 12.0);
+	SetNetCullDistanceSquared(FMath::Square(100.0 * 16.0 * 12.0));
 	PrimaryActorTick.bCanEverTick = MC_WITH_RENDER != 0;
 
 	USceneComponent* Feet = CreateDefaultSubobject<USceneComponent>(TEXT("Feet"));

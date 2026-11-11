@@ -12,9 +12,9 @@
 
 bool FMcPlayerStats::Serialize(FArchive& Ar)
 {
-	int32 Version = 2;
+	int32 Version = 3;
 	Ar << Version;
-	if (Ar.IsLoading() && Version != 1 && Version != 2)
+	if (Ar.IsLoading() && Version != 1 && Version != 2 && Version != 3)
 	{
 		return false;
 	}
@@ -36,6 +36,10 @@ bool FMcPlayerStats::Serialize(FArchive& Ar)
 		{
 			Ar << Effect.Id << Effect.Amplifier << Effect.Duration;
 		}
+	}
+	if (Version >= 3)
+	{
+		Ar << bHasDeath << DeathPos << DeathDimension;
 	}
 	return !Ar.IsError();
 }

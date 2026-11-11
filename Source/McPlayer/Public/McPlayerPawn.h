@@ -24,6 +24,17 @@ class FMcEntityManager;
 class UCameraComponent;
 class UMcPlayerDataComponent;
 
+// Something that happened to a player which an advancement may be waiting for (the game's trigger, by id, with what it was about).
+struct FMcTriggerEvent
+{
+	FName Trigger;
+	FName Item;
+	FName Block;
+	FName Entity;
+	FName Recipe;
+	FName Biome;
+};
+
 UCLASS()
 class MCPLAYER_API AMcPlayerPawn : public APawn
 {
@@ -59,6 +70,9 @@ public:
 	// Puts the eyes at a Minecraft position (x, y, z in blocks), looking along Minecraft's yaw and pitch
 	// (yaw 0 faces south, pitch 90 looks straight down), and starts flying so the view stays put.
 	void SetView(const FVector& EyePos, float McYaw, float McPitch);
+	// Turns to Look (Unreal yaw and pitch, as a start transform carries them) without moving: for a player who joined before
+	// the world did and is placed afterwards, who would otherwise keep looking along +x.
+	void SetStartLook(const FRotator& Look);
 
 	// Changes blocks for the player. Until the server takes requests (M3's networking), the game mode points
 	// this straight at the world actor.
@@ -77,6 +91,8 @@ public:
 	TFunction<void(const FIntVector& Pos, FMcStateId State)> ServerSetBlock;
 	// The entities of the dimension, for dropping and picking up items; null if there are none yet.
 	TFunction<FMcEntityManager*()> GetEntities;
+	// Where the nearest stronghold's corner is (block x, z) for a thrown eye of ender; false if this dimension has none.
+	TFunction<bool(const FVector&, FVector2D&)> OnLocateStronghold;
 	// The player used a block (right click): open a crafting table, chest or furnace. Returns true if it did something.
 	TFunction<bool(AMcPlayerPawn& Player, const FIntVector& Pos)> OnUseBlock;
 	// A survival player started to dig at Pos (a click on it): a note block sounds.
@@ -87,6 +103,9 @@ public:
 	TFunction<void(AMcPlayerPawn& Player)> OnRespawnRequest;
 	// Called before the server breaks a block for this player, while it is still there (a chest drops its things).
 	TFunction<void(const FIntVector& Pos)> OnBeforeBreak;
+	// The game mode judges the advancement triggers.
+	TFunction<void(AMcPlayerPawn& Player, const FMcTriggerEvent& Event)> OnTrigger;
+	void FireTrigger(const FMcTriggerEvent& Event) { if (OnTrigger) { OnTrigger(*this, Event); } }
 	// Called after the server put a block down for this player.
 	TFunction<void(const FIntVector& Pos)> OnPlaced;
 	// The drops of the block about to be broken at Pos, which may still change (a shulker box puts its things in its item).
@@ -156,6 +175,8 @@ public:
 	// Server: sits the player in the vehicle (any they were in is left first), or takes them out of it.
 	void ServerRide(int32 VehicleId);
 	void ServerDismount();
+	// A game event this player made at a place (what sculk sensors and wardens hear): sneaking and the game mode are told with it.
+	void ServerGameEvent(FName Name, const FVector& At);
 	// How far the server lets a player reach for blocks, eyes to the block's middle.
 	static constexpr double ServerReach = 6.5;
 
@@ -377,6 +398,16 @@ private:
 	bool bRodCast = false;
 	// Server: keeps the bobber told where the angler is, and takes it away when the rod is put down or left too far behind.
 	void ServerTickFishing(FMcEntityManager& Entities);
+	// Maps (McPlayerMaps.cpp): an empty map used makes a filled one; one held fills in, a row at a time.
+	void ServerUseMap();
+	// A bundle used throws out the newest stack it holds (minecraft.wiki "Bundle").
+	void ServerUseBundle();
+public:
+	// For screenshots (-McMapShot): puts a new filled map into the selected slot.
+	void GiveShotMap();
+private:
+	void ServerTickMaps();
+	int32 MapTicks = 0;
 	// Server: winds the bobber in: the catch thrown to the player, the rod worn.
 	void ServerReel(FMcEntityManager& Entities, class FMcFishingBobber& Bobber);
 	class FMcFishingBobber* FindBobber(FMcEntityManager& Entities) const;
@@ -424,6 +455,8 @@ private:
 public:
 	// Ticks since this player's totem went off (its flight across their screen), or -1.
 	float GetTotemAge() const { return TotemAge; }
+	// Swings the arm drawn in first person (on the machine that draws it); for /swing.
+	void SwingArm();
 private:
 
 	// The body drawn for players this machine isn't playing; null on a dedicated server.
@@ -487,6 +520,21 @@ private:
 	// The side of the last hit on the owner, for the view's roll while the hurt time runs down.
 	float HurtSide = 0.0f;
 	float BowBaseFov = 0.0f;
+	// The spyglass (measured: ref run spy1/spy2): each game tick the view's modifier moves half the way to 0.1 while it is
+	// held up (to 1 when it is not) and the frame shows the value between the last two ticks; the scope picture's size
+	// (in screen heights) does the same from 0.5 to about 1.122 and is gone when the glass is down.
+	float SpyMod = 1.0f;
+	float SpyOld = 1.0f;
+	float SpyAcc = 0.0f;
+	float SpyBaseFov = 0.0f;
+	float ScopeNow = 0.5f;
+	float ScopeOld = 0.5f;
+	bool bSpyLocal = false;
+public:
+	bool IsScoping() const { return bSpyLocal; }
+	// The scope picture's side as a multiple of the screen height, between ticks.
+	float GetScopeScale() const { return FMath::Lerp(ScopeOld, ScopeNow, FMath::Clamp(SpyAcc / 0.05f, 0.0f, 1.0f)); }
+private:
 	// Lets the arrow go after DrawTicks of drawing.
 	void ServerShootBow(int32 DrawTicks);
 	FName EatCrumbItem;
@@ -496,6 +544,7 @@ private:
 	float ServerLastHealth = -1.0f;
 	// Ticks since the last swing, for how charged the next is.
 	int32 ServerAttackTicks = 100;
+	int32 LocationTicks = 0;
 	bool bServerUsing = false;
 	FRandomStream DropRandom{ 11 };
 };

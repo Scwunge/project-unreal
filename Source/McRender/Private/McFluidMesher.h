@@ -12,6 +12,10 @@ class FMcBlockTextures;
 
 namespace McFluidMesher
 {
+	// Shore foam's edge flag (see FBuilder::EdgeWeights) is switched off: the white fringe in the water material did not read
+	// on the sand or the deepslate shore (shots foam_new2, foam_dark). Set this true to write the flag again; see PLAN.md.
+	inline constexpr bool bShoreFoam = false;
+
 	enum class EFluid : uint8
 	{
 		None,

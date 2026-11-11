@@ -1,7 +1,9 @@
 #include "McBlockTextures.h"
+#include "McParticleDefs.h"
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
 #include "McCache.h"
+#include "McLoadScreen.h"
 #include "McResourcePacks.h"
 #include "Algo/Find.h"
 #include "Async/ParallelFor.h"
@@ -14,6 +16,7 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "RenderingThread.h"
+#include "RHI.h"
 #include "RHICommandList.h"
 #include "RHIResources.h"
 #include "Serialization/JsonReader.h"
@@ -363,9 +366,19 @@ bool FMcBlockTextures::EnsureLoaded()
 	{
 		return false;
 	}
+	const FMcLoadScreen LoadScreen(NSLOCTEXT("Mc", "LoadingPacks", "Loading resource packs..."), McPacks::HasPacks());
 
 	const double StartTime = FPlatformTime::Seconds();
 	FMcTextureStats NewStats;
+	{
+		FTextureMemoryStats Memory;
+		RHIGetTextureMemoryStats(Memory);
+		if (Memory.DedicatedVideoMemory > 0)
+		{
+			McPacks::SetVideoMemoryBytes(Memory.DedicatedVideoMemory);
+		}
+		UE_LOG(LogMcAssets, Log, TEXT("Pack texture budget %lld MB (video memory %lld MB)"), McPacks::GetBudgetBytes() / (1024 * 1024), Memory.DedicatedVideoMemory / (1024 * 1024));
+	}
 	IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
 
 	// Layer 0 is the missing texture; the others follow the models' sorted texture ids.
@@ -387,6 +400,11 @@ bool FMcBlockTextures::EnsureLoaded()
 	{
 		Ids.AddUnique(FName(Flow));
 	}
+	// The particles' pictures (particles/*.json), drawn by the particle component from this same array.
+	for (const FName Particle : McParticleDefs::GetAllTextures())
+	{
+		Ids.AddUnique(Particle);
+	}
 	NewStats.Ids = Ids.Num();
 	const bool bPbr = McPacks::GetUsePbr() && McPacks::HasPacks();
 
@@ -400,7 +418,7 @@ bool FMcBlockTextures::EnsureLoaded()
 		FName Picture = Ids[Index];
 		FIntPoint Tile, Grid;
 		const bool bTile = McTextureTiles::ParseTileId(Ids[Index], Picture, Tile, Grid);
-		const FString Relative = TEXT("textures/") + McCache::PathOf(Picture.ToString()) + TEXT(".png");
+		const FString Relative = McCache::RelativeOf(Picture.ToString(), TEXT("textures/"), TEXT(".png"));
 		FProbe& Probe = Probes[Index];
 		Probe.Path = McCache::Asset(Relative);
 		Probe.bFromPack = McPacks::IsFromPack(Relative);
@@ -545,9 +563,14 @@ bool FMcBlockTextures::EnsureLoaded()
 
 		// LabPBR maps beside a pack's picture: <name>_n.png and <name>_s.png, the first frame of a stacked one. Only packs
 		// have them; the files of other packs under this one are not mixed in.
-		if (bPbr && Probe.bFromPack && !Probe.bTile)
+		// A tile of a big picture takes the same tile of the maps (they are as big as the picture, or scaled the same).
+		if (bPbr && Probe.bFromPack)
 		{
-			const FString Base = TEXT("textures/") + McCache::PathOf(Ids[Index].ToString());
+			// A tile's id carries its place in the picture ("#tile:x,y:w,h"): the maps are named after the picture.
+			FName Picture = Ids[Index];
+			FIntPoint TileUnused, GridUnused;
+			McTextureTiles::ParseTileId(Ids[Index], Picture, TileUnused, GridUnused);
+			const FString Base = McCache::RelativeOf(Picture.ToString(), TEXT("textures/"), TEXT(""));
 			for (int32 Kind = 0; Kind < 2; ++Kind)
 			{
 				const FString Relative = Base + (Kind == 0 ? TEXT("_n.png") : TEXT("_s.png"));
@@ -556,7 +579,15 @@ bool FMcBlockTextures::EnsureLoaded()
 					continue;
 				}
 				const FLoadedImage Map = LoadImage(ImageModule, McCache::Asset(Relative));
-				if (Map.bOk)
+				if (Map.bOk && Probe.bTile && Image.Width > 0 && Image.Height > 0)
+				{
+					const int32 Left = static_cast<int32>(static_cast<int64>(Probe.TileLeft) * Map.Width / Image.Width);
+					const int32 Top = static_cast<int32>(static_cast<int64>(Probe.TileTop) * Map.Height / Image.Height);
+					const int32 TileWidth = FMath::Max(static_cast<int32>(static_cast<int64>(Probe.FrameWidth) * Map.Width / Image.Width), 1);
+					const int32 TileHeight = FMath::Max(static_cast<int32>(static_cast<int64>(Probe.FrameHeight) * Map.Height / Image.Height), 1);
+					ExtractRegion(Map, Left, Top, TileWidth, TileHeight, Size, true, Kind == 0 ? Result.Normal : Result.Specular);
+				}
+				else if (Map.bOk)
 				{
 					ExtractFrame(Map, Map.Width, FMath::Min(Map.Width, Map.Height), 0, Size, true, Kind == 0 ? Result.Normal : Result.Specular);
 				}

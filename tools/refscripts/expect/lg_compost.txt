@@ -1,0 +1,27 @@
+#vt 4
+17|1,-59,0|composter[level=2]|composter[level=3]
+17|i:1,-58,0|cake=62|cake=61
+1|1,-59,0|composter[level=0]|composter[level=1]
+1|i:1,-58,0|cake=64|cake=63
+25|1,-59,0|composter[level=3]|composter[level=4]
+25|i:1,-58,0|cake=61|cake=60
+33|1,-59,0|composter[level=4]|composter[level=5]
+33|i:1,-58,0|cake=60|cake=59
+41|1,-59,0|composter[level=5]|composter[level=6]
+41|i:1,-58,0|cake=59|cake=58
+49|1,-59,0|composter[level=6]|composter[level=7]
+49|i:1,-58,0|cake=58|cake=57
+69|1,-59,0|composter[level=7]|composter[level=0]
+69|i:1,-60,0|-|bone_meal=1
+70|1,-59,0|composter[level=0]|composter[level=1]
+70|i:1,-58,0|cake=57|cake=56
+77|i:1,-60,0|bone_meal=1|-
+77|i:2,-60,0|-|bone_meal=1
+78|1,-59,0|composter[level=1]|composter[level=2]
+78|i:1,-58,0|cake=56|cake=55
+86|1,-59,0|composter[level=2]|composter[level=3]
+86|i:1,-58,0|cake=55|cake=54
+94|1,-59,0|composter[level=3]|composter[level=4]
+94|i:1,-58,0|cake=54|cake=53
+9|1,-59,0|composter[level=1]|composter[level=2]
+9|i:1,-58,0|cake=63|cake=62

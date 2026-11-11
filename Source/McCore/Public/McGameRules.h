@@ -12,8 +12,11 @@ struct MCCORE_API FMcGameRules
 	// 0 peaceful, 1 easy, 2 normal, 3 hard.
 	int32 Difficulty = 2;
 	bool bDoMobSpawning = true;
+	// Off, a shrieker at warning level 4 calls no warden.
+	bool bDoWardenSpawning = true;
 	bool bDoMobLoot = true;
 	bool bDoTileDrops = true;
+	bool bMobGriefing = true;
 	bool bKeepInventory = false;
 	bool bNaturalRegeneration = true;
 	bool bFallDamage = true;

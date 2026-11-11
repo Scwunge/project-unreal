@@ -26,6 +26,8 @@ struct MCCORE_API FMcMapData
 	int32 CenterZ = 0;
 	FName Dimension = TEXT("minecraft:overworld");
 	bool bLocked = false;
+	// Counts the changes to the pixels, so a picture of the map knows when to be drawn again.
+	int32 Revision = 0;
 	TArray<uint8> Colors;
 	TArray<FMcMapMarker> Markers;
 
@@ -60,4 +62,11 @@ struct MCCORE_API FMcMapData
 
 	// Rebuild the pixels of one map row range from a column sampler: Sample(BlockX, BlockZ). Returns pixels changed.
 	int32 UpdateRow(int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample);
+	// The same for one column of pixels (the held map fills by columns, see ServerTickMaps).
+	int32 UpdateColumn(int32 PixelX, TFunctionRef<FColumn(int32, int32)> Sample);
+
+private:
+	int32 UpdatePixel(int32 PixelX, int32 PixelZ, TFunctionRef<FColumn(int32, int32)> Sample);
+
+public:
 };

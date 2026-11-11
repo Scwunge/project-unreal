@@ -4,16 +4,45 @@
 
 #include "McEntityHost.h"
 #include "McMob.h"
+#include "McBlockRegistry.h"
+#include "McBlockWorld.h"
 #include "McVillager.h"
 
 namespace
 {
-	// Raiders per wave (index 0 unused, waves 1 to 7), the base of each kind before the difficulty's extra ones.
-	constexpr int32 PillagersPerWave[8] = { 0, 4, 3, 3, 4, 4, 4, 2 };
-	constexpr int32 VindicatorsPerWave[8] = { 0, 0, 2, 0, 1, 4, 2, 5 };
-	constexpr int32 EvokersPerWave[8] = { 0, 0, 0, 0, 0, 1, 1, 2 };
-	constexpr int32 WitchesPerWave[8] = { 0, 0, 0, 0, 3, 0, 0, 1 };
-	constexpr int32 RavagersPerWave[8] = { 0, 0, 0, 1, 0, 1, 0, 2 };
+	// Raiders per wave, Java Edition (minecraft.wiki "Raid", wave composition tables read 2026-11-04; ranges are the wiki's, a count is drawn
+	// uniformly inside each, which simplifies the game's own bonus rolls). Each row: pillager, vindicator, evoker, witch, ravager,
+	// ravager with a pillager rider, ravager with a vindicator rider, ravager with an evoker rider; each as min, max.
+	struct FWaveRow
+	{
+		int32 Min[8];
+		int32 Max[8];
+	};
+	// Kinds in column order.
+	const TCHAR* const WaveKinds[8] = { TEXT("minecraft:pillager"), TEXT("minecraft:vindicator"), TEXT("minecraft:evoker"), TEXT("minecraft:witch"),
+		TEXT("minecraft:ravager"), TEXT("minecraft:ravager"), TEXT("minecraft:ravager"), TEXT("minecraft:ravager") };
+	//                                    pil   vin   evk   wit   rav   r+p   r+v   r+e
+	constexpr FWaveRow EasyWaves[4] = {
+		{ { 4, 0, 0, 0, 0, 0, 0, 0 }, { 5, 0, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 2, 0, 0, 0, 0, 0, 0 }, { 4, 3, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 0, 0, 0, 1, 0, 0, 0 }, { 4, 1, 0, 0, 1, 0, 0, 0 } },
+		{ { 3, 0, 0, 0, 1, 0, 0, 0 }, { 4, 1, 0, 0, 1, 0, 0, 0 } } };
+	constexpr FWaveRow NormalWaves[6] = {
+		{ { 4, 0, 0, 0, 0, 0, 0, 0 }, { 5, 1, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 2, 0, 0, 0, 0, 0, 0 }, { 4, 3, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 0, 0, 0, 1, 0, 0, 0 }, { 4, 1, 0, 1, 1, 0, 0, 0 } },
+		{ { 4, 1, 0, 3, 0, 0, 0, 0 }, { 5, 2, 0, 3, 0, 0, 0, 0 } },
+		{ { 4, 4, 1, 0, 0, 1, 0, 0 }, { 5, 5, 1, 1, 0, 1, 0, 0 } },
+		{ { 4, 4, 1, 0, 0, 1, 0, 0 }, { 5, 5, 1, 1, 1, 1, 0, 0 } } };
+	constexpr FWaveRow HardWaves[8] = {
+		{ { 4, 0, 0, 0, 0, 0, 0, 0 }, { 6, 2, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 2, 0, 0, 0, 0, 0, 0 }, { 5, 4, 0, 0, 0, 0, 0, 0 } },
+		{ { 3, 0, 0, 0, 1, 0, 0, 0 }, { 5, 2, 0, 1, 1, 0, 0, 0 } },
+		{ { 4, 1, 0, 3, 0, 0, 0, 0 }, { 6, 3, 0, 3, 0, 0, 0, 0 } },
+		{ { 4, 4, 1, 0, 0, 1, 0, 0 }, { 6, 6, 1, 1, 0, 1, 0, 0 } },
+		{ { 4, 2, 1, 0, 0, 0, 0, 0 }, { 6, 4, 1, 1, 0, 0, 0, 0 } },
+		{ { 2, 5, 2, 1, 0, 0, 1, 1 }, { 4, 7, 2, 2, 0, 0, 1, 1 } },
+		{ { 2, 5, 2, 1, 0, 0, 1, 1 }, { 4, 7, 2, 2, 0, 1, 1, 1 } } };
 
 	// How far from a villager still counts as the village.
 	constexpr double VillageRadius = 48.0;
@@ -25,6 +54,45 @@ namespace
 	}
 }
 
+bool FMcEntityHost::CountVillagePoi(const FVector& Center) const
+{
+	// Beds, bells and the job blocks, within 48 blocks of the raid's middle and 16 up or down (the game counts points of interest within 64).
+	static TSet<FName> Names;
+	static TMap<FName, bool> Seen;
+	if (Names.IsEmpty())
+	{
+		for (const TCHAR* Name : { TEXT("minecraft:bell"), TEXT("minecraft:composter"), TEXT("minecraft:barrel"), TEXT("minecraft:blast_furnace"), TEXT("minecraft:brewing_stand"),
+			TEXT("minecraft:cartography_table"), TEXT("minecraft:cauldron"), TEXT("minecraft:fletching_table"), TEXT("minecraft:grindstone"), TEXT("minecraft:lectern"),
+			TEXT("minecraft:loom"), TEXT("minecraft:smithing_table"), TEXT("minecraft:smoker"), TEXT("minecraft:stonecutter") })
+		{
+			Names.Add(Name);
+		}
+	}
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcBlockWorld& Blocks = Manager.GetWorld();
+	const FIntVector Middle(FMath::FloorToInt32(Center.X), FMath::FloorToInt32(Center.Y), FMath::FloorToInt32(Center.Z));
+	for (int32 DY = -16; DY <= 16; ++DY)
+	{
+		for (int32 DX = -48; DX <= 48; ++DX)
+		{
+			for (int32 DZ = -48; DZ <= 48; ++DZ)
+			{
+				const FName Name = Registry.GetBlockOf(Blocks.GetBlock(Middle + FIntVector(DX, DY, DZ))).Name;
+				bool* Known = Seen.Find(Name);
+				if (!Known)
+				{
+					Known = &Seen.Add(Name, Names.Contains(Name) || Name.ToString().EndsWith(TEXT("_bed")));
+				}
+				if (*Known)
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
 int32 FMcEntityHost::GetWaveCount(int32 Difficulty, int32 Level)
 {
 	const int32 Base = Difficulty <= 1 ? 3 : (Difficulty == 2 ? 5 : 7);
@@ -33,36 +101,26 @@ int32 FMcEntityHost::GetWaveCount(int32 Difficulty, int32 Level)
 
 void FMcEntityHost::RollWave(int32 Difficulty, int32 Wave, FRandomStream& Random, TArray<TPair<FName, int32>>& Out)
 {
-	// The extra wave is as strong as the last of the ordinary ones.
-	const int32 Index = FMath::Clamp(Wave, 1, 7);
-	// The pillagers and vindicators come with up to one (up to two on hard) more than the base; on easy only the pillagers do.
-	const int32 Extra = Difficulty >= 3 ? 3 : 2;
-	int32 Pillagers = PillagersPerWave[Index] + Random.RandHelper(Extra);
-	int32 Vindicators = VindicatorsPerWave[Index] + (Difficulty >= 2 ? Random.RandHelper(Extra) : 0);
-	int32 Witches = WitchesPerWave[Index];
-	// A witch may join the third and fifth waves.
-	if (Difficulty >= 2 && (Index == 3 || Index == 5) && Random.RandHelper(2) == 0)
-	{
-		++Witches;
-	}
-	// A hard raid sends a witch with every wave from the seventh.
-	if (Difficulty >= 3 && Index >= 7)
-	{
-		Witches = FMath::Max(1, Witches);
-	}
+	// Easy has 3 waves and an extra one, normal 5, hard 7; the extra wave is the table's last row. Waves past the table repeat it.
+	const FWaveRow* Rows = Difficulty <= 1 ? EasyWaves : (Difficulty == 2 ? NormalWaves : HardWaves);
+	const int32 RowCount = Difficulty <= 1 ? 4 : (Difficulty == 2 ? 6 : 8);
+	const FWaveRow& Row = Rows[FMath::Clamp(Wave, 1, RowCount) - 1];
 	Out.Reset();
-	const auto Put = [&Out](const TCHAR* Kind, int32 Count)
+	// Riders (the last three columns) ride a ravager in the game; here the ravager and its rider both appear (riding is not built).
+	// The ravager itself is the column's count; the rider is its own mob.
+	static const TCHAR* const RiderKinds[8] = { nullptr, nullptr, nullptr, nullptr, nullptr, TEXT("minecraft:pillager"), TEXT("minecraft:vindicator"), TEXT("minecraft:evoker") };
+	for (int32 Column = 0; Column < 8; ++Column)
 	{
+		const int32 Count = Random.RandRange(Row.Min[Column], Row.Max[Column]);
 		if (Count > 0)
 		{
-			Out.Emplace(FName(Kind), Count);
+			Out.Emplace(FName(WaveKinds[Column]), Count);
+			if (RiderKinds[Column])
+			{
+				Out.Emplace(FName(RiderKinds[Column]), Count);
+			}
 		}
-	};
-	Put(TEXT("minecraft:pillager"), Pillagers);
-	Put(TEXT("minecraft:vindicator"), Vindicators);
-	Put(TEXT("minecraft:evoker"), EvokersPerWave[Index]);
-	Put(TEXT("minecraft:witch"), Witches);
-	Put(TEXT("minecraft:ravager"), RavagersPerWave[Index]);
+	}
 }
 
 bool FMcEntityHost::FindVillage(const FVector& Where, FVector& OutCenter) const
@@ -238,6 +296,8 @@ void FMcEntityHost::SpawnWave(FRaid& Raid)
 	TArray<TPair<FName, int32>> Kinds;
 	FRandomStream Wave(static_cast<int32>(Seed) ^ (Raid.Id * 7919) ^ (Raid.Wave * 104729));
 	RollWave(Rules.Difficulty, Raid.Wave, Wave, Kinds);
+	// Hard bonus raiders: measured in vanilla (raid7-9, Hard, 44 waves, 3 raids at omen 0/1/4): every wave sat inside the wiki table ranges (riders included) except one
+	// (wave 8 had 9 vindicators, table max 8), so no bonus on top of the table is added; a bonus rate of at most about 1 in 30 waves is unfitted (provenance gap).
 	Raid.Raiders.Reset();
 	Raid.WaveHealth = 0.0f;
 	bool bCaptainMade = false;
@@ -271,6 +331,7 @@ void FMcEntityHost::SpawnWave(FRaid& Raid)
 			if (!bCaptainMade)
 			{
 				Raider->bCaptain = true;
+				Raid.CaptainId = Raider->Id;
 				bCaptainMade = true;
 			}
 			Raid.Raiders.Add(Raider->Id);
@@ -346,6 +407,63 @@ void FMcEntityHost::TickRaids()
 			const FMcEntity* Found = Manager.Find(Id);
 			return !Found || Found->bRemoved || static_cast<const FMcMob&>(*Found).Health <= 0.0f;
 		});
+		if (Ticks % 20 == 0)
+		{
+			// Raiders that strayed more than 112 blocks are removed.
+			for (const int32 Id : Raid.Raiders)
+			{
+				FMcEntity* Found = Manager.Find(Id);
+				if (Found && FVector::Dist(Found->Body.Position, Raid.Center) > RaiderLeashRange)
+				{
+					Found->bRemoved = true;
+				}
+			}
+			Raid.Raiders.RemoveAll([this](int32 Id) { const FMcEntity* Found = Manager.Find(Id); return !Found || Found->bRemoved; });
+		}
+		// When the captain falls, the nearest raider takes up the ominous banner (wiki, Raid; the pick-up itself is not built, the banner drops with the dead one).
+		if (Raid.CaptainId != 0 && !Raid.Raiders.Contains(Raid.CaptainId))
+		{
+			const FMcEntity* Old = Manager.Find(Raid.CaptainId);
+			const FVector From = Old ? Old->Body.Position : Raid.Center;
+			Raid.CaptainId = 0;
+			FMcMob* Best = nullptr;
+			double BestDistance = TNumericLimits<double>::Max();
+			for (const int32 Id : Raid.Raiders)
+			{
+				FMcMob* Candidate = static_cast<FMcMob*>(Manager.Find(Id));
+				const double Distance = Candidate ? FVector::DistSquared(Candidate->Body.Position, From) : BestDistance;
+				if (Candidate && Distance < BestDistance)
+				{
+					BestDistance = Distance;
+					Best = Candidate;
+				}
+			}
+			if (Best)
+			{
+				Best->bCaptain = true;
+				Raid.CaptainId = Best->Id;
+			}
+		}
+		// A village with no bed, bell or job block left (that once had one) is no village (wiki, Raid), whatever is alive in it.
+		if (Raid.Age % 200 == 0)
+		{
+			if (CountVillagePoi(Raid.Center))
+			{
+				Raid.bSawPoi = true;
+			}
+			else if (Raid.bSawPoi)
+			{
+				Finish(FRaid::EStatus::Defeat);
+				for (const int32 Id : Raid.Raiders)
+				{
+					if (FMcEntity* Found = Manager.Find(Id))
+					{
+						static_cast<FMcMob*>(Found)->RaidId = 0;
+					}
+				}
+				continue;
+			}
+		}
 		if (Raid.Raiders.IsEmpty())
 		{
 			if (Raid.Timer > 0)

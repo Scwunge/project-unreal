@@ -63,6 +63,12 @@ public:
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Whether the player at the feet position, in Survival or Adventure, faces the point within 60 degrees (yaw and pitch); a creaking holds still.
+	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
+	// A player by the id the game events carry: where their feet are; false if gone, dead or in Creative or Spectator mode (a warden forgets them).
+	TFunction<bool(int32, FVector&)> FindPlayerById;
+	// The id of the player at those feet, 0 if none.
+	TFunction<int32(const FVector&)> PlayerIdAt;
 	// A splash potion's effect on the player at the position (name, level less one, ticks).
 	TFunction<void(const FVector&, FName, int32, int32)> OnPlayerEffect;
 
@@ -112,6 +118,7 @@ public:
 	// ---- Patrols and raids (minecraft.wiki, "Pillager patrol" and "Raid") ----
 	// A raid: waves of raiders sent at a village. It waits 15 seconds, sends a wave, and sends the next once the last is
 	// dead; the last one dead is a victory, and no village left (or 40 minutes) a defeat.
+	bool CountVillagePoi(const FVector& Center) const;
 	struct FRaid
 	{
 		enum class EStatus : uint8 { Waiting, Active, Victory, Defeat };
@@ -129,9 +136,16 @@ public:
 		// The health of the wave when it came, and the ids of those of it still about.
 		float WaveHealth = 1.0f;
 		TArray<int32> Raiders;
+		// The raider carrying the banner (0 for none), and whether a bed, bell or job block was ever seen about the village.
+		int32 CaptainId = 0;
+		bool bSawPoi = false;
 	};
 	static constexpr int32 RaidWarmupTicks = 300;
-	static constexpr int32 RaidWaveDelayTicks = 100;
+	// Measured (raid6-9, vanilla, kill to next wave seen, sample grid 14-21 ticks): 293 to 321 between the last raider's death and the next wave, so the true gap is at most 293
+	// (the wiki's 300 is above it). Within (272, 293] unfitted; 293 is the best upper bound (provenance gap).
+	static constexpr int32 RaidWaveDelayTicks = 293;
+	// Raiders further than this from the village are removed (wiki; checked every 20 ticks).
+	static constexpr double RaiderLeashRange = 112.0;
 	static constexpr int32 RaidCelebrationTicks = 600;
 	static constexpr int64 RaidMaxTicks = 48000;
 	static constexpr double RaidBarRange = 96.0;

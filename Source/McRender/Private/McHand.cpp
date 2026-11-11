@@ -222,7 +222,8 @@ namespace McHand
 			Result.Translation = FVector::ZeroVector;
 			Result.Scale = 1.0;
 		}
-		FString Model = TEXT("item/") + McCache::PathOf(Item.ToString());
+		const FString ItemName = Item.ToString();
+		FString Model = ItemName.StartsWith(TEXT("block/")) ? ItemName : TEXT("item/") + McCache::PathOf(ItemName);
 		for (int32 Depth = 0; Depth < 6; ++Depth)
 		{
 			FString Text;

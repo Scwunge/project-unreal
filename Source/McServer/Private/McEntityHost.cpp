@@ -1,6 +1,8 @@
 #include "McEntityHost.h"
 #include "McEnchantEffects.h"
 #include "McMount.h"
+#include "McWarden.h"
+#include "McCreaking.h"
 #include "McTnt.h"
 #include "McSpawners.h"
 #include "McBlockRegistry.h"
@@ -107,6 +109,7 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 	, Seed(InSeed)
 	, Random(static_cast<int32>(InSeed ^ (InSeed >> 32)))
 {
+	Manager.GatewaySeed = InSeed;
 	Manager.OnPlayerBlasted = [this](const FVector& PlayerPos, float Damage, const FVector& Push, const FVector& Center)
 	{
 		if (OnPlayerBlast)
@@ -131,6 +134,10 @@ FMcEntityHost::FMcEntityHost(FMcBlockWorld& InWorld, int64 InSeed)
 		{
 			UE_LOG(LogTemp, Log, TEXT("A player at %s was hit for %.1f"), *PlayerPos.ToString(), Damage);
 		}
+	};
+	Manager.PlayerLooksAt = [this](const FVector& PlayerPos, const FVector& Point)
+	{
+		return PlayerLooksAt && PlayerLooksAt(PlayerPos, Point);
 	};
 	Manager.PlayerWearsGold = [this](const FVector& PlayerPos)
 	{
@@ -354,6 +361,17 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	else if (Kind == FMcWanderingTrader::StaticType())
 	{
 		Mob = new FMcWanderingTrader(*Type);
+	}
+	else if (Kind == FMcWarden::StaticType())
+	{
+		FMcWarden* Warden = new FMcWarden(*Type);
+		Warden->FindPlayer = [this](int32 Id, FVector& Out) { return FindPlayerById && FindPlayerById(Id, Out); };
+		Warden->IdOfPlayerAt = [this](const FVector& Feet) { return PlayerIdAt ? PlayerIdAt(Feet) : 0; };
+		Mob = Warden;
+	}
+	else if (Kind == FMcCreaking::StaticType())
+	{
+		Mob = new FMcCreaking(*Type);
 	}
 	else
 	{
@@ -609,6 +627,27 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	{
 		return;
 	}
+	// What its loot table can ask: whether a player did it (a hit or a shot in the last five seconds), what it is.
+	McLoot::FMobContext Context;
+	Context.bKilledByPlayer = Mob.Age - Mob.PlayerHitAge <= 100;
+	if (Context.bKilledByPlayer)
+	{
+		Context.Killer = TEXT("minecraft:player");
+		Context.bProjectile = Mob.bPlayerHitWasShot;
+		Context.DirectKiller = Mob.bPlayerHitWasShot ? FName(TEXT("minecraft:arrow")) : FName();
+	}
+	Context.bOnFire = Mob.BurnTicks > 0;
+	// What it sits in (a boat, a minecart): a zombie's red mushroom asks for a zombie horse, which nothing here rides yet.
+	if (Mob.RidingId != 0)
+	{
+		if (const FMcEntity* Vehicle = Manager.Find(Mob.RidingId))
+		{
+			Context.Vehicle = Vehicle->GetType();
+		}
+	}
+	Context.CubeSize = Mob.Type.bHops ? Mob.Size : 0;
+	Context.DyeColor = Mob.DyeColor;
+	const McLoot::FMobScope LootScope(Context);
 	FMcRandom Rng(static_cast<uint64>(Seed) ^ (static_cast<uint64>(Mob.Id) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64>(Ticks));
 	// The loot tables are named after the mob: minecraft:entities/pig.
 	const FString Table = TEXT("minecraft:entities/") + Mob.GetType().ToString().RightChop(10);
@@ -673,10 +712,7 @@ TArray<uint8> FMcEntityHost::CaptureChunk(FIntPoint Chunk)
 		if (Entity->IsLiving())
 		{
 			// After what the kind itself keeps, so an older save without it still reads.
-			int32 Look = static_cast<FMcMob&>(*Entity).LookSeed;
-			DataWriter << Look;
-			int32 Young = static_cast<FMcMob&>(*Entity).YoungTicks;
-			DataWriter << Young;
+			static_cast<FMcMob&>(*Entity).SaveTrailer(DataWriter);
 		}
 		Writer << Type << Data;
 		++Count;
@@ -797,24 +833,7 @@ int32 FMcEntityHost::RestoreChunk(TConstArrayView<uint8> Bytes)
 		{
 			if (Mob->Serialize(DataReader))
 			{
-				if (!DataReader.AtEnd())
-				{
-					int32 Look = -1;
-					DataReader << Look;
-					if (!DataReader.IsError() && Look >= 0 && Look < McMobLook::GetCount(Kind))
-					{
-						Mob->LookSeed = Look;
-					}
-					int32 Young = 0;
-					if (!DataReader.AtEnd())
-					{
-						DataReader << Young;
-						if (!DataReader.IsError() && Young > 0 && FMcMob::CanBeYoung(Kind))
-						{
-							Mob->SetYoung(Young);
-						}
-					}
-				}
+				Mob->LoadTrailer(DataReader);
 				++Restored;
 			}
 			else
@@ -852,12 +871,9 @@ void FMcEntityHost::SeedChunk(FIntPoint Chunk)
 	{
 		return;
 	}
-	// The same chunk gets the same animals for a seed, whenever it arrives. Unsigned, so the mixing wraps rather than
-	// overflowing.
-	const uint64 Mixed = static_cast<uint64>(Seed) * 31ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.X)) * 341873128712ull
-		+ static_cast<uint64>(static_cast<int64>(Chunk.Y)) * 132897987541ull;
-	FRandomStream Local(static_cast<int32>(static_cast<uint32>(Mixed)));
+	// The same chunk gets the same animals for a seed, whenever it arrives. The mix is our own (Unreal's hash combine), not the
+	// game's, so unvisited chunks of an old world may get other animals than they would have.
+	FRandomStream Local(static_cast<int32>(HashCombineFast(GetTypeHash(static_cast<int64>(Seed)), HashCombineFast(GetTypeHash(Chunk.X), GetTypeHash(Chunk.Y)))));
 	if (Local.FRand() > 0.10f)
 	{
 		return;
@@ -975,10 +991,11 @@ void FMcEntityHost::SpawnHostiles(const TArray<FVector>& Players)
 	{
 		return;
 	}
-	if (Kind == TEXT("minecraft:slime"))
+	if (Kind == TEXT("minecraft:slime") || Kind == TEXT("minecraft:magma_cube"))
 	{
-		// Only low down in a slime chunk, and of a size that fits the room there.
-		if (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z)))
+		// A slime comes only low down in a slime chunk; both are of a size that fits the room there. (Magma cube sizes 1, 2 and 4
+		// are the game's; their shares were not measured.)
+		if (Kind == TEXT("minecraft:slime") && (Y.GetValue() >= SlimeMaxY || !IsSlimeChunk(Seed, McCoords::BlockToChunk(X), McCoords::BlockToChunk(Z))))
 		{
 			return;
 		}
@@ -1031,6 +1048,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 	// Sunrise is 0; the sky is dark from 13000 to 23000.
 	Manager.bDaylight = TimeOfDay < 13000 || TimeOfDay >= 23000;
 	Manager.Difficulty = Rules.Difficulty;
+	Manager.bMobGriefing = Rules.bMobGriefing;
 	Manager.TimeOfDay = TimeOfDay;
 
 	Manager.PlayerPositions = Players;
@@ -1178,6 +1196,7 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 					if (FMcMob* Spawned = SpawnMob(FName(*(TEXT("minecraft:") + Kinds[Index])), FVector(FMath::FloorToInt32(X) + 0.5, Y.GetValue() + Up, Z + 0.5)))
 					{
 						Spawned->bFrozen = true;
+						UE_LOG(LogMcServer, Display, TEXT("McMobRow: %s spawned at %.1f %d %d, id %d"), *Kinds[Index], X, Y.GetValue(), Z, Spawned->Id);
 						if (FParse::Param(FCommandLine::Get(), TEXT("McMobRowBaby")) && FMcMob::CanBeYoung(Spawned->GetType()))
 						{
 							Spawned->SetYoung(FMcMob::YoungSpan);
@@ -1420,8 +1439,13 @@ bool FMcEntityHost::Attack(const FVector& Eye, const FVector& Direction, float R
 		{
 			Mob.LootingLevel = 0;
 		}
+		Mob.PlayerHitAge = Mob.Age;
+		Mob.bPlayerHitWasShot = false;
 		const FVector OldVelocity = Mob.Body.Velocity;
-		Mob.Damage(Damage, &Eye);
+		const float Before = Mob.Health;
+		const bool bTook = Mob.Damage(Damage, &Eye);
+		UE_LOG(LogTemp, Verbose, TEXT("McHit attack: %s at (%.2f %.2f %.2f), health %.1f -> %.1f (took %d, hurt time %d), removed %d"), *Mob.GetType().ToString(), Mob.Body.Position.X, Mob.Body.Position.Y, Mob.Body.Position.Z,
+			Before, Mob.Health, bTook ? 1 : 0, Mob.HurtTime, Mob.bRemoved ? 1 : 0);
 		if (Push > 0.0f && !Mob.bRemoved)
 		{
 			// A second push on top of the first, the hurt one's: half what it had, and Push away from the hitter.

@@ -78,6 +78,45 @@ McGui::FDurabilityBar McGui::GetDurabilityBar(int32 Damage, int32 MaxDamage)
 	return Bar;
 }
 
+McGui::FBundleGrid McGui::GetBundleGrid(int32 NumStacks)
+{
+	FBundleGrid Grid;
+	if (NumStacks <= 0)
+	{
+		return Grid;
+	}
+	Grid.Columns = 4;
+	Grid.Rows = FMath::Min(3, (NumStacks + Grid.Columns - 1) / Grid.Columns);
+	if (NumStacks > 12)
+	{
+		Grid.Hidden = 4 * ((NumStacks - 12 + 3) / 4) + 1;
+		// The cells before the +N one are filled from the end with what is shown.
+		Grid.Blanks = 11 - (NumStacks - Grid.Hidden);
+		return Grid;
+	}
+	Grid.Blanks = Grid.Rows * Grid.Columns - NumStacks;
+	return Grid;
+}
+
+int32 McGui::GetBundleTipHeight(int32 Rows, int32 DescriptionLines)
+{
+	const int32 Body = Rows > 0 ? Rows * BundleTipCell : DescriptionLines * BundleTipLineHeight;
+	return BundleTipTitleHeight + BundleTipTitleGap + Body + BundleTipBarGap + BundleTipBarHeight;
+}
+
+McGui::FDurabilityBar McGui::GetBundleBar(double Fullness)
+{
+	FDurabilityBar Bar;
+	if (Fullness <= 0.0)
+	{
+		return Bar;
+	}
+	Bar.bShow = true;
+	Bar.Width = FMath::Clamp(FMath::FloorToInt32(1.0 + 12.0 * Fullness + 1.0e-9), 1, 13);
+	Bar.Color = Fullness >= 1.0 - 1.0e-9 ? 0xFF5454 : 0x7087FF;
+	return Bar;
+}
+
 bool McGui::ShowsCount(int32 Count)
 {
 	return Count != 1;

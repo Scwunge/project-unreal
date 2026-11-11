@@ -61,6 +61,15 @@ public:
 	bool Place(FMcFeatureContext& Context, const FIntVector& Origin) const;
 };
 
+// Placement counts per named placed feature: how many positions were tried (after the placement modifiers) and how many placed something.
+MCGEN_API extern FCriticalSection McFeatureStatsLock;
+MCGEN_API extern TMap<FString, TPair<int64, int64>> McFeatureStats;
+
+// Off unless a test turns it on.
+MCGEN_API extern bool bMcFeatureStatsOn;
+// Adds one use and Blocks blocks to the counter named Key (when stats are on).
+MCGEN_API void McCountBlocks(const TCHAR* Key, int64 Blocks);
+
 // Parses and keeps configured and placed features by id, and decorates chunks with the features their biomes
 // list. Load on the game thread (it reads files and the registries); after LoadBiomes it is read only, so
 // worker threads may decorate with one library.
@@ -74,6 +83,8 @@ public:
 
 	explicit FMcFeatureLibrary(int32 InSeaLevel = 63, int32 InMinY = -64, int32 InHeight = 384);
 
+	// The corner (block x, z) of the start chunk of the stronghold nearest a position; false if the structures place none.
+	bool FindNearestStronghold(uint64 Seed, double X, double Z, FIntPoint& OutCorner) const;
 	// A placed feature by id ("minecraft:trees_plains"), or null.
 	TSharedPtr<const FMcPlacedFeature> GetPlaced(const FString& Id);
 	// A placed feature written as an id or inline ({ "feature": ..., "placement": [...] }).
@@ -97,6 +108,8 @@ public:
 	bool BiomeHas(FMcBiomeId Biome, const FMcPlacedFeature* Feature) const;
 	// The biome's temperature at a height: it falls by 0.00125 a block above y 80 (minecraft.wiki, "Biome").
 	float GetTemperature(FMcBiomeId Biome, int32 Y) const;
+	// With the position: biomes with the frozen temperature modifier vary by patch.
+	float GetTemperature(FMcBiomeId Biome, int32 X, int32 Y, int32 Z) const;
 	// The 2D noise the count placements read (noise_threshold_count, noise_based_count).
 	const FMcNoise& GetInfoNoise() const { return *InfoNoise; }
 
@@ -123,6 +136,7 @@ private:
 	// Per placed feature, the biomes listing it (bit per biome id).
 	TMap<const FMcPlacedFeature*, TBitArray<>> Biomes;
 	TArray<float> Temperatures;
+	TBitArray<> FrozenTemperature;
 	TSharedPtr<FMcNoise> InfoNoise;
 	// The structures placed before the features of a chunk (loaded with the biomes).
 	TSharedPtr<FMcStructureLibrary> Structures;

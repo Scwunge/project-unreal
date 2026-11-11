@@ -35,6 +35,16 @@ struct MCRENDER_API FMcTableBook
 	static float PageTurn(float Flip, int32 Page);
 };
 
+// The pieces of food lying on one campfire's grill, by spot.
+USTRUCT()
+struct FMcGrillFood
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMcEntityModelComponent>> Spots;
+};
+
 UCLASS(ClassGroup = (Mc))
 class MCRENDER_API UMcChestComponent : public USceneComponent
 {
@@ -93,6 +103,12 @@ private:
 	void EntityChanged(const FIntVector& Pos);
 	// A pot's sides as its model's item: the four side items, back, left, right and front, comma separated.
 	FName GetPotSides(const FIntVector& Pos) const;
+	// Draws the food on the campfire at Pos (its block entity's Slots) lying on the four spots of its grill, and takes
+	// away what is gone. Spots are at the corners 5/16 of a block out from the middle (fitted to a vanilla shot,
+	// ref_campfood_side_north), slot 0 at the south-east of a north-facing campfire and the rest clockwise round it from
+	// above; each facing turns them a quarter further clockwise.
+	void UpdateGrill(const FIntVector& Pos, FMcStateId State);
+	void DropGrill(const FIntVector& Pos);
 	// The mob a spawner shows (its block entity's), or None.
 	FName GetSpawnerMob(const FIntVector& Pos) const;
 	void Clear(FIntPoint ChunkPos);
@@ -106,7 +122,7 @@ private:
 	// Whether a state is a chest, by state id.
 	TBitArray<> IsChest;
 
-	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head, Pot, Conduit, Spawner };
+	enum class EShape : uint8 { Chest, Shulker, Bell, LecternBook, TableBook, Head, Pot, Conduit, Spawner, Campfire };
 	struct FChest
 	{
 		FMcStateId State = 0;
@@ -136,4 +152,6 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FIntVector, TObjectPtr<UMcEntityModelComponent>> Models;
+	UPROPERTY(Transient)
+	TMap<FIntVector, FMcGrillFood> Grills;
 };

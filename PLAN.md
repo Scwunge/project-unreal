@@ -1474,6 +1474,8 @@ What new ref verbs would settle the unverified numbers (Script.java is off limit
 
 **Sonic boom ignores armor (2026-11-11, UNBUILT):** `FMcWarden::OnSonicHitPlayer` -> `FMcEntityHost::OnPlayerHitThroughArmor` -> `AMcGameMode::HurtPlayerNear(..., EDamage::Magic)` (Magic is in `BypassesArmor`); without the host callback it falls back to `OnPlayerHit`, so McWardenSceneTest still sees the hit. The "bypasses armor" rule is the wiki's (UNVERIFIED against the reference client); nothing tests it with armor on yet.
 
+**Warden contact anger wired (2026-11-11, UNBUILT):** `FMcWarden::Tick` calls `Brain.Touch` for a player whose box overlaps its own (horizontal reach 0.45 + 0.3, player height 1.8; none while emerging or digging; players only, mobs are not checked). Touch was in the brain but never called. +35 with a 1 s wait is the wiki's; the box sizes are the table's, UNVERIFIED. No test added yet (needs a build).
+
 **Warden in a scene (McClient.McServer.WardenScene, 2026-11-05):** the real simulation and entity host joined by McSculkMobs: a player sets off a natural shrieker four times (warning levels 1 to 4,
 Darkness each time), a warden rises within 5 blocks of it at the fourth shriek's end, is deaf while it emerges, hears the player's steps, roars, walks to them and hits for 30 on Normal. UNVERIFIED on everything the
 reference client could not show: the shrieker-to-warden delay, emerge time, anger arithmetic and the roar trigger, sonic boom and Darkness effects (see the lists above). `McSim.SimPerf` now passes a scene if any of

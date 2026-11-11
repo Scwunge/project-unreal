@@ -314,6 +314,23 @@ void FMcWarden::Tick(FMcEntityManager& Manager)
 		Brain.Clear(GoneId);
 	}
 
+	// Contact: a player whose box touches its own angers it (+35, one second between). Players only; a mob's box is not checked.
+	// The 0.45 + 0.3 reach (half of its 0.9 width and of a player's 0.6) and the 1.8 player height are the table's, not a measurement.
+	if (State != EState::Emerging && State != EState::Digging && IdOfPlayerAt)
+	{
+		for (const FVector& Player : Manager.PlayerPositions)
+		{
+			const FVector Away = Player - Body.Position;
+			if (FVector2D(Away.X, Away.Z).Size() < 0.45 + 0.3 && Player.Y < Body.Position.Y + Type.Height && Player.Y + 1.8 > Body.Position.Y)
+			{
+				if (const int32 PlayerId = IdOfPlayerAt(Player))
+				{
+					Brain.Touch(PlayerId, Player);
+				}
+			}
+		}
+	}
+
 	Goal.Reset();
 	bStayPut = true;
 	const FMcWardenBrain::FSuspect* Target = Brain.GetTarget();

@@ -1966,6 +1966,8 @@ namespace McEntityModel
 				}
 				// Baby models of the missing mobs, batch 1 (2026-11-05): boxes from the reference's logged babyModel (models_b1.txt); pictures are the grown one's names with _baby.
 				// Not logged: baby tropical fish, parrot, fish and tadpole (no baby in the game).
+				const auto AddNewMobBabies = [&Models, &Young]()
+				{
 				{
 					FModel Moo = Young(TEXT("minecraft:mooshroom"), 64, 64);
 					Moo.Parts.Add(Part(ERole::Head, FVector(0.0f, 10.431f, 5.1667f), { Box(0, 18, -3.0f, -1.431f, -0.167f, 6, 6, 5), Box(8, 29, 3.0f, 3.569f, 2.833f, 1, 2, 1), Box(4, 29, -4.0f, 3.569f, 2.833f, 1, 2, 1), Box(12, 29, -2.0f, -1.431f, 4.833f, 4, 3, 1) }));  // head
@@ -2088,6 +2090,8 @@ namespace McEntityModel
 					Gha.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle3
 					Models.Add(Gha.Kind, Gha);
 				}
+				};
+				AddNewMobBabies();
 			}
 			return Models;
 		}

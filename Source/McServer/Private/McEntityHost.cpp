@@ -666,7 +666,8 @@ void FMcEntityHost::DropLoot(FMcMob& Mob)
 	// the same way on the wiki's word; not yet measured.
 	if (Mob.Mount.IsValid() && Mob.Mount->Inventory.IsValid())
 	{
-		for (const int32 Slot : { static_cast<int32>(FMcMountMenuSlots::Saddle), static_cast<int32>(FMcMountMenuSlots::Armor) })
+		// The window's slots 0 and 1: the saddle and the armour.
+		for (const int32 Slot : { 0, 1 })
 		{
 			const FMcItemStack& Worn = Mob.Mount->Inventory->Get(Slot);
 			if (!Worn.IsEmpty())

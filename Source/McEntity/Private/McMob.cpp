@@ -1447,7 +1447,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		{
 			const FVector ToEnderman = (Body.Position + FVector(0.0, Type.Height * 0.879, 0.0)) - (Manager.PlayerPositions[PlayerIndex] + FVector(0.0, 1.62, 0.0));
 			const double Distance = ToEnderman.Size();
-			if (Distance > 0.01 && Distance < Type.FollowRange)
+			if (Distance > 0.01 && Distance < Type.FollowRange && !(Manager.PlayerWearsPumpkin && Manager.PlayerWearsPumpkin(Manager.PlayerPositions[PlayerIndex])))
 			{
 				const double CosAngle = FVector::DotProduct(Manager.PlayerLooks[PlayerIndex].GetSafeNormal(), ToEnderman / Distance);
 				bLooked = bLooked || (1.0 - CosAngle) < 0.016 / Distance;

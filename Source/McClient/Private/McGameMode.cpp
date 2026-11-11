@@ -754,6 +754,24 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 			}
 			return false;
 		};
+		Host->PlayerWearsPumpkin = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && McPawn->Data && McPawn->Data->Armor && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5
+					&& McPawn->Data->Armor->Get(0).Item == FName(TEXT("minecraft:carved_pumpkin")))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
 		Host->PlayerLooksAt = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& PlayerPos, const FVector& Point)
 		{
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -1685,7 +1703,7 @@ void AMcGameMode::RunFightBot(APlayerController* Controller)
 		{
 			HandleChat(Player, TEXT("/gamemode survival"));
 			// What a player would have put on: a full set of diamond armour.
-			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:diamond_helmet"), 1));
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:carved_pumpkin"), 1));
 			Pawn->Data->Armor->Set(1, FMcItemStack(FName("minecraft:diamond_chestplate"), 1));
 			Pawn->Data->Armor->Set(2, FMcItemStack(FName("minecraft:diamond_leggings"), 1));
 			Pawn->Data->Armor->Set(3, FMcItemStack(FName("minecraft:diamond_boots"), 1));

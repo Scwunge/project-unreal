@@ -63,6 +63,8 @@ public:
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Whether the player at the position wears a carved pumpkin on the head (endermen ignore their gaze).
+	TFunction<bool(const FVector&)> PlayerWearsPumpkin;
 	// Whether the player at the feet position, in Survival or Adventure, faces the point within 60 degrees (yaw and pitch); a creaking holds still.
 	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
 	// A player by the id the game events carry: where their feet are; false if gone, dead or in Creative or Spectator mode (a warden forgets them).

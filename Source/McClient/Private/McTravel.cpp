@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -43,6 +44,7 @@ FString McTravel::GetPortalDestination(const FString& From)
 
 void UMcTravelSubsystem::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(Misc);
 	Super::Tick(DeltaSeconds);
 	if (!GetWorld() || !GetWorld()->GetAuthGameMode<AMcGameMode>())
 	{

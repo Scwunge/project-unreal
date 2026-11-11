@@ -11,6 +11,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "McEntityModel.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -683,6 +684,7 @@ void UMcChestComponent::TickSpawner(const FIntVector& Pos, FChest& Spawner, UMcE
 
 void UMcChestComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(BlockEnts);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	// Development: -McChestsOpen opens every chest (for a -McShot of their lids).
 	static const bool bAllOpen = FParse::Param(FCommandLine::Get(), TEXT("McChestsOpen"));

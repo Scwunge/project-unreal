@@ -17,7 +17,7 @@ namespace McPerf
 
 	namespace
 	{
-		const TCHAR* const ScopeNames[] = { TEXT("stream"), TEXT("sadd"), TEXT("sdeco"), TEXT("sunload"), TEXT("sim"), TEXT("ents"), TEXT("launch"), TEXT("upload"), TEXT("resort"), TEXT("texanim"), TEXT("hud"), TEXT("pawn"), TEXT("entrender"), TEXT("sky") };
+		const TCHAR* const ScopeNames[] = { TEXT("stream"), TEXT("sadd"), TEXT("sdeco"), TEXT("sunload"), TEXT("sim"), TEXT("ents"), TEXT("launch"), TEXT("upload"), TEXT("resort"), TEXT("texanim"), TEXT("hud"), TEXT("pawn"), TEXT("entrender"), TEXT("sky"), TEXT("world"), TEXT("render"), TEXT("models"), TEXT("blockents"), TEXT("particles"), TEXT("blocklight"), TEXT("ctrl"), TEXT("audio"), TEXT("misc") };
 		static_assert(UE_ARRAY_COUNT(ScopeNames) == static_cast<int32>(EMcPerfScope::Count));
 
 		// Frames in this phase, in milliseconds, for its percentiles.

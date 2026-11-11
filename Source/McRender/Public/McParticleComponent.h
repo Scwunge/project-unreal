@@ -131,7 +131,7 @@ private:
 	float SkyLightAt(const FIntVector& Pos) const;
 
 	// What each state does when picked near the player.
-	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown };
+	enum class EEmitter : uint8 { None, Torch, WallTorch, SoulTorch, SoulWallTorch, Lava, Campfire, SoulCampfire, Furnace, Leaves, Fire, Portal, FlowingWater, BubbleUp, BubbleDown, Drip };
 	void BuildEmitters();
 	TArray<EEmitter> Emitters;  // by state id
 	TArray<FIntVector> Facing;  // by state id: a wall torch's or furnace's facing

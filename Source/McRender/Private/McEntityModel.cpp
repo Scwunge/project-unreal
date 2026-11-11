@@ -196,7 +196,7 @@ namespace McEntityModel
 		// game draws each over the whole body in turn, which comes to the same), so the hat and robe are cut from it as well.
 		// A zombie villager holds its arms out in front like the zombie: two arms of its own, cut from the same place of the
 		// picture the crossed ones are, instead of the folded pair.
-		void AddVillager(FModel& Model, bool bArmsOut = false)
+		void AddVillager(FModel& Model, bool bArmsOut = false, bool bHatRim = true)
 		{
 			// Measured: the zombie villager is full size and swings its legs like a zombie; the others are 15/16 and swing half as far (0.7).
 			Model.Scale = bArmsOut ? 1.0f : 15.0f / 16.0f;
@@ -205,6 +205,12 @@ namespace McEntityModel
 			Model.BaseWidth = 0.6f;
 			Model.bComposite = true;
 			Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(0, 0, -4, 0, -4, 8, 10, 8), Box(24, 0, -1, -1, 4, 2, 4, 2), Box(32, 0, -4, 0, -4, 8, 10, 8, 0.51f) }));
+			if (bHatRim)
+			{
+				// The hat's brim: a flat 16 x 16 x 1 box turned a quarter about x (logged: hat/hat_rim at the head's origin, xRot -1.5708,
+				// cube -8 -8 -6 to 8 8 -5, picture offset 30 47, on the villager, zombie villager and wandering trader alike).
+				Model.Parts.Add(Part(ERole::Head, FVector(0, 24, 0), { Box(30, 47, -8, -8, 5, 16, 16, 1) }, -1.5708f, 0, 0));
+			}
 			Model.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(16, 20, -4, -12, -3, 8, 12, 6), Box(0, 38, -4, -18, -3, 8, 18, 6, 0.5f) }));
 			if (bArmsOut)
 			{
@@ -250,7 +256,7 @@ namespace McEntityModel
 		void AddIllager(FModel& Model, int32 Style, const TCHAR* Held)
 		{
 			Model.Scale = 15.0f / 16.0f;
-			AddVillager(Model, false);
+			AddVillager(Model, false, false);
 			Model.bComposite = false;
 			Model.IllagerStyle = Style;
 			for (FPart& Each : Model.Parts)
@@ -2314,14 +2320,20 @@ namespace McEntityModel
 	TArray<FString> GetVillagerTextures(bool bZombie, FName Variant, FName Profession, int32 Level)
 	{
 		const FString Folder = bZombie ? TEXT("zombie_villager/") : TEXT("villager/");
-		const FString Type = Variant.IsNone() ? FString(TEXT("plains")) : Variant.ToString();
+		const FString Type = Variant.IsNone() ? FString(TEXT("plains")) : McCache::PathOf(Variant.ToString());
 		const FString Job = Profession.IsNone() ? FString() : McCache::PathOf(Profession.ToString());
 		// A jobless villager has no clothes picture, and a nitwit has clothes but no badge.
 		const bool bClothes = !Job.IsEmpty() && Job != TEXT("none");
 		static const TCHAR* Badges[] = { TEXT("stone"), TEXT("iron"), TEXT("gold"), TEXT("emerald"), TEXT("diamond") };
 		TArray<FString> Textures;
 		Textures.Add(Folder + (bZombie ? TEXT("zombie_villager.png") : TEXT("villager.png")));
-		Textures.Add(Folder + TEXT("type/") + Type + TEXT(".png"));
+		// Whether the biome's hat layer shows (measured against vanilla shots, 2026-11-11: desert and snow wraps show on a jobless villager
+		// and a nitwit, hide under a farmer, librarian or butcher; minecraft.wiki "Resource pack": the profession's `hat` value is full ->
+		// the type's hat is hidden, partial -> it shows unless the type's own value is full, none or absent -> it shows).
+		const McCache::EVillagerHat ProfessionHat = bClothes ? McCache::VillagerHat(TEXT("profession"), Job) : McCache::EVillagerHat::None;
+		const McCache::EVillagerHat TypeHat = McCache::VillagerHat(TEXT("type"), Type);
+		const bool bTypeHat = ProfessionHat == McCache::EVillagerHat::None || (ProfessionHat == McCache::EVillagerHat::Partial && TypeHat != McCache::EVillagerHat::Full);
+		Textures.Add(Folder + TEXT("type/") + Type + TEXT(".png") + (bTypeHat ? TEXT("") : TEXT("?nohat")));
 		Textures.Add(bClothes ? Folder + TEXT("profession/") + Job + TEXT(".png") : FString());
 		Textures.Add(bClothes && Job != TEXT("nitwit") ? Folder + TEXT("profession_level/") + Badges[FMath::Clamp(Level, 1, 5) - 1] + TEXT(".png") : FString());
 		return Textures;
@@ -3907,7 +3919,14 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	}
 	if (TextureOverrides.IsValidIndex(Layer))
 	{
-		return TextureOverrides[Layer].IsEmpty() ? FString() : McCache::Asset(TEXT("textures/entity/") + TextureOverrides[Layer]);
+		if (TextureOverrides[Layer].IsEmpty())
+		{
+			return FString();
+		}
+		// "?nohat" (a villager type's hat layer left out, see McRenderTextures) goes on after the picture is found.
+		const bool bNoHat = TextureOverrides[Layer].EndsWith(TEXT("?nohat"));
+		const FString Found = McCache::Asset(TEXT("textures/entity/") + (bNoHat ? TextureOverrides[Layer].LeftChop(6) : TextureOverrides[Layer]));
+		return bNoHat ? Found + TEXT("?nohat") : Found;
 	}
 	if (Model && Model->Textures.IsValidIndex(Layer))
 	{

@@ -244,12 +244,15 @@ UTexture2DArray* McRenderTextures::LoadPngLayersAsArray(UObject* Outer, const TA
 {
 	TArray<FColor> Pixels;
 	bool bFirst = true;
-	for (const FString& Path : Paths)
+	for (const FString& Entry : Paths)
 	{
-		if (Path.IsEmpty())
+		if (Entry.IsEmpty())
 		{
 			continue;
 		}
+		// "?nohat" after a villager picture's path: its head decoration is left out: the head box and the hat shell (the top 18 rows of a 64 square picture) and the brim at 30 47. The vanilla farmer over a desert type shows plain skin, no fringe, so the type's head goes too.
+		const bool bNoHat = Entry.EndsWith(TEXT("?nohat"));
+		const FString Path = bNoHat ? Entry.LeftChop(6) : Entry;
 		TArray<FColor> Layer;
 		int32 Width = 0, Height = 0;
 		if (!LoadPngPixels(Path, Layer, Width, Height))
@@ -259,6 +262,22 @@ UTexture2DArray* McRenderTextures::LoadPngLayersAsArray(UObject* Outer, const TA
 				return nullptr;
 			}
 			continue;
+		}
+		if (bNoHat && Width > 0 && Height > 0)
+		{
+			const int32 Scale = FMath::Max(1, Width / 64);
+			for (int32 Y = 0; Y < Height; ++Y)
+			{
+				for (int32 X = 0; X < Width; ++X)
+				{
+					const int32 U = X / Scale;
+					const int32 V = Y / Scale;
+					if (V < 18 || (U >= 30 && V >= 47))
+					{
+						Layer[Y * Width + X].A = 0;
+					}
+				}
+			}
 		}
 		if (bFirst)
 		{

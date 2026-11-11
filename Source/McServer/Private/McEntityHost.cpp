@@ -1221,6 +1221,25 @@ void FMcEntityHost::Tick(const TArray<FVector>& Players, double DayTicks)
 						{
 							Spawned->UpdateWolfPose();
 						}
+						// -McMobRowProfession=a,b,c (one per mob of the row, names without minecraft:) and -McMobRowVillagerType=desert give villagers their look.
+						if (Spawned->Type.Name == FMcVillager::StaticType())
+						{
+							FString Professions, TypeName;
+							TArray<FString> Jobs;
+							if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRowProfession="), Professions, false))
+							{
+								Professions.ParseIntoArray(Jobs, TEXT("+"));
+							}
+							FMcVillager* Villager = static_cast<FMcVillager*>(Spawned);
+							if (Jobs.IsValidIndex(Index))
+							{
+								Villager->SetProfession(FName(*(TEXT("minecraft:") + Jobs[Index])));
+							}
+							if (FParse::Value(FCommandLine::Get(), TEXT("-McMobRowVillagerType="), TypeName, false))
+							{
+								Villager->SetVariant(FName(*TypeName));
+							}
+						}
 					}
 				}
 			}

@@ -4046,3 +4046,9 @@ Second run (2026-11-11), `mobmove_b2.txt`, log `log_mobmove_b2.log`: fixed arena
 - Water: squid and glow squid 0.200 (moving 7 to 8%), cod/salmon/pufferfish 0.063 (10%), tadpole 0.073 (100%), axolotl 0.222 (100%, y range -60 to -53.6).
 - Air: allay 0.110 (80%, y up to -48.6), happy ghast 0.318 (99%, y -57 to -38.7), parrot 0.074 (3%, stayed on ground 94%).
 Still indicative, one run each; the idle land mobs need a nearer player or a lure before any wander speed is fitted.
+
+## Villager hat rule and hat rim (2026-11-11)
+- Rule measured from vanilla shots (`E:\mc-reference\scriptsillhat1..4.txt`, `villhat3_*` is the useful set: six professions across desert, snow, jungle, plains): a type's hat layer (desert and snow wraps; the picture's head box and hat shell, its top 18 rows) shows on a jobless villager and a nitwit; it is hidden under farmer, librarian (profession hat full) and butcher (partial with a full type). Matches minecraft.wiki "Resource pack, Villagers"; the partial-profession-with-a-non-full-type-that-has-a-hat case was not seen (no such type picture exists in the cache), so that branch follows the wiki only. Code: `GetVillagerTextures` adds `?nohat` to the type picture, `LoadPngLayersAsArray` clears its top rows and the brim area. Test `McClient.McRender.VillagerHatRule`.
+- Hat rim added (logged `hat/hat_rim`: cube -8 -8 -6 to 8 8 -5, xRot -1.5708, picture offset 30 47) on villager, zombie villager and wandering trader (not illagers). Placement is checked by the test (flat at 1.73 blocks, 0.94 wide and deep). Visual check against vanilla is inconclusive: vanilla's brim is a thin sliver and both our shots were edge-on; a top-down pair of shots is still open.
+- Dev spawn options: `-McMobRowProfession=a+b+c`, `-McMobRowVillagerType=desert`.
+- The logged `VillagerProfessionLayer.noHatModel` has no head or hat cubes; that is where the type's head goes when its hat is hidden.

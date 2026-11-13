@@ -856,6 +856,7 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 			}
 		};
 		const double Started = FPlatformTime::Seconds();
+		int32 RegionsHere = 0;
 		for (const FIntPoint& Key : RegionKeys)
 		{
 			for (int32 DZ = -1; DZ <= 1; ++DZ)
@@ -929,8 +930,8 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 			}
 			++OutStats.Regions;
 			// Progress, so a long export shows whether time per chunk grows with the chunk count.
-			UE_LOG(LogTemp, Display, TEXT("JavaExport progress: %s region %d of %d, %d chunks so far, %.1f s (%.1f s lighting)"),
-				Dimension, OutStats.Regions, RegionKeys.Num(), OutStats.Chunks, FPlatformTime::Seconds() - Started, OutStats.LightSeconds);
+			UE_LOG(LogTemp, Display, TEXT("JavaExport progress: %s region %d of %d (this dimension), %d chunks so far in all, %.1f s (%.1f s lighting in all)"),
+				Dimension, ++RegionsHere, RegionKeys.Num(), OutStats.Chunks, FPlatformTime::Seconds() - Started, OutStats.LightSeconds);
 			// What lives in the region's chunks, in entities/ beside region/ (as the game keeps them).
 			TMap<FIntPoint, TArray<uint8>> EntityChunks;
 			for (int32 Index = 0; Index < Present.Num(); ++Index)

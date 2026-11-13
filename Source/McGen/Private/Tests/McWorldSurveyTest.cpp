@@ -1121,7 +1121,7 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases, Floors, NyliumFloors, BaseNeighbours;
 		bMcFeatureStatsOn = true;
 		McFeatureStats.Reset();
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
@@ -1176,9 +1176,28 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 									{
 										++UnderCeiling.FindOrAdd(Biome);
 									}
+									if ((Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air")) && !BelowName.IsEmpty() && BelowName != TEXT("minecraft:air") && BelowName != TEXT("minecraft:cave_air")
+										&& BelowName != TEXT("minecraft:bedrock") && BelowName != TEXT("minecraft:lava") && BelowName != TEXT("minecraft:water"))
+									{
+										++Floors.FindOrAdd(Biome);
+										if (BelowName == TEXT("minecraft:crimson_nylium"))
+										{
+											++NyliumFloors.FindOrAdd(Biome);
+										}
+									}
 									if (Name == TEXT("minecraft:crimson_stem") && BelowName != Name)
 									{
 										++StemBases.FindOrAdd(Biome);
+										if (LX > 0 && LX < 15 && LZ > 0 && LZ < 15)
+										{
+											int32 Neighbours = 0;
+											const int32 Offsets[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+											for (const int32* Offset : Offsets)
+											{
+												Neighbours += Blocks.GetBlockOf(Chunk.GetBlock(LX + Offset[0], Y, LZ + Offset[1])).Name == TEXT("minecraft:crimson_stem") ? 1 : 0;
+											}
+											++BaseNeighbours.FindOrAdd(FString::Printf(TEXT("%s %d"), *Biome, Neighbours));
+										}
 									}
 									BelowName = Name;
 									TArray<int64>& Band = Bands.FindOrAdd(Name);
@@ -1218,6 +1237,18 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		for (const TPair<FString, int64>& Pair : LavaAbove)
 		{
 			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : BaseNeighbours)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d J %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : Floors)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d H %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : NyliumFloors)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d I %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : StemBases)
 		{

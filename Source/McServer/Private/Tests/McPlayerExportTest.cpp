@@ -174,4 +174,59 @@ bool FMcPlayerExportTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A vanilla player's advancement and statistics files come in with the game's dates, and go out with them.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcAdvancementImportTest, "McClient.McServer.JavaImport.AdvancementsStats",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcAdvancementImportTest::RunTest(const FString& Parameters)
+{
+	const FString Advancements = TEXT("{\"minecraft:story/mine_stone\":{\"criteria\":{\"get_stone\":\"2026-11-13 07:00:15 +0100\"},\"done\":true},"
+		"\"minecraft:adventure/adventuring_time\":{\"criteria\":{\"minecraft:plains\":\"2026-11-13 07:10:00 -0500\"},\"done\":false},\"DataVersion\":5023}");
+	const FString StatsText = TEXT("{\"stats\":{\"minecraft:custom\":{\"minecraft:play_time\":307},\"minecraft:mined\":{\"minecraft:stone\":12}},\"DataVersion\":5023}");
+	FMcPlayerData Player;
+	TestTrue(TEXT("advancements read"), McJavaImport::ConvertAdvancements(Advancements, Player));
+	TestTrue(TEXT("stats read"), McJavaImport::ConvertStats(StatsText, Player));
+	TestTrue(TEXT("a done advancement"), Player.Stats.Contains(TEXT("advancement:minecraft:story/mine_stone")));
+	TestFalse(TEXT("a begun one is not done"), Player.Stats.Contains(TEXT("advancement:minecraft:adventure/adventuring_time")));
+	TestTrue(TEXT("its criterion"), Player.Stats.Contains(TEXT("criterion:minecraft:adventure/adventuring_time/minecraft:plains")));
+	// 07:00:15 at +0100 is 06:00:15 UTC; 07:10:00 at -0500 is 12:10:00 UTC.
+	const double Stone = FDateTime(2026, 11, 13, 6, 0, 15).ToUnixTimestamp();
+	const double Plains = FDateTime(2026, 11, 13, 12, 10, 0).ToUnixTimestamp();
+	TestEqual(TEXT("date with a positive offset"), Player.Stats.FindRef(TEXT("ctime:minecraft:story/mine_stone/get_stone")), Stone);
+	TestEqual(TEXT("date with a negative offset"), Player.Stats.FindRef(TEXT("ctime:minecraft:adventure/adventuring_time/minecraft:plains")), Plains);
+	TestEqual(TEXT("custom stat name has no namespace"), Player.Stats.FindRef(TEXT("stat:custom:play_time")), 307.0);
+	TestEqual(TEXT("mined stat keeps the block name"), Player.Stats.FindRef(TEXT("stat:mined:minecraft:stone")), 12.0);
+	TestFalse(TEXT("not a file"), McJavaImport::ConvertAdvancements(TEXT("nonsense"), Player));
+
+	// Through a world: save, export, import again; the dates come back.
+	const FString Folder = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()) / TEXT("Tests") / (TEXT("McAdvImport_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString World = Folder / TEXT("world");
+	const FString Out = Folder / TEXT("out");
+	const FString Again = Folder / TEXT("again");
+	Player.Position = FVector(1, 70, 1);
+	Player.bHasSurvival = true;
+	FMcLevelData Level;
+	Level.Seed = 4;
+	McJavaExport::FStats Stats;
+	if (TestTrue(TEXT("saved and exported"), McWorldSave::SaveLevel(World, Level) && McWorldSave::SavePlayer(World, TEXT("Steve"), Player) && McJavaExport::ExportWorld(World, Out, Stats, false)))
+	{
+		FString Text;
+		FMcPlayerData Round;
+		TestTrue(TEXT("the exported advancements read"), FFileHelper::LoadFileToString(Text, *(Out / TEXT("players/advancements") / (McJavaExport::OfflineUuid(TEXT("Steve")) + TEXT(".json")))) && McJavaImport::ConvertAdvancements(Text, Round));
+		TestEqual(TEXT("the date went out as it came"), Round.Stats.FindRef(TEXT("ctime:minecraft:story/mine_stone/get_stone")), Stone);
+		TestEqual(TEXT("and the other"), Round.Stats.FindRef(TEXT("ctime:minecraft:adventure/adventuring_time/minecraft:plains")), Plains);
+		// And the whole import takes the three files.
+		TestTrue(TEXT("imports the player"), McJavaImport::ImportPlayer(Out, Again));
+		FMcPlayerData Back;
+		if (TestTrue(TEXT("the player is there"), McWorldSave::LoadPlayer(Again, TEXT("imported-player"), Back)))
+		{
+			TestTrue(TEXT("with the advancement"), Back.Stats.Contains(TEXT("advancement:minecraft:story/mine_stone")));
+			TestEqual(TEXT("with the date"), Back.Stats.FindRef(TEXT("ctime:minecraft:story/mine_stone/get_stone")), Stone);
+			TestEqual(TEXT("with the statistic"), Back.Stats.FindRef(TEXT("stat:custom:play_time")), 307.0);
+		}
+	}
+	IFileManager::Get().DeleteDirectory(*Folder, false, true);
+	return true;
+}
+
 #endif

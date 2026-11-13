@@ -942,6 +942,13 @@ namespace
 		return FString::Printf(TEXT("%s %c%02d%02d"), *Now.ToString(TEXT("%Y-%m-%d %H:%M:%S")), Minutes < 0 ? TEXT('-') : TEXT('+'), FMath::Abs(Minutes) / 60, FMath::Abs(Minutes) % 60);
 	}
 
+	// The date a criterion was met (Unix seconds in the player's "ctime:" entry, written in UTC), else the time of the export.
+	FString CriterionDate(const FMcPlayerData& Player, const FString& Advancement, const FString& Criterion, const FString& Fallback)
+	{
+		const double* Seconds = Player.Stats.Find(TEXT("ctime:") + Advancement + TEXT("/") + Criterion);
+		return Seconds ? FDateTime::FromUnixTimestamp(static_cast<int64>(*Seconds)).ToString(TEXT("%Y-%m-%d %H:%M:%S +0000")) : Fallback;
+	}
+
 	// players/advancements/<uuid>.json: each advancement made (all its criteria, from the game's data) and each one begun.
 	bool ExportAdvancements(const FMcPlayerData& Player, const FString& Path)
 	{
@@ -964,7 +971,7 @@ namespace
 			{
 				for (const TPair<FString, TSharedPtr<FJsonValue>>& Criterion : (*Defined)->Values)
 				{
-					Criteria->SetStringField(Criterion.Key, Date);
+					Criteria->SetStringField(Criterion.Key, CriterionDate(Player, Id, Criterion.Key, Date));
 				}
 			}
 			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
@@ -993,7 +1000,7 @@ namespace
 				Entry->SetBoolField(TEXT("done"), false);
 				Root->SetObjectField(Advancement, Entry);
 			}
-			Entry->GetObjectField(TEXT("criteria"))->SetStringField(Criterion, Date);
+			Entry->GetObjectField(TEXT("criteria"))->SetStringField(Criterion, CriterionDate(Player, Advancement, Criterion, Date));
 		}
 		Root->SetNumberField(TEXT("DataVersion"), McJavaExport::DataVersion);
 		return WriteJsonFile(Path, Root);

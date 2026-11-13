@@ -578,6 +578,7 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 			continue;
 		}
 		Pawn.Data->Criteria.Add(Done);
+		Pawn.Data->CriteriaTimes.Add(Done, static_cast<double>(FDateTime::UtcNow().ToUnixTimestamp()));
 		bool bAll = true;
 		for (const TArray<FString>& Group : Table.Requirements.FindRef(Criterion.Advancement))
 		{

@@ -1,3 +1,4 @@
+#include "Async/ParallelFor.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -86,6 +87,51 @@ bool FMcFeatureTest::RunTest(const FString& Parameters)
 		Library.Decorate(Region, 12345);
 	}
 	AddInfo(FString::Printf(TEXT("9 chunks decorated in %.0f ms"), (FPlatformTime::Seconds() - DecorateStart) * 1000.0));
+
+	// The game decorates on several workers at once, regions apart. That has to give what one thread gives.
+	{
+		constexpr int32 Across = 9;
+		const auto Decorated = [&](bool bTogether)
+		{
+			TArray<TUniquePtr<FMcChunk>> Patch;
+			for (int32 Index = 0; Index < Across * Across; ++Index)
+			{
+				Patch.Add(MakeUnique<FMcChunk>(FIntPoint(Index % Across + 200, Index / Across + 200), Settings.MinY, Settings.Height / 16));
+				Generator.Generate(*Patch.Last());
+			}
+			// The middle of each of the 3x3 blocks of chunks, so no two regions share one.
+			ParallelFor(9, [&](int32 Job)
+			{
+				const int32 CX = Job % 3 * 3 + 1;
+				const int32 CZ = Job / 3 * 3 + 1;
+				FMcChunk* Around[9];
+				for (int32 Index = 0; Index < 9; ++Index)
+				{
+					Around[Index] = Patch[(CZ + Index / 3 - 1) * Across + CX + Index % 3 - 1].Get();
+				}
+				FMcGenRegion Region(FIntPoint(CX + 200, CZ + 200), Around);
+				Library.Decorate(Region, 12345);
+			}, bTogether ? EParallelForFlags::None : EParallelForFlags::ForceSingleThread);
+			TArray<FMcStateId> States;
+			for (const TUniquePtr<FMcChunk>& Chunk : Patch)
+			{
+				for (int32 Y = Chunk->GetMinY(); Y <= Chunk->GetMaxY(); ++Y)
+				{
+					for (int32 Z = 0; Z < 16; ++Z)
+					{
+						for (int32 X = 0; X < 16; ++X)
+						{
+							States.Add(Chunk->GetBlock(X, Y, Z));
+						}
+					}
+				}
+			}
+			return States;
+		};
+		// Together first, so the threads are the ones to fill the structure caches.
+		const TArray<FMcStateId> Together = Decorated(true);
+		TestTrue(TEXT("Decorating regions apart on several threads gives what one thread gives"), Together == Decorated(false));
+	}
 	TMap<int32, int32> After;
 	Count(After);
 

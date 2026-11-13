@@ -64,7 +64,7 @@ private:
 	{
 		FIntPoint ChunkPos;
 		uint64 Ticket = 0;
-		TArray<FMcSectionMesh> Sections;  // only the sections that were not empty
+		FMcSectionMesh Mesh;  // the whole column, each pass one mesh
 	};
 
 	struct FChunkState
@@ -103,6 +103,8 @@ private:
 	TMap<FIntPoint, FChunkState> Chunks;
 	uint64 NextTicket = 1;
 	int32 InFlight = 0;
+	// Every triangle handed to the engine since the start, for the harness's record.
+	int64 UploadedTriangles = 0;
 
 	// Shared with the tasks so a task that finishes after the component is gone has somewhere to write.
 	TSharedPtr<TQueue<TUniquePtr<FChunkResult>, EQueueMode::Mpsc>, ESPMode::ThreadSafe> Results;

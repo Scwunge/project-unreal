@@ -32,6 +32,8 @@ namespace McParticleKinds
 		bool bShrinkAtEnd = false; // shrinks to nothing over its last quarter
 		bool bGlow = false;        // drawn at full brightness
 		bool bPhysics = false;     // stops on blocks
+		bool bDieOnLand = false;   // goes when it lands (with bPhysics)
+		FName Then;                // the kind that takes its place where it ends (a hanging drop becomes a falling one)
 		FColor Tint = FColor::White;
 	};
 

@@ -61,12 +61,20 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
+		// The manager frees a dead mob on the tick it dies: look it up by id, never keep the raw pointer across ticks.
+		const int32 VillagerId = Villager->Id;
+		bool bVillagerDead = false;
 		for (int32 Tick = 0; Tick < 200; ++Tick)
 		{
-			Villager->HurtTime = 0;
+			if (FMcEntity* Alive = Host.GetManager().Find(VillagerId))
+			{
+				static_cast<FMcMob*>(Alive)->HurtTime = 0;
+			}
 			Host.GetManager().Tick();
+			const FMcEntity* After = Host.GetManager().Find(VillagerId);
+			bVillagerDead |= !After || After->bRemoved || static_cast<const FMcMob*>(After)->Health <= 0.0f;
 		}
-		TestTrue(TEXT("the villager is dead"), Villager->Health <= 0.0f);
+		TestTrue(TEXT("the villager is dead"), bVillagerDead);
 		int32 ZombieVillagers = 0;
 		for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
 		{
@@ -86,12 +94,19 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
+		const int32 VillagerId = Villager->Id;
+		bool bVillagerHurt = false;
 		int32 MostFangs = 0;
 		int32 MostVexes = 0;
 		for (int32 Tick = 0; Tick < 1200; ++Tick)
 		{
-			Villager->HurtTime = 0;
+			if (FMcEntity* Alive = Host.GetManager().Find(VillagerId))
+			{
+				static_cast<FMcMob*>(Alive)->HurtTime = 0;
+			}
 			Host.GetManager().Tick();
+			const FMcEntity* After = Host.GetManager().Find(VillagerId);
+			bVillagerHurt |= !After || After->bRemoved || static_cast<const FMcMob*>(After)->Health < static_cast<const FMcMob*>(After)->Type.MaxHealth;
 			int32 Fangs = 0;
 			int32 Vexes = 0;
 			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
@@ -104,7 +119,7 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("fangs come up"), MostFangs > 0);
 		TestTrue(TEXT("vexes are summoned"), MostVexes >= 3);
-		TestTrue(TEXT("the villager was hurt"), Villager->Health < Villager->Type.MaxHealth);
+		TestTrue(TEXT("the villager was hurt"), bVillagerHurt);
 	}
 	{
 		// A witch throws potions at a player in reach, and drinks healing when hurt.

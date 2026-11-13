@@ -39,6 +39,15 @@ struct MCUI_API FMcClientOptions
 	int32 RenderDistance = 12;
 	float Sensitivity = 1.0f;
 	float MasterVolume = 1.0f;
+	// Max Framerate, 10 to 260 frames per second in steps of 10, where 260 is Unlimited, and VSync; the game's own
+	// defaults, 120 and on. Uncapped frames also take the cores the world's workers need to load chunks.
+	int32 MaxFps = 120;
+	bool bVSync = true;
+	static constexpr int32 UnlimitedFps = 260;
+
+	// Sets the engine's frame cap and VSync from MaxFps and bVSync. Left alone in -McPerf runs, which choose their own
+	// with -McPerfCvars, so their numbers stay comparable.
+	void ApplyFrameRate() const;
 
 	static FMcClientOptions Load();
 	void Save() const;

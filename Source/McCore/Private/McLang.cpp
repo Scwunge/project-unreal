@@ -176,6 +176,12 @@ void McLang::SetLanguage(const FString& Code)
 	FFileHelper::SaveStringToFile(Text, *GetSelectedFile());
 }
 
+void McLang::Reload()
+{
+	FScopeLock Guard(&GLock);
+	++GLanguageGeneration;
+}
+
 uint32 McLang::GetGeneration()
 {
 	FScopeLock Guard(&GLock);

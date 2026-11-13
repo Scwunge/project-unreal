@@ -1,0 +1,89 @@
+# ---- a round: about ten minutes
+mark:walk
+look:40,0
+hold:W+LeftControl:20
+hold:W+SpaceBar:15
+look:-70,0
+hold:W+LeftControl+SpaceBar:20
+mark:water
+chat:/fill ~-4 ~-4 ~-4 ~4 ~-1 ~4 minecraft:water
+wait:3
+hold:W:6
+hold:SpaceBar:4
+hold:Shift:3
+look:120,0
+hold:W+SpaceBar:8
+wait:20
+chat:/fill ~-5 ~-5 ~-5 ~5 ~-1 ~5 minecraft:stone
+chat:/fill ~-3 ~ ~-3 ~3 ~3 ~3 minecraft:air
+mark:lava
+chat:/fill ~-1 ~-3 ~-1 ~1 ~-1 ~1 minecraft:lava
+wait:12
+chat:/gamemode creative
+chat:/fill ~-3 ~-5 ~-3 ~3 ~-1 ~3 minecraft:stone
+chat:/gamemode survival
+wait:3
+mark:mobs
+chat:/time set night
+chat:/give @s minecraft:diamond_sword
+chat:/summon minecraft:zombie ~3 ~1 ~
+chat:/summon minecraft:skeleton ~-3 ~1 ~
+chat:/summon minecraft:creeper ~ ~1 ~6
+chat:/summon minecraft:cow ~ ~1 ~-3
+chat:/summon minecraft:sheep ~2 ~1 ~-3
+chat:/summon minecraft:villager ~-2 ~1 ~-3
+chat:/summon minecraft:spider ~5 ~1 ~5
+click:L:1
+look:90,0
+click:L:1
+look:90,0
+click:L:1
+look:90,0
+click:L:1
+look:90,0
+hold:W:8
+wait:30
+chat:/kill @e[type=!player]
+chat:/time set day
+mark:chests
+chat:/setblock ~ ~-1 ~ minecraft:chest
+wait:1
+look:0,-89
+click:R:0.2
+wait:3
+key:Esc
+wait:1
+click:L:3
+key:E
+wait:3
+key:E
+look:0,89
+wait:1
+mark:weather
+chat:/weather thunder
+wait:30
+chat:/weather clear
+mark:packon
+pack:programmer_art
+wait:20
+settle:120
+mark:packoff
+pack:off
+wait:20
+settle:120
+mark:explore
+chat:/gamemode creative
+fly:1
+hold:SpaceBar:4
+look:25,0
+hold:W+LeftControl:120
+settle:90
+fly:0
+chat:/gamemode survival
+mark:savequit
+press:Save_and_Quit_to_Title,Singleplayer,Play_Selected_World
+key:Esc
+wait:5
+mark:reload
+settle:120
+wait:5

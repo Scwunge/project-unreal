@@ -1,4 +1,5 @@
 #include "McEntityActor.h"
+#include "McPerf.h"
 #include "McChunk.h"
 #include "McEntityManager.h"
 #include "McBannerEntity.h"
@@ -199,6 +200,7 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 
 void AMcEntityActor::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(EntityRender);
 	Super::Tick(DeltaSeconds);
 #if MC_WITH_RENDER
 	if (Model && !Kind.IsNone())

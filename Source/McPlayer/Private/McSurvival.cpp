@@ -1,4 +1,5 @@
 #include "McSurvival.h"
+#include "McPlayer.h"
 #include "McEnchantEffects.h"
 #include "McEffects.h"
 #include "McBlockRegistry.h"
@@ -236,6 +237,8 @@ namespace McSurvival
 		Taken -= Absorbed;
 		Stats.Health = FMath::Max(0.0f, Stats.Health - Taken);
 		AddExhaustion(Stats, GetHurtExhaustion(Kind));
+		// What hurt the player and how much is left, for working out a death.
+		UE_LOG(LogMcPlayer, Display, TEXT("Hurt: kind %d, %.1f taken, health %.1f"), static_cast<int32>(Kind), Taken, Stats.Health);
 		return Taken;
 	}
 

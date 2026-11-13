@@ -26,7 +26,9 @@ BLOCK=/e/mc-remote/lock-b1070
 # MC_PERF_CONFIG=Test builds and runs the Test configuration in a stage of its own (stage-Test): near Shipping's speed, with
 # the engine's CSV profiler on for the whole run, brought back as profile.csv. Shipping, the default, is what players get.
 CONFIG="${MC_PERF_CONFIG:-Shipping}"
-case "$CONFIG" in Shipping) STAGEDIR=stage ;; Test) STAGEDIR=stage-Test ;; *) echo "MC_PERF_CONFIG is Shipping or Test"; exit 2 ;; esac
+case "$CONFIG" in Shipping) STAGEDIR=stage ;; Test) STAGEDIR=stage-Test ;; Development) STAGEDIR=stage-Development ;; *) echo "MC_PERF_CONFIG is Shipping, Test or Development"; exit 2 ;; esac
+# The installed engine builds no Test targets; Development (a log, stats and the CSV profiler) stands in, as McClient.exe.
+EXE="McClient-Win64-$CONFIG.exe"; [ "$CONFIG" = Development ] && EXE=McClient.exe
 
 case "$mode" in
 build)
@@ -54,7 +56,7 @@ if ($FULL -eq 1 -or -not (Test-Path "\$Stage\\Windows\\McClient\\Content\\Paks")
 } else {
   # Code only: compile the configuration and put the new executable in the stage; the cooked content stays.
   & 'C:\\Program Files\\Epic Games\\UE_5.9\\Engine\\Build\\BatchFiles\\Build.bat' McClient Win64 $CONFIG '-Project=$WB\\McClient.uproject' -WaitMutex
-  if (\$LASTEXITCODE -eq 0) { Copy-Item '$WB\\Binaries\\Win64\\McClient-Win64-$CONFIG.exe' "\$Stage\\Windows\\McClient\\Binaries\\Win64\\" -Force }
+  if (\$LASTEXITCODE -eq 0) { Copy-Item '$WB\\Binaries\\Win64\\$EXE' "\$Stage\\Windows\\McClient\\Binaries\\Win64\\" -Force }
 }
 "BUILD_EXIT=\$LASTEXITCODE"
 "RUN_DONE"
@@ -140,7 +142,7 @@ soak)
   ;;
 symbols)
   $SSH "powershell -NoProfile -Command \"\$input | Set-Content $OUT/perf_symbols.ps1\"" < "$ROOT/tools/perf_symbols.ps1"
-  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\\$1\perf.log -Exe $WB\Binaries\Win64\McClient-Win64-$CONFIG.exe"
+  $SSH "powershell -NoProfile -ExecutionPolicy Bypass -File $WO\perf_symbols.ps1 -Log $WO\runs\\$1\perf.log -Exe $WB\Binaries\Win64\$EXE"
   ;;
 report) python -I "$ROOT/tools/perf_report.py" "$ROOT/Saved/Perf/$1" ;;
 *) sed -n 2,15p "$0"; exit 2 ;;

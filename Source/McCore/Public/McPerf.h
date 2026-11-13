@@ -29,6 +29,15 @@ enum class EMcPerfScope : uint8
 	Pawn,        // the player's own tick
 	EntityRender,// entity actors' per-frame pose and mesh work
 	Sky,         // sky, clouds and weather components
+	World,       // the world actor's whole tick; stream, sim and ents are parts of it
+	Render,      // the chunk renderer's whole tick; launch, upload, resort and texanim are parts of it
+	Models,      // entity, player and hand model components
+	BlockEnts,   // chest and sign components
+	Particles,   // particles
+	BlockLight,  // block light components
+	Ctrl,        // the player controller's tick (the harness script, music, view sync)
+	Audio,       // the audio subsystem
+	Misc,        // chunk stream component, block use and travel subsystems
 	Count
 };
 

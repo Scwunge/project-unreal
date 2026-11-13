@@ -12,9 +12,11 @@ param(
     [Parameter(Mandatory)][string]$Stage,
     [Parameter(Mandatory)][string]$Dir,
     [int]$Minutes = 8,
-    [string]$Config = 'Shipping'
+    [string]$Config = 'Shipping',
+    [string]$Cache = 'C:\mc-runs\mc-unreal\cache'
 )
 $Exe = Join-Path $Stage "Windows\McClient\Binaries\Win64\McClient-Win64-$Config.exe"
+if ($Config -eq 'Development') { $Exe = Join-Path $Stage 'Windows\McClient\Binaries\Win64\McClient.exe' }
 $Extra = if (Test-Path "$Dir\args.txt") { (Get-Content "$Dir\args.txt" -Raw) } else { '' }
 if ($null -eq $Extra) { $Extra = '' }
 Remove-Item "$Dir\perf.log", "$Dir\samples.csv", "$Dir\end.txt" -ErrorAction SilentlyContinue
@@ -22,13 +24,14 @@ Remove-Item "$Dir\perf.log", "$Dir\samples.csv", "$Dir\end.txt" -ErrorAction Sil
 function Snapshot {
     $o = Get-CimInstance Win32_OperatingSystem
     $cpu = (Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average
-    $g = (& nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits) -replace ' ', ''
+    $g = (& nvidia-smi -i 0 --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits) -replace ' ', ''
     "{0},{1},{2}" -f [int]($o.FreePhysicalMemory / 1024), $cpu, $g
 }
 
 $Before = @(
     "start $(Get-Date -Format o)"
     "free_mb,cpu,vram_mb,gpu_pct: $(Snapshot)"
+    "test editors (UnrealEditor-Cmd): $(@(Get-Process UnrealEditor-Cmd -ErrorAction SilentlyContinue).Count), free MB $([int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1024))"
     Get-Process | Where-Object { $_.WS -gt 200MB -or $_.Name -match 'Unreal|java|McClient|Cook|dotnet|cl$|link' } | Sort-Object WS -Descending |
         ForEach-Object { "{0} {1} {2} MB" -f $_.Name, $_.Id, [int]($_.WS / 1MB) }
 )
@@ -36,7 +39,7 @@ $Before | Set-Content "$Dir\machine.txt"
 
 # Test builds record the engine's CSV profile for the whole run (Shipping has no profiler).
 $Csv = if ($Config -ne 'Shipping') { ' -csvCaptureFrames=1000000 -csvGpuStats' } else { '' }
-$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=C:\mc-runs\mc-unreal\cache -windowed -ResX=1920 -ResY=1080 $Extra$Csv"
+$GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=$Cache -windowed -ResX=1920 -ResY=1080 $Extra$Csv"
 $P = Start-Process $Exe -ArgumentList $GameArgs -PassThru
 "pid $($P.Id) args $GameArgs"
 'secs,free_mb,cpu,vram_mb,gpu_pct,game_ws_mb,game_private_mb' | Set-Content "$Dir\samples.csv"

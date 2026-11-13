@@ -268,8 +268,12 @@ namespace
 		FFileHelper::LoadFileToArray(Vanilla, *InJar);
 		// The jar's include/unifont.json has no providers (the launcher builds it, with the size overrides of the CJK and Hangul
 		// blocks); the launcher's own copy, with the asset files, has them.
+		// The buffer has no terminator: FString(const char*, int32) would take the int as extra slack and read to the first zero
+		// byte past the end (the crash on leaving to the title, 11 Nov). Convert with the length.
+		FString VanillaText;
+		FFileHelper::BufferToString(VanillaText, Vanilla.GetData(), Vanilla.Num());
 		TArray<uint8> FromAssets;
-		if (FString(reinterpret_cast<const char*>(Vanilla.GetData()), Vanilla.Num()).Contains(TEXT("\"type\"")) == false
+		if (VanillaText.Contains(TEXT("\"type\"")) == false
 			&& FFileHelper::LoadFileToArray(FromAssets, *FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative)))
 		{
 			Vanilla = MoveTemp(FromAssets);

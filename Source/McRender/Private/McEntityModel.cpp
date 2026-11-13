@@ -20,6 +20,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
+#include "McPerf.h"
 
 namespace McEntityModel
 {
@@ -4101,6 +4102,7 @@ bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
 
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Models);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber || bIsFalling) && bItemFailed))

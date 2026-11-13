@@ -10,6 +10,7 @@
 #include "McRenderMode.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -207,6 +208,7 @@ void UMcBlockLightComponent::Place()
 
 void UMcBlockLightComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(BlockLight);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	Time += DeltaTime;
 	if (!World || !McRenderMode::IsEnhanced())

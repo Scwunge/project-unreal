@@ -34,7 +34,7 @@ for l in lines:
 
 print("--- mean per-frame ms by phase")
 sec = [kv(l) for l in lines if l.startswith("S ")]
-fields = ["gt", "rt", "rhi", "gpu", "stream", "sadd", "sdeco", "sunload", "sim", "ents_ms", "launch", "upload", "resort", "texanim", "hud", "pawn", "entrender", "sky"]
+fields = ["gt", "rt", "rhi", "gpu", "stream", "sadd", "sdeco", "sunload", "sim", "ents_ms", "launch", "upload", "resort", "texanim", "hud", "pawn", "entrender", "sky", "world", "render", "models", "blockents", "particles", "blocklight", "ctrl", "audio", "misc"]
 print(f"{'phase':<14}" + "".join(f"{f[:7]:>8}" for f in fields))
 phases = []
 for s in sec:

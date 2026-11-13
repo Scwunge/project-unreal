@@ -62,6 +62,7 @@
 #include "McSignComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
+#include "McPerf.h"
 #endif
 
 AMcPlayerController::AMcPlayerController()
@@ -72,6 +73,7 @@ AMcPlayerController::AMcPlayerController()
 
 void AMcPlayerController::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(Ctrl);
 	Super::Tick(DeltaSeconds);
 	ConnectToWorld();
 	ResolveWantedDimension();

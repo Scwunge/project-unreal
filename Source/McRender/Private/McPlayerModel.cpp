@@ -12,6 +12,7 @@
 #include "GameFramework/Actor.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
+#include "McPerf.h"
 
 namespace McPlayerModel
 {
@@ -436,6 +437,7 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 
 void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Models);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || !bShown || !EnsureMaterial())

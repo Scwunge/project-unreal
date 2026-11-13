@@ -23,6 +23,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -1160,6 +1161,7 @@ void UMcParticleComponent::Draw(float Partial)
 
 void UMcParticleComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Particles);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!World)
 	{

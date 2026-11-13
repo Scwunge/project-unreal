@@ -272,6 +272,7 @@ static double AnimTickOverride = 0.0;
 
 void UMcWorldRenderComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Render);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!World)
 	{

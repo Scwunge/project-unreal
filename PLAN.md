@@ -2039,3 +2039,28 @@ Second run (2026-11-11), `mobmove_b2.txt`, log `log_mobmove_b2.log`: fixed arena
 Still indicative, one run each; the idle land mobs need a nearer player or a lure before any wander speed is fitted.
 
 Integration line on UE 5.9 (claude/integrate-b1, 2026-11-11): m1 0ce5880 + playable eb3a5ba + villagers 4d14550 + worldgen 30b4813 + redstone test fixes ef73a18 and 0237999, head a8501e9. Built on the 1070 (UE 5.9). Its full suite (everything except JavaExport) has NOT run: the run was stopped by the STOP order in NetherStarts with 88 passed, no failure. Earlier head d1f74f8 (without the two test fixes): playable 259/260 and villagers 260/261, the one miss each SimPerf (26.36 and 28.19 ms, load). Redstone 950fa0c itself is not merged here; its Illagers crash was a use-after-free in the test (fixed in ef73a18).
+
+**5.9 on the 1070: no clean runs yet (2026-11-11).** The series waited 90 minutes (15:58-17:28) and never ran: other sessions' tests held 1070 test lanes the whole time (one over 90 min). An ALONE run now takes no lock while a 1070 test lane is busy (eb3a5ba).
+
+**5.9 on this PC instead (RTX 4060, labelled _4060, not clean).** `tools/perf-local.sh` builds Shipping in `I:\mc-build\<checkout>-perf` with J:\UE_5.9 and runs the same scripts on this desktop (lock-local, lock-blocal). 3 or 4 test editors (UnrealEditor-Cmd) ran beside every run, with about 24-26 GB free; machine.txt records the count. CPU contention makes these game-thread-bound, so they are not comparable with the 1070's 5.8 numbers above, nor with each other closely.
+
+| 5.9, 4060, 3-4 test editors beside | fps | 1% low | p99 ms | over 33 ms | gt / rt / gpu ms |
+|---|---|---|---|---|---|
+| Stand (base59_b) | 76.7 | 31.8 | 27.6 | 8 | 13.2 / 10.5 / 1.8 |
+| Walk (base59_b) | 59.3 | 22.0 | 40.8 | 119 | 16.8 / 12.3 / 3.5 |
+| Fly (base59_b) | 69.1 | 28.5 | 28.7 | 11 | 14.5 / 11.7 / 3.3 |
+| Stand, capped 120 (base59_cap) | 74.9 | 29.4 | 30.2 | 14 | 13.4 / 10.2 / 1.9 |
+| Walk, capped 120 (base59_cap) | 59.2 | 21.7 | 42.3 | 132 | 16.9 / 11.6 / 2.5 |
+| Unreal Medium, stand / walk (base59_um) | 64.6 / 51.1 | 32.5 / 19.5 | 27.9 / 44.0 | 4 / 137 | 14.3 / 14.6 / 6.9 (stand) |
+
+- The GPU is nearly idle (2-3.5 ms vanilla, 7 ms Unreal Medium): with other editors on the CPU, the game thread (13-17 ms) sets the frame rate. The cap at 120 changes nothing, since frames never reach it.
+- base59_a was the first launch of a new stage: models baked in 18.6 s against 1.2 s afterwards, and the walk was 43 fps. Left out of the table.
+- No new hitch source shows: the over-33 ms frames in walk come with stream/unload/launch/upload means under 0.5 ms, so they are mostly contention, not chunk work. The H lines would say per frame (not read yet).
+- Leave to title (leave59_4060): **inconclusive.** No crash, but the game never left the world: after `key:Escape` the simulation stopped (sim 0.00) and the world stayed loaded (729 chunks) until the 3-minute limit. Either the Escape didn't open the pause menu, or the press never matched "Save and Quit to Title". Next: run leave.txt in a Development build with the log, which shows each `McMenuPress:` line.
+
+**Development build on the 1070 (prof59, leave59d; 2026-11-11 evening, 1 test editor beside, ~8.4 GB free).** The installed 5.9 builds no Test targets ("Targets cannot be built in the Test configuration with this engine distribution"), so `MC_PERF_CONFIG=Development` builds a packaged Development stage (McClient.exe: a log, stats and the CSV profiler) in both harnesses. No more cooks on the 1070 while it is the only PC.
+- **The leave crash, found:** leave59d pressed Save and Quit to Title (`McMenuPress` in the log) and crashed on the title's first frame, reading past a buffer in `CollectProviders` (McHUDScreens.cpp) while the HUD loaded its font. `FString(const char*, int32)` is (string, extra slack), not (pointer, length): it read the unterminated file buffer to the next zero byte and faults when that runs off a page. Fixed by converting with the length (`FFileHelper::BufferToString`). The audio crash is gone (no audio frames in the stack). The Shipping leave59_4060 run never got this far (the press didn't happen there; unexplained).
+- **Where the game thread goes (CSV, last 60% of frames):** game thread 23.1 ms average (p50 15.4), render thread 16.6, GPU 6.6. `TickActors` is 17.9 ms of it, UI 1.3, the rest under 0.6 each. McPerf's scopes standing explain about 7.5 of 21 ms (sim 4.9, ents 0.9, hud 0.9). The rest is ticks with no scope: entity models, particles, chests, signs, block light, the hand, the controller, audio. Scopes added for all of them (world, render, models, blockents, particles, blocklight, ctrl, audio, misc); the next run says which.
+- prof59's exit code 777003 is a clean scripted exit (`RequestExit(0, McInput)` in the log), not a crash.
+- **Tested 2026-11-13 (this PC, the 1070 offline):** 261 of 261 pass, all McClient tests except McServer.JavaExport, in three runs. The full run passed 194 and then crashed starting McServer.Illagers (access violation in UnrealEditor-McServer, a garbage pointer, after a 14 s audio-device timeout); Illagers alone passed and the 66 after it passed. So the crash depends on what ran before it. Not explained yet; if it repeats, symbolize it with the McServer pdb.
+- Still to do: a packaged leave check and a run with the new scopes (on the 4060 once it is free; no cooks on the 1070 while it is the only PC).

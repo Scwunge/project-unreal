@@ -1299,6 +1299,7 @@ void AMcWorldActor::BeginAutosave()
 
 void AMcWorldActor::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(World);
 	Super::Tick(DeltaSeconds);
 
 	// Both sides count: the server for everyone, a client between syncs. The server publishes whole ticks once a

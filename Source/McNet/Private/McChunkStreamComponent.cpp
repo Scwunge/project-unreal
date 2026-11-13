@@ -7,6 +7,7 @@
 #include "Serialization/MemoryWriter.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -155,6 +156,7 @@ void UMcChunkStreamComponent::ServerSetBlock_Implementation(FIntVector Pos, uint
 
 void UMcChunkStreamComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Misc);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!BlockWorld || !IsServerForRemotePlayer() || !bClientReady)
 	{

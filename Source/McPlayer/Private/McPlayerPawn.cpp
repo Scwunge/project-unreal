@@ -331,6 +331,23 @@ void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
 	{
 		Move.Speed *= McEffects::GetSpeedFactor(Data->Stats);
 		Move.JumpBonus = McEffects::GetJumpBonus(Data->Stats);
+		if (Data->Armor.IsValid() && Data->Armor->Num() >= 4)
+		{
+			// Depth Strider: a third a level, from the enchantment file's water movement efficiency.
+			Move.WaterEfficiency = FMath::Min(1.0f, Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:depth_strider")) / 3.0f);
+			// Soul Speed (UNVERIFIED, from the file): on soul sand or soil it adds 0.0405 + 0.0105 a level above the first to the speed and ignores the block's slowing.
+			const int32 SoulLevel = Data->Armor->Get(3).GetEnchantmentLevel(TEXT("minecraft:soul_speed"));
+			if (SoulLevel > 0 && BlockWorld)
+			{
+				const FName Under = GetBlockNameBelow(*BlockWorld, Body.Position);
+				const FName Inside = GetBlockNameBelow(*BlockWorld, Body.Position + FVector(0.0, 0.2, 0.0));
+				if (Under == TEXT("minecraft:soul_sand") || Under == TEXT("minecraft:soul_soil") || Inside == TEXT("minecraft:soul_sand") || Inside == TEXT("minecraft:soul_soil"))
+				{
+					Move.Speed += 0.0405f + 0.0105f * (SoulLevel - 1);
+					Move.MovementEfficiency = 1.0f;
+				}
+			}
+		}
 	}
 	// An opening shulker box's lid moves what is in its way.
 	if (LidPush)
@@ -1412,7 +1429,19 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 		return;
 	}
 	static const FIntVector Faces[6] = { FIntVector(0, -1, 0), FIntVector(0, 1, 0), FIntVector(0, 0, -1), FIntVector(0, 0, 1), FIntVector(-1, 0, 0), FIntVector(1, 0, 0) };
-	if (OnUseItemOn(*this, Pos, Pos + Faces[Face]) && !Data->bCreative)
+	const FName Tool = Data->Inventory->Get(Data->SelectedSlot).Item;
+	const FMcStateId Used = BlockWorld ? BlockWorld->GetBlock(Pos) : 0;
+	const bool bUsed = OnUseItemOn(*this, Pos, Pos + Faces[Face]);
+	if (bUsed)
+	{
+		FMcTriggerEvent Event;
+		Event.Trigger = TEXT("minecraft:item_used_on_block");
+		Event.Item = Tool;
+		Event.State = Used;
+		Event.Block = FMcBlockRegistry::Get().IsValidState(Used) ? FMcBlockRegistry::Get().GetBlockOf(Used).Name : NAME_None;
+		FireTrigger(Event);
+	}
+	if (bUsed && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
 		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || FMcVehicle::IsVehicleItem(Held.Item))
@@ -1702,6 +1731,13 @@ void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
 	if (Data)
 	{
 		Data->AddStat(TEXT("custom:sleep_in_bed"));
+	}
+	FMcTriggerEvent Slept;
+	Slept.Trigger = TEXT("minecraft:slept_in_bed");
+	FireTrigger(Slept);
+	if (Data)
+	{
+		Data->AddStat(TEXT("custom:sleep_in_bed"));
 		Data->Counters.Add(TEXT("custom:time_since_rest"), 0);
 	}
 	SleepTicks = 0;
@@ -1765,6 +1801,8 @@ void AMcPlayerPawn::ServerDropSelected_Implementation(bool bWholeStack)
 	const FVector Look(-FMath::Sin(McYaw) * FMath::Cos(McPitch), -FMath::Sin(McPitch), FMath::Cos(McYaw) * FMath::Cos(McPitch));
 	FMcItemEntity& Item = Manager->DropItem(Body.Position + FVector(0.0, GetEyeHeight() - 0.3, 0.0), Thrown, 40);
 	Item.Body.Velocity = Look * 0.3 + FVector(0.0, 0.1, 0.0);
+	Data->AddStat(TEXT("dropped:") + Thrown.Item.ToString(), Thrown.Count);
+	Data->AddStat(TEXT("custom:drop"), Thrown.Count);
 	UE_LOG(LogMcPlayer, Display, TEXT("Threw %d of %s"), Thrown.Count, *Thrown.Item.ToString());
 }
 
@@ -2010,8 +2048,34 @@ void AMcPlayerPawn::ServerGameTick()
 		{
 			const FVector Ears = Body.Position + FVector(0.0, 0.5, 0.0);
 			const int32 LevelBefore = Stats.XpLevel;
+			TMap<FName, int32> Before;
+			for (int32 Slot = 0; Slot < Data->Inventory->Num(); ++Slot)
+			{
+				const FMcItemStack& Held = Data->Inventory->Get(Slot);
+				if (!Held.IsEmpty())
+				{
+					Before.FindOrAdd(Held.Item) += Held.Count;
+				}
+			}
 			if (McSurvival::CollectItems(*Entities, Body.GetBox(), *Data->Inventory) > 0)
 			{
+				TMap<FName, int32> After;
+				for (int32 Slot = 0; Slot < Data->Inventory->Num(); ++Slot)
+				{
+					const FMcItemStack& Held = Data->Inventory->Get(Slot);
+					if (!Held.IsEmpty())
+					{
+						After.FindOrAdd(Held.Item) += Held.Count;
+					}
+				}
+				for (const TPair<FName, int32>& Entry : After)
+				{
+					const int32* Was = Before.Find(Entry.Key);
+					if (Entry.Value > (Was ? *Was : 0))
+					{
+						Data->AddStat(TEXT("picked_up:") + Entry.Key.ToString(), Entry.Value - (Was ? *Was : 0));
+					}
+				}
 				Entities->PlaySound(FName("entity.item.pickup"), Ears, 0.2f, (FMath::FRand() - FMath::FRand()) * 1.4f + 2.0f);
 			}
 			if (McSurvival::CollectArrows(*Entities, Body.GetBox(), *Data->Inventory) > 0)

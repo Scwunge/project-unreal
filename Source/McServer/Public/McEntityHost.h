@@ -59,6 +59,8 @@ public:
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
 	TFunction<void(const FVector&, float)> OnPlayerHit;
+	// Same, for a hit that armor does not reduce (a warden's sonic boom). Unset: it goes to OnPlayerHit.
+	TFunction<void(const FVector&, float)> OnPlayerHitThroughArmor;
 	// Called with the player's feet, the damage, the push and the centre when a blast reaches a player.
 	TFunction<void(const FVector&, float, const FVector&, const FVector&)> OnPlayerBlast;
 	// Whether the player at the position wears gold armour (piglins ignore them).
@@ -106,6 +108,14 @@ public:
 
 	// Puts a mob of the kind at the position, with its drops and bite wired up. Null for a kind that is not a mob.
 	FMcMob* SpawnMob(FName Kind, const FVector& Pos);
+	// A mob out of the bytes SaveLive wrote (its own, its trailer, then the mob that rides it, if any, the same way), with new
+	// ids. Null if the kind isn't one this version has or the bytes are bad.
+	FMcMob* RestoreMob(FName Kind, TConstArrayView<uint8> Data);
+	// What the game's finalizeSpawn adds to a mob that came by natural spawning: a zombie is a baby one time in twenty and
+	// that baby sometimes rides a chicken (one near it, or a new one), a spider sometimes carries a skeleton.
+	void FinishSpawn(FMcMob& Mob);
+	// What CaptureChunk keeps of one entity: its own bytes, and for a mob the trailer and the mob riding it.
+	void SaveLive(FMcEntity& Entity, TArray<uint8>& Data);
 	// The monster spawners of the loaded chunks (McSpawners), run each tick.
 	FMcSpawners& GetSpawners() { return *Spawners; }
 

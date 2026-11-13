@@ -21,6 +21,8 @@ namespace McJavaExport
 		int32 Chunks = 0;
 		int32 Regions = 0;
 		int32 Failed = 0;
+		// Chunks whose entities went to the entities folder.
+		int32 EntityChunks = 0;
 		// Seconds spent in all, and of those lighting chunks.
 		double Seconds = 0.0;
 		double LightSeconds = 0.0;

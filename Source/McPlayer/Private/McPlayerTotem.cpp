@@ -25,6 +25,10 @@ bool AMcPlayerPawn::ServerTryTotem()
 	{
 		Entities->PlaySound(FName(TEXT("item.totem.use")), Body.Position, 1.0f, 1.0f);
 	}
+	FMcTriggerEvent Saved;
+	Saved.Trigger = TEXT("minecraft:used_totem");
+	Saved.Item = TEXT("minecraft:totem_of_undying");
+	FireTrigger(Saved);
 	MulticastTotem();
 	return true;
 }

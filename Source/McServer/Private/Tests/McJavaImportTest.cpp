@@ -1560,6 +1560,12 @@ bool FMcJavaExportOwnSaveTest::RunTest(const FString& Parameters)
 	McJavaExport::FStats Out;
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(Copy, Target, Out));
 	AddInfo(FString::Printf(TEXT("exported %s: %d chunks in %d regions (%d failed) to %s in %.2f s"), *Name, Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds));
+	// The time of day travels through data/minecraft/world_clocks.dat (26.3 keeps it there, not in level.dat).
+	FMcLevelData Before, After;
+	if (McWorldSave::LoadLevel(Copy, Before) && McJavaImport::ReadLevel(Target, After))
+	{
+		TestEqual(TEXT("the day time survives the export"), After.DayTime, Before.DayTime);
+	}
 	IFileManager::Get().DeleteDirectory(*Copy, false, true);
 	return true;
 }
@@ -1741,9 +1747,11 @@ namespace
 		IFileManager::Get().FindFiles(Names, *(FolderA / TEXT("*.mcr")), true, false);
 		int32 Compared = 0;
 		int32 Counter = 0;
+		const double CompareStarted = FPlatformTime::Seconds();
 		FMcBlockWorld World(Type);
 		for (const FString& Name : Names)
 		{
+			UE_LOG(LogTemp, Display, TEXT("RoundTrip compare progress: %s file %s, %d chunks so far, %.1f s"), Dimension, *Name, Compared, FPlatformTime::Seconds() - CompareStarted);
 			FMcRegionFile RegionA(FolderA / Name);
 			FMcRegionFile RegionB(FolderB / Name);
 			TBitArray<> PresentA;
@@ -1836,7 +1844,8 @@ bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const FString Only = Parameters;
-	constexpr int32 MaxChunksInDefaultRun = 75000;
+	const FString LimitText = FPlatformMisc::GetEnvironmentVariable(TEXT("MC_ROUNDTRIP_MAX_CHUNKS"));
+	const int32 MaxChunksInDefaultRun = LimitText.IsEmpty() ? 75000 : FCString::Atoi(*LimitText);
 	for (const TCHAR* Name : { TEXT("campref"), TEXT("endref"), TEXT("terrain3"), TEXT("importflat") })
 	{
 		if (!Only.IsEmpty() && Only != Name)

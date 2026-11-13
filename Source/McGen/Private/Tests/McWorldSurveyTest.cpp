@@ -1121,7 +1121,7 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns, LavaAbove;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases;
 		bMcFeatureStatsOn = true;
 		McFeatureStats.Reset();
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
@@ -1167,9 +1167,20 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 							{
 								const FString Biome = FMcBiomeRegistry::Get().GetName(Generator->GetBiome(Chunk.GetPos().X * 16 + LX, 64, Chunk.GetPos().Y * 16 + LZ)).ToString();
 								++Columns.FindOrAdd(Biome);
+								FString BelowName;
 								for (int32 Y = 0; Y < 128; ++Y)
 								{
 									const FString Name = Blocks.GetBlockOf(Chunk.GetBlock(LX, Y, LZ)).Name.ToString();
+									// The weeping vines' outer filter (nstat D in the reference): an air cell with netherrack or a nether wart block above.
+									if ((BelowName == TEXT("minecraft:air") || BelowName == TEXT("minecraft:cave_air")) && (Name == TEXT("minecraft:netherrack") || Name == TEXT("minecraft:nether_wart_block")))
+									{
+										++UnderCeiling.FindOrAdd(Biome);
+									}
+									if (Name == TEXT("minecraft:crimson_stem") && BelowName != Name)
+									{
+										++StemBases.FindOrAdd(Biome);
+									}
+									BelowName = Name;
 									TArray<int64>& Band = Bands.FindOrAdd(Name);
 									Band.SetNumZeroed(16);
 									++Band[Y >> 3];
@@ -1207,6 +1218,14 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		for (const TPair<FString, int64>& Pair : LavaAbove)
 		{
 			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : StemBases)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d G %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : UnderCeiling)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d E %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : Columns)
 		{

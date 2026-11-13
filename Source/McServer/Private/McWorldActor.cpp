@@ -602,6 +602,10 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
 	}
+	if (!bSecondary)
+	{
+		McWorldSave::WriteSessionLock(WorldDir);
+	}
 	// A Java world begun with McJavaImport::BeginImport is converted from here on, near its spawn first.
 	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
@@ -676,6 +680,62 @@ void AMcWorldActor::PlayerPlaced(const FIntVector& Pos)
 	{
 		Simulation->PlayerPlaced(Pos);
 	}
+}
+
+int32 AMcWorldActor::PlaceFeature(const FString& Id, const FIntVector& Pos)
+{
+	if (!BlockWorld || !Features)
+	{
+		return 2;
+	}
+	const TSharedPtr<const FMcFeature> Feature = Features->ParseFeature(MakeShared<FJsonValueString>(Id));
+	if (!Feature)
+	{
+		return 1;
+	}
+	const FIntPoint Centre(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z));
+	TUniquePtr<FMcChunk> Copies[9];
+	FMcChunk* Around[9] = {};
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		const FMcChunk* Live = BlockWorld->FindChunk(Centre + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+		if (Live)
+		{
+			Copies[Index] = MakeUnique<FMcChunk>(*Live);
+			Around[Index] = Copies[Index].Get();
+		}
+	}
+	FMcGenRegion Region(Centre, Around);
+	FMcRandom Random(static_cast<uint64>(FPlatformTime::Cycles64()) ^ (static_cast<uint64>(Pos.X) * 31 + static_cast<uint64>(Pos.Z)));
+	FMcFeatureContext Context{ Region, Random, *Features, Features->GetSeaLevel(), nullptr };
+	if (!Feature->Place(Context, Pos))
+	{
+		return 2;
+	}
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		const FMcChunk* Live = BlockWorld->FindChunk(Centre + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+		if (!Live || !Copies[Index])
+		{
+			continue;
+		}
+		const FIntPoint At = Live->GetPos();
+		for (int32 Y = Live->GetMinY(); Y <= Live->GetMaxY(); ++Y)
+		{
+			for (int32 Z = 0; Z < 16; ++Z)
+			{
+				for (int32 X = 0; X < 16; ++X)
+				{
+					const FMcStateId New = Copies[Index]->GetBlock(X, Y, Z);
+					if (New != Live->GetBlock(X, Y, Z))
+					{
+						SetBlock(FIntVector(At.X * 16 + X, Y, At.Y * 16 + Z), New);
+					}
+				}
+			}
+		}
+	}
+	return 0;
 }
 
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
@@ -1287,61 +1347,84 @@ void AMcWorldActor::SaveWorld()
 	{
 		return;
 	}
-	OnSaving.Broadcast();
-	if (!bSecondary)
-	{
-		Level.DayTime = DayTicks;
-		Level.Dimension = Dimension;
-		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
-		McWorldSave::SaveLevel(WorldDir, Level);
-		McWorldSave::SaveMaps(WorldDir);
-	}
-	// Whatever an autosave had left to look at is covered by this.
-	AutosaveQueue.Reset();
-	// The whole world at once (leaving it takes this): the mobs and structures of each chunk are read here, the chunks
-	// are encoded and compressed on worker threads, and the writes keep each region file open and reach the disk once
-	// at the end instead of once a chunk (729 chunks took 29 s one by one, the window frozen).
-	const double StartTime = FPlatformTime::Seconds();
-	TArray<FPendingSave> Saves;
-	Saves.Reserve(BlockWorld->GetChunks().Num());
-	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
-	{
-		FPendingSave& Save = Saves.AddDefaulted_GetRef();
-		if (!PrepareSave(Entry.Key, Save))
-		{
-			Saves.Pop(EAllowShrinking::No);
-		}
-	}
-	const double PreparedTime = FPlatformTime::Seconds();
-	ParallelFor(Saves.Num(), [&Saves](int32 Index)
-	{
-		Saves[Index].Bytes = McChunkSave::Encode(*Saves[Index].Chunk, Saves[Index].Extras);
-	});
-	const double EncodedTime = FPlatformTime::Seconds();
-	FMcRegionFile::TakeWriteSteps();
-	const int64 WriteMicrosBefore = Storage->GetWriteMicros();
-	const int64 TaskMicrosBefore = Storage->GetTaskMicros();
-	int64 SaveBytes = 0;
-	for (const FPendingSave& Save : Saves)
-	{
-		SaveBytes += Save.Bytes.Num();
-	}
-	// A live Java import may already be writing in bulk; it ends that itself.
-	const bool bWasBulk = Storage->IsBulk();
-	Storage->SetBulk(true);
 	int32 Queued = 0;
-	for (FPendingSave& Save : Saves)
+	const double StartTime = FPlatformTime::Seconds();
+	double PreparedTime = StartTime;
+	double EncodedTime = StartTime;
+	int64 WriteMicrosBefore = 0;
+	int64 TaskMicrosBefore = 0;
+	int64 SaveBytes = 0;
+	for (const McWorldSave::ESaveStep Step : McWorldSave::GetQuitSaveOrder())
 	{
-		Queued += CommitSave(Save) ? 1 : 0;
-	}
-	// Waits for the writes, then lets each region file go (bringing its bytes to the disk).
-	if (bWasBulk)
-	{
-		Storage->Flush();
-	}
-	else
-	{
-		Storage->SetBulk(false);
+		switch (Step)
+		{
+		case McWorldSave::ESaveStep::Players:
+			OnSaving.Broadcast();
+			break;
+		case McWorldSave::ESaveStep::Chunks:
+		{
+			// Whatever an autosave had left to look at is covered by this.
+			AutosaveQueue.Reset();
+			// The whole world at once (leaving it takes this): the mobs and structures of each chunk are read here, the chunks
+			// are encoded and compressed on worker threads, and the writes keep each region file open and reach the disk once
+			// at the end instead of once a chunk (729 chunks took 29 s one by one, the window frozen).
+			TArray<FPendingSave> Saves;
+			Saves.Reserve(BlockWorld->GetChunks().Num());
+			for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
+			{
+				FPendingSave& Save = Saves.AddDefaulted_GetRef();
+				if (!PrepareSave(Entry.Key, Save))
+				{
+					Saves.Pop(EAllowShrinking::No);
+				}
+			}
+			PreparedTime = FPlatformTime::Seconds();
+			ParallelFor(Saves.Num(), [&Saves](int32 Index)
+			{
+				Saves[Index].Bytes = McChunkSave::Encode(*Saves[Index].Chunk, Saves[Index].Extras);
+			});
+			EncodedTime = FPlatformTime::Seconds();
+			FMcRegionFile::TakeWriteSteps();
+			WriteMicrosBefore = Storage->GetWriteMicros();
+			TaskMicrosBefore = Storage->GetTaskMicros();
+			for (const FPendingSave& Save : Saves)
+			{
+				SaveBytes += Save.Bytes.Num();
+			}
+			// A live Java import may already be writing in bulk; it ends that itself.
+			const bool bWasBulk = Storage->IsBulk();
+			Storage->SetBulk(true);
+			for (FPendingSave& Save : Saves)
+			{
+				Queued += CommitSave(Save) ? 1 : 0;
+			}
+			// Waits for the writes, then lets each region file go (bringing its bytes to the disk).
+			if (bWasBulk)
+			{
+				Storage->Flush();
+			}
+			else
+			{
+				Storage->SetBulk(false);
+			}
+			break;
+		}
+		case McWorldSave::ESaveStep::Maps:
+			if (!bSecondary)
+			{
+				McWorldSave::SaveMaps(WorldDir);
+			}
+			break;
+		case McWorldSave::ESaveStep::Level:
+			if (!bSecondary)
+			{
+				Level.DayTime = DayTicks;
+				Level.Dimension = Dimension;
+				Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+				McWorldSave::SaveLevel(WorldDir, Level);
+			}
+			break;
+		}
 	}
 	const double EndTime = FPlatformTime::Seconds();
 	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s; this session %d chunks came from the save and %d were generated (%.0f ms: gather %.0f, encode %.0f, write %.0f, of it %.0f in write tasks and %.0f in the region files (%s); %lld KB)"),

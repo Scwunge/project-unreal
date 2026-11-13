@@ -73,6 +73,8 @@ private:
 		bool bAlongX = true;
 		FVector Feet = FVector::ZeroVector;
 		float McYaw = 0.0f;
+		// The vehicle the player rides, packed for the trip (empty when on foot).
+		TArray<uint8> VehicleBytes;
 		double StartedAt = 0.0;
 	};
 	struct FPortalState
@@ -99,6 +101,8 @@ private:
 		bool bAlongX = true;
 		FVector Feet = FVector::ZeroVector;
 		TArray<uint8> Bytes;
+		// Animals that were aboard a vehicle, packed alongside it.
+		TArray<TArray<uint8>> Passengers;
 		double StartedAt = 0.0;
 	};
 	void TickEntities();

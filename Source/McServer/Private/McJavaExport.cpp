@@ -15,9 +15,13 @@
 #include "McBlockLight.h"
 #include "McLightEngine.h"
 #include "McItemStack.h"
+#include "McEntityManager.h"
+#include "McMob.h"
+#include "McVillager.h"
 #include "McSign.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
@@ -185,6 +189,171 @@ namespace
 			}
 		}
 		return Items;
+	}
+
+	FMcNbt DoubleList(std::initializer_list<double> Values)
+	{
+		FMcNbt List = MakeTag(EType::List);
+		for (const double Value : Values)
+		{
+			List.Values.Add(Real(Value, EType::Double));
+		}
+		return List;
+	}
+
+	// A mob of a chunk's entity save (its own bytes, its trailer, and the mob riding it, as FMcEntityHost::SaveLive wrote them)
+	// as the game's entity NBT, the rider under Passengers. False for a kind this version doesn't have.
+	bool MakeMobNbt(const FString& Kind, TConstArrayView<uint8> Data, FMcNbt& Out)
+	{
+		const FMcMobType* Type = FMcMobType::Find(FName(*Kind));
+		if (!Type)
+		{
+			return false;
+		}
+		TUniquePtr<FMcMob> Mob;
+		if (Type->Name == FMcVillager::StaticType())
+		{
+			Mob = MakeUnique<FMcVillager>(*Type);
+		}
+		else if (Type->Name == FMcZombieVillager::StaticType())
+		{
+			Mob = MakeUnique<FMcZombieVillager>(*Type);
+		}
+		else
+		{
+			Mob = MakeUnique<FMcMob>(*Type);
+		}
+		FMemoryReaderView Reader(Data);
+		if (!Mob->Serialize(Reader))
+		{
+			return false;
+		}
+		Mob->LoadTrailer(Reader);
+		Out = MakeTag(EType::Compound);
+		Add(Out, TEXT("id"), Str(Kind));
+		Add(Out, TEXT("Pos"), DoubleList({ Mob->Body.Position.X, Mob->Body.Position.Y, Mob->Body.Position.Z }));
+		Add(Out, TEXT("Motion"), DoubleList({ Mob->Body.Velocity.X, Mob->Body.Velocity.Y, Mob->Body.Velocity.Z }));
+		FMcNbt Rotation = MakeTag(EType::List);
+		Rotation.Values.Add(Real(Mob->Yaw, EType::Float));
+		Rotation.Values.Add(Real(Mob->Pitch, EType::Float));
+		Add(Out, TEXT("Rotation"), MoveTemp(Rotation));
+		Add(Out, TEXT("OnGround"), Int(Mob->Body.bOnGround ? 1 : 0, EType::Byte));
+		Add(Out, TEXT("Health"), Real(Mob->Health, EType::Float));
+		Add(Out, TEXT("PersistenceRequired"), Int(1, EType::Byte));
+		if (Mob->bNoAI)
+		{
+			Add(Out, TEXT("NoAI"), Int(1, EType::Byte));
+		}
+		if (!Mob->CustomName.IsEmpty())
+		{
+			Add(Out, TEXT("CustomName"), Str(Mob->CustomName));
+		}
+		if (Mob->IsYoung())
+		{
+			// The zombies and piglins say IsBaby, the animals count their age up from a negative number.
+			if (Kind.Contains(TEXT("zombie")) || Kind.Contains(TEXT("husk")) || Kind.Contains(TEXT("drowned")) || Kind.Contains(TEXT("piglin")))
+			{
+				Add(Out, TEXT("IsBaby"), Int(1, EType::Byte));
+			}
+			else
+			{
+				Add(Out, TEXT("Age"), Int(-Mob->YoungTicks));
+			}
+		}
+		if (Type->bHops)
+		{
+			Add(Out, TEXT("Size"), Int(Mob->Size >= 4 ? 3 : Mob->Size - 1));
+		}
+		if (Kind == TEXT("minecraft:sheep") && Mob->DyeColor >= 0)
+		{
+			Add(Out, TEXT("Color"), Int(Mob->DyeColor, EType::Byte));
+		}
+		const auto Worn = [](FName Item)
+		{
+			FMcNbt Slot = MakeTag(EType::Compound);
+			Add(Slot, TEXT("id"), Str(Item.ToString()));
+			Add(Slot, TEXT("count"), Int(1));
+			return Slot;
+		};
+		FMcNbt Equipment = MakeTag(EType::Compound);
+		static const TCHAR* const Slots[4] = { TEXT("head"), TEXT("chest"), TEXT("legs"), TEXT("feet") };
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			if (!Mob->Armor[Index].IsNone())
+			{
+				Add(Equipment, Slots[Index], Worn(Mob->Armor[Index]));
+			}
+		}
+		if (!Mob->HeldItem.IsNone())
+		{
+			Add(Equipment, TEXT("mainhand"), Worn(Mob->HeldItem));
+		}
+		if (!Equipment.Keys.IsEmpty())
+		{
+			Add(Out, TEXT("equipment"), MoveTemp(Equipment));
+		}
+		int32 Riders = 0;
+		if (!Reader.AtEnd() && !Reader.IsError())
+		{
+			Reader << Riders;
+		}
+		if (Riders == 1 && !Reader.IsError())
+		{
+			FString RiderKind;
+			TArray<uint8> RiderData;
+			Reader << RiderKind << RiderData;
+			FMcNbt Rider;
+			if (!Reader.IsError() && MakeMobNbt(RiderKind, RiderData, Rider))
+			{
+				FMcNbt Passengers = MakeTag(EType::List);
+				Passengers.Values.Add(MoveTemp(Rider));
+				Add(Out, TEXT("Passengers"), MoveTemp(Passengers));
+			}
+		}
+		return true;
+	}
+
+	// The entities of one chunk's save (FMcEntityHost::CaptureChunk's bytes) that the game has a counterpart for: the mobs
+	// (riders nested under their mounts) and dropped items. The rest (vehicles, tnt, banners, frames) are left out.
+	FMcNbt EntitiesToNbt(TConstArrayView<uint8> Bytes)
+	{
+		FMcNbt List = MakeTag(EType::List);
+		FMemoryReaderView Reader(Bytes);
+		int32 Count = 0;
+		Reader << Count;
+		for (int32 Index = 0; Index < Count && !Reader.IsError(); ++Index)
+		{
+			FString Kind;
+			TArray<uint8> Data;
+			Reader << Kind << Data;
+			if (Reader.IsError())
+			{
+				break;
+			}
+			FMcNbt Entity;
+			if (Kind == FMcItemEntity::StaticType().ToString())
+			{
+				FMcItemEntity Item;
+				FMemoryReaderView ItemReader(Data);
+				if (!Item.Serialize(ItemReader))
+				{
+					continue;
+				}
+				Entity = MakeTag(EType::Compound);
+				Add(Entity, TEXT("id"), Str(Kind));
+				Add(Entity, TEXT("Pos"), DoubleList({ Item.Body.Position.X, Item.Body.Position.Y, Item.Body.Position.Z }));
+				Add(Entity, TEXT("Motion"), DoubleList({ Item.Body.Velocity.X, Item.Body.Velocity.Y, Item.Body.Velocity.Z }));
+				Add(Entity, TEXT("Item"), ItemToNbt(Item.Stack));
+				Add(Entity, TEXT("Age"), Int(Item.Age, EType::Short));
+				Add(Entity, TEXT("PickupDelay"), Int(Item.PickupDelay, EType::Short));
+			}
+			else if (!MakeMobNbt(Kind, Data, Entity))
+			{
+				continue;
+			}
+			List.Values.Add(MoveTemp(Entity));
+		}
+		return List;
 	}
 
 	FMcNbt MakeIntArray(const int32* Values, int32 Num)
@@ -650,6 +819,8 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 		RegionKeys.Sort([](const FIntPoint& A, const FIntPoint& B) { return A.Y != B.Y ? A.Y < B.Y : A.X < B.X; });
 		FMcBlockWorld World(Type);
 		TMap<FIntPoint, TBitArray<>> Held;
+		// The entities a held chunk's save kept, by chunk, for the entities folder.
+		TMap<FIntPoint, TArray<uint8>> EntityBytes;
 		const auto Hold = [&](FIntPoint Key)
 		{
 			if (Held.Contains(Key))
@@ -676,11 +847,16 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 				FMcChunkSaveExtras Extras;
 				if (Region.Read(Pos, Payload) && McChunkSave::Decode(Payload, *Chunk, Extras))
 				{
+					if (!Extras.Entities.IsEmpty())
+					{
+						EntityBytes.Add(Pos, MoveTemp(Extras.Entities));
+					}
 					World.AddChunk(MoveTemp(Chunk));
 				}
 			}
 		};
 		const double Started = FPlatformTime::Seconds();
+		int32 RegionsHere = 0;
 		for (const FIntPoint& Key : RegionKeys)
 		{
 			for (int32 DZ = -1; DZ <= 1; ++DZ)
@@ -697,6 +873,7 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 					for (int32 Index = 0; Index < It.Value().Num(); ++Index)
 					{
 						World.RemoveChunk(FIntPoint(It.Key().X * 32 + Index % 32, It.Key().Y * 32 + Index / 32));
+						EntityBytes.Remove(FIntPoint(It.Key().X * 32 + Index % 32, It.Key().Y * 32 + Index / 32));
 					}
 					It.RemoveCurrent();
 				}
@@ -752,12 +929,50 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 				return false;
 			}
 			++OutStats.Regions;
+			// Progress, so a long export shows whether time per chunk grows with the chunk count.
+			UE_LOG(LogTemp, Display, TEXT("JavaExport progress: %s region %d of %d (this dimension), %d chunks so far in all, %.1f s (%.1f s lighting in all)"),
+				Dimension, ++RegionsHere, RegionKeys.Num(), OutStats.Chunks, FPlatformTime::Seconds() - Started, OutStats.LightSeconds);
+			// What lives in the region's chunks, in entities/ beside region/ (as the game keeps them).
+			TMap<FIntPoint, TArray<uint8>> EntityChunks;
+			for (int32 Index = 0; Index < Present.Num(); ++Index)
+			{
+				const FIntPoint Pos(Key.X * 32 + Index % 32, Key.Y * 32 + Index / 32);
+				const TArray<uint8>* Saved = Present[Index] ? EntityBytes.Find(Pos) : nullptr;
+				if (!Saved)
+				{
+					continue;
+				}
+				FMcNbt List = EntitiesToNbt(*Saved);
+				if (List.Values.IsEmpty())
+				{
+					continue;
+				}
+				FMcNbt EntityRoot = MakeTag(EType::Compound);
+				Add(EntityRoot, TEXT("DataVersion"), Int(DataVersion));
+				FMcNbt Position = MakeTag(EType::IntArray);
+				Position.Values = { Int(Pos.X), Int(Pos.Y) };
+				Add(EntityRoot, TEXT("Position"), MoveTemp(Position));
+				Add(EntityRoot, TEXT("entities"), MoveTemp(List));
+				TArray<uint8> EntityNbt;
+				EntityRoot.WriteRoot(EntityNbt);
+				EntityChunks.Add(Pos, MoveTemp(EntityNbt));
+				++OutStats.EntityChunks;
+			}
+			if (!EntityChunks.IsEmpty())
+			{
+				TArray<uint8> EntityFile;
+				MakeRegion(EntityChunks, EntityFile);
+				const FString EntityTarget = FPaths::GetPath(Target) / TEXT("entities");
+				Files.MakeDirectory(*EntityTarget, true);
+				FFileHelper::SaveArrayToFile(EntityFile, *(EntityTarget / FString::Printf(TEXT("r.%d.%d.mca"), Key.X, Key.Y)));
+			}
 		}
 		OutStats.Seconds += FPlatformTime::Seconds() - Started;
 	}
 	// level.dat, gzip-compressed, in the current layout.
 	FMcNbt Data = MakeTag(EType::Compound);
-	Add(Data, TEXT("LevelName"), Str(Level.Name));
+	// A world with no name of its own (one made by a command line) is named after its folder, as the game names a world after its folder.
+	Add(Data, TEXT("LevelName"), Str(Level.Name.IsEmpty() ? FPaths::GetCleanFilename(WorldDir) : Level.Name));
 	Add(Data, TEXT("DataVersion"), Int(DataVersion));
 	FMcNbt Version = MakeTag(EType::Compound);
 	Add(Version, TEXT("Id"), Int(DataVersion));
@@ -851,5 +1066,20 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	}
 	const FString DataFolder = OutFolder / TEXT("data") / TEXT("minecraft");
 	Files.MakeDirectory(*DataFolder, true);
-	return FFileHelper::SaveArrayToFile(GenZipped, *(DataFolder / TEXT("world_gen_settings.dat")));
+	if (!FFileHelper::SaveArrayToFile(GenZipped, *(DataFolder / TEXT("world_gen_settings.dat"))))
+	{
+		return false;
+	}
+	// data/minecraft/world_clocks.dat: the time of day lives here in 26.3 (observed in the ref save: the overworld's total_ticks,
+	// 77000 there), not in level.dat. The End's clock is left for the game to start.
+	FMcNbt Clock = MakeTag(EType::Compound);
+	Add(Clock, TEXT("total_ticks"), Int(static_cast<int64>(Level.DayTime), EType::Long));
+	FMcNbt Clocks = MakeTag(EType::Compound);
+	Add(Clocks, TEXT("minecraft:overworld"), MoveTemp(Clock));
+	FMcNbt ClockRoot = MakeTag(EType::Compound);
+	Add(ClockRoot, TEXT("data"), MoveTemp(Clocks));
+	Add(ClockRoot, TEXT("DataVersion"), Int(DataVersion));
+	TArray<uint8> ClockRaw, ClockZipped;
+	ClockRoot.WriteRoot(ClockRaw);
+	return Compress(NAME_Gzip, ClockRaw, ClockZipped) && FFileHelper::SaveArrayToFile(ClockZipped, *(DataFolder / TEXT("world_clocks.dat")));
 }

@@ -405,7 +405,26 @@ TSharedPtr<const FMcPlacedFeature> FMcFeatureLibrary::ParsePlaced(const TSharedP
 
 	TSharedRef<FMcPlacedFeature> Result = MakeShared<FMcPlacedFeature>();
 	Result->Id = Id;
+	Result->StatId = Id;
 	Result->Feature = ParseFeature(Object->TryGetField(TEXT("feature")));
+	if (Id.IsEmpty())
+	{
+		const TSharedPtr<FJsonObject>* FeatureObject = nullptr;
+		if (Object->TryGetObjectField(TEXT("feature"), FeatureObject) && FeatureObject)
+		{
+			Result->StatId = TEXT("inline ") + (*FeatureObject)->GetStringField(TEXT("type"));
+			const TArray<TSharedPtr<FJsonValue>>* Layers = nullptr;
+			if ((*FeatureObject)->TryGetArrayField(TEXT("layers"), Layers) && Layers->Num() > 0 && (*Layers)[0]->AsObject().IsValid())
+			{
+				const TSharedPtr<FJsonObject>* Provider = nullptr;
+				FString Block;
+				if ((*Layers)[0]->AsObject()->TryGetObjectField(TEXT("provider"), Provider) && (*Provider)->TryGetStringField(TEXT("id"), Block))
+				{
+					Result->StatId += TEXT(" ") + Block;
+				}
+			}
+		}
+	}
 	bool bValid = Result->Feature.IsValid();
 	const TArray<TSharedPtr<FJsonValue>>* Modifiers;
 	if (bValid && Object->TryGetArrayField(TEXT("placement"), Modifiers))
@@ -808,10 +827,10 @@ bool FMcPlacedFeature::Place(FMcFeatureContext& Context, const FIntVector& Origi
 	{
 		const bool bThis = Feature->Place(Context, Pos);
 		bPlaced |= bThis;
-		if (bMcFeatureStatsOn && !Id.IsEmpty())
+		if (bMcFeatureStatsOn && !StatId.IsEmpty())
 		{
 			FScopeLock Lock(&McFeatureStatsLock);
-			TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(Id, TPair<int64, int64>(0, 0));
+			TPair<int64, int64>& Stat = McFeatureStats.FindOrAdd(StatId, TPair<int64, int64>(0, 0));
 			Stat.Key++;
 			Stat.Value += bThis ? 1 : 0;
 		}

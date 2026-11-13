@@ -648,6 +648,10 @@ namespace
 				Mob->MakeBaby();
 			}
 			Mob->bNoAI = Entity.GetInt(TEXT("NoAI")) != 0;
+			if (FMcMob::CanBeBabyZombie(Type->Name) && Entity.GetInt(TEXT("IsBaby")) != 0)
+			{
+				Mob->SetYoung(FMcMob::BabyForever);
+			}
 			if (Type->Name == FName(TEXT("minecraft:sheep")) && Entity.Find(TEXT("Color")))
 			{
 				Mob->DyeColor = FMath::Clamp(static_cast<int32>(Entity.GetInt(TEXT("Color"))), 0, 15);
@@ -732,6 +736,27 @@ namespace
 		{
 			// What a world's host keeps after a mob's own bytes (youth, flags, dye, name, gear).
 			LiveMob->SaveTrailer(DataWriter);
+			// The mob that sits on it (Passengers, the way the game keeps a chicken jockey's zombie), nested the way the host saves one.
+			int32 Riders = 0;
+			FString RiderType;
+			TArray<uint8> RiderData;
+			if (const FMcNbt* Passengers = FindList(Entity, TEXT("Passengers")))
+			{
+				for (const FMcNbt& Passenger : Passengers->Values)
+				{
+					if (FMcMobType::Find(FName(*Passenger.GetString(TEXT("id")))) && MakeLive(Passenger, RiderType, RiderData))
+					{
+						Riders = 1;
+						break;
+					}
+					RiderData.Reset();
+				}
+			}
+			DataWriter << Riders;
+			if (Riders == 1)
+			{
+				DataWriter << RiderType << RiderData;
+			}
 		}
 		return true;
 	}
@@ -1358,6 +1383,17 @@ bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 	OutLevel.Name = Data->GetString(TEXT("LevelName"));
 	OutLevel.GameMode = Data->GetInt(TEXT("GameType")) == 1 ? TEXT("creative") : TEXT("survival");
 	OutLevel.DayTime = static_cast<double>(Data->GetInt(TEXT("DayTime"), Data->GetInt(TEXT("Time"))));
+	// 26.3 keeps the time of day in data/minecraft/world_clocks.dat (the overworld's total_ticks), not in level.dat.
+	FMcNbt Clocks;
+	if (FMcNbt::LoadFile(Folder / TEXT("data") / TEXT("minecraft") / TEXT("world_clocks.dat"), Clocks))
+	{
+		const FMcNbt* ClockData = Clocks.Find(TEXT("data"));
+		const FMcNbt* Overworld = ClockData ? ClockData->Find(TEXT("minecraft:overworld")) : nullptr;
+		if (Overworld && Overworld->Find(TEXT("total_ticks")))
+		{
+			OutLevel.DayTime = static_cast<double>(Overworld->GetInt(TEXT("total_ticks")));
+		}
+	}
 	// The spawn: a `spawn` compound with a `pos` int array, or the older SpawnX, SpawnY and SpawnZ.
 	if (const FMcNbt* Spawn = Data->Find(TEXT("spawn")))
 	{

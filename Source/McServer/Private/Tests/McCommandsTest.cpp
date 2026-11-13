@@ -1,5 +1,6 @@
 #include "McCommands.h"
 #include "McLang.h"
+#include "McRecipe.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -649,6 +650,18 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	Target.WorldFolder.Reset();
 	TestEqual(TEXT("data bad snbt"), First(TEXT("data merge storage test:a {x:")), FString(TEXT("Expected a valid unquoted string")));
 	TestEqual(TEXT("data nobody"), First(TEXT("data get entity Nobody")), FString(TEXT("No entity was found")));
+	// Measured against the game: /recipe.
+	FMcRecipeBook::Get().EnsureLoaded();
+	TestEqual(TEXT("recipe give"), First(TEXT("recipe give Steve minecraft:stick")), FString(TEXT("Unlocked 1 recipe(s) for Steve")));
+	TestEqual(TEXT("recipe again"), First(TEXT("recipe give Steve minecraft:stick")), FString(TEXT("No new recipes were learned")));
+	TestEqual(TEXT("recipe take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("Took 1 recipe(s) from Steve")));
+	TestEqual(TEXT("recipe nothing to take"), First(TEXT("recipe take Steve minecraft:stick")), FString(TEXT("No recipes could be forgotten")));
+	TestEqual(TEXT("recipe unknown"), First(TEXT("recipe give Steve minecraft:nonexistent_thing")), FString(TEXT("Unknown recipe: minecraft:nonexistent_thing")));
+	// Measured against the game: /place.
+	TestEqual(TEXT("place in a world without features"), First(TEXT("place feature minecraft:oak 0 70 0")), FString(TEXT("Failed to place feature")));
+	// Measured against the game: /ride.
+	TestEqual(TEXT("ride players"), First(TEXT("ride Steve mount Steve")), FString(TEXT("Players can't be ridden")));
+	TestEqual(TEXT("ride not riding"), First(TEXT("ride Steve dismount")), FString(TEXT("Steve is not riding any vehicle")));
 	// Measured against the game: /attribute.
 	TestEqual(TEXT("attr get"), First(TEXT("attribute Steve minecraft:max_health get")), FString(TEXT("The value of attribute Max Health for entity Steve is 20.0")));
 	TestEqual(TEXT("attr set"), First(TEXT("attribute Steve minecraft:max_health base set 30")), FString(TEXT("The base value for attribute Max Health for entity Steve set to 30.0")));
@@ -664,6 +677,7 @@ bool FMcTitleCommandsTest::RunTest(const FString& Parameters)
 	// Measured against the game: /loot.
 	TestEqual(TEXT("loot unknown"), First(TEXT("loot give Steve loot minecraft:nonsense")), FString(TEXT("Can't find element 'minecraft:nonsense' in registry 'minecraft:loot_table'")));
 	TestTrue(TEXT("loot dropped"), First(TEXT("loot give Steve loot minecraft:chests/simple_dungeon")).StartsWith(TEXT("Dropped ")));
+	TestEqual(TEXT("loot kill player"), First(TEXT("loot give Steve kill Steve")), FString(TEXT("Dropped 0 items from loot table minecraft:entities/player")));
 	// Measured against the game: /item.
 	TestEqual(TEXT("item replace"), First(TEXT("item replace entity Steve weapon.mainhand with minecraft:diamond 5")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond]")));
 	TestEqual(TEXT("item hotbar"), First(TEXT("item replace entity Steve hotbar.1 with minecraft:diamond_sword")), FString(TEXT("Replaced 1 slot(s) on Steve with [Diamond Sword]")));

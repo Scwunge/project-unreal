@@ -1,5 +1,6 @@
 # Development: M_McVolumeClouds as a duplicate of the engine's simple volumetric cloud material with only its extinction
 # (the pin behind the density) replaced by our mask-driven density; the other three pins keep the engine's graph.
+import os
 import unreal
 
 mel = unreal.MaterialEditingLibrary
@@ -52,6 +53,10 @@ float n = 0.5 + 0.25 * sin(Pos.x * 0.0021 + Time * 0.03) * sin(Pos.y * 0.0027 - 
 float d = saturate(cover * profile * (0.55 + 0.9 * n) - (1.0 - cover) * 0.5);
 return d * Dens * (1.0 + Storm);
 """
+if os.environ.get("MC_CLOUD_CONST"):
+    # Placement test: constant density, no mask, no height profile. Clouds everywhere (or nowhere) in the layer tells the
+    # layer's placement apart from the mask / world-position mapping. Run with MC_CLOUD_CONST=1; Density parameter = level.
+    code = "return Dens;"
 density = custom(0, "McCloudDensity", code, {
     "MaskTex": (mask, ""), "Drift": (scalar("DriftX", 0.0, 300), ""), "Bottom": (scalar("BottomZ", 19200.0, 360), ""),
     "Thick": (scalar("ThickZ", 2000.0, 420), ""), "Pos": (position, ""), "Time": (time, ""),

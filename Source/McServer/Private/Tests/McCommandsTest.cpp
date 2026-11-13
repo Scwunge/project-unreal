@@ -176,6 +176,26 @@ namespace
 			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
 			return true;
 		}
+		TSet<FString> Recipes;
+		virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) override
+		{
+			if (Id != TEXT("*") && Id != TEXT("minecraft:stick"))
+			{
+				OutUnknown = Id;
+				return -1;
+			}
+			const FString Key = Player + TEXT("/minecraft:stick");
+			if (bGrant)
+			{
+				if (Recipes.Contains(Key))
+				{
+					return 0;
+				}
+				Recipes.Add(Key);
+				return 1;
+			}
+			return Recipes.Remove(Key);
+		}
 		TSet<FString> Advancements;
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
 		{
@@ -464,6 +484,13 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("already made"), AnyError(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("revoke"), Joined(McCommands::HandleChat(TEXT("/advancement revoke Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Revoked the advancement [Stone Age] from Steve")));
 	TestTrue(TEXT("unknown"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/nothing"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown advancement")));
+
+	// /recipe
+	TestTrue(TEXT("recipe give"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unlocked 1 recipe(s) for Steve")));
+	TestTrue(TEXT("recipe give again"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("No new recipes were learned")));
+	TestTrue(TEXT("recipe take"), Joined(McCommands::HandleChat(TEXT("/recipe take Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("Took 1 recipe(s) from Steve")));
+	TestTrue(TEXT("recipe take again"), Joined(McCommands::HandleChat(TEXT("/recipe take Steve *"), Op(TEXT("Steve")), Target)).Contains(TEXT("No recipes could be forgotten")));
+	TestTrue(TEXT("recipe unknown"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:bogus_recipe"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown recipe: minecraft:bogus_recipe")));
 	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
 	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
 	Target.HeldItem = TEXT("minecraft:diamond_sword");

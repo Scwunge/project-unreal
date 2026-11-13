@@ -23,6 +23,8 @@ public:
 	void Refresh();
 	// Called when a result is taken: the recipe's id and what came out (the server counts it and tells the advancements).
 	TFunction<void(FName Recipe, const FMcItemStack& Result)> OnCrafted;
+	// If set and it says no to a recipe (limited crafting: the player has not unlocked it), the grid shows no result for it.
+	TFunction<bool(FName Recipe)> MayCraft;
 
 protected:
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override { return Slot != 0; }

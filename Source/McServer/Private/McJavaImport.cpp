@@ -1336,6 +1336,32 @@ bool McJavaImport::ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out)
 		}
 	}
 	AddItems(FindList(Root, TEXT("EnderItems")), 200, false);
+	// The recipe book: the unlocked recipes (value 1), those among them not yet shown (value 2). Exact keys, as the lookup
+	// is case-insensitive.
+	if (const FMcNbt* Book = Root.Find(TEXT("recipeBook")))
+	{
+		const FMcNbt* Unlocked = FindList(*Book, TEXT("recipes"));
+		const FMcNbt* Display = FindList(*Book, TEXT("toBeDisplayed"));
+		TSet<FString> Pending;
+		if (Display)
+		{
+			for (const FMcNbt& Entry : Display->Values)
+			{
+				Pending.Add(Entry.String);
+			}
+		}
+		if (Unlocked)
+		{
+			for (const FMcNbt& Entry : Unlocked->Values)
+			{
+				const FString Id = Entry.String;
+				if (!Id.IsEmpty())
+				{
+					Out.Stats.Add(TEXT("recipe:") + Id, Pending.Contains(Id) ? 2.0 : 1.0);
+				}
+			}
+		}
+	}
 	return true;
 }
 

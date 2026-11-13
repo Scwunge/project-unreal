@@ -122,6 +122,9 @@ public:
 	// Grants or revokes an advancement for a player (showing its toast on a grant): -1 if there is no such advancement,
 	// 0 if it changed nothing (already had it, or hadn't), 1 if it did. OutTitle is its name as the game's replies show it.
 	virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) { return -1; }
+	// Recipe book: gives (bGrant) or takes a recipe ("minecraft:stick") or every one ("*") of a player; how many changed.
+	// -1 if there is no such recipe, OutUnknown being the id as the reply shows it.
+	virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) { return -1; }
 	// Takes one (every one, if None) from the player; how many there were.
 	virtual int32 ClearEffects(const FString& Player, FName Effect) = 0;
 

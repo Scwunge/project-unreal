@@ -26,6 +26,8 @@ struct MCCORE_API FMcGameRules
 	int32 RandomTickSpeed = 3;
 	// Off, spawners stand still: their wait holds and nothing comes out (the mob inside still turns on the client).
 	bool bSpawnerBlocksWork = true;
+	// On, a recipe can be crafted only once it is in the player's recipe book.
+	bool bLimitedCrafting = false;
 
 	bool IsPeaceful() const { return Difficulty <= 0; }
 

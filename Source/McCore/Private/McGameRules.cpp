@@ -44,6 +44,7 @@ FMcGameRules FMcGameRules::FromLevel(const TMap<FString, FString>& Rules, int32 
 	Result.bDrowningDamage = GetBool(Rules, TEXT("drowningDamage"), Result.bDrowningDamage);
 	Result.bDoWeatherCycle = GetBool(Rules, TEXT("doWeatherCycle"), Result.bDoWeatherCycle);
 	Result.bSpawnerBlocksWork = GetBool(Rules, TEXT("spawnerBlocksWork"), Result.bSpawnerBlocksWork);
+	Result.bLimitedCrafting = GetBool(Rules, TEXT("limited_crafting"), GetBool(Rules, TEXT("doLimitedCrafting"), Result.bLimitedCrafting));
 	Result.RandomTickSpeed = FMath::Max(0, GetInt(Rules, TEXT("randomTickSpeed"), Result.RandomTickSpeed));
 	return Result;
 }

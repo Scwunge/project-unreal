@@ -53,6 +53,7 @@ namespace
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
 		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
 		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
+		{ TEXT("recipe"), 2, TEXT("/recipe (give|take) <targets> (*|<recipe>)") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
@@ -2689,6 +2690,40 @@ namespace
 			Changed > 0 ? TEXT("success") : TEXT("failure"));
 		const FString Text = McLang::Format(Key, { Title, Who });
 		return { Changed > 0 ? Ok(Text) : Fail(Text) };
+	}
+
+	FReplies RunRecipe(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /recipe (give|take) <targets> (*|<recipe>)
+		if (Words.Num() != 4 || (Words[1] != TEXT("give") && Words[1] != TEXT("take")))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGrant = Words[1] == TEXT("give");
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			FString Unknown;
+			const int32 Result = Target.SetRecipes(Player, Words[3], bGrant, Unknown);
+			if (Result < 0)
+			{
+				return { Fail(McLang::Format(TEXT("recipe.notFound"), { Unknown })) };
+			}
+			Changed += Result;
+		}
+		const bool bSingle = Players.Num() == 1;
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bGrant ? TEXT("commands.recipe.give.failed") : TEXT("commands.recipe.take.failed"))) };
+		}
+		const FString Key = FString::Printf(TEXT("commands.recipe.%s.success.%s"), bGrant ? TEXT("give") : TEXT("take"), bSingle ? TEXT("single") : TEXT("multiple"));
+		return { Ok(McLang::Format(Key, { FString::FromInt(Changed), bSingle ? Players[0] : FString::FromInt(Players.Num()) })) };
 	}
 
 	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -5505,6 +5540,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("advancement"))
 	{
 		return RunAdvancement(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("recipe"))
+	{
+		return RunRecipe(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("effect"))
 	{

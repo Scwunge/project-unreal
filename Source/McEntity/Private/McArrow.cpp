@@ -1,6 +1,7 @@
 #include "McArrow.h"
 #include "McBlockShapes.h"
 #include "McBlockWorld.h"
+#include "McBlockRegistry.h"
 #include "McEntityManager.h"
 #include "McMob.h"
 
@@ -45,6 +46,10 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 		const FIntVector Cell(FMath::FloorToInt32(Next.X), FMath::FloorToInt32(Next.Y), FMath::FloorToInt32(Next.Z));
 		if (!World.HasChunk(FIntPoint(Cell.X >> 4, Cell.Z >> 4)))
 		{
+			if (PlayerBase > 0.0f)
+			{
+				UE_LOG(LogTemp, Display, TEXT("player arrow gone: no chunk at %.1f %.1f %.1f"), Next.X, Next.Y, Next.Z);
+			}
 			bRemoved = true;
 			return;
 		}
@@ -55,6 +60,10 @@ void FMcArrowEntity::Tick(FMcEntityManager& Manager)
 			if (Box.IsInside(Local))
 			{
 				bStuck = true;
+				if (PlayerBase > 0.0f)
+				{
+					UE_LOG(LogTemp, Display, TEXT("player arrow stuck in %s at %.1f %.1f %.1f"), *FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString(), Next.X, Next.Y, Next.Z);
+				}
 				Manager.GameEvent(FName("projectile_land"), Next);
 				if (Manager.OnArrowHit)
 				{

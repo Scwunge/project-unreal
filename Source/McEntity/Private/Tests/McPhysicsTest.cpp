@@ -266,6 +266,21 @@ bool FMcPhysicsTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("not in lava"), Body.bInLava);
 		TestEqual(TEXT("sinks slowly"), Body.Position.Y, 2.87, 0.03);
 
+		// Depth Strider (ench_log5, vanilla boots on the ground in water, walking forward for 40 ticks): 3.55, 6.01, 7.38, 8.28 blocks.
+		{
+			const double Vanilla[4] = { 3.55, 6.01, 7.38, 8.28 };
+			for (int32 Level = 0; Level < 4; ++Level)
+			{
+				FMcMoveInput StriderInput;
+				StriderInput.Forward = 1.0f;
+				StriderInput.WaterEfficiency = Level / 3.0f;
+				FMcBody Strider;
+				Strider.Position = FVector(13.5, 1.0, 0.5);
+				Run(Strider, StriderInput, 40);
+				TestEqual(*FString::Printf(TEXT("depth strider %d: distance walked"), Level), Strider.Position.Z - 0.5, Vanilla[Level], 0.3);
+			}
+		}
+
 		// Space swims up.
 		FMcMoveInput SwimInput;
 		SwimInput.bJump = true;

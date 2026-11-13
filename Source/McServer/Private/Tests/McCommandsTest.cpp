@@ -437,16 +437,16 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("hollow empties the middle"), Target.GetBlock(FIntVector(1, 6, 1), Got) && Registry.IsAir(Got));
 		TestTrue(TEXT("fill replace a filter"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 dirt replace stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("26")));
 		TestTrue(TEXT("fill too big"), AnyError(McCommands::HandleChat(TEXT("/fill 0 0 0 200 15 200 dirt"), Op(TEXT("Steve")), Target)));
-		McCommands::HandleChat(TEXT("/gamerule commandModificationBlockLimit 8"), Op(TEXT("Steve")), Target);
+		McCommands::HandleChat(TEXT("/gamerule max_block_modifications 8"), Op(TEXT("Steve")), Target);
 		TestTrue(TEXT("the limit is the rule's"), AnyError(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone"), Op(TEXT("Steve")), Target)));
 		(void)Dirt;
 	}
 
 	// /gamerule
-	TestTrue(TEXT("gamerule query"), Joined(McCommands::HandleChat(TEXT("/gamerule keepInventory"), Op(TEXT("Steve")), Target)).Contains(TEXT("false")));
-	TestFalse(TEXT("gamerule set"), AnyError(McCommands::HandleChat(TEXT("/gamerule keepInventory true"), Op(TEXT("Steve")), Target)));
-	TestEqual(TEXT("gamerule kept"), Target.GetGameRule(TEXT("keepInventory")), FString(TEXT("true")));
-	TestTrue(TEXT("gamerule wrong type"), AnyError(McCommands::HandleChat(TEXT("/gamerule randomTickSpeed fast"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("gamerule query"), Joined(McCommands::HandleChat(TEXT("/gamerule keep_inventory"), Op(TEXT("Steve")), Target)).Contains(TEXT("false")));
+	TestFalse(TEXT("gamerule set"), AnyError(McCommands::HandleChat(TEXT("/gamerule keep_inventory true"), Op(TEXT("Steve")), Target)));
+	TestEqual(TEXT("gamerule kept"), Target.GetGameRule(TEXT("keep_inventory")), FString(TEXT("true")));
+	TestTrue(TEXT("gamerule wrong type"), AnyError(McCommands::HandleChat(TEXT("/gamerule random_tick_speed fast"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("gamerule unknown"), AnyError(McCommands::HandleChat(TEXT("/gamerule flying true"), Op(TEXT("Steve")), Target)));
 
 	// /difficulty and /summon

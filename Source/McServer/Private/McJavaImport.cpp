@@ -1,4 +1,5 @@
 #include "McJavaImport.h"
+#include "McGameRules.h"
 #include "HAL/FileManager.h"
 #include "McBiomeRegistry.h"
 #include "McBannerEntity.h"
@@ -1483,6 +1484,7 @@ bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 				OutLevel.GameRules.Add(Key, Value.Type == FMcNbt::EType::String ? Value.String
 					: Value.Type == FMcNbt::EType::Byte ? (Value.Integer ? TEXT("true") : TEXT("false")) : FString::Printf(TEXT("%lld"), Value.Integer));
 			}
+			FMcGameRules::MigrateLegacyNames(OutLevel.GameRules);
 		}
 	}
 	return true;

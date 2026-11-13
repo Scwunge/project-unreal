@@ -1266,7 +1266,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			}
 		}), 0.5f, true);
 	}
-	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
+	// Game rules: { "rules": { "spawner_blocks_work": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
 	{
@@ -1474,7 +1474,7 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			return;
 		}
-		// With keepInventory what they carried, and their experience, goes with them to the new body.
+		// With keep_inventory what they carried, and their experience, goes with them to the new body.
 		TArray<FMcItemStack> Kept[3];
 		int32 KeptLevel = 0;
 		float KeptProgress = 0.0f;

@@ -31,6 +31,11 @@ struct MCCORE_API FMcGameRules
 
 	bool IsPeaceful() const { return Difficulty <= 0; }
 
+	// Worlds the port saved before 26.3's names were used keep their rules under the older camelCase names. This renames
+	// them in place (doDaylightCycle becomes advance_time), flips the three that changed their sense (disableRaids is
+	// raids, the other way round) and drops those vanilla no longer has (spawnChunkRadius). Names already new are kept.
+	static void MigrateLegacyNames(TMap<FString, FString>& Rules);
+
 	// The rules a level's text map holds, with the defaults for the rest.
 	static FMcGameRules FromLevel(const TMap<FString, FString>& Rules, int32 InDifficulty);
 

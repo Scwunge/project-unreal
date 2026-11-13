@@ -45,6 +45,8 @@ public:
 
 	// Bulk writes (bSync false) keep the file open between chunks; this lets it go.
 	void CloseWriter();
+	// Milliseconds spent in each step of Write by every region file since the last call (for the save log), then zeroed.
+	static FString TakeWriteSteps();
 
 	const FString& GetPath() const { return Path; }
 

@@ -1,4 +1,5 @@
 #include "McEntityModel.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "McRenderMode.h"
@@ -21,6 +22,9 @@
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 #include "McPerf.h"
+
+static TAutoConsoleVariable<bool> CVarMcModelsSkipUnseen(TEXT("mc.Models.SkipUnseen"), true,
+	TEXT("Mobs the camera has not drawn in the last quarter second keep their last mesh instead of building it again each frame."));
 
 namespace McEntityModel
 {
@@ -4103,6 +4107,7 @@ bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	MC_PERF_SCOPE(Models);
+	MC_PERF_SCOPE(ModelsEntity);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber || bIsFalling) && bItemFailed))
@@ -4564,7 +4569,24 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	{
 		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
 	}
-	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
+	// A mob the camera has not drawn lately keeps its last mesh: the pose above still moves on, and the mesh is posed
+	// again on the first frame it is drawn. Building and handing over every mob's mesh every frame was the biggest
+	// part of the game thread (197 mobs, 5.8-9.1 ms on the 4060, 13 Nov).
+	const bool bUnseen = NumSections > 0 && CVarMcModelsSkipUnseen.GetValueOnGameThread() && !WasRecentlyRendered(0.25f);
+	{
+		// Counted per frame for the recorder: the previous frame's totals are published when a new frame starts.
+		static uint64 CountedFrame = 0;
+		static int64 Posed = 0, Kept = 0;
+		if (CountedFrame != GFrameCounter)
+		{
+			McPerf::SetCounter(EMcPerfCounter::ModelsPosed, Posed);
+			McPerf::SetCounter(EMcPerfCounter::ModelsKept, Kept);
+			CountedFrame = GFrameCounter;
+			Posed = Kept = 0;
+		}
+		++(bUnseen ? Kept : Posed);
+	}
+	for (int32 Layer = 0; Layer < (bUnseen ? 0 : NumLayers); ++Layer)
 	{
 		if (Model->bComposite && Layer != 0 && Layer != Model->HeldLayer)
 		{
@@ -4605,7 +4627,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	if (Model->MaskLayer != INDEX_NONE)
+	if (Model->MaskLayer != INDEX_NONE && !bUnseen)
 	{
 		if (!Mask)
 		{
@@ -4631,7 +4653,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			Mask->UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	else if (Mask)
+	else if (Mask && Model->MaskLayer == INDEX_NONE)
 	{
 		Mask->DestroyComponent();
 		Mask = nullptr;

@@ -38,6 +38,9 @@ enum class EMcPerfScope : uint8
 	Ctrl,        // the player controller's tick (the harness script, music, view sync)
 	Audio,       // the audio subsystem
 	Misc,        // chunk stream component, block use and travel subsystems
+	ModelsEntity,// the entity model components, part of models
+	ModelsPlayer,// the player model components, part of models
+	ModelsHand,  // the first-person hand, part of models
 	Count
 };
 
@@ -56,6 +59,8 @@ enum class EMcPerfCounter : uint8
 	KeptKVerts,  // vertices (thousands) kept again for re-sorting glass and ice
 	UObjects,    // live UObjects, which a leak of actors or components would show in
 	Streaming,   // 0 once the world has every chunk these players need
+	ModelsPosed, // mob models built again on the last frame
+	ModelsKept,  // mob models left as they were on the last frame (not drawn lately)
 	Count
 };
 

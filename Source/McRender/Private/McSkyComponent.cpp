@@ -119,6 +119,17 @@ namespace
 }
 
 static float GCameraOpen = 1.0f;
+static FVector GShadowLightTowards = FVector::ZeroVector;
+
+FVector McSky::GetShadowLightTowards()
+{
+	return GShadowLightTowards;
+}
+
+void McSky::SetShadowLightTowards(const FVector& Towards)
+{
+	GShadowLightTowards = Towards;
+}
 
 float McSky::GetCameraOpen()
 {
@@ -492,6 +503,10 @@ void UMcSkyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	{
 		UpdateSunLight(Ticks);
 	}
+	else
+	{
+		McSky::SetShadowLightTowards(FVector::ZeroVector);
+	}
 }
 
 void UMcSkyComponent::BuildEnhanced()
@@ -754,6 +769,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 		// everywhere, as the Nether's glow does), the fog lit from inside by the lava's colour, and the blocks' own light.
 		const bool bNether = Mode == EMode::Nether;
 		SunLight->SetWorldRotation(FRotator(-65.0f, 40.0f, 0.0f));
+		McSky::SetShadowLightTowards(FVector::ZeroVector);
 		// The fills' colours are the dimension types' own: the Nether's ambient_light_color (#302821, scaled up to full
 		// brightness and warmed towards the lava) and the End's sky_light_color (#ac60cd).
 		float Fill = bNether ? NetherFillLux : EndFillLux;
@@ -827,6 +843,7 @@ void UMcSkyComponent::UpdateSunLight(double Ticks)
 	const bool bSun = Day > 0.0f;
 	const FVector Towards = bSun ? ToSun : ToMoon;
 	SunLight->SetWorldRotation((-Towards).Rotation());
+	McSky::SetShadowLightTowards(SunLight->IsVisible() && SunLight->CastShadows ? Towards.GetSafeNormal() : FVector::ZeroVector);
 	if (bSun)
 	{
 		// Low, the sun is orange; high, nearly white.

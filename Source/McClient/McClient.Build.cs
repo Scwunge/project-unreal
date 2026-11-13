@@ -10,7 +10,7 @@ public class McClient : ModuleRules
 
 		if (Target.Type != TargetType.Server)
 		{
-			PrivateDependencyModuleNames.AddRange(new string[] { "McAssets", "McRender", "McUI", "McAudio", "RenderCore", "RHI" });
+			PrivateDependencyModuleNames.AddRange(new string[] { "McAssets", "McRender", "McUI", "McAudio", "RenderCore", "RHI", "MoviePlayer", "Slate", "SlateCore" });
 			PrivateDefinitions.Add("MC_WITH_RENDER=1");
 		}
 		else

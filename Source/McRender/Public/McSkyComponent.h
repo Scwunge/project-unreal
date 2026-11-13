@@ -40,6 +40,12 @@ namespace McSky
 	MCRENDER_API float GetCameraUnderwater();
 	MCRENDER_API void SetCameraUnderwater(float Under);
 
+	// The direction towards the light that casts the world's dynamic shadows now (Unreal Mode's sun or moon in the
+	// Overworld; Unreal units, unit length), or zero when nothing casts them (vanilla look, Nether, End). Mob models use it
+	// to keep posing a mob that is off screen but whose shadow may be on screen.
+	MCRENDER_API FVector GetShadowLightTowards();
+	MCRENDER_API void SetShadowLightTowards(const FVector& Towards);
+
 	// The vanilla cloud layer for Unreal Mode's volumetric clouds, from the cloud component: the pattern as a texture
 	// (one texel per 12 block cell, alpha 255 where there is cloud), how far (blocks) it has drifted west, and the layer's
 	// height in blocks. A null mask (no clouds in this dimension, or no pattern) leaves the engine's own clouds.

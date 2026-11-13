@@ -1,4 +1,5 @@
 #include "McRegionFile.h"
+#include <atomic>
 #include "McServer.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
@@ -7,6 +8,20 @@
 
 namespace
 {
+	// Where FMcRegionFile::Write spends its time, in microseconds per step, for the save log (TakeWriteSteps).
+	enum EWriteStep { StepLock, StepHeader, StepOpen, StepNewFile, StepPayload, StepPadding, StepEntry, StepFlush, NumWriteSteps };
+	std::atomic<int64> WriteStepMicros[NumWriteSteps] = {};
+	struct FStepClock
+	{
+		double Last = FPlatformTime::Seconds();
+		void Mark(EWriteStep Step)
+		{
+			const double Now = FPlatformTime::Seconds();
+			WriteStepMicros[Step] += static_cast<int64>((Now - Last) * 1e6);
+			Last = Now;
+		}
+	};
+
 	constexpr uint8 Magic[4] = { 'M', 'C', 'R', 'G' };
 	constexpr uint32 FormatVersion = 1;
 	constexpr int32 FirstEntryByte = 8;
@@ -126,11 +141,14 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool 
 	{
 		return false;
 	}
+	FStepClock Clock;
 	FScopeLock Guard(&Lock);
+	Clock.Mark(StepLock);
 	if (!EnsureHeader())
 	{
 		return false;
 	}
+	Clock.Mark(StepHeader);
 	const int32 Index = IndexOf(Chunk);
 	const uint32 Needed = static_cast<uint32>((Payload.Num() + SectorSize - 1) / SectorSize);
 	FEntry Entry = Entries[Index];
@@ -157,6 +175,7 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool 
 		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
 		BulkHandle = OpenForUpdate(Path);
 	}
+	Clock.Mark(StepOpen);
 	IFileHandle* const FilePtr = bSync ? Own.Get() : BulkHandle.Get();
 	if (!FilePtr)
 	{
@@ -173,12 +192,14 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool 
 		FMemory::Memcpy(&Header[4], &FormatVersion, sizeof(uint32));
 		bOk = File->Seek(0) && File->Write(Header.GetData(), Header.Num());
 	}
+	Clock.Mark(StepNewFile);
 	// The payload first and the header entry after, so a write cut short leaves the old entry (or none) pointing at
 	// whole data, or a payload that fails its checksum, but never an entry pointing at nothing.
 	if (bOk)
 	{
 		bOk = File->Seek(static_cast<int64>(Entry.Offset) * SectorSize) && File->Write(Payload.GetData(), Payload.Num());
 	}
+	Clock.Mark(StepPayload);
 	if (bOk && !bInPlace)
 	{
 		// Pad to the end of the last sector so the next payload starts on a boundary.
@@ -186,14 +207,17 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool 
 		Padding.SetNumZeroed(static_cast<int32>(Entry.Sectors) * SectorSize - Payload.Num());
 		bOk = Padding.IsEmpty() || File->Write(Padding.GetData(), Padding.Num());
 	}
+	Clock.Mark(StepPadding);
 	if (bOk)
 	{
 		bOk = File->Seek(FirstEntryByte + static_cast<int64>(Index) * EntryBytes) && File->Write(reinterpret_cast<const uint8*>(&Entry), sizeof(FEntry));
 	}
+	Clock.Mark(StepEntry);
 	if (bOk)
 	{
 		bOk = !bSync || File->Flush();
 	}
+	Clock.Mark(StepFlush);
 	if (!bOk)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Writing chunk %d,%d to %s failed."), Chunk.X, Chunk.Y, *Path);
@@ -208,9 +232,25 @@ bool FMcRegionFile::Write(FIntPoint Chunk, TConstArrayView<uint8> Payload, bool 
 	return true;
 }
 
+FString FMcRegionFile::TakeWriteSteps()
+{
+	const TCHAR* const Names[NumWriteSteps] = { TEXT("lock"), TEXT("header"), TEXT("open"), TEXT("newfile"), TEXT("payload"), TEXT("padding"), TEXT("entry"), TEXT("flush") };
+	FString Out;
+	for (int32 Step = 0; Step < NumWriteSteps; ++Step)
+	{
+		Out += FString::Printf(TEXT("%s%s %.0f"), Step ? TEXT(", ") : TEXT(""), Names[Step], WriteStepMicros[Step].exchange(0) / 1000.0);
+	}
+	return Out;
+}
+
 void FMcRegionFile::CloseWriter()
 {
 	FScopeLock Guard(&Lock);
+	if (BulkHandle)
+	{
+		// The bulk writes asked nothing of the disk; this does, once for the file (a whole-world save goes this way).
+		BulkHandle->Flush();
+	}
 	BulkHandle.Reset();
 }
 

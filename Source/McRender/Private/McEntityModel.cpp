@@ -1,4 +1,5 @@
 #include "McEntityModel.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "McRenderMode.h"
@@ -20,7 +21,59 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Kismet/GameplayStatics.h"
+#include "ConvexVolume.h"
 #include "McPerf.h"
+
+static TAutoConsoleVariable<bool> CVarMcModelsSkipUnseen(TEXT("mc.Models.SkipUnseen"), true,
+	TEXT("Mobs the camera has not drawn in the last quarter second keep their last mesh instead of building it again each frame."));
+
+namespace
+{
+	// Whether a mob that is off screen may still have its shadow on screen: its bounds, stretched away from the light as
+	// far as a shadow of its height reaches (32 blocks at most), against the camera's frustum (widened 10 degrees, made
+	// once a frame). The engine counts only the main view as drawing a mesh, not the shadow passes, so without this a
+	// mob walking just off screen would leave a still shadow in view.
+	bool ShadowMayBeSeen(const UWorld* World, const FBoxSphereBounds& Bounds, const FVector& Towards)
+	{
+		static uint64 Frame = MAX_uint64;
+		static const UWorld* FrameWorld = nullptr;
+		static FConvexVolume Frustum;
+		static bool bHaveFrustum = false;
+		if (Frame != GFrameCounter || FrameWorld != World)
+		{
+			Frame = GFrameCounter;
+			FrameWorld = World;
+			bHaveFrustum = false;
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			if (Controller && Controller->PlayerCameraManager)
+			{
+				FMinimalViewInfo View = Controller->PlayerCameraManager->GetCameraCacheView();
+				int32 SizeX = 0, SizeY = 0;
+				Controller->GetViewportSize(SizeX, SizeY);
+				if (SizeX > 0 && SizeY > 0)
+				{
+					View.AspectRatio = static_cast<float>(SizeX) / SizeY;
+					View.bConstrainAspectRatio = true;
+				}
+				View.FOV = FMath::Min(View.FOV + 10.0f, 170.0f);
+				FMatrix ViewMatrix, Projection, ViewProjection;
+				UGameplayStatics::GetViewProjectionMatrix(View, ViewMatrix, Projection, ViewProjection);
+				GetViewFrustumBounds(Frustum, ViewProjection, false);
+				bHaveFrustum = true;
+			}
+		}
+		if (!bHaveFrustum)
+		{
+			return true;
+		}
+		const FBox Box = Bounds.GetBox();
+		const double Height = FMath::Max(Box.GetSize().Z, 1.0);
+		const double Reach = FMath::Min(Height / FMath::Max(Towards.Z, 0.15), 32.0 * McCoords::UnitsPerBlock);
+		const FBox Swept = Box + Box.ShiftBy(-Towards * Reach);
+		return Frustum.IntersectBox(Swept.GetCenter(), Swept.GetExtent());
+	}
+}
 
 namespace McEntityModel
 {
@@ -4103,6 +4156,7 @@ bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	MC_PERF_SCOPE(Models);
+	MC_PERF_SCOPE(ModelsEntity);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber || bIsFalling) && bItemFailed))
@@ -4564,7 +4618,30 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	{
 		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
 	}
-	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
+	// A mob the camera has not drawn lately keeps its last mesh: the pose above still moves on, and the mesh is posed
+	// again on the first frame it is drawn. Building and handing over every mob's mesh every frame was the biggest
+	// part of the game thread (197 mobs, 5.8-9.1 ms on the 4060, 13 Nov).
+	bool bUnseen = NumSections > 0 && CVarMcModelsSkipUnseen.GetValueOnGameThread() && !WasRecentlyRendered(0.25f);
+	if (bUnseen)
+	{
+		// Off screen, but its shadow may not be (Unreal Mode's sun): posed as if seen.
+		const FVector Towards = McSky::GetShadowLightTowards();
+		bUnseen = Towards.IsZero() || !CastShadow || !ShadowMayBeSeen(GetWorld(), Bounds, Towards);
+	}
+	{
+		// Counted per frame for the recorder: the previous frame's totals are published when a new frame starts.
+		static uint64 CountedFrame = 0;
+		static int64 Posed = 0, Kept = 0;
+		if (CountedFrame != GFrameCounter)
+		{
+			McPerf::SetCounter(EMcPerfCounter::ModelsPosed, Posed);
+			McPerf::SetCounter(EMcPerfCounter::ModelsKept, Kept);
+			CountedFrame = GFrameCounter;
+			Posed = Kept = 0;
+		}
+		++(bUnseen ? Kept : Posed);
+	}
+	for (int32 Layer = 0; Layer < (bUnseen ? 0 : NumLayers); ++Layer)
 	{
 		if (Model->bComposite && Layer != 0 && Layer != Model->HeldLayer)
 		{
@@ -4605,7 +4682,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	if (Model->MaskLayer != INDEX_NONE)
+	if (Model->MaskLayer != INDEX_NONE && !bUnseen)
 	{
 		if (!Mask)
 		{
@@ -4631,7 +4708,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			Mask->UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	else if (Mask)
+	else if (Mask && Model->MaskLayer == INDEX_NONE)
 	{
 		Mask->DestroyComponent();
 		Mask = nullptr;

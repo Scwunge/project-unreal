@@ -17,7 +17,7 @@ namespace McPerf
 
 	namespace
 	{
-		const TCHAR* const ScopeNames[] = { TEXT("stream"), TEXT("sadd"), TEXT("sdeco"), TEXT("sunload"), TEXT("sim"), TEXT("ents"), TEXT("launch"), TEXT("upload"), TEXT("resort"), TEXT("texanim"), TEXT("hud"), TEXT("pawn"), TEXT("entrender"), TEXT("sky"), TEXT("world"), TEXT("render"), TEXT("models"), TEXT("blockents"), TEXT("particles"), TEXT("blocklight"), TEXT("ctrl"), TEXT("audio"), TEXT("misc") };
+		const TCHAR* const ScopeNames[] = { TEXT("stream"), TEXT("sadd"), TEXT("sdeco"), TEXT("sunload"), TEXT("sim"), TEXT("ents"), TEXT("launch"), TEXT("upload"), TEXT("resort"), TEXT("texanim"), TEXT("hud"), TEXT("pawn"), TEXT("entrender"), TEXT("sky"), TEXT("world"), TEXT("render"), TEXT("models"), TEXT("blockents"), TEXT("particles"), TEXT("blocklight"), TEXT("ctrl"), TEXT("audio"), TEXT("misc"), TEXT("mentity"), TEXT("mplayer"), TEXT("mhand") };
 		static_assert(UE_ARRAY_COUNT(ScopeNames) == static_cast<int32>(EMcPerfScope::Count));
 
 		// Frames in this phase, in milliseconds, for its percentiles.
@@ -256,12 +256,13 @@ namespace McPerf
 				const FPlatformMemoryStats Memory = FPlatformMemory::GetStats();
 				const float N = FMath::Max(1, SecondFrames);
 				auto Counter = [](EMcPerfCounter Which) { return Counters[static_cast<int32>(Which)]; };
-				FString Line = FString::Printf(TEXT("S t=%.1f phase=%s n=%d avg=%.1f max=%.1f gt=%.1f rt=%.1f rhi=%.1f gpu=%.1f rss=%d peak=%d commit=%d chunks=%lld dirty=%lld flight=%lld meshes=%lld water=%lld ktris=%lld ents=%lld pos=%lld,%lld,%lld lverts=%lld ltris=%lld kept=%lld uobj=%lld fg=%d"),
+				FString Line = FString::Printf(TEXT("S t=%.1f phase=%s n=%d avg=%.1f max=%.1f gt=%.1f rt=%.1f rhi=%.1f gpu=%.1f rss=%d peak=%d commit=%d chunks=%lld dirty=%lld flight=%lld meshes=%lld water=%lld ktris=%lld ents=%lld pos=%lld,%lld,%lld lverts=%lld ltris=%lld kept=%lld uobj=%lld fg=%d posed=%lld unposed=%lld"),
 					Now(), *Phase, SecondFrames, SecondSum / N, SecondMax, SecondGame / N, SecondRender / N, SecondRhi / N, SecondGpu / N,
 					static_cast<int32>(Memory.UsedPhysical / (1024 * 1024)), static_cast<int32>(Memory.PeakUsedPhysical / (1024 * 1024)), static_cast<int32>(Memory.UsedVirtual / (1024 * 1024)),
 					Counter(EMcPerfCounter::Chunks), Counter(EMcPerfCounter::Dirty), Counter(EMcPerfCounter::InFlight), Counter(EMcPerfCounter::Meshes), Counter(EMcPerfCounter::WaterMeshes),
 					Counter(EMcPerfCounter::MeshTris), Counter(EMcPerfCounter::Entities), Counter(EMcPerfCounter::X), Counter(EMcPerfCounter::Y), Counter(EMcPerfCounter::Z),
-					Counter(EMcPerfCounter::LiveKVerts), Counter(EMcPerfCounter::LiveKTris), Counter(EMcPerfCounter::KeptKVerts), Counter(EMcPerfCounter::UObjects), IsForeground());
+					Counter(EMcPerfCounter::LiveKVerts), Counter(EMcPerfCounter::LiveKTris), Counter(EMcPerfCounter::KeptKVerts), Counter(EMcPerfCounter::UObjects), IsForeground(),
+					Counter(EMcPerfCounter::ModelsPosed), Counter(EMcPerfCounter::ModelsKept));
 				for (int32 Index = 0; Index < static_cast<int32>(EMcPerfScope::Count); ++Index)
 				{
 					Line += FString::Printf(TEXT(" %s=%.2f"), ScopeNames[Index], SecondScopeCycles[Index] * ToMs / N);

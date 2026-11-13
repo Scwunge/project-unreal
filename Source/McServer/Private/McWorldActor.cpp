@@ -1,4 +1,5 @@
 #include "McWorldActor.h"
+#include "Async/ParallelFor.h"
 #include "HAL/IConsoleManager.h"
 #include "McPerf.h"
 #include "McSculkMobs.h"
@@ -1274,12 +1275,23 @@ void AMcWorldActor::MarkChunkDirty(FIntPoint Chunk)
 
 bool AMcWorldActor::SaveChunk(FIntPoint Pos)
 {
+	FPendingSave Save;
+	if (!PrepareSave(Pos, Save))
+	{
+		return false;
+	}
+	Save.Bytes = McChunkSave::Encode(*Save.Chunk, Save.Extras);
+	return CommitSave(Save);
+}
+
+bool AMcWorldActor::PrepareSave(FIntPoint Pos, FPendingSave& Out)
+{
 	const FMcChunk* Chunk = Storage && BlockWorld ? BlockWorld->FindChunk(Pos) : nullptr;
 	if (!Chunk)
 	{
 		return false;
 	}
-	FChunkState& State = ChunkStates.FindOrAdd(Pos);
+	const FChunkState& State = ChunkStates.FindOrAdd(Pos);
 	// Taken before the chunk leaves the world, which removes its mobs.
 	FMcChunkSaveExtras Extras;
 	Extras.bPopulated = true;
@@ -1295,18 +1307,25 @@ bool AMcWorldActor::SaveChunk(FIntPoint Pos)
 	{
 		return false;
 	}
-	const bool bHasEntities = !Extras.Entities.IsEmpty();
-	TArray<uint8> Bytes = McChunkSave::Encode(*Chunk, Extras);
-	if (Bytes.IsEmpty())
+	Out.Pos = Pos;
+	Out.Chunk = Chunk;
+	Out.Extras = MoveTemp(Extras);
+	return true;
+}
+
+bool AMcWorldActor::CommitSave(FPendingSave& Save)
+{
+	if (Save.Bytes.IsEmpty())
 	{
-		UE_LOG(LogMcServer, Error, TEXT("Can't save chunk %d,%d: encoding it failed."), Pos.X, Pos.Y);
+		UE_LOG(LogMcServer, Error, TEXT("Can't save chunk %d,%d: encoding it failed."), Save.Pos.X, Save.Pos.Y);
 		return false;
 	}
-	Storage->QueueSave(Pos, MoveTemp(Bytes));
-	State.SavedRevision = Chunk->GetRevision();
+	FChunkState& State = ChunkStates.FindOrAdd(Save.Pos);
+	Storage->QueueSave(Save.Pos, MoveTemp(Save.Bytes));
+	State.SavedRevision = Save.Chunk->GetRevision();
 	State.bOnDisk = true;
 	State.bDirty = false;
-	State.bHadEntities = bHasEntities;
+	State.bHadEntities = !Save.Extras.Entities.IsEmpty();
 	return true;
 }
 
@@ -1317,6 +1336,12 @@ void AMcWorldActor::SaveWorld()
 		return;
 	}
 	int32 Queued = 0;
+	const double StartTime = FPlatformTime::Seconds();
+	double PreparedTime = StartTime;
+	double EncodedTime = StartTime;
+	int64 WriteMicrosBefore = 0;
+	int64 TaskMicrosBefore = 0;
+	int64 SaveBytes = 0;
 	for (const McWorldSave::ESaveStep Step : McWorldSave::GetQuitSaveOrder())
 	{
 		switch (Step)
@@ -1325,14 +1350,53 @@ void AMcWorldActor::SaveWorld()
 			OnSaving.Broadcast();
 			break;
 		case McWorldSave::ESaveStep::Chunks:
+		{
 			// Whatever an autosave had left to look at is covered by this.
 			AutosaveQueue.Reset();
+			// The whole world at once (leaving it takes this): the mobs and structures of each chunk are read here, the chunks
+			// are encoded and compressed on worker threads, and the writes keep each region file open and reach the disk once
+			// at the end instead of once a chunk (729 chunks took 29 s one by one, the window frozen).
+			TArray<FPendingSave> Saves;
+			Saves.Reserve(BlockWorld->GetChunks().Num());
 			for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
 			{
-				Queued += SaveChunk(Entry.Key) ? 1 : 0;
+				FPendingSave& Save = Saves.AddDefaulted_GetRef();
+				if (!PrepareSave(Entry.Key, Save))
+				{
+					Saves.Pop(EAllowShrinking::No);
+				}
 			}
-			Storage->Flush();
+			PreparedTime = FPlatformTime::Seconds();
+			ParallelFor(Saves.Num(), [&Saves](int32 Index)
+			{
+				Saves[Index].Bytes = McChunkSave::Encode(*Saves[Index].Chunk, Saves[Index].Extras);
+			});
+			EncodedTime = FPlatformTime::Seconds();
+			FMcRegionFile::TakeWriteSteps();
+			WriteMicrosBefore = Storage->GetWriteMicros();
+			TaskMicrosBefore = Storage->GetTaskMicros();
+			for (const FPendingSave& Save : Saves)
+			{
+				SaveBytes += Save.Bytes.Num();
+			}
+			// A live Java import may already be writing in bulk; it ends that itself.
+			const bool bWasBulk = Storage->IsBulk();
+			Storage->SetBulk(true);
+			for (FPendingSave& Save : Saves)
+			{
+				Queued += CommitSave(Save) ? 1 : 0;
+			}
+			// Waits for the writes, then lets each region file go (bringing its bytes to the disk).
+			if (bWasBulk)
+			{
+				Storage->Flush();
+			}
+			else
+			{
+				Storage->SetBulk(false);
+			}
 			break;
+		}
 		case McWorldSave::ESaveStep::Maps:
 			if (!bSecondary)
 			{
@@ -1350,10 +1414,13 @@ void AMcWorldActor::SaveWorld()
 			break;
 		}
 	}
-	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s; this session %d chunks came from the save and %d were generated"),
+	const double EndTime = FPlatformTime::Seconds();
+	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s; this session %d chunks came from the save and %d were generated (%.0f ms: gather %.0f, encode %.0f, write %.0f, of it %.0f in write tasks and %.0f in the region files (%s); %lld KB)"),
 		*WorldName, Queued, BlockWorld->GetChunks().Num(),
 		Storage->NumFailedWrites() > 0 ? *FString::Printf(TEXT(" (%d writes failed)"), Storage->NumFailedWrites()) : TEXT(""),
-		NumChunksFromDisk, NumChunksGenerated);
+		NumChunksFromDisk, NumChunksGenerated, (EndTime - StartTime) * 1000.0, (PreparedTime - StartTime) * 1000.0,
+		(EncodedTime - PreparedTime) * 1000.0, (EndTime - EncodedTime) * 1000.0, (Storage->GetTaskMicros() - TaskMicrosBefore) / 1000.0,
+		(Storage->GetWriteMicros() - WriteMicrosBefore) / 1000.0, *FMcRegionFile::TakeWriteSteps(), SaveBytes / 1024);
 }
 
 void AMcWorldActor::BeginAutosave()

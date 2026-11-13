@@ -438,6 +438,7 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	MC_PERF_SCOPE(Models);
+	MC_PERF_SCOPE(ModelsPlayer);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || !bShown || !EnsureMaterial())

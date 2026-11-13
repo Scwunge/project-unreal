@@ -283,6 +283,18 @@ private:
 	void ApplyEdits(FMcChunk& Chunk);
 	// Queues a loaded chunk to be written, if it changed or was never saved. True if it was queued.
 	bool SaveChunk(FIntPoint Pos);
+	// SaveChunk in two halves, so a whole-world save can encode its chunks on worker threads between them: the first
+	// takes what must be read on the game thread (mobs, structures) and says whether the chunk needs writing; Bytes is
+	// then filled by McChunkSave::Encode (any thread); the second queues the bytes and records the save.
+	struct FPendingSave
+	{
+		FIntPoint Pos;
+		const FMcChunk* Chunk = nullptr;
+		FMcChunkSaveExtras Extras;
+		TArray<uint8> Bytes;
+	};
+	bool PrepareSave(FIntPoint Pos, FPendingSave& Out);
+	bool CommitSave(FPendingSave& Save);
 	void BeginAutosave();
 	void StartStorage(const FString& Name);
 

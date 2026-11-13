@@ -111,6 +111,19 @@ FString McWorldSave::GetDimensionFolder(const FString& Dimension)
 	return SanitizeName(Namespace == TEXT("minecraft") ? Path : Namespace + TEXT("_") + Path);
 }
 
+TConstArrayView<McWorldSave::ESaveStep> McWorldSave::GetQuitSaveOrder()
+{
+	static const ESaveStep Order[] = { ESaveStep::Players, ESaveStep::Chunks, ESaveStep::Maps, ESaveStep::Level };
+	return Order;
+}
+
+bool McWorldSave::WriteSessionLock(const FString& WorldDir)
+{
+	static const uint8 Snowman[] = { 0xE2, 0x98, 0x83 };
+	IFileManager::Get().MakeDirectory(*WorldDir, true);
+	return FFileHelper::SaveArrayToFile(TArrayView<const uint8>(Snowman), *(WorldDir / TEXT("session.lock")));
+}
+
 bool McWorldSave::SaveLevel(const FString& WorldDir, const FMcLevelData& Level)
 {
 	const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();

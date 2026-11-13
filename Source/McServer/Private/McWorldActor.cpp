@@ -585,6 +585,10 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
 	}
+	if (!bSecondary)
+	{
+		McWorldSave::WriteSessionLock(WorldDir);
+	}
 	// A Java world begun with McJavaImport::BeginImport is converted from here on, near its spawn first.
 	LiveImport = McJavaImport::FLiveImport::Start(WorldDir, Dimension, Storage, FIntPoint(FMath::FloorToInt32(Level.Spawn.X / 16.0), FMath::FloorToInt32(Level.Spawn.Z / 16.0)));
 }
@@ -1202,23 +1206,40 @@ void AMcWorldActor::SaveWorld()
 	{
 		return;
 	}
-	OnSaving.Broadcast();
-	if (!bSecondary)
-	{
-		Level.DayTime = DayTicks;
-		Level.Dimension = Dimension;
-		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
-		McWorldSave::SaveLevel(WorldDir, Level);
-		McWorldSave::SaveMaps(WorldDir);
-	}
-	// Whatever an autosave had left to look at is covered by this.
-	AutosaveQueue.Reset();
 	int32 Queued = 0;
-	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
+	for (const McWorldSave::ESaveStep Step : McWorldSave::GetQuitSaveOrder())
 	{
-		Queued += SaveChunk(Entry.Key) ? 1 : 0;
+		switch (Step)
+		{
+		case McWorldSave::ESaveStep::Players:
+			OnSaving.Broadcast();
+			break;
+		case McWorldSave::ESaveStep::Chunks:
+			// Whatever an autosave had left to look at is covered by this.
+			AutosaveQueue.Reset();
+			for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : BlockWorld->GetChunks())
+			{
+				Queued += SaveChunk(Entry.Key) ? 1 : 0;
+			}
+			Storage->Flush();
+			break;
+		case McWorldSave::ESaveStep::Maps:
+			if (!bSecondary)
+			{
+				McWorldSave::SaveMaps(WorldDir);
+			}
+			break;
+		case McWorldSave::ESaveStep::Level:
+			if (!bSecondary)
+			{
+				Level.DayTime = DayTicks;
+				Level.Dimension = Dimension;
+				Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+				McWorldSave::SaveLevel(WorldDir, Level);
+			}
+			break;
+		}
 	}
-	Storage->Flush();
 	UE_LOG(LogMcServer, Log, TEXT("Saved world %s: %d of %d chunks had changed%s; this session %d chunks came from the save and %d were generated"),
 		*WorldName, Queued, BlockWorld->GetChunks().Num(),
 		Storage->NumFailedWrites() > 0 ? *FString::Printf(TEXT(" (%d writes failed)"), Storage->NumFailedWrites()) : TEXT(""),

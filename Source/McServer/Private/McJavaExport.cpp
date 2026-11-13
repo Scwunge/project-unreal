@@ -971,7 +971,8 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	}
 	// level.dat, gzip-compressed, in the current layout.
 	FMcNbt Data = MakeTag(EType::Compound);
-	Add(Data, TEXT("LevelName"), Str(Level.Name));
+	// A world with no name of its own (one made by a command line) is named after its folder, as the game names a world after its folder.
+	Add(Data, TEXT("LevelName"), Str(Level.Name.IsEmpty() ? FPaths::GetCleanFilename(WorldDir) : Level.Name));
 	Add(Data, TEXT("DataVersion"), Int(DataVersion));
 	FMcNbt Version = MakeTag(EType::Compound);
 	Add(Version, TEXT("Id"), Int(DataVersion));

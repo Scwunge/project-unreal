@@ -83,6 +83,14 @@ namespace McWorldSave
 	MCSERVER_API FString GetDimensionFolder(const FString& Dimension);
 
 	MCSERVER_API bool SaveLevel(const FString& WorldDir, const FMcLevelData& Level);
+	// What a quit save writes, in the order vanilla 26.3 writes it (observed 2026-11-13 from file times after a quit: the
+	// player's files first, then region and entity files, the dimensions' data files, level.dat last of all). Autosaves
+	// spread the chunks over frames, so only a quit follows this strictly.
+	enum class ESaveStep : uint8 { Players, Chunks, Maps, Level };
+	MCSERVER_API TConstArrayView<ESaveStep> GetQuitSaveOrder();
+	// session.lock, as the game writes it when it opens a world: the three bytes of a snowman (U+2603 in UTF-8), observed in
+	// every vanilla save. Returns false if the file can't be written.
+	MCSERVER_API bool WriteSessionLock(const FString& WorldDir);
 	// False if there is no level file or it can't be read.
 	MCSERVER_API bool LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel);
 

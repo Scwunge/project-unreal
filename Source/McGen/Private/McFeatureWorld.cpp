@@ -674,6 +674,7 @@ namespace
 			}
 			// The hat: wide layers at the bottom and a cap, with shroomlights hanging under the rim.
 			const int32 HatHeight = bPlanted ? 2 : 3;
+			TArray<FIntVector> HatBlocks;
 			for (int32 Layer = 0; Layer < HatHeight; ++Layer)
 			{
 				const int32 Y = Height - 1 - Layer + 1 - (HatHeight - 1);
@@ -693,11 +694,61 @@ namespace
 						if (CanGrow(At))
 						{
 							Region.SetBlock(At, Hat);
-							if (Layer == 0 && Random.NextFloat() < 0.12f && CanGrow(At + Down))
+							HatBlocks.Add(At);
+							// Fitted: the reference has 1.03 shroomlights per stem base in the crimson forest (2489 over 2419 bases,
+							// NetherStats ref run 2026-11-13) and ours came out 2.3x that at 0.12.
+							if (Layer == 0 && Random.NextFloat() < 0.052f && CanGrow(At + Down))
 							{
 								Region.SetBlock(At + Down, Decor);
 							}
 						}
+					}
+				}
+			}
+			// Weeping vines hang from the crimson cap (the wiki, "Huge Crimson Fungus", gives no numbers; fitted to the reference's
+			// crimson forest, 2026-11-13: 2370 vine columns under nether wart blocks for 2419 stem bases, about 0.98 a fungus; our first try at 0.98 gave only 1.96 vine blocks a fungus against the reference's 3.3, so the chance is scaled to 1.65 candidates-worth, with
+			// lengths 1..11 counted 415, 530, 518, 346, 284, 183, 48, 11, 21, 6, 8).
+			static const FMcStateId WartBlock = StateOf(TEXT("minecraft:nether_wart_block"));
+			if (Hat == WartBlock)
+			{
+				static const FMcStateId VinePlant = StateOf(TEXT("minecraft:weeping_vines_plant"));
+				static const FMcStateId VineTip = StateOf(TEXT("minecraft:weeping_vines"));
+				static const int32 LengthWeights[11] = { 415, 530, 518, 346, 284, 183, 48, 11, 21, 6, 8 };
+				TArray<FIntVector> Candidates;
+				for (const FIntVector& At : HatBlocks)
+				{
+					if (Region.GetBlock(At) == Hat && Region.IsAir(Region.GetBlock(At + Down)))
+					{
+						Candidates.Add(At);
+					}
+				}
+				const float Chance = Candidates.Num() > 0 ? FMath::Min(1.0f, 1.65f / Candidates.Num()) : 0.0f;
+				for (const FIntVector& At : Candidates)
+				{
+					if (Random.NextFloat() >= Chance)
+					{
+						continue;
+					}
+					int32 Pick = Random.NextInt(2370);
+					int32 Length = 1;
+					for (int32 Index = 0; Index < 11; ++Index)
+					{
+						if (Pick < LengthWeights[Index])
+						{
+							Length = Index + 1;
+							break;
+						}
+						Pick -= LengthWeights[Index];
+					}
+					int32 Placed = 0;
+					while (Placed < Length && Region.IsAir(Region.GetBlock(At + FIntVector(0, -(Placed + 1), 0))))
+					{
+						++Placed;
+					}
+					for (int32 Step = 1; Step <= Placed; ++Step)
+					{
+						const bool bTip = Step == Placed;
+						Region.SetBlock(At + FIntVector(0, -Step, 0), bTip ? McWithProperty(VineTip, TEXT("age"), FName(*FString::FromInt(17 + Random.NextInt(9)))) : VinePlant);
 					}
 				}
 			}

@@ -1121,7 +1121,7 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases;
 		bMcFeatureStatsOn = true;
 		McFeatureStats.Reset();
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
@@ -1176,6 +1176,10 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 									{
 										++UnderCeiling.FindOrAdd(Biome);
 									}
+									if (Name == TEXT("minecraft:crimson_stem") && BelowName != Name)
+									{
+										++StemBases.FindOrAdd(Biome);
+									}
 									BelowName = Name;
 									TArray<int64>& Band = Bands.FindOrAdd(Name);
 									Band.SetNumZeroed(16);
@@ -1214,6 +1218,10 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		for (const TPair<FString, int64>& Pair : LavaAbove)
 		{
 			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : StemBases)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d G %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : UnderCeiling)
 		{

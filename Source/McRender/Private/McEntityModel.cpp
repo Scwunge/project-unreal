@@ -21,10 +21,59 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Kismet/GameplayStatics.h"
+#include "ConvexVolume.h"
 #include "McPerf.h"
 
 static TAutoConsoleVariable<bool> CVarMcModelsSkipUnseen(TEXT("mc.Models.SkipUnseen"), true,
 	TEXT("Mobs the camera has not drawn in the last quarter second keep their last mesh instead of building it again each frame."));
+
+namespace
+{
+	// Whether a mob that is off screen may still have its shadow on screen: its bounds, stretched away from the light as
+	// far as a shadow of its height reaches (32 blocks at most), against the camera's frustum (widened 10 degrees, made
+	// once a frame). The engine counts only the main view as drawing a mesh, not the shadow passes, so without this a
+	// mob walking just off screen would leave a still shadow in view.
+	bool ShadowMayBeSeen(const UWorld* World, const FBoxSphereBounds& Bounds, const FVector& Towards)
+	{
+		static uint64 Frame = MAX_uint64;
+		static const UWorld* FrameWorld = nullptr;
+		static FConvexVolume Frustum;
+		static bool bHaveFrustum = false;
+		if (Frame != GFrameCounter || FrameWorld != World)
+		{
+			Frame = GFrameCounter;
+			FrameWorld = World;
+			bHaveFrustum = false;
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			if (Controller && Controller->PlayerCameraManager)
+			{
+				FMinimalViewInfo View = Controller->PlayerCameraManager->GetCameraCacheView();
+				int32 SizeX = 0, SizeY = 0;
+				Controller->GetViewportSize(SizeX, SizeY);
+				if (SizeX > 0 && SizeY > 0)
+				{
+					View.AspectRatio = static_cast<float>(SizeX) / SizeY;
+					View.bConstrainAspectRatio = true;
+				}
+				View.FOV = FMath::Min(View.FOV + 10.0f, 170.0f);
+				FMatrix ViewMatrix, Projection, ViewProjection;
+				UGameplayStatics::GetViewProjectionMatrix(View, ViewMatrix, Projection, ViewProjection);
+				GetViewFrustumBounds(Frustum, ViewProjection, false);
+				bHaveFrustum = true;
+			}
+		}
+		if (!bHaveFrustum)
+		{
+			return true;
+		}
+		const FBox Box = Bounds.GetBox();
+		const double Height = FMath::Max(Box.GetSize().Z, 1.0);
+		const double Reach = FMath::Min(Height / FMath::Max(Towards.Z, 0.15), 32.0 * McCoords::UnitsPerBlock);
+		const FBox Swept = Box + Box.ShiftBy(-Towards * Reach);
+		return Frustum.IntersectBox(Swept.GetCenter(), Swept.GetExtent());
+	}
+}
 
 namespace McEntityModel
 {
@@ -4572,7 +4621,13 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	// A mob the camera has not drawn lately keeps its last mesh: the pose above still moves on, and the mesh is posed
 	// again on the first frame it is drawn. Building and handing over every mob's mesh every frame was the biggest
 	// part of the game thread (197 mobs, 5.8-9.1 ms on the 4060, 13 Nov).
-	const bool bUnseen = NumSections > 0 && CVarMcModelsSkipUnseen.GetValueOnGameThread() && !WasRecentlyRendered(0.25f);
+	bool bUnseen = NumSections > 0 && CVarMcModelsSkipUnseen.GetValueOnGameThread() && !WasRecentlyRendered(0.25f);
+	if (bUnseen)
+	{
+		// Off screen, but its shadow may not be (Unreal Mode's sun): posed as if seen.
+		const FVector Towards = McSky::GetShadowLightTowards();
+		bUnseen = Towards.IsZero() || !CastShadow || !ShadowMayBeSeen(GetWorld(), Bounds, Towards);
+	}
 	{
 		// Counted per frame for the recorder: the previous frame's totals are published when a new frame starts.
 		static uint64 CountedFrame = 0;

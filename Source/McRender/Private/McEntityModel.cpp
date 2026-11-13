@@ -1755,7 +1755,7 @@ namespace McEntityModel
 				Turtle.Kind = TEXT("minecraft:turtle");
 				Turtle.TextureSize = FIntPoint(128, 64);
 				Turtle.Textures = { TEXT("turtle/turtle.png") };
-				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, Flat));  // turned like the belly: -Flat drew it upside down
 				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 1.5f, -2), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
 				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 10), { Box(3, 0, -3, -4, -3, 6, 5, 6) }));
 				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));

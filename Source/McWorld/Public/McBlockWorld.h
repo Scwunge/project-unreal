@@ -27,6 +27,8 @@ public:
 	// Takes ownership and broadcasts OnChunkAdded. Replaces any chunk already at that position.
 	FMcChunk& AddChunk(TUniquePtr<FMcChunk> Chunk);
 	void RemoveChunk(FIntPoint Pos);
+	// RemoveChunk that hands the chunk to the caller instead of freeing it (to be saved on a worker); null if none.
+	TUniquePtr<FMcChunk> TakeChunk(FIntPoint Pos);
 
 	FMcChunk* FindChunk(FIntPoint Pos);
 	const FMcChunk* FindChunk(FIntPoint Pos) const;

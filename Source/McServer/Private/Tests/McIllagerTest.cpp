@@ -61,20 +61,20 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
-		// By id, not the pointer: a dead villager is removed and freed, and reading it afterwards was a use-after-free that
-		// crashed this test whenever the freed memory had been reused (only after other tests, 13 Nov).
+		// The manager frees a dead mob on the tick it dies: look it up by id, never keep the raw pointer across ticks.
 		const int32 VillagerId = Villager->Id;
-		const auto FindVillager = [&Host, VillagerId]() { return static_cast<FMcMob*>(Host.GetManager().Find(VillagerId)); };
+		bool bVillagerDead = false;
 		for (int32 Tick = 0; Tick < 200; ++Tick)
 		{
-			if (FMcMob* Alive = FindVillager())
+			if (FMcEntity* Alive = Host.GetManager().Find(VillagerId))
 			{
-				Alive->HurtTime = 0;
+				static_cast<FMcMob*>(Alive)->HurtTime = 0;
 			}
 			Host.GetManager().Tick();
+			const FMcEntity* After = Host.GetManager().Find(VillagerId);
+			bVillagerDead |= !After || After->bRemoved || static_cast<const FMcMob*>(After)->Health <= 0.0f;
 		}
-		const FMcMob* After = FindVillager();
-		TestTrue(TEXT("the villager is dead"), !After || After->Health <= 0.0f);
+		TestTrue(TEXT("the villager is dead"), bVillagerDead);
 		int32 ZombieVillagers = 0;
 		for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
 		{
@@ -94,22 +94,19 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
-		// By id, as above: the fangs and vexes often kill it, and a dead villager is freed.
 		const int32 VillagerId = Villager->Id;
-		const float MaxHealth = Villager->Type.MaxHealth;
-		const auto FindVillager = [&Host, VillagerId]() { return static_cast<FMcMob*>(Host.GetManager().Find(VillagerId)); };
-		bool bHurt = false;
+		bool bVillagerHurt = false;
 		int32 MostFangs = 0;
 		int32 MostVexes = 0;
 		for (int32 Tick = 0; Tick < 1200; ++Tick)
 		{
-			if (FMcMob* Alive = FindVillager())
+			if (FMcEntity* Alive = Host.GetManager().Find(VillagerId))
 			{
-				Alive->HurtTime = 0;
+				static_cast<FMcMob*>(Alive)->HurtTime = 0;
 			}
 			Host.GetManager().Tick();
-			const FMcMob* Now = FindVillager();
-			bHurt |= !Now || Now->Health < MaxHealth;
+			const FMcEntity* After = Host.GetManager().Find(VillagerId);
+			bVillagerHurt |= !After || After->bRemoved || static_cast<const FMcMob*>(After)->Health < static_cast<const FMcMob*>(After)->Type.MaxHealth;
 			int32 Fangs = 0;
 			int32 Vexes = 0;
 			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
@@ -122,7 +119,7 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("fangs come up"), MostFangs > 0);
 		TestTrue(TEXT("vexes are summoned"), MostVexes >= 3);
-		TestTrue(TEXT("the villager was hurt"), bHurt);
+		TestTrue(TEXT("the villager was hurt"), bVillagerHurt);
 	}
 	{
 		// A witch throws potions at a player in reach, and drinks healing when hurt.

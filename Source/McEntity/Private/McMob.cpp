@@ -448,6 +448,8 @@ bool FMcMob::CanBeYoung(FName Kind)
 		TEXT("minecraft:pig"), TEXT("minecraft:cow"), TEXT("minecraft:sheep"), TEXT("minecraft:chicken"), TEXT("minecraft:horse"), TEXT("minecraft:donkey"), TEXT("minecraft:mule"),
 		TEXT("minecraft:wolf"), TEXT("minecraft:goat"), TEXT("minecraft:fox"), TEXT("minecraft:llama"), TEXT("minecraft:rabbit"),
 		TEXT("minecraft:turtle"), TEXT("minecraft:bee"),
+		TEXT("minecraft:mooshroom"), TEXT("minecraft:ocelot"), TEXT("minecraft:polar_bear"), TEXT("minecraft:panda"), TEXT("minecraft:axolotl"),
+		TEXT("minecraft:armadillo"), TEXT("minecraft:zoglin"), TEXT("minecraft:happy_ghast"),
 	};
 	return Breeders.Contains(Kind);
 }
@@ -497,6 +499,7 @@ bool FMcMob::Damage(float Amount, const FVector* Source)
 	{
 		// dragon15.txt (the damage command at the dragon's body, 30 ticks apart): hits of 2, 20 and 40 took 1.5, 6 and 11 (a quarter and one; player attacks, arrows and
 		// explosions alike). Generic (20) and magic (5) damage took nothing, which cannot be told apart here. Hits on the head, which take it all, are not told apart either.
+		UE_LOG(LogTemp, Display, TEXT("dragon damaged: %.1f raw, %s source, age %d, phase %d, health %.0f"), Amount, Source ? TEXT("with") : TEXT("no"), Age, DragonPhase, Health);
 		Amount = Amount * 0.25f + 1.0f;
 		if (DragonPhase >= 5 && DragonPhase <= 7)
 		{
@@ -1142,7 +1145,20 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 			}
 			else
 			{
+				bool bCrystalStands = false;
 				if (bHasBeam)
+				{
+					// Leaving the 32 block box of a crystal that still stands is not losing it (the dragon circles the ring, in and out of range).
+					for (const TUniquePtr<FMcEntity>& Any : Manager.GetEntities())
+					{
+						if (!Any->bRemoved && Any->IsLiving() && static_cast<FMcMob&>(*Any).Type.bCrystal && FVector::DistSquared(Any->Body.Position, BeamPos) < 2.0 * 2.0)
+						{
+							bCrystalStands = true;
+							break;
+						}
+					}
+				}
+				if (bHasBeam && !bCrystalStands)
 				{
 					// The crystal that was healing it is gone: 10 hp, besides the blast (dragon15.txt: a crystal 8 blocks off, destroyed: 171.5 to 156.86, 14.64).
 					Health -= 10.0f;
@@ -1433,7 +1449,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		{
 			const FVector ToEnderman = (Body.Position + FVector(0.0, Type.Height * 0.879, 0.0)) - (Manager.PlayerPositions[PlayerIndex] + FVector(0.0, 1.62, 0.0));
 			const double Distance = ToEnderman.Size();
-			if (Distance > 0.01 && Distance < Type.FollowRange)
+			if (Distance > 0.01 && Distance < Type.FollowRange && !(Manager.PlayerWearsPumpkin && Manager.PlayerWearsPumpkin(Manager.PlayerPositions[PlayerIndex])))
 			{
 				const double CosAngle = FVector::DotProduct(Manager.PlayerLooks[PlayerIndex].GetSafeNormal(), ToEnderman / Distance);
 				bLooked = bLooked || (1.0 - CosAngle) < 0.016 / Distance;
@@ -1944,6 +1960,7 @@ void FMcMob::Tick(FMcEntityManager& Manager)
 		}
 		else if (OnAttackPlayer)
 		{
+			UE_LOG(LogTemp, Display, TEXT("player bitten by %s at %s (anger %d, damage %.1f)"), *Type.Name.ToString(), *Body.Position.ToString(), AngerTicks, BiteDamage);
 			OnAttackPlayer(Target, BiteDamage);
 			// What a bite gives (reference, effects2/3/4.txt): a husk hunger for 140 ticks on Normal and 280 on Hard (none on Easy,
 			// the Easy runs showed none in 120 ticks), a wither skeleton wither for 200 at Normal and Hard (199 on Easy too).

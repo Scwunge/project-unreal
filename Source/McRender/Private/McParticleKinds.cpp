@@ -54,6 +54,14 @@ namespace
 		Add(TEXT("glow"), 13, 13, 0.106f, 0.0f, 0.04f, 0.74f, -0.01f, EFrames::First, true);
 		Add(TEXT("firework"), 20, 20, 0.11f, -0.85f, 0.03f, 0.54f, 0.02f, EFrames::ByAge, true);
 		Add(TEXT("falling_water"), 5, 5, 0.04f, 0.0f, 0.01f, 0.9f, 0.075f, EFrames::First);
+		// A dripstone tip's drop (run scripts/qd1, six tips, a shot a tick, 146.7 px a block at the drop's depth): it hangs 42 to 48 ticks
+		// growing from 2 px to about 6 px wide, then falls 0.045 blocks a tick faster each tick (steps of 7, 14, 21, 27, 33, 40, 47, 52 px)
+		// and goes where it lands.
+		Add(TEXT("dripping_dripstone_water"), 46, 46, 0.006f, 2.6f, 0.0f, 1.0f, 0.0f, EFrames::First);
+		Table.Last().Then = FName("minecraft:falling_dripstone_water");
+		Add(TEXT("falling_dripstone_water"), 60, 60, 0.03f, 0.0f, 0.0f, 1.0f, 0.045f, EFrames::First);
+		Table.Last().bPhysics = true;
+		Table.Last().bDieOnLand = true;
 		Add(TEXT("explosion"), 9, 9, 0.375f, -0.27f, 0.0f, 0.98f, 0.0f, EFrames::ByAge);
 		// Smoke is a grey picture the game darkens: the runs showed it near black (mean 13 and 18 of 255 against a grey wall).
 		for (FKind& Kind : Table)

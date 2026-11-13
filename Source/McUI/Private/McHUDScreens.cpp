@@ -930,14 +930,18 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 
 // ---- Items ----
 
-void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture)
+void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture, float IconScale)
 {
 	if (Stack.IsEmpty())
 	{
 		return;
 	}
 	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item == TEXT("minecraft:decorated_pot") && !McItemDef::UsesPackModels(Stack)
-		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y);
+		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y, IconScale);
+	if (IconScale != 1.0f)
+	{
+		return;
+	}
 	const McGui::FDurabilityBar Bar = McBundle::IsBundle(Stack.Item) ? McGui::GetBundleBar(McBundle::GetFullness(Stack))
 		: McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
@@ -2828,6 +2832,20 @@ void AMcHUD::DrawToasts(int32 Width, int32 Height)
 		}
 		const float X = Width - 160.0f + static_cast<float>(Hidden) * 160.0f;
 		const float Y = Slot * 32.0f;
+		if (Toast.Items.Num() > 0)
+		{
+			// The recipe toast (measured, ref_rt2_a: a stick unlocked): the light recipe sprite, the heading in dark purple and the line
+			// under it in black, the crafting table small (0.6) at (3, 3) and the recipe's result at (8, 8). With several recipes
+			// the result changes every 0.6 s (the period is not measured).
+			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/toast/recipe.png")), X, Y, 160, 32);
+			DrawGuiText(Toast.Heading, X + 30.0f, Y + 7.0f, Toast.HeadingRgb, false);
+			DrawGuiText(Toast.Title, X + 30.0f, Y + 18.0f, 0x000000, false);
+			DrawStack(FMcItemStack(FName(TEXT("minecraft:crafting_table")), 1), X + 3.0f, Y + 3.0f, NAME_None, 0.6f);
+			DrawStack(FMcItemStack(Toast.Items[static_cast<int32>(Age / 0.6) % Toast.Items.Num()], 1), X + 8.0f, Y + 8.0f);
+			++Slot;
+			++Index;
+			continue;
+		}
 		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/toast/advancement.png")), X, Y, 160, 32);
 		DrawGuiText(Toast.Heading, X + 30.0f, Y + 7.0f, Toast.HeadingRgb, false);
 		DrawGuiText(Toast.Title, X + 30.0f, Y + 18.0f, 0xFFFFFF, false);

@@ -159,7 +159,7 @@ private:
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
 	// The same with the top edge moved right by TopShift and the bottom edge by BottomShift (italic text).
 	void DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift);
-	void DrawIcon(const FIcon& Icon, float X, float Y);
+	void DrawIcon(const FIcon& Icon, float X, float Y, float IconScale = 1.0f);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);
 
 	// Text in the game's own bitmap font (textures/font/ascii.png).
@@ -193,7 +193,8 @@ private:
 	void DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style);
 	void DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
-	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
+	// IconScale below 1 draws the picture smaller (the recipe toast's crafting table), without the count and the bar.
+	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None, float IconScale = 1.0f);
 	void DrawScreen(int32 Width, int32 Height);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);

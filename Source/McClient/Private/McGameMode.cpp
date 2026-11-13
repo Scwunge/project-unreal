@@ -622,6 +622,14 @@ int32 AMcGameMode::UnlockRecipes(AMcPlayerPawn& Pawn, const TArray<FName>& Ids, 
 		Pawn.Data->Recipes.Add(Id);
 		Pawn.Data->RecipesToDisplay.Add(Id);
 		++Changed;
+		// The toast shows the recipe's result (vanilla: for a recipe that is to be displayed).
+		if (const FMcRecipe* Recipe = FMcRecipeBook::Get().Find(Id))
+		{
+			if (!Recipe->Result.IsEmpty())
+			{
+				Pawn.Data->ServerRecipeToast(Recipe->Result.Item);
+			}
+		}
 		FMcTriggerEvent Unlocked;
 		Unlocked.Trigger = FName(TEXT("minecraft:recipe_unlocked"));
 		Unlocked.Recipe = Id;

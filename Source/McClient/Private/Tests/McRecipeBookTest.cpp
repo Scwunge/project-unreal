@@ -65,4 +65,30 @@ bool FMcRecipeBookTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// The recipe toast: one for the recipes unlocked together, with the game's two lines.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcRecipeToastTest, "McClient.McPlayer.RecipeToast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcRecipeToastTest::RunTest(const FString& Parameters)
+{
+	TArray<UMcPlayerDataComponent::FToast>& Toasts = UMcPlayerDataComponent::GetToasts();
+	Toasts.Reset();
+	UMcPlayerDataComponent::ShowRecipeToast(FName(TEXT("minecraft:stick")));
+	UMcPlayerDataComponent::ShowRecipeToast(FName(TEXT("minecraft:oak_planks")));
+	UMcPlayerDataComponent::ShowRecipeToast(FName(TEXT("minecraft:stick")));
+	if (TestEqual(TEXT("one toast for all of them"), Toasts.Num(), 1))
+	{
+		TestEqual(TEXT("with each result once"), Toasts[0].Items.Num(), 2);
+		TestEqual(TEXT("the first line"), Toasts[0].Heading, FString(TEXT("New Recipe(s) Unlocked!")));
+		TestEqual(TEXT("the second line"), Toasts[0].Title, FString(TEXT("Check your recipe book")));
+		TestEqual(TEXT("in dark purple"), Toasts[0].HeadingRgb, 0x500050u);
+		// One that has begun to leave does not take more.
+		Toasts[0].bOutSounded = true;
+		UMcPlayerDataComponent::ShowRecipeToast(FName(TEXT("minecraft:furnace")));
+		TestEqual(TEXT("a new toast after one is leaving"), Toasts.Num(), 2);
+	}
+	Toasts.Reset();
+	return true;
+}
+
 #endif

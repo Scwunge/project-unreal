@@ -1838,7 +1838,8 @@ bool FMcJavaRoundTripRealSavesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	const FString Only = Parameters;
-	constexpr int32 MaxChunksInDefaultRun = 75000;
+	const FString LimitText = FPlatformMisc::GetEnvironmentVariable(TEXT("MC_ROUNDTRIP_MAX_CHUNKS"));
+	const int32 MaxChunksInDefaultRun = LimitText.IsEmpty() ? 75000 : FCString::Atoi(*LimitText);
 	for (const TCHAR* Name : { TEXT("campref"), TEXT("endref"), TEXT("terrain3"), TEXT("importflat") })
 	{
 		if (!Only.IsEmpty() && Only != Name)

@@ -126,6 +126,23 @@ public:
 	// The id of the vehicle it sits in (a boat picks up what it bumps into), or 0. A mob that sits does nothing and is
 	// moved by its vehicle; it gets out when that goes. Not saved.
 	int32 RidingId = 0;
+	// The mob that sits on this one (a chicken jockey's zombie on its chicken), or 0. Set together with the rider's RidingId, which
+	// then names this mob: the rider's own tick moves this one's body as if it were its own (the rider's goals steer the pair), and this
+	// one does nothing of its own while it is ridden. Saved: the rider goes into its mount's record.
+	int32 PassengerId = 0;
+	// A baby zombie (of the zombie family) never grows up: its YoungTicks start this high and are never counted down to nothing.
+	static constexpr int32 BabyForever = 1 << 30;
+	// The zombie kinds that can be born babies (the game's Zombie class and its subclasses that keep the baby chance).
+	static bool CanBeBabyZombie(FName Kind);
+	// Where a rider of this height sits over this mob's feet, as an offset from them.
+	FVector GetSeatOffset(const FMcMob& Rider) const;
+	// One tick of a mob that is not carried by one: its goals and its own body. Tick calls it, over the mount's body for a rider.
+	void TickAlone(FMcEntityManager& Manager);
+	// The mob it is riding while its tick runs over that mob's body, else null. Not saved.
+	const FMcMob* Carrier = nullptr;
+	static constexpr double CarriedSpeedFactor = 1.1;
+	// A spider carrying a rider: 5.7 blocks a second in jockey_spider_near.txt, against 3.6 at 1.1 times its own speed.
+	static constexpr double SpiderCarriedSpeedFactor = 1.75;
 	int32 PanicTicks = 0;
 	int32 AttackCooldown = 0;
 	// Ticks a hurt neutral mob stays after whoever hurt it (a minute).

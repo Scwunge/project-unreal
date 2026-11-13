@@ -1065,5 +1065,20 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	}
 	const FString DataFolder = OutFolder / TEXT("data") / TEXT("minecraft");
 	Files.MakeDirectory(*DataFolder, true);
-	return FFileHelper::SaveArrayToFile(GenZipped, *(DataFolder / TEXT("world_gen_settings.dat")));
+	if (!FFileHelper::SaveArrayToFile(GenZipped, *(DataFolder / TEXT("world_gen_settings.dat"))))
+	{
+		return false;
+	}
+	// data/minecraft/world_clocks.dat: the time of day lives here in 26.3 (observed in the ref save: the overworld's total_ticks,
+	// 77000 there), not in level.dat. The End's clock is left for the game to start.
+	FMcNbt Clock = MakeTag(EType::Compound);
+	Add(Clock, TEXT("total_ticks"), Int(static_cast<int64>(Level.DayTime), EType::Long));
+	FMcNbt Clocks = MakeTag(EType::Compound);
+	Add(Clocks, TEXT("minecraft:overworld"), MoveTemp(Clock));
+	FMcNbt ClockRoot = MakeTag(EType::Compound);
+	Add(ClockRoot, TEXT("data"), MoveTemp(Clocks));
+	Add(ClockRoot, TEXT("DataVersion"), Int(DataVersion));
+	TArray<uint8> ClockRaw, ClockZipped;
+	ClockRoot.WriteRoot(ClockRaw);
+	return Compress(NAME_Gzip, ClockRaw, ClockZipped) && FFileHelper::SaveArrayToFile(ClockZipped, *(DataFolder / TEXT("world_clocks.dat")));
 }

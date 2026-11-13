@@ -1560,6 +1560,12 @@ bool FMcJavaExportOwnSaveTest::RunTest(const FString& Parameters)
 	McJavaExport::FStats Out;
 	TestTrue(TEXT("the export ran"), McJavaExport::ExportWorld(Copy, Target, Out));
 	AddInfo(FString::Printf(TEXT("exported %s: %d chunks in %d regions (%d failed) to %s in %.2f s"), *Name, Out.Chunks, Out.Regions, Out.Failed, *Target, Out.Seconds));
+	// The time of day travels through data/minecraft/world_clocks.dat (26.3 keeps it there, not in level.dat).
+	FMcLevelData Before, After;
+	if (McWorldSave::LoadLevel(Copy, Before) && McJavaImport::ReadLevel(Target, After))
+	{
+		TestEqual(TEXT("the day time survives the export"), After.DayTime, Before.DayTime);
+	}
 	IFileManager::Get().DeleteDirectory(*Copy, false, true);
 	return true;
 }

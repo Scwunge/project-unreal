@@ -1383,6 +1383,17 @@ bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 	OutLevel.Name = Data->GetString(TEXT("LevelName"));
 	OutLevel.GameMode = Data->GetInt(TEXT("GameType")) == 1 ? TEXT("creative") : TEXT("survival");
 	OutLevel.DayTime = static_cast<double>(Data->GetInt(TEXT("DayTime"), Data->GetInt(TEXT("Time"))));
+	// 26.3 keeps the time of day in data/minecraft/world_clocks.dat (the overworld's total_ticks), not in level.dat.
+	FMcNbt Clocks;
+	if (FMcNbt::LoadFile(Folder / TEXT("data") / TEXT("minecraft") / TEXT("world_clocks.dat"), Clocks))
+	{
+		const FMcNbt* ClockData = Clocks.Find(TEXT("data"));
+		const FMcNbt* Overworld = ClockData ? ClockData->Find(TEXT("minecraft:overworld")) : nullptr;
+		if (Overworld && Overworld->Find(TEXT("total_ticks")))
+		{
+			OutLevel.DayTime = static_cast<double>(Overworld->GetInt(TEXT("total_ticks")));
+		}
+	}
 	// The spawn: a `spawn` compound with a `pos` int array, or the older SpawnX, SpawnY and SpawnZ.
 	if (const FMcNbt* Spawn = Data->Find(TEXT("spawn")))
 	{

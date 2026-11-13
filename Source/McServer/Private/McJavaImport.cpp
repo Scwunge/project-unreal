@@ -1392,6 +1392,10 @@ bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
 		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
 		bFound = Old && ConvertPlayer(*Old, Player);
 	}
+	if (bFound && !Newest.IsEmpty())
+	{
+		Player.Uuid = FPaths::GetBaseFilename(Newest);
+	}
 	return bFound && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Player);
 }
 

@@ -59,6 +59,9 @@ struct MCSERVER_API FMcPlayerData
 	float Pitch = 0.0f;
 	FString Dimension = TEXT("minecraft:overworld");
 	bool bFlying = false;
+	// The player's id as a UUID text ("8f1c..."), when known (a player imported from a Java save keeps theirs, so an export
+	// writes the same file name); empty otherwise.
+	FString Uuid;
 
 	// ---- Survival state (only if bHasSurvival: a file from before has none, and the player starts as new) ----
 	bool bHasSurvival = false;

@@ -164,6 +164,9 @@ public:
 	TSet<FName> Advancements;
 	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
 	TSet<FName> Criteria;
+	// When each criterion was met, in Unix seconds, by the same "<advancement>/<criterion>" name (the game keeps a date for each);
+	// kept in the save. Criteria of an imported world keep the dates the game gave them.
+	TMap<FName, double> CriteriaTimes;
 	// Server: the recipes unlocked ("minecraft:stick"), and those among them not yet shown to the player (vanilla's
 	// recipeBook "recipes" and "toBeDisplayed"); kept in the save.
 	TSet<FName> Recipes;

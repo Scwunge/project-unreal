@@ -26,6 +26,13 @@
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonWriter.h"
+#include "Serialization/JsonSerializer.h"
+#include "McDataPacks.h"
+#include "McCache.h"
+#include "Misc/SecureHash.h"
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -779,6 +786,306 @@ void McJavaExport::MakeRegion(const TMap<FIntPoint, TArray<uint8>>& Chunks, TArr
 	}
 }
 
+FString McJavaExport::OfflineUuid(const FString& Name)
+{
+	const FTCHARToUTF8 Utf8(*(TEXT("OfflinePlayer:") + Name));
+	FMD5 Md5;
+	Md5.Update(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
+	uint8 Hash[16];
+	Md5.Final(Hash);
+	Hash[6] = (Hash[6] & 0x0f) | 0x30;
+	Hash[8] = (Hash[8] & 0x3f) | 0x80;
+	FString Text;
+	for (int32 Index = 0; Index < 16; ++Index)
+	{
+		Text += FString::Printf(TEXT("%02x"), Hash[Index]);
+		if (Index == 3 || Index == 5 || Index == 7 || Index == 9)
+		{
+			Text += TEXT("-");
+		}
+	}
+	return Text;
+}
+
+void McJavaExport::MakePlayer(const FMcPlayerData& Player, FMcNbt& Out)
+{
+	const auto Stat = [&Player](const TCHAR* Key, double Default)
+	{
+		const double* Found = Player.Stats.Find(Key);
+		return Found ? *Found : Default;
+	};
+	Out = MakeTag(EType::Compound);
+	Add(Out, TEXT("DataVersion"), Int(DataVersion));
+	Add(Out, TEXT("Pos"), DoubleList({ Player.Position.X, Player.Position.Y, Player.Position.Z }));
+	FMcNbt Rotation = MakeTag(EType::List);
+	Rotation.Values.Add(Real(Player.Yaw, EType::Float));
+	Rotation.Values.Add(Real(Player.Pitch, EType::Float));
+	Add(Out, TEXT("Rotation"), MoveTemp(Rotation));
+	Add(Out, TEXT("Dimension"), Str(Player.Dimension));
+	Add(Out, TEXT("playerGameType"), Int(Player.bCreative ? 1 : 0));
+	FMcNbt Abilities = MakeTag(EType::Compound);
+	Add(Abilities, TEXT("flying"), Int(Player.bFlying ? 1 : 0, EType::Byte));
+	Add(Abilities, TEXT("mayfly"), Int(Player.bCreative ? 1 : 0, EType::Byte));
+	Add(Abilities, TEXT("instabuild"), Int(Player.bCreative ? 1 : 0, EType::Byte));
+	Add(Abilities, TEXT("invulnerable"), Int(Player.bCreative ? 1 : 0, EType::Byte));
+	Add(Abilities, TEXT("mayBuild"), Int(1, EType::Byte));
+	Add(Abilities, TEXT("walkSpeed"), Real(0.1f, EType::Float));
+	Add(Abilities, TEXT("flySpeed"), Real(0.05f, EType::Float));
+	Add(Out, TEXT("abilities"), MoveTemp(Abilities));
+	Add(Out, TEXT("SelectedItemSlot"), Int(FMath::Clamp(Player.SelectedSlot, 0, 8)));
+	if (Player.bHasSurvival)
+	{
+		Add(Out, TEXT("Health"), Real(Stat(TEXT("health"), 20.0), EType::Float));
+		Add(Out, TEXT("foodLevel"), Int(FMath::RoundToInt32(Stat(TEXT("food"), 20.0))));
+		Add(Out, TEXT("foodSaturationLevel"), Real(Stat(TEXT("saturation"), 5.0), EType::Float));
+		Add(Out, TEXT("foodExhaustionLevel"), Real(Stat(TEXT("exhaustion"), 0.0), EType::Float));
+		Add(Out, TEXT("foodTickTimer"), Int(FMath::RoundToInt32(Stat(TEXT("food_timer"), 0.0))));
+		Add(Out, TEXT("AbsorptionAmount"), Real(Stat(TEXT("absorption"), 0.0), EType::Float));
+		Add(Out, TEXT("XpLevel"), Int(FMath::RoundToInt32(Stat(TEXT("xp_level"), 0.0))));
+		Add(Out, TEXT("XpP"), Real(Stat(TEXT("xp_progress"), 0.0), EType::Float));
+		Add(Out, TEXT("Air"), Int(FMath::RoundToInt32(Stat(TEXT("air"), 300.0))));
+		Add(Out, TEXT("Fire"), Int(FMath::RoundToInt32(Stat(TEXT("fire_ticks"), -20.0)), EType::Short));
+	}
+	// The inventory list holds slots 0 to 35 and the ender chest 0 to 26; the worn pieces and the off hand go under equipment.
+	FMcNbt Inventory = MakeTag(EType::List);
+	FMcNbt Ender = MakeTag(EType::List);
+	FMcNbt Equipment = MakeTag(EType::Compound);
+	const struct { const TCHAR* Key; int32 Slot; } Worn[] = { { TEXT("feet"), 100 }, { TEXT("legs"), 101 }, { TEXT("chest"), 102 }, { TEXT("head"), 103 }, { TEXT("offhand"), 150 } };
+	for (const FMcSavedSlot& Saved : Player.Slots)
+	{
+		if (Saved.Stack.IsEmpty())
+		{
+			continue;
+		}
+		if (Saved.Slot >= 0 && Saved.Slot <= 35)
+		{
+			FMcNbt Item = ItemToNbt(Saved.Stack);
+			Item.Keys.Insert(TEXT("Slot"), 0);
+			Item.Values.Insert(Int(Saved.Slot, EType::Byte), 0);
+			Inventory.Values.Add(MoveTemp(Item));
+		}
+		else if (Saved.Slot >= 200 && Saved.Slot <= 226)
+		{
+			FMcNbt Item = ItemToNbt(Saved.Stack);
+			Item.Keys.Insert(TEXT("Slot"), 0);
+			Item.Values.Insert(Int(Saved.Slot - 200, EType::Byte), 0);
+			Ender.Values.Add(MoveTemp(Item));
+		}
+		else
+		{
+			for (const auto& Piece : Worn)
+			{
+				if (Piece.Slot == Saved.Slot)
+				{
+					Add(Equipment, Piece.Key, ItemToNbt(Saved.Stack));
+				}
+			}
+		}
+	}
+	Add(Out, TEXT("Inventory"), MoveTemp(Inventory));
+	Add(Out, TEXT("EnderItems"), MoveTemp(Ender));
+	if (!Equipment.Keys.IsEmpty())
+	{
+		Add(Out, TEXT("equipment"), MoveTemp(Equipment));
+	}
+	// The recipe book: recipes and, of them, those not yet shown (recipe:<id> is 1, or 2 while still to be shown).
+	FMcNbt Recipes = MakeTag(EType::List);
+	FMcNbt ToDisplay = MakeTag(EType::List);
+	TArray<FString> Ids;
+	for (const TPair<FString, double>& Pair : Player.Stats)
+	{
+		if (Pair.Key.StartsWith(TEXT("recipe:")))
+		{
+			Ids.Add(Pair.Key);
+		}
+	}
+	Ids.Sort();
+	for (const FString& Key : Ids)
+	{
+		Recipes.Values.Add(Str(Key.RightChop(7)));
+		if (Player.Stats.FindRef(Key) >= 2.0)
+		{
+			ToDisplay.Values.Add(Str(Key.RightChop(7)));
+		}
+	}
+	FMcNbt Book = MakeTag(EType::Compound);
+	Add(Book, TEXT("recipes"), MoveTemp(Recipes));
+	Add(Book, TEXT("toBeDisplayed"), MoveTemp(ToDisplay));
+	Add(Out, TEXT("recipeBook"), MoveTemp(Book));
+}
+
+namespace
+{
+	FString Namespaced(const FString& Id)
+	{
+		return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id;
+	}
+
+	bool WriteJsonFile(const FString& Path, const TSharedRef<FJsonObject>& Object)
+	{
+		FString Text;
+		if (!FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Text)))
+		{
+			return false;
+		}
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+		return FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
+
+	// "2026-11-13 07:00:26 +0100": the game's date text in a player's advancement file. The port keeps no times, so every
+	// criterion gets the time of the export.
+	FString AdvancementDate()
+	{
+		const FDateTime Now = FDateTime::Now();
+		const FTimespan Offset = Now - FDateTime::UtcNow();
+		const int32 Minutes = FMath::RoundToInt32(Offset.GetTotalMinutes());
+		return FString::Printf(TEXT("%s %c%02d%02d"), *Now.ToString(TEXT("%Y-%m-%d %H:%M:%S")), Minutes < 0 ? TEXT('-') : TEXT('+'), FMath::Abs(Minutes) / 60, FMath::Abs(Minutes) % 60);
+	}
+
+	// The date a criterion was met (Unix seconds in the player's "ctime:" entry, written in UTC), else the time of the export.
+	FString CriterionDate(const FMcPlayerData& Player, const FString& Advancement, const FString& Criterion, const FString& Fallback)
+	{
+		const double* Seconds = Player.Stats.Find(TEXT("ctime:") + Advancement + TEXT("/") + Criterion);
+		return Seconds ? FDateTime::FromUnixTimestamp(static_cast<int64>(*Seconds)).ToString(TEXT("%Y-%m-%d %H:%M:%S +0000")) : Fallback;
+	}
+
+	// players/advancements/<uuid>.json: each advancement made (all its criteria, from the game's data) and each one begun.
+	bool ExportAdvancements(const FMcPlayerData& Player, const FString& Path)
+	{
+		const FString Date = AdvancementDate();
+		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		TSet<FString> Done;
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			if (!Pair.Key.StartsWith(TEXT("advancement:")))
+			{
+				continue;
+			}
+			const FString Id = Namespaced(Pair.Key.RightChop(12));
+			Done.Add(Id);
+			const TSharedRef<FJsonObject> Criteria = MakeShared<FJsonObject>();
+			const FString File = McData::PathOf(Id, TEXT("advancement"), TEXT(".json"));
+			const TSharedPtr<FJsonObject> Def = File.IsEmpty() ? nullptr : McCache::LoadJsonObject(File);
+			const TSharedPtr<FJsonObject>* Defined = nullptr;
+			if (Def.IsValid() && Def->TryGetObjectField(TEXT("criteria"), Defined))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Criterion : (*Defined)->Values)
+				{
+					Criteria->SetStringField(Criterion.Key, CriterionDate(Player, Id, Criterion.Key, Date));
+				}
+			}
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetObjectField(TEXT("criteria"), Criteria);
+			Entry->SetBoolField(TEXT("done"), true);
+			Root->SetObjectField(Id, Entry);
+		}
+		// Criteria met of advancements not made yet: "<advancement>/<criterion>".
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			FString Advancement, Criterion;
+			if (!Pair.Key.StartsWith(TEXT("criterion:")) || !Pair.Key.RightChop(10).Split(TEXT("/"), &Advancement, &Criterion, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+			{
+				continue;
+			}
+			Advancement = Namespaced(Advancement);
+			if (Done.Contains(Advancement))
+			{
+				continue;
+			}
+			TSharedPtr<FJsonObject> Entry = Root->HasField(Advancement) ? Root->GetObjectField(Advancement) : nullptr;
+			if (!Entry.IsValid())
+			{
+				Entry = MakeShared<FJsonObject>();
+				Entry->SetObjectField(TEXT("criteria"), MakeShared<FJsonObject>());
+				Entry->SetBoolField(TEXT("done"), false);
+				Root->SetObjectField(Advancement, Entry);
+			}
+			Entry->GetObjectField(TEXT("criteria"))->SetStringField(Criterion, CriterionDate(Player, Advancement, Criterion, Date));
+		}
+		Root->SetNumberField(TEXT("DataVersion"), McJavaExport::DataVersion);
+		return WriteJsonFile(Path, Root);
+	}
+
+	// players/stats/<uuid>.json: {"stats": {"minecraft:<category>": {"minecraft:<name>": count}}}. The port's counters are
+	// "<category>:<name>" ("custom:play_time", "crafted:minecraft:stick"); the category names are the game's.
+	bool ExportStats(const FMcPlayerData& Player, const FString& Path)
+	{
+		const TSharedRef<FJsonObject> Categories = MakeShared<FJsonObject>();
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			FString Category, Name;
+			if (!Pair.Key.StartsWith(TEXT("stat:")) || !Pair.Key.RightChop(5).Split(TEXT(":"), &Category, &Name) || Name.IsEmpty())
+			{
+				continue;
+			}
+			const FString CategoryKey = Namespaced(Category);
+			TSharedPtr<FJsonObject> Counts = Categories->HasField(CategoryKey) ? Categories->GetObjectField(CategoryKey) : nullptr;
+			if (!Counts.IsValid())
+			{
+				Counts = MakeShared<FJsonObject>();
+				Categories->SetObjectField(CategoryKey, Counts);
+			}
+			Counts->SetNumberField(Namespaced(Name), Pair.Value);
+		}
+		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		Root->SetObjectField(TEXT("stats"), Categories);
+		Root->SetNumberField(TEXT("DataVersion"), McJavaExport::DataVersion);
+		return WriteJsonFile(Path, Root);
+	}
+}
+
+namespace
+{
+	// players/data/<uuid>.dat for every player the world has; how many were written, or -1 if one could not be.
+	int32 ExportPlayers(const FString& WorldDir, const FString& OutFolder)
+	{
+		TArray<FString> Files;
+		IFileManager::Get().FindFiles(Files, *(WorldDir / TEXT("playerdata") / TEXT("*.json")), true, false);
+		int32 Written = 0;
+		for (const FString& File : Files)
+		{
+			const FString Id = FPaths::GetBaseFilename(File);
+			FMcPlayerData Player;
+			if (!McWorldSave::LoadPlayer(WorldDir, Id, Player))
+			{
+				continue;
+			}
+			// The imported player's own id when it is known, else the one a world with no accounts gives that name.
+			const FString Uuid = !Player.Uuid.IsEmpty() ? Player.Uuid : McJavaExport::OfflineUuid(Id);
+			FMcNbt Root;
+			McJavaExport::MakePlayer(Player, Root);
+			// The UUID as four ints, the game's way.
+			FString Compact = Uuid.Replace(TEXT("-"), TEXT(""));
+			if (Compact.Len() == 32)
+			{
+				FMcNbt Parts = MakeTag(EType::IntArray);
+				for (int32 Part = 0; Part < 4; ++Part)
+				{
+					Parts.Values.Add(Int(static_cast<int32>(FParse::HexNumber(*Compact.Mid(Part * 8, 8))), EType::Int));
+				}
+				Parts.Integer = 4;
+				Root.Keys.Insert(TEXT("UUID"), 1);
+				Root.Values.Insert(MoveTemp(Parts), 1);
+			}
+			TArray<uint8> Raw, Zipped;
+			Root.WriteRoot(Raw);
+			const FString Folder = OutFolder / TEXT("players") / TEXT("data");
+			IFileManager::Get().MakeDirectory(*Folder, true);
+			if (!Compress(NAME_Gzip, Raw, Zipped) || !FFileHelper::SaveArrayToFile(Zipped, *(Folder / (Uuid + TEXT(".dat")))))
+			{
+				return -1;
+			}
+			if (!ExportAdvancements(Player, OutFolder / TEXT("players") / TEXT("advancements") / (Uuid + TEXT(".json")))
+				|| !ExportStats(Player, OutFolder / TEXT("players") / TEXT("stats") / (Uuid + TEXT(".json"))))
+			{
+				return -1;
+			}
+			++Written;
+		}
+		return Written;
+	}
+}
+
 bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder, FStats& OutStats, bool bWriteLight)
 {
 	FMcLevelData Level;
@@ -1083,6 +1390,12 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	TArray<uint8> ClockRaw, ClockZipped;
 	ClockRoot.WriteRoot(ClockRaw);
 	if (!Compress(NAME_Gzip, ClockRaw, ClockZipped) || !FFileHelper::SaveArrayToFile(ClockZipped, *(DataFolder / TEXT("world_clocks.dat"))))
+	{
+		return false;
+	}
+	// players/data/<uuid>.dat: the players the world has (a recipe book and all).
+	OutStats.Players = ExportPlayers(WorldDir, OutFolder);
+	if (OutStats.Players < 0)
 	{
 		return false;
 	}

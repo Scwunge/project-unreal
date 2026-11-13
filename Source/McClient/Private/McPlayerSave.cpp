@@ -58,6 +58,10 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	{
 		Out.Stats.Add(TEXT("criterion:") + Criterion.ToString(), 1.0);
 	}
+	for (const TPair<FName, double>& Time : Data.CriteriaTimes)
+	{
+		Out.Stats.Add(TEXT("ctime:") + Time.Key.ToString(), Time.Value);
+	}
 	for (const FName Advancement : Data.Advancements)
 	{
 		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
@@ -145,6 +149,7 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	Data.Advancements.Reset();
 	Data.Counters.Reset();
 	Data.Criteria.Reset();
+	Data.CriteriaTimes.Reset();
 	Data.Recipes.Reset();
 	Data.RecipesToDisplay.Reset();
 	for (const TPair<FString, double>& Stat : Saved.Stats)
@@ -152,6 +157,10 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		if (Stat.Key.StartsWith(TEXT("criterion:")))
 		{
 			Data.Criteria.Add(FName(*Stat.Key.RightChop(10)));
+		}
+		if (Stat.Key.StartsWith(TEXT("ctime:")))
+		{
+			Data.CriteriaTimes.Add(FName(*Stat.Key.RightChop(6)), Stat.Value);
 		}
 		if (Stat.Key.StartsWith(TEXT("stat:")))
 		{

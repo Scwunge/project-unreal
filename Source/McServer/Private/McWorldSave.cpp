@@ -20,7 +20,7 @@ bool FMcLevelData::operator==(const FMcLevelData& Other) const
 bool FMcPlayerData::operator==(const FMcPlayerData& Other) const
 {
 	return Position == Other.Position && Yaw == Other.Yaw && Pitch == Other.Pitch && Dimension == Other.Dimension
-		&& bFlying == Other.bFlying && bHasSurvival == Other.bHasSurvival && bCreative == Other.bCreative
+		&& bFlying == Other.bFlying && Uuid == Other.Uuid && bHasSurvival == Other.bHasSurvival && bCreative == Other.bCreative
 		&& SelectedSlot == Other.SelectedSlot && Stats.OrderIndependentCompareEqual(Other.Stats) && Slots == Other.Slots;
 }
 
@@ -228,6 +228,10 @@ bool McWorldSave::SavePlayer(const FString& WorldDir, const FString& PlayerId, c
 	Object->SetNumberField(TEXT("pitch"), Player.Pitch);
 	Object->SetStringField(TEXT("dimension"), Player.Dimension);
 	Object->SetBoolField(TEXT("flying"), Player.bFlying);
+	if (!Player.Uuid.IsEmpty())
+	{
+		Object->SetStringField(TEXT("uuid"), Player.Uuid);
+	}
 	if (Player.bHasSurvival)
 	{
 		Object->SetBoolField(TEXT("creative"), Player.bCreative);
@@ -306,6 +310,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	}
 	Object->TryGetStringField(TEXT("dimension"), Player.Dimension);
 	Object->TryGetBoolField(TEXT("flying"), Player.bFlying);
+	Object->TryGetStringField(TEXT("uuid"), Player.Uuid);
 	const TSharedPtr<FJsonObject>* Stats = nullptr;
 	const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
 	if (Object->TryGetObjectField(TEXT("stats"), Stats) && Object->TryGetArrayField(TEXT("inventory"), Items))

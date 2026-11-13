@@ -862,6 +862,8 @@ The wiki doesn't document the noise maths exactly, so noises are built to the do
 (normalized fBm whose expected amplitude is `base_amplitude`) and calibrated against world statistics. They
 are not seed-matched.
 
+**Overworld match against the reference, 2026-11-13** (distributions, ours = mean of 5 seeds, matching = inside the min to max of the reference's 5 worlds; `McClient.McGen.VanillaMatch` pins the climate and biome rows): climate percentiles (5/25/50/75/95 of the six parameters) 27 of 30 (misses: weirdness p50/p75/p95 by 0.003 to 0.01); biome share of the 64x64 grid 39 of 42 (misses: flower_forest, sunflower_plains low; grove high); from the world survey (scratch Saved/matchrate.py): block shape per 16-block band 68 of 80 cells, biome share of columns 33 of 46, ground block 14 of 16. Open mismatch: dirt in y 16 to 48 is 1.3 to 1.8x the reference and grass_block at y 32 to 47 is 0.0047 of blocks against about 0 (grass on cave floors under ocean and river columns); a chunk-minimum offset sweep of the above_preliminary_surface guard (-8 to +12) did not move it, cause unresolved.
+
 **Known limitation: seed-exact noise.** The calibrated noises match the reference client's spread within 1 to 5%
 and its band spectra in shape (`McClient.McGen.NoiseSpectrum`, `McClient.McGen.BiomeMix`), but not value for value:
 `McClient.McGen.ClimatePoints` against the reference's logged climate line (save `terrain`, seed 4242424242) is off by

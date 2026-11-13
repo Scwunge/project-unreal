@@ -2,7 +2,10 @@
 #include "McJavaImport.h"
 #include "McNbt.h"
 #include "McWorldSave.h"
+#include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonSerializer.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
@@ -30,6 +33,10 @@ bool FMcPlayerExportTest::RunTest(const FString& Parameters)
 	Player.Stats.Add(TEXT("health"), 14.0);
 	Player.Stats.Add(TEXT("food"), 12.0);
 	Player.Stats.Add(TEXT("xp_level"), 7.0);
+	Player.Stats.Add(TEXT("advancement:minecraft:story/mine_stone"), 1.0);
+	Player.Stats.Add(TEXT("criterion:minecraft:adventure/adventuring_time/minecraft:plains"), 1.0);
+	Player.Stats.Add(TEXT("stat:custom:play_time"), 307.0);
+	Player.Stats.Add(TEXT("stat:crafted:minecraft:stick"), 4.0);
 	Player.Stats.Add(TEXT("recipe:minecraft:stick"), 1.0);
 	Player.Stats.Add(TEXT("recipe:minecraft:furnace"), 2.0);
 	Player.Slots.Add({ 3, FMcItemStack(FName(TEXT("minecraft:stone")), 20) });
@@ -58,6 +65,44 @@ bool FMcPlayerExportTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestNotNull(TEXT("with a UUID"), File.Find(TEXT("UUID")));
+	// Advancements and statistics, in the game's files.
+	FString Text;
+	TSharedPtr<FJsonObject> Advancements, StatsFile;
+	if (TestTrue(TEXT("the advancements file is there"), FFileHelper::LoadFileToString(Text, *(Out / TEXT("players/advancements") / (Uuid + TEXT(".json")))))
+		&& TestTrue(TEXT("and is JSON"), FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Advancements) && Advancements.IsValid()))
+	{
+		const TSharedPtr<FJsonObject>* Made = nullptr;
+		if (TestTrue(TEXT("Stone Age is in it"), Advancements->TryGetObjectField(TEXT("minecraft:story/mine_stone"), Made)))
+		{
+			TestTrue(TEXT("done"), (*Made)->GetBoolField(TEXT("done")));
+			TestTrue(TEXT("with its criterion"), (*Made)->GetObjectField(TEXT("criteria"))->HasField(TEXT("get_stone")) || (*Made)->GetObjectField(TEXT("criteria"))->Values.Num() > 0);
+		}
+		const TSharedPtr<FJsonObject>* Begun = nullptr;
+		if (TestTrue(TEXT("a begun advancement is in it"), Advancements->TryGetObjectField(TEXT("minecraft:adventure/adventuring_time"), Begun)))
+		{
+			TestFalse(TEXT("not done"), (*Begun)->GetBoolField(TEXT("done")));
+			TestTrue(TEXT("with the biome it has"), (*Begun)->GetObjectField(TEXT("criteria"))->HasField(TEXT("minecraft:plains")));
+		}
+		TestEqual(TEXT("with the data version"), static_cast<int32>(Advancements->GetNumberField(TEXT("DataVersion"))), McJavaExport::DataVersion);
+	}
+	if (TestTrue(TEXT("the statistics file is there"), FFileHelper::LoadFileToString(Text, *(Out / TEXT("players/stats") / (Uuid + TEXT(".json")))))
+		&& TestTrue(TEXT("and is JSON"), FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), StatsFile) && StatsFile.IsValid()))
+	{
+		const TSharedPtr<FJsonObject>* All = nullptr;
+		const TSharedPtr<FJsonObject>* Custom = nullptr;
+		const TSharedPtr<FJsonObject>* Crafted = nullptr;
+		if (TestTrue(TEXT("a stats compound"), StatsFile->TryGetObjectField(TEXT("stats"), All)))
+		{
+			if (TestTrue(TEXT("custom"), (*All)->TryGetObjectField(TEXT("minecraft:custom"), Custom)))
+			{
+				TestEqual(TEXT("play time"), static_cast<int32>((*Custom)->GetNumberField(TEXT("minecraft:play_time"))), 307);
+			}
+			if (TestTrue(TEXT("crafted"), (*All)->TryGetObjectField(TEXT("minecraft:crafted"), Crafted)))
+			{
+				TestEqual(TEXT("sticks"), static_cast<int32>((*Crafted)->GetNumberField(TEXT("minecraft:stick"))), 4);
+			}
+		}
+	}
 	const FMcNbt* Book = File.Find(TEXT("recipeBook"));
 	if (TestNotNull(TEXT("with a recipe book"), Book) && TestNotNull(TEXT("recipes"), Book->Find(TEXT("recipes"))) && TestNotNull(TEXT("toBeDisplayed"), Book->Find(TEXT("toBeDisplayed"))))
 	{

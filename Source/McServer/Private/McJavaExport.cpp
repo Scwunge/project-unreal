@@ -26,6 +26,11 @@
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonWriter.h"
+#include "Serialization/JsonSerializer.h"
+#include "McDataPacks.h"
+#include "McCache.h"
 #include "Misc/SecureHash.h"
 #include "Misc/Parse.h"
 
@@ -911,6 +916,119 @@ void McJavaExport::MakePlayer(const FMcPlayerData& Player, FMcNbt& Out)
 
 namespace
 {
+	FString Namespaced(const FString& Id)
+	{
+		return Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id;
+	}
+
+	bool WriteJsonFile(const FString& Path, const TSharedRef<FJsonObject>& Object)
+	{
+		FString Text;
+		if (!FJsonSerializer::Serialize(Object, TJsonWriterFactory<>::Create(&Text)))
+		{
+			return false;
+		}
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), true);
+		return FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	}
+
+	// "2026-11-13 07:00:26 +0100": the game's date text in a player's advancement file. The port keeps no times, so every
+	// criterion gets the time of the export.
+	FString AdvancementDate()
+	{
+		const FDateTime Now = FDateTime::Now();
+		const FTimespan Offset = Now - FDateTime::UtcNow();
+		const int32 Minutes = FMath::RoundToInt32(Offset.GetTotalMinutes());
+		return FString::Printf(TEXT("%s %c%02d%02d"), *Now.ToString(TEXT("%Y-%m-%d %H:%M:%S")), Minutes < 0 ? TEXT('-') : TEXT('+'), FMath::Abs(Minutes) / 60, FMath::Abs(Minutes) % 60);
+	}
+
+	// players/advancements/<uuid>.json: each advancement made (all its criteria, from the game's data) and each one begun.
+	bool ExportAdvancements(const FMcPlayerData& Player, const FString& Path)
+	{
+		const FString Date = AdvancementDate();
+		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		TSet<FString> Done;
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			if (!Pair.Key.StartsWith(TEXT("advancement:")))
+			{
+				continue;
+			}
+			const FString Id = Namespaced(Pair.Key.RightChop(12));
+			Done.Add(Id);
+			const TSharedRef<FJsonObject> Criteria = MakeShared<FJsonObject>();
+			const FString File = McData::PathOf(Id, TEXT("advancement"), TEXT(".json"));
+			const TSharedPtr<FJsonObject> Def = File.IsEmpty() ? nullptr : McCache::LoadJsonObject(File);
+			const TSharedPtr<FJsonObject>* Defined = nullptr;
+			if (Def.IsValid() && Def->TryGetObjectField(TEXT("criteria"), Defined))
+			{
+				for (const TPair<FString, TSharedPtr<FJsonValue>>& Criterion : (*Defined)->Values)
+				{
+					Criteria->SetStringField(Criterion.Key, Date);
+				}
+			}
+			const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
+			Entry->SetObjectField(TEXT("criteria"), Criteria);
+			Entry->SetBoolField(TEXT("done"), true);
+			Root->SetObjectField(Id, Entry);
+		}
+		// Criteria met of advancements not made yet: "<advancement>/<criterion>".
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			FString Advancement, Criterion;
+			if (!Pair.Key.StartsWith(TEXT("criterion:")) || !Pair.Key.RightChop(10).Split(TEXT("/"), &Advancement, &Criterion, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+			{
+				continue;
+			}
+			Advancement = Namespaced(Advancement);
+			if (Done.Contains(Advancement))
+			{
+				continue;
+			}
+			TSharedPtr<FJsonObject> Entry = Root->HasField(Advancement) ? Root->GetObjectField(Advancement) : nullptr;
+			if (!Entry.IsValid())
+			{
+				Entry = MakeShared<FJsonObject>();
+				Entry->SetObjectField(TEXT("criteria"), MakeShared<FJsonObject>());
+				Entry->SetBoolField(TEXT("done"), false);
+				Root->SetObjectField(Advancement, Entry);
+			}
+			Entry->GetObjectField(TEXT("criteria"))->SetStringField(Criterion, Date);
+		}
+		Root->SetNumberField(TEXT("DataVersion"), McJavaExport::DataVersion);
+		return WriteJsonFile(Path, Root);
+	}
+
+	// players/stats/<uuid>.json: {"stats": {"minecraft:<category>": {"minecraft:<name>": count}}}. The port's counters are
+	// "<category>:<name>" ("custom:play_time", "crafted:minecraft:stick"); the category names are the game's.
+	bool ExportStats(const FMcPlayerData& Player, const FString& Path)
+	{
+		const TSharedRef<FJsonObject> Categories = MakeShared<FJsonObject>();
+		for (const TPair<FString, double>& Pair : Player.Stats)
+		{
+			FString Category, Name;
+			if (!Pair.Key.StartsWith(TEXT("stat:")) || !Pair.Key.RightChop(5).Split(TEXT(":"), &Category, &Name) || Name.IsEmpty())
+			{
+				continue;
+			}
+			const FString CategoryKey = Namespaced(Category);
+			TSharedPtr<FJsonObject> Counts = Categories->HasField(CategoryKey) ? Categories->GetObjectField(CategoryKey) : nullptr;
+			if (!Counts.IsValid())
+			{
+				Counts = MakeShared<FJsonObject>();
+				Categories->SetObjectField(CategoryKey, Counts);
+			}
+			Counts->SetNumberField(Namespaced(Name), Pair.Value);
+		}
+		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
+		Root->SetObjectField(TEXT("stats"), Categories);
+		Root->SetNumberField(TEXT("DataVersion"), McJavaExport::DataVersion);
+		return WriteJsonFile(Path, Root);
+	}
+}
+
+namespace
+{
 	// players/data/<uuid>.dat for every player the world has; how many were written, or -1 if one could not be.
 	int32 ExportPlayers(const FString& WorldDir, const FString& OutFolder)
 	{
@@ -947,6 +1065,11 @@ namespace
 			const FString Folder = OutFolder / TEXT("players") / TEXT("data");
 			IFileManager::Get().MakeDirectory(*Folder, true);
 			if (!Compress(NAME_Gzip, Raw, Zipped) || !FFileHelper::SaveArrayToFile(Zipped, *(Folder / (Uuid + TEXT(".dat")))))
+			{
+				return -1;
+			}
+			if (!ExportAdvancements(Player, OutFolder / TEXT("players") / TEXT("advancements") / (Uuid + TEXT(".json")))
+				|| !ExportStats(Player, OutFolder / TEXT("players") / TEXT("stats") / (Uuid + TEXT(".json"))))
 			{
 				return -1;
 			}

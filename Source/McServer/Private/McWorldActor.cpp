@@ -680,6 +680,62 @@ void AMcWorldActor::PlayerPlaced(const FIntVector& Pos)
 	}
 }
 
+int32 AMcWorldActor::PlaceFeature(const FString& Id, const FIntVector& Pos)
+{
+	if (!BlockWorld || !Features)
+	{
+		return 2;
+	}
+	const TSharedPtr<const FMcFeature> Feature = Features->ParseFeature(MakeShared<FJsonValueString>(Id));
+	if (!Feature)
+	{
+		return 1;
+	}
+	const FIntPoint Centre(McCoords::BlockToChunk(Pos.X), McCoords::BlockToChunk(Pos.Z));
+	TUniquePtr<FMcChunk> Copies[9];
+	FMcChunk* Around[9] = {};
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		const FMcChunk* Live = BlockWorld->FindChunk(Centre + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+		if (Live)
+		{
+			Copies[Index] = MakeUnique<FMcChunk>(*Live);
+			Around[Index] = Copies[Index].Get();
+		}
+	}
+	FMcGenRegion Region(Centre, Around);
+	FMcRandom Random(static_cast<uint64>(FPlatformTime::Cycles64()) ^ (static_cast<uint64>(Pos.X) * 31 + static_cast<uint64>(Pos.Z)));
+	FMcFeatureContext Context{ Region, Random, *Features, Features->GetSeaLevel(), nullptr };
+	if (!Feature->Place(Context, Pos))
+	{
+		return 2;
+	}
+	for (int32 Index = 0; Index < 9; ++Index)
+	{
+		const FMcChunk* Live = BlockWorld->FindChunk(Centre + FIntPoint(Index % 3 - 1, Index / 3 - 1));
+		if (!Live || !Copies[Index])
+		{
+			continue;
+		}
+		const FIntPoint At = Live->GetPos();
+		for (int32 Y = Live->GetMinY(); Y <= Live->GetMaxY(); ++Y)
+		{
+			for (int32 Z = 0; Z < 16; ++Z)
+			{
+				for (int32 X = 0; X < 16; ++X)
+				{
+					const FMcStateId New = Copies[Index]->GetBlock(X, Y, Z);
+					if (New != Live->GetBlock(X, Y, Z))
+					{
+						SetBlock(FIntVector(At.X * 16 + X, Y, At.Y * 16 + Z), New);
+					}
+				}
+			}
+		}
+	}
+	return 0;
+}
+
 void AMcWorldActor::SetBlock(const FIntVector& Pos, FMcStateId State, bool bCheckPortals)
 {
 	if (!BlockWorld)

@@ -46,6 +46,7 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McCache.h"
 #include "McDataPacks.h"
 #include "McTextComponent.h"
@@ -432,6 +433,15 @@ namespace
 					return false;
 				}
 			}
+			else if (Key == TEXT("to") || Key == TEXT("from"))
+			{
+				FString Wanted;
+				const FName Actual = Key == TEXT("to") ? Event.To : Event.From;
+				if (!Entry.Value->TryGetString(Wanted) || Actual.IsNone() || McCache::Namespaced(Wanted) != Actual.ToString())
+				{
+					return false;
+				}
+			}
 			else if (Key == TEXT("recipes"))
 			{
 				if (!NameIn(Entry.Value, Event.Recipe))
@@ -448,6 +458,79 @@ namespace
 					|| !(*Predicate)->TryGetObjectField(TEXT("minecraft:location"), Location) || (*Location)->Values.Num() != 1 || !NameIn((*Location)->TryGetField(TEXT("biomes")), Event.Biome))
 				{
 					return false;
+				}
+			}
+				else if (Key == TEXT("location") && Event.Trigger == TEXT("minecraft:item_used_on_block"))
+			{
+				// all_of a location_check on the block (names or a tag, no state) and a match_tool on the item in hand.
+				FString Type;
+				const TArray<TSharedPtr<FJsonValue>>* Terms = nullptr;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetStringField(TEXT("type"), Type) || Type != TEXT("minecraft:all_of")
+					|| !(*Object)->TryGetArrayField(TEXT("terms"), Terms))
+				{
+					return false;
+				}
+				for (const TSharedPtr<FJsonValue>& Term : *Terms)
+				{
+					const TSharedPtr<FJsonObject>* TermObject = nullptr;
+					const TSharedPtr<FJsonObject>* Predicate = nullptr;
+					FString TermType;
+					if (!Term->TryGetObject(TermObject) || !(*TermObject)->TryGetStringField(TEXT("type"), TermType) || !(*TermObject)->TryGetObjectField(TEXT("predicate"), Predicate))
+					{
+						return false;
+					}
+					if (TermType == TEXT("minecraft:location_check"))
+					{
+						const TSharedPtr<FJsonObject>* BlockPredicate = nullptr;
+						if ((*Predicate)->Values.Num() != 1 || !(*Predicate)->TryGetObjectField(TEXT("block"), BlockPredicate) || (*BlockPredicate)->Values.Num() != 1
+							|| !(*BlockPredicate)->HasField(TEXT("blocks")))
+						{
+							return false;
+						}
+						const TSharedPtr<FJsonValue> Blocks = (*BlockPredicate)->TryGetField(TEXT("blocks"));
+						FString Tag;
+						if (Blocks->TryGetString(Tag) && Tag.StartsWith(TEXT("#")))
+						{
+							if (!FMcBlockTags::Get().Has(Tag.RightChop(1), Event.State))
+							{
+								return false;
+							}
+						}
+						else if (!NameIn(Blocks, Event.Block))
+						{
+							return false;
+						}
+					}
+					else if (TermType == TEXT("minecraft:match_tool"))
+					{
+						const TSharedPtr<FJsonValue> Items = (*Predicate)->TryGetField(TEXT("items"));
+						if ((*Predicate)->Values.Num() != 1 || !Items.IsValid() || Event.Item.IsNone())
+						{
+							return false;
+						}
+						bool bAny = false;
+						const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+						FString One;
+						if (Items->TryGetString(One))
+						{
+							bAny = FMcItemRegistry::Get().Matches(Event.Item, One);
+						}
+						else if (Items->TryGetArray(Many))
+						{
+							for (const TSharedPtr<FJsonValue>& Value : *Many)
+							{
+								bAny = bAny || FMcItemRegistry::Get().Matches(Event.Item, Value->AsString());
+							}
+						}
+						if (!bAny)
+						{
+							return false;
+						}
+					}
+					else
+					{
+						return false;
+					}
 				}
 			}
 			else if (Key == TEXT("location"))
@@ -2611,6 +2694,11 @@ namespace
 			OutState = Blocks->GetBlock(Pos);
 			return true;
 		}
+		virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			return World ? World->PlaceFeature(Id, Pos) : 2;
+		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override
 		{
 			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
@@ -2885,6 +2973,27 @@ namespace
 			{
 				Pawn->Data->Stats.MaxHealth = FMath::Max(1.0f, (float)Value);
 				Pawn->Data->Stats.Health = FMath::Min(Pawn->Data->Stats.Health, Pawn->Data->Stats.MaxHealth);
+			}
+		}
+
+		virtual bool GetVehicleName(const FString& Player, FString& OutName) const override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			FMcEntityManager* Entities = Pawn && Pawn->GetRidingId() != 0 && Pawn->GetEntities ? Pawn->GetEntities() : nullptr;
+			const FMcEntity* Vehicle = Entities ? Entities->Find(Pawn->GetRidingId()) : nullptr;
+			if (!Vehicle)
+			{
+				return false;
+			}
+			OutName = McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Vehicle->GetType().ToString()));
+			return true;
+		}
+
+		virtual void Dismount(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerDismount();
 			}
 		}
 

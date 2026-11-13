@@ -33,6 +33,11 @@ struct FMcTriggerEvent
 	FName Entity;
 	FName Recipe;
 	FName Biome;
+	// The state of the block the event was about (item_used_on_block), for tags and properties.
+	FMcStateId State = 0;
+	// changed_dimension: where the player went and came from ("minecraft:the_nether").
+	FName To;
+	FName From;
 };
 
 UCLASS()

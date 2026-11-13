@@ -54,6 +54,7 @@ class MCGEN_API FMcPlacedFeature
 {
 public:
 	FString Id;  // empty for inline ones
+	FString StatId;  // the key of the statistics (the id; for an inline one "inline <feature type>")
 	TSharedPtr<const FMcFeature> Feature;
 	TArray<TSharedPtr<const FMcPlacementModifier>> Modifiers;
 

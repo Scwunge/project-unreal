@@ -1,4 +1,5 @@
 #include "McJavaExport.h"
+#include "McCommands.h"
 #include "McJavaImport.h"
 #include "McChunkSave.h"
 #include "McRegionFile.h"
@@ -1081,5 +1082,35 @@ bool McJavaExport::ExportWorld(const FString& WorldDir, const FString& OutFolder
 	Add(ClockRoot, TEXT("DataVersion"), Int(DataVersion));
 	TArray<uint8> ClockRaw, ClockZipped;
 	ClockRoot.WriteRoot(ClockRaw);
-	return Compress(NAME_Gzip, ClockRaw, ClockZipped) && FFileHelper::SaveArrayToFile(ClockZipped, *(DataFolder / TEXT("world_clocks.dat")));
+	if (!Compress(NAME_Gzip, ClockRaw, ClockZipped) || !FFileHelper::SaveArrayToFile(ClockZipped, *(DataFolder / TEXT("world_clocks.dat"))))
+	{
+		return false;
+	}
+	// data/minecraft/game_rules.dat: every rule under its "minecraft:" name (a switch as a byte, a number as an int), the
+	// level's value or else the default; as the ref save has it, which leaves out the minecart speed (a test feature).
+	FMcNbt Rules = MakeTag(EType::Compound);
+	for (const McCommands::FGameRule& Rule : McCommands::GetGameRules())
+	{
+		if (FString(Rule.Name) == TEXT("max_minecart_speed"))
+		{
+			continue;
+		}
+		const FString* Set = Level.GameRules.Find(Rule.Name);
+		const FString Value = Set && !Set->IsEmpty() ? *Set : FString(Rule.Default);
+		const FString Key = FString(TEXT("minecraft:")) + Rule.Name;
+		if (Rule.bInteger)
+		{
+			Add(Rules, *Key, Int(FCString::Atoi(*Value)));
+		}
+		else
+		{
+			Add(Rules, *Key, Int(Value == TEXT("true") ? 1 : 0, EType::Byte));
+		}
+	}
+	FMcNbt RulesRoot = MakeTag(EType::Compound);
+	Add(RulesRoot, TEXT("data"), MoveTemp(Rules));
+	Add(RulesRoot, TEXT("DataVersion"), Int(DataVersion));
+	TArray<uint8> RulesRaw, RulesZipped;
+	RulesRoot.WriteRoot(RulesRaw);
+	return Compress(NAME_Gzip, RulesRaw, RulesZipped) && FFileHelper::SaveArrayToFile(RulesZipped, *(DataFolder / TEXT("game_rules.dat")));
 }

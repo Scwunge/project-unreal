@@ -399,8 +399,8 @@ bool FMcLevelFileTest::RunTest(const FString& Parameters)
 	Level.NoiseSettings = TEXT("minecraft:nether");
 	Level.bFlat = true;
 	Level.FlatPreset = TEXT("minecraft:classic_flat");
-	Level.GameRules.Add(TEXT("doDaylightCycle"), TEXT("false"));
-	Level.GameRules.Add(TEXT("randomTickSpeed"), TEXT("3"));
+	Level.GameRules.Add(TEXT("advance_time"), TEXT("false"));
+	Level.GameRules.Add(TEXT("random_tick_speed"), TEXT("3"));
 
 	FMcLevelData Loaded;
 	TestFalse(TEXT("no level file yet"), McWorldSave::LoadLevel(Folder.Path, Loaded));

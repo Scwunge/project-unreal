@@ -1,4 +1,4 @@
-// The doWeatherCycle rule: with it off the weather stays as it is, and a command can still change it.
+// The advance_weather rule: with it off the weather stays as it is, and a command can still change it.
 
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"

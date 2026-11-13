@@ -62,6 +62,10 @@ void McPlayerSave::Capture(const UMcPlayerDataComponent& Data, FMcPlayerData& Ou
 	{
 		Out.Stats.Add(TEXT("advancement:") + Advancement.ToString(), 1.0);
 	}
+	for (const FName Recipe : Data.Recipes)
+	{
+		Out.Stats.Add(TEXT("recipe:") + Recipe.ToString(), Data.RecipesToDisplay.Contains(Recipe) ? 2.0 : 1.0);
+	}
 
 	Out.Slots.Reset();
 	for (int32 Slot = 0; Slot < UMcPlayerDataComponent::InventorySize; ++Slot)
@@ -141,6 +145,8 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 	Data.Advancements.Reset();
 	Data.Counters.Reset();
 	Data.Criteria.Reset();
+	Data.Recipes.Reset();
+	Data.RecipesToDisplay.Reset();
 	for (const TPair<FString, double>& Stat : Saved.Stats)
 	{
 		if (Stat.Key.StartsWith(TEXT("criterion:")))
@@ -154,6 +160,14 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		if (Stat.Key.StartsWith(TEXT("advancement:")))
 		{
 			Data.Advancements.Add(FName(*Stat.Key.RightChop(12)));
+		}
+		if (Stat.Key.StartsWith(TEXT("recipe:")))
+		{
+			Data.Recipes.Add(FName(*Stat.Key.RightChop(7)));
+			if (Stat.Value >= 2.0)
+			{
+				Data.RecipesToDisplay.Add(FName(*Stat.Key.RightChop(7)));
+			}
 		}
 	}
 	Data.SpawnBed.Reset();

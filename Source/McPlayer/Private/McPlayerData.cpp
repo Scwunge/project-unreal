@@ -398,6 +398,12 @@ void UMcPlayerDataComponent::OpenServerWindow(FMcWindow NewWindow, int32 Aux)
 		}
 		if (Window.Crafting)
 		{
+			Window.Crafting->MayCraft = [WeakThis = TWeakObjectPtr<UMcPlayerDataComponent>(this)](FName Recipe)
+			{
+				const UMcPlayerDataComponent* Self = WeakThis.Get();
+				const AMcPlayerPawn* Pawn = Self ? Cast<AMcPlayerPawn>(Self->GetOwner()) : nullptr;
+				return !Pawn || !Pawn->GetGameRules().bLimitedCrafting || Self->Recipes.Contains(Recipe);
+			};
 			Window.Crafting->OnCrafted = [WeakThis = TWeakObjectPtr<UMcPlayerDataComponent>(this)](FName Recipe, const FMcItemStack& Result)
 			{
 				if (UMcPlayerDataComponent* Self = WeakThis.Get())

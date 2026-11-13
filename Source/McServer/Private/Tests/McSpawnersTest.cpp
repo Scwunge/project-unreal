@@ -108,7 +108,7 @@ bool FMcSpawnersTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("the wait started again"), Host.GetSpawners().GetDelay(Pos) >= 200);
 	}
 
-	// spawnerBlocksWork off: the wait holds at 20 and nothing comes (vanilla, spawner_rule.txt); on again, it goes on.
+	// spawner_blocks_work off: the wait holds at 20 and nothing comes (vanilla, spawner_rule.txt); on again, it goes on.
 	{
 		FMcBlockWorld World{FMcDimensionType()};
 		MakeWorld(World);

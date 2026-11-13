@@ -1,4 +1,5 @@
 #include "McWorldSave.h"
+#include "McGameRules.h"
 #include "McMapStore.h"
 #include "McServer.h"
 #include "Dom/JsonObject.h"
@@ -207,6 +208,7 @@ bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 		{
 			Level.GameRules.Add(Rule.Key, Rule.Value->AsString());
 		}
+		FMcGameRules::MigrateLegacyNames(Level.GameRules);
 	}
 	OutLevel = MoveTemp(Level);
 	return true;

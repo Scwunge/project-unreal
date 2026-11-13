@@ -36,7 +36,7 @@ bool FMcGameRulesSurvivalTest::RunTest(const FString& Parameters)
 	FMcPlayerStats Fallen;
 	TestTrue(TEXT("a fall hurts with no rules"), McSurvival::Hurt(Fallen, 3.0f, EDamage::Fall) > 0.0f);
 
-	// Breath runs out and nothing happens with drowningDamage off.
+	// Breath runs out and nothing happens with drowning_damage off.
 	McSurvival::FEnvironment Underwater;
 	Underwater.bHeadInWater = true;
 	FMcPlayerStats Diver;
@@ -49,7 +49,7 @@ bool FMcGameRulesSurvivalTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no one drowns"), Diver.Health, Diver.MaxHealth);
 	TestTrue(TEXT("with the rule on they do"), Drowner.Health < Drowner.MaxHealth);
 
-	// Burning does nothing with fireDamage off.
+	// Burning does nothing with fire_damage off.
 	McSurvival::FEnvironment InFire;
 	InFire.bInFire = true;
 	FMcPlayerStats Torch;
@@ -77,7 +77,7 @@ bool FMcGameRulesSurvivalTest::RunTest(const FString& Parameters)
 		McSurvival::Tick(Peaceful, Calm, EDifficulty::Peaceful, nullptr, &NoRegen);
 	}
 	TestTrue(TEXT("health comes back by default"), Fed.Health > 10.0f);
-	TestEqual(TEXT("it doesn't with naturalRegeneration off"), Still.Health, 10.0f);
+	TestEqual(TEXT("it doesn't with natural_health_regeneration off"), Still.Health, 10.0f);
 	TestEqual(TEXT("nor on peaceful"), Peaceful.Health, 10.0f);
 	return true;
 }

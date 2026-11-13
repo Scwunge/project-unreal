@@ -1,7 +1,7 @@
 {
-  "description": "Spawners on classic_flat (surface y=-61), as vanilla's spawner_mob.txt has them: a stone floor at y -61, pig, zombie and chicken spawners at x 0, 3 and 6, y -60, z 60. Its cameras (eyes): all three 3.5 -59.5 64 180 0; the pig close 0.5 -59.5 62.5 180 0. With -McSpawnerSpin=0 the mobs hold still, as vanilla's do with only a spectator about; spawnerBlocksWork is off so nothing comes out.",
+  "description": "Spawners on classic_flat (surface y=-61), as vanilla's spawner_mob.txt has them: a stone floor at y -61, pig, zombie and chicken spawners at x 0, 3 and 6, y -60, z 60. Its cameras (eyes): all three 3.5 -59.5 64 180 0; the pig close 0.5 -59.5 62.5 180 0. With -McSpawnerSpin=0 the mobs hold still, as vanilla's do with only a spectator about; spawner_blocks_work is off so nothing comes out.",
   "camera": [3.5, -59.5, 64.0, 180.0, 0.0],
-  "rules": { "spawnerBlocksWork": "false" },
+  "rules": { "spawner_blocks_work": "false" },
   "blocks": [
     { "from": [-2, -61, 55], "to": [10, -61, 64], "state": "minecraft:stone" },
     { "from": [0, -60, 60], "to": [0, -60, 60], "state": "minecraft:spawner" },

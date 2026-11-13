@@ -60,6 +60,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "Engine/Engine.h"
 #include "UnrealClient.h"
+#include "McRecipe.h"
 
 #if MC_WITH_RENDER
 #include "McHUD.h"
@@ -149,8 +150,20 @@ namespace
 			Pawn->Data->ServerToast(McLang::Get(Frame == TEXT("goal") ? TEXT("advancements.toast.goal") : bChallenge ? TEXT("advancements.toast.challenge") : TEXT("advancements.toast.task")),
 				bChallenge ? 0xFF55FF : 0xFFFF00, Title, Icon);
 		}
+		// What it gives: the recipes of its rewards go into the recipe book.
+		const TSharedPtr<FJsonObject>* Rewards = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* RewardRecipes = nullptr;
+		if (Def->TryGetObjectField(TEXT("rewards"), Rewards) && (*Rewards)->TryGetArrayField(TEXT("recipes"), RewardRecipes))
+		{
+			TArray<FName> Ids;
+			for (const TSharedPtr<FJsonValue>& Recipe : *RewardRecipes)
+			{
+				Ids.Add(FName(*McCache::Namespaced(Recipe->AsString())));
+			}
+			AMcGameMode::UnlockRecipes(*Pawn, Ids, true);
+		}
 		return 1;
-	
+
 	}
 
 	using FPredicate = TPair<TArray<FString>, int32>;
@@ -565,6 +578,10 @@ namespace
 			{
 				continue;
 			}
+			// The game's tick trigger (the crafting table's recipe is unlocked right away by it).
+			FMcTriggerEvent Tick;
+			Tick.Trigger = FName(TEXT("minecraft:tick"));
+			AMcGameMode::FireTrigger(*Pawn, Tick);
 			TMap<FName, int32> Carried;
 			const TSharedPtr<FMcContainer> Containers[3] = { Pawn->Data->Inventory, Pawn->Data->Armor, Pawn->Data->Offhand };
 			for (const TSharedPtr<FMcContainer>& Container : Containers)
@@ -661,6 +678,39 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 			AwardAdvancement(&Pawn, Criterion.Advancement, true, Title);
 		}
 	}
+}
+
+int32 AMcGameMode::UnlockRecipes(AMcPlayerPawn& Pawn, const TArray<FName>& Ids, bool bGrant)
+{
+	if (!Pawn.Data)
+	{
+		return 0;
+	}
+	int32 Changed = 0;
+	for (const FName Id : Ids)
+	{
+		if (!bGrant)
+		{
+			if (Pawn.Data->Recipes.Remove(Id) > 0)
+			{
+				Pawn.Data->RecipesToDisplay.Remove(Id);
+				++Changed;
+			}
+			continue;
+		}
+		if (Pawn.Data->Recipes.Contains(Id))
+		{
+			continue;
+		}
+		Pawn.Data->Recipes.Add(Id);
+		Pawn.Data->RecipesToDisplay.Add(Id);
+		++Changed;
+		FMcTriggerEvent Unlocked;
+		Unlocked.Trigger = FName(TEXT("minecraft:recipe_unlocked"));
+		Unlocked.Recipe = Id;
+		FireTrigger(Pawn, Unlocked);
+	}
+	return Changed;
 }
 
 void AMcGameMode::StartPlay()
@@ -1326,7 +1376,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			}
 		}), 0.5f, true);
 	}
-	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
+	// Game rules: { "rules": { "spawner_blocks_work": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
 	{
@@ -1534,7 +1584,7 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			return;
 		}
-		// With keepInventory what they carried, and their experience, goes with them to the new body.
+		// With keep_inventory what they carried, and their experience, goes with them to the new body.
 		TArray<FMcItemStack> Kept[3];
 		int32 KeptLevel = 0;
 		float KeptProgress = 0.0f;
@@ -3006,6 +3056,36 @@ namespace
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
 		{
 			return AwardAdvancement(FindPawn(Player), Id, bGrant, OutTitle);
+		}
+		virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			FMcRecipeBook& Book = FMcRecipeBook::Get();
+			Book.EnsureLoaded();
+			TArray<FName> Ids;
+			if (Id == TEXT("*"))
+			{
+				// Every recipe the book shows (measured: 1739 in 26.3, the ones an advancement unlocks): not brewing, not the
+				// special crafting recipes and not the decorated pot.
+				for (const FMcRecipe& Recipe : Book.GetAll())
+				{
+					if (Recipe.Type != EMcRecipeType::Brewing && Recipe.Type != EMcRecipeType::CraftingSpecial && Recipe.Type != EMcRecipeType::CraftingDecoratedPot)
+					{
+						Ids.Add(Recipe.Id);
+					}
+				}
+			}
+			else
+			{
+				const FName Full(*McCache::Namespaced(Id));
+				if (!Book.Find(Full))
+				{
+					OutUnknown = Full.ToString();
+					return -1;
+				}
+				Ids.Add(Full);
+			}
+			return Pawn ? AMcGameMode::UnlockRecipes(*Pawn, Ids, bGrant) : 0;
 		}
 		virtual bool IsEffect(FName Effect) const override
 		{

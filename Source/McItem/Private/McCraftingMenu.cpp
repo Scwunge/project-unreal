@@ -21,6 +21,11 @@ void FMcCraftingMenu::Refresh()
 	FMcRecipeBook& Book = FMcRecipeBook::Get();
 	if (Book.EnsureLoaded() && Book.FindCraftingMatch(Grid->GetAll(), GridSize, GridSize, Match))
 	{
+		if (Match.Recipe && MayCraft && !MayCraft(Match.Recipe->Id))
+		{
+			Match = FMcCraftingMatch();
+			return;
+		}
 		Result->Set(0, Match.Result);
 	}
 }

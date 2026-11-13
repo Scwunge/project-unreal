@@ -164,6 +164,10 @@ public:
 	TSet<FName> Advancements;
 	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
 	TSet<FName> Criteria;
+	// Server: the recipes unlocked ("minecraft:stick"), and those among them not yet shown to the player (vanilla's
+	// recipeBook "recipes" and "toBeDisplayed"); kept in the save.
+	TSet<FName> Recipes;
+	TSet<FName> RecipesToDisplay;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.

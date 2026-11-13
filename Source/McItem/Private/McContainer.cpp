@@ -525,18 +525,43 @@ void FMcMenu::EndQuickCraft(bool bCreative)
 		Pickup(Targets[0], DragButton == 1 ? 1 : 0, Dropped);
 		return;
 	}
-	if (DragButton == 2 && !bCreative)
+	// The spread is worked out as the preview shows it, then made.
+	TMap<int32, FMcItemStack> Placed;
+	int32 Remaining = 0;
+	DragSlots = MoveTemp(Targets);
+	const bool bSpread = PreviewQuickCraft(Placed, Remaining, bCreative);
+	DragSlots.Reset();
+	if (!bSpread)
 	{
 		return;
 	}
+	for (const TPair<int32, FMcItemStack>& Each : Placed)
+	{
+		SetStack(Each.Key, Each.Value);
+	}
+	Carried.Count = Remaining;
+	if (Carried.Count <= 0)
+	{
+		Carried.Clear();
+	}
+}
+
+bool FMcMenu::PreviewQuickCraft(TMap<int32, FMcItemStack>& OutSlots, int32& OutCarried, bool bCreative) const
+{
+	OutSlots.Reset();
+	OutCarried = Carried.Count;
+	if (DragSlots.Num() < 2 || Carried.IsEmpty() || (DragButton == 2 && !bCreative))
+	{
+		return false;
+	}
+	// Left shares the stack evenly (what doesn't divide stays on the cursor), right puts one in each, middle fills each.
 	int32 Remaining = Carried.Count;
-	const int32 Each = DragButton == 0 ? Carried.Count / Targets.Num() : DragButton == 1 ? 1 : Carried.GetMaxStackSize();
-	for (const int32 Slot : Targets)
+	const int32 Each = DragButton == 0 ? Carried.Count / DragSlots.Num() : DragButton == 1 ? 1 : Carried.GetMaxStackSize();
+	for (const int32 Slot : DragSlots)
 	{
 		FMcItemStack Stack = GetStack(Slot);
 		const int32 Existing = Stack.IsEmpty() ? 0 : Stack.Count;
-		const int32 Limit = EffectiveLimit(Slot, Carried);
-		const int32 NewCount = FMath::Min(Existing + Each, Limit);
+		const int32 NewCount = FMath::Min(Existing + Each, EffectiveLimit(Slot, Carried));
 		const int32 Add = NewCount - Existing;
 		if (Add <= 0 || (DragButton != 2 && Add > Remaining))
 		{
@@ -547,17 +572,14 @@ void FMcMenu::EndQuickCraft(bool bCreative)
 			Stack = Carried;
 		}
 		Stack.Count = NewCount;
-		SetStack(Slot, Stack);
+		OutSlots.Add(Slot, Stack);
 		if (DragButton != 2)
 		{
 			Remaining -= Add;
 		}
 	}
-	Carried.Count = Remaining;
-	if (Carried.Count <= 0)
-	{
-		Carried.Clear();
-	}
+	OutCarried = Remaining;
+	return true;
 }
 
 void FMcMenu::Close(TArray<FMcItemStack>& Dropped)

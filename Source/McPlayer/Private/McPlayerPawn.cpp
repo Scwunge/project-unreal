@@ -160,6 +160,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bGlidePose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, bWearsElytra);
 	DOREPLIFETIME(AMcPlayerPawn, WornHead);
+	DOREPLIFETIME(AMcPlayerPawn, WornArmor);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -414,6 +415,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 #if MC_WITH_RENDER
 	if (UMcPlayerModelComponent* Figure = Model.Get())
 	{
+		MC_PERF_SCOPE(PawnLook);
 		bool bShowSelf = false;
 #if !UE_BUILD_SHIPPING
 		float SelfShotCheck = 0.0f;
@@ -423,9 +425,14 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
 		Figure->SetWings(bWearsElytra);
 		Figure->SetWornHead(WornHead);
+		for (int32 Slot = 0; Slot < 4; ++Slot)
+		{
+			Figure->SetArmor(Slot, WornArmor[Slot]);
+		}
 	}
 	if (UMcHandComponent* Arm = Hand.Get())
 	{
+		MC_PERF_SCOPE(PawnLook);
 		// Only the player at the keyboard sees their own hand, and not while dead.
 		Arm->SetShown(IsLocallyControlled() && !IsDead() && !bSleeping && ViewMode == 0 && !bHudHidden && !bSpyLocal);
 		const FMcItemStack& Held = Data->GetSelected();
@@ -454,7 +461,10 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		for (int32 Ticks = 0; ServerAccumulator >= SecondsPerTick && Ticks < MaxTicksPerFrame; ++Ticks)
 		{
 			ServerAccumulator -= SecondsPerTick;
-			ServerGameTick();
+			{
+				MC_PERF_SCOPE(PawnServer);
+				ServerGameTick();
+			}
 			if (IsActorBeingDestroyed() || !IsValid(this))
 			{
 				return;
@@ -522,6 +532,7 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		TickAccumulator -= SecondsPerTick;
 		if (++Ticks <= MaxTicksPerFrame)
 		{
+			MC_PERF_SCOPE(PawnMove);
 			GameTick(Input);
 		}
 	}

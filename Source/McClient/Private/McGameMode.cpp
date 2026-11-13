@@ -725,6 +725,14 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				HurtPlayerNear(*Here, Position, Damage);
 			}
 		};
+		Host->OnPlayerHitThroughArmor = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage)
+		{
+			// A warden's sonic boom: armor does not reduce it (Magic is the kind armor lets through whole).
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HurtPlayerNear(*Here, Position, Damage, McSurvival::EDamage::Magic);
+			}
+		};
 		Host->OnPlayerBlast = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
 		{
 			if (const AMcWorldActor* Here = Weak.Get())
@@ -2019,7 +2027,7 @@ void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Po
 	}
 }
 
-void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage)
+void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind)
 {
 	AMcPlayerPawn* Nearest = nullptr;
 	double NearestDistance = 2.5;
@@ -2042,7 +2050,7 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	if (Nearest)
 	{
 		// The mob that bit is at Position: the player is knocked away from it.
-		Nearest->ServerHurt(Damage, McSurvival::EDamage::Mob, &Position);
+		Nearest->ServerHurt(Damage, Kind, &Position);
 	}
 }
 

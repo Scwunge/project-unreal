@@ -28,6 +28,8 @@ struct MCENTITY_API FMcMobType
 	bool bHuntsVillagers = false;
 	// Iron golems go for the hostile mobs near them (not creepers), and leave players be unless hurt.
 	bool bHuntsHostiles = false;
+	// Zoglins attack every mob near them but zoglins and creepers (wiki, unverified: see PLAN.md), as well as players.
+	bool bHuntsMobs = false;
 	// Evokers cast: fangs along the ground at their target, and vexes when none are about.
 	bool bCastsSpells = false;
 	// The evoker's fangs: they come up after a delay, bite what stands there once and go.

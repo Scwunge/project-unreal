@@ -1937,10 +1937,16 @@ Reference script `E:\mc-reference\scripts\mobmove_b1.txt`, log `E:\mc-reference\
 - Max / mean while moving: ocelot 0.069/0.064 (moving 12% of ticks), armadillo 0.066/0.024 (72%), mooshroom 0.048/0.046 (18%), panda 0.027/0.021 (2%), polar bear never moved (0%).
 - Swimmers: squid 0.200, glow squid 0.200, cod/salmon/pufferfish 0.063, tadpole 0.089, axolotl 0.217. Fliers: allay 0.101 (moving 46%), happy ghast 0.325 (moving 100%), parrot stayed on the ground (0%).
 - Script flaws to fix before fitting: the air-phase fill also removed the tank floor (parrot, tadpole and axolotl y reach -62, below the arena floor); the water tank is 11x11 so swimmers hit walls; polar bear and panda barely moved in 600 ticks (needs a longer run or other trigger). Numbers above are indicative only.
+
+**Sonic boom ignores armor (2026-11-11, UNBUILT):** `FMcWarden::OnSonicHitPlayer` -> `FMcEntityHost::OnPlayerHitThroughArmor` -> `AMcGameMode::HurtPlayerNear(..., EDamage::Magic)` (Magic is in `BypassesArmor`); without the host callback it falls back to `OnPlayerHit`, so McWardenSceneTest still sees the hit. The "bypasses armor" rule is the wiki's (UNVERIFIED against the reference client); nothing tests it with armor on yet.
+
+**Warden contact anger wired (2026-11-11, UNBUILT):** `FMcWarden::Tick` calls `Brain.Touch` for a player whose box overlaps its own (horizontal reach 0.45 + 0.3, player height 1.8; none while emerging or digging; players only, mobs are not checked). Touch was in the brain but never called. +35 with a 1 s wait is the wiki's; the box sizes are the table's, UNVERIFIED. No test added yet (needs a build).
 **Warden in a scene (McClient.McServer.WardenScene, 2026-11-05):** the real simulation and entity host joined by McSculkMobs: a player sets off a natural shrieker four times (warning levels 1 to 4,
 Darkness each time), a warden rises within 5 blocks of it at the fourth shriek's end, is deaf while it emerges, hears the player's steps, roars, walks to them and hits for 30 on Normal. UNVERIFIED on everything the
 reference client could not show: the shrieker-to-warden delay, emerge time, anger arithmetic and the roar trigger, sonic boom and Darkness effects (see the lists above). `McSim.SimPerf` now passes a scene if any of
 three runs averages under 25 ms, so a loaded machine no longer fails it but a real regression (slow every run) still does.
+
+**SimPerf under load:** the limit (25 ms a tick) is scaled by a fixed integer workload timed before each run (`CalibrationIdleMs` = 40 ms, fitted from one pair: the dust scene averaged 18.0 ms when the workload took ~40 ms and 31.1 ms when it took ~67 ms, 18.0 x 67/40 = 30). It is a fit from two runs, not a measured idle baseline: re-measure the workload on a quiet 1070 and set it.
 
 
 2026-11-05 later: merged integrate (crystals, healing, death, exit portal, egg). Built: dragon phases from `dragon_phase1.txt` (order and lengths above, test in `MobBehaviours`), breath and strafe clouds (the strafe fireball is a cloud on the player, vanilla's fireball tick was not tracked), end poem and credits after the first exit from the End (`AMcHUD::StartCredits`; scroll speed and line gap are guesses, session-only seen flag, host machine only), gateways teleport to the outer islands (`AMcWorldActor::FindGatewayExit`, wiki rule, no outer gateway block built, untested in play), a gateway per dragon kill (position order a seed shuffle matched only to one vanilla sample: first kill on seed 4242424242 made position 11; shape is the worldgen's column, the wiki says 12 bedrock). First scripted run (`-McDimension=minecraft:the_end` survival, summoned dragon, shot after 45 s, `Saved/Remote/end1.png`): the End island, pillars and endermen render, the player was at 3 of 10 hearts and no dragon was in view with the look set up 20 degrees, so the fight was not seen end to end. Still open: dragon body model and animation, boss bar and fog, a real flying fireball, saved kill state, a full scripted playthrough from the overworld (stronghold, portal, fight, egg, portal out, credits).
@@ -2087,3 +2093,32 @@ GPU frame 14.3 ms (log line: game 11.5, render 32.8 under the profiler, gpu 14.0
 
 ## UE 5.9 Unreal Mode shot set (2026-11-11, 1070, `tools/unreal_ab.sh ue59`, 1280x720, `Saved/Remote/ab_ue59_*`)
 Unreal Mode renders correctly on 5.9: sky with clouds, soft sun shadows, light shafts in the forest, torch light, water and lava all look as on 5.8 (checked `unreal_q2` and `forest_sun_q2` by eye). The six scenes at Low and High are the 5.9 baseline; no 5.8 set from the same scenes exists to difference against (5.8 is gone from the 1070), so a pixel diff is not possible, only the comparison with the earlier 5.8 shots by eye. GPU frame ms, Low / High: cave 5.4 / 7.5, forest_sun 5.0 / 7.9, lake 4.4 / 7.3, unreal 6-ish / 9.5, unreal_torch 6.0 / 9.3 (720p, standing). (The first set was by mistake vanilla: `-McUnreal` is not a flag, `-McEnhanced` is.)
+
+## Hostile mobs: zoglin, breeze, parched (redstone session, agreed with mc-villagers-e 2026-11-05)
+
+Split: mc-villagers-e keeps models and passive/neutral mobs and the attribute rows (McMob.cpp Add lines); the redstone session takes the behaviour
+of zoglin, breeze and parched (camel_husk, zombie_nautilus, sulfur_cube are not taken: nothing says they are hostile). Merged `claude/villagers-a9bdf7`
+into this branch first (conflicts in McMob.cpp Damage, McPlayerPawn, McEntityHost includes, PLAN.md; all kept both sides).
+Ref runs: `tools/refscripts/zoglin.txt`, `breeze.txt`, `parched.txt` (survival player with resistance 4, so the player's own health says nothing; mob health and
+`log sents` do). Tests: `McClient.McEntity.Zoglin`, `McClient.McEntity.BreezeParched`.
+
+Measured (ref):
+- Zoglin (`zoglin.txt`, normal): it attacks a mob that is not a zoglin (killed a NoAI zombie 6 blocks off, hits at ticks 44, 85, 126, 166 of the run:
+  **a bite every 40 ticks**; the damage steps varied, 7.9, 4.9, 5.9, 1.3 and the rest, so the zombie's own armor or a random is in it: attack 6 is the table value, the
+  per-hit numbers are not explained). A cow it reached was down 7 hp (10 to 3). Code: `bHuntsMobs` (prey = any mob but its own kind and creepers, **the creeper
+  exclusion is the wiki's, UNVERIFIED**: the run had no creeper), bite interval 40 ticks.
+- Breeze (`breeze.txt`, first run was spoilt by two zoglins left in the world from the zoglin run; the numbers below are from that run where the breeze fought them,
+  and the clean rerun): wind charge speed **0.70 a tick**, flat (no gravity or drag), launches **43-50 ticks apart** (48, 50, 49, 45, 43; later gaps near 60),
+  breeze 30 hp, jumps about every 60 ticks to about **5.5 blocks** above the floor, strays 4-9 blocks from the player and runs off when the player cannot be hurt.
+  A charge took **1 hp** from a zoglin. Code: `FireballKind = 4` (shoot cadence 43-60, jump 0.95 upward every 60 ticks, stops closing at 5), `FMcFireball::LaunchWind`.
+- Parched (`parched.txt`, noon, 600 ticks): health stayed 16, so it **does not burn in daylight** if the pit had open sky (not checked); it keeps 5-12 blocks from the player.
+  Its shooting is the skeleton code (`bShoots`); its arrow cadence and the 16-health bow numbers are the skeleton's, **UNVERIFIED for the parched** (the player was immune and `log sents` only showed the parched).
+
+UNVERIFIED / not done: the breeze's 24-block range, jump impulse, 5-block stand-off, that it needs line of sight (the log showed it launching at 70 blocks from the
+player), the wind charge burst (knockback to entities, levers, doors, candles), its immunity to its own charges, the inhale animation and sounds; the zoglin's
+knockback on bite and the shove it takes (resistance 0.6 is in the table, nothing applies it), whether zoglins ignore players in Creative, babies; parched slowness arrows
+(the real arrow effect is Weakness/Slowness: not done); none of the three has a spawn rule (the nether, deserts, trial chambers).
+Line of sight (`breeze_los.txt`, wall 2 thick x=4..5 between player at 0 and breeze at 12, 600 ticks): the breeze wandered along the wall (z 0.5 to -17.6, back to -11), never jumped (feet stayed at the floor), so it did not engage a player behind a wall; whether it launched charges is unknown (the run logged only breeze `sents`, not wind charges). Next run: also `log sents wind_charge`/`breeze_wind_charge`. Code still shoots through walls only if line of sight passes, matching this.
+Rerun of `breeze_los.txt` (mob log only; the `sents` lines were empty both for the breeze and for `breeze_wind_charge`, cause not found): the breeze again stayed at the wall (x 12.5 then 6.5, z -6 to -8), never left the floor. Charge launches behind the wall remain unknown.
+Third run of `breeze_los.txt` (pinned to the 1070, 2026-11-11): the log shows the breeze summoned and then `gone` with no `sents` lines, so nothing was learned; line of sight for the breeze stays UNVERIFIED and further runs of this script are not worth repeating until `log sents` works for it (cause unknown).
+New ref verbs that would settle them: a `log player` (health/effects) so a hurt player shows the bite and arrow damage; `log targets <type>` for a mob's current target.

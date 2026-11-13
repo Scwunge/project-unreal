@@ -26,7 +26,7 @@ namespace
 		const TSharedPtr<FJsonValue> Value = Stack.Get(StoredEnchantments);
 		if (Value.IsValid() && Value->Type == EJson::Object)
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Value->AsObject()->Values)
+			for (const auto& Entry : Value->AsObject()->Values)
 			{
 				const FString Name = Entry.Key.Contains(TEXT(":")) ? Entry.Key : TEXT("minecraft:") + Entry.Key;
 				Result.Add(FName(*Name), static_cast<int32>(Entry.Value->AsNumber()));

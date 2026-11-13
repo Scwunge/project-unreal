@@ -256,7 +256,7 @@ bool FMcResourcePack::ParseMcmeta(const FString& Json, FMcPackInfo& Out)
 	const TSharedPtr<FJsonObject>* LanguageObject;
 	if (Root->TryGetObjectField(TEXT("language"), LanguageObject))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*LanguageObject)->Values)
+		for (const auto& Entry : (*LanguageObject)->Values)
 		{
 			const TSharedPtr<FJsonObject>* Detail;
 			if (!Entry.Value.IsValid() || !Entry.Value->TryGetObject(Detail))

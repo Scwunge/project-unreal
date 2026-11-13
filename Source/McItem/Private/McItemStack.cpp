@@ -227,7 +227,7 @@ TMap<FName, int32> FMcItemStack::GetEnchantments() const
 	const TSharedPtr<FJsonValue> Value = Get(TEXT("minecraft:enchantments"));
 	if (Value.IsValid() && Value->Type == EJson::Object)
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Value->AsObject()->Values)
+		for (const auto& Entry : Value->AsObject()->Values)
 		{
 			if (Entry.Value.IsValid() && Entry.Value->Type == EJson::Number && Entry.Value->AsNumber() > 0)
 			{

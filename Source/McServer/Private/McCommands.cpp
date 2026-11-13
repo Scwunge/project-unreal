@@ -820,7 +820,7 @@ namespace
 		}
 		int32 Next = 3;
 		FString Who = SenderName(Sender);
-		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || !Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~"))))
+		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || (!Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~")))))
 		{
 			Who = Words[Next].StartsWith(TEXT("@")) ? SenderName(Sender) : Words[Next];
 			++Next;

@@ -131,7 +131,7 @@ bool FMcDayCycle::EnsureLoaded()
 	const TSharedPtr<FJsonObject>* TrackObjects = nullptr;
 	if (Timeline->TryGetObjectField(TEXT("tracks"), TrackObjects))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*TrackObjects)->Values)
+		for (const auto& Entry : (*TrackObjects)->Values)
 		{
 			const TSharedPtr<FJsonObject>* Object = nullptr;
 			const TArray<TSharedPtr<FJsonValue>>* Keyframes = nullptr;

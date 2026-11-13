@@ -106,7 +106,7 @@ TMap<FName, TArray<FMcSpawnEntry>> FMcBiomeRegistry::ParseSpawns(const FJsonObje
 	{
 		return Result;
 	}
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Category : (*Categories)->Values)
+	for (const auto& Category : (*Categories)->Values)
 	{
 		const TArray<TSharedPtr<FJsonValue>>* Lines = nullptr;
 		if (!Category.Value->TryGetArray(Lines))

@@ -354,6 +354,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	using UProceduralMeshComponent::GetMaterial;
 	UMaterialInstanceDynamic* GetMaterial(int32 Layer);
 	void Rebuild();
 	// The block in the model, as a section after the layers.

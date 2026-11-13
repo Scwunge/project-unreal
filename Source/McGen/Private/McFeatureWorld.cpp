@@ -1217,7 +1217,6 @@ namespace
 
 void McRegisterWorldFeatures()
 {
-	using FLibrary = FMcFeatureLibrary;
 	FLibrary::RegisterType(TEXT("large_dripstone"), [](const FJsonObject& Json, FLibrary&) -> TSharedPtr<const FMcFeature>
 	{
 		TSharedRef<FLargeDripstone> Result = MakeShared<FLargeDripstone>();

@@ -226,7 +226,9 @@ public:
 	// Called with the event's name ("step", "entity_damage", "explode"), where it happened and who made it, for whoever runs
 	// the simulation. Left unset, events are dropped.
 	TFunction<void(FName, const FVector&, const FGameEventTag&)> OnGameEvent;
-	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag = FGameEventTag()) const
+	void GameEvent(FName Name, const FVector& Position) const { GameEvent(Name, Position, FGameEventTag{}); }
+	// (An overload, not a default argument: clang can't build a nested struct's default member initialisers inside the class.)
+	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag) const
 	{
 		if (OnGameEvent)
 		{

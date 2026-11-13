@@ -61,12 +61,20 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
+		// By id, not the pointer: a dead villager is removed and freed, and reading it afterwards was a use-after-free that
+		// crashed this test whenever the freed memory had been reused (only after other tests, 13 Nov).
+		const int32 VillagerId = Villager->Id;
+		const auto FindVillager = [&Host, VillagerId]() { return static_cast<FMcMob*>(Host.GetManager().Find(VillagerId)); };
 		for (int32 Tick = 0; Tick < 200; ++Tick)
 		{
-			Villager->HurtTime = 0;
+			if (FMcMob* Alive = FindVillager())
+			{
+				Alive->HurtTime = 0;
+			}
 			Host.GetManager().Tick();
 		}
-		TestTrue(TEXT("the villager is dead"), Villager->Health <= 0.0f);
+		const FMcMob* After = FindVillager();
+		TestTrue(TEXT("the villager is dead"), !After || After->Health <= 0.0f);
 		int32 ZombieVillagers = 0;
 		for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
 		{
@@ -86,12 +94,22 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Villager->bFrozen = true;
+		// By id, as above: the fangs and vexes often kill it, and a dead villager is freed.
+		const int32 VillagerId = Villager->Id;
+		const float MaxHealth = Villager->Type.MaxHealth;
+		const auto FindVillager = [&Host, VillagerId]() { return static_cast<FMcMob*>(Host.GetManager().Find(VillagerId)); };
+		bool bHurt = false;
 		int32 MostFangs = 0;
 		int32 MostVexes = 0;
 		for (int32 Tick = 0; Tick < 1200; ++Tick)
 		{
-			Villager->HurtTime = 0;
+			if (FMcMob* Alive = FindVillager())
+			{
+				Alive->HurtTime = 0;
+			}
 			Host.GetManager().Tick();
+			const FMcMob* Now = FindVillager();
+			bHurt |= !Now || Now->Health < MaxHealth;
 			int32 Fangs = 0;
 			int32 Vexes = 0;
 			for (const TUniquePtr<FMcEntity>& Entity : Host.GetManager().GetEntities())
@@ -104,7 +122,7 @@ bool FMcIllagerTest::RunTest(const FString& Parameters)
 		}
 		TestTrue(TEXT("fangs come up"), MostFangs > 0);
 		TestTrue(TEXT("vexes are summoned"), MostVexes >= 3);
-		TestTrue(TEXT("the villager was hurt"), Villager->Health < Villager->Type.MaxHealth);
+		TestTrue(TEXT("the villager was hurt"), bHurt);
 	}
 	{
 		// A witch throws potions at a player in reach, and drinks healing when hurt.

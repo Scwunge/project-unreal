@@ -502,3 +502,62 @@ bool McGui::RecipeBook::IsOnBook(FIntPoint Panel, int32 NumShown)
 {
 	return (Panel.X >= 0 && Panel.Y >= 0 && Panel.X < PanelWidth && Panel.Y < PanelHeight) || FindTab(Panel, NumShown) >= 0;
 }
+
+bool McGui::RecipeBook::IsOnButton(EScreen Kind, FIntPoint FromScreen)
+{
+	const FIntPoint At = GetButtonPos(Kind);
+	return FromScreen.X >= At.X && FromScreen.Y >= At.Y && FromScreen.X < At.X + 20 && FromScreen.Y < At.Y + 18;
+}
+
+McGui::RecipeBook::FClick McGui::RecipeBook::ResolveClick(FIntPoint FromScreen, int32 NumShown, int32 Page, int32 ListCount)
+{
+	const FIntPoint Panel = FromScreen + FIntPoint(PanelWidth, 0);
+	const auto In = [&Panel](int32 X, int32 Y, int32 Width, int32 Height)
+	{
+		return Panel.X >= X && Panel.Y >= Y && Panel.X < X + Width && Panel.Y < Y + Height;
+	};
+	FClick Result;
+	const int32 Tab = FindTab(Panel, NumShown);
+	if (Tab >= 0)
+	{
+		Result.What = EClick::Tab;
+		Result.Index = Tab;
+	}
+	else if (In(FilterX, FilterY, FilterWidth, FilterHeight))
+	{
+		Result.What = EClick::Filter;
+	}
+	else if (Page > 0 && In(BackX, PageY, PageButtonWidth, PageButtonHeight))
+	{
+		Result.What = EClick::Back;
+	}
+	else if (Page < GetPageCount(ListCount) - 1 && In(ForwardX, PageY, PageButtonWidth, PageButtonHeight))
+	{
+		Result.What = EClick::Forward;
+	}
+	else if (In(SearchX, SearchY, SearchWidth, SearchHeight))
+	{
+		Result.What = EClick::Search;
+	}
+	else
+	{
+		const int32 Cell = FindCell(Panel);
+		const int32 Slot = Cell >= 0 ? Page * PerPage + Cell : -1;
+		if (Slot >= 0 && Slot < ListCount)
+		{
+			Result.What = EClick::Recipe;
+			Result.Index = Slot;
+		}
+	}
+	return Result;
+}
+
+FString McGui::RecipeBook::ApplyTyped(const FString& Text, const FString& Typed, bool bBackspace)
+{
+	FString Result = Text + Typed.Left(FMath::Max(0, MaxSearch - Text.Len()));
+	if (bBackspace && !Result.IsEmpty())
+	{
+		Result.LeftChopInline(1);
+	}
+	return Result;
+}

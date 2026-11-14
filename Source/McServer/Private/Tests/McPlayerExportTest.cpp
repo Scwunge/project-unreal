@@ -234,4 +234,45 @@ bool FMcAdvancementImportTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// Every player of a vanilla world comes in under their own UUID; a join finds them by the UUID of their name, and anyone else takes
+// the player who played last.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcImportEveryPlayerTest, "McClient.McServer.JavaImport.EveryPlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcImportEveryPlayerTest::RunTest(const FString& Parameters)
+{
+	const FString Folder = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()) / TEXT("Tests") / (TEXT("McEveryPlayer_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
+	const FString World = Folder / TEXT("world");
+	const FString Out = Folder / TEXT("out");
+	const FString Again = Folder / TEXT("again");
+	FMcLevelData Level;
+	Level.Seed = 5;
+	FMcPlayerData Steve;
+	Steve.Position = FVector(10, 70, 10);
+	FMcPlayerData Alex;
+	Alex.Position = FVector(-20, 70, 30);
+	McJavaExport::FStats Stats;
+	if (TestTrue(TEXT("two players saved and exported"), McWorldSave::SaveLevel(World, Level) && McWorldSave::SavePlayer(World, TEXT("Steve"), Steve)
+		&& McWorldSave::SavePlayer(World, TEXT("Alex"), Alex) && McJavaExport::ExportWorld(World, Out, Stats, false)))
+	{
+		TestTrue(TEXT("imported"), McJavaImport::ImportPlayer(Out, Again));
+		FMcPlayerData Joined;
+		if (TestTrue(TEXT("Steve joins"), McWorldSave::LoadPlayer(Again, TEXT("Steve"), Joined)))
+		{
+			TestEqual(TEXT("with his own place"), Joined.Position.X, 10.0);
+		}
+		if (TestTrue(TEXT("Alex joins"), McWorldSave::LoadPlayer(Again, TEXT("Alex"), Joined)))
+		{
+			TestEqual(TEXT("with hers"), Joined.Position.X, -20.0);
+		}
+		if (TestTrue(TEXT("a stranger joins"), McWorldSave::LoadPlayer(Again, TEXT("Zed"), Joined)))
+		{
+			TestTrue(TEXT("and takes one of the two"), Joined.Position.X == 10.0 || Joined.Position.X == -20.0);
+		}
+		TestTrue(TEXT("each has a file of their own"), IFileManager::Get().FileExists(*(Again / TEXT("playerdata") / (McJavaExport::OfflineUuid(TEXT("Alex")) + TEXT(".json")))));
+	}
+	IFileManager::Get().DeleteDirectory(*Folder, false, true);
+	return true;
+}
+
 #endif

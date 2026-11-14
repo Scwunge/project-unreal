@@ -87,7 +87,7 @@ namespace McJavaImport
 	// A player's players/stats/<id>.json into "stat:<category>:<name>" counters (the category without "minecraft:"; a custom
 	// statistic's name too). False if the text is not that file.
 	MCSERVER_API bool ConvertStats(const FString& Json, FMcPlayerData& Out);
-	// Writes the most recently played player of the Java folder into WorldDir as "imported-player" (the one a world's
+	// Writes every player of the Java folder into WorldDir under their UUID, and the most recently played one also as "imported-player" (the one a world's
 	// players take when they have no file of their own). True if there was one.
 	MCSERVER_API bool ImportPlayer(const FString& Source, const FString& WorldDir);
 	// Imports the world in Source into Saved/Worlds/<new folder>, named Name (the vanilla level name if empty). Returns

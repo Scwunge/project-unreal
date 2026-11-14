@@ -1,4 +1,5 @@
 #include "McWorldSave.h"
+#include "McJavaExport.h"
 #include "McGameRules.h"
 #include "McMapStore.h"
 #include "McServer.h"
@@ -276,12 +277,18 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	{
 		return false;
 	}
-	// A world imported from a Java save holds the player it had as "imported-player"; whoever has no file of their own takes it.
+	// The player's own file by name; else the one a Java world was imported with under the UUID the game gives that name when it is not
+	// signed in (a LAN or offline join); else the player the world was last played by ("imported-player"), which whoever has no file takes.
 	FString File = WorldDir / TEXT("playerdata") / Id + TEXT(".json");
 	if (!IFileManager::Get().FileExists(*File))
 	{
+		const FString Offline = WorldDir / TEXT("playerdata") / SanitizeName(McJavaExport::OfflineUuid(PlayerId)) + TEXT(".json");
 		const FString Imported = WorldDir / TEXT("playerdata") / TEXT("imported-player.json");
-		if (IFileManager::Get().FileExists(*Imported))
+		if (IFileManager::Get().FileExists(*Offline))
+		{
+			File = Offline;
+		}
+		else if (IFileManager::Get().FileExists(*Imported))
 		{
 			File = Imported;
 		}

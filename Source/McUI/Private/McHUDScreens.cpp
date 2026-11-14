@@ -2913,6 +2913,21 @@ void AMcHUD::DrawHUD()
 	{
 		DrawScreen(Width, Height);
 	}
+	// In bed the chat opens by itself, with Leave Bed under it, and shuts once the player is up (reference,
+	// sleep_play.txt: ref_sleep_*.png).
+	if (Player && Player->IsSleeping() && !bDead && !bBedChat && ActiveMenu == EMenu::None && !Screen.IsValid())
+	{
+		bBedChat = true;
+		OpenMenu(EMenu::Chat);
+	}
+	else if (bBedChat && (!Player || !Player->IsSleeping() || bDead))
+	{
+		bBedChat = false;
+		if (ActiveMenu == EMenu::Chat)
+		{
+			OpenMenu(EMenu::None);
+		}
+	}
 	if (bDead)
 	{
 		ShowDeathScreen(Width, Height, *Player);
@@ -3644,6 +3659,25 @@ void AMcHUD::DrawChatInput(int32 Width, int32 Height)
 				SentChat.Add(Line);
 			}
 			Data->SendChat(Line);
+		}
+		if (bBedChat)
+		{
+			// The in-bed chat stays open for the next line.
+			ChatDraft.Reset();
+			SentChatIndex = SentChat.Num();
+		}
+		else
+		{
+			OpenMenu(EMenu::None);
+			return;
+		}
+	}
+	// In bed: Leave Bed, 200 wide, 40 up from the bottom (ref_sleep_first_early.png: x w/2 - 100, y h - 40).
+	if (bBedChat && MenuButton(McLang::Get(TEXT("multiplayer.stopSleeping")), Width / 2.0f - 100.0f, Height - 40.0f, 200.0f, 20.0f))
+	{
+		if (AMcPlayerPawn* Sleeper = Cast<AMcPlayerPawn>(GetOwningPawn()))
+		{
+			Sleeper->RequestWake();
 		}
 		OpenMenu(EMenu::None);
 		return;

@@ -173,6 +173,8 @@ public:
 	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
 	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
 	bool IsSleeping() const { return bSleeping; }
+	// The owner gets up (Leave Bed, or Esc on the in-bed chat).
+	void RequestWake();
 	int32 GetSleepTicks() const { return SleepTicks; }
 	// How dark the screen is from sleeping, 0 to 1: it fades to black as the night goes by and back in when they get up.
 	float GetSleepFade() const { return SleepFade; }

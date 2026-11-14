@@ -364,6 +364,8 @@ private:
 	bool bMenuInput = false;
 	// This frame's input for the menus.
 	bool bMenuClick = false;
+	// The chat opened by itself because the player is in bed (its Leave Bed button shows; it shuts when they are up).
+	bool bBedChat = false;
 	FString MenuTyped;
 	bool bMenuBackspace = false;
 	bool bMenuEnter = false;

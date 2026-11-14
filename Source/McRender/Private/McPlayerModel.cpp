@@ -79,6 +79,7 @@ namespace McPlayerModel
 	{
 		FPose Pose;
 		Pose.BodyYaw = Anim.BodyYaw;
+		Pose.bHeadHidden = Anim.bHeadHidden;
 
 		// Crouching moves the parts as Minecraft does: the torso drops 3.2 pixels and tips forward half a radian,
 		// the head follows it down, the arms swing a little forward and the legs step back.
@@ -107,6 +108,17 @@ namespace McPlayerModel
 			Leg.PitchRad = GetLegSwing(Anim.WalkPos, Anim.WalkAmount, bRight);
 		}
 
+		// In bed the whole body lies on its back, the top toward the head of the bed, every part straight.
+		if (Anim.bSleeping)
+		{
+			Pose.TiltRad = -PI / 2.0f;
+			for (FPartPose& Part : Pose.Parts)
+			{
+				Part.PitchRad = 0.0f;
+				Part.YawRad = 0.0f;
+				Part.RollRad = 0.0f;
+			}
+		}
 		// Gliding lies the body along the look, head first, with the head bent back to see ahead.
 		if (Anim.bGliding)
 		{
@@ -214,6 +226,10 @@ namespace McPlayerModel
 		Out.Triangles.Reset();
 		for (int32 Index = 0; Index < McNumPlayerParts; ++Index)
 		{
+			if (Pose.bHeadHidden && Index == static_cast<int32>(EMcPlayerPart::Head))
+			{
+				continue;
+			}
 			const FPartDef& Def = PartDefs[Index];
 			AddBox(Def, Pose.Parts[Index], Pose, Def.BaseUV, 0.0f, Out);
 			AddBox(Def, Pose.Parts[Index], Pose, Def.OuterUV, Index == static_cast<int32>(EMcPlayerPart::Head) ? OuterInflate : OuterInflateBody, Out);
@@ -245,6 +261,10 @@ namespace McPlayerModel
 		const FVector2D Size(ArmorWidth, ArmorHeight);
 		const auto Add = [&](EMcPlayerPart Part, FIntPoint UV, float Inflate)
 		{
+			if (Pose.bHeadHidden && Part == EMcPlayerPart::Head)
+			{
+				return;
+			}
 			// A left limb is drawn as the right one's mirror image: its pose mirrored across the middle, then flipped back.
 			const bool bLeft = Part == EMcPlayerPart::LeftArm || Part == EMcPlayerPart::LeftLeg;
 			const EMcPlayerPart Shape = Part == EMcPlayerPart::LeftArm ? EMcPlayerPart::RightArm : Part == EMcPlayerPart::LeftLeg ? EMcPlayerPart::RightLeg : Part;
@@ -550,6 +570,11 @@ bool UMcPlayerModelComponent::EnsureMaterial()
 	return true;
 }
 
+// In bed the feet are this many model pixels down the bed from the owner's position (the head's middle then lies about
+// there, 28 up the standing model) and this many up (half the torso's depth, so the back lies on the mattress).
+static constexpr double SleepShiftPx = 26.0;
+static constexpr double SleepRaisePx = 2.0;
+
 void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	MC_PERF_SCOPE(Models);
@@ -577,6 +602,25 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			State.Tick(Feet, Yaw, Pitch, bSneaking, bGliding);
 		}
 	}
+	// In bed: facing the foot of the bed, lying back from the feet; the feet are moved down the bed so the head lies on
+	// the pillow at the owner's position, and up so the back lies on the mattress (2 pixels, half the torso's depth).
+	for (McPlayerModel::FAnim* Anim : { &State.Current, &State.Previous })
+	{
+		Anim->bSleeping = bSleeping;
+		Anim->bHeadHidden = bHeadHidden;
+		if (bSleeping)
+		{
+			Anim->BodyYaw = BedYaw + 180.0f;
+			Anim->HeadYaw = Anim->BodyYaw;
+			Anim->HeadPitch = 0.0f;
+			Anim->WalkAmount = 0.0f;
+			Anim->bSneaking = false;
+		}
+	}
+	const FVector DownTheBed = bSleeping
+		? FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(BedYaw + 180.0f)).RotateVector(FVector(0.0, SleepRaisePx, SleepShiftPx))
+		: FVector::ZeroVector;
+	SetRelativeLocation(McPlayerModel::ToUnreal(DownTheBed));
 	if (bPosed)
 	{
 		for (McPlayerModel::FAnim* Anim : { &State.Current, &State.Previous })
@@ -621,7 +665,7 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	if (Worn)
 	{
-		Worn->SetVisibility(!WornModel.IsNone() && bShown);
+		Worn->SetVisibility(!WornModel.IsNone() && bShown && !bHeadHidden);
 		if (!WornModel.IsNone())
 		{
 			Worn->SetKind(WornModel, NAME_None, 0);

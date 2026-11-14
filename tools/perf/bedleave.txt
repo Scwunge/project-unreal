@@ -1,0 +1,30 @@
+# The in-bed chat's Leave Bed button (mc-playable): into a bed at night, then the button, before the night is skipped (5 s; a scripted press waits 2 s).
+# Also the lying pose from behind and the front (F5) before the night skip. Shots go to Saved/Shots/bl_*.png; the log says "Got up from the bed" after "McMenuPress: Leave Bed".
+settle:40
+chat:/difficulty peaceful
+chat:/rotate @s 0 0
+wait:1
+chat:/fill ~-2 ~ ~-2 ~2 ~3 ~4 minecraft:air
+chat:/fill ~-2 ~-1 ~-2 ~2 ~-1 ~4 minecraft:stone
+chat:/setblock ~ ~ ~2 minecraft:red_bed[facing=south,part=foot]
+chat:/setblock ~ ~ ~3 minecraft:red_bed[facing=south,part=head]
+chat:/time set 13000
+wait:1
+look:0,-30
+wait:0.5
+click:R:0.1
+wait:0.8
+shot:bl_in_bed
+press:Leave_Bed
+key:F5
+wait:0.4
+shot:bl_back
+key:F5
+wait:0.4
+shot:bl_front
+key:F5
+wait:3
+shot:bl_up
+chat:/time set 1000
+mark:end
+end

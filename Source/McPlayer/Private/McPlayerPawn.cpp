@@ -223,8 +223,9 @@ void AMcPlayerPawn::SetStartLook(const FRotator& Look)
 
 float AMcPlayerPawn::GetEyeHeight() const
 {
-	// Lying down, the eyes are just above the mattress.
-	return bSleeping ? 0.2f : bGliding ? GlidingEyeHeight : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
+	// Lying down, the eyes are 0.9 over the bed block, 0.3375 over the mattress the body lies at (the reference's first-person
+	// shots in bed, ref_sleep_first_*: a block seen from the pillow sat 0.14 blocks lower on screen than with 0.2 here).
+	return bSleeping ? 0.3375f : bGliding ? GlidingEyeHeight : bSneaking ? SneakingEyeHeight : StandingEyeHeight;
 }
 
 void AMcPlayerPawn::GameTick(const FMcMoveInput& Input)
@@ -424,7 +425,17 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		float SelfShotCheck = 0.0f;
 		bShowSelf = FParse::Value(FCommandLine::Get(), TEXT("-McSelfShot="), SelfShotCheck);
 #endif
-		Figure->SetShown(!IsLocallyControlled() || bShowSelf || ViewMode != 0);
+		// In bed the player sees their own body lying before them, even in first person (reference, ref_sleep_first_late).
+		TOptional<float> BedYaw;
+		if (bSleeping && BlockWorld)
+		{
+			const FVector At = McCoords::UnrealToBlock(GetActorLocation());
+			BedYaw = McBed::GetSleepYaw(*BlockWorld, FIntVector(FMath::FloorToInt32(At.X), FMath::FloorToInt32(At.Y), FMath::FloorToInt32(At.Z)));
+		}
+		Figure->SetSleeping(BedYaw.IsSet(), BedYaw.Get(0.0f));
+		// Seen from inside it, the player's own head is left out (the view is from the pillow, among its faces).
+		Figure->SetHeadHidden(BedYaw.IsSet() && IsLocallyControlled() && ViewMode == 0);
+		Figure->SetShown(!IsLocallyControlled() || bShowSelf || ViewMode != 0 || BedYaw.IsSet());
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
 		Figure->SetWings(bWearsElytra);
 		Figure->SetWornHead(WornHead);
@@ -1788,6 +1799,22 @@ void AMcPlayerPawn::ServerStartSleep(const FIntVector& Head)
 	if (IsLocallyControlled())
 	{
 		Pitch = 0.0f;
+	}
+}
+
+void AMcPlayerPawn::RequestWake()
+{
+	if (!bSleeping)
+	{
+		return;
+	}
+	if (HasAuthority())
+	{
+		ServerWakeUp();
+	}
+	else
+	{
+		ServerWantWake();
 	}
 }
 

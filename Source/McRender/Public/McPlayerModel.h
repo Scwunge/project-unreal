@@ -67,6 +67,10 @@ namespace McPlayerModel
 		bool bSneaking = false;
 		// Gliding on elytra: the body lies along the look (HeadPitch) and the wings spread.
 		bool bGliding = false;
+		// The head isn't drawn (the player's own, seen from inside it).
+		bool bHeadHidden = false;
+		// In bed: on its back, the top of the head toward the head of the bed (BodyYaw faces the foot).
+		bool bSleeping = false;
 	};
 
 	struct FPartPose
@@ -80,6 +84,7 @@ namespace McPlayerModel
 	struct FPose
 	{
 		float BodyYaw = 0.0f;  // the whole model turns this much (Minecraft degrees) about the feet
+		bool bHeadHidden = false;  // the head part isn't drawn
 		float TiltRad = 0.0f;  // and leans this far forward about them, before turning (gliding)
 		FPartPose Parts[McNumPlayerParts];
 		// The left wing of the elytra; the right one is its mirror image.
@@ -184,6 +189,11 @@ public:
 	// Held in a pose rather than moving: the body turned to BodyYaw and the head as SetLook says, at once and standing
 	// still (the inventory's picture of the player, which turns toward the mouse).
 	void SetPosed(float InBodyYaw) { bPosed = true; PosedBodyYaw = InBodyYaw; }
+	// In a bed whose head is that way (Minecraft yaw, the bed's facing): lying on the mattress, head on the pillow. The
+	// model is placed from the owner's position, which is the middle of the bed's head block.
+	void SetSleeping(bool bInSleeping, float InBedYaw) { bSleeping = bInSleeping; BedYaw = InBedYaw; }
+	// Leaves out the head (and what is worn on it): the player in bed seeing their own body in first person.
+	void SetHeadHidden(bool bInHidden) { bHeadHidden = bInHidden; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -225,6 +235,9 @@ private:
 	bool bFullyLit = false;
 	bool bPosed = false;
 	float PosedBodyYaw = 0.0f;
+	bool bSleeping = false;
+	float BedYaw = 0.0f;
+	bool bHeadHidden = false;
 	bool bFailed = false;
 	bool bHasSection = false;
 	float TickAccumulator = 0.0f;

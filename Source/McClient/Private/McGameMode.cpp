@@ -2648,6 +2648,34 @@ namespace
 				Pawn->Data->bCreative = bCreative;
 			}
 		}
+		virtual bool IsSpectator(const FString& Player) const override { return Mode.Spectators.Contains(Player); }
+		virtual void SetSpectator(const FString& Player, bool bSpectator) override
+		{
+			if (bSpectator)
+			{
+				Mode.Spectators.Add(Player);
+				if (AMcPlayerPawn* Pawn = FindPawn(Player))
+				{
+					Pawn->SetFlying(true);
+				}
+			}
+			else
+			{
+				Mode.Spectators.Remove(Player);
+				Mode.Spectated.Remove(Player);
+			}
+		}
+		virtual void Spectate(const FString& Player, int32 Entity, const FString& OtherPlayer) override
+		{
+			if (Entity == 0 && OtherPlayer.IsEmpty())
+			{
+				Mode.Spectated.Remove(Player);
+				return;
+			}
+			AMcGameMode::FSpectated& Watched = Mode.Spectated.FindOrAdd(Player);
+			Watched.Entity = Entity;
+			Watched.Player = OtherPlayer;
+		}
 		virtual bool GetPosition(const FString& Player, FVector& OutFeet) const override
 		{
 			const AMcPlayerPawn* Pawn = FindPawn(Player);
@@ -3490,8 +3518,53 @@ void AMcGameMode::StartServerConsole()
 	}), 0.1f);
 }
 
+void AMcGameMode::TickSpectators()
+{
+	AMcWorldActor* World = GetPrimaryWorld();
+	FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+	for (auto It = Spectated.CreateIterator(); It; ++It)
+	{
+		AMcPlayerPawn* Spectator = nullptr;
+		FVector Feet = FVector::ZeroVector;
+		bool bFound = false;
+		for (FConstPlayerControllerIterator Each = GetWorld()->GetPlayerControllerIterator(); Each; ++Each)
+		{
+			AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Each->Get()->GetPawn());
+			const FString Name = GetPlayerName(Each->Get());
+			if (Pawn && Name == It.Key())
+			{
+				Spectator = Pawn;
+			}
+			else if (Pawn && !It.Value().Player.IsEmpty() && Name == It.Value().Player)
+			{
+				Feet = Pawn->GetFeetPosition();
+				bFound = true;
+			}
+		}
+		if (It.Value().Player.IsEmpty())
+		{
+			const FMcEntity* Watched = Host ? Host->GetManager().Find(It.Value().Entity) : nullptr;
+			if (Watched && !Watched->bRemoved)
+			{
+				Feet = Watched->Body.Position;
+				bFound = true;
+			}
+		}
+		if (!bFound)
+		{
+			// What it watched is gone: it stops.
+			It.RemoveCurrent();
+		}
+		else if (Spectator && FVector::DistSquared(Spectator->GetFeetPosition(), Feet) > 0.0001)
+		{
+			Spectator->ServerTeleport(Feet, Spectator->GetLookYaw());
+		}
+	}
+}
+
 void AMcGameMode::TickFunctions()
 {
+	TickSpectators();
 	// The world border is a wall: a player past it is put back on its edge (the damage and warning it also has are not done).
 	const FMcWorldBorderState& Border = McCommands::GetWorldBorder();
 	if (Border.Size < 59999968.0)

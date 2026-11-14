@@ -29,6 +29,8 @@ namespace
 		TArray<FString> Broadcasts;
 		TArray<FString> Kicked;
 		TMap<FString, FString> Addresses;
+		TSet<FString> SpectatorSet;
+		TMap<FString, FString> Watching;
 		double DayTime = 0.0;
 		EMcWeather Weather = EMcWeather::Clear;
 		FMcServerAccess Access;
@@ -123,6 +125,9 @@ namespace
 		virtual double GetGameTime() const override { return 12345.0; }
 		virtual void SetWeather(EMcWeather InWeather, int32 DurationTicks) override { Weather = InWeather; }
 		virtual int64 GetSeed() const override { return -42; }
+		virtual bool IsSpectator(const FString& Player) const override { return SpectatorSet.Contains(Player); }
+		virtual void SetSpectator(const FString& Player, bool bSpectator) override { if (bSpectator) { SpectatorSet.Add(Player); } else { SpectatorSet.Remove(Player); } }
+		virtual void Spectate(const FString& Player, int32 Entity, const FString& OtherPlayer) override { Watching.Add(Player, OtherPlayer.IsEmpty() ? FString::FromInt(Entity) : OtherPlayer); }
 		virtual FString GetPlayerAddress(const FString& Player) const override { const FString* Ip = Addresses.Find(Player); return Ip ? *Ip : FString(); }
 		virtual FMcServerAccess LoadAccess() const override { return Access; }
 		virtual void SaveAccess(const FMcServerAccess& InAccess) override { Access = InAccess; }
@@ -435,6 +440,22 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("op"), Target.Access.FindOp(TEXT("Alex")));
 	McCommands::HandleChat(TEXT("/deop Alex"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("deop"), Target.Access.FindOp(TEXT("Alex")));
+	// /spectate.
+	{
+		const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };
+		TestEqual(TEXT("not a spectator"), Say(TEXT("/spectate @s")), FString(TEXT("Steve is not in spectator mode")));
+		McCommands::HandleChat(TEXT("/gamemode spectator"), Op(TEXT("Steve")), Target);
+		TestTrue(TEXT("gamemode spectator"), Target.SpectatorSet.Contains(TEXT("Steve")));
+		TestEqual(TEXT("not yourself"), Say(TEXT("/spectate Steve")), FString(TEXT("Cannot spectate yourself")));
+		TestEqual(TEXT("a player"), Say(TEXT("/spectate Alex")), FString(TEXT("Now spectating Alex")));
+		TestEqual(TEXT("it follows"), Target.Watching.FindRef(TEXT("Steve")), FString(TEXT("Alex")));
+		TestEqual(TEXT("stop"), Say(TEXT("/spectate")), FString(TEXT("No longer spectating an entity")));
+		Target.SpectatorSet.Add(TEXT("Alex"));
+		TestEqual(TEXT("not another spectator"), Say(TEXT("/spectate Alex")), FString(TEXT("Alex cannot be spectated")));
+		Target.SpectatorSet.Empty();
+		McCommands::HandleChat(TEXT("/gamemode creative"), Op(TEXT("Steve")), Target);
+	}
+
 	// /ban, /pardon, /ban-ip, /pardon-ip, /banlist.
 	Target.Kicked.Empty();
 	Target.Addresses.Add(TEXT("Alex"), TEXT("10.0.0.7"));
@@ -457,9 +478,7 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	McCommands::HandleChat(TEXT("/pardon-ip 1.2.3.4"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("pardon-ip"), Target.Access.FindIpBan(TEXT("1.2.3.4")));
 	{
-		const int32 Told = Target.Find(TEXT("Steve")) ? Target.Find(TEXT("Steve"))->Told.Num() : 0;
-		McCommands::HandleChat(TEXT("/banlist"), Op(TEXT("Steve")), Target);
-		TestTrue(TEXT("banlist lists the bans"), Target.Find(TEXT("Steve")) && Target.Find(TEXT("Steve"))->Told.Num() >= Told + 3);
+		TestEqual(TEXT("banlist lists the bans"), McCommands::HandleChat(TEXT("/banlist"), Op(TEXT("Steve")), Target).Num(), 3);
 	}
 	Target.Access.Bans.Empty();
 	Target.Access.IpBans.Empty();

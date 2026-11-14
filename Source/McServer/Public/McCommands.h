@@ -133,6 +133,10 @@ public:
 	virtual bool GetVehicleName(const FString& Player, FString& OutName) const { return false; }
 	virtual void Dismount(const FString& Player) {}
 	// /save-all [flush]: writes the world and the players out now; false if it could not. /save-off and /save-on turn the automatic saves off and on.
+	// Spectator mode (set by /gamemode spectator) and /spectate: Entity 0 and no Player stops spectating.
+	virtual bool IsSpectator(const FString& Player) const { return false; }
+	virtual void SetSpectator(const FString& Player, bool bSpectator) {}
+	virtual void Spectate(const FString& Player, int32 Entity, const FString& OtherPlayer) {}
 	virtual bool SaveAll(bool bFlush) { return true; }
 	virtual bool IsAutosaveOn() const { return true; }
 	virtual void SetAutosaveOn(bool bOn) {}

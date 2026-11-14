@@ -64,7 +64,16 @@ Copy-Item (Join-Path $PSScriptRoot 'package\Play.bat') $Stage -Force
 $listing = Join-Path $OutDir "McUnreal-$Date-files.txt"
 Get-ChildItem -Recurse -File $Stage | ForEach-Object { '{0,14:N0}  {1}' -f $_.Length, $_.FullName.Substring($Stage.Length + 1) } | Set-Content $listing -Encoding utf8
 if (Test-Path $Zip) { Remove-Item $Zip }
-Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $Zip -CompressionLevel Optimal
+# Not Compress-Archive: Windows PowerShell 5.1 writes backslashes in entry names, which other extractors keep literally.
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$zipStream = [System.IO.File]::Open($Zip, 'Create')
+$archive = New-Object System.IO.Compression.ZipArchive($zipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($f in Get-ChildItem -Recurse -File $Stage) {
+        $name = $f.FullName.Substring($Stage.Length).TrimStart('\', '/').Replace('\', '/')
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f.FullName, $name, [System.IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally { $archive.Dispose(); $zipStream.Dispose() }
 $h = Get-FileHash -Algorithm SHA256 $Zip
 "{0}  {1:N0} bytes  sha256 {2}" -f $Zip, (Get-Item $Zip).Length, $h.Hash
 "File list: $listing"

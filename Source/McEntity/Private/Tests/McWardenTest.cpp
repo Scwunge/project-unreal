@@ -249,6 +249,7 @@ bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
 	int32 Moving = 0;
 	int32 Stills = 0;
 	double Fastest = 0.0;
+	FString Trace;
 	FVector Last = Warden->Body.Position;
 	const int32 Window = 190;
 	for (int32 Tick = 0; Tick < Window; ++Tick)
@@ -256,10 +257,15 @@ bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 		const double Step = FVector2D(Warden->Body.Position.X - Last.X, Warden->Body.Position.Z - Last.Z).Size();
 		Last = Warden->Body.Position;
+		if (Tick < 76)
+		{
+			Trace += FString::Printf(TEXT("%.3f "), Step);
+		}
 		Moving += Step > 0.01 ? 1 : 0;
 		Stills += Step <= 0.01 ? 1 : 0;
 		Fastest = FMath::Max(Fastest, Step);
 	}
+	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES steps %s"), *Trace);
 	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES moving %d still %d fastest %.3f (ref peak 0.201)"), Moving, Stills, Fastest);
 	// The reference: 5 of every 19 ticks under 0.01 a block (its ~0.55 a tick decay counts as moving), 26%. Ours has no decay and measured 46%: the
 	// bound here is what the code does, the gap to 26% is the unmodelled coast (PLAN.md "Warden strokes").

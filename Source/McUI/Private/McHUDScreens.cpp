@@ -94,7 +94,19 @@ struct AMcHUD::FScreenState
 	FMcLecternMenu* Lectern = nullptr;
 	// Whether keys go to a text field (the creative search, the anvil's name, a sign) rather than the slots; a book
 	// takes its keys too (E doesn't close it).
-	bool IsTyping() const { return bCreative || Anvil != nullptr || Sign != nullptr || Lectern != nullptr; }
+	bool IsTyping() const { return bCreative || Anvil != nullptr || Sign != nullptr || Lectern != nullptr || bBookSearch; }
+	// The recipe book (the inventory's and the crafting table's): the tab chosen (an ETab), the page, the search typed and
+	// whether the box has the keys, the recipes shown (indices into the recipe list, for the page's tab and search), the tabs
+	// that have recipes and the slot under the mouse.
+	int32 BookTab = 0;
+	int32 BookPage = 0;
+	FString BookSearchText;
+	bool bBookSearch = false;
+	TArray<int32> BookList;
+	TArray<McGui::RecipeBook::ETab> BookTabs;
+	int32 BookHover = -1;
+	// Whether the book is one of this screen's parts.
+	bool HasBook() const { return Layout.Kind == McGui::EScreen::Inventory || Layout.Kind == McGui::EScreen::CraftingTable; }
 	FString Title;
 	// The creative screen: what the search finds, how far down the list is scrolled, the item under the mouse (an
 	// index into CreativeItems) and whether the scroll bar is being dragged.
@@ -109,6 +121,9 @@ struct AMcHUD::FScreenState
 namespace
 {
 	const TCHAR* SpriteRoot = TEXT("textures/gui/sprites/");
+	// Whether the recipe book is open and showing only what can be crafted now; kept from one screen to the next like the game.
+	bool GBookOpen = false;
+	bool GBookCraftable = false;
 
 	// "oak_log" -> "Oak Log".
 	FString TitleCase(const FString& Path)
@@ -1041,14 +1056,18 @@ void AMcHUD::DrawGuiText(const FString& Text, float X, float Y, uint32 Rgb, bool
 
 // ---- Items ----
 
-void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture)
+void AMcHUD::DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture, float IconScale)
 {
 	if (Stack.IsEmpty())
 	{
 		return;
 	}
 	DrawIcon(!Picture.IsNone() ? GetItemIcon(Picture) : Stack.Item == TEXT("minecraft:decorated_pot") && !McItemDef::UsesPackModels(Stack)
-		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y);
+		? GetPotIcon(Stack) : GetStackIcon(Stack), X, Y, IconScale);
+	if (IconScale != 1.0f)
+	{
+		return;
+	}
 	const McGui::FDurabilityBar Bar = McBundle::IsBundle(Stack.Item) ? McGui::GetBundleBar(McBundle::GetFullness(Stack))
 		: McGui::GetDurabilityBar(Stack.GetDamage(), Stack.GetMaxDamage());
 	if (Bar.bShow)
@@ -1625,6 +1644,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 
 	bool bTaken = Screen->bCreative && PollCreative(*Player, Local, *Data);
 	Data->PrepareMenuClick();
+	PollRecipeBook(*Player, *Data, Screen->Layout.Origin(Width, Height), bTaken);
 	if (Screen->Anvil)
 	{
 		FScreenState& State = *Screen;
@@ -2160,6 +2180,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		DrawLectern(Width, Height);
 		return;
 	}
+	if (Screen->HasBook())
+	{
+		Screen->Layout.ShiftX = GBookOpen ? McGui::RecipeBook::Shift : 0;
+	}
 	const McGui::FScreenLayout& Layout = Screen->Layout;
 	const FMcMenu& Menu = Screen->Input->GetMenu();
 	const FIntPoint Origin = Layout.Origin(Width, Height);
@@ -2181,6 +2205,7 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawInventoryFigure(Origin);
 	}
+	DrawRecipeBook(Origin);
 	if (Layout.Kind == McGui::EScreen::Horse)
 	{
 		// The slot frames the picture leaves out: the saddle's, the armour's (a horse's only) and the chest's 5 x 3.
@@ -2892,6 +2917,312 @@ void AMcHUD::DrawHUD()
 	DrawToasts(Width, Height);
 }
 
+// ---- The recipe book ----
+
+namespace
+{
+	// The items on a tab's face (the game's: a compass for the search, an axe and a sword for equipment, ...).
+	TArray<FName> GetTabIcons(McGui::RecipeBook::ETab Tab)
+	{
+		using ETab = McGui::RecipeBook::ETab;
+		switch (Tab)
+		{
+		case ETab::Equipment: return { FName(TEXT("minecraft:iron_axe")), FName(TEXT("minecraft:golden_sword")) };
+		case ETab::Building: return { FName(TEXT("minecraft:bricks")) };
+		case ETab::Misc: return { FName(TEXT("minecraft:lava_bucket")), FName(TEXT("minecraft:apple")) };
+		case ETab::Redstone: return { FName(TEXT("minecraft:redstone")) };
+		default: return { FName(TEXT("minecraft:compass")) };
+		}
+	}
+
+	bool InRect(FIntPoint Point, FIntPoint Corner, int32 Width, int32 Height)
+	{
+		return Point.X >= Corner.X && Point.Y >= Corner.Y && Point.X < Corner.X + Width && Point.Y < Corner.Y + Height;
+	}
+}
+
+void AMcHUD::PollRecipeBook(APlayerController& Player, UMcPlayerDataComponent& Data, FIntPoint Origin, bool& bTaken)
+{
+	namespace Book = McGui::RecipeBook;
+	FScreenState& State = *Screen;
+	if (!State.HasBook())
+	{
+		return;
+	}
+#if !UE_BUILD_SHIPPING
+	// Development: -McBook opens the book the first time a screen with one is shown.
+	static bool bDevBookDone = false;
+	if (!bDevBookDone)
+	{
+		bDevBookDone = true;
+		GBookOpen = GBookOpen || FParse::Param(FCommandLine::Get(), TEXT("McBook"));
+	}
+#endif
+	State.Layout.ShiftX = GBookOpen ? Book::Shift : 0;
+	const FIntPoint Mouse(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y));
+	const bool bPressed = Player.WasInputKeyJustPressed(EKeys::LeftMouseButton) || Player.WasInputKeyJustPressed(EKeys::RightMouseButton);
+	const bool bLeft = Player.WasInputKeyJustPressed(EKeys::LeftMouseButton);
+	const auto Click = [this, &Player]()
+	{
+		FVector Eye = FVector::ZeroVector;
+		FRotator Look;
+		Player.GetPlayerViewPoint(Eye, Look);
+		FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName("ui.button.click"), McCoords::UnrealToBlock(Eye), 1.0f, 1.0f });
+	};
+	// The button that opens and closes the book.
+	if (bLeft && InRect(Mouse, Origin + Book::GetButtonPos(State.Layout.Kind), 20, 18))
+	{
+		GBookOpen = !GBookOpen;
+		State.Layout.ShiftX = GBookOpen ? Book::Shift : 0;
+		State.bBookSearch = false;
+		bTaken = true;
+		Click();
+		return;
+	}
+	if (!GBookOpen)
+	{
+		State.bBookSearch = false;
+		return;
+	}
+
+	// What the book can show now: the unlocked crafting recipes of the tab, the search and the "craftable only" switch.
+	FMcRecipeBook& Recipes = FMcRecipeBook::Get();
+	if (!Recipes.EnsureLoaded())
+	{
+		return;
+	}
+	const FMcMenu& Menu = State.Input->GetMenu();
+	const int32 GridSize = State.Layout.Kind == McGui::EScreen::CraftingTable ? 3 : 2;
+	TArray<FMcItemStack> Available;
+	for (int32 Slot = 1; Slot < Menu.NumSlots(); ++Slot)
+	{
+		Available.Add(Menu.GetStack(Slot));
+	}
+	TSet<Book::ETab> Have;
+	TArray<int32> Candidates;
+	const Book::ETab Chosen = static_cast<Book::ETab>(State.BookTab);
+	for (int32 Index = 0; Index < Recipes.GetAll().Num(); ++Index)
+	{
+		const FMcRecipe& Recipe = Recipes.GetAll()[Index];
+		if ((Recipe.Type != EMcRecipeType::CraftingShaped && Recipe.Type != EMcRecipeType::CraftingShapeless && Recipe.Type != EMcRecipeType::CraftingTransmute)
+			|| Recipe.Result.IsEmpty() || !Data.Recipes.Contains(Recipe.Id))
+		{
+			continue;
+		}
+		const Book::ETab Tab = Book::GetTab(Recipe.Category);
+		Have.Add(Tab);
+		if (Chosen == Book::ETab::Search || Chosen == Tab)
+		{
+			Candidates.Add(Index);
+		}
+	}
+	State.BookTabs.Reset();
+	State.BookTabs.Add(Book::ETab::Search);
+	for (const Book::ETab Tab : { Book::ETab::Equipment, Book::ETab::Building, Book::ETab::Misc, Book::ETab::Redstone })
+	{
+		if (Have.Contains(Tab))
+		{
+			State.BookTabs.Add(Tab);
+		}
+	}
+	if (!State.BookTabs.Contains(Chosen))
+	{
+		State.BookTab = 0;
+	}
+	// The typed words: those that don't match any result item are filtered away.
+	const FString Before = State.BookSearchText;
+	if (State.bBookSearch)
+	{
+		State.BookSearchText.Append(UMcGameViewportClient::TakeTyped().Left(FMath::Max(0, Book::MaxSearch - State.BookSearchText.Len())));
+		if (Player.WasInputKeyJustPressed(EKeys::BackSpace) && !State.BookSearchText.IsEmpty())
+		{
+			State.BookSearchText.LeftChopInline(1);
+		}
+	}
+	TSet<FName> Named;
+	if (!State.BookSearchText.IsEmpty())
+	{
+		TArray<FName> Items;
+		for (const int32 Index : Candidates)
+		{
+			Items.AddUnique(Recipes.GetAll()[Index].Result.Item);
+		}
+		Named.Append(McGui::Creative::Filter(Items, State.BookSearchText, [this](FName Item) { return DisplayName(Item); }));
+	}
+	State.BookList.Reset();
+	for (const int32 Index : Candidates)
+	{
+		const FMcRecipe& Recipe = Recipes.GetAll()[Index];
+		if ((State.BookSearchText.IsEmpty() || Named.Contains(Recipe.Result.Item)) && (!GBookCraftable || FMcCraftingMenu::CanCraftWith(Recipe, GridSize, Available)))
+		{
+			State.BookList.Add(Index);
+		}
+	}
+	if (State.BookSearchText != Before)
+	{
+		State.BookPage = 0;
+	}
+	const int32 Pages = Book::GetPageCount(State.BookList.Num());
+	State.BookPage = FMath::Clamp(State.BookPage, 0, Pages - 1);
+
+	// Where the mouse is, from the panel's top left.
+	const FIntPoint Panel = Mouse - (Origin + FIntPoint(-Book::PanelWidth, 0));
+	const int32 Cell = Book::FindCell(Panel);
+	const int32 Slot = Cell >= 0 ? State.BookPage * Book::PerPage + Cell : -1;
+	State.BookHover = State.BookList.IsValidIndex(Slot) ? Slot : -1;
+	if (bPressed && Book::IsOnBook(Panel, State.BookTabs.Num()))
+	{
+		bTaken = true;
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollDown))
+	{
+		State.BookPage = FMath::Min(Pages - 1, State.BookPage + 1);
+	}
+	if (Player.WasInputKeyJustPressed(EKeys::MouseScrollUp))
+	{
+		State.BookPage = FMath::Max(0, State.BookPage - 1);
+	}
+	if (!bLeft)
+	{
+		return;
+	}
+	const int32 Tab = Book::FindTab(Panel, State.BookTabs.Num());
+	if (Tab >= 0)
+	{
+		State.BookTab = static_cast<int32>(State.BookTabs[Tab]);
+		State.BookPage = 0;
+		Click();
+	}
+	else if (InRect(Panel, FIntPoint(Book::FilterX, Book::FilterY), Book::FilterWidth, Book::FilterHeight))
+	{
+		GBookCraftable = !GBookCraftable;
+		State.BookPage = 0;
+		Click();
+	}
+	else if (State.BookPage > 0 && InRect(Panel, FIntPoint(Book::BackX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight))
+	{
+		--State.BookPage;
+		Click();
+	}
+	else if (State.BookPage < Pages - 1 && InRect(Panel, FIntPoint(Book::ForwardX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight))
+	{
+		++State.BookPage;
+		Click();
+	}
+	else if (InRect(Panel, FIntPoint(Book::SearchX, Book::SearchY), Book::SearchWidth, Book::SearchHeight))
+	{
+		State.bBookSearch = true;
+	}
+	else if (State.BookHover >= 0)
+	{
+		// The recipe goes into the crafting grid from the player's slots (shift-click: as many as there are).
+		const bool bShift = Player.IsInputKeyDown(EKeys::LeftShift) || Player.IsInputKeyDown(EKeys::RightShift);
+		Data.ClickMenuButton(FMcCraftingMenu::GetPlaceId(State.BookList[State.BookHover], bShift));
+	}
+	if (!InRect(Panel, FIntPoint(Book::SearchX, Book::SearchY), Book::SearchWidth, Book::SearchHeight))
+	{
+		State.bBookSearch = false;
+	}
+}
+
+void AMcHUD::DrawRecipeBook(FIntPoint Origin)
+{
+	namespace Book = McGui::RecipeBook;
+	const FScreenState& State = *Screen;
+	if (!State.HasBook())
+	{
+		return;
+	}
+	const FIntPoint Mouse(FMath::FloorToInt(GuiMouse.X), FMath::FloorToInt(GuiMouse.Y));
+	const FString BookSprites = FString(SpriteRoot) + TEXT("recipe_book/");
+	// The button that opens it.
+	const FIntPoint Button = Origin + Book::GetButtonPos(State.Layout.Kind);
+	DrawSprite(LoadSprite(BookSprites + (InRect(Mouse, Button, 20, 18) ? TEXT("button_highlighted.png") : TEXT("button.png"))), Button.X, Button.Y, 20, 18);
+	if (!GBookOpen)
+	{
+		return;
+	}
+	const FIntPoint Panel = Origin + FIntPoint(-Book::PanelWidth, 0);
+	const FIntPoint Local = Mouse - Panel;
+	DrawRegion(LoadSprite(TEXT("textures/gui/recipe_book.png")), Panel.X, Panel.Y, Book::PanelWidth, Book::PanelHeight, 1, 1, Book::PanelWidth, Book::PanelHeight);
+	// The tabs, the chosen one sticking out.
+	for (int32 Index = 0; Index < State.BookTabs.Num(); ++Index)
+	{
+		const bool bChosen = static_cast<int32>(State.BookTabs[Index]) == State.BookTab;
+		const float X = Panel.X + Book::TabX - (bChosen ? 2 : 0);
+		const float Y = Panel.Y + Book::TabY + Book::TabHeight * Index;
+		DrawSprite(LoadSprite(BookSprites + (bChosen ? TEXT("tab_selected.png") : TEXT("tab.png"))), X, Y, Book::TabWidth, Book::TabHeight);
+		const TArray<FName> Faces = GetTabIcons(State.BookTabs[Index]);
+		for (int32 Icon = 0; Icon < Faces.Num(); ++Icon)
+		{
+			DrawStack(FMcItemStack(Faces[Icon], 1), X + (Faces.Num() == 1 ? 9 : 3 + 11 * Icon), Y + 5);
+		}
+	}
+	// The search box: "Search..." until something is typed.
+	const FIntPoint Box = Panel + FIntPoint(Book::SearchX, Book::SearchY);
+	DrawFill(Box.X, Box.Y, Book::SearchWidth, Book::SearchHeight, State.bBookSearch ? FLinearColor::White : FLinearColor(0.63f, 0.63f, 0.63f, 1.0f));
+	DrawFill(Box.X + 1, Box.Y + 1, Book::SearchWidth - 2, Book::SearchHeight - 2, FLinearColor::Black);
+	if (State.BookSearchText.IsEmpty() && !State.bBookSearch)
+	{
+		DrawGuiText(TEXT("Search..."), Box.X + 5, Box.Y + 3, 0xA0A0A0, false);
+	}
+	else
+	{
+		FString Shown = State.BookSearchText;
+		while (!Shown.IsEmpty() && TextWidth(Shown) > Book::SearchWidth - 10)
+		{
+			Shown.RightChopInline(1);
+		}
+		DrawGuiText(State.bBookSearch && FMath::Fmod(FPlatformTime::Seconds(), 0.6) < 0.3 ? Shown + TEXT("_") : Shown, Box.X + 5, Box.Y + 3, 0xE0E0E0, true);
+	}
+	// The "craftable only" switch.
+	const FIntPoint Filter = Panel + FIntPoint(Book::FilterX, Book::FilterY);
+	const bool bFilterHover = InRect(Local, FIntPoint(Book::FilterX, Book::FilterY), Book::FilterWidth, Book::FilterHeight);
+	DrawSprite(LoadSprite(BookSprites + (GBookCraftable ? (bFilterHover ? TEXT("filter_enabled_highlighted.png") : TEXT("filter_enabled.png"))
+		: (bFilterHover ? TEXT("filter_disabled_highlighted.png") : TEXT("filter_disabled.png")))), Filter.X, Filter.Y, Book::FilterWidth, Book::FilterHeight);
+	DrawStack(FMcItemStack(FName(TEXT("minecraft:crafting_table")), 1), Filter.X + 9, Filter.Y, NAME_None, 0.6f);
+	// The recipes of the page: a green frame for those that can be made now, a red one for the rest.
+	FMcRecipeBook& Recipes = FMcRecipeBook::Get();
+	const FMcMenu& Menu = State.Input->GetMenu();
+	const int32 GridSize = State.Layout.Kind == McGui::EScreen::CraftingTable ? 3 : 2;
+	TArray<FMcItemStack> Available;
+	for (int32 Slot = 1; Slot < Menu.NumSlots(); ++Slot)
+	{
+		Available.Add(Menu.GetStack(Slot));
+	}
+	for (int32 Cell = 0; Cell < Book::PerPage; ++Cell)
+	{
+		const int32 Entry = State.BookPage * Book::PerPage + Cell;
+		if (!State.BookList.IsValidIndex(Entry))
+		{
+			break;
+		}
+		const FMcRecipe& Recipe = Recipes.GetAll()[State.BookList[Entry]];
+		const float X = Panel.X + Book::CellX + Book::CellSize * (Cell % Book::Columns);
+		const float Y = Panel.Y + Book::CellY + Book::CellSize * (Cell / Book::Columns);
+		const bool bCraftable = FMcCraftingMenu::CanCraftWith(Recipe, GridSize, Available);
+		DrawSprite(LoadSprite(BookSprites + (bCraftable ? TEXT("slot_craftable.png") : TEXT("slot_uncraftable.png"))), X, Y, Book::CellSize, Book::CellSize);
+		DrawStack(Recipe.Result, X + 4, Y + 4);
+	}
+	// The page and its arrows.
+	const int32 Pages = Book::GetPageCount(State.BookList.Num());
+	if (State.BookPage > 0)
+	{
+		const bool bHover = InRect(Local, FIntPoint(Book::BackX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight);
+		DrawSprite(LoadSprite(BookSprites + (bHover ? TEXT("page_backward_highlighted.png") : TEXT("page_backward.png"))), Panel.X + Book::BackX, Panel.Y + Book::PageY, Book::PageButtonWidth, Book::PageButtonHeight);
+	}
+	if (State.BookPage < Pages - 1)
+	{
+		const bool bHover = InRect(Local, FIntPoint(Book::ForwardX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight);
+		DrawSprite(LoadSprite(BookSprites + (bHover ? TEXT("page_forward_highlighted.png") : TEXT("page_forward.png"))), Panel.X + Book::ForwardX, Panel.Y + Book::PageY, Book::PageButtonWidth, Book::PageButtonHeight);
+	}
+	if (Pages > 1)
+	{
+		const FString Text = FString::Printf(TEXT("%d/%d"), State.BookPage + 1, Pages);
+		DrawGuiText(Text, Panel.X + 71 - TextWidth(Text) / 2.0f, Panel.Y + 140, 0xFFFFFF, true);
+	}
+}
+
 void AMcHUD::DrawToasts(int32 Width, int32 Height)
 {
 	TArray<UMcPlayerDataComponent::FToast>& Toasts = UMcPlayerDataComponent::GetToasts();
@@ -2961,6 +3292,20 @@ void AMcHUD::DrawToasts(int32 Width, int32 Height)
 		}
 		const float X = Width - 160.0f + static_cast<float>(Hidden) * 160.0f;
 		const float Y = Slot * 32.0f;
+		if (Toast.Items.Num() > 0)
+		{
+			// The recipe toast (measured, ref_rt2_a: a stick unlocked): the light recipe sprite, the heading in dark purple and the line
+			// under it in black, the crafting table small (0.6) at (3, 3) and the recipe's result at (8, 8). With several recipes
+			// the result changes every 0.6 s (the period is not measured).
+			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/toast/recipe.png")), X, Y, 160, 32);
+			DrawGuiText(Toast.Heading, X + 30.0f, Y + 7.0f, Toast.HeadingRgb, false);
+			DrawGuiText(Toast.Title, X + 30.0f, Y + 18.0f, 0x000000, false);
+			DrawStack(FMcItemStack(FName(TEXT("minecraft:crafting_table")), 1), X + 3.0f, Y + 3.0f, NAME_None, 0.6f);
+			DrawStack(FMcItemStack(Toast.Items[static_cast<int32>(Age / 0.6) % Toast.Items.Num()], 1), X + 8.0f, Y + 8.0f);
+			++Slot;
+			++Index;
+			continue;
+		}
 		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/toast/advancement.png")), X, Y, 160, 32);
 		DrawGuiText(Toast.Heading, X + 30.0f, Y + 7.0f, Toast.HeadingRgb, false);
 		DrawGuiText(Toast.Title, X + 30.0f, Y + 18.0f, 0xFFFFFF, false);

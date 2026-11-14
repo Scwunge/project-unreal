@@ -1,4 +1,5 @@
 #include "McPlayerData.h"
+#include "McLang.h"
 #include "McMountMenu.h"
 #include "McSignMenu.h"
 #include "McLecternMenu.h"
@@ -1075,6 +1076,42 @@ void UMcPlayerDataComponent::ShowToast(const FString& Heading, uint32 HeadingRgb
 	Toast.Title = Title;
 	Toast.Icon = Icon;
 	Toast.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ShowRecipeToast(FName Item)
+{
+	for (FToast& Toast : GetToasts())
+	{
+		// One still on its way in or staying (the first of the same kind that has not begun to leave).
+		if (Toast.Items.Num() > 0 && !Toast.bOutSounded)
+		{
+			Toast.Items.AddUnique(Item);
+			return;
+		}
+	}
+	FToast& Toast = GetToasts().AddDefaulted_GetRef();
+	Toast.Heading = McLang::Get(TEXT("recipe.toast.title"));
+	Toast.HeadingRgb = 0x500050;
+	Toast.Title = McLang::Get(TEXT("recipe.toast.description"));
+	Toast.Items.Add(Item);
+	Toast.Time = FPlatformTime::Seconds();
+}
+
+void UMcPlayerDataComponent::ServerRecipeToast(FName Item)
+{
+	if (IsOwnerRemote())
+	{
+		ClientRecipeToast(Item);
+	}
+	else if (IsServer())
+	{
+		ShowRecipeToast(Item);
+	}
+}
+
+void UMcPlayerDataComponent::ClientRecipeToast_Implementation(FName Item)
+{
+	ShowRecipeToast(Item);
 }
 
 void UMcPlayerDataComponent::ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon)

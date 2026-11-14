@@ -26,6 +26,14 @@ public:
 	// If set and it says no to a recipe (limited crafting: the player has not unlocked it), the grid shows no result for it.
 	TFunction<bool(FName Recipe)> MayCraft;
 
+	// The recipe book's click on a recipe: Id is GetPlaceId. The grid is emptied into the player's slots and the recipe's
+	// ingredients are moved into it from there, one set (or as many sets as the slots hold, for shift-click).
+	virtual bool ClickButton(int32 Id) override;
+	static int32 GetPlaceId(int32 RecipeIndex, bool bAll) { return RecipeIndex * 2 + (bAll ? 1 : 0); }
+	bool PlaceRecipe(const FMcRecipe& Recipe, bool bAll);
+	// Whether the stacks (the player's slots and the grid) hold the ingredients of one craft of the recipe.
+	static bool CanCraftWith(const FMcRecipe& Recipe, int32 GridSize, const TArray<FMcItemStack>& Available);
+
 protected:
 	virtual bool MayPlace(int32 Slot, const FMcItemStack& Stack) const override { return Slot != 0; }
 	virtual bool CanTakeForPickupAll(int32 Slot) const override { return Slot != 0; }

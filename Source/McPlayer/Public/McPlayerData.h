@@ -297,12 +297,18 @@ public:
 		uint32 HeadingRgb = 0xFFFF00;
 		FString Title;
 		FName Icon;
+		// A recipe toast: the result items of the recipes it tells of (Heading and Title are its two lines).
+		TArray<FName> Items;
 		double Time = 0.0;  // FPlatformTime::Seconds when it arrived
 		bool bInSounded = false;
 		bool bOutSounded = false;
 	};
 	static TArray<FToast>& GetToasts();
 	static void ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon);
+	// The "New Recipe(s) Unlocked!" toast; one that is still showing takes the item as one more of its recipes.
+	static void ShowRecipeToast(FName Item);
+	// Server: shows this player the recipe toast.
+	void ServerRecipeToast(FName Item);
 	// Server: shows this player a toast.
 	void ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	// Server: shows this player the overlay message.
@@ -362,6 +368,8 @@ protected:
 	void ClientOverlay(const FString& Text, bool bRainbow);
 	UFUNCTION(Client, Reliable)
 	void ClientTitle(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+	UFUNCTION(Client, Reliable)
+	void ClientRecipeToast(FName Item);
 	UFUNCTION(Client, Reliable)
 	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)

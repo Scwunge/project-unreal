@@ -1764,6 +1764,27 @@ namespace McEntityModel
 				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 3, 4), { Box(27, 30, 0, -1, -3, 13, 1, 5, 0.0f, true) }));
 				Models.Add(Turtle.Kind, Turtle);
 			}
+			{
+				// The camel, from the logged model (camel_model.txt): the reference's y runs down from 24 and its z the other way, so a
+				// pivot is (x, 24 - y, -z) and a box starts at (x, -maxY, -maxZ). The head carries the neck, the muzzle and the ears; the
+				// body carries the hump and the tail.
+				FModel Camel;
+				Camel.Kind = TEXT("minecraft:camel");
+				Camel.TextureSize = FIntPoint(128, 128);
+				Camel.Textures = { TEXT("camel/camel.png") };
+				Camel.Parts.Add(Part(ERole::Head, FVector(0, 27, 19.5f), { Box(60, 24, -3.5f, -1, -4, 7, 8, 19), Box(21, 0, -3.5f, 7, 8, 7, 14, 7), Box(50, 0, -2.5f, 16, 15, 5, 5, 6), Box(67, 0, -5, 19.5f, 8.5f, 3, 1, 2), Box(45, 0, 2, 19.5f, 8.5f, 3, 1, 2) }));
+				Camel.Parts.Add(Part(ERole::Static, FVector(0, 20, -9.5f), { Box(0, 25, -7.5f, 0, -3.5f, 15, 12, 27), Box(74, 0, -4.5f, 12, 4.5f, 9, 5, 11), Box(122, 0, -1.5f, -5, -3.5f, 3, 14, 0) }));
+				Camel.Parts.Add(Part(ERole::LegFrontRight, FVector(-4.9f, 23, 10.5f), { Box(0, 26, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegFrontLeft, FVector(4.9f, 23, 10.5f), { Box(0, 0, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegBackRight, FVector(-4.9f, 23, -9.5f), { Box(94, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegBackLeft, FVector(4.9f, 23, -9.5f), { Box(58, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Models.Add(Camel.Kind, Camel);
+				// The husk has its own picture and the same shape.
+				FModel Husk = Camel;
+				Husk.Kind = TEXT("minecraft:camel_husk");
+				Husk.Textures = { TEXT("camel/camel_husk.png") };
+				Models.Add(Husk.Kind, Husk);
+			}
 			// Young ones with a model of their own (not the grown one's halved), from the logged baby models: every pivot, tilt and box,
 			// on the baby pictures (the grown one's names with _baby before the .png).
 			{
@@ -1906,6 +1927,18 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 0.1f, -2.5f), { Box(1, 1, 0, 0, -0.5f, 2, 0, 1, 0.0f, true) }));  // leftHindLeg
 					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 0.1f, 0.5f), { Box(8, 6, -2, 0, -0.5f, 2, 0, 1) }));  // rightFrontLeg
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 0.1f, 0.5f), { Box(8, 7, 0, 0, -0.5f, 2, 0, 1) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					// The baby camel (same frame change as the grown one's); its ears are turned out 0.8223 about their own pivots.
+					FModel Baby = Young(TEXT("minecraft:camel"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 23, 7.5f), { Box(20, 0, -2.5f, -2, 0.5f, 5, 5, 7), Box(0, 0, -2.5f, 3, 2.5f, 5, 9, 5), Box(0, 14, -2.5f, 8, 7.5f, 5, 4, 3),
+						Posed(Box(37, 0, -5.5f, 10.5f, 3, 3, 1, 2), FVector(-2.5f, 11, 4), 0, 0, 0.8223f), Posed(Box(47, 0, 2.5f, 10.5f, 3, 3, 1, 2), FVector(2.5f, 11, 4), 0, 0, -0.8223f) }));  // head and its ears
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 16.9f, 0), { Box(0, 14, -4.5f, -4, -8, 9, 8, 16), Box(50, 38, -1.5f, -7, -8.05f, 3, 9, 0) }));  // body and tail
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 12.5f, 5.5f), { Box(36, 14, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12.5f, 5.5f), { Box(48, 14, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12.5f, -5.5f), { Box(0, 38, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12.5f, -5.5f), { Box(12, 38, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
 					Models.Add(Baby.Kind, Baby);
 				}
 				{

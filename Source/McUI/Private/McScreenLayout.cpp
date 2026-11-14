@@ -449,3 +449,56 @@ float McGui::GetFlameFill(int32 TimeRemaining, int32 TotalTime)
 	}
 	return TotalTime > 0 ? FMath::Clamp(static_cast<float>(TimeRemaining) / TotalTime, 0.0f, 1.0f) : 1.0f;
 }
+
+McGui::RecipeBook::ETab McGui::RecipeBook::GetTab(const FString& Category)
+{
+	if (Category == TEXT("equipment"))
+	{
+		return ETab::Equipment;
+	}
+	if (Category == TEXT("building"))
+	{
+		return ETab::Building;
+	}
+	if (Category == TEXT("redstone"))
+	{
+		return ETab::Redstone;
+	}
+	return ETab::Misc;
+}
+
+FIntPoint McGui::RecipeBook::GetButtonPos(EScreen Kind)
+{
+	return Kind == EScreen::CraftingTable ? FIntPoint(5, 49) : FIntPoint(104, 61);
+}
+
+int32 McGui::RecipeBook::FindCell(FIntPoint Panel)
+{
+	const int32 X = Panel.X - CellX;
+	const int32 Y = Panel.Y - CellY;
+	if (X < 0 || Y < 0 || X >= Columns * CellSize || Y >= Rows * CellSize)
+	{
+		return -1;
+	}
+	return (Y / CellSize) * Columns + X / CellSize;
+}
+
+int32 McGui::RecipeBook::FindTab(FIntPoint Panel, int32 NumShown)
+{
+	if (Panel.X < TabX || Panel.X >= TabX + TabWidth || Panel.Y < TabY)
+	{
+		return -1;
+	}
+	const int32 Index = (Panel.Y - TabY) / TabHeight;
+	return Index < NumShown ? Index : -1;
+}
+
+int32 McGui::RecipeBook::GetPageCount(int32 Recipes)
+{
+	return FMath::Max(1, FMath::DivideAndRoundUp(Recipes, PerPage));
+}
+
+bool McGui::RecipeBook::IsOnBook(FIntPoint Panel, int32 NumShown)
+{
+	return (Panel.X >= 0 && Panel.Y >= 0 && Panel.X < PanelWidth && Panel.Y < PanelHeight) || FindTab(Panel, NumShown) >= 0;
+}

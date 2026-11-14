@@ -41,6 +41,9 @@ enum class EMcPerfScope : uint8
 	ModelsEntity,// the entity model components, part of models
 	ModelsPlayer,// the player model components, part of models
 	ModelsHand,  // the first-person hand, part of models
+	PawnLook,    // the pawn dressing its own figure and hand, part of pawn
+	PawnServer,  // the pawn's server ticks, part of pawn
+	PawnMove,    // the local player's movement ticks, part of pawn
 	Count
 };
 

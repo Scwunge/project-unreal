@@ -1,5 +1,7 @@
 #include "McGameMode.h"
 #include "McPerf.h"
+#include "Tasks/Task.h"
+#include "Misc/ScopeExit.h"
 #include "McMob.h"
 #include "McSound.h"
 #include "Containers/Ticker.h"
@@ -162,6 +164,18 @@ namespace
 		TArray<TArray<TArray<FPredicate>>> Groups;
 	};
 
+	// Both advancement tables read every advancement file; a world start builds them on a worker (WarmAdvancementTables)
+	// and the game thread waits for that before its first use, instead of parsing them all in one frame.
+	UE::Tasks::FTask AdvancementWarm;
+	void WaitForAdvancementWarm()
+	{
+		if (AdvancementWarm.IsValid())
+		{
+			AdvancementWarm.Wait();
+			AdvancementWarm = UE::Tasks::FTask();
+		}
+	}
+
 	// The advancements that fire on what the player carries (the game's data: trigger minecraft:inventory_changed with
 	// plain item predicates; those with component or slot conditions are left out).
 	const TArray<FInventoryTrigger>& InventoryTriggers()
@@ -175,6 +189,8 @@ namespace
 		}
 		LoadedGeneration = McData::GetGeneration();
 		Triggers.Reset();
+		const double Began = FPlatformTime::Seconds();
+		ON_SCOPE_EXIT { McPerf::Event(FString::Printf(TEXT("ADVANCEMENTS_INVENTORY %d in %.0f ms"), Triggers.Num(), (FPlatformTime::Seconds() - Began) * 1000.0)); };
 		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
 			const FString& File = Listed.Paths.Last();
@@ -313,6 +329,8 @@ namespace
 		}
 		LoadedGeneration = McData::GetGeneration();
 		Table = FTriggerTable();
+		const double Began = FPlatformTime::Seconds();
+		ON_SCOPE_EXIT { McPerf::Event(FString::Printf(TEXT("ADVANCEMENTS_EVENTS %d in %.0f ms"), Table.ByTrigger.Num(), (FPlatformTime::Seconds() - Began) * 1000.0)); };
 		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
 			TSharedPtr<FJsonObject> Def;
@@ -594,6 +612,7 @@ namespace
 				}
 				return Total >= Predicate.Value;
 			};
+			WaitForAdvancementWarm();
 			for (const FInventoryTrigger& Trigger : InventoryTriggers())
 			{
 				if (Pawn->Data->Advancements.Contains(FName(*Trigger.Id)))
@@ -631,6 +650,7 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 	{
 		return;
 	}
+	WaitForAdvancementWarm();
 	const FTriggerTable& Table = EventTriggers();
 	const TArray<FCriterionDef>* Waiting = Table.ByTrigger.Find(Event.Trigger.ToString());
 	if (!Waiting)
@@ -671,6 +691,8 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
+	WaitForAdvancementWarm();
+	AdvancementWarm = UE::Tasks::Launch(UE_SOURCE_LOCATION, [] { InventoryTriggers(); EventTriggers(); }, UE::Tasks::ETaskPriority::BackgroundNormal);
 	ReadFunctionTags();
 	GetWorldTimerManager().SetTimer(FunctionTimer, this, &AMcGameMode::TickFunctions, 0.05f, true);
 	ReloadHandle = McData::OnReload().AddWeakLambda(this, [this]()

@@ -43,6 +43,7 @@ struct MCGEN_API FMcNoiseSettings
 
 // For ablation tests: skips the carvers when set.
 MCGEN_API extern bool bMcCarversOff;
+MCGEN_API extern bool bMcNoGrassDrop;
 
 class MCGEN_API FMcNoiseGenerator : public FMcChunkGenerator
 {

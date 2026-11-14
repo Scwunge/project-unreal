@@ -711,6 +711,63 @@ bool FMcCaveBandsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcGrassProbeTest, "McClient.McGen.GrassProbe",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcGrassProbeTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	for (int32 Mode = 0; Mode < 3; ++Mode)
+	{
+		bMcCarversOff = Mode == 0;
+		bMcNoGrassDrop = Mode == 2;
+		int64 Grass = 0, GrassAir = 0, Dirt = 0, Total = 0;
+		TMap<int32, int64> Rel_;
+		for (const uint64 Seed : { 4242424242ull, 1001ull })
+		{
+			const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+			for (int32 Patch = 0; Patch < 25; ++Patch)
+			{
+				const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
+				for (int32 Index = 0; Index < 16; ++Index)
+				{
+					FMcChunk Chunk(FIntPoint(Corner.X + Index % 4, Corner.Y + Index / 4), Settings.MinY, Settings.Height / 16);
+					Generator.Generate(Chunk);
+					for (int32 Y = 16; Y < 48; ++Y)
+					{
+						for (int32 Z = 0; Z < 16; ++Z)
+						{
+							for (int32 X = 0; X < 16; ++X)
+							{
+								const FMcStateId State = Chunk.GetBlock(X, Y, Z);
+								const FString Name = Blocks.GetBlockOf(State).Name.ToString();
+								++Total;
+								if (Name == TEXT("minecraft:grass_block"))
+								{
+									++Grass;
+									GrassAir += Blocks.GetBlockOf(Chunk.GetBlock(X, Y + 1, Z)).Name.ToString() == TEXT("minecraft:air") ? 1 : 0;
+									if (Mode == 0) { const int32 Rel = Y - FMath::FloorToInt32(Generator.GetPreliminarySurface(Chunk.GetPos().X * 16 + X, Chunk.GetPos().Y * 16 + Z)); Rel_.FindOrAdd(FMath::Clamp(FMath::FloorToInt32(Rel / 4.0), -12, 8))++; }
+								}
+								else if (Name == TEXT("minecraft:dirt")) { ++Dirt; }
+							}
+						}
+					}
+				}
+			}
+		}
+		for (const TPair<int32, int64>& P : Rel_) { AddInfo(FString::Printf(TEXT("GRASSREL %d..%d : %lld"), P.Key * 4, P.Key * 4 + 3, P.Value)); }
+		AddInfo(FString::Printf(TEXT("GRASSPROBE mode %d (0 no carvers, 1 carvers, 2 carvers without grass drop): grass %lld (air above %lld) dirt %lld of %lld"), Mode, Grass, GrassAir, Dirt, Total));
+	}
+	bMcCarversOff = false;
+	bMcNoGrassDrop = false;
+	return true;
+}
+
 // Sweeps aquifer parameters (console variables) and prints the bands y -8 to 47 for each: 1 seed, 25 patches.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcAquiferSweepTest, "McClient.McGen.AquiferSweep",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

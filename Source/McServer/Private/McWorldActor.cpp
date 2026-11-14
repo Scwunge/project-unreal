@@ -38,7 +38,12 @@
 // Trying out how the world keeps up with a player crossing it (-McPerfCvars=). Not settings for players.
 static TAutoConsoleVariable<int32> CVarMcOutrunPriority(TEXT("mc.World.OutrunPriority"), 1, TEXT("World tasks while a player's own chunk is missing: 0 background normal, 1 background high, 2 normal."));
 static TAutoConsoleVariable<int32> CVarMcFillNormal(TEXT("mc.World.FillNormal"), 1, TEXT("World tasks take normal priority while a player has nothing around them."));
-static TAutoConsoleVariable<int32> CVarMcDecorateJobs(TEXT("mc.World.DecorateJobs"), 3, TEXT("Decoration jobs at once."));
+static TAutoConsoleVariable<int32> CVarMcDecorateJobs(TEXT("mc.World.DecorateJobs"), 0,
+	TEXT("Decoration jobs at once (0: the CPU's threads less three for the game, render and RHI threads, 2 to 8)."));
+static TAutoConsoleVariable<int32> CVarMcDecorateBacklog(TEXT("mc.World.DecorateBacklog"), 48,
+	TEXT("No new chunks are started while this many made ones wait only for decorating (0 no limit)."));
+static TAutoConsoleVariable<int32> CVarMcDecorateAhead(TEXT("mc.World.DecorateAhead"), 1,
+	TEXT("Decoration jobs take a higher priority than making chunks (0: the same, as before)."));
 static TAutoConsoleVariable<int32> CVarMcChunksInFlight(TEXT("mc.World.ChunksInFlight"), 16, TEXT("Chunks being made at once."));
 static TAutoConsoleVariable<int32> CVarMcUnloadPerFrame(TEXT("mc.World.UnloadPerFrame"), 4,
 	TEXT("Chunks saved and dropped a frame at most, farthest first; the rest wait for the next frames (0 no limit)."));
@@ -1738,9 +1743,15 @@ void AMcWorldActor::StreamChunks()
 		bProgress |= DecorateChunks();
 	}
 
+	const int32 BacklogLimit = CVarMcDecorateBacklog.GetValueOnGameThread();
 	for (const TPair<int32, FIntPoint>& Entry : Missing)
 	{
 		if (InFlight.Num() >= CVarMcChunksInFlight.GetValueOnGameThread())
+		{
+			break;
+		}
+		// Decoration is behind: more made chunks would only wait in Pending (and take workers from the decorating).
+		if (BacklogLimit > 0 && DecorateBacklog + InFlight.Num() >= BacklogLimit)
 		{
 			break;
 		}
@@ -1875,8 +1886,8 @@ void AMcWorldActor::StreamChunks()
 		if (Now >= NextReport)
 		{
 			NextReport = Now + 1.0;
-			McPerf::Event(FString::Printf(TEXT("STREAM missing=%d inflight=%d pending=%d decorated=%d jobs=%d made=%d deco=%d added=%d filling=%d outrun=%d"),
-				Missing.Num(), InFlight.Num(), Pending.Num(), Decorated.Num(), DecorateTasks.Num(), GStreamMade, GStreamDecorated, GStreamAdded, BlockWorld->IsFilling() ? 1 : 0, bOutrunning ? 1 : 0));
+			McPerf::Event(FString::Printf(TEXT("STREAM missing=%d inflight=%d pending=%d backlog=%d decorated=%d jobs=%d made=%d deco=%d added=%d filling=%d outrun=%d"),
+				Missing.Num(), InFlight.Num(), Pending.Num(), DecorateBacklog, Decorated.Num(), DecorateTasks.Num(), GStreamMade, GStreamDecorated, GStreamAdded, BlockWorld->IsFilling() ? 1 : 0, bOutrunning ? 1 : 0));
 			GStreamMade = GStreamDecorated = GStreamAdded = 0;
 		}
 	}
@@ -1925,8 +1936,26 @@ UE::Tasks::ETaskPriority AMcWorldActor::WorldTaskPriority() const
 	return UE::Tasks::ETaskPriority::BackgroundNormal;
 }
 
+UE::Tasks::ETaskPriority AMcWorldActor::DecorateTaskPriority() const
+{
+	const UE::Tasks::ETaskPriority Making = WorldTaskPriority();
+	if (!CVarMcDecorateAhead.GetValueOnGameThread() || Making == UE::Tasks::ETaskPriority::Normal)
+	{
+		return Making;
+	}
+	// One step up, but not into the foreground workers, which the frame's own tasks (physics, rendering) need.
+	return UE::Tasks::ETaskPriority::BackgroundHigh;
+}
+
+int32 AMcWorldActor::DecorateJobLimit()
+{
+	const int32 Set = CVarMcDecorateJobs.GetValueOnGameThread();
+	return Set > 0 ? Set : FMath::Clamp(FPlatformMisc::NumberOfCoresIncludingHyperthreads() - 3, 2, 8);
+}
+
 bool AMcWorldActor::DecorateChunks()
 {
+	DecorateBacklog = 0;
 	if (!Features || Pending.IsEmpty())
 	{
 		return false;
@@ -1948,8 +1977,23 @@ bool AMcWorldActor::DecorateChunks()
 
 	// Nearest the players first. A chunk joins the world only once all its neighbours are decorated, so working through
 	// them in any other order leaves the player looking at nothing until nearly all of them are done.
+	const int32 JobLimit = DecorateJobLimit();
+	for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
+	{
+		if (Decorated.Contains(Entry.Key))
+		{
+			continue;
+		}
+		bool bWhole = true;
+		for (int32 Index = 0; Index < 9 && bWhole; ++Index)
+		{
+			const FIntPoint At = Entry.Key + FIntPoint(Index % 3 - 1, Index / 3 - 1);
+			bWhole = Pending.Contains(At) || BlockWorld->HasChunk(At);
+		}
+		DecorateBacklog += bWhole ? 1 : 0;
+	}
 	TArray<TPair<int32, FIntPoint>> NearestFirst;
-	if (DecorateTasks.Num() < CVarMcDecorateJobs.GetValueOnGameThread())
+	if (DecorateTasks.Num() < JobLimit)
 	{
 		for (const TPair<FIntPoint, TUniquePtr<FMcChunk>>& Entry : Pending)
 		{
@@ -1973,7 +2017,7 @@ bool AMcWorldActor::DecorateChunks()
 	}
 	for (const TPair<int32, FIntPoint>& Next : NearestFirst)
 	{
-		if (DecorateTasks.Num() >= CVarMcDecorateJobs.GetValueOnGameThread())
+		if (DecorateTasks.Num() >= JobLimit)
 		{
 			break;
 		}
@@ -2040,7 +2084,7 @@ bool AMcWorldActor::DecorateChunks()
 				McPerf::Event(FString::Printf(TEXT("SLOW_DECORATE %d,%d %.0f ms"), Job->Pos.X, Job->Pos.Y, (FPlatformTime::Seconds() - Began) * 1000.0));
 			}
 			Done->Enqueue(Job->Pos);
-		}, WorldTaskPriority()));
+		}, DecorateTaskPriority()));
 		bChanged = true;
 	}
 

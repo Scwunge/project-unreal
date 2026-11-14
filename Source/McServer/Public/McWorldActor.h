@@ -403,6 +403,13 @@ private:
 	TMap<TWeakObjectPtr<const APawn>, FStreamMotion> StreamMotion;
 	bool bOutrunning = false;
 	UE::Tasks::ETaskPriority WorldTaskPriority() const;
+	// Decoration goes ahead of generation: a chunk joins the world only once decorated, so chunks made faster than they
+	// are decorated are wasted work that keeps the workers from the decorating.
+	UE::Tasks::ETaskPriority DecorateTaskPriority() const;
+	static int32 DecorateJobLimit();
+	// Waiting chunks whose whole 3x3 is there and that wait only for decorating, as of the last frame; no new chunks are
+	// started while there are mc.World.DecorateBacklog of them.
+	int32 DecorateBacklog = 0;
 	// Waits for the decorating jobs: the chunks they use are the actor's.
 	void WaitForDecorating();
 

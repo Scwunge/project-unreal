@@ -1,0 +1,28 @@
+# The inventory's player figure, plain and in armor, the mouse on the box's middle and then up and to the right.
+# The box is 49x70 gui px at (26, 8) in the 176x166 panel centred at 1920x1080, scale 4: its middle at (812, 380).
+settle:30
+key:E
+wait:1
+cursor:812,380
+wait:0.5
+shot:fig_plain
+key:E
+wait:0.5
+chat:/item replace entity @s armor.head with minecraft:iron_helmet
+chat:/item replace entity @s armor.chest with minecraft:diamond_chestplate
+chat:/item replace entity @s armor.legs with minecraft:golden_leggings
+chat:/item replace entity @s armor.feet with minecraft:leather_boots
+chat:/give @s minecraft:chest 3
+chat:/give @s minecraft:ender_chest 1
+chat:/give @s minecraft:trapped_chest 1
+wait:2
+key:E
+wait:1
+cursor:812,380
+wait:0.5
+shot:fig_armor
+cursor:1100,250
+wait:0.5
+shot:fig_look
+key:E
+end

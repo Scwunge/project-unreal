@@ -349,7 +349,24 @@ bool FMcSimulation::Bonemeal(const FIntVector& Pos)
 
 bool FMcSimulation::UseBlock(const FIntVector& Pos, float Yaw)
 {
+	// The ore lights up and the click goes on (a block in hand is placed against it).
+	LightRedstoneOre(Pos);
 	return Redstone->Use(Pos, Yaw);
+}
+
+void FMcSimulation::LightRedstoneOre(const FIntVector& Pos)
+{
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	const FMcStateId State = World.GetBlock(Pos);
+	if (!Registry.IsValidState(State))
+	{
+		return;
+	}
+	const FString Name = Registry.GetBlockOf(State).Name.ToString();
+	if (Name.EndsWith(TEXT("redstone_ore")) && Registry.GetPropertyValue(State, TEXT("lit")) != TEXT("true"))
+	{
+		World.SetBlock(Pos, Registry.ParseState(*(Name + TEXT("[lit=true]"))).Get(State));
+	}
 }
 
 int32 FMcSimulation::GetDustPower(const FIntVector& Pos) const

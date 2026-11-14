@@ -1,0 +1,145 @@
+# Redstone ore: what lights it and how it goes out. Ore A: use it (empty hand); B: stand on it; C: deepslate, use it; D: placed lit, untouched; E: a block placed against it (right click with stone).
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 1.5 -60 3.5 180 20
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule random_tick_speed 3
+cmd fill -5 -61 -3 31 -52 15 stone hollow
+wait 10
+cmd setblock 3 -60 6 redstone_ore
+cmd setblock 6 -60 6 redstone_ore
+cmd setblock 9 -60 6 deepslate_redstone_ore
+cmd setblock 12 -60 6 redstone_ore[lit=true]
+cmd setblock 15 -60 6 redstone_ore
+cmd setblock 18 -60 6 redstone_ore[lit=true]
+cmd setblock 21 -60 6 redstone_ore
+wait 10
+cmd tick step 5
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick unfreeze
+# A: use with an empty hand
+cmd tp @s 3.5 -60 3.5 180 20
+wait 10
+press 3 -60 6
+wait 10
+cmd tick freeze
+wait 4
+log states 3 -60 6 21 -60 6
+cmd tick unfreeze
+screen close
+# B: stand on it
+cmd tp @s 6.5 -59 6.5 180 0
+wait 10
+cmd tick freeze
+wait 4
+log states 3 -60 6 21 -60 6
+cmd tick unfreeze
+# C: deepslate, use
+cmd tp @s 9.5 -60 3.5 180 20
+wait 10
+press 9 -60 6
+wait 10
+cmd tick freeze
+wait 4
+log states 3 -60 6 21 -60 6
+cmd tick unfreeze
+screen close
+# G: a hit on the ore starts breaking it: leave it to the next script. Now watch the lit ones (A, B, C, D, F lit) go out: 20 ticks at a time.
+cmd tp @s 1.5 -60 3.5 180 20
+wait 10
+cmd tick freeze
+wait 4
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick step 20
+wait 6
+log states 3 -60 6 21 -60 6
+cmd tick unfreeze

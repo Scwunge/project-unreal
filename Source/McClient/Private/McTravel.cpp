@@ -339,6 +339,7 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 
 	FVector Feet = Trip.Feet;
 	float Yaw = Trip.McYaw;
+	bool bTurned = false;
 	if (Trip.Kind == EKind::NetherPortal)
 	{
 		bool bBuilt = false;
@@ -348,6 +349,7 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 		if (Portal.bAlongX != Trip.bAlongX)
 		{
 			Yaw += 90.0f;
+			bTurned = true;
 		}
 		UE_LOG(LogMcClient, Display, TEXT("%s arrives at the %s portal at %s in %s"), *Player->GetName(), bBuilt ? TEXT("new") : TEXT("existing"), *Portal.Pos.ToString(), *Dest->Dimension);
 	}
@@ -367,6 +369,12 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 		{
 			Arrived->PortalCooldown = 300;
 			Arrived->Body.Velocity = FVector::ZeroVector;
+			if (bTurned)
+			{
+				// A portal that runs the other way turns the boat with it: -90 became 0 (vehicle_log59). The same way the yaw stays
+				// (vehicle_log46: 0 to 0, vehicle_log58: 180 to 180).
+				Arrived->Yaw = FRotator::NormalizeAxis(Arrived->Yaw + 90.0f);
+			}
 			Pawn->ServerRide(Arrived->Id);
 		}
 	}
@@ -544,11 +552,13 @@ void UMcTravelSubsystem::TickEntityTrips()
 		FMcBlockWorld& Blocks = *Dest->GetBlockWorld();
 		const McPortal::FSetBlock Place = [Dest](const FIntVector& At, FMcStateId State) { Dest->SetBlock(At, State, false); };
 		FVector Feet = Trip.Feet;
+		bool bTurned = false;
 		if (Trip.Kind == EKind::NetherPortal)
 		{
 			bool bBuilt = false;
 			const McPortal::FFound Portal = McPortal::FindOrBuildPortal(Blocks, Trip.Target, Trip.bAlongX, Place, bBuilt);
 			Feet = McPortal::GetStandingPoint(Portal);
+			bTurned = Portal.bAlongX != Trip.bAlongX;
 		}
 		else if (Trip.Kind == EKind::EndPlatform)
 		{
@@ -560,6 +570,11 @@ void UMcTravelSubsystem::TickEntityTrips()
 			Arrived->PortalCooldown = 300;
 			Arrived->Body.Velocity = FVector::ZeroVector;
 			Arrived->Body.bOnGround = false;
+			if (bTurned)
+			{
+				// The same quarter turn as a ridden boat's (vehicle_log59); unmeasured for an empty one.
+				Arrived->Yaw = FRotator::NormalizeAxis(Arrived->Yaw + 90.0f);
+			}
 			for (const TArray<uint8>& Packed : Trip.Passengers)
 			{
 				if (FMcEntity* Mob = Dest->GetEntityHost()->UnpackEntity(Packed, Feet))

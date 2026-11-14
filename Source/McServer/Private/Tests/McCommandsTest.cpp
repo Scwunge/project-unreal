@@ -1,4 +1,6 @@
 #include "McCommands.h"
+#include "McDataPacks.h"
+#include "HAL/FileManager.h"
 #include "McMount.h"
 #include "McMob.h"
 #include "McNbt.h"
@@ -122,7 +124,8 @@ namespace
 		}
 		virtual double GetDayTime() const override { return DayTime; }
 		virtual void SetDayTime(double Ticks) override { DayTime = Ticks; }
-		virtual double GetGameTime() const override { return 12345.0; }
+		double GameTime = 12345.0;
+		virtual double GetGameTime() const override { return GameTime; }
 		virtual void SetWeather(EMcWeather InWeather, int32 DurationTicks) override { Weather = InWeather; }
 		virtual int64 GetSeed() const override { return -42; }
 		virtual bool IsSpectator(const FString& Player) const override { return SpectatorSet.Contains(Player); }
@@ -159,6 +162,22 @@ namespace
 			return true;
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
+		TMap<FIntVector, uint8> BiomeCells;
+		virtual int32 GetBiomeAt(const FIntVector& Pos, uint8& OutBiome) const override
+		{
+			if (Pos.Y < 0 || Pos.Y > 15)
+			{
+				return 2;
+			}
+			if (FMath::Abs(Pos.X) > 32 || FMath::Abs(Pos.Z) > 32)
+			{
+				return 1;
+			}
+			const uint8* Found = BiomeCells.Find(FIntVector(Pos.X >> 2, Pos.Y >> 2, Pos.Z >> 2));
+			OutBiome = Found ? *Found : 0;
+			return 0;
+		}
+		virtual void SetBiomeAt(const FIntVector& Pos, uint8 Biome) override { BiomeCells.Add(FIntVector(Pos.X >> 2, Pos.Y >> 2, Pos.Z >> 2), Biome); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
 		TArray<FMcNbt> SummonedTags;
 		bool bAutosave = true;
@@ -440,6 +459,48 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("op"), Target.Access.FindOp(TEXT("Alex")));
 	McCommands::HandleChat(TEXT("/deop Alex"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("deop"), Target.Access.FindOp(TEXT("Alex")));
+	// /schedule runs a real function: written into a pack, scheduled, the game time advanced past it, and the pack's "say" heard.
+	{
+		const FString PackRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McTestSchedulePack"));
+		IFileManager::Get().DeleteDirectory(*PackRoot, false, true);
+		FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"description\":\"t\",\"min_format\":121,\"max_format\":121}}"), *(PackRoot / TEXT("pack.mcmeta")));
+		FFileHelper::SaveStringToFile(TEXT("say scheduled ran"), *(PackRoot / TEXT("data/zz/function/sched.mcfunction")));
+		FString PackError;
+		const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(PackRoot, &PackError);
+		if (TestNotNull(TEXT("the schedule test pack opens"), Pack.Get()))
+		{
+			McData::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>{ Pack }));
+			const FString SchedWorld = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McTestScheduleWorld"));
+			IFileManager::Get().DeleteDirectory(*SchedWorld, false, true);
+			IFileManager::Get().MakeDirectory(*SchedWorld, true);
+			McCommands::ForgetSchedules();
+			Target.WorldFolder = SchedWorld;
+			Target.GameTime = 5000.0;
+			const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };
+			TestEqual(TEXT("scheduled"), Say(TEXT("/schedule function zz:sched 5t")), FString(TEXT("Scheduled function 'zz:sched' in 5 tick(s) at gametime 5005")));
+			TestEqual(TEXT("this tick is refused"), Say(TEXT("/schedule function zz:sched 0t")), FString(TEXT("Can't schedule for current tick")));
+			const FMcCommandSender Console = [] { FMcCommandSender Sender; Sender.PermissionLevel = 4; return Sender; }();
+			const int32 Heard = Target.Broadcasts.Num();
+			Target.GameTime = 5004.0;
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("not run before its time"), Target.Broadcasts.Num(), Heard);
+			// A quit and a reload in between: the file in the world's folder brings it back.
+			TestTrue(TEXT("it was written with the world"), IFileManager::Get().FileExists(*(SchedWorld / TEXT("mcunreal_schedules.txt"))));
+			McCommands::ForgetSchedules();
+			Target.GameTime = 5005.0;
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("run when due, after the reload"), Target.Broadcasts.Num(), Heard + 1);
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("once"), Target.Broadcasts.Num(), Heard + 1);
+			TestFalse(TEXT("and gone from the file"), IFileManager::Get().FileExists(*(SchedWorld / TEXT("mcunreal_schedules.txt"))));
+			TestEqual(TEXT("append keeps both"), (Say(TEXT("/schedule function zz:sched 5t")), Say(TEXT("/schedule function zz:sched 9t append")), Say(TEXT("/schedule clear zz:sched"))), FString(TEXT("Removed 2 schedule(s) with ID zz:sched")));
+			McCommands::ForgetSchedules();
+			Target.WorldFolder.Reset();
+			Target.GameTime = 12345.0;
+			McData::SetStack(MakeShared<FMcPackStack>());
+		}
+	}
+
 	// /schedule: errors and clear (the game's own wording; scheduling a real function needs one on disk).
 	{
 		const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };
@@ -514,6 +575,24 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("fill hollow"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone hollow"), Op(TEXT("Steve")), Target)).Contains(TEXT("27")));
 		TestTrue(TEXT("hollow empties the middle"), Target.GetBlock(FIntVector(1, 6, 1), Got) && Registry.IsAir(Got));
 		TestTrue(TEXT("fill replace a filter"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 dirt replace stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("26")));
+		{
+			// /fillbiome: whole 4x4x4 cells, corners printed as the cells' corners (ref run).
+			const FString One = Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 minecraft:desert"), Op(TEXT("Steve")), Target));
+			TestTrue(TEXT("fillbiome one cell"), One.Contains(TEXT("1 biome entry/entries set between 0, 0, 0 and 0, 0, 0")));
+			TestTrue(TEXT("fillbiome the same again changes nothing"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("No biome entries were changed")));
+			const FString Eight = Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 7 7 plains"), Op(TEXT("Steve")), Target));
+			TestTrue(TEXT("fillbiome rounds to cells"), Eight.Contains(TEXT("8 biome entry/entries set between 0, 0, 0 and 4, 4, 4")));
+			TestTrue(TEXT("fillbiome replace only the filter"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 15 0 15 desert replace plains"), Op(TEXT("Steve")), Target)).Contains(TEXT("4 biome entry/entries set between 0, 0, 0 and 12, 0, 12")));
+			TestTrue(TEXT("fillbiome replace nothing matching"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 15 0 15 swamp replace minecraft:plains"), Op(TEXT("Steve")), Target)).Contains(TEXT("No biome entries were changed")));
+			TestTrue(TEXT("fillbiome unknown biome"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 minecraft:nonexistent"), Op(TEXT("Steve")), Target)).Contains(TEXT("Can't find element 'minecraft:nonexistent' of type 'minecraft:worldgen/biome'")));
+			TestTrue(TEXT("fillbiome unloaded"), Joined(McCommands::HandleChat(TEXT("/fillbiome 100 0 0 101 0 1 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("not loaded")));
+			TestTrue(TEXT("fillbiome out of the world"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 400 7 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("out of this world")));
+			Target.SetGameRule(TEXT("max_block_modifications"), TEXT("10"));
+			TestTrue(TEXT("fillbiome too big"), AnyError(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 7 7 desert"), Op(TEXT("Steve")), Target)));
+			Target.SetGameRule(TEXT("max_block_modifications"), TEXT("32768"));
+			uint8 Cell = 255;
+			TestTrue(TEXT("fillbiome kept the cell"), Target.GetBiomeAt(FIntVector(0, 0, 0), Cell) == 0 && Cell != 0);
+		}
 		TestTrue(TEXT("fill too big"), AnyError(McCommands::HandleChat(TEXT("/fill 0 0 0 200 15 200 dirt"), Op(TEXT("Steve")), Target)));
 		McCommands::HandleChat(TEXT("/gamerule max_block_modifications 8"), Op(TEXT("Steve")), Target);
 		TestTrue(TEXT("the limit is the rule's"), AnyError(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone"), Op(TEXT("Steve")), Target)));

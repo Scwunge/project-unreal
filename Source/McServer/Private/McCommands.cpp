@@ -50,6 +50,7 @@ namespace
 		{ TEXT("enchant"), 2, TEXT("/enchant <targets> <enchantment> [<level>]") },
 		{ TEXT("experience"), 2, TEXT("/experience (add|query|set) ...") },
 		{ TEXT("fill"), 2, TEXT("/fill <from> <to> <block> [destroy|hollow|keep|outline|replace]") },
+		{ TEXT("fillbiome"), 2, TEXT("/fillbiome <from> <to> <biome> [replace <filter>]") },
 		{ TEXT("function"), 2, TEXT("/function <name>") },
 		{ TEXT("schedule"), 2, TEXT("/schedule (function <function> <time> [append|replace] | clear <function>)") },
 		{ TEXT("gamemode"), 2, TEXT("/gamemode <gamemode> [<target>]") },
@@ -802,8 +803,64 @@ namespace
 		return List;
 	}
 
+	// The world the list belongs to: kept in its folder (mcunreal_schedules.txt, one "id, tag, due" line each) so a quit keeps it.
+	FString& SchedulesFolder()
+	{
+		static FString Folder;
+		return Folder;
+	}
+
+	void SyncSchedules(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder == SchedulesFolder())
+		{
+			return;
+		}
+		SchedulesFolder() = Folder;
+		Schedules().Reset();
+		FString Text;
+		if (!Folder.IsEmpty() && FFileHelper::LoadFileToString(Text, *(Folder / TEXT("mcunreal_schedules.txt"))))
+		{
+			TArray<FString> Lines;
+			Text.ParseIntoArrayLines(Lines);
+			for (const FString& Line : Lines)
+			{
+				TArray<FString> Parts;
+				Line.ParseIntoArray(Parts, TEXT("\t"), false);
+				if (Parts.Num() == 3 && !Parts[0].IsEmpty())
+				{
+					Schedules().Add({ Parts[0], Parts[1] == TEXT("1"), FCString::Atoi64(*Parts[2]) });
+				}
+			}
+		}
+	}
+
+	void SaveSchedules()
+	{
+		if (SchedulesFolder().IsEmpty())
+		{
+			return;
+		}
+		FString Text;
+		for (const FScheduled& Each : Schedules())
+		{
+			Text += FString::Printf(TEXT("%s\t%d\t%lld\n"), *Each.Id, Each.bTag ? 1 : 0, Each.Due);
+		}
+		const FString Path = SchedulesFolder() / TEXT("mcunreal_schedules.txt");
+		if (Text.IsEmpty())
+		{
+			IFileManager::Get().Delete(*Path, false, true, true);
+		}
+		else
+		{
+			FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+		}
+	}
+
 	FReplies RunSchedule(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
 	{
+		SyncSchedules(Target);
 		if (Words.Num() < 3)
 		{
 			return Unknown(Command, Command.Len());
@@ -821,6 +878,7 @@ namespace
 			{
 				return { Fail(McLang::Format(TEXT("commands.schedule.cleared.failure"), { Words[2] })) };
 			}
+			SaveSchedules();
 			return { Ok(McLang::Format(TEXT("commands.schedule.cleared.success"), { FString::FromInt(Removed), Words[2] })) };
 		}
 		if (Words[1] != TEXT("function") || Words.Num() < 4 || Words.Num() > 5)
@@ -857,6 +915,7 @@ namespace
 			Schedules().RemoveAll([&Id, bTag](const FScheduled& Each) { return Each.Id == Id && Each.bTag == bTag; });
 		}
 		Schedules().Add({ Id, bTag, Due });
+		SaveSchedules();
 		return { Ok(McLang::Format(bTag ? TEXT("commands.schedule.created.tag") : TEXT("commands.schedule.created.function"), { Id, FString::FromInt(Ticks), LexToString(Due) })) };
 	}
 
@@ -1062,6 +1121,147 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.fill.failed"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.fill.success"), { FString::FromInt(Changed) })) };
+	}
+
+	// A biome tag's biomes ("minecraft:is_ocean"), tags inside it followed.
+	void CollectBiomeTag(const FString& Tag, TSet<FString>& Out, int32 Depth)
+	{
+		if (Depth > 8)
+		{
+			return;
+		}
+		const FString Full = McCache::Namespaced(Tag);
+		for (const McData::FFile& File : McData::List(TEXT("tags/worldgen/biome")))
+		{
+			if (File.Id != Full)
+			{
+				continue;
+			}
+			for (const FString& Value : McData::ReadTagValues(File.Paths))
+			{
+				if (Value.StartsWith(TEXT("#")))
+				{
+					CollectBiomeTag(Value.RightChop(1), Out, Depth + 1);
+				}
+				else
+				{
+					Out.Add(McCache::Namespaced(Value));
+				}
+			}
+		}
+	}
+
+	// /fillbiome <from> <to> <biome> [replace <biome|#tag>]: sets whole 4x4x4 cells, so the corners print as the cells' own corners
+	// (wording and rounding from a ref run, cmd_fillbiome.txt).
+	FReplies RunFillBiome(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 8 || Words.Num() == 9)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > 10 || (Words.Num() == 10 && Words[8] != TEXT("replace")))
+		{
+			return BadArgument(Command);
+		}
+		const FVector Base = SenderFeet(Sender, Target);
+		FIntVector A, B;
+		if (!ParseBlockPos(Words, 1, Base, A) || !ParseBlockPos(Words, 4, Base, B))
+		{
+			return BadArgument(Command);
+		}
+		FMcBiomeRegistry& Biomes = FMcBiomeRegistry::Get();
+		Biomes.EnsureLoaded();
+		auto Missing = [&Command](const FString& Id)
+		{
+			return FReplies{ Fail(FString::Printf(TEXT("Can't find element '%s' of type 'minecraft:worldgen/biome'"), *Id)), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+		};
+		const FString Id = McCache::Namespaced(Words[7]);
+		const TOptional<FMcBiomeId> Wanted = Biomes.Find(FName(*Id));
+		if (!Wanted.IsSet())
+		{
+			return Missing(Id);
+		}
+		TSet<uint8> Only;
+		const bool bFilter = Words.Num() == 10;
+		if (bFilter)
+		{
+			if (Words[9].StartsWith(TEXT("#")))
+			{
+				TSet<FString> Names;
+				CollectBiomeTag(Words[9].RightChop(1), Names, 0);
+				if (Names.IsEmpty())
+				{
+					return { Fail(FString::Printf(TEXT("Unknown biome tag '%s'"), *Words[9])), Fail(Command + McLang::Get(TEXT("command.context.here"))) };
+				}
+				for (const FString& Name : Names)
+				{
+					const TOptional<FMcBiomeId> Found = Biomes.Find(FName(*Name));
+					if (Found.IsSet())
+					{
+						Only.Add(*Found);
+					}
+				}
+			}
+			else
+			{
+				const FString FilterId = McCache::Namespaced(Words[9]);
+				const TOptional<FMcBiomeId> Found = Biomes.Find(FName(*FilterId));
+				if (!Found.IsSet())
+				{
+					return Missing(FilterId);
+				}
+				Only.Add(*Found);
+			}
+		}
+		const FIntVector Min(FMath::Min(A.X, B.X), FMath::Min(A.Y, B.Y), FMath::Min(A.Z, B.Z));
+		const FIntVector Max(FMath::Max(A.X, B.X), FMath::Max(A.Y, B.Y), FMath::Max(A.Z, B.Z));
+		// The corners are looked at before the size: past the height is out of this world, an unloaded chunk is not loaded.
+		uint8 Unused = 0;
+		const int32 StateA = Target.GetBiomeAt(Min, Unused);
+		const int32 StateB = Target.GetBiomeAt(Max, Unused);
+		if (StateA == 2 || StateB == 2)
+		{
+			return { Fail(McLang::Get(TEXT("argument.pos.outofworld"))) };
+		}
+		if (StateA == 1 || StateB == 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.pos.unloaded"))) };
+		}
+		const int64 Volume = int64(Max.X - Min.X + 1) * (Max.Y - Min.Y + 1) * (Max.Z - Min.Z + 1);
+		const FString LimitRule = Target.GetGameRule(TEXT("max_block_modifications"));
+		const int64 Limit = LimitRule.IsNumeric() ? FCString::Atoi64(*LimitRule) : 32768;
+		if (Volume > Limit)
+		{
+			return { Fail(McLang::Format(TEXT("commands.fillbiome.toobig"), { LexToString(Limit), LexToString(Volume) })) };
+		}
+		auto CellOf = [](int32 Block) { return FMath::FloorToInt(Block / 4.0); };
+		const FIntVector CellMin(CellOf(Min.X), CellOf(Min.Y), CellOf(Min.Z));
+		const FIntVector CellMax(CellOf(Max.X), CellOf(Max.Y), CellOf(Max.Z));
+		int32 Changed = 0;
+		for (int32 X = CellMin.X; X <= CellMax.X; ++X)
+		{
+			for (int32 Y = CellMin.Y; Y <= CellMax.Y; ++Y)
+			{
+				for (int32 Z = CellMin.Z; Z <= CellMax.Z; ++Z)
+				{
+					const FIntVector Pos(X * 4, Y * 4, Z * 4);
+					uint8 Old = 0;
+					if (Target.GetBiomeAt(Pos, Old) != 0 || Old == *Wanted || (bFilter && !Only.Contains(Old)))
+					{
+						continue;
+					}
+					Target.SetBiomeAt(Pos, *Wanted);
+					++Changed;
+				}
+			}
+		}
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.fillbiome.no_changes"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.fillbiome.success.count"), { FString::FromInt(Changed),
+			FString::FromInt(CellMin.X * 4), FString::FromInt(CellMin.Y * 4), FString::FromInt(CellMin.Z * 4),
+			FString::FromInt(CellMax.X * 4), FString::FromInt(CellMax.Y * 4), FString::FromInt(CellMax.Z * 4) })) };
 	}
 
 	// /clone <begin> <end> <destination> [replace|masked|filtered <block>] [normal|force|move]
@@ -6297,6 +6497,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunFill(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("fillbiome"))
+	{
+		return RunFillBiome(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("summon"))
 	{
 		return RunSummon(Command, Words, Sender, Target);
@@ -6570,8 +6774,15 @@ TArray<FString> McCommands::GetFunctionTag(const FString& Tag)
 	return Ids;
 }
 
+void McCommands::ForgetSchedules()
+{
+	Schedules().Reset();
+	SchedulesFolder().Reset();
+}
+
 void McCommands::RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target)
 {
+	SyncSchedules(Target);
 	TArray<FScheduled>& List = Schedules();
 	if (List.IsEmpty())
 	{
@@ -6590,6 +6801,10 @@ void McCommands::RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarge
 		{
 			++Index;
 		}
+	}
+	if (Due.Num() > 0)
+	{
+		SaveSchedules();
 	}
 	for (const FScheduled& Each : Due)
 	{

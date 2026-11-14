@@ -184,6 +184,10 @@ public:
 	virtual void SetYaw(const FString& Player, double Yaw) {}
 	// /locate biome: the nearest loaded spot of a biome (id), from a position.
 	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
+	// /fillbiome: the biome of the 4x4x4 cell holding a block position. 0 when read, 1 where the chunk isn't loaded, 2 outside the
+	// height of the world.
+	virtual int32 GetBiomeAt(const FIntVector& Pos, uint8& OutBiome) const { return 1; }
+	virtual void SetBiomeAt(const FIntVector& Pos, uint8 Biome) {}
 	// /swing: a player swings their arm.
 	virtual void SwingArm(const FString& Player) {}
 	// The folder of the world being played, where /data storage is kept (empty: nowhere to keep it).
@@ -224,6 +228,8 @@ namespace McCommands
 	MCSERVER_API TArray<FString> GetFunctionTag(const FString& Tag);
 	// Runs these functions (ids) as the sender; the replies they gave.
 	// Runs the functions /schedule has due (by the game time) as the sender; a function that is gone by then is dropped.
+	// Drops the schedules held in memory (the next use reads the world's file again): a quit and reload, for tests.
+	MCSERVER_API void ForgetSchedules();
 	MCSERVER_API void RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	MCSERVER_API TArray<FMcCommandReply> RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	// The level a player has: the host of a world of their own has 4, otherwise their ops.json level (0 if not an op).

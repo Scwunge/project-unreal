@@ -70,6 +70,8 @@ public:
 	// Cell coordinates: X and Z 0 to 3, Y from 0 at the bottom of the world (4 per section).
 	void SetBiomeCell(int32 CellX, int32 CellY, int32 CellZ, FMcBiomeId Biome);
 	void FillBiome(FMcBiomeId Biome);
+	// Counts as a change (saved again, meshed again) after SetBiomeCell calls, which don't.
+	void MarkBiomesChanged() { ++Revision; }
 	// All cells, 64 per section from the bottom up, each section in y, z, x order.
 	TConstArrayView<FMcBiomeId> GetBiomes() const { return Biomes; }
 	void LoadBiomes(TConstArrayView<FMcBiomeId> InBiomes);

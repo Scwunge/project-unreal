@@ -2425,23 +2425,84 @@ namespace
 		}
 		virtual bool Summon(FName Kind, const FVector& Feet) override
 		{
+			return SummonMade(Kind, Feet) != nullptr;
+		}
+		virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) override
+		{
+			FMcEntity* Made = SummonMade(Kind, Feet);
+			if (Made)
+			{
+				McCommands::ApplyEntityTag(*Made, Tag);
+			}
+			return Made != nullptr;
+		}
+		FMcEntity* SummonMade(FName Kind, const FVector& Feet)
+		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
 			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
 			if (Host && FMcVehicle::IsVehicleType(Kind))
 			{
 				TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 				Vehicle->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Vehicle));
-				return true;
+				return &Host->GetManager().Add(MoveTemp(Vehicle));
 			}
 			if (Host && FMcPrimedTnt::IsTnt(Kind))
 			{
 				TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
 				Tnt->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Tnt));
-				return true;
+				return &Host->GetManager().Add(MoveTemp(Tnt));
 			}
-			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
+			return Host ? Host->SpawnMob(Kind, Feet) : nullptr;
+		}
+		virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const override
+		{
+			TArray<TPair<double, int32>> Found;
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			if (Host)
+			{
+				for (const TUniquePtr<FMcEntity>& Each : Host->GetManager().GetEntities())
+				{
+					const double Distance = FVector::Dist(Each->Body.Position, Origin);
+					if (!Each->bRemoved && (Kind.IsNone() || Each->GetType() == Kind) && (MaxDistance <= 0.0 || Distance <= MaxDistance))
+					{
+						Found.Add({ Distance, Each->Id });
+					}
+				}
+			}
+			Found.Sort([](const TPair<double, int32>& A, const TPair<double, int32>& B) { return A.Key < B.Key; });
+			TArray<int32> Ids;
+			for (const TPair<double, int32>& Each : Found)
+			{
+				if (Limit > 0 && Ids.Num() >= Limit)
+				{
+					break;
+				}
+				Ids.Add(Each.Value);
+			}
+			return Ids;
+		}
+		virtual int32 SetEntitySlot(int32 EntityId, const FString& Slot, FName Item, int32 Count) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			FMcEntity* Found = Host ? Host->GetManager().Find(EntityId) : nullptr;
+			return Found ? McCommands::SetEntitySlot(*Found, Slot, Item, Count) : 0;
+		}
+		virtual FString GetEntityName(int32 EntityId) const override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			FMcEntity* Found = Host ? Host->GetManager().Find(EntityId) : nullptr;
+			if (!Found)
+			{
+				return FString();
+			}
+			if (Found->IsLiving() && !static_cast<FMcMob*>(Found)->CustomName.IsEmpty())
+			{
+				return static_cast<FMcMob*>(Found)->CustomName;
+			}
+			return McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Found->GetType().ToString()));
 		}
 
 		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override

@@ -47,6 +47,9 @@ struct FMcWorldBorderState
 };
 
 // What a command can do. Players are named as they joined; names match ignoring case.
+class FMcNbt;
+class FMcEntity;
+
 class MCSERVER_API IMcCommandTarget
 {
 public:
@@ -94,6 +97,15 @@ public:
 	virtual void SetBlock(const FIntVector& Pos, FMcStateId State) = 0;
 	// A new mob of the kind at the feet position; false if there is nowhere to put it.
 	virtual bool Summon(FName Kind, const FVector& Feet) = 0;
+	// The same with the data tags of /summon <entity> <pos> {nbt} (Age, NoAI, Silent, CustomName, Rotation, Invulnerable, Tags, equipment...):
+	// the game's summon applies McCommands::ApplyEntityTag to what it made.
+	virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) { return Summon(Kind, Feet); }
+	// The ids of the entities of a kind (None for any kind but a player) within MaxDistance of Origin (0 for no limit), nearest first, at most Limit (0 for all).
+	virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const { return {}; }
+	// Puts an item into a slot of the entity by the game's slot name (saddle, armor.head, weapon.mainhand...); false if it has no such slot.
+	virtual int32 SetEntitySlot(int32 EntityId, const FString& Slot, FName Item, int32 Count) { return 0; }
+	// The name the game shows for the entity (its custom name, else its kind's).
+	virtual FString GetEntityName(int32 EntityId) const { return FString(); }
 	// /particle: Count particles of the named kind ("minecraft:heart") at Pos, spread by Delta, at Speed. False if nobody could see it.
 	virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) { return false; }
 
@@ -171,6 +183,12 @@ public:
 
 namespace McCommands
 {
+	// What a summon's data tag does to the entity made: Rotation, Silent, Tags, and for a mob Age (negative: a baby), NoAI, Invulnerable,
+	// CustomName and what it wears and holds (equipment, ArmorItems, HandItems).
+	MCSERVER_API void ApplyEntityTag(FMcEntity& Entity, const FMcNbt& Tag);
+	// Puts an item (a count of zero or None empties it) in the entity's slot by the game's name: weapon, weapon.mainhand, armor.head, armor.chest,
+	// armor.legs, armor.feet, saddle. 1 if it did, 0 for a slot it has none of, 2 for one that refuses the item (a baby takes no saddle).
+	MCSERVER_API int32 SetEntitySlot(FMcEntity& Entity, const FString& Slot, FName Item, int32 Count);
 	// The world border /worldborder sets (the game reads it to keep players inside).
 	MCSERVER_API FMcWorldBorderState& GetWorldBorder();
 	// The custom boss bars (/bossbar) a player is shown: one line each, "title<TAB>fraction<TAB>color<TAB>style", in id order.

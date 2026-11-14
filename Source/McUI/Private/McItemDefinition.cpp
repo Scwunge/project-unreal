@@ -369,3 +369,68 @@ namespace McItemDef
 		return false;
 	}
 }
+
+FString McItemDef::FindChestTexture(const TSharedPtr<FJsonObject>& Definition, const FDateTime& Now, FString* OutBase)
+{
+	const TSharedPtr<FJsonObject>* Top = nullptr;
+	if (!Definition || !Definition->TryGetObjectField(TEXT("model"), Top))
+	{
+		return FString();
+	}
+	const auto Field = [](const TSharedPtr<FJsonObject>& Object, const TCHAR* Name)
+	{
+		FString Value;
+		Object->TryGetStringField(Name, Value);
+		return Value;
+	};
+	TSharedPtr<FJsonObject> At = *Top;
+	for (int32 Depth = 0; Depth < 8 && At; ++Depth)
+	{
+		const FString Type = Field(At, TEXT("type"));
+		if (Type == TEXT("minecraft:select"))
+		{
+			// Only the date select is read; any other takes its fallback.
+			TSharedPtr<FJsonObject> Next;
+			const TSharedPtr<FJsonObject>* Fallback = nullptr;
+			if (At->TryGetObjectField(TEXT("fallback"), Fallback))
+			{
+				Next = *Fallback;
+			}
+			FString Pattern;
+			const TArray<TSharedPtr<FJsonValue>>* Cases = nullptr;
+			if (Field(At, TEXT("property")) == TEXT("minecraft:local_time") && At->TryGetStringField(TEXT("pattern"), Pattern) && Pattern == TEXT("MM-dd")
+				&& At->TryGetArrayField(TEXT("cases"), Cases))
+			{
+				const FString Today = FString::Printf(TEXT("%02d-%02d"), Now.GetMonth(), Now.GetDay());
+				for (const TSharedPtr<FJsonValue>& Case : *Cases)
+				{
+					const TSharedPtr<FJsonObject>* CaseObject = nullptr;
+					const TArray<TSharedPtr<FJsonValue>>* When = nullptr;
+					const TSharedPtr<FJsonObject>* CaseModel = nullptr;
+					if (Case->TryGetObject(CaseObject) && (*CaseObject)->TryGetArrayField(TEXT("when"), When) && (*CaseObject)->TryGetObjectField(TEXT("model"), CaseModel)
+						&& When->ContainsByPredicate([&Today](const TSharedPtr<FJsonValue>& Value) { return Value->AsString() == Today; }))
+					{
+						Next = *CaseModel;
+						break;
+					}
+				}
+			}
+			At = Next;
+			continue;
+		}
+		const TSharedPtr<FJsonObject>* Special = nullptr;
+		FString Texture;
+		if (Type == TEXT("minecraft:special") && At->TryGetObjectField(TEXT("model"), Special) && Field(*Special, TEXT("type")) == TEXT("minecraft:chest")
+			&& (*Special)->TryGetStringField(TEXT("texture"), Texture))
+		{
+			if (OutBase)
+			{
+				*OutBase = Field(At, TEXT("base"));
+			}
+			int32 Colon;
+			return Texture.FindChar(TEXT(':'), Colon) ? Texture.Mid(Colon + 1) : Texture;
+		}
+		return FString();
+	}
+	return FString();
+}

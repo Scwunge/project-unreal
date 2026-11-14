@@ -185,9 +185,15 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
 			ArmPose = 1;
 		}
+#if !UE_BUILD_SHIPPING
+		// Development: -McBaby draws every camel young, for shots (no command makes one yet).
+		const bool bDevBaby = FParse::Param(FCommandLine::Get(), TEXT("McBaby")) && (Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk"));
+#else
+		const bool bDevBaby = false;
+#endif
 		if (Kind != FMcVillager::StaticType())
 		{
-			bBaby = Mob.IsYoung();
+			bBaby = Mob.IsYoung() || bDevBaby;
 		}
 		// The game's swell runs over the fuse less 2 ticks.
 		if (Kind == FMcVillager::StaticType())

@@ -251,7 +251,7 @@ bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
 	double Fastest = 0.0;
 	FString Trace;
 	FVector Last = Warden->Body.Position;
-	const int32 Window = 190;
+	const int32 Window = 114;   // six strokes: a longer window runs into the sonic boom charge (it is within 14 blocks of the player by then), which stands still
 	for (int32 Tick = 0; Tick < Window; ++Tick)
 	{
 		Manager.Tick();
@@ -267,9 +267,9 @@ bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
 	}
 	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES steps %s"), *Trace);
 	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES moving %d still %d fastest %.3f (ref peak 0.201)"), Moving, Stills, Fastest);
-	// The reference: 5 of every 19 ticks under 0.01 a block (its ~0.55 a tick decay counts as moving), 26%. Ours has no decay and measured 46%: the
-	// bound here is what the code does, the gap to 26% is the unmodelled coast (PLAN.md "Warden strokes").
-	TestTrue(TEXT("it walks in strokes: a third to a half of the ticks are still"), Stills >= Window * 35 / 100 && Stills <= Window * 60 / 100);
+	// The reference log has 6 of every 19 ticks at or under 0.01 a block (0.010 0.005 and four 0.000 after each stroke), 31.6%; ours is the same
+	// profile step for step (0.091 0.140 0.167 ... 0.199 then 0.109 0.059 0.032 0.018 0.010 0.005 0 0 0 0, trace of 2026-11-14).
+	TestTrue(TEXT("it walks in strokes: about 32% of the ticks are still, as in the reference"), Stills >= Window * 28 / 100 && Stills <= Window * 38 / 100);
 	TestTrue(TEXT("and its top step matches the reference peak 0.201"), Fastest > 0.18 && Fastest < 0.22);
 	return true;
 }

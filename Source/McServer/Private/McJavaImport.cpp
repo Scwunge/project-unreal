@@ -1471,33 +1471,34 @@ bool McJavaImport::ConvertStats(const FString& Json, FMcPlayerData& Out)
 
 bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
 {
-	FMcNbt Root;
+	// Every player of the folder gets a file of their own, named by their UUID (the join looks for it: McWorldSave::LoadPlayer);
+	// the one who played last is also "imported-player", which whoever has no file takes.
+	const FString DataFolder = Source / TEXT("players") / TEXT("data");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(DataFolder / TEXT("*.dat")), true, false);
 	FString Newest;
 	FDateTime NewestTime = FDateTime::MinValue();
-	TArray<FString> Files;
-	IFileManager::Get().FindFiles(Files, *(Source / TEXT("players") / TEXT("data") / TEXT("*.dat")), true, false);
 	for (const FString& File : Files)
 	{
-		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(Source / TEXT("players") / TEXT("data") / File));
+		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(DataFolder / File));
 		if (Time > NewestTime)
 		{
 			NewestTime = Time;
-			Newest = Source / TEXT("players") / TEXT("data") / File;
+			Newest = File;
 		}
 	}
-	FMcPlayerData Player;
-	bool bFound = !Newest.IsEmpty() && FMcNbt::LoadFile(Newest, Root) && ConvertPlayer(Root, Player);
-	if (!bFound)
+
+	FMcPlayerData Last;
+	bool bHaveLast = false;
+	for (const FString& File : Files)
 	{
-		// The older layout kept the one player in level.dat.
-		FMcNbt Level;
-		const FMcNbt* Data = FMcNbt::LoadFile(Source / TEXT("level.dat"), Level) ? Level.Find(TEXT("Data")) : nullptr;
-		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
-		bFound = Old && ConvertPlayer(*Old, Player);
-	}
-	if (bFound && !Newest.IsEmpty())
-	{
-		Player.Uuid = FPaths::GetBaseFilename(Newest);
+		FMcNbt Root;
+		FMcPlayerData Player;
+		if (!FMcNbt::LoadFile(DataFolder / File, Root) || !ConvertPlayer(Root, Player))
+		{
+			continue;
+		}
+		Player.Uuid = FPaths::GetBaseFilename(File);
 		// Their advancements and statistics, with the game's dates.
 		FString Text;
 		if (FFileHelper::LoadFileToString(Text, *(Source / TEXT("players") / TEXT("advancements") / (Player.Uuid + TEXT(".json")))))
@@ -1508,8 +1509,22 @@ bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
 		{
 			ConvertStats(Text, Player);
 		}
+		McWorldSave::SavePlayer(WorldDir, Player.Uuid, Player);
+		if (File == Newest)
+		{
+			Last = Player;
+			bHaveLast = true;
+		}
 	}
-	return bFound && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Player);
+	if (!bHaveLast)
+	{
+		// The older layout kept the one player in level.dat.
+		FMcNbt Level;
+		const FMcNbt* Data = FMcNbt::LoadFile(Source / TEXT("level.dat"), Level) ? Level.Find(TEXT("Data")) : nullptr;
+		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
+		bHaveLast = Old && ConvertPlayer(*Old, Last);
+	}
+	return bHaveLast && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Last);
 }
 
 bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)

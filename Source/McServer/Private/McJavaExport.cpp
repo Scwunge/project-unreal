@@ -969,7 +969,7 @@ namespace
 			const TSharedPtr<FJsonObject>* Defined = nullptr;
 			if (Def.IsValid() && Def->TryGetObjectField(TEXT("criteria"), Defined))
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Criterion : (*Defined)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Criterion : (*Defined)->Values)
 				{
 					Criteria->SetStringField(Criterion.Key, CriterionDate(Player, Id, Criterion.Key, Date));
 				}

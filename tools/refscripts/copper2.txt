@@ -1,0 +1,344 @@
+# Copper by hand: honeycomb waxes, an axe scrapes and unwaxes; one use on each kind. Survival, stacks held in the main hand.
+cmd gamerule send_command_feedback false
+cmd gamemode survival
+cmd difficulty peaceful
+cmd execute in minecraft:overworld run tp @s 1.5 -60 3.5 180 20
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule random_tick_speed 0
+cmd fill -5 -61 -3 46 -52 15 stone hollow
+wait 10
+cmd setblock 3 -60 6 copper_block
+cmd setblock 5 -60 6 exposed_copper
+cmd setblock 7 -60 6 weathered_copper
+cmd setblock 9 -60 6 oxidized_copper
+cmd setblock 11 -60 6 cut_copper
+cmd setblock 13 -60 6 exposed_cut_copper_stairs[facing=north]
+cmd setblock 15 -60 6 weathered_cut_copper_slab
+cmd setblock 17 -60 6 oxidized_cut_copper
+cmd setblock 19 -60 6 chiseled_copper
+cmd setblock 21 -60 6 exposed_copper_grate
+cmd setblock 23 -60 6 copper_bulb
+cmd setblock 25 -60 6 exposed_copper_bulb
+cmd setblock 27 -60 6 lightning_rod[facing=up]
+cmd setblock 29 -60 6 waxed_copper_block
+cmd setblock 31 -60 6 waxed_exposed_copper
+cmd setblock 33 -60 6 waxed_weathered_cut_copper_stairs[facing=north]
+cmd setblock 35 -60 6 waxed_oxidized_copper
+cmd setblock 37 -60 6 waxed_copper_bulb
+cmd setblock 39 -60 6 waxed_lightning_rod[facing=up]
+cmd setblock 41 -60 6 copper_door[facing=north,half=lower]
+cmd setblock 43 -60 6 exposed_copper_trapdoor[facing=north,half=bottom]
+cmd setblock 45 -60 6 copper_chest[facing=south]
+cmd setblock 47 -60 6 exposed_copper_chest[facing=south]
+cmd setblock 49 -60 6 waxed_exposed_copper_chest[facing=south]
+wait 10
+cmd tick step 3
+wait 6
+log states 3 -60 6 49 -60 6
+cmd tick unfreeze
+cmd item replace entity @s weapon.mainhand with minecraft:honeycomb 64
+log item 1
+cmd tp @s 3.5 -60 4.5 180 20
+wait 4
+press 3 -60 6
+wait 4
+cmd tp @s 5.5 -60 4.5 180 20
+wait 4
+press 5 -60 6
+wait 4
+cmd tp @s 7.5 -60 4.5 180 20
+wait 4
+press 7 -60 6
+wait 4
+cmd tp @s 9.5 -60 4.5 180 20
+wait 4
+press 9 -60 6
+wait 4
+cmd tp @s 11.5 -60 4.5 180 20
+wait 4
+press 11 -60 6
+wait 4
+cmd tp @s 13.5 -60 4.5 180 20
+wait 4
+press 13 -60 6
+wait 4
+cmd tp @s 15.5 -60 4.5 180 20
+wait 4
+press 15 -60 6
+wait 4
+cmd tp @s 17.5 -60 4.5 180 20
+wait 4
+press 17 -60 6
+wait 4
+cmd tp @s 19.5 -60 4.5 180 20
+wait 4
+press 19 -60 6
+wait 4
+cmd tp @s 21.5 -60 4.5 180 20
+wait 4
+press 21 -60 6
+wait 4
+cmd tp @s 23.5 -60 4.5 180 20
+wait 4
+press 23 -60 6
+wait 4
+cmd tp @s 25.5 -60 4.5 180 20
+wait 4
+press 25 -60 6
+wait 4
+cmd tp @s 27.5 -60 4.5 180 20
+wait 4
+press 27 -60 6
+wait 4
+cmd tp @s 29.5 -60 4.5 180 20
+wait 4
+press 29 -60 6
+wait 4
+cmd tp @s 31.5 -60 4.5 180 20
+wait 4
+press 31 -60 6
+wait 4
+cmd tp @s 33.5 -60 4.5 180 20
+wait 4
+press 33 -60 6
+wait 4
+cmd tp @s 35.5 -60 4.5 180 20
+wait 4
+press 35 -60 6
+wait 4
+cmd tp @s 37.5 -60 4.5 180 20
+wait 4
+press 37 -60 6
+wait 4
+cmd tp @s 39.5 -60 4.5 180 20
+wait 4
+press 39 -60 6
+wait 4
+cmd tp @s 41.5 -60 4.5 180 20
+wait 4
+press 41 -60 6
+wait 4
+cmd tp @s 43.5 -60 4.5 180 20
+wait 4
+press 43 -60 6
+wait 4
+cmd tp @s 45.5 -60 4.5 180 20
+wait 4
+press 45 -60 6
+wait 4
+cmd tp @s 47.5 -60 4.5 180 20
+wait 4
+press 47 -60 6
+wait 4
+cmd tp @s 49.5 -60 4.5 180 20
+wait 4
+press 49 -60 6
+wait 4
+cmd tick freeze
+wait 4
+log states 3 -60 6 49 -60 6
+cmd tick unfreeze
+cmd item replace entity @s weapon.mainhand with minecraft:iron_axe
+log item 1
+cmd tp @s 3.5 -60 4.5 180 20
+wait 4
+press 3 -60 6
+wait 4
+cmd tp @s 5.5 -60 4.5 180 20
+wait 4
+press 5 -60 6
+wait 4
+cmd tp @s 7.5 -60 4.5 180 20
+wait 4
+press 7 -60 6
+wait 4
+cmd tp @s 9.5 -60 4.5 180 20
+wait 4
+press 9 -60 6
+wait 4
+cmd tp @s 11.5 -60 4.5 180 20
+wait 4
+press 11 -60 6
+wait 4
+cmd tp @s 13.5 -60 4.5 180 20
+wait 4
+press 13 -60 6
+wait 4
+cmd tp @s 15.5 -60 4.5 180 20
+wait 4
+press 15 -60 6
+wait 4
+cmd tp @s 17.5 -60 4.5 180 20
+wait 4
+press 17 -60 6
+wait 4
+cmd tp @s 19.5 -60 4.5 180 20
+wait 4
+press 19 -60 6
+wait 4
+cmd tp @s 21.5 -60 4.5 180 20
+wait 4
+press 21 -60 6
+wait 4
+cmd tp @s 23.5 -60 4.5 180 20
+wait 4
+press 23 -60 6
+wait 4
+cmd tp @s 25.5 -60 4.5 180 20
+wait 4
+press 25 -60 6
+wait 4
+cmd tp @s 27.5 -60 4.5 180 20
+wait 4
+press 27 -60 6
+wait 4
+cmd tp @s 29.5 -60 4.5 180 20
+wait 4
+press 29 -60 6
+wait 4
+cmd tp @s 31.5 -60 4.5 180 20
+wait 4
+press 31 -60 6
+wait 4
+cmd tp @s 33.5 -60 4.5 180 20
+wait 4
+press 33 -60 6
+wait 4
+cmd tp @s 35.5 -60 4.5 180 20
+wait 4
+press 35 -60 6
+wait 4
+cmd tp @s 37.5 -60 4.5 180 20
+wait 4
+press 37 -60 6
+wait 4
+cmd tp @s 39.5 -60 4.5 180 20
+wait 4
+press 39 -60 6
+wait 4
+cmd tp @s 41.5 -60 4.5 180 20
+wait 4
+press 41 -60 6
+wait 4
+cmd tp @s 43.5 -60 4.5 180 20
+wait 4
+press 43 -60 6
+wait 4
+cmd tp @s 45.5 -60 4.5 180 20
+wait 4
+press 45 -60 6
+wait 4
+cmd tp @s 47.5 -60 4.5 180 20
+wait 4
+press 47 -60 6
+wait 4
+cmd tp @s 49.5 -60 4.5 180 20
+wait 4
+press 49 -60 6
+wait 4
+cmd tick freeze
+wait 4
+log states 3 -60 6 49 -60 6
+cmd tick unfreeze
+cmd tp @s 3.5 -60 4.5 180 20
+wait 4
+press 3 -60 6
+wait 4
+cmd tp @s 5.5 -60 4.5 180 20
+wait 4
+press 5 -60 6
+wait 4
+cmd tp @s 7.5 -60 4.5 180 20
+wait 4
+press 7 -60 6
+wait 4
+cmd tp @s 9.5 -60 4.5 180 20
+wait 4
+press 9 -60 6
+wait 4
+cmd tp @s 11.5 -60 4.5 180 20
+wait 4
+press 11 -60 6
+wait 4
+cmd tp @s 13.5 -60 4.5 180 20
+wait 4
+press 13 -60 6
+wait 4
+cmd tp @s 15.5 -60 4.5 180 20
+wait 4
+press 15 -60 6
+wait 4
+cmd tp @s 17.5 -60 4.5 180 20
+wait 4
+press 17 -60 6
+wait 4
+cmd tp @s 19.5 -60 4.5 180 20
+wait 4
+press 19 -60 6
+wait 4
+cmd tp @s 21.5 -60 4.5 180 20
+wait 4
+press 21 -60 6
+wait 4
+cmd tp @s 23.5 -60 4.5 180 20
+wait 4
+press 23 -60 6
+wait 4
+cmd tp @s 25.5 -60 4.5 180 20
+wait 4
+press 25 -60 6
+wait 4
+cmd tp @s 27.5 -60 4.5 180 20
+wait 4
+press 27 -60 6
+wait 4
+cmd tp @s 29.5 -60 4.5 180 20
+wait 4
+press 29 -60 6
+wait 4
+cmd tp @s 31.5 -60 4.5 180 20
+wait 4
+press 31 -60 6
+wait 4
+cmd tp @s 33.5 -60 4.5 180 20
+wait 4
+press 33 -60 6
+wait 4
+cmd tp @s 35.5 -60 4.5 180 20
+wait 4
+press 35 -60 6
+wait 4
+cmd tp @s 37.5 -60 4.5 180 20
+wait 4
+press 37 -60 6
+wait 4
+cmd tp @s 39.5 -60 4.5 180 20
+wait 4
+press 39 -60 6
+wait 4
+cmd tp @s 41.5 -60 4.5 180 20
+wait 4
+press 41 -60 6
+wait 4
+cmd tp @s 43.5 -60 4.5 180 20
+wait 4
+press 43 -60 6
+wait 4
+cmd tp @s 45.5 -60 4.5 180 20
+wait 4
+press 45 -60 6
+wait 4
+cmd tp @s 47.5 -60 4.5 180 20
+wait 4
+press 47 -60 6
+wait 4
+cmd tp @s 49.5 -60 4.5 180 20
+wait 4
+press 49 -60 6
+wait 4
+cmd tick freeze
+wait 4
+log states 3 -60 6 49 -60 6
+cmd tick unfreeze

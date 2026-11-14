@@ -1,0 +1,25 @@
+# Redstone ore: a zombie in a two-cell pen above it (redore2's pen was one cell, too low for it).
+cmd gamerule send_command_feedback false
+cmd gamemode survival
+cmd difficulty normal
+cmd execute in minecraft:overworld run tp @s 1.5 -60 3.5 180 20
+wait 200
+cmd tick freeze
+wait 4
+cmd fill -5 -61 -3 31 -52 15 stone hollow
+wait 10
+cmd setblock 9 -60 6 redstone_ore
+cmd fill 8 -59 5 10 -57 7 stone
+cmd fill 9 -59 6 9 -58 6 air
+wait 10
+cmd tick step 5
+wait 6
+log states 9 -60 6 9 -60 6
+cmd tick unfreeze
+cmd summon zombie 9.5 -59 6.5 {PersistenceRequired:1b,Silent:1b}
+wait 30
+cmd tick freeze
+wait 4
+log states 9 -60 6 9 -60 6
+log mobs 6 1
+cmd tick unfreeze

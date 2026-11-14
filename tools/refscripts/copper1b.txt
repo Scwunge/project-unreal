@@ -1,0 +1,148 @@
+# Copper oxidation on random ticks: 42 isolated copper blocks (5 apart) and one 5x5x5 cube, random_tick_speed 4096, counts of each state every 5 ticks.
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 1.5 -60 3.5 180 20
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule random_tick_speed 0
+cmd fill -5 -61 -3 46 -52 15 stone hollow
+wait 10
+cmd setblock 0 -60 0 copper_block
+cmd setblock 0 -60 5 copper_block
+cmd setblock 0 -60 10 copper_block
+cmd setblock 0 -55 0 copper_block
+cmd setblock 0 -55 5 copper_block
+cmd setblock 0 -55 10 copper_block
+cmd setblock 5 -60 0 copper_block
+cmd setblock 5 -60 5 copper_block
+cmd setblock 5 -60 10 copper_block
+cmd setblock 5 -55 0 copper_block
+cmd setblock 5 -55 5 copper_block
+cmd setblock 5 -55 10 copper_block
+cmd setblock 10 -60 0 copper_block
+cmd setblock 10 -60 5 copper_block
+cmd setblock 10 -60 10 copper_block
+cmd setblock 10 -55 0 copper_block
+cmd setblock 10 -55 5 copper_block
+cmd setblock 10 -55 10 copper_block
+cmd setblock 15 -60 0 copper_block
+cmd setblock 15 -60 5 copper_block
+cmd setblock 15 -60 10 copper_block
+cmd setblock 15 -55 0 copper_block
+cmd setblock 15 -55 5 copper_block
+cmd setblock 15 -55 10 copper_block
+cmd setblock 20 -60 0 copper_block
+cmd setblock 20 -60 5 copper_block
+cmd setblock 20 -60 10 copper_block
+cmd setblock 20 -55 0 copper_block
+cmd setblock 20 -55 5 copper_block
+cmd setblock 20 -55 10 copper_block
+cmd setblock 25 -60 0 copper_block
+cmd setblock 25 -60 5 copper_block
+cmd setblock 25 -60 10 copper_block
+cmd setblock 25 -55 0 copper_block
+cmd setblock 25 -55 5 copper_block
+cmd setblock 25 -55 10 copper_block
+cmd setblock 30 -60 0 copper_block
+cmd setblock 30 -60 5 copper_block
+cmd setblock 30 -60 10 copper_block
+cmd setblock 30 -55 0 copper_block
+cmd setblock 30 -55 5 copper_block
+cmd setblock 30 -55 10 copper_block
+cmd fill 36 -60 0 40 -56 4 copper_block
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+cmd gamerule random_tick_speed 4096
+cmd tick unfreeze
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4
+wait 10
+log box 0 -60 0 30 -55 10
+log box 36 -60 0 40 -56 4

@@ -6,6 +6,7 @@
 #include "McBlockShapes.h"
 #include "McBlockTags.h"
 #include "McBlockWorld.h"
+#include "McCopper.h"
 #include "McNature.h"
 #include "McSimulation.h"
 
@@ -109,6 +110,12 @@ void FMcSimulation::RandomTickBlock(const FIntVector& Pos)
 
 	if (Nature->RandomTick(Pos, State))
 	{
+		return;
+	}
+	int32 CopperAge = 0;
+	if (McCopper::GetAge(FMcBlockRegistry::Get().GetBlockOf(State).Name, CopperAge))
+	{
+		WeatherCopper(Pos, State, CopperAge);
 		return;
 	}
 	if (Name.EndsWith(TEXT("redstone_ore")))
@@ -376,5 +383,51 @@ void FMcSimulation::TickSupport(const FIntVector& Pos, FMcStateId State)
 	if (!bOk)
 	{
 		World.SetBlock(Pos, StateOf(TEXT("minecraft:air")));
+	}
+}
+
+void FMcSimulation::WeatherCopper(const FIntVector& Pos, FMcStateId State, int32 Age)
+{
+	if (Age >= 3 || Random.FRand() >= McCopper::WeatherChance)
+	{
+		return;
+	}
+	// A block with a less weathered one within 4 steps waits for it; the more of the same age, the slower.
+	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	int32 Higher = 0, Same = 0;
+	for (int32 DX = -4; DX <= 4; ++DX)
+	{
+		for (int32 DY = -4 + FMath::Abs(DX); DY <= 4 - FMath::Abs(DX); ++DY)
+		{
+			const int32 Rest = 4 - FMath::Abs(DX) - FMath::Abs(DY);
+			for (int32 DZ = -Rest; DZ <= Rest; ++DZ)
+			{
+				if (DX == 0 && DY == 0 && DZ == 0)
+				{
+					continue;
+				}
+				const FMcStateId Other = World.GetBlock(Pos + FIntVector(DX, DY, DZ));
+				int32 OtherAge;
+				if (Registry.IsValidState(Other) && McCopper::GetAge(Registry.GetBlockOf(Other).Name, OtherAge))
+				{
+					if (OtherAge < Age)
+					{
+						return;
+					}
+					(OtherAge > Age ? Higher : Same)++;
+				}
+			}
+		}
+	}
+	if (Random.FRand() >= McCopper::GetWeatherFactor(Age, Higher, Same))
+	{
+		return;
+	}
+	const FName Old = Registry.GetBlockOf(State).Name;
+	const FName Next = McCopper::GetNextAge(Old);
+	const TOptional<FMcStateId> Changed = Registry.ParseState(*(Next.ToString() + Registry.Describe(State).RightChop(Old.ToString().Len())));
+	if (!Next.IsNone() && Changed.IsSet())
+	{
+		World.SetBlock(Pos, Changed.GetValue());
 	}
 }

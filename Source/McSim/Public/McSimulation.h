@@ -215,6 +215,8 @@ private:
 	void OnBlockChanged(const FIntVector& Pos, FMcStateId State);
 	// Sets the instrument of the note block at Pos from what is below and above it (nothing if it is not one).
 	void RefreshNoteBlock(const FIntVector& Pos);
+	// A random tick on a copper block: it weathers one step now and then (McCopper.h).
+	void WeatherCopper(const FIntVector& Pos, FMcStateId State, int32 Age);
 	// A chunk loaded (from disk, the generator or the network): its conduits start their round of checks.
 	void OnChunkAdded(FIntPoint ChunkPos);
 	// Schedules the tick a block needs after something beside it changed.

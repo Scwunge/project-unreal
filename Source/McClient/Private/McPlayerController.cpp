@@ -25,6 +25,7 @@
 #include "Dom/JsonValue.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
+#include "McCopper.h"
 #include "McBlockWorld.h"
 #include "Camera/PlayerCameraManager.h"
 #include "McChunk.h"
@@ -666,6 +667,37 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 				return true;
 			}
 			Compass = Tied;
+			return true;
+		}
+		if (Held == TEXT("minecraft:honeycomb") || Held.ToString().EndsWith(TEXT("_axe")))
+		{
+			// Honeycomb waxes a copper block; an axe takes the wax off, or else scrapes one step of weathering (ref run copper2).
+			const FMcStateId Clicked = Blocks->GetBlock(Pos);
+			const FName Name = Registry.GetBlockOf(Clicked).Name;
+			FName To = NAME_None;
+			if (Held == TEXT("minecraft:honeycomb"))
+			{
+				To = McCopper::GetWaxed(Name);
+			}
+			else
+			{
+				To = McCopper::GetUnwaxed(Name);
+				if (To.IsNone())
+				{
+					To = McCopper::GetPreviousAge(Name);
+				}
+			}
+			if (To.IsNone())
+			{
+				return false;
+			}
+			// The other properties (slab type, stairs facing, ...) stay as they were.
+			const TOptional<FMcStateId> Next = Registry.ParseState(Registry.Describe(Clicked).Replace(*Name.ToString(), *To.ToString()));
+			if (!Next.IsSet())
+			{
+				return false;
+			}
+			World->SetBlock(Pos, Next.GetValue());
 			return true;
 		}
 		if (Held == TEXT("minecraft:flint_and_steel"))

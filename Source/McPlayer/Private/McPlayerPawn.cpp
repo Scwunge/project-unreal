@@ -1127,7 +1127,8 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 		}
 	}
 	// Flint and steel lights the block clicked; an eye of ender goes in an end portal frame.
-	if (bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || FMcVehicle::IsVehicleItem(Held.Item) || (Held.Item == TEXT("minecraft:compass") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:lodestone"))
+	if (bPlaceClick && !Held.IsEmpty() && ((Held.Item == TEXT("minecraft:honeycomb") || Held.Item.ToString().EndsWith(TEXT("_axe"))) && Registry.GetBlockOf(Hit.State).Name.ToString().Contains(TEXT("copper")))
+		|| bPlaceClick && !Held.IsEmpty() && (Held.Item == TEXT("minecraft:flint_and_steel") || FMcVehicle::IsVehicleItem(Held.Item) || (Held.Item == TEXT("minecraft:compass") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:lodestone"))
 		|| (Held.Item == TEXT("minecraft:ender_eye") && Registry.GetBlockOf(Hit.State).Name == TEXT("minecraft:end_portal_frame"))))
 	{
 		ServerUseItemOn(Hit.Block, Hit.Face);
@@ -1482,7 +1483,7 @@ void AMcPlayerPawn::ServerUseItemOn_Implementation(FIntVector Pos, int32 Face)
 	if (bUsed && !Data->bCreative)
 	{
 		FMcItemStack& Held = Data->Inventory->GetMutable(Data->SelectedSlot);
-		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:fire_charge") || FMcVehicle::IsVehicleItem(Held.Item))
+		if (Held.Item == TEXT("minecraft:ender_eye") || Held.Item == TEXT("minecraft:honeycomb") || Held.Item == TEXT("minecraft:fire_charge") || FMcVehicle::IsVehicleItem(Held.Item))
 		{
 			if (--Held.Count <= 0)
 			{

@@ -223,6 +223,8 @@ namespace McCommands
 	// The functions of a function tag ("minecraft:tick", with or without the '#'), in order, tags inside it followed.
 	MCSERVER_API TArray<FString> GetFunctionTag(const FString& Tag);
 	// Runs these functions (ids) as the sender; the replies they gave.
+	// Runs the functions /schedule has due (by the game time) as the sender; a function that is gone by then is dropped.
+	MCSERVER_API void RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	MCSERVER_API TArray<FMcCommandReply> RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	// The level a player has: the host of a world of their own has 4, otherwise their ops.json level (0 if not an op).
 	MCSERVER_API int32 GetPermissionLevel(const FString& Player, bool bHost, const FMcServerAccess& Access);

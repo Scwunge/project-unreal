@@ -3610,13 +3610,14 @@ void AMcGameMode::TickFunctions()
 			}
 		}
 	}
+	FMcCommandSender Sender;
+	Sender.PermissionLevel = 4;
+	FGameCommandTarget Target(*this);
+	McCommands::RunDueSchedules(Sender, Target);
 	if (TickFunctionIds.IsEmpty())
 	{
 		return;
 	}
-	FMcCommandSender Sender;
-	Sender.PermissionLevel = 4;
-	FGameCommandTarget Target(*this);
 	McCommands::RunFunctions(TickFunctionIds, Sender, Target);
 }
 

@@ -440,6 +440,14 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("op"), Target.Access.FindOp(TEXT("Alex")));
 	McCommands::HandleChat(TEXT("/deop Alex"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("deop"), Target.Access.FindOp(TEXT("Alex")));
+	// /schedule: errors and clear (the game's own wording; scheduling a real function needs one on disk).
+	{
+		const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };
+		TestEqual(TEXT("schedule: unknown function"), Say(TEXT("/schedule function minecraft:nope 10t")), FString(TEXT("Unknown function minecraft:nope")));
+		TestEqual(TEXT("schedule clear: nothing"), Say(TEXT("/schedule clear minecraft:nope")), FString(TEXT("No schedules with ID minecraft:nope")));
+		TestEqual(TEXT("schedule: bad time"), McCommands::HandleChat(TEXT("/schedule function minecraft:nope x"), Op(TEXT("Steve")), Target)[0].Text, FString(TEXT("Incorrect argument for command")));
+	}
+
 	// /spectate.
 	{
 		const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };

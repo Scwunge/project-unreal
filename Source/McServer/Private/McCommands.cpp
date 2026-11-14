@@ -51,6 +51,7 @@ namespace
 		{ TEXT("experience"), 2, TEXT("/experience (add|query|set) ...") },
 		{ TEXT("fill"), 2, TEXT("/fill <from> <to> <block> [destroy|hollow|keep|outline|replace]") },
 		{ TEXT("function"), 2, TEXT("/function <name>") },
+		{ TEXT("schedule"), 2, TEXT("/schedule (function <function> <time> [append|replace] | clear <function>)") },
 		{ TEXT("gamemode"), 2, TEXT("/gamemode <gamemode> [<target>]") },
 		{ TEXT("gamerule"), 2, TEXT("/gamerule <rule> [<value>]") },
 		{ TEXT("give"), 2, TEXT("/give <targets> <item> [<count>]") },
@@ -785,6 +786,78 @@ namespace
 			++Ran;
 		}
 		return Ran;
+	}
+
+	// /schedule: functions to run after a time, kept for the session (not written to the world).
+	struct FScheduled
+	{
+		FString Id;
+		bool bTag = false;
+		int64 Due = 0;
+	};
+
+	TArray<FScheduled>& Schedules()
+	{
+		static TArray<FScheduled> List;
+		return List;
+	}
+
+	FReplies RunSchedule(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words[1] == TEXT("clear"))
+		{
+			if (Words.Num() != 3)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			const bool bTag = Words[2].StartsWith(TEXT("#"));
+			const FString Id = McCache::Namespaced(bTag ? Words[2].RightChop(1) : Words[2]);
+			const int32 Removed = Schedules().RemoveAll([&Id, bTag](const FScheduled& Each) { return Each.Id == Id && Each.bTag == bTag; });
+			if (Removed == 0)
+			{
+				return { Fail(McLang::Format(TEXT("commands.schedule.cleared.failure"), { Words[2] })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.schedule.cleared.success"), { FString::FromInt(Removed), Words[2] })) };
+		}
+		if (Words[1] != TEXT("function") || Words.Num() < 4 || Words.Num() > 5)
+		{
+			return Words[1] == TEXT("function") ? Unknown(Command, Command.Len()) : BadArgument(Command);
+		}
+		const bool bTag = Words[2].StartsWith(TEXT("#"));
+		const FString Id = McCache::Namespaced(bTag ? Words[2].RightChop(1) : Words[2]);
+		const int32 Ticks = McCommands::ParseTime(Words[3]);
+		if (Ticks < 0)
+		{
+			return BadArgument(Command);
+		}
+		bool bAppend = false;
+		if (Words.Num() == 5)
+		{
+			if (Words[4] != TEXT("append") && Words[4] != TEXT("replace"))
+			{
+				return BadArgument(Command);
+			}
+			bAppend = Words[4] == TEXT("append");
+		}
+		if (bTag ? McCommands::GetFunctionTag(Id).IsEmpty() : McData::PathOf(Id, TEXT("function"), TEXT(".mcfunction")).IsEmpty())
+		{
+			return { Fail(McLang::Format(bTag ? TEXT("arguments.function.tag.unknown") : TEXT("arguments.function.unknown"), { Words[2].RightChop(bTag ? 1 : 0) })) };
+		}
+		if (Ticks == 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.schedule.same_tick"))) };
+		}
+		const int64 Due = static_cast<int64>(Target.GetGameTime()) + Ticks;
+		if (!bAppend)
+		{
+			Schedules().RemoveAll([&Id, bTag](const FScheduled& Each) { return Each.Id == Id && Each.bTag == bTag; });
+		}
+		Schedules().Add({ Id, bTag, Due });
+		return { Ok(McLang::Format(bTag ? TEXT("commands.schedule.created.tag") : TEXT("commands.schedule.created.function"), { Id, FString::FromInt(Ticks), LexToString(Due) })) };
 	}
 
 	// /function <name>: a function, or every function of a #tag.
@@ -6203,6 +6276,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunFunction(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("schedule"))
+	{
+		return RunSchedule(Command, Words, Target);
+	}
 	if (Name == TEXT("reload"))
 	{
 		McData::Reload();
@@ -6491,6 +6568,38 @@ TArray<FString> McCommands::GetFunctionTag(const FString& Tag)
 	TArray<FString> Ids;
 	CollectTagFunctions(Tag.StartsWith(TEXT("#")) ? Tag.RightChop(1) : Tag, Ids, 0);
 	return Ids;
+}
+
+void McCommands::RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target)
+{
+	TArray<FScheduled>& List = Schedules();
+	if (List.IsEmpty())
+	{
+		return;
+	}
+	const int64 Now = static_cast<int64>(Target.GetGameTime());
+	TArray<FScheduled> Due;
+	for (int32 Index = 0; Index < List.Num();)
+	{
+		if (List[Index].Due <= Now)
+		{
+			Due.Add(List[Index]);
+			List.RemoveAt(Index);
+		}
+		else
+		{
+			++Index;
+		}
+	}
+	for (const FScheduled& Each : Due)
+	{
+		FReplies Ignored;
+		const TArray<FString> Ids = Each.bTag ? McCommands::GetFunctionTag(Each.Id) : TArray<FString>{ Each.Id };
+		for (const FString& Id : Ids)
+		{
+			RunFunctionLines(Id, Sender, Target, Ignored, 0);
+		}
+	}
 }
 
 TArray<FMcCommandReply> McCommands::RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target)

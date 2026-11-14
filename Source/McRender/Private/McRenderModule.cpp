@@ -1,5 +1,6 @@
 #include "McRender.h"
 #include "McPerf.h"
+#include "McProcess.h"
 #include "McRenderTextures.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
@@ -23,7 +24,7 @@ public:
 		// The game (not the editor, a server or a commandlet) reads its mob pictures ahead, off the game thread.
 		FCoreDelegates::OnPostEngineInit.AddLambda([]
 		{
-			if (!GIsEditor && !IsRunningDedicatedServer() && !IsRunningCommandlet() && !FParse::Param(FCommandLine::Get(), TEXT("McNoPicturePrefetch")))
+			if (!GIsEditor && !McProcess::IsServer() && !IsRunningCommandlet() && !FParse::Param(FCommandLine::Get(), TEXT("McNoPicturePrefetch")))
 			{
 				McRenderTextures::PrefetchEntityPictures();
 			}

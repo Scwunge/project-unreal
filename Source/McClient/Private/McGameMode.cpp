@@ -1,5 +1,6 @@
 #include "McGameMode.h"
 #include "McPerf.h"
+#include "McProcess.h"
 #include "Tasks/Task.h"
 #include "Misc/ScopeExit.h"
 #include "McMob.h"
@@ -751,7 +752,7 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
-	if (IsRunningDedicatedServer())
+	if (McProcess::IsServer())
 	{
 		StartServerConsole();
 	}
@@ -776,8 +777,9 @@ void AMcGameMode::StartPlay()
 		}
 		// Makes the allowlist and ops files if they aren't there yet, so there is something to edit.
 		FMcServerAccess::Load();
-		UE_LOG(LogMcClient, Log, TEXT("Dedicated server \"%s\" on port %d: up to %d players, allowlist %s."), *Properties.GetString(TEXT("motd")),
-			GetWorld()->URL.Port, Properties.GetInt(TEXT("max-players"), 20), Properties.GetBool(TEXT("white-list")) ? TEXT("on") : TEXT("off"));
+		McProcess::Print(FString::Printf(TEXT("Server: settings from %s, world %s loaded"), *FMcServerProperties::GetDir(), *Properties.GetString(TEXT("level-name"))));
+		McProcess::Print(FString::Printf(TEXT("Listening on 0.0.0.0:%d (TCP and UDP). Dedicated server \"%s\": up to %d players, allowlist %s."), GetWorld()->URL.Port, *Properties.GetString(TEXT("motd")),
+			Properties.GetInt(TEXT("max-players"), 20), Properties.GetBool(TEXT("white-list")) ? TEXT("on") : TEXT("off")));
 	}
 
 	// The compass and the clock read where the local player is and what time it is, once a game tick.
@@ -3535,7 +3537,7 @@ void AMcGameMode::StartServerConsole()
 			FGameCommandTarget Target(*this);
 			for (const FMcCommandReply& Reply : McCommands::Execute(Line, Sender, Target))
 			{
-				UE_LOG(LogMcClient, Display, TEXT("%s"), *Reply.Text);
+				McProcess::Print(Reply.Text);
 			}
 		}
 		return true;

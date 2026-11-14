@@ -2,6 +2,9 @@
 #include "McJavaImport.h"
 #include "McLaunch.h"
 #include "McPerf.h"
+#include "McProcess.h"
+#include "McCache.h"
+#include "HAL/PlatformMisc.h"
 #include "UObject/UObjectGlobals.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -105,7 +108,7 @@ public:
 	virtual void StartupModule() override
 	{
 #if MC_WITH_RENDER
-		if (!IsRunningDedicatedServer() && !IsRunningCommandlet() && !GIsEditor)
+		if (!McProcess::IsServer() && !IsRunningCommandlet() && !GIsEditor)
 		{
 			FCoreUObjectDelegates::PreLoadMapWithContext.AddStatic(&ShowMapLoadScreen);
 			FCoreDelegates::OnPostEngineInit.AddStatic(&WarmWorldFiles);
@@ -118,8 +121,25 @@ public:
 		}
 		// A dedicated server listens on server.properties' server-port unless the command line gives one (-Port=). The
 		// engine reads the port from the command line when it first makes a URL, after the game module has started.
+		if (McProcess::IsServer())
+		{
+			// No window, so no first-run screen to build or wait for a cache: it has to be there, or the server says so and stops.
+			McProcess::Print(FString::Printf(TEXT("Server: cache folder %s"), *McCache::Root()));
+			if (!McCache::IsComplete())
+			{
+				const FString Message = FString::Printf(TEXT("Server: the cache at %s is missing or not finished (no manifest.json with every step done). Copy the cache folder made by the game on a PC with Minecraft, or point -McCache= at it. Exiting."),
+					*McCache::Root());
+				McProcess::Print(TEXT("ERROR ") + Message);
+				fprintf(stderr, "%s
+", TCHAR_TO_UTF8(*Message));
+				fflush(stderr);
+				FPlatformMisc::RequestExitWithStatus(true, 2);
+				return;
+			}
+			McProcess::Print(TEXT("Server: cache found"));
+		}
 		FString Port;
-		if (IsRunningDedicatedServer() && !FParse::Value(FCommandLine::Get(), TEXT("Port="), Port))
+		if (McProcess::IsServer() && !FParse::Value(FCommandLine::Get(), TEXT("Port="), Port))
 		{
 			const int32 ServerPort = FMcServerProperties::Get().GetInt(TEXT("server-port"), 25565);
 			FCommandLine::Append(*FString::Printf(TEXT(" -Port=%d"), ServerPort));

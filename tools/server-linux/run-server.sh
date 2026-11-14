@@ -9,4 +9,6 @@ EXE=$(ls McClient/Binaries/Linux/McClient-Linux-Shipping 2>/dev/null | head -1)
 [ -x "$EXE" ] || { echo "McClient/Binaries/Linux/McClient-Linux-Shipping not found; run this from the unzipped folder."; exit 1; }
 # The game's own copy of Minecraft's data (see README-linux.txt, "The cache"). -McCache= overrides the place.
 CACHE="${MC_CACHE:-$PWD/McClient/cache}"
-exec "$EXE" -server -nullrhi -nosound -unattended -stdout -FullStdOutLogOutput "-McCache=$CACHE" "$@"
+# -server and -McServer put the game in server mode (no window, menu or local player). -UserDir keeps Saved/ (settings,
+# worlds, logs) in McClient/Saved next to the install instead of ~/.config/Epic/McClient/Saved.
+exec "$EXE" -server -McServer -nullrhi -nosound -unattended -stdout -FullStdOutLogOutput "-McCache=$CACHE" "-UserDir=$PWD/McClient" "$@"

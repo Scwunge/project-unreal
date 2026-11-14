@@ -1,5 +1,6 @@
 #include "McLaunch.h"
 #include "McServer.h"
+#include "McProcess.h"
 #include "Dom/JsonObject.h"
 #include "Engine/World.h"
 #include "HAL/FileManager.h"
@@ -83,7 +84,7 @@ namespace
 
 	bool IsDedicated(const UWorld* World)
 	{
-		return World ? World->GetNetMode() == NM_DedicatedServer : IsRunningDedicatedServer();
+		return World ? World->GetNetMode() == NM_DedicatedServer : McProcess::IsServer();
 	}
 }
 

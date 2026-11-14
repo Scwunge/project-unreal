@@ -94,8 +94,13 @@ Known open points (from reading the code; check on the first run)
   texture name that differs only in case would show it.
 - The first-run setup (the Java data generator) is Windows-only code and isn't used on the server: the server
   never needs "Set up" as long as the cache is copied in.
-- This builds the game target and runs it with -server. A true Server target needs an engine built from source,
-  which the launcher engine doesn't allow.
+- This builds the game target and runs it with -server -McServer. Unreal's own dedicated-server mode needs a Server
+  target (an engine built from source), so the game switches itself into it at start-up: no window, menu or local
+  player, the map opened as a listening server. run-server.sh also passes -UserDir, which is why Saved/ is
+  McClient/Saved next to the install.
+- Start-up prints one line per stage to stdout and McClient/Saved/Logs/McServer.log: "Server mode", "Server: cache
+  folder ...", "Server: cache found", "Server: settings from ... world ... loaded", "Listening on 0.0.0.0:<port>".
+  If the cache is missing or unfinished it says why and exits with status 2 instead of waiting.
 
 
 Building the zip (on a Windows PC with the toolchain)

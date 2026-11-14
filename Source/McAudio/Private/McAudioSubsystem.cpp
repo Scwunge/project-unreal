@@ -19,11 +19,12 @@
 #include "Sound/SoundWaveProcedural.h"
 #include "Async/Async.h"
 #include "McPerf.h"
+#include "McProcess.h"
 
 bool UMcAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
 	// The dedicated server has no one to hear anything.
-	return !IsRunningDedicatedServer() && !IsRunningCommandlet();
+	return !McProcess::IsServer() && !IsRunningCommandlet();
 }
 
 void UMcAudioSubsystem::Initialize(FSubsystemCollectionBase& Collection)

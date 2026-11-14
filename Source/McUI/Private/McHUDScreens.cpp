@@ -2859,6 +2859,10 @@ void AMcHUD::DrawHUD()
 	{
 		DrawDebug(Width, Height, *Player);
 	}
+	if (Player && Player->GetGameModeSwitch() >= 0 && !bDead)
+	{
+		DrawGameModeSwitcher(Width, Height, Player->GetGameModeSwitch());
+	}
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed (unless -McShowChat: text for a font test).
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr
 		&& !FParse::Param(FCommandLine::Get(), TEXT("McShowChat"));
@@ -3355,6 +3359,32 @@ float AMcHUD::StepVignette(const AMcPlayerPawn& Player)
 }
 
 // ---- F3 ----
+
+// Measured on ref_gm_open.png (GUI 426x240): the 125x75 panel at (w/2 - 62, h/2 - 58); four 26-pixel slots 31 apart
+// from (w/2 - 59, h/2 - 31), each with its item in the middle and the picked one framed; the mode's name centred at
+// h/2 - 51, "F4 Next" (F4 in aqua) at h/2 + 5. The chat is drawn over it. Adventure's icon is the buried treasure map
+// (its picture matches the shot pixel for pixel).
+void AMcHUD::DrawGameModeSwitcher(int32 Width, int32 Height, int32 Picked)
+{
+	static const TCHAR* const Names[] = { TEXT("gameMode.creative"), TEXT("gameMode.survival"), TEXT("gameMode.adventure"), TEXT("gameMode.spectator") };
+	static const FName ModeIcons[] = { FName(TEXT("minecraft:grass_block")), FName(TEXT("minecraft:iron_sword")), FName(TEXT("minecraft:buried_treasure_map")), FName(TEXT("minecraft:ender_eye")) };
+	const int32 MidX = Width / 2, MidY = Height / 2;
+	DrawRegion(LoadSprite(TEXT("textures/gui/container/gamemode_switcher.png")), MidX - 62, MidY - 58, 125, 75, 0, 0, 125, 75);
+	const FString Name = McLang::Get(Names[Picked]);
+	DrawGuiText(Name, FMath::RoundToFloat(MidX - TextWidth(Name) / 2.0f), MidY - 51, 0xFFFFFF, true);
+	for (int32 Mode = 0; Mode < 4; ++Mode)
+	{
+		const float X = MidX - 59 + Mode * 31, Y = MidY - 31;
+		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/gamemode_switcher/slot.png")), X, Y, 26, 26);
+		DrawStack(FMcItemStack(ModeIcons[Mode]), X + 5, Y + 5);
+		if (Mode == Picked)
+		{
+			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/gamemode_switcher/selection.png")), X, Y, 26, 26);
+		}
+	}
+	const FString Next = McLang::Format(TEXT("debug.gamemodes.select_next"), { TEXT("§b") + McLang::Get(TEXT("key.keyboard.f4")) + TEXT("§r") });
+	DrawGuiText(Next, FMath::RoundToFloat(MidX - TextWidth(Next) / 2.0f), MidY + 5, 0xFFFFFF, true);
+}
 
 void AMcHUD::DrawDebug(int32 Width, int32 Height, AMcPlayerPawn& Player)
 {

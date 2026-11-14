@@ -710,8 +710,23 @@ void AMcPlayerPawn::HandleFunctionKeys(APlayerController& Player)
 		McPacks::RequestReload();
 		bF3Combo = true;
 	}
+	// F4 with F3 held opens the game mode switcher, then each F4 picks the next of creative, survival, adventure and
+	// spectator; F3's release switches to the one picked with /gamemode (reference, gamemodes_play.txt). It opens on the
+	// game's previous mode; this port has only survival and creative, so that is the other of the two.
+	if (Player.IsInputKeyDown(EKeys::F3) && Player.WasInputKeyJustPressed(EKeys::F4))
+	{
+		const bool bCreative = Data && Data->bCreative;
+		GameModeSwitch = GameModeSwitch < 0 ? (bCreative ? 1 : 0) : (GameModeSwitch + 1) % 4;
+		bF3Combo = true;
+	}
 	if (Player.WasInputKeyJustReleased(EKeys::F3))
 	{
+		static const TCHAR* const Modes[] = { TEXT("creative"), TEXT("survival"), TEXT("adventure"), TEXT("spectator") };
+		if (GameModeSwitch >= 0 && Data && GameModeSwitch != (Data->bCreative ? 0 : 1))
+		{
+			Data->SendChat(FString(TEXT("/gamemode ")) + Modes[GameModeSwitch]);
+		}
+		GameModeSwitch = -1;
 		bDebugShown = bDebugShown != !bF3Combo;
 		bF3Combo = false;
 	}

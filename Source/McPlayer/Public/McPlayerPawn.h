@@ -167,6 +167,8 @@ public:
 	// the view (0 from the eyes, 1 from behind, 2 from the front looking back).
 	bool IsHudHidden() const { return bHudHidden; }
 	bool IsDebugShown() const { return bDebugShown; }
+	// The F3+F4 game mode switcher: -1 while shut, else the mode picked: 0 creative, 1 survival, 2 adventure, 3 spectator.
+	int32 GetGameModeSwitch() const { return GameModeSwitch; }
 	int32 GetViewMode() const { return ViewMode; }
 	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
 	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
@@ -404,6 +406,7 @@ private:
 	bool bHudHidden = false;
 	bool bDebugShown = false;
 	bool bF3Combo = false;
+	int32 GameModeSwitch = -1;
 	int32 ViewMode = 0;
 	void HandleFunctionKeys(APlayerController& Player);
 	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.

@@ -14,6 +14,9 @@
 //   fly:<0|1>               stops or starts flying
 //   pack:<a,b|off>          selects these resource packs and reloads, as the menu does
 //   settle:<seconds>        waits until the renderer has nothing left to mesh, at most that long
+//   cursor:<x>,<y>          puts the mouse at that point of the game's view, in pixels (for slots in an open screen)
+//   down:<keys>, up:<keys>  presses keys (or L, R, M) and leaves them down, lets them go: a drag is down:L, cursor
+//                           moves with waits between, up:L
 // -McInputFile=<path> reads the steps from a file, one a line, with # for a comment; a script keeps going across a
 // return to the title. A player who dies presses Respawn two seconds later.
 // Key names are Unreal's (W, SpaceBar, LeftShift, One, F3, Escape), plus L, R, M for the mouse buttons and Shift,
@@ -42,7 +45,7 @@ public:
 	// A step as text and its pieces, for the tests.
 	struct FStep
 	{
-		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End, Mark, Note, Chat, MenuPress, Fly, Pack, Settle };
+		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End, Mark, Note, Chat, MenuPress, Fly, Pack, Settle, Cursor, Down, Up };
 		EKind Kind = EKind::Wait;
 		TArray<FKey> Keys;
 		float Seconds = 0.0f;

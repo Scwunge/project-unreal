@@ -1,0 +1,45 @@
+# The crafting table's 3x3 by a right drag only (playtest4 left no chest): table in hotbar 0, eight planks in hotbar 1.
+settle:30
+chat:/give @s minecraft:crafting_table 1
+wait:1
+chat:/give @s minecraft:oak_planks 8
+wait:1
+key:One
+look:0,-60
+wait:0.5
+click:R:0.1
+wait:1
+click:R:0.1
+wait:1
+shot:td_open
+cursor:744,808
+click:L:0.1
+wait:0.5
+cursor:760,308
+down:R
+wait:0.2
+cursor:832,308
+wait:0.2
+cursor:904,308
+wait:0.2
+cursor:904,380
+wait:0.2
+cursor:904,452
+wait:0.2
+cursor:832,452
+wait:0.2
+cursor:760,452
+wait:0.2
+cursor:760,380
+wait:0.3
+up:R
+wait:1
+cursor:1300,600
+wait:0.3
+shot:td_after
+key:E
+wait:1
+key:E
+wait:1
+shot:td_inv
+end

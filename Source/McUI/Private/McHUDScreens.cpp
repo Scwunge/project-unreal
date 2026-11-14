@@ -2235,6 +2235,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		}
 	}
 
+	// A drag over slots shows each slot as it would be when the button is let go, lit, and the cursor what it keeps.
+	TMap<int32, FMcItemStack> DragPreview;
+	int32 DragCarried = 0;
+	const bool bDragPreview = Menu.PreviewQuickCraft(DragPreview, DragCarried, Screen->Input->IsCreative());
 	for (int32 Slot = 0; Slot < Menu.NumSlots() && Slot < Layout.Slots.Num(); ++Slot)
 	{
 		if (!Layout.IsShown(Slot))
@@ -2242,6 +2246,12 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 			continue;
 		}
 		const FIntPoint At = Origin + Layout.Slots[Slot];
+		if (const FMcItemStack* Ghost = bDragPreview ? DragPreview.Find(Slot) : nullptr)
+		{
+			DrawFill(static_cast<float>(At.X), static_cast<float>(At.Y), 16, 16, FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
+			DrawStack(*Ghost, static_cast<float>(At.X), static_cast<float>(At.Y));
+			continue;
+		}
 		const TArray<FMcItemStack> Held = Slot == BundleSelectedSlot && BundleSelected >= 0 ? McBundle::GetContents(Menu.GetStack(Slot)) : TArray<FMcItemStack>();
 		if (Held.IsValidIndex(BundleSelected))
 		{
@@ -2316,7 +2326,9 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 	else if (!Menu.GetCarried().IsEmpty())
 	{
-		DrawStack(Menu.GetCarried(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
+		FMcItemStack Shown = Menu.GetCarried();
+		Shown.Count = bDragPreview ? DragCarried : Shown.Count;
+		DrawStack(Shown.Count > 0 ? Shown : FMcItemStack(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
 	}
 	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item))
 	{

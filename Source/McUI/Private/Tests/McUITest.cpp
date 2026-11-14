@@ -442,6 +442,90 @@ bool FMcSlotClickTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the two others share it"), Menu->GetStack(Main + 20).Count + Menu->GetStack(Main + 21).Count, 6);
 	}
 	{
+		// Crafting by dragging (the playtest's ask): four planks held and dragged over the 2x2 grid put one in each cell,
+		// the slots show what they will get while the button is down, and the crafting table appears on letting go.
+		TestTrue(TEXT("recipes load"), FMcRecipeBook::Get().EnsureLoaded());
+		Fresh(Inventory, Armor, Offhand);
+		const TSharedPtr<FMcPlayerMenu> Menu = MakeShared<FMcPlayerMenu>(Inventory, Armor, Offhand);
+		FMcMenuInput Input(Menu);
+		constexpr int32 Grid = FPlayerMenuSlots::GridFirst;
+		Menu->SetCarried(Stack(TEXT("minecraft:oak_planks"), 4));
+		Input.MouseDown(Grid, 0, false, 0.0);
+		for (int32 Cell = 0; Cell < 4; ++Cell)
+		{
+			Input.MouseMove(Grid + Cell);
+		}
+		TMap<int32, FMcItemStack> Preview;
+		int32 Kept = -1;
+		TestTrue(TEXT("a drag over the grid has a preview"), Menu->PreviewQuickCraft(Preview, Kept));
+		TestEqual(TEXT("each of the four cells is shown"), Preview.Num(), 4);
+		TestEqual(TEXT("with one plank"), Preview.Contains(Grid + 3) ? Preview[Grid + 3].Count : 0, 1);
+		TestEqual(TEXT("the cursor would keep none"), Kept, 0);
+		TestTrue(TEXT("nothing is placed before letting go"), Menu->GetStack(Grid).IsEmpty());
+		Input.MouseUp(Grid + 3, 0);
+		for (int32 Cell = 0; Cell < 4; ++Cell)
+		{
+			TestEqual(FString::Printf(TEXT("cell %d holds one plank"), Cell), Menu->GetStack(Grid + Cell).Count, 1);
+		}
+		TestTrue(TEXT("the cursor is empty"), Menu->GetCarried().IsEmpty());
+		TestEqual(TEXT("the result is a crafting table"), Menu->GetStack(FPlayerMenuSlots::Result).Item, FName(TEXT("minecraft:crafting_table")));
+
+		// Five over four: one each, the fifth stays on the cursor.
+		for (int32 Cell = 0; Cell < 4; ++Cell)
+		{
+			Menu->SetStack(Grid + Cell, FMcItemStack());
+		}
+		Menu->SetCarried(Stack(TEXT("minecraft:oak_planks"), 5));
+		Input.MouseDown(Grid, 0, false, 10.0);
+		for (int32 Cell = 0; Cell < 4; ++Cell)
+		{
+			Input.MouseMove(Grid + Cell);
+		}
+		Menu->PreviewQuickCraft(Preview, Kept);
+		TestEqual(TEXT("the preview keeps the odd one"), Kept, 1);
+		Input.MouseUp(Grid + 3, 0);
+		TestEqual(TEXT("one plank stays on the cursor"), Menu->GetCarried().Count, 1);
+		TestEqual(TEXT("one in the last cell"), Menu->GetStack(Grid + 3).Count, 1);
+	}
+	{
+		// The middle button dragged in creative fills each slot with a full stack; in survival it does nothing.
+		Fresh(Inventory, Armor, Offhand);
+		const TSharedPtr<FMcPlayerMenu> Menu = MakeShared<FMcPlayerMenu>(Inventory, Armor, Offhand);
+		FMcMenuInput Creative(Menu, true);
+		Menu->SetCarried(Stack(TEXT("minecraft:stone"), 1));
+		Creative.MouseDown(Main, 2, false, 0.0);
+		Creative.MouseMove(Main + 1);
+		Creative.MouseMove(Main + 2);
+		Creative.MouseUp(Main + 2, 2);
+		TestEqual(TEXT("a middle drag in creative fills the first"), Menu->GetStack(Main).Count, 64);
+		TestEqual(TEXT("and the third"), Menu->GetStack(Main + 2).Count, 64);
+		TestEqual(TEXT("and keeps the cursor stack"), Menu->GetCarried().Count, 1);
+
+		FMcMenuInput Survival(Menu, false);
+		Survival.MouseDown(Main + 5, 2, false, 1.0);
+		Survival.MouseMove(Main + 6);
+		Survival.MouseUp(Main + 6, 2);
+		TestTrue(TEXT("not in survival"), Menu->GetStack(Main + 6).IsEmpty());
+	}
+	{
+		// The crafting table's 3x3: eight planks right-dragged round the edge make a chest.
+		const TSharedPtr<FMcContainer> Player = MakeShared<FMcContainer>(36);
+		const TSharedPtr<FMcCraftingMenu> Table = MakeShared<FMcCraftingMenu>(3, Player);
+		FMcMenuInput Input(Table);
+		Table->SetCarried(Stack(TEXT("minecraft:oak_planks"), 10));
+		const int32 Ring[] = { 1, 2, 3, 6, 9, 8, 7, 4 };
+		Input.MouseDown(Ring[0], 1, false, 0.0);
+		for (const int32 Cell : Ring)
+		{
+			Input.MouseMove(Cell);
+		}
+		Input.MouseUp(Ring[7], 1);
+		TestEqual(TEXT("a right drag put one in each cell of the ring"), Table->GetStack(9).Count, 1);
+		TestTrue(TEXT("the middle stays empty"), Table->GetStack(5).IsEmpty());
+		TestEqual(TEXT("two planks stay on the cursor"), Table->GetCarried().Count, 2);
+		TestEqual(TEXT("the result is a chest"), Table->GetStack(0).Item, FName(TEXT("minecraft:chest")));
+	}
+	{
 		// Double click gathers, Q throws, a click outside drops, closing gives back.
 		Fresh(Inventory, Armor, Offhand);
 		const TSharedPtr<FMcPlayerMenu> Menu = MakeShared<FMcPlayerMenu>(Inventory, Armor, Offhand);

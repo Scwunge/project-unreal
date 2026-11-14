@@ -123,6 +123,12 @@ bool FMcDevInput::ParseStep(const FString& Text, FStep& Out)
 		}
 		return Out.Keys.Num() > 0;
 	}
+	if ((Verb == TEXT("down") || Verb == TEXT("up")) && Fields.Num() >= 2)
+	{
+		Out.Kind = Verb == TEXT("down") ? FStep::EKind::Down : FStep::EKind::Up;
+		ReadKeys(Fields[1]);
+		return Out.Keys.Num() > 0;
+	}
 	if (Verb == TEXT("key") && Fields.Num() >= 2)
 	{
 		Out.Kind = FStep::EKind::Key;
@@ -140,6 +146,18 @@ bool FMcDevInput::ParseStep(const FString& Text, FStep& Out)
 		Out.Kind = FStep::EKind::Look;
 		Out.A = FCString::Atof(*Yaw);
 		Out.B = FCString::Atof(*Pitch);
+		return true;
+	}
+	if (Verb == TEXT("cursor") && Fields.Num() >= 2)
+	{
+		FString X, Y;
+		if (!Fields[1].Split(TEXT(","), &X, &Y))
+		{
+			return false;
+		}
+		Out.Kind = FStep::EKind::Cursor;
+		Out.A = FCString::Atof(*X);
+		Out.B = FCString::Atof(*Y);
 		return true;
 	}
 	if (Verb == TEXT("wait") && Fields.Num() >= 2)
@@ -322,8 +340,21 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 			Left = 0.05f;
 			bRunning = true;
 			break;
+		case FStep::EKind::Down:
+		case FStep::EKind::Up:
+			for (const FKey& Key : Current.Keys)
+			{
+				Press(Controller, Key, Current.Kind == FStep::EKind::Down);
+			}
+			// A frame so the change is seen before the next step.
+			Left = 0.05f;
+			bRunning = true;
+			break;
 		case FStep::EKind::Look:
 			Pawn->DevTurn(Current.A, Current.B);
+			break;
+		case FStep::EKind::Cursor:
+			Controller.SetMouseLocation(FMath::RoundToInt(Current.A), FMath::RoundToInt(Current.B));
 			break;
 		case FStep::EKind::Shot:
 			TakeShot(Current.Name);

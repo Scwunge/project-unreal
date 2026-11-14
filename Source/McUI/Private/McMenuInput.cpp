@@ -3,6 +3,14 @@
 void FMcMenuInput::MouseDown(int32 Slot, int32 Button, bool bShift, double Time)
 {
 	const bool bOnSlot = Slot >= 0 && Slot < Menu->NumSlots();
+	if (Button == 2 && bCreative && bOnSlot && !Menu->GetCarried().IsEmpty())
+	{
+		// In creative, the middle button dragged with a stack on the cursor fills each slot with a full stack.
+		PressSlot = Slot;
+		PressButton = 2;
+		bDragActive = false;
+		return;
+	}
 	if (Button == 2)
 	{
 		if (bOnSlot)
@@ -57,7 +65,7 @@ void FMcMenuInput::MouseMove(int32 Slot)
 		bDragActive = true;
 		DragSlots.Reset();
 		DragSlots.Add(PressSlot);
-		Menu->BeginQuickCraft(PressButton == 0 ? 0 : 1);
+		Menu->BeginQuickCraft(PressButton);
 		Menu->AddQuickCraftSlot(PressSlot);
 	}
 	DragSlots.AddUnique(Slot);
@@ -91,12 +99,12 @@ void FMcMenuInput::MouseUp(int32 Slot, int32 Button)
 		Menu->EndQuickCraft(bCreative);
 		if (OnDrag)
 		{
-			OnDrag(PressButton == 0 ? 0 : 1, DragSlots);
+			OnDrag(PressButton, DragSlots);
 		}
 	}
 	else
 	{
-		DoClick(PressSlot, PressButton, EMcClickType::Pickup);
+		DoClick(PressSlot, PressButton == 2 ? 0 : PressButton, PressButton == 2 ? EMcClickType::Clone : EMcClickType::Pickup);
 	}
 	FinishDrag();
 }

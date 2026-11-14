@@ -570,6 +570,7 @@ bool McMount::TickSitting(FMcMob& Mob)
 		{
 			State.bSitting = false;
 			State.PoseTicks = 0;
+			State.bPoseChanged = true;
 		}
 		return false;
 	}
@@ -579,6 +580,7 @@ bool McMount::TickSitting(FMcMob& Mob)
 		{
 			State.bSitting = !State.bSitting;
 			State.PoseTicks = 0;
+			State.bPoseChanged = true;
 		}
 	}
 	return State.bSitting;

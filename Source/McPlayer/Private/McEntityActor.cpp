@@ -185,10 +185,24 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
 			ArmPose = 1;
 		}
-		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid() && Entity.Mount->bSitting)
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid())
 		{
-			// Lying down: pose 2, or 3 with its saddle on.
-			ArmPose |= 2;
+			const FMcMountState& Camel = *Entity.Mount;
+			// The 52 ticks after it sat or stood are the sit-down (the stand-up run backwards) or the stand-up; a dash is 44 ticks from its start.
+			const bool bMoving = Camel.bPoseChanged && Camel.PoseTicks < 52;
+			if (Camel.bSitting && !bMoving)
+			{
+				// Lying down: pose 2, or 3 with its saddle on.
+				ArmPose |= 2;
+			}
+			if (bMoving)
+			{
+				ArmPose |= (Camel.bSitting ? 51 - Camel.PoseTicks + 1 : Camel.PoseTicks + 1) << 16;
+			}
+			if (Camel.DashCooldown >= 12 && Camel.DashCooldown <= 55)
+			{
+				ArmPose |= (55 - Camel.DashCooldown + 1) << 23;
+			}
 		}
 #if !UE_BUILD_SHIPPING
 		// Development: -McBaby draws every camel young, for shots (no command makes one yet).

@@ -570,6 +570,14 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 	}
 	// F5: from behind the player, or from the front looking back, four blocks off or as far as the blocks let it.
 	Camera->bUsePawnControlRotation = true;
+	// In bed the first-person view looks from the pillow down the bed to its foot, the other way from the yaw, which faces
+	// the head end; F5 still swings round that yaw: from behind is past the foot looking at the pillow, from the front past
+	// the headboard (reference, sleep_play.txt: ref_sleep_first_early, ref_sleep_back, ref_sleep_front).
+	if (bSleeping && ViewMode == 0)
+	{
+		Camera->bUsePawnControlRotation = false;
+		Camera->SetWorldRotation(FRotator(Pitch, Yaw + 180.0f, 0.0f));
+	}
 	if (ViewMode != 0 && BlockWorld)
 	{
 		const double ViewYaw = FMath::DegreesToRadians(static_cast<double>(Yaw - 90.0f));

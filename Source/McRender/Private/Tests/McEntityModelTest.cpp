@@ -76,7 +76,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:allay"), 1, 0.95, 0.58, 0.08 },
 		{ TEXT("minecraft:breeze"), 1, 1.2, 1.8 },
 		{ TEXT("minecraft:parched"), 1, 1.2, 1.99 },
-		{ TEXT("minecraft:camel_husk"), 1, 3.4, 3.09 },
+		{ TEXT("minecraft:camel_husk"), 2, 3.4, 3.09 },
 		{ TEXT("minecraft:zombie_nautilus"), 1, 1.6, 1.13 },
 		{ TEXT("minecraft:happy_ghast"), 1, 5.0, 5.51, -4.0 },  // the entity's own scale is not in the log: its height above its feet is unverified
 		{ TEXT("minecraft:sulfur_cube"), 1, 1.2, 2.07, -0.9 },  // likewise

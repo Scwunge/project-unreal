@@ -1,0 +1,21 @@
+# Travel through new chunks in a straight line (mc-playable, 2026-11-14), for frame-time spikes and chunk-load stalls on
+# both PCs (perf-remote.sh on the 1070, the low-end target; perf-local.sh here; seed 12). Survival sprinting on the
+# ground fell into a pit 25 blocks out on seed 12, so both legs fly at y=200, heading +z, clear of the terrain:
+# "walk" is creative flying with W (10.9 blocks/s, about twice a survival sprint), "fly" is sprint-flying (21.6 blocks/s).
+mark:fill
+settle:120
+mark:stand
+wait:10
+chat:/gamemode creative
+chat:/tp @s 0 200 0
+chat:/rotate @s 0 0
+wait:1
+fly:1
+wait:3
+mark:walk
+hold:W:90
+mark:fly
+hold:W+LeftControl:90
+mark:standend
+wait:10
+end

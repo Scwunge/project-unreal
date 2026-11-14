@@ -3,6 +3,7 @@
 #include "Tasks/Task.h"
 #include "Misc/ScopeExit.h"
 #include "McMob.h"
+#include "McMount.h"
 #include "McSound.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -2987,6 +2988,112 @@ namespace
 				return static_cast<FMcMob*>(Found)->CustomName;
 			}
 			return McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Found->GetType().ToString()));
+		}
+
+		FMcEntityManager* RideManager() const
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			return Host ? &Host->GetManager() : nullptr;
+		}
+
+		virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) override
+		{
+			FMcEntityManager* Manager = RideManager();
+			FMcEntity* Vehicle = Manager ? Manager->Find(VehicleEntity) : nullptr;
+			if (!Vehicle)
+			{
+				return 3;
+			}
+			if (!RiderPlayer.IsEmpty())
+			{
+				AMcPlayerPawn* Pawn = FindPawn(RiderPlayer);
+				if (!Pawn)
+				{
+					return 3;
+				}
+				if (Pawn->GetRidingId() != 0)
+				{
+					OutOther = GetEntityName(Pawn->GetRidingId());
+					return 1;
+				}
+				if (Vehicle->IsLiving())
+				{
+					FMcMob& Mob = static_cast<FMcMob&>(*Vehicle);
+					if (Mob.PassengerId != 0 || (Mob.Mount.IsValid() && Mob.Mount->RiderId != 0) || !McMount::IsRideable(Mob))
+					{
+						return 3;
+					}
+					McMount::Ensure(Mob).RiderId = Pawn->GetUniqueID();
+				}
+				else if (!Vehicle->IsVehicle())
+				{
+					return 3;
+				}
+				Pawn->ServerRide(VehicleEntity);
+				return 0;
+			}
+			FMcEntity* RiderBase = Manager->Find(RiderEntity);
+			if (!RiderBase || !RiderBase->IsLiving() || !Vehicle->IsLiving())
+			{
+				return 3;
+			}
+			FMcMob& Rider = static_cast<FMcMob&>(*RiderBase);
+			FMcMob& Mount = static_cast<FMcMob&>(*Vehicle);
+			if (Rider.RidingId != 0)
+			{
+				OutOther = GetEntityName(Rider.RidingId);
+				return 1;
+			}
+			for (const FMcMob* Chain = &Mount; Chain; )
+			{
+				if (Chain == &Rider)
+				{
+					return 2;
+				}
+				const FMcEntity* Next = Chain->RidingId != 0 ? Manager->Find(Chain->RidingId) : nullptr;
+				Chain = Next && Next->IsLiving() ? static_cast<const FMcMob*>(Next) : nullptr;
+			}
+			if (Mount.PassengerId != 0 || (Mount.Mount.IsValid() && Mount.Mount->RiderId != 0))
+			{
+				return 3;
+			}
+			Rider.RidingId = Mount.Id;
+			Mount.PassengerId = Rider.Id;
+			Rider.Body.Position = Mount.Body.Position + Mount.GetSeatOffset(Rider);
+			return 0;
+		}
+
+		virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) override
+		{
+			FMcEntityManager* Manager = RideManager();
+			if (!RiderPlayer.IsEmpty())
+			{
+				AMcPlayerPawn* Pawn = FindPawn(RiderPlayer);
+				if (!Pawn || Pawn->GetRidingId() == 0)
+				{
+					return false;
+				}
+				OutVehicleName = GetEntityName(Pawn->GetRidingId());
+				Pawn->ServerDismount();
+				return true;
+			}
+			FMcEntity* Found = Manager ? Manager->Find(RiderEntity) : nullptr;
+			if (!Found || !Found->IsLiving() || static_cast<FMcMob*>(Found)->RidingId == 0)
+			{
+				return false;
+			}
+			FMcMob& Rider = *static_cast<FMcMob*>(Found);
+			OutVehicleName = GetEntityName(Rider.RidingId);
+			if (FMcEntity* Under = Manager->Find(Rider.RidingId))
+			{
+				if (Under->IsLiving() && static_cast<FMcMob*>(Under)->PassengerId == Rider.Id)
+				{
+					static_cast<FMcMob*>(Under)->PassengerId = 0;
+				}
+			}
+			Rider.RidingId = 0;
+			return true;
 		}
 
 		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override

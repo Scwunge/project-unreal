@@ -104,6 +104,11 @@ public:
 	virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const { return {}; }
 	// Puts an item into a slot of the entity by the game's slot name (saddle, armor.head, weapon.mainhand...); false if it has no such slot.
 	virtual int32 SetEntitySlot(int32 EntityId, const FString& Slot, FName Item, int32 Count) { return 0; }
+	// /ride: puts a rider (a player by name, or when RiderPlayer is empty the entity RiderEntity) on a vehicle entity. 0 started riding, 1 it is
+	// already riding something (OutOther the name of that vehicle), 2 the vehicle is the rider or one of its passengers, 3 it could not.
+	virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) { return 3; }
+	// Gets the rider off what it rides; false if it rides nothing (OutVehicleName the vehicle it left).
+	virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) { return false; }
 	// The name the game shows for the entity (its custom name, else its kind's).
 	virtual FString GetEntityName(int32 EntityId) const { return FString(); }
 	// /particle: Count particles of the named kind ("minecraft:heart") at Pos, spread by Delta, at Speed. False if nobody could see it.

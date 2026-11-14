@@ -61,6 +61,8 @@ struct MCENTITY_API FMcMountState
 	// Camels: lying down (not saved), and ticks since it last sat or stood (reference: it may change after 400, then sits at about 1 in 190 a tick and stands at 1 in 39).
 	bool bSitting = false;
 	int32 PoseTicks = 0;
+	// It has sat or stood at least once (so the stand-up or sit-down is drawn for the first 52 ticks).
+	bool bPoseChanged = false;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.
 	FName RiderHeld;
 	int32 BoostTime = 0;

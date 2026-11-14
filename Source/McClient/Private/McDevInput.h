@@ -14,6 +14,9 @@
 //   fly:<0|1>               stops or starts flying
 //   pack:<a,b|off>          selects these resource packs and reloads, as the menu does
 //   settle:<seconds>        waits until the renderer has nothing left to mesh, at most that long
+//   cursor:<x>,<y>          puts the mouse at that point of the game's view, in pixels (for slots in an open screen)
+//   down:<keys>, up:<keys>  presses keys (or L, R, M) and leaves them down, lets them go: a drag is down:L, cursor
+//                           moves with waits between, up:L
 // -McInputFile=<path> reads the steps from a file, one a line, with # for a comment; a script keeps going across a
 // return to the title. A player who dies presses Respawn two seconds later.
 // Key names are Unreal's (W, SpaceBar, LeftShift, One, F3, Escape), plus L, R, M for the mouse buttons and Shift,
@@ -42,7 +45,7 @@ public:
 	// A step as text and its pieces, for the tests.
 	struct FStep
 	{
-		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End, Mark, Note, Chat, MenuPress, Fly, Pack, Settle };
+		enum class EKind : uint8 { Hold, Look, Key, Wait, Shot, End, Mark, Note, Chat, MenuPress, Fly, Pack, Settle, Cursor, Down, Up };
 		EKind Kind = EKind::Wait;
 		TArray<FKey> Keys;
 		float Seconds = 0.0f;
@@ -61,6 +64,9 @@ private:
 	TArray<FStep> Steps;
 	int32 Next = 0;
 	bool bRunning = false;
+	// "end" waits for the engine's CSV profile (perf runs' -csvCaptureFrames) to be written first: quitting with the capture
+	// still open crashed the crash reporter on the way out (exit code 777003, every Development perf run).
+	bool bEnding = false;
 	bool bHoldShot = false;
 	FStep Current;
 	float Left = 0.0f;

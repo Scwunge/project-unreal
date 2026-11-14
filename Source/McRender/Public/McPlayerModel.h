@@ -92,6 +92,13 @@ namespace McPlayerModel
 	constexpr int32 WingsWidth = 64;
 	constexpr int32 WingsHeight = 32;
 
+	// Worn armor: the game's humanoid armor model over the body, one 64 by 32 picture a piece
+	// (textures/entity/equipment/humanoid/<material>.png, the leggings' humanoid_leggings/). The boxes are the body's,
+	// grown as the armor stand's were measured: the helmet 1 pixel (its hat 1.5), the chestplate 1, the leggings 0.5 on the
+	// body and 0.4 on the legs, the boots 0.9. The left arm and leg are the right ones' mirror image, as the game draws them.
+	constexpr int32 ArmorWidth = 64;
+	constexpr int32 ArmorHeight = 32;
+
 	// Angles in radians, positive swinging the limb's bottom backwards. Legs swing cos(pos * 0.6662) * 1.4 * amount,
 	// the left leg half a cycle behind the right. Each arm swings opposite to the leg on its side, as
 	// cos(pos * 0.6662 + pi) * 2 * amount * 0.5: a little less than the legs.
@@ -124,6 +131,12 @@ namespace McPlayerModel
 	MCRENDER_API void BuildMesh(const FPose& Pose, FMeshData& Out);
 	// The two wings in the pose, with UVs over the wings picture.
 	MCRENDER_API void BuildWings(const FPose& Pose, FMeshData& Out);
+	// One armor piece in the pose (slot 0 head, 1 chest, 2 legs, 3 feet), with UVs over its picture; Grow more all round
+	// (leather's overlay, drawn a hair outside its dyed base).
+	MCRENDER_API void BuildArmor(const FPose& Pose, int32 Slot, FMeshData& Out, float Grow = 0.0f);
+	// The picture an item worn in an armor slot is drawn with ("minecraft:iron_chestplate" in slot 1:
+	// .../humanoid/iron.png); the overlay is leather's undyed one. Empty for anything not drawn as armor there.
+	MCRENDER_API FString GetArmorTexture(FName Item, int32 Slot, bool bOverlay);
 
 	// One part with its outer layer, standing, added to Out: its pivot at the origin, in the same units.
 	MCRENDER_API void BuildPartMesh(EMcPlayerPart Part, FMeshData& Out);
@@ -162,8 +175,15 @@ public:
 	void SetWings(bool bInWings) { bWings = bInWings; }
 	// The item in the head slot: a mob head or carved pumpkin is drawn on the head.
 	void SetWornHead(FName Item) { WornHead = Item; }
+	// The item in an armor slot (0 head, 1 chest, 2 legs, 3 feet): armor is drawn over the body.
+	void SetArmor(int32 Slot, FName Item) { if (Slot >= 0 && Slot < 4) { ArmorItems[Slot] = Item; } }
 	// Hides or shows the model; the local player doesn't see their own.
 	void SetShown(bool bShown);
+	// Lit as in full daylight whatever the time (the inventory's picture of the player).
+	void SetFullyLit(bool bInFullyLit) { bFullyLit = bInFullyLit; }
+	// Held in a pose rather than moving: the body turned to BodyYaw and the head as SetLook says, at once and standing
+	// still (the inventory's picture of the player, which turns toward the mouse).
+	void SetPosed(float InBodyYaw) { bPosed = true; PosedBodyYaw = InBodyYaw; }
 
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -171,6 +191,9 @@ private:
 	bool EnsureMaterial();
 	// The wings' material, made the first time they are worn; null if the picture is missing.
 	UMaterialInstanceDynamic* EnsureWingsMaterial();
+	// The material of an armor layer (0..3 the slots, 4..7 leather's overlay of them) for what is worn there; null for
+	// nothing (or a missing picture).
+	UMaterialInstanceDynamic* EnsureArmorMaterial(int32 Layer);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> Material;
@@ -199,7 +222,20 @@ private:
 	float Pitch = 0.0f;
 	bool bSneaking = false;
 	bool bShown = true;
+	bool bFullyLit = false;
+	bool bPosed = false;
+	float PosedBodyYaw = 0.0f;
 	bool bFailed = false;
 	bool bHasSection = false;
 	float TickAccumulator = 0.0f;
+
+	// Armor: the items worn, each layer's material and the picture it was made for, mesh sections 2..9.
+	FName ArmorItems[4];
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> ArmorMaterials[8];
+	FString ArmorPaths[8];
+	bool bHasArmorSection[8] = {};
+	// Pictures loaded, by file; null for one that could not be used.
+	UPROPERTY(Transient)
+	TMap<FString, TObjectPtr<UTexture2DArray>> ArmorPictures;
 };

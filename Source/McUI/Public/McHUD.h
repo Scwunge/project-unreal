@@ -199,6 +199,9 @@ private:
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
 	void DrawScreen(int32 Width, int32 Height);
+	// The player in the survival inventory's black box (26,8 to 75,78 of the picture), turned toward the mouse: a player
+	// model far below the world, filmed by its own orthographic capture into a picture drawn there.
+	void DrawInventoryFigure(FIntPoint Origin);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);
 	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
@@ -413,6 +416,15 @@ private:
 
 	int32 Scale = 1;
 	int32 ShakeCounter = 0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> FigureStage;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMcPlayerModelComponent> Figure;
+	UPROPERTY(Transient)
+	TObjectPtr<class USceneCaptureComponent2D> FigureCapture;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTextureRenderTarget2D> FigureTarget;
 
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UTexture2D>> Sprites;

@@ -384,6 +384,10 @@ private:
 	// Chunks already in the world go to the job as copies, since the game keeps changing and unloading them.
 	TSet<FIntPoint> DecorateBusy;
 	TArray<UE::Tasks::FTask> DecorateTasks;
+	// Chunks dropped while far away are encoded and queued for saving on workers (the chunk goes with the task); a chunk
+	// read back before its task is done waits for it. Finished ones are let go each frame.
+	TMap<FIntPoint, UE::Tasks::FTask> UnloadSaves;
+	void WaitForUnloadSaves();
 	TSharedPtr<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe> DecorateDone = MakeShared<TQueue<FIntPoint, EQueueMode::Mpsc>, ESPMode::ThreadSafe>();
 	// The chunks the players and anchors are in, as of the last look.
 	TArray<FIntPoint> StreamCentres;

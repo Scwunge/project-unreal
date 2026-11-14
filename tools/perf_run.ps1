@@ -38,7 +38,7 @@ $Before = @(
 $Before | Set-Content "$Dir\machine.txt"
 
 # Test builds record the engine's CSV profile for the whole run (Shipping has no profiler).
-$Csv = if ($Config -ne 'Shipping') { ' -csvCaptureFrames=1000000 -csvGpuStats' } else { '' }
+$Csv = if ($Config -ne 'Shipping' -and -not $env:MC_PERF_NOCSV) { ' -csvCaptureFrames=1000000 -csvGpuStats' } else { '' }
 $GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=$Cache -windowed -ResX=1920 -ResY=1080 $Extra$Csv"
 $P = Start-Process $Exe -ArgumentList $GameArgs -PassThru
 "pid $($P.Id) args $GameArgs"

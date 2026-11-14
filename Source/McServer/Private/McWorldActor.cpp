@@ -593,6 +593,7 @@ void AMcWorldActor::ApplyGameRules(const FMcGameRules& Rules)
 
 void AMcWorldActor::StartStorage(const FString& Name)
 {
+	WaitForUnloadSaves();
 	Storage = MakeShared<FMcWorldStorage, ESPMode::ThreadSafe>(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
 	// A new world is on disk from the start, so a crash before the first autosave still leaves one to open.
 	Level.DayTime = DayTicks;
@@ -1329,8 +1330,19 @@ bool AMcWorldActor::CommitSave(FPendingSave& Save)
 	return true;
 }
 
+void AMcWorldActor::WaitForUnloadSaves()
+{
+	for (TPair<FIntPoint, UE::Tasks::FTask>& Entry : UnloadSaves)
+	{
+		Entry.Value.Wait();
+	}
+	UnloadSaves.Empty();
+}
+
 void AMcWorldActor::SaveWorld()
 {
+	// Chunks dropped just before are still being encoded: their saves go in the queue before it's flushed.
+	WaitForUnloadSaves();
 	if (!Storage || !BlockWorld)
 	{
 		return;
@@ -1739,7 +1751,7 @@ void AMcWorldActor::StreamChunks()
 		}
 		InFlight.Add(Entry.Value);
 		// A chunk in the save is read back instead of generated (on the worker, along with the decoding).
-		UE::Tasks::Launch(UE_SOURCE_LOCATION, [Generator = Generator, Finished = Finished, Storage = Storage, Chunk = BlockWorld->MakeChunk(Entry.Value)]() mutable
+		auto Load = [Generator = Generator, Finished = Finished, Storage = Storage, Chunk = BlockWorld->MakeChunk(Entry.Value)]() mutable
 		{
 			FFinishedChunk Result;
 			Result.Chunk = MoveTemp(Chunk);
@@ -1755,7 +1767,16 @@ void AMcWorldActor::StreamChunks()
 				Generator->Generate(*Result.Chunk);
 			}
 			Finished->Enqueue(MoveTemp(Result));
-		}, WorldTaskPriority());
+		};
+		// Dropped a moment ago and its save not queued yet: read it after that.
+		if (const UE::Tasks::FTask* Saving = UnloadSaves.Find(Entry.Value))
+		{
+			UE::Tasks::Launch(UE_SOURCE_LOCATION, MoveTemp(Load), UE::Tasks::Prerequisites(*Saving), WorldTaskPriority());
+		}
+		else
+		{
+			UE::Tasks::Launch(UE_SOURCE_LOCATION, MoveTemp(Load), WorldTaskPriority());
+		}
 	}
 
 	bool bUnloaded = false;
@@ -1784,13 +1805,36 @@ void AMcWorldActor::StreamChunks()
 		Far.Sort([](const TPair<int32, FIntPoint>& A, const TPair<int32, FIntPoint>& B) { return A.Key > B.Key; });
 		const int32 Budget = CVarMcUnloadPerFrame.GetValueOnGameThread();
 		const int32 Dropping = Budget > 0 ? FMath::Min(Budget, Far.Num()) : Far.Num();
+		for (auto It = UnloadSaves.CreateIterator(); It; ++It)
+		{
+			if (It.Value().IsCompleted())
+			{
+				It.RemoveCurrent();
+			}
+		}
 		for (int32 Index = 0; Index < Dropping; ++Index)
 		{
 			const FIntPoint Pos = Far[Index].Value;
-			// Saved while it's still whole, with its mobs; the writing happens on a worker.
-			SaveChunk(Pos);
+			// Its mobs and structures are taken here while it's still whole; the encoding (about 2.5 ms a chunk, four
+			// a frame: 10 ms of every slow frame when flying) and the writing happen on workers, with the chunk.
+			FPendingSave Save;
+			const bool bSave = PrepareSave(Pos, Save);
 			ChunkStates.Remove(Pos);
-			BlockWorld->RemoveChunk(Pos);
+			TUniquePtr<FMcChunk> Taken = BlockWorld->TakeChunk(Pos);
+			if (bSave && Taken)
+			{
+				UnloadSaves.Add(Pos, UE::Tasks::Launch(UE_SOURCE_LOCATION,
+					[Storage = Storage, Chunk = MoveTemp(Taken), Extras = MoveTemp(Save.Extras), Pos]() mutable
+				{
+					TArray<uint8> Bytes = McChunkSave::Encode(*Chunk, Extras);
+					if (Bytes.IsEmpty())
+					{
+						UE_LOG(LogMcServer, Error, TEXT("Can't save chunk %d,%d: encoding it failed."), Pos.X, Pos.Y);
+						return;
+					}
+					Storage->QueueSave(Pos, MoveTemp(Bytes));
+				}, WorldTaskPriority()));
+			}
 		}
 		// Any left over keep the world unsettled, so the next frames carry on.
 		bUnloaded = !Far.IsEmpty();

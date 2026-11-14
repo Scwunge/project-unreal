@@ -34,6 +34,9 @@ bool FMcDecorateProfileTest::RunTest(const FString& Parameters)
 	const uint64 Seeds[] = { 12ull, 777ull, 31337ull };
 	const FIntPoint Corners[] = { FIntPoint(-5, -5), FIntPoint(900, -400), FIntPoint(-1500, 2200) };
 	TMap<FString, double> Profile;
+	int64 HeightCalls = 0;
+	double HeightSeconds = 0.0;
+	TSet<FIntPoint> HeightColumns;
 	double TotalSeconds = 0.0;
 	int32 TotalChunks = 0;
 	uint32 Hash = 0;
@@ -50,7 +53,7 @@ bool FMcDecorateProfileTest::RunTest(const FString& Parameters)
 		FMcFeatureLibrary Library(Settings.SeaLevel, Settings.MinY, Settings.Height);
 		Library.LoadBiomes();
 		const FMcNoiseGenerator* Noise = &Generator;
-		Library.SetHeightSource([Noise](int32 X, int32 Z) { return Noise->FindSurfaceY(X, Z) + 1; });
+		Library.SetHeightSource([Noise, &HeightCalls, &HeightColumns, &HeightSeconds](int32 X, int32 Z) { const double T0 = FPlatformTime::Seconds(); const int32 Result = Noise->FindSurfaceY(X, Z) + 1; HeightSeconds += FPlatformTime::Seconds() - T0; ++HeightCalls; HeightColumns.Add(FIntPoint(X, Z)); return Result; });
 		Library.SetBiomeSource([Noise](int32 X, int32 Y, int32 Z) { return Noise->GetBiome(X, Y, Z); });
 
 		GMcDecorateProfile = &Profile;
@@ -85,6 +88,7 @@ bool FMcDecorateProfileTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
+	AddInfo(FString::Printf(TEXT("DECOPROF height lookups %lld, distinct columns %d, %.2f ms a chunk, %.2f ms a lookup"), HeightCalls, HeightColumns.Num(), 1000.0 * HeightSeconds / TotalChunks, 1000.0 * HeightSeconds / FMath::Max<int64>(1, HeightCalls)));
 	Profile.ValueSort([](double A, double B) { return A > B; });
 	AddInfo(FString::Printf(TEXT("DECOPROF %d chunks in %.2f s: %.2f chunks/s, %.1f ms a chunk, block hash %08x"), TotalChunks, TotalSeconds, TotalChunks / TotalSeconds, 1000.0 * TotalSeconds / TotalChunks, Hash));
 	int32 Shown = 0;

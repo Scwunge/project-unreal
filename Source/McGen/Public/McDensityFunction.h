@@ -147,6 +147,9 @@ private:
 		int32 SizeX = 0;
 		int32 SizeY = 0;
 		bool bReady = false;
+		// Corner values worked out outside a chunk's grid, by position: the corners of neighbouring points
+		// (a column scanned down block by block) are mostly the same ones. Emptied when it gets big.
+		TMap<FIntVector, double> Loose;
 	};
 
 	TArray<FMemo> Memos;

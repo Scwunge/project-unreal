@@ -216,4 +216,53 @@ bool FMcCreakingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A chasing warden walks in strokes (reference log warden.txt: about 9 ticks of walking in every 19), not steadily.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcWardenStrokesTest, "McClient.McEntity.WardenStrokes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
+{
+	FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
+	if (!TestTrue(TEXT("registries load"), Registry.EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded()))
+	{
+		return false;
+	}
+	FMcBlockWorld World{FMcDimensionType()};
+	MakeFloor(World, Registry.ParseState(TEXT("minecraft:stone")).Get(0));
+	FMcEntityManager Manager(World);
+	Manager.Difficulty = 2;
+	const FVector Player(-14.5, 1.0, 0.5);
+	Manager.PlayerPositions = { Player };
+	FMcWarden* Warden = new FMcWarden(*FMcMobType::Find(TEXT("minecraft:warden")));
+	Warden->Body.Position = FVector(28.5, 1.0, 0.5);
+	Warden->FindPlayer = [&](int32 Id, FVector& Out) { Out = Player; return Id == 1; };
+	Warden->IdOfPlayerAt = [&](const FVector& Feet) { return FVector::Dist(Feet, Player) < 0.5 ? 1 : 0; };
+	Manager.Add(TUniquePtr<FMcEntity>(Warden));
+	Manager.Tick();
+	Warden->GetBrain().ClearAll();
+	for (int32 Heard = 0; Heard < 3; ++Heard)
+	{
+		Warden->HearVibration(1, Player, false, Player);
+		for (int32 Tick = 0; Tick < 41; ++Tick) { Manager.Tick(); }
+	}
+	for (int32 Tick = 0; Tick < 120; ++Tick) { Manager.Tick(); }   // the roar
+	int32 Moving = 0;
+	int32 Stills = 0;
+	double Fastest = 0.0;
+	FVector Last = Warden->Body.Position;
+	const int32 Window = 190;
+	for (int32 Tick = 0; Tick < Window; ++Tick)
+	{
+		Manager.Tick();
+		const double Step = FVector2D(Warden->Body.Position.X - Last.X, Warden->Body.Position.Z - Last.Z).Size();
+		Last = Warden->Body.Position;
+		Moving += Step > 0.01 ? 1 : 0;
+		Stills += Step <= 0.01 ? 1 : 0;
+		Fastest = FMath::Max(Fastest, Step);
+	}
+	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES moving %d still %d fastest %.3f (ref peak 0.201)"), Moving, Stills, Fastest);
+	TestTrue(TEXT("it walks in strokes: about half the ticks are still"), Stills >= Window * 35 / 100 && Stills <= Window * 65 / 100);
+	return true;
+}
+
 #endif

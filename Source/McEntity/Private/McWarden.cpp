@@ -447,6 +447,22 @@ void FMcWarden::Tick(FMcEntityManager& Manager)
 		TickIdle(Manager, Target);
 		break;
 	}
+	// Chasing it walks in strokes (warden.txt, ticks 331-421 of the log: 9 ticks of walking, then about 10 of coasting and standing, a stroke every
+	// 19 ticks, the speed gaining 0.09 to 0.20 a tick and decaying by about 0.55 a tick after): the goal is held for 9 ticks of every 19.
+	// The ramp and the decay are not modelled, only the on and off.
+	if (State == EState::Idle && Goal.IsSet())
+	{
+		MoveCycle = (MoveCycle + 1) % McWarden::StrokeTicks;
+		if (MoveCycle >= McWarden::StrokeWalkTicks)
+		{
+			Goal.Reset();
+			bStayPut = true;
+		}
+	}
+	else
+	{
+		MoveCycle = 0;
+	}
 	FMcMob::Tick(Manager);
 }
 

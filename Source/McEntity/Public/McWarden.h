@@ -45,6 +45,9 @@ namespace McWarden
 	constexpr double RoarSkipRange = 5.0;
 	// The melee swing waits 36 ticks.
 	constexpr int32 MeleeCooldownTicks = 36;
+	// Chasing in strokes (ref, warden.txt log): walks 9 ticks of every 19.
+	constexpr int32 StrokeTicks = 19;
+	constexpr int32 StrokeWalkTicks = 9;
 	// The sonic boom: 10 s after it noticed the target, 5 s after its last attack, within 14 across and 20 up and down;
 	// 1.7 s to charge, 3 s from the start to the next attack. 10 damage on Normal (6 Easy, 15 Hard), through armor.
 	constexpr int32 SonicNoticeTicks = 200;
@@ -169,6 +172,7 @@ private:
 	int32 SniffWait = 0;
 	int32 SonicCooldown = 0;
 	int32 MeleeWait = 0;
+	int32 MoveCycle = 0;
 	int32 NoticedTicks = 0;
 	int32 SinceAttack = 100000;
 	int32 DarknessTimer = 0;

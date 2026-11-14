@@ -1141,6 +1141,18 @@ bool FMcItemDefinitionTest::RunTest(const FString& Parameters)
 
 	const TSharedPtr<FJsonObject> Unknown = Parse(TEXT("{\"model\":{\"type\":\"minecraft:range_dispatch\",\"property\":\"minecraft:compass\",\"entries\":[{\"threshold\":0.5,\"model\":{\"type\":\"minecraft:model\",\"model\":\"m:never\"}}],\"fallback\":{\"type\":\"minecraft:model\",\"model\":\"m:fallback\"}}}"));
 	TestEqual(TEXT("an unread property reads 0: the fallback"), Models(McItemDef::ResolveJson(Unknown, FMcItemStack(TEXT("minecraft:stick"), 1), EContext::Gui)), FString(TEXT("m:fallback;")));
+	// A chest's item: the placed chest's picture its special model names, Christmas by the date select (items/chest.json's shape).
+	const TSharedPtr<FJsonObject> Chest = Parse(TEXT("{\"model\":{\"type\":\"minecraft:select\",\"property\":\"minecraft:local_time\",\"pattern\":\"MM-dd\",\"cases\":[{\"when\":[\"12-24\",\"12-25\",\"12-26\"],"
+		"\"model\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/chest\",\"model\":{\"type\":\"minecraft:chest\",\"texture\":\"minecraft:christmas\"}}}],"
+		"\"fallback\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/chest\",\"model\":{\"type\":\"minecraft:chest\",\"texture\":\"minecraft:normal\"}}}}"));
+	TestEqual(TEXT("a chest in November"), McItemDef::FindChestTexture(Chest, FDateTime(2026, 11, 14)), FString(TEXT("normal")));
+	TestEqual(TEXT("a chest on Christmas day"), McItemDef::FindChestTexture(Chest, FDateTime(2026, 12, 25)), FString(TEXT("christmas")));
+	FString Base;
+	McItemDef::FindChestTexture(Chest, FDateTime(2026, 11, 14), &Base);
+	TestEqual(TEXT("and its base model, under the select"), Base, FString(TEXT("minecraft:item/chest")));
+	TestEqual(TEXT("an ender chest"), McItemDef::FindChestTexture(Parse(TEXT("{\"model\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/ender_chest\",\"model\":{\"type\":\"minecraft:chest\",\"texture\":\"minecraft:ender\"}}}")), FDateTime(2026, 12, 25)), FString(TEXT("ender")));
+	TestEqual(TEXT("a head is no chest"), McItemDef::FindChestTexture(Parse(TEXT("{\"model\":{\"type\":\"minecraft:special\",\"base\":\"minecraft:item/template_skull\",\"model\":{\"type\":\"minecraft:head\",\"kind\":\"skeleton\"}}}")), FDateTime(2026, 11, 14)), FString());
+	TestEqual(TEXT("nor is a plain model"), McItemDef::FindChestTexture(Parse(TEXT("{\"model\":{\"type\":\"minecraft:model\",\"model\":\"minecraft:item/stick\"}}")), FDateTime(2026, 11, 14)), FString());
 	return true;
 }
 

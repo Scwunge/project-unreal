@@ -265,8 +265,10 @@ namespace McPlayerModel
 			break;
 		case 1:
 			Add(EMcPlayerPart::Body, FIntPoint(16, 16), 1.0f);
-			Add(EMcPlayerPart::RightArm, FIntPoint(40, 16), 1.0f);
-			Add(EMcPlayerPart::LeftArm, FIntPoint(40, 16), 1.0f);
+			// The arms are grown as far as the body, so their fronts meet it at one depth where they overlap; the game draws
+			// them after the body, over it. A hair more puts them in front here too (else the body's edge shows as a dark line).
+			Add(EMcPlayerPart::RightArm, FIntPoint(40, 16), 1.05f);
+			Add(EMcPlayerPart::LeftArm, FIntPoint(40, 16), 1.05f);
 			break;
 		case 2:
 			Add(EMcPlayerPart::Body, FIntPoint(16, 16), 0.5f);

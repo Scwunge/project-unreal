@@ -249,7 +249,8 @@ const TArray<FMcMobType>& FMcMobType::GetAll()
 		// The warden (minecraft.wiki, "Warden"; box, health and Normal damage 30 from the page; health 500 also read in warden.txt):
 		// blind, so it follows no one by sight (FollowRange 0): FMcWarden steers it by what it hears and smells. Speed 0.33: warden.txt
 		// (log_warden.log) shows 0.165 to 0.17 blocks a tick while it chases, and this table walks 10 blocks a second per point of speed.
-		Add(TEXT("minecraft:warden"), 0.9f, 2.9f, 500.f, 0.33f, 30.f, 0.f, false, false);
+		// Speed 0.40 gives our 0.199 a tick at the top of a stroke; the reference peak is 0.201 (warden.txt, see PLAN.md "Warden strokes").
+		Add(TEXT("minecraft:warden"), 0.9f, 2.9f, 500.f, 0.40f, 30.f, 0.f, false, false);
 		// The creaking ("Creaking": 1 health, 2.7 by 0.9, speed 0.3, damage 3 on Normal): FMcCreaking moves it only while no player looks at it.
 		Add(TEXT("minecraft:creaking"), 0.9f, 2.7f, 1.f, 0.3f, 3.f, 0.f, false, false);
 		// The witch throws potions: the harming one is the only one done, from up to 15 blocks as the arrow goes.

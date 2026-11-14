@@ -261,7 +261,10 @@ bool FMcWardenStrokesTest::RunTest(const FString& Parameters)
 		Fastest = FMath::Max(Fastest, Step);
 	}
 	UE_LOG(LogTemp, Display, TEXT("WARDENSTROKES moving %d still %d fastest %.3f (ref peak 0.201)"), Moving, Stills, Fastest);
-	TestTrue(TEXT("it walks in strokes: about half the ticks are still"), Stills >= Window * 35 / 100 && Stills <= Window * 65 / 100);
+	// The reference: 5 of every 19 ticks under 0.01 a block (its ~0.55 a tick decay counts as moving), 26%. Ours has no decay and measured 46%: the
+	// bound here is what the code does, the gap to 26% is the unmodelled coast (PLAN.md "Warden strokes").
+	TestTrue(TEXT("it walks in strokes: a third to a half of the ticks are still"), Stills >= Window * 35 / 100 && Stills <= Window * 60 / 100);
+	TestTrue(TEXT("and its top step matches the reference peak 0.201"), Fastest > 0.18 && Fastest < 0.22);
 	return true;
 }
 

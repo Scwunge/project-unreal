@@ -134,6 +134,8 @@ public:
 	// doors and trapdoors answer only to redstone. A fence gate opened from its far side turns to open away from the
 	// player. Yaw is where the player looks (Minecraft's: 0 south, 90 west). True if the block took the click.
 	bool UseBlock(const FIntVector& Pos, float Yaw);
+	// An entity stood on, or a player hit, the block at Pos: a redstone ore there lights up (reference run redore; nothing else happens to other blocks).
+	void LightRedstoneOre(const FIntVector& Pos);
 
 	// The TNT block at Pos is lit (by fire, flint and steel or redstone): the server turns it into primed TNT
 	// (FMcPrimedTnt::Ignite). Redstone calls LightTnt when the power on a TNT block rises.

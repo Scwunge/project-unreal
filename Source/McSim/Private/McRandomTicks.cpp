@@ -111,6 +111,15 @@ void FMcSimulation::RandomTickBlock(const FIntVector& Pos)
 	{
 		return;
 	}
+	if (Name.EndsWith(TEXT("redstone_ore")))
+	{
+		// A lit ore goes out on a random tick (reference run redore: they went out one by one over about 600 ticks at random tick speed 3).
+		if (FMcBlockRegistry::Get().GetPropertyValue(State, TEXT("lit")) == TEXT("true"))
+		{
+			World.SetBlock(Pos, SetProp(State, TEXT("lit"), TEXT("false")));
+		}
+		return;
+	}
 	if (Name == TEXT("minecraft:grass_block") || Name == TEXT("minecraft:mycelium"))
 	{
 		// Covered grass dies; grass in the open spreads to dirt near it that has room above.

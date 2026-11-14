@@ -946,6 +946,17 @@ void AMcWorldActor::FeedPressurePlates()
 	{
 		const int32 Y = FMath::FloorToInt32(Feet.Y);
 		const double Half = Width * 0.5;
+		// Standing on a redstone ore lights it.
+		if (Feet.Y - Y < 0.01)
+		{
+			for (int32 X = FMath::FloorToInt32(Feet.X - Half); X <= FMath::FloorToInt32(Feet.X + Half); ++X)
+			{
+				for (int32 Z = FMath::FloorToInt32(Feet.Z - Half); Z <= FMath::FloorToInt32(Feet.Z + Half); ++Z)
+				{
+					Simulation->LightRedstoneOre(FIntVector(X, Y - 1, Z));
+				}
+			}
+		}
 		for (int32 X = FMath::FloorToInt32(Feet.X - Half); X <= FMath::FloorToInt32(Feet.X + Half); ++X)
 		{
 			for (int32 Z = FMath::FloorToInt32(Feet.Z - Half); Z <= FMath::FloorToInt32(Feet.Z + Half); ++Z)

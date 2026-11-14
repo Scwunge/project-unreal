@@ -123,6 +123,7 @@ press:Save_and_Quit_to_Title,Singleplayer,Play_Selected_World
 wait:30
 mark:back
 settle:60
+# Back in: still creative (no hearts) with hotbar slot 3 picked, as the player left (log: "Player restored: ...").
 shot:pt_rejoined
 key:E
 wait:1

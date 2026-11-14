@@ -1,0 +1,99 @@
+# A short survival session from a fresh world, for playtest blockers: walk and jump, mine the ground by hand, place
+# what was mined, craft planks and a crafting table by dragging and place it, place a chest and open it, then walk on.
+# Run like playtest.txt: -McTitle -McMenuPress=Singleplayer,Create_New_World on an empty world list. Shots: sv_*.png.
+mark:fill
+settle:60
+shot:sv_arrived
+mark:walk
+hold:W:10
+look:90,0
+hold:W+SpaceBar:6
+look:-150,0
+hold:W+LeftShift:4
+hold:W+LeftControl:10
+shot:sv_walked
+mark:mine
+look:0,-60
+click:L:2
+wait:1
+click:L:2
+wait:1.5
+shot:sv_mined
+mark:place
+key:One
+click:R:0.1
+wait:0.5
+click:R:0.1
+wait:0.5
+shot:sv_placed
+look:0,60
+# What was mined and not placed would push the log out of hotbar 0.
+chat:/clear @s
+wait:1
+mark:craft
+chat:/give @s minecraft:oak_log 1
+wait:2
+key:E
+wait:1
+shot:sv_inv_open
+# The log (hotbar 0) into the grid, and its four planks out onto the cursor.
+cursor:672,808
+click:L:0.1
+wait:0.5
+cursor:1032,312
+click:L:0.1
+wait:0.5
+cursor:1256,352
+click:L:0.1
+wait:0.5
+# Crafting by dragging: the button held down, the four planks dragged over the four cells, then let go.
+cursor:1032,312
+down:L
+wait:0.2
+cursor:1104,312
+wait:0.2
+cursor:1104,384
+wait:0.2
+cursor:1032,384
+wait:0.3
+shot:sv_drag_ghost
+up:L
+wait:0.5
+shot:sv_drag_table
+# The crafting table to hotbar 2.
+cursor:1256,352
+click:L:0.1
+wait:0.5
+cursor:816,808
+click:L:0.1
+wait:0.5
+key:E
+wait:1
+# Place the table in front.
+key:Three
+look:0,-50
+wait:0.5
+click:R:0.1
+wait:1
+shot:sv_table_placed
+look:0,50
+mark:chest
+chat:/item replace entity @s weapon.mainhand with minecraft:chest
+wait:1
+look:180,-40
+click:R:0.1
+wait:1
+shot:sv_chest_placed
+click:R:0.1
+wait:1
+shot:sv_chest_open
+key:Escape
+wait:1
+look:0,40
+mark:walk2
+hold:W+LeftControl:30
+look:60,0
+hold:W+SpaceBar:20
+shot:sv_end
+mark:end
+end

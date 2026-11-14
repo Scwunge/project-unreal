@@ -21,9 +21,10 @@ class AMcGameMode : public AGameModeBase
 public:
 	AMcGameMode();
 
-	// Blocks above the surface that players start at.
+	// Blocks above the surface that players start at. 0, feet on the surface, as the game spawns: at 10 every new world's
+	// first spawn and every respawn fell 10 blocks and took 7 fall damage (survival playtest).
 	UPROPERTY(EditAnywhere, Category = "Mc")
-	int32 SpawnHeightAboveSurface = 10;
+	int32 SpawnHeightAboveSurface = 0;
 
 	virtual void StartPlay() override;
 	virtual void RestartPlayer(AController* NewPlayer) override;

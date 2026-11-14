@@ -2250,6 +2250,7 @@ bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& 
 		&& McPlayerSave::Apply(Saved, *Pawn.Data))
 	{
 		Pawn.SelectedSlot = Pawn.Data->SelectedSlot;
+		UE_LOG(LogMcClient, Log, TEXT("Player restored: %s, %s, hotbar slot %d"), *GetSaveId(Controller), Pawn.Data->bCreative ? TEXT("creative") : TEXT("survival"), Pawn.Data->SelectedSlot);
 		return true;
 	}
 	return false;
@@ -2382,6 +2383,7 @@ void AMcGameMode::SavePlayer(const AController* Controller) const
 			McPlayerSave::Capture(*McPawn->Data, Data);
 		}
 	}
+	UE_LOG(LogMcClient, Log, TEXT("Player saved: %s, %s, hotbar slot %d"), *GetSaveId(Controller), Data.bCreative ? TEXT("creative") : TEXT("survival"), Data.SelectedSlot);
 	McWorldSave::SavePlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Data);
 }
 

@@ -230,6 +230,21 @@ namespace McGui
 		MCUI_API int32 GetPageCount(int32 Recipes);
 		// Whether a point from the panel's top left is on the panel or on one of its tabs (clicks there are the book's).
 		MCUI_API bool IsOnBook(FIntPoint Panel, int32 NumShown);
+		// Whether a point from the screen's top left is on the toggle button.
+		MCUI_API bool IsOnButton(EScreen Kind, FIntPoint FromScreen);
+
+		// What a left click on an open book does. Index is the tab shown (Tab) or the place in the list of recipes (Recipe).
+		enum class EClick : uint8 { None, Tab, Filter, Back, Forward, Search, Recipe };
+		struct FClick
+		{
+			EClick What = EClick::None;
+			int32 Index = -1;
+		};
+		// FromScreen is the mouse from the screen's top left (the screen already moved by Shift); Page counts from 0 and
+		// ListCount is how many recipes the tab, the search and the filter leave.
+		MCUI_API FClick ResolveClick(FIntPoint FromScreen, int32 NumShown, int32 Page, int32 ListCount);
+		// The search box takes what was typed (cut at MaxSearch) and a backspace takes the last letter off.
+		MCUI_API FString ApplyTyped(const FString& Text, const FString& Typed, bool bBackspace);
 	}
 
 	// How far the arrow and the flame are filled, 0 to 1, from the furnace (progress in the cook, burn left).

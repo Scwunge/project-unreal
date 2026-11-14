@@ -1086,6 +1086,30 @@ bool FMcRecipeBookScreenTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("equipment"), GetTab(TEXT("equipment")) == ETab::Equipment);
 	TestTrue(TEXT("none is misc"), GetTab(TEXT("none")) == ETab::Misc);
 
+	// The clicks, from points on the screen (the panel's own point less its width, as the screen sits to the right of it).
+	const auto FromPanel = [](int32 X, int32 Y) { return FIntPoint(X - PanelWidth, Y); };
+	TestTrue(TEXT("the inventory's toggle button"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(104, 61)));
+	TestTrue(TEXT("its far corner"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(123, 78)));
+	TestFalse(TEXT("one past it"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(124, 61)));
+	TestTrue(TEXT("the crafting table's toggle button"), IsOnButton(McGui::EScreen::CraftingTable, FIntPoint(5, 49)));
+	TestFalse(TEXT("not the inventory's place there"), IsOnButton(McGui::EScreen::CraftingTable, FIntPoint(104, 61)));
+	TestTrue(TEXT("a tab click"), ResolveClick(FromPanel(TabX + 5, TabY + 2 * TabHeight + 3), 4, 0, 30).What == EClick::Tab);
+	TestEqual(TEXT("it is the third tab"), ResolveClick(FromPanel(TabX + 5, TabY + 2 * TabHeight + 3), 4, 0, 30).Index, 2);
+	TestTrue(TEXT("a tab that is not shown is nothing"), ResolveClick(FromPanel(TabX + 5, TabY + 4 * TabHeight + 3), 4, 0, 30).What == EClick::None);
+	TestTrue(TEXT("the craftable switch"), ResolveClick(FromPanel(FilterX + 3, FilterY + 3), 4, 0, 30).What == EClick::Filter);
+	TestTrue(TEXT("the search box"), ResolveClick(FromPanel(SearchX + 10, SearchY + 5), 4, 0, 30).What == EClick::Search);
+	TestTrue(TEXT("no back arrow on the first page"), ResolveClick(FromPanel(BackX + 3, PageY + 3), 4, 0, 30).What == EClick::None);
+	TestTrue(TEXT("the back arrow on the second"), ResolveClick(FromPanel(BackX + 3, PageY + 3), 4, 1, 30).What == EClick::Back);
+	TestTrue(TEXT("the forward arrow with a page to go to"), ResolveClick(FromPanel(ForwardX + 3, PageY + 3), 4, 0, 30).What == EClick::Forward);
+	TestTrue(TEXT("none on the last page"), ResolveClick(FromPanel(ForwardX + 3, PageY + 3), 4, 1, 30).What == EClick::None);
+	TestTrue(TEXT("a recipe"), ResolveClick(FromPanel(CellX + 1, CellY + 1), 4, 0, 30).What == EClick::Recipe);
+	TestEqual(TEXT("the second row's second cell on page 2 is recipe 26"), ResolveClick(FromPanel(CellX + CellSize + 1, CellY + CellSize + 1), 4, 1, 40).Index, PerPage + 6);
+	TestTrue(TEXT("a cell past the end of the list is nothing"), ResolveClick(FromPanel(CellX + 4 * CellSize + 1, CellY + 1), 4, 0, 3).What == EClick::None);
+	TestEqual(TEXT("typing adds"), ApplyTyped(TEXT("sti"), TEXT("ck"), false), FString(TEXT("stick")));
+	TestEqual(TEXT("a backspace takes one off"), ApplyTyped(TEXT("stick"), TEXT(""), true), FString(TEXT("stic")));
+	TestEqual(TEXT("a backspace on nothing"), ApplyTyped(TEXT(""), TEXT(""), true), FString());
+	TestEqual(TEXT("the box holds 50 letters"), ApplyTyped(FString::ChrN(49, TEXT('a')), TEXT("bcd"), false).Len(), MaxSearch);
+
 	FMcRecipeBook& Book = FMcRecipeBook::Get();
 	if (!TestTrue(TEXT("items load"), FMcItemRegistry::Get().EnsureLoaded()) || !TestTrue(TEXT("recipes load"), Book.EnsureLoaded()))
 	{

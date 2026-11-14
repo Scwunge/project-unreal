@@ -2837,7 +2837,7 @@ void AMcHUD::PollRecipeBook(APlayerController& Player, UMcPlayerDataComponent& D
 		FMcSoundBus::Get().OnSound.Broadcast(FMcSoundEvent{ FName("ui.button.click"), McCoords::UnrealToBlock(Eye), 1.0f, 1.0f });
 	};
 	// The button that opens and closes the book.
-	if (bLeft && InRect(Mouse, Origin + Book::GetButtonPos(State.Layout.Kind), 20, 18))
+	if (bLeft && Book::IsOnButton(State.Layout.Kind, Mouse - Origin))
 	{
 		GBookOpen = !GBookOpen;
 		State.Layout.ShiftX = GBookOpen ? Book::Shift : 0;
@@ -2900,11 +2900,7 @@ void AMcHUD::PollRecipeBook(APlayerController& Player, UMcPlayerDataComponent& D
 	const FString Before = State.BookSearchText;
 	if (State.bBookSearch)
 	{
-		State.BookSearchText.Append(UMcGameViewportClient::TakeTyped().Left(FMath::Max(0, Book::MaxSearch - State.BookSearchText.Len())));
-		if (Player.WasInputKeyJustPressed(EKeys::BackSpace) && !State.BookSearchText.IsEmpty())
-		{
-			State.BookSearchText.LeftChopInline(1);
-		}
+		State.BookSearchText = Book::ApplyTyped(State.BookSearchText, UMcGameViewportClient::TakeTyped(), Player.WasInputKeyJustPressed(EKeys::BackSpace));
 	}
 	TSet<FName> Named;
 	if (!State.BookSearchText.IsEmpty())
@@ -2953,38 +2949,39 @@ void AMcHUD::PollRecipeBook(APlayerController& Player, UMcPlayerDataComponent& D
 	{
 		return;
 	}
-	const int32 Tab = Book::FindTab(Panel, State.BookTabs.Num());
-	if (Tab >= 0)
+	const Book::FClick Hit = Book::ResolveClick(Mouse - Origin, State.BookTabs.Num(), State.BookPage, State.BookList.Num());
+	switch (Hit.What)
 	{
-		State.BookTab = static_cast<int32>(State.BookTabs[Tab]);
+	case Book::EClick::Tab:
+		State.BookTab = static_cast<int32>(State.BookTabs[Hit.Index]);
 		State.BookPage = 0;
 		Click();
-	}
-	else if (InRect(Panel, FIntPoint(Book::FilterX, Book::FilterY), Book::FilterWidth, Book::FilterHeight))
-	{
+		break;
+	case Book::EClick::Filter:
 		GBookCraftable = !GBookCraftable;
 		State.BookPage = 0;
 		Click();
-	}
-	else if (State.BookPage > 0 && InRect(Panel, FIntPoint(Book::BackX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight))
-	{
+		break;
+	case Book::EClick::Back:
 		--State.BookPage;
 		Click();
-	}
-	else if (State.BookPage < Pages - 1 && InRect(Panel, FIntPoint(Book::ForwardX, Book::PageY), Book::PageButtonWidth, Book::PageButtonHeight))
-	{
+		break;
+	case Book::EClick::Forward:
 		++State.BookPage;
 		Click();
-	}
-	else if (InRect(Panel, FIntPoint(Book::SearchX, Book::SearchY), Book::SearchWidth, Book::SearchHeight))
-	{
+		break;
+	case Book::EClick::Search:
 		State.bBookSearch = true;
-	}
-	else if (State.BookHover >= 0)
+		break;
+	case Book::EClick::Recipe:
 	{
 		// The recipe goes into the crafting grid from the player's slots (shift-click: as many as there are).
 		const bool bShift = Player.IsInputKeyDown(EKeys::LeftShift) || Player.IsInputKeyDown(EKeys::RightShift);
-		Data.ClickMenuButton(FMcCraftingMenu::GetPlaceId(State.BookList[State.BookHover], bShift));
+		Data.ClickMenuButton(FMcCraftingMenu::GetPlaceId(State.BookList[Hit.Index], bShift));
+		break;
+	}
+	default:
+		break;
 	}
 	if (!InRect(Panel, FIntPoint(Book::SearchX, Book::SearchY), Book::SearchWidth, Book::SearchHeight))
 	{

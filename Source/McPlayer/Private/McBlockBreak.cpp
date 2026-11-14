@@ -310,7 +310,7 @@ namespace McBlockBreak
 			const TSharedPtr<FJsonObject>* Properties = nullptr;
 			if (Object->TryGetObjectField(TEXT("state"), Properties))
 			{
-				for (const auto& Pair : (*Properties)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Properties)->Values)
 				{
 					FString Want;
 					if (Pair.Value->TryGetString(Want) && Registry.GetPropertyValue(Context.State, FName(*Pair.Key)) != FName(*Want))

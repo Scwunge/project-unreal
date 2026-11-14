@@ -190,7 +190,7 @@ bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 	const TSharedPtr<FJsonObject>* Rules = nullptr;
 	if (Object->TryGetObjectField(TEXT("gameRules"), Rules))
 	{
-		for (const auto& Rule : (*Rules)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Rule : (*Rules)->Values)
 		{
 			Level.GameRules.Add(Rule.Key, Rule.Value->AsString());
 		}
@@ -301,7 +301,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 		{
 			Player.SelectedSlot = FMath::Clamp(FMath::RoundToInt32(Value), 0, 8);
 		}
-		for (const auto& Pair : (*Stats)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Stats)->Values)
 		{
 			double Number = 0.0;
 			// A number that isn't one (NaN from a hand-edited file) would poison the health bar.
@@ -327,7 +327,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 			const TSharedPtr<FJsonObject>* Components = nullptr;
 			if ((*Entry)->TryGetObjectField(TEXT("components"), Components))
 			{
-				for (const auto& Component : (*Components)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Component : (*Components)->Values)
 				{
 					Saved.Stack.Set(FName(*Component.Key), Component.Value);
 				}

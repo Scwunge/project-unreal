@@ -37,7 +37,7 @@ TMap<FName, int32> McEnchanting::GetEnchantments(const FMcItemStack& Stack)
 	const TSharedPtr<FJsonValue> Value = Stack.Get(Stored);
 	if (Value.IsValid() && Value->Type == EJson::Object)
 	{
-		for (const auto& Entry : Value->AsObject()->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Value->AsObject()->Values)
 		{
 			Result.Add(FName(*McCache::Namespaced(Entry.Key)), static_cast<int32>(Entry.Value->AsNumber()));
 		}

@@ -372,7 +372,7 @@ namespace
 			{
 				continue;
 			}
-			for (const auto& FaceEntry : (*FacesObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> FaceEntry : (*FacesObject)->Values)
 			{
 				const EMcDirection Direction = ParseDirection(FaceEntry.Key);
 				const TSharedPtr<FJsonObject>* FaceObject;
@@ -442,7 +442,7 @@ namespace
 				const TSharedPtr<FJsonObject>* TexturesObject;
 				if (Json->TryGetObjectField(TEXT("textures"), TexturesObject))
 				{
-					for (const auto& Texture : (*TexturesObject)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Texture : (*TexturesObject)->Values)
 					{
 						FTextureValue Value;
 						const TSharedPtr<FJsonObject>* Object;
@@ -467,7 +467,7 @@ namespace
 				const TSharedPtr<FJsonObject>* DisplayObject;
 				if (Json->TryGetObjectField(TEXT("display"), DisplayObject))
 				{
-					for (const auto& Entry : (*DisplayObject)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*DisplayObject)->Values)
 					{
 						const TSharedPtr<FJsonObject>* Transform;
 						if (!Entry.Value->TryGetObject(Transform))
@@ -735,7 +735,7 @@ namespace
 	FCondition FBaker::ParseCondition(const TSharedPtr<FJsonObject>& Object) const
 	{
 		FCondition Condition;
-		for (const auto& Entry : Object->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Object->Values)
 		{
 			const TArray<TSharedPtr<FJsonValue>>* Array;
 			if ((Entry.Key == TEXT("AND") || Entry.Key == TEXT("OR")) && Entry.Value->TryGetArray(Array))
@@ -779,7 +779,7 @@ namespace
 		const TSharedPtr<FJsonObject>* VariantsObject;
 		if (Json->TryGetObjectField(TEXT("variants"), VariantsObject))
 		{
-			for (const auto& Entry : (*VariantsObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*VariantsObject)->Values)
 			{
 				FVariantDef& Variant = Def.Variants.AddDefaulted_GetRef();
 				TArray<FString> Pairs;

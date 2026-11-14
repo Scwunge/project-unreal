@@ -301,7 +301,7 @@ namespace
 				bool bSkip = false;
 				if ((*Provider)->TryGetObjectField(TEXT("filter"), Filter))
 				{
-					for (const auto& Option : (*Filter)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Option : (*Filter)->Values)
 					{
 						bool bOn = false;
 						bSkip |= Option.Value->TryGetBool(bOn) && bOn;
@@ -601,7 +601,7 @@ void AMcHUD::LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& G, TShare
 			const TSharedPtr<FJsonObject>* Advances;
 			if (Provider->TryGetObjectField(TEXT("advances"), Advances))
 			{
-				for (const auto& Entry : (*Advances)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Advances)->Values)
 				{
 					double Advance = 0.0;
 					int32 KeyAt = 0;

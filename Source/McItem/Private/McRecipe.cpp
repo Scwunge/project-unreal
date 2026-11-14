@@ -57,7 +57,7 @@ namespace
 		const TSharedPtr<FJsonObject>* Components;
 		if (Json->TryGetObjectField(TEXT("components"), Components))
 		{
-			for (const auto& Entry : (*Components)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Components)->Values)
 			{
 				Result.Components.Add(FName(*Entry.Key), Entry.Value);
 			}
@@ -311,7 +311,7 @@ bool FMcRecipeBook::LoadOne(const FString& Id, const FJsonObject& Json)
 	{
 		Recipe.Type = EMcRecipeType::CraftingSpecial;
 		Recipe.Special = FName(*TypeName);
-		for (const auto& Entry : Json.Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Json.Values)
 		{
 			if (Entry.Value->Type == EJson::String || Entry.Value->Type == EJson::Array)
 			{

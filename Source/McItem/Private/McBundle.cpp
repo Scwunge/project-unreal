@@ -40,7 +40,7 @@ namespace
 		const TSharedPtr<FJsonObject>* Components = nullptr;
 		if ((*Item)->TryGetObjectField(TEXT("components"), Components))
 		{
-			for (const auto& Pair : (*Components)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Components)->Values)
 			{
 				Out.Set(FName(*Pair.Key), Pair.Value);
 			}

@@ -506,7 +506,7 @@ bool FMcCacheBuilder::CopyAssets(const FSources& Sources, const FString& Out, FS
 	int32 Done = 0, Copied = 0, Missing = 0;
 	const int32 Total = (*Objects)->Values.Num();
 	FString FirstMissing;
-	for (const auto& Pair : (*Objects)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Objects)->Values)
 	{
 		const TSharedPtr<FJsonObject> Object = Pair.Value->AsObject();
 		const FString Hash = Object->GetStringField(TEXT("hash"));

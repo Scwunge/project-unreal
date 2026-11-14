@@ -134,7 +134,7 @@ TOptional<FMcStateId> FMcSurfaceRules::ParseState(const TSharedPtr<FJsonValue>& 
 		const TSharedPtr<FJsonObject>* PropertyObject;
 		if (Object->TryGetObjectField(TEXT("Properties"), PropertyObject))
 		{
-			for (const auto& Entry : (*PropertyObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*PropertyObject)->Values)
 			{
 				Properties.Add(FName(*Entry.Key), FName(*Entry.Value->AsString()));
 			}

@@ -33,7 +33,7 @@ bool FMcBlockRegistry::LoadFromReport(const FString& BlocksJsonPath, const FStri
 	TArray<FMcBlockState> NewStates;
 	NewBlocks.Reserve(Report->Values.Num());
 
-	for (const auto& Entry : Report->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Report->Values)
 	{
 		const TSharedPtr<FJsonObject>* BlockObject;
 		if (!Entry.Value->TryGetObject(BlockObject))
@@ -49,7 +49,7 @@ bool FMcBlockRegistry::LoadFromReport(const FString& BlocksJsonPath, const FStri
 		const TSharedPtr<FJsonObject>* PropertiesObject;
 		if ((*BlockObject)->TryGetObjectField(TEXT("properties"), PropertiesObject))
 		{
-			for (const auto& PropertyEntry : (*PropertiesObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> PropertyEntry : (*PropertiesObject)->Values)
 			{
 				FMcBlockProperty& Property = Block.Properties.AddDefaulted_GetRef();
 				Property.Name = FName(*PropertyEntry.Key);
@@ -93,7 +93,7 @@ bool FMcBlockRegistry::LoadFromReport(const FString& BlocksJsonPath, const FStri
 			const TSharedPtr<FJsonObject>* StateProperties;
 			if (StateObject->TryGetObjectField(TEXT("properties"), StateProperties))
 			{
-				for (const auto& PropertyValue : (*StateProperties)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> PropertyValue : (*StateProperties)->Values)
 				{
 					const int32 PropertyIndex = Block.FindProperty(FName(*PropertyValue.Key));
 					const int32 ValueIndex = PropertyIndex == INDEX_NONE

@@ -50,6 +50,14 @@ public:
 	int32 NumEntityTrips() const { return EntityTrips.Num(); }
 	// Runs the trips that can finish (a test calls it between loading chunks by hand).
 	void TickTrips();
+	// One step of the entity trips: what stands in a portal goes, and what has its chunks lands (a test calls it).
+	void StepEntities()
+	{
+		TickEntities();
+		TickEntityTrips();
+	}
+	// A test's way to name the worlds of a game that has no game mode: finds (and makes) the world of a dimension id.
+	TFunction<AMcWorldActor*(const FString&)> WorldOverride;
 
 private:
 	enum class EKind : uint8
@@ -84,6 +92,8 @@ private:
 		bool bMustLeave = false;
 	};
 
+	AMcWorldActor* FindWorldNamed(const FString& Dimension) const;
+	AMcWorldActor* MakeWorldNamed(const FString& Dimension) const;
 	bool AddTrip(AMcPlayerController& Controller, AMcWorldActor& Dest, FTrip Trip);
 	void Finish(FTrip& Trip);
 	void TickPlayers();

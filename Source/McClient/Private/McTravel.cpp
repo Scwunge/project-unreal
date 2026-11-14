@@ -60,6 +60,26 @@ void UMcTravelSubsystem::Tick(float DeltaSeconds)
 	TickEntityTrips();
 }
 
+AMcWorldActor* UMcTravelSubsystem::FindWorldNamed(const FString& Dimension) const
+{
+	if (WorldOverride)
+	{
+		return WorldOverride(Dimension);
+	}
+	AMcGameMode* Mode = GetWorld()->GetAuthGameMode<AMcGameMode>();
+	return Mode ? Mode->FindWorld(Dimension) : nullptr;
+}
+
+AMcWorldActor* UMcTravelSubsystem::MakeWorldNamed(const FString& Dimension) const
+{
+	if (WorldOverride)
+	{
+		return WorldOverride(Dimension);
+	}
+	AMcGameMode* Mode = GetWorld()->GetAuthGameMode<AMcGameMode>();
+	return Mode ? Mode->GetOrCreateWorld(Dimension) : nullptr;
+}
+
 bool UMcTravelSubsystem::IsOnTrip(const AController* Controller) const
 {
 	return Trips.ContainsByPredicate([Controller](const FTrip& Trip) { return Trip.Controller.Get() == Controller; });
@@ -186,13 +206,12 @@ bool UMcTravelSubsystem::StartExactTrip(AMcPlayerController& Controller, const F
 
 bool UMcTravelSubsystem::StartPortalTrip(AMcPlayerController& Controller, const FIntVector& Cell)
 {
-	AMcGameMode* Mode = GetWorld()->GetAuthGameMode<AMcGameMode>();
 	AMcWorldActor* Here = Controller.GetWorldActor();
-	if (!Mode || !Here || !Here->GetBlockWorld())
+	if (!Here || !Here->GetBlockWorld())
 	{
 		return false;
 	}
-	AMcWorldActor* Dest = Mode->GetOrCreateWorld(McTravel::GetPortalDestination(Here->Dimension));
+	AMcWorldActor* Dest = MakeWorldNamed(McTravel::GetPortalDestination(Here->Dimension));
 	if (!Dest || !Dest->GetBlockWorld())
 	{
 		return false;
@@ -364,14 +383,14 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 void UMcTravelSubsystem::TickEntities()
 {
 	AMcGameMode* Mode = GetWorld()->GetAuthGameMode<AMcGameMode>();
-	if (!Mode)
+	if (!Mode && !WorldOverride)
 	{
 		return;
 	}
 	++EntityTick;
 	for (const TCHAR* Dimension : { Overworld, Nether, End })
 	{
-		AMcWorldActor* Here = Mode->FindWorld(Dimension);
+		AMcWorldActor* Here = FindWorldNamed(Dimension);
 		FMcEntityHost* Host = Here ? Here->GetEntityHost() : nullptr;
 		FMcBlockWorld* Blocks = Here ? Here->GetBlockWorld() : nullptr;
 		if (!Host || !Blocks)
@@ -426,7 +445,7 @@ void UMcTravelSubsystem::TickEntities()
 				|| FMcBlockRegistry::Get().GetBlockOf(Blocks->GetBlock(Cell + FIntVector(0, 1, 0))).Name == TEXT("minecraft:end_portal");
 			FEntityTrip Trip;
 			AMcWorldActor* Dest = nullptr;
-			if (bEnd)
+			if (bEnd && Mode)
 			{
 				if (Here->Dimension == End)
 				{
@@ -450,7 +469,7 @@ void UMcTravelSubsystem::TickEntities()
 			}
 			else
 			{
-				Dest = Mode->GetOrCreateWorld(McTravel::GetPortalDestination(Here->Dimension));
+				Dest = bEnd ? nullptr : MakeWorldNamed(McTravel::GetPortalDestination(Here->Dimension));
 				if (Dest && Dest->GetBlockWorld())
 				{
 					const FMcDimensionType& From = Blocks->GetDimension();

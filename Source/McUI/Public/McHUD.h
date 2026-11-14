@@ -163,7 +163,7 @@ private:
 	void DrawRegion(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint = FLinearColor::White);
 	// The same with the top edge moved right by TopShift and the bottom edge by BottomShift (italic text).
 	void DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift);
-	void DrawIcon(const FIcon& Icon, float X, float Y);
+	void DrawIcon(const FIcon& Icon, float X, float Y, float IconScale = 1.0f);
 	void DrawFill(float X, float Y, float Width, float Height, const FLinearColor& Color);
 
 	// Text in the game's own bitmap font (textures/font/ascii.png).
@@ -199,7 +199,8 @@ private:
 	void DrawBossBar(int32 Width, float Y, const FString& Title, float Fraction, const FString& Color, const FString& Style);
 	void DrawCustomBars(int32 Width, UMcPlayerDataComponent* Data);
 	// Picture names another item's picture to draw in place of the stack's own (a cast fishing rod).
-	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None);
+	// IconScale below 1 draws the picture smaller (the recipe toast's crafting table), without the count and the bar.
+	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None, float IconScale = 1.0f);
 	void DrawScreen(int32 Width, int32 Height);
 	// The player in the survival inventory's black box (26,8 to 75,78 of the picture), turned toward the mouse: a player
 	// model far below the world, filmed by its own orthographic capture into a picture drawn there.
@@ -298,6 +299,9 @@ private:
 	void DrawTitleText(int32 Width, int32 Height);
 	// The toasts at the top right, over everything.
 	void DrawToasts(int32 Width, int32 Height);
+	// The recipe book beside the inventory and the crafting table: its clicks and keys, and its drawing.
+	void PollRecipeBook(APlayerController& Player, UMcPlayerDataComponent& Data, FIntPoint Origin, bool& bTaken);
+	void DrawRecipeBook(FIntPoint Origin);
 	// The name of the held item over the hotbar for two seconds after it changes, in its rarity's colour.
 	void DrawHeldName(int32 Width, int32 Height, const FMcItemStack& Held, bool bBars);
 	FName HeldNameItem;

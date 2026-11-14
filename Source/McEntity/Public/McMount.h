@@ -58,6 +58,11 @@ struct MCENTITY_API FMcMountState
 	int32 RearFall = -1;
 	// Camels: ticks until it may dash again.
 	int32 DashCooldown = 0;
+	// Camels: lying down (not saved), and ticks since it last sat or stood (reference: it may change after 400, then sits at about 1 in 190 a tick and stands at 1 in 39).
+	bool bSitting = false;
+	int32 PoseTicks = 0;
+	// It has sat or stood at least once (so the stand-up or sit-down is drawn for the first 52 ticks).
+	bool bPoseChanged = false;
 	// What the rider holds (a pig or strider goes only for its stick), and the boost a stick's use gave: ticks gone and the total.
 	FName RiderHeld;
 	int32 BoostTime = 0;
@@ -117,5 +122,7 @@ namespace McMount
 	// Saves or loads the lasting part (tamed, saddle, armour, chest, temper, stats); a rider and the boost start afresh. Older saves end before it.
 	MCENTITY_API void Serialize(FArchive& Ar, FMcMob& Mob);
 	// Runs a mount that has a rider for a tick. False if it has none and the mob's own routine should run.
+	// A camel's random lying down and getting up; true while it lies still (the mob's own movement is skipped).
+	MCENTITY_API bool TickSitting(FMcMob& Mob);
 	MCENTITY_API bool TickRidden(FMcEntityManager& Manager, FMcMob& Mob);
 }

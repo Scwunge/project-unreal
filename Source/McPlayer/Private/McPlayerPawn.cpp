@@ -2779,11 +2779,11 @@ void AMcPlayerPawn::ServerPlace_Implementation(const TArray<FMcNetBlockChange>& 
 	{
 		ServerSetBlock(Change.Pos, Change.State);
 		Data->AddStat(TEXT("used:") + Held.Item.ToString());
-		FMcTriggerEvent Placed;
-		Placed.Trigger = TEXT("minecraft:placed_block");
-		Placed.Item = Held.Item;
-		Placed.Block = Registry.GetBlockOf(Change.State).Name;
-		FireTrigger(Placed);
+		FMcTriggerEvent PlacedEvent;
+		PlacedEvent.Trigger = TEXT("minecraft:placed_block");
+		PlacedEvent.Item = Held.Item;
+		PlacedEvent.Block = Registry.GetBlockOf(Change.State).Name;
+		FireTrigger(PlacedEvent);
 		if (OnPlaced)
 		{
 			OnPlaced(Change.Pos);

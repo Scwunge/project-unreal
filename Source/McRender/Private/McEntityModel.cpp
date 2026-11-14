@@ -174,6 +174,31 @@ namespace McEntityModel
 			Rotation = FQuat(FVector::XAxisVector, Turn) * Rotation;
 		}
 
+		// The camel's stand-up, one entry a tick for its 52 ticks (camel_sitanim: the reference's own frames; pivots y down from 24 and z back, here converted where they are used).
+		constexpr int32 StandSteps = 52;
+		constexpr float StandHead[StandSteps] = { 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0710f, 0.1670f, 0.2626f, 0.3579f, 0.4531f, 0.5483f, 0.6433f, 0.7383f, 0.8331f, 0.9280f, 0.9571f, 0.9630f, 0.9690f, 0.9749f, 0.9807f, 0.9865f, 0.9923f, 0.9981f, 1.0039f, 1.0096f, 1.0154f, 1.0212f, 1.0269f, 1.0327f, 1.0385f, 1.0444f, 1.0503f, 1.0562f, 1.0622f, 1.0682f, 1.0743f, 1.0805f, 1.0870f, 1.0930f, 0.9891f, 0.8465f, 0.7040f, 0.5616f, 0.4194f, 0.2772f, 0.1352f, -0.0068f, -0.0436f, -0.0434f, -0.0431f, -0.0427f };
+		constexpr float StandBodyY[StandSteps] = { 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.9000f, 23.6860f, 23.3226f, 22.8856f, 22.3877f, 21.8416f, 21.2600f, 20.6556f, 20.0411f, 19.4292f, 18.8327f, 18.2641f, 17.7363f, 17.2620f, 16.8537f, 16.3609f, 15.9672f, 15.6924f, 15.4837f, 15.2883f, 15.0533f, 14.7259f, 14.2532f, 13.5672f, 12.8472f, 12.0984f, 11.4072f, 10.6872f, 9.9672f, 9.2472f, 8.5272f, 7.8072f, 7.0872f, 6.5423f, 6.0590f, 5.5757f, 5.0923f, 4.6090f, 4.1257f };
+		constexpr float StandBodyZ[StandSteps] = { 9.3414f, 9.1271f, 8.9129f, 8.6986f, 8.4843f, 8.2700f, 8.0557f, 7.8414f, 7.6271f, 7.4129f, 7.1986f, 6.9843f, 6.7700f, 6.5557f, 6.3984f, 6.2736f, 6.1623f, 6.0632f, 5.9754f, 5.8977f, 5.8290f, 5.7683f, 5.7144f, 5.6662f, 5.6227f, 5.5828f, 5.5454f, 5.5093f, 5.4541f, 5.3964f, 5.3488f, 5.3173f, 5.3078f, 5.3259f, 5.3778f, 5.4691f, 5.6480f, 5.8480f, 6.0560f, 6.2480f, 6.4480f, 6.6480f, 6.8480f, 7.0480f, 7.2480f, 7.4480f, 7.7467f, 8.0800f, 8.4133f, 8.7467f, 9.0800f, 9.4133f };
+		constexpr float StandBodyPitch[StandSteps] = { -0.0093f, -0.0254f, -0.0451f, -0.0675f, -0.0922f, -0.1183f, -0.1453f, -0.1725f, -0.1992f, -0.2247f, -0.2485f, -0.2698f, -0.2880f, -0.3024f, -0.3105f, -0.3166f, -0.3219f, -0.3265f, -0.3305f, -0.3337f, -0.3363f, -0.3382f, -0.3396f, -0.3403f, -0.3405f, -0.3402f, -0.3393f, -0.3380f, -0.3362f, -0.3339f, -0.3312f, -0.3282f, -0.3247f, -0.3209f, -0.3168f, -0.3124f, -0.2957f, -0.2747f, -0.2530f, -0.2329f, -0.2119f, -0.1910f, -0.1700f, -0.1491f, -0.1281f, -0.1072f, -0.0892f, -0.0722f, -0.0553f, -0.0383f, -0.0214f, -0.0044f };
+		constexpr float StandFrontY[StandSteps] = { 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 21.6000f, 20.7700f, 19.6483f, 18.5266f, 17.4050f, 16.2833f, 15.1616f, 14.0400f, 12.9183f, 11.7966f, 10.6750f, 9.5533f, 8.4316f, 7.8297f, 7.4104f, 6.9912f, 6.5719f, 6.1526f, 5.7333f, 5.3140f, 4.8947f, 4.4754f, 4.0562f, 3.6369f, 3.2176f, 2.7983f, 2.3790f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.2700f, 2.1134f, 1.9017f, 1.6900f, 1.4784f, 1.2667f, 1.0550f };
+		constexpr float StandFrontZ[StandSteps] = { 1.2040f, 0.8040f, 0.4040f, 0.0040f, -0.3960f, -0.7960f, -1.1960f, -1.5960f, -1.9960f, -2.3960f, -2.7208f, -3.0191f, -3.3174f, -3.6158f, -3.9141f, -4.2124f, -4.5108f, -4.8091f, -5.1074f, -5.4058f, -5.7041f, -6.0024f, -6.3839f, -6.7946f, -7.2054f, -7.6161f, -8.0268f, -8.4375f, -8.8482f, -9.2589f, -9.6696f, -10.0804f, -10.4911f, -10.9018f, -11.3125f, -11.7232f, -11.7560f, -11.6560f, -11.5520f, -11.4560f, -11.3560f, -11.2560f, -11.1560f, -11.0560f, -10.9560f, -10.8560f, -10.7893f, -10.7343f, -10.6793f, -10.6243f, -10.5693f, -10.5143f };
+		constexpr float StandFrontPitch[StandSteps] = { -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5267f, -1.4672f, -1.4076f, -1.3481f, -1.2886f, -1.2290f, -1.1695f, -1.1099f, -1.0504f, -0.9908f, -0.9313f, -0.8717f, -0.8318f, -0.7986f, -0.7655f, -0.7324f, -0.6993f, -0.6662f, -0.6331f, -0.6000f, -0.5669f, -0.5338f, -0.5006f, -0.4675f, -0.4344f, -0.4013f, -0.3959f, -0.4003f, -0.4048f, -0.4090f, -0.4134f, -0.4177f, -0.4221f, -0.4265f, -0.4308f, -0.4352f, -0.3825f, -0.3098f, -0.2371f, -0.1644f, -0.0916f, -0.0189f };
+		constexpr float StandFrontYaw[StandSteps] = { 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1745f, 0.1530f, 0.1239f, 0.0948f, 0.0657f, 0.0367f, 0.0076f };
+		constexpr float StandHindX[StandSteps] = { -5.5300f, -5.0300f, -4.5300f, -4.0300f, -3.5300f, -3.0300f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -2.9000f, -3.0300f, -3.1900f, -3.3567f, -3.5233f, -3.6900f, -3.8567f, -3.9925f, -4.1175f, -4.2425f, -4.3675f, -4.4925f, -4.6175f, -4.7425f, -4.8675f };
+		constexpr float StandHindY[StandSteps] = { 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 21.5000f, 20.7600f, 19.7600f, 18.7600f, 17.7600f, 16.7600f, 15.7600f, 14.7600f, 13.7600f, 12.7600f, 11.7600f, 10.5658f, 9.3032f, 8.0408f, 6.7783f, 5.5157f, 4.2533f, 2.9907f, 1.7282f, 1.7607f, 2.2483f, 2.7357f, 3.2233f, 3.7108f, 4.1982f, 4.6858f, 5.1732f, 5.0660f, 4.7780f, 4.4780f, 4.1780f, 3.8780f, 3.5780f, 3.2688f, 2.9563f, 2.6438f, 2.3312f, 2.0187f, 1.7062f, 1.3937f, 1.0813f };
+		constexpr float StandHindZ[StandSteps] = { 14.2533f, 13.9200f, 13.5867f, 13.2533f, 12.9200f, 12.5867f, 12.5000f, 12.5000f, 12.5000f, 12.5000f, 12.5000f, 12.5000f, 12.4260f, 12.3260f, 12.2260f, 12.1260f, 12.0260f, 11.9260f, 11.8260f, 11.7260f, 11.6260f, 11.5260f, 10.9543f, 10.2167f, 9.4792f, 8.7418f, 8.0042f, 7.2668f, 6.5292f, 5.7917f, 5.0543f, 4.3167f, 3.5793f, 2.8417f, 2.1042f, 1.3668f, 0.6292f, -0.1082f, 0.3240f, 1.0920f, 1.8920f, 2.6920f, 3.4920f, 4.2920f, 4.9625f, 5.5875f, 6.2125f, 6.8375f, 7.4625f, 8.0875f, 8.7125f, 9.3375f };
+		constexpr float StandHindPitch[StandSteps] = { -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5708f, -1.5321f, -1.4797f, -1.4273f, -1.3750f, -1.3226f, -1.2703f, -1.2179f, -1.1655f, -1.1132f, -1.0608f, -0.9705f, -0.8669f, -0.7633f, -0.6596f, -0.5560f, -0.4524f, -0.3487f, -0.2451f, -0.1415f, -0.0379f, 0.0658f, 0.1694f, 0.2730f, 0.3767f, 0.4803f, 0.5839f, 0.5995f, 0.5856f, 0.5710f, 0.5565f, 0.5419f, 0.5274f, 0.4752f, 0.4097f, 0.3443f, 0.2788f, 0.2134f, 0.1479f, 0.0825f, 0.0170f };
+		constexpr float StandHindYaw[StandSteps] = { 0.2295f, 0.1859f, 0.1422f, 0.0986f, 0.0550f, 0.0113f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f };
+		// A dash's head pitch over 44 ticks (camel_dash); for the first 6 the ears turn out 1.1781 and the body tips 0.0873.
+		constexpr int32 DashSteps = 44;
+		constexpr float DashHead[DashSteps] = { 0.8430f, 0.7393f, 0.7056f, 0.7811f, 0.8545f, 0.8105f, 0.6636f, 0.6463f, 0.6295f, 0.6157f, 0.6050f, 0.5970f, 0.5911f, 0.5863f, 0.5814f, 0.5745f, 0.5644f, 0.5495f, 0.5294f, 0.5047f, 0.4766f, 0.4469f, 0.4169f, 0.3882f, 0.3620f, 0.3396f, 0.3226f, 0.3109f, 0.3031f, 0.2983f, 0.2951f, 0.2929f, 0.2904f, 0.2865f, 0.2800f, 0.2665f, 0.2428f, 0.2164f, 0.1882f, 0.1595f, 0.1312f, 0.1046f, 0.0807f, 0.0607f };
+
+		FBox Ear(FBox Each, uint8 Side)
+		{
+			Each.CamelEar = Side;
+			return Each;
+		}
+
 		// A box tilted about a point of its own (in the part's frame).
 		FBox Posed(FBox Each, FVector Pivot, float Pitch, float Yaw, float Roll)
 		{
@@ -1764,6 +1789,76 @@ namespace McEntityModel
 				Turtle.Parts.Add(Part(ERole::LegFrontLeft, FVector(5, 3, 4), { Box(27, 30, 0, -1, -3, 13, 1, 5, 0.0f, true) }));
 				Models.Add(Turtle.Kind, Turtle);
 			}
+			{
+				// The camel, from the logged model (camel_model.txt): the reference's y runs down from 24 and its z the other way, so a
+				// pivot is (x, 24 - y, -z) and a box starts at (x, -maxY, -maxZ). The head carries the neck, the muzzle and the ears; the
+				// body carries the hump and the tail.
+				FModel Camel;
+				Camel.Kind = TEXT("minecraft:camel");
+				Camel.TextureSize = FIntPoint(128, 128);
+				Camel.Textures = { TEXT("camel/camel.png") };
+				Camel.bCamelAnim = true;
+				Camel.Parts.Add(Part(ERole::Head, FVector(0, 27, 19.5f), { Box(60, 24, -3.5f, -1, -4, 7, 8, 19), Box(21, 0, -3.5f, 7, 8, 7, 14, 7), Box(50, 0, -2.5f, 16, 15, 5, 5, 6), Ear(Posed(Box(67, 0, -5, 19.5f, 8.5f, 3, 1, 2), FVector(-2.5f, 21, 9.5f), 0, 0, 0.7854f), 1), Ear(Posed(Box(45, 0, 2, 19.5f, 8.5f, 3, 1, 2), FVector(2.5f, 21, 9.5f), 0, 0, -0.7854f), 2) }));
+				Camel.Parts.Add(Part(ERole::Static, FVector(0, 20, -9.5f), { Box(0, 25, -7.5f, 0, -3.5f, 15, 12, 27), Box(74, 0, -4.5f, 12, 4.5f, 9, 5, 11), Box(122, 0, -1.5f, -5, -3.5f, 3, 14, 0) }));
+				Camel.Parts.Add(Part(ERole::LegFrontRight, FVector(-4.9f, 23, 10.5f), { Box(0, 26, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegFrontLeft, FVector(4.9f, 23, 10.5f), { Box(0, 0, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegBackRight, FVector(-4.9f, 23, -9.5f), { Box(94, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				Camel.Parts.Add(Part(ERole::LegBackLeft, FVector(4.9f, 23, -9.5f), { Box(58, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				// The saddle layer (the logged saddle model, drawn when the camel is saddled: pose 1 from AMcEntityActor): the bridle on the head
+				// (the head's boxes again on the saddle picture, and two straps) and the saddle on the back. The reins part is hidden in every state
+				// logged (saddled, ridden: camel_ride.txt), so it is not drawn.
+				Camel.Textures.Add(TEXT("equipment/camel_saddle/saddle.png"));
+				const uint32 Saddled = 1u << 1;
+				Camel.Parts.Add(Part(ERole::Head, FVector(0, 27, 19.5f), { Box(60, 87, -3.5f, -1, -4, 7, 8, 19), Box(21, 64, -3.5f, 7, 8, 7, 14, 7), Box(50, 64, -2.5f, 16, 15, 5, 5, 6), Box(74, 70, 2.5f, 17, 16, 1, 2, 2), Box(74, 70, -3.5f, 17, 16, 1, 2, 2) }, 0, 0, 0, 0, 1));
+				Camel.Parts.Add(Part(ERole::Static, FVector(0, 20, -9.5f), { Box(74, 64, -4.5f, 12, 4.5f, 9, 5, 11), Box(92, 114, -3.5f, 17, 4.5f, 7, 3, 11), Box(0, 89, -7.5f, 0, -3.5f, 15, 12, 27, 0.02f) }, 0, 0, 0, 0, 1));
+				// Lying down (poses 2, and 3 with the saddle on; logged, camel_sitanim.txt: first frame of the stand-up): the body low on the
+				// ground, the legs folded flat (pitch -pi/2, the hind ones splayed out). The stand-up and sit-down are not drawn: it changes at once
+				// (the 52 ticks of the stand-up are logged and not built; the sit-down was not captured).
+				const uint32 Sitting = (1u << 2) | (1u << 3);
+				const TArray<FPart> Standing = Camel.Parts;
+				for (const FPart& Each : Standing)
+				{
+					if (Each.Role == ERole::Head)
+					{
+						continue;
+					}
+					FPart Lying = Each;
+					Lying.Role = ERole::Static;
+					if (Each.Role == ERole::Static)
+					{
+						Lying.Pivot = FVector(0, 24.0f - 23.9f, -9.341f);
+						Lying.RestPitch = -0.009f;
+					}
+					else
+					{
+						const bool bFront = Each.Role == ERole::LegFrontRight || Each.Role == ERole::LegFrontLeft;
+						const bool bRight = Each.Role == ERole::LegFrontRight || Each.Role == ERole::LegBackRight;
+						Lying.Pivot = bFront ? FVector(bRight ? -4.9f : 4.9f, 2.4f, -1.204f) : FVector(bRight ? -5.53f : 5.53f, 2.5f, -14.253f);
+						Lying.RestPitch = -1.571f;
+						Lying.RestYaw = bFront ? (bRight ? -0.174f : 0.174f) : (bRight ? -0.23f : 0.23f);
+					}
+					Lying.ShowPoses = Each.Layer == 1 ? (1u << 3) : Sitting;
+					Camel.Parts.Add(Lying);
+				}
+				for (FPart& Each : Camel.Parts)
+				{
+					const bool bLying = (Each.ShowPoses == Sitting) || Each.ShowPoses == (1u << 3);
+					if (Each.Layer == 1 && !bLying)
+					{
+						Each.ShowPoses = Each.Role == ERole::Head ? (Saddled | (1u << 3)) : Saddled;
+					}
+					else if (Each.Layer == 0 && !bLying && Each.Role != ERole::Head)
+					{
+						Each.ShowPoses = (1u << 0) | (1u << 1);
+					}
+				}
+				Models.Add(Camel.Kind, Camel);
+				// The husk has its own picture and the same shape.
+				FModel Husk = Camel;
+				Husk.Kind = TEXT("minecraft:camel_husk");
+				Husk.Textures = { TEXT("camel/camel_husk.png"), TEXT("equipment/camel_husk_saddle/saddle.png") };
+				Models.Add(Husk.Kind, Husk);
+			}
 			// Young ones with a model of their own (not the grown one's halved), from the logged baby models: every pivot, tilt and box,
 			// on the baby pictures (the grown one's names with _baby before the .png).
 			{
@@ -1906,6 +2001,18 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(2, 0.1f, -2.5f), { Box(1, 1, 0, 0, -0.5f, 2, 0, 1, 0.0f, true) }));  // leftHindLeg
 					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-2, 0.1f, 0.5f), { Box(8, 6, -2, 0, -0.5f, 2, 0, 1) }));  // rightFrontLeg
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(2, 0.1f, 0.5f), { Box(8, 7, 0, 0, -0.5f, 2, 0, 1) }));  // leftFrontLeg
+					Models.Add(Baby.Kind, Baby);
+				}
+				{
+					// The baby camel (same frame change as the grown one's); its ears are turned out 0.8223 about their own pivots.
+					FModel Baby = Young(TEXT("minecraft:camel"), 64, 64);
+					Baby.Parts.Add(Part(ERole::Head, FVector(0, 23, 7.5f), { Box(20, 0, -2.5f, -2, 0.5f, 5, 5, 7), Box(0, 0, -2.5f, 3, 2.5f, 5, 9, 5), Box(0, 14, -2.5f, 8, 7.5f, 5, 4, 3),
+						Posed(Box(37, 0, -5.5f, 10.5f, 3, 3, 1, 2), FVector(-2.5f, 11, 4), 0, 0, 0.8223f), Posed(Box(47, 0, 2.5f, 10.5f, 3, 3, 1, 2), FVector(2.5f, 11, 4), 0, 0, -0.8223f) }));  // head and its ears
+					Baby.Parts.Add(Part(ERole::Static, FVector(0, 16.9f, 0), { Box(0, 14, -4.5f, -4, -8, 9, 8, 16), Box(50, 38, -1.5f, -7, -8.05f, 3, 9, 0) }));  // body and tail
+					Baby.Parts.Add(Part(ERole::LegFrontRight, FVector(-3, 12.5f, 5.5f), { Box(36, 14, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3, 12.5f, 5.5f), { Box(48, 14, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegBackRight, FVector(-3, 12.5f, -5.5f), { Box(0, 38, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
+					Baby.Parts.Add(Part(ERole::LegBackLeft, FVector(3, 12.5f, -5.5f), { Box(12, 38, -1.5f, -12.5f, -1.5f, 3, 13, 3) }));
 					Models.Add(Baby.Kind, Baby);
 				}
 				{
@@ -3023,6 +3130,51 @@ namespace McEntityModel
 			{
 				Pitch = RestPitch + FMath::Clamp(Pitch - RestPitch, -Model.MaxLimbSwing, Model.MaxLimbSwing);
 			}
+			if (Model.bCamelAnim)
+			{
+				// A stand-up (the sit-down is the same run backwards: not captured from the reference), from the logged frames, in place of the
+				// walk; the reference's y runs down from 24 and its z the other way, and a yaw turns the other way here.
+				const bool bBody = Part.Role == ERole::Static;
+				const bool bFront = Part.Role == ERole::LegFrontRight || Part.Role == ERole::LegFrontLeft;
+				const bool bHind = Part.Role == ERole::LegBackRight || Part.Role == ERole::LegBackLeft;
+				const bool bRightLeg = Part.Role == ERole::LegFrontRight || Part.Role == ERole::LegBackRight;
+				if (Anim.SitStep >= 0 && Anim.SitStep < StandSteps)
+				{
+					const int32 Step = Anim.SitStep;
+					if (Part.Role == ERole::Head)
+					{
+						Pitch += StandHead[Step];
+					}
+					else if (bBody)
+					{
+						Pivot = FVector(0, 24.0f - StandBodyY[Step], -StandBodyZ[Step]);
+						Pitch = StandBodyPitch[Step];
+					}
+					else if (bFront)
+					{
+						Pivot = FVector(bRightLeg ? -4.9f : 4.9f, 24.0f - StandFrontY[Step], -StandFrontZ[Step]);
+						Pitch = StandFrontPitch[Step];
+						Yaw = bRightLeg ? -StandFrontYaw[Step] : StandFrontYaw[Step];
+					}
+					else if (bHind)
+					{
+						Pivot = FVector(bRightLeg ? StandHindX[Step] : -StandHindX[Step], 24.0f - StandHindY[Step], -StandHindZ[Step]);
+						Pitch = StandHindPitch[Step];
+						Yaw = bRightLeg ? -StandHindYaw[Step] : StandHindYaw[Step];
+					}
+				}
+				else if (Anim.DashStep >= 0 && Anim.DashStep < DashSteps)
+				{
+					if (Part.Role == ERole::Head)
+					{
+						Pitch += DashHead[Anim.DashStep];
+					}
+					else if (bBody && Anim.DashStep < 6)
+					{
+						Pitch += 0.0873f;
+					}
+				}
+			}
 			// Lean (x) first, then turn (y), then tip (z): the order the logged spider legs and vex wings are drawn in (a spider's
 			// outer legs, 0.7854 turned and 0.7854 tipped, only come to rest on the ground that way round).
 			FQuat Rotation = FQuat(FVector::ZAxisVector, Roll) * FQuat(FVector::YAxisVector, Yaw) * FQuat(FVector::XAxisVector, Pitch);
@@ -3066,6 +3218,12 @@ namespace McEntityModel
 					// a quarter of a cycle apart, 0.0898 radians a tick.
 					const float Angle = Anim.Age * 20.0f * 0.0898f; // Age is in seconds
 					Drawn.BoxRotation = FQuat(FVector::ZAxisVector, -0.0436f * FMath::Cos(Angle)) * FQuat(FVector::XAxisVector, 0.0785f * FMath::Sin(Angle));
+				}
+				if (Box.CamelEar != 0 && Anim.DashStep >= 0 && Anim.DashStep < 6 && Anim.SitStep < 0)
+				{
+					// In a dash the ears turn out 1.1781 about the up axis (the right one forward, the left back), as the logged model has them.
+					const float Turn = Box.CamelEar == 1 ? -1.1781f : 1.1781f;
+					Drawn.BoxRotation = FQuat(FVector::ZAxisVector, Box.CamelEar == 1 ? 0.7854f : -0.7854f) * FQuat(FVector::YAxisVector, Turn);
 				}
 				AddBox(Drawn, Part, Rotation, Pivot, Anim.BodyYaw, Size, Anim.Hurt, bGlow, bHeadBig ? BabyHeadScale : 1.0f, Model.Scale * (Anim.bBaby ? BabyScale : 1.0f), Out);
 			}
@@ -4660,6 +4818,9 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	Anim.bBaby = bBabyLook && !Model->bBabyModel;
 	Anim.bOffering = bOfferingLook;
 	Anim.Pose = PoseLook & 31;
+	// A camel's stand-up (bits 16 to 22: ticks gone plus one) and dash (bits 23 to 29), from the actor.
+	Anim.SitStep = ((PoseLook >> 16) & 127) - 1;
+	Anim.DashStep = ((PoseLook >> 23) & 127) - 1;
 	if (Model->TintedLayers != 0)
 	{
 		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);

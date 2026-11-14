@@ -1,4 +1,5 @@
 #include "McJavaImport.h"
+#include "McGameRules.h"
 #include "HAL/FileManager.h"
 #include "McBiomeRegistry.h"
 #include "McBannerEntity.h"
@@ -1336,36 +1337,194 @@ bool McJavaImport::ConvertPlayer(const FMcNbt& Root, FMcPlayerData& Out)
 		}
 	}
 	AddItems(FindList(Root, TEXT("EnderItems")), 200, false);
+	// The recipe book: the unlocked recipes (value 1), those among them not yet shown (value 2). Exact keys, as the lookup
+	// is case-insensitive.
+	if (const FMcNbt* Book = Root.Find(TEXT("recipeBook")))
+	{
+		const FMcNbt* Unlocked = FindList(*Book, TEXT("recipes"));
+		const FMcNbt* Display = FindList(*Book, TEXT("toBeDisplayed"));
+		TSet<FString> Pending;
+		if (Display)
+		{
+			for (const FMcNbt& Entry : Display->Values)
+			{
+				Pending.Add(Entry.String);
+			}
+		}
+		if (Unlocked)
+		{
+			for (const FMcNbt& Entry : Unlocked->Values)
+			{
+				const FString Id = Entry.String;
+				if (!Id.IsEmpty())
+				{
+					Out.Stats.Add(TEXT("recipe:") + Id, Pending.Contains(Id) ? 2.0 : 1.0);
+				}
+			}
+		}
+	}
+	return true;
+}
+
+namespace
+{
+	// "2026-11-13 07:00:15 +0100" as Unix seconds; false for any other text.
+	bool ParseAdvancementDate(const FString& Text, double& OutSeconds)
+	{
+		TArray<FString> Parts;
+		Text.ParseIntoArray(Parts, TEXT(" "));
+		TArray<FString> Day, Clock;
+		if (Parts.Num() < 3)
+		{
+			return false;
+		}
+		Parts[0].ParseIntoArray(Day, TEXT("-"));
+		Parts[1].ParseIntoArray(Clock, TEXT(":"));
+		if (Day.Num() != 3 || Clock.Num() != 3 || Parts[2].Len() != 5 || !FDateTime::Validate(FCString::Atoi(*Day[0]), FCString::Atoi(*Day[1]), FCString::Atoi(*Day[2]), FCString::Atoi(*Clock[0]), FCString::Atoi(*Clock[1]), FCString::Atoi(*Clock[2]), 0))
+		{
+			return false;
+		}
+		const TCHAR Sign = Parts[2][0];
+		const int32 Zone = FCString::Atoi(*Parts[2].Mid(1));
+		const int32 Y = FCString::Atoi(*Day[0]), Mo = FCString::Atoi(*Day[1]), D = FCString::Atoi(*Day[2]);
+		const int32 H = FCString::Atoi(*Clock[0]), Mi = FCString::Atoi(*Clock[1]), S = FCString::Atoi(*Clock[2]);
+		const int32 OffsetMinutes = (Zone / 100) * 60 + Zone % 100;
+		OutSeconds = static_cast<double>(FDateTime(Y, Mo, D, H, Mi, S).ToUnixTimestamp()) - (Sign == TEXT('-') ? -1 : 1) * OffsetMinutes * 60.0;
+		return true;
+	}
+}
+
+bool McJavaImport::ConvertAdvancements(const FString& Json, FMcPlayerData& Out)
+{
+	TSharedPtr<FJsonObject> Root;
+	if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root) || !Root.IsValid())
+	{
+		return false;
+	}
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Root->Values)
+	{
+		const TSharedPtr<FJsonObject>* Made = nullptr;
+		if (!Entry.Value.IsValid() || !Entry.Value->TryGetObject(Made))
+		{
+			continue;
+		}
+		const FString Id = Entry.Key.Contains(TEXT(":")) ? Entry.Key : TEXT("minecraft:") + Entry.Key;
+		bool bDone = false;
+		(*Made)->TryGetBoolField(TEXT("done"), bDone);
+		if (bDone)
+		{
+			Out.Stats.Add(TEXT("advancement:") + Id, 1.0);
+		}
+		const TSharedPtr<FJsonObject>* Criteria = nullptr;
+		if ((*Made)->TryGetObjectField(TEXT("criteria"), Criteria))
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Criterion : (*Criteria)->Values)
+			{
+				const FString Key = Id + TEXT("/") + Criterion.Key;
+				Out.Stats.Add(TEXT("criterion:") + Key, 1.0);
+				double Seconds = 0.0;
+				FString Date;
+				if (Criterion.Value.IsValid() && Criterion.Value->TryGetString(Date) && ParseAdvancementDate(Date, Seconds))
+				{
+					Out.Stats.Add(TEXT("ctime:") + Key, Seconds);
+				}
+			}
+		}
+	}
+	return true;
+}
+
+bool McJavaImport::ConvertStats(const FString& Json, FMcPlayerData& Out)
+{
+	TSharedPtr<FJsonObject> Root;
+	const TSharedPtr<FJsonObject>* Categories = nullptr;
+	if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Root) || !Root.IsValid() || !Root->TryGetObjectField(TEXT("stats"), Categories))
+	{
+		return false;
+	}
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Category : (*Categories)->Values)
+	{
+		const TSharedPtr<FJsonObject>* Counts = nullptr;
+		if (!Category.Value.IsValid() || !Category.Value->TryGetObject(Counts))
+		{
+			continue;
+		}
+		FString Kind = Category.Key;
+		Kind.RemoveFromStart(TEXT("minecraft:"));
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Count : (*Counts)->Values)
+		{
+			double Value = 0.0;
+			if (!Count.Value.IsValid() || !Count.Value->TryGetNumber(Value))
+			{
+				continue;
+			}
+			FString Name = Count.Key;
+			if (Kind == TEXT("custom"))
+			{
+				Name.RemoveFromStart(TEXT("minecraft:"));
+			}
+			Out.Stats.Add(TEXT("stat:") + Kind + TEXT(":") + Name, Value);
+		}
+	}
 	return true;
 }
 
 bool McJavaImport::ImportPlayer(const FString& Source, const FString& WorldDir)
 {
-	FMcNbt Root;
+	// Every player of the folder gets a file of their own, named by their UUID (the join looks for it: McWorldSave::LoadPlayer);
+	// the one who played last is also "imported-player", which whoever has no file takes.
+	const FString DataFolder = Source / TEXT("players") / TEXT("data");
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *(DataFolder / TEXT("*.dat")), true, false);
 	FString Newest;
 	FDateTime NewestTime = FDateTime::MinValue();
-	TArray<FString> Files;
-	IFileManager::Get().FindFiles(Files, *(Source / TEXT("players") / TEXT("data") / TEXT("*.dat")), true, false);
 	for (const FString& File : Files)
 	{
-		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(Source / TEXT("players") / TEXT("data") / File));
+		const FDateTime Time = IFileManager::Get().GetTimeStamp(*(DataFolder / File));
 		if (Time > NewestTime)
 		{
 			NewestTime = Time;
-			Newest = Source / TEXT("players") / TEXT("data") / File;
+			Newest = File;
 		}
 	}
-	FMcPlayerData Player;
-	bool bFound = !Newest.IsEmpty() && FMcNbt::LoadFile(Newest, Root) && ConvertPlayer(Root, Player);
-	if (!bFound)
+
+	FMcPlayerData Last;
+	bool bHaveLast = false;
+	for (const FString& File : Files)
+	{
+		FMcNbt Root;
+		FMcPlayerData Player;
+		if (!FMcNbt::LoadFile(DataFolder / File, Root) || !ConvertPlayer(Root, Player))
+		{
+			continue;
+		}
+		Player.Uuid = FPaths::GetBaseFilename(File);
+		// Their advancements and statistics, with the game's dates.
+		FString Text;
+		if (FFileHelper::LoadFileToString(Text, *(Source / TEXT("players") / TEXT("advancements") / (Player.Uuid + TEXT(".json")))))
+		{
+			ConvertAdvancements(Text, Player);
+		}
+		if (FFileHelper::LoadFileToString(Text, *(Source / TEXT("players") / TEXT("stats") / (Player.Uuid + TEXT(".json")))))
+		{
+			ConvertStats(Text, Player);
+		}
+		McWorldSave::SavePlayer(WorldDir, Player.Uuid, Player);
+		if (File == Newest)
+		{
+			Last = Player;
+			bHaveLast = true;
+		}
+	}
+	if (!bHaveLast)
 	{
 		// The older layout kept the one player in level.dat.
 		FMcNbt Level;
 		const FMcNbt* Data = FMcNbt::LoadFile(Source / TEXT("level.dat"), Level) ? Level.Find(TEXT("Data")) : nullptr;
 		const FMcNbt* Old = Data ? Data->Find(TEXT("Player")) : nullptr;
-		bFound = Old && ConvertPlayer(*Old, Player);
+		bHaveLast = Old && ConvertPlayer(*Old, Last);
 	}
-	return bFound && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Player);
+	return bHaveLast && McWorldSave::SavePlayer(WorldDir, TEXT("imported-player"), Last);
 }
 
 bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
@@ -1457,6 +1616,7 @@ bool McJavaImport::ReadLevel(const FString& Folder, FMcLevelData& OutLevel)
 				OutLevel.GameRules.Add(Key, Value.Type == FMcNbt::EType::String ? Value.String
 					: Value.Type == FMcNbt::EType::Byte ? (Value.Integer ? TEXT("true") : TEXT("false")) : FString::Printf(TEXT("%lld"), Value.Integer));
 			}
+			FMcGameRules::MigrateLegacyNames(OutLevel.GameRules);
 		}
 	}
 	return true;

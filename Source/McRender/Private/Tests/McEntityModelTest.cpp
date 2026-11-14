@@ -76,7 +76,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:allay"), 1, 0.95, 0.58, 0.08 },
 		{ TEXT("minecraft:breeze"), 1, 1.2, 1.8 },
 		{ TEXT("minecraft:parched"), 1, 1.2, 1.99 },
-		{ TEXT("minecraft:camel_husk"), 1, 3.4, 3.09 },
+		{ TEXT("minecraft:camel_husk"), 2, 3.4, 3.09 },
 		{ TEXT("minecraft:zombie_nautilus"), 1, 1.6, 1.13 },
 		{ TEXT("minecraft:happy_ghast"), 1, 5.0, 5.51, -4.0 },  // the entity's own scale is not in the log: its height above its feet is unverified
 		{ TEXT("minecraft:sulfur_cube"), 1, 1.2, 2.07, -0.9 },  // likewise
@@ -91,6 +91,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("%s pictures"), Expect.Kind), Model->Textures.Num(), Expect.Layers);
 		for (int32 Layer = 0; Layer < Expect.Layers; ++Layer)
 		{
+			if (Model->Textures[Layer].Contains(TEXT("saddle")))
+			{
+				continue;  // drawn only while the animal is saddled (pose 1): nothing to measure in the default pose
+			}
 			const ::FBox Bounds = LayerBounds(*Model, Layer);
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
@@ -110,6 +114,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		double Top = 0.0;
 		for (int32 Layer = 0; Layer < Expect.Layers; ++Layer)
 		{
+			if (Model->Textures[Layer].Contains(TEXT("saddle")))
+			{
+				continue;
+			}
 			Top = FMath::Max(Top, LayerBounds(*Model, Layer).Max.Z);
 		}
 		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox (%.3f of %.3f)"), Expect.Kind, Top, Expect.Height), Top >= Expect.Height * 0.85);

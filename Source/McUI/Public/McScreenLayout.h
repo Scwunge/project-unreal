@@ -37,8 +37,10 @@ namespace McGui
 		// Where a menu slot the screen doesn't show sits (the creative screen shows only the hotbar).
 		static constexpr int32 Hidden = -10000;
 		bool IsShown(int32 Slot) const { return Slots.IsValidIndex(Slot) && Slots[Slot].X != Hidden; }
+		// How far the screen is moved right (the recipe book beside it takes the room: 77 when it is open).
+		int32 ShiftX = 0;
 		// The top left of the screen when it is centred in a Width x Height window.
-		FIntPoint Origin(int32 Width, int32 Height) const { return FIntPoint((Width - Size.X) / 2, (Height - Size.Y) / 2); }
+		FIntPoint Origin(int32 Width, int32 Height) const { return FIntPoint((Width - Size.X) / 2 + ShiftX, (Height - Size.Y) / 2); }
 	};
 
 	MCUI_API FScreenLayout MakeInventoryLayout();
@@ -176,6 +178,73 @@ namespace McGui
 		MCUI_API bool IsListed(FName Item);
 		// Of Items, those whose name (NameOf) contains every word of Search, ignoring case; all of them for no words.
 		MCUI_API TArray<FName> Filter(const TArray<FName>& Items, const FString& Search, TFunctionRef<FString(FName)> NameOf);
+	}
+
+	// The recipe book beside the inventory and the crafting table, measured from the reference's shots (ref_book_inv_open0,
+	// ref_rt_book_b at GUI scale 3). Positions are from the panel's top left (the panel sits 147 left of the screen, level
+	// with its top) unless it says from the screen.
+	namespace RecipeBook
+	{
+		constexpr int32 Shift = 77;
+		constexpr int32 PanelWidth = 147;
+		constexpr int32 PanelHeight = 166;
+		// The tabs hang off the left edge, 35 x 27, one every 27; the chosen one sticks out 2 more.
+		constexpr int32 TabX = -30;
+		constexpr int32 TabY = 3;
+		constexpr int32 TabWidth = 35;
+		constexpr int32 TabHeight = 27;
+		// The recipes, 5 wide and 4 high, 25 square each.
+		constexpr int32 Columns = 5;
+		constexpr int32 Rows = 4;
+		constexpr int32 PerPage = Columns * Rows;
+		constexpr int32 CellX = 11;
+		constexpr int32 CellY = 31;
+		constexpr int32 CellSize = 25;
+		// The search box, the "craftable only" switch and the page arrows.
+		constexpr int32 SearchX = 25;
+		constexpr int32 SearchY = 13;
+		constexpr int32 SearchWidth = 81;
+		constexpr int32 SearchHeight = 14;
+		constexpr int32 FilterX = 110;
+		constexpr int32 FilterY = 12;
+		constexpr int32 FilterWidth = 26;
+		constexpr int32 FilterHeight = 16;
+		constexpr int32 BackX = 38;
+		constexpr int32 ForwardX = 93;
+		constexpr int32 PageY = 137;
+		constexpr int32 PageButtonWidth = 12;
+		constexpr int32 PageButtonHeight = 17;
+		constexpr int32 MaxSearch = 50;
+
+		// The tabs of the crafting book, in the order they are drawn; a tab shows only when it has recipes (the first always).
+		enum class ETab : uint8 { Search, Equipment, Building, Misc, Redstone };
+		constexpr int32 NumTabs = 5;
+		// The tab a recipe's "category" (the game's data: building, redstone, equipment, none for the rest) belongs to.
+		MCUI_API ETab GetTab(const FString& Category);
+		// From the screen: where the toggle button is (20 x 18).
+		MCUI_API FIntPoint GetButtonPos(EScreen Kind);
+		// The recipe slot (0 to 19) under a point from the panel's top left, -1 if none.
+		MCUI_API int32 FindCell(FIntPoint Panel);
+		// The tab (an index into the shown tabs) under a point from the panel's top left, -1 if none.
+		MCUI_API int32 FindTab(FIntPoint Panel, int32 NumShown);
+		MCUI_API int32 GetPageCount(int32 Recipes);
+		// Whether a point from the panel's top left is on the panel or on one of its tabs (clicks there are the book's).
+		MCUI_API bool IsOnBook(FIntPoint Panel, int32 NumShown);
+		// Whether a point from the screen's top left is on the toggle button.
+		MCUI_API bool IsOnButton(EScreen Kind, FIntPoint FromScreen);
+
+		// What a left click on an open book does. Index is the tab shown (Tab) or the place in the list of recipes (Recipe).
+		enum class EClick : uint8 { None, Tab, Filter, Back, Forward, Search, Recipe };
+		struct FClick
+		{
+			EClick What = EClick::None;
+			int32 Index = -1;
+		};
+		// FromScreen is the mouse from the screen's top left (the screen already moved by Shift); Page counts from 0 and
+		// ListCount is how many recipes the tab, the search and the filter leave.
+		MCUI_API FClick ResolveClick(FIntPoint FromScreen, int32 NumShown, int32 Page, int32 ListCount);
+		// The search box takes what was typed (cut at MaxSearch) and a backspace takes the last letter off.
+		MCUI_API FString ApplyTyped(const FString& Text, const FString& Typed, bool bBackspace);
 	}
 
 	// How far the arrow and the flame are filled, 0 to 1, from the furnace (progress in the cook, burn left).

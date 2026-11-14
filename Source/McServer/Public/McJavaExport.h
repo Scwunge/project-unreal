@@ -1,7 +1,7 @@
 // A world of ours written back as a Java save, the way McJavaImport reads one (minecraft.wiki: "Java Edition level
 // format", "Region file format", "Chunk format"): blocks and biomes of every saved chunk in the current layout
 // (dimensions/<namespace>/<name>/region/r.X.Z.mca), their block entities and light, level.dat and the world generation
-// settings. Entities and the player are not written yet (see PLAN.md).
+// settings, the players (players/data) and the game rules.
 
 #pragma once
 
@@ -9,6 +9,7 @@
 
 class FMcChunk;
 class FMcNbt;
+struct FMcPlayerData;
 struct FMcLightRegion;
 
 namespace McJavaExport
@@ -23,6 +24,8 @@ namespace McJavaExport
 		int32 Failed = 0;
 		// Chunks whose entities went to the entities folder.
 		int32 EntityChunks = 0;
+		// Player files written (players/data/<uuid>.dat).
+		int32 Players = 0;
 		// Seconds spent in all, and of those lighting chunks.
 		double Seconds = 0.0;
 		double LightSeconds = 0.0;
@@ -31,6 +34,12 @@ namespace McJavaExport
 		double WriteSeconds = 0.0;
 		double RegionSeconds = 0.0;
 	};
+
+	// A player as the game's player file (Pos, Rotation, Inventory with the worn pieces under equipment, EnderItems,
+	// recipeBook, ...), from the port's player data. Id is the name the port knew them by (their file name there).
+	MCSERVER_API void MakePlayer(const FMcPlayerData& Player, FMcNbt& Out);
+	// The UUID text vanilla gives a player of that name in a world with no account servers ("OfflinePlayer:<name>", version 3).
+	MCSERVER_API FString OfflineUuid(const FString& Name);
 
 	// A chunk as the game's chunk NBT: sections with palettes of block states and biomes, packed as the game packs them.
 	MCSERVER_API void MakeChunk(const FMcChunk& Chunk, FMcNbt& Out, int64 LastUpdate = 0, const FMcLightRegion* Light = nullptr);

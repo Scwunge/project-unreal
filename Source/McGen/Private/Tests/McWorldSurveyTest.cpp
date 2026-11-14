@@ -711,6 +711,63 @@ bool FMcCaveBandsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcGrassProbeTest, "McClient.McGen.GrassProbe",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcGrassProbeTest::RunTest(const FString& Parameters)
+{
+	FMcNoiseSettings Settings;
+	if (!TestTrue(TEXT("setup"), FMcBiomeRegistry::Get().EnsureLoaded() && FMcBlockRegistry::Get().EnsureLoaded() && FMcBlockShapes::Get().EnsureLoaded() && FMcBlockTags::Get().EnsureLoaded() && FMcNoiseSettings::Load(TEXT("minecraft:overworld"), Settings)))
+	{
+		return false;
+	}
+	const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+	for (int32 Mode = 0; Mode < 3; ++Mode)
+	{
+		bMcCarversOff = Mode == 0;
+		bMcNoGrassDrop = Mode == 2;
+		int64 Grass = 0, GrassAir = 0, Dirt = 0, Total = 0;
+		TMap<int32, int64> Rel_;
+		for (const uint64 Seed : { 4242424242ull, 1001ull })
+		{
+			const FMcNoiseGenerator Generator(Settings, Seed, TEXT("minecraft:overworld"));
+			for (int32 Patch = 0; Patch < 25; ++Patch)
+			{
+				const FIntPoint Corner(-64 + (Patch % 5) * 32, -64 + (Patch / 5) * 32);
+				for (int32 Index = 0; Index < 16; ++Index)
+				{
+					FMcChunk Chunk(FIntPoint(Corner.X + Index % 4, Corner.Y + Index / 4), Settings.MinY, Settings.Height / 16);
+					Generator.Generate(Chunk);
+					for (int32 Y = 16; Y < 48; ++Y)
+					{
+						for (int32 Z = 0; Z < 16; ++Z)
+						{
+							for (int32 X = 0; X < 16; ++X)
+							{
+								const FMcStateId State = Chunk.GetBlock(X, Y, Z);
+								const FString Name = Blocks.GetBlockOf(State).Name.ToString();
+								++Total;
+								if (Name == TEXT("minecraft:grass_block"))
+								{
+									++Grass;
+									GrassAir += Blocks.GetBlockOf(Chunk.GetBlock(X, Y + 1, Z)).Name.ToString() == TEXT("minecraft:air") ? 1 : 0;
+									if (Mode == 0) { const int32 Rel = Y - FMath::FloorToInt32(Generator.GetPreliminarySurface(Chunk.GetPos().X * 16 + X, Chunk.GetPos().Y * 16 + Z)); Rel_.FindOrAdd(FMath::Clamp(FMath::FloorToInt32(Rel / 4.0), -12, 8))++; }
+								}
+								else if (Name == TEXT("minecraft:dirt")) { ++Dirt; }
+							}
+						}
+					}
+				}
+			}
+		}
+		for (const TPair<int32, int64>& P : Rel_) { AddInfo(FString::Printf(TEXT("GRASSREL %d..%d : %lld"), P.Key * 4, P.Key * 4 + 3, P.Value)); }
+		AddInfo(FString::Printf(TEXT("GRASSPROBE mode %d (0 no carvers, 1 carvers, 2 carvers without grass drop): grass %lld (air above %lld) dirt %lld of %lld"), Mode, Grass, GrassAir, Dirt, Total));
+	}
+	bMcCarversOff = false;
+	bMcNoGrassDrop = false;
+	return true;
+}
+
 // Sweeps aquifer parameters (console variables) and prints the bands y -8 to 47 for each: 1 seed, 25 patches.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcAquiferSweepTest, "McClient.McGen.AquiferSweep",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1121,7 +1178,7 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		Features.SetHeightSource([Generator](int32 X, int32 Z) { return Generator->FindSurfaceY(X, Z) + 1; });
 		Features.SetBiomeSource([Generator](int32 X, int32 Y, int32 Z) { return Generator->GetBiome(X, Y, Z); });
 		TMap<FString, TArray<int64>> Bands;
-		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases;
+		TMap<FString, int64> PerBiome, Columns, LavaAbove, UnderCeiling, StemBases, Floors, NyliumFloors, BaseNeighbours;
 		bMcFeatureStatsOn = true;
 		McFeatureStats.Reset();
 		for (int32 PatchZ = 0; PatchZ < 8; ++PatchZ)
@@ -1176,9 +1233,28 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 									{
 										++UnderCeiling.FindOrAdd(Biome);
 									}
+									if ((Name == TEXT("minecraft:air") || Name == TEXT("minecraft:cave_air")) && !BelowName.IsEmpty() && BelowName != TEXT("minecraft:air") && BelowName != TEXT("minecraft:cave_air")
+										&& BelowName != TEXT("minecraft:bedrock") && BelowName != TEXT("minecraft:lava") && BelowName != TEXT("minecraft:water"))
+									{
+										++Floors.FindOrAdd(Biome);
+										if (BelowName == TEXT("minecraft:crimson_nylium"))
+										{
+											++NyliumFloors.FindOrAdd(Biome);
+										}
+									}
 									if (Name == TEXT("minecraft:crimson_stem") && BelowName != Name)
 									{
 										++StemBases.FindOrAdd(Biome);
+										if (LX > 0 && LX < 15 && LZ > 0 && LZ < 15)
+										{
+											int32 Neighbours = 0;
+											const int32 Offsets[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+											for (const int32* Offset : Offsets)
+											{
+												Neighbours += Blocks.GetBlockOf(Chunk.GetBlock(LX + Offset[0], Y, LZ + Offset[1])).Name == TEXT("minecraft:crimson_stem") ? 1 : 0;
+											}
+											++BaseNeighbours.FindOrAdd(FString::Printf(TEXT("%s %d"), *Biome, Neighbours));
+										}
 									}
 									BelowName = Name;
 									TArray<int64>& Band = Bands.FindOrAdd(Name);
@@ -1218,6 +1294,18 @@ static bool RunNetherStats(FAutomationTestBase& Test, bool bNoDecor)
 		for (const TPair<FString, int64>& Pair : LavaAbove)
 		{
 			Test.AddInfo(FString::Printf(TEXT("NSTAT %d D %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : BaseNeighbours)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d J %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : Floors)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d H %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
+		}
+		for (const TPair<FString, int64>& Pair : NyliumFloors)
+		{
+			Test.AddInfo(FString::Printf(TEXT("NSTAT %d I %s %lld"), SeedIndex, *Pair.Key, Pair.Value));
 		}
 		for (const TPair<FString, int64>& Pair : StemBases)
 		{

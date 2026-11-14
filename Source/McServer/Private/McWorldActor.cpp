@@ -264,7 +264,7 @@ void AMcWorldActor::BeginPlay()
 		{
 			SetDayTime(Level.DayTime);
 		}
-		const FString* DaylightRule = Level.GameRules.Find(TEXT("doDaylightCycle"));
+		const FString* DaylightRule = Level.GameRules.Find(TEXT("advance_time"));
 		bTimeFrozen = DaylightRule && DaylightRule->Equals(TEXT("false"), ESearchCase::IgnoreCase);
 	}
 	if (bTimeArg)
@@ -565,7 +565,7 @@ void AMcWorldActor::BeginPlay()
 void AMcWorldActor::SetGameRule(const FString& Rule, const FString& Value)
 {
 	Level.GameRules.Add(Rule, Value);
-	if (Rule == TEXT("doDaylightCycle"))
+	if (Rule == TEXT("advance_time"))
 	{
 		bTimeFrozen = Value.Equals(TEXT("false"), ESearchCase::IgnoreCase);
 	}
@@ -597,7 +597,7 @@ void AMcWorldActor::StartStorage(const FString& Name)
 	Storage = MakeShared<FMcWorldStorage, ESPMode::ThreadSafe>(WorldDir / McWorldSave::GetDimensionFolder(Dimension));
 	// A new world is on disk from the start, so a crash before the first autosave still leaves one to open.
 	Level.DayTime = DayTicks;
-	Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+	Level.GameRules.Add(TEXT("advance_time"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 	if (!bSecondary && !McWorldSave::SaveLevel(WorldDir, Level))
 	{
 		UE_LOG(LogMcServer, Error, TEXT("Can't write the level file of world %s; chunks will still be saved."), *Name);
@@ -1420,7 +1420,7 @@ void AMcWorldActor::SaveWorld()
 			{
 				Level.DayTime = DayTicks;
 				Level.Dimension = Dimension;
-				Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+				Level.GameRules.Add(TEXT("advance_time"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 				McWorldSave::SaveLevel(WorldDir, Level);
 			}
 			break;
@@ -1442,7 +1442,7 @@ void AMcWorldActor::BeginAutosave()
 	{
 		Level.DayTime = DayTicks;
 		Level.Dimension = Dimension;
-		Level.GameRules.Add(TEXT("doDaylightCycle"), bTimeFrozen ? TEXT("false") : TEXT("true"));
+		Level.GameRules.Add(TEXT("advance_time"), bTimeFrozen ? TEXT("false") : TEXT("true"));
 		McWorldSave::SaveLevel(WorldDir, Level);
 		McWorldSave::SaveMaps(WorldDir);
 	}

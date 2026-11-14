@@ -965,7 +965,7 @@ void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
 	DrawIcon(Icon, static_cast<float>(Origin.X), static_cast<float>(Origin.Y));
 }
 
-void AMcHUD::DrawIcon(const FIcon& Icon, float X, float Y)
+void AMcHUD::DrawIcon(const FIcon& Icon, float X, float Y, float IconScale)
 {
 	for (const FIconTriangle& Triangle : Icon.Triangles)
 	{
@@ -974,7 +974,7 @@ void AMcHUD::DrawIcon(const FIcon& Icon, float X, float Y)
 			continue;
 		}
 		FCanvasTriangleItem Item(
-			(FVector2D(X, Y) + Triangle.Positions[0]) * Scale, (FVector2D(X, Y) + Triangle.Positions[1]) * Scale, (FVector2D(X, Y) + Triangle.Positions[2]) * Scale,
+			(FVector2D(X, Y) + Triangle.Positions[0] * IconScale) * Scale, (FVector2D(X, Y) + Triangle.Positions[1] * IconScale) * Scale, (FVector2D(X, Y) + Triangle.Positions[2] * IconScale) * Scale,
 			Triangle.UVs[0], Triangle.UVs[1], Triangle.UVs[2], Triangle.Texture->GetResource());
 		Item.SetColor(Triangle.Color);
 		Item.BlendMode = SE_BLEND_Translucent;

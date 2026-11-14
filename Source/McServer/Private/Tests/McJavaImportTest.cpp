@@ -856,6 +856,14 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	Writer.Str(TEXT("id"), TEXT("minecraft:diamond"));
 	Writer.Int(TEXT("count"), 9);
 	Writer.End();
+	// The recipe book as the game keeps it: the unlocked recipes, and those of them not yet shown.
+	Writer.Compound(TEXT("recipeBook"));
+	Writer.List(TEXT("recipes"), 8, 2);
+	Writer.String(TEXT("minecraft:stick"));
+	Writer.String(TEXT("minecraft:furnace"));
+	Writer.List(TEXT("toBeDisplayed"), 8, 1);
+	Writer.String(TEXT("minecraft:furnace"));
+	Writer.End();
 	Writer.End();
 	FMcNbt Root;
 	if (!TestTrue(TEXT("the player parses"), FMcNbt::Parse(Writer.Bytes, Root)))
@@ -874,6 +882,8 @@ bool FMcJavaImportPlayerTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("selected slot"), Player.SelectedSlot, 4);
 	TestEqual(TEXT("food"), Player.Stats.FindRef(TEXT("food")), 12.0);
 	TestEqual(TEXT("experience level"), Player.Stats.FindRef(TEXT("xp_level")), 7.0);
+	TestEqual(TEXT("a recipe already shown"), Player.Stats.FindRef(TEXT("recipe:minecraft:stick")), 1.0);
+	TestEqual(TEXT("a recipe still to be shown"), Player.Stats.FindRef(TEXT("recipe:minecraft:furnace")), 2.0);
 	const auto Count = [&Player](int32 Slot, const TCHAR* Item) -> int32
 	{
 		for (const FMcSavedSlot& Saved : Player.Slots)

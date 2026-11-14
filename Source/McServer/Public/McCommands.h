@@ -47,6 +47,9 @@ struct FMcWorldBorderState
 };
 
 // What a command can do. Players are named as they joined; names match ignoring case.
+class FMcNbt;
+class FMcEntity;
+
 class MCSERVER_API IMcCommandTarget
 {
 public:
@@ -94,6 +97,20 @@ public:
 	virtual void SetBlock(const FIntVector& Pos, FMcStateId State) = 0;
 	// A new mob of the kind at the feet position; false if there is nowhere to put it.
 	virtual bool Summon(FName Kind, const FVector& Feet) = 0;
+	// The same with the data tags of /summon <entity> <pos> {nbt} (Age, NoAI, Silent, CustomName, Rotation, Invulnerable, Tags, equipment...):
+	// the game's summon applies McCommands::ApplyEntityTag to what it made.
+	virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) { return Summon(Kind, Feet); }
+	// The ids of the entities of a kind (None for any kind but a player) within MaxDistance of Origin (0 for no limit), nearest first, at most Limit (0 for all).
+	virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const { return {}; }
+	// Puts an item into a slot of the entity by the game's slot name (saddle, armor.head, weapon.mainhand...); false if it has no such slot.
+	virtual int32 SetEntitySlot(int32 EntityId, const FString& Slot, FName Item, int32 Count) { return 0; }
+	// /ride: puts a rider (a player by name, or when RiderPlayer is empty the entity RiderEntity) on a vehicle entity. 0 started riding, 1 it is
+	// already riding something (OutOther the name of that vehicle), 2 the vehicle is the rider or one of its passengers, 3 it could not.
+	virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) { return 3; }
+	// Gets the rider off what it rides; false if it rides nothing (OutVehicleName the vehicle it left).
+	virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) { return false; }
+	// The name the game shows for the entity (its custom name, else its kind's).
+	virtual FString GetEntityName(int32 EntityId) const { return FString(); }
 	// /particle: Count particles of the named kind ("minecraft:heart") at Pos, spread by Delta, at Speed. False if nobody could see it.
 	virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) { return false; }
 
@@ -127,6 +144,9 @@ public:
 	// Grants or revokes an advancement for a player (showing its toast on a grant): -1 if there is no such advancement,
 	// 0 if it changed nothing (already had it, or hadn't), 1 if it did. OutTitle is its name as the game's replies show it.
 	virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) { return -1; }
+	// Recipe book: gives (bGrant) or takes a recipe ("minecraft:stick") or every one ("*") of a player; how many changed.
+	// -1 if there is no such recipe, OutUnknown being the id as the reply shows it.
+	virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) { return -1; }
 	// Takes one (every one, if None) from the player; how many there were.
 	virtual int32 ClearEffects(const FString& Player, FName Effect) = 0;
 
@@ -173,6 +193,12 @@ public:
 
 namespace McCommands
 {
+	// What a summon's data tag does to the entity made: Rotation, Silent, Tags, and for a mob Age (negative: a baby), NoAI, Invulnerable,
+	// CustomName and what it wears and holds (equipment, ArmorItems, HandItems).
+	MCSERVER_API void ApplyEntityTag(FMcEntity& Entity, const FMcNbt& Tag);
+	// Puts an item (a count of zero or None empties it) in the entity's slot by the game's name: weapon, weapon.mainhand, armor.head, armor.chest,
+	// armor.legs, armor.feet, saddle. 1 if it did, 0 for a slot it has none of, 2 for one that refuses the item (a baby takes no saddle).
+	MCSERVER_API int32 SetEntitySlot(FMcEntity& Entity, const FString& Slot, FName Item, int32 Count);
 	// The world border /worldborder sets (the game reads it to keep players inside).
 	MCSERVER_API FMcWorldBorderState& GetWorldBorder();
 	// The custom boss bars (/bossbar) a player is shown: one line each, "title<TAB>fraction<TAB>color<TAB>style", in id order.

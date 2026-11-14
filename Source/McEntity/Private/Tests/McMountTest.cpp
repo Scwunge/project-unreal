@@ -30,8 +30,8 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	FMcBlockWorld World{FMcDimensionType()};
-	for (int32 Z = -2; Z <= 6; ++Z) { for (int32 X = -2; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
-	for (int32 X = -30; X < 30; ++X) { for (int32 Z = -30; Z < 100; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:stone")).Get(0)); } }
+	for (int32 Z = -2; Z <= 8; ++Z) { for (int32 X = -2; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+	for (int32 X = -30; X < 30; ++X) { for (int32 Z = -30; Z < 130; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:stone")).Get(0)); } }
 	FMcEntityManager Manager(World);
 	const auto MakeHorse = [&](const FMcMobType& Type, double Z)
 	{
@@ -190,6 +190,21 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 		TestTrue(*FString::Printf(TEXT("the weakest dash steps 0.8, got %f"), Camel->Body.Position.Z - CamelLast), FMath::Abs((Camel->Body.Position.Z - CamelLast) - 0.8) < 0.03);
 		TestEqual(TEXT("and the next must wait 55 ticks"), CamelState.DashCooldown, 55);
+	}
+
+	// A camel lies down and gets up by itself (after 400 ticks, 1 in 190 to sit, 1 in 39 to stand), and a rider makes it stand.
+	if (const FMcMobType* SitType = FMcMobType::Find(FName(TEXT("minecraft:camel"))))
+	{
+		FMcMob* Sitter = MakeHorse(*SitType, 120.5);
+		FMcMountState& SitState = McMount::Ensure(*Sitter);
+		for (int32 Tick = 0; Tick < 399; ++Tick) { Manager.Tick(); }
+		TestFalse(TEXT("a camel does not sit before 400 ticks"), SitState.bSitting);
+		bool bSat = false;
+		for (int32 Tick = 0; Tick < 6000 && !bSat; ++Tick) { Manager.Tick(); bSat = SitState.bSitting; }
+		TestTrue(TEXT("it sits down in the end"), bSat);
+		SitState.RiderId = 6;
+		Manager.Tick();
+		TestFalse(TEXT("a rider makes it stand"), SitState.bSitting);
 	}
 
 	// A camel takes a second rider; when the first gets off the second steers.

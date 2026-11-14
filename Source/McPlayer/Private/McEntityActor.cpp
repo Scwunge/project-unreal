@@ -10,6 +10,9 @@
 #include "EngineUtils.h"
 #include "McDecorEntity.h"
 #include "McMob.h"
+#include "McMount.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "McTnt.h"
 #include "McPot.h"
 #include "McVehicle.h"
@@ -173,9 +176,44 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		bOffering = Mob.OfferTicks > 0;
 		HeldItem = Mob.HeldItem;
 		ArmPose = Mob.ArmPose;
+		bool bDevSaddled = false;
+#if !UE_BUILD_SHIPPING
+		// Development: -McSaddled draws every camel saddled (a command to saddle one does not exist yet), for shots.
+		bDevSaddled = FParse::Param(FCommandLine::Get(), TEXT("McSaddled"));
+#endif
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && (bDevSaddled || (Entity.Mount.IsValid() && Entity.Mount->bSaddled)))
+		{
+			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
+			ArmPose = 1;
+		}
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid())
+		{
+			const FMcMountState& Camel = *Entity.Mount;
+			// The 52 ticks after it sat or stood are the sit-down (the stand-up run backwards) or the stand-up; a dash is 44 ticks from its start.
+			const bool bMoving = Camel.bPoseChanged && Camel.PoseTicks < 52;
+			if (Camel.bSitting && !bMoving)
+			{
+				// Lying down: pose 2, or 3 with its saddle on.
+				ArmPose |= 2;
+			}
+			if (bMoving)
+			{
+				ArmPose |= (Camel.bSitting ? 51 - Camel.PoseTicks + 1 : Camel.PoseTicks + 1) << 16;
+			}
+			if (Camel.DashCooldown >= 12 && Camel.DashCooldown <= 55)
+			{
+				ArmPose |= (55 - Camel.DashCooldown + 1) << 23;
+			}
+		}
+#if !UE_BUILD_SHIPPING
+		// Development: -McBaby draws every camel young, for shots (no command makes one yet).
+		const bool bDevBaby = FParse::Param(FCommandLine::Get(), TEXT("McBaby")) && (Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk"));
+#else
+		const bool bDevBaby = false;
+#endif
 		if (Kind != FMcVillager::StaticType())
 		{
-			bBaby = Mob.IsYoung();
+			bBaby = Mob.IsYoung() || bDevBaby;
 		}
 		// The game's swell runs over the fuse less 2 ticks.
 		if (Kind == FMcVillager::StaticType())

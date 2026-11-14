@@ -1,4 +1,6 @@
 #include "McWorldSave.h"
+#include "McJavaExport.h"
+#include "McGameRules.h"
 #include "McMapStore.h"
 #include "McServer.h"
 #include "Dom/JsonObject.h"
@@ -19,7 +21,7 @@ bool FMcLevelData::operator==(const FMcLevelData& Other) const
 bool FMcPlayerData::operator==(const FMcPlayerData& Other) const
 {
 	return Position == Other.Position && Yaw == Other.Yaw && Pitch == Other.Pitch && Dimension == Other.Dimension
-		&& bFlying == Other.bFlying && bHasSurvival == Other.bHasSurvival && bCreative == Other.bCreative
+		&& bFlying == Other.bFlying && Uuid == Other.Uuid && bHasSurvival == Other.bHasSurvival && bCreative == Other.bCreative
 		&& SelectedSlot == Other.SelectedSlot && Stats.OrderIndependentCompareEqual(Other.Stats) && Slots == Other.Slots;
 }
 
@@ -203,10 +205,11 @@ bool McWorldSave::LoadLevel(const FString& WorldDir, FMcLevelData& OutLevel)
 	const TSharedPtr<FJsonObject>* Rules = nullptr;
 	if (Object->TryGetObjectField(TEXT("gameRules"), Rules))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*Rules)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Rule : (*Rules)->Values)
 		{
 			Level.GameRules.Add(Rule.Key, Rule.Value->AsString());
 		}
+		FMcGameRules::MigrateLegacyNames(Level.GameRules);
 	}
 	OutLevel = MoveTemp(Level);
 	return true;
@@ -226,6 +229,10 @@ bool McWorldSave::SavePlayer(const FString& WorldDir, const FString& PlayerId, c
 	Object->SetNumberField(TEXT("pitch"), Player.Pitch);
 	Object->SetStringField(TEXT("dimension"), Player.Dimension);
 	Object->SetBoolField(TEXT("flying"), Player.bFlying);
+	if (!Player.Uuid.IsEmpty())
+	{
+		Object->SetStringField(TEXT("uuid"), Player.Uuid);
+	}
 	if (Player.bHasSurvival)
 	{
 		Object->SetBoolField(TEXT("creative"), Player.bCreative);
@@ -270,12 +277,18 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	{
 		return false;
 	}
-	// A world imported from a Java save holds the player it had as "imported-player"; whoever has no file of their own takes it.
+	// The player's own file by name; else the one a Java world was imported with under the UUID the game gives that name when it is not
+	// signed in (a LAN or offline join); else the player the world was last played by ("imported-player"), which whoever has no file takes.
 	FString File = WorldDir / TEXT("playerdata") / Id + TEXT(".json");
 	if (!IFileManager::Get().FileExists(*File))
 	{
+		const FString Offline = WorldDir / TEXT("playerdata") / SanitizeName(McJavaExport::OfflineUuid(PlayerId)) + TEXT(".json");
 		const FString Imported = WorldDir / TEXT("playerdata") / TEXT("imported-player.json");
-		if (IFileManager::Get().FileExists(*Imported))
+		if (IFileManager::Get().FileExists(*Offline))
+		{
+			File = Offline;
+		}
+		else if (IFileManager::Get().FileExists(*Imported))
 		{
 			File = Imported;
 		}
@@ -304,6 +317,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 	}
 	Object->TryGetStringField(TEXT("dimension"), Player.Dimension);
 	Object->TryGetBoolField(TEXT("flying"), Player.bFlying);
+	Object->TryGetStringField(TEXT("uuid"), Player.Uuid);
 	const TSharedPtr<FJsonObject>* Stats = nullptr;
 	const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
 	if (Object->TryGetObjectField(TEXT("stats"), Stats) && Object->TryGetArrayField(TEXT("inventory"), Items))
@@ -314,7 +328,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 		{
 			Player.SelectedSlot = FMath::Clamp(FMath::RoundToInt32(Value), 0, 8);
 		}
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Stats)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : (*Stats)->Values)
 		{
 			double Number = 0.0;
 			// A number that isn't one (NaN from a hand-edited file) would poison the health bar.
@@ -340,7 +354,7 @@ bool McWorldSave::LoadPlayer(const FString& WorldDir, const FString& PlayerId, F
 			const TSharedPtr<FJsonObject>* Components = nullptr;
 			if ((*Entry)->TryGetObjectField(TEXT("components"), Components))
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Component : (*Components)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Component : (*Components)->Values)
 				{
 					Saved.Stack.Set(FName(*Component.Key), Component.Value);
 				}

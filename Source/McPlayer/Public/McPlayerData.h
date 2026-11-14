@@ -164,6 +164,13 @@ public:
 	TSet<FName> Advancements;
 	// Server: the criteria met of advancements not yet made ("minecraft:story/x/criterion"), kept in the save.
 	TSet<FName> Criteria;
+	// When each criterion was met, in Unix seconds, by the same "<advancement>/<criterion>" name (the game keeps a date for each);
+	// kept in the save. Criteria of an imported world keep the dates the game gave them.
+	TMap<FName, double> CriteriaTimes;
+	// Server: the recipes unlocked ("minecraft:stick"), and those among them not yet shown to the player (vanilla's
+	// recipeBook "recipes" and "toBeDisplayed"); kept in the save.
+	TSet<FName> Recipes;
+	TSet<FName> RecipesToDisplay;
 
 	const FMcItemStack& GetSelected() const { return Inventory->Get(SelectedSlot); }
 	// The selected slot after turning the wheel by Steps (positive is down), wrapping round the hotbar.
@@ -290,12 +297,18 @@ public:
 		uint32 HeadingRgb = 0xFFFF00;
 		FString Title;
 		FName Icon;
+		// A recipe toast: the result items of the recipes it tells of (Heading and Title are its two lines).
+		TArray<FName> Items;
 		double Time = 0.0;  // FPlatformTime::Seconds when it arrived
 		bool bInSounded = false;
 		bool bOutSounded = false;
 	};
 	static TArray<FToast>& GetToasts();
 	static void ShowToast(const FString& Heading, uint32 HeadingRgb, const FString& Title, FName Icon);
+	// The "New Recipe(s) Unlocked!" toast; one that is still showing takes the item as one more of its recipes.
+	static void ShowRecipeToast(FName Item);
+	// Server: shows this player the recipe toast.
+	void ServerRecipeToast(FName Item);
 	// Server: shows this player a toast.
 	void ServerToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	// Server: shows this player the overlay message.
@@ -355,6 +368,8 @@ protected:
 	void ClientOverlay(const FString& Text, bool bRainbow);
 	UFUNCTION(Client, Reliable)
 	void ClientTitle(uint8 Kind, const FString& Text, int32 FadeIn, int32 Stay, int32 FadeOut);
+	UFUNCTION(Client, Reliable)
+	void ClientRecipeToast(FName Item);
 	UFUNCTION(Client, Reliable)
 	void ClientToast(const FString& Heading, int32 HeadingRgb, const FString& Title, FName Icon);
 	UFUNCTION(Server, Reliable)

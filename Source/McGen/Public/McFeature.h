@@ -34,6 +34,10 @@ struct FMcFeatureContext
 	const FMcPlacedFeature* TopLevel = nullptr;
 };
 
+// Profiling aid for serial runs: when set, Decorate adds the seconds spent in the structure stage ("structures") and in
+// each placed feature (its StatId) to this map. Null normally; not thread-safe.
+MCGEN_API extern TMap<FString, double>* GMcDecorateProfile;
+
 class MCGEN_API FMcFeature
 {
 public:

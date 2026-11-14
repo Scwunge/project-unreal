@@ -41,6 +41,12 @@ public:
 	// Reads a gzip (or, if it isn't gzip, raw) NBT file; false if it can't be read or is malformed.
 	static bool LoadFile(const FString& Path, FMcNbt& Out);
 	static bool Parse(TArrayView<const uint8> Bytes, FMcNbt& Out);
+	// Reads the text form a command takes ({NoAI:1b,Tags:["a"],Rotation:[90f,0f]}): a compound, list, array, string or number with the
+	// game's suffixes (b s l f d; true and false are bytes). False if it is not one whole value, with the place it stopped in OutError.
+	// One value from the start of Text (leading blanks skipped); OutEnd is where it stopped (where the game's error points when it failed, with its
+	// words in OutMessage), so what follows can be read by the caller.
+	static bool ReadSnbt(const FString& Text, FMcNbt& Out, int32& OutEnd, FString& OutMessage);
+	static bool ParseSnbt(const FString& Text, FMcNbt& Out, int32* OutError = nullptr);
 	// Writes a compound as an uncompressed NBT file (an unnamed root), so what was read can be kept as it was. An empty
 	// list has lost its element type (written as end).
 	void WriteRoot(TArray<uint8>& Out) const;

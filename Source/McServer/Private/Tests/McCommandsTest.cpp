@@ -1,4 +1,7 @@
 #include "McCommands.h"
+#include "McMount.h"
+#include "McMob.h"
+#include "McNbt.h"
 #include "McLang.h"
 #include "McRecipe.h"
 #include "Misc/AutomationTest.h"
@@ -150,6 +153,16 @@ namespace
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
+		TArray<FMcNbt> SummonedTags;
+		// /ride: the stub knows entity 7 (a pig) and 8 (a horse), and what Ride answers.
+		int32 RideAnswer = 0;
+		TArray<FString> Rides;
+		FString RidingNow;
+		virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const override { return Kind == TEXT("minecraft:horse") ? TArray<int32>{ 8 } : TArray<int32>{ 7 }; }
+		virtual FString GetEntityName(int32 EntityId) const override { return EntityId == 8 ? TEXT("Horse") : TEXT("Pig"); }
+		virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) override { Rides.Add(FString::Printf(TEXT("%s/%d/%d"), *RiderPlayer, RiderEntity, VehicleEntity)); OutOther = TEXT("Horse"); return RideAnswer; }
+		virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) override { OutVehicleName = RidingNow; return !RidingNow.IsEmpty(); }
+		virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) override { SummonedTags.Add(Tag); return Summon(Kind, Feet); }
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override { OutLevel = XpLevel; OutPoints = XpPoints; }
 		virtual void AddXp(const FString& Player, int32 Amount, bool bLevels) override { (bLevels ? XpLevel : XpPoints) += Amount; }
 		virtual bool SetXp(const FString& Player, int32 Amount, bool bLevels) override
@@ -176,6 +189,26 @@ namespace
 			}
 			Effects.Add(Effect, TPair<int32, int32>(Amplifier, DurationTicks));
 			return true;
+		}
+		TSet<FString> Recipes;
+		virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) override
+		{
+			if (Id != TEXT("*") && Id != TEXT("minecraft:stick"))
+			{
+				OutUnknown = Id;
+				return -1;
+			}
+			const FString Key = Player + TEXT("/minecraft:stick");
+			if (bGrant)
+			{
+				if (Recipes.Contains(Key))
+				{
+					return 0;
+				}
+				Recipes.Add(Key);
+				return 1;
+			}
+			return Recipes.Remove(Key);
 		}
 		TSet<FString> Advancements;
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
@@ -418,16 +451,16 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("hollow empties the middle"), Target.GetBlock(FIntVector(1, 6, 1), Got) && Registry.IsAir(Got));
 		TestTrue(TEXT("fill replace a filter"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 dirt replace stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("26")));
 		TestTrue(TEXT("fill too big"), AnyError(McCommands::HandleChat(TEXT("/fill 0 0 0 200 15 200 dirt"), Op(TEXT("Steve")), Target)));
-		McCommands::HandleChat(TEXT("/gamerule commandModificationBlockLimit 8"), Op(TEXT("Steve")), Target);
+		McCommands::HandleChat(TEXT("/gamerule max_block_modifications 8"), Op(TEXT("Steve")), Target);
 		TestTrue(TEXT("the limit is the rule's"), AnyError(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone"), Op(TEXT("Steve")), Target)));
 		(void)Dirt;
 	}
 
 	// /gamerule
-	TestTrue(TEXT("gamerule query"), Joined(McCommands::HandleChat(TEXT("/gamerule keepInventory"), Op(TEXT("Steve")), Target)).Contains(TEXT("false")));
-	TestFalse(TEXT("gamerule set"), AnyError(McCommands::HandleChat(TEXT("/gamerule keepInventory true"), Op(TEXT("Steve")), Target)));
-	TestEqual(TEXT("gamerule kept"), Target.GetGameRule(TEXT("keepInventory")), FString(TEXT("true")));
-	TestTrue(TEXT("gamerule wrong type"), AnyError(McCommands::HandleChat(TEXT("/gamerule randomTickSpeed fast"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("gamerule query"), Joined(McCommands::HandleChat(TEXT("/gamerule keep_inventory"), Op(TEXT("Steve")), Target)).Contains(TEXT("false")));
+	TestFalse(TEXT("gamerule set"), AnyError(McCommands::HandleChat(TEXT("/gamerule keep_inventory true"), Op(TEXT("Steve")), Target)));
+	TestEqual(TEXT("gamerule kept"), Target.GetGameRule(TEXT("keep_inventory")), FString(TEXT("true")));
+	TestTrue(TEXT("gamerule wrong type"), AnyError(McCommands::HandleChat(TEXT("/gamerule random_tick_speed fast"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("gamerule unknown"), AnyError(McCommands::HandleChat(TEXT("/gamerule flying true"), Op(TEXT("Steve")), Target)));
 
 	// /difficulty and /summon
@@ -437,6 +470,87 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("summon a pig"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("summoned where asked"), Target.Summoned.Num() == 1 && Target.Summoned[0].Value == FVector(3.5, 4, 5.5));
 	TestTrue(TEXT("summon nothing"), AnyError(McCommands::HandleChat(TEXT("/summon dragon_of_doom"), Op(TEXT("Steve")), Target)));
+	// /ride: the replies of a ref run (cmd_ride.txt).
+	{
+		const auto Reply = [&](const TCHAR* Text) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Text, Op(TEXT("Steve")), Target); return Replies.Num() > 0 ? Replies[0].Text : FString(); };
+		Target.RideAnswer = 0;
+		TestEqual(TEXT("a mob mounts a mob"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Pig started riding Horse")));
+		TestEqual(TEXT("it went to the target as entities"), Target.Rides.Last(), FString(TEXT("/7/8")));
+		TestEqual(TEXT("a player mounts"), Reply(TEXT("/ride @s mount @n[type=horse]")), FString(TEXT("Steve started riding Horse")));
+		TestEqual(TEXT("as a player"), Target.Rides.Last(), FString(TEXT("Steve/0/8")));
+		Target.RideAnswer = 1;
+		TestEqual(TEXT("already riding names what it rides"), Reply(TEXT("/ride @s mount @n[type=pig]")), FString(TEXT("Steve is already riding Horse")));
+		Target.RideAnswer = 2;
+		TestEqual(TEXT("a loop"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Can't mount entity on itself or any of its passengers")));
+		Target.RideAnswer = 3;
+		TestEqual(TEXT("a failure"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Pig couldn't start riding Horse")));
+		TestEqual(TEXT("players can't be ridden"), Reply(TEXT("/ride @n[type=pig] mount @s")), FString(TEXT("Players can't be ridden")));
+		TestEqual(TEXT("one entity only"), Reply(TEXT("/ride @s mount @a")), FString(TEXT("Only one entity is allowed, but the provided selector allows more than one")));
+		TestEqual(TEXT("one entity only for the rider too"), Reply(TEXT("/ride @e[type=pig] mount @s")), FString(TEXT("Only one entity is allowed, but the provided selector allows more than one")));
+		TestEqual(TEXT("not riding"), Reply(TEXT("/ride @s dismount")), FString(TEXT("Steve is not riding any vehicle")));
+		Target.RidingNow = TEXT("Horse");
+		TestEqual(TEXT("dismount"), Reply(TEXT("/ride @s dismount")), FString(TEXT("Steve stopped riding Horse")));
+		TestTrue(TEXT("incomplete"), AnyError(McCommands::HandleChat(TEXT("/ride @s mount"), Op(TEXT("Steve")), Target)));
+		TestTrue(TEXT("a wrong word"), AnyError(McCommands::HandleChat(TEXT("/ride @s fly"), Op(TEXT("Steve")), Target)));
+	}
+	// /summon with a data tag: the tag reaches the target as the game's text form reads it.
+	Target.Summoned.Reset();
+	TestFalse(TEXT("summon with a tag"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:1b,CustomName:\"Pig Latin\",Age:-24000,Tags:[\"a\",\"b\"],Rotation:[90f,0f],Silent:true}"), Op(TEXT("Steve")), Target)));
+	if (TestEqual(TEXT("the tag came with it"), Target.SummonedTags.Num(), 1) && Target.Summoned.Num() == 1)
+	{
+		const FMcNbt& Tag = Target.SummonedTags[0];
+		TestEqual(TEXT("where"), Target.Summoned[0].Value, FVector(3.5, 4, 5.5));
+		TestEqual(TEXT("NoAI is a byte"), Tag.GetInt(TEXT("NoAI")), static_cast<int64>(1));
+		TestEqual(TEXT("a name with a space"), Tag.GetString(TEXT("CustomName")), FString(TEXT("Pig Latin")));
+		TestEqual(TEXT("Age"), Tag.GetInt(TEXT("Age")), static_cast<int64>(-24000));
+		TestEqual(TEXT("true is a byte"), Tag.GetInt(TEXT("Silent")), static_cast<int64>(1));
+		const FMcNbt* Rotation = Tag.Find(TEXT("Rotation"));
+		TestTrue(TEXT("rotation: two floats"), Rotation && Rotation->Num() == 2 && Rotation->Values[0].Type == FMcNbt::EType::Float && FMath::IsNearlyEqual(Rotation->Values[0].GetReal(), 90.0));
+		const FMcNbt* Tags = Tag.Find(TEXT("Tags"));
+		TestTrue(TEXT("tags: two strings"), Tags && Tags->Num() == 2 && Tags->Values[1].String == TEXT("b"));
+	}
+	TestTrue(TEXT("a tag that doesn't parse"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("a tag needs the position"), AnyError(McCommands::HandleChat(TEXT("/summon pig {NoAI:1b}"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("text after the tag"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:1b} extra"), Op(TEXT("Steve")), Target)));
+	{
+		FMcNbt Parsed;
+		TestTrue(TEXT("every number suffix"), FMcNbt::ParseSnbt(TEXT("{a:1b,b:2s,c:3,d:4L,e:5.5f,f:6.5d,g:7.5,h:[I;1,2],i:'x\\'y',j:{},k:[]}"), Parsed));
+		TestEqual(TEXT("short"), static_cast<int32>(Parsed.Find(TEXT("b"))->Type), static_cast<int32>(FMcNbt::EType::Short));
+		TestEqual(TEXT("int"), static_cast<int32>(Parsed.Find(TEXT("c"))->Type), static_cast<int32>(FMcNbt::EType::Int));
+		TestEqual(TEXT("long"), static_cast<int32>(Parsed.Find(TEXT("d"))->Type), static_cast<int32>(FMcNbt::EType::Long));
+		TestEqual(TEXT("a plain real is a double"), static_cast<int32>(Parsed.Find(TEXT("g"))->Type), static_cast<int32>(FMcNbt::EType::Double));
+		TestEqual(TEXT("an int array"), static_cast<int32>(Parsed.Find(TEXT("h"))->Type), static_cast<int32>(FMcNbt::EType::IntArray));
+		TestEqual(TEXT("an escaped quote"), Parsed.GetString(TEXT("i")), FString(TEXT("x'y")));
+		TestFalse(TEXT("an unclosed list"), FMcNbt::ParseSnbt(TEXT("{a:[1,2}"), Parsed));
+		TestFalse(TEXT("a value after the value"), FMcNbt::ParseSnbt(TEXT("{} {}"), Parsed));
+	}
+	// What the tag does to a mob: the common tags, and the saddle.
+	{
+		const FMcMobType* CamelType = FMcMobType::Find(TEXT("minecraft:camel"));
+		if (TestNotNull(TEXT("camel type"), CamelType))
+		{
+			FMcMob Camel(*CamelType);
+			FMcNbt Tag;
+			TestTrue(TEXT("tag parses"), FMcNbt::ParseSnbt(TEXT("{NoAI:1b,Invulnerable:1b,Silent:1b,CustomName:\"Sandy\",Tags:[\"x\"],Rotation:[90f,10f],equipment:{saddle:{id:\"minecraft:saddle\",count:1}}}"), Tag));
+			McCommands::ApplyEntityTag(Camel, Tag);
+			TestTrue(TEXT("NoAI"), Camel.bNoAI);
+			TestTrue(TEXT("Invulnerable"), Camel.bInvulnerable);
+			TestTrue(TEXT("Silent"), Camel.bSilent);
+			TestEqual(TEXT("name"), Camel.CustomName, FString(TEXT("Sandy")));
+			TestTrue(TEXT("tag"), Camel.CommandTags.Contains(TEXT("x")));
+			TestTrue(TEXT("facing"), FMath::IsNearlyEqual(Camel.Yaw, 90.0f) && FMath::IsNearlyEqual(Camel.Pitch, 10.0f));
+			TestTrue(TEXT("saddled"), Camel.Mount.IsValid() && Camel.Mount->bSaddled);
+			FMcMob Baby(*CamelType);
+			FMcNbt BabyTag;
+			TestTrue(TEXT("baby tag parses"), FMcNbt::ParseSnbt(TEXT("{Age:-24000}"), BabyTag));
+			McCommands::ApplyEntityTag(Baby, BabyTag);
+			TestTrue(TEXT("a baby"), Baby.IsYoung());
+			TestEqual(TEXT("a baby takes no saddle"), McCommands::SetEntitySlot(Baby, TEXT("saddle"), TEXT("minecraft:saddle"), 1), 2);
+			TestTrue(TEXT("saddle off again"), McCommands::SetEntitySlot(Camel, TEXT("saddle"), NAME_None, 0) == 1 && !Camel.Mount->bSaddled);
+			TestTrue(TEXT("a helmet"), McCommands::SetEntitySlot(Camel, TEXT("armor.head"), TEXT("minecraft:iron_helmet"), 1) == 1 && Camel.Armor[0] == TEXT("minecraft:iron_helmet"));
+			TestEqual(TEXT("no such slot"), McCommands::SetEntitySlot(Camel, TEXT("hotbar.3"), TEXT("minecraft:stone"), 1), 0);
+		}
+	}
 
 	// /xp and /clear
 	McCommands::HandleChat(TEXT("/xp add Steve 3 levels"), Op(TEXT("Steve")), Target);
@@ -465,6 +579,13 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("already made"), AnyError(McCommands::HandleChat(TEXT("/advancement grant Steve only story/mine_stone"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("revoke"), Joined(McCommands::HandleChat(TEXT("/advancement revoke Steve only story/mine_stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("Revoked the advancement [Stone Age] from Steve")));
 	TestTrue(TEXT("unknown"), Joined(McCommands::HandleChat(TEXT("/advancement grant Steve only story/nothing"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown advancement")));
+
+	// /recipe
+	TestTrue(TEXT("recipe give"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unlocked 1 recipe(s) for Steve")));
+	TestTrue(TEXT("recipe give again"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("No new recipes were learned")));
+	TestTrue(TEXT("recipe take"), Joined(McCommands::HandleChat(TEXT("/recipe take Steve minecraft:stick"), Op(TEXT("Steve")), Target)).Contains(TEXT("Took 1 recipe(s) from Steve")));
+	TestTrue(TEXT("recipe take again"), Joined(McCommands::HandleChat(TEXT("/recipe take Steve *"), Op(TEXT("Steve")), Target)).Contains(TEXT("No recipes could be forgotten")));
+	TestTrue(TEXT("recipe unknown"), Joined(McCommands::HandleChat(TEXT("/recipe give Steve minecraft:bogus_recipe"), Op(TEXT("Steve")), Target)).Contains(TEXT("Unknown recipe: minecraft:bogus_recipe")));
 	TestTrue(TEXT("cheats only"), AnyError(McCommands::HandleChat(TEXT("/effect give Steve speed"), Op(TEXT("Steve"), 0), Target)));
 	TestTrue(TEXT("enchant with nothing held"), Joined(McCommands::HandleChat(TEXT("/enchant Steve sharpness 3"), Op(TEXT("Steve")), Target)).Contains(TEXT("is not holding any item")));
 	Target.HeldItem = TEXT("minecraft:diamond_sword");

@@ -27,8 +27,15 @@ struct MCCORE_API FMcGameRules
 	int32 RandomTickSpeed = 3;
 	// Off, spawners stand still: their wait holds and nothing comes out (the mob inside still turns on the client).
 	bool bSpawnerBlocksWork = true;
+	// On, a recipe can be crafted only once it is in the player's recipe book.
+	bool bLimitedCrafting = false;
 
 	bool IsPeaceful() const { return Difficulty <= 0; }
+
+	// Worlds the port saved before 26.3's names were used keep their rules under the older camelCase names. This renames
+	// them in place (doDaylightCycle becomes advance_time), flips the three that changed their sense (disableRaids is
+	// raids, the other way round) and drops those vanilla no longer has (spawnChunkRadius). Names already new are kept.
+	static void MigrateLegacyNames(TMap<FString, FString>& Rules);
 
 	// The rules a level's text map holds, with the defaults for the rest.
 	static FMcGameRules FromLevel(const TMap<FString, FString>& Rules, int32 InDifficulty);

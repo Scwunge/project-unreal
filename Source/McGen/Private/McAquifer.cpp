@@ -15,7 +15,9 @@ namespace
 	// columns by 8-block band (5 worlds, 25 patches each, `log stats` W lines vs STATW, five seeds): 0.75 with 0.0 / -0.5 fits land y 16..32
 	// best; y 0 and y 8 come out slightly dry and y 32+ stays above the worlds' range. At 1.0 the deep layers (y -40..-32) were too wet.
 	static float FloodScale = 0.75f;
-	static int32 SeaMargin = 28;
+	// Cells this far above a sea-floor surface count as open to the sea. Fitted 2026-11-14 on the water share of open cells in sea columns by 8-block
+		// band against the five vanilla worlds' range (`stat W`, seed 0): 28 left y 32..63 at 0.15..0.25 against vanilla 0.48..0.98; five seeds: 16 puts sea bands 8..14 inside (23 of 32 bands, was 20), 20 gave 21.
+		static int32 SeaMargin = 16;
 	// Partial levels sit at 40 * region + this + a step of 3 in -9..9: measured on the reference (water surfaces in caves, 5 worlds,
 	// levels 11 / 14 / 17 / 20 / 23 in region 0, the sea peaking at exactly 20, region -1 at -23 and -20); the wiki says 20.
 	static int32 LevelBase = 20;

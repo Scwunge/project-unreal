@@ -550,3 +550,38 @@ FVector McMount::GetSeatFor(const FMcEntity& Entity, uint32 PlayerId)
 	}
 	return Seat;
 }
+
+bool McMount::TickSitting(FMcMob& Mob)
+{
+	const FName Kind = Mob.GetType();
+	if (Kind != TEXT("minecraft:camel") && Kind != TEXT("minecraft:camel_husk"))
+	{
+		return false;
+	}
+	if (!Mob.Mount.IsValid() && Mob.IsYoung())
+	{
+		return false;
+	}
+	FMcMountState& State = Ensure(Mob);
+	++State.PoseTicks;
+	if (State.RiderId != 0 || Mob.IsYoung())
+	{
+		if (State.bSitting)
+		{
+			State.bSitting = false;
+			State.PoseTicks = 0;
+			State.bPoseChanged = true;
+		}
+		return false;
+	}
+	if (State.PoseTicks >= 400 && Mob.Body.bOnGround && !Mob.Body.bInWater)
+	{
+		if (State.bSitting ? Mob.Random.RandHelper(39) == 0 : Mob.Random.RandHelper(190) == 0)
+		{
+			State.bSitting = !State.bSitting;
+			State.PoseTicks = 0;
+			State.bPoseChanged = true;
+		}
+	}
+	return State.bSitting;
+}

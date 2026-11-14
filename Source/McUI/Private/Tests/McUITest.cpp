@@ -1156,4 +1156,85 @@ bool FMcItemDefinitionTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// The recipe book beside the inventory: its geometry (measured at GUI scale 3), the tab of a recipe's category, and the click that
+// puts a recipe's ingredients into the crafting grid.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcRecipeBookScreenTest, "McClient.McUI.RecipeBook",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcRecipeBookScreenTest::RunTest(const FString& Parameters)
+{
+	using namespace McGui::RecipeBook;
+	TestEqual(TEXT("cell 0"), FindCell(FIntPoint(CellX, CellY)), 0);
+	TestEqual(TEXT("last cell of the first row"), FindCell(FIntPoint(CellX + 4 * CellSize + 24, CellY + 24)), 4);
+	TestEqual(TEXT("first cell of the last row"), FindCell(FIntPoint(CellX, CellY + 3 * CellSize)), 15);
+	TestEqual(TEXT("left of the grid"), FindCell(FIntPoint(CellX - 1, CellY)), -1);
+	TestEqual(TEXT("under the grid"), FindCell(FIntPoint(CellX, CellY + 4 * CellSize)), -1);
+	TestEqual(TEXT("first tab"), FindTab(FIntPoint(TabX + 3, TabY + 2), 5), 0);
+	TestEqual(TEXT("third tab"), FindTab(FIntPoint(TabX + 3, TabY + 2 * TabHeight + 1), 5), 2);
+	TestEqual(TEXT("no tab where none is shown"), FindTab(FIntPoint(TabX + 3, TabY + 3 * TabHeight), 3), -1);
+	TestEqual(TEXT("62 pages' worth: 1240 recipes"), GetPageCount(1240), 62);
+	TestEqual(TEXT("an empty list is one page"), GetPageCount(0), 1);
+	TestTrue(TEXT("the panel is the book's"), IsOnBook(FIntPoint(10, 10), 5));
+	TestTrue(TEXT("a tab is the book's"), IsOnBook(FIntPoint(TabX + 2, TabY + 2), 5));
+	TestFalse(TEXT("right of the panel is not"), IsOnBook(FIntPoint(PanelWidth + 1, 10), 5));
+	TestTrue(TEXT("building"), GetTab(TEXT("building")) == ETab::Building);
+	TestTrue(TEXT("redstone"), GetTab(TEXT("redstone")) == ETab::Redstone);
+	TestTrue(TEXT("equipment"), GetTab(TEXT("equipment")) == ETab::Equipment);
+	TestTrue(TEXT("none is misc"), GetTab(TEXT("none")) == ETab::Misc);
+
+	// The clicks, from points on the screen (the panel's own point less its width, as the screen sits to the right of it).
+	const auto FromPanel = [](int32 X, int32 Y) { return FIntPoint(X - PanelWidth, Y); };
+	TestTrue(TEXT("the inventory's toggle button"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(104, 61)));
+	TestTrue(TEXT("its far corner"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(123, 78)));
+	TestFalse(TEXT("one past it"), IsOnButton(McGui::EScreen::Inventory, FIntPoint(124, 61)));
+	TestTrue(TEXT("the crafting table's toggle button"), IsOnButton(McGui::EScreen::CraftingTable, FIntPoint(5, 49)));
+	TestFalse(TEXT("not the inventory's place there"), IsOnButton(McGui::EScreen::CraftingTable, FIntPoint(104, 61)));
+	TestTrue(TEXT("a tab click"), ResolveClick(FromPanel(TabX + 5, TabY + 2 * TabHeight + 3), 4, 0, 30).What == EClick::Tab);
+	TestEqual(TEXT("it is the third tab"), ResolveClick(FromPanel(TabX + 5, TabY + 2 * TabHeight + 3), 4, 0, 30).Index, 2);
+	TestTrue(TEXT("a tab that is not shown is nothing"), ResolveClick(FromPanel(TabX + 5, TabY + 4 * TabHeight + 3), 4, 0, 30).What == EClick::None);
+	TestTrue(TEXT("the craftable switch"), ResolveClick(FromPanel(FilterX + 3, FilterY + 3), 4, 0, 30).What == EClick::Filter);
+	TestTrue(TEXT("the search box"), ResolveClick(FromPanel(SearchX + 10, SearchY + 5), 4, 0, 30).What == EClick::Search);
+	TestTrue(TEXT("no back arrow on the first page"), ResolveClick(FromPanel(BackX + 3, PageY + 3), 4, 0, 30).What == EClick::None);
+	TestTrue(TEXT("the back arrow on the second"), ResolveClick(FromPanel(BackX + 3, PageY + 3), 4, 1, 30).What == EClick::Back);
+	TestTrue(TEXT("the forward arrow with a page to go to"), ResolveClick(FromPanel(ForwardX + 3, PageY + 3), 4, 0, 30).What == EClick::Forward);
+	TestTrue(TEXT("none on the last page"), ResolveClick(FromPanel(ForwardX + 3, PageY + 3), 4, 1, 30).What == EClick::None);
+	TestTrue(TEXT("a recipe"), ResolveClick(FromPanel(CellX + 1, CellY + 1), 4, 0, 30).What == EClick::Recipe);
+	TestEqual(TEXT("the second row's second cell on page 2 is recipe 26"), ResolveClick(FromPanel(CellX + CellSize + 1, CellY + CellSize + 1), 4, 1, 40).Index, PerPage + 6);
+	TestTrue(TEXT("a cell past the end of the list is nothing"), ResolveClick(FromPanel(CellX + 4 * CellSize + 1, CellY + 1), 4, 0, 3).What == EClick::None);
+	TestEqual(TEXT("typing adds"), ApplyTyped(TEXT("sti"), TEXT("ck"), false), FString(TEXT("stick")));
+	TestEqual(TEXT("a backspace takes one off"), ApplyTyped(TEXT("stick"), TEXT(""), true), FString(TEXT("stic")));
+	TestEqual(TEXT("a backspace on nothing"), ApplyTyped(TEXT(""), TEXT(""), true), FString());
+	TestEqual(TEXT("the box holds 50 letters"), ApplyTyped(FString::ChrN(49, TEXT('a')), TEXT("bcd"), false).Len(), MaxSearch);
+
+	FMcRecipeBook& Book = FMcRecipeBook::Get();
+	if (!TestTrue(TEXT("items load"), FMcItemRegistry::Get().EnsureLoaded()) || !TestTrue(TEXT("recipes load"), Book.EnsureLoaded()))
+	{
+		return false;
+	}
+	const FMcRecipe* Sticks = Book.Find(FName(TEXT("minecraft:stick")));
+	if (!TestNotNull(TEXT("the stick recipe"), Sticks))
+	{
+		return false;
+	}
+	TArray<FMcItemStack> Nothing;
+	TestFalse(TEXT("nothing makes no sticks"), FMcCraftingMenu::CanCraftWith(*Sticks, 2, Nothing));
+	TArray<FMcItemStack> Planks;
+	Planks.Add(FMcItemStack(FName(TEXT("minecraft:oak_planks")), 2));
+	TestTrue(TEXT("two planks make sticks"), FMcCraftingMenu::CanCraftWith(*Sticks, 2, Planks));
+	Planks[0].Count = 1;
+	TestFalse(TEXT("one plank does not"), FMcCraftingMenu::CanCraftWith(*Sticks, 2, Planks));
+
+	const TSharedPtr<FMcContainer> Inventory = MakeShared<FMcContainer>(36);
+	Inventory->Set(0, FMcItemStack(FName(TEXT("minecraft:oak_planks")), 5));
+	FMcCraftingMenu Menu(2, Inventory);
+	TestTrue(TEXT("the click places"), Menu.PlaceRecipe(*Sticks, false));
+	TestTrue(TEXT("the grid now matches the stick recipe"), Menu.GetRecipe() == Sticks);
+	TestEqual(TEXT("two planks left the stack"), Inventory->Get(0).Count, 3);
+	TestTrue(TEXT("placing again takes the grid back first and ends the same"), Menu.PlaceRecipe(*Sticks, false) && Menu.GetRecipe() == Sticks);
+	TestEqual(TEXT("still two planks in the grid"), Inventory->Get(0).Count, 3);
+	TestTrue(TEXT("shift places as many as there are"), Menu.PlaceRecipe(*Sticks, true));
+	TestTrue(TEXT("a recipe the stacks cannot make leaves the grid as it was"), !Menu.PlaceRecipe(*Book.Find(FName(TEXT("minecraft:chest"))), false) && Menu.GetRecipe() == Sticks);
+	return true;
+}
+
 #endif

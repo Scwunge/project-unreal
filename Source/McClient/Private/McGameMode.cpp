@@ -3,6 +3,7 @@
 #include "Tasks/Task.h"
 #include "Misc/ScopeExit.h"
 #include "McMob.h"
+#include "McMount.h"
 #include "McSound.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
@@ -62,6 +63,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "Engine/Engine.h"
 #include "UnrealClient.h"
+#include "McRecipe.h"
 
 #if MC_WITH_RENDER
 #include "McHUD.h"
@@ -151,8 +153,20 @@ namespace
 			Pawn->Data->ServerToast(McLang::Get(Frame == TEXT("goal") ? TEXT("advancements.toast.goal") : bChallenge ? TEXT("advancements.toast.challenge") : TEXT("advancements.toast.task")),
 				bChallenge ? 0xFF55FF : 0xFFFF00, Title, Icon);
 		}
+		// What it gives: the recipes of its rewards go into the recipe book.
+		const TSharedPtr<FJsonObject>* Rewards = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* RewardRecipes = nullptr;
+		if (Def->TryGetObjectField(TEXT("rewards"), Rewards) && (*Rewards)->TryGetArrayField(TEXT("recipes"), RewardRecipes))
+		{
+			TArray<FName> Ids;
+			for (const TSharedPtr<FJsonValue>& Recipe : *RewardRecipes)
+			{
+				Ids.Add(FName(*McCache::Namespaced(Recipe->AsString())));
+			}
+			AMcGameMode::UnlockRecipes(*Pawn, Ids, true);
+		}
 		return 1;
-	
+
 	}
 
 	using FPredicate = TPair<TArray<FString>, int32>;
@@ -583,6 +597,10 @@ namespace
 			{
 				continue;
 			}
+			// The game's tick trigger (the crafting table's recipe is unlocked right away by it).
+			FMcTriggerEvent Tick;
+			Tick.Trigger = FName(TEXT("minecraft:tick"));
+			AMcGameMode::FireTrigger(*Pawn, Tick);
 			TMap<FName, int32> Carried;
 			const TSharedPtr<FMcContainer> Containers[3] = { Pawn->Data->Inventory, Pawn->Data->Armor, Pawn->Data->Offhand };
 			for (const TSharedPtr<FMcContainer>& Container : Containers)
@@ -665,6 +683,7 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 			continue;
 		}
 		Pawn.Data->Criteria.Add(Done);
+		Pawn.Data->CriteriaTimes.Add(Done, static_cast<double>(FDateTime::UtcNow().ToUnixTimestamp()));
 		bool bAll = true;
 		for (const TArray<FString>& Group : Table.Requirements.FindRef(Criterion.Advancement))
 		{
@@ -681,6 +700,47 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 			AwardAdvancement(&Pawn, Criterion.Advancement, true, Title);
 		}
 	}
+}
+
+int32 AMcGameMode::UnlockRecipes(AMcPlayerPawn& Pawn, const TArray<FName>& Ids, bool bGrant)
+{
+	if (!Pawn.Data)
+	{
+		return 0;
+	}
+	int32 Changed = 0;
+	for (const FName Id : Ids)
+	{
+		if (!bGrant)
+		{
+			if (Pawn.Data->Recipes.Remove(Id) > 0)
+			{
+				Pawn.Data->RecipesToDisplay.Remove(Id);
+				++Changed;
+			}
+			continue;
+		}
+		if (Pawn.Data->Recipes.Contains(Id))
+		{
+			continue;
+		}
+		Pawn.Data->Recipes.Add(Id);
+		Pawn.Data->RecipesToDisplay.Add(Id);
+		++Changed;
+		// The toast shows the recipe's result (vanilla: for a recipe that is to be displayed).
+		if (const FMcRecipe* Recipe = FMcRecipeBook::Get().Find(Id))
+		{
+			if (!Recipe->Result.IsEmpty())
+			{
+				Pawn.Data->ServerRecipeToast(Recipe->Result.Item);
+			}
+		}
+		FMcTriggerEvent Unlocked;
+		Unlocked.Trigger = FName(TEXT("minecraft:recipe_unlocked"));
+		Unlocked.Recipe = Id;
+		FireTrigger(Pawn, Unlocked);
+	}
+	return Changed;
 }
 
 void AMcGameMode::StartPlay()
@@ -1360,11 +1420,11 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 			}
 		}), 0.5f, true);
 	}
-	// Game rules: { "rules": { "spawnerBlocksWork": "false" } }.
+	// Game rules: { "rules": { "spawner_blocks_work": "false" } }.
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*RuleValues)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Rule : (*RuleValues)->Values)
 		{
 			WorldActor->SetGameRule(Rule.Key, Rule.Value->AsString());
 		}
@@ -1573,7 +1633,7 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		{
 			return;
 		}
-		// With keepInventory what they carried, and their experience, goes with them to the new body.
+		// With keep_inventory what they carried, and their experience, goes with them to the new body.
 		TArray<FMcItemStack> Kept[3];
 		int32 KeptLevel = 0;
 		float KeptProgress = 0.0f;
@@ -2867,23 +2927,190 @@ namespace
 		}
 		virtual bool Summon(FName Kind, const FVector& Feet) override
 		{
+			return SummonMade(Kind, Feet) != nullptr;
+		}
+		virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) override
+		{
+			FMcEntity* Made = SummonMade(Kind, Feet);
+			if (Made)
+			{
+				McCommands::ApplyEntityTag(*Made, Tag);
+			}
+			return Made != nullptr;
+		}
+		FMcEntity* SummonMade(FName Kind, const FVector& Feet)
+		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
 			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
 			if (Host && FMcVehicle::IsVehicleType(Kind))
 			{
 				TUniquePtr<FMcVehicle> Vehicle = FMcVehicle::Create(Kind);
 				Vehicle->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Vehicle));
-				return true;
+				return &Host->GetManager().Add(MoveTemp(Vehicle));
 			}
 			if (Host && FMcPrimedTnt::IsTnt(Kind))
 			{
 				TUniquePtr<FMcPrimedTnt> Tnt = MakeUnique<FMcPrimedTnt>();
 				Tnt->Body.Position = Feet;
-				Host->GetManager().Add(MoveTemp(Tnt));
+				return &Host->GetManager().Add(MoveTemp(Tnt));
+			}
+			return Host ? Host->SpawnMob(Kind, Feet) : nullptr;
+		}
+		virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const override
+		{
+			TArray<TPair<double, int32>> Found;
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			if (Host)
+			{
+				for (const TUniquePtr<FMcEntity>& Each : Host->GetManager().GetEntities())
+				{
+					const double Distance = FVector::Dist(Each->Body.Position, Origin);
+					if (!Each->bRemoved && (Kind.IsNone() || Each->GetType() == Kind) && (MaxDistance <= 0.0 || Distance <= MaxDistance))
+					{
+						Found.Add({ Distance, Each->Id });
+					}
+				}
+			}
+			Found.Sort([](const TPair<double, int32>& A, const TPair<double, int32>& B) { return A.Key < B.Key; });
+			TArray<int32> Ids;
+			for (const TPair<double, int32>& Each : Found)
+			{
+				if (Limit > 0 && Ids.Num() >= Limit)
+				{
+					break;
+				}
+				Ids.Add(Each.Value);
+			}
+			return Ids;
+		}
+		virtual int32 SetEntitySlot(int32 EntityId, const FString& Slot, FName Item, int32 Count) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			FMcEntity* Found = Host ? Host->GetManager().Find(EntityId) : nullptr;
+			return Found ? McCommands::SetEntitySlot(*Found, Slot, Item, Count) : 0;
+		}
+		virtual FString GetEntityName(int32 EntityId) const override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			FMcEntity* Found = Host ? Host->GetManager().Find(EntityId) : nullptr;
+			if (!Found)
+			{
+				return FString();
+			}
+			if (Found->IsLiving() && !static_cast<FMcMob*>(Found)->CustomName.IsEmpty())
+			{
+				return static_cast<FMcMob*>(Found)->CustomName;
+			}
+			return McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Found->GetType().ToString()));
+		}
+
+		FMcEntityManager* RideManager() const
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+			return Host ? &Host->GetManager() : nullptr;
+		}
+
+		virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) override
+		{
+			FMcEntityManager* Manager = RideManager();
+			FMcEntity* Vehicle = Manager ? Manager->Find(VehicleEntity) : nullptr;
+			if (!Vehicle)
+			{
+				return 3;
+			}
+			if (!RiderPlayer.IsEmpty())
+			{
+				AMcPlayerPawn* Pawn = FindPawn(RiderPlayer);
+				if (!Pawn)
+				{
+					return 3;
+				}
+				if (Pawn->GetRidingId() != 0)
+				{
+					OutOther = GetEntityName(Pawn->GetRidingId());
+					return 1;
+				}
+				if (Vehicle->IsLiving())
+				{
+					FMcMob& Mob = static_cast<FMcMob&>(*Vehicle);
+					if (Mob.PassengerId != 0 || (Mob.Mount.IsValid() && Mob.Mount->RiderId != 0) || !McMount::IsRideable(Mob))
+					{
+						return 3;
+					}
+					McMount::Ensure(Mob).RiderId = Pawn->GetUniqueID();
+				}
+				else if (!Vehicle->IsVehicle())
+				{
+					return 3;
+				}
+				Pawn->ServerRide(VehicleEntity);
+				return 0;
+			}
+			FMcEntity* RiderBase = Manager->Find(RiderEntity);
+			if (!RiderBase || !RiderBase->IsLiving() || !Vehicle->IsLiving())
+			{
+				return 3;
+			}
+			FMcMob& Rider = static_cast<FMcMob&>(*RiderBase);
+			FMcMob& Mount = static_cast<FMcMob&>(*Vehicle);
+			if (Rider.RidingId != 0)
+			{
+				OutOther = GetEntityName(Rider.RidingId);
+				return 1;
+			}
+			for (const FMcMob* Chain = &Mount; Chain; )
+			{
+				if (Chain == &Rider)
+				{
+					return 2;
+				}
+				const FMcEntity* Next = Chain->RidingId != 0 ? Manager->Find(Chain->RidingId) : nullptr;
+				Chain = Next && Next->IsLiving() ? static_cast<const FMcMob*>(Next) : nullptr;
+			}
+			if (Mount.PassengerId != 0 || (Mount.Mount.IsValid() && Mount.Mount->RiderId != 0))
+			{
+				return 3;
+			}
+			Rider.RidingId = Mount.Id;
+			Mount.PassengerId = Rider.Id;
+			Rider.Body.Position = Mount.Body.Position + Mount.GetSeatOffset(Rider);
+			return 0;
+		}
+
+		virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) override
+		{
+			FMcEntityManager* Manager = RideManager();
+			if (!RiderPlayer.IsEmpty())
+			{
+				AMcPlayerPawn* Pawn = FindPawn(RiderPlayer);
+				if (!Pawn || Pawn->GetRidingId() == 0)
+				{
+					return false;
+				}
+				OutVehicleName = GetEntityName(Pawn->GetRidingId());
+				Pawn->ServerDismount();
 				return true;
 			}
-			return Host && Host->SpawnMob(Kind, Feet) != nullptr;
+			FMcEntity* Found = Manager ? Manager->Find(RiderEntity) : nullptr;
+			if (!Found || !Found->IsLiving() || static_cast<FMcMob*>(Found)->RidingId == 0)
+			{
+				return false;
+			}
+			FMcMob& Rider = *static_cast<FMcMob*>(Found);
+			OutVehicleName = GetEntityName(Rider.RidingId);
+			if (FMcEntity* Under = Manager->Find(Rider.RidingId))
+			{
+				if (Under->IsLiving() && static_cast<FMcMob*>(Under)->PassengerId == Rider.Id)
+				{
+					static_cast<FMcMob*>(Under)->PassengerId = 0;
+				}
+			}
+			Rider.RidingId = 0;
+			return true;
 		}
 
 		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
@@ -3054,6 +3281,36 @@ namespace
 		virtual int32 SetAdvancement(const FString& Player, const FString& Id, bool bGrant, FString& OutTitle) override
 		{
 			return AwardAdvancement(FindPawn(Player), Id, bGrant, OutTitle);
+		}
+		virtual int32 SetRecipes(const FString& Player, const FString& Id, bool bGrant, FString& OutUnknown) override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			FMcRecipeBook& Book = FMcRecipeBook::Get();
+			Book.EnsureLoaded();
+			TArray<FName> Ids;
+			if (Id == TEXT("*"))
+			{
+				// Every recipe the book shows (measured: 1739 in 26.3, the ones an advancement unlocks): not brewing, not the
+				// special crafting recipes and not the decorated pot.
+				for (const FMcRecipe& Recipe : Book.GetAll())
+				{
+					if (Recipe.Type != EMcRecipeType::Brewing && Recipe.Type != EMcRecipeType::CraftingSpecial && Recipe.Type != EMcRecipeType::CraftingDecoratedPot)
+					{
+						Ids.Add(Recipe.Id);
+					}
+				}
+			}
+			else
+			{
+				const FName Full(*McCache::Namespaced(Id));
+				if (!Book.Find(Full))
+				{
+					OutUnknown = Full.ToString();
+					return -1;
+				}
+				Ids.Add(Full);
+			}
+			return Pawn ? AMcGameMode::UnlockRecipes(*Pawn, Ids, bGrant) : 0;
 		}
 		virtual bool IsEffect(FName Effect) const override
 		{

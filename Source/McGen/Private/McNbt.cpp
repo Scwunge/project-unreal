@@ -302,3 +302,230 @@ void FMcNbt::WriteRoot(TArray<uint8>& Out) const
 	WriteString(Out, FString());
 	WritePayload(Out, *this);
 }
+
+namespace
+{
+	// The reader of the text form of a tag, one value after another.
+	struct FSnbtReader
+	{
+		const FString& Text;
+		int32 At = 0;
+		// What the game says when it stops (set by the first thing that fails).
+		FString Message;
+		bool Fail(const TCHAR* Words) { if (Message.IsEmpty()) { Message = Words; } return false; }
+		explicit FSnbtReader(const FString& InText) : Text(InText) {}
+
+		void Skip() { while (At < Text.Len() && FChar::IsWhitespace(Text[At])) { ++At; } }
+		bool Eat(TCHAR C) { Skip(); if (At < Text.Len() && Text[At] == C) { ++At; return true; } return false; }
+		static bool IsPlain(TCHAR C) { return FChar::IsAlnum(C) || C == '_' || C == '-' || C == '.' || C == '+'; }
+
+		bool ReadQuoted(FString& Out)
+		{
+			const TCHAR Quote = Text[At++];
+			while (At < Text.Len())
+			{
+				TCHAR C = Text[At++];
+				if (C == TEXT('\\') && At < Text.Len())
+				{
+					C = Text[At++];
+					switch (C)
+					{
+					case 'n': C = '\n'; break;
+					case 't': C = '\t'; break;
+					case 'r': C = '\r'; break;
+					case 'b': C = '\b'; break;
+					case 'f': C = '\f'; break;
+					default: break;
+					}
+				}
+				else if (C == Quote)
+				{
+					return true;
+				}
+				Out.AppendChar(C);
+			}
+			return false;
+		}
+
+		bool ReadKey(FString& Out)
+		{
+			Skip();
+			if (At < Text.Len() && (Text[At] == '"' || Text[At] == '\''))
+			{
+				return ReadQuoted(Out);
+			}
+			const int32 Start = At;
+			while (At < Text.Len() && IsPlain(Text[At])) { ++At; }
+			Out = Text.Mid(Start, At - Start);
+			return !Out.IsEmpty();
+		}
+
+		// An unquoted word: a number with its suffix, true or false, else a string.
+		static FMcNbt FromWord(const FString& Word)
+		{
+			FMcNbt Result;
+			Result.Type = FMcNbt::EType::String;
+			Result.String = Word;
+			if (Word == TEXT("true") || Word == TEXT("false"))
+			{
+				Result.Type = FMcNbt::EType::Byte;
+				Result.Integer = Word == TEXT("true") ? 1 : 0;
+				return Result;
+			}
+			FString Body = Word;
+			TCHAR Suffix = 0;
+			if (Body.Len() > 1 && FChar::IsAlpha(Body[Body.Len() - 1]))
+			{
+				Suffix = FChar::ToLower(Body[Body.Len() - 1]);
+				Body.LeftChopInline(1);
+			}
+			if (Body.IsEmpty() || Body == TEXT("-") || Body == TEXT("+") || !(FChar::IsDigit(Body[Body.Len() - 1]) || (Body.Len() > 1 && Body[Body.Len() - 1] == '.')))
+			{
+				return Result;
+			}
+			for (int32 I = 0; I < Body.Len(); ++I)
+			{
+				if (!(FChar::IsDigit(Body[I]) || Body[I] == '.' || ((Body[I] == '-' || Body[I] == '+') && I == 0)))
+				{
+					return Result;
+				}
+			}
+			const bool bReal = Body.Contains(TEXT("."));
+			if (bReal && Suffix != 0 && Suffix != 'f' && Suffix != 'd')
+			{
+				return Result;
+			}
+			switch (Suffix)
+			{
+			case 'b': Result.Type = FMcNbt::EType::Byte; break;
+			case 's': Result.Type = FMcNbt::EType::Short; break;
+			case 'l': Result.Type = FMcNbt::EType::Long; break;
+			case 'f': Result.Type = FMcNbt::EType::Float; break;
+			case 'd': Result.Type = FMcNbt::EType::Double; break;
+			case 0: Result.Type = bReal ? FMcNbt::EType::Double : FMcNbt::EType::Int; break;
+			default: return Result;
+			}
+			Result.String.Empty();
+			if (Result.Type == FMcNbt::EType::Float || Result.Type == FMcNbt::EType::Double)
+			{
+				Result.Real = FCString::Atod(*Body);
+			}
+			else
+			{
+				Result.Integer = FCString::Atoi64(*Body);
+			}
+			return Result;
+		}
+
+		bool ReadValue(FMcNbt& Out, int32 Depth)
+		{
+			Skip();
+			if (At >= Text.Len() || Depth > 64)
+			{
+				return Fail(TEXT("Expected a valid unquoted string"));
+			}
+			const TCHAR C = Text[At];
+			if (C == '{')
+			{
+				++At;
+				Out.Type = FMcNbt::EType::Compound;
+				if (Eat('}'))
+				{
+					return true;
+				}
+				do
+				{
+					FString Key;
+					FMcNbt Value;
+					if (!ReadKey(Key))
+					{
+						return Fail(TEXT("Expected a valid unquoted string"));
+					}
+					if (!Eat(':'))
+					{
+						return Fail(TEXT("Expected literal :"));
+					}
+					if (!ReadValue(Value, Depth + 1))
+					{
+						return false;
+					}
+					const int32 Existing = Out.Keys.IndexOfByKey(Key);
+					if (Existing != INDEX_NONE)
+					{
+						Out.Values[Existing] = MoveTemp(Value);
+					}
+					else
+					{
+						Out.Keys.Add(Key);
+						Out.Values.Add(MoveTemp(Value));
+					}
+				} while (Eat(','));
+				return Eat('}') || Fail(TEXT("Expected literal ,"));
+			}
+			if (C == '[')
+			{
+				++At;
+				Out.Type = FMcNbt::EType::List;
+				Skip();
+				if (At + 1 < Text.Len() && Text[At + 1] == ';' && (Text[At] == 'B' || Text[At] == 'I' || Text[At] == 'L'))
+				{
+					Out.Type = Text[At] == 'B' ? FMcNbt::EType::ByteArray : Text[At] == 'I' ? FMcNbt::EType::IntArray : FMcNbt::EType::LongArray;
+					At += 2;
+				}
+				if (Eat(']'))
+				{
+					Out.Integer = 0;
+					return true;
+				}
+				do
+				{
+					FMcNbt Element;
+					if (!ReadValue(Element, Depth + 1))
+					{
+						return false;
+					}
+					Out.Values.Add(MoveTemp(Element));
+				} while (Eat(','));
+				Out.Integer = Out.Values.Num();
+				return Eat(']') || Fail(TEXT("Expected literal ,"));
+			}
+			if (C == '"' || C == '\'')
+			{
+				Out.Type = FMcNbt::EType::String;
+				return ReadQuoted(Out.String);
+			}
+			const int32 Start = At;
+			while (At < Text.Len() && IsPlain(Text[At])) { ++At; }
+			if (At == Start)
+			{
+				return Fail(TEXT("Expected a valid unquoted string"));
+			}
+			Out = FromWord(Text.Mid(Start, At - Start));
+			return true;
+		}
+	};
+}
+
+bool FMcNbt::ReadSnbt(const FString& Text, FMcNbt& Out, int32& OutEnd, FString& OutMessage)
+{
+	FSnbtReader Reader(Text);
+	Out = FMcNbt();
+	const bool bOk = Reader.ReadValue(Out, 0);
+	OutEnd = Reader.At;
+	OutMessage = bOk ? FString() : (Reader.Message.IsEmpty() ? FString(TEXT("Expected a valid unquoted string")) : Reader.Message);
+	return bOk;
+}
+
+bool FMcNbt::ParseSnbt(const FString& Text, FMcNbt& Out, int32* OutError)
+{
+	FSnbtReader Reader(Text);
+	Out = FMcNbt();
+	const bool bOk = Reader.ReadValue(Out, 0);
+	Reader.Skip();
+	const bool bWhole = bOk && Reader.At == Text.Len();
+	if (!bWhole && OutError)
+	{
+		*OutError = Reader.At;
+	}
+	return bWhole;
+}

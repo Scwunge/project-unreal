@@ -82,6 +82,8 @@ namespace McEntityModel
 		FQuat BoxRotation = FQuat::Identity;
 		// A witch's nose turns in a slow circle about BoxPivot with the mob's age (see Build).
 		bool bNoseWobble = false;
+		// A camel's ear (1 right, 2 left): turned out about its pivot in a dash.
+		uint8 CamelEar = 0;
 	};
 
 	struct FPart
@@ -151,6 +153,8 @@ namespace McEntityModel
 		int32 IllagerStyle = 0;
 		// The wings beat all the time (a vex).
 		bool bFlutter = false;
+		// A camel: the stand-up, sit-down and dash drawn from the logged tables.
+		bool bCamelAnim = false;
 		// The whole model drawn at this size about the feet (the villagers and illagers are 15/16: their root sits 1.5 pixels low in the game).
 		float Scale = 1.0f;
 		// Wings that beat all the time (a bee's), and how far out a bird's rest when they are not beating (radians).
@@ -210,6 +214,9 @@ namespace McEntityModel
 		bool bOffering = false;
 		// What the arms are doing: 0 idle (an illager's folded), 1 armed or attacking, 2 charging a crossbow, 3 casting, 4 drinking.
 		int32 Pose = 0;
+		// A camel's stand-up (the tick of its 52, or the sit-down run backwards) and its dash (the tick of 44), -1 for none.
+		int32 SitStep = -1;
+		int32 DashStep = -1;
 		FColor Tint = FColor::White;
 	};
 	constexpr float BabyScale = 0.5f;
@@ -354,6 +361,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	using UProceduralMeshComponent::GetMaterial;
 	UMaterialInstanceDynamic* GetMaterial(int32 Layer);
 	void Rebuild();
 	// The block in the model, as a section after the layers.

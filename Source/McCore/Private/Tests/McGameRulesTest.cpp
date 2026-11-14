@@ -22,21 +22,21 @@ bool FMcGameRulesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("random ticks"), Defaults.RandomTickSpeed, 3);
 
 	TMap<FString, FString> Rules;
-	Rules.Add(TEXT("doMobSpawning"), TEXT("false"));
-	Rules.Add(TEXT("keepInventory"), TEXT("TRUE"));
-	Rules.Add(TEXT("randomTickSpeed"), TEXT("20"));
-	Rules.Add(TEXT("fallDamage"), TEXT("false"));
+	Rules.Add(TEXT("spawn_mobs"), TEXT("false"));
+	Rules.Add(TEXT("keep_inventory"), TEXT("TRUE"));
+	Rules.Add(TEXT("random_tick_speed"), TEXT("20"));
+	Rules.Add(TEXT("fall_damage"), TEXT("false"));
 	const FMcGameRules Set = FMcGameRules::FromLevel(Rules, 0);
 	TestTrue(TEXT("peaceful"), Set.IsPeaceful());
-	TestFalse(TEXT("doMobSpawning off"), Set.bDoMobSpawning);
-	TestTrue(TEXT("keepInventory is read ignoring case"), Set.bKeepInventory);
-	TestEqual(TEXT("randomTickSpeed"), Set.RandomTickSpeed, 20);
-	TestFalse(TEXT("fallDamage off"), Set.bFallDamage);
+	TestFalse(TEXT("spawn_mobs off"), Set.bDoMobSpawning);
+	TestTrue(TEXT("keep_inventory is read ignoring case"), Set.bKeepInventory);
+	TestEqual(TEXT("random_tick_speed"), Set.RandomTickSpeed, 20);
+	TestFalse(TEXT("fall_damage off"), Set.bFallDamage);
 	TestTrue(TEXT("the others keep their defaults"), Set.bDoMobLoot && Set.bFireDamage);
 
 	// Text that isn't a switch or a number is the default; a negative tick speed is none; the difficulty is clamped.
-	Rules.Add(TEXT("doTileDrops"), TEXT("maybe"));
-	Rules.Add(TEXT("randomTickSpeed"), TEXT("-4"));
+	Rules.Add(TEXT("block_drops"), TEXT("maybe"));
+	Rules.Add(TEXT("random_tick_speed"), TEXT("-4"));
 	const FMcGameRules Odd = FMcGameRules::FromLevel(Rules, 9);
 	TestTrue(TEXT("a bad switch is the default"), Odd.bDoTileDrops);
 	TestEqual(TEXT("a negative speed is 0"), Odd.RandomTickSpeed, 0);

@@ -30,6 +30,12 @@ void AMcHUD::FinishSetup()
 	// The pictures and font that were looked for before they existed are looked for again.
 	Sprites.Reset();
 	LayerTextures.Reset();
+	// The cached icons hold raw pointers to the pictures just dropped: a garbage collection would free them under the icons.
+	Icons.Empty();
+	ItemIcons.Empty();
+	BannerIcons.Empty();
+	PotIcons.Empty();
+	StackIcons.Empty();
 	Glyphs.Reset();
 	OtherFonts.Reset();
 	RasterFonts.Reset();

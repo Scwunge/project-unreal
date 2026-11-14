@@ -1,4 +1,4 @@
-// The game rules and difficulty the entity host obeys: peaceful, doMobSpawning, doMobLoot and doTileDrops.
+// The game rules and difficulty the entity host obeys: peaceful, spawn_mobs, mob_drops and block_drops.
 
 #include "McBlockRegistry.h"
 #include "McBlockShapes.h"
@@ -92,7 +92,7 @@ bool FMcGameRulesHostTest::RunTest(const FString& Parameters)
 	}
 
 	{
-		// doMobSpawning off: a peaceful or normal night brings nothing, and the same goes for a chunk's herd.
+		// spawn_mobs off: a peaceful or normal night brings nothing, and the same goes for a chunk's herd.
 		FMcBlockWorld World{FMcDimensionType()};
 		FillStone(World, Registry, 1);
 		FMcEntityHost Host(World, 2);
@@ -108,7 +108,7 @@ bool FMcGameRulesHostTest::RunTest(const FString& Parameters)
 	}
 
 	{
-		// doMobLoot off: a cow always leaves beef, unless the rule is off.
+		// mob_drops off: a cow always leaves beef, unless the rule is off.
 		for (const bool bLoot : { true, false })
 		{
 			FMcBlockWorld World{FMcDimensionType()};
@@ -130,13 +130,13 @@ bool FMcGameRulesHostTest::RunTest(const FString& Parameters)
 			}
 			else
 			{
-				TestEqual(TEXT("doMobLoot off, no drops"), CountItems(Host), 0);
+				TestEqual(TEXT("mob_drops off, no drops"), CountItems(Host), 0);
 			}
 		}
 	}
 
 	{
-		// doTileDrops off: an explosion in a stone floor leaves cobblestone, unless the rule is off.
+		// block_drops off: an explosion in a stone floor leaves cobblestone, unless the rule is off.
 		for (const bool bDrops : { true, false })
 		{
 			FMcBlockWorld World{FMcDimensionType()};
@@ -152,7 +152,7 @@ bool FMcGameRulesHostTest::RunTest(const FString& Parameters)
 			}
 			else
 			{
-				TestEqual(TEXT("doTileDrops off, nothing drops"), CountItems(Host), 0);
+				TestEqual(TEXT("block_drops off, nothing drops"), CountItems(Host), 0);
 			}
 		}
 	}

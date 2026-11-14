@@ -53,6 +53,10 @@ public:
 	static FString GetPlayerName(const AController* Controller);
 	// An advancement trigger fired for a player: criteria that wait for it are met, and advancements whose criteria are all met are made.
 	static void FireTrigger(class AMcPlayerPawn& Pawn, const struct FMcTriggerEvent& Event);
+	// Adds recipes to (bGrant) or takes them from the player's recipe book; how many changed. A recipe newly added fires
+	// minecraft:recipe_unlocked (which makes the advancement of that recipe, as the game's data wants); taking one back
+	// does not unmake anything.
+	static int32 UnlockRecipes(class AMcPlayerPawn& Pawn, const TArray<FName>& Ids, bool bGrant);
 
 	// ---- Dimensions ----
 	// The first world: the Overworld unless the world was saved in (or started with -McDimension in) another.

@@ -22,7 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$EngineRoot = @('E:\Epic Games\UE_5.8\Engine', 'C:\UE_5.8\Engine') | Where-Object { Test-Path $_ } | Select-Object -First 1
+$EngineRoot = @('J:\UE_5.9\Engine', 'C:\Program Files\Epic Games\UE_5.9\Engine') | Where-Object { Test-Path $_ } | Select-Object -First 1
 $Project = Join-Path (Split-Path $PSScriptRoot) 'McClient.uproject'
 $Stage = Join-Path $OutDir "stage-$Date"
 $Zip = Join-Path $OutDir "McUnreal-$Date.zip"
@@ -49,6 +49,13 @@ $bad = $files | Where-Object {
 if ($bad) {
     $bad | ForEach-Object { Write-Error "Mojang content staged: $($_.FullName)" }
     throw 'The stage holds files that must not be shared.'
+}
+
+# Editor-side AI plugins must not ship: MCP server, toolsets, AgentLook, Unreal Assistant.
+$aiPlugins = $files | Where-Object { $_.FullName -match '(?i)(ModelContextProtocol|Toolset|AgentLook|AgentCapability|AIAssistant|UnrealAssistant|CanvasBridge|SpatialAnnotation)' }
+if ($aiPlugins) {
+    $aiPlugins | ForEach-Object { Write-Error "Editor AI plugin staged: $($_.FullName)" }
+    throw 'The stage holds editor plugins that must not ship.'
 }
 
 Copy-Item (Join-Path $PSScriptRoot 'package\README.txt') $Stage -Force

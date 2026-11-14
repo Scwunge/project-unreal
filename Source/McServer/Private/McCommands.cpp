@@ -6,6 +6,11 @@
 #include "McTextComponent.h"
 #include "McCache.h"
 #include "McMob.h"
+#include "McMount.h"
+#include "Algo/Reverse.h"
+#include "McVillager.h"
+#include "McNbt.h"
+#include "McContainer.h"
 #include "McBiomeRegistry.h"
 #include "McVehicle.h"
 #include "McLoot.h"
@@ -54,12 +59,11 @@ namespace
 		{ TEXT("op"), 3, TEXT("/op <targets>") },
 		{ TEXT("playsound"), 2, TEXT("/playsound <sound> <source> [<targets>] [<pos>] [<volume>] [<pitch>]") },
 		{ TEXT("random"), 2, TEXT("/random (reset|roll|value) ...") },
+		{ TEXT("recipe"), 2, TEXT("/recipe (give|take) <targets> (*|<recipe>)") },
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
-		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle> | dismount)") },
 		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
-		{ TEXT("recipe"), 2, TEXT("/recipe (give | take) <targets> (* | <recipe>)") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -68,6 +72,7 @@ namespace
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
+		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle>|dismount)") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
@@ -824,7 +829,7 @@ namespace
 		}
 		int32 Next = 3;
 		FString Who = SenderName(Sender);
-		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || !Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~"))))
+		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || (!Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~")))))
 		{
 			Who = Words[Next].StartsWith(TEXT("@")) ? SenderName(Sender) : Words[Next];
 			++Next;
@@ -912,7 +917,7 @@ namespace
 		const FIntVector Min(FMath::Min(A.X, B.X), FMath::Min(A.Y, B.Y), FMath::Min(A.Z, B.Z));
 		const FIntVector Max(FMath::Max(A.X, B.X), FMath::Max(A.Y, B.Y), FMath::Max(A.Z, B.Z));
 		const int64 Volume = int64(Max.X - Min.X + 1) * (Max.Y - Min.Y + 1) * (Max.Z - Min.Z + 1);
-		const FString LimitRule = Target.GetGameRule(TEXT("commandModificationBlockLimit"));
+		const FString LimitRule = Target.GetGameRule(TEXT("max_block_modifications"));
 		const int64 Limit = LimitRule.IsNumeric() ? FCString::Atoi64(*LimitRule) : 32768;
 		if (Volume > Limit)
 		{
@@ -1012,7 +1017,7 @@ namespace
 		const FIntVector Size = Max - Min + FIntVector(1);
 		const FIntVector DestMax = Dest + Size - FIntVector(1);
 		const int64 Volume = int64(Size.X) * Size.Y * Size.Z;
-		const FString LimitRule = Target.GetGameRule(TEXT("commandModificationBlockLimit"));
+		const FString LimitRule = Target.GetGameRule(TEXT("max_block_modifications"));
 		const int64 Limit = LimitRule.IsNumeric() ? FCString::Atoi64(*LimitRule) : 32768;
 		if (Volume > Limit)
 		{
@@ -1450,6 +1455,118 @@ namespace
 	}
 
 	// /rotate <targets> <yaw> <pitch>: turns players. Only the yaw is applied (the pitch is told back but not set).
+	// /ride <rider> mount <vehicle> | /ride <rider> dismount (wording and order of the checks from a ref run, cmd_ride.txt). A selector that
+	// can match more than one (@a, @e without limit=1) is refused whatever it finds.
+	int32 ResolveEntities(const FString& Token, const FMcCommandSender& Sender, const IMcCommandTarget& Target, TArray<int32>& Out, FString& BadOption);
+
+	bool IsSingleSelector(const FString& Token)
+	{
+		if (!Token.StartsWith(TEXT("@")))
+		{
+			return true;
+		}
+		if (Token.StartsWith(TEXT("@s")) || Token.StartsWith(TEXT("@p")) || Token.StartsWith(TEXT("@r")) || Token.StartsWith(TEXT("@n")))
+		{
+			return true;
+		}
+		return Token.Contains(TEXT("limit=1]")) || Token.Contains(TEXT("limit=1,"));
+	}
+
+	struct FRideActor
+	{
+		FString Player;
+		int32 Entity = 0;
+	};
+
+	// One entity or player for /ride; false with Out replies if it matched nobody or more than one.
+	bool ResolveRideActor(const FString& Token, const FMcCommandSender& Sender, const IMcCommandTarget& Target, FRideActor& Out, FReplies& Replies)
+	{
+		if (!IsSingleSelector(Token))
+		{
+			Replies = { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+			return false;
+		}
+		if (Token.StartsWith(TEXT("@e")) || Token.StartsWith(TEXT("@n")))
+		{
+			TArray<int32> Found;
+			FString BadOption;
+			if (ResolveEntities(Token, Sender, Target, Found, BadOption) != 1 || Found.Num() == 0)
+			{
+				Replies = { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+				return false;
+			}
+			Out.Entity = Found[0];
+			return true;
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Token, Sender, Target, Players, Error) || Players.Num() == 0)
+		{
+			Replies = { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			return false;
+		}
+		Out.Player = Players[0];
+		return true;
+	}
+
+	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bMount = Words[2] == TEXT("mount");
+		if (!bMount && Words[2] != TEXT("dismount"))
+		{
+			return BadArgument(Command);
+		}
+		if (bMount ? Words.Num() < 4 : false)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > (bMount ? 4 : 3))
+		{
+			return BadArgument(Command);
+		}
+		FRideActor Rider;
+		FReplies Replies;
+		if (!ResolveRideActor(Words[1], Sender, Target, Rider, Replies))
+		{
+			return Replies;
+		}
+		const auto NameOf = [&Target](const FRideActor& Who) { return Who.Player.IsEmpty() ? Target.GetEntityName(Who.Entity) : Who.Player; };
+		if (!bMount)
+		{
+			FString Vehicle;
+			if (!Target.Dismount(Rider.Player, Rider.Entity, Vehicle))
+			{
+				return { Fail(McLang::Format(TEXT("commands.ride.not_riding"), { NameOf(Rider) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.ride.dismount.success"), { NameOf(Rider), Vehicle })) };
+		}
+		FRideActor Vehicle;
+		if (!ResolveRideActor(Words[3], Sender, Target, Vehicle, Replies))
+		{
+			return Replies;
+		}
+		if (!Vehicle.Player.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
+		}
+		FString Other;
+		switch (Target.Ride(Rider.Player, Rider.Entity, Vehicle.Entity, Other))
+		{
+		case 0:
+			return { Ok(McLang::Format(TEXT("commands.ride.mount.success"), { NameOf(Rider), NameOf(Vehicle) })) };
+		case 1:
+			return { Fail(McLang::Format(TEXT("commands.ride.already_riding"), { NameOf(Rider), Other })) };
+		case 2:
+			return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.loop"))) };
+		default:
+			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { NameOf(Rider), NameOf(Vehicle) })) };
+		}
+	}
+
 	FReplies RunRotate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 4)
@@ -2497,8 +2614,44 @@ namespace
 		return { Ok(McLang::Format(bAdd ? TEXT("commands.forceload.added.multiple") : TEXT("commands.forceload.removed.multiple"), { FString::FromInt(Changed), Dimension, Chunk(Low), Chunk(High) })) };
 	}
 
-	FReplies RunSummon(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	FReplies RunSummon(const FString& Command, const TArray<FString>& AllWords, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
+		// /summon <entity> [<pos> [<nbt>]]: the data tag is the rest of the line from its first brace (it has spaces of its own).
+		TArray<FString> Words = AllWords;
+		FMcNbt Tag;
+		bool bTag = false;
+		const int32 Brace = Command.Find(TEXT("{"));
+		if (Brace != INDEX_NONE)
+		{
+			Words.Reset();
+			Command.Left(Brace).ParseIntoArrayWS(Words);
+			if (Words.Num() < 5)
+			{
+				// The tag stands where a coordinate should be.
+				return { Fail(TEXT("Expected double")), Fail(BorderContext(Command, Brace)) };
+			}
+			if (Words.Num() != 5)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			int32 End = 0;
+			FString Message;
+			if (!FMcNbt::ReadSnbt(Command.Mid(Brace), Tag, End, Message))
+			{
+				return { Fail(Message), Fail(BorderContext(Command, Brace + End)) };
+			}
+			// Anything after the tag is not a command.
+			int32 After = Brace + End;
+			while (After < Command.Len() && FChar::IsWhitespace(Command[After]))
+			{
+				++After;
+			}
+			if (After < Command.Len())
+			{
+				return { Fail(McLang::Get(TEXT("command.unknown.argument"))), Fail(BorderContext(Command, After)) };
+			}
+			bTag = true;
+		}
 		if (Words.Num() != 2 && Words.Num() != 5)
 		{
 			return Unknown(Command, Command.Len());
@@ -2519,11 +2672,22 @@ namespace
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.failed.peaceful"))) };
 		}
-		if (!Target.Summon(Kind, Feet))
+		if (!(bTag ? Target.SummonWithTag(Kind, Feet, Tag) : Target.Summon(Kind, Feet)))
 		{
 			return { Fail(McLang::Get(TEXT("commands.summon.invalidPosition"))) };
 		}
-		return { Ok(McLang::Format(TEXT("commands.summon.success"), { McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Kind.ToString())) })) };
+		FString Shown = McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Kind.ToString()));
+		if (bTag)
+		{
+			// A named one is called by its name.
+			const FMcNbt* Name = Tag.Find(TEXT("CustomName"));
+			const FString Called = !Name ? FString() : (Name->Type == FMcNbt::EType::String ? Name->String : Name->GetString(TEXT("text")));
+			if (!Called.IsEmpty())
+			{
+				Shown = Called;
+			}
+		}
+		return { Ok(McLang::Format(TEXT("commands.summon.success"), { Shown })) };
 	}
 
 	// /particle <name> [<pos> [<delta> <speed> <count> [force|normal]]]: the game's own form. The name must be one of the game's particle kinds.
@@ -2693,6 +2857,40 @@ namespace
 			Changed > 0 ? TEXT("success") : TEXT("failure"));
 		const FString Text = McLang::Format(Key, { Title, Who });
 		return { Changed > 0 ? Ok(Text) : Fail(Text) };
+	}
+
+	FReplies RunRecipe(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		// /recipe (give|take) <targets> (*|<recipe>)
+		if (Words.Num() != 4 || (Words[1] != TEXT("give") && Words[1] != TEXT("take")))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bGrant = Words[1] == TEXT("give");
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
+		{
+			return { Fail(Error) };
+		}
+		int32 Changed = 0;
+		for (const FString& Player : Players)
+		{
+			FString Unknown;
+			const int32 Result = Target.SetRecipes(Player, Words[3], bGrant, Unknown);
+			if (Result < 0)
+			{
+				return { Fail(McLang::Format(TEXT("recipe.notFound"), { Unknown })) };
+			}
+			Changed += Result;
+		}
+		const bool bSingle = Players.Num() == 1;
+		if (Changed == 0)
+		{
+			return { Fail(McLang::Get(bGrant ? TEXT("commands.recipe.give.failed") : TEXT("commands.recipe.take.failed"))) };
+		}
+		const FString Key = FString::Printf(TEXT("commands.recipe.%s.success.%s"), bGrant ? TEXT("give") : TEXT("take"), bSingle ? TEXT("single") : TEXT("multiple"));
+		return { Ok(McLang::Format(Key, { FString::FromInt(Changed), bSingle ? Players[0] : FString::FromInt(Players.Num()) })) };
 	}
 
 	FReplies RunEffect(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -4517,6 +4715,92 @@ namespace
 		return Name == TEXT("weapon.offhand");
 	}
 
+	// An entity selector that is about the world's entities, not its players: @n (the nearest) and @e with a type other than the player,
+	// with the arguments type, limit, sort (nearest, furthest, arbitrary) and distance (N, ..N, A..B). 0 if the token is not one (a player
+	// selector or a name), 1 with the ids found (nearest first) in Out, -1 for a selector the command can't read.
+	int32 ResolveEntities(const FString& Token, const FMcCommandSender& Sender, const IMcCommandTarget& Target, TArray<int32>& Out, FString& BadOption)
+	{
+		const bool bNearest = Token.StartsWith(TEXT("@n"));
+		if (!bNearest && !Token.StartsWith(TEXT("@e[")))
+		{
+			return 0;
+		}
+		FString Filters;
+		const int32 Bracket = Token.Find(TEXT("["));
+		if (Bracket != INDEX_NONE)
+		{
+			if (!Token.EndsWith(TEXT("]")))
+			{
+				return -1;
+			}
+			Filters = Token.Mid(Bracket + 1, Token.Len() - Bracket - 2);
+		}
+		else if (Token != TEXT("@n"))
+		{
+			return -1;
+		}
+		FName Kind;
+		int32 Limit = bNearest ? 1 : 0;
+		double Distance = 0.0;
+		bool bFurthest = false;
+		TArray<FString> Parts;
+		Filters.ParseIntoArray(Parts, TEXT(","), true);
+		for (const FString& Part : Parts)
+		{
+			FString Key, Value;
+			if (!Part.Split(TEXT("="), &Key, &Value))
+			{
+				return -1;
+			}
+			Key.TrimStartAndEndInline();
+			Value.TrimStartAndEndInline();
+			if (Key == TEXT("type"))
+			{
+				if (Value.StartsWith(TEXT("!")) || Value.StartsWith(TEXT("#")))
+				{
+					return -1;
+				}
+				Kind = ItemId(Value);
+			}
+			else if (Key == TEXT("limit") && Value.IsNumeric())
+			{
+				Limit = FCString::Atoi(*Value);
+			}
+			else if (Key == TEXT("sort") && (Value == TEXT("nearest") || Value == TEXT("furthest") || Value == TEXT("arbitrary")))
+			{
+				bFurthest = Value == TEXT("furthest");
+			}
+			else if (Key == TEXT("distance"))
+			{
+				FString Max = Value.Contains(TEXT("..")) ? Value.Mid(Value.Find(TEXT("..")) + 2) : Value;
+				if (!Max.IsEmpty() && !Max.IsNumeric())
+				{
+					return -1;
+				}
+				Distance = Max.IsEmpty() ? 0.0 : FCString::Atod(*Max);
+			}
+			else
+			{
+				BadOption = Key;
+				return -1;
+			}
+		}
+		if (Kind == TEXT("minecraft:player"))
+		{
+			return 0;
+		}
+		Out = Target.FindEntities(Kind, SenderFeet(Sender, Target), Distance, bFurthest ? 0 : Limit);
+		if (bFurthest)
+		{
+			Algo::Reverse(Out);
+			if (Limit > 0 && Out.Num() > Limit)
+			{
+				Out.SetNum(Limit);
+			}
+		}
+		return 1;
+	}
+
 	// /item replace entity <players> <slot> with <item> [count] | from entity <players> <slot> (wording from a ref run, cmd_group4.txt).
 	// Players only; blocks, modify and the other slots (enderchest, the crafting grid) are not built.
 	FReplies RunItem(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -4527,6 +4811,57 @@ namespace
 		}
 		TArray<FString> Players;
 		FString Error;
+		// Entities that are not players (mobs, vehicles): the slots of a mob, set by name.
+		TArray<int32> Entities;
+		FString BadOption;
+		const int32 Selected = ResolveEntities(Words[3], Sender, Target, Entities, BadOption);
+		if (Selected < 0)
+		{
+			if (!BadOption.IsEmpty())
+			{
+				return { Fail(McLang::Format(TEXT("argument.entity.options.unknown"), { BadOption })), Fail(BorderContext(Command, Command.Len())) };
+			}
+			return BadArgument(Command);
+		}
+		if (Selected > 0)
+		{
+			if (Entities.IsEmpty())
+			{
+				return { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+			}
+			if (Words.Num() < 7 || Words.Num() > 8 || Words[5] != TEXT("with"))
+			{
+				return Unknown(Command, Command.Len());
+			}
+			const FName Item = ItemId(Words[6]);
+			if (Target.GetMaxStackSize(Item) <= 0)
+			{
+				return { Fail(McLang::Format(TEXT("argument.item.id.invalid"), { Item.ToString() })) };
+			}
+			const int32 Count = Words.Num() == 8 && Words[7].IsNumeric() ? FCString::Atoi(*Words[7]) : 1;
+			int32 Done = 0;
+			bool bRefused = false;
+			for (const int32 Each : Entities)
+			{
+				const int32 Result = Target.SetEntitySlot(Each, Words[4], Item, Count);
+				Done += Result == 1 ? 1 : 0;
+				bRefused |= Result == 2;
+			}
+			if (Done == 0)
+			{
+				if (bRefused)
+				{
+					return { Fail(McLang::Format(TEXT("commands.item.target.failed"), { FString::FromInt(Count), Item.ToString() })) };
+				}
+				return { Fail(McLang::Format(TEXT("commands.item.target.no_such_slot"), { Words[4] })) };
+			}
+			const FString Shown = TEXT("[") + Target.GetItemName(Item) + TEXT("]");
+			if (Done == 1)
+			{
+				return { Ok(McLang::Format(TEXT("commands.item.entity.replace.success.single.known_item"), { TEXT("1"), Target.GetEntityName(Entities[0]), Shown })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.item.entity.replace.success.multiple.known_item"), { FString::FromInt(Done), Shown })) };
+		}
 		if (!ResolvePlayers(Words[3], Sender, Target, Players, Error))
 		{
 			// An entity argument: a name nobody has is "No entity was found", not the player argument's wording.
@@ -4906,49 +5241,6 @@ namespace
 		return Unknown(Command, Command.Len());
 	}
 
-	// /ride <target> dismount | mount <vehicle> (wording from a ref run, cmd_group4.txt). Players can ride boats and minecarts only;
-	// there are no saddled or tamed mounts, and no selector for other entities, so mount answers the game's generic failure for
-	// anything but a player (which can't be ridden).
-	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
-	{
-		if (Words.Num() < 3 || (Words[2] == TEXT("dismount") && Words.Num() != 3) || (Words[2] == TEXT("mount") && Words.Num() != 4)
-			|| (Words[2] != TEXT("dismount") && Words[2] != TEXT("mount")))
-		{
-			return Unknown(Command, Command.Len());
-		}
-		TArray<FString> Riders;
-		FString Error;
-		if (!ResolvePlayers(Words[1], Sender, Target, Riders, Error))
-		{
-			return { Fail(Error) };
-		}
-		if (Riders.Num() > 1)
-		{
-			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
-		}
-		if (Words[2] == TEXT("dismount"))
-		{
-			FString Vehicle;
-			if (!Target.GetVehicleName(Riders[0], Vehicle))
-			{
-				return { Fail(McLang::Format(TEXT("commands.ride.not_riding"), { Riders[0] })) };
-			}
-			Target.Dismount(Riders[0]);
-			return { Ok(McLang::Format(TEXT("commands.ride.dismount.success"), { Riders[0], Vehicle })) };
-		}
-		TArray<FString> Vehicles;
-		if (!ResolvePlayers(Words[3], Sender, Target, Vehicles, Error))
-		{
-			// Not a player: only players can be found by a selector here.
-			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { Riders[0], Words[3] })) };
-		}
-		if (Vehicles.Num() > 1)
-		{
-			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
-		}
-		return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
-	}
-
 	// /place feature <feature> [pos] (wording from a ref run, cmd_group4.txt). Template, structure and jigsaw are not built.
 	FReplies RunPlace(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
@@ -4980,60 +5272,6 @@ namespace
 			return { Fail(McLang::Get(TEXT("commands.place.feature.failed"))) };
 		}
 		return { Ok(McLang::Format(TEXT("commands.place.feature.success"), { Id, FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z) })) };
-	}
-
-	// /recipe give|take <players> (<recipe> | *) (wording from a ref run, cmd_misc.txt). The port has no recipe book screen, so the
-	// unlocked recipes are only remembered here for the session; the game also unlocks recipes by itself as ingredients are picked up,
-	// which is why its "take *" counted 1746 (cmd_recipe.txt) where this counts what was given.
-	FReplies RunRecipe(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
-	{
-		static TMap<FString, TSet<FName>> Unlocked;
-		if (Words.Num() != 4 || (Words[1] != TEXT("give") && Words[1] != TEXT("take")))
-		{
-			return Unknown(Command, Command.Len());
-		}
-		TArray<FString> Players;
-		FString Error;
-		if (!ResolvePlayers(Words[2], Sender, Target, Players, Error))
-		{
-			return { Fail(Error) };
-		}
-		TArray<FName> Wanted;
-		FMcRecipeBook& Book = FMcRecipeBook::Get();
-		Book.EnsureLoaded();
-		if (Words[3] == TEXT("*"))
-		{
-			for (const FMcRecipe& Recipe : Book.GetAll())
-			{
-				Wanted.Add(Recipe.Id);
-			}
-		}
-		else
-		{
-			const FName Id(*McCache::Namespaced(Words[3]));
-			if (!Book.Find(Id))
-			{
-				return { Fail(FString::Printf(TEXT("Unknown recipe: %s"), *Id.ToString())) };
-			}
-			Wanted.Add(Id);
-		}
-		const bool bGive = Words[1] == TEXT("give");
-		int32 Changed = 0;
-		for (const FString& Player : Players)
-		{
-			TSet<FName>& Set = Unlocked.FindOrAdd(Player);
-			for (const FName Id : Wanted)
-			{
-				Changed += bGive ? (Set.Contains(Id) ? 0 : (Set.Add(Id), 1)) : Set.Remove(Id);
-			}
-		}
-		if (Changed == 0)
-		{
-			return { Fail(McLang::Get(bGive ? TEXT("commands.recipe.give.failed") : TEXT("commands.recipe.take.failed"))) };
-		}
-		const FString Count = FString::FromInt(Changed);
-		const FString Key = FString(bGive ? TEXT("commands.recipe.give.success.") : TEXT("commands.recipe.take.success.")) + (Players.Num() == 1 ? TEXT("single") : TEXT("multiple"));
-		return { Ok(McLang::Format(Key, { Count, Players.Num() == 1 ? Players[0] : FString::FromInt(Players.Num()) })) };
 	}
 
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -5573,17 +5811,9 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunAttribute(Command, Words, Sender, Target);
 	}
-	if (Name == TEXT("ride"))
-	{
-		return RunRide(Command, Words, Sender, Target);
-	}
 	if (Name == TEXT("place"))
 	{
 		return RunPlace(Command, Words, Sender, Target);
-	}
-	if (Name == TEXT("recipe"))
-	{
-		return RunRecipe(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("loot"))
 	{
@@ -5691,6 +5921,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	{
 		return RunAdvancement(Command, Words, Sender, Target);
 	}
+	if (Name == TEXT("recipe"))
+	{
+		return RunRecipe(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("effect"))
 	{
 		return RunEffect(Command, Words, Sender, Target);
@@ -5722,6 +5956,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("ride"))
+	{
+		return RunRide(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("rotate"))
 	{
@@ -5819,69 +6057,65 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 TConstArrayView<McCommands::FGameRule> McCommands::GetGameRules()
 {
 	static const FGameRule Rules[] = {
-		{ TEXT("allowEnteringNetherUsingPortals"), false, TEXT("true") },
-		{ TEXT("allowFireTicksAwayFromPlayer"), false, TEXT("false") },
-		{ TEXT("announceAdvancements"), false, TEXT("true") },
-		{ TEXT("blockExplosionDropDecay"), false, TEXT("true") },
-		{ TEXT("commandBlockOutput"), false, TEXT("true") },
-		{ TEXT("commandBlocksEnabled"), false, TEXT("true") },
-		{ TEXT("commandModificationBlockLimit"), true, TEXT("32768") },
-		{ TEXT("disableElytraMovementCheck"), false, TEXT("false") },
-		{ TEXT("disablePlayerMovementCheck"), false, TEXT("false") },
-		{ TEXT("disableRaids"), false, TEXT("false") },
-		{ TEXT("doDaylightCycle"), false, TEXT("true") },
-		{ TEXT("doEntityDrops"), false, TEXT("true") },
-		{ TEXT("doFireTick"), false, TEXT("true") },
-		{ TEXT("doImmediateRespawn"), false, TEXT("false") },
-		{ TEXT("doInsomnia"), false, TEXT("true") },
-		{ TEXT("doLimitedCrafting"), false, TEXT("false") },
-		{ TEXT("doMobLoot"), false, TEXT("true") },
-		{ TEXT("doMobSpawning"), false, TEXT("true") },
-		{ TEXT("doPatrolSpawning"), false, TEXT("true") },
-		{ TEXT("doTileDrops"), false, TEXT("true") },
-		{ TEXT("doTraderSpawning"), false, TEXT("true") },
-		{ TEXT("doVinesSpread"), false, TEXT("true") },
-		{ TEXT("doWardenSpawning"), false, TEXT("true") },
-		{ TEXT("doWeatherCycle"), false, TEXT("true") },
-		{ TEXT("drowningDamage"), false, TEXT("true") },
-		{ TEXT("enableCommandBlocks"), false, TEXT("true") },
-		{ TEXT("enderPearlsVanishOnDeath"), false, TEXT("true") },
-		{ TEXT("entitiesWithPassengersCanUsePortals"), false, TEXT("false") },
-		{ TEXT("fallDamage"), false, TEXT("true") },
-		{ TEXT("fireDamage"), false, TEXT("true") },
-		{ TEXT("forgiveDeadPlayers"), false, TEXT("true") },
-		{ TEXT("freezeDamage"), false, TEXT("true") },
-		{ TEXT("globalSoundEvents"), false, TEXT("true") },
-		{ TEXT("keepInventory"), false, TEXT("false") },
-		{ TEXT("lavaSourceConversion"), false, TEXT("false") },
-		{ TEXT("locatorBar"), false, TEXT("true") },
-		{ TEXT("logAdminCommands"), false, TEXT("true") },
-		{ TEXT("maxCommandChainLength"), true, TEXT("65536") },
-		{ TEXT("maxCommandForkCount"), true, TEXT("65536") },
-		{ TEXT("maxEntityCramming"), true, TEXT("24") },
-		{ TEXT("minecartMaxSpeed"), true, TEXT("8") },
-		{ TEXT("mobExplosionDropDecay"), false, TEXT("true") },
-		{ TEXT("mobGriefing"), false, TEXT("true") },
-		{ TEXT("naturalRegeneration"), false, TEXT("true") },
-		{ TEXT("playersNetherPortalCreativeDelay"), true, TEXT("0") },
-		{ TEXT("playersNetherPortalDefaultDelay"), true, TEXT("80") },
-		{ TEXT("playersSleepingPercentage"), true, TEXT("100") },
-		{ TEXT("projectilesCanBreakBlocks"), false, TEXT("true") },
+		{ TEXT("advance_time"), false, TEXT("true") },
+		{ TEXT("advance_weather"), false, TEXT("true") },
+		{ TEXT("allow_entering_nether_using_portals"), false, TEXT("true") },
+		{ TEXT("block_drops"), false, TEXT("true") },
+		{ TEXT("block_explosion_drop_decay"), false, TEXT("true") },
+		{ TEXT("command_block_output"), false, TEXT("true") },
+		{ TEXT("command_blocks_work"), false, TEXT("true") },
+		{ TEXT("drowning_damage"), false, TEXT("true") },
+		{ TEXT("elytra_movement_check"), false, TEXT("true") },
+		{ TEXT("ender_pearls_vanish_on_death"), false, TEXT("true") },
+		{ TEXT("entity_drops"), false, TEXT("true") },
+		{ TEXT("fall_damage"), false, TEXT("true") },
+		{ TEXT("fire_damage"), false, TEXT("true") },
+		{ TEXT("fire_spread_radius_around_player"), true, TEXT("128") },
+		{ TEXT("forgive_dead_players"), false, TEXT("true") },
+		{ TEXT("freeze_damage"), false, TEXT("true") },
+		{ TEXT("global_sound_events"), false, TEXT("true") },
+		{ TEXT("immediate_respawn"), false, TEXT("false") },
+		{ TEXT("keep_inventory"), false, TEXT("false") },
+		{ TEXT("lava_source_conversion"), false, TEXT("false") },
+		{ TEXT("limited_crafting"), false, TEXT("false") },
+		{ TEXT("locator_bar"), false, TEXT("true") },
+		{ TEXT("log_admin_commands"), false, TEXT("true") },
+		{ TEXT("max_block_modifications"), true, TEXT("32768") },
+		{ TEXT("max_command_forks"), true, TEXT("65536") },
+		{ TEXT("max_command_sequence_length"), true, TEXT("65536") },
+		{ TEXT("max_entity_cramming"), true, TEXT("24") },
+		{ TEXT("max_minecart_speed"), true, TEXT("8") },
+		{ TEXT("max_snow_accumulation_height"), true, TEXT("1") },
+		{ TEXT("mob_drops"), false, TEXT("true") },
+		{ TEXT("mob_explosion_drop_decay"), false, TEXT("true") },
+		{ TEXT("mob_griefing"), false, TEXT("true") },
+		{ TEXT("natural_health_regeneration"), false, TEXT("true") },
+		{ TEXT("player_movement_check"), false, TEXT("true") },
+		{ TEXT("players_nether_portal_creative_delay"), true, TEXT("0") },
+		{ TEXT("players_nether_portal_default_delay"), true, TEXT("80") },
+		{ TEXT("players_sleeping_percentage"), true, TEXT("100") },
+		{ TEXT("projectiles_can_break_blocks"), false, TEXT("true") },
 		{ TEXT("pvp"), false, TEXT("true") },
-		{ TEXT("randomTickSpeed"), true, TEXT("3") },
-		{ TEXT("reducedDebugInfo"), false, TEXT("false") },
-		{ TEXT("sendCommandFeedback"), false, TEXT("true") },
-		{ TEXT("showDeathMessages"), false, TEXT("true") },
-		{ TEXT("snowAccumulationHeight"), true, TEXT("1") },
-		{ TEXT("spawnChunkRadius"), true, TEXT("2") },
-		{ TEXT("spawnerBlocksWork"), false, TEXT("true") },
-		{ TEXT("spawnMonsters"), false, TEXT("true") },
-		{ TEXT("spawnRadius"), true, TEXT("10") },
-		{ TEXT("spectatorsGenerateChunks"), false, TEXT("true") },
-		{ TEXT("tntExplodes"), false, TEXT("true") },
-		{ TEXT("tntExplosionDropDecay"), false, TEXT("false") },
-		{ TEXT("universalAnger"), false, TEXT("false") },
-		{ TEXT("waterSourceConversion"), false, TEXT("true") },
+		{ TEXT("raids"), false, TEXT("true") },
+		{ TEXT("random_tick_speed"), true, TEXT("3") },
+		{ TEXT("reduced_debug_info"), false, TEXT("false") },
+		{ TEXT("respawn_radius"), true, TEXT("10") },
+		{ TEXT("send_command_feedback"), false, TEXT("true") },
+		{ TEXT("show_advancement_messages"), false, TEXT("true") },
+		{ TEXT("show_death_messages"), false, TEXT("true") },
+		{ TEXT("spawn_mobs"), false, TEXT("true") },
+		{ TEXT("spawn_monsters"), false, TEXT("true") },
+		{ TEXT("spawn_patrols"), false, TEXT("true") },
+		{ TEXT("spawn_phantoms"), false, TEXT("true") },
+		{ TEXT("spawn_wandering_traders"), false, TEXT("true") },
+		{ TEXT("spawn_wardens"), false, TEXT("true") },
+		{ TEXT("spawner_blocks_work"), false, TEXT("true") },
+		{ TEXT("spectators_generate_chunks"), false, TEXT("true") },
+		{ TEXT("spread_vines"), false, TEXT("true") },
+		{ TEXT("tnt_explodes"), false, TEXT("true") },
+		{ TEXT("tnt_explosion_drop_decay"), false, TEXT("false") },
+		{ TEXT("universal_anger"), false, TEXT("false") },
+		{ TEXT("water_source_conversion"), false, TEXT("true") },
 	};
 	return Rules;
 }
@@ -5968,4 +6202,144 @@ FMcWorldBorderState& McCommands::GetWorldBorder()
 {
 	static FMcWorldBorderState State;
 	return State;
+}
+
+int32 McCommands::SetEntitySlot(FMcEntity& Entity, const FString& Slot, FName Item, int32 Count)
+{
+	if (!Entity.IsLiving())
+	{
+		return 0;
+	}
+	FMcMob& Mob = static_cast<FMcMob&>(Entity);
+	const FName Put = Count > 0 ? Item : FName();
+	if (Slot == TEXT("weapon") || Slot == TEXT("weapon.mainhand"))
+	{
+		Mob.HeldItem = Put;
+		return 1;
+	}
+	static const TCHAR* const Worn[] = { TEXT("armor.head"), TEXT("armor.chest"), TEXT("armor.legs"), TEXT("armor.feet") };
+	for (int32 I = 0; I < 4; ++I)
+	{
+		if (Slot == Worn[I])
+		{
+			Mob.Armor[I] = Put;
+			return 1;
+		}
+	}
+	if (Slot == TEXT("saddle"))
+	{
+		if (!McMount::IsRideable(Mob) && !Mob.Type.Name.ToString().Contains(TEXT("camel")) && Mob.Type.Name != TEXT("minecraft:pig") && Mob.Type.Name != TEXT("minecraft:strider"))
+		{
+			return 0;
+		}
+		if (Mob.IsYoung() && !Put.IsNone())
+		{
+			// A baby can't be saddled.
+			return 2;
+		}
+		FMcMountState& State = McMount::Ensure(Mob);
+		const TSharedPtr<FMcContainer>& Inventory = McMount::GetInventory(State);
+		Inventory->Set(0, Put.IsNone() ? FMcItemStack() : FMcItemStack(Put, 1));
+		McMount::Sync(State);
+		return 1;
+	}
+	return 0;
+}
+
+void McCommands::ApplyEntityTag(FMcEntity& Entity, const FMcNbt& Tag)
+{
+	if (const FMcNbt* Rotation = Tag.Find(TEXT("Rotation")))
+	{
+		if (Rotation->Type == FMcNbt::EType::List && Rotation->Num() >= 2)
+		{
+			Entity.Yaw = static_cast<float>(Rotation->Values[0].GetReal());
+			Entity.Pitch = static_cast<float>(Rotation->Values[1].GetReal());
+		}
+	}
+	if (Tag.Find(TEXT("Silent")))
+	{
+		Entity.bSilent = Tag.GetInt(TEXT("Silent")) != 0;
+	}
+	if (const FMcNbt* Tags = Tag.Find(TEXT("Tags")))
+	{
+		for (const FMcNbt& Each : Tags->Values)
+		{
+			if (Each.Type == FMcNbt::EType::String)
+			{
+				Entity.CommandTags.AddUnique(Each.String);
+			}
+		}
+	}
+	if (!Entity.IsLiving())
+	{
+		return;
+	}
+	FMcMob& Mob = static_cast<FMcMob&>(Entity);
+	if (Tag.Find(TEXT("NoAI")))
+	{
+		Mob.bNoAI = Tag.GetInt(TEXT("NoAI")) != 0;
+	}
+	if (Tag.Find(TEXT("Invulnerable")))
+	{
+		Mob.bInvulnerable = Tag.GetInt(TEXT("Invulnerable")) != 0;
+	}
+	if (const FMcNbt* Name = Tag.Find(TEXT("CustomName")))
+	{
+		// A text component: a plain string, or a compound with the text in it.
+		Mob.CustomName = Name->Type == FMcNbt::EType::String ? Name->String : Name->GetString(TEXT("text"));
+	}
+	const int32 Age = static_cast<int32>(Tag.GetInt(TEXT("Age")));
+	if (Age < 0 && !Mob.Type.IsHostile())
+	{
+		if (Mob.Type.Name == FMcVillager::StaticType())
+		{
+			FMcVillager& Villager = static_cast<FMcVillager&>(Mob);
+			Villager.SetBaby(true);
+			Villager.SetGrowthTicksLeft(-Age);
+		}
+		else
+		{
+			Mob.SetYoung(-Age);
+		}
+	}
+	if (FMcMob::CanBeBabyZombie(Mob.Type.Name) && Tag.GetInt(TEXT("IsBaby")) != 0)
+	{
+		Mob.SetYoung(FMcMob::BabyForever);
+	}
+	const auto Put = [&Entity](const TCHAR* Slot, const FMcNbt* Stack)
+	{
+		const FString Id = Stack ? Stack->GetString(TEXT("id")) : FString();
+		if (!Id.IsEmpty())
+		{
+			SetEntitySlot(Entity, Slot, FName(*(Id.Contains(TEXT(":")) ? Id : TEXT("minecraft:") + Id)), 1);
+		}
+	};
+	if (const FMcNbt* Equipment = Tag.Find(TEXT("equipment")))
+	{
+		Put(TEXT("armor.head"), Equipment->Find(TEXT("head")));
+		Put(TEXT("armor.chest"), Equipment->Find(TEXT("chest")));
+		Put(TEXT("armor.legs"), Equipment->Find(TEXT("legs")));
+		Put(TEXT("armor.feet"), Equipment->Find(TEXT("feet")));
+		Put(TEXT("weapon.mainhand"), Equipment->Find(TEXT("mainhand")));
+		Put(TEXT("saddle"), Equipment->Find(TEXT("saddle")));
+	}
+	if (const FMcNbt* Worn = Tag.Find(TEXT("ArmorItems")))
+	{
+		for (int32 Slot = 0; Slot < 4 && Slot < Worn->Num(); ++Slot)
+		{
+			static const TCHAR* const Names[] = { TEXT("armor.feet"), TEXT("armor.legs"), TEXT("armor.chest"), TEXT("armor.head") };
+			Put(Names[Slot], &Worn->Values[Slot]);
+		}
+	}
+	if (const FMcNbt* Hands = Tag.Find(TEXT("HandItems")))
+	{
+		if (Hands->Num() > 0)
+		{
+			Put(TEXT("weapon.mainhand"), &Hands->Values[0]);
+		}
+	}
+	if (const FMcNbt* Saddle = Tag.Find(TEXT("SaddleItem")))
+	{
+		Put(TEXT("saddle"), Saddle);
+	}
 }

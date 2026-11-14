@@ -35,10 +35,10 @@ bool FMcChestModelTest::RunTest(const FString& Parameters)
 	Pick(TEXT("minecraft:chest[facing=east,type=single,waterlogged=false]"), Yaw, Partner);
 	TestEqual(TEXT("facing east turns 90"), Yaw, 90.0f);
 	// The half whose other half is on its +x side (turned with it) wears the _left picture, whichever the type says.
-	TestEqual(TEXT("north, right: the other half is east"), Pick(TEXT("minecraft:chest[facing=north,type=right,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_left")));
-	TestEqual(TEXT("east of it"), Partner, FIntVector(1, 0, 0));
-	TestEqual(TEXT("north, left"), Pick(TEXT("minecraft:chest[facing=north,type=left,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_right")));
-	TestEqual(TEXT("south, right: turned, the same picture"), Pick(TEXT("minecraft:chest[facing=south,type=right,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_left")));
+	TestEqual(TEXT("north, right: the other half is west"), Pick(TEXT("minecraft:chest[facing=north,type=right,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_right")));
+	TestEqual(TEXT("west of it"), Partner, FIntVector(-1, 0, 0));
+	TestEqual(TEXT("north, left"), Pick(TEXT("minecraft:chest[facing=north,type=left,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_left")));
+	TestEqual(TEXT("south, right: turned, the same picture"), Pick(TEXT("minecraft:chest[facing=south,type=right,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/normal_right")));
 	TestEqual(TEXT("a trapped chest"), Pick(TEXT("minecraft:trapped_chest[facing=north,type=single,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/trapped")));
 	TestEqual(TEXT("an ender chest"), Pick(TEXT("minecraft:ender_chest[facing=north,waterlogged=false]"), Yaw, Partner), FName(TEXT("mc:chest/ender")));
 	TestEqual(TEXT("a waxed weathered copper chest"), Pick(TEXT("minecraft:waxed_weathered_copper_chest[facing=north,type=single,waterlogged=false]"), Yaw, Partner),

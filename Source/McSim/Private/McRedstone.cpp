@@ -62,6 +62,7 @@ namespace
 		NoteBlock,
 		Lectern,
 		Bell,
+		TrappedChest,
 	};
 
 	enum EDir : int32
@@ -148,6 +149,7 @@ namespace
 				else if (Name == TEXT("minecraft:target")) Kind = Target;
 				else if (Name == TEXT("minecraft:note_block")) Kind = NoteBlock;
 				else if (Name == TEXT("minecraft:lectern")) Kind = Lectern;
+				else if (Name == TEXT("minecraft:trapped_chest")) Kind = TrappedChest;
 				else if (Name == TEXT("minecraft:bell")) Kind = Bell;
 				for (const FMcStateId State : Block.States)
 				{
@@ -388,6 +390,10 @@ int32 FMcRedstone::Signal(FMcStateId State, const FIntVector& Pos, int32 Toward)
 	case TripwireHook:
 	case Lectern:
 		return Flag(State, TEXT("powered")) ? 15 : 0;
+	// A trapped chest gives one for each player with it open, to 15 (reference run trapchest); both halves of a double chest
+	// give the count of the pair.
+	case TrappedChest:
+		return FMath::Min(ChestViewers.FindRef(Pos), 15);
 	case PlateLight:
 	case PlateHeavy:
 	case Daylight:
@@ -456,6 +462,7 @@ int32 FMcRedstone::DirectSignal(FMcStateId State, const FIntVector& Pos, int32 T
 	case PlateHeavy:
 	case DetectorRail:
 	case Lectern:
+	case TrappedChest:
 		return Toward == Up ? Signal(State, Pos, Toward) : 0;
 	// The hook powers the block it hangs on (the receiver sees it in the direction the hook faces).
 	case TripwireHook:
@@ -1329,6 +1336,7 @@ bool FMcRedstone::ConnectsTo(FMcStateId State, int32 Toward) const
 	case TripwireHook:
 	case Jukebox:
 	case LightningRod:
+	case TrappedChest:
 		return true;
 	case Repeater:
 		return FacingOf(State) == Toward || FacingOf(State) == Opposite(Toward);
@@ -2807,4 +2815,38 @@ void FMcRedstone::TickMovingPiston(const FIntVector& Pos, FMcStateId State)
 	bLanding = true;
 	World.SetBlock(Pos, Landed);
 	bLanding = false;
+}
+
+void FMcRedstone::SetChestViewers(const FIntVector& Pos, int32 NumViewers)
+{
+	if (KindOf(World.GetBlock(Pos)) != TrappedChest)
+	{
+		return;
+	}
+	if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(World, Pos))
+	{
+		const FIntVector Other = Partner.GetValue();
+		if (Other != Pos && KindOf(World.GetBlock(Other)) == TrappedChest)
+		{
+			SetOneChest(Other, NumViewers);
+		}
+	}
+	SetOneChest(Pos, NumViewers);
+}
+
+void FMcRedstone::SetOneChest(const FIntVector& Pos, int32 NumViewers)
+{
+	if (NumViewers > 0)
+	{
+		if (ChestViewers.FindRef(Pos) == NumViewers)
+		{
+			return;
+		}
+		ChestViewers.Add(Pos, NumViewers);
+	}
+	else if (ChestViewers.Remove(Pos) == 0)
+	{
+		return;
+	}
+	OnBlockChanged(Pos, World.GetBlock(Pos));
 }

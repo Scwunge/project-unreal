@@ -1,7 +1,7 @@
 // Double chests (minecraft.wiki, "Chest"): two chests side by side with the same facing are one container.
 //
 // A chest's `type` is single, left or right, as seen by someone facing its front. A right chest's other half is
-// the block clockwise of its facing, a left chest's the one counter-clockwise. The right half's slots come first.
+// the block counter-clockwise of its facing, a left chest's the one clockwise (reference run trapchest). The right half's slots come first.
 
 #pragma once
 

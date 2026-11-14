@@ -54,6 +54,8 @@ public:
 	void LightningStruck(const FIntVector& Pos);
 	// Whether a minecart is on the detector rail at Pos.
 	void SetDetectorRail(const FIntVector& Pos, bool bOccupied);
+	// How many players have the trapped chest at Pos open (0 closes it); a double chest's two halves give the same. It powers that much, to 15.
+	void SetChestViewers(const FIntVector& Pos, int32 NumViewers);
 	// What a container at Pos holds has changed: comparators that read it (beside it, or through a solid block) look again.
 	void NotifyContainerChanged(const FIntVector& Pos);
 	// A player put the block at Pos in place by hand. A tripwire hook put down this way looks along its line at once, which

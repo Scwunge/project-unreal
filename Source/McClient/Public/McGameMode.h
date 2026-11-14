@@ -46,6 +46,8 @@ public:
 	// ---- Chat ----
 	// A line a player typed: said to everyone, or run as a command (McCommands) with their permission level.
 	void HandleChat(APlayerController* From, const FString& Text);
+	// On a dedicated server: reads commands from standard input and runs them as the console.
+	void StartServerConsole();
 	// A line for every player (and the server log). Rgb is the colour, white by default.
 	void BroadcastChat(const FString& Text, uint32 Rgb = 0xFFFFFF);
 	// The player of that name (as they joined, ignoring case), or null.

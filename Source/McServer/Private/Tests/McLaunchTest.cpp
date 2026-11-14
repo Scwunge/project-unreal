@@ -66,6 +66,15 @@ bool FMcServerAccessTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("not on the allowlist"), FMcServerAccess::CheckJoin(Closed, Access, TEXT("Eve"), 0), FString(TEXT("You are not white-listed on this server!")));
 	TestEqual(TEXT("on it"), FMcServerAccess::CheckJoin(Closed, Access, TEXT("ALICE"), 0), FString());
 	TestEqual(TEXT("ops get past it"), FMcServerAccess::CheckJoin(Closed, Access, TEXT("Dan"), 0), FString());
+
+	TestTrue(TEXT("ban files"), Access.ParseBans(TEXT("[{\"name\": \"Mallory\", \"source\": \"Server\", \"reason\": \"cheating\"}, {\"name\": \"\"}]"), false));
+	TestTrue(TEXT("ip ban files"), Access.ParseBans(TEXT("[{\"ip\": \"9.9.9.9\", \"reason\": \"spam\"}]"), true));
+	TestEqual(TEXT("a banned name"), FMcServerAccess::CheckJoin(Open, Access, TEXT("mallory"), 0), FString(TEXT("You are banned from this server.\nReason: cheating")));
+	TestEqual(TEXT("a banned address"), FMcServerAccess::CheckJoin(Open, Access, TEXT("Eve"), 0, TEXT("9.9.9.9")), FString(TEXT("Your IP address is banned from this server.\nReason: spam")));
+	TestEqual(TEXT("another address"), FMcServerAccess::CheckJoin(Open, Access, TEXT("Eve"), 0, TEXT("9.9.9.8")), FString());
+	FMcServerAccess Again;
+	Again.ParseBans(Access.BansToJson(false), false);
+	TestEqual(TEXT("the file round-trips"), Again.Bans.Num(), 1);
 	return true;
 }
 

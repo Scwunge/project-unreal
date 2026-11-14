@@ -4051,3 +4051,9 @@ New ref verbs that would settle them: a `log player` (health/effects) so a hurt 
 ## /ride (import-java-world session)
 - Built: `/ride <target> mount <vehicle>` and `dismount` with the wording and check order of the ref run (scripts/cmd_ride.txt, log_cmd_ride.log): "already riding" names the vehicle it is on now, a selector that can match many (@a, @e without limit=1) is refused before anything is looked up, a player vehicle says "Players can't be ridden". Mob on mob uses RidingId/PassengerId (chicken jockey way); a player on a horse-family mob sets the mount's rider and calls ServerRide.
 - Not built: players riding mobs that are not horse-family (pig, strider, camel without saddle checks) from the command, boats and minecarts as vehicles for mobs, wrong-dimension message, two riders on a camel.
+
+## /save-all, /save-on, /save-off, /stop, ban commands (import-java-world session)
+- Built: `/save-all [flush]`, `/save-on`, `/save-off`, `/stop` (level 4) and the dedicated server's stdin console (lines from stdin run as the console, level 4). Checked on the real dedicated server (`-server -nullrhi`, `save-all` then `stop` piped in): "Saved the game", "Stopping the server", process exit code 0.
+- Wording of these comes from the lang file only: the ref's singleplayer player cannot run them (unknown command), so the ref logs could not confirm it.
+- `/ban`, `/ban-ip`, `/pardon`, `/pardon-ip`, `/banlist [ips|players]` (level 3), stored in `banned-players.json` and `banned-ips.json` beside ops.json. A banned name or address is refused at PreLogin with the game's own text. Same lang-only wording note.
+- Not built: timed bans (expires is always "forever"), UUID keys (we key by name), `/banlist` ordering of the game.

@@ -28,6 +28,7 @@ namespace
 		TArray<FPlayer> Players;
 		TArray<FString> Broadcasts;
 		TArray<FString> Kicked;
+		TMap<FString, FString> Addresses;
 		double DayTime = 0.0;
 		EMcWeather Weather = EMcWeather::Clear;
 		FMcServerAccess Access;
@@ -122,6 +123,7 @@ namespace
 		virtual double GetGameTime() const override { return 12345.0; }
 		virtual void SetWeather(EMcWeather InWeather, int32 DurationTicks) override { Weather = InWeather; }
 		virtual int64 GetSeed() const override { return -42; }
+		virtual FString GetPlayerAddress(const FString& Player) const override { const FString* Ip = Addresses.Find(Player); return Ip ? *Ip : FString(); }
 		virtual FMcServerAccess LoadAccess() const override { return Access; }
 		virtual void SaveAccess(const FMcServerAccess& InAccess) override { Access = InAccess; }
 		virtual bool IsAllowlistOn() const override { return bAllowlist; }
@@ -154,6 +156,13 @@ namespace
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
 		TArray<FMcNbt> SummonedTags;
+		bool bAutosave = true;
+		int32 SavedAll = 0;
+		bool bStopped = false;
+		virtual bool SaveAll(bool bFlush) override { ++SavedAll; return true; }
+		virtual bool IsAutosaveOn() const override { return bAutosave; }
+		virtual void SetAutosaveOn(bool bOn) override { bAutosave = bOn; }
+		virtual void RequestStop() override { bStopped = true; }
 		// /ride: the stub knows entity 7 (a pig) and 8 (a horse), and what Ride answers.
 		int32 RideAnswer = 0;
 		TArray<FString> Rides;
@@ -426,6 +435,34 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("op"), Target.Access.FindOp(TEXT("Alex")));
 	McCommands::HandleChat(TEXT("/deop Alex"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("deop"), Target.Access.FindOp(TEXT("Alex")));
+	// /ban, /pardon, /ban-ip, /pardon-ip, /banlist.
+	Target.Kicked.Empty();
+	Target.Addresses.Add(TEXT("Alex"), TEXT("10.0.0.7"));
+	McCommands::HandleChat(TEXT("/ban Alex griefing"), Op(TEXT("Steve")), Target);
+	TestNotNull(TEXT("ban"), Target.Access.FindBan(TEXT("alex")));
+	TestEqual(TEXT("ban reason"), Target.Access.FindBan(TEXT("Alex")) ? Target.Access.FindBan(TEXT("Alex"))->Reason : FString(), FString(TEXT("griefing")));
+	TestTrue(TEXT("ban kicks"), Target.Kicked.Contains(TEXT("Alex")));
+	McCommands::HandleChat(TEXT("/ban Alex"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("no second entry"), Target.Access.Bans.Num(), 1);
+	McCommands::HandleChat(TEXT("/ban Ghost"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("an offline name is banned with the default reason"), Target.Access.FindBan(TEXT("Ghost")) ? Target.Access.FindBan(TEXT("Ghost"))->Reason : FString(), FString(TEXT("Banned by an operator.")));
+	McCommands::HandleChat(TEXT("/pardon ghost"), Op(TEXT("Steve")), Target);
+	TestNull(TEXT("pardon"), Target.Access.FindBan(TEXT("Ghost")));
+	McCommands::HandleChat(TEXT("/ban-ip Alex"), Op(TEXT("Steve")), Target);
+	TestNotNull(TEXT("ban-ip by player name"), Target.Access.FindIpBan(TEXT("10.0.0.7")));
+	McCommands::HandleChat(TEXT("/ban-ip 1.2.3.4 spam"), Op(TEXT("Steve")), Target);
+	TestNotNull(TEXT("ban-ip by address"), Target.Access.FindIpBan(TEXT("1.2.3.4")));
+	McCommands::HandleChat(TEXT("/ban-ip nobody"), Op(TEXT("Steve")), Target);
+	TestEqual(TEXT("unknown player is no ban"), Target.Access.IpBans.Num(), 2);
+	McCommands::HandleChat(TEXT("/pardon-ip 1.2.3.4"), Op(TEXT("Steve")), Target);
+	TestNull(TEXT("pardon-ip"), Target.Access.FindIpBan(TEXT("1.2.3.4")));
+	{
+		const int32 Told = Target.Find(TEXT("Steve")) ? Target.Find(TEXT("Steve"))->Told.Num() : 0;
+		McCommands::HandleChat(TEXT("/banlist"), Op(TEXT("Steve")), Target);
+		TestTrue(TEXT("banlist lists the bans"), Target.Find(TEXT("Steve")) && Target.Find(TEXT("Steve"))->Told.Num() >= Told + 3);
+	}
+	Target.Access.Bans.Empty();
+	Target.Access.IpBans.Empty();
 	McCommands::HandleChat(TEXT("/whitelist add Notch"), Op(TEXT("Steve")), Target);
 	TestTrue(TEXT("whitelist add"), Target.Access.IsAllowlisted(TEXT("Notch")));
 	McCommands::HandleChat(TEXT("/whitelist on"), Op(TEXT("Steve")), Target);
@@ -470,6 +507,21 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("summon a pig"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("summoned where asked"), Target.Summoned.Num() == 1 && Target.Summoned[0].Value == FVector(3.5, 4, 5.5));
 	TestTrue(TEXT("summon nothing"), AnyError(McCommands::HandleChat(TEXT("/summon dragon_of_doom"), Op(TEXT("Steve")), Target)));
+	// /save-all, /save-on, /save-off, /stop (the lang text: the reference's player cannot run them).
+	{
+		const auto All = [&](const TCHAR* Text) { FString Joined; for (const FMcCommandReply& Reply : McCommands::HandleChat(Text, Op(TEXT("Steve")), Target)) { Joined += Reply.Text + TEXT("|"); } return Joined; };
+		TestEqual(TEXT("save-all"), All(TEXT("/save-all")), FString(TEXT("Saving the game (this may take a moment!)|Saved the game|")));
+		TestEqual(TEXT("save-all flush"), All(TEXT("/save-all flush")), FString(TEXT("Saving the game (this may take a moment!)|Saved the game|")));
+		TestEqual(TEXT("both saved"), Target.SavedAll, 2);
+		TestTrue(TEXT("save-all junk"), AnyError(McCommands::HandleChat(TEXT("/save-all junk"), Op(TEXT("Steve")), Target)));
+		TestEqual(TEXT("save-on while on"), All(TEXT("/save-on")), FString(TEXT("Saving is already turned on|")));
+		TestEqual(TEXT("save-off"), All(TEXT("/save-off")), FString(TEXT("Automatic saving is now disabled|")));
+		TestFalse(TEXT("autosave is off"), Target.bAutosave);
+		TestEqual(TEXT("save-off again"), All(TEXT("/save-off")), FString(TEXT("Saving is already turned off|")));
+		TestEqual(TEXT("save-on"), All(TEXT("/save-on")), FString(TEXT("Automatic saving is now enabled|")));
+		TestEqual(TEXT("stop"), All(TEXT("/stop")), FString(TEXT("Stopping the server|")));
+		TestTrue(TEXT("stop reached the target"), Target.bStopped);
+	}
 	// /ride: the replies of a ref run (cmd_ride.txt).
 	{
 		const auto Reply = [&](const TCHAR* Text) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Text, Op(TEXT("Steve")), Target); return Replies.Num() > 0 ? Replies[0].Text : FString(); };

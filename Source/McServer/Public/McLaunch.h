@@ -68,6 +68,18 @@ struct MCSERVER_API FMcServerAccess
 	};
 	TArray<FString> Allowlist;
 	TArray<FOp> Ops;
+	// banned-players.json and banned-ips.json: who is barred, by whom and why (Created and Source as the game writes them; ever "forever").
+	struct FBan
+	{
+		FString Target;
+		FString Source;
+		FString Reason;
+		FString Created;
+	};
+	TArray<FBan> Bans;
+	TArray<FBan> IpBans;
+	const FBan* FindBan(const FString& Name) const;
+	const FBan* FindIpBan(const FString& Ip) const;
 
 	bool IsAllowlisted(const FString& Name) const;
 	const FOp* FindOp(const FString& Name) const;
@@ -75,6 +87,9 @@ struct MCSERVER_API FMcServerAccess
 	// Parses the two files' text; false (with nothing added) for text that isn't a JSON array.
 	bool ParseAllowlist(const FString& Json);
 	bool ParseOps(const FString& Json);
+	// Both ban files' text; false (with nothing added) for text that isn't a JSON array.
+	bool ParseBans(const FString& Json, bool bIps);
+	FString BansToJson(bool bIps) const;
 	// Both files from Saved/Server, made empty ("[]") if missing.
 	static FMcServerAccess Load();
 	// The two files' text, as the game writes them, and both written back to Saved/Server.
@@ -82,7 +97,8 @@ struct MCSERVER_API FMcServerAccess
 	FString OpsToJson() const;
 	bool Save() const;
 	// Why a player may not join, or empty if they may. Players is how many are on already.
-	static FString CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players);
+	// Address is the player's IP (without the port), empty if not known.
+	static FString CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players, const FString& Address = FString());
 };
 
 namespace McLaunch

@@ -751,6 +751,10 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
+	if (IsRunningDedicatedServer())
+	{
+		StartServerConsole();
+	}
 	WaitForAdvancementWarm();
 	AdvancementWarm = UE::Tasks::Launch(UE_SOURCE_LOCATION, [] { InventoryTriggers(); EventTriggers(); }, UE::Tasks::ETaskPriority::BackgroundNormal);
 	ReadFunctionTags();
@@ -2318,7 +2322,9 @@ void AMcGameMode::PreLogin(const FString& Options, const FString& Address, const
 	}
 	// Read afresh, so an edited allowlist or ops file applies to the next player to join.
 	const FString Name = UGameplayStatics::ParseOption(Options, TEXT("Name"));
-	ErrorMessage = FMcServerAccess::CheckJoin(FMcServerProperties::Get(), FMcServerAccess::Load(), Name, GetNumPlayers());
+	FString Ip = Address;
+	Ip.Split(TEXT(":"), &Ip, nullptr);
+	ErrorMessage = FMcServerAccess::CheckJoin(FMcServerProperties::Get(), FMcServerAccess::Load(), Name, GetNumPlayers(), Ip);
 	if (!ErrorMessage.IsEmpty())
 	{
 		UE_LOG(LogMcClient, Log, TEXT("%s (%s) can't join: %s"), *Name, *Address, *ErrorMessage);
@@ -3089,6 +3095,36 @@ namespace
 			return true;
 		}
 
+		virtual bool SaveAll(bool bFlush) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			if (!World)
+			{
+				return false;
+			}
+			// SaveWorld writes the chunks, the entities, the players (OnSaving) and the level, and waits for the files.
+			World->SaveWorld();
+			return true;
+		}
+		virtual bool IsAutosaveOn() const override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			return !World || World->IsAutosaveOn();
+		}
+		virtual void SetAutosaveOn(bool bOn) override
+		{
+			if (AMcWorldActor* World = Mode.GetPrimaryWorld())
+			{
+				World->SetAutosaveOn(bOn);
+			}
+		}
+		virtual void RequestStop() override
+		{
+			SaveAll(true);
+			UE_LOG(LogMcClient, Display, TEXT("Stopping the server"));
+			FPlatformMisc::RequestExit(false, TEXT("McStop"));
+		}
+
 		virtual bool SpawnParticle(FName Name, const FVector& Pos, const FVector& Delta, double Speed, int32 Count) override
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();
@@ -3336,6 +3372,13 @@ namespace
 			return EEnchantResult::Done;
 		}
 
+		virtual FString GetPlayerAddress(const FString& Player) const override
+		{
+			const APlayerController* Controller = Mode.FindPlayer(Player);
+			FString Ip = Controller && Controller->NetConnection ? Controller->NetConnection->LowLevelGetRemoteAddress() : FString();
+			Ip.Split(TEXT(":"), &Ip, nullptr);
+			return Ip;
+		}
 		virtual FMcServerAccess LoadAccess() const override { return FMcServerAccess::Load(); }
 		virtual void SaveAccess(const FMcServerAccess& Access) override { Access.Save(); }
 		virtual bool IsAllowlistOn() const override { return FMcServerProperties::Get().GetBool(TEXT("white-list")); }
@@ -3388,6 +3431,63 @@ void AMcGameMode::RunFunctionTag(const FString& Tag)
 	Sender.PermissionLevel = 4;
 	FGameCommandTarget Target(*this);
 	McCommands::RunFunctions(McCommands::GetFunctionTag(Tag), Sender, Target);
+}
+
+namespace
+{
+	// The dedicated server's console: lines typed on standard input (or piped in) are commands as the console, with every permission.
+	// A thread reads them (the read blocks) and a ticker on the game thread runs them; when the input ends the thread simply stops.
+	class FMcStdinReader : public FRunnable
+	{
+	public:
+		TQueue<FString, EQueueMode::Mpsc> Lines;
+		virtual uint32 Run() override
+		{
+			char Buffer[4096];
+			while (fgets(Buffer, sizeof(Buffer), stdin))
+			{
+				FString Line = FString(UTF8_TO_TCHAR(Buffer));
+				Line.TrimStartAndEndInline();
+				if (!Line.IsEmpty())
+				{
+					Lines.Enqueue(Line);
+				}
+			}
+			return 0;
+		}
+	};
+}
+
+void AMcGameMode::StartServerConsole()
+{
+	static bool bStarted = false;
+	if (bStarted)
+	{
+		return;
+	}
+	bStarted = true;
+	// Never deleted: it may sit in a read until the process ends.
+	FMcStdinReader* Reader = new FMcStdinReader();
+	FRunnableThread::Create(Reader, TEXT("McServerConsole"), 0, TPri_BelowNormal);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Reader](float)
+	{
+		FString Line;
+		while (Reader->Lines.Dequeue(Line))
+		{
+			if (Line.StartsWith(TEXT("/")))
+			{
+				Line.RightChopInline(1);
+			}
+			FMcCommandSender Sender;
+			Sender.PermissionLevel = 4;
+			FGameCommandTarget Target(*this);
+			for (const FMcCommandReply& Reply : McCommands::Execute(Line, Sender, Target))
+			{
+				UE_LOG(LogMcClient, Display, TEXT("%s"), *Reply.Text);
+			}
+		}
+		return true;
+	}), 0.1f);
 }
 
 void AMcGameMode::TickFunctions()

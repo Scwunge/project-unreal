@@ -267,6 +267,57 @@ const FMcServerAccess::FOp* FMcServerAccess::FindOp(const FString& Name) const
 	return Ops.FindByPredicate([&Name](const FOp& Op) { return Op.Name.Equals(Name, ESearchCase::IgnoreCase); });
 }
 
+const FMcServerAccess::FBan* FMcServerAccess::FindBan(const FString& Name) const
+{
+	return Bans.FindByPredicate([&Name](const FBan& Ban) { return Ban.Target.Equals(Name, ESearchCase::IgnoreCase); });
+}
+
+const FMcServerAccess::FBan* FMcServerAccess::FindIpBan(const FString& Ip) const
+{
+	return IpBans.FindByPredicate([&Ip](const FBan& Ban) { return Ban.Target == Ip; });
+}
+
+bool FMcServerAccess::ParseBans(const FString& Json, bool bIps)
+{
+	bool bOk = false;
+	const TArray<TSharedPtr<FJsonValue>> Values = ReadArray(Json, bOk);
+	if (!bOk)
+	{
+		return false;
+	}
+	for (const TSharedPtr<FJsonValue>& Value : Values)
+	{
+		const TSharedPtr<FJsonObject>* Object = nullptr;
+		FBan Ban;
+		if (Value && Value->TryGetObject(Object) && (*Object)->TryGetStringField(bIps ? TEXT("ip") : TEXT("name"), Ban.Target) && !Ban.Target.IsEmpty())
+		{
+			(*Object)->TryGetStringField(TEXT("source"), Ban.Source);
+			(*Object)->TryGetStringField(TEXT("reason"), Ban.Reason);
+			(*Object)->TryGetStringField(TEXT("created"), Ban.Created);
+			(bIps ? IpBans : Bans).Add(MoveTemp(Ban));
+		}
+	}
+	return true;
+}
+
+FString FMcServerAccess::BansToJson(bool bIps) const
+{
+	TArray<TSharedPtr<FJsonValue>> Values;
+	for (const FBan& Ban : (bIps ? IpBans : Bans))
+	{
+		const TSharedRef<FJsonObject> Object = MakeShared<FJsonObject>();
+		Object->SetStringField(bIps ? TEXT("ip") : TEXT("name"), Ban.Target);
+		Object->SetStringField(TEXT("created"), Ban.Created);
+		Object->SetStringField(TEXT("source"), Ban.Source);
+		Object->SetStringField(TEXT("expires"), TEXT("forever"));
+		Object->SetStringField(TEXT("reason"), Ban.Reason);
+		Values.Add(MakeShared<FJsonValueObject>(Object));
+	}
+	FString Text;
+	FJsonSerializer::Serialize(Values, TJsonWriterFactory<>::Create(&Text));
+	return Text;
+}
+
 bool FMcServerAccess::ParseAllowlist(const FString& Json)
 {
 	bool bOk = false;
@@ -321,6 +372,14 @@ FMcServerAccess FMcServerAccess::Load()
 	{
 		UE_LOG(LogMcServer, Error, TEXT("%s/ops.json isn't a JSON list; nobody is an operator."), *Dir);
 	}
+	if (!Access.ParseBans(ReadOrMake(Dir / TEXT("banned-players.json"), TEXT("[]")), false))
+	{
+		UE_LOG(LogMcServer, Error, TEXT("%s/banned-players.json isn't a JSON list; nobody is banned by name."), *Dir);
+	}
+	if (!Access.ParseBans(ReadOrMake(Dir / TEXT("banned-ips.json"), TEXT("[]")), true))
+	{
+		UE_LOG(LogMcServer, Error, TEXT("%s/banned-ips.json isn't a JSON list; no address is banned."), *Dir);
+	}
 	return Access;
 }
 
@@ -359,11 +418,25 @@ bool FMcServerAccess::Save() const
 	const FString Dir = FMcServerProperties::GetDir();
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	return FFileHelper::SaveStringToFile(AllowlistToJson(), *(Dir / TEXT("allowlist.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
-		&& FFileHelper::SaveStringToFile(OpsToJson(), *(Dir / TEXT("ops.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+		&& FFileHelper::SaveStringToFile(OpsToJson(), *(Dir / TEXT("ops.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& FFileHelper::SaveStringToFile(BansToJson(false), *(Dir / TEXT("banned-players.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM)
+		&& FFileHelper::SaveStringToFile(BansToJson(true), *(Dir / TEXT("banned-ips.json")), FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
-FString FMcServerAccess::CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players)
+FString FMcServerAccess::CheckJoin(const FMcServerProperties& Properties, const FMcServerAccess& Access, const FString& Name, int32 Players, const FString& Address)
 {
+	// The game's own refusal text (lang multiplayer.disconnect.banned.reason and banned_ip.reason).
+	if (const FBan* Ban = Access.FindBan(Name))
+	{
+		return TEXT("You are banned from this server.\nReason: ") + Ban->Reason;
+	}
+	if (!Address.IsEmpty())
+	{
+		if (const FBan* Ban = Access.FindIpBan(Address))
+		{
+			return TEXT("Your IP address is banned from this server.\nReason: ") + Ban->Reason;
+		}
+	}
 	const FOp* Op = Access.FindOp(Name);
 	// Operators are let in past the allowlist, as in the game.
 	if (Properties.GetBool(TEXT("white-list")) && !Op && !Access.IsAllowlisted(Name))

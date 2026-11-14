@@ -87,6 +87,8 @@ public:
 	// Everyone aboard, players and mobs.
 	int32 GetPassengerCount() const { return Seats.Num() + MobPassengers.Num(); }
 	const TArray<int32>& GetMobPassengers() const { return MobPassengers; }
+	// Seats a mob in it at once (a portal sets a vehicle down with its animals still aboard: vehicle_log55); false if it is full or can't carry it.
+	bool AddMobPassenger(FMcMob& Mob);
 	bool HasFreeSeat() const { return GetPassengerCount() < GetCapacity(); }
 	// Which seat a pawn has, or -1 if none.
 	int32 GetSeatIndex(int32 Key) const { return Seats.IndexOfByPredicate([Key](const FSeat& S) { return S.Key == Key; }); }

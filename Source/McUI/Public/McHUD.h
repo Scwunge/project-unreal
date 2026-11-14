@@ -143,7 +143,7 @@ private:
 	TMap<int32, TObjectPtr<UTexture2D>> MapTextures;
 	// The animal in a mount's window, drawn from its model and picture in the 54 x 54 box at Origin + (26, 18): standing, turned a quarter
 	// towards the viewer, about 38 pixels tall with its feet 8 above the bottom (vanilla donkey window shot, ref_donkey_window.png).
-	void DrawMobPreview(FName Kind, FIntPoint Origin);
+	void DrawMobPreview(FName Kind, FIntPoint Origin, bool bChests = false);
 	bool BuildFlatIcon(const FString& Name, FIcon& Icon);
 	void BuildFlatQuad(const FString& TextureId, FIcon& Icon, const FLinearColor& Tint = FLinearColor::White);
 	// A stack's icon: the game's own (GetItemIcon) unless a resource pack gives the item's definition or a model it picks, then

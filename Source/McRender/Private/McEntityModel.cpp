@@ -270,6 +270,28 @@ namespace McEntityModel
 		Model.Parts.Add(Lid);
 	}
 
+	// A pack animal's two chests, one each side (the logged donkey, mule and llama models, where they are children that are not
+	// visible without a chest): pose 1 shows them, which the actor gives an animal that carries them.
+	void AddPackChests(FModel& Model, bool bLlama)
+	{
+		const auto Side = [&Model](float X, float Y, float Z, const FBox& Cube, float YRot)
+		{
+			FPart Chest = Part(ERole::Static, FVector(X, Y, Z), { Cube }, 0.0f, YRot, 0.0f);
+			Chest.ShowPoses = 1u << 1;
+			Model.Parts.Add(Chest);
+		};
+		if (bLlama)
+		{
+			Side(-8.5f, 21.0f, -3.0f, Box(45, 28, -3, -8, -3, 8, 8, 3), -1.5708f);
+			Side(5.5f, 21.0f, -3.0f, Box(45, 41, -3, -8, -3, 8, 8, 3), -1.5708f);
+		}
+		else
+		{
+			Side(6.0f, 21.0f, -5.0f, Box(26, 21, -4, -8, -1, 8, 8, 3), 1.5708f);
+			Side(-6.0f, 21.0f, -5.0f, Box(26, 21, -4, -8, -1, 8, 8, 3), -1.5708f);
+		}
+	}
+
 		// A villager's body (minecraft.wiki, "Villager"): a head with a long nose, a hat, a robe, arms folded across the chest
 		// and two legs. The biome type, profession and level pictures are laid over the base one into a single picture (the
 		// game draws each over the whole body in turn, which comes to the same), so the hat and robe are cut from it as well.
@@ -1729,6 +1751,7 @@ namespace McEntityModel
 				Llama.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4) }));  // rightFrontLeg
 				Llama.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.5f, 14, 5), { Box(29, 29, -2, -14, -2, 4, 14, 4, 0.0f, true) }));  // leftFrontLeg
 				Llama.Parts.Add(Part(ERole::Static, FVector(0, 19, -2), { Box(29, 0, -6, -8, -3, 12, 18, 10) }, 1.5708f, 0, 0));  // root/body
+				AddPackChests(Llama, true);
 				Models.Add(Llama.Kind, Llama);
 			}
 			{
@@ -2059,6 +2082,7 @@ namespace McEntityModel
 					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
 					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
 					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					AddPackChests(Beast, false);
 					Models.Add(Beast.Kind, Beast);
 				}
 				{
@@ -2075,6 +2099,7 @@ namespace McEntityModel
 					Beast.Parts.Add(Part(ERole::LegBackLeft, FVector(4, 10, -7), { Box(48, 21, -3, -9.99f, -3, 4, 11, 4, 0.0f, true) }));  // leftHindLeg
 					Beast.Parts.Add(Part(ERole::LegFrontRight, FVector(-4, 10, 10), { Box(48, 21, -1, -9.99f, -2.1f, 4, 11, 4) }));  // rightFrontLeg
 					Beast.Parts.Add(Part(ERole::LegFrontLeft, FVector(4, 10, 10), { Box(48, 21, -3, -9.99f, -2.1f, 4, 11, 4, 0.0f, true) }));  // leftFrontLeg
+					AddPackChests(Beast, false);
 					Models.Add(Beast.Kind, Beast);
 				}
 				{

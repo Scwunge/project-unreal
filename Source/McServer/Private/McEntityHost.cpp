@@ -459,7 +459,11 @@ FMcMob* FMcEntityHost::SpawnMob(FName Kind, const FVector& Pos)
 	{
 		Mob->OnAttackPlayer = [this, Kind](const FVector& PlayerPos, float Damage)
 		{
-			if (OnPlayerHit)
+			if (OnPlayerHitBy)
+			{
+				OnPlayerHitBy(PlayerPos, Damage, Kind);
+			}
+			else if (OnPlayerHit)
 			{
 				OnPlayerHit(PlayerPos, Damage);
 			}

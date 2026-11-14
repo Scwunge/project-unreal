@@ -2651,14 +2651,21 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 		}
 	}
 	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.5f, 0.0f, 0.0f, 0.5f));
-	// The title is drawn at twice the size, centred on the screen, and the score under it.
-	const FString Title = TEXT("You died!");
-	DrawGuiText(Title, FMath::RoundToFloat(Width / 2.0f - TextWidth(Title)), 30.0f, 0xFFFFFF, true, 1.0f, 2.0f);
-	const FString ScoreLabel = TEXT("Score: ");
+	// The title is drawn at twice the size, centred on the screen; under it what killed the player, then the score
+	// (reference, deaths_play.txt, ref_death_kill.png: "You Died!" with its top at 60, which is 30 at the doubled size,
+	// the cause line at 85 and the score at 100).
+	const FString Title = McLang::Get(TEXT("deathScreen.title"));
+	DrawGuiText(Title, FMath::RoundToFloat(Width / 2.0f - TextWidth(Title)), 60.0f, 0xFFFFFF, true, 1.0f, 2.0f);
+	const FString& Cause = Dead.GetDeathMessage();
+	if (!Cause.IsEmpty())
+	{
+		DrawGuiText(Cause, FMath::RoundToFloat(Width / 2.0f - TextWidth(Cause) / 2.0f), 85.0f, 0xFFFFFF, true);
+	}
+	const FString ScoreLabel = McLang::Get(TEXT("deathScreen.score")) + TEXT(": ");
 	const FString ScoreValue = FString::FromInt(Dead.GetDeathScore());
 	const float ScoreX = Width / 2.0f - (TextWidth(ScoreLabel) + TextWidth(ScoreValue)) / 2.0f;
-	DrawGuiText(ScoreLabel, ScoreX, 85.0f, 0xFFFFFF, true);
-	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), 85.0f, 0xFFFF55, true);
+	DrawGuiText(ScoreLabel, ScoreX, 100.0f, 0xFFFFFF, true);
+	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), 100.0f, 0xFFFF55, true);
 
 	// Two 200 by 20 buttons: Respawn, then Title Screen. Both are asleep for the first second.
 	float MouseX = 0.0f, MouseY = 0.0f;
@@ -2671,11 +2678,11 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 	const bool bAwake = GetWorld() && GetWorld()->GetTimeSeconds() - DeathShownTime >= 1.0;
 	const float ButtonX = Width / 2.0f - 100.0f;
 	const float ButtonY = Height / 4.0f + 72.0f;
-	if (MenuButton(TEXT("Respawn"), ButtonX, ButtonY, 200.0f, 20.0f, bAwake))
+	if (MenuButton(McLang::Get(TEXT("deathScreen.respawn")), ButtonX, ButtonY, 200.0f, 20.0f, bAwake))
 	{
 		Dead.RequestRespawn();
 	}
-	else if (MenuButton(TEXT("Title Screen"), ButtonX, ButtonY + 24.0f, 200.0f, 20.0f, bAwake))
+	else if (MenuButton(McLang::Get(TEXT("deathScreen.titleScreen")), ButtonX, ButtonY + 24.0f, 200.0f, 20.0f, bAwake))
 	{
 		// Leaving the map saves the world and the player, like Save and Quit to Title.
 		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));
@@ -2876,6 +2883,10 @@ void AMcHUD::DrawHUD()
 	if (Player && Player->IsDebugShown() && !bDead)
 	{
 		DrawDebug(Width, Height, *Player);
+	}
+	if (Player && Player->GetGameModeSwitch() >= 0 && !bDead)
+	{
+		DrawGameModeSwitcher(Width, Height, Player->GetGameModeSwitch());
 	}
 	// A -McShot picture shows the scene, not the chat lines its -McChat setup printed (unless -McShowChat: text for a font test).
 	static const bool bShot = FCommandLine::Get() && FCString::Strifind(FCommandLine::Get(), TEXT("-McShot=")) != nullptr
@@ -3690,6 +3701,32 @@ float AMcHUD::StepVignette(const AMcPlayerPawn& Player)
 }
 
 // ---- F3 ----
+
+// Measured on ref_gm_open.png (GUI 426x240): the 125x75 panel at (w/2 - 62, h/2 - 58); four 26-pixel slots 31 apart
+// from (w/2 - 59, h/2 - 31), each with its item in the middle and the picked one framed; the mode's name centred at
+// h/2 - 51, "F4 Next" (F4 in aqua) at h/2 + 5. The chat is drawn over it. Adventure's icon is the buried treasure map
+// (its picture matches the shot pixel for pixel).
+void AMcHUD::DrawGameModeSwitcher(int32 Width, int32 Height, int32 Picked)
+{
+	static const TCHAR* const Names[] = { TEXT("gameMode.creative"), TEXT("gameMode.survival"), TEXT("gameMode.adventure"), TEXT("gameMode.spectator") };
+	static const FName ModeIcons[] = { FName(TEXT("minecraft:grass_block")), FName(TEXT("minecraft:iron_sword")), FName(TEXT("minecraft:buried_treasure_map")), FName(TEXT("minecraft:ender_eye")) };
+	const int32 MidX = Width / 2, MidY = Height / 2;
+	DrawRegion(LoadSprite(TEXT("textures/gui/container/gamemode_switcher.png")), MidX - 62, MidY - 58, 125, 75, 0, 0, 125, 75);
+	const FString Name = McLang::Get(Names[Picked]);
+	DrawGuiText(Name, FMath::RoundToFloat(MidX - TextWidth(Name) / 2.0f), MidY - 51, 0xFFFFFF, true);
+	for (int32 Mode = 0; Mode < 4; ++Mode)
+	{
+		const float X = MidX - 59 + Mode * 31, Y = MidY - 31;
+		DrawSprite(LoadSprite(TEXT("textures/gui/sprites/gamemode_switcher/slot.png")), X, Y, 26, 26);
+		DrawStack(FMcItemStack(ModeIcons[Mode]), X + 5, Y + 5);
+		if (Mode == Picked)
+		{
+			DrawSprite(LoadSprite(TEXT("textures/gui/sprites/gamemode_switcher/selection.png")), X, Y, 26, 26);
+		}
+	}
+	const FString Next = McLang::Format(TEXT("debug.gamemodes.select_next"), { TEXT("§b") + McLang::Get(TEXT("key.keyboard.f4")) + TEXT("§r") });
+	DrawGuiText(Next, FMath::RoundToFloat(MidX - TextWidth(Next) / 2.0f), MidY + 5, 0xFFFFFF, true);
+}
 
 void AMcHUD::DrawDebug(int32 Width, int32 Height, AMcPlayerPawn& Player)
 {

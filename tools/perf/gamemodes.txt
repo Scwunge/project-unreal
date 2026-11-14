@@ -1,0 +1,31 @@
+# The F3+F4 game mode switcher, against the reference client's gamemodes_play.txt (ref_gm_open.png): it opens on the other
+# of survival and creative, F4 moves along and wraps, F3's release switches with /gamemode. Shots go to Saved/Shots/gm_*.png.
+settle:40
+chat:/gamemode survival
+wait:1
+down:F3
+key:F4
+wait:1
+shot:gm_open
+key:F4
+wait:0.5
+shot:gm_f4_1
+key:F4
+key:F4
+wait:0.5
+shot:gm_f4_3
+key:F4
+wait:0.5
+shot:gm_f4_4
+up:F3
+wait:1
+shot:gm_released
+down:F3
+key:F4
+wait:1
+shot:gm_open_from_creative
+up:F3
+wait:1
+shot:gm_released2
+mark:end
+end

@@ -189,6 +189,7 @@ FMcDevInput::FMcDevInput(const FString& Script)
 		FStep Step;
 		if (ParseStep(Text, Step))
 		{
+			bScriptRespawns |= Step.Kind == FStep::EKind::MenuPress && Step.Name.Contains(TEXT("Respawn"));
 			Steps.Add(MoveTemp(Step));
 		}
 		else
@@ -249,7 +250,8 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 		bHadPawn = true;
 		McPerf::Event(TEXT("PLAYER_IN_WORLD"));
 	}
-	if (Pawn->IsDead())
+	// A script that presses the death screen's Respawn itself is left on that screen; others are respawned after 2 s.
+	if (Pawn->IsDead() && !bScriptRespawns)
 	{
 		DeadFor += DeltaSeconds;
 		if (DeadFor >= 2.0f)

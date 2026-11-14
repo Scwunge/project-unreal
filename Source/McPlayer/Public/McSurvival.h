@@ -39,6 +39,9 @@ namespace McSurvival
 		Wither,
 		// A blast; armour turns some of it aside.
 		Explosion,
+		// /kill (the game's generic_kill): like Void it gets through armour, immunity, resistance and a totem, but it
+		// has a death message of its own.
+		Kill,
 	};
 
 	// What the blocks around a player are doing to them this tick.
@@ -71,6 +74,9 @@ namespace McSurvival
 	// then absorption, then health. Worn may be null. Returns the health lost.
 	// Rules may be null; with them, a kind of damage the game rules turn off (fallDamage, fireDamage, drowningDamage) does nothing.
 	MCPLAYER_API float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn = nullptr, const FMcGameRules* Rules = nullptr);
+	// The language key of the death message for the damage that killed (death.attack.drown): a mob's blow when the mob is
+	// known, and a fall by how far it was.
+	MCPLAYER_API const TCHAR* GetDeathMessageKey(EDamage Kind, bool bKnownMob, float FallDistance);
 	// Whether the game rules let this kind of damage through: fall, drowning, and fire (fire, burning and lava).
 	MCPLAYER_API bool IsDamageEnabled(EDamage Kind, const FMcGameRules& Rules);
 	MCPLAYER_API void Heal(FMcPlayerStats& Stats, float Amount);

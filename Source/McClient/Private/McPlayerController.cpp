@@ -749,6 +749,16 @@ void AMcPlayerController::HookServerPawn(AMcPlayerPawn& Hooked)
 			It->ServerWakeUp();
 		}
 	};
+	// A death is told to everyone in chat (the showDeathMessages rule); the death screen shows it whatever the rule.
+	Hooked.OnDied = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](AMcPlayerPawn& Dead)
+	{
+		AMcPlayerController* Who = WeakController.Get();
+		AMcGameMode* Mode = Who ? Who->GetWorld()->GetAuthGameMode<AMcGameMode>() : nullptr;
+		if (Mode && Mode->GetGameRules().bShowDeathMessages && !Dead.GetDeathMessage().IsEmpty())
+		{
+			Mode->BroadcastChat(Dead.GetDeathMessage());
+		}
+	};
 	// Dying shows the death screen; the player comes back when they press Respawn.
 	Hooked.OnRespawnRequest = [WeakController = TWeakObjectPtr<AMcPlayerController>(this)](AMcPlayerPawn&)
 	{

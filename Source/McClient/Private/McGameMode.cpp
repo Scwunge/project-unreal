@@ -889,6 +889,13 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				HurtPlayerNear(*Here, Position, Damage);
 			}
 		};
+		Host->OnPlayerHitBy = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage, FName Mob)
+		{
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HurtPlayerNear(*Here, Position, Damage, McSurvival::EDamage::Mob, Mob);
+			}
+		};
 		Host->OnPlayerHitThroughArmor = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage)
 		{
 			// A warden's sonic boom: armor does not reduce it (Magic is the kind armor lets through whole).
@@ -2191,7 +2198,7 @@ void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Po
 	}
 }
 
-void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind)
+void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind, FName Attacker)
 {
 	AMcPlayerPawn* Nearest = nullptr;
 	double NearestDistance = 2.5;
@@ -2214,7 +2221,7 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	if (Nearest)
 	{
 		// The mob that bit is at Position: the player is knocked away from it.
-		Nearest->ServerHurt(Damage, Kind, &Position);
+		Nearest->ServerHurt(Damage, Kind, &Position, true, Attacker);
 	}
 }
 
@@ -2668,7 +2675,7 @@ namespace
 			// /kill reaches creative players too, which nothing else hurts.
 			const bool bCreative = Pawn->Data->bCreative;
 			Pawn->Data->bCreative = false;
-			Pawn->ServerHurt(1.0e9f, McSurvival::EDamage::Void);
+			Pawn->ServerHurt(1.0e9f, McSurvival::EDamage::Kill);
 			Pawn->Data->bCreative = bCreative;
 		}
 		virtual void Kick(const FString& Player, const FString& Reason) override
@@ -2867,7 +2874,7 @@ namespace
 			using McSurvival::EDamage;
 			const EDamage Kind = Type == TEXT("fall") ? EDamage::Fall : Type == TEXT("drown") ? EDamage::Drown : Type == TEXT("in_fire") ? EDamage::InFire
 				: Type == TEXT("on_fire") ? EDamage::OnFire : Type == TEXT("lava") ? EDamage::Lava : Type == TEXT("starve") ? EDamage::Starve
-				: Type == TEXT("out_of_world") ? EDamage::Void : Type == TEXT("magic") || Type == TEXT("indirect_magic") ? EDamage::Magic
+				: Type == TEXT("out_of_world") ? EDamage::Void : Type == TEXT("generic_kill") ? EDamage::Kill : Type == TEXT("magic") || Type == TEXT("indirect_magic") ? EDamage::Magic
 				: Type == TEXT("wither") ? EDamage::Wither : Type == TEXT("explosion") || Type == TEXT("player_explosion") ? EDamage::Explosion
 				: Type == TEXT("mob_attack") ? EDamage::Mob : EDamage::Generic;
 			Pawn->ServerHurt(Amount, Kind, nullptr, false);

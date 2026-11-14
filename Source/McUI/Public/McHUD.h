@@ -175,6 +175,8 @@ private:
 	void DrawBars(int32 Width, int32 Height, UMcPlayerDataComponent* Data);
 	// F3: where the player is, what they face and stand in, and what they aim at.
 	void DrawDebug(int32 Width, int32 Height, class AMcPlayerPawn& Player);
+	// F3+F4: the four game modes with the picked one framed, its name above and "F4 Next" below.
+	void DrawGameModeSwitcher(int32 Width, int32 Height, int32 Picked);
 	// The light and biome at the player's block, worked out about once a second (a region of nine chunks is lit afresh).
 	double DebugSampleTime = -10.0;
 	int32 DebugSky = 0;

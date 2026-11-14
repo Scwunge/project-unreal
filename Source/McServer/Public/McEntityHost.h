@@ -58,6 +58,8 @@ public:
 
 	// Called with the position of the player and the damage when a mob bites. Until players have health this is
 	// left unset and the bite is only logged.
+	// A mob's own blow (feet, damage, the mob's kind), for the death message. Unset: it goes to OnPlayerHit.
+	TFunction<void(const FVector&, float, FName)> OnPlayerHitBy;
 	TFunction<void(const FVector&, float)> OnPlayerHit;
 	// Same, for a hit that armor does not reduce (a warden's sonic boom). Unset: it goes to OnPlayerHit.
 	TFunction<void(const FVector&, float)> OnPlayerHitThroughArmor;

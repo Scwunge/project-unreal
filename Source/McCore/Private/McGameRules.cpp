@@ -38,6 +38,7 @@ FMcGameRules FMcGameRules::FromLevel(const TMap<FString, FString>& Rules, int32 
 	Result.bDoTileDrops = GetBool(Rules, TEXT("block_drops"), Result.bDoTileDrops);
 	Result.bMobGriefing = GetBool(Rules, TEXT("mob_griefing"), Result.bMobGriefing);
 	Result.bKeepInventory = GetBool(Rules, TEXT("keep_inventory"), Result.bKeepInventory);
+	Result.bShowDeathMessages = GetBool(Rules, TEXT("show_death_messages"), Result.bShowDeathMessages);
 	Result.bNaturalRegeneration = GetBool(Rules, TEXT("natural_health_regeneration"), Result.bNaturalRegeneration);
 	Result.bFallDamage = GetBool(Rules, TEXT("fall_damage"), Result.bFallDamage);
 	Result.bFireDamage = GetBool(Rules, TEXT("fire_damage"), Result.bFireDamage);

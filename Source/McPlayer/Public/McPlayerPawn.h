@@ -133,8 +133,9 @@ public:
 	bool bServerHooked = false;
 
 	// Server: hurts the player (a mob's bite, a blast). Does nothing in creative. Returns the health lost.
-	// From is where the blow came from (for the knockback), if it came from somewhere.
-	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true);
+	// From is where the blow came from (for the knockback), if it came from somewhere; Attacker is the kind of mob that
+	// struck (minecraft:zombie), for the death message.
+	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true, FName Attacker = NAME_None);
 	// A blast reaches the player: the damage (armour turns some aside), a push added to the velocity (blocks a tick),
 	// and the centre it came from for the side the view rolls to.
 	void ServerBlast(float Amount, const FVector& Push, const FVector& Center);
@@ -151,6 +152,12 @@ public:
 	void ShootBowAlong(const FVector& Look, int32 DrawTicks);
 	// The experience points the player had when they died: the death screen's "Score".
 	int32 GetDeathScore() const { return DeathScore; }
+	// What killed the player, as the death screen and the chat say it ("Player515 drowned"); empty while alive.
+	const FString& GetDeathMessage() const { return DeathMessage; }
+	// Server: the death message, from the last damage that landed.
+	FString ServerGetDeathMessage(const FString& PlayerName) const;
+	// Server: sets the death message the owner's death screen shows.
+	void ServerSetDeathMessage(const FString& Message) { DeathMessage = Message; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
 	void ServerTeleport(const FVector& Feet, float McYaw);
 	// Server: where the player's feet are, in block coordinates.
@@ -160,6 +167,8 @@ public:
 	// the view (0 from the eyes, 1 from behind, 2 from the front looking back).
 	bool IsHudHidden() const { return bHudHidden; }
 	bool IsDebugShown() const { return bDebugShown; }
+	// The F3+F4 game mode switcher: -1 while shut, else the mode picked: 0 creative, 1 survival, 2 adventure, 3 spectator.
+	int32 GetGameModeSwitch() const { return GameModeSwitch; }
 	int32 GetViewMode() const { return ViewMode; }
 	// Lying in a bed. The server keeps the player there (their body at the pillow) until they get up, it is morning or
 	// they are hurt; SleepTicks counts the time spent, 100 of which (with every other player in the same state) skip the night.
@@ -387,11 +396,17 @@ private:
 	int32 SleepTicks = 0;
 	UPROPERTY(Replicated)
 	int32 DeathScore = 0;
+	UPROPERTY(Replicated)
+	FString DeathMessage;
+	// The kind of mob whose blow last landed, and how far the player fell for the last fall damage (server).
+	FName LastAttacker;
+	float LastFallDistance = 0.0f;
 	FIntVector SleepBed = FIntVector::ZeroValue;
 	bool bSleptThroughSent = false;
 	bool bHudHidden = false;
 	bool bDebugShown = false;
 	bool bF3Combo = false;
+	int32 GameModeSwitch = -1;
 	int32 ViewMode = 0;
 	void HandleFunctionKeys(APlayerController& Player);
 	// Owner side: the dark of the screen, eased towards 1 while sleeping and back to 0 after.

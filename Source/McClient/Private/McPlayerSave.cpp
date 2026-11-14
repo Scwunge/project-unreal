@@ -168,7 +168,9 @@ bool McPlayerSave::Apply(const FMcPlayerData& Saved, UMcPlayerDataComponent& Dat
 		Data.SpawnPoint = FIntVector(FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_x"))), FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_y"))),
 			FMath::RoundToInt32(*Saved.Stats.Find(TEXT("sp_z"))));
 	}
-	// The mode stays what the server was started with (-McCreative); only what the player carried comes back.
+	// The player's own mode comes back with them, as the game keeps it in the player's file (playerGameType); the
+	// -McCreative switch still makes everyone creative.
+	Data.bCreative = Saved.bCreative || FParse::Param(FCommandLine::Get(), TEXT("McCreative"));
 	Data.SelectedSlot = FMath::Clamp(Saved.SelectedSlot, 0, 8);
 	Data.UpdateArmor();
 	return true;

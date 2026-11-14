@@ -1,0 +1,17 @@
+# Save and Quit and back, for what the player keeps: hotbar slot 5 picked and creative chosen in the world, then the
+# pause menu's Save and Quit, Singleplayer, Play Selected World. Back in, slot 5 is still picked and the mode still
+# creative (the game keeps both in the player's file: SelectedItemSlot, playerGameType). The log says
+# "Player saved: ..." and "Player restored: ..." with both; shots rj_left and rj_back show the hotbar.
+settle:30
+key:Five
+chat:/gamemode creative
+wait:2
+shot:rj_left
+key:Escape
+wait:2
+press:Save_and_Quit_to_Title,Singleplayer,Play_Selected_World
+wait:30
+settle:30
+shot:rj_back
+mark:end
+end

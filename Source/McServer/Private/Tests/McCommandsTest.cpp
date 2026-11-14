@@ -153,6 +153,14 @@ namespace
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
 		TArray<FMcNbt> SummonedTags;
+		// /ride: the stub knows entity 7 (a pig) and 8 (a horse), and what Ride answers.
+		int32 RideAnswer = 0;
+		TArray<FString> Rides;
+		FString RidingNow;
+		virtual TArray<int32> FindEntities(FName Kind, const FVector& Origin, double MaxDistance, int32 Limit) const override { return Kind == TEXT("minecraft:horse") ? TArray<int32>{ 8 } : TArray<int32>{ 7 }; }
+		virtual FString GetEntityName(int32 EntityId) const override { return EntityId == 8 ? TEXT("Horse") : TEXT("Pig"); }
+		virtual int32 Ride(const FString& RiderPlayer, int32 RiderEntity, int32 VehicleEntity, FString& OutOther) override { Rides.Add(FString::Printf(TEXT("%s/%d/%d"), *RiderPlayer, RiderEntity, VehicleEntity)); OutOther = TEXT("Horse"); return RideAnswer; }
+		virtual bool Dismount(const FString& RiderPlayer, int32 RiderEntity, FString& OutVehicleName) override { OutVehicleName = RidingNow; return !RidingNow.IsEmpty(); }
 		virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) override { SummonedTags.Add(Tag); return Summon(Kind, Feet); }
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override { OutLevel = XpLevel; OutPoints = XpPoints; }
 		virtual void AddXp(const FString& Player, int32 Amount, bool bLevels) override { (bLevels ? XpLevel : XpPoints) += Amount; }
@@ -461,6 +469,29 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("summon a pig"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("summoned where asked"), Target.Summoned.Num() == 1 && Target.Summoned[0].Value == FVector(3.5, 4, 5.5));
 	TestTrue(TEXT("summon nothing"), AnyError(McCommands::HandleChat(TEXT("/summon dragon_of_doom"), Op(TEXT("Steve")), Target)));
+	// /ride: the replies of a ref run (cmd_ride.txt).
+	{
+		const auto Reply = [&](const TCHAR* Text) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Text, Op(TEXT("Steve")), Target); return Replies.Num() > 0 ? Replies[0].Text : FString(); };
+		Target.RideAnswer = 0;
+		TestEqual(TEXT("a mob mounts a mob"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Pig started riding Horse")));
+		TestEqual(TEXT("it went to the target as entities"), Target.Rides.Last(), FString(TEXT("/7/8")));
+		TestEqual(TEXT("a player mounts"), Reply(TEXT("/ride @s mount @n[type=horse]")), FString(TEXT("Steve started riding Horse")));
+		TestEqual(TEXT("as a player"), Target.Rides.Last(), FString(TEXT("Steve/0/8")));
+		Target.RideAnswer = 1;
+		TestEqual(TEXT("already riding names what it rides"), Reply(TEXT("/ride @s mount @n[type=pig]")), FString(TEXT("Steve is already riding Horse")));
+		Target.RideAnswer = 2;
+		TestEqual(TEXT("a loop"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Can't mount entity on itself or any of its passengers")));
+		Target.RideAnswer = 3;
+		TestEqual(TEXT("a failure"), Reply(TEXT("/ride @n[type=pig] mount @n[type=horse]")), FString(TEXT("Pig couldn't start riding Horse")));
+		TestEqual(TEXT("players can't be ridden"), Reply(TEXT("/ride @n[type=pig] mount @s")), FString(TEXT("Players can't be ridden")));
+		TestEqual(TEXT("one entity only"), Reply(TEXT("/ride @s mount @a")), FString(TEXT("Only one entity is allowed, but the provided selector allows more than one")));
+		TestEqual(TEXT("one entity only for the rider too"), Reply(TEXT("/ride @e[type=pig] mount @s")), FString(TEXT("Only one entity is allowed, but the provided selector allows more than one")));
+		TestEqual(TEXT("not riding"), Reply(TEXT("/ride @s dismount")), FString(TEXT("Steve is not riding any vehicle")));
+		Target.RidingNow = TEXT("Horse");
+		TestEqual(TEXT("dismount"), Reply(TEXT("/ride @s dismount")), FString(TEXT("Steve stopped riding Horse")));
+		TestTrue(TEXT("incomplete"), AnyError(McCommands::HandleChat(TEXT("/ride @s mount"), Op(TEXT("Steve")), Target)));
+		TestTrue(TEXT("a wrong word"), AnyError(McCommands::HandleChat(TEXT("/ride @s fly"), Op(TEXT("Steve")), Target)));
+	}
 	// /summon with a data tag: the tag reaches the target as the game's text form reads it.
 	Target.Summoned.Reset();
 	TestFalse(TEXT("summon with a tag"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:1b,CustomName:\"Pig Latin\",Age:-24000,Tags:[\"a\",\"b\"],Rotation:[90f,0f],Silent:true}"), Op(TEXT("Steve")), Target)));

@@ -70,6 +70,7 @@ namespace
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
+		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle>|dismount)") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
@@ -1452,6 +1453,118 @@ namespace
 	}
 
 	// /rotate <targets> <yaw> <pitch>: turns players. Only the yaw is applied (the pitch is told back but not set).
+	// /ride <rider> mount <vehicle> | /ride <rider> dismount (wording and order of the checks from a ref run, cmd_ride.txt). A selector that
+	// can match more than one (@a, @e without limit=1) is refused whatever it finds.
+	int32 ResolveEntities(const FString& Token, const FMcCommandSender& Sender, const IMcCommandTarget& Target, TArray<int32>& Out, FString& BadOption);
+
+	bool IsSingleSelector(const FString& Token)
+	{
+		if (!Token.StartsWith(TEXT("@")))
+		{
+			return true;
+		}
+		if (Token.StartsWith(TEXT("@s")) || Token.StartsWith(TEXT("@p")) || Token.StartsWith(TEXT("@r")) || Token.StartsWith(TEXT("@n")))
+		{
+			return true;
+		}
+		return Token.Contains(TEXT("limit=1]")) || Token.Contains(TEXT("limit=1,"));
+	}
+
+	struct FRideActor
+	{
+		FString Player;
+		int32 Entity = 0;
+	};
+
+	// One entity or player for /ride; false with Out replies if it matched nobody or more than one.
+	bool ResolveRideActor(const FString& Token, const FMcCommandSender& Sender, const IMcCommandTarget& Target, FRideActor& Out, FReplies& Replies)
+	{
+		if (!IsSingleSelector(Token))
+		{
+			Replies = { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+			return false;
+		}
+		if (Token.StartsWith(TEXT("@e")) || Token.StartsWith(TEXT("@n")))
+		{
+			TArray<int32> Found;
+			FString BadOption;
+			if (ResolveEntities(Token, Sender, Target, Found, BadOption) != 1 || Found.Num() == 0)
+			{
+				Replies = { Fail(McLang::Get(TEXT("argument.entity.notfound.entity"))) };
+				return false;
+			}
+			Out.Entity = Found[0];
+			return true;
+		}
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Token, Sender, Target, Players, Error) || Players.Num() == 0)
+		{
+			Replies = { Fail(Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.entity")) : Error) };
+			return false;
+		}
+		Out.Player = Players[0];
+		return true;
+	}
+
+	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		const bool bMount = Words[2] == TEXT("mount");
+		if (!bMount && Words[2] != TEXT("dismount"))
+		{
+			return BadArgument(Command);
+		}
+		if (bMount ? Words.Num() < 4 : false)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Words.Num() > (bMount ? 4 : 3))
+		{
+			return BadArgument(Command);
+		}
+		FRideActor Rider;
+		FReplies Replies;
+		if (!ResolveRideActor(Words[1], Sender, Target, Rider, Replies))
+		{
+			return Replies;
+		}
+		const auto NameOf = [&Target](const FRideActor& Who) { return Who.Player.IsEmpty() ? Target.GetEntityName(Who.Entity) : Who.Player; };
+		if (!bMount)
+		{
+			FString Vehicle;
+			if (!Target.Dismount(Rider.Player, Rider.Entity, Vehicle))
+			{
+				return { Fail(McLang::Format(TEXT("commands.ride.not_riding"), { NameOf(Rider) })) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.ride.dismount.success"), { NameOf(Rider), Vehicle })) };
+		}
+		FRideActor Vehicle;
+		if (!ResolveRideActor(Words[3], Sender, Target, Vehicle, Replies))
+		{
+			return Replies;
+		}
+		if (!Vehicle.Player.IsEmpty())
+		{
+			return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
+		}
+		FString Other;
+		switch (Target.Ride(Rider.Player, Rider.Entity, Vehicle.Entity, Other))
+		{
+		case 0:
+			return { Ok(McLang::Format(TEXT("commands.ride.mount.success"), { NameOf(Rider), NameOf(Vehicle) })) };
+		case 1:
+			return { Fail(McLang::Format(TEXT("commands.ride.already_riding"), { NameOf(Rider), Other })) };
+		case 2:
+			return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.loop"))) };
+		default:
+			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { NameOf(Rider), NameOf(Vehicle) })) };
+		}
+	}
+
 	FReplies RunRotate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		if (Words.Num() < 4)
@@ -5765,6 +5878,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("ride"))
+	{
+		return RunRide(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("rotate"))
 	{

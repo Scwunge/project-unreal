@@ -249,7 +249,18 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		// Esc is the screen's Cancel or Back.
 		switch (ActiveMenu)
 		{
-		case EMenu::Pause: case EMenu::Chat: OpenMenu(EMenu::None); return false;
+		case EMenu::Chat:
+			// Esc on the in-bed chat gets the player up, as Leave Bed does.
+			if (bBedChat)
+			{
+				if (AMcPlayerPawn* Sleeper = Cast<AMcPlayerPawn>(GetOwningPawn()))
+				{
+					Sleeper->RequestWake();
+				}
+			}
+			OpenMenu(EMenu::None);
+			return false;
+		case EMenu::Pause: OpenMenu(EMenu::None); return false;
 		case EMenu::Statistics: case EMenu::Advancements: OpenMenu(EMenu::Pause); break;
 		case EMenu::Worlds: case EMenu::Join: case EMenu::Message: OpenMenu(EMenu::Title); break;
 		case EMenu::NewWorld: case EMenu::ConfirmDelete: case EMenu::ImportJava: OpenMenu(EMenu::Worlds); break;

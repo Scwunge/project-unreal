@@ -1,6 +1,7 @@
 # The camera while asleep, against the reference client's sleep_play.txt (ref_sleep_*.png): a red bed two blocks south
 # of the player (foot, then head), a gold block south-east past it and a diamond block north-west, night, then use on
-# the bed. Shots in first person early and late, then from behind and the front (F5). Shots go to Saved/Shots/sl_*.png.
+# the bed. Shots in first person early and late, then from behind and the front (F5). Shots go to
+# Saved/Shots/sl_*.png. Leave Bed: bedleave.txt.
 settle:40
 chat:/gamemode survival
 chat:/difficulty peaceful

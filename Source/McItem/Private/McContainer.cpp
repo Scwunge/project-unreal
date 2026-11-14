@@ -497,8 +497,8 @@ void FMcMenu::AddQuickCraftSlot(int32 Slot)
 	{
 		return;
 	}
-	// A split can't use more slots than there are items.
-	if (DragButton != 1 && DragSlots.Num() >= Carried.Count)
+	// A split can't use more slots than there are items (the middle drag copies full stacks, so it has no such limit).
+	if (DragButton == 0 && DragSlots.Num() >= Carried.Count)
 	{
 		return;
 	}

@@ -11,6 +11,9 @@
 # It takes no test lane: headless tests on this PC may run beside it, and machine.txt says what was running.
 # MC_PERF_MINUTES sets a run's time limit (default 8); MC_PERF_CONFIG=Development for a log and the CSV profile.
 set -u
+# Off unless asked for by name (2026-11-13, user gaming: "stop the work pls im gaming, only use 1070 pc"): it starts the
+# game or a build on this PC. Playtests and perf runs go to the 1070 with tools/perf-remote.sh.
+[ "${MC_LOCAL_LANE:-0}" = 1 ] || { echo "perf-local.sh runs on this PC only with MC_LOCAL_LANE=1; use tools/perf-remote.sh (the 1070)"; exit 2; }
 ROOT="$(git rev-parse --show-toplevel)"; NAME="$(basename "$ROOT")"
 B="I:/mc-build/$NAME-perf"; OUT="I:/mc-build/$NAME-perf-out"; WB="${B//\//\\}"; WO="${OUT//\//\\}"
 ENGINE='J:\UE_5.9'

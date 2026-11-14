@@ -277,6 +277,24 @@ bool FMcHorsePoseTest::RunTest(const FString& Parameters)
 	const FVector Back = FaceCentre(2, 1, 1);
 	TestTrue(TEXT("The nose is further forward than the back of the head"), Nose.Y > Back.Y);
 	TestTrue(TEXT("The nose is lower than the back of the head"), Nose.Z < Back.Z);
+	// The picture's cut: the head's box is read from (0, 13) of the horse picture (the logged model; at (0, 0) it drew blank, a horse
+	// with no face), as the donkey's and mule's are, and the left legs are the right ones mirrored.
+	TestEqual(TEXT("The horse's head box is cut from (0, 13)"), Horse->Parts[2].Boxes[1].UV, FIntPoint(0, 13));
+	for (const TCHAR* Kind : { TEXT("minecraft:donkey"), TEXT("minecraft:mule") })
+	{
+		const FModel* Other = Find(Kind);
+		if (TestNotNull(Kind, Other))
+		{
+			TestEqual(FString(Kind) + TEXT(": same head cut as the horse's"), Other->Parts[0].Boxes[1].UV, Horse->Parts[2].Boxes[1].UV);
+		}
+	}
+	for (const FPart& Each : Horse->Parts)
+	{
+		if (Each.Role == ERole::LegFrontLeft || Each.Role == ERole::LegBackLeft)
+		{
+			TestTrue(TEXT("A left leg is mirrored"), Each.Boxes[0].bMirror);
+		}
+	}
 	// The tail hangs from its root (the top face) with its tip (the bottom) lower and further back.
 	const FVector Root = FaceCentre(1, 0, 4);
 	const FVector Tip = FaceCentre(1, 0, 5);

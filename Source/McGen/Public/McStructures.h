@@ -40,15 +40,24 @@ public:
 	void SetHeightSource(TFunction<int32(int32, int32)> Source)
 	{
 		HeightSource = MoveTemp(Source);
-		FScopeLock Guard(&GroundLock);
-		GroundCache.Reset();
+		{
+			FScopeLock Guard(&GroundLock);
+			GroundCache.Reset();
+		}
+		FScopeLock Guard(&StartBiomeLock);
+		StartBiomeCache.Reset();
 	}
 
 	// The biome at a block, with the terrain's own biome source: what decides whether a structure that reaches
 	// far from its start chunk (a village) is there at all, since the chunks round it aren't in the region. e.g.
 	// [Generator](int32 X, int32 Y, int32 Z) { return Generator.GetBiome(X, Y, Z); }. Set after the height source
 	// and before decorating; without it only starts within a chunk of the region are seen.
-	void SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)> Source) { BiomeSource = MoveTemp(Source); }
+	void SetBiomeSource(TFunction<FMcBiomeId(int32, int32, int32)> Source)
+	{
+		BiomeSource = MoveTemp(Source);
+		FScopeLock Guard(&StartBiomeLock);
+		StartBiomeCache.Reset();
+	}
 
 	// Puts down the parts of structures that lie in the region's centre chunk. The 3x3 chunks must be generated.
 	void Place(FMcGenRegion& Region, uint64 Seed) const;
@@ -106,6 +115,10 @@ private:
 	mutable FCriticalSection GroundLock;
 	mutable TMap<int64, int32> GroundCache;
 	TFunction<FMcBiomeId(int32, int32, int32)> BiomeSource;
+	// The biome at a start chunk's middle column by chunk, from the two sources above (finding the height runs the noise,
+	// and every set's reach asks for every chunk round the one being decorated). Reset when either source is set.
+	mutable FCriticalSection StartBiomeLock;
+	mutable TMap<int64, FMcBiomeId> StartBiomeCache;
 	// Jigsaw layouts by seed, start chunk and structure, newest last.
 	mutable FCriticalSection LayoutLock;
 	mutable TMap<FString, TSharedPtr<FMcJigsawLibrary::FLayout>> Layouts;

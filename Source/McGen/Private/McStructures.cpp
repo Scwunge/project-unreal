@@ -1,4 +1,5 @@
 #include "McStructures.h"
+#include "McFeature.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockTags.h"
@@ -1247,8 +1248,23 @@ bool FMcStructureLibrary::StartBiome(FMcGenRegion& Region, FIntPoint Chunk, bool
 	Biome = 0;
 	if (BiomeSource && HeightSource)
 	{
-		// The same answer from every chunk that looks.
+		// The same answer from every chunk that looks, so remembered.
+		const int64 Key = (static_cast<int64>(Chunk.X) << 32) ^ static_cast<int64>(static_cast<uint32>(Chunk.Y));
+		{
+			FScopeLock Guard(&StartBiomeLock);
+			if (const FMcBiomeId* Found = StartBiomeCache.Find(Key))
+			{
+				Biome = *Found;
+				return true;
+			}
+		}
 		Biome = BiomeSource(X, HeightSource(X, Z) - 1, Z);
+		FScopeLock Guard(&StartBiomeLock);
+		if (StartBiomeCache.Num() > (1 << 20))
+		{
+			StartBiomeCache.Reset();
+		}
+		StartBiomeCache.Add(Key, Biome);
 	}
 	else if (bInRegion)
 	{
@@ -1353,13 +1369,22 @@ void FMcStructureLibrary::Place(FMcGenRegion& Region, uint64 Seed) const
 			for (int32 DX = -Reach; DX <= Reach; ++DX)
 			{
 				const FIntPoint Start(Centre.X + DX, Centre.Y + DZ);
-				if (IsStartChunk(*Set, Seed, Start))
+				double T0 = GMcDecorateProfile ? FPlatformTime::Seconds() : 0.0;
+				const bool bStart = IsStartChunk(*Set, Seed, Start);
+				if (GMcDecorateProfile) { const double T1 = FPlatformTime::Seconds(); GMcDecorateProfile->FindOrAdd(TEXT(" S:IsStartChunk")) += T1 - T0; T0 = T1; }
+				if (bStart)
 				{
 					FMcBiomeId Biome;
-					const FStructure* Structure = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome) ? Choose(*Set, Seed, Start, [this, Biome, Start](const FStructure& S) { return BiomeSuits(S, Biome, Start); }) : nullptr;
-					if (Structure && SurroundFits(*Structure, Start))
+					const bool bBiome = StartBiome(Region, Start, FMath::Abs(DX) <= 1 && FMath::Abs(DZ) <= 1, Biome);
+					if (GMcDecorateProfile) { const double T1 = FPlatformTime::Seconds(); GMcDecorateProfile->FindOrAdd(TEXT(" S:StartBiome")) += T1 - T0; T0 = T1; }
+					const FStructure* Structure = bBiome ? Choose(*Set, Seed, Start, [this, Biome, Start](const FStructure& S) { return BiomeSuits(S, Biome, Start); }) : nullptr;
+					if (GMcDecorateProfile) { const double T1 = FPlatformTime::Seconds(); GMcDecorateProfile->FindOrAdd(TEXT(" S:Choose")) += T1 - T0; T0 = T1; }
+					const bool bFits = Structure && SurroundFits(*Structure, Start);
+					if (GMcDecorateProfile) { const double T1 = FPlatformTime::Seconds(); GMcDecorateProfile->FindOrAdd(TEXT(" S:SurroundFits")) += T1 - T0; T0 = T1; }
+					if (bFits)
 					{
 						Build(Region, *Structure, Seed, Start, Set->Salt);
+						if (GMcDecorateProfile) { GMcDecorateProfile->FindOrAdd(TEXT(" S:Build ") + Structure->Type) += FPlatformTime::Seconds() - T0; }
 					}
 				}
 			}

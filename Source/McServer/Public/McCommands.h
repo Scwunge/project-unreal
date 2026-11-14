@@ -224,6 +224,8 @@ namespace McCommands
 	MCSERVER_API TArray<FString> GetFunctionTag(const FString& Tag);
 	// Runs these functions (ids) as the sender; the replies they gave.
 	// Runs the functions /schedule has due (by the game time) as the sender; a function that is gone by then is dropped.
+	// Drops the schedules held in memory (the next use reads the world's file again): a quit and reload, for tests.
+	MCSERVER_API void ForgetSchedules();
 	MCSERVER_API void RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	MCSERVER_API TArray<FMcCommandReply> RunFunctions(const TArray<FString>& Ids, const FMcCommandSender& Sender, IMcCommandTarget& Target);
 	// The level a player has: the host of a world of their own has 4, otherwise their ops.json level (0 if not an op).

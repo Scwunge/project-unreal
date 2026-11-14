@@ -1,4 +1,6 @@
 #include "McCommands.h"
+#include "McDataPacks.h"
+#include "HAL/FileManager.h"
 #include "McMount.h"
 #include "McMob.h"
 #include "McNbt.h"
@@ -122,7 +124,8 @@ namespace
 		}
 		virtual double GetDayTime() const override { return DayTime; }
 		virtual void SetDayTime(double Ticks) override { DayTime = Ticks; }
-		virtual double GetGameTime() const override { return 12345.0; }
+		double GameTime = 12345.0;
+		virtual double GetGameTime() const override { return GameTime; }
 		virtual void SetWeather(EMcWeather InWeather, int32 DurationTicks) override { Weather = InWeather; }
 		virtual int64 GetSeed() const override { return -42; }
 		virtual bool IsSpectator(const FString& Player) const override { return SpectatorSet.Contains(Player); }
@@ -440,6 +443,48 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("op"), Target.Access.FindOp(TEXT("Alex")));
 	McCommands::HandleChat(TEXT("/deop Alex"), Op(TEXT("Steve")), Target);
 	TestNull(TEXT("deop"), Target.Access.FindOp(TEXT("Alex")));
+	// /schedule runs a real function: written into a pack, scheduled, the game time advanced past it, and the pack's "say" heard.
+	{
+		const FString PackRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McTestSchedulePack"));
+		IFileManager::Get().DeleteDirectory(*PackRoot, false, true);
+		FFileHelper::SaveStringToFile(TEXT("{\"pack\":{\"description\":\"t\",\"min_format\":121,\"max_format\":121}}"), *(PackRoot / TEXT("pack.mcmeta")));
+		FFileHelper::SaveStringToFile(TEXT("say scheduled ran"), *(PackRoot / TEXT("data/zz/function/sched.mcfunction")));
+		FString PackError;
+		const TSharedPtr<FMcResourcePack> Pack = FMcResourcePack::Open(PackRoot, &PackError);
+		if (TestNotNull(TEXT("the schedule test pack opens"), Pack.Get()))
+		{
+			McData::SetStack(MakeShared<FMcPackStack>(TArray<TSharedPtr<FMcResourcePack>>{ Pack }));
+			const FString SchedWorld = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("McTestScheduleWorld"));
+			IFileManager::Get().DeleteDirectory(*SchedWorld, false, true);
+			IFileManager::Get().MakeDirectory(*SchedWorld, true);
+			McCommands::ForgetSchedules();
+			Target.WorldFolder = SchedWorld;
+			Target.GameTime = 5000.0;
+			const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };
+			TestEqual(TEXT("scheduled"), Say(TEXT("/schedule function zz:sched 5t")), FString(TEXT("Scheduled function 'zz:sched' in 5 tick(s) at gametime 5005")));
+			TestEqual(TEXT("this tick is refused"), Say(TEXT("/schedule function zz:sched 0t")), FString(TEXT("Can't schedule for current tick")));
+			const FMcCommandSender Console = [] { FMcCommandSender Sender; Sender.PermissionLevel = 4; return Sender; }();
+			const int32 Heard = Target.Broadcasts.Num();
+			Target.GameTime = 5004.0;
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("not run before its time"), Target.Broadcasts.Num(), Heard);
+			// A quit and a reload in between: the file in the world's folder brings it back.
+			TestTrue(TEXT("it was written with the world"), IFileManager::Get().FileExists(*(SchedWorld / TEXT("mcunreal_schedules.txt"))));
+			McCommands::ForgetSchedules();
+			Target.GameTime = 5005.0;
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("run when due, after the reload"), Target.Broadcasts.Num(), Heard + 1);
+			McCommands::RunDueSchedules(Console, Target);
+			TestEqual(TEXT("once"), Target.Broadcasts.Num(), Heard + 1);
+			TestFalse(TEXT("and gone from the file"), IFileManager::Get().FileExists(*(SchedWorld / TEXT("mcunreal_schedules.txt"))));
+			TestEqual(TEXT("append keeps both"), (Say(TEXT("/schedule function zz:sched 5t")), Say(TEXT("/schedule function zz:sched 9t append")), Say(TEXT("/schedule clear zz:sched"))), FString(TEXT("Removed 2 schedule(s) with ID zz:sched")));
+			McCommands::ForgetSchedules();
+			Target.WorldFolder.Reset();
+			Target.GameTime = 12345.0;
+			McData::SetStack(MakeShared<FMcPackStack>());
+		}
+	}
+
 	// /schedule: errors and clear (the game's own wording; scheduling a real function needs one on disk).
 	{
 		const auto Say = [&Target](const TCHAR* Line) { const TArray<FMcCommandReply> Replies = McCommands::HandleChat(Line, Op(TEXT("Steve")), Target); return Replies.Num() ? Replies.Last().Text : FString(); };

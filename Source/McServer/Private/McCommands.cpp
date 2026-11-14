@@ -802,8 +802,64 @@ namespace
 		return List;
 	}
 
+	// The world the list belongs to: kept in its folder (mcunreal_schedules.txt, one "id, tag, due" line each) so a quit keeps it.
+	FString& SchedulesFolder()
+	{
+		static FString Folder;
+		return Folder;
+	}
+
+	void SyncSchedules(const IMcCommandTarget& Target)
+	{
+		const FString Folder = Target.GetWorldFolder();
+		if (Folder == SchedulesFolder())
+		{
+			return;
+		}
+		SchedulesFolder() = Folder;
+		Schedules().Reset();
+		FString Text;
+		if (!Folder.IsEmpty() && FFileHelper::LoadFileToString(Text, *(Folder / TEXT("mcunreal_schedules.txt"))))
+		{
+			TArray<FString> Lines;
+			Text.ParseIntoArrayLines(Lines);
+			for (const FString& Line : Lines)
+			{
+				TArray<FString> Parts;
+				Line.ParseIntoArray(Parts, TEXT("\t"), false);
+				if (Parts.Num() == 3 && !Parts[0].IsEmpty())
+				{
+					Schedules().Add({ Parts[0], Parts[1] == TEXT("1"), FCString::Atoi64(*Parts[2]) });
+				}
+			}
+		}
+	}
+
+	void SaveSchedules()
+	{
+		if (SchedulesFolder().IsEmpty())
+		{
+			return;
+		}
+		FString Text;
+		for (const FScheduled& Each : Schedules())
+		{
+			Text += FString::Printf(TEXT("%s\t%d\t%lld\n"), *Each.Id, Each.bTag ? 1 : 0, Each.Due);
+		}
+		const FString Path = SchedulesFolder() / TEXT("mcunreal_schedules.txt");
+		if (Text.IsEmpty())
+		{
+			IFileManager::Get().Delete(*Path, false, true, true);
+		}
+		else
+		{
+			FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+		}
+	}
+
 	FReplies RunSchedule(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
 	{
+		SyncSchedules(Target);
 		if (Words.Num() < 3)
 		{
 			return Unknown(Command, Command.Len());
@@ -821,6 +877,7 @@ namespace
 			{
 				return { Fail(McLang::Format(TEXT("commands.schedule.cleared.failure"), { Words[2] })) };
 			}
+			SaveSchedules();
 			return { Ok(McLang::Format(TEXT("commands.schedule.cleared.success"), { FString::FromInt(Removed), Words[2] })) };
 		}
 		if (Words[1] != TEXT("function") || Words.Num() < 4 || Words.Num() > 5)
@@ -857,6 +914,7 @@ namespace
 			Schedules().RemoveAll([&Id, bTag](const FScheduled& Each) { return Each.Id == Id && Each.bTag == bTag; });
 		}
 		Schedules().Add({ Id, bTag, Due });
+		SaveSchedules();
 		return { Ok(McLang::Format(bTag ? TEXT("commands.schedule.created.tag") : TEXT("commands.schedule.created.function"), { Id, FString::FromInt(Ticks), LexToString(Due) })) };
 	}
 
@@ -6570,8 +6628,15 @@ TArray<FString> McCommands::GetFunctionTag(const FString& Tag)
 	return Ids;
 }
 
+void McCommands::ForgetSchedules()
+{
+	Schedules().Reset();
+	SchedulesFolder().Reset();
+}
+
 void McCommands::RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarget& Target)
 {
+	SyncSchedules(Target);
 	TArray<FScheduled>& List = Schedules();
 	if (List.IsEmpty())
 	{
@@ -6590,6 +6655,10 @@ void McCommands::RunDueSchedules(const FMcCommandSender& Sender, IMcCommandTarge
 		{
 			++Index;
 		}
+	}
+	if (Due.Num() > 0)
+	{
+		SaveSchedules();
 	}
 	for (const FScheduled& Each : Due)
 	{

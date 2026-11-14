@@ -303,7 +303,7 @@ void UMcBlockUseSubsystem::TickShulkers()
 		{
 			continue;
 		}
-		TMap<FIntVector, int32> Openers;
+		TMap<FIntVector, int32> Openers, Trapped;
 		for (FConstPlayerControllerIterator Controller = GetWorld()->GetPlayerControllerIterator(); Controller; ++Controller)
 		{
 			const AMcPlayerPawn* Pawn = Controller->IsValid() && (!It->PlayerFilter || It->PlayerFilter(*Controller->Get())) ? Cast<AMcPlayerPawn>(Controller->Get()->GetPawn()) : nullptr;
@@ -312,8 +312,42 @@ void UMcBlockUseSubsystem::TickShulkers()
 			{
 				++Openers.FindOrAdd(Items->GetWindow().Pos);
 			}
+			else if (Items && Items->HasWindow() && Items->GetWindow().Kind == EMcWindowKind::Chest && GetBlockName(*Blocks, Items->GetWindow().Pos) == TEXT("minecraft:trapped_chest"))
+			{
+				++Trapped.FindOrAdd(Items->GetWindow().Pos);
+			}
 		}
 		It->SetShulkerOpeners(Openers);
+		// A trapped chest gives one power for each player with it open; a double chest counts both halves' players, for each half.
+		if (FMcSimulation* Sim = It->GetSimulation())
+		{
+			TMap<FIntVector, int32>& Last = TrappedViewers.FindOrAdd(*It);
+			TMap<FIntVector, int32> Now;
+			for (const TPair<FIntVector, int32>& Pair : Trapped)
+			{
+				int32 Total = Pair.Value;
+				if (const TOptional<FIntVector> Partner = McChestLink::FindPartner(*Blocks, Pair.Key))
+				{
+					Total += Trapped.FindRef(Partner.GetValue());
+				}
+				Now.Add(Pair.Key, Total);
+			}
+			for (const TPair<FIntVector, int32>& Pair : Now)
+			{
+				if (Last.FindRef(Pair.Key) != Pair.Value)
+				{
+					Sim->SetChestViewers(Pair.Key, Pair.Value);
+				}
+			}
+			for (const TPair<FIntVector, int32>& Pair : Last)
+			{
+				if (!Now.Contains(Pair.Key))
+				{
+					Sim->SetChestViewers(Pair.Key, 0);
+				}
+			}
+			Last = MoveTemp(Now);
+		}
 	}
 }
 

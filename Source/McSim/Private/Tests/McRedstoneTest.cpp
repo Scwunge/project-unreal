@@ -239,8 +239,8 @@ bool FMcRedstoneTest::RunTest(const FString& Parameters)
 		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:end_portal_frame[eye=true,facing=north]")));
 		Run(Sim, 4);
 		TestEqual(TEXT("a portal frame with an eye gives 15"), Sim.GetDustPower(FIntVector(-1, 1, 0)), 15);
-		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:chest[facing=north,type=right]")));
-		World.SetBlock(FIntVector(2, 1, 0), State(TEXT("minecraft:chest[facing=north,type=left]")));
+		World.SetBlock(FIntVector(1, 1, 0), State(TEXT("minecraft:chest[facing=south,type=right]")));
+		World.SetBlock(FIntVector(2, 1, 0), State(TEXT("minecraft:chest[facing=south,type=left]")));
 		FMcBlockEntity Full = FMcBlockEntity::MakeContainer(27);
 		for (FMcItemStack& Slot : Full.Slots)
 		{

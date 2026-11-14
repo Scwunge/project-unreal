@@ -532,8 +532,8 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 	// A dropper into a double chest fills the other half once the first is full.
 	{
 		const FIntVector RightHalf(3, 64, 14), LeftHalf(4, 64, 14), Dropper(2, 64, 14);
-		Blocks.SetBlock(RightHalf, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=right]")).Get(0));
-		Blocks.SetBlock(LeftHalf, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=left]")).Get(0));
+		Blocks.SetBlock(RightHalf, Registry.ParseState(TEXT("minecraft:chest[facing=south,type=right]")).Get(0));
+		Blocks.SetBlock(LeftHalf, Registry.ParseState(TEXT("minecraft:chest[facing=south,type=left]")).Get(0));
 		Blocks.SetBlock(Dropper, Registry.ParseState(TEXT("minecraft:dropper[facing=east]")).Get(0));
 		FMcBlockEntity Stuffed = FMcBlockEntity::MakeContainer(27);
 		for (FMcItemStack& Slot : Stuffed.Slots)
@@ -553,19 +553,19 @@ bool FMcContainerBlocksTest::RunTest(const FString& Parameters)
 		UMcBlockUseSubsystem::GetContents(*Actor, RightHalf, Right);
 		TestTrue(TEXT("and keeps what it had"), Right.Num() > 0 && Right[0].Item == TEXT("minecraft:dirt"));
 	}
-	// Double chests: facing north, the left half is east of the right one. Placing a chest beside a single one
+	// Double chests: facing north, the right half is east of the left one (reference run trapchest). Placing a chest beside a single one
 	// joins them, and taking one away leaves the other single again.
-	TestEqual(TEXT("a right chest's partner is clockwise"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("right")), FIntVector(1, 0, 0));
-	TestEqual(TEXT("a left chest's partner is counter-clockwise"), McChestLink::GetPartnerOffset(TEXT("east"), TEXT("left")), FIntVector(0, 0, -1));
+	TestEqual(TEXT("a right chest's partner is counter-clockwise"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("right")), FIntVector(-1, 0, 0));
+	TestEqual(TEXT("a left chest's partner is clockwise"), McChestLink::GetPartnerOffset(TEXT("east"), TEXT("left")), FIntVector(0, 0, 1));
 	TestEqual(TEXT("a single chest has none"), McChestLink::GetPartnerOffset(TEXT("north"), TEXT("single")), FIntVector::ZeroValue);
 	const FIntVector Lone(3, 64, 13);
 	const FIntVector Joiner(4, 64, 13);
 	Actor->SetBlock(Lone, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=single]")).Get(0));
 	const auto Join = McChestLink::ChooseJoin(Blocks, Joiner, TEXT("minecraft:chest"), TEXT("north"), Lone);
-	TestTrue(TEXT("a chest east of a single one joins as its left half"), Join.IsSet() && Join->Key == TEXT("left") && Join->Value == Lone);
+	TestTrue(TEXT("a chest east of a single one joins as its right half"), Join.IsSet() && Join->Key == TEXT("right") && Join->Value == Lone);
 	TestFalse(TEXT("one facing another way can't"), McChestLink::ChooseJoin(Blocks, Joiner, TEXT("minecraft:chest"), TEXT("south"), Lone).IsSet());
-	Actor->SetBlock(Joiner, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=left]")).Get(0));
-	TestEqual(TEXT("the neighbour becomes the right half"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("right")));
+	Actor->SetBlock(Joiner, Registry.ParseState(TEXT("minecraft:chest[facing=north,type=right]")).Get(0));
+	TestEqual(TEXT("the neighbour becomes the left half"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("left")));
 	TestTrue(TEXT("and each finds the other"), McChestLink::FindPartner(Blocks, Joiner).Get(FIntVector::ZeroValue) == Lone && McChestLink::FindPartner(Blocks, Lone).Get(FIntVector::ZeroValue) == Joiner);
 	Actor->SetBlock(Joiner, Registry.FindDefaultState(TEXT("minecraft:air")).Get(0));
 	TestEqual(TEXT("taking one away leaves the other single"), Registry.GetPropertyValue(Blocks.GetBlock(Lone), TEXT("type")), FName(TEXT("single")));

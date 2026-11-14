@@ -1,0 +1,117 @@
+# Trapped chest: what a viewer makes it power. One player, so one viewer (the count over several viewers cannot be made from here).
+cmd gamerule send_command_feedback false
+cmd gamemode creative
+cmd execute in minecraft:overworld run tp @s 1.5 -60 3.5 180 20
+wait 200
+cmd tick freeze
+wait 4
+cmd gamerule doMobSpawning false
+# a walled box: the save is under water and the water would flow in
+cmd fill -5 -61 -3 31 -52 15 stone hollow
+wait 10
+# A: single trapped chest at 3,-60,6 (facing south): dust east of it, a lamp west of it, a lamp 2 east of the dust.
+cmd setblock 3 -60 6 trapped_chest[facing=south]
+cmd setblock 4 -60 6 redstone_wire
+cmd setblock 5 -60 6 redstone_lamp
+cmd setblock 2 -60 6 redstone_lamp
+# B: trapped chest on a stone block, dust beside the stone (strong power from the chest to the block under it), a lamp on the far side of the stone and a lamp above the chest.
+cmd setblock 10 -60 6 stone
+cmd setblock 10 -59 6 trapped_chest[facing=south]
+cmd setblock 11 -60 6 redstone_wire
+cmd setblock 12 -60 6 redstone_lamp
+cmd setblock 9 -60 6 redstone_lamp
+# C: a trapped chest with a comparator behind it reading its contents (the signal is the fullness, not the viewers), and a repeater leading away.
+cmd setblock 16 -60 6 trapped_chest[facing=south]
+cmd item replace block 16 -60 6 container.0 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.1 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.2 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.3 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.4 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.5 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.6 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.7 with minecraft:stone 64
+cmd item replace block 16 -60 6 container.8 with minecraft:stone 64
+# the comparator goes in after the items (filling a chest by command sends no neighbour update)
+cmd setblock 16 -60 7 comparator[facing=north]
+cmd setblock 16 -60 8 redstone_wire
+# D: double trapped chest (22,-60,12 and 23,-60,12): dust at each end.
+cmd setblock 22 -60 12 trapped_chest[facing=south,type=right]
+cmd setblock 23 -60 12 trapped_chest[facing=south,type=left]
+cmd setblock 21 -60 12 redstone_wire
+cmd setblock 24 -60 12 redstone_wire
+cmd setblock 20 -60 12 redstone_lamp
+cmd setblock 25 -60 12 redstone_lamp
+# E: a plain chest next to dust (nothing should power).
+cmd setblock 28 -60 6 chest[facing=south]
+cmd setblock 29 -60 6 redstone_wire
+wait 10
+cmd tick unfreeze
+wait 20
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+# A open
+cmd tp @s 3.5 -60 3.5 180 20
+wait 10
+press 3 -60 6
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+screen close
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+# B open
+cmd tp @s 10.5 -60 3.5 180 0
+wait 10
+press 10 -59 6
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+screen close
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+# C open
+cmd tp @s 16.5 -60 3.5 180 20
+wait 10
+press 16 -60 6
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+screen close
+wait 10
+# D open the left half, then close, then open the right half
+cmd tp @s 22.5 -60 9.5 180 15
+wait 10
+press 22 -60 12
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+screen close
+wait 10
+press 23 -60 12
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze
+screen close
+wait 10
+cmd tick freeze
+wait 4
+log states -1 -60 4 30 -57 14
+cmd tick unfreeze

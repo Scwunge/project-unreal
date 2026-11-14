@@ -50,6 +50,9 @@ public:
 	void BookshelfUsed(const FIntVector& Pos, int32 Slot);
 	// A minecart on a detector rail (or none): the rail powers while it is there and for a second after.
 	void SetDetector(const FIntVector& Pos, bool bOccupied);
+	// How many players have the trapped chest at Pos open (a double chest: the pair's count, for each half): it gives that much power, to 15.
+	void SetChestViewers(const FIntVector& Pos, int32 NumViewers);
+	void SetOneChest(const FIntVector& Pos, int32 NumViewers);
 	// A player's hand on a lever, button, door, trapdoor or fence gate (see FMcSimulation::UseBlock).
 	bool Use(const FIntVector& Pos, float Yaw);
 	// A container at Pos changed what it holds: the comparators that read it look again.
@@ -201,6 +204,7 @@ private:
 	void HearVibration(const FIntVector& Cell, const FMcGameEvent& Event);
 	void Emit(const TCHAR* Name, const FIntVector& Pos, bool bPlayer = false);
 	TSet<FIntVector> Detectors;
+	TMap<FIntVector, int32> ChestViewers;
 	// Blocks a piston is carrying: the state, and the game tick it lands on.
 	TMap<FIntVector, TPair<FMcStateId, int64>> MovingBlocks;
 	// When each extended piston started to extend, for the rule that a short pulse leaves what it pushed behind.

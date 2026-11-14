@@ -281,6 +281,11 @@ void FMcSimulation::NotifyContainerChanged(const FIntVector& Pos)
 	Redstone->NotifyContainerChanged(Pos);
 }
 
+void FMcSimulation::SetChestViewers(const FIntVector& Pos, int32 NumViewers)
+{
+	Redstone->SetChestViewers(Pos, NumViewers);
+}
+
 void FMcSimulation::SetDetectorRail(const FIntVector& Pos, bool bOccupied)
 {
 	Redstone->SetDetector(Pos, bOccupied);

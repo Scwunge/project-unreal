@@ -43,13 +43,14 @@ bool McChestLink::IsLinkable(FName BlockName)
 
 FIntVector McChestLink::GetPartnerOffset(FName Facing, FName Type)
 {
+	// Reference run trapchest: facing south, the right half is the west one and its partner is east (counter-clockwise).
 	if (Type == TEXT("right"))
 	{
-		return Clockwise(Facing);
+		return FIntVector::ZeroValue - Clockwise(Facing);
 	}
 	if (Type == TEXT("left"))
 	{
-		return FIntVector::ZeroValue - Clockwise(Facing);
+		return Clockwise(Facing);
 	}
 	return FIntVector::ZeroValue;
 }
@@ -87,8 +88,8 @@ TOptional<TPair<FName, FIntVector>> McChestLink::ChooseJoin(const FMcBlockWorld&
 	}
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	const FIntVector Side = Clockwise(Facing);
-	// A neighbour clockwise of this chest makes it the right half; one counter-clockwise makes it the left.
-	const TPair<FIntVector, FName> Candidates[2] = { { Pos + Side, FName(TEXT("right")) }, { Pos - Side, FName(TEXT("left")) } };
+	// A neighbour clockwise of this chest makes it the left half; one counter-clockwise makes it the right (reference run trapchest).
+	const TPair<FIntVector, FName> Candidates[2] = { { Pos + Side, FName(TEXT("left")) }, { Pos - Side, FName(TEXT("right")) } };
 	TOptional<TPair<FName, FIntVector>> Found;
 	for (const TPair<FIntVector, FName>& Candidate : Candidates)
 	{

@@ -46,6 +46,9 @@ public:
 	float Yaw = 0.0f;
 	float Pitch = 0.0f;
 	int32 Age = 0;
+	// Makes no sounds, and the tags /tag and a summon's Tags give it (not saved yet).
+	bool bSilent = false;
+	TArray<FString> CommandTags;
 	// Ticks before a portal can take it again (McTravel; not saved).
 	int32 PortalCooldown = 0;
 	// Tied by a lead (McLeash.h): to a knot entity by id, or (id 0) to the player last seen near LeashPlayerPos. Not saved.

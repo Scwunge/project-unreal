@@ -1,4 +1,7 @@
 #include "McCommands.h"
+#include "McMount.h"
+#include "McMob.h"
+#include "McNbt.h"
 #include "McLang.h"
 #include "McRecipe.h"
 #include "Misc/AutomationTest.h"
@@ -150,6 +153,8 @@ namespace
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
+		TArray<FMcNbt> SummonedTags;
+		virtual bool SummonWithTag(FName Kind, const FVector& Feet, const FMcNbt& Tag) override { SummonedTags.Add(Tag); return Summon(Kind, Feet); }
 		virtual void GetXp(const FString& Player, int32& OutLevel, int32& OutPoints) const override { OutLevel = XpLevel; OutPoints = XpPoints; }
 		virtual void AddXp(const FString& Player, int32 Amount, bool bLevels) override { (bLevels ? XpLevel : XpPoints) += Amount; }
 		virtual bool SetXp(const FString& Player, int32 Amount, bool bLevels) override
@@ -457,6 +462,64 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("summon a pig"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5"), Op(TEXT("Steve")), Target)));
 	TestTrue(TEXT("summoned where asked"), Target.Summoned.Num() == 1 && Target.Summoned[0].Value == FVector(3.5, 4, 5.5));
 	TestTrue(TEXT("summon nothing"), AnyError(McCommands::HandleChat(TEXT("/summon dragon_of_doom"), Op(TEXT("Steve")), Target)));
+	// /summon with a data tag: the tag reaches the target as the game's text form reads it.
+	Target.Summoned.Reset();
+	TestFalse(TEXT("summon with a tag"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:1b,CustomName:\"Pig Latin\",Age:-24000,Tags:[\"a\",\"b\"],Rotation:[90f,0f],Silent:true}"), Op(TEXT("Steve")), Target)));
+	if (TestEqual(TEXT("the tag came with it"), Target.SummonedTags.Num(), 1) && Target.Summoned.Num() == 1)
+	{
+		const FMcNbt& Tag = Target.SummonedTags[0];
+		TestEqual(TEXT("where"), Target.Summoned[0].Value, FVector(3.5, 4, 5.5));
+		TestEqual(TEXT("NoAI is a byte"), Tag.GetInt(TEXT("NoAI")), static_cast<int64>(1));
+		TestEqual(TEXT("a name with a space"), Tag.GetString(TEXT("CustomName")), FString(TEXT("Pig Latin")));
+		TestEqual(TEXT("Age"), Tag.GetInt(TEXT("Age")), static_cast<int64>(-24000));
+		TestEqual(TEXT("true is a byte"), Tag.GetInt(TEXT("Silent")), static_cast<int64>(1));
+		const FMcNbt* Rotation = Tag.Find(TEXT("Rotation"));
+		TestTrue(TEXT("rotation: two floats"), Rotation && Rotation->Num() == 2 && Rotation->Values[0].Type == FMcNbt::EType::Float && FMath::IsNearlyEqual(Rotation->Values[0].GetReal(), 90.0));
+		const FMcNbt* Tags = Tag.Find(TEXT("Tags"));
+		TestTrue(TEXT("tags: two strings"), Tags && Tags->Num() == 2 && Tags->Values[1].String == TEXT("b"));
+	}
+	TestTrue(TEXT("a tag that doesn't parse"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("a tag needs the position"), AnyError(McCommands::HandleChat(TEXT("/summon pig {NoAI:1b}"), Op(TEXT("Steve")), Target)));
+	TestTrue(TEXT("text after the tag"), AnyError(McCommands::HandleChat(TEXT("/summon pig 3 4 5 {NoAI:1b} extra"), Op(TEXT("Steve")), Target)));
+	{
+		FMcNbt Parsed;
+		TestTrue(TEXT("every number suffix"), FMcNbt::ParseSnbt(TEXT("{a:1b,b:2s,c:3,d:4L,e:5.5f,f:6.5d,g:7.5,h:[I;1,2],i:'x\\'y',j:{},k:[]}"), Parsed));
+		TestEqual(TEXT("short"), static_cast<int32>(Parsed.Find(TEXT("b"))->Type), static_cast<int32>(FMcNbt::EType::Short));
+		TestEqual(TEXT("int"), static_cast<int32>(Parsed.Find(TEXT("c"))->Type), static_cast<int32>(FMcNbt::EType::Int));
+		TestEqual(TEXT("long"), static_cast<int32>(Parsed.Find(TEXT("d"))->Type), static_cast<int32>(FMcNbt::EType::Long));
+		TestEqual(TEXT("a plain real is a double"), static_cast<int32>(Parsed.Find(TEXT("g"))->Type), static_cast<int32>(FMcNbt::EType::Double));
+		TestEqual(TEXT("an int array"), static_cast<int32>(Parsed.Find(TEXT("h"))->Type), static_cast<int32>(FMcNbt::EType::IntArray));
+		TestEqual(TEXT("an escaped quote"), Parsed.GetString(TEXT("i")), FString(TEXT("x'y")));
+		TestFalse(TEXT("an unclosed list"), FMcNbt::ParseSnbt(TEXT("{a:[1,2}"), Parsed));
+		TestFalse(TEXT("a value after the value"), FMcNbt::ParseSnbt(TEXT("{} {}"), Parsed));
+	}
+	// What the tag does to a mob: the common tags, and the saddle.
+	{
+		const FMcMobType* CamelType = FMcMobType::Find(TEXT("minecraft:camel"));
+		if (TestNotNull(TEXT("camel type"), CamelType))
+		{
+			FMcMob Camel(*CamelType);
+			FMcNbt Tag;
+			TestTrue(TEXT("tag parses"), FMcNbt::ParseSnbt(TEXT("{NoAI:1b,Invulnerable:1b,Silent:1b,CustomName:\"Sandy\",Tags:[\"x\"],Rotation:[90f,10f],equipment:{saddle:{id:\"minecraft:saddle\",count:1}}}"), Tag));
+			McCommands::ApplyEntityTag(Camel, Tag);
+			TestTrue(TEXT("NoAI"), Camel.bNoAI);
+			TestTrue(TEXT("Invulnerable"), Camel.bInvulnerable);
+			TestTrue(TEXT("Silent"), Camel.bSilent);
+			TestEqual(TEXT("name"), Camel.CustomName, FString(TEXT("Sandy")));
+			TestTrue(TEXT("tag"), Camel.CommandTags.Contains(TEXT("x")));
+			TestTrue(TEXT("facing"), FMath::IsNearlyEqual(Camel.Yaw, 90.0f) && FMath::IsNearlyEqual(Camel.Pitch, 10.0f));
+			TestTrue(TEXT("saddled"), Camel.Mount.IsValid() && Camel.Mount->bSaddled);
+			FMcMob Baby(*CamelType);
+			FMcNbt BabyTag;
+			TestTrue(TEXT("baby tag parses"), FMcNbt::ParseSnbt(TEXT("{Age:-24000}"), BabyTag));
+			McCommands::ApplyEntityTag(Baby, BabyTag);
+			TestTrue(TEXT("a baby"), Baby.IsYoung());
+			TestEqual(TEXT("a baby takes no saddle"), McCommands::SetEntitySlot(Baby, TEXT("saddle"), TEXT("minecraft:saddle"), 1), 2);
+			TestTrue(TEXT("saddle off again"), McCommands::SetEntitySlot(Camel, TEXT("saddle"), NAME_None, 0) == 1 && !Camel.Mount->bSaddled);
+			TestTrue(TEXT("a helmet"), McCommands::SetEntitySlot(Camel, TEXT("armor.head"), TEXT("minecraft:iron_helmet"), 1) == 1 && Camel.Armor[0] == TEXT("minecraft:iron_helmet"));
+			TestEqual(TEXT("no such slot"), McCommands::SetEntitySlot(Camel, TEXT("hotbar.3"), TEXT("minecraft:stone"), 1), 0);
+		}
+	}
 
 	// /xp and /clear
 	McCommands::HandleChat(TEXT("/xp add Steve 3 levels"), Op(TEXT("Steve")), Target);

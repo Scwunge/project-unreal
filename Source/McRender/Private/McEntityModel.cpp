@@ -1785,11 +1785,45 @@ namespace McEntityModel
 				const uint32 Saddled = 1u << 1;
 				Camel.Parts.Add(Part(ERole::Head, FVector(0, 27, 19.5f), { Box(60, 87, -3.5f, -1, -4, 7, 8, 19), Box(21, 64, -3.5f, 7, 8, 7, 14, 7), Box(50, 64, -2.5f, 16, 15, 5, 5, 6), Box(74, 70, 2.5f, 17, 16, 1, 2, 2), Box(74, 70, -3.5f, 17, 16, 1, 2, 2) }, 0, 0, 0, 0, 1));
 				Camel.Parts.Add(Part(ERole::Static, FVector(0, 20, -9.5f), { Box(74, 64, -4.5f, 12, 4.5f, 9, 5, 11), Box(92, 114, -3.5f, 17, 4.5f, 7, 3, 11), Box(0, 89, -7.5f, 0, -3.5f, 15, 12, 27, 0.02f) }, 0, 0, 0, 0, 1));
+				// Lying down (poses 2, and 3 with the saddle on; logged, camel_sitanim.txt: first frame of the stand-up): the body low on the
+				// ground, the legs folded flat (pitch -pi/2, the hind ones splayed out). The stand-up and sit-down are not drawn: it changes at once
+				// (the 52 ticks of the stand-up are logged and not built; the sit-down was not captured).
+				const uint32 Sitting = (1u << 2) | (1u << 3);
+				const TArray<FPart> Standing = Camel.Parts;
+				for (const FPart& Each : Standing)
+				{
+					if (Each.Role == ERole::Head)
+					{
+						continue;
+					}
+					FPart Lying = Each;
+					Lying.Role = ERole::Static;
+					if (Each.Role == ERole::Static)
+					{
+						Lying.Pivot = FVector(0, 24.0f - 23.9f, -9.341f);
+						Lying.RestPitch = -0.009f;
+					}
+					else
+					{
+						const bool bFront = Each.Role == ERole::LegFrontRight || Each.Role == ERole::LegFrontLeft;
+						const bool bRight = Each.Role == ERole::LegFrontRight || Each.Role == ERole::LegBackRight;
+						Lying.Pivot = bFront ? FVector(bRight ? -4.9f : 4.9f, 2.4f, -1.204f) : FVector(bRight ? -5.53f : 5.53f, 2.5f, -14.253f);
+						Lying.RestPitch = -1.571f;
+						Lying.RestYaw = bFront ? (bRight ? -0.174f : 0.174f) : (bRight ? -0.23f : 0.23f);
+					}
+					Lying.ShowPoses = Each.Layer == 1 ? (1u << 3) : Sitting;
+					Camel.Parts.Add(Lying);
+				}
 				for (FPart& Each : Camel.Parts)
 				{
-					if (Each.Layer == 1)
+					const bool bLying = (Each.ShowPoses == Sitting) || Each.ShowPoses == (1u << 3);
+					if (Each.Layer == 1 && !bLying)
 					{
-						Each.ShowPoses = Saddled;
+						Each.ShowPoses = Each.Role == ERole::Head ? (Saddled | (1u << 3)) : Saddled;
+					}
+					else if (Each.Layer == 0 && !bLying && Each.Role != ERole::Head)
+					{
+						Each.ShowPoses = (1u << 0) | (1u << 1);
 					}
 				}
 				Models.Add(Camel.Kind, Camel);

@@ -37,8 +37,11 @@ $Before = @(
 )
 $Before | Set-Content "$Dir\machine.txt"
 
-# Test builds record the engine's CSV profile for the whole run (Shipping has no profiler).
-$Csv = if ($Config -ne 'Shipping') { ' -csvCaptureFrames=1000000 -csvGpuStats' } else { '' }
+# Test builds record the engine's CSV profile for the whole run (Shipping has no profiler). Its processing thread stays off:
+# the profiler is a static torn down after the allocator, and that thread's exit then faults in the allocator's thread
+# cache, the crash reporter faults capturing it, and the game ends 777003 (CrashReporterCrashed) after a clean exit
+# (playtest4, tabledrag; quickend with -csvNoProcessingThread exits 0 with the profile written). MC_PERF_CSVARGS overrides.
+$Csv = if ($Config -ne 'Shipping' -and -not $env:MC_PERF_NOCSV) { if ($env:MC_PERF_CSVARGS) { ' ' + $env:MC_PERF_CSVARGS } else { ' -csvCaptureFrames=1000000 -csvGpuStats -csvNoProcessingThread' } } else { '' }
 $GameArgs = "-McPerf=`"$Dir\perf.log`" -McInputFile=`"$Dir\script.txt`" -McCache=$Cache -windowed -ResX=1920 -ResY=1080 $Extra$Csv"
 $P = Start-Process $Exe -ArgumentList $GameArgs -PassThru
 "pid $($P.Id) args $GameArgs"

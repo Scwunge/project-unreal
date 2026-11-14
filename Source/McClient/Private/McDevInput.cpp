@@ -12,6 +12,7 @@
 #include "Engine/GameViewportClient.h"
 #include "InputKeyEventArgs.h"
 #include "Misc/CommandLine.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -201,6 +202,19 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 	}
 	ToRelease.Reset();
 
+	if (bEnding)
+	{
+#if CSV_PROFILER
+		if (FCsvProfiler::IsCapturing() || FCsvProfiler::Get()->IsEndCapturePending())
+		{
+			return;
+		}
+#endif
+		bEnding = false;
+		FPlatformMisc::RequestExit(false, TEXT("McInput"));
+		return;
+	}
+
 	AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Controller.GetPawn());
 	if (!Pawn)
 	{
@@ -318,7 +332,13 @@ void FMcDevInput::Tick(AMcPlayerController& Controller, float DeltaSeconds)
 			bRunning = true;
 			break;
 		case FStep::EKind::End:
-			FPlatformMisc::RequestExit(false, TEXT("McInput"));
+#if CSV_PROFILER
+			if (FCsvProfiler::IsCapturing())
+			{
+				FCsvProfiler::Get()->EndCapture();
+			}
+#endif
+			bEnding = true;
 			Next = Steps.Num();
 			break;
 		case FStep::EKind::Mark:

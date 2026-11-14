@@ -61,6 +61,9 @@ private:
 	TArray<FStep> Steps;
 	int32 Next = 0;
 	bool bRunning = false;
+	// "end" waits for the engine's CSV profile (perf runs' -csvCaptureFrames) to be written before it quits, so the run's
+	// profile is whole. (The 777003 exit code was the profiler's processing thread at teardown: perf_run.ps1.)
+	bool bEnding = false;
 	bool bHoldShot = false;
 	FStep Current;
 	float Left = 0.0f;

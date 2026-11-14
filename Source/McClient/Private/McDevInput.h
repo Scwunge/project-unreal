@@ -73,6 +73,8 @@ private:
 	float Waited = 0.0f;
 	float StartDelay = 5.0f;
 	float DeadFor = 0.0f;
+	// The script has a press:Respawn, so a death waits for it instead of respawning by itself.
+	bool bScriptRespawns = false;
 	bool bHadPawn = false;
 	// A key pressed by "key:" is let go the next frame.
 	TArray<FKey> ToRelease;

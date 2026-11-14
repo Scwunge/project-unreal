@@ -1,0 +1,130 @@
+# The rest of an early game, for playtest blockers: kill a pig with a sword and pick up what it drops, get hungry and
+# eat, smelt raw iron in a furnace, sleep in a bed at night, die and respawn from the death screen, and swap the game
+# mode (F3+F4, then /gamemode). Run like playtest.txt: -McTitle -McMenuPress=Singleplayer,Create_New_World on an empty
+# world list. Shots go to Saved/Shots/e_*.png.
+# Screens are 1920x1080 at GUI scale 4 (176x166 GUI pixels, centred): hotbar slot n at (672+72n, 808); the furnace's
+# input at (864, 308), its fuel at (864, 452), its result at (1104, 380).
+mark:fill
+settle:60
+shot:e_arrived
+mark:pig
+chat:/rotate @s 0 0
+# A flat, open pad so the pig isn't summoned into a hillside (the spawn is wherever the new world put it).
+chat:/fill ~-3 ~-1 ~-3 ~3 ~-1 ~7 minecraft:grass_block
+chat:/fill ~-3 ~ ~-3 ~3 ~3 ~7 minecraft:air
+wait:1
+chat:/summon minecraft:pig ~ ~ ~2.5
+chat:/item replace entity @s weapon.mainhand with minecraft:iron_sword
+# One hit has to kill it (6 + Strength II's 6 against its 10 health): a hurt pig panics and runs out of reach.
+chat:/effect give @s minecraft:strength 30 1
+wait:1
+look:0,-20
+wait:0.5
+shot:e_pig
+click:L:0.1
+wait:0.8
+click:L:0.1
+wait:0.8
+click:L:0.1
+wait:0.8
+click:L:0.1
+wait:1.5
+shot:e_pig_hit
+look:0,20
+chat:/effect clear @s
+hold:W:1.5
+wait:2
+key:E
+wait:1
+shot:e_drops
+key:E
+wait:1
+mark:eat
+chat:/effect give @s minecraft:hunger 10 100
+wait:10
+shot:e_hungry
+chat:/item replace entity @s weapon.mainhand with minecraft:bread 5
+wait:1
+click:R:2.5
+wait:1
+shot:e_ate
+mark:furnace
+chat:/clear @s
+key:One
+chat:/item replace entity @s weapon.mainhand with minecraft:furnace
+wait:1
+look:0,-45
+click:R:0.1
+wait:1
+shot:e_furnace_placed
+chat:/give @s minecraft:raw_iron 1
+chat:/give @s minecraft:coal 1
+wait:1
+click:R:0.1
+wait:1
+shot:e_furnace_open
+cursor:672,808
+click:L:0.1
+wait:0.3
+cursor:864,308
+click:L:0.1
+wait:0.3
+cursor:744,808
+click:L:0.1
+wait:0.3
+cursor:864,452
+click:L:0.1
+wait:1
+shot:e_furnace_burning
+wait:11
+shot:e_furnace_done
+cursor:1104,380
+click:L:0.1
+wait:0.3
+cursor:672,808
+click:L:0.1
+wait:0.5
+shot:e_iron
+key:Escape
+wait:1
+mark:bed
+chat:/time set 13000
+chat:/clear @s
+chat:/item replace entity @s weapon.mainhand with minecraft:red_bed
+wait:1
+look:90,0
+click:R:0.1
+wait:1
+shot:e_bed_placed
+click:R:0.1
+wait:2
+shot:e_sleeping
+wait:6
+shot:e_morning
+chat:/time query daytime
+wait:1
+mark:die
+look:0,45
+chat:/kill @s
+wait:3
+shot:e_dead
+press:Respawn
+wait:3
+settle:20
+shot:e_respawned
+mark:mode
+down:F3
+key:F4
+wait:1
+shot:e_switcher
+up:F3
+wait:1
+shot:e_after_f3f4
+chat:/gamemode creative
+wait:1
+shot:e_creative
+chat:/gamemode survival
+wait:1
+shot:e_survival
+mark:end
+end

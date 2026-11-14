@@ -33,6 +33,11 @@ struct FMcTriggerEvent
 	FName Entity;
 	FName Recipe;
 	FName Biome;
+	// The state of the block the event was about (item_used_on_block), for tags and properties.
+	FMcStateId State = 0;
+	// changed_dimension: where the player went and came from ("minecraft:the_nether").
+	FName To;
+	FName From;
 };
 
 UCLASS()
@@ -142,6 +147,8 @@ public:
 	// Server: the points of experience as orbs at the player (a death drops them).
 	void ServerDropXp(int32 Points);
 	bool IsDead() const { return Data && Data->Stats.Health <= 0.0f; }
+	// The shot itself, along a given look (ServerShootBow reads this player's own); a development driver aims with it.
+	void ShootBowAlong(const FVector& Look, int32 DrawTicks);
 	// The experience points the player had when they died: the death screen's "Score".
 	int32 GetDeathScore() const { return DeathScore; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
@@ -198,6 +205,10 @@ public:
 	float GetLookPitch() const { return McLookPitch; }
 	bool IsSneakPosed() const { return bSneakPose; }
 	bool IsGlidePosed() const { return bGlidePose; }
+	// What everyone sees worn: the item in each armor slot (0 head, 1 chest, 2 legs, 3 feet), elytra on the back.
+	FName GetWornArmor(int32 Slot) const { return Slot >= 0 && Slot < 4 ? WornArmor[Slot] : NAME_None; }
+	FName GetWornHead() const { return WornHead; }
+	bool WearsElytra() const { return bWearsElytra; }
 	// Owner: gliding on elytra.
 	bool IsGliding() const { return bGliding; }
 	// Owner, development (-McGlide): starts a glide on the spot, heading the way they look, if the wings are on.
@@ -427,6 +438,9 @@ private:
 	// The item in the head slot, for a head or carved pumpkin drawn on the head.
 	UPROPERTY(Replicated)
 	FName WornHead;
+	// The items in the four armor slots, for the armor drawn on the body.
+	UPROPERTY(Replicated)
+	FName WornArmor[4];
 	// Server: ticks of gliding, for the wings' wear.
 	int32 ServerGlideTicks = 0;
 	bool bServerGliding = false;

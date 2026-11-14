@@ -15,8 +15,9 @@ public:
 	static const FName& GhastType();
 	static const FName& SmallType();
 	static const FName& SkullType();
+	static const FName& WindType();
 	static const FName& DragonType();
-	virtual FName GetType() const override { return bDragon ? DragonType() : bSkull ? SkullType() : (bSmall ? SmallType() : GhastType()); }
+	virtual FName GetType() const override { return bWind ? WindType() : bDragon ? DragonType() : bSkull ? SkullType() : (bSmall ? SmallType() : GhastType()); }
 	virtual void Tick(FMcEntityManager& Manager) override;
 	virtual bool IsPersistent() const override { return false; }
 
@@ -26,6 +27,12 @@ public:
 	// speed = (speed + 0.1) * 0.73 along the aim, no gravity. Blast power 1 is the game's value and NOT measured (the player lost a net 2 hp
 	// beyond a steady drain in the 20 ticks of each hit, which does not settle it).
 	void LaunchSkull(const FVector& Direction);
+	// A breeze's wind charge (breeze.txt, 2026-11-05, 306 samples of one run): a steady 0.70 blocks a tick along the aim, no gravity and no
+	// drag; a hit took 1 hp from a zoglin (the player was immune, so its damage is the same figure assumed). The burst that shoves entities
+	// and flips levers is NOT done.
+	void LaunchWind(const FVector& Direction);
+	static constexpr double WindSpeed = 0.70;
+	static constexpr float WindDamage = 1.0f;
 	// The ender dragon's (dragon_phase1.txt: the one tick logged had speed 0.0998 aimed straight at the player, like a ghast's first tick; the rest of
 	// its flight was not logged, so it flies as a ghast's does, UNVERIFIED). It leaves a damage cloud where it lands (the dragon keeps the clouds).
 	void LaunchDragon(const FVector& Direction);
@@ -41,6 +48,7 @@ private:
 
 	bool bSmall = false;
 	bool bSkull = false;
+	bool bWind = false;
 	bool bDragon = false;
 	FVector Aim = FVector::ForwardVector;
 };

@@ -1,3 +1,4 @@
+#include "Async/ParallelFor.h"
 #include "McBiomeRegistry.h"
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
@@ -295,6 +296,59 @@ bool FMcWorldStorageTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("the older edit undone"), Reloaded->GetBlock(7, 100, 8), static_cast<FMcStateId>(0));
 		TestTrue(TEXT("a far chunk, in another region file, too"), Storage.Contains(Far));
 		TestFalse(TEXT("a chunk never saved"), Storage.Contains(FIntPoint(0, 0)));
+	}
+	{
+		// Leaving a world saves it as AMcWorldActor::SaveWorld does: chunks encoded on worker threads, written in bulk
+		// (each region file held open) and brought to the disk once at the end. Across two regions, some already saved.
+		TArray<TUniquePtr<FMcChunk>> Chunks;
+		for (int32 X = 28; X < 36; ++X)
+		{
+			for (int32 Z = -2; Z < 2; ++Z)
+			{
+				TUniquePtr<FMcChunk>& Chunk = Chunks.Add_GetRef(MakeEditedChunk(World, FIntPoint(X, Z)));
+				Chunk->SetBlock(X & 15, 90 + (Z & 7), 3, Gold);
+			}
+		}
+		FMcChunkSaveExtras Extras;
+		Extras.bPopulated = true;
+		TArray<TArray<uint8>> Bytes;
+		Bytes.SetNum(Chunks.Num());
+		ParallelFor(Chunks.Num(), [&](int32 Index) { Bytes[Index] = McChunkSave::Encode(*Chunks[Index], Extras); });
+		bool bSameAsOneByOne = true;
+		for (int32 Index = 0; Index < Chunks.Num(); ++Index)
+		{
+			bSameAsOneByOne &= Bytes[Index] == McChunkSave::Encode(*Chunks[Index], Extras);
+		}
+		TestTrue(TEXT("encoding on worker threads gives the same bytes"), bSameAsOneByOne);
+		FMcWorldStorage Storage(Folder.Path / TEXT("overworld"));
+		Storage.SetBulk(true);
+		for (int32 Index = 0; Index < Chunks.Num(); ++Index)
+		{
+			Storage.QueueSave(Chunks[Index]->GetPos(), MoveTemp(Bytes[Index]));
+		}
+		Storage.SetBulk(false);
+		TestEqual(TEXT("bulk: everything written"), Storage.NumQueued(), 0);
+		TestEqual(TEXT("bulk: no write failed"), Storage.NumFailedWrites(), 0);
+	}
+	{
+		FMcWorldStorage Storage(Folder.Path / TEXT("overworld"));
+		int32 Found = 0;
+		for (int32 X = 28; X < 36; ++X)
+		{
+			for (int32 Z = -2; Z < 2; ++Z)
+			{
+				const FIntPoint Pos(X, Z);
+				TUniquePtr<FMcChunk> Expected = MakeEditedChunk(World, Pos);
+				Expected->SetBlock(X & 15, 90 + (Z & 7), 3, Gold);
+				TArray<uint8> Bytes;
+				TUniquePtr<FMcChunk> Reloaded = World.MakeChunk(Pos);
+				FMcChunkSaveExtras Extras;
+				Found += Storage.Load(Pos, Bytes) && McChunkSave::Decode(Bytes, *Reloaded, Extras) && SameChunk(*Expected, *Reloaded) ? 1 : 0;
+			}
+		}
+		TestEqual(TEXT("bulk: all 32 chunks come back as saved"), Found, 32);
+		TArray<uint8> Bytes;
+		TestTrue(TEXT("bulk: the chunks saved before are still there"), Storage.Load(Near, Bytes));
 	}
 	return true;
 }

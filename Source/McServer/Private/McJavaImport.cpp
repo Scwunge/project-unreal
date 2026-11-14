@@ -1401,7 +1401,7 @@ bool McJavaImport::ConvertAdvancements(const FString& Json, FMcPlayerData& Out)
 	{
 		return false;
 	}
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Root->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Root->Values)
 	{
 		const TSharedPtr<FJsonObject>* Made = nullptr;
 		if (!Entry.Value.IsValid() || !Entry.Value->TryGetObject(Made))
@@ -1418,7 +1418,7 @@ bool McJavaImport::ConvertAdvancements(const FString& Json, FMcPlayerData& Out)
 		const TSharedPtr<FJsonObject>* Criteria = nullptr;
 		if ((*Made)->TryGetObjectField(TEXT("criteria"), Criteria))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Criterion : (*Criteria)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Criterion : (*Criteria)->Values)
 			{
 				const FString Key = Id + TEXT("/") + Criterion.Key;
 				Out.Stats.Add(TEXT("criterion:") + Key, 1.0);
@@ -1442,7 +1442,7 @@ bool McJavaImport::ConvertStats(const FString& Json, FMcPlayerData& Out)
 	{
 		return false;
 	}
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Category : (*Categories)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Category : (*Categories)->Values)
 	{
 		const TSharedPtr<FJsonObject>* Counts = nullptr;
 		if (!Category.Value.IsValid() || !Category.Value->TryGetObject(Counts))
@@ -1451,7 +1451,7 @@ bool McJavaImport::ConvertStats(const FString& Json, FMcPlayerData& Out)
 		}
 		FString Kind = Category.Key;
 		Kind.RemoveFromStart(TEXT("minecraft:"));
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Count : (*Counts)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Count : (*Counts)->Values)
 		{
 			double Value = 0.0;
 			if (!Count.Value.IsValid() || !Count.Value->TryGetNumber(Value))

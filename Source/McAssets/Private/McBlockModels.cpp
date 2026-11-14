@@ -1,6 +1,9 @@
 #include "McBlockModels.h"
 #include "McTextureTiles.h"
 #include "Async/ParallelFor.h"
+#include "Misc/FileHelper.h"
+#include "McPerf.h"
+#include "HAL/FileManager.h"
 #include "McBlockRegistry.h"
 #include "McCache.h"
 #include "HAL/PlatformTime.h"
@@ -372,7 +375,7 @@ namespace
 			{
 				continue;
 			}
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& FaceEntry : (*FacesObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> FaceEntry : (*FacesObject)->Values)
 			{
 				const EMcDirection Direction = ParseDirection(FaceEntry.Key);
 				const TSharedPtr<FJsonObject>* FaceObject;
@@ -442,7 +445,7 @@ namespace
 				const TSharedPtr<FJsonObject>* TexturesObject;
 				if (Json->TryGetObjectField(TEXT("textures"), TexturesObject))
 				{
-					for (const TPair<FString, TSharedPtr<FJsonValue>>& Texture : (*TexturesObject)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Texture : (*TexturesObject)->Values)
 					{
 						FTextureValue Value;
 						const TSharedPtr<FJsonObject>* Object;
@@ -467,7 +470,7 @@ namespace
 				const TSharedPtr<FJsonObject>* DisplayObject;
 				if (Json->TryGetObjectField(TEXT("display"), DisplayObject))
 				{
-					for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*DisplayObject)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*DisplayObject)->Values)
 					{
 						const TSharedPtr<FJsonObject>* Transform;
 						if (!Entry.Value->TryGetObject(Transform))
@@ -735,7 +738,7 @@ namespace
 	FCondition FBaker::ParseCondition(const TSharedPtr<FJsonObject>& Object) const
 	{
 		FCondition Condition;
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Object->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Object->Values)
 		{
 			const TArray<TSharedPtr<FJsonValue>>* Array;
 			if ((Entry.Key == TEXT("AND") || Entry.Key == TEXT("OR")) && Entry.Value->TryGetArray(Array))
@@ -779,7 +782,7 @@ namespace
 		const TSharedPtr<FJsonObject>* VariantsObject;
 		if (Json->TryGetObjectField(TEXT("variants"), VariantsObject))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*VariantsObject)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*VariantsObject)->Values)
 			{
 				FVariantDef& Variant = Def.Variants.AddDefaulted_GetRef();
 				TArray<FString> Pairs;
@@ -886,6 +889,23 @@ bool FMcBlockModels::EnsureBaked()
 	}
 
 	const double StartTime = FPlatformTime::Seconds();
+	// The bake below opens these one at a time, which takes half a minute when they aren't in the disk cache (the first
+	// game after starting the PC or after anything big ran). Read them all on the workers first.
+	{
+		TArray<FString> Files;
+		const FString ModelFolder = FPaths::GetPath(McCache::AssetOf(TEXT("minecraft:block/stone"), TEXT("models/"), TEXT(".json")));
+		IFileManager::Get().FindFilesRecursive(Files, *ModelFolder, TEXT("*.json"), true, false);
+		for (int32 BlockIndex = 0; BlockIndex < Registry.NumBlocks(); ++BlockIndex)
+		{
+			Files.Add(McCache::AssetOf(Registry.GetBlock(BlockIndex).Name.ToString(), TEXT("blockstates/"), TEXT(".json")));
+		}
+		ParallelFor(Files.Num(), [&Files](int32 Index)
+		{
+			TArray<uint8> Ignored;
+			FFileHelper::LoadFileToArray(Ignored, *Files[Index], FILEREAD_Silent);
+		});
+		McPerf::Event(FString::Printf(TEXT("MODELS_READ %d files in %.0f ms"), Files.Num(), (FPlatformTime::Seconds() - StartTime) * 1000.0));
+	}
 	FMcBakeStats NewStats;
 	FBaker Baker(NewStats);
 	TArray<FMcBakedModel> NewModels;
@@ -1017,6 +1037,7 @@ bool FMcBlockModels::EnsureBaked()
 	Stats = MoveTemp(NewStats);
 	Models = MoveTemp(NewModels);
 
+	McPerf::Event(FString::Printf(TEXT("MODELS_BAKED %d states in %.0f ms"), Models.Num(), (FPlatformTime::Seconds() - StartTime) * 1000.0));
 	UE_LOG(LogMcAssets, Log, TEXT("Baked %d block states in %.0f ms: %d with quads (%d quads), %d empty, %d builtin, %d failed; %d textures"),
 		Models.Num(), (FPlatformTime::Seconds() - StartTime) * 1000.0, Stats.Baked, Stats.Quads, Stats.Empty, Stats.Builtin, Stats.Failed, Textures.Num());
 	for (const FString& Problem : Stats.Problems)

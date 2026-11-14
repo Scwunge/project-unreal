@@ -29,6 +29,17 @@ void FMcBlockWorld::RemoveChunk(FIntPoint Pos)
 	}
 }
 
+TUniquePtr<FMcChunk> FMcBlockWorld::TakeChunk(FIntPoint Pos)
+{
+	check(IsInGameThread());
+	TUniquePtr<FMcChunk> Taken;
+	if (Chunks.RemoveAndCopyValue(Pos, Taken))
+	{
+		OnChunkRemoved.Broadcast(Pos);
+	}
+	return Taken;
+}
+
 FMcChunk* FMcBlockWorld::FindChunk(FIntPoint Pos)
 {
 	TUniquePtr<FMcChunk>* Chunk = Chunks.Find(Pos);

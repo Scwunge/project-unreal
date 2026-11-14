@@ -16,6 +16,7 @@
 #include "ProceduralMeshComponent.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -358,6 +359,7 @@ void UMcSignComponent::Scan(FIntPoint ChunkPos)
 
 void UMcSignComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(BlockEnts);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (Signs.IsEmpty())
 	{

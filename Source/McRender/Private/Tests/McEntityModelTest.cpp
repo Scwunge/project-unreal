@@ -55,6 +55,31 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		{ TEXT("minecraft:shulker"), 1, 1.1, 1.0 },
 		{ TEXT("minecraft:phantom"), 1, 3.2, 0.4 },
 		{ TEXT("minecraft:guardian"), 1, 3.0, 1.25, 0.3 },
+		// Batch 1 of the missing mobs: boxes from the reference's logged models (the limits below are what the converted models measure, a regression guard
+		// and a check that nothing floats, hangs or leaves its picture; they are not vanilla numbers: the wiki hitboxes are in McMobTypesTest). The negative V of
+		// the fish fins is real (a flat fin's picture starts above the sheet, as in the game).
+		{ TEXT("minecraft:mooshroom"), 1, 1.6, 1.57 },
+		{ TEXT("minecraft:ocelot"), 1, 2.2, 0.75 },
+		{ TEXT("minecraft:polar_bear"), 1, 2.3, 1.2 },
+		{ TEXT("minecraft:panda"), 1, 2.3, 1.29 },
+		{ TEXT("minecraft:parrot"), 1, 0.8, 0.9 },
+		{ TEXT("minecraft:squid"), 1, 1.25, 1.5, 0.6 },
+		{ TEXT("minecraft:glow_squid"), 1, 1.25, 1.5, 0.6 },
+		{ TEXT("minecraft:cod"), 1, 0.95, 0.32, 0.07, 0.3 },
+		{ TEXT("minecraft:salmon"), 1, 1.55, 0.54, 0.07, 0.3 },
+		{ TEXT("minecraft:pufferfish"), 1, 0.9, 0.49 },
+		{ TEXT("minecraft:tadpole"), 1, 0.6, 0.19 },
+		{ TEXT("minecraft:axolotl"), 1, 1.7, 0.66, 0.1 },
+		{ TEXT("minecraft:snow_golem"), 1, 1.4, 1.95 },
+		{ TEXT("minecraft:armadillo"), 1, 1.15, 0.7 },
+		{ TEXT("minecraft:zoglin"), 1, 2.6, 1.95 },
+		{ TEXT("minecraft:allay"), 1, 0.95, 0.58, 0.08 },
+		{ TEXT("minecraft:breeze"), 1, 1.2, 1.8 },
+		{ TEXT("minecraft:parched"), 1, 1.2, 1.99 },
+		{ TEXT("minecraft:camel_husk"), 2, 3.4, 3.09 },
+		{ TEXT("minecraft:zombie_nautilus"), 1, 1.6, 1.13 },
+		{ TEXT("minecraft:happy_ghast"), 1, 5.0, 5.51, -4.0 },  // the entity's own scale is not in the log: its height above its feet is unverified
+		{ TEXT("minecraft:sulfur_cube"), 1, 1.2, 2.07, -0.9 },  // likewise
 	};
 	for (const FExpectation& Expect : Expectations)
 	{
@@ -66,6 +91,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("%s pictures"), Expect.Kind), Model->Textures.Num(), Expect.Layers);
 		for (int32 Layer = 0; Layer < Expect.Layers; ++Layer)
 		{
+			if (Model->Textures[Layer].Contains(TEXT("saddle")))
+			{
+				continue;  // drawn only while the animal is saddled (pose 1): nothing to measure in the default pose
+			}
 			const ::FBox Bounds = LayerBounds(*Model, Layer);
 			TestTrue(FString::Printf(TEXT("%s layer %d has a mesh"), Expect.Kind, Layer), Bounds.IsValid != 0);
 			// Unreal x is the game's x, y its z, z its y.
@@ -77,7 +106,7 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 			bool bOnPicture = true;
 			for (const FVector2D& UV : Data.UV0)
 			{
-				bOnPicture &= UV.X >= 0.0 && UV.X <= 1.0 + Expect.UVSlack && UV.Y >= 0.0 && UV.Y <= 1.0;
+				bOnPicture &= UV.X >= -Expect.UVSlack && UV.X <= 1.0 + Expect.UVSlack && UV.Y >= -Expect.UVSlack && UV.Y <= 1.0;
 			}
 			TestTrue(FString::Printf(TEXT("%s layer %d UVs are on the picture"), Expect.Kind, Layer), bOnPicture);
 		}
@@ -85,6 +114,10 @@ bool FMcEntityModelTest::RunTest(const FString& Parameters)
 		double Top = 0.0;
 		for (int32 Layer = 0; Layer < Expect.Layers; ++Layer)
 		{
+			if (Model->Textures[Layer].Contains(TEXT("saddle")))
+			{
+				continue;
+			}
 			Top = FMath::Max(Top, LayerBounds(*Model, Layer).Max.Z);
 		}
 		TestTrue(FString::Printf(TEXT("%s reaches the top of its hitbox (%.3f of %.3f)"), Expect.Kind, Top, Expect.Height), Top >= Expect.Height * 0.85);

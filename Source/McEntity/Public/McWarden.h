@@ -151,6 +151,8 @@ public:
 	TFunction<bool(int32 Id, FVector& OutFeet)> FindPlayer;
 	// A player's anger id for the player standing at that feet position (0 if not a player).
 	TFunction<int32(const FVector&)> IdOfPlayerAt;
+	// The sonic boom's hit on a player (feet, damage): it goes through armor. Unset: it falls back to OnAttackPlayer.
+	TFunction<void(const FVector&, float)> OnSonicHitPlayer;
 	// Called when it digs away: the host removes it.
 	TFunction<void(FMcWarden&)> OnDug;
 

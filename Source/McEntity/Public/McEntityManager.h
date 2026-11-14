@@ -190,6 +190,9 @@ public:
 	// Called with the position of a player (as in PlayerPositions): whether they wear any gold armour. Piglins leave
 	// such a player alone. Left unset, nobody does.
 	TFunction<bool(const FVector&)> PlayerWearsGold;
+	// Called with the position of a player (as in PlayerPositions): whether they wear a carved pumpkin on the head. An enderman is not
+	// angered by that player's gaze (wiki "Enderman"). Left unset, nobody does.
+	TFunction<bool(const FVector&)> PlayerWearsPumpkin;
 	// Called with the position of a player (as in PlayerPositions) and a point: whether that player, in Survival or Adventure, has the
 	// point within 60 degrees of where they face (both yaw and pitch). A creaking holds still while this is true. Left unset, nobody looks.
 	TFunction<bool(const FVector&, const FVector&)> PlayerLooksAt;
@@ -229,7 +232,9 @@ public:
 	// Called with the event's name ("step", "entity_damage", "explode"), where it happened and who made it, for whoever runs
 	// the simulation. Left unset, events are dropped.
 	TFunction<void(FName, const FVector&, const FGameEventTag&)> OnGameEvent;
-	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag = FGameEventTag()) const
+	void GameEvent(FName Name, const FVector& Position) const { GameEvent(Name, Position, FGameEventTag{}); }
+	// (An overload, not a default argument: clang can't build a nested struct's default member initialisers inside the class.)
+	void GameEvent(FName Name, const FVector& Position, const FGameEventTag& Tag) const
 	{
 		if (OnGameEvent)
 		{

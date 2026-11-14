@@ -27,12 +27,19 @@ public:
 	// Takes ownership and broadcasts OnChunkAdded. Replaces any chunk already at that position.
 	FMcChunk& AddChunk(TUniquePtr<FMcChunk> Chunk);
 	void RemoveChunk(FIntPoint Pos);
+	// RemoveChunk that hands the chunk to the caller instead of freeing it (to be saved on a worker); null if none.
+	TUniquePtr<FMcChunk> TakeChunk(FIntPoint Pos);
 
 	FMcChunk* FindChunk(FIntPoint Pos);
 	const FMcChunk* FindChunk(FIntPoint Pos) const;
 	bool HasChunk(FIntPoint Pos) const { return Chunks.Contains(Pos); }
 	int32 NumChunks() const { return Chunks.Num(); }
 	const TMap<FIntPoint, TUniquePtr<FMcChunk>>& GetChunks() const { return Chunks; }
+
+	// A player has nothing around them yet (a new or opened world, a long teleport). Making chunks then comes before a smooth
+	// frame, since there is nothing to look at; otherwise it runs behind the frame's own tasks.
+	bool IsFilling() const { return bFilling; }
+	void SetFilling(bool bOn) { bFilling = bOn; }
 
 	// World block coordinates (x east, y up, z south). Unloaded chunks read as air and ignore writes.
 	FMcStateId GetBlock(const FIntVector& Pos) const;
@@ -55,6 +62,7 @@ public:
 	const TArray<FBox3f>* FindCollisionOverride(const FIntVector& Pos) const { return CollisionOverrides.IsEmpty() ? nullptr : CollisionOverrides.Find(Pos); }
 
 private:
+	bool bFilling = false;
 	FMcDimensionType Dimension;
 	TMap<FIntPoint, TUniquePtr<FMcChunk>> Chunks;
 	TMap<FIntVector, TArray<FBox3f>> CollisionOverrides;

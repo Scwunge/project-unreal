@@ -82,11 +82,16 @@ void AMcPlayerPawn::ServerReel(FMcEntityManager& Entities, FMcFishingBobber& Bob
 		FMcRandom Random(static_cast<uint64>(DropRandom.GetUnsignedInt()) << 32 | DropRandom.GetUnsignedInt());
 		TArray<FMcItemStack> Catch;
 		McLoot::RollFishing(Context, Random, Catch);
+		Data->AddStat(TEXT("custom:fish_caught"));
 		for (const FMcItemStack& Stack : Catch)
 		{
 			// Flung out of the water in an arc that lands at the angler's feet.
 			FMcItemEntity& Item = Entities.DropItem(At, Stack);
 			Item.Body.Velocity = FMcFishingBobber::ThrowToward(At, Eye);
+			FMcTriggerEvent Hooked;
+			Hooked.Trigger = TEXT("minecraft:fishing_rod_hooked");
+			Hooked.Item = Stack.Item;
+			FireTrigger(Hooked);
 		}
 		FMcXpOrb::Spawn(Entities, Body.Position + FVector(0.5, 0.5, 0.5), DropRandom.RandRange(1, 6), DropRandom);
 	}

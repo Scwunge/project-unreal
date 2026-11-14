@@ -57,6 +57,37 @@ bool FMcAdvancementTriggerTest::RunTest(const FString& Parameters)
 	Crafted.Recipe = TEXT("minecraft:rib_armor_trim_smithing_template_smithing_trim");
 	AMcGameMode::FireTrigger(*Pawn, Crafted);
 	TestTrue(TEXT("recipe crafted"), Pawn->Data->Criteria.Contains(TEXT("minecraft:adventure/trim_with_all_exclusive_armor_patterns/armor_trimmed_minecraft:rib_armor_trim_smithing_template_smithing_trim")));
+	// A compass used on a lodestone makes Oh, Lodestone (it is a block and a tool the criterion names), a stick does not.
+	FMcTriggerEvent Used;
+	Used.Trigger = TEXT("minecraft:item_used_on_block");
+	Used.Item = TEXT("minecraft:stick");
+	Used.Block = TEXT("minecraft:lodestone");
+	AMcGameMode::FireTrigger(*Pawn, Used);
+	TestFalse(TEXT("a stick is no compass"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/use_lodestone")));
+	Used.Item = TEXT("minecraft:compass");
+	AMcGameMode::FireTrigger(*Pawn, Used);
+	TestTrue(TEXT("lodestone used"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/use_lodestone")));
+	for (const TCHAR* Trigger : { TEXT("minecraft:slept_in_bed"), TEXT("minecraft:enchanted_item"), TEXT("minecraft:villager_trade") })
+	{
+		FMcTriggerEvent Plain;
+		Plain.Trigger = Trigger;
+		AMcGameMode::FireTrigger(*Pawn, Plain);
+	}
+	TestTrue(TEXT("slept"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/sleep_in_bed")));
+	TestTrue(TEXT("enchanted"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enchant_item")));
+	TestTrue(TEXT("traded"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/trade")));
+	FMcTriggerEvent Moved;
+	Moved.Trigger = TEXT("minecraft:changed_dimension");
+	Moved.From = TEXT("minecraft:overworld");
+	Moved.To = TEXT("minecraft:the_nether");
+	AMcGameMode::FireTrigger(*Pawn, Moved);
+	TestTrue(TEXT("nether entered"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enter_the_nether")));
+	TestFalse(TEXT("not the end"), Pawn->Data->Advancements.Contains(TEXT("minecraft:story/enter_the_end")));
+	FMcTriggerEvent Totem;
+	Totem.Trigger = TEXT("minecraft:used_totem");
+	Totem.Item = TEXT("minecraft:totem_of_undying");
+	AMcGameMode::FireTrigger(*Pawn, Totem);
+	TestTrue(TEXT("totem"), Pawn->Data->Advancements.Contains(TEXT("minecraft:adventure/totem_of_undying")));
 	return true;
 }
 

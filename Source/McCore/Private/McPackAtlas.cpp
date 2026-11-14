@@ -200,7 +200,7 @@ namespace
 					continue;
 				}
 				const TArray<FColor> KeyColours = PaletteOf(KeyPicture);
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Permutation : (*Permutations)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Permutation : (*Permutations)->Values)
 				{
 					FPicture PalettePicture;
 					FString PaletteId;

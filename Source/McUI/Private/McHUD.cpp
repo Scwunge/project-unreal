@@ -408,8 +408,13 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSide
 {
 	float WornScale;
 	const bool bPot = Item == TEXT("minecraft:decorated_pot");
-	const FName Kind = bPot ? FName(TEXT("mc:decorated_pot")) : McPlayerModel::GetWornHeadModel(Item, WornScale);
-	const McEntityModel::FModel* Model = bPot || Kind.ToString().StartsWith(TEXT("mc:head/")) ? McEntityModel::Find(Kind) : nullptr;
+	// A chest's item draws the placed chest's model (closed, unturned) in the picture its definition names.
+	FString ChestBase;
+	const FString ChestTexture = bPot ? FString() : McItemDef::FindChestTexture(McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json"))), FDateTime::Now(), &ChestBase);
+	const FName ChestKind = ChestTexture.IsEmpty() ? NAME_None : FName(TEXT("mc:chest/") + ChestTexture);
+	const bool bChest = !ChestKind.IsNone() && McEntityModel::Find(ChestKind) != nullptr;
+	const FName Kind = bPot ? FName(TEXT("mc:decorated_pot")) : bChest ? ChestKind : McPlayerModel::GetWornHeadModel(Item, WornScale);
+	const McEntityModel::FModel* Model = bPot || bChest || Kind.ToString().StartsWith(TEXT("mc:head/")) ? McEntityModel::Find(Kind) : nullptr;
 	if (!Model || Model->Textures.IsEmpty())
 	{
 		return false;
@@ -440,7 +445,12 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSide
 		FString ModelId;
 		const TSharedPtr<FJsonObject> Definition = McCache::LoadJsonObject(McCache::Asset(TEXT("items/") + McCache::PathOf(Item.ToString()) + TEXT(".json")));
 		const TSharedPtr<FJsonObject>* Special;
-		if (Definition && Definition->TryGetObjectField(TEXT("model"), Special))
+		if (bChest)
+		{
+			// A chest's special model sits under a date select; its base was found with it.
+			ModelId = ChestBase;
+		}
+		else if (Definition && Definition->TryGetObjectField(TEXT("model"), Special))
 		{
 			(*Special)->TryGetStringField(TEXT("base"), ModelId);
 		}
@@ -471,7 +481,9 @@ bool AMcHUD::BuildHeadIcon(FName Item, FIcon& Icon, const TArray<FName>& PotSide
 			}
 		}
 	}
-	const double Yaw = FMath::DegreesToRadians(Rotation.Y);
+	// The chest model faces north unturned (McChestComponent); the item draws the south-facing chest, its latch on the
+	// right like a head's face (not checked against the game).
+	const double Yaw = FMath::DegreesToRadians(Rotation.Y + (bChest ? 180.0 : 0.0));
 	const double Tilt = FMath::DegreesToRadians(Rotation.X);
 	const auto View = [&](const FVector& Unreal)
 	{

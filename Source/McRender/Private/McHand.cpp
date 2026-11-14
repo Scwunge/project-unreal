@@ -24,6 +24,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/ConstructorHelpers.h"
+#include "McPerf.h"
 
 namespace McHand
 {
@@ -656,6 +657,8 @@ void UMcHandComponent::SetDrawing(bool bInDrawing, float InSeconds)
 
 void UMcHandComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Models);
+	MC_PERF_SCOPE(ModelsHand);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	AActor* Owner = GetOwner();
 	if (!Owner || !bShown || DeltaTime <= 0.0f)

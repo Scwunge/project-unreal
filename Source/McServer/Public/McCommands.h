@@ -129,6 +129,11 @@ public:
 	virtual bool GetSlot(const FString& Player, int32 Group, int32 Index, FName& OutItem, int32& OutCount) const { return false; }
 	// /attribute changed the value of an attribute (id without the namespace) to Value; only some reach the game.
 	virtual void SetAttribute(const FString& Player, const FString& Id, double Value) {}
+	// The vehicle a player rides (its name as shown), and getting off it.
+	virtual bool GetVehicleName(const FString& Player, FString& OutName) const { return false; }
+	virtual void Dismount(const FString& Player) {}
+	// /place feature: puts a configured feature down at Pos. 0 placed, 1 no such feature, 2 it could not be placed (or the world has no features).
+	virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) { return 2; }
 	// The hotbar slot (0 to 8) the player holds.
 	virtual int32 GetSelectedSlot(const FString& Player) const { return 0; }
 

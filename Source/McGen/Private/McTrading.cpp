@@ -53,7 +53,7 @@ namespace
 		const TSharedPtr<FJsonObject>* Components = nullptr;
 		if (Object->TryGetObjectField(TEXT("components"), Components))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Components)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Components)->Values)
 			{
 				Out.Set(FName(*McCache::Namespaced(Entry.Key)), Entry.Value);
 			}

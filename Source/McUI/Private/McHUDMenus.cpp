@@ -24,6 +24,8 @@
 #include "McSound.h"
 #include "McUI.h"
 #include "McPlayerPawn.h"
+#include "McMob.h"
+#include "McItemRegistry.h"
 #include "McWorldActor.h"
 #include "McWorldSave.h"
 #include "AudioDevice.h"
@@ -171,6 +173,16 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 		GEngine->OnNetworkFailure().AddLambda([](UWorld*, UNetDriver*, ENetworkFailure::Type, const FString& Error) { SetConnectError(Error); });
 		GEngine->OnTravelFailure().AddLambda([](UWorld*, ETravelFailure::Type, const FString& Error) { SetConnectError(Error); });
 	}
+	if (bTitle && !bCacheChecked)
+	{
+		bCacheChecked = true;
+		bCacheReady = McCache::IsComplete();
+	}
+	if (bTitle && !bCacheReady && ActiveMenu != EMenu::Setup)
+	{
+		// A packaged game on its first run has no cache yet: set it up from the player's own install first.
+		OpenMenu(EMenu::Setup);
+	}
 	if (bTitle && !ConnectError.IsEmpty() && (ActiveMenu != EMenu::Message || MessageText != ConnectError))
 	{
 		// The failure comes while the title is still up, which the engine then loads afresh, so it stays to be shown
@@ -251,6 +263,7 @@ bool AMcHUD::DrawMenus(int32 Width, int32 Height, bool bTitle)
 
 	switch (ActiveMenu)
 	{
+	case EMenu::Setup: DrawSetup(Width, Height); break;
 	case EMenu::Title: DrawTitle(Width, Height); break;
 	case EMenu::Worlds: DrawWorlds(Width, Height); break;
 	case EMenu::ConfirmDelete: DrawConfirmDelete(Width, Height); break;
@@ -418,6 +431,19 @@ void AMcHUD::DrawCentredText(const FString& Text, float CentreX, float Y, uint32
 	DrawGuiText(Text, FMath::RoundToFloat(CentreX - TextWidth(Text) / 2.0f), Y, Rgb, true);
 }
 
+// Buttons to press without a hand on the mouse, in turn: -McMenuPress, or the harness's "press" step.
+static TArray<FString> DevPresses;
+static double DevNextPress = 0.0;
+
+void AMcHUD::QueueMenuPresses(FString Spec)
+{
+	Spec.ReplaceInline(TEXT("_"), TEXT(" "));
+	TArray<FString> Labels;
+	Spec.ParseIntoArray(Labels, TEXT(","));
+	DevPresses.Append(Labels);
+	DevNextPress = FPlatformTime::Seconds() + 2.0;
+}
+
 bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H, bool bEnabled)
 {
 	const bool bOver = bEnabled && GuiMouse.X >= X && GuiMouse.X < X + W && GuiMouse.Y >= Y && GuiMouse.Y < Y + H;
@@ -425,31 +451,25 @@ bool AMcHUD::MenuButton(const FString& Label, float X, float Y, float W, float H
 		: bOver ? TEXT("textures/gui/sprites/widget/button_highlighted.png") : TEXT("textures/gui/sprites/widget/button.png");
 	DrawGuiSprite(Sprite, X, Y, W, H);
 	DrawCentredText(Label, X + W / 2.0f, Y + (H - 8.0f) / 2.0f, bEnabled ? White : Grey);
-#if !UE_BUILD_SHIPPING
-	// Development: -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a
-	// space), to run the menus without a hand on the mouse.
-	static TArray<FString> Presses;
+	// -McMenuPress=Singleplayer,Create_New_World presses those buttons in turn, a second apart ('_' for a space), to run
+	// the menus without a hand on the mouse. Also in a packaged game, to test it.
 	static bool bPressesRead = false;
-	static double NextPress = 0.0;
 	if (!bPressesRead)
 	{
 		bPressesRead = true;
 		FString Spec;
 		if (FParse::Value(FCommandLine::Get(), TEXT("-McMenuPress="), Spec, /*bShouldStopOnSeparator=*/false))
 		{
-			Spec.ReplaceInline(TEXT("_"), TEXT(" "));
-			Spec.ParseIntoArray(Presses, TEXT(","));
-			NextPress = FPlatformTime::Seconds() + 2.0;
+			QueueMenuPresses(Spec);
 		}
 	}
-	if (bEnabled && Presses.Num() > 0 && Presses[0] == Label && FPlatformTime::Seconds() >= NextPress)
+	if (bEnabled && DevPresses.Num() > 0 && DevPresses[0] == Label && FPlatformTime::Seconds() >= DevNextPress)
 	{
 		UE_LOG(LogMcUI, Display, TEXT("McMenuPress: %s"), *Label);
-		Presses.RemoveAt(0);
-		NextPress = FPlatformTime::Seconds() + 1.0;
+		DevPresses.RemoveAt(0);
+		DevNextPress = FPlatformTime::Seconds() + 1.0;
 		return true;
 	}
-#endif
 	if (bOver && bMenuClick)
 	{
 		// The click is heard where the player is: on the listener, not in the world.
@@ -710,6 +730,10 @@ void AMcHUD::DrawWorlds(int32 Width, int32 Height)
 		DrawGuiText(McLaunch::IsCreativeMode(Row.GameMode) ? TEXT("Creative Mode") : TEXT("Survival Mode"), RowX + 3.0f, Y + 23.0f, DarkGrey, true);
 	}
 
+	if (MenuButton(bHostWorld ? TEXT("Friends can join: On") : TEXT("Friends can join: Off"), Width - 162.0f, 6.0f, 156.0f, 20.0f))
+	{
+		bHostWorld = !bHostWorld;
+	}
 	const bool bSelected = WorldRows.IsValidIndex(SelectedWorld);
 	if (MenuButton(McLang::Get(TEXT("selectWorld.select")), CentreX - 154.0f, Height - 52.0f, 150.0f, 20.0f, bSelected) || (bSelected && (bPlay || bMenuEnter)))
 	{
@@ -828,6 +852,10 @@ void AMcHUD::DrawNewWorld(int32 Width, int32 Height)
 	const float CentreX = Width / 2.0f;
 	const float Left = CentreX - 100.0f;
 	DrawCentredText(McLang::Get(TEXT("selectWorld.create")), CentreX, 20.0f, White);
+	if (MenuButton(bHostWorld ? TEXT("Friends can join: On") : TEXT("Friends can join: Off"), Width - 162.0f, 6.0f, 156.0f, 20.0f))
+	{
+		bHostWorld = !bHostWorld;
+	}
 
 	DrawGuiText(TEXT("World Name"), Left, 47.0f, Grey, true);
 	MenuTextField(NewWorldName, FieldWorldName, Left, 60.0f, 200.0f, 20.0f, 32);
@@ -1069,11 +1097,34 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 	// The list.
 	static const TArray<FStatRow> NoRows;
 	const TArray<FStatRow>& Rows = StatsTab == 0 ? GetStatRows() : NoRows;
-	const float Content = Rows.Num() * RowHeight + 10.0f;
-	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
 	APlayerController* Player = GetOwningPlayerController();
 	const AMcPlayerPawn* StatsPawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
 	const UMcPlayerDataComponent* Counted = StatsPawn ? StatsPawn->Data : nullptr;
+	// Items: every item with a count in any of the six item statistics. Mobs: every mob the game has.
+	static const TCHAR* const ItemStats[6] = { TEXT("broken:"), TEXT("crafted:"), TEXT("mined:"), TEXT("used:"), TEXT("picked_up:"), TEXT("dropped:") };
+	TArray<FName> ItemRows;
+	if (StatsTab == 1 && Counted)
+	{
+		TSet<FName> Seen;
+		for (const TPair<FString, int64>& Entry : Counted->Counters)
+		{
+			for (const TCHAR* Prefix : ItemStats)
+			{
+				if (Entry.Key.StartsWith(Prefix) && Entry.Value > 0)
+				{
+					Seen.Add(FName(*Entry.Key.RightChop(FCString::Strlen(Prefix))));
+				}
+			}
+		}
+		ItemRows = Seen.Array();
+		ItemRows.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+	}
+	const TArray<FMcMobType>& MobTypes = FMcMobType::GetAll();
+	constexpr float ItemRowHeight = 20.0f;
+	constexpr float MobRowHeight = 24.0f;
+	const float Content = StatsTab == 1 ? ItemRows.Num() * ItemRowHeight + ItemRowHeight + 10.0f
+		: StatsTab == 2 ? MobTypes.Num() * MobRowHeight + 10.0f : Rows.Num() * RowHeight + 10.0f;
+	const float MaxScroll = FMath::Max(0.0f, Content - (ListBottom - ListTop));
 	if (Player && GuiMouse.Y >= ListTop && GuiMouse.Y < ListBottom)
 	{
 		StatsScroll += 7 * ((Player->WasInputKeyJustPressed(EKeys::MouseScrollDown) ? 1 : 0) - (Player->WasInputKeyJustPressed(EKeys::MouseScrollUp) ? 1 : 0));
@@ -1090,6 +1141,51 @@ void AMcHUD::DrawStatistics(int32 Width, int32 Height)
 		DrawGuiText(Rows[Index].Name, CentreX - 135.6f, Y, Colour, true);
 		const FString Value = FormatStat(Rows[Index].Id, Counted ? Counted->GetStat(TEXT("custom:") + Rows[Index].Id) : 0);
 		DrawGuiText(Value, CentreX + 133.3f - GetTextWidth(Value), Y, Colour, true);
+	}
+	if (StatsTab == 1)
+	{
+		// The six columns, headed by their pictures, the item's picture on the left.
+		static const TCHAR* const Pictures[6] = { TEXT("item_broken"), TEXT("item_crafted"), TEXT("block_mined"), TEXT("item_used"), TEXT("item_picked_up"), TEXT("item_dropped") };
+		const float FirstColumn = CentreX - 80.0f;
+		for (int32 Column = 0; Column < 6; ++Column)
+		{
+			DrawGuiSprite(FString(TEXT("textures/gui/sprites/statistics/")) + Pictures[Column] + TEXT(".png"), FirstColumn + Column * 40.0f + 11.0f, ListTop + 2.0f - StatsScroll, 18.0f, 18.0f);
+		}
+		for (int32 Index = 0; Index < ItemRows.Num(); ++Index)
+		{
+			const float Y = ListTop + ItemRowHeight + 5.0f + Index * ItemRowHeight - StatsScroll;
+			if (Y + 16.0f <= ListTop || Y >= ListBottom)
+			{
+				continue;
+			}
+			const uint32 Colour = (Index & 1) ? 0xBABABAu : 0xFFFFFFu;
+			DrawStack(FMcItemStack(ItemRows[Index], 1), CentreX - 135.0f, Y);
+			for (int32 Column = 0; Column < 6; ++Column)
+			{
+				const int64 Count = Counted->GetStat(FString(ItemStats[Column]) + ItemRows[Index].ToString());
+				const FString Value = Count > 0 ? FString::FromInt(static_cast<int32>(Count)) : McLang::Get(TEXT("stats.none"));
+				DrawGuiText(Value, FirstColumn + Column * 40.0f + 20.0f - GetTextWidth(Value) / 2.0f, Y + 4.0f, Colour, true);
+			}
+		}
+	}
+	else if (StatsTab == 2)
+	{
+		for (int32 Index = 0; Index < MobTypes.Num(); ++Index)
+		{
+			const float Y = ListTop + 5.0f + Index * MobRowHeight - StatsScroll;
+			if (Y + 20.0f <= ListTop || Y >= ListBottom)
+			{
+				continue;
+			}
+			const FString Id = MobTypes[Index].Name.ToString();
+			const FString Mob = McLang::Get(TEXT("entity.") + Id.Replace(TEXT(":"), TEXT(".")));
+			const int64 Killed = Counted ? Counted->GetStat(TEXT("killed:") + Id) : 0;
+			const int64 KilledBy = Counted ? Counted->GetStat(TEXT("killed_by:") + Id) : 0;
+			const FString KilledText = Killed > 0 ? McLang::Format(TEXT("stat_type.minecraft.killed"), { FString::FromInt(static_cast<int32>(Killed)), Mob }) : McLang::Format(TEXT("stat_type.minecraft.killed.none"), { Mob });
+			const FString KilledByText = KilledBy > 0 ? McLang::Format(TEXT("stat_type.minecraft.killed_by"), { Mob, FString::FromInt(static_cast<int32>(KilledBy)) }) : McLang::Format(TEXT("stat_type.minecraft.killed_by.none"), { Mob });
+			DrawGuiText(KilledText, CentreX - 135.6f, Y, Killed > 0 ? 0xFFFFFFu : 0x808080u, true);
+			DrawGuiText(KilledByText, CentreX - 135.6f, Y + 10.0f, KilledBy > 0 ? 0xFFFFFFu : 0x808080u, true);
+		}
 	}
 	if (MaxScroll > 0.0f)
 	{
@@ -1226,34 +1322,60 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Saved.Save();
 	}
 
+	// Max Framerate 10 to 260 in steps of 10 (260 is Unlimited) and VSync, as the game's Video Settings have them.
+	{
+		const FString FpsText = Settings.MaxFps >= FMcClientOptions::UnlimitedFps ? FString(TEXT("Max Framerate: Unlimited"))
+			: FString::Printf(TEXT("Max Framerate: %d fps"), Settings.MaxFps);
+		const int32 Fps = 10 + 10 * FMath::RoundToInt(25.0f * MenuSlider(4, FpsText, (Settings.MaxFps - 10) / 250.0f, Left, Top + 84.0f, 150.0f, 20.0f));
+		if (Fps != Settings.MaxFps)
+		{
+			Settings.MaxFps = Fps;
+			Settings.ApplyFrameRate();
+		}
+		if (Dragging == 4 && DraggedSlider == INDEX_NONE)
+		{
+			FMcClientOptions Saved = FMcClientOptions::Load();
+			Saved.MaxFps = Settings.MaxFps;
+			Saved.Save();
+		}
+		if (MenuButton(Settings.bVSync ? TEXT("VSync: ON") : TEXT("VSync: OFF"), Right, Top + 84.0f, 150.0f, 20.0f))
+		{
+			Settings.bVSync = !Settings.bVSync;
+			Settings.ApplyFrameRate();
+			FMcClientOptions Saved = FMcClientOptions::Load();
+			Saved.bVSync = Settings.bVSync;
+			Saved.Save();
+		}
+	}
+
 	// Unreal Mode: the game lit by Unreal (Lumen, real shadows, fog, bloom) instead of Minecraft's own light.
 	const bool bUnreal = McRenderMode::IsEnhanced();
-	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), Left, Top + 84.0f, 150.0f, 20.0f))
+	if (MenuButton(bUnreal ? TEXT("Unreal Mode: ON") : TEXT("Unreal Mode: OFF"), Left, Top + 108.0f, 150.0f, 20.0f))
 	{
 		ToggleGraphics();
 	}
 	// HD Textures: generated high-resolution textures and materials (or a resource pack), on top of Unreal Mode.
 	const bool bHd = McRenderMode::GetHdSwitch();
-	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), Right, Top + 84.0f, 150.0f, 20.0f, bUnreal))
+	if (MenuButton(bHd ? TEXT("HD Textures: ON") : TEXT("HD Textures: OFF"), Right, Top + 108.0f, 150.0f, 20.0f, bUnreal))
 	{
 		ToggleHd();
 	}
 	// Quality, for Unreal Mode: cycles Low, Medium, High, Ultra; the FPS readout works in both looks.
 	static const TCHAR* const QualityNames[4] = { TEXT("Quality: Low"), TEXT("Quality: Medium"), TEXT("Quality: High"), TEXT("Quality: Ultra") };
-	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 132.0f, 150.0f, 20.0f, bUnreal))
+	if (MenuButton(QualityNames[FMath::Clamp(McRenderMode::GetQuality(), 0, 3)], Left, Top + 156.0f, 150.0f, 20.0f, bUnreal))
 	{
 		McRenderMode::SetQuality((McRenderMode::GetQuality() + 1) % 4);
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.Quality = McRenderMode::GetQuality();
 		Options.Save();
 	}
-	if (MenuButton(FMcClientOptions::Load().bShowSubtitles ? TEXT("Subtitles: ON") : TEXT("Subtitles: OFF"), Right, Top + 108.0f, 150.0f, 20.0f))
+	if (MenuButton(FMcClientOptions::Load().bShowSubtitles ? TEXT("Subtitles: ON") : TEXT("Subtitles: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
 	{
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.bShowSubtitles = !Options.bShowSubtitles;
 		Options.Save();
 	}
-	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 132.0f, 150.0f, 20.0f))
+	if (MenuButton(FMcClientOptions::Load().bShowFps ? TEXT("FPS counter: ON") : TEXT("FPS counter: OFF"), Right, Top + 156.0f, 150.0f, 20.0f))
 	{
 		FMcClientOptions Options = FMcClientOptions::Load();
 		Options.bShowFps = !Options.bShowFps;
@@ -1263,7 +1385,7 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 	// Ray tracing: greyed out, with the reason, without Unreal Mode or a card (and DX12) that traces rays.
 	const bool bRaysCan = McRenderMode::IsRayTracingSupported();
 	const bool bRays = McRenderMode::GetRayTracingSwitch();
-	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 156.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
+	if (MenuButton(bRays ? TEXT("Ray Tracing: ON") : TEXT("Ray Tracing: OFF"), Left, Top + 180.0f, 150.0f, 20.0f, bUnreal && bRaysCan))
 	{
 		McRenderMode::SetRayTracing(!bRays);
 		FMcClientOptions Options = FMcClientOptions::Load();
@@ -1271,28 +1393,28 @@ void AMcHUD::DrawOptions(int32 Width, int32 Height)
 		Options.Save();
 	}
 	DrawCentredText(!bUnreal ? TEXT("Ray Tracing needs Unreal Mode") : !bRaysCan ? TEXT("Ray Tracing: this card or graphics API can't trace rays (needs DX12)")
-		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 180.0f, Grey);
+		: TEXT("Ray Tracing: hardware Lumen, ray traced shadows and reflections (heavy)"), CentreX, Top + 204.0f, Grey);
 	DrawCentredText(bUnreal ? TEXT("Unreal Mode: Lumen lighting, real shadows, volumetric fog and bloom (F7 switches it)")
-		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 110.0f, Grey);
+		: TEXT("Unreal Mode: off, Minecraft's own look (F7 switches it)"), CentreX, Top + 134.0f, Grey);
 	DrawCentredText(!bUnreal ? TEXT("HD Textures need Unreal Mode") : bHd ? TEXT("HD Textures: sharper textures with bump, shine and depth")
-		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 122.0f, Grey);
+		: TEXT("HD Textures: Minecraft's own textures"), CentreX, Top + 146.0f, Grey);
 
-	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 156.0f, 150.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.resourcepack")), Right, Top + 180.0f, 150.0f, 20.0f))
 	{
 		OpenResourcePacks();
 		return;
 	}
 	if (bPacksNeedRestart)
 	{
-		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 246.0f, Grey);
+		DrawCentredText(TEXT("Resource pack changes apply the next time the game starts"), CentreX, Top + 270.0f, Grey);
 	}
 
-	if (MenuButton(McLang::Get(TEXT("options.language")), CentreX - 100.0f, Top + 196.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("options.language")), CentreX - 100.0f, Top + 220.0f, 200.0f, 20.0f))
 	{
 		OpenLanguage();
 		return;
 	}
-	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 220.0f, 200.0f, 20.0f))
+	if (MenuButton(McLang::Get(TEXT("gui.done")), CentreX - 100.0f, Top + 244.0f, 200.0f, 20.0f))
 	{
 		OpenMenu(OptionsBack);
 	}
@@ -2023,6 +2145,7 @@ void AMcHUD::ApplyOptions()
 	bSettingsApplied = true;
 	if (APlayerController* Controller = GetOwningPlayerController())
 	{
+		Settings.ApplyFrameRate();
 		// The game's near plane is 0.05 blocks; the engine's 10 units would cut the hand held up to the camera, and the drawn bow's string comes within a unit or two of it.
 		Controller->ConsoleCommand(TEXT("r.SetNearClipPlane 1"));
 	}
@@ -2102,7 +2225,8 @@ void AMcHUD::PlayWorld(const FString& Folder, const FString& ExtraOptions)
 	SaveClientOptions();
 	OpenMenu(EMenu::None);
 	// The world actor reads McWorld (and, for a new world, the rest) from the URL.
-	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, FString::Printf(TEXT("McWorld=%s%s"), *Folder, *ExtraOptions));
+	// ?listen opens the world on the game's port (25565) to friends joining by address.
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, FString::Printf(TEXT("McWorld=%s%s%s"), *Folder, *ExtraOptions, bHostWorld ? TEXT("?listen") : TEXT("")));
 }
 
 void AMcHUD::JoinServer()

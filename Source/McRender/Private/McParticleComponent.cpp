@@ -23,6 +23,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "McSectionMesher.h"
 #include "McWorldRenderComponent.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -715,9 +716,9 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 		}
 		break;
 	case EEmitter::Drip:
-		// A stalactite's tip drips what lies over its column: water or lava above the dripstone it hangs from (about one visit in 50: a guess,
-		// not yet fitted to a run).
-		if (Random.RandRange(0, 49) == 0)
+		// A stalactite's tip drips what lies over its column: water or lava above the dripstone it hangs from (about one visit in 90, a start
+		// every 87 ticks of a free tip in run qd1: six onsets over 756 tip-ticks, so a rough rate).
+		if (Random.RandRange(0, 89) == 0)
 		{
 			const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
 			FIntVector Up = Pos + FIntVector(0, 1, 0);
@@ -729,7 +730,7 @@ void UMcParticleComponent::AmbientAt(const FIntVector& Pos)
 			}
 			if (Above == TEXT("minecraft:water") || Above == TEXT("minecraft:lava"))
 			{
-				Emit(Above == TEXT("minecraft:water") ? FName("minecraft:dripping_water") : FName("minecraft:dripping_lava"),
+				Emit(Above == TEXT("minecraft:water") ? FName("minecraft:dripping_dripstone_water") : FName("minecraft:dripping_lava"),
 					FVector(Pos) + FVector(0.5, 0.1, 0.5), FVector::ZeroVector, 0.0f, 1);
 			}
 		}
@@ -804,6 +805,20 @@ void UMcParticleComponent::Step()
 		Particle.Prev = Particle.Pos;
 		Particle.Age += 1.0f;
 		// A leaf on the ground stays a while, then goes.
+		if (Particle.Row && Particle.Row->bDieOnLand && Particle.bOnGround)
+		{
+			Particles.RemoveAtSwap(Index, EAllowShrinking::No);
+			continue;
+		}
+		if (Particle.Age >= Particle.Life && Particle.Row && !Particle.Row->Then.IsNone())
+		{
+			// A hanging drop lets go: the next kind starts where it was.
+			const FName Next = Particle.Row->Then;
+			const FVector At = Particle.Pos;
+			Particles.RemoveAtSwap(Index, EAllowShrinking::No);
+			Emit(Next, At, FVector::ZeroVector, 0.0f, 0);
+			continue;
+		}
 		if (Particle.Age >= Particle.Life || (Particle.Style == EStyle::Leaf && Particle.bOnGround && Particle.Age > 60.0f && Random.RandRange(0, 40) == 0))
 		{
 			Particles.RemoveAtSwap(Index, EAllowShrinking::No);
@@ -1146,6 +1161,7 @@ void UMcParticleComponent::Draw(float Partial)
 
 void UMcParticleComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Particles);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	if (!World)
 	{

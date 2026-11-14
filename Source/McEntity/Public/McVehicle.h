@@ -86,6 +86,7 @@ public:
 	bool HasRider() const { return Seats.Num() > 0; }
 	// Everyone aboard, players and mobs.
 	int32 GetPassengerCount() const { return Seats.Num() + MobPassengers.Num(); }
+	const TArray<int32>& GetMobPassengers() const { return MobPassengers; }
 	bool HasFreeSeat() const { return GetPassengerCount() < GetCapacity(); }
 	// Which seat a pawn has, or -1 if none.
 	int32 GetSeatIndex(int32 Key) const { return Seats.IndexOfByPredicate([Key](const FSeat& S) { return S.Key == Key; }); }

@@ -4,6 +4,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "McBundle.h"
 #include "McHUD.h"
+#include "McPerf.h"
 #include "McItemDefinition.h"
 #include "McTextComponent.h"
 #include "McFontRaster.h"
@@ -40,6 +41,9 @@
 #include "McBlockRegistry.h"
 #include "McBlockWorld.h"
 #include "McChunk.h"
+#include "McPlayerModel.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "McLightEngine.h"
 #include "McRaycast.h"
 #include "McContainer.h"
@@ -216,6 +220,109 @@ void AMcHUD::DrawRegion(UTexture2D* Texture, float X, float Y, float Width, floa
 	Canvas->DrawItem(Tile);
 }
 
+void AMcHUD::DrawInventoryFigure(FIntPoint Origin)
+{
+	// The box in the picture, in GUI pixels from its corner, and how big the player is drawn: 30 GUI pixels a block
+	// (measured on the reference client's inventory, ref_book_inv_open0: 57.7 GUI pixels from hat to feet, the feet 5
+	// above the box's bottom).
+	constexpr int32 BoxX = 26, BoxY = 8, BoxW = 49, BoxH = 70;
+	constexpr float PixelsPerBlock = 30.0f;
+	constexpr float FeetAboveBottom = 5.0f;
+	UWorld* World = GetWorld();
+	if (!World || !Canvas)
+	{
+		return;
+	}
+	if (!IsValid(FigureStage) || FigureStage->GetWorld() != World)
+	{
+		// Far below the world, where nothing else is drawn; only the capture sees it.
+		const FVector Feet(0.0, 0.0, -200000.0);
+		FActorSpawnParameters Params;
+		Params.ObjectFlags |= RF_Transient;
+		FigureStage = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform(Feet), Params);
+		if (!FigureStage)
+		{
+			return;
+		}
+		USceneComponent* Root = NewObject<USceneComponent>(FigureStage);
+		FigureStage->SetRootComponent(Root);
+		Root->SetWorldLocation(Feet);
+		Root->RegisterComponent();
+		Figure = NewObject<UMcPlayerModelComponent>(FigureStage);
+		Figure->SetupAttachment(Root);
+		Figure->SetFullyLit(true);
+		Figure->SetCastShadow(false);
+		Figure->SetVisibleInSceneCaptureOnly(true);
+		Figure->RegisterComponent();
+		FigureCapture = NewObject<USceneCaptureComponent2D>(FigureStage);
+		FigureCapture->SetupAttachment(Root);
+		FigureCapture->ProjectionType = ECameraProjectionMode::Orthographic;
+		FigureCapture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+		FigureCapture->ShowOnlyComponents.Add(Figure);
+		FigureCapture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+		FigureCapture->bCaptureEveryFrame = false;
+		FigureCapture->bCaptureOnMovement = false;
+		FigureCapture->ShowFlags.SetFog(false);
+		FigureCapture->ShowFlags.SetVolumetricFog(false);
+		FigureCapture->ShowFlags.SetAtmosphere(false);
+		FigureCapture->ShowFlags.SetBloom(false);
+		FigureCapture->ShowFlags.SetMotionBlur(false);
+		FigureCapture->ShowFlags.SetEyeAdaptation(false);
+		FigureCapture->ShowFlags.SetAntiAliasing(false);
+		FigureCapture->ShowFlags.SetTemporalAA(false);
+		// As the classic look's view (UMcSkyComponent): no tonemapper (nor its grain and vignette), so the skin shows its
+		// own colours.
+		FigureCapture->ShowFlags.SetTonemapper(false);
+		FigureCapture->ShowFlags.SetGrain(false);
+		FigureCapture->ShowFlags.SetVignette(false);
+		// Facing the player's front: a Minecraft yaw of 0 looks along +Z, which is Unreal's +Y.
+		FigureCapture->SetRelativeRotation(FRotator(0.0, -90.0, 0.0));
+		FigureCapture->RegisterComponent();
+	}
+	const int32 Width = BoxW * Scale, Height = BoxH * Scale;
+	if (!FigureTarget || FigureTarget->SizeX != Width || FigureTarget->SizeY != Height)
+	{
+		FigureTarget = NewObject<UTextureRenderTarget2D>(this);
+		FigureTarget->RenderTargetFormat = RTF_RGBA8_SRGB;
+		FigureTarget->ClearColor = FLinearColor::Black;
+		FigureTarget->InitAutoFormat(Width, Height);
+		FigureTarget->UpdateResourceImmediate(true);
+		FigureCapture->TextureTarget = FigureTarget;
+	}
+	// The box's middle is on the capture's axis, five blocks in front of the player.
+	const double MiddleAboveFeet = (BoxH / 2.0 - FeetAboveBottom) / PixelsPerBlock * McCoords::UnitsPerBlock;
+	FigureCapture->SetRelativeLocation(FVector(0.0, 5.0 * McCoords::UnitsPerBlock, MiddleAboveFeet));
+	FigureCapture->OrthoWidth = BoxW / PixelsPerBlock * McCoords::UnitsPerBlock;
+
+	// Turned toward the mouse, as the game does: the head by atan(d / 40) * 40 degrees across and atan(d / 40) * 20
+	// up and down, d the mouse's distance in GUI pixels from the box's middle (across) and from the eyes (up and down).
+	const float MiddleX = Origin.X + BoxX + BoxW / 2.0f;
+	const float EyesY = Origin.Y + BoxY + BoxH - FeetAboveBottom - 1.62f * PixelsPerBlock;
+	const float Across = FMath::Atan((MiddleX - GuiMouse.X) / 40.0f);
+	const float Up = FMath::Atan((EyesY - GuiMouse.Y) / 40.0f);
+	bool bSneaking = false;
+	if (const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(GetOwningPawn()))
+	{
+		bSneaking = Pawn->IsSneakPosed();
+		// Dressed as the player is.
+		Figure->SetWings(Pawn->WearsElytra());
+		Figure->SetWornHead(Pawn->GetWornHead());
+		for (int32 Slot = 0; Slot < 4; ++Slot)
+		{
+			Figure->SetArmor(Slot, Pawn->GetWornArmor(Slot));
+		}
+	}
+	Figure->SetShown(true);
+	// The body turns half as far as the head (the game's 20 degrees to the head's 40).
+	Figure->SetPosed(Across * 20.0f);
+	Figure->SetLook(Across * 40.0f, -Up * 20.0f, bSneaking);
+	FigureCapture->CaptureScene();
+
+	FCanvasTileItem Tile(FVector2D(Origin.X + BoxX, Origin.Y + BoxY) * Scale, FigureTarget->GameThread_GetRenderTargetResource(), FVector2D(Width, Height), FLinearColor::White);
+	Tile.BlendMode = SE_BLEND_Opaque;
+	Canvas->DrawItem(Tile);
+}
+
 void AMcHUD::DrawRegionSheared(UTexture2D* Texture, float X, float Y, float Width, float Height, float U, float V, float UW, float VH, const FLinearColor& Tint, float TopShift, float BottomShift)
 {
 	if (TopShift == 0.0f && BottomShift == 0.0f)
@@ -282,8 +389,12 @@ namespace
 		FFileHelper::LoadFileToArray(Vanilla, *InJar);
 		// The jar's include/unifont.json has no providers (the launcher builds it, with the size overrides of the CJK and Hangul
 		// blocks); the launcher's own copy, with the asset files, has them.
+		// The buffer has no terminator: FString(const char*, int32) would take the int as extra slack and read to the first zero
+		// byte past the end (the crash on leaving to the title, 11 Nov). Convert with the length.
+		FString VanillaText;
+		FFileHelper::BufferToString(VanillaText, Vanilla.GetData(), Vanilla.Num());
 		TArray<uint8> FromAssets;
-		if (FString(reinterpret_cast<const char*>(Vanilla.GetData()), Vanilla.Num()).Contains(TEXT("\"type\"")) == false
+		if (VanillaText.Contains(TEXT("\"type\"")) == false
 			&& FFileHelper::LoadFileToArray(FromAssets, *FPaths::Combine(McCache::Root(), TEXT("assets/minecraft"), Relative)))
 		{
 			Vanilla = MoveTemp(FromAssets);
@@ -316,7 +427,7 @@ namespace
 				bool bSkip = false;
 				if ((*Provider)->TryGetObjectField(TEXT("filter"), Filter))
 				{
-					for (const TPair<FString, TSharedPtr<FJsonValue>>& Option : (*Filter)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Option : (*Filter)->Values)
 					{
 						bool bOn = false;
 						bSkip |= Option.Value->TryGetBool(bOn) && bOn;
@@ -616,7 +727,7 @@ void AMcHUD::LoadFontTable(const FString& FontId, TMap<int32, FGlyph>& G, TShare
 			const TSharedPtr<FJsonObject>* Advances;
 			if (Provider->TryGetObjectField(TEXT("advances"), Advances))
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Advances)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Advances)->Values)
 				{
 					double Advance = 0.0;
 					int32 KeyAt = 0;
@@ -1442,7 +1553,7 @@ void AMcHUD::PollInput(int32 Width, int32 Height, UMcPlayerDataComponent* Data)
 			return;
 		}
 #endif
-		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape);
+		bool bPause = Player->WasInputKeyJustPressed(EKeys::Escape) && !bCreditsOn;  // Escape while the credits run only skips them
 #if !UE_BUILD_SHIPPING
 		// Development: -McMenu=pause opens the pause menu once the world is up.
 		static bool bDevPauseDone = false;
@@ -2090,6 +2201,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	{
 		DrawRegion(Background, Origin.X, Origin.Y, Layout.Size.X, Layout.Size.Y, 0, 0, Layout.Size.X, Layout.Size.Y);
 	}
+	if (Layout.Kind == McGui::EScreen::Inventory)
+	{
+		DrawInventoryFigure(Origin);
+	}
 	DrawRecipeBook(Origin);
 	if (Layout.Kind == McGui::EScreen::Horse)
 	{
@@ -2255,6 +2370,10 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 		}
 	}
 
+	// A drag over slots shows each slot as it would be when the button is let go, lit, and the cursor what it keeps.
+	TMap<int32, FMcItemStack> DragPreview;
+	int32 DragCarried = 0;
+	const bool bDragPreview = Menu.PreviewQuickCraft(DragPreview, DragCarried, Screen->Input->IsCreative());
 	for (int32 Slot = 0; Slot < Menu.NumSlots() && Slot < Layout.Slots.Num(); ++Slot)
 	{
 		if (!Layout.IsShown(Slot))
@@ -2262,6 +2381,12 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 			continue;
 		}
 		const FIntPoint At = Origin + Layout.Slots[Slot];
+		if (const FMcItemStack* Ghost = bDragPreview ? DragPreview.Find(Slot) : nullptr)
+		{
+			DrawFill(static_cast<float>(At.X), static_cast<float>(At.Y), 16, 16, FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
+			DrawStack(*Ghost, static_cast<float>(At.X), static_cast<float>(At.Y));
+			continue;
+		}
 		const TArray<FMcItemStack> Held = Slot == BundleSelectedSlot && BundleSelected >= 0 ? McBundle::GetContents(Menu.GetStack(Slot)) : TArray<FMcItemStack>();
 		if (Held.IsValidIndex(BundleSelected))
 		{
@@ -2336,7 +2461,9 @@ void AMcHUD::DrawScreen(int32 Width, int32 Height)
 	}
 	else if (!Menu.GetCarried().IsEmpty())
 	{
-		DrawStack(Menu.GetCarried(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
+		FMcItemStack Shown = Menu.GetCarried();
+		Shown.Count = bDragPreview ? DragCarried : Shown.Count;
+		DrawStack(Shown.Count > 0 ? Shown : FMcItemStack(), static_cast<float>(GuiMouse.X) - 8.0f, static_cast<float>(GuiMouse.Y) - 8.0f);
 	}
 	else if (HoverSlot >= 0 && HoverSlot < Menu.NumSlots() && McBundle::IsBundle(Menu.GetStack(HoverSlot).Item))
 	{
@@ -2559,6 +2686,7 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 
 void AMcHUD::DrawHUD()
 {
+	MC_PERF_SCOPE(Hud);
 	Super::DrawHUD();
 	// Chat is the one world menu that leaves the world sharp.
 	UpdateMenuBlur(IsWorldMenu() && ActiveMenu != EMenu::Chat);
@@ -2615,6 +2743,11 @@ void AMcHUD::DrawHUD()
 	Scale = McGui::GetGuiScale(Canvas->SizeX, Canvas->SizeY, GuiScaleSetting);
 	const int32 Width = Canvas->SizeX / Scale;
 	const int32 Height = Canvas->SizeY / Scale;
+	if (!bFrameRateApplied)
+	{
+		bFrameRateApplied = true;
+		FMcClientOptions::Load().ApplyFrameRate();
+	}
 	if (McLaunch::IsMenu(GetWorld()))
 	{
 		DrawMenus(Width, Height, true);

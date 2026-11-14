@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "McGameRules.h"
+#include "McSurvival.h"
 #include "McGameMode.generated.h"
 
 struct FMcPlayerData;
@@ -20,9 +21,10 @@ class AMcGameMode : public AGameModeBase
 public:
 	AMcGameMode();
 
-	// Blocks above the surface that players start at.
+	// Blocks above the surface that players start at. 0, feet on the surface, as the game spawns: at 10 every new world's
+	// first spawn and every respawn fell 10 blocks and took 7 fall damage (survival playtest).
 	UPROPERTY(EditAnywhere, Category = "Mc")
-	int32 SpawnHeightAboveSurface = 10;
+	int32 SpawnHeightAboveSurface = 0;
 
 	virtual void StartPlay() override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
@@ -102,7 +104,7 @@ private:
 	// A new player (or one back from the dead) starts in the world's game mode, or the dedicated server's.
 	void ApplyDefaultGameMode(AMcPlayerPawn& Pawn) const;
 	// A mob's bite or a blast at this block position (feet): hurts the nearest player within reach of it.
-	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage);
+	void HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind = McSurvival::EDamage::Mob);
 	void BlastPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, const FVector& Push, const FVector& Center);
 	// An awake conduit at Middle: Conduit Power for the players in World within Range who are in water or rain.
 	void GiveConduitPower(const AMcWorldActor& World, const FVector& Middle, int32 Range);
@@ -119,6 +121,8 @@ private:
 	FTimerHandle FunctionTimer;
 	FDelegateHandle ReloadHandle;
 	void TickVillages();
+	// Development: "!fightdragon" (see the definition).
+	void RunFightBot(APlayerController* Controller);
 	FTimerHandle VillageTimer;
 	// A raid on a village was won: the players round it become Heroes of the Village.
 	void HonourHeroes(const AMcWorldActor& World, const FVector& Center, int32 Level);

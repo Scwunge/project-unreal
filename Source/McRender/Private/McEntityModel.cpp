@@ -1,4 +1,5 @@
 #include "McEntityModel.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "McRenderMode.h"
@@ -20,6 +21,59 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 #include "UObject/StrongObjectPtr.h"
+#include "Kismet/GameplayStatics.h"
+#include "ConvexVolume.h"
+#include "McPerf.h"
+
+static TAutoConsoleVariable<bool> CVarMcModelsSkipUnseen(TEXT("mc.Models.SkipUnseen"), true,
+	TEXT("Mobs the camera has not drawn in the last quarter second keep their last mesh instead of building it again each frame."));
+
+namespace
+{
+	// Whether a mob that is off screen may still have its shadow on screen: its bounds, stretched away from the light as
+	// far as a shadow of its height reaches (32 blocks at most), against the camera's frustum (widened 10 degrees, made
+	// once a frame). The engine counts only the main view as drawing a mesh, not the shadow passes, so without this a
+	// mob walking just off screen would leave a still shadow in view.
+	bool ShadowMayBeSeen(const UWorld* World, const FBoxSphereBounds& Bounds, const FVector& Towards)
+	{
+		static uint64 Frame = MAX_uint64;
+		static const UWorld* FrameWorld = nullptr;
+		static FConvexVolume Frustum;
+		static bool bHaveFrustum = false;
+		if (Frame != GFrameCounter || FrameWorld != World)
+		{
+			Frame = GFrameCounter;
+			FrameWorld = World;
+			bHaveFrustum = false;
+			const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			if (Controller && Controller->PlayerCameraManager)
+			{
+				FMinimalViewInfo View = Controller->PlayerCameraManager->GetCameraCacheView();
+				int32 SizeX = 0, SizeY = 0;
+				Controller->GetViewportSize(SizeX, SizeY);
+				if (SizeX > 0 && SizeY > 0)
+				{
+					View.AspectRatio = static_cast<float>(SizeX) / SizeY;
+					View.bConstrainAspectRatio = true;
+				}
+				View.FOV = FMath::Min(View.FOV + 10.0f, 170.0f);
+				FMatrix ViewMatrix, Projection, ViewProjection;
+				UGameplayStatics::GetViewProjectionMatrix(View, ViewMatrix, Projection, ViewProjection);
+				GetViewFrustumBounds(Frustum, ViewProjection, false);
+				bHaveFrustum = true;
+			}
+		}
+		if (!bHaveFrustum)
+		{
+			return true;
+		}
+		const FBox Box = Bounds.GetBox();
+		const double Height = FMath::Max(Box.GetSize().Z, 1.0);
+		const double Reach = FMath::Min(Height / FMath::Max(Towards.Z, 0.15), 32.0 * McCoords::UnitsPerBlock);
+		const FBox Swept = Box + Box.ShiftBy(-Towards * Reach);
+		return Frustum.IntersectBox(Swept.GetCenter(), Swept.GetExtent());
+	}
+}
 
 namespace McEntityModel
 {
@@ -337,6 +391,312 @@ namespace McEntityModel
 				Moo.Textures = { TEXT("cow/mooshroom_red.png") };
 				Moo.Variants = { { TEXT("cow/mooshroom_red.png") }, { TEXT("cow/mooshroom_brown.png") } };
 				Models.Add(Moo.Kind, Moo);
+			}
+			// Models of the missing mobs, batch 1 (2026-11-05): every box, pivot and rest turn is from the reference's own logged model (E:\mc-reference\scripts\models_b1.txt,
+			// `log model`, adult, one frame at rest), converted (y and z flipped, roll and yaw negated). Animation, babies and layers (patterns, mushrooms, eyes, outer
+			// slime layer) are not done; tropical fish are not here yet. The polar bear's logged root offset (y -4.8, which would float it 0.3 above the ground) is left out,
+			// and the happy ghast's and sulfur cube's entity scale is not in the log (UNVERIFIED: their size and height are the model as logged).
+			{
+				FModel Ocelot;
+				Ocelot.Kind = TEXT("minecraft:ocelot");
+				Ocelot.TextureSize = FIntPoint(64, 32);
+				Ocelot.Textures = { TEXT("cat/ocelot.png") };
+				Ocelot.Parts.Add(Part(ERole::LegBackLeft, FVector(1.1f, 6.0f, -5.0f), { Box(8, 13, -1.0f, -6.0f, -3.0f, 2, 6, 2) }));  // leftHindLeg
+				Ocelot.Parts.Add(Part(ERole::LegBackRight, FVector(-1.1f, 6.0f, -5.0f), { Box(8, 13, -1.0f, -6.0f, -3.0f, 2, 6, 2) }));  // rightHindLeg
+				Ocelot.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.2f, 9.9f, 5.0f), { Box(40, 0, -1.0f, -10.0f, -2.0f, 2, 10, 2) }));  // leftFrontLeg
+				Ocelot.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.2f, 9.9f, 5.0f), { Box(40, 0, -1.0f, -10.0f, -2.0f, 2, 10, 2) }));  // rightFrontLeg
+				Ocelot.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.0f, -8.0f), { Box(0, 15, -0.5f, -8.0f, -1.0f, 1, 8, 1) }, 0.9f, 0.0f, 0.0f));  // tail1
+				Ocelot.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, -14.0f), { Box(4, 15, -0.5f, -8.0f, -1.0f, 1, 8, 1) }, 1.7279f, 0.0f, 0.0f));  // tail2
+				Ocelot.Parts.Add(Part(ERole::Head, FVector(0.0f, 9.0f, 9.0f), { Box(0, 0, -2.5f, -2.0f, -2.0f, 5, 4, 5), Box(0, 24, -1.5f, -1.999f, 2.0f, 3, 2, 2), Box(0, 10, -2.0f, 2.0f, -2.0f, 1, 1, 2), Box(6, 10, 1.0f, 2.0f, -2.0f, 1, 1, 2) }));  // head
+				Ocelot.Parts.Add(Part(ERole::Static, FVector(0.0f, 12.0f, 10.0f), { Box(20, 0, -2.0f, -19.0f, 2.0f, 4, 16, 6) }, 1.5708f, 0.0f, 0.0f));  // body
+				Models.Add(Ocelot.Kind, Ocelot);
+			}
+			{
+				FModel PolarBear;
+				PolarBear.Kind = TEXT("minecraft:polar_bear");
+				PolarBear.TextureSize = FIntPoint(128, 64);
+				PolarBear.Textures = { TEXT("bear/polarbear.png") };
+				PolarBear.Parts.Add(Part(ERole::Head, FVector(0.0f, 14.0f, 16.0f), { Box(0, 0, -3.5f, -4.0f, -4.0f, 7, 7, 7), Box(0, 44, -2.5f, -4.0f, 3.0f, 5, 3, 3), Box(26, 0, -4.5f, 2.0f, 0.0f, 2, 2, 1), Box(26, 0, 2.5f, 2.0f, 0.0f, 2, 2, 1, 0.0f, true) }));  // head
+				PolarBear.Parts.Add(Part(ERole::Static, FVector(-2.0f, 15.0f, -12.0f), { Box(0, 19, -5.0f, -1.0f, -4.0f, 14, 14, 11), Box(39, 0, -4.0f, 13.0f, -3.0f, 12, 12, 10) }, 1.5708f, 0.0f, 0.0f));  // body
+				PolarBear.Parts.Add(Part(ERole::LegBackRight, FVector(-4.5f, 10.0f, -6.0f), { Box(50, 22, -2.0f, -10.0f, -6.0f, 4, 10, 8) }));  // rightHindLeg
+				PolarBear.Parts.Add(Part(ERole::LegBackLeft, FVector(4.5f, 10.0f, -6.0f), { Box(50, 22, -2.0f, -10.0f, -6.0f, 4, 10, 8) }));  // leftHindLeg
+				PolarBear.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.5f, 10.0f, 8.0f), { Box(50, 40, -2.0f, -10.0f, -4.0f, 4, 10, 6) }));  // rightFrontLeg
+				PolarBear.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.5f, 10.0f, 8.0f), { Box(50, 40, -2.0f, -10.0f, -4.0f, 4, 10, 6) }));  // leftFrontLeg
+				Models.Add(PolarBear.Kind, PolarBear);
+			}
+			{
+				FModel Panda;
+				Panda.Kind = TEXT("minecraft:panda");
+				Panda.TextureSize = FIntPoint(64, 64);
+				Panda.Textures = { TEXT("panda/panda.png") };
+				Panda.Parts.Add(Part(ERole::Head, FVector(0.0f, 12.5f, 17.0f), { Box(0, 6, -6.5f, -5.0f, -5.0f, 13, 10, 9), Box(45, 16, -3.5f, -5.0f, 4.0f, 7, 5, 2), Box(52, 25, 3.5f, 4.0f, 0.0f, 5, 4, 1, 0.0f, true), Box(52, 25, -8.5f, 4.0f, 0.0f, 5, 4, 1) }));  // head
+				Panda.Parts.Add(Part(ERole::Static, FVector(0.0f, 14.0f, 0.0f), { Box(0, 25, -9.5f, -13.0f, -6.5f, 19, 26, 13) }, 1.5708f, 0.0f, 0.0f));  // body
+				Panda.Parts.Add(Part(ERole::LegBackRight, FVector(-5.5f, 9.0f, -9.0f), { Box(40, 0, -3.0f, -9.0f, -3.0f, 6, 9, 6) }));  // rightHindLeg
+				Panda.Parts.Add(Part(ERole::LegBackLeft, FVector(5.5f, 9.0f, -9.0f), { Box(40, 0, -3.0f, -9.0f, -3.0f, 6, 9, 6) }));  // leftHindLeg
+				Panda.Parts.Add(Part(ERole::LegFrontRight, FVector(-5.5f, 9.0f, 9.0f), { Box(40, 0, -3.0f, -9.0f, -3.0f, 6, 9, 6) }));  // rightFrontLeg
+				Panda.Parts.Add(Part(ERole::LegFrontLeft, FVector(5.5f, 9.0f, 9.0f), { Box(40, 0, -3.0f, -9.0f, -3.0f, 6, 9, 6) }));  // leftFrontLeg
+				Models.Add(Panda.Kind, Panda);
+			}
+			{
+				FModel Parrot;
+				Parrot.Kind = TEXT("minecraft:parrot");
+				Parrot.TextureSize = FIntPoint(32, 32);
+				Parrot.Textures = { TEXT("parrot/parrot_red_blue.png") };
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 7.3243f, 3.0f), { Box(2, 8, -1.5f, -6.0f, -1.5f, 3, 6, 3) }, 0.4937f, 0.0f, 0.0f));  // body
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.7543f, -1.16f), { Box(22, 1, -1.5f, -3.0f, 0.0f, 3, 4, 1) }, 1.015f, 0.0f, 0.0f));  // tail
+				Parrot.Parts.Add(Part(ERole::Static, FVector(1.5f, 6.8843f, 2.76f), { Box(19, 8, -0.5f, -5.0f, -1.5f, 1, 5, 3) }, -0.6981f, 3.1416f, 0.6729f));  // leftWing
+				Parrot.Parts.Add(Part(ERole::Static, FVector(-1.5f, 6.8843f, 2.76f), { Box(19, 8, -0.5f, -5.0f, -1.5f, 1, 5, 3) }, -0.6981f, 3.1416f, -0.6729f));  // rightWing
+				Parrot.Parts.Add(Part(ERole::Head, FVector(0.0f, 8.1343f, 2.76f), { Box(2, 2, -1.0f, -1.5f, -1.0f, 2, 3, 2) }));  // head
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 8.6343f, 4.26f), { Box(11, 7, -0.5f, -1.0f, -0.5f, 1, 2, 1) }));  // head/beak1
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.8843f, 5.21f), { Box(16, 7, -0.5f, -2.0f, -0.5f, 1, 2, 1) }));  // head/beak2
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 10.2843f, 2.61f), { Box(2, 18, 0.0f, -1.0f, -2.0f, 0, 5, 4) }, -0.2214f, 0.0f, 0.0f));  // head/feather
+				Parrot.Parts.Add(Part(ERole::Static, FVector(0.0f, 10.1343f, 3.76f), { Box(10, 0, -1.0f, -0.5f, -2.0f, 2, 1, 4) }));  // head/head2
+				Parrot.Parts.Add(Part(ERole::Static, FVector(1.0f, 1.8243f, 1.05f), { Box(14, 18, -0.5f, -2.0f, -0.5f, 1, 2, 1) }, 0.6682f, 0.0f, 0.0f));  // leftLeg
+				Parrot.Parts.Add(Part(ERole::Static, FVector(-1.0f, 1.8243f, 1.05f), { Box(14, 18, -0.5f, -2.0f, -0.5f, 1, 2, 1) }, 0.6682f, 0.0f, 0.0f));  // rightLeg
+				Models.Add(Parrot.Kind, Parrot);
+			}
+			{
+				FModel Squid;
+				Squid.Kind = TEXT("minecraft:squid");
+				Squid.TextureSize = FIntPoint(64, 32);
+				Squid.Textures = { TEXT("squid/squid.png") };
+				Squid.Parts.Add(Part(ERole::Static, FVector(5.0f, 9.0f, 0.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, -1.5708f, 0.0f));  // root/tentacle0
+				Squid.Parts.Add(Part(ERole::Static, FVector(3.5355f, 9.0f, -3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, -0.7854f, 0.0f));  // root/tentacle1
+				Squid.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.0f, 5.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 3.1416f, 0.0f));  // root/tentacle6
+				Squid.Parts.Add(Part(ERole::Static, FVector(3.5355f, 9.0f, 3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 3.927f, 0.0f));  // root/tentacle7
+				Squid.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.0f, 0.0f), { Box(0, 0, -6.0f, -8.0f, -6.0f, 12, 16, 12) }));  // root/body
+				Squid.Parts.Add(Part(ERole::Static, FVector(-5.0f, 9.0f, 0.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 1.5708f, 0.0f));  // root/tentacle4
+				Squid.Parts.Add(Part(ERole::Static, FVector(-3.5355f, 9.0f, 3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 2.3562f, 0.0f));  // root/tentacle5
+				Squid.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.0f, -5.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 0.0f, 0.0f));  // root/tentacle2
+				Squid.Parts.Add(Part(ERole::Static, FVector(-3.5355f, 9.0f, -3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.1998f, 0.7854f, 0.0f));  // root/tentacle3
+				Models.Add(Squid.Kind, Squid);
+			}
+			{
+				FModel GlowSquid;
+				GlowSquid.Kind = TEXT("minecraft:glow_squid");
+				GlowSquid.TextureSize = FIntPoint(64, 32);
+				GlowSquid.Textures = { TEXT("squid/glow_squid.png") };
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(5.0f, 9.0f, 0.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, -1.5708f, 0.0f));  // root/tentacle0
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(3.5355f, 9.0f, -3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, -0.7854f, 0.0f));  // root/tentacle1
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.0f, 5.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, 3.1416f, 0.0f));  // root/tentacle6
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(3.5355f, 9.0f, 3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, 3.927f, 0.0f));  // root/tentacle7
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(0.0f, 16.0f, 0.0f), { Box(0, 0, -6.0f, -8.0f, -6.0f, 12, 16, 12) }));  // root/body
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(-5.0f, 9.0f, 0.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, 1.5708f, 0.0f));  // root/tentacle4
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(-3.5355f, 9.0f, 3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, 2.3562f, 0.0f));  // root/tentacle5
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(0.0f, 9.0f, -5.0f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }));  // root/tentacle2
+				GlowSquid.Parts.Add(Part(ERole::Static, FVector(-3.5355f, 9.0f, -3.5355f), { Box(48, 0, -1.0f, -18.0f, -1.0f, 2, 18, 2) }, 0.0f, 0.7854f, 0.0f));  // root/tentacle3
+				Models.Add(GlowSquid.Kind, GlowSquid);
+			}
+			{
+				FModel Cod;
+				Cod.Kind = TEXT("minecraft:cod");
+				Cod.TextureSize = FIntPoint(32, 32);
+				Cod.Textures = { TEXT("fish/cod.png") };
+				Cod.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, -7.0f), { Box(22, 3, 0.0f, -2.0f, -4.0f, 0, 4, 4) }, 0.0f, -0.1792f, 0.0f));  // tailFin
+				Cod.Parts.Add(Part(ERole::Head, FVector(0.0f, 2.0f, 0.0f), { Box(11, 0, -1.0f, -2.0f, 0.0f, 2, 4, 3) }));  // root/head
+				Cod.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 3.0f), { Box(0, 0, -1.0f, -1.0f, 0.0f, 2, 3, 1) }));  // root/nose
+				Cod.Parts.Add(Part(ERole::Static, FVector(1.0f, 1.0f, 0.0f), { Box(22, 4, 0.0f, 0.0f, -1.0f, 2, 0, 2) }, 0.0f, 0.0f, -0.7854f));  // root/left_fin
+				Cod.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, 0.0f), { Box(20, -6, 0.0f, 0.0f, -5.0f, 0, 1, 6) }));  // root/top_fin
+				Cod.Parts.Add(Part(ERole::Static, FVector(-1.0f, 1.0f, 0.0f), { Box(22, 1, -2.0f, 0.0f, -1.0f, 2, 0, 2) }, 0.0f, 0.0f, 0.7854f));  // root/right_fin
+				Cod.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 0.0f), { Box(0, 0, -1.0f, -2.0f, -7.0f, 2, 4, 7) }));  // root/body
+				Models.Add(Cod.Kind, Cod);
+			}
+			{
+				FModel Salmon;
+				Salmon.Kind = TEXT("minecraft:salmon");
+				Salmon.TextureSize = FIntPoint(32, 32);
+				Salmon.Textures = { TEXT("fish/salmon.png") };
+				Salmon.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, -0.8f), { Box(0, 13, -1.5f, -2.5f, -8.0f, 3, 5, 8) }, 0.0f, -0.3247f, 0.0f));  // bodyBack
+				Salmon.Parts.Add(Part(ERole::Static, FVector(-0.319f, 8.5f, 0.1477f), { Box(0, 2, 0.0f, -2.0f, -4.0f, 0, 2, 4) }, 0.0f, -0.3247f, 0.0f));  // bodyBack/top_back_fin
+				Salmon.Parts.Add(Part(ERole::Static, FVector(2.5522f, 4.0f, -8.382f), { Box(20, 10, 0.0f, -2.5f, -6.0f, 0, 5, 6) }, 0.0f, -0.3247f, 0.0f));  // bodyBack/back_fin
+				Salmon.Parts.Add(Part(ERole::Head, FVector(0.0f, 4.0f, 7.2f), { Box(22, 0, -1.0f, -2.0f, 0.0f, 2, 4, 3) }));  // root/head
+				Salmon.Parts.Add(Part(ERole::Static, FVector(1.5f, 2.5f, 7.2f), { Box(0, 0, 0.0f, 0.0f, -2.0f, 2, 0, 2) }, 0.0f, 0.0f, -0.7854f));  // root/left_fin
+				Salmon.Parts.Add(Part(ERole::Static, FVector(-1.5f, 2.5f, 7.2f), { Box(-4, 0, -2.0f, 0.0f, -2.0f, 2, 0, 2) }, 0.0f, 0.0f, 0.7854f));  // root/right_fin
+				Salmon.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, 7.2f), { Box(0, 0, -1.5f, -2.5f, -8.0f, 3, 5, 8) }));  // root/body_front
+				Salmon.Parts.Add(Part(ERole::Static, FVector(0.0f, 8.5f, 2.2f), { Box(2, 1, 0.0f, -2.0f, -3.0f, 0, 2, 3) }));  // root/body_front/top_front_fin
+				Models.Add(Salmon.Kind, Salmon);
+			}
+			{
+				FModel Puffer;
+				Puffer.Kind = TEXT("minecraft:pufferfish");
+				Puffer.TextureSize = FIntPoint(32, 32);
+				Puffer.Textures = { TEXT("fish/pufferfish.png") };
+				Puffer.Parts.Add(Part(ERole::Static, FVector(2.5f, 6.0f, 1.5f), { Box(24, 3, 0.0f, 0.0f, -2.0f, 2, 0, 2) }));  // leftBlueFin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(-2.5f, 6.0f, 1.5f), { Box(24, 0, -2.0f, 0.0f, -2.0f, 2, 0, 2) }));  // rightBlueFin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(0.0f, 7.0f, -2.5f), { Box(11, 17, -2.5f, 0.0f, 0.0f, 5, 1, 0) }, -0.7854f, 0.0f, 0.0f));  // root/top_back_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(2.5f, 2.0f, -2.5f), { Box(1, 17, 0.0f, 0.0f, 0.0f, 1, 5, 0) }, 0.0f, 0.7854f, 0.0f));  // root/left_back_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(2.5f, 2.0f, 2.5f), { Box(1, 17, 0.0f, 0.0f, 0.0f, 1, 5, 0) }, 0.0f, -0.7854f, 0.0f));  // root/left_front_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 2.5f), { Box(17, 19, -2.5f, -1.0f, -1.0f, 5, 1, 1) }, -0.7854f, 0.0f, 0.0f));  // root/bottom_front_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(-2.5f, 2.0f, 2.5f), { Box(5, 17, -1.0f, 0.0f, 0.0f, 1, 5, 0) }, 0.0f, 0.7854f, 0.0f));  // root/right_front_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(-2.5f, 2.0f, -2.5f), { Box(9, 17, -1.0f, 0.0f, 0.0f, 1, 5, 0) }, 0.0f, -0.7854f, 0.0f));  // root/right_back_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 0.0f), { Box(12, 22, -2.5f, 0.0f, -2.5f, 5, 5, 5) }));  // root/body
+				Puffer.Parts.Add(Part(ERole::Static, FVector(0.0f, 7.0f, 2.5f), { Box(19, 17, -2.5f, 0.0f, 0.0f, 5, 1, 0) }, 0.7854f, 0.0f, 0.0f));  // root/top_front_fin
+				Puffer.Parts.Add(Part(ERole::Static, FVector(-2.5f, 2.0f, -2.5f), { Box(18, 20, 0.0f, -1.0f, 0.0f, 5, 1, 0) }, 0.7854f, 0.0f, 0.0f));  // root/bottom_back_fin
+				Models.Add(Puffer.Kind, Puffer);
+			}
+			{
+				FModel Tadpole;
+				Tadpole.Kind = TEXT("minecraft:tadpole");
+				Tadpole.TextureSize = FIntPoint(16, 16);
+				Tadpole.Textures = { TEXT("tadpole/tadpole.png") };
+				Tadpole.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 0.0f), { Box(0, 0, 0.0f, -1.0f, -7.0f, 0, 2, 7) }, 0.0f, -0.3745f, 0.0f));  // tail
+				Tadpole.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.0f, 3.0f), { Box(0, 0, -1.5f, -1.0f, -3.0f, 3, 2, 3) }));  // root/body
+				Models.Add(Tadpole.Kind, Tadpole);
+			}
+			{
+				FModel Axolotl;
+				Axolotl.Kind = TEXT("minecraft:axolotl");
+				Axolotl.TextureSize = FIntPoint(64, 64);
+				Axolotl.Textures = { TEXT("axolotl/axolotl_lucy.png") };
+				Axolotl.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.5f, -6.0f), { Box(2, 19, 0.0f, -2.0f, -12.0f, 0, 5, 12) }));  // tail
+				Axolotl.Parts.Add(Part(ERole::LegBackLeft, FVector(3.5f, 3.5f, -4.0f), { Box(2, 13, -1.0f, -5.0f, 0.0f, 3, 5, 0, 0.0f, true) }));  // leftHindLeg
+				Axolotl.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 3.5f, -4.0f), { Box(2, 13, -2.0f, -5.0f, 0.0f, 3, 5, 0) }));  // rightHindLeg
+				Axolotl.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.5f, 3.5f, 3.0f), { Box(2, 13, -1.0f, -5.0f, 0.0f, 3, 5, 0, 0.0f, true) }));  // leftFrontLeg
+				Axolotl.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.5f, 3.5f, 3.0f), { Box(2, 13, -2.0f, -5.0f, 0.0f, 3, 5, 0) }));  // rightFrontLeg
+				Axolotl.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.5f, -5.0f), { Box(0, 11, -4.0f, -2.0f, -1.0f, 8, 4, 10), Box(2, 17, 0.0f, -2.0f, -1.0f, 0, 5, 9) }));  // body
+				Axolotl.Parts.Add(Part(ERole::Head, FVector(0.0f, 4.5f, 4.0f), { Box(0, 1, -4.0f, -2.0f, 0.0f, 8, 5, 5) }));  // body/head
+				Axolotl.Parts.Add(Part(ERole::Static, FVector(0.0f, 7.5f, 5.0f), { Box(3, 37, -4.0f, 0.0f, 0.0f, 8, 3, 0) }));  // body/head/top_gills
+				Axolotl.Parts.Add(Part(ERole::Static, FVector(-4.0f, 4.5f, 5.0f), { Box(0, 40, -3.0f, -2.0f, 0.0f, 3, 7, 0) }));  // body/head/left_gills
+				Axolotl.Parts.Add(Part(ERole::Static, FVector(4.0f, 4.5f, 5.0f), { Box(11, 40, 0.0f, -2.0f, 0.0f, 3, 7, 0) }));  // body/head/right_gills
+				Models.Add(Axolotl.Kind, Axolotl);
+			}
+			{
+				FModel SnowGolem;
+				SnowGolem.Kind = TEXT("minecraft:snow_golem");
+				SnowGolem.TextureSize = FIntPoint(64, 64);
+				SnowGolem.Textures = { TEXT("snow_golem/snow_golem.png") };
+				SnowGolem.Parts.Add(Part(ERole::Static, FVector(0.0f, 11.0f, 0.0f), { Box(0, 16, -5.0f, 0.0f, -5.0f, 10, 10, 10) }));  // upperBody
+				SnowGolem.Parts.Add(Part(ERole::Head, FVector(0.0f, 20.0f, 0.0f), { Box(0, 0, -4.0f, 0.0f, -4.0f, 8, 8, 8) }));  // head
+				SnowGolem.Parts.Add(Part(ERole::Static, FVector(5.0f, 18.0f, 0.0f), { Box(32, 0, -1.0f, -2.0f, -1.0f, 12, 2, 2) }, 0.0f, 0.0f, -1.0f));  // leftArm
+				SnowGolem.Parts.Add(Part(ERole::Static, FVector(-5.0f, 18.0f, 0.0f), { Box(32, 0, -1.0f, -2.0f, -1.0f, 12, 2, 2) }, 0.0f, -3.1416f, 1.0f));  // rightArm
+				SnowGolem.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0f, 0.0f), { Box(0, 36, -6.0f, 0.0f, -6.0f, 12, 12, 12) }));  // root/lower_body
+				Models.Add(SnowGolem.Kind, SnowGolem);
+			}
+			{
+				FModel Armadillo;
+				Armadillo.Kind = TEXT("minecraft:armadillo");
+				Armadillo.TextureSize = FIntPoint(64, 64);
+				Armadillo.Textures = { TEXT("armadillo/armadillo.png") };
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, -4.0f), { Box(0, 20, -4.0f, -1.0f, -2.0f, 8, 8, 12), Box(0, 40, -4.0f, -1.0f, -2.0f, 8, 8, 12) }));  // body
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.0f, 7.0f), { Box(43, 15, -1.5f, -4.0f, -1.0f, 3, 5, 2) }, -0.3927f, 0.0f, 0.0f));  // body/head/head_cube
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(-1.5f, 6.0f, 7.6f), { Box(43, 10, -2.0f, -2.0f, 0.0f, 2, 5, 0) }, 0.1886f, 0.3864f, 0.0718f));  // body/head/right_ear/right_ear_cube
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(1.5f, 6.0f, 7.6f), { Box(47, 10, 0.0f, -2.0f, 0.0f, 2, 5, 0) }, 0.1886f, -0.3864f, -0.0718f));  // body/head/left_ear/left_ear_cube
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.0f, -5.0f), { Box(44, 53, -0.5f, -5.914f, -1.093f, 1, 6, 1) }, 0.5061f, 0.0f, 0.0f));  // body/tail
+				Armadillo.Parts.Add(Part(ERole::LegBackRight, FVector(-2.0f, 3.0f, -4.0f), { Box(51, 31, -1.0f, -3.0f, -1.0f, 2, 3, 2) }));  // rightHindLeg
+				Armadillo.Parts.Add(Part(ERole::LegBackLeft, FVector(2.0f, 3.0f, -4.0f), { Box(42, 31, -1.0f, -3.0f, -1.0f, 2, 3, 2) }));  // leftHindLeg
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(-2.0f, 3.0f, 4.0f), { Box(51, 43, -1.0f, -3.0f, -1.0f, 2, 3, 2) }));  // root/right_front_leg
+				Armadillo.Parts.Add(Part(ERole::Static, FVector(2.0f, 3.0f, 4.0f), { Box(42, 43, -1.0f, -3.0f, -1.0f, 2, 3, 2) }));  // root/left_front_leg
+				Models.Add(Armadillo.Kind, Armadillo);
+			}
+			{
+				FModel Zoglin;
+				Zoglin.Kind = TEXT("minecraft:zoglin");
+				Zoglin.TextureSize = FIntPoint(128, 64);
+				Zoglin.Textures = { TEXT("hoglin/zoglin.png") };
+				Zoglin.Parts.Add(Part(ERole::Head, FVector(0.0f, 22.0f, 12.0f), { Box(61, 1, -7.0f, -3.0f, 0.0f, 14, 6, 19) }, 0.8727f, 0.0f, 0.0f));  // head
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(-7.0f, 20.0f, 24.0f), { Box(10, 13, -1.0f, 0.0f, -1.0f, 2, 11, 2) }));  // head/right_horn
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(7.0f, 20.0f, 24.0f), { Box(1, 13, -1.0f, 0.0f, -1.0f, 2, 11, 2) }));  // head/left_horn
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(-6.0f, 24.0f, 15.0f), { Box(1, 1, -6.0f, 0.0f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, 0.6981f));  // head/right_ear
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(6.0f, 24.0f, 15.0f), { Box(1, 6, 0.0f, 0.0f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, -0.6981f));  // head/left_ear
+				Zoglin.Parts.Add(Part(ERole::LegFrontRight, FVector(-4.0f, 14.0f, 8.5f), { Box(66, 42, -3.0f, -14.0f, -3.0f, 6, 14, 6) }));  // rightFrontLeg
+				Zoglin.Parts.Add(Part(ERole::LegFrontLeft, FVector(4.0f, 14.0f, 8.5f), { Box(41, 42, -3.0f, -14.0f, -3.0f, 6, 14, 6) }));  // leftFrontLeg
+				Zoglin.Parts.Add(Part(ERole::LegBackRight, FVector(-5.0f, 11.0f, -10.0f), { Box(21, 45, -2.5f, -11.0f, -2.5f, 5, 11, 5) }));  // rightHindLeg
+				Zoglin.Parts.Add(Part(ERole::LegBackLeft, FVector(5.0f, 11.0f, -10.0f), { Box(0, 45, -2.5f, -11.0f, -2.5f, 5, 11, 5) }));  // leftHindLeg
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(0.0f, 17.0f, 0.0f), { Box(1, 1, -8.0f, -7.0f, -13.0f, 16, 14, 26) }));  // root/body
+				Zoglin.Parts.Add(Part(ERole::Static, FVector(0.0f, 31.0f, 7.0f), { Box(90, 33, 0.0f, -10.0f, -10.0f, 0, 10, 19) }));  // root/body/mane
+				Models.Add(Zoglin.Kind, Zoglin);
+			}
+			{
+				FModel Allay;
+				Allay.Kind = TEXT("minecraft:allay");
+				Allay.TextureSize = FIntPoint(32, 32);
+				Allay.Textures = { TEXT("allay/allay.png") };
+				Allay.Parts.Add(Part(ERole::Head, FVector(0.0f, 4.241f, 0.0f), { Box(0, 0, -2.5f, 0.0f, -2.5f, 5, 5, 5) }));  // head
+				Allay.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.251f, 0.0f), { Box(0, 10, -1.5f, -4.0f, -1.0f, 3, 4, 2), Box(0, 16, -1.5f, -5.0f, -1.0f, 3, 5, 2) }));  // body
+				Allay.Parts.Add(Part(ERole::Static, FVector(-1.75f, 3.751f, 0.0f), { Box(23, 0, -0.75f, -3.5f, -1.0f, 1, 4, 2) }, 0.0f, 0.0f, -0.4149f));  // body/right_arm
+				Allay.Parts.Add(Part(ERole::Static, FVector(1.75f, 3.751f, 0.0f), { Box(23, 6, -0.25f, -3.5f, -1.0f, 1, 4, 2) }, 0.0f, 0.0f, 0.4149f));  // body/left_arm
+				Allay.Parts.Add(Part(ERole::Static, FVector(-0.5f, 4.251f, -0.6f), { Box(16, 14, 0.0f, -6.0f, -8.0f, 0, 5, 8) }, 0.4363f, 0.7985f, 0.0f));  // body/right_wing
+				Allay.Parts.Add(Part(ERole::Static, FVector(0.5f, 4.251f, -0.6f), { Box(16, 14, 0.0f, -6.0f, -8.0f, 0, 5, 8) }, 0.4363f, -0.7985f, 0.0f));  // body/left_wing
+				Models.Add(Allay.Kind, Allay);
+			}
+			{
+				FModel Breeze;
+				Breeze.Kind = TEXT("minecraft:breeze");
+				Breeze.TextureSize = FIntPoint(32, 32);
+				Breeze.Textures = { TEXT("breeze/breeze.png") };
+				Breeze.Parts.Add(Part(ERole::Head, FVector(0.0f, 20.0096f, 0.0f), { Box(4, 24, -5.0f, 2.0f, 0.2f, 10, 3, 4), Box(0, 0, -4.0f, 0.0f, -4.0f, 8, 8, 8) }));  // head
+				Breeze.Parts.Add(Part(ERole::Static, FVector(0.0f, 20.0096f, 0.0f), { Box(4, 24, -5.0f, 2.0f, 0.2f, 10, 3, 4), Box(0, 0, -4.0f, 0.0f, -4.0f, 8, 8, 8) }));  // head/eyes
+				Breeze.Parts.Add(Part(ERole::Static, FVector(-2.3076f, 18.982f, -1.917f), { Box(0, 17, -1.0f, -8.0f, 1.0f, 2, 8, 2) }, -2.7489f, -1.2168f, -3.1416f));  // rods/rod_2
+				Breeze.Parts.Add(Part(ERole::Static, FVector(-0.5064f, 18.982f, 2.957f), { Box(0, 17, -1.0f, -8.0f, 1.0f, 2, 8, 2) }, 0.3927f, -0.1696f, 0.0f));  // rods/rod_3
+				Breeze.Parts.Add(Part(ERole::Static, FVector(2.814f, 18.982f, -1.04f), { Box(0, 17, -1.0f, -8.0f, 1.0f, 2, 8, 2) }, -2.7489f, 0.8776f, -3.1416f));  // rods/rod_1
+				Models.Add(Breeze.Kind, Breeze);
+			}
+			{
+				FModel Parched;
+				Parched.Kind = TEXT("minecraft:parched");
+				Parched.TextureSize = FIntPoint(64, 64);
+				Parched.Textures = { TEXT("skeleton/parched.png") };
+				Parched.Parts.Add(Part(ERole::Head, FVector(0.0f, 24.0f, 0.0f), { Box(0, 0, -4.0f, 0.0f, -4.0f, 8, 8, 8), Box(0, 32, -4.0f, 0.0f, -4.0f, 8, 8, 8) }));  // head
+				Parched.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0.0f), { Box(16, 16, -4.0f, -12.0f, -2.0f, 8, 12, 4), Box(28, 0, -4.0f, -11.0f, -2.0f, 8, 1, 4), Box(16, 48, -4.0f, -12.0f, -2.0f, 8, 12, 4) }));  // body
+				Parched.Parts.Add(Part(ERole::Static, FVector(-5.5f, 22.0f, 0.0f), { Box(40, 16, -1.0f, -10.0f, -1.0f, 2, 12, 2), Box(42, 33, -1.55f, -9.975f, -1.5f, 3, 12, 3) }, 0.0175f, 0.0f, -0.0087f));  // rightArm
+				Parched.Parts.Add(Part(ERole::Static, FVector(5.5f, 22.0f, 0.0f), { Box(56, 16, -1.0f, -10.0f, -1.0f, 2, 12, 2), Box(40, 48, -1.45f, -9.975f, -1.5f, 3, 12, 3) }, -0.0175f, 0.0f, 0.0087f));  // leftArm
+				Parched.Parts.Add(Part(ERole::Static, FVector(-2.0f, 12.0f, 0.0f), { Box(0, 16, -1.0f, -12.0f, -1.0f, 2, 12, 2), Box(0, 49, -1.5f, -12.0f, -1.5f, 3, 12, 3) }, 0.0f, -0.005f, -0.005f));  // rightLeg
+				Parched.Parts.Add(Part(ERole::Static, FVector(2.0f, 12.0f, 0.0f), { Box(0, 16, -1.0f, -12.0f, -1.0f, 2, 12, 2), Box(4, 49, -1.5f, -12.0f, -1.5f, 3, 12, 3) }, 0.0f, 0.005f, 0.005f));  // leftLeg
+				Models.Add(Parched.Kind, Parched);
+			}
+			{
+				FModel CamelHusk;
+				CamelHusk.Kind = TEXT("minecraft:camel_husk");
+				CamelHusk.TextureSize = FIntPoint(128, 128);
+				CamelHusk.Textures = { TEXT("camel/camel_husk.png") };
+				CamelHusk.Parts.Add(Part(ERole::Head, FVector(0.0f, 27.0f, 19.5f), { Box(60, 24, -3.5f, -1.0f, -4.0f, 7, 8, 19), Box(21, 0, -3.5f, 7.0f, 8.0f, 7, 14, 7), Box(50, 0, -2.5f, 16.0f, 15.0f, 5, 5, 6) }, -0.0436f, 0.0f, 0.0f));  // head
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(-2.5f, 48.0f, 29.0f), { Box(67, 0, -2.5f, -1.5f, -1.0f, 3, 1, 2) }, 0.0f, 0.0f, -0.7854f));  // head/right_ear
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(2.5f, 48.0f, 29.0f), { Box(45, 0, -0.5f, -1.5f, -1.0f, 3, 1, 2) }, 0.0f, 0.0f, 0.7854f));  // head/left_ear
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(-4.9f, 23.0f, 10.5f), { Box(0, 26, -2.5f, -23.0f, -2.5f, 5, 21, 5) }));  // root/right_front_leg
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(-4.9f, 23.0f, -9.5f), { Box(94, 16, -2.5f, -23.0f, -2.5f, 5, 21, 5) }));  // root/right_hind_leg
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(4.9f, 23.0f, -9.5f), { Box(58, 16, -2.5f, -23.0f, -2.5f, 5, 21, 5) }));  // root/left_hind_leg
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(0.0f, 20.0f, -9.5f), { Box(0, 25, -7.5f, 0.0f, -3.5f, 15, 12, 27) }));  // root/body
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(0.0f, 32.0f, 0.5f), { Box(74, 0, -4.5f, 0.0f, -5.5f, 9, 5, 11) }));  // root/body/hump
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(0.0f, 29.0f, -13.0f), { Box(122, 0, -1.5f, -14.0f, 0.0f, 3, 14, 0) }, 0.087f, -0.0011f, 0.0123f));  // root/body/tail
+				CamelHusk.Parts.Add(Part(ERole::Static, FVector(4.9f, 23.0f, 10.5f), { Box(0, 0, -2.5f, -23.0f, -2.5f, 5, 21, 5) }));  // root/left_front_leg
+				Models.Add(CamelHusk.Kind, CamelHusk);
+			}
+			{
+				FModel ZombieNautilus;
+				ZombieNautilus.Kind = TEXT("minecraft:zombie_nautilus");
+				ZombieNautilus.TextureSize = FIntPoint(128, 128);
+				ZombieNautilus.Textures = { TEXT("nautilus/zombie_nautilus.png") };
+				ZombieNautilus.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.5f, -6.3f), { Box(0, 54, -5.0f, -3.49f, -11.0f, 10, 8, 14), Box(0, 76, -5.0f, -3.49f, -7.0f, 10, 8, 0) }));  // body
+				ZombieNautilus.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.01f, -13.3f), { Box(54, 62, -5.0f, -2.02f, -4.0f, 10, 4, 4) }));  // body/lower_mouth
+				ZombieNautilus.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.01f, -13.3f), { Box(54, 54, -5.0f, -2.0f, -4.0f, 10, 4, 4) }));  // body/upper_mouth
+				ZombieNautilus.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.01f, -13.8f), { Box(54, 70, -3.0f, -2.0f, -3.5f, 6, 4, 4) }));  // body/inner_mouth
+				ZombieNautilus.Parts.Add(Part(ERole::Static, FVector(0.0f, 8.0f, 1.0f), { Box(0, 0, -7.0f, 0.0f, -9.0f, 14, 10, 16), Box(0, 26, -7.0f, -8.0f, -13.0f, 14, 8, 20), Box(48, 26, -7.0f, -8.0f, -6.0f, 14, 8, 0) }));  // nautilus/shell
+				Models.Add(ZombieNautilus.Kind, ZombieNautilus);
+			}
+			{
+				FModel HappyGhast;
+				HappyGhast.Kind = TEXT("minecraft:happy_ghast");
+				HappyGhast.TextureSize = FIntPoint(128, 128);
+				HappyGhast.Textures = { TEXT("ghast/happy_ghast.png") };
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(0.0f, 80.048f, 0.0f), { Box(0, 0, -8.0f, -8.0f, -8.0f, 16, 16, 16) }));  // body
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(-3.75f, 73.048f, 5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }, 0.4031f, 0.0f, 0.0f));  // body/tentacle0
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(1.25f, 73.048f, 5.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }, 0.57f, 0.0f, 0.0f));  // body/tentacle1
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(6.25f, 73.048f, -5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }, 0.5974f, 0.0f, 0.0f));  // body/tentacle8
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(-3.75f, 73.048f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }, 0.3471f, 0.0f, 0.0f));  // body/tentacle6
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(1.25f, 73.048f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }, 0.5337f, 0.0f, 0.0f));  // body/tentacle7
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(-1.25f, 73.048f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }, 0.2466f, 0.0f, 0.0f));  // body/tentacle4
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(3.75f, 73.048f, 0.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }, 0.2091f, 0.0f, 0.0f));  // body/tentacle5
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(6.25f, 73.048f, 5.0f), { Box(0, 0, -1.0f, -4.0f, -1.0f, 2, 4, 2) }, 0.5805f, 0.0f, 0.0f));  // body/tentacle2
+				HappyGhast.Parts.Add(Part(ERole::Static, FVector(-6.25f, 73.048f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }, 0.4251f, 0.0f, 0.0f));  // body/tentacle3
+				Models.Add(HappyGhast.Kind, HappyGhast);
+			}
+			{
+				FModel SulfurCube;
+				SulfurCube.Kind = TEXT("minecraft:sulfur_cube");
+				SulfurCube.TextureSize = FIntPoint(128, 128);
+				SulfurCube.Textures = { TEXT("sulfur_cube/sulfur_cube_inner.png") };
+				SulfurCube.Parts.Add(Part(ERole::Static, FVector(0.0f, 24.0f, 0.0f), { Box(0, 0, -9.0f, -9.0f, -9.0f, 18, 18, 18) }));  // root/cube
+				Models.Add(SulfurCube.Kind, SulfurCube);
 			}
 			{
 				FModel Sheep;
@@ -1420,7 +1780,7 @@ namespace McEntityModel
 				Turtle.Kind = TEXT("minecraft:turtle");
 				Turtle.TextureSize = FIntPoint(128, 64);
 				Turtle.Textures = { TEXT("turtle/turtle.png") };
-				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, -Flat));
+				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 6, -3), { Box(7, 37, -9.5f, -10, -3, 19, 20, 6) }, Flat));  // turned like the belly: -Flat drew it upside down
 				Turtle.Parts.Add(Part(ERole::Static, FVector(0, 1.5f, -2), { Box(31, 1, -5.5f, -9, -1.5f, 11, 18, 3) }, Flat));
 				Turtle.Parts.Add(Part(ERole::Head, FVector(0, 5, 10), { Box(3, 0, -3, -4, -3, 6, 5, 6) }));
 				Turtle.Parts.Add(Part(ERole::LegBackRight, FVector(-3.5f, 2, -11), { Box(1, 23, -2, -1, -10, 4, 1, 10) }));
@@ -1765,6 +2125,134 @@ namespace McEntityModel
 					Baby.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.4f, 6.5f, 5.3f), { Box(12, 33, -2.5f, -6.5f, -1.5f, 3, 8, 3) }));  // body/left_front_leg
 					Models.Add(Baby.Kind, Baby);
 				}
+				// Baby models of the missing mobs, batch 1 (2026-11-05): boxes from the reference's logged babyModel (models_b1.txt); pictures are the grown one's names with _baby.
+				// Not logged: baby tropical fish, parrot, fish and tadpole (no baby in the game).
+				const auto AddNewMobBabies = [&Models, &Young]()
+				{
+				{
+					FModel Moo = Young(TEXT("minecraft:mooshroom"), 64, 64);
+					Moo.Parts.Add(Part(ERole::Head, FVector(0.0f, 10.431f, 5.1667f), { Box(0, 18, -3.0f, -1.431f, -0.167f, 6, 6, 5), Box(8, 29, 3.0f, 3.569f, 2.833f, 1, 2, 1), Box(4, 29, -4.0f, 3.569f, 2.833f, 1, 2, 1), Box(12, 29, -2.0f, -1.431f, 4.833f, 4, 3, 1) }));  // head
+					Moo.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.0f, 5.0f), { Box(0, 0, -7.0f, 1.0f, -11.0f, 8, 6, 12) }));  // body
+					Moo.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6.0f, -3.5f), { Box(22, 27, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Moo.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6.0f, -3.5f), { Box(34, 27, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Moo.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6.0f, 3.5f), { Box(22, 18, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Moo.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6.0f, 3.5f), { Box(34, 18, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Models.Add(Moo.Kind, Moo);
+				}
+				{
+					FModel Oce = Young(TEXT("minecraft:ocelot"), 32, 32);
+					Oce.Parts.Add(Part(ERole::LegBackLeft, FVector(1.0f, 2.0f, -2.5f), { Box(18, 22, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // leftHindLeg
+					Oce.Parts.Add(Part(ERole::LegBackRight, FVector(-1.0f, 2.0f, -2.5f), { Box(12, 22, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // rightHindLeg
+					Oce.Parts.Add(Part(ERole::LegFrontLeft, FVector(1.0f, 2.0f, 1.5f), { Box(18, 18, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // leftFrontLeg
+					Oce.Parts.Add(Part(ERole::LegFrontRight, FVector(-1.0f, 2.0f, 1.5f), { Box(12, 18, -0.5f, -2.0f, -1.0f, 1, 2, 2) }));  // rightFrontLeg
+					Oce.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.893f, -3.9151f), { Box(0, 18, -0.5f, -0.893f, -5.085f, 1, 1, 5) }, -0.5672f, 0.0f, 0.0f));  // tail1
+					Oce.Parts.Add(Part(ERole::Head, FVector(0.0f, 4.0f, 3.125f), { Box(0, 0, -2.5f, -1.0f, -1.125f, 5, 4, 4), Box(18, 0, -2.0f, 3.0f, -1.125f, 1, 1, 2), Box(24, 0, 1.0f, 3.0f, -1.125f, 1, 1, 2), Box(18, 3, -1.5f, -1.0f, 2.875f, 3, 2, 1) }));  // head
+					Oce.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.5f, -0.5f), { Box(0, 8, -2.0f, -1.5f, -3.5f, 4, 3, 7) }));  // body
+					Models.Add(Oce.Kind, Oce);
+				}
+				{
+					FModel Bear = Young(TEXT("minecraft:polar_bear"), 64, 64);
+					Bear.Parts.Add(Part(ERole::Head, FVector(0.0f, 5.375f, 5.75f), { Box(0, 0, -3.0f, -2.375f, 0.25f, 6, 5, 4), Box(20, 3, -2.0f, -2.375f, 4.25f, 4, 2, 2), Box(20, 0, -4.0f, 1.625f, 1.75f, 2, 2, 1), Box(26, 0, 2.0f, 1.625f, 1.75f, 2, 2, 1) }));  // head
+					Bear.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.5f, 0.0f), { Box(0, 9, -4.0f, -3.5f, -6.0f, 8, 7, 12) }));  // body
+					Bear.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 2.5f, -4.5f), { Box(0, 34, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // rightHindLeg
+					Bear.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 2.5f, -4.5f), { Box(12, 34, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // leftHindLeg
+					Bear.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 2.5f, 4.5f), { Box(0, 28, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // rightFrontLeg
+					Bear.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 2.5f, 4.5f), { Box(12, 28, -1.5f, -2.5f, -1.5f, 3, 3, 3) }));  // leftFrontLeg
+					Models.Add(Bear.Kind, Bear);
+				}
+				{
+					FModel Pan = Young(TEXT("minecraft:panda"), 64, 64);
+					Pan.Parts.Add(Part(ERole::Head, FVector(0.0f, 5.0f, 3.0f), { Box(0, 0, -3.5f, -3.0f, 0.0f, 7, 6, 5), Box(24, 6, -2.0f, -3.0f, 5.0f, 4, 2, 1), Box(24, 0, -4.5f, 1.0f, 2.5f, 3, 3, 1), Box(33, 0, 1.5f, 1.0f, 2.5f, 3, 3, 1) }));  // head
+					Pan.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -2.5f), { Box(0, 11, -4.5f, -3.5f, -5.5f, 9, 7, 11) }));  // body
+					Pan.Parts.Add(Part(ERole::LegBackRight, FVector(-3.0f, 2.0f, -6.5f), { Box(0, 34, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // rightHindLeg
+					Pan.Parts.Add(Part(ERole::LegBackLeft, FVector(3.0f, 2.0f, -6.5f), { Box(12, 34, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // leftHindLeg
+					Pan.Parts.Add(Part(ERole::LegFrontRight, FVector(-3.0f, 2.0f, 1.5f), { Box(0, 29, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // rightFrontLeg
+					Pan.Parts.Add(Part(ERole::LegFrontLeft, FVector(3.0f, 2.0f, 1.5f), { Box(12, 29, -1.5f, -2.0f, -1.5f, 3, 2, 3) }));  // leftFrontLeg
+					Models.Add(Pan.Kind, Pan);
+				}
+				{
+					FModel Sq = Young(TEXT("minecraft:squid"), 32, 32);
+					Sq.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -1.5708f, 0.0f));  // root/tentacle0
+					Sq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -0.7854f, 0.0f));  // root/tentacle1
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, 3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.1416f, 0.0f));  // root/tentacle6
+					Sq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.927f, 0.0f));  // root/tentacle7
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 11.0f, 0.0f), { Box(0, 0, -4.0f, -5.0f, -4.0f, 8, 10, 8) }));  // root/body
+					Sq.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 1.5708f, 0.0f));  // root/tentacle4
+					Sq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 2.3562f, 0.0f));  // root/tentacle5
+					Sq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }));  // root/tentacle2
+					Sq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 0.7854f, 0.0f));  // root/tentacle3
+					Models.Add(Sq.Kind, Sq);
+				}
+				{
+					FModel GSq = Young(TEXT("minecraft:glow_squid"), 32, 32);
+					GSq.Parts.Add(Part(ERole::Static, FVector(3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -1.5708f, 0.0f));  // root/tentacle0
+					GSq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, -0.7854f, 0.0f));  // root/tentacle1
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, 3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.1416f, 0.0f));  // root/tentacle6
+					GSq.Parts.Add(Part(ERole::Static, FVector(2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 3.927f, 0.0f));  // root/tentacle7
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 11.0f, 0.0f), { Box(0, 0, -4.0f, -5.0f, -4.0f, 8, 10, 8) }));  // root/body
+					GSq.Parts.Add(Part(ERole::Static, FVector(-3.0f, 5.5f, 0.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 1.5708f, 0.0f));  // root/tentacle4
+					GSq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, 2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 2.3562f, 0.0f));  // root/tentacle5
+					GSq.Parts.Add(Part(ERole::Static, FVector(0.0f, 5.5f, -3.0f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }));  // root/tentacle2
+					GSq.Parts.Add(Part(ERole::Static, FVector(-2.1213f, 5.5f, -2.1213f), { Box(0, 18, -1.0f, -5.5f, -1.0f, 2, 6, 2) }, 0.0f, 0.7854f, 0.0f));  // root/tentacle3
+					Models.Add(GSq.Kind, GSq);
+				}
+				{
+					FModel Axo = Young(TEXT("minecraft:axolotl"), 32, 32);
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 1.25f, -1.75f), { Box(0, 0, -2.0f, -1.25f, -3.25f, 4, 2, 6), Box(0, 12, 0.0f, -1.25f, -2.25f, 0, 3, 5) }));  // root/root/body
+					Axo.Parts.Add(Part(ERole::Head, FVector(0.0f, 1.0f, 1.0f), { Box(0, 8, -3.0f, -1.0f, 0.0f, 6, 3, 4) }));  // root/root/body/head
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.0f, 3.0f), { Box(20, 0, -3.0f, 0.0f, 0.0f, 6, 3, 0) }));  // root/root/body/head/top_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(3.0f, 1.5f, 3.0f), { Box(20, 8, 0.0f, -1.5f, 0.0f, 3, 5, 0) }));  // root/root/body/head/left_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(-3.0f, 1.5f, 3.0f), { Box(20, 3, -3.0f, -1.5f, 0.0f, 3, 5, 0) }));  // root/root/body/head/right_gills
+					Axo.Parts.Add(Part(ERole::Static, FVector(-2.0f, 1.0f, -0.5f), { Box(20, 16, -3.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/right_front_leg
+					Axo.Parts.Add(Part(ERole::Static, FVector(-2.0f, 1.0f, -3.5f), { Box(20, 14, 0.0f, 0.0f, -0.5f, 3, 0, 1) }, -1.5708f, -1.5708f, -1.5708f));  // root/root/body/right_hind_leg/right_leg_r1
+					Axo.Parts.Add(Part(ERole::Static, FVector(0.0f, 1.5f, -5.0f), { Box(10, 9, 0.0f, -1.5f, -7.0f, 0, 3, 8) }));  // root/root/body/tail
+					Axo.Parts.Add(Part(ERole::Static, FVector(2.0f, 1.0f, -3.5f), { Box(20, 14, 0.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/left_hind_leg
+					Axo.Parts.Add(Part(ERole::Static, FVector(2.0f, 1.0f, -0.5f), { Box(20, 13, 0.0f, 0.0f, -0.5f, 3, 0, 1) }));  // root/root/body/left_front_leg
+					Models.Add(Axo.Kind, Axo);
+				}
+				{
+					FModel Arm = Young(TEXT("minecraft:armadillo"), 64, 64);
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, -0.5f), { Box(0, 0, -2.5f, -2.0f, -3.5f, 5, 4, 7), Box(0, 11, -2.5f, -2.0f, -3.0f, 5, 4, 6) }));  // body
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 4.0f, 2.7f), { Box(20, 17, -1.0f, 0.0f, 0.0f, 2, 2, 4) }, 0.7418f, 0.0f, 0.0f));  // body/head/head_cube
+					Arm.Parts.Add(Part(ERole::Static, FVector(-1.0f, 6.0f, 3.0f), { Box(28, 8, -1.8f, -1.0f, 0.0f, 2, 3, 0) }, -0.4363f, 0.1134f, -0.0524f));  // body/head/head_cube/right_ear
+					Arm.Parts.Add(Part(ERole::Static, FVector(1.0f, 6.0f, 3.0f), { Box(28, 8, -0.2f, -1.0f, 0.0f, 2, 3, 0, 0.0f, true) }, -0.4363f, -0.1134f, 0.0524f));  // body/head/head_cube/left_ear
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 2.5f, -4.9f), { Box(22, 11, -0.5f, -0.5f, -2.0f, 1, 1, 4) }, -1.0472f, 0.0f, 0.0f));  // body/tail/right_ear_cube
+					Arm.Parts.Add(Part(ERole::LegBackRight, FVector(-1.5f, 2.0f, -2.5f), { Box(20, 27, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // rightHindLeg
+					Arm.Parts.Add(Part(ERole::LegBackLeft, FVector(1.5f, 2.0f, -2.5f), { Box(20, 27, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // leftHindLeg
+					Arm.Parts.Add(Part(ERole::Static, FVector(0.0f, 3.3f, -0.5f), { Box(0, 25, -3.0f, -3.0f, -3.0f, 6, 6, 6) }));  // cube
+					Arm.Parts.Add(Part(ERole::Static, FVector(1.5f, 2.0f, 1.5f), { Box(20, 23, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // root/right_front_leg
+					Arm.Parts.Add(Part(ERole::Static, FVector(-1.5f, 2.0f, 1.5f), { Box(24, 0, -1.0f, -2.0f, -1.0f, 2, 2, 2) }));  // root/left_front_leg
+					Models.Add(Arm.Kind, Arm);
+				}
+				{
+					FModel Zog = Young(TEXT("minecraft:zoglin"), 64, 64);
+					Zog.Parts.Add(Part(ERole::Head, FVector(0.0f, 11.0f, 7.0f), { Box(0, 0, -5.0f, -1.74f, -1.453f, 10, 4, 12), Box(44, 29, -7.0f, -0.902f, 6.488f, 2, 5, 2), Box(52, 29, 5.0f, -0.902f, 6.488f, 2, 5, 2) }, 0.8727f, 0.0f, 0.0f));  // head
+					Zog.Parts.Add(Part(ERole::Static, FVector(-5.0f, 12.0f, 8.5f), { Box(32, 5, -5.1f, -0.5f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, 0.8727f));  // head/right_ear
+					Zog.Parts.Add(Part(ERole::Static, FVector(5.0f, 12.0f, 8.5f), { Box(32, 0, -0.9f, -0.5f, -2.0f, 6, 1, 4) }, 0.0f, 0.0f, -0.8727f));  // head/left_ear
+					Zog.Parts.Add(Part(ERole::LegFrontRight, FVector(-2.5f, 6.0f, 4.5f), { Box(0, 38, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightFrontLeg
+					Zog.Parts.Add(Part(ERole::LegFrontLeft, FVector(2.5f, 6.0f, 4.5f), { Box(12, 38, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftFrontLeg
+					Zog.Parts.Add(Part(ERole::LegBackRight, FVector(-2.5f, 6.0f, -4.5f), { Box(0, 47, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // rightHindLeg
+					Zog.Parts.Add(Part(ERole::LegBackLeft, FVector(2.5f, 6.0f, -4.5f), { Box(12, 47, -1.5f, -6.0f, -1.5f, 3, 6, 3) }));  // leftHindLeg
+					Zog.Parts.Add(Part(ERole::Static, FVector(0.0f, 0.0f, 0.0f), { Box(0, 16, -4.0f, 6.0f, -7.0f, 8, 8, 14), Box(24, 39, 0.0f, 12.0f, -3.0f, 0, 6, 11) }));  // root/body
+					Models.Add(Zog.Kind, Zog);
+				}
+				{
+					FModel Gha = Young(TEXT("minecraft:happy_ghast"), 64, 64);
+					Gha.Parts.Add(Part(ERole::Static, FVector(0.0f, 6.7992f, 0.0f), { Box(0, 0, -8.0f, -8.0f, -8.0f, 16, 16, 16) }));  // body
+					Gha.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle0
+					Gha.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }));  // body/tentacle1
+					Gha.Parts.Add(Part(ERole::Static, FVector(0.0f, -1.2008f, 0.0f), { Box(0, 32, -8.0f, 0.0f, -8.0f, 16, 16, 16) }));  // body/inner_body
+					Gha.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle8
+					Gha.Parts.Add(Part(ERole::Static, FVector(-3.75f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }));  // body/tentacle6
+					Gha.Parts.Add(Part(ERole::Static, FVector(1.25f, -0.2008f, -5.0f), { Box(0, 0, -1.0f, -8.0f, -1.0f, 2, 8, 2) }));  // body/tentacle7
+					Gha.Parts.Add(Part(ERole::Static, FVector(-1.25f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle4
+					Gha.Parts.Add(Part(ERole::Static, FVector(3.75f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -7.0f, -1.0f, 2, 7, 2) }));  // body/tentacle5
+					Gha.Parts.Add(Part(ERole::Static, FVector(6.25f, -0.2008f, 5.0f), { Box(0, 0, -1.0f, -4.0f, -1.0f, 2, 4, 2) }));  // body/tentacle2
+					Gha.Parts.Add(Part(ERole::Static, FVector(-6.25f, -0.2008f, 0.0f), { Box(0, 0, -1.0f, -5.0f, -1.0f, 2, 5, 2) }));  // body/tentacle3
+					Models.Add(Gha.Kind, Gha);
+				}
+				};
+				AddNewMobBabies();
 			}
 			return Models;
 		}
@@ -3825,6 +4313,8 @@ bool McEntityModel::BuildDroppedUnit(FName Item, FDroppedUnit& Out)
 
 void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	MC_PERF_SCOPE(Models);
+	MC_PERF_SCOPE(ModelsEntity);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber || bIsFalling) && bItemFailed))
@@ -4289,7 +4779,30 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	{
 		Anim.Tint = Model->bFixedTint ? Model->FixedTint : McEntityModel::GetDyeColor((PoseLook >> 8) & 15);
 	}
-	for (int32 Layer = 0; Layer < NumLayers; ++Layer)
+	// A mob the camera has not drawn lately keeps its last mesh: the pose above still moves on, and the mesh is posed
+	// again on the first frame it is drawn. Building and handing over every mob's mesh every frame was the biggest
+	// part of the game thread (197 mobs, 5.8-9.1 ms on the 4060, 13 Nov).
+	bool bUnseen = NumSections > 0 && CVarMcModelsSkipUnseen.GetValueOnGameThread() && !WasRecentlyRendered(0.25f);
+	if (bUnseen)
+	{
+		// Off screen, but its shadow may not be (Unreal Mode's sun): posed as if seen.
+		const FVector Towards = McSky::GetShadowLightTowards();
+		bUnseen = Towards.IsZero() || !CastShadow || !ShadowMayBeSeen(GetWorld(), Bounds, Towards);
+	}
+	{
+		// Counted per frame for the recorder: the previous frame's totals are published when a new frame starts.
+		static uint64 CountedFrame = 0;
+		static int64 Posed = 0, Kept = 0;
+		if (CountedFrame != GFrameCounter)
+		{
+			McPerf::SetCounter(EMcPerfCounter::ModelsPosed, Posed);
+			McPerf::SetCounter(EMcPerfCounter::ModelsKept, Kept);
+			CountedFrame = GFrameCounter;
+			Posed = Kept = 0;
+		}
+		++(bUnseen ? Kept : Posed);
+	}
+	for (int32 Layer = 0; Layer < (bUnseen ? 0 : NumLayers); ++Layer)
 	{
 		if (Model->bComposite && Layer != 0 && Layer != Model->HeldLayer)
 		{
@@ -4330,7 +4843,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			UpdateMeshSection(Layer, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, TArray<FVector2D>(), Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	if (Model->MaskLayer != INDEX_NONE)
+	if (Model->MaskLayer != INDEX_NONE && !bUnseen)
 	{
 		if (!Mask)
 		{
@@ -4356,7 +4869,7 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			Mask->UpdateMeshSection(0, Data.Positions, Data.Normals, Data.UV0, Data.Colors, TArray<FProcMeshTangent>());
 		}
 	}
-	else if (Mask)
+	else if (Mask && Model->MaskLayer == INDEX_NONE)
 	{
 		Mask->DestroyComponent();
 		Mask = nullptr;

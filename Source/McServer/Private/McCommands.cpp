@@ -14,6 +14,7 @@
 #include "McBiomeRegistry.h"
 #include "McVehicle.h"
 #include "McLoot.h"
+#include "McRecipe.h"
 #include "McRandom.h"
 
 namespace
@@ -62,6 +63,8 @@ namespace
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
+		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle> | dismount)") },
+		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
 		{ TEXT("setblock"), 2, TEXT("/setblock <pos> <block> [destroy|keep|replace]") },
@@ -827,7 +830,7 @@ namespace
 		}
 		int32 Next = 3;
 		FString Who = SenderName(Sender);
-		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || !Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~"))))
+		if (Words.IsValidIndex(Next) && (Words[Next].StartsWith(TEXT("@")) || (!Words[Next].IsNumeric() && !Words[Next].StartsWith(TEXT("~")))))
 		{
 			Who = Words[Next].StartsWith(TEXT("@")) ? SenderName(Sender) : Words[Next];
 			++Next;
@@ -4961,7 +4964,10 @@ namespace
 	// Only the give target with the loot source is built; mine and kill sources, spawn, insert and replace are not.
 	FReplies RunLoot(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
-		if (Words.Num() < 3 || Words[1] != TEXT("give") || Words.Num() != 5 || Words[3] != TEXT("loot"))
+		const bool bLoot = Words.Num() == 5 && Words[3] == TEXT("loot");
+		const bool bMine = Words.Num() == 7 && Words[3] == TEXT("mine");
+		const bool bKill = Words.Num() == 5 && Words[3] == TEXT("kill");
+		if (Words.Num() < 3 || Words[1] != TEXT("give") || !(bLoot || bMine || bKill))
 		{
 			return Unknown(Command, Command.Len());
 		}
@@ -4971,12 +4977,48 @@ namespace
 		{
 			return { Fail(Error) };
 		}
-		const FString Table = McCache::Namespaced(Words[4]);
+		FString Table;
+		if (bLoot)
+		{
+			Table = McCache::Namespaced(Words[4]);
+		}
+		else if (bMine)
+		{
+			// The block's own table, rolled without a tool (so tool conditions such as silk touch are not met). Measured: mining grass
+			// blocks gives "Dropped 1 [Dirt] from loot table minecraft:blocks/grass_block" (ref run cmd_group4.txt).
+			FIntVector Pos;
+			FMcStateId State;
+			if (!ParseBlockPos(Words, 4, SenderFeet(Sender, Target), Pos))
+			{
+				return BadArgument(Command);
+			}
+			if (!Target.GetBlock(Pos, State))
+			{
+				return { Fail(McLang::Get(TEXT("argument.pos.unloaded"))) };
+			}
+			const FMcBlockRegistry& Blocks = FMcBlockRegistry::Get();
+			Table = FString::Printf(TEXT("minecraft:blocks/%s"), *McCache::Namespaced(Blocks.GetBlockOf(State).Name.ToString()).RightChop(10));
+		}
+		else
+		{
+			// Only players can be killed here, and the player table drops nothing (measured: "Dropped 0 items from loot table
+			// minecraft:entities/player"). Other targets are not supported.
+			TArray<FString> Victims;
+			if (!ResolvePlayers(Words[4], Sender, Target, Victims, Error))
+			{
+				return { Fail(Error) };
+			}
+			return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { TEXT("0"), TEXT("minecraft:entities/player") })) };
+		}
 		TArray<FMcItemStack> Stacks;
 		static uint64 Draw = 0x6c6f6f74;
 		FMcRandom Random(++Draw * 0x9E3779B97F4A7C15ull);
 		if (!McLoot::Roll(Table, Random, Stacks))
 		{
+			if (!bLoot)
+			{
+				return { Ok(McLang::Format(TEXT("commands.drop.success.multiple_with_table"), { TEXT("0"), Table })) };
+			}
 			int32 At = Command.Find(Words[4], ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:loot_table'"), *Table)), Fail(BorderContext(Command, At)) };
 		}
@@ -5198,6 +5240,82 @@ namespace
 			}
 		}
 		return Unknown(Command, Command.Len());
+	}
+
+	// /ride <target> dismount | mount <vehicle> (wording from a ref run, cmd_group4.txt). Players can ride boats and minecarts only;
+	// there are no saddled or tamed mounts, and no selector for other entities, so mount answers the game's generic failure for
+	// anything but a player (which can't be ridden).
+	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || (Words[2] == TEXT("dismount") && Words.Num() != 3) || (Words[2] == TEXT("mount") && Words.Num() != 4)
+			|| (Words[2] != TEXT("dismount") && Words[2] != TEXT("mount")))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		TArray<FString> Riders;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Riders, Error))
+		{
+			return { Fail(Error) };
+		}
+		if (Riders.Num() > 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+		}
+		if (Words[2] == TEXT("dismount"))
+		{
+			FString Vehicle;
+			if (!Target.GetVehicleName(Riders[0], Vehicle))
+			{
+				return { Fail(McLang::Format(TEXT("commands.ride.not_riding"), { Riders[0] })) };
+			}
+			Target.Dismount(Riders[0]);
+			return { Ok(McLang::Format(TEXT("commands.ride.dismount.success"), { Riders[0], Vehicle })) };
+		}
+		TArray<FString> Vehicles;
+		if (!ResolvePlayers(Words[3], Sender, Target, Vehicles, Error))
+		{
+			// Not a player: only players can be found by a selector here.
+			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { Riders[0], Words[3] })) };
+		}
+		if (Vehicles.Num() > 1)
+		{
+			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
+		}
+		return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
+	}
+
+	// /place feature <feature> [pos] (wording from a ref run, cmd_group4.txt). Template, structure and jigsaw are not built.
+	FReplies RunPlace(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() < 3 || Words[1] != TEXT("feature") || (Words.Num() != 3 && Words.Num() != 6))
+		{
+			return Unknown(Command, Command.Len());
+		}
+		FIntVector Pos;
+		if (Words.Num() == 6)
+		{
+			if (!ParseBlockPos(Words, 3, SenderFeet(Sender, Target), Pos))
+			{
+				return BadArgument(Command);
+			}
+		}
+		else
+		{
+			const FVector Feet = SenderFeet(Sender, Target);
+			Pos = FIntVector(FMath::FloorToInt32(Feet.X), FMath::FloorToInt32(Feet.Y), FMath::FloorToInt32(Feet.Z));
+		}
+		const FString Id = McCache::Namespaced(Words[2]);
+		const int32 Result = Target.PlaceFeature(Id, Pos);
+		if (Result == 1)
+		{
+			return { Fail(FString::Printf(TEXT("Can't find element '%s' in registry 'minecraft:worldgen/feature'"), *Id)), Fail(BorderContext(Command, Command.Len())) };
+		}
+		if (Result != 0)
+		{
+			return { Fail(McLang::Get(TEXT("commands.place.feature.failed"))) };
+		}
+		return { Ok(McLang::Format(TEXT("commands.place.feature.success"), { Id, FString::FromInt(Pos.X), FString::FromInt(Pos.Y), FString::FromInt(Pos.Z) })) };
 	}
 
 	FReplies RunTag(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -5736,6 +5854,14 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("attribute"))
 	{
 		return RunAttribute(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("ride"))
+	{
+		return RunRide(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("place"))
+	{
+		return RunPlace(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("loot"))
 	{

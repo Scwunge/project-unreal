@@ -40,6 +40,7 @@ public:
 	TFunction<void(int32 Button, const TArray<int32>& Slots)> OnDrag;
 
 	bool IsDragging() const { return bDragActive; }
+	bool IsCreative() const { return bCreative; }
 	TArray<FMcItemStack> TakeDropped() { return MoveTemp(Dropped); }
 	const TArray<FMcItemStack>& GetDropped() const { return Dropped; }
 

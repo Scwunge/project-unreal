@@ -83,6 +83,9 @@ public:
 	void AddQuickCraftSlot(int32 Slot);
 	void EndQuickCraft(bool bCreative = false);
 	bool IsQuickCrafting() const { return bDragging; }
+	// While dragging over two slots or more: what each slot dragged over would hold if the button were let go now, and
+	// how many the cursor would keep (the screen draws these). False when nothing would be spread.
+	bool PreviewQuickCraft(TMap<int32, FMcItemStack>& OutSlots, int32& OutCarried, bool bCreative = false) const;
 
 	// Gives the cursor stack back to the player, e.g. when the menu closes: into the player's slots, else dropped.
 	void Close(TArray<FMcItemStack>& Dropped);

@@ -1,0 +1,134 @@
+# A first playtest without hands, from a fresh profile: run with -McMenuPress=Singleplayer,Create_New_World
+# -McTitle (no -McWorld), so the world is made through the menus in survival (with no worlds yet, Singleplayer opens
+# the New World screen). Walks, crafts by dragging (a crafting table in the 2x2 grid, a chest in the table's 3x3), flies
+# in creative, then Save and Quit and back into the same world.
+# Slot points are for 1920x1080 at GUI scale 4 (inventory 176x166 gui px, centred): hotbar slot n at (672+72n, 808),
+# the 2x2 grid's cells at (1032|1104, 312|384), its result at (1256, 352). Shots go to Saved/Shots/pt_*.png.
+mark:fill
+settle:60
+shot:pt_arrived
+mark:walk
+hold:W:15
+look:90,0
+hold:W+SpaceBar:10
+look:-45,0
+hold:W+LeftControl:20
+look:180,0
+hold:W:15
+mark:craft
+chat:/give @s minecraft:oak_log 1
+wait:2
+key:E
+wait:1
+shot:pt_inv_open
+# The log (hotbar 0) into the grid, and its four planks out onto the cursor.
+cursor:672,808
+click:L:0.1
+wait:0.5
+cursor:1032,312
+click:L:0.1
+wait:0.5
+cursor:1256,352
+click:L:0.1
+wait:0.5
+# Crafting by dragging: the button held down, the four planks dragged over the four cells, then let go.
+cursor:1032,312
+down:L
+wait:0.2
+cursor:1104,312
+wait:0.2
+cursor:1104,384
+wait:0.2
+cursor:1032,384
+wait:0.3
+shot:pt_drag_ghost
+up:L
+wait:0.5
+shot:pt_drag_table
+# The crafting table to hotbar 2.
+cursor:1256,352
+click:L:0.1
+wait:0.5
+cursor:816,808
+click:L:0.1
+wait:0.5
+key:E
+wait:1
+# Place the table in front, then open it with eight planks (they land in hotbar 0).
+key:Three
+look:0,-50
+wait:0.5
+click:R:0.1
+wait:1
+shot:pt_table_placed
+chat:/give @s minecraft:oak_planks 8
+wait:2
+click:R:0.1
+wait:1
+shot:pt_table_open
+# The 3x3 at 1920x1080, scale 4: cell (c, r) at (760+72c, 308+72r), the result at (1136, 380). Right-drag the planks
+# round the edge, one in each: a chest.
+cursor:672,808
+click:L:0.1
+wait:0.5
+cursor:760,308
+down:R
+wait:0.2
+cursor:832,308
+wait:0.2
+cursor:904,308
+wait:0.2
+cursor:904,380
+wait:0.2
+cursor:904,452
+wait:0.2
+cursor:832,452
+wait:0.2
+cursor:760,452
+wait:0.2
+cursor:760,380
+wait:0.3
+shot:pt_table_ghost
+up:R
+wait:0.5
+shot:pt_table_chest
+cursor:1136,380
+click:L:0.1
+wait:0.5
+cursor:888,808
+click:L:0.1
+wait:0.5
+key:E
+wait:1
+look:0,50
+mark:fly
+chat:/gamemode creative
+wait:2
+fly:1
+hold:SpaceBar:2
+hold:W+LeftControl:60
+look:120,0
+hold:W+LeftControl:30
+fly:0
+wait:5
+mark:walk2
+hold:W:20
+look:-90,0
+hold:W+SpaceBar:20
+mark:leave
+key:Escape
+wait:2
+shot:pt_pause
+press:Save_and_Quit_to_Title,Singleplayer,Play_Selected_World
+wait:30
+mark:back
+settle:60
+# Back in: still creative (no hearts) with hotbar slot 3 picked, as the player left (log: "Player restored: ...").
+shot:pt_rejoined
+key:E
+wait:1
+shot:pt_inv_after
+key:E
+hold:W:20
+mark:end
+end

@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -43,6 +44,7 @@ FString McTravel::GetPortalDestination(const FString& From)
 
 void UMcTravelSubsystem::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(Misc);
 	Super::Tick(DeltaSeconds);
 	if (!GetWorld() || !GetWorld()->GetAuthGameMode<AMcGameMode>())
 	{
@@ -147,6 +149,20 @@ bool UMcTravelSubsystem::AddTrip(AMcPlayerController& Controller, AMcWorldActor&
 	Trip.StartedAt = GetWorld()->GetTimeSeconds();
 	Trip.Chunk = FIntPoint(McCoords::BlockToChunk(Trip.Target.X), McCoords::BlockToChunk(Trip.Target.Z));
 	Trip.Anchor = Dest.AddAnchor(Trip.Chunk, Trip.ChunkRadius);
+	// A rider takes the boat or cart (vehicle_log46): it is packed now and set down with the rider on arrival.
+	const AMcPlayerPawn* Pawn = Cast<AMcPlayerPawn>(Controller.GetPawn());
+	FMcEntityHost* Host = Controller.GetWorldActor() ? Controller.GetWorldActor()->GetEntityHost() : nullptr;
+	if (Trip.Kind != EKind::Exact && Pawn && Pawn->GetRidingId() != 0 && Host)
+	{
+		if (FMcEntity* Ridden = Host->GetManager().Find(Pawn->GetRidingId()))
+		{
+			Trip.VehicleBytes = Host->PackEntity(*Ridden);
+			if (!Trip.VehicleBytes.IsEmpty())
+			{
+				Ridden->bRemoved = true;
+			}
+		}
+	}
 	Trips.Add(Trip);
 	return true;
 }
@@ -325,6 +341,16 @@ void UMcTravelSubsystem::Finish(FTrip& Trip)
 	}
 	Player->EnterWorld(*Dest);
 	Pawn->ServerTeleport(Feet, Yaw);
+	if (!Trip.VehicleBytes.IsEmpty() && Dest->GetEntityHost())
+	{
+		// The vehicle comes out at the portal's standing point with no speed (vehicle_log46); the rider sits in it again.
+		if (FMcEntity* Arrived = Dest->GetEntityHost()->UnpackEntity(Trip.VehicleBytes, Feet))
+		{
+			Arrived->PortalCooldown = 300;
+			Arrived->Body.Velocity = FVector::ZeroVector;
+			Pawn->ServerRide(Arrived->Id);
+		}
+	}
 	States.FindOrAdd(Player).bMustLeave = true;
 	if (Trip.Kind == EKind::NetherPortal)
 	{
@@ -378,10 +404,11 @@ void UMcTravelSubsystem::TickEntities()
 				Entity->PortalCooldown = 10;
 				continue;
 			}
-			// Carrying a rider (or riding): it goes with the one that carries it, which is not done yet; left where it is.
+			// A vehicle with a player in it waits for the player's own trip; animals aboard go with it (below). A mob that is
+			// riding goes with what carries it.
 			if (Entity->IsVehicle())
 			{
-				if (static_cast<FMcVehicle&>(*Entity).GetPassengerCount() > 0)
+				if (static_cast<FMcVehicle&>(*Entity).GetPassengerCount() > static_cast<FMcVehicle&>(*Entity).GetMobPassengers().Num())
 				{
 					continue;
 				}
@@ -448,6 +475,24 @@ void UMcTravelSubsystem::TickEntities()
 				continue;
 			}
 			Entity->bRemoved = true;
+			if (Entity->IsVehicle())
+			{
+				// The animals aboard step off, travel beside it and board again where it is set down.
+				for (const int32 MobId : static_cast<FMcVehicle&>(*Entity).GetMobPassengers())
+				{
+					FMcEntity* Aboard = Host->GetManager().Find(MobId);
+					if (Aboard && !Aboard->bRemoved && Aboard->IsLiving())
+					{
+						static_cast<FMcMob&>(*Aboard).RidingId = 0;
+						TArray<uint8> Packed = Host->PackEntity(*Aboard);
+						if (!Packed.IsEmpty())
+						{
+							Aboard->bRemoved = true;
+							Trip.Passengers.Add(MoveTemp(Packed));
+						}
+					}
+				}
+			}
 			Trip.Dest = Dest;
 			Trip.StartedAt = GetWorld()->GetTimeSeconds();
 			Trip.Chunk = FIntPoint(McCoords::BlockToChunk(Trip.Target.X), McCoords::BlockToChunk(Trip.Target.Z));
@@ -496,6 +541,14 @@ void UMcTravelSubsystem::TickEntityTrips()
 			Arrived->PortalCooldown = 300;
 			Arrived->Body.Velocity = FVector::ZeroVector;
 			Arrived->Body.bOnGround = false;
+			for (const TArray<uint8>& Packed : Trip.Passengers)
+			{
+				if (FMcEntity* Mob = Dest->GetEntityHost()->UnpackEntity(Packed, Feet))
+				{
+					Mob->PortalCooldown = 300;
+					Mob->Body.Velocity = FVector::ZeroVector;
+				}
+			}
 		}
 		Dest->RemoveAnchor(Trip.Anchor);
 		EntityTrips.RemoveAt(Index);

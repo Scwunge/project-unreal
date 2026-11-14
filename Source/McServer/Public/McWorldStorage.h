@@ -44,6 +44,11 @@ public:
 	// A bulk import writes without asking the disk to confirm each chunk.
 	// Leaving bulk waits for the writes and lets go of the files kept open.
 	void SetBulk(bool bInBulk);
+	bool IsBulk() const { return bBulk; }
+	// Time the writer has spent, for the save log: in the region files' Write, and in the whole task (lookups and copies too),
+	// in microseconds since the storage was made.
+	int64 GetWriteMicros() const { return WriteMicros; }
+	int64 GetTaskMicros() const { return TaskMicros; }
 	// Writes that failed, so a caller can tell the disk is full or the folder is read-only.
 	int32 NumFailedWrites() const { return FailedWrites; }
 
@@ -74,5 +79,7 @@ private:
 	FCriticalSection RegionsLock;
 	TMap<FIntPoint, TUniquePtr<FMcRegionFile>> Regions;
 	TAtomic<int32> FailedWrites{ 0 };
+	TAtomic<int64> WriteMicros{ 0 };
+	TAtomic<int64> TaskMicros{ 0 };
 	UE::Tasks::FPipe Pipe{ UE_SOURCE_LOCATION };
 };

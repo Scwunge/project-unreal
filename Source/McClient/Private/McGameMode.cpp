@@ -1,4 +1,7 @@
 #include "McGameMode.h"
+#include "McPerf.h"
+#include "Tasks/Task.h"
+#include "Misc/ScopeExit.h"
 #include "McMob.h"
 #include "McMount.h"
 #include "McSound.h"
@@ -46,6 +49,7 @@
 #include "GameFramework/PlayerState.h"
 #include "HAL/PlatformMisc.h"
 #include "McBlockRegistry.h"
+#include "McBlockTags.h"
 #include "McCache.h"
 #include "McDataPacks.h"
 #include "McTextComponent.h"
@@ -174,6 +178,18 @@ namespace
 		TArray<TArray<TArray<FPredicate>>> Groups;
 	};
 
+	// Both advancement tables read every advancement file; a world start builds them on a worker (WarmAdvancementTables)
+	// and the game thread waits for that before its first use, instead of parsing them all in one frame.
+	UE::Tasks::FTask AdvancementWarm;
+	void WaitForAdvancementWarm()
+	{
+		if (AdvancementWarm.IsValid())
+		{
+			AdvancementWarm.Wait();
+			AdvancementWarm = UE::Tasks::FTask();
+		}
+	}
+
 	// The advancements that fire on what the player carries (the game's data: trigger minecraft:inventory_changed with
 	// plain item predicates; those with component or slot conditions are left out).
 	const TArray<FInventoryTrigger>& InventoryTriggers()
@@ -187,6 +203,8 @@ namespace
 		}
 		LoadedGeneration = McData::GetGeneration();
 		Triggers.Reset();
+		const double Began = FPlatformTime::Seconds();
+		ON_SCOPE_EXIT { McPerf::Event(FString::Printf(TEXT("ADVANCEMENTS_INVENTORY %d in %.0f ms"), Triggers.Num(), (FPlatformTime::Seconds() - Began) * 1000.0)); };
 		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
 			const FString& File = Listed.Paths.Last();
@@ -325,6 +343,8 @@ namespace
 		}
 		LoadedGeneration = McData::GetGeneration();
 		Table = FTriggerTable();
+		const double Began = FPlatformTime::Seconds();
+		ON_SCOPE_EXIT { McPerf::Event(FString::Printf(TEXT("ADVANCEMENTS_EVENTS %d in %.0f ms"), Table.ByTrigger.Num(), (FPlatformTime::Seconds() - Began) * 1000.0)); };
 		for (const McData::FFile& Listed : McData::List(TEXT("advancement")))
 		{
 			TSharedPtr<FJsonObject> Def;
@@ -445,6 +465,15 @@ namespace
 					return false;
 				}
 			}
+			else if (Key == TEXT("to") || Key == TEXT("from"))
+			{
+				FString Wanted;
+				const FName Actual = Key == TEXT("to") ? Event.To : Event.From;
+				if (!Entry.Value->TryGetString(Wanted) || Actual.IsNone() || McCache::Namespaced(Wanted) != Actual.ToString())
+				{
+					return false;
+				}
+			}
 			else if (Key == TEXT("recipes"))
 			{
 				if (!NameIn(Entry.Value, Event.Recipe))
@@ -461,6 +490,79 @@ namespace
 					|| !(*Predicate)->TryGetObjectField(TEXT("minecraft:location"), Location) || (*Location)->Values.Num() != 1 || !NameIn((*Location)->TryGetField(TEXT("biomes")), Event.Biome))
 				{
 					return false;
+				}
+			}
+				else if (Key == TEXT("location") && Event.Trigger == TEXT("minecraft:item_used_on_block"))
+			{
+				// all_of a location_check on the block (names or a tag, no state) and a match_tool on the item in hand.
+				FString Type;
+				const TArray<TSharedPtr<FJsonValue>>* Terms = nullptr;
+				if (!Entry.Value->TryGetObject(Object) || !(*Object)->TryGetStringField(TEXT("type"), Type) || Type != TEXT("minecraft:all_of")
+					|| !(*Object)->TryGetArrayField(TEXT("terms"), Terms))
+				{
+					return false;
+				}
+				for (const TSharedPtr<FJsonValue>& Term : *Terms)
+				{
+					const TSharedPtr<FJsonObject>* TermObject = nullptr;
+					const TSharedPtr<FJsonObject>* Predicate = nullptr;
+					FString TermType;
+					if (!Term->TryGetObject(TermObject) || !(*TermObject)->TryGetStringField(TEXT("type"), TermType) || !(*TermObject)->TryGetObjectField(TEXT("predicate"), Predicate))
+					{
+						return false;
+					}
+					if (TermType == TEXT("minecraft:location_check"))
+					{
+						const TSharedPtr<FJsonObject>* BlockPredicate = nullptr;
+						if ((*Predicate)->Values.Num() != 1 || !(*Predicate)->TryGetObjectField(TEXT("block"), BlockPredicate) || (*BlockPredicate)->Values.Num() != 1
+							|| !(*BlockPredicate)->HasField(TEXT("blocks")))
+						{
+							return false;
+						}
+						const TSharedPtr<FJsonValue> Blocks = (*BlockPredicate)->TryGetField(TEXT("blocks"));
+						FString Tag;
+						if (Blocks->TryGetString(Tag) && Tag.StartsWith(TEXT("#")))
+						{
+							if (!FMcBlockTags::Get().Has(Tag.RightChop(1), Event.State))
+							{
+								return false;
+							}
+						}
+						else if (!NameIn(Blocks, Event.Block))
+						{
+							return false;
+						}
+					}
+					else if (TermType == TEXT("minecraft:match_tool"))
+					{
+						const TSharedPtr<FJsonValue> Items = (*Predicate)->TryGetField(TEXT("items"));
+						if ((*Predicate)->Values.Num() != 1 || !Items.IsValid() || Event.Item.IsNone())
+						{
+							return false;
+						}
+						bool bAny = false;
+						const TArray<TSharedPtr<FJsonValue>>* Many = nullptr;
+						FString One;
+						if (Items->TryGetString(One))
+						{
+							bAny = FMcItemRegistry::Get().Matches(Event.Item, One);
+						}
+						else if (Items->TryGetArray(Many))
+						{
+							for (const TSharedPtr<FJsonValue>& Value : *Many)
+							{
+								bAny = bAny || FMcItemRegistry::Get().Matches(Event.Item, Value->AsString());
+							}
+						}
+						if (!bAny)
+						{
+							return false;
+						}
+					}
+					else
+					{
+						return false;
+					}
 				}
 			}
 			else if (Key == TEXT("location"))
@@ -528,6 +630,7 @@ namespace
 				}
 				return Total >= Predicate.Value;
 			};
+			WaitForAdvancementWarm();
 			for (const FInventoryTrigger& Trigger : InventoryTriggers())
 			{
 				if (Pawn->Data->Advancements.Contains(FName(*Trigger.Id)))
@@ -565,6 +668,7 @@ void AMcGameMode::FireTrigger(AMcPlayerPawn& Pawn, const FMcTriggerEvent& Event)
 	{
 		return;
 	}
+	WaitForAdvancementWarm();
 	const FTriggerTable& Table = EventTriggers();
 	const TArray<FCriterionDef>* Waiting = Table.ByTrigger.Find(Event.Trigger.ToString());
 	if (!Waiting)
@@ -647,6 +751,8 @@ void AMcGameMode::StartPlay()
 		// The title screen (AMcHUD) has no world behind it; it opens one by loading the map again with ?McWorld.
 		return;
 	}
+	WaitForAdvancementWarm();
+	AdvancementWarm = UE::Tasks::Launch(UE_SOURCE_LOCATION, [] { InventoryTriggers(); EventTriggers(); }, UE::Tasks::ETaskPriority::BackgroundNormal);
 	ReadFunctionTags();
 	GetWorldTimerManager().SetTimer(FunctionTimer, this, &AMcGameMode::TickFunctions, 0.05f, true);
 	ReloadHandle = McData::OnReload().AddWeakLambda(this, [this]()
@@ -784,6 +890,14 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 				HurtPlayerNear(*Here, Position, Damage);
 			}
 		};
+		Host->OnPlayerHitThroughArmor = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage)
+		{
+			// A warden's sonic boom: armor does not reduce it (Magic is the kind armor lets through whole).
+			if (const AMcWorldActor* Here = Weak.Get())
+			{
+				HurtPlayerNear(*Here, Position, Damage, McSurvival::EDamage::Magic);
+			}
+		};
 		Host->OnPlayerBlast = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position, float Damage, const FVector& Push, const FVector& Center)
 		{
 			if (const AMcWorldActor* Here = Weak.Get())
@@ -810,6 +924,24 @@ void AMcGameMode::SetUpWorld(AMcWorldActor& World)
 							return true;
 						}
 					}
+				}
+			}
+			return false;
+		};
+		Host->PlayerWearsPumpkin = [this, Weak = TWeakObjectPtr<AMcWorldActor>(&World)](const FVector& Position)
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				const AMcPlayerController* Player = Cast<AMcPlayerController>(It->Get());
+				if (Player && Player->GetWorldActor() && Player->GetWorldActor() != Weak.Get())
+				{
+					continue;
+				}
+				const AMcPlayerPawn* McPawn = It->Get() ? Cast<AMcPlayerPawn>(It->Get()->GetPawn()) : nullptr;
+				if (McPawn && McPawn->Data && McPawn->Data->Armor && FVector::Dist(McPawn->GetFeetPosition(), Position) < 0.5
+					&& McPawn->Data->Armor->Get(0).Item == FName(TEXT("minecraft:carved_pumpkin")))
+				{
+					return true;
 				}
 			}
 			return false;
@@ -1280,7 +1412,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*RuleValues)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Rule : (*RuleValues)->Values)
 		{
 			WorldActor->SetGameRule(Rule.Key, Rule.Value->AsString());
 		}
@@ -1639,6 +1771,303 @@ void AMcGameMode::BlastPlayerNear(const AMcWorldActor& World, const FVector& Pos
 	}
 }
 
+void AMcGameMode::RunFightBot(APlayerController* Controller)
+{
+	// Development: "!fightdragon" plays the End in survival through the real attack calls: it gives the player a sword, a bow and
+	// arrows, shoots every pillar crystal from the ground, then hits the dragon with the sword while it perches and shoots it
+	// otherwise, until the dragon dies or the player does. Positions are set by /tp (a player's own climbing is not played) and
+	// the aim is worked out here; the damage goes through AMcPlayerPawn::ServerSwing and ShootBowAlong, the calls a player's
+	// click and bow release end in. Each step is logged ("fightbot: ...").
+	struct FBot
+	{
+		int32 Stage = 0;
+		double Time = 0.0;
+		double LastLog = 0.0;
+		double NextAct = 0.0;
+		int32 Shots = 0;
+		int32 CrystalsAtStart = -1;
+		int32 Swings = 0;
+		int32 Retreats = 0;
+		bool bLocked = false;
+		FVector Locked = FVector::ZeroVector;
+	};
+	TSharedRef<FBot> Bot = MakeShared<FBot>();
+	TWeakObjectPtr<APlayerController> Weak(Controller);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Weak, Bot](float Delta)
+	{
+		AMcPlayerController* Player = Cast<AMcPlayerController>(Weak.Get());
+		AMcPlayerPawn* Pawn = Player ? Cast<AMcPlayerPawn>(Player->GetPawn()) : nullptr;
+		AMcWorldActor* World = Player ? const_cast<AMcWorldActor*>(Player->GetWorldActor()) : nullptr;
+		FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+		if (!Pawn || !Pawn->Data || !Host || !World->GetBlockWorld())
+		{
+			return true;
+		}
+		Bot->Time += Delta;
+		const FMcBlockRegistry& Reg = FMcBlockRegistry::Get();
+		const auto GroundAt = [&](double X, double Z)
+		{
+			for (int32 Y = 100; Y > 40; --Y)
+			{
+				if (Reg.GetBlockOf(World->GetBlockWorld()->GetBlock(FIntVector(FMath::FloorToInt32(X), Y, FMath::FloorToInt32(Z)))).Name != FName(TEXT("minecraft:air")))
+				{
+					return static_cast<double>(Y) + 1.0;
+				}
+			}
+			return 64.0;
+		};
+		const auto Slot = [&](const TCHAR* Item)
+		{
+			for (int32 I = 0; I < 9; ++I)
+			{
+				if (Pawn->Data->Inventory->Get(I).Item == FName(Item))
+				{
+					return I;
+				}
+			}
+			return -1;
+		};
+		FMcMob* Dragon = nullptr;
+		TArray<FMcMob*> Crystals;
+		for (const TUniquePtr<FMcEntity>& Entity : Host->GetManager().GetEntities())
+		{
+			if (Entity->bRemoved)
+			{
+				continue;
+			}
+			if (Entity->GetType() == FName(TEXT("minecraft:ender_dragon")))
+			{
+				Dragon = static_cast<FMcMob*>(Entity.Get());
+			}
+			else if (Entity->GetType() == FName(TEXT("minecraft:end_crystal")))
+			{
+				Crystals.Add(static_cast<FMcMob*>(Entity.Get()));
+			}
+		}
+		const float Health = Pawn->Data->Stats.Health;
+		const FString DragonText = Dragon ? FString::Printf(TEXT("%.0f hp"), Dragon->Health) : FString(TEXT("none"));
+		if (Bot->Time - Bot->LastLog >= 5.0)
+		{
+			Bot->LastLog = Bot->Time;
+			UE_LOG(LogTemp, Display, TEXT("fightbot: t=%.0f stage %d, player %.1f hp, crystals %d, dragon %s (phase %d), arrows %d, swings %d, retreats %d"), Bot->Time, Bot->Stage,
+				Health, Crystals.Num(), *DragonText, Dragon ? Dragon->DragonPhase : -1, Bot->Shots, Bot->Swings, Bot->Retreats);
+		}
+		if (Bot->Stage > 0 && Bot->Time > 8.0 && Health <= 0.0f)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: the player died at t=%.0f (stage %d, dragon %s, crystals %d)"), Bot->Time, Bot->Stage, *DragonText, Crystals.Num());
+			return false;
+		}
+		if (Bot->Time > 900.0)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: gave up after 900 s (crystals %d, dragon %s)"), Crystals.Num(), *DragonText);
+			return false;
+		}
+		const auto LookAt = [&](const FVector& From, const FVector& To) { return (To - From).GetSafeNormal(); };
+		// The way to point a full-draw bow so the arrow arrives at the target: the arrow flies 3 blocks a tick, loses 1% a tick and falls 0.05 a tick
+		// (McArrow.h), so a shot at a distant pillar top has to aim over it. Found by flying the arrow in the head and raising the aim by what it fell short.
+		const auto Ballistic = [&](const FVector& From, const FVector& To, bool bLob)
+		{
+			const FVector Flat(To.X - From.X, 0.0, To.Z - From.Z);
+			const double Range = Flat.Size();
+			if (Range < 1.0)
+			{
+				return (To - From).GetSafeNormal();
+			}
+			const FVector Way = Flat / Range;
+			// Where the arrow is, high or low, when it has covered the range (a low value if it never does).
+			const auto HeightAt = [&](double Angle)
+			{
+				FVector Velocity = (Way * FMath::Cos(Angle) + FVector(0.0, FMath::Sin(Angle), 0.0)) * 3.0;
+				FVector Position = From;
+				double Gone = 0.0;
+				for (int32 Tick = 0; Tick < 600; ++Tick)
+				{
+					Position += Velocity;
+					Gone += FVector(Velocity.X, 0.0, Velocity.Z).Size();
+					Velocity *= 0.99;
+					Velocity.Y -= 0.05;
+					if (Gone >= Range)
+					{
+						return Position.Y;
+					}
+				}
+				return -1.0e9;
+			};
+			double Angle = FMath::Atan2(To.Y - From.Y, Range);
+			if (bLob)
+			{
+				// The high arc: a shot that comes down on the target clears the pillar's top that a flat one cannot (it would hit the side).
+				// Between the flattest angle that reaches and nearly straight up, the height at the range falls as the angle rises.
+				double Low = 0.6;
+				double High = 1.5;
+				if (HeightAt(Low) >= To.Y)
+				{
+					for (int32 Round = 0; Round < 40; ++Round)
+					{
+						const double Mid = 0.5 * (Low + High);
+						(HeightAt(Mid) >= To.Y ? Low : High) = Mid;
+					}
+					Angle = 0.5 * (Low + High);
+					UE_LOG(LogTemp, Display, TEXT("fightbot: lob aim %.1f degrees, range %.1f, rise %.1f, arrow ends %.1f off"), FMath::RadiansToDegrees(Angle), Range, To.Y - From.Y, HeightAt(Angle) - To.Y);
+					return Way * FMath::Cos(Angle) + FVector(0.0, FMath::Sin(Angle), 0.0);
+				}
+			}
+			for (int32 Round = 0; Round < 12; ++Round)
+			{
+				Angle += FMath::Atan2(To.Y - HeightAt(Angle), Range);
+			}
+			return Way * FMath::Cos(Angle) + FVector(0.0, FMath::Sin(Angle), 0.0);
+		};
+		if (Bot->Stage == 0)
+		{
+			// The kit: what a player could have, from the start of a run.
+			if (Bot->Time < 1.0 || (!Dragon && Crystals.IsEmpty()))
+			{
+				return true;
+			}
+			// The pumpkin goes on and the eyes go down before the player arrives among the endermen: the first bite came from one angered at the arrival.
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:carved_pumpkin"), 1));
+			Player->SetControlRotation(FRotator(-80.0, Player->GetControlRotation().Yaw, 0.0));
+			HandleChat(Player, FString::Printf(TEXT("/tp @s 2.5 %.1f 20.5"), GroundAt(2.5, 20.5)));
+			Bot->Stage = 5;
+			Bot->NextAct = Bot->Time + 3.0;
+			return true;
+		}
+		if (Bot->Stage == 5 && Bot->Time >= Bot->NextAct)
+		{
+			HandleChat(Player, TEXT("/gamemode survival"));
+			// What a player would have put on: a full set of diamond armour.
+			Pawn->Data->Armor->Set(0, FMcItemStack(FName("minecraft:carved_pumpkin"), 1));
+			Pawn->Data->Armor->Set(1, FMcItemStack(FName("minecraft:diamond_chestplate"), 1));
+			Pawn->Data->Armor->Set(2, FMcItemStack(FName("minecraft:diamond_leggings"), 1));
+			Pawn->Data->Armor->Set(3, FMcItemStack(FName("minecraft:diamond_boots"), 1));
+			HandleChat(Player, TEXT("/give @s minecraft:diamond_sword"));
+			HandleChat(Player, TEXT("/give @s minecraft:bow"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			HandleChat(Player, TEXT("/give @s minecraft:arrow 64"));
+			Bot->Stage = 1;
+			Bot->NextAct = Bot->Time + 4.0;
+			return true;
+		}
+		if (Bot->Time < Bot->NextAct)
+		{
+			// Between actions the player looks at its feet: an enderman is angered by being looked in the eyes (that is what killed the first bots).
+			Player->SetControlRotation(FRotator(-80.0, Player->GetControlRotation().Yaw, 0.0));
+			return true;
+		}
+		const FVector Feet = Pawn->GetFeetPosition();
+		const FVector Eye = Feet + FVector(0.0, 1.62, 0.0);
+		if (Bot->Stage == 1)
+		{
+			// Crystals: from the ground well inside the ring, arrows at the nearest one still standing.
+			if (Crystals.IsEmpty())
+			{
+				UE_LOG(LogTemp, Display, TEXT("fightbot: every crystal is gone at t=%.0f after %d arrows (player %.1f hp)"), Bot->Time, Bot->Shots, Health);
+				Bot->Stage = 2;
+				return true;
+			}
+			if (Bot->CrystalsAtStart < 0)
+			{
+				Bot->CrystalsAtStart = Crystals.Num();
+			}
+			// One crystal at a time: the one aimed at stays the target until it is gone (the nearest one flips as the player crosses the island).
+			FMcMob* Target = nullptr;
+			if (Bot->bLocked)
+			{
+				for (FMcMob* Crystal : Crystals)
+				{
+					if (FVector::DistSquared(Crystal->Body.Position, Bot->Locked) < 1.0)
+					{
+						Target = Crystal;
+					}
+				}
+			}
+			if (!Target)
+			{
+				Target = Crystals[0];
+				for (FMcMob* Crystal : Crystals)
+				{
+					if (FVector::DistSquared(Crystal->Body.Position, Feet) < FVector::DistSquared(Target->Body.Position, Feet))
+					{
+						Target = Crystal;
+					}
+				}
+				Bot->bLocked = true;
+				Bot->Locked = Target->Body.Position;
+			}
+			// From the far side of the island, the long way across, lobbing the arrow onto the crystal: close in, the pillar's own side is in the way.
+			const FVector2D Out = FVector2D(Target->Body.Position.X, Target->Body.Position.Z).GetSafeNormal();
+			const FVector Spot(-Out.X * 48.0 + 0.5, 0.0, -Out.Y * 48.0 + 0.5);
+			if (FVector::Dist2D(FVector(Feet.X, Feet.Z, 0.0), FVector(Spot.X, Spot.Z, 0.0)) > 4.0)
+			{
+				HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, GroundAt(Spot.X, Spot.Z), Spot.Z));
+				Bot->NextAct = Bot->Time + 1.5;
+				return true;
+			}
+			const int32 Bow = Slot(TEXT("minecraft:bow"));
+			if (Bow >= 0)
+			{
+				Pawn->Data->SelectedSlot = Bow;
+			}
+			Pawn->ShootBowAlong(Ballistic(Eye, Target->Body.Position + FVector(0.0, 1.0, 0.0), true), 20);
+			++Bot->Shots;
+			Bot->NextAct = Bot->Time + 1.2;
+			return true;
+		}
+		if (!Dragon)
+		{
+			UE_LOG(LogTemp, Display, TEXT("fightbot: the dragon is dead at t=%.0f after %d arrows and %d swings (player %.1f hp, %d retreats)"), Bot->Time, Bot->Shots, Bot->Swings, Health, Bot->Retreats);
+			HandleChat(Player, TEXT("/tp @s 2 70 0"));
+			return false;
+		}
+		// The dragon: sword while it sits, bow while it flies. A hurt player backs off and heals first.
+		if (Health < 7.0f)
+		{
+			++Bot->Retreats;
+			HandleChat(Player, FString::Printf(TEXT("/tp @s 0.5 %.1f 40.5"), GroundAt(0.5, 40.5)));
+			Bot->NextAct = Bot->Time + 20.0;
+			return true;
+		}
+		const bool bPerched = Dragon->DragonPhase >= 5 && Dragon->DragonPhase <= 7;
+		if (bPerched)
+		{
+			const FVector Head = Dragon->Body.Position + FVector(0.0, 1.0, 0.0);
+			if (FVector::Dist(Feet, Head) > 5.0)
+			{
+				HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Head.X + 3.0, GroundAt(Head.X + 3.0, Head.Z), Head.Z));
+				Bot->NextAct = Bot->Time + 0.5;
+				return true;
+			}
+			const int32 Sword = Slot(TEXT("minecraft:diamond_sword"));
+			if (Sword >= 0)
+			{
+				Pawn->Data->SelectedSlot = Sword;
+			}
+			Pawn->ServerSwing(LookAt(Eye, Head));
+			++Bot->Swings;
+			Bot->NextAct = Bot->Time + 0.65;
+			return true;
+		}
+		const FVector Spot(0.5, GroundAt(0.5, 30.5), 30.5);
+		if (FVector::Dist2D(FVector(Feet.X, Feet.Z, 0.0), FVector(Spot.X, Spot.Z, 0.0)) > 6.0)
+		{
+			HandleChat(Player, FString::Printf(TEXT("/tp @s %.1f %.1f %.1f"), Spot.X, Spot.Y, Spot.Z));
+			Bot->NextAct = Bot->Time + 1.0;
+			return true;
+		}
+		const int32 Bow = Slot(TEXT("minecraft:bow"));
+		if (Bow >= 0)
+		{
+			Pawn->Data->SelectedSlot = Bow;
+		}
+		Pawn->ShootBowAlong(Ballistic(Eye, Dragon->Body.Position, false), 20);
+		++Bot->Shots;
+		Bot->NextAct = Bot->Time + 1.2;
+		return true;
+	}), 0.25f);
+}
+
 void AMcGameMode::TickVillages()
 {
 	for (AMcWorldActor* World : Worlds)
@@ -1763,7 +2192,7 @@ void AMcGameMode::EffectPlayerNear(const AMcWorldActor& World, const FVector& Po
 	}
 }
 
-void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage)
+void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Position, float Damage, McSurvival::EDamage Kind)
 {
 	AMcPlayerPawn* Nearest = nullptr;
 	double NearestDistance = 2.5;
@@ -1786,7 +2215,7 @@ void AMcGameMode::HurtPlayerNear(const AMcWorldActor& World, const FVector& Posi
 	if (Nearest)
 	{
 		// The mob that bit is at Position: the player is knocked away from it.
-		Nearest->ServerHurt(Damage, McSurvival::EDamage::Mob, &Position);
+		Nearest->ServerHurt(Damage, Kind, &Position);
 	}
 }
 
@@ -1822,6 +2251,7 @@ bool AMcGameMode::RestoreSurvival(const AController* Controller, AMcPlayerPawn& 
 		&& McPlayerSave::Apply(Saved, *Pawn.Data))
 	{
 		Pawn.SelectedSlot = Pawn.Data->SelectedSlot;
+		UE_LOG(LogMcClient, Log, TEXT("Player restored: %s, %s, hotbar slot %d"), *GetSaveId(Controller), Pawn.Data->bCreative ? TEXT("creative") : TEXT("survival"), Pawn.Data->SelectedSlot);
 		return true;
 	}
 	return false;
@@ -1954,6 +2384,7 @@ void AMcGameMode::SavePlayer(const AController* Controller) const
 			McPlayerSave::Capture(*McPawn->Data, Data);
 		}
 	}
+	UE_LOG(LogMcClient, Log, TEXT("Player saved: %s, %s, hotbar slot %d"), *GetSaveId(Controller), Data.bCreative ? TEXT("creative") : TEXT("survival"), Data.SelectedSlot);
 	McWorldSave::SavePlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Data);
 }
 
@@ -2010,7 +2441,36 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 						// A line "!respawn" presses the death screen's Respawn (a shot script can't click it).
 						RespawnPlayer(Player.Get());
 					}
-					else if (Player.IsValid() && Line == TEXT("!killdragon"))
+					else if (Player.IsValid() && Line == TEXT("!showdragon"))
+					{
+						// Development: a dragon with no AI 16 blocks in front of this player (yaw 0, towards +z), 3 up, in the world the player is in,
+						// for a close look at the model. Waits (up to a minute) for the pawn and the world to exist.
+						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, Player, Tries = MakeShared<int32>(0)](float)
+						{
+							AMcPlayerController* McPlayer = Cast<AMcPlayerController>(Player.Get());
+							AMcPlayerPawn* Pawn = McPlayer ? Cast<AMcPlayerPawn>(McPlayer->GetPawn()) : nullptr;
+							AMcWorldActor* World = McPlayer ? const_cast<AMcWorldActor*>(McPlayer->GetWorldActor()) : nullptr;
+							FMcEntityHost* Host = World ? World->GetEntityHost() : nullptr;
+							if (!Pawn || !Host)
+							{
+								return ++(*Tries) < 60;
+							}
+							const FVector Feet = Pawn->GetFeetPosition();
+							const FVector At(Feet.X, Feet.Y + 3.0, Feet.Z + 16.0);
+							FMcMob* Shown = Host->SpawnMob(FName(TEXT("minecraft:ender_dragon")), At);
+							if (Shown)
+							{
+								Shown->bNoAI = true;
+							}
+							UE_LOG(LogTemp, Display, TEXT("showdragon: spawned %s at %s"), Shown ? TEXT("a dragon") : TEXT("nothing"), *At.ToString());
+							return false;
+						}), 1.0f);
+					}
+					else if (Player.IsValid() && Line == TEXT("!fightdragon"))
+					{
+						RunFightBot(Player.Get());
+					}
+					else if (Player.IsValid() && (Line == TEXT("!killdragon") || Line == TEXT("!freezedragon")))
 					{
 						// Development: "!killdragon" waits (by game state, since a slow world load makes timed lines all fire at once)
 						// for the ender dragon, deals it 1000 damage (no command reaches mobs), waits for its death to end, then drops
@@ -2019,7 +2479,7 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 						struct FRun { int32 Stage = 0; int32 Wait = 0; };
 						UE_LOG(LogTemp, Display, TEXT("killdragon: armed, %d worlds"), Worlds.Num());
 						FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
-							[this, Player, Run = MakeShared<FRun>()](float)
+							[this, Player, bFreeze = (Line == TEXT("!freezedragon")), Run = MakeShared<FRun>()](float)
 							{
 								if (!Player.IsValid())
 								{
@@ -2046,6 +2506,18 @@ void AMcGameMode::PostLogin(APlayerController* NewPlayer)
 								UE_LOG(LogTemp, Display, TEXT("killdragon: stage %d, dragons %d"), Run->Stage, Seen);
 								if (Run->Stage == 0 && Dragon)
 								{
+									if (bFreeze)
+									{
+										// "!freezedragon": hold the dragon still (no AI) at (0.5, 66, 0.5) and put this player at -McKillTp, for a shot of
+										// the model.
+										Dragon->bNoAI = true;
+										Dragon->Body.Position = FVector(0.5, 66.0, 0.5);
+										Dragon->Body.Velocity = FVector::ZeroVector;
+										FString Spot;
+										FParse::Value(FCommandLine::Get(), TEXT("-McKillTp="), Spot, false);
+										HandleChat(Player.Get(), TEXT("/tp @s ") + (Spot.IsEmpty() ? FString(TEXT("0.5 66 28.5")) : Spot));
+										return false;
+									}
 									Dragon->Damage(1000.0f, nullptr);
 									UE_LOG(LogTemp, Display, TEXT("killdragon: dragon found (%.0f hp), damaged"), Dragon->Health);
 									Run->Stage = 1;
@@ -2305,6 +2777,11 @@ namespace
 			}
 			OutState = Blocks->GetBlock(Pos);
 			return true;
+		}
+		virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) override
+		{
+			AMcWorldActor* World = Mode.GetPrimaryWorld();
+			return World ? World->PlaceFeature(Id, Pos) : 2;
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override
 		{
@@ -2750,6 +3227,27 @@ namespace
 			}
 		}
 
+		virtual bool GetVehicleName(const FString& Player, FString& OutName) const override
+		{
+			AMcPlayerPawn* Pawn = FindPawn(Player);
+			FMcEntityManager* Entities = Pawn && Pawn->GetRidingId() != 0 && Pawn->GetEntities ? Pawn->GetEntities() : nullptr;
+			const FMcEntity* Vehicle = Entities ? Entities->Find(Pawn->GetRidingId()) : nullptr;
+			if (!Vehicle)
+			{
+				return false;
+			}
+			OutName = McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(Vehicle->GetType().ToString()));
+			return true;
+		}
+
+		virtual void Dismount(const FString& Player) override
+		{
+			if (AMcPlayerPawn* Pawn = FindPawn(Player))
+			{
+				Pawn->ServerDismount();
+			}
+		}
+
 		virtual int32 GetSelectedSlot(const FString& Player) const override
 		{
 			AMcPlayerPawn* Pawn = FindPawn(Player);
@@ -2940,6 +3438,7 @@ void AMcGameMode::HandleChat(APlayerController* From, const FString& Text)
 	FGameCommandTarget Target(*this);
 	for (const FMcCommandReply& Reply : McCommands::HandleChat(Text, Sender, Target))
 	{
+		McPerf::Event(FString::Printf(TEXT("REPLY%s %s"), Reply.bError ? TEXT("_ERROR") : TEXT(""), *Reply.Text));
 		Target.SendTo(Sender.Name, Reply);
 	}
 }

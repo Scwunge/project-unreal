@@ -18,6 +18,7 @@
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundWaveProcedural.h"
 #include "Async/Async.h"
+#include "McPerf.h"
 
 bool UMcAudioSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -563,6 +564,7 @@ void UMcAudioSubsystem::DropStaleListener()
 
 bool UMcAudioSubsystem::Tick(float DeltaTime)
 {
+	MC_PERF_SCOPE(Audio);
 	DropStaleListener();
 	UWorld* World = GetWorld();
 	APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;

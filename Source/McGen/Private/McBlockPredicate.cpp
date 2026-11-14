@@ -33,7 +33,7 @@ TOptional<FMcStateId> McParseBlockState(const TSharedPtr<FJsonValue>& Json)
 	const TSharedPtr<FJsonObject>* PropertyObject;
 	if (Object->TryGetObjectField(TEXT("properties"), PropertyObject) || Object->TryGetObjectField(TEXT("Properties"), PropertyObject))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*PropertyObject)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*PropertyObject)->Values)
 		{
 			Properties.Add(FName(*Entry.Key), FName(*Entry.Value->AsString()));
 		}

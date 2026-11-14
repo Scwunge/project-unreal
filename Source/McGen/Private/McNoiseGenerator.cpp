@@ -58,7 +58,7 @@ bool FMcNoiseSettings::Load(const FString& Id, FMcNoiseSettings& Out)
 	}
 	Result.DefaultBlock = Block.GetValue();
 	Result.DefaultFluid = Fluid.GetValue();
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*RouterObject)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*RouterObject)->Values)
 	{
 		Result.Router.Add(Entry.Key, Entry.Value);
 	}
@@ -280,6 +280,7 @@ void FMcNoiseGenerator::LoadCarvers()
 }
 
 bool bMcCarversOff = false;
+bool bMcNoGrassDrop = false;
 
 void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>& Sections, FMcDensityContext& AquiferContext, FMcAquifer::FCache& AquiferCache) const
 {
@@ -337,7 +338,7 @@ void FMcNoiseGenerator::ApplyCarvers(FMcChunk& Chunk, TArray<TArray<FMcStateId>>
 			const FMcStateId Old = State;
 			State = Fill;
 			// Carving away the top block brings it down onto the dirt below.
-			if ((Old == GrassBlock || Old == Mycelium) && Y - 1 >= ChunkMinY && At(X, Y - 1, Z) == Dirt)
+			if (!bMcNoGrassDrop && (Old == GrassBlock || Old == Mycelium) && Y - 1 >= ChunkMinY && At(X, Y - 1, Z) == Dirt)
 			{
 				At(X, Y - 1, Z) = Old;
 			}

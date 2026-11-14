@@ -1,0 +1,8 @@
+# A new vanilla world filled from where it starts, with nothing changing blocks afterwards, then written to disk.
+# For tools/vanilla_worlds_cmp.py: run on two saves made by tools/vanilla_seed_saves.py.
+cmd gamerule send_command_feedback false
+cmd gamerule random_tick_speed 0
+cmd weather clear 1000000
+wait 3000
+cmd save-all flush
+wait 400

@@ -17,6 +17,7 @@
 #include "McResourcePacks.h"
 #include "McHUD.generated.h"
 
+class FMcCacheBuilder;
 class FMcContainer;
 class FMcFurnace;
 class FMcMenuInput;
@@ -39,6 +40,9 @@ public:
 	virtual ~AMcHUD() override;
 	virtual void DrawHUD() override;
 
+	// Queues menu buttons to be pressed by name, comma separated with '_' for a space, a second apart. For a script.
+	static void QueueMenuPresses(FString Spec);
+
 	// Minecraft's automatic GUI scale: the largest whole number that keeps the screen at least 320 x 240
 	// GUI pixels.
 	static int32 GetGuiScale(int32 Width, int32 Height);
@@ -58,7 +62,7 @@ public:
 	// ---- Menus (McHUDMenus.cpp) ----
 	// The title screen and those behind it (the world list, New World, joining a server), and the pause menu in a
 	// world, drawn with the game's button and text field sprites.
-	enum class EMenu : uint8 { None, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language, Statistics, Advancements };
+	enum class EMenu : uint8 { None, Setup, Title, Worlds, ConfirmDelete, NewWorld, Join, Message, Pause, Chat, Options, ResourcePacks, ConfirmPacks, ConfirmIncompatible, ImportJava, Language, Statistics, Advancements };
 	EMenu GetMenu() const { return ActiveMenu; }
 	// Shows a menu (None closes the pause menu). The world list and the join screen read what they show afresh.
 	void OpenMenu(EMenu NewMenu);
@@ -196,6 +200,9 @@ private:
 	// IconScale below 1 draws the picture smaller (the recipe toast's crafting table), without the count and the bar.
 	void DrawStack(const FMcItemStack& Stack, float X, float Y, FName Picture = NAME_None, float IconScale = 1.0f);
 	void DrawScreen(int32 Width, int32 Height);
+	// The player in the survival inventory's black box (26,8 to 75,78 of the picture), turned toward the mouse: a player
+	// model far below the world, filmed by its own orthographic capture into a picture drawn there.
+	void DrawInventoryFigure(FIntPoint Origin);
 	// The creative screen's search, item list and scroll bar.
 	void DrawCreative(FIntPoint Origin);
 	void DrawEnchanting(FIntPoint Origin, FIntPoint Local);
@@ -229,6 +236,10 @@ private:
 	bool DrawMenus(int32 Width, int32 Height, bool bTitle);
 	void DrawMenuBackground(int32 Width, int32 Height, bool bDim);
 	void DrawTitle(int32 Width, int32 Height);
+	// First run, before the cache exists (McCacheSetup.h): none of the game's pictures or font are there to draw with, so
+	// this screen uses the engine's font and plain rectangles. Sizes are in screen pixels.
+	void DrawSetup(int32 Width, int32 Height);
+	void FinishSetup();
 	void DrawWorlds(int32 Width, int32 Height);
 	void DrawConfirmDelete(int32 Width, int32 Height);
 	// "Import Java World": the folders of %APPDATA%\.minecraft\saves that are worlds, one of which is copied into ours.
@@ -332,6 +343,8 @@ private:
 	int32 DraggedSlider = INDEX_NONE;
 	FMcClientOptions Settings;
 	bool bSettingsApplied = false;
+	// The saved frame cap and VSync, set once at the first menu or world (FMcClientOptions::ApplyFrameRate).
+	bool bFrameRateApplied = false;
 	TWeakObjectPtr<APawn> SettingsPawn;
 	int32 LanPort = 0;
 
@@ -390,6 +403,15 @@ private:
 	FString PlayerName;
 	FString ServerAddress;
 	FString MessageTitle;
+	// First-run setup: whether the cache was found complete (looked at once), the folder typed in, what went wrong, and
+	// the build once it is started.
+	// The world list's switch: play the world as a listen server on the game's port, so friends can join by address.
+	bool bHostWorld = false;
+	bool bCacheChecked = false;
+	bool bCacheReady = false;
+	FString SetupFolder;
+	FString SetupError;
+	TSharedPtr<FMcCacheBuilder> CacheBuild;
 	FString MessageText;
 	FString ChatDraft;
 	TArray<FString> SentChat;
@@ -398,6 +420,15 @@ private:
 
 	int32 Scale = 1;
 	int32 ShakeCounter = 0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> FigureStage;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMcPlayerModelComponent> Figure;
+	UPROPERTY(Transient)
+	TObjectPtr<class USceneCaptureComponent2D> FigureCapture;
+	UPROPERTY(Transient)
+	TObjectPtr<class UTextureRenderTarget2D> FigureTarget;
 
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UTexture2D>> Sprites;

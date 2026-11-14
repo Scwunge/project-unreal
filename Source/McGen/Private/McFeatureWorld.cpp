@@ -634,46 +634,73 @@ namespace
 			FMcRandom& Random = Context.Random;
 			if (Region.GetBlock(Origin + Down) != ValidBase)
 			{
+				McCountBlocks(TEXT("huge_fungus: no valid base"), 1);
 				return false;
 			}
-			int32 Height = Random.NextInt(13) + 4;
+			// The wiki ("Huge Crimson Fungus"): a height of 4 to 13, doubled one time in twelve.
+			int32 Height = Random.NextInt(10) + 4;
 			if (Random.NextInt(12) == 0)
 			{
 				Height *= 2;
 			}
 			Height = FMath::Min(Height, Region.GetMaxY() - Origin.Y - 10);
-			const bool bThick = !bPlanted && Random.NextFloat() < 0.06f;
-			const int32 Width = bThick ? 2 : 1;
-			const auto CanGrow = [&](const FIntVector& At) { return Region.IsAir(Region.GetBlock(At)) || (Replaceable.IsValid() && Replaceable->Test(Region, At)); };
-			for (int32 Y = 0; Y < Height; ++Y)
+			// Thick trunks: 9.3% in the reference's crimson forest (116 thick against 1126 thin trunks, NetherStats ref run
+			// 2026-11-13, by stem bases with stem neighbours), half of them the wiki's 3x3 "plus" (centre, four arms, a corner
+			// now and then) and half 2x2, as the counts of neighbours show.
+			const bool bThick = !bPlanted && Random.NextFloat() < 0.093f;
+			const bool bPlus = bThick && Random.NextBool();
+			const int32 Width = (bThick && !bPlus) ? 2 : 1;
+			TArray<FIntPoint> Footprint;
+			if (bPlus)
 			{
-				for (int32 DX = 0; DX < Width; ++DX)
+				Footprint = { FIntPoint(0, 0), FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1) };
+				for (int32 CornerX = -1; CornerX <= 1; CornerX += 2)
 				{
-					for (int32 DZ = 0; DZ < Width; ++DZ)
+					for (int32 CornerZ = -1; CornerZ <= 1; CornerZ += 2)
 					{
-						if (!CanGrow(Origin + FIntVector(DX, Y, DZ)))
+						if (Random.NextFloat() < 0.08f)
 						{
-							if (Y < 4)
-							{
-								return false;
-							}
-							Height = Y;
+							Footprint.Add(FIntPoint(CornerX, CornerZ));
 						}
 					}
 				}
 			}
-			for (int32 Y = 0; Y < Height; ++Y)
+			else
 			{
 				for (int32 DX = 0; DX < Width; ++DX)
 				{
 					for (int32 DZ = 0; DZ < Width; ++DZ)
 					{
-						Region.SetBlock(Origin + FIntVector(DX, Y, DZ), Stem);
+						Footprint.Add(FIntPoint(DX, DZ));
 					}
+				}
+			}
+			const auto CanGrow = [&](const FIntVector& At) { return Region.IsAir(Region.GetBlock(At)) || (Replaceable.IsValid() && Replaceable->Test(Region, At)); };
+			for (int32 Y = 0; Y < Height; ++Y)
+			{
+				for (const FIntPoint& Cell : Footprint)
+				{
+					if (!CanGrow(Origin + FIntVector(Cell.X, Y, Cell.Y)))
+					{
+						if (Y < 4)
+						{
+							McCountBlocks(TEXT("huge_fungus: blocked under 4"), 1);
+							return false;
+						}
+						Height = Y;
+					}
+				}
+			}
+			for (int32 Y = 0; Y < Height; ++Y)
+			{
+				for (const FIntPoint& Cell : Footprint)
+				{
+					Region.SetBlock(Origin + FIntVector(Cell.X, Y, Cell.Y), Stem);
 				}
 			}
 			// The hat: wide layers at the bottom and a cap, with shroomlights hanging under the rim.
 			const int32 HatHeight = bPlanted ? 2 : 3;
+			TArray<FIntVector> HatBlocks;
 			for (int32 Layer = 0; Layer < HatHeight; ++Layer)
 			{
 				const int32 Y = Height - 1 - Layer + 1 - (HatHeight - 1);
@@ -693,11 +720,61 @@ namespace
 						if (CanGrow(At))
 						{
 							Region.SetBlock(At, Hat);
-							if (Layer == 0 && Random.NextFloat() < 0.12f && CanGrow(At + Down))
+							HatBlocks.Add(At);
+							// Fitted: the reference has 1.03 shroomlights per stem base in the crimson forest (2489 over 2419 bases,
+							// NetherStats ref run 2026-11-13) and ours came out 2.3x that at 0.12.
+							if (Layer == 0 && Random.NextFloat() < 0.052f && CanGrow(At + Down))
 							{
 								Region.SetBlock(At + Down, Decor);
 							}
 						}
+					}
+				}
+			}
+			// Weeping vines hang from the crimson cap (the wiki, "Huge Crimson Fungus", gives no numbers; fitted to the reference's
+			// crimson forest, 2026-11-13: 2370 vine columns under nether wart blocks for 2419 stem bases, about 0.98 a fungus; our first try at 0.98 gave only 1.96 vine blocks a fungus against the reference's 3.3, so the chance is scaled to 1.65 candidates-worth, with
+			// lengths 1..11 counted 415, 530, 518, 346, 284, 183, 48, 11, 21, 6, 8).
+			static const FMcStateId WartBlock = StateOf(TEXT("minecraft:nether_wart_block"));
+			if (Hat == WartBlock)
+			{
+				static const FMcStateId VinePlant = StateOf(TEXT("minecraft:weeping_vines_plant"));
+				static const FMcStateId VineTip = StateOf(TEXT("minecraft:weeping_vines"));
+				static const int32 LengthWeights[11] = { 415, 530, 518, 346, 284, 183, 48, 11, 21, 6, 8 };
+				TArray<FIntVector> Candidates;
+				for (const FIntVector& At : HatBlocks)
+				{
+					if (Region.GetBlock(At) == Hat && Region.IsAir(Region.GetBlock(At + Down)))
+					{
+						Candidates.Add(At);
+					}
+				}
+				const float Chance = Candidates.Num() > 0 ? FMath::Min(1.0f, 1.65f / Candidates.Num()) : 0.0f;
+				for (const FIntVector& At : Candidates)
+				{
+					if (Random.NextFloat() >= Chance)
+					{
+						continue;
+					}
+					int32 Pick = Random.NextInt(2370);
+					int32 Length = 1;
+					for (int32 Index = 0; Index < 11; ++Index)
+					{
+						if (Pick < LengthWeights[Index])
+						{
+							Length = Index + 1;
+							break;
+						}
+						Pick -= LengthWeights[Index];
+					}
+					int32 Placed = 0;
+					while (Placed < Length && Region.IsAir(Region.GetBlock(At + FIntVector(0, -(Placed + 1), 0))))
+					{
+						++Placed;
+					}
+					for (int32 Step = 1; Step <= Placed; ++Step)
+					{
+						const bool bTip = Step == Placed;
+						Region.SetBlock(At + FIntVector(0, -Step, 0), bTip ? McWithProperty(VineTip, TEXT("age"), FName(*FString::FromInt(17 + Random.NextInt(9)))) : VinePlant);
 					}
 				}
 			}
@@ -1217,7 +1294,6 @@ namespace
 
 void McRegisterWorldFeatures()
 {
-	using FLibrary = FMcFeatureLibrary;
 	FLibrary::RegisterType(TEXT("large_dripstone"), [](const FJsonObject& Json, FLibrary&) -> TSharedPtr<const FMcFeature>
 	{
 		TSharedRef<FLargeDripstone> Result = MakeShared<FLargeDripstone>();

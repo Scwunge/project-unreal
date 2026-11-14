@@ -85,7 +85,7 @@ bool FMcSoundRegistry::ParseInto(const FString& Json, bool bMerge)
 		Events.Reset();
 		Subtitles.Reset();
 	}
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Root->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Root->Values)
 	{
 		const TSharedPtr<FJsonObject>* Object = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Sounds = nullptr;

@@ -38,6 +38,7 @@
 #include "McWorldActor.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/MemoryWriter.h"
+#include "McPerf.h"
 
 namespace
 {
@@ -252,6 +253,7 @@ void UMcBlockUseSubsystem::WatchWorld(AMcWorldActor& WorldActor)
 
 void UMcBlockUseSubsystem::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(Misc);
 	Super::Tick(DeltaSeconds);
 	// Twenty times a second, however fast frames come (but never a long catch-up after a stall).
 	Accumulator = FMath::Min(Accumulator + DeltaSeconds, 0.25f);

@@ -62,6 +62,7 @@
 #include "McSignComponent.h"
 #include "McParticleComponent.h"
 #include "McPhysics.h"
+#include "McPerf.h"
 #endif
 
 AMcPlayerController::AMcPlayerController()
@@ -72,6 +73,7 @@ AMcPlayerController::AMcPlayerController()
 
 void AMcPlayerController::Tick(float DeltaSeconds)
 {
+	MC_PERF_SCOPE(Ctrl);
 	Super::Tick(DeltaSeconds);
 	ConnectToWorld();
 	ResolveWantedDimension();
@@ -92,18 +94,13 @@ void AMcPlayerController::Tick(float DeltaSeconds)
 		TickMusic(DeltaSeconds);
 	}
 
-#if !UE_BUILD_SHIPPING
-	// Development: -McInput="hold:W:2;key:Q;shot:name" plays that input (see McDevInput.h).
+	// -McInput="hold:W:2;key:Q;shot:name" plays that input (see McDevInput.h). In Shipping too: the soak test drives the
+	// binary players get.
 	if (IsLocalController() && FMcDevInput::Wanted())
 	{
-		if (!DevInput.IsValid())
-		{
-			FString Script;
-			FParse::Value(FCommandLine::Get(), TEXT("-McInput="), Script, false);
-			DevInput = MakeShared<FMcDevInput>(Script.TrimQuotes());
-		}
-		DevInput->Tick(*this, DeltaSeconds);
+		FMcDevInput::Get().Tick(*this, DeltaSeconds);
 	}
+#if !UE_BUILD_SHIPPING
 	// Development: -McNetLog logs where this player is and how many chunks it has, every two seconds.
 	static const bool bNetLog = FParse::Param(FCommandLine::Get(), TEXT("McNetLog"));
 	NetLogTimer += DeltaSeconds;
@@ -1010,6 +1007,14 @@ void AMcPlayerController::EnterWorld(AMcWorldActor& NewWorld)
 	{
 		MyPawn->SetBlockWorld(NewWorld.GetBlockWorld());
 		HookServerPawn(*MyPawn);
+		if (Old && Old != WorldActor)
+		{
+			FMcTriggerEvent Moved;
+			Moved.Trigger = TEXT("minecraft:changed_dimension");
+			Moved.From = FName(*McCache::Namespaced(Old->Dimension));
+			Moved.To = FName(*McCache::Namespaced(NewWorld.Dimension));
+			MyPawn->FireTrigger(Moved);
+		}
 	}
 	if (IsLocalController() && Old != WorldActor)
 	{

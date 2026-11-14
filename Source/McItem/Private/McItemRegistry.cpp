@@ -136,7 +136,7 @@ bool FMcItemRegistry::EnsureLoaded()
 	}
 	Items.SetNum((*Entries)->Values.Num());
 	int32 Missing = 0;
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Entries)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Entries)->Values)
 	{
 		const int32 Id = static_cast<int32>(Entry.Value->AsObject()->GetNumberField(TEXT("protocol_id")));
 		if (!Items.IsValidIndex(Id))
@@ -152,7 +152,7 @@ bool FMcItemRegistry::EnsureLoaded()
 		const TSharedPtr<FJsonObject>* Components;
 		if (Json.IsValid() && Json->TryGetObjectField(TEXT("components"), Components))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Component : (*Components)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Component : (*Components)->Values)
 			{
 				Def.Components.Add(FName(*Component.Key), Component.Value);
 			}

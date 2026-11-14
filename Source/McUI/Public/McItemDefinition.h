@@ -36,4 +36,9 @@ namespace McItemDef
 	// Whether the definition, or a model it picks for this stack, comes from a resource pack (so the game's own icon code,
 	// which knows only the game's definitions, doesn't apply).
 	MCUI_API bool UsesPackModels(const FMcItemStack& Stack);
+
+	// The picture a chest's item draws its chest in, by its "minecraft:special" model of type "minecraft:chest" ("normal",
+	// "trapped", "ender", "copper_weathered"... and "christmas" when the "minecraft:local_time" "MM-dd" select matches Now),
+	// or empty when the definition draws no chest. OutBase gets that node's base model (its display transforms).
+	MCUI_API FString FindChestTexture(const TSharedPtr<FJsonObject>& Definition, const FDateTime& Now, FString* OutBase = nullptr);
 }

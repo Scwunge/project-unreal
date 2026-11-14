@@ -30,8 +30,8 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	FMcBlockWorld World{FMcDimensionType()};
-	for (int32 Z = -2; Z <= 6; ++Z) { for (int32 X = -2; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
-	for (int32 X = -30; X < 30; ++X) { for (int32 Z = -30; Z < 100; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:stone")).Get(0)); } }
+	for (int32 Z = -2; Z <= 8; ++Z) { for (int32 X = -2; X <= 2; ++X) { World.AddChunk(World.MakeChunk(FIntPoint(X, Z))); } }
+	for (int32 X = -30; X < 30; ++X) { for (int32 Z = -30; Z < 130; ++Z) { World.SetBlock(FIntVector(X, 0, Z), Registry.ParseState(TEXT("minecraft:stone")).Get(0)); } }
 	FMcEntityManager Manager(World);
 	const auto MakeHorse = [&](const FMcMobType& Type, double Z)
 	{

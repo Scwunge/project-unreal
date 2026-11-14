@@ -91,7 +91,8 @@ private:
 	FTimerHandle ItemFrameTimer;
 	// Where a player starts: where a saved world last had them, else the spawn. bOutFlying says whether they were
 	// flying when saved.
-	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying) const;
+	// bOutAtSpawn: at the world spawn (no saved place), where the player then stands on the column's top (AMcPlayerPawn::ServerStandOnSpawnColumn).
+	FTransform GetStartTransform(const AController* Controller, bool& bOutFlying, bool& bOutAtSpawn) const;
 	// What a player is filed under in the world's playerdata folder.
 	FString GetSaveId(const AController* Controller) const;
 	// Puts a saved inventory and stats (if the world has them for this player) on a pawn that has just arrived; false

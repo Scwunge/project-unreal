@@ -1,4 +1,5 @@
 #include "McEntityManager.h"
+#include "McEntity.h"
 #include "McLeash.h"
 #include "McBlockLight.h"
 #include "McBlockRegistry.h"
@@ -153,6 +154,16 @@ FMcItemEntity& FMcEntityManager::DropItem(const FVector& Pos, const FMcItemStack
 	Item->PickupDelay = PickupDelay;
 	Item->Body.Position = Pos;
 	Item->Body.Velocity = FVector(Random.FRandRange(-0.1, 0.1), 0.2, Random.FRandRange(-0.1, 0.1));
+#if !UE_BUILD_SHIPPING
+	// Development (mc-playable, items found in a fresh world's hotbar): the first drops are named, with who dropped them.
+	static int32 DropsLogged = 0;
+	if (DropsLogged < 12 && FParse::Param(FCommandLine::Get(), TEXT("McLogDrops")))
+	{
+		++DropsLogged;
+		UE_LOG(LogMcEntity, Display, TEXT("McDrop: %s x%d at %s"), *Stack.Item.ToString(), Stack.Count, *Pos.ToString());
+		FDebug::DumpStackTraceToLog(ELogVerbosity::Display);
+	}
+#endif
 	FMcItemEntity* Raw = Item.Get();
 	Add(MoveTemp(Item));
 	return *Raw;
@@ -265,15 +276,43 @@ TArray<FMcItemStack> FMcEntityManager::CollectItems(const FBox& PlayerBox)
 	return Taken;
 }
 
+// Sky light reaching a cell straight down its column, 0..15: full through air, glass and plants, one less through each
+// leaves, water or other filtering block, none past an opaque one (wiki "Light"). Leaves are no roof: under a canopy
+// the day is still 14 or so, and monsters don't spawn there by day (they did, and blew up trees by idle players).
+static int32 ColumnSkyLight(const FMcBlockWorld& World, const FIntVector& Pos)
+{
+	if (!World.HasChunk(FIntPoint(Pos.X >> 4, Pos.Z >> 4)))
+	{
+		return 0;
+	}
+	FMcBlockLight& Light = FMcBlockLight::Get();
+	const bool bTable = Light.EnsureLoaded();
+	const FMcBlockShapes& Shapes = FMcBlockShapes::Get();
+	const int32 Top = World.GetDimension().MinY + World.GetDimension().Height;
+	int32 Level = 15;
+	for (int32 Y = Top - 1; Y > Pos.Y && Level > 0; --Y)
+	{
+		const FMcStateId State = World.GetBlock(FIntVector(Pos.X, Y, Pos.Z));
+		if (bTable)
+		{
+			if (!Light.PropagatesSkylightDown(State))
+			{
+				Level -= FMath::Max<int32>(1, Light.GetDampening(State));
+			}
+		}
+		else if (Shapes.HasCollision(State) || Shapes.GetFluid(State) != EMcFluid::None)
+		{
+			Level = 0;
+		}
+	}
+	return FMath::Max(0, Level);
+}
+
 int32 FMcEntityManager::EstimateSkyLight(const FIntVector& Cell) const
 {
 	const int32 Darken = bDaylight ? 0 : 11;
-	int32 Light = 0;
-	if (IsSkyExposed(Cell))
-	{
-		Light = 15;
-	}
-	else
+	int32 Light = ColumnSkyLight(World, Cell);
+	if (Light < 15)
 	{
 		// Light creeping in from an opening to the side (a cave mouth, a window): one less for each block.
 		static const FIntVector Sides[4] = { FIntVector(1, 0, 0), FIntVector(-1, 0, 0), FIntVector(0, 0, 1), FIntVector(0, 0, -1) };
@@ -287,9 +326,10 @@ int32 FMcEntityManager::EstimateSkyLight(const FIntVector& Cell) const
 				{
 					break;
 				}
-				if (IsSkyExposed(At))
+				const int32 Column = ColumnSkyLight(World, At);
+				Light = FMath::Max(Light, Column - Distance);
+				if (Column == 15)
 				{
-					Light = FMath::Max(Light, 15 - Distance);
 					break;
 				}
 			}

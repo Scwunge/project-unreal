@@ -1935,6 +1935,66 @@ void AMcPlayerPawn::ServerGameTick()
 
 	const FMcItemRegistry& Items = FMcItemRegistry::Get();
 	const FIntPoint Chunk(McCoords::BlockToChunk(FMath::FloorToInt32(Body.Position.X)), McCoords::BlockToChunk(FMath::FloorToInt32(Body.Position.Z)));
+	if (bServerStandOnColumn && BlockWorld && BlockWorld->HasChunk(Chunk))
+	{
+		// The world spawn's height is the terrain's, from before features: a tree there would have the player inside its
+		// leaves or trunk (package, seed 8043733652313283852). Feet go on the column's highest block that stops movement,
+		// leaves too, as a new player stands on a tree at the spawn. A column topped by lava or water (a lava lake is a
+		// feature too: a 1070 run died in one over and over) is no place to stand: the nearest dry column within 16
+		// blocks is taken instead.
+		bServerStandOnColumn = false;
+		const FMcBlockTags& BlockTags = FMcBlockTags::Get();
+		const int32 MotionTag = BlockTags.Find(TEXT("minecraft:blocks_motion_in_heightmap"));
+		const FMcDimensionType& Dim = BlockWorld->GetDimension();
+		auto ColumnTop = [&](int32 CX, int32 CZ, FMcStateId& OutState) -> int32
+		{
+			for (int32 Y = Dim.MinY + Dim.Height - 1; Y >= Dim.MinY; --Y)
+			{
+				OutState = BlockWorld->GetBlock(FIntVector(CX, Y, CZ));
+				if (BlockTags.Has(MotionTag, OutState) || FMcBlockShapes::Get().GetFluid(OutState) != EMcFluid::None)
+				{
+					return Y;
+				}
+			}
+			return Dim.MinY - 1;
+		};
+		const int32 X = FMath::FloorToInt32(Body.Position.X);
+		const int32 Z = FMath::FloorToInt32(Body.Position.Z);
+		FMcStateId State = 0;
+		int32 Y = ColumnTop(X, Z, State);
+		FVector Feet(Body.Position.X, Y + 1, Body.Position.Z);
+		const bool bWet = FMcBlockShapes::Get().GetFluid(State) != EMcFluid::None;
+		bool bDry = !bWet && Y >= Dim.MinY;
+		for (int32 Ring = 1; Ring <= 16 && !bDry; ++Ring)
+		{
+			for (int32 DZ = -Ring; DZ <= Ring && !bDry; ++DZ)
+			{
+				for (int32 DX = -Ring; DX <= Ring && !bDry; ++DX)
+				{
+					if (FMath::Max(FMath::Abs(DX), FMath::Abs(DZ)) != Ring
+						|| !BlockWorld->HasChunk(FIntPoint(McCoords::BlockToChunk(X + DX), McCoords::BlockToChunk(Z + DZ))))
+					{
+						continue;
+					}
+					FMcStateId Near = 0;
+					const int32 NearY = ColumnTop(X + DX, Z + DZ, Near);
+					if (NearY >= Dim.MinY && FMcBlockShapes::Get().GetFluid(Near) == EMcFluid::None)
+					{
+						State = Near;
+						Y = NearY;
+						Feet = FVector(X + DX + 0.5, NearY + 1, Z + DZ + 0.5);
+						bDry = true;
+					}
+				}
+			}
+		}
+		UE_LOG(LogMcPlayer, Display, TEXT("Spawn column %d, %d: top %s at y %d, feet from %.2f to %.0f, %.0f, %.0f"), X, Z,
+			*FMcBlockRegistry::Get().GetBlockOf(State).Name.ToString(), Y, Body.Position.Y, Feet.X, Feet.Y, Feet.Z);
+		if (!Feet.Equals(Body.Position, 0.001))
+		{
+			ServerTeleport(Feet, McLookYaw);
+		}
+	}
 	if (bServerPositionKnown && BlockWorld && BlockWorld->HasChunk(Chunk))
 	{
 		const FVector Feet = Body.Position;

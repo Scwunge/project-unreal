@@ -1,0 +1,13 @@
+# A fresh survival world left alone for a minute (mc-playable, 2026-11-14): where the player spawns, and whether
+# anything lands in the hotbar with no input (package saw a log, dirt x6 and a sapling). Run with -McLogDrops in a
+# Development build to log the first drops with their call stacks.
+settle:40
+shot:idle_spawn
+mark:idle
+wait:60
+shot:idle_after
+key:E
+wait:1
+shot:idle_inv
+key:Escape
+end

@@ -162,6 +162,9 @@ public:
 	void ServerTeleport(const FVector& Feet, float McYaw);
 	// Server: where the player's feet are, in block coordinates.
 	FVector GetFeetPosition() const { return Body.Position; }
+	// Server: a new player at the world spawn stands on the highest block of the column that stops movement, leaves too,
+	// once its chunk has its blocks (the spawn height is the terrain's, from before trees are placed).
+	void ServerStandOnSpawnColumn() { bServerStandOnColumn = true; }
 	bool IsServerDead() const { return bServerDead; }
 	// The function keys, as this machine's player has set them: F1 hides the HUD and hand, F3 shows the debug text, F5 cycles
 	// the view (0 from the eyes, 1 from behind, 2 from the front looking back).
@@ -335,6 +338,7 @@ private:
 	void ServerGameTick();
 	void ApplyTeleport(const FVector& Feet, float McYaw);
 	bool bServerAwaitingTeleport = false;
+	bool bServerStandOnColumn = false;
 	void ServerBreakBlock(const FIntVector& Pos);
 public:
 	// Development: puts the held block at Pos the way a placing hand does (-McPlaceHeld).

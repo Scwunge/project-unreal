@@ -7,6 +7,10 @@
 #include "Misc/Compression.h"
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
+#include "Misc/ScopeLock.h"
+#include "Tasks/Task.h"
 
 namespace
 {
@@ -130,25 +134,108 @@ namespace
 	}
 }
 
-bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, int32 MaxSide)
+namespace
 {
-	TArray<uint8> File;
-	if (!FFileHelper::LoadFileToArray(File, *Path) || !LoadLowDepthPalettePng(File, OutPixels, OutWidth, OutHeight))
+	// Reads and decodes one png (any thread, once the ImageWrapper module is loaded). The file is read once.
+	bool DecodePngFile(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight)
 	{
-		IImageWrapperModule& ImageModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
-		const TSharedPtr<IImageWrapper> Wrapper = ImageModule.CreateImageWrapper(EImageFormat::PNG);
-		TArray64<uint8> Raw;
-		if (!FFileHelper::LoadFileToArray(File, *Path) || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
-			|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw))
+		TArray<uint8> File;
+		const bool bRead = FFileHelper::LoadFileToArray(File, *Path);
+		if (!bRead || !LoadLowDepthPalettePng(File, OutPixels, OutWidth, OutHeight))
 		{
-			UE_LOG(LogMcRender, Error, TEXT("Can't load the picture %s"), *Path);
+			// Off the game thread the module can only be looked up (PrefetchEntityPictures loads it first).
+			IImageWrapperModule* ImageModule = IsInGameThread() ? &FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"))
+				: FModuleManager::GetModulePtr<IImageWrapperModule>(TEXT("ImageWrapper"));
+			const TSharedPtr<IImageWrapper> Wrapper = ImageModule ? ImageModule->CreateImageWrapper(EImageFormat::PNG) : TSharedPtr<IImageWrapper>();
+			TArray64<uint8> Raw;
+			if (!bRead || !Wrapper.IsValid() || !Wrapper->SetCompressed(File.GetData(), File.Num())
+				|| !Wrapper->GetRaw(ERGBFormat::BGRA, 8, Raw))
+			{
+				UE_LOG(LogMcRender, Error, TEXT("Can't load the picture %s"), *Path);
+				return false;
+			}
+			OutWidth = Wrapper->GetWidth();
+			OutHeight = Wrapper->GetHeight();
+			// FColor is BGRA in memory, as the raw data is.
+			OutPixels.SetNumUninitialized(OutWidth * OutHeight);
+			FMemory::Memcpy(OutPixels.GetData(), Raw.GetData(), FMath::Min<int64>(Raw.Num(), OutPixels.Num() * sizeof(FColor)));
+		}
+		return true;
+	}
+
+	// Entity pictures decoded ahead of use on background threads (PrefetchEntityPictures), by full path. Taken out on use.
+	struct FPrefetchedPicture
+	{
+		TArray<FColor> Pixels;
+		int32 Width = 0;
+		int32 Height = 0;
+	};
+	FCriticalSection PrefetchLock;
+	TMap<FString, FPrefetchedPicture> Prefetched;
+	bool bPrefetchStarted = false;
+
+	bool TakePrefetched(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight)
+	{
+		FScopeLock Lock(&PrefetchLock);
+		FPrefetchedPicture Picture;
+		if (!Prefetched.RemoveAndCopyValue(Path, Picture))
+		{
 			return false;
 		}
-		OutWidth = Wrapper->GetWidth();
-		OutHeight = Wrapper->GetHeight();
-		// FColor is BGRA in memory, as the raw data is.
-		OutPixels.SetNumUninitialized(OutWidth * OutHeight);
-		FMemory::Memcpy(OutPixels.GetData(), Raw.GetData(), FMath::Min<int64>(Raw.Num(), OutPixels.Num() * sizeof(FColor)));
+		OutPixels = MoveTemp(Picture.Pixels);
+		OutWidth = Picture.Width;
+		OutHeight = Picture.Height;
+		return true;
+	}
+}
+
+void McRenderTextures::PrefetchEntityPictures()
+{
+	if (bPrefetchStarted)
+	{
+		return;
+	}
+	bPrefetchStarted = true;
+	// The engine's png reader is a module: loaded here, on the game thread, before any worker wants it.
+	FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
+	const FString Folder = McCache::Asset(TEXT("textures/entity"));
+	UE::Tasks::Launch(UE_SOURCE_LOCATION, [Folder]()
+	{
+		const double Began = FPlatformTime::Seconds();
+		TArray<FString> Files;
+		IFileManager::Get().FindFilesRecursive(Files, *Folder, TEXT("*.png"), true, false);
+		// Two readers: on a slow disk most of a picture's first use is waiting for the file, not decoding it.
+		const int32 Readers = 2;
+		TArray<UE::Tasks::FTask> Tasks;
+		for (int32 Reader = 0; Reader < Readers; ++Reader)
+		{
+			Tasks.Add(UE::Tasks::Launch(UE_SOURCE_LOCATION, [&Files, Reader, Readers]()
+			{
+				for (int32 Index = Reader; Index < Files.Num(); Index += Readers)
+				{
+					FPrefetchedPicture Picture;
+					FString Path = Files[Index];
+					FPaths::NormalizeFilename(Path);
+					if (DecodePngFile(Path, Picture.Pixels, Picture.Width, Picture.Height))
+					{
+						FScopeLock Lock(&PrefetchLock);
+						Prefetched.Add(MoveTemp(Path), MoveTemp(Picture));
+					}
+				}
+			}, LowLevelTasks::ETaskPriority::BackgroundNormal));
+		}
+		UE::Tasks::Wait(Tasks);
+		UE_LOG(LogMcRender, Display, TEXT("Entity pictures read ahead: %d in %.1f s"), Files.Num(), FPlatformTime::Seconds() - Began);
+	}, LowLevelTasks::ETaskPriority::BackgroundNormal);
+}
+
+bool McRenderTextures::LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, int32 MaxSide)
+{
+	FString Normal = Path;
+	FPaths::NormalizeFilename(Normal);
+	if (!TakePrefetched(Normal, OutPixels, OutWidth, OutHeight) && !DecodePngFile(Path, OutPixels, OutWidth, OutHeight))
+	{
+		return false;
 	}
 
 	// A resource pack's picture can be far wider than the 16 pixels it replaces. Whole blocks of Factor x Factor pixels
@@ -277,11 +364,17 @@ UTexture2DArray* McRenderTextures::LoadPngLayersAsArray(UObject* Outer, const TA
 
 UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString& Path, int32& OutWidth, int32& OutHeight, bool bWhite)
 {
+#if !UE_BUILD_SHIPPING
+	const double Began = FPlatformTime::Seconds();
+#endif
 	TArray<FColor> Pixels;
 	if (!LoadPngPixels(Path, Pixels, OutWidth, OutHeight))
 	{
 		return nullptr;
 	}
+#if !UE_BUILD_SHIPPING
+	const double Decoded = FPlatformTime::Seconds();
+#endif
 	if (bWhite)
 	{
 		// The colour channels go to white, the alpha stays.
@@ -291,5 +384,18 @@ UTexture2DArray* McRenderTextures::LoadPngAsArray(UObject* Outer, const FString&
 		}
 	}
 	const McCache::FTextureMeta Meta = McCache::ReadTextureMeta(Path);
-	return MakeArray(Outer, Pixels, OutWidth, OutHeight, Meta.bBlur, !Meta.bHasClamp || Meta.bClamp);
+#if !UE_BUILD_SHIPPING
+	const double Meta_ = FPlatformTime::Seconds();
+#endif
+	UTexture2DArray* Array = MakeArray(Outer, Pixels, OutWidth, OutHeight, Meta.bBlur, !Meta.bHasClamp || Meta.bClamp);
+#if !UE_BUILD_SHIPPING
+	const double Done = FPlatformTime::Seconds();
+	if (Done - Began > 0.005)
+	{
+		// Development: where a slow picture load went (mc-playable's travel runs, first mob of a kind).
+		UE_LOG(LogMcRender, Display, TEXT("McSlowTexture: %s %dx%d: decode %.1f ms, meta %.1f ms, array %.1f ms"), *Path, OutWidth, OutHeight,
+			(Decoded - Began) * 1000.0, (Meta_ - Decoded) * 1000.0, (Done - Meta_) * 1000.0);
+	}
+#endif
+	return Array;
 }

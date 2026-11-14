@@ -18,6 +18,10 @@ namespace McRenderTextures
 	// wider than that (a resource pack's) is shrunk by a whole factor to about MaxSide: for code that makes geometry from
 	// the pixels, which can't afford a mesh with a quad per pixel of a 1024 wide picture.
 	MCRENDER_API bool LoadPngPixels(const FString& Path, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, int32 MaxSide = 0);
+	// Game thread, once: reads and decodes every picture under textures/entity on background threads, so the first mob of
+	// a kind doesn't wait on its file (30-40 ms each on the 1070's disk). LoadPngPixels takes a picture from there when it is
+	// ready and reads it itself when not.
+	MCRENDER_API void PrefetchEntityPictures();
 	// Lays Over on Under, straight alpha: where Over is see-through Under shows, where it is solid Over does, between the two
 	// they mix. Both are the same size. The result is Under with a picture painted on it.
 	MCRENDER_API void CompositeOver(TArray<FColor>& Under, const TArray<FColor>& Over);

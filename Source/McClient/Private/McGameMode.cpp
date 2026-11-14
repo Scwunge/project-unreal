@@ -861,10 +861,15 @@ void AMcGameMode::StartPlay()
 		if (APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr)
 		{
 			bool bFlying = false;
-			const FTransform Start = GetStartTransform(It->Get(), bFlying);
+			bool bAtSpawn = false;
+			const FTransform Start = GetStartTransform(It->Get(), bFlying, bAtSpawn);
 			Pawn->SetActorLocation(Start.GetLocation());
 			if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Pawn))
 			{
+				if (bAtSpawn)
+				{
+					McPawn->ServerStandOnSpawnColumn();
+				}
 				// (The place alone was set before, so a saved world's player looked along +x whatever way they faced.)
 				McPawn->SetStartLook(Start.Rotator());
 				McPawn->SetGameRules(GetGameRules());
@@ -1591,9 +1596,14 @@ void AMcGameMode::RestartPlayer(AController* NewPlayer)
 	if (NewPlayer && !NewPlayer->IsPendingKillPending())
 	{
 		bool bFlying = false;
-		RestartPlayerAtTransform(NewPlayer, GetStartTransform(NewPlayer, bFlying));
+		bool bAtSpawn = false;
+		RestartPlayerAtTransform(NewPlayer, GetStartTransform(NewPlayer, bFlying, bAtSpawn));
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(NewPlayer->GetPawn()))
 		{
+			if (bAtSpawn)
+			{
+				McPawn->ServerStandOnSpawnColumn();
+			}
 			McPawn->SetFlying(bFlying);
 			McPawn->SetGameRules(GetGameRules());
 			if (!RestoreSurvival(NewPlayer, *McPawn))
@@ -1697,6 +1707,11 @@ void AMcGameMode::RespawnPlayer(AController* Controller)
 		RestartPlayerAtTransform(Who, Spawn);
 		if (AMcPlayerPawn* McPawn = Cast<AMcPlayerPawn>(Who->GetPawn()))
 		{
+			// At the world spawn (no bed that stands, no set point): on the column's top, as a new player.
+			if ((!Bed.IsSet() || bBedMissing) && !Point.IsSet() && !WorldSpawnOverride.IsSet() && Blocks && !Blocks->GetDimension().bHasCeiling)
+			{
+				McPawn->ServerStandOnSpawnColumn();
+			}
 			McPawn->SetGameRules(GetGameRules());
 			if (McPawn->Data)
 			{
@@ -2338,9 +2353,10 @@ void AMcGameMode::PreLogin(const FString& Options, const FString& Address, const
 	}
 }
 
-FTransform AMcGameMode::GetStartTransform(const AController* Controller, bool& bOutFlying) const
+FTransform AMcGameMode::GetStartTransform(const AController* Controller, bool& bOutFlying, bool& bOutAtSpawn) const
 {
 	bOutFlying = false;
+	bOutAtSpawn = false;
 	FMcPlayerData Saved;
 	const FMcBlockWorld* Blocks = WorldActor ? WorldActor->GetBlockWorld() : nullptr;
 	if (Blocks && WorldActor->HasStorage() && McWorldSave::LoadPlayer(WorldActor->GetWorldDir(), GetSaveId(Controller), Saved))
@@ -2355,6 +2371,7 @@ FTransform AMcGameMode::GetStartTransform(const AController* Controller, bool& b
 			return FTransform(FRotator(-Saved.Pitch, Saved.Yaw + 90.0f, 0.0f), McCoords::BlockToUnreal(Saved.Position));
 		}
 	}
+	bOutAtSpawn = Blocks && !WorldSpawnOverride.IsSet() && !Blocks->GetDimension().bHasCeiling;
 	return GetSpawnTransform();
 }
 

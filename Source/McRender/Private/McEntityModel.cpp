@@ -3662,6 +3662,9 @@ namespace
 			OutSize = SizeCache().FindRef(Key);
 			return Found->Get();
 		}
+#if !UE_BUILD_SHIPPING
+		UE_LOG(LogMcRender, Verbose, TEXT("McPictureMiss: %s"), *Key);
+#endif
 		int32 Width = 0, Height = 0;
 		// Kept for every world that comes after, so not inside this one.
 		UTexture2DArray* Texture = McRenderTextures::LoadPngAsArray(GetTransientPackage(), Path, Width, Height, bWhite);
@@ -4128,6 +4131,11 @@ FString UMcEntityModelComponent::GetTexturePath(int32 Layer) const
 	return FString();
 }
 
+#if !UE_BUILD_SHIPPING
+// Development: where a slow model tick went (FSlowTick in TickComponent prints them).
+static double GSlowTexMs = 0.0, GSlowMatMs = 0.0;
+#endif
+
 UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 {
 	if (Materials.IsValidIndex(Layer) && Materials[Layer])
@@ -4155,11 +4163,23 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 			// A held item's picture is its own layer on top, not part of the coat.
 			Paths.Add(Index == Model->HeldLayer ? FString() : GetTexturePath(Index));
 		}
+#if !UE_BUILD_SHIPPING
+		const double TexBegan = FPlatformTime::Seconds();
+#endif
 		Texture = LoadCompositeCached(Paths, Size);
+#if !UE_BUILD_SHIPPING
+		GSlowTexMs += (FPlatformTime::Seconds() - TexBegan) * 1000.0;
+#endif
 	}
 	else
 	{
+#if !UE_BUILD_SHIPPING
+		const double TexBegan = FPlatformTime::Seconds();
+#endif
 		Texture = LoadCached(Path, Size);
+#if !UE_BUILD_SHIPPING
+		GSlowTexMs += (FPlatformTime::Seconds() - TexBegan) * 1000.0;
+#endif
 	}
 	if (!Texture)
 	{
@@ -4170,10 +4190,16 @@ UMaterialInstanceDynamic* UMcEntityModelComponent::GetMaterial(int32 Layer)
 		// An animated item is a column of frames; the first one is the square on top.
 		ItemVMax = Size.Y > Size.X && Size.X > 0 ? static_cast<float>(Size.X) / Size.Y : 1.0f;
 	}
+#if !UE_BUILD_SHIPPING
+	const double MatBegan = FPlatformTime::Seconds();
+#endif
 	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(McRenderMode::Pick(Parent), this);
 	MaterialGeneration = McRenderMode::GetGeneration();
 	Material->SetTextureParameterValue(TEXT("Blocks"), Texture);
 	McRenderMode::ApplyHdPicture(Material, Path);
+#if !UE_BUILD_SHIPPING
+	GSlowMatMs += (FPlatformTime::Seconds() - MatBegan) * 1000.0;
+#endif
 	if (Materials.Num() <= Layer)
 	{
 		Materials.SetNum(Layer + 1);
@@ -4315,6 +4341,26 @@ void UMcEntityModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	MC_PERF_SCOPE(Models);
 	MC_PERF_SCOPE(ModelsEntity);
+#if !UE_BUILD_SHIPPING
+	// Development: a slow tick is named, to find what makes the "mentity" hitches (mc-playable's travel runs).
+	struct FSlowTick
+	{
+		const UMcEntityModelComponent& Self;
+		const double Began = FPlatformTime::Seconds();
+		const int32 MaterialsBefore = Self.Materials.Num();
+		const int32 SectionsBefore = Self.NumSections;
+		explicit FSlowTick(const UMcEntityModelComponent& InSelf) : Self(InSelf) { GSlowTexMs = 0.0; GSlowMatMs = 0.0; }
+		~FSlowTick()
+		{
+			const double Ms = (FPlatformTime::Seconds() - Began) * 1000.0;
+			if (Ms > 15.0)
+			{
+				UE_LOG(LogMcRender, Display, TEXT("McSlowEntityModel: %s item %s %.1f ms (textures %.1f, materials %.1f; materials %d->%d, sections %d->%d)"),
+					*Self.Kind.ToString(), *Self.Item.ToString(), Ms, GSlowTexMs, GSlowMatMs, MaterialsBefore, Self.Materials.Num(), SectionsBefore, Self.NumSections);
+			}
+		}
+	} SlowTick(*this);
+#endif
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	const AActor* Owner = GetOwner();
 	if (!Owner || Kind.IsNone() || ((bIsItem || bIsArrow || bIsBobber || bIsFalling) && bItemFailed))

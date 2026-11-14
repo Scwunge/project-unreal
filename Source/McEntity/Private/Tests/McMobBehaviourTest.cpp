@@ -433,6 +433,10 @@ bool FMcMobBehaviourTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("five blocks: 9"), Manager.EstimateBlockLight(FIntVector(10, 1, 6)), 9);
 		TestEqual(TEXT("fifteen blocks: dark"), Manager.EstimateBlockLight(FIntVector(10, 1, -4)), 0);
 		TestFalse(TEXT("no spawning beside it, roof or not"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, 10)));
+		// A canopy two leaves deep, as wide: leaves only dim the sky by one each, so by day it is 13 and nothing spawns.
+		FillMobBox(World, 0, 3, -16, 20, 4, -2, State(TEXT("minecraft:oak_leaves")));
+		TestEqual(TEXT("under two leaves by day: 13"), Manager.EstimateSkyLight(FIntVector(10, 1, -9)), 13);
+		TestFalse(TEXT("no daytime monsters under trees"), Manager.IsDarkEnoughToSpawn(FIntVector(10, 1, -9)));
 	}
 	{
 		// In a pool (logged in the reference, drownswim.txt): a drowned swims at its target at about 0.0485 blocks a tick and a zombie

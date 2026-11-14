@@ -29,7 +29,7 @@ echo "\$r='$BRUN'; New-Item -ItemType Directory -Force \$r,'$OUT' | Out-Null; Re
 
 cat > /tmp/run-package.ps1 <<EOF
 Set-Location '$WB'
-& 'C:\\UE_5.8\\Engine\\Build\\BatchFiles\\Build.bat' McClientEditor Win64 Development '-Project=$WB\\McClient.uproject' -WaitMutex -NoHotReloadFromIDE
+& 'C:\\Program Files\\Epic Games\\UE_5.9\\Engine\\Build\\BatchFiles\\Build.bat' McClientEditor Win64 Development '-Project=$WB\\McClient.uproject' -WaitMutex -NoHotReloadFromIDE
 "EDITOR_EXIT=\$LASTEXITCODE"
 if (\$LASTEXITCODE -eq 0) {
   powershell -NoProfile -ExecutionPolicy Bypass -File '$WB\\tools\\package.ps1' -OutDir '$WO' -Date '$DATE'

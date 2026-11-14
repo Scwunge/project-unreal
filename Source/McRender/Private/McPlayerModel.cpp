@@ -235,6 +235,77 @@ namespace McPlayerModel
 		}
 	}
 
+	void BuildArmor(const FPose& Pose, int32 Slot, FMeshData& Out, float Grow)
+	{
+		Out.Positions.Reset();
+		Out.Normals.Reset();
+		Out.UV0.Reset();
+		Out.Colors.Reset();
+		Out.Triangles.Reset();
+		const FVector2D Size(ArmorWidth, ArmorHeight);
+		const auto Add = [&](EMcPlayerPart Part, FIntPoint UV, float Inflate)
+		{
+			// A left limb is drawn as the right one's mirror image: its pose mirrored across the middle, then flipped back.
+			const bool bLeft = Part == EMcPlayerPart::LeftArm || Part == EMcPlayerPart::LeftLeg;
+			const EMcPlayerPart Shape = Part == EMcPlayerPart::LeftArm ? EMcPlayerPart::RightArm : Part == EMcPlayerPart::LeftLeg ? EMcPlayerPart::RightLeg : Part;
+			FPartPose Placed = Pose.Parts[static_cast<int32>(Part)];
+			if (bLeft)
+			{
+				Placed.Pivot.X = -Placed.Pivot.X;
+				Placed.YawRad = -Placed.YawRad;
+				Placed.RollRad = -Placed.RollRad;
+			}
+			AddBox(GetPartDef(Shape), Placed, Pose, UV, Inflate + Grow, Out, Size, bLeft);
+		};
+		switch (Slot)
+		{
+		case 0:
+			Add(EMcPlayerPart::Head, FIntPoint(0, 0), 1.0f);
+			Add(EMcPlayerPart::Head, FIntPoint(32, 0), 1.5f);
+			break;
+		case 1:
+			Add(EMcPlayerPart::Body, FIntPoint(16, 16), 1.0f);
+			// The arms are grown as far as the body, so their fronts meet it at one depth where they overlap; the game draws
+			// them after the body, over it. A hair more puts them in front here too (else the body's edge shows as a dark line).
+			Add(EMcPlayerPart::RightArm, FIntPoint(40, 16), 1.05f);
+			Add(EMcPlayerPart::LeftArm, FIntPoint(40, 16), 1.05f);
+			break;
+		case 2:
+			Add(EMcPlayerPart::Body, FIntPoint(16, 16), 0.5f);
+			Add(EMcPlayerPart::RightLeg, FIntPoint(0, 16), 0.4f);
+			Add(EMcPlayerPart::LeftLeg, FIntPoint(0, 16), 0.4f);
+			break;
+		case 3:
+			Add(EMcPlayerPart::RightLeg, FIntPoint(0, 16), 0.9f);
+			Add(EMcPlayerPart::LeftLeg, FIntPoint(0, 16), 0.9f);
+			break;
+		default:
+			break;
+		}
+	}
+
+	FString GetArmorTexture(FName Item, int32 Slot, bool bOverlay)
+	{
+		static const TCHAR* const Suffixes[] = { TEXT("_helmet"), TEXT("_chestplate"), TEXT("_leggings"), TEXT("_boots") };
+		if (Item.IsNone() || Slot < 0 || Slot > 3)
+		{
+			return FString();
+		}
+		FString Name = Item.ToString();
+		Name.RemoveFromStart(TEXT("minecraft:"));
+		if (!Name.RemoveFromEnd(Suffixes[Slot]))
+		{
+			return FString();
+		}
+		Name = Name == TEXT("golden") ? FString(TEXT("gold")) : Name == TEXT("turtle") ? FString(TEXT("turtle_scute")) : Name;
+		if (bOverlay && Name != TEXT("leather"))
+		{
+			return FString();
+		}
+		return McCache::Asset(FString(TEXT("textures/entity/equipment/")) + (Slot == 2 ? TEXT("humanoid_leggings/") : TEXT("humanoid/")) + Name
+			+ (bOverlay ? TEXT("_overlay") : TEXT("")) + TEXT(".png"));
+	}
+
 	void BuildPartMesh(EMcPlayerPart Part, FMeshData& Out)
 	{
 		const FPartDef& Def = GetPartDef(Part);
@@ -389,6 +460,50 @@ UMaterialInstanceDynamic* UMcPlayerModelComponent::EnsureWingsMaterial()
 	return WingsMaterial;
 }
 
+UMaterialInstanceDynamic* UMcPlayerModelComponent::EnsureArmorMaterial(int32 Layer)
+{
+	const FString Path = McPlayerModel::GetArmorTexture(ArmorItems[Layer % 4], Layer % 4, Layer >= 4);
+	if (Path.IsEmpty() || !BaseMaterial)
+	{
+		return nullptr;
+	}
+	UMaterialInterface* Parent = McRenderMode::Pick(BaseMaterial.Get());
+	if (ArmorMaterials[Layer] && ArmorPaths[Layer] == Path && ArmorMaterials[Layer]->Parent == Parent)
+	{
+		return ArmorMaterials[Layer];
+	}
+	UTexture2DArray* Picture = nullptr;
+	if (const TObjectPtr<UTexture2DArray>* Found = ArmorPictures.Find(Path))
+	{
+		Picture = Found->Get();
+	}
+	else
+	{
+		int32 Width = 0, Height = 0;
+		Picture = McRenderTextures::LoadPngAsArray(this, Path, Width, Height);
+		if (!Picture || Width != McPlayerModel::ArmorWidth || Height != McPlayerModel::ArmorHeight)
+		{
+			UE_LOG(LogMcRender, Warning, TEXT("Can't use the armor picture %s (a 64x32 png); that armor stays invisible"), *Path);
+			Picture = nullptr;
+		}
+		ArmorPictures.Add(Path, Picture);
+	}
+	if (!Picture)
+	{
+		return nullptr;
+	}
+	UMaterialInstanceDynamic* Made = UMaterialInstanceDynamic::Create(Parent, this);
+	Made->SetTextureParameterValue(TEXT("Blocks"), Picture);
+	McRenderMode::ApplyHdPicture(Made, Path);
+	ArmorMaterials[Layer] = Made;
+	ArmorPaths[Layer] = Path;
+	if (bHasArmorSection[Layer])
+	{
+		SetMaterial(2 + Layer, Made);
+	}
+	return Made;
+}
+
 void UMcPlayerModelComponent::SetShown(bool bInShown)
 {
 	if (bShown != bInShown)
@@ -462,6 +577,17 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 			State.Tick(Feet, Yaw, Pitch, bSneaking, bGliding);
 		}
 	}
+	if (bPosed)
+	{
+		for (McPlayerModel::FAnim* Anim : { &State.Current, &State.Previous })
+		{
+			Anim->BodyYaw = PosedBodyYaw;
+			Anim->HeadYaw = Yaw;
+			Anim->HeadPitch = Pitch;
+			Anim->bSneaking = bSneaking;
+			Anim->WalkAmount = 0.0f;
+		}
+	}
 
 	if (MaterialGeneration != McRenderMode::GetGeneration())
 	{
@@ -477,7 +603,7 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 
 	// Lit by the sky like the blocks around them.
-	Material->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+	Material->SetScalarParameterValue(TEXT("SkyFactor"), bFullyLit ? 1.0f : McSky::GetSkyLightFactor());
 	Material->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 
 	McPlayerModel::FMeshData Data;
@@ -525,7 +651,7 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	UMaterialInstanceDynamic* Wings = bWings ? EnsureWingsMaterial() : nullptr;
 	if (Wings)
 	{
-		Wings->SetScalarParameterValue(TEXT("SkyFactor"), McSky::GetSkyLightFactor());
+		Wings->SetScalarParameterValue(TEXT("SkyFactor"), bFullyLit ? 1.0f : McSky::GetSkyLightFactor());
 		Wings->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
 		McPlayerModel::BuildWings(Pose, Data);
 		UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
@@ -544,5 +670,45 @@ void UMcPlayerModelComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	if (bHasWingsSection)
 	{
 		SetMeshSectionVisible(1, Wings != nullptr);
+	}
+
+	// Armor over the body, a section a piece (and leather's overlay a section more), each in its own picture.
+	for (int32 ArmorLayer = 0; ArmorLayer < 8; ++ArmorLayer)
+	{
+		const int32 Slot = ArmorLayer % 4;
+		const bool bOverlay = ArmorLayer >= 4;
+		UMaterialInstanceDynamic* Armor = EnsureArmorMaterial(ArmorLayer);
+		if (Armor)
+		{
+			Armor->SetScalarParameterValue(TEXT("SkyFactor"), bFullyLit ? 1.0f : McSky::GetSkyLightFactor());
+			Armor->SetScalarParameterValue(TEXT("Ambient"), McRenderMode::GetEntityAmbient());
+			McPlayerModel::BuildArmor(Pose, Slot, Data, bOverlay ? 0.02f : 0.0f);
+			if (!bOverlay && ArmorPaths[ArmorLayer].Contains(TEXT("/leather")))
+			{
+				// Undyed leather takes the game's brown on its base picture; the overlay stays as drawn.
+				constexpr int32 Rgb = 0xA06540;
+				for (FColor& Color : Data.Colors)
+				{
+					Color = FColor(static_cast<uint8>(Color.R * ((Rgb >> 16) & 255) / 255), static_cast<uint8>(Color.G * ((Rgb >> 8) & 255) / 255), static_cast<uint8>(Color.B * (Rgb & 255) / 255), 255);
+				}
+			}
+			UV1.Init(FVector2D::ZeroVector, Data.Positions.Num());
+			UV2.Init(FVector2D(1.0, 0.0), Data.Positions.Num());
+			const int32 Section = 2 + ArmorLayer;
+			if (!bHasArmorSection[ArmorLayer])
+			{
+				CreateMeshSection(Section, Data.Positions, Data.Triangles, Data.Normals, Data.UV0, UV1, UV2, Layer, Data.Colors, NoTangents, false);
+				SetMaterial(Section, Armor);
+				bHasArmorSection[ArmorLayer] = true;
+			}
+			else
+			{
+				UpdateMeshSection(Section, Data.Positions, Data.Normals, Data.UV0, UV1, UV2, Layer, Data.Colors, NoTangents);
+			}
+		}
+		if (bHasArmorSection[ArmorLayer])
+		{
+			SetMeshSectionVisible(2 + ArmorLayer, Armor != nullptr);
+		}
 	}
 }

@@ -205,6 +205,10 @@ public:
 	float GetLookPitch() const { return McLookPitch; }
 	bool IsSneakPosed() const { return bSneakPose; }
 	bool IsGlidePosed() const { return bGlidePose; }
+	// What everyone sees worn: the item in each armor slot (0 head, 1 chest, 2 legs, 3 feet), elytra on the back.
+	FName GetWornArmor(int32 Slot) const { return Slot >= 0 && Slot < 4 ? WornArmor[Slot] : NAME_None; }
+	FName GetWornHead() const { return WornHead; }
+	bool WearsElytra() const { return bWearsElytra; }
 	// Owner: gliding on elytra.
 	bool IsGliding() const { return bGliding; }
 	// Owner, development (-McGlide): starts a glide on the spot, heading the way they look, if the wings are on.
@@ -434,6 +438,9 @@ private:
 	// The item in the head slot, for a head or carved pumpkin drawn on the head.
 	UPROPERTY(Replicated)
 	FName WornHead;
+	// The items in the four armor slots, for the armor drawn on the body.
+	UPROPERTY(Replicated)
+	FName WornArmor[4];
 	// Server: ticks of gliding, for the wings' wear.
 	int32 ServerGlideTicks = 0;
 	bool bServerGliding = false;

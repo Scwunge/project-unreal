@@ -174,6 +174,10 @@ void AMcPlayerPawn::ServerTickElytra()
 #endif
 	// The head slot (armor slot 0) too: everyone sees a worn head.
 	WornHead = Data && Data->Armor ? Data->Armor->Get(0).Item : NAME_None;
+	for (int32 Slot = 0; Slot < 4; ++Slot)
+	{
+		WornArmor[Slot] = Data && Data->Armor ? Data->Armor->Get(Slot).Item : NAME_None;
+	}
 	bGlidePose = bServerGliding;
 	if (!bServerGliding || !Data || !Data->Armor)
 	{

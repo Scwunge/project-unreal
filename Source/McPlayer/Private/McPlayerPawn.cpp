@@ -160,6 +160,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, bGlidePose, COND_SkipOwner);
 	DOREPLIFETIME(AMcPlayerPawn, bWearsElytra);
 	DOREPLIFETIME(AMcPlayerPawn, WornHead);
+	DOREPLIFETIME(AMcPlayerPawn, WornArmor);
 }
 
 void AMcPlayerPawn::BeginPlay()
@@ -424,6 +425,10 @@ void AMcPlayerPawn::Tick(float DeltaSeconds)
 		Figure->SetLook(McLookYaw, McLookPitch, bSneakPose, bGlidePose);
 		Figure->SetWings(bWearsElytra);
 		Figure->SetWornHead(WornHead);
+		for (int32 Slot = 0; Slot < 4; ++Slot)
+		{
+			Figure->SetArmor(Slot, WornArmor[Slot]);
+		}
 	}
 	if (UMcHandComponent* Arm = Hand.Get())
 	{

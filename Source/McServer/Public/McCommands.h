@@ -132,6 +132,12 @@ public:
 	// The vehicle a player rides (its name as shown), and getting off it.
 	virtual bool GetVehicleName(const FString& Player, FString& OutName) const { return false; }
 	virtual void Dismount(const FString& Player) {}
+	// /save-all [flush]: writes the world and the players out now; false if it could not. /save-off and /save-on turn the automatic saves off and on.
+	virtual bool SaveAll(bool bFlush) { return true; }
+	virtual bool IsAutosaveOn() const { return true; }
+	virtual void SetAutosaveOn(bool bOn) {}
+	// /stop: saves, then ends the server (a dedicated one exits with code 0).
+	virtual void RequestStop() {}
 	// /place feature: puts a configured feature down at Pos. 0 placed, 1 no such feature, 2 it could not be placed (or the world has no features).
 	virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) { return 2; }
 	// The hotbar slot (0 to 8) the player holds.
@@ -185,6 +191,8 @@ public:
 	// /stopsound: stops a player's sounds (Source "" for any, Sound "" for any).
 	virtual void StopSounds(const FString& Player, const FString& Source, const FString& Sound) {}
 
+	// The player's IP without the port; empty if not known (or not online).
+	virtual FString GetPlayerAddress(const FString& Player) const { return FString(); }
 	virtual FMcServerAccess LoadAccess() const = 0;
 	virtual void SaveAccess(const FMcServerAccess& Access) = 0;
 	virtual bool IsAllowlistOn() const = 0;

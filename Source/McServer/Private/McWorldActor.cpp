@@ -1579,7 +1579,7 @@ void AMcWorldActor::Tick(float DeltaSeconds)
 				McPerf::SetCounter(EMcPerfCounter::Entities, Entities->GetManager().GetEntities().Num());
 			}
 			GetWorld()->RemoveOnActorSpawnedHandler(Claim);
-			if (Storage && ++TicksSinceAutosave >= AutosaveIntervalTicks)
+			if (Storage && bAutosaveOn && ++TicksSinceAutosave >= AutosaveIntervalTicks)
 			{
 				TicksSinceAutosave = 0;
 				BeginAutosave();

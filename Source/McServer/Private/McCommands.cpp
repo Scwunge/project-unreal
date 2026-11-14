@@ -39,7 +39,12 @@ namespace
 		{ TEXT("damage"), 2, TEXT("/damage <target> <amount> [<damageType>]") },
 		{ TEXT("datapack"), 2, TEXT("/datapack (disable|enable|list) ...") },
 		{ TEXT("defaultgamemode"), 2, TEXT("/defaultgamemode <gamemode>") },
+		{ TEXT("ban"), 3, TEXT("/ban <targets> [<reason>]") },
+		{ TEXT("ban-ip"), 3, TEXT("/ban-ip <target> [<reason>]") },
+		{ TEXT("banlist"), 3, TEXT("/banlist [ips|players]") },
 		{ TEXT("deop"), 3, TEXT("/deop <targets>") },
+		{ TEXT("pardon"), 3, TEXT("/pardon <targets>") },
+		{ TEXT("pardon-ip"), 3, TEXT("/pardon-ip <target>") },
 		{ TEXT("difficulty"), 2, TEXT("/difficulty [peaceful|easy|normal|hard]") },
 		{ TEXT("effect"), 2, TEXT("/effect (clear|give) ...") },
 		{ TEXT("enchant"), 2, TEXT("/enchant <targets> <enchantment> [<level>]") },
@@ -63,6 +68,10 @@ namespace
 		{ TEXT("reload"), 2, TEXT("/reload") },
 		{ TEXT("say"), 2, TEXT("/say <message>") },
 		{ TEXT("attribute"), 2, TEXT("/attribute <target> <attribute> (get | base (get | set <value> | reset) | modifier (add <id> <value> <operation> | remove <id> | value get <id>))") },
+		{ TEXT("save-all"), 4, TEXT("/save-all [flush]") },
+		{ TEXT("save-on"), 4, TEXT("/save-on") },
+		{ TEXT("save-off"), 4, TEXT("/save-off") },
+		{ TEXT("stop"), 4, TEXT("/stop") },
 		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
@@ -1565,6 +1574,49 @@ namespace
 		default:
 			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { NameOf(Rider), NameOf(Vehicle) })) };
 		}
+	}
+
+	// /save-all [flush], /save-on, /save-off, /stop. The wording is the game's own lang text: the reference player cannot run them
+	// (they need the owner level and a single-player game's cheats stop at 2), so no ref run shows them.
+	FReplies RunSave(const FString& Command, const TArray<FString>& Words, IMcCommandTarget& Target)
+	{
+		const FString& Name = Words[0];
+		if (Name == TEXT("stop"))
+		{
+			if (Words.Num() > 1)
+			{
+				return BadArgument(Command);
+			}
+			Target.RequestStop();
+			return { Ok(McLang::Get(TEXT("commands.stop.stopping"))) };
+		}
+		if (Name == TEXT("save-on") || Name == TEXT("save-off"))
+		{
+			if (Words.Num() > 1)
+			{
+				return BadArgument(Command);
+			}
+			const bool bOn = Name == TEXT("save-on");
+			if (Target.IsAutosaveOn() == bOn)
+			{
+				return { Fail(McLang::Get(bOn ? TEXT("commands.save.alreadyOn") : TEXT("commands.save.alreadyOff"))) };
+			}
+			Target.SetAutosaveOn(bOn);
+			return { Ok(McLang::Get(bOn ? TEXT("commands.save.enabled") : TEXT("commands.save.disabled"))) };
+		}
+		if (Words.Num() > 2 || (Words.Num() == 2 && Words[1] != TEXT("flush")))
+		{
+			return BadArgument(Command);
+		}
+		FReplies Replies;
+		Replies.Add(Ok(McLang::Get(TEXT("commands.save.saving"))));
+		if (!Target.SaveAll(Words.Num() == 2))
+		{
+			Replies.Add(Fail(McLang::Get(TEXT("commands.save.failed"))));
+			return Replies;
+		}
+		Replies.Add(Ok(McLang::Get(TEXT("commands.save.success"))));
+		return Replies;
 	}
 
 	FReplies RunRotate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -5602,6 +5654,198 @@ namespace
 		return { Ok(McLang::Format(Key + TEXT(".multiple"), { FString::FromInt(Players.Num()) })) };
 	}
 
+	FString BanStamp()
+	{
+		return FDateTime::UtcNow().ToString(TEXT("%Y-%m-%d %H:%M:%S +0000"));
+	}
+
+	bool LooksLikeIp(const FString& Text)
+	{
+		TArray<FString> Parts;
+		Text.ParseIntoArray(Parts, TEXT("."), false);
+		if (Parts.Num() == 4)
+		{
+			for (const FString& Part : Parts)
+			{
+				if (Part.IsEmpty() || Part.Len() > 3 || !Part.IsNumeric() || FCString::Atoi(*Part) > 255)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		return Text.Contains(TEXT(":")) && !Text.Contains(TEXT(" "));
+	}
+
+	TArray<FString> PlayersAt(const IMcCommandTarget& Target, const FString& Ip)
+	{
+		TArray<FString> Found;
+		for (const FString& Player : Target.GetPlayerNames())
+		{
+			if (Target.GetPlayerAddress(Player) == Ip)
+			{
+				Found.Add(Player);
+			}
+		}
+		return Found;
+	}
+
+	// ban, ban-ip, pardon, pardon-ip, banlist
+	FReplies RunBans(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		const FString& Name = Words[0];
+		FMcServerAccess Access = Target.LoadAccess();
+		if (Name == TEXT("banlist"))
+		{
+			if (Words.Num() > 2 || (Words.Num() == 2 && Words[1] != TEXT("ips") && Words[1] != TEXT("players")))
+			{
+				return Unknown(Command, Command.Len());
+			}
+			TArray<const FMcServerAccess::FBan*> Entries;
+			if (Words.Num() == 1 || Words[1] == TEXT("ips"))
+			{
+				for (const FMcServerAccess::FBan& Ban : Access.IpBans)
+				{
+					Entries.Add(&Ban);
+				}
+			}
+			if (Words.Num() == 1 || Words[1] == TEXT("players"))
+			{
+				for (const FMcServerAccess::FBan& Ban : Access.Bans)
+				{
+					Entries.Add(&Ban);
+				}
+			}
+			if (Entries.IsEmpty())
+			{
+				return { Ok(McLang::Get(TEXT("commands.banlist.none"))) };
+			}
+			FReplies Replies;
+			Replies.Add(Ok(McLang::Format(TEXT("commands.banlist.list"), { FString::FromInt(Entries.Num()) })));
+			for (const FMcServerAccess::FBan* Ban : Entries)
+			{
+				Replies.Add(Ok(McLang::Format(TEXT("commands.banlist.entry"), { Ban->Target, Ban->Source, Ban->Reason })));
+			}
+			return Replies;
+		}
+		if (Words.Num() < 2)
+		{
+			return Unknown(Command, Command.Len());
+		}
+		if (Name == TEXT("pardon-ip"))
+		{
+			if (Words.Num() != 2)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			if (!LooksLikeIp(Words[1]))
+			{
+				return { Fail(McLang::Get(TEXT("commands.pardonip.invalid"))) };
+			}
+			if (!Access.FindIpBan(Words[1]))
+			{
+				return { Fail(McLang::Get(TEXT("commands.pardonip.failed"))) };
+			}
+			const FString Ip = Words[1];
+			Access.IpBans.RemoveAll([&Ip](const FMcServerAccess::FBan& Ban) { return Ban.Target == Ip; });
+			Target.SaveAccess(Access);
+			return { Ok(McLang::Format(TEXT("commands.pardonip.success"), { Ip })) };
+		}
+		if (Name == TEXT("pardon"))
+		{
+			if (Words.Num() != 2)
+			{
+				return Unknown(Command, Command.Len());
+			}
+			const FString Player = Words[1];
+			if (!Access.FindBan(Player))
+			{
+				return { Fail(McLang::Get(TEXT("commands.pardon.failed"))) };
+			}
+			Access.Bans.RemoveAll([&Player](const FMcServerAccess::FBan& Ban) { return Ban.Target.Equals(Player, ESearchCase::IgnoreCase); });
+			Target.SaveAccess(Access);
+			return { Ok(McLang::Format(TEXT("commands.pardon.success"), { Player })) };
+		}
+		const FString Reason = Words.Num() > 2 ? RestOf(Words, 2) : McLang::Get(TEXT("multiplayer.disconnect.banned.reason.default"));
+		if (Name == TEXT("ban-ip"))
+		{
+			FString Ip;
+			if (LooksLikeIp(Words[1]))
+			{
+				Ip = Words[1];
+			}
+			else
+			{
+				for (const FString& Player : Target.GetPlayerNames())
+				{
+					if (Player.Equals(Words[1], ESearchCase::IgnoreCase))
+					{
+						Ip = Target.GetPlayerAddress(Player);
+						break;
+					}
+				}
+				if (Ip.IsEmpty())
+				{
+					return { Fail(McLang::Get(TEXT("commands.banip.invalid"))) };
+				}
+			}
+			if (Access.FindIpBan(Ip))
+			{
+				return { Fail(McLang::Get(TEXT("commands.banip.failed"))) };
+			}
+			FMcServerAccess::FBan Ban;
+			Ban.Target = Ip;
+			Ban.Source = SenderName(Sender);
+			Ban.Reason = Reason;
+			Ban.Created = BanStamp();
+			Access.IpBans.Add(Ban);
+			Target.SaveAccess(Access);
+			const TArray<FString> Affected = PlayersAt(Target, Ip);
+			FReplies Replies;
+			Replies.Add(Ok(McLang::Format(TEXT("commands.banip.success"), { Ip, Reason })));
+			if (!Affected.IsEmpty())
+			{
+				Replies.Add(Ok(McLang::Format(TEXT("commands.banip.info"), { FString::FromInt(Affected.Num()), FString::Join(Affected, TEXT(", ")) })));
+			}
+			const FString Kick = McLang::Format(TEXT("multiplayer.disconnect.banned_ip.reason"), { Reason });
+			for (const FString& Player : Affected)
+			{
+				Target.Kick(Player, Kick);
+			}
+			return Replies;
+		}
+		// ban
+		TArray<FString> Players;
+		FString Error;
+		if (!ResolvePlayers(Words[1], Sender, Target, Players, Error))
+		{
+			if (Words[1].StartsWith(TEXT("@")))
+			{
+				return { Fail(Error) };
+			}
+			Players = { Words[1] };
+		}
+		FReplies Replies;
+		for (const FString& Player : Players)
+		{
+			if (Access.FindBan(Player))
+			{
+				Replies.Add(Fail(McLang::Get(TEXT("commands.ban.failed"))));
+				continue;
+			}
+			FMcServerAccess::FBan Ban;
+			Ban.Target = Player;
+			Ban.Source = SenderName(Sender);
+			Ban.Reason = Reason;
+			Ban.Created = BanStamp();
+			Access.Bans.Add(Ban);
+			Replies.Add(Ok(McLang::Format(TEXT("commands.ban.success"), { Player, Reason })));
+			Target.Kick(Player, McLang::Format(TEXT("multiplayer.disconnect.banned.reason"), { Reason }));
+		}
+		Target.SaveAccess(Access);
+		return Replies;
+	}
+
 	FReplies RunAccess(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
 		const FString& Name = Words[0];
@@ -5872,6 +6116,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 		}
 		return Replies;
 	}
+	if (Name == TEXT("ban") || Name == TEXT("ban-ip") || Name == TEXT("pardon") || Name == TEXT("pardon-ip") || Name == TEXT("banlist"))
+	{
+		return RunBans(Command, Words, Sender, Target);
+	}
 	if (Name == TEXT("op") || Name == TEXT("deop") || Name == TEXT("whitelist"))
 	{
 		return RunAccess(Command, Words, Sender, Target);
@@ -5956,6 +6204,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("save-all") || Name == TEXT("save-on") || Name == TEXT("save-off") || Name == TEXT("stop"))
+	{
+		return RunSave(Command, Words, Target);
 	}
 	if (Name == TEXT("ride"))
 	{

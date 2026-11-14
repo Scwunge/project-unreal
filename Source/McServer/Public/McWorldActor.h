@@ -243,6 +243,9 @@ public:
 	// Saves the level and every loaded chunk that changed, and waits until it's on disk. The game thread stalls for the
 	// file writes only; EndPlay does this, and so can a command.
 	void SaveWorld();
+	// /save-off and /save-on: whether the world saves itself every 6000 ticks (a save at exit and /save-all still happen).
+	void SetAutosaveOn(bool bOn) { bAutosaveOn = bOn; }
+	bool IsAutosaveOn() const { return bAutosaveOn; }
 	// Marks a loaded chunk as changed when something altered it behind the block world's back (a chest's contents).
 	void MarkChunkDirty(FIntPoint Chunk);
 	// Called at every save, with the world about to be written: where the other things that belong to the world (the
@@ -432,6 +435,7 @@ private:
 	// Chunks still to be looked at by the autosave in progress.
 	TArray<FIntPoint> AutosaveQueue;
 	int32 TicksSinceAutosave = 0;
+	bool bAutosaveOn = true;
 	// Chunks that joined the world this session, by where they came from; logged with each save.
 	int32 NumChunksFromDisk = 0;
 	int32 NumChunksGenerated = 0;

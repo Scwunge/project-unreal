@@ -18,6 +18,7 @@ struct MCCORE_API FMcGameRules
 	bool bDoTileDrops = true;
 	bool bMobGriefing = true;
 	bool bKeepInventory = false;
+	bool bShowDeathMessages = true;
 	bool bNaturalRegeneration = true;
 	bool bFallDamage = true;
 	bool bFireDamage = true;

@@ -8,6 +8,8 @@
 #include "McBanner.h"
 #include "McShulker.h"
 #include "McCache.h"
+#include "McLang.h"
+#include "GameFramework/PlayerState.h"
 #include "McResourcePacks.h"
 #include "McRenderTextures.h"
 #include "McBannerEntity.h"
@@ -154,6 +156,7 @@ void AMcPlayerPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AMcPlayerPawn, bSleeping);
 	DOREPLIFETIME(AMcPlayerPawn, SleepTicks);
 	DOREPLIFETIME(AMcPlayerPawn, DeathScore);
+	DOREPLIFETIME(AMcPlayerPawn, DeathMessage);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigStage, COND_OwnerOnly);
 	DOREPLIFETIME_CONDITION(AMcPlayerPawn, DigBlockPos, COND_OwnerOnly);
 	DOREPLIFETIME(AMcPlayerPawn, bRodCast);
@@ -1161,7 +1164,7 @@ void AMcPlayerPawn::UseBlocks(APlayerController& Player)
 
 // ---- The server's side ----
 
-float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From, bool bKnock)
+float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From, bool bKnock, FName Attacker)
 {
 	if (!HasAuthority() || !Data || Data->bCreative || bServerDead)
 	{
@@ -1176,6 +1179,7 @@ float AMcPlayerPawn::ServerHurt(float Amount, McSurvival::EDamage Kind, const FV
 	Data->AddStat(TEXT("custom:damage_taken"), FMath::RoundToInt64(Taken * 10.0f));
 	if (Taken > 0.0f)
 	{
+		LastAttacker = Attacker;
 		ServerGameEvent(FName("entity_damage"), Body.Position);
 	}
 	if (Taken > 0.0f && bSleeping)
@@ -1970,6 +1974,8 @@ void AMcPlayerPawn::ServerGameTick()
 				if (FallDamage > 0)
 				{
 					UE_LOG(LogTemp, Display, TEXT("player hurt: fall %d at y %.1f"), FallDamage, Feet.Y);
+					// The damage is what the fall was past three blocks.
+					LastFallDistance = static_cast<float>(FallDamage) + 3.0f;
 					McSurvival::Hurt(Stats, static_cast<float>(FallDamage), McSurvival::EDamage::Fall, Data->Armor.Get(), &GameRules);
 					// (A landing that hurts is a hit_ground, 2, and a hurt, 7; one that doesn't is not signalled yet.)
 					ServerGameEvent(FName("hit_ground"), Feet);
@@ -2529,6 +2535,18 @@ void AMcPlayerPawn::ServerBreakBlock(const FIntVector& Pos)
 	McSurvival::AddExhaustion(Data->Stats, McSurvival::BreakBlockExhaustion);
 }
 
+FString AMcPlayerPawn::ServerGetDeathMessage(const FString& PlayerName) const
+{
+	const McSurvival::EDamage Kind = Data ? static_cast<McSurvival::EDamage>(Data->Stats.LastHurtKind) : McSurvival::EDamage::Generic;
+	const bool bKnownMob = Kind == McSurvival::EDamage::Mob && !LastAttacker.IsNone();
+	const TCHAR* Key = McSurvival::GetDeathMessageKey(Kind, bKnownMob, LastFallDistance);
+	if (bKnownMob)
+	{
+		return McLang::Format(Key, { PlayerName, McLang::Get(TEXT("entity.minecraft.") + McCache::PathOf(LastAttacker.ToString())) });
+	}
+	return McLang::Format(Key, { PlayerName });
+}
+
 void AMcPlayerPawn::ServerDie()
 {
 	if (bServerDead || !Data)
@@ -2548,6 +2566,8 @@ void AMcPlayerPawn::ServerDie()
 	Data->Counters.Add(TEXT("custom:time_since_death"), 0);
 	ServerGameEvent(FName("entity_die"), Body.Position);
 	DeathScore = McSurvival::GetTotalXp(Data->Stats);
+	DeathMessage = ServerGetDeathMessage(GetPlayerState() ? GetPlayerState()->GetPlayerName() : FString());
+	UE_LOG(LogMcPlayer, Display, TEXT("Death message: %s"), *DeathMessage);
 	// What was on the cursor or in a grid goes back first, then everything is dropped where the player fell.
 	Data->CloseWindow();
 	// With keepInventory the inventory, armour and experience stay with the player.

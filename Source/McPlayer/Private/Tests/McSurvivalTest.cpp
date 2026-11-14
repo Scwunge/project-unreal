@@ -650,4 +650,23 @@ bool FMcBlockBreakTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMcDeathMessageTest, "McClient.McPlayer.DeathMessage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMcDeathMessageTest::RunTest(const FString& Parameters)
+{
+	using McSurvival::EDamage;
+	// Reference (deaths_play.txt, deaths_play2.txt): the line each death got in chat and on the death screen.
+	TestEqual(TEXT("/kill"), FString(McSurvival::GetDeathMessageKey(EDamage::Kill, false, 0.0f)), FString(TEXT("death.attack.genericKill")));
+	TestEqual(TEXT("the void"), FString(McSurvival::GetDeathMessageKey(EDamage::Void, false, 0.0f)), FString(TEXT("death.attack.outOfWorld")));
+	TestEqual(TEXT("a zombie"), FString(McSurvival::GetDeathMessageKey(EDamage::Mob, true, 0.0f)), FString(TEXT("death.attack.mob")));
+	TestEqual(TEXT("lava"), FString(McSurvival::GetDeathMessageKey(EDamage::Lava, false, 0.0f)), FString(TEXT("death.attack.lava")));
+	TestEqual(TEXT("drowning"), FString(McSurvival::GetDeathMessageKey(EDamage::Drown, false, 0.0f)), FString(TEXT("death.attack.drown")));
+	TestEqual(TEXT("starving"), FString(McSurvival::GetDeathMessageKey(EDamage::Starve, false, 0.0f)), FString(TEXT("death.attack.starve")));
+	TestEqual(TEXT("fire"), FString(McSurvival::GetDeathMessageKey(EDamage::InFire, false, 0.0f)), FString(TEXT("death.attack.inFire")));
+	TestEqual(TEXT("a short fall"), FString(McSurvival::GetDeathMessageKey(EDamage::Fall, false, 5.0f)), FString(TEXT("death.attack.fall")));
+	TestEqual(TEXT("a long fall"), FString(McSurvival::GetDeathMessageKey(EDamage::Fall, false, 40.0f)), FString(TEXT("death.fell.accident.generic")));
+	return true;
+}
+
 #endif

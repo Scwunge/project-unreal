@@ -1,0 +1,43 @@
+# Death messages: /kill, a zombie, a long fall, the void and lava, each with the death screen's cause line (shots
+# d_*.png) and the line in chat, then the death screen's Respawn. The log has "Death message: ..." for each. Lava goes
+# last: the pool stays by the spawn. press:Respawn waits for the death screen to take clicks (1 s), hence the wait:4 after it.
+settle:40
+# A pool left by an earlier run on this world.
+chat:/fill ~-3 ~-2 ~-3 ~3 ~3 ~3 minecraft:air replace minecraft:lava
+chat:/difficulty hard
+chat:/kill @s
+wait:2
+shot:d_kill
+press:Respawn
+wait:4
+settle:10
+chat:/damage @s 19
+wait:2
+chat:/summon minecraft:zombie ~1 ~ ~
+wait:8
+shot:d_zombie
+press:Respawn
+wait:4
+settle:10
+chat:/tp @s ~ ~40 ~
+wait:5
+shot:d_fall
+press:Respawn
+wait:4
+settle:10
+chat:/tp @s ~ -100 ~
+wait:4
+shot:d_void
+press:Respawn
+wait:4
+settle:10
+chat:/fill ~-1 ~ ~-1 ~1 ~1 ~1 minecraft:lava
+wait:6
+shot:d_lava
+press:Respawn
+wait:4
+settle:10
+chat:/fill ~-3 ~-2 ~-3 ~3 ~3 ~3 minecraft:air replace minecraft:lava
+wait:1
+mark:end
+end

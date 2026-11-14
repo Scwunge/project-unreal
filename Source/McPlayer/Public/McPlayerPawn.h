@@ -133,8 +133,9 @@ public:
 	bool bServerHooked = false;
 
 	// Server: hurts the player (a mob's bite, a blast). Does nothing in creative. Returns the health lost.
-	// From is where the blow came from (for the knockback), if it came from somewhere.
-	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true);
+	// From is where the blow came from (for the knockback), if it came from somewhere; Attacker is the kind of mob that
+	// struck (minecraft:zombie), for the death message.
+	float ServerHurt(float Amount, McSurvival::EDamage Kind, const FVector* From = nullptr, bool bKnock = true, FName Attacker = NAME_None);
 	// A blast reaches the player: the damage (armour turns some aside), a push added to the velocity (blocks a tick),
 	// and the centre it came from for the side the view rolls to.
 	void ServerBlast(float Amount, const FVector& Push, const FVector& Center);
@@ -151,6 +152,12 @@ public:
 	void ShootBowAlong(const FVector& Look, int32 DrawTicks);
 	// The experience points the player had when they died: the death screen's "Score".
 	int32 GetDeathScore() const { return DeathScore; }
+	// What killed the player, as the death screen and the chat say it ("Player515 drowned"); empty while alive.
+	const FString& GetDeathMessage() const { return DeathMessage; }
+	// Server: the death message, from the last damage that landed.
+	FString ServerGetDeathMessage(const FString& PlayerName) const;
+	// Server: sets the death message the owner's death screen shows.
+	void ServerSetDeathMessage(const FString& Message) { DeathMessage = Message; }
 	// Server: puts the player at Feet (block coordinates) looking McYaw, on their own machine too. Their velocity stops.
 	void ServerTeleport(const FVector& Feet, float McYaw);
 	// Server: where the player's feet are, in block coordinates.
@@ -387,6 +394,11 @@ private:
 	int32 SleepTicks = 0;
 	UPROPERTY(Replicated)
 	int32 DeathScore = 0;
+	UPROPERTY(Replicated)
+	FString DeathMessage;
+	// The kind of mob whose blow last landed, and how far the player fell for the last fall damage (server).
+	FName LastAttacker;
+	float LastFallDistance = 0.0f;
 	FIntVector SleepBed = FIntVector::ZeroValue;
 	bool bSleptThroughSent = false;
 	bool bHudHidden = false;

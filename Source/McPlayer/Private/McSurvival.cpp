@@ -122,6 +122,7 @@ namespace McSurvival
 		case EDamage::OnFire:
 		case EDamage::Starve:
 		case EDamage::Void:
+		case EDamage::Kill:
 		case EDamage::Magic:
 		case EDamage::Wither:
 			return true;
@@ -157,6 +158,28 @@ namespace McSurvival
 		}
 	}
 
+	const TCHAR* GetDeathMessageKey(EDamage Kind, bool bKnownMob, float FallDistance)
+	{
+		switch (Kind)
+		{
+		// A fall of more than 5 blocks is a fall from a high place, a shorter one hitting the ground too hard
+		// (minecraft.wiki, "Death messages"; reference, deaths_play.txt: a 45-block fall was "fell from a high place").
+		case EDamage::Fall: return FallDistance > 5.0f ? TEXT("death.fell.accident.generic") : TEXT("death.attack.fall");
+		case EDamage::Drown: return TEXT("death.attack.drown");
+		case EDamage::InFire: return TEXT("death.attack.inFire");
+		case EDamage::OnFire: return TEXT("death.attack.onFire");
+		case EDamage::Lava: return TEXT("death.attack.lava");
+		case EDamage::Starve: return TEXT("death.attack.starve");
+		case EDamage::Mob: return bKnownMob ? TEXT("death.attack.mob") : TEXT("death.attack.generic");
+		case EDamage::Void: return TEXT("death.attack.outOfWorld");
+		case EDamage::Magic: return TEXT("death.attack.magic");
+		case EDamage::Wither: return TEXT("death.attack.wither");
+		case EDamage::Explosion: return TEXT("death.attack.explosion");
+		case EDamage::Kill: return TEXT("death.attack.genericKill");
+		default: return TEXT("death.attack.generic");
+		}
+	}
+
 	float Hurt(FMcPlayerStats& Stats, float Amount, EDamage Kind, FMcContainer* Worn, const FMcGameRules* Rules)
 	{
 		if (Amount <= 0.0f || Stats.Health <= 0.0f || (Rules && !IsDamageEnabled(Kind, *Rules)))
@@ -169,7 +192,7 @@ namespace McSurvival
 			return 0.0f;
 		}
 		float Dealt = Amount;
-		if (Kind != EDamage::Void && Stats.InvulnTicks > 10)
+		if (Kind != EDamage::Void && Kind != EDamage::Kill && Stats.InvulnTicks > 10)
 		{
 			// Still immune from the last hit: only the part that is more than it got through.
 			if (Amount <= Stats.LastDamage)
@@ -212,7 +235,7 @@ namespace McSurvival
 			}
 			Taken = ReduceByArmor(Dealt, ArmorPoints, Toughness);
 		}
-		if (Kind != EDamage::Void && Kind != EDamage::Starve)
+		if (Kind != EDamage::Void && Kind != EDamage::Kill && Kind != EDamage::Starve)
 		{
 			Taken *= 1.0f - McEffects::GetResistance(Stats);
 		}

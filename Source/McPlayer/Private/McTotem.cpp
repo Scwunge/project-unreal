@@ -6,7 +6,7 @@
 
 bool McTotem::CanSave(uint8 DamageKind)
 {
-	return DamageKind != static_cast<uint8>(McSurvival::EDamage::Void);
+	return DamageKind != static_cast<uint8>(McSurvival::EDamage::Void) && DamageKind != static_cast<uint8>(McSurvival::EDamage::Kill);
 }
 
 bool McTotem::TryUse(FMcPlayerStats& Stats, FMcItemStack& MainHand, FMcItemStack& OffHand)

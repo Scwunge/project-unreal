@@ -2626,14 +2626,21 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 		}
 	}
 	DrawFill(0, 0, static_cast<float>(Width), static_cast<float>(Height), FLinearColor(0.5f, 0.0f, 0.0f, 0.5f));
-	// The title is drawn at twice the size, centred on the screen, and the score under it.
-	const FString Title = TEXT("You died!");
-	DrawGuiText(Title, FMath::RoundToFloat(Width / 2.0f - TextWidth(Title)), 30.0f, 0xFFFFFF, true, 1.0f, 2.0f);
-	const FString ScoreLabel = TEXT("Score: ");
+	// The title is drawn at twice the size, centred on the screen; under it what killed the player, then the score
+	// (reference, deaths_play.txt, ref_death_kill.png: "You Died!" with its top at 60, which is 30 at the doubled size,
+	// the cause line at 85 and the score at 100).
+	const FString Title = McLang::Get(TEXT("deathScreen.title"));
+	DrawGuiText(Title, FMath::RoundToFloat(Width / 2.0f - TextWidth(Title)), 60.0f, 0xFFFFFF, true, 1.0f, 2.0f);
+	const FString& Cause = Dead.GetDeathMessage();
+	if (!Cause.IsEmpty())
+	{
+		DrawGuiText(Cause, FMath::RoundToFloat(Width / 2.0f - TextWidth(Cause) / 2.0f), 85.0f, 0xFFFFFF, true);
+	}
+	const FString ScoreLabel = McLang::Get(TEXT("deathScreen.score")) + TEXT(": ");
 	const FString ScoreValue = FString::FromInt(Dead.GetDeathScore());
 	const float ScoreX = Width / 2.0f - (TextWidth(ScoreLabel) + TextWidth(ScoreValue)) / 2.0f;
-	DrawGuiText(ScoreLabel, ScoreX, 85.0f, 0xFFFFFF, true);
-	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), 85.0f, 0xFFFF55, true);
+	DrawGuiText(ScoreLabel, ScoreX, 100.0f, 0xFFFFFF, true);
+	DrawGuiText(ScoreValue, ScoreX + TextWidth(ScoreLabel), 100.0f, 0xFFFF55, true);
 
 	// Two 200 by 20 buttons: Respawn, then Title Screen. Both are asleep for the first second.
 	float MouseX = 0.0f, MouseY = 0.0f;
@@ -2646,11 +2653,11 @@ void AMcHUD::ShowDeathScreen(int32 Width, int32 Height, AMcPlayerPawn& Dead)
 	const bool bAwake = GetWorld() && GetWorld()->GetTimeSeconds() - DeathShownTime >= 1.0;
 	const float ButtonX = Width / 2.0f - 100.0f;
 	const float ButtonY = Height / 4.0f + 72.0f;
-	if (MenuButton(TEXT("Respawn"), ButtonX, ButtonY, 200.0f, 20.0f, bAwake))
+	if (MenuButton(McLang::Get(TEXT("deathScreen.respawn")), ButtonX, ButtonY, 200.0f, 20.0f, bAwake))
 	{
 		Dead.RequestRespawn();
 	}
-	else if (MenuButton(TEXT("Title Screen"), ButtonX, ButtonY + 24.0f, 200.0f, 20.0f, bAwake))
+	else if (MenuButton(McLang::Get(TEXT("deathScreen.titleScreen")), ButtonX, ButtonY + 24.0f, 200.0f, 20.0f, bAwake))
 	{
 		// Leaving the map saves the world and the player, like Save and Quit to Title.
 		UGameplayStatics::OpenLevel(this, FName(TEXT("/Engine/Maps/Entry")), true, TEXT("McTitle"));

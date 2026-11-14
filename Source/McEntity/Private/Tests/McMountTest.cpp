@@ -192,6 +192,21 @@ bool FMcMountTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and the next must wait 55 ticks"), CamelState.DashCooldown, 55);
 	}
 
+	// A camel lies down and gets up by itself (after 400 ticks, 1 in 190 to sit, 1 in 39 to stand), and a rider makes it stand.
+	if (const FMcMobType* SitType = FMcMobType::Find(FName(TEXT("minecraft:camel"))))
+	{
+		FMcMob* Sitter = MakeHorse(*SitType, 120.5);
+		FMcMountState& SitState = McMount::Ensure(*Sitter);
+		for (int32 Tick = 0; Tick < 399; ++Tick) { Manager.Tick(); }
+		TestFalse(TEXT("a camel does not sit before 400 ticks"), SitState.bSitting);
+		bool bSat = false;
+		for (int32 Tick = 0; Tick < 6000 && !bSat; ++Tick) { Manager.Tick(); bSat = SitState.bSitting; }
+		TestTrue(TEXT("it sits down in the end"), bSat);
+		SitState.RiderId = 6;
+		Manager.Tick();
+		TestFalse(TEXT("a rider makes it stand"), SitState.bSitting);
+	}
+
 	// A camel takes a second rider; when the first gets off the second steers.
 	if (const FMcMobType* TwoType = FMcMobType::Find(FName(TEXT("minecraft:camel"))))
 	{

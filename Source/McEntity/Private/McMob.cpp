@@ -1155,6 +1155,12 @@ void FMcMob::TickAlone(FMcEntityManager& Manager)
 	{
 		return;
 	}
+	if (McMount::TickSitting(*this))
+	{
+		Body.Velocity.X = 0.0;
+		Body.Velocity.Z = 0.0;
+		return;
+	}
 	if (Type.bDragon && DeathTicks > 0)
 	{
 		TickDragonDeath(Manager);

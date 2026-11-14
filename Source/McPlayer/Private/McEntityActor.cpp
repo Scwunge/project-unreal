@@ -185,6 +185,11 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
 			ArmPose = 1;
 		}
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid() && Entity.Mount->bSitting)
+		{
+			// Lying down: pose 2, or 3 with its saddle on.
+			ArmPose |= 2;
+		}
 #if !UE_BUILD_SHIPPING
 		// Development: -McBaby draws every camel young, for shots (no command makes one yet).
 		const bool bDevBaby = FParse::Param(FCommandLine::Get(), TEXT("McBaby")) && (Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk"));

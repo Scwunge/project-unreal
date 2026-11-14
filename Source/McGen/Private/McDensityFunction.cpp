@@ -778,10 +778,22 @@ double FMcDensityGraph::Interpolate(int32 NodeIndex, const FMcDensityNode& Node,
 	}
 
 	// Anywhere else, the eight corners around the point.
+	FMcDensityContext::FGrid& Loose = Context.Grids[Node.Slot];
 	auto CornerAt = [&](int32 CX, int32 CY, int32 CZ)
 	{
+		const FIntVector Key(CX, CY, CZ);
+		if (const double* Found = Loose.Loose.Find(Key))
+		{
+			return *Found;
+		}
 		Context.SetPos(CX, CY, CZ);
-		return Evaluate(Node.A, Context);
+		const double Result = Evaluate(Node.A, Context);
+		if (Loose.Loose.Num() >= 8192)
+		{
+			Loose.Loose.Reset();
+		}
+		Loose.Loose.Add(Key, Result);
+		return Result;
 	};
 	const int32 X1 = X0 + CellXZ;
 	const int32 Z1 = Z0 + CellXZ;

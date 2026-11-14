@@ -9,6 +9,7 @@
 #include "EngineUtils.h"
 #include "McDecorEntity.h"
 #include "McMob.h"
+#include "McMount.h"
 #include "McTnt.h"
 #include "McPot.h"
 #include "McVehicle.h"
@@ -172,6 +173,11 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		bOffering = Mob.OfferTicks > 0;
 		HeldItem = Mob.HeldItem;
 		ArmPose = Mob.ArmPose;
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid() && Entity.Mount->bSaddled)
+		{
+			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
+			ArmPose = 1;
+		}
 		if (Kind != FMcVillager::StaticType())
 		{
 			bBaby = Mob.IsYoung();

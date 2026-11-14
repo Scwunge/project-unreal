@@ -1418,11 +1418,25 @@ namespace McEntityModel
 				Camel.Parts.Add(Part(ERole::LegFrontLeft, FVector(4.9f, 23, 10.5f), { Box(0, 0, -2.5f, -23, -2.5f, 5, 21, 5) }));
 				Camel.Parts.Add(Part(ERole::LegBackRight, FVector(-4.9f, 23, -9.5f), { Box(94, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
 				Camel.Parts.Add(Part(ERole::LegBackLeft, FVector(4.9f, 23, -9.5f), { Box(58, 16, -2.5f, -23, -2.5f, 5, 21, 5) }));
+				// The saddle layer (the logged saddle model, drawn when the camel is saddled: pose 1 from AMcEntityActor): the bridle on the head
+				// (the head's boxes again on the saddle picture, and two straps), the reins in the model's own frame, the saddle on the back.
+				Camel.Textures.Add(TEXT("equipment/camel_saddle/saddle.png"));
+				const uint32 Saddled = 1u << 1;
+				Camel.Parts.Add(Part(ERole::Head, FVector(0, 27, 19.5f), { Box(60, 87, -3.5f, -1, -4, 7, 8, 19), Box(21, 64, -3.5f, 7, 8, 7, 14, 7), Box(50, 64, -2.5f, 16, 15, 5, 5, 6), Box(74, 70, 2.5f, 17, 16, 1, 2, 2), Box(74, 70, -3.5f, 17, 16, 1, 2, 2) }, 0, 0, 0, 0, 1));
+				Camel.Parts.Add(Part(ERole::Static, FVector(0, 20, -9.5f), { Box(74, 64, -4.5f, 12, 4.5f, 9, 5, 11), Box(92, 114, -3.5f, 17, 4.5f, 7, 3, 11), Box(0, 89, -7.5f, 0, -3.5f, 15, 12, 27, 0.02f) }, 0, 0, 0, 0, 1));
+				Camel.Parts.Add(Part(ERole::Static, FVector(0, 24, 0), { Box(98, 42, 3.51f, 11, 2, 0, 7, 15), Box(84, 57, -3.5f, 11, 2, 7, 7, 0), Box(98, 42, -3.51f, 11, 2, 0, 7, 15) }, 0, 0, 0, 0, 1));
+				for (FPart& Each : Camel.Parts)
+				{
+					if (Each.Layer == 1)
+					{
+						Each.ShowPoses = Saddled;
+					}
+				}
 				Models.Add(Camel.Kind, Camel);
 				// The husk has its own picture and the same shape.
 				FModel Husk = Camel;
 				Husk.Kind = TEXT("minecraft:camel_husk");
-				Husk.Textures = { TEXT("camel/camel_husk.png") };
+				Husk.Textures = { TEXT("camel/camel_husk.png"), TEXT("equipment/camel_husk_saddle/saddle.png") };
 				Models.Add(Husk.Kind, Husk);
 			}
 			// Young ones with a model of their own (not the grown one's halved), from the logged baby models: every pivot, tilt and box,

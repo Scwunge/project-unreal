@@ -73,7 +73,6 @@ namespace
 		{ TEXT("stopsound"), 2, TEXT("/stopsound <targets> [<source>] [<sound>]") },
 		{ TEXT("rotate"), 2, TEXT("/rotate <target> (<rotation>|facing ...)") },
 		{ TEXT("scoreboard"), 2, TEXT("/scoreboard (objectives|players) ...") },
-		{ TEXT("ride"), 2, TEXT("/ride <target> (mount <vehicle>|dismount)") },
 		{ TEXT("execute"), 2, TEXT("/execute (as|at|positioned|if|unless|store|run) ...") },
 		{ TEXT("locate"), 2, TEXT("/locate biome <biome>") },
 		{ TEXT("swing"), 2, TEXT("/swing <entities> [mainhand|offhand]") },
@@ -5242,49 +5241,6 @@ namespace
 		return Unknown(Command, Command.Len());
 	}
 
-	// /ride <target> dismount | mount <vehicle> (wording from a ref run, cmd_group4.txt). Players can ride boats and minecarts only;
-	// there are no saddled or tamed mounts, and no selector for other entities, so mount answers the game's generic failure for
-	// anything but a player (which can't be ridden).
-	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
-	{
-		if (Words.Num() < 3 || (Words[2] == TEXT("dismount") && Words.Num() != 3) || (Words[2] == TEXT("mount") && Words.Num() != 4)
-			|| (Words[2] != TEXT("dismount") && Words[2] != TEXT("mount")))
-		{
-			return Unknown(Command, Command.Len());
-		}
-		TArray<FString> Riders;
-		FString Error;
-		if (!ResolvePlayers(Words[1], Sender, Target, Riders, Error))
-		{
-			return { Fail(Error) };
-		}
-		if (Riders.Num() > 1)
-		{
-			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
-		}
-		if (Words[2] == TEXT("dismount"))
-		{
-			FString Vehicle;
-			if (!Target.GetVehicleName(Riders[0], Vehicle))
-			{
-				return { Fail(McLang::Format(TEXT("commands.ride.not_riding"), { Riders[0] })) };
-			}
-			Target.Dismount(Riders[0]);
-			return { Ok(McLang::Format(TEXT("commands.ride.dismount.success"), { Riders[0], Vehicle })) };
-		}
-		TArray<FString> Vehicles;
-		if (!ResolvePlayers(Words[3], Sender, Target, Vehicles, Error))
-		{
-			// Not a player: only players can be found by a selector here.
-			return { Fail(McLang::Format(TEXT("commands.ride.mount.failure.generic"), { Riders[0], Words[3] })) };
-		}
-		if (Vehicles.Num() > 1)
-		{
-			return { Fail(McLang::Get(TEXT("argument.entity.toomany"))) };
-		}
-		return { Fail(McLang::Get(TEXT("commands.ride.mount.failure.cant_ride_players"))) };
-	}
-
 	// /place feature <feature> [pos] (wording from a ref run, cmd_group4.txt). Template, structure and jigsaw are not built.
 	FReplies RunPlace(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
 	{
@@ -6004,10 +5960,6 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("damage"))
 	{
 		return RunDamage(Command, Words, Sender, Target);
-	}
-	if (Name == TEXT("ride"))
-	{
-		return RunRide(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("rotate"))
 	{

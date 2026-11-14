@@ -764,6 +764,8 @@ void McCountBlocks(const TCHAR* Key, int64 Blocks)
 	}
 }
 
+TMap<FString, double>* GMcDecorateProfile = nullptr;
+
 void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 {
 	const FIntPoint Chunk = Region.GetCentre();
@@ -787,7 +789,12 @@ void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 	// Structures first, like the game's structure stage before the feature steps.
 	if (Structures.IsValid())
 	{
+		const double StructuresBegan = GMcDecorateProfile ? FPlatformTime::Seconds() : 0.0;
 		Structures->Place(Region, Seed);
+		if (GMcDecorateProfile)
+		{
+			GMcDecorateProfile->FindOrAdd(TEXT("structures")) += FPlatformTime::Seconds() - StructuresBegan;
+		}
 	}
 
 	const FMcRandom Base = FMcRandom(Seed).Fork(TEXT("decoration"));
@@ -804,7 +811,12 @@ void FMcFeatureLibrary::Decorate(FMcGenRegion& Region, uint64 Seed) const
 			}
 			FMcRandom Random = Base.Fork(Chunk.X, Step * 4096 + Index, Chunk.Y);
 			FMcFeatureContext Context{ Region, Random, *this, SeaLevel, Feature };
+			const double FeatureBegan = GMcDecorateProfile ? FPlatformTime::Seconds() : 0.0;
 			Feature->Place(Context, Origin);
+			if (GMcDecorateProfile)
+			{
+				GMcDecorateProfile->FindOrAdd(Feature->StatId) += FPlatformTime::Seconds() - FeatureBegan;
+			}
 		}
 	}
 }

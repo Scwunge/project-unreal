@@ -1005,7 +1005,7 @@ bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
 		return true;
 	}
 	McJavaImport::FStats Stats;
-	const FString Folder = McJavaImport::ImportWorld(Source, TEXT("JavaImportDims"), Stats);
+	const FString Folder = McJavaImport::ImportWorld(Source, FString(TEXT("JavaImportDims_")) + FGuid::NewGuid().ToString(EGuidFormats::Digits), Stats);
 	if (!TestFalse(TEXT("the import made a world"), Folder.IsEmpty()))
 	{
 		return false;
@@ -1021,7 +1021,8 @@ bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("nether regions imported"), Nether.Num() > 0);
 	TestEqual(TEXT("none unreadable"), Stats.ChunksFailed, 0);
 
-	const FString Out = FPaths::ProjectSavedDir() / TEXT("Tests") / TEXT("JavaExportDims");
+	// A folder of its own for each run: two runs in one project folder (shards, or a rerun begun before the last ended) wiped each other's export, which came back with a third of the chunks.
+	const FString Out = FPaths::ProjectSavedDir() / TEXT("Tests") / (FString(TEXT("JavaExportDims_")) + FGuid::NewGuid().ToString(EGuidFormats::Digits));
 	IFileManager::Get().DeleteDirectory(*Out, false, true);
 	McJavaExport::FStats Exported;
 	TestTrue(TEXT("exports"), McJavaExport::ExportWorld(WorldDir, Out, Exported));
@@ -1032,7 +1033,7 @@ bool FMcJavaImportDimensionsTest::RunTest(const FString& Parameters)
 	// The exported save reads as a Java world again.
 	TestTrue(TEXT("the export is a Java world"), McJavaImport::IsJavaWorld(Out));
 	McJavaImport::FStats Again;
-	const FString Second = McJavaImport::ImportWorld(Out, TEXT("JavaImportDims2"), Again);
+	const FString Second = McJavaImport::ImportWorld(Out, FString(TEXT("JavaImportDims2_")) + FGuid::NewGuid().ToString(EGuidFormats::Digits), Again);
 	TestFalse(TEXT("the export imports"), Second.IsEmpty());
 	TestEqual(TEXT("same chunks after the round trip"), Again.Chunks, Stats.Chunks);
 	TestEqual(TEXT("same blocks after the round trip"), Again.NonAirBlocks, Stats.NonAirBlocks);

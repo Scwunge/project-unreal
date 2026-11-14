@@ -1933,6 +1933,14 @@ Not there (in order): end crystal entity (explodes when hit, heals the dragon by
 ### Commands built for real (resource-packs session, 2026-11-04)
 - `recipe` is not built: the port has no recipe book state to unlock or take.
 
+
+## Shareable package (package session)
+
+- **Done:** `tools/package-remote.sh [date]` builds on the 1070 (UE 5.9, `C:\Program Files\Epic Games\UE_5.9`) and runs `tools/package.ps1` (BuildCookRun Shipping, pdbs dropped, zip). First-run setup ("First-time setup", copies the player's own Minecraft 26.3 files into `%LOCALAPPDATA%\McUnreal\cache`) is in `McHUDSetup.cpp`; README and Play.bat in `tools/package/`.
+- **Stage checks in package.ps1:** no Mojang files (cache, assets, .ogg/.jar/.mcmeta/.nbt) and no editor AI plugins (MCP, Toolset, AgentLook, Unreal Assistant).
+- **Fixes on the branch, unbuilt on 5.9:** water-crash root (`4fb6cc2`), new overworld spawns on dry land (`67a5055`), HUD icon caches cleared with the pack pictures (`b003c8f`). The HUD crash was never reproduced on the unfixed exe (one 6 min try), so it is not proven fixed.
+- **Before a friend build:** merge m1 on 5.9 (integrate a204986 or later, which has playable's 23f1fe0), build, then test the first-run path on a clean folder and the Shipping stage list. Shipping unity clashes in McPortal.cpp / McRandomTicks.cpp are integrate's.
+
 ## Unreal Mode speed, first measurements (2026-11-05, 1070, 1280x720, flat-ish world prof1, not clean)
 `-McShotExec=ProfileGPU` plus a `McShot: frame ms: game/render/gpu` log line (non-Shipping). At the old High (TSR quality 3): GPU 11.3 ms, TSR 3.5, shadow depths 1.7, volumetric fog 0.85, base pass 0.83. Presets now also set TSR quality (Low/Medium 1, High 2, Ultra 3): GPU Low 8.1, Medium 8.5, High 10.3 ms. Every level still ran ~40 fps because the render thread sits at ~24 ms (game 9-19 ms) with ~3400 draw calls in the shadow depth passes: the GPU is not the limit, render-thread draw submission is.
 
@@ -2188,3 +2196,9 @@ New ref verbs that would settle them: a `log player` (health/effects) so a hurt 
 - **After m1's quit-save order** (merge fdd5bc6; players, chunks, maps, level.dat last, with the parallel encode and bulk write in the chunks step): leave59m (Development, 4060, seed 12, 3 editors open, 17.8 GB free): Save and Quit saved 729 of 729 chunks in 698 ms (encode 143, write 554), the title loaded in 3.16 s, world creation 2.86 s. Unchanged from 9ef229d (0.71 s / 3.12 s). Tests 271 of 271 (nojx list).
 - Left in the slow flying frames: the simulation at about 7 ms against 1.7 ms on average (not looked at yet), and the renderer's launch and upload at 3-4 ms each.
 - Next: flying (stream/unload 2.3 ms; 84 frames over 33 ms).
+
+- **In flight when the PC restarted (2026-11-13):** the Linux server cross-build (`tools/server-linux/package-linux-server.ps1`, UBT via RunUAT, retry loop `/tmp/linuxpkg.sh`) after the clang fixes in `2b028d5`; its first attempt failed on clang-only errors (range-for, overloaded virtuals, shadows, a nested-struct default argument), all fixed in `2b028d5` and not yet confirmed. Requeue: set `LINUX_MULTIARCH_ROOT=C:\UnrealToolchains\v26_clang-20.1.8-rockylinux8` (a user variable, survives) and run the script, output `I:\mc-package-out`. Not yet done after it: start the result with `-server -nullrhi`, check port 25565 (WSL if present). The Windows playtest package waits for the m1 head from the leader.
+
+- **Where the packages stand (2026-11-13, work stopped by the user):**
+  - Windows playtest package: not built. The last zip is `I:\mc-package-out\McUnreal-2026-11-11.zip` (UE 5.9, head `86ff28a`, sha256 `700DBE4C...9649`); scripted Shipping play check passed 300 s with a new world spawning on land, first-run setup screen shown. Next: merge the m1 head the leader gives, build and package on the 1070 (`package-remote.sh`), smoke-test once, report path, size, sha256. Only for the user.
+  - Linux server: `tools/server-linux/` (script, run script, systemd unit, README) written; toolchain `v26_clang-20.1.8-rockylinux8` installed only on the 4060 PC (`C:\UnrealToolchains`, `LINUX_MULTIARCH_ROOT` user variable). First cross-build failed on clang-only errors; fixes are in `2b028d5` and not yet confirmed. Not tested: the build, `-server -nullrhi` start, port 25565, the cache copy, case-sensitive file names.

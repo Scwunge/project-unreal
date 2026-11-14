@@ -58,7 +58,7 @@ bool FMcNoiseSettings::Load(const FString& Id, FMcNoiseSettings& Out)
 	}
 	Result.DefaultBlock = Block.GetValue();
 	Result.DefaultFluid = Fluid.GetValue();
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*RouterObject)->Values)
+	for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*RouterObject)->Values)
 	{
 		Result.Router.Add(Entry.Key, Entry.Value);
 	}

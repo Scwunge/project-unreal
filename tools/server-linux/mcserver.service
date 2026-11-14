@@ -1,0 +1,17 @@
+[Unit]
+Description=McUnreal dedicated server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Change User and the two paths. Create the user first:  sudo useradd -r -m -d /opt/mcserver mcserver
+User=mcserver
+WorkingDirectory=/opt/mcserver
+ExecStart=/opt/mcserver/run-server.sh
+Restart=on-failure
+RestartSec=10
+# Worlds, settings and logs are all under /opt/mcserver/McClient/Saved
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

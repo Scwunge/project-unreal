@@ -210,7 +210,7 @@ namespace
 		};
 		if (Type == TEXT("damage_source_properties"))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicate)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Predicate)->Values)
 			{
 				const TSharedPtr<FJsonObject>* Inner;
 				if ((Entry.Key == TEXT("source_entity") || Entry.Key == TEXT("direct_entity")) && Entry.Value->TryGetObject(Inner))
@@ -244,7 +244,7 @@ namespace
 		// entity_properties: of the mob, or of whoever killed it.
 		const FString Entity = Object.GetStringField(TEXT("entity"));
 		const bool bThis = Entity == TEXT("this");
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicate)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Predicate)->Values)
 		{
 			const TSharedPtr<FJsonObject>* Inner;
 			const bool bObject = Entry.Value->TryGetObject(Inner);
@@ -390,7 +390,7 @@ namespace
 			const TSharedPtr<FJsonObject>* Properties;
 			if (Object->TryGetObjectField(TEXT("state"), Properties))
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Properties)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Properties)->Values)
 				{
 					if (Entry.Value->Type == EJson::Object)
 					{
@@ -561,7 +561,7 @@ namespace
 			const TSharedPtr<FJsonValue> Existing = Stack.Get(TEXT("minecraft:stored_enchantments"));
 			if (Existing.IsValid() && Existing->Type == EJson::Object)
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Existing->AsObject()->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Existing->AsObject()->Values)
 				{
 					Stored.Add(FName(*McCache::Namespaced(Entry.Key)), static_cast<int32>(Entry.Value->AsNumber()));
 				}
@@ -590,7 +590,7 @@ namespace
 		const TSharedPtr<FJsonValue> Stored = Stack.Get(TEXT("minecraft:stored_enchantments"));
 		if (Stored.IsValid() && Stored->Type == EJson::Object)
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : Stored->AsObject()->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : Stored->AsObject()->Values)
 			{
 				Result.Add(FName(*McCache::Namespaced(Entry.Key)), static_cast<int32>(Entry.Value->AsNumber()));
 			}
@@ -838,7 +838,7 @@ namespace
 			{
 				bool bAdd = false;
 				Object->TryGetBoolField(TEXT("add"), bAdd);
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Enchantments)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Enchantments)->Values)
 				{
 					const FName Name(*McCache::Namespaced(Entry.Key));
 					const int32 Level = Count(Entry.Value, Random) + (bAdd ? CurrentEnchantments(Stack).FindRef(Name) : 0);
@@ -874,7 +874,7 @@ namespace
 			const TSharedPtr<FJsonObject>* Components;
 			if (Object->TryGetObjectField(TEXT("components"), Components))
 			{
-				for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Components)->Values)
+				for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Components)->Values)
 				{
 					// A name with a '!' in front removes the component.
 					if (Entry.Key.StartsWith(TEXT("!")))
@@ -946,7 +946,7 @@ namespace
 				const TSharedPtr<FJsonObject>* Predicates;
 				if ((*Filter)->TryGetObjectField(TEXT("predicates"), Predicates))
 				{
-					for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Predicates)->Values)
+					for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Predicates)->Values)
 					{
 						bPasses &= Stack.Has(FName(*McCache::Namespaced(Entry.Key)));
 					}

@@ -442,10 +442,10 @@ bool FMcHdBlocks::EnsureBuilt()
 		ParallelFor(NumLayers, [&](int32 Layer)
 		{
 			const McHd::FMaps Made = MakeLayerMaps(MakeLayerInput(Blocks, Layer, Tags), Size);
-			const McHd::FPicture* Pictures[3] = { &Made.Albedo, &Made.Normal, &Made.Specular };
+			const McHd::FPicture* LayerPictures[3] = { &Made.Albedo, &Made.Normal, &Made.Specular };
 			for (int32 Kind = 0; Kind < 3; ++Kind)
 			{
-				FMemory::Memcpy(Maps[Kind].GetData() + Layer * LayerPixels, Pictures[Kind]->Pixels.GetData(), LayerPixels * sizeof(FColor));
+				FMemory::Memcpy(Maps[Kind].GetData() + Layer * LayerPixels, LayerPictures[Kind]->Pixels.GetData(), LayerPixels * sizeof(FColor));
 			}
 		});
 		// Pictures of a pack take 20 s to make at 256 px (1.4 GB), a file of that size a few seconds to read: kept up to 2 GB.

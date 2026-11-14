@@ -59,7 +59,7 @@ namespace
 		{
 			return;
 		}
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Pair : Object->Values)
 		{
 			FString Text;
 			if (Pair.Value.IsValid() && Pair.Value->TryGetString(Text))
@@ -126,7 +126,7 @@ TArray<McLang::FLanguage> McLang::GetLanguages()
 		const TSharedPtr<FJsonObject>* Languages;
 		if (Mcmeta->TryGetObjectField(TEXT("language"), Languages))
 		{
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Entry : (*Languages)->Values)
+			for (const TPair<FString, TSharedPtr<FJsonValue>> Entry : (*Languages)->Values)
 			{
 				const TSharedPtr<FJsonObject>* Detail;
 				if (Entry.Value.IsValid() && Entry.Value->TryGetObject(Detail))

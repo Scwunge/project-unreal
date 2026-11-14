@@ -1411,7 +1411,7 @@ void AMcGameMode::LoadDevScene(const FString& Name, FString& OutCamera)
 	const TSharedPtr<FJsonObject>* RuleValues = nullptr;
 	if (WorldActor && Scene->TryGetObjectField(TEXT("rules"), RuleValues))
 	{
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Rule : (*RuleValues)->Values)
+		for (const TPair<FString, TSharedPtr<FJsonValue>> Rule : (*RuleValues)->Values)
 		{
 			WorldActor->SetGameRule(Rule.Key, Rule.Value->AsString());
 		}

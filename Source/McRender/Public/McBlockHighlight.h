@@ -40,6 +40,7 @@ public:
 
 private:
 	void Rebuild();
+	using UProceduralMeshComponent::GetMaterial;
 	UMaterialInstanceDynamic* GetMaterial(const FString& Path);
 
 	UPROPERTY()

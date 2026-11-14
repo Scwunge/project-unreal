@@ -134,6 +134,7 @@ public:
 private:
 	void EnsureArm();
 	void ShowHeld(FName Item);
+	using UProceduralMeshComponent::GetMaterial;
 	UMaterialInstanceDynamic* GetMaterial(const FString& Path, FIntPoint& OutSize);
 	void ClearMaterials();
 

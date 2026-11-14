@@ -72,6 +72,7 @@ namespace
 		{ TEXT("save-on"), 4, TEXT("/save-on") },
 		{ TEXT("save-off"), 4, TEXT("/save-off") },
 		{ TEXT("stop"), 4, TEXT("/stop") },
+		{ TEXT("spectate"), 2, TEXT("/spectate [<target> [<player>]]") },
 		{ TEXT("place"), 2, TEXT("/place feature <feature> [<pos>]") },
 		{ TEXT("loot"), 2, TEXT("/loot give <targets> loot <loot_table>") },
 		{ TEXT("seed"), 2, TEXT("/seed") },
@@ -253,6 +254,11 @@ namespace
 		return McLang::Get(bCreative ? TEXT("gameMode.creative") : TEXT("gameMode.survival"));
 	}
 
+	FString GameModeName(bool bCreative, bool bSpectator)
+	{
+		return bSpectator ? McLang::Get(TEXT("gameMode.spectator")) : GameModeName(bCreative);
+	}
+
 	FName ItemId(const FString& Token)
 	{
 		return FName(*(Token.Contains(TEXT(":")) ? Token.ToLower() : TEXT("minecraft:") + Token.ToLower()));
@@ -267,7 +273,13 @@ namespace
 			return Unknown(Command, Command.Len());
 		}
 		bool bCreative;
-		if (Words[1] == TEXT("creative"))
+		bool bSpectator = false;
+		if (Words[1] == TEXT("spectator"))
+		{
+			bCreative = true;
+			bSpectator = true;
+		}
+		else if (Words[1] == TEXT("creative"))
 		{
 			bCreative = true;
 		}
@@ -289,19 +301,24 @@ namespace
 		FReplies Replies;
 		for (const FString& Player : Players)
 		{
-			if (Target.IsCreative(Player) == bCreative)
+			const bool bWasSpectator = Target.IsSpectator(Player);
+			if (Target.IsCreative(Player) == bCreative && bWasSpectator == bSpectator)
 			{
 				continue;
+			}
+			if (bWasSpectator != bSpectator)
+			{
+				Target.SetSpectator(Player, bSpectator);
 			}
 			Target.SetCreative(Player, bCreative);
 			if (Player == Sender.Name)
 			{
-				Replies.Add(Ok(McLang::Format(TEXT("commands.gamemode.success.self"), { GameModeName(bCreative) })));
+				Replies.Add(Ok(McLang::Format(TEXT("commands.gamemode.success.self"), { GameModeName(bCreative, bSpectator) })));
 			}
 			else
 			{
-				Target.SendTo(Player, Ok(McLang::Format(TEXT("gameMode.changed"), { GameModeName(bCreative) })));
-				Replies.Add(Ok(McLang::Format(TEXT("commands.gamemode.success.other"), { Player, GameModeName(bCreative) })));
+				Target.SendTo(Player, Ok(McLang::Format(TEXT("gameMode.changed"), { GameModeName(bCreative, bSpectator) })));
+				Replies.Add(Ok(McLang::Format(TEXT("commands.gamemode.success.other"), { Player, GameModeName(bCreative, bSpectator) })));
 			}
 		}
 		return Replies;
@@ -1516,6 +1533,56 @@ namespace
 		}
 		Out.Player = Players[0];
 		return true;
+	}
+
+	// /spectate [<target> [<player>]]: a spectator's camera follows an entity or another player (wording from a ref run, cmd_spectate.txt).
+	FReplies RunSpectate(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
+	{
+		if (Words.Num() > 3)
+		{
+			return BadArgument(Command);
+		}
+		FString Spectator = Sender.Name;
+		if (Words.Num() == 3)
+		{
+			TArray<FString> Players;
+			FString Error;
+			if (!ResolvePlayers(Words[2], Sender, Target, Players, Error) || Players.Num() != 1)
+			{
+				return { Fail(Players.Num() > 1 ? McLang::Get(TEXT("argument.player.toomany")) : (Error.IsEmpty() ? McLang::Get(TEXT("argument.entity.notfound.player")) : Error)) };
+			}
+			Spectator = Players[0];
+		}
+		else if (Spectator.IsEmpty())
+		{
+			// The console has no camera to move.
+			return { Fail(McLang::Get(TEXT("permissions.requires.player"))) };
+		}
+		if (!Target.IsSpectator(Spectator))
+		{
+			return { Fail(McLang::Format(TEXT("commands.spectate.not_spectator"), { Spectator })) };
+		}
+		if (Words.Num() == 1)
+		{
+			Target.Spectate(Spectator, 0, FString());
+			return { Ok(McLang::Get(TEXT("commands.spectate.success.stopped"))) };
+		}
+		FRideActor Watched;
+		FReplies Replies;
+		if (!ResolveRideActor(Words[1], Sender, Target, Watched, Replies))
+		{
+			return Replies;
+		}
+		if (Watched.Player.Equals(Spectator, ESearchCase::IgnoreCase))
+		{
+			return { Fail(McLang::Get(TEXT("commands.spectate.self"))) };
+		}
+		if (!Watched.Player.IsEmpty() && Target.IsSpectator(Watched.Player))
+		{
+			return { Fail(McLang::Format(TEXT("commands.spectate.cannot_spectate"), { Watched.Player })) };
+		}
+		Target.Spectate(Spectator, Watched.Entity, Watched.Player);
+		return { Ok(McLang::Format(TEXT("commands.spectate.success.started"), { Watched.Player.IsEmpty() ? Target.GetEntityName(Watched.Entity) : Watched.Player })) };
 	}
 
 	FReplies RunRide(const FString& Command, const TArray<FString>& Words, const FMcCommandSender& Sender, IMcCommandTarget& Target)
@@ -6054,6 +6121,10 @@ TArray<FMcCommandReply> McCommands::Execute(const FString& Command, const FMcCom
 	if (Name == TEXT("attribute"))
 	{
 		return RunAttribute(Command, Words, Sender, Target);
+	}
+	if (Name == TEXT("spectate"))
+	{
+		return RunSpectate(Command, Words, Sender, Target);
 	}
 	if (Name == TEXT("place"))
 	{

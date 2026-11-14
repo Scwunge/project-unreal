@@ -2240,3 +2240,8 @@ New ref verbs that would settle them: a `log player` (health/effects) so a hurt 
 - Wording of these comes from the lang file only: the ref's singleplayer player cannot run them (unknown command), so the ref logs could not confirm it.
 - `/ban`, `/ban-ip`, `/pardon`, `/pardon-ip`, `/banlist [ips|players]` (level 3), stored in `banned-players.json` and `banned-ips.json` beside ops.json. A banned name or address is refused at PreLogin with the game's own text. Same lang-only wording note.
 - Not built: timed bans (expires is always "forever"), UUID keys (we key by name), `/banlist` ordering of the game.
+
+## /spectate and spectator mode (import-java-world session)
+- Built: `/spectate [<target> [<player>]]` with the wording of the ref run (scripts/cmd_spectate.txt, log_cmd_spectate.log): "<name> is not in spectator mode", "Cannot spectate yourself", "Now spectating <name>" (entity or player), "No longer spectating an entity"; another spectator is "<name> cannot be spectated" (lang only). `/gamemode spectator` now exists ("Set own game mode to Spectator Mode"): the player is creative and flying, and the mode is kept in AMcGameMode::Spectators for the session.
+- A spectating player's body is moved to the watched entity's feet every 0.05 s (TickSpectators); it stops when the entity is gone. This is a follow, not the game's camera-in-the-entity view: no first-person-from-the-eyes view, no turning with the entity's head.
+- Not built: no-clip, invisibility to others, no interaction or damage while a spectator, the spectator menu (hotbar teleport list), the saved game mode (spectator is not written to the player file), adventure mode.

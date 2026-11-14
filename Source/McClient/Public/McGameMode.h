@@ -19,6 +19,10 @@ class AMcGameMode : public AGameModeBase
 	GENERATED_BODY()
 
 public:
+	// Players in spectator mode (this port's spectator is a flying creative player), and who follows what: an entity id or a player name.
+	TSet<FString> Spectators;
+	struct FSpectated { int32 Entity = 0; FString Player; };
+	TMap<FString, FSpectated> Spectated;
 	AMcGameMode();
 
 	// Blocks above the surface that players start at. 0, feet on the surface, as the game spawns: at 10 every new world's
@@ -119,6 +123,7 @@ private:
 	void RunFunctionTag(const FString& Tag);
 	void ReadFunctionTags();
 	void TickFunctions();
+	void TickSpectators();
 	TArray<FString> TickFunctionIds;
 	FTimerHandle FunctionTimer;
 	FDelegateHandle ReloadHandle;

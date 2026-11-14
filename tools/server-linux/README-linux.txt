@@ -33,7 +33,7 @@ This copy is Mojang's data for your own use. Don't put it anywhere public.
 Install
 -------
   sudo useradd -r -m -d /opt/mcserver mcserver
-  sudo unzip McUnreal-Server-Linux-<date>.zip -d /opt/mcserver
+  sudo mkdir -p /opt/mcserver && sudo tar -xzf McUnreal-Server-Linux-<date>.tar.gz -C /opt/mcserver
   sudo chown -R mcserver: /opt/mcserver
   sudo chmod +x /opt/mcserver/run-server.sh /opt/mcserver/McClient/Binaries/Linux/McClient-Linux-Shipping
 Copy the cache in (above), then try it by hand first:
@@ -84,7 +84,7 @@ Edit User, WorkingDirectory and ExecStart in the unit if you installed somewhere
 
 Updating
 --------
-Stop the service, unzip the new zip over /opt/mcserver (worlds and settings are in McClient/Saved, which the zip
+Stop the service, unpack the new tar.gz over /opt/mcserver (worlds and settings are in McClient/Saved, which the archive
 doesn't contain), start it. Clients and server must be the same build.
 
 

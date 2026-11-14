@@ -26,7 +26,7 @@ if (-not $ToolchainRoot -or -not (Test-Path (Join-Path $ToolchainRoot 'x86_64-un
 $env:LINUX_MULTIARCH_ROOT = $ToolchainRoot
 $Project = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'McClient.uproject'
 $Stage = Join-Path $OutDir "server-linux-$Date"
-$Zip = Join-Path $OutDir "McUnreal-Server-Linux-$Date.zip"
+$Zip = Join-Path $OutDir "McUnreal-Server-Linux-$Date.tar.gz"
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 if (-not $SkipBuild -and (Test-Path $Stage)) { Remove-Item -Recurse -Force $Stage }
 
@@ -53,6 +53,7 @@ Copy-Item (Join-Path $PSScriptRoot 'run-server.sh') $Stage -Force
 Copy-Item (Join-Path $PSScriptRoot 'mcserver.service') $Stage -Force
 Copy-Item (Join-Path $PSScriptRoot 'README-linux.txt') $Stage -Force
 if (Test-Path $Zip) { Remove-Item $Zip }
-Compress-Archive -Path (Join-Path $Stage '*') -DestinationPath $Zip -CompressionLevel Optimal
+python (Join-Path $PSScriptRoot "make-tar.py") $Stage $Zip
+if ($LASTEXITCODE -ne 0) { throw "tar failed" }
 $h = (Get-FileHash $Zip -Algorithm SHA256).Hash
 "{0}  {1:N0} bytes  sha256 {2}" -f $Zip, (Get-Item $Zip).Length, $h

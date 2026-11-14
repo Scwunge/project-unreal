@@ -10,6 +10,8 @@
 #include "McDecorEntity.h"
 #include "McMob.h"
 #include "McMount.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "McTnt.h"
 #include "McPot.h"
 #include "McVehicle.h"
@@ -173,7 +175,12 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		bOffering = Mob.OfferTicks > 0;
 		HeldItem = Mob.HeldItem;
 		ArmPose = Mob.ArmPose;
-		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && Entity.Mount.IsValid() && Entity.Mount->bSaddled)
+		bool bDevSaddled = false;
+#if !UE_BUILD_SHIPPING
+		// Development: -McSaddled draws every camel saddled (a command to saddle one does not exist yet), for shots.
+		bDevSaddled = FParse::Param(FCommandLine::Get(), TEXT("McSaddled"));
+#endif
+		if ((Kind == TEXT("minecraft:camel") || Kind == TEXT("minecraft:camel_husk")) && (bDevSaddled || (Entity.Mount.IsValid() && Entity.Mount->bSaddled)))
 		{
 			// A saddled camel wears its saddle, bridle and reins (the model's second layer shows in pose 1).
 			ArmPose = 1;

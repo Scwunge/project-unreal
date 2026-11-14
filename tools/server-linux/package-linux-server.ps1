@@ -15,7 +15,8 @@
 param(
     [string]$OutDir = 'I:\mc-package-out',
     [string]$Date = (Get-Date -Format 'yyyy-MM-dd'),
-    [string]$ToolchainRoot = $env:LINUX_MULTIARCH_ROOT
+    [string]$ToolchainRoot = $env:LINUX_MULTIARCH_ROOT,
+    [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
 $EngineRoot = @('J:\UE_5.9\Engine', 'C:\Program Files\Epic Games\UE_5.9\Engine') | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -27,11 +28,16 @@ $Project = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'McClient.uproject'
 $Stage = Join-Path $OutDir "server-linux-$Date"
 $Zip = Join-Path $OutDir "McUnreal-Server-Linux-$Date.zip"
 New-Item -ItemType Directory -Force $OutDir | Out-Null
-if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
+if (-not $SkipBuild -and (Test-Path $Stage)) { Remove-Item -Recurse -Force $Stage }
 
-& "$EngineRoot\Build\BatchFiles\RunUAT.bat" BuildCookRun "-project=$Project" -noP4 -platform=Linux -clientconfig=Shipping -target=McClient `
-    -build -cook -stage -pak -archive "-archivedirectory=$Stage" -utf8output -nocompileeditor
-if ($LASTEXITCODE -ne 0) { throw "BuildCookRun failed ($LASTEXITCODE)" }
+if (-not $SkipBuild) {
+    & "$EngineRoot\Build\BatchFiles\RunUAT.bat" BuildCookRun "-project=$Project" -noP4 -platform=Linux -clientconfig=Shipping -target=McClient `
+        -build -cook -stage -pak -archive "-archivedirectory=$Stage" -utf8output -nocompileeditor
+    if ($LASTEXITCODE -ne 0) { throw "BuildCookRun failed ($LASTEXITCODE)" }
+}
+# UAT archives into <Stage>\Linux\McClient; run-server.sh expects <Stage>\McClient.
+$LinuxDir = Join-Path $Stage 'Linux'
+if (Test-Path $LinuxDir) { Get-ChildItem $LinuxDir | Move-Item -Destination $Stage -Force; Remove-Item $LinuxDir -Force }
 
 # Nothing of Mojang's, and no editor AI plugins.
 $files = Get-ChildItem -Recurse -File $Stage

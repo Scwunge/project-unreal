@@ -176,6 +176,16 @@ void AMcEntityActor::SyncFromEntity(const FMcEntity& Entity)
 		bOffering = Mob.OfferTicks > 0;
 		HeldItem = Mob.HeldItem;
 		ArmPose = Mob.ArmPose;
+		// A pack animal that carries chests shows them (pose 1 of its model).
+		bool bCarries = Mob.Mount.IsValid() && Mob.Mount->bChest;
+#if !UE_BUILD_SHIPPING
+		// Development: -McChested draws every pack animal with its chests, for shots.
+		bCarries |= FParse::Param(FCommandLine::Get(), TEXT("McChested")) && (Kind == TEXT("minecraft:donkey") || Kind == TEXT("minecraft:mule") || Kind == TEXT("minecraft:llama") || Kind == TEXT("minecraft:trader_llama"));
+#endif
+		if (bCarries)
+		{
+			ArmPose |= 1;
+		}
 		bool bDevSaddled = false;
 #if !UE_BUILD_SHIPPING
 		// Development: -McSaddled draws every camel saddled (a command to saddle one does not exist yet), for shots.

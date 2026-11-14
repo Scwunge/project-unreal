@@ -883,7 +883,7 @@ void AMcHUD::DrawSprite(UTexture2D* Texture, float X, float Y, float Width, floa
 	Canvas->DrawItem(Tile);
 }
 
-void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
+void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin, bool bChests)
 {
 	const McEntityModel::FModel* Model = McEntityModel::Find(Kind);
 	if (!Model)
@@ -891,7 +891,8 @@ void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
 		return;
 	}
 	const TArray<FString>& Textures = Model->Variants.Num() > 0 ? Model->Variants[0] : Model->Textures;
-	const McEntityModel::FAnim Anim;
+	McEntityModel::FAnim Anim;
+	Anim.Pose = bChests ? 1 : 0;
 	constexpr double Turn = -0.4363;  // 25 degrees the other way (ref_donkey_window: the animal faces the viewer, a little to its left)
 	const double CosT = FMath::Cos(Turn);
 	const double SinT = FMath::Sin(Turn);

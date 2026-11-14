@@ -1185,6 +1185,7 @@ void FMcBoatEntity::TickBubbleColumns(FMcBlockWorld& World)
 	const FMcBlockRegistry& Registry = FMcBlockRegistry::Get();
 	const FBox Box = Body.GetBox().ExpandBy(-1e-5);
 	bool bAtTop = false;
+	bool bAtDownTop = false;
 	for (int32 Y = FMath::FloorToInt32(Box.Min.Y); Y <= FMath::FloorToInt32(Box.Max.Y); ++Y)
 	{
 		for (int32 Z = FMath::FloorToInt32(Box.Min.Z); Z <= FMath::FloorToInt32(Box.Max.Z); ++Z)
@@ -1202,6 +1203,7 @@ void FMcBoatEntity::TickBubbleColumns(FMcBlockWorld& World)
 				if (AboveName == TEXT("minecraft:air") || AboveName == TEXT("minecraft:cave_air") || AboveName == TEXT("minecraft:void_air"))
 				{
 					bAtTop |= !bDown;
+					bAtDownTop |= bDown;
 					continue;
 				}
 				for (int32 Push = 0; Push < 2; ++Push)
@@ -1214,6 +1216,14 @@ void FMcBoatEntity::TickBubbleColumns(FMcBlockWorld& World)
 	if (bAtTop && ++BubbleTime >= 60)
 	{
 		Body.Velocity.Y = 0.6;
+		BubbleTime = -1;
+	}
+	else if (bAtDownTop && !bAtTop && ++BubbleTime >= 60)
+	{
+		// The top block of a downward (magma) column throws it down the same way, at -0.7 (vehicle_log53.txt: still for
+		// 59 ticks, then the 60th step is -0.525 = 0.75 x -0.7, then -0.2545 a tick = the push's -0.3 under the sinking law,
+		// to the floor).
+		Body.Velocity.Y = -0.7;
 		BubbleTime = -1;
 	}
 }

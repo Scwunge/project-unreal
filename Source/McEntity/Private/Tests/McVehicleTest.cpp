@@ -393,6 +393,44 @@ bool FMcVehicleTest::RunTest(const FString& Parameters)
 		Manager.Tick();
 	}
 
+	// ---- vehicle_log53.txt: a boat at the surface over magma (the top block of a downward column) sits still, then the 60th
+	// tick throws it down: the step is -0.525 (0.75 x -0.7), then -0.2545 a tick ----
+	{
+		for (int32 Y = 1; Y <= 7; ++Y)
+		{
+			World.SetBlock(FIntVector(22, Y, 12), State(TEXT("minecraft:bubble_column[drag=true]")));
+		}
+		FMcBoatEntity* Sink = new FMcBoatEntity();
+		Sink->Body.Position = FVector(22.5, 7.5019, 12.5);
+		Manager.Add(TUniquePtr<FMcEntity>(Sink));
+		int32 Throws = 0;
+		double Before = 0.0, Step1 = 0.0, Step2 = 0.0;
+		for (int32 Tick = 1; Tick <= 70; ++Tick)
+		{
+			const double Was = Sink->Body.Position.Y;
+			Manager.Tick();
+			if (Throws == 0 && Sink->Body.Velocity.Y < -0.6)
+			{
+				Throws = Tick;
+				Before = Was;
+			}
+			else if (Throws > 0 && Tick == Throws + 1)
+			{
+				Step1 = Sink->Body.Position.Y - Was;
+			}
+			else if (Throws > 0 && Tick == Throws + 2)
+			{
+				Step2 = Sink->Body.Position.Y - Was;
+			}
+		}
+		TestTrue(TEXT("it is thrown down about the 60th tick"), Throws >= 58 && Throws <= 62);
+		TestTrue(TEXT("it sat at the surface until then"), Before > 7.4 && Before < 7.6);
+		TestNearlyEqual(TEXT("the throw's step is -0.525"), Step1, -0.525, 3e-3);
+		TestNearlyEqual(TEXT("then -0.2545 a tick"), Step2, -0.2545, 3e-3);
+		Sink->bRemoved = true;
+		Manager.Tick();
+	}
+
 	// ---- A boat takes in the mobs it bumps into, up to its seats ----
 	{
 		FMcBoatEntity* Boat = new FMcBoatEntity();

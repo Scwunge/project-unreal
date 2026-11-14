@@ -184,6 +184,10 @@ public:
 	virtual void SetYaw(const FString& Player, double Yaw) {}
 	// /locate biome: the nearest loaded spot of a biome (id), from a position.
 	virtual bool FindBiome(uint8 Biome, const FVector& From, FIntVector& OutPos) const { return false; }
+	// /fillbiome: the biome of the 4x4x4 cell holding a block position. 0 when read, 1 where the chunk isn't loaded, 2 outside the
+	// height of the world.
+	virtual int32 GetBiomeAt(const FIntVector& Pos, uint8& OutBiome) const { return 1; }
+	virtual void SetBiomeAt(const FIntVector& Pos, uint8 Biome) {}
 	// /swing: a player swings their arm.
 	virtual void SwingArm(const FString& Player) {}
 	// The folder of the world being played, where /data storage is kept (empty: nowhere to keep it).

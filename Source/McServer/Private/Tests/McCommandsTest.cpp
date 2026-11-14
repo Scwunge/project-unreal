@@ -162,6 +162,22 @@ namespace
 			return true;
 		}
 		virtual void SetBlock(const FIntVector& Pos, FMcStateId State) override { Blocks.Add(Pos, State); }
+		TMap<FIntVector, uint8> BiomeCells;
+		virtual int32 GetBiomeAt(const FIntVector& Pos, uint8& OutBiome) const override
+		{
+			if (Pos.Y < 0 || Pos.Y > 15)
+			{
+				return 2;
+			}
+			if (FMath::Abs(Pos.X) > 32 || FMath::Abs(Pos.Z) > 32)
+			{
+				return 1;
+			}
+			const uint8* Found = BiomeCells.Find(FIntVector(Pos.X >> 2, Pos.Y >> 2, Pos.Z >> 2));
+			OutBiome = Found ? *Found : 0;
+			return 0;
+		}
+		virtual void SetBiomeAt(const FIntVector& Pos, uint8 Biome) override { BiomeCells.Add(FIntVector(Pos.X >> 2, Pos.Y >> 2, Pos.Z >> 2), Biome); }
 		virtual bool Summon(FName Kind, const FVector& Feet) override { Summoned.Add({ Kind, Feet }); return true; }
 		TArray<FMcNbt> SummonedTags;
 		bool bAutosave = true;
@@ -559,6 +575,24 @@ bool FMcCommandsTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("fill hollow"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone hollow"), Op(TEXT("Steve")), Target)).Contains(TEXT("27")));
 		TestTrue(TEXT("hollow empties the middle"), Target.GetBlock(FIntVector(1, 6, 1), Got) && Registry.IsAir(Got));
 		TestTrue(TEXT("fill replace a filter"), Joined(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 dirt replace stone"), Op(TEXT("Steve")), Target)).Contains(TEXT("26")));
+		{
+			// /fillbiome: whole 4x4x4 cells, corners printed as the cells' corners (ref run).
+			const FString One = Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 minecraft:desert"), Op(TEXT("Steve")), Target));
+			TestTrue(TEXT("fillbiome one cell"), One.Contains(TEXT("1 biome entry/entries set between 0, 0, 0 and 0, 0, 0")));
+			TestTrue(TEXT("fillbiome the same again changes nothing"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("No biome entries were changed")));
+			const FString Eight = Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 7 7 plains"), Op(TEXT("Steve")), Target));
+			TestTrue(TEXT("fillbiome rounds to cells"), Eight.Contains(TEXT("8 biome entry/entries set between 0, 0, 0 and 4, 4, 4")));
+			TestTrue(TEXT("fillbiome replace only the filter"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 15 0 15 desert replace plains"), Op(TEXT("Steve")), Target)).Contains(TEXT("4 biome entry/entries set between 0, 0, 0 and 12, 0, 12")));
+			TestTrue(TEXT("fillbiome replace nothing matching"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 15 0 15 swamp replace minecraft:plains"), Op(TEXT("Steve")), Target)).Contains(TEXT("No biome entries were changed")));
+			TestTrue(TEXT("fillbiome unknown biome"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 3 3 3 minecraft:nonexistent"), Op(TEXT("Steve")), Target)).Contains(TEXT("Can't find element 'minecraft:nonexistent' of type 'minecraft:worldgen/biome'")));
+			TestTrue(TEXT("fillbiome unloaded"), Joined(McCommands::HandleChat(TEXT("/fillbiome 100 0 0 101 0 1 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("not loaded")));
+			TestTrue(TEXT("fillbiome out of the world"), Joined(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 400 7 desert"), Op(TEXT("Steve")), Target)).Contains(TEXT("out of this world")));
+			Target.SetGameRule(TEXT("max_block_modifications"), TEXT("10"));
+			TestTrue(TEXT("fillbiome too big"), AnyError(McCommands::HandleChat(TEXT("/fillbiome 0 0 0 7 7 7 desert"), Op(TEXT("Steve")), Target)));
+			Target.SetGameRule(TEXT("max_block_modifications"), TEXT("32768"));
+			uint8 Cell = 255;
+			TestTrue(TEXT("fillbiome kept the cell"), Target.GetBiomeAt(FIntVector(0, 0, 0), Cell) == 0 && Cell != 0);
+		}
 		TestTrue(TEXT("fill too big"), AnyError(McCommands::HandleChat(TEXT("/fill 0 0 0 200 15 200 dirt"), Op(TEXT("Steve")), Target)));
 		McCommands::HandleChat(TEXT("/gamerule max_block_modifications 8"), Op(TEXT("Steve")), Target);
 		TestTrue(TEXT("the limit is the rule's"), AnyError(McCommands::HandleChat(TEXT("/fill 0 5 0 2 7 2 stone"), Op(TEXT("Steve")), Target)));

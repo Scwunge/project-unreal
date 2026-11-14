@@ -2812,6 +2812,37 @@ namespace
 			OutState = Blocks->GetBlock(Pos);
 			return true;
 		}
+		virtual int32 GetBiomeAt(const FIntVector& Pos, uint8& OutBiome) const override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			const FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+			if (!Blocks)
+			{
+				return 1;
+			}
+			if (Pos.Y < Blocks->GetDimension().MinY || Pos.Y >= Blocks->GetDimension().MinY + Blocks->GetDimension().Height || FMath::Abs(Pos.X) >= 30000000 || FMath::Abs(Pos.Z) >= 30000000)
+			{
+				return 2;
+			}
+			const FMcChunk* Chunk = Blocks->FindChunk(FIntPoint(FMath::FloorToInt(Pos.X / 16.0), FMath::FloorToInt(Pos.Z / 16.0)));
+			if (!Chunk)
+			{
+				return 1;
+			}
+			OutBiome = Chunk->GetBiome(Pos.X & 15, Pos.Y, Pos.Z & 15);
+			return 0;
+		}
+		virtual void SetBiomeAt(const FIntVector& Pos, uint8 Biome) override
+		{
+			const AMcWorldActor* World = Mode.GetPrimaryWorld();
+			FMcBlockWorld* Blocks = World ? World->GetBlockWorld() : nullptr;
+			FMcChunk* Chunk = Blocks ? Blocks->FindChunk(FIntPoint(FMath::FloorToInt(Pos.X / 16.0), FMath::FloorToInt(Pos.Z / 16.0))) : nullptr;
+			if (Chunk)
+			{
+				Chunk->SetBiomeCell((Pos.X & 15) / 4, (Pos.Y - Blocks->GetDimension().MinY) / 4, (Pos.Z & 15) / 4, Biome);
+				Chunk->MarkBiomesChanged();
+			}
+		}
 		virtual int32 PlaceFeature(const FString& Id, const FIntVector& Pos) override
 		{
 			AMcWorldActor* World = Mode.GetPrimaryWorld();

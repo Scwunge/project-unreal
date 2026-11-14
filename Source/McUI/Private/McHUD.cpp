@@ -892,7 +892,7 @@ void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
 	}
 	const TArray<FString>& Textures = Model->Variants.Num() > 0 ? Model->Variants[0] : Model->Textures;
 	const McEntityModel::FAnim Anim;
-	constexpr double Turn = 0.4363;  // 25 degrees
+	constexpr double Turn = -0.4363;  // 25 degrees the other way (ref_donkey_window: the animal faces the viewer, a little to its left)
 	const double CosT = FMath::Cos(Turn);
 	const double SinT = FMath::Sin(Turn);
 	struct FPlaced
@@ -928,16 +928,17 @@ void AMcHUD::DrawMobPreview(FName Kind, FIntPoint Origin)
 			double Depth = 0.0;
 			for (int32 K = 0; K < 3; ++K)
 			{
+				// The mesh holds engine axes (x, model z, model y): across, depth, up.
 				const FVector& P = Mesh.Positions[I[K]];
-				const double X = P.X * CosT + P.Z * SinT;
-				const double Z = -P.X * SinT + P.Z * CosT;
-				Item.Triangle.Positions[K] = FVector2D(X, -P.Y);
+				const double X = P.X * CosT + P.Y * SinT;
+				const double Z = -P.X * SinT + P.Y * CosT;
+				Item.Triangle.Positions[K] = FVector2D(X, -P.Z);
 				Item.Triangle.UVs[K] = Mesh.UV0[I[K]];
 				Depth += Z;
 				if (Layer == 0)
 				{
-					MinY = FMath::Min(MinY, -P.Y);
-					MaxY = FMath::Max(MaxY, -P.Y);
+					MinY = FMath::Min(MinY, -P.Z);
+					MaxY = FMath::Max(MaxY, -P.Z);
 				}
 			}
 			const FColor Shade = Mesh.Colors.IsValidIndex(I[0]) ? Mesh.Colors[I[0]] : FColor::White;

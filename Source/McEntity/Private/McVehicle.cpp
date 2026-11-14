@@ -922,6 +922,17 @@ bool FMcBoatEntity::Serialize(FArchive& Ar)
 	return true;
 }
 
+bool FMcVehicle::AddMobPassenger(FMcMob& Mob)
+{
+	if (Mob.RidingId != 0 || !HasFreeSeat() || !CanCarryMob(Mob))
+	{
+		return false;
+	}
+	Mob.RidingId = Id;
+	MobPassengers.Add(Mob.Id);
+	return true;
+}
+
 void FMcVehicle::TickPassengers(FMcEntityManager& Manager)
 {
 	const auto FindMob = [&Manager](int32 MobId) -> FMcMob*

@@ -260,6 +260,47 @@ bool FMcPortalTravelTest::RunTest(const FString& Parameters)
 		Clear();
 	}
 
+	// ---- Yaw through a portal: kept when the portal on the other side runs the same way (vehicle_log46: 0 to 0, vehicle_log58: 180 to 180),
+	// ---- turned a quarter when it runs the other way (vehicle_log59: -90 to 0) ----
+	{
+		FMcBoatEntity* Boat = new FMcBoatEntity();
+		Boat->Body.Position = FVector(3.5, 1.0, 0.5);
+		Boat->Yaw = 180.0f;
+		OverHost.GetManager().Add(TUniquePtr<FMcEntity>(Boat));
+		Travel->StepEntities();
+		FMcEntity* NetherBoat = FindByType(NetherHost, TEXT("boat"));
+		if (TestNotNull(TEXT("a boat in the Nether"), NetherBoat))
+		{
+			TestEqual(TEXT("the yaw is kept through a portal of the same axis"), FMath::Abs(NetherBoat->Yaw), 180.0f, 0.01f);
+		}
+		Clear();
+
+		// A portal in the plane x = 10 (axis z), its frame on z 20 to 23.
+		for (int32 Z = 20; Z <= 23; ++Z)
+		{
+			OverBlocks.SetBlock(FIntVector(10, 0, Z), State(TEXT("minecraft:obsidian")));
+			OverBlocks.SetBlock(FIntVector(10, 4, Z), State(TEXT("minecraft:obsidian")));
+		}
+		for (int32 Y = 1; Y <= 3; ++Y)
+		{
+			OverBlocks.SetBlock(FIntVector(10, Y, 20), State(TEXT("minecraft:obsidian")));
+			OverBlocks.SetBlock(FIntVector(10, Y, 23), State(TEXT("minecraft:obsidian")));
+			OverBlocks.SetBlock(FIntVector(10, Y, 21), State(TEXT("minecraft:nether_portal[axis=z]")));
+			OverBlocks.SetBlock(FIntVector(10, Y, 22), State(TEXT("minecraft:nether_portal[axis=z]")));
+		}
+		FMcBoatEntity* Turning = new FMcBoatEntity();
+		Turning->Body.Position = FVector(10.5, 1.0, 21.5);
+		Turning->Yaw = -90.0f;
+		OverHost.GetManager().Add(TUniquePtr<FMcEntity>(Turning));
+		Travel->StepEntities();
+		FMcEntity* NetherTurned = FindByType(NetherHost, TEXT("boat"));
+		if (TestNotNull(TEXT("a boat in the Nether from the z portal"), NetherTurned))
+		{
+			TestEqual(TEXT("the yaw turns a quarter when the portal there runs the other way"), NetherTurned->Yaw, 0.0f, 0.01f);
+		}
+		Clear();
+	}
+
 	// ---- A player on a horse: the horse goes with them and they sit on it ----
 	{
 		AMcPlayerController* Controller = World->SpawnActor<AMcPlayerController>();

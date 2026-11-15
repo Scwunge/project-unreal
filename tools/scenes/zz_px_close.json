@@ -1,0 +1,324 @@
+{
+ "description": "Throwaway: a row of common blocks for comparing a resource pack.",
+ "camera": [
+  3.5,
+  -59.4,
+  4.3,
+  0.0,
+  2.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    0,
+    -60,
+    6
+   ],
+   "to": [
+    0,
+    -60,
+    6
+   ],
+   "state": "minecraft:stone"
+  },
+  {
+   "from": [
+    1,
+    -60,
+    6
+   ],
+   "to": [
+    1,
+    -60,
+    6
+   ],
+   "state": "minecraft:dirt"
+  },
+  {
+   "from": [
+    2,
+    -60,
+    6
+   ],
+   "to": [
+    2,
+    -60,
+    6
+   ],
+   "state": "minecraft:grass_block"
+  },
+  {
+   "from": [
+    3,
+    -60,
+    6
+   ],
+   "to": [
+    3,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_planks"
+  },
+  {
+   "from": [
+    4,
+    -60,
+    6
+   ],
+   "to": [
+    4,
+    -60,
+    6
+   ],
+   "state": "minecraft:oak_log"
+  },
+  {
+   "from": [
+    5,
+    -60,
+    6
+   ],
+   "to": [
+    5,
+    -60,
+    6
+   ],
+   "state": "minecraft:cobblestone"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    6
+   ],
+   "to": [
+    6,
+    -60,
+    6
+   ],
+   "state": "minecraft:sand"
+  },
+  {
+   "from": [
+    7,
+    -60,
+    6
+   ],
+   "to": [
+    7,
+    -60,
+    6
+   ],
+   "state": "minecraft:gravel"
+  },
+  {
+   "from": [
+    8,
+    -60,
+    6
+   ],
+   "to": [
+    8,
+    -60,
+    6
+   ],
+   "state": "minecraft:coal_ore"
+  },
+  {
+   "from": [
+    9,
+    -60,
+    6
+   ],
+   "to": [
+    9,
+    -60,
+    6
+   ],
+   "state": "minecraft:iron_ore"
+  },
+  {
+   "from": [
+    10,
+    -60,
+    6
+   ],
+   "to": [
+    10,
+    -60,
+    6
+   ],
+   "state": "minecraft:bricks"
+  },
+  {
+   "from": [
+    11,
+    -60,
+    6
+   ],
+   "to": [
+    11,
+    -60,
+    6
+   ],
+   "state": "minecraft:glass"
+  },
+  {
+   "from": [
+    0,
+    -59,
+    6
+   ],
+   "to": [
+    0,
+    -59,
+    6
+   ],
+   "state": "minecraft:glass_pane"
+  },
+  {
+   "from": [
+    1,
+    -59,
+    6
+   ],
+   "to": [
+    1,
+    -59,
+    6
+   ],
+   "state": "minecraft:white_stained_glass"
+  },
+  {
+   "from": [
+    2,
+    -59,
+    6
+   ],
+   "to": [
+    2,
+    -59,
+    6
+   ],
+   "state": "minecraft:red_stained_glass"
+  },
+  {
+   "from": [
+    3,
+    -59,
+    6
+   ],
+   "to": [
+    3,
+    -59,
+    6
+   ],
+   "state": "minecraft:sandstone"
+  },
+  {
+   "from": [
+    4,
+    -59,
+    6
+   ],
+   "to": [
+    4,
+    -59,
+    6
+   ],
+   "state": "minecraft:netherrack"
+  },
+  {
+   "from": [
+    5,
+    -59,
+    6
+   ],
+   "to": [
+    5,
+    -59,
+    6
+   ],
+   "state": "minecraft:obsidian"
+  },
+  {
+   "from": [
+    6,
+    -59,
+    6
+   ],
+   "to": [
+    6,
+    -59,
+    6
+   ],
+   "state": "minecraft:gold_block"
+  },
+  {
+   "from": [
+    7,
+    -59,
+    6
+   ],
+   "to": [
+    7,
+    -59,
+    6
+   ],
+   "state": "minecraft:diamond_ore"
+  },
+  {
+   "from": [
+    8,
+    -59,
+    6
+   ],
+   "to": [
+    8,
+    -59,
+    6
+   ],
+   "state": "minecraft:oak_leaves"
+  },
+  {
+   "from": [
+    9,
+    -59,
+    6
+   ],
+   "to": [
+    9,
+    -59,
+    6
+   ],
+   "state": "minecraft:bookshelf"
+  },
+  {
+   "from": [
+    10,
+    -59,
+    6
+   ],
+   "to": [
+    10,
+    -59,
+    6
+   ],
+   "state": "minecraft:crafting_table"
+  },
+  {
+   "from": [
+    11,
+    -59,
+    6
+   ],
+   "to": [
+    11,
+    -59,
+    6
+   ],
+   "state": "minecraft:furnace[facing=south]"
+  }
+ ]
+}

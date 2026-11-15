@@ -1,0 +1,38 @@
+{
+ "description": "Throwaway: glass wall and pane wall for OptiFine connected glass.",
+ "camera": [
+  5.5,
+  -58.0,
+  1.0,
+  0.0,
+  0.0
+ ],
+ "blocks": [
+  {
+   "from": [
+    2,
+    -60,
+    6
+   ],
+   "to": [
+    5,
+    -58,
+    6
+   ],
+   "state": "minecraft:glass"
+  },
+  {
+   "from": [
+    6,
+    -60,
+    6
+   ],
+   "to": [
+    9,
+    -58,
+    6
+   ],
+   "state": "minecraft:glass_pane"
+  }
+ ]
+}

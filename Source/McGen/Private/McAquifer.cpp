@@ -26,6 +26,13 @@ namespace
 	static float SeaFull0 = 0.0f;
 	static float SeaPartial0 = -0.5f;
 	static float SeaDepth = 44.0f;
+	// Extra scale on the floodedness noise for cells whose centre lies in [MidLo, MidHi) (ramped over 8 blocks each side), sweep.
+	static float MidScale = 0.0f;
+	static int32 MidLo = 0;
+	static int32 MidHi = 32;
+	static FAutoConsoleVariableRef CVarMidScale(TEXT("mc.aq.midscale"), MidScale, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarMidLo(TEXT("mc.aq.midlo"), MidLo, TEXT("sweep"));
+	static FAutoConsoleVariableRef CVarMidHi(TEXT("mc.aq.midhi"), MidHi, TEXT("sweep"));
 	static int32 ExactSurface = 0;
 	static FAutoConsoleVariableRef CVarExactSurface(TEXT("mc.aq.exactsurface"), ExactSurface, TEXT("sweep"));
 	static FAutoConsoleVariableRef CVarFloodScale(TEXT("mc.aq.floodscale"), FloodScale, TEXT("sweep"));
@@ -156,7 +163,7 @@ FMcAquifer::FStatus FMcAquifer::GetStatus(const FIntVector& Cell, FMcDensityCont
 	{
 		Context.SetPos(Centre.X, Centre.Y, Centre.Z);
 		const bool bExcluded = Exclusion != INDEX_NONE && Graph->Evaluate(Exclusion, Context) > 0.0;
-		const double Flood = FMath::Clamp(Graph->Evaluate(Floodedness, Context) * FloodScale, -1.0, 1.0);
+		const double Flood = FMath::Clamp(Graph->Evaluate(Floodedness, Context) * (FloodScale + MidScale * FMath::Clamp((Centre.Y - (MidLo - 8)) / 8.0, 0.0, 1.0) * FMath::Clamp(((MidHi + 8) - Centre.Y) / 8.0, 0.0, 1.0)), -1.0, 1.0);
 		double Full = 0.8;
 		double Partial = 0.4;
 		if (OwnSurface < SeaLevel)
